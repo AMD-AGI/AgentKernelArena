@@ -56,8 +56,10 @@ Baseline commands run in the framework's frozen workspace. Each command emits
 one `ARENA_EVAL_RESULT=` envelope. A failed dependency, dispatch or output contract
 is a failure, not an accepted baseline numerical diagnostic. The original
 `task_runner.py` remains the protected operator implementation of these checks;
-its generated performance region must be materialized by Arena. Developer
-profiling drivers do not supply final evaluation evidence.
+its generated performance region must be materialized by Arena. Optional
+profiling does not supply final evaluation evidence. Agent CLI adaptation belongs
+to the agent integration; use the declared v2 runner for task evaluation, with
+the task's full numerical and workload checks.
 This migration has CPU regression coverage; formal GPU task validation and the
 optimization campaign are coordinated separately. Runtime source availability
 must be checked against the selected immutable image, not inferred from a tag.

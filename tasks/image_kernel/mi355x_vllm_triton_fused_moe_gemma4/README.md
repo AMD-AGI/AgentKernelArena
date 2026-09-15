@@ -56,11 +56,12 @@ Each MoE layer launches `fused_moe_kernel` twice — once for the w13 gate_up GE
 and once for w2 down — so the trace's 1800 decode calls are 30 layers × 2 GEMMs ×
 30 steps. One harness call through `fused_experts_impl` covers both launches.
 
-Correctness and performance sweep all three cases. Profiling is a single-shape
-probe pinned to `gemma4-moe-decode-m64` via `profile_case` in
-`session_cases.json` (surfaced as `PROFILE_CASE_ID` / `profile_case()` in the task
-runner) — that is the session's hot entry, and pinning keeps the profiled kernel
-from drifting with measurement noise.
+Correctness and performance sweep all three cases. The historical profiling
+probe used one shape, pinned to `gemma4-moe-decode-m64` via `profile_case` in
+`session_cases.json` (surfaced as `PROFILE_CASE_ID` / `profile_case()` in the
+task runner; these helpers and the recorded pin remain available) — that is the
+session's hot entry, and pinning keeps the profiled kernel from drifting with
+measurement noise.
 
 ## The missing tuned config is a real lever
 
@@ -98,7 +99,12 @@ At 10 ms the repeat count stays comfortably above 1 and four consecutive runs
 agree to within 0.35%. The sibling attention tasks were checked and do not need
 this: their repeat counts land between 6 and 17 at the default.
 
-## Verified locally
+## Historical pre-v2 verification
+
+The observations below predate the v2 migration. The quoted `forge_driver`
+commands belonged to the retired task-shipped Forge adapter; they are historical
+output, not current invocation instructions or v2 qualification evidence.
+Current evaluation uses `scripts/evaluate.py` as declared in `config.yaml`.
 
 Workspace materialized through `src.preprocessing.setup_workspace` on
 MI355X/gfx950:
@@ -171,8 +177,10 @@ Baseline commands run in the framework's frozen workspace. Each command emits
 one `ARENA_EVAL_RESULT=` envelope. A failed dependency, dispatch or output contract
 is a failure, not an accepted baseline numerical diagnostic. The original
 `task_runner.py` remains the protected operator implementation of these checks;
-its generated performance region must be materialized by Arena. Developer
-profiling drivers do not supply final evaluation evidence.
+its generated performance region must be materialized by Arena. Optional
+profiling does not supply final evaluation evidence. Agent CLI adaptation belongs
+to the agent integration; use the declared v2 runner for task evaluation, with
+the task's full numerical and workload checks.
 This migration has CPU regression coverage; formal GPU task validation and the
 optimization campaign are coordinated separately. Runtime source availability
 must be checked against the selected immutable image, not inferred from a tag.

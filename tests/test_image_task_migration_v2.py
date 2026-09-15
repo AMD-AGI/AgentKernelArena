@@ -561,6 +561,43 @@ def test_inventory_and_declared_roles():
 
 
 @pytest.mark.parametrize("directory", DIRECTORIES, ids=lambda d: d.name)
+def test_task_execution_has_no_retired_agent_driver_dependency(directory):
+    retired = {"forge_driver", "standalone_driver"}
+    assert not any((directory / "scripts" / f"{name}.py").exists() for name in retired)
+    # Include setup and reference code, not just the configured CLI. Direct
+    # imports and dynamic file-loader arguments must not retain deleted modules.
+    for script in (directory / "scripts").glob("*.py"):
+        for node in ast.walk(ast.parse(script.read_text())):
+            if isinstance(node, ast.Import):
+                assert all(alias.name.split(".")[-1] not in retired for alias in node.names), script
+            elif isinstance(node, ast.ImportFrom):
+                assert (node.module or "").split(".")[-1] not in retired, script
+                assert all(alias.name not in retired for alias in node.names), script
+            elif isinstance(node, ast.Constant) and isinstance(node.value, str):
+                assert not any(f"{name}.py" in node.value for name in retired), script
+    spec = load_task_spec(directory / "config.yaml", task_id="image_kernel/" + directory.name)
+    assert len(spec.actions) == 7
+    for action in spec.actions:
+        assert action.commands[0][:2] == ("python3", "scripts/evaluate.py")
+
+
+@pytest.mark.parametrize("task_name,case_id", [
+    ("mi355x_vllm_hip_paged_attention_decode", "llama3_1-8b-decode-m64-ctx1024"),
+    ("mi355x_vllm_triton_unified_attention_gemma4", "gemma4-sliding-decode-m64-ctx1024"),
+    ("mi355x_vllm_triton_fused_moe_gemma4", "gemma4-moe-decode-m64"),
+])
+def test_public_profiling_case_selection_survives_driver_removal(task_name, case_id):
+    directory = TASKS / task_name
+    runner = load_module(directory / "scripts/task_runner.py")
+    selected = runner.profile_case()
+    assert selected["id"] == case_id
+    assert any(selected is case for case in runner.CASES)
+    manifest = json.loads((directory / "workloads.json").read_text())
+    assert any(case["test_case_id"] == case_id and "performance" in case["checks"]
+               for case in manifest["cases"])
+
+
+@pytest.mark.parametrize("directory", DIRECTORIES, ids=lambda d: d.name)
 def test_original_cases_numerical_policy_and_benchmark_unchanged(directory):
     harness = load_module(directory / "scripts/task_runner.py")
     original = {"correctness": harness.CASES, "performance": getattr(harness, "PERF_CASES", None)}

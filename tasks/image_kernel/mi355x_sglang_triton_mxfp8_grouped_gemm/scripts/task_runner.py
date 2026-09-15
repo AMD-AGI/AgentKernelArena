@@ -108,7 +108,7 @@ if "_TimedRun" not in globals():
 
 
 def _benchmark_cuda_graph(*args, **kwargs):
-    """Compatibility name used by the task's standalone/forge drivers."""
+    """Compatibility alias for task-local benchmark callers."""
 
     return _benchmark_cuda_graph_or_events(*args, **kwargs)
 

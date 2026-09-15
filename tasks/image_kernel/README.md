@@ -64,6 +64,22 @@ also indicate shape, dtype, state or dispatch problems, so they are reported as
 `evaluation_error`, not falsely classified as an acceptable numerical diagnostic.
 Both baseline and candidate require successful numerical checks.
 
+The former 16 `scripts/forge_driver.py` adapters and eight merged
+`scripts/standalone_driver.py` copies are retired. No current task action or
+setup step uses them. Forge generates its own bridge to the same declared v2
+commands used by other agents. Tasks do not supply an agent-specific CLI,
+alternate allclose/SNR acceptance policy, or cached stdout timing interface.
+The original files remain in Git history for interpreting older experiments.
+Historical driver outputs quoted in task READMEs are not current run commands
+or v2 validation evidence.
+
+The public `task_runner.py` functions, references, `profile_case()` helpers and
+recorded profiling case IDs remain available. Removing the obsolete wrappers
+does not remove those task-owned interfaces. Profiling integrations must invoke
+the required task functions explicitly; the retired `--profile-run` CLI is not
+part of the seven-action evaluation protocol or an automatic profiling hook.
+Optional profiling never replaces the full correctness or performance actions.
+
 Python imports and direct loaders are checked against the materialized candidate
 paths. HIP actions use separate fresh build directories and record successful
 compiler inputs matching a declared target. A changed AITER dispatcher selecting
