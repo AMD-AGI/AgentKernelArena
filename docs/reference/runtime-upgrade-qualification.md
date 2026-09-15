@@ -18,6 +18,16 @@ Their runtime and GPU evidence is recorded separately below. The `gfx942` and
 `gfx1201` defaults are unchanged. An MI355X qualification cannot establish
 support on those other architectures.
 
+The explicit SGLang 0.5.19 candidate now receives the same private AITER/FlyDSL
+cache paths and writable AITER config directory as the existing gfx950 runtime.
+GPU job 139224 exposed 3,795 root-owned, unreadable bundled FlyDSL cache files
+when AITER used its default copy-on-import path. Setting `AITER_JIT_DIR` selects
+its writable-cache path instead. The override is limited to the recorded image
+references and isolated per worker; installed image packages remain unchanged.
+Docker argument tests cover the dated tag, immutable digest, and worker suffix.
+This cache fix needs a fresh GPU task validation; it neither promotes the default
+image nor changes the separately pinned evaluation-tool compatibility gate.
+
 ## Registry evidence (2026-09-15 UTC)
 
 The Docker Registry v2 API returned single-platform `linux/amd64` manifests for

@@ -5,6 +5,8 @@ DEFAULT_DOCKER_IMAGE_GFX942="${AKA_DOCKER_IMAGE_GFX942:-lmsysorg/sglang:v0.5.12-
 GFX950_V0514_DOCKER_IMAGE="lmsysorg/sglang-rocm:v0.5.14-rocm720-mi35x-20260705"
 GFX950_V0514_MANIFEST_DIGEST="sha256:b435b508b5aa696abb25c909341ce73e41574c4271cf716bed72418dcea86b78"
 GFX950_V0514_IMMUTABLE_IMAGE="lmsysorg/sglang-rocm@${GFX950_V0514_MANIFEST_DIGEST}"
+GFX950_V0519_DOCKER_IMAGE="lmsysorg/sglang-rocm:v0.5.19-rocm10-mi35x-20260913"
+GFX950_V0519_IMMUTABLE_IMAGE="lmsysorg/sglang-rocm@sha256:106a7adbeec5554b6e66a4bda0b3694af442717b9fe92754a9885520077b6f93"
 # Keep qualification and scoring on the verified bytes, even if the dated tag
 # moves. New runtime candidates remain explicit overrides until qualified.
 DEFAULT_DOCKER_IMAGE_GFX950="${AKA_DOCKER_IMAGE_GFX950:-$GFX950_V0514_IMMUTABLE_IMAGE}"
@@ -131,10 +133,15 @@ docker_image_for_arch() {
     esac
 }
 
-uses_gfx950_v0514_runtime() {
+uses_gfx950_aiter_cache_overrides() {
     [[ "$SELECTED_GPU_ARCH" == "gfx950" ]] || return 1
-    [[ "$SELECTED_IMAGE" == "$GFX950_V0514_DOCKER_IMAGE" \
-        || "$SELECTED_IMAGE" == "$GFX950_V0514_IMMUTABLE_IMAGE" \
+    # Evaluation-tool setup may replace SELECTED_IMAGE with its verified local
+    # ID. That verifier checks the pinned scoring bytes, including custom aliases.
+    local image_reference="${AKA_SCORING_IMAGE_REFERENCE:-$SELECTED_IMAGE}"
+    [[ "$image_reference" == "$GFX950_V0514_DOCKER_IMAGE" \
+        || "$image_reference" == "$GFX950_V0514_IMMUTABLE_IMAGE" \
+        || "$image_reference" == "$GFX950_V0519_DOCKER_IMAGE" \
+        || "$image_reference" == "$GFX950_V0519_IMMUTABLE_IMAGE" \
         || ( -n "${AKA_SCORING_IMAGE_RUNTIME_REF:-}" \
             && "$SELECTED_IMAGE" == "$AKA_SCORING_IMAGE_RUNTIME_REF" ) ]]
 }
@@ -1017,11 +1024,11 @@ build_docker_args() {
         docker_args+=(-e "AKA_GEAK_SDK_PATH=${CONTAINER_WORKDIR}/.aka-pyuserbase/geak-sdk")
     fi
 
-    # The pinned gfx950 image ships root-owned AITER/FlyDSL caches, and its
+    # These known gfx950 images ship root-owned AITER/FlyDSL caches, and their
     # /tmp/aiter_configs directory is not writable by the host UID used below.
-    # Keep these overrides tied to that exact runtime so custom images and
+    # Keep these overrides tied to their references so custom images and
     # other GPU architectures retain their existing cache behavior.
-    if uses_gfx950_v0514_runtime; then
+    if uses_gfx950_aiter_cache_overrides; then
         docker_args+=(
             -e "AITER_JIT_DIR=/tmp/aiter-jit${cache_postfix}"
             -e "FLYDSL_RUNTIME_CACHE_DIR=/tmp/flydsl-runtime-cache${cache_postfix}"

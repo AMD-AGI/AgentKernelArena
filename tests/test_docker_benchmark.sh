@@ -262,6 +262,16 @@ mapfile -t args < <(run_shell_args AKA_GPU_ARCH=gfx950 AKA_DOCKER_IMAGE="$PINNED
 assert_has "$PINNED_GFX950_IMAGE" "${args[@]}"
 assert_cache_args_present "" "${args[@]}"
 
+# The qualification image has the same non-root cache requirement. Test both
+# public references and per-worker isolation without promoting it to default.
+for image in \
+    lmsysorg/sglang-rocm:v0.5.19-rocm10-mi35x-20260913 \
+    lmsysorg/sglang-rocm@sha256:106a7adbeec5554b6e66a4bda0b3694af442717b9fe92754a9885520077b6f93; do
+    mapfile -t args < <(run_shell_args AKA_GPU_ARCH=gfx950 AKA_DOCKER_IMAGE="$image" AKA_CACHE_SUFFIX=worker-3)
+    assert_has "$image" "${args[@]}"
+    assert_cache_args_present "-worker-3" "${args[@]}"
+done
+
 # Old and custom gfx950 images retain their existing Docker arguments.
 mapfile -t args < <(run_shell_args AKA_GPU_ARCH=gfx950 AKA_DOCKER_IMAGE="$OLD_GFX950_IMAGE")
 assert_cache_args_absent "${args[@]}"
