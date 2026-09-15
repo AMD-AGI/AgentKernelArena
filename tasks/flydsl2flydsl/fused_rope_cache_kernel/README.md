@@ -47,3 +47,11 @@ Any older validation reports in this directory predate this migration and do not
 qualify the v2 runner. The parent integration schedules new GPU validation.
 
 Upstream source: {"commit": "28a18d328b4882c999864b2df2f8f9fe3fcc8b47", "date": "2026-06-01", "path": "kernels/fused_rope_cache_kernel.py", "repo": "https://github.com/ROCm/FlyDSL"}.
+
+
+The task-local `flydsl_compat/` package adapts removed buffer APIs without
+changing kernel expressions; its source pin and license are bundled. Original
+installed legacy APIs remain preferred. Performance validates measured Q/K and
+full KV caches, then negates Q/K/V, poisons written output/cache slots and checks
+the same captured replay. Unwritten cache slots must stay unchanged. Original
+cases, tolerances, warmups, samples and timed launch boundaries are preserved.

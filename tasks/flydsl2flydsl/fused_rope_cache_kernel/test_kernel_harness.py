@@ -12,7 +12,8 @@ import math
 import os
 import sys
 from pathlib import Path
-from _aka_benchmark import benchmark_cuda_graph_or_events
+from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
+from scripts.replay_checks import prepare_check, verify_timed_run
 
 # ============================================================================
 # GEAK bootstrap
@@ -414,6 +415,7 @@ def arena_benchmark(configs=None, warmup=10, iters=100, verbose=True):
 
     for idx, cfg in enumerate(configs):
         inp = _make_inputs(cfg)
+        check = prepare_check(inp, reference_rope_neox, ATOL, RTOL)
         launch_fn = mod.build_fused_rope_cache_module(
             head_dim=inp["D"], num_q_heads=inp["QH"], num_kv_heads=inp["KH"],
             block_size=inp["BS"], is_neox=True, flash_layout=True,
@@ -429,14 +431,17 @@ def arena_benchmark(configs=None, warmup=10, iters=100, verbose=True):
                 inp["T_len"], inp["k_scale"], inp["v_scale"],
                 stream=torch.cuda.current_stream(),
             )
+            return tuple(inp[name] for name in ("Q_out", "K_out", "key_cache", "value_cache"))
 
         for _ in range(warmup):
             _run_kernel()
         torch.cuda.synchronize()
 
+        timed = TimedRun()
         kernel_ms, kernel_bench_meta = benchmark_cuda_graph_or_events(
-            _run_kernel, warmup=0, repetition=iters
+            _run_kernel, warmup=0, repetition=iters, timed_run=timed
         )
+        kernel_bench_meta.update(verify_timed_run(timed, **check))
 
         def _bench_ref_ms():
             reference_rope_neox(inp["Q"], inp["cos_cache"], inp["sin_cache"], inp["positions"])
