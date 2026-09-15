@@ -10,7 +10,7 @@ if __package__ in (None, ""):
 
 from agents.geak.bridge import Bridge, write_json
 from agents.geak_v4.workflow_runner import (
-    DEFAULT_SETTINGS, _extract_workflow_return, _read_json, _valid_workflow_return,
+    DEFAULT_SETTINGS, _extract_workflow_return, _valid_workflow_return,
     build_prompt, invoke_via_sdk,
 )
 
@@ -34,11 +34,12 @@ def run(job_path: Path) -> int:
             runtime_metadata=runtime,
             require_workflow_result=True,
             runtime_metadata_path=bridge.root / "runtime_identity.json",
+            expected_workflow={"scriptPath": str(script), "args": args},
         )
         error_code = "missing_terminal_workflow_result"
-        returned = _read_json(bridge.eval_dir / "workflow_return.json")
-        if returned is None:
-            returned = _extract_workflow_return(transcript, bridge.eval_dir)
+        # The strict SDK path appends the observed tool return as the final line.
+        # A file written by the outer assistant is not native completion evidence.
+        returned = _extract_workflow_return(transcript, bridge.eval_dir)
         if not _valid_workflow_return(returned, bridge.eval_dir, require_pinned_patch=True):
             raise RuntimeError("GEAK did not return a valid terminal Workflow result")
         write_json(bridge.eval_dir / "workflow_return.json", returned)

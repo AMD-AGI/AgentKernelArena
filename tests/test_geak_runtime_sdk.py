@@ -46,8 +46,8 @@ def test_director_marker_does_not_preempt_runtime_return(tmp_path, monkeypatch):
                 "final_patch": str(eval_dir / "final_patch.diff"), "budget_used": 1}
     notification = type("TaskNotificationMessage", (SimpleNamespace,), {})(
         task_id="workflow1", status="completed", output_file=str(output))
-    def message(name, **kwargs):
-        return type(name, (SimpleNamespace,), {})(**kwargs)
+    def message(class_name, **kwargs):
+        return type(class_name, (SimpleNamespace,), {})(**kwargs)
 
     class Client:
         def __init__(self, **kwargs):
@@ -59,7 +59,8 @@ def test_director_marker_does_not_preempt_runtime_return(tmp_path, monkeypatch):
         async def query(self, prompt):
             pass
         async def receive_messages(self):
-            yield message("TaskStartedMessage", task_id="workflow1")
+            yield message("AssistantMessage", content=[message("ToolUseBlock", id="tool1", name="Workflow", input={})])
+            yield message("TaskStartedMessage", task_id="workflow1", tool_use_id="tool1")
             (eval_dir / "director_validation.json").write_text(json.dumps({
                 "validation_status": "accepted", "correctness": "pass",
                 "director_verified_speedup_geomean": 1.1, "applied_to_original": "false",

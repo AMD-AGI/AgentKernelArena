@@ -134,6 +134,11 @@ passed Arena's evaluation. It does not establish that GEAK completed its
 workflow: an interrupted or failed engine can still leave an accepted candidate.
 Count a completed optimization only with evidence of native GEAK search and
 successful workflow completion as well as independent candidate acceptance.
+The v2 launcher requires the invoked Workflow tool's own return, correlated by
+tool identity with its synchronous result or completed background notification.
+The invocation must match the prepared script and arguments. Assistant prose,
+Director markers, and an assistant-written `workflow_return.json` cannot prove
+native completion. A failed or missing runtime return remains an engine failure.
 
 ## Security and reproducibility review
 

@@ -547,6 +547,7 @@ def invoke_via_sdk(
     runtime_metadata: dict[str, Any] | None = None,
     require_workflow_result: bool = False,
     runtime_metadata_path: Path | None = None,
+    expected_workflow: dict[str, Any] | None = None,
 ) -> str:
     """Invoke Claude Code while surviving synchronous and background Workflows."""
     try:
@@ -603,6 +604,10 @@ def invoke_via_sdk(
         chunks: list[str] = []
         captured_return: dict[str, Any] | None = None
         runtime_notifications: list[Any] = []
+        workflow_tools: set[str] = set()
+        workflow_tasks: dict[str, str] = {}
+        workflow_outputs: list[Path] = []
+        synchronous_returns: list[dict[str, Any]] = []
         captured_chars = 0
         pending: set[str] = set()
         state = {
@@ -611,6 +616,60 @@ def invoke_via_sdk(
             "result_seen": False,
             "producer_done": False,
         }
+
+        def runtime_return(wrapper: Any) -> dict[str, Any] | None:
+            value = wrapper.get("result", wrapper) if isinstance(wrapper, dict) else None
+            return value if _valid_workflow_return(value, eval_dir, require_pinned_patch=True) else None
+
+        def observe_workflow(message: Any) -> None:
+            """Bind completion to the invoked tool, never assistant prose or disk JSON."""
+            name = type(message).__name__
+            if name == "AssistantMessage":
+                for block in getattr(message, "content", []) or []:
+                    if type(block).__name__ != "ToolUseBlock" or getattr(block, "name", None) != "Workflow":
+                        continue
+                    if expected_workflow is not None:
+                        inputs = getattr(block, "input", None)
+                        if (not isinstance(inputs, dict)
+                                or any(inputs.get(key) != value for key, value in expected_workflow.items())):
+                            raise RuntimeError("GEAK Workflow invocation does not match its pinned script and arguments")
+                    tool_id = getattr(block, "id", None)
+                    if not isinstance(tool_id, str) or not tool_id:
+                        raise RuntimeError("GEAK Workflow invocation has no tool identity")
+                    workflow_tools.add(tool_id)
+                    if len(workflow_tools) != 1:
+                        raise RuntimeError("GEAK requires exactly one outer Workflow invocation")
+            elif name == "TaskStartedMessage":
+                tool_id = getattr(message, "tool_use_id", None)
+                task_id = getattr(message, "task_id", None)
+                if tool_id in workflow_tools and task_id:
+                    workflow_tasks[str(task_id)] = tool_id
+            elif name == "TaskNotificationMessage":
+                tool_id = getattr(message, "tool_use_id", None)
+                task_id = str(getattr(message, "task_id", ""))
+                if tool_id not in workflow_tools and workflow_tasks.get(task_id) not in workflow_tools:
+                    return
+                if getattr(message, "status", None) != "completed":
+                    raise RuntimeError("GEAK Workflow background task did not complete successfully")
+                output = getattr(message, "output_file", None)
+                if output:
+                    workflow_outputs.append(Path(output))
+            elif name == "UserMessage":
+                for block in getattr(message, "content", []) or []:
+                    if (type(block).__name__ != "ToolResultBlock"
+                            or getattr(block, "tool_use_id", None) not in workflow_tools):
+                        continue
+                    if getattr(block, "is_error", False):
+                        raise RuntimeError("GEAK Workflow tool returned an error")
+                    for text in _iter_message_text(block):
+                        if len(text.encode("utf-8")) > _JSON_SIZE_LIMIT:
+                            continue
+                        try:
+                            value = runtime_return(json.loads(text))
+                        except json.JSONDecodeError:
+                            continue
+                        if value is not None:
+                            synchronous_returns.append(value)
 
         with anyio.fail_after(timeout_seconds):
             async with ClaudeSDKClient(options=options) as client:
@@ -621,6 +680,8 @@ def invoke_via_sdk(
                     nonlocal captured_chars
                     try:
                         async for message in client.receive_messages():
+                            if require_workflow_result:
+                                observe_workflow(message)
                             if runtime_metadata is not None:
                                 _record_runtime_identity(message, runtime_metadata)
                                 persist_identity()
@@ -681,19 +742,18 @@ def invoke_via_sdk(
                             await anyio.sleep(max(0.1, done_poll_seconds))
                             continue
                         if require_workflow_result:
-                            # A Director writes its validation before Workflow returns.
-                            # Capture the runtime's actual return object, even if the
-                            # outer assistant has not written workflow_return.json yet.
-                            returned = _read_json(eval_dir / "workflow_return.json")
-                            for notification in runtime_notifications:
-                                path = getattr(notification, "output_file", None)
-                                wrapper = _read_json(Path(path)) if path else None
-                                value = wrapper.get("result") if isinstance(wrapper, dict) else None
-                                if _valid_workflow_return(value, eval_dir, require_pinned_patch=True):
-                                    returned = value
-                                    break
-                            if _valid_workflow_return(returned, eval_dir, require_pinned_patch=True):
-                                captured_return = returned
+                            if producer_error:
+                                raise producer_error[0]
+                            # Notification files may still be partial; reread them
+                            # within the existing deadline/grace period. An agent's
+                            # workflow_return.json cannot stand in for this result.
+                            returned = list(synchronous_returns)
+                            for path in workflow_outputs:
+                                value = runtime_return(_read_json(path))
+                                if value is not None:
+                                    returned.append(value)
+                            if returned:
+                                captured_return = returned[0]
                                 break
                         elif _terminal_artifact_exists(eval_dir):
                             break
@@ -730,6 +790,8 @@ def invoke_via_sdk(
                             break
                         await anyio.sleep(max(0.1, done_poll_seconds))
                     task_group.cancel_scope.cancel()
+        if require_workflow_result and captured_return is None:
+            raise RuntimeError("GEAK ended without an observed native Workflow return")
         # CLI 2.1.272 can notify completion before the JSON output file has
         # finished being written. Read it again after the lifecycle completes.
         if runtime_metadata is not None:

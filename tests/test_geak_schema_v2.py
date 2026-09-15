@@ -518,7 +518,7 @@ def test_engine_worker_requires_truthful_terminal_result(task_factory, monkeypat
             write_json(bridge.eval_dir / "workflow_return.json", result)
         if terminal == "sdk_error":
             raise RuntimeError("FAKE_PROVIDER_SECRET_DO_NOT_LOG")
-        return ""
+        return json.dumps(result) if terminal != "missing" else ""
     monkeypatch.setattr(engine_worker, "invoke_via_sdk", sdk)
     code = engine_worker.run(bridge.job_path)
     output = (bridge.root / "engine_result.json").read_text()
