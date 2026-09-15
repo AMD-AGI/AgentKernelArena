@@ -64,7 +64,8 @@ sample counts and Graph/Event selection remain unchanged.
 Runtime qualification: the initial implementation uses the legacy FlyDSL
 `expr.buffer_ops` and `expr.vector` APIs. It passed the full task validator on
 MI355X with the repository's pinned SGLang 0.5.14 / FlyDSL 0.2.2 runtime
-(2026-09-15, job 139346; all five correctness and performance cases, including
+(2026-09-15, job 139392 on an available-memory MI355X allocation; all five
+correctness and performance cases, including
 measured Event outputs and eager re-invocation). The tested SGLang 0.5.19 /
 FlyDSL 0.3.2 runtime removes these APIs and fails before kernel execution.
 Select the qualified runtime through the run-level Docker image setting;

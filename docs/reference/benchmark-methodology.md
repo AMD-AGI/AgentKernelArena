@@ -245,9 +245,11 @@ CI.
 
 ## Event output-observation qualification
 
-On 2026-09-15, Slurm job 139346 ran the three
+On 2026-09-15, Slurm job 139392 ran the three
 `tests/test_gpu_graph_smoke.py` checks on an MI355X (`gfx950`) with the pinned
-SGLang 0.5.19 qualification image: all three passed, none skipped. The previous
+SGLang 0.5.19 qualification image on node `crsuse2-m2m-001`: all three
+passed, none skipped. Before qualification, the allocated device had 99.8% of
+its memory free and AMD-SMI reported no running processes. The previous
 helper rejected an explicit Event collector on the same GPU; the updated helper
 observed the actual measured output and validated eager re-invocation. See the
 [runtime qualification record](runtime-upgrade-qualification.md) for image identities.
@@ -264,8 +266,10 @@ is distinct from the full task-validator report. That separate HGEMM report
 was subsequently framework-finalized as `PASS` in the same job, with an
 implemented frozen initial candidate and no baseline diagnostic exemption.
 
-A subsequent resource audit on the same node found nearly full device memory
-and other 0.5.19 tasks failed with allocation/launch resource errors. Retain the
-successful functional reports, but do not treat the sequential elapsed values
-as isolated performance qualification. A fresh run with sufficient free device
-memory is required before using those timings for comparative conclusions.
+Earlier job 139346 on node `crsuse2-m2m-217` also produced successful functional
+reports, but a subsequent audit found external process/memory occupancy and
+other tasks failed with allocation/launch resource errors. Preserve those
+reports as historical functional evidence; all performance from that node is
+unqualified. Job 139392 explicitly excluded node217 and repeated the smoke,
+HGEMM boundary checks and full validator on the available-memory allocation
+described above. Neither sequential run establishes an optimization gain.
