@@ -71,3 +71,11 @@ FlyDSL launch evidence is required inside each candidate operator invocation;
 launches by the reference or baseline cannot satisfy it.
 The audit wraps candidate import/correctness only, leaving baseline/reference
 execution and the original device-timing callable unchanged.
+
+All four original random case shapes/seeds still execute unchanged. Additional
+correctness probes for each shape exercise gate values above +7 and linear
+values beyond both -7 and +7, including adjacent representable BF16 values.
+The CPU known-answer controls use an independent Python scalar formula. The
+post-timing replay uses these saturation inputs as well as negating remaining
+values, then restores the original inputs. Formal timing keeps the original
+random workloads, warmups and samples; all comparisons retain REL_TOL=1e-2.

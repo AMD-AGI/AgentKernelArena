@@ -31,6 +31,8 @@ from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
 from scripts.replay_checks import (normalized_output, require_tensor_contract,
                                   require_unchanged, verify_timed_run)
 
+from scripts.swiglu_controls import saturation_input_
+
 from task_runtime import candidate_relative_path
 KERNEL_FILE = candidate_relative_path()
 ARENA_PROVIDED_BASELINE = False
@@ -215,7 +217,7 @@ def _activation_replay_validator(inp, oracle):
     def validate(timed):
         return verify_timed_run(
             timed, inputs=(inp,), originals=originals, expected=expected,
-            perturb=lambda: inp.neg_(), reference=lambda: oracle(inp),
+            perturb=lambda: saturation_input_(inp), reference=lambda: oracle(inp),
             compare=lambda actual, ref: normalized_output(actual, ref, tolerance=REL_TOL),
         )
     return validate

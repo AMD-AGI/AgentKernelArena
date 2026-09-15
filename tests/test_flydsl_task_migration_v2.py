@@ -1516,6 +1516,8 @@ def test_activation_actual_measured_and_replayed_invocations(name, function, pro
           "_load_module": lambda directory, filename, alias: mmod if filename == "model.py" else (None if provided else kmod),
           "SHAPES": [{"name": "controlled", "m": 2, "n": 4}], "_make_inputs": lambda *args: inp,
           "math": math, "json": json, "Path": Path}
+    if name == "swiglu_and_mul":
+        ns["saturation_input_"] = module(task / "scripts/swiglu_controls.py").saturation_input_
     _harness_functions(task, {function, "_mean_ms", "_activation_replay_validator", "_checked_activation_output"}, ns)
     if behavior == "correct":
         report = ns[function](verbose=False)
@@ -1991,3 +1993,74 @@ def test_sglang_correctness_uses_pristine_inputs_before_computing_reference(name
     assert ok is (not mutate_input)
     if mutate_input: assert "read-only input" in error
     assert len(details) == 1
+
+
+@pytest.mark.parametrize("omit", [None, "gate", "linear"])
+def test_swiglu_saturation_controls_reject_missing_clamps(omit):
+    import math
+    import types
+    import torch
+    task = ROOT / "tasks/torch2flydsl/swiglu_and_mul_kernel"
+    controls = module(task / "scripts/swiglu_controls.py")
+    checks = module(task / "scripts/replay_checks.py")
+    model = module(task / "model.py").Model()
+    inputs = torch.zeros((2, 20), dtype=torch.bfloat16)
+    def oracle(inp):
+        values = inp.tolist()
+        return torch.tensor([[
+            min(g, 7.) / (1 + math.exp(-1.702 * min(g, 7.))) * (max(-7., min(y, 7.)) + 1.)
+            for g, y in zip(row[:10], row[10:])
+        ] for row in values], dtype=inp.dtype)
+    def candidate(inp):
+        gate, linear = inp.float().chunk(2, -1)
+        if omit != "gate": gate = gate.clamp(max=7.)
+        if omit != "linear": linear = linear.clamp(-7., 7.)
+        return (gate * torch.sigmoid(1.702 * gate) * (linear + 1)).to(inp.dtype)
+    mmod = types.SimpleNamespace(Model=lambda: model, get_init_inputs=lambda: [])
+    kmod = types.SimpleNamespace(flydsl_swiglu_and_mul=candidate)
+    h = types.SimpleNamespace(
+        ARENA_PROVIDED_BASELINE=False, _KERNEL_DIR=".", MODEL_FILE="model.py", KERNEL_FILE="kernel.py",
+        KERNEL_ENTRY="flydsl_swiglu_and_mul", REL_TOL=.01,
+        SHAPES=[{"name":"boundary", "m":2,"n":20}], _make_inputs=lambda shape: inputs.clone(),
+        _load_module=lambda directory, filename, alias: mmod if filename=="model.py" else kmod,
+        _aiter_op=oracle, _checked_activation_output=lambda result, inp: result,
+        require_unchanged=checks.require_unchanged, normalized_output=checks.normalized_output,
+    )
+    if omit is None:
+        controls.check_saturation(h)
+    else:
+        with pytest.raises(AssertionError, match="Numerical mismatch"):
+            controls.check_saturation(h)
+
+
+@pytest.mark.parametrize("omit", [None, "gate", "linear"])
+def test_swiglu_measured_replay_detects_missing_saturation(omit):
+    import types
+    import torch
+    task = ROOT / "tasks/torch2flydsl/swiglu_and_mul_kernel"
+    controls = module(task / "scripts/swiglu_controls.py")
+    checks = module(task / "scripts/replay_checks.py")
+    model = module(task / "model.py").Model()
+    inp = torch.full((2, 20), .5, dtype=torch.bfloat16)
+    original = inp.clone()
+    def run():
+        gate, linear = inp.float().chunk(2, -1)
+        if omit != "gate": gate = gate.clamp(max=7.)
+        if omit != "linear": linear = linear.clamp(-7., 7.)
+        return (gate * torch.sigmoid(1.702 * gate) * (linear + 1)).to(inp.dtype)
+    ns = {"normalized_output":checks.normalized_output, "require_tensor_contract":checks.require_tensor_contract,
+          "require_unchanged":checks.require_unchanged, "verify_timed_run":checks.verify_timed_run,
+          "saturation_input_":controls.saturation_input_, "REL_TOL":.01}
+    _harness_functions(task, {"_activation_replay_validator", "_checked_activation_output"}, ns)
+    timed = types.SimpleNamespace(bound=True, outputs=run(), rerun=run)
+    # Original low-valued measured input cannot distinguish a missing clamp.
+    torch.testing.assert_close(timed.outputs, model(inp))
+    validate = ns["_activation_replay_validator"](inp, model)
+    if omit is None:
+        assert validate(timed)["replay_correctness"] == "PASS"
+    else:
+        with pytest.raises(AssertionError, match="Numerical mismatch"):
+            validate(timed)
+    assert torch.equal(inp, original)
+
+
