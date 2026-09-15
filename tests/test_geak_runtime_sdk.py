@@ -8,6 +8,34 @@ import pytest
 anyio = pytest.importorskip("anyio")
 
 
+@pytest.mark.parametrize("status", ["allowed_warning", "rejected"])
+def test_actual_sdk_rate_limit_event_retains_only_bounded_metadata(status):
+    sdk = pytest.importorskip("claude_agent_sdk")
+    from agents.geak_v4.workflow_runner import _record_runtime_identity
+
+    info = sdk.types.RateLimitInfo(status=status, resets_at=1789462800,
+        rate_limit_type="five_hour", overage_status="rejected",
+        raw={"credential": "FAKE_PROVIDER_SECRET"}, overage_disabled_reason="FAKE_PROVIDER_SECRET")
+    message = sdk.types.RateLimitEvent(info, uuid="private-id", session_id="private-session")
+    identity = {}
+    _record_runtime_identity(message, identity)
+    assert identity["rate_limit"] == {"status": status, "resets_at": 1789462800,
+                                      "rate_limit_type": "five_hour", "overage_status": "rejected"}
+    assert identity.get("runtime_error_codes", []) == (["rate_limit"] if status == "rejected" else [])
+    assert "FAKE_PROVIDER_SECRET" not in json.dumps(identity)
+    assert "private-id" not in json.dumps(identity)
+
+
+def test_actual_sdk_structured_assistant_error_does_not_retain_provider_text():
+    sdk = pytest.importorskip("claude_agent_sdk")
+    from agents.geak_v4.workflow_runner import _record_runtime_identity
+
+    identity = {}
+    _record_runtime_identity(sdk.AssistantMessage(
+        content=[sdk.TextBlock(text="FAKE_PROVIDER_SECRET")], model="<synthetic>", error="rate_limit"), identity)
+    assert identity == {"assistant_models": ["<synthetic>"], "runtime_error_codes": ["rate_limit"]}
+
+
 def test_director_marker_does_not_preempt_runtime_return(tmp_path, monkeypatch):
     from agents.geak_v4 import workflow_runner as runner
 

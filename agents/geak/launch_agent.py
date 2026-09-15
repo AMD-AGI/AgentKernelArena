@@ -26,7 +26,7 @@ from .compatibility import prepare_engine
 
 
 _RUNTIME_FIELDS = ("requested_model", "sdk_version", "cli_version", "init_model",
-                   "assistant_models", "workflow_models", "workflow_agent_errors", "runtime_error_codes")
+                   "assistant_models", "workflow_models", "workflow_agent_errors", "runtime_error_codes", "rate_limit")
 
 
 def load_options(eval_config: dict) -> dict:

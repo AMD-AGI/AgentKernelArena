@@ -462,6 +462,25 @@ def _record_runtime_identity(message: Any, identity: dict[str, Any]) -> None:
             identity["workflow_agent_errors"] = [{"label": label, "code": code} for label, code in sorted(failures)]
 
     name = type(message).__name__
+    if name == "RateLimitEvent":
+        info = getattr(message, "rate_limit_info", None)
+        limit = {}
+        for key, allowed in (
+            ("status", {"allowed", "allowed_warning", "rejected"}),
+            ("overage_status", {"allowed", "allowed_warning", "rejected"}),
+            ("rate_limit_type", {"five_hour", "seven_day", "seven_day_opus", "seven_day_sonnet", "overage"}),
+        ):
+            value = getattr(info, key, None)
+            if isinstance(value, str) and value in allowed:
+                limit[key] = value
+        for key in ("resets_at", "overage_resets_at"):
+            value = getattr(info, key, None)
+            if type(value) is int and 0 <= value < 2 ** 53:
+                limit[key] = value
+        if limit:
+            identity["rate_limit"] = limit
+        if limit.get("status") == "rejected":
+            identity["runtime_error_codes"] = sorted(set(identity.get("runtime_error_codes", [])) | {"rate_limit"})
     if name == "SystemMessage" and getattr(message, "subtype", None) == "init":
         data = getattr(message, "data", {})
         for source, target in (("model", "init_model"), ("claude_code_version", "cli_version")):
@@ -472,6 +491,11 @@ def _record_runtime_identity(message: Any, identity: dict[str, Any]) -> None:
         model = getattr(message, "model", None)
         if isinstance(model, str):
             identity["assistant_models"] = sorted(set(identity.get("assistant_models", [])) | {model})
+        error = getattr(message, "error", None)
+        if isinstance(error, str) and error in {
+            "authentication_failed", "billing_error", "rate_limit", "invalid_request", "server_error"
+        }:
+            identity["runtime_error_codes"] = sorted(set(identity.get("runtime_error_codes", [])) | {error})
         # Claude emits authentication failures as synthetic assistant messages,
         # before a Workflow exists. Keep only known codes, never provider text.
         if model == "<synthetic>":

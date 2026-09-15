@@ -57,7 +57,8 @@ def run(job_path: Path) -> int:
         return 0 if status == "accepted" else 1
     except Exception as exc:
         error_code = next((code for code in ("oauth_session_expired", "oauth_refresh_failed",
-                                             "authentication_failed")
+                                             "authentication_failed", "rate_limit", "billing_error",
+                                             "invalid_request", "server_error")
                            if code in runtime.get("runtime_error_codes", [])), error_code)
         write_json(result_path, {"status": "FAILED", "error_type": type(exc).__name__,
                                 "error_code": error_code, "workflow_completed": False, "runtime": runtime})
