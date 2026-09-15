@@ -244,6 +244,104 @@ def test_geak_gemm_correctness_rejects_nonfinite_output(monkeypatch, value):
     assert visited == [0, 1, 2] and harness.gemm_a16w16 is original
 
 
+@pytest.mark.parametrize('mode', ['correct', 'incorrect_timed', 'stale', 'no_write', 'changing_wrong'])
+def test_awq_packed_known_answers_and_exact_replay(monkeypatch, mode):
+    task = ROOT/'tasks/triton2triton/vllm/triton_awq_dequantize'
+    checks = module_at(task/'_arena_checks.py', monkeypatch)
+    harness = module_at(task/'scripts/task_runner.py', monkeypatch)
+    harness._TimedRun = SimpleNamespace
+    qweight = torch.tensor([[0x76543210], [-19088744]], dtype=torch.int32)  # second word: 0xfedcba98
+    scales = torch.arange(1, 9, dtype=torch.float16).repeat(2, 1)
+    zeros = torch.tensor([[0x11111111], [-2004318072]], dtype=torch.int32)  # 0x88888888
+    expected = torch.tensor([[-1, 6, 0, 16, 5, 30, 14, 48],
+                             [0, 8, 3, 20, 10, 36, 21, 56]], dtype=torch.float16)
+    checks.check_output(expected, qweight, scales, zeros, harness.reference_awq_dequantize)
+    with pytest.raises(AssertionError):
+        checks.check_output(expected.flip(-1), qweight, scales, zeros, harness.reference_awq_dequantize)
+    original = lambda q, s, z: harness.reference_awq_dequantize(q, s, z, 1)
+    mod = SimpleNamespace(awq_dequantize_triton=original)
+    seen = []
+
+    def fn():
+        mod.awq_dequantize_triton(qweight, scales, zeros)
+
+    def benchmark(measured, *, timed_run, **kwargs):
+        seen.append(kwargs)
+        output = measured()
+        cached = output.clone()
+        if mode == 'incorrect_timed': output.zero_()
+
+        def replay():
+            if mode == 'correct': output.copy_(original(qweight, scales, zeros))
+            elif mode == 'stale': output.copy_(cached)
+            elif mode == 'changing_wrong': output.fill_(int(qweight[0, 0]) & 15)
+            return output
+
+        timed_run.outputs, timed_run.rerun = output, replay
+        return 0.25, {'benchmark_method': 'cuda_graph'}
+
+    if mode == 'correct':
+        ms, metadata = checks.checked_benchmark(harness, benchmark, fn, warmup=10, repetition=100)
+        assert ms == 0.25 and metadata['perturbed_input_replay_checked']
+    else:
+        with pytest.raises(AssertionError):
+            checks.checked_benchmark(harness, benchmark, fn, warmup=10, repetition=100)
+    assert mod.awq_dequantize_triton is original
+    assert seen == [{'warmup': 10, 'repetition': 100}]
+
+
+@pytest.mark.parametrize('mode', ['correct', 'incorrect_timed', 'stale', 'no_write', 'wrong_ids', 'wrong_weights'])
+def test_shared_expert_append_known_answers_and_both_timed_outputs(monkeypatch, mode):
+    task = ROOT/'tasks/triton2triton/geak_eval/L1/fused_append_shared_experts'
+    checks = module_at(task/'_arena_checks.py', monkeypatch)
+    monkeypatch.setitem(__import__('sys').modules, '_aka_benchmark', SimpleNamespace(TimedRun=SimpleNamespace))
+    node = next(n for n in ast.parse((task/'test_kernel_harness.py').read_text()).body
+                if isinstance(n, ast.FunctionDef) and n.name == 'reference_fused_append')
+    namespace = {'torch': torch}
+    exec(compile(ast.Module(body=[node], type_ignores=[]), 'protected-reference', 'exec'), namespace)
+    reference = namespace['reference_fused_append']
+    topk_ids = torch.tensor([[3, 7], [1, 0]], dtype=torch.int32)
+    topk_weights = torch.tensor([[0.5, 0.25], [0.125, 0.75]])
+    cfg = {'S': 1, 'N': 8, 'scale_factor': 1.0}
+    expected = (torch.tensor([[3, 7, 8], [1, 0, 8]], dtype=torch.int32),
+                torch.tensor([[0.5, 0.25, 1.], [0.125, 0.75, 1.]]))
+    checks.check_output(expected, topk_ids, topk_weights, cfg, reference)
+    original = lambda ids, weights, s, factor, N: reference(ids, weights, s, factor, N)
+    harness = SimpleNamespace(reference_fused_append=reference, fused_append_shared_experts=original)
+    seen = []
+
+    def fn():
+        harness.fused_append_shared_experts(topk_ids, topk_weights, cfg['S'], cfg['scale_factor'], N=cfg['N'])
+
+    def benchmark(measured, *, timed_run, **kwargs):
+        seen.append(kwargs)
+        outputs = measured()
+        cached = tuple(out.clone() for out in outputs)
+        if mode == 'incorrect_timed': outputs[0].zero_()
+
+        def replay():
+            if mode in ('correct', 'wrong_ids', 'wrong_weights'):
+                expected = reference(topk_ids, topk_weights, cfg['S'], cfg['scale_factor'], cfg['N'])
+                for out, ref in zip(outputs, expected): out.copy_(ref)
+                if mode == 'wrong_ids': outputs[0][:, -1].zero_()
+                if mode == 'wrong_weights': outputs[1][:, -1].zero_()
+            elif mode == 'stale':
+                for out, ref in zip(outputs, cached): out.copy_(ref)
+            return outputs
+
+        timed_run.outputs, timed_run.rerun = outputs, replay
+        return 0.5, {'benchmark_method': 'cuda_graph'}
+
+    if mode == 'correct':
+        ms, metadata = checks.checked_benchmark(harness, benchmark, fn, warmup=50, repetition=200)
+        assert ms == 0.5 and metadata['perturbed_input_replay_checked']
+    else:
+        with pytest.raises(AssertionError):
+            checks.checked_benchmark(harness, benchmark, fn, warmup=50, repetition=200)
+    assert harness.fused_append_shared_experts is original
+    assert seen == [{'warmup': 50, 'repetition': 200}]
+
+
 ROCM = sorted([*(ROOT/'tasks/triton2triton/rocmbench').rglob('config.yaml'),
                *(ROOT/'tasks/instruction2triton').rglob('config.yaml')])
 

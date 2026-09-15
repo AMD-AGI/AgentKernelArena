@@ -31,3 +31,9 @@ syntax and import/interface checks. Missing candidates, incomplete measurements 
 invalid timing fail; commands emit `arena-eval-v1`, never final Arena score reports.
 Canonical benchmark helpers must be materialized by Arena; do not edit their generated regions.
 
+The protected `_arena_checks.py` validates the exact captured output against the
+original unpacking reference with `atol=1e-2, rtol=1e-2`. After timing, it changes
+the packed weights (including the sign/high bits), packed zeros and scales,
+poisons the output, and validates the same graph's replay. Shape, dtype, device
+and finiteness are checked as well. Original timed inputs, seeds, cases and timing
+parameters are unchanged. Unobservable event fallback fails explicitly.

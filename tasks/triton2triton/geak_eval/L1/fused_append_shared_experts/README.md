@@ -37,6 +37,12 @@ checks are unchanged. Full benchmark input order, seeds, allocation/reset behavi
 warmups, iterations and the canonical helper's median calculation remain unchanged.
 The adapter collects fresh device measurements directly from the benchmark calls;
 old `build/performance_report.json` files and log text cannot supply evidence.
+The protected `_arena_checks.py` retains both outputs of the exact timing graph
+and checks them against `reference_fused_append`. IDs remain an exact comparison;
+weights retain `atol=1e-6, rtol=1e-5`. After timing, the check changes input IDs and
+weights, poisons both output buffers, and validates the same graph's replay.
+Original inputs, seeds, case order and timing parameters remain unchanged.
+Unobservable event fallback fails instead of claiming replay validation.
 The original optional reference timings remain diagnostic; Arena uses the frozen
 initial implementation's measured times for scoring. No GPU qualification is
 implied by the CPU migration checks.

@@ -20,4 +20,11 @@ def correctness(require):
 
 
 def performance():
-    return h.run_benchmark(list(range(len(h.ALL_CONFIGS))))
+    from _arena_checks import checked_benchmark
+
+    benchmark = h.benchmark_cuda_graph_or_events
+    h.benchmark_cuda_graph_or_events = lambda fn, **kwargs: checked_benchmark(h, benchmark, fn, **kwargs)
+    try:
+        return h.run_benchmark(list(range(len(h.ALL_CONFIGS))))
+    finally:
+        h.benchmark_cuda_graph_or_events = benchmark
