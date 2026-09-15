@@ -29,7 +29,8 @@ import math
 import os
 import sys
 from pathlib import Path
-from _aka_benchmark import benchmark_cuda_graph_or_events
+from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
+from scripts.replay_checks import require_unchanged
 
 from task_runtime import candidate_relative_path
 SOURCE_FILE = candidate_relative_path()
@@ -119,6 +120,56 @@ def _reference_quant(x, qdtype, mode, scale=None):
     return (x * (1 / scale_ref[:, None])).to(qdtype), scale_ref
 
 
+def _checked_quant_output(out, qx, x, qdtype, scale=None, scale_out=None):
+    import torch
+    for value in (out, qx):
+        if not isinstance(value, torch.Tensor) or value.shape != x.shape or value.dtype != qdtype or value.device != x.device:
+            raise AssertionError("Quantized output shape/dtype/device contract mismatch")
+        if not bool(torch.isfinite(value.float()).all()):
+            raise AssertionError("Non-finite quantized output")
+    if not torch.equal(out.contiguous().view(torch.uint8), qx.contiguous().view(torch.uint8)):
+        raise AssertionError("Quantizer did not populate its caller-provided output")
+    if scale_out is not None:
+        if not isinstance(scale, torch.Tensor) or scale.shape != scale_out.shape or scale.dtype != torch.float32 or scale.device != x.device:
+            raise AssertionError("Quantizer scale shape/dtype/device contract mismatch")
+        if not bool(torch.isfinite(scale).all()) or not torch.equal(scale, scale_out):
+            raise AssertionError("Non-finite or unpopulated caller-provided scale")
+
+
+def _compare_token_outputs(pair, expected, qx, x, scale_out, dtype):
+    import torch
+    if not isinstance(pair, (tuple, list)) or len(pair) != 2:
+        raise AssertionError("Dynamic quantizer must return output and scale")
+    out, scale = pair
+    _checked_quant_output(out, qx, x, dtype, scale, scale_out)
+    ref, ref_scale = expected
+    # Preserve the original dynamic per-token value and scale tolerances.
+    if not torch.allclose(out.float(), ref.float(), atol=1e-1, rtol=1e-1) or not torch.allclose(scale, ref_scale, atol=1e-1, rtol=1e-1):
+        raise AssertionError("Numerical mismatch: dynamic per-token quantizer values/scales")
+
+
+def _verify_quant_timed(timed, qx, x, scale_out, dtype, originals, expected):
+    import torch
+    if not timed.bound:
+        raise RuntimeError("Benchmark did not expose measured quantizer outputs")
+    require_unchanged((x,), originals)
+    _compare_token_outputs(timed.outputs, expected, qx, x, scale_out, dtype)
+    try:
+        x.neg_().mul_(0.5)
+        changed = (x.clone(),)
+        reference = _reference_quant(x, dtype, "dyn_token")
+        nan_byte = 128 if dtype == torch.float8_e4m3fnuz else 127
+        qx.view(torch.uint8).fill_(nan_byte)
+        scale_out.fill_(float("nan"))
+        result = timed.rerun()
+        require_unchanged((x,), changed)
+        _compare_token_outputs(result, reference, qx, x, scale_out, dtype)
+    finally:
+        x.copy_(originals[0])
+    return {"timed_output_correctness": "PASS", "replay_correctness": "PASS",
+            "replay_inputs_perturbed": True, "replay_output_poisoned": True}
+
+
 def _check(mode, mod, M, N, qdtype, verbose):
     import torch
 
@@ -128,7 +179,10 @@ def _check(mode, mod, M, N, qdtype, verbose):
         scale = torch.randn(1, dtype=torch.float32, device="cuda")
         ref, _ = _reference_quant(x, qdtype, "static", scale)
         qx = torch.empty_like(x, dtype=qdtype)
+        originals = (x.clone(), scale.clone())
         out = mod.static_per_tensor_quant_fp8_i8(qx, x, scale)
+        require_unchanged((x, scale), originals)
+        _checked_quant_output(out, qx, x, qdtype)
         torch.cuda.synchronize()
         close = torch.allclose(
             out.to(torch.float32), ref.to(torch.float32), atol=1e-2, rtol=1e-2
@@ -140,7 +194,10 @@ def _check(mode, mod, M, N, qdtype, verbose):
         ref, scale_ref = _reference_quant(x, qdtype, "dyn_tensor")
         qx = torch.empty_like(x, dtype=qdtype)
         scale_out = torch.zeros(1, dtype=torch.float32, device="cuda")
+        originals = (x.clone(),)
         out, s = mod.dynamic_per_tensor_quant_fp8_i8(qx, x, scale_out)
+        require_unchanged((x,), originals)
+        _checked_quant_output(out, qx, x, qdtype, s, scale_out)
         torch.cuda.synchronize()
         s_close = torch.allclose(
             s, torch.tensor([scale_ref], device="cuda"), atol=1e-1, rtol=1e-1
@@ -155,7 +212,10 @@ def _check(mode, mod, M, N, qdtype, verbose):
         ref, scale_ref = _reference_quant(x, qdtype, "dyn_token")
         qx = torch.empty_like(x, dtype=qdtype)
         scale_out = torch.zeros(M, dtype=torch.float32, device="cuda")
+        originals = (x.clone(),)
         out, s = mod.dynamic_per_token_quant_fp8_i8(qx, x, scale_out)
+        require_unchanged((x,), originals)
+        _checked_quant_output(out, qx, x, qdtype, s, scale_out)
         torch.cuda.synchronize()
         s_close = torch.allclose(s, scale_ref, atol=1e-1, rtol=1e-1)
         v_close = torch.allclose(
@@ -213,15 +273,19 @@ def run_benchmark(verbose=True):
         x = torch.randn((M, N), dtype=torch.bfloat16, device="cuda")
         qx = torch.empty_like(x, dtype=fp8)
         scale_out = torch.zeros(M, dtype=torch.float32, device="cuda")
+        originals = (x.clone(),)
+        expected = _reference_quant(x, fp8, "dyn_token")
         fn = lambda: mod.dynamic_per_token_quant_fp8_i8(qx, x, scale_out)  # noqa: E731
         fn()
         torch.cuda.synchronize()
         for _ in range(WARMUP):
             fn()
         torch.cuda.synchronize()
+        timed = TimedRun()
         ms, bench_meta = benchmark_cuda_graph_or_events(
-            fn, warmup=0, repetition=ITERS
+            fn, warmup=0, repetition=ITERS, timed_run=timed
         )
+        bench_meta.update(_verify_quant_timed(timed, qx, x, scale_out, fp8, originals, expected))
         latencies.append(ms)
         gb = (M * N) * (2 + 1) / 1e9  # bf16 in + fp8 out approx
         report.append(

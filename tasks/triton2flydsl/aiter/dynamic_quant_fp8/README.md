@@ -52,3 +52,20 @@ plus any operator dependencies stated by the source. Arena must materialize the
 canonical `_aka_benchmark.py` helper before GPU execution. CPU controls/protocol
 checks do not qualify these GPU kernels. Existing legacy reports are historical;
 the parent integration schedules new GPU validation.
+
+
+All 48 original correctness cases remain (eight shapes, three modes, INT8/FP8).
+The original eight benchmark cases remain dynamic per-token FP8 only. Static
+scale is read-only; dynamic output scales and quantized values must populate
+the caller-provided buffers with the declared dtype, shape and input device.
+Original static 0.01 and dynamic 0.1 atol/rtol policies remain unchanged. The
+per-token benchmark keeps its original random input generation and scale stores.
+
+Input tensors are read-only. The initial baseline remains the frozen Triton
+implementation; final candidate computation must use FlyDSL. Candidate-only
+import/call audits do not instrument baseline/reference or timed calls.
+Both roles keep 10 external warmups and 100 graph samples. The harness checks
+actual measured outputs, negates/halves input, poisons code/scale outputs, and
+numerically checks the same graph replay using the original reference/gates.
+Checks and restoration stay outside timing; no capture failure is accepted as
+an unchecked fallback or a clean pass.

@@ -574,7 +574,8 @@ def _protected_triton_fingerprint(source, *, added_replay_checks=False):
         tree = _RemoveAddedReplayChecks().visit(tree)
         tree = _RemoveSglangReplayChecks().visit(tree)
         tree = _RemoveTritonBatchedChecks().visit(tree)
-    excluded={"_batched_replay_validator","_load_source","load_module","run_compile","_prepare_kernel","_make_prepared_fused_moe_runner",
+        tree = _RemoveTritonQuantChecks().visit(tree)
+    excluded={"_checked_mx_pair","_mx_reference","_compare_mx_pair","_verify_quant_timed","_checked_quant_output","_compare_token_outputs","_batched_replay_validator","_load_source","load_module","run_compile","_prepare_kernel","_make_prepared_fused_moe_runner",
               "_reference_softmax","_reference_gemm","_reference_layernorm","_reference_quant"}
     nodes=[]
     for n in tree.body:
@@ -588,7 +589,7 @@ def _protected_triton_fingerprint(source, *, added_replay_checks=False):
 def test_triton_preserves_original_harness_semantics_inputs_and_timing():
     for name,expected in TRITON_PROTECTED_SHA256.items():
         task=ROOT/"tasks/triton2flydsl"/name
-        assert _protected_triton_fingerprint((task/"test_kernel_harness.py").read_text(), added_replay_checks=name in {"aiter/batched_gemm_a8w8", "aiter/batched_gemm_bf16", "aiter/gemm_a16w16", "aiter/softmax", "aiter/layernorm", "sglang/decode_attention", "sglang/sglang_fused_moe"})==expected,name
+        assert _protected_triton_fingerprint((task/"test_kernel_harness.py").read_text(), added_replay_checks=name in {"aiter/dynamic_mxfp8_quant", "aiter/dynamic_quant_fp8", "aiter/batched_gemm_a8w8", "aiter/batched_gemm_bf16", "aiter/gemm_a16w16", "aiter/softmax", "aiter/layernorm", "sglang/decode_attention", "sglang/sglang_fused_moe"})==expected,name
         cfg=yaml.safe_load((task/"config.yaml").read_text())
         assert cfg["baseline"]["kind"]=="initial_candidate"
         assert cfg["baseline"]["language"]=="triton"
@@ -3469,4 +3470,141 @@ def test_triton_batched_all_original_arithmetic_cases_and_timing_retained():
         for fn in tree.body:
             if isinstance(fn,ast.FunctionDef) and fn.name in functions:
                 normalized=_RemoveTritonBatchedChecks().visit(fn)
+                assert hashlib.sha256(ast.dump(normalized,include_attributes=False).encode()).hexdigest()==functions[fn.name],(name,fn.name)
+
+
+_TRITON_QUANT_NAMES=['dynamic_mxfp8_quant','dynamic_quant_fp8']
+
+
+class _RemoveTritonQuantChecks(_RemoveAddedReplayChecks):
+    def visit_Expr(self,node):
+        call=node.value
+        if isinstance(call,ast.Call):
+            if getattr(call.func,'id',None) in {'_checked_mx_pair','_checked_quant_output'}:return None
+            if isinstance(call.func,ast.Attribute) and call.func.attr=='update' and call.args and isinstance(call.args[0],ast.Call) and getattr(call.args[0].func,'id',None)=='_verify_quant_timed':return None
+        return super().visit_Expr(node)
+
+
+@pytest.mark.parametrize('name',_TRITON_QUANT_NAMES)
+@pytest.mark.parametrize('behavior',['correct','measured_wrong','replay_wrong','cached','stale_scale','input_modified','shape','dtype','scale_dtype','nonfinite'])
+def test_triton_quant_actual_measured_pair_and_original_replay_gate(name,behavior,monkeypatch,tmp_path):
+    import torch,types,math
+    task=ROOT/'tasks/triton2flydsl/aiter'/name;checks=module(task/'scripts/replay_checks.py');mx=name=='dynamic_mxfp8_quant'
+    ns={'QUANT_BLOCK_SIZE':32,'_E8M0_MASK_INT32':-8388608}
+    _harness_functions(task,{'_torch_mxfp8_quant_from_fp32','_mx_reference','_reference_quant','_dtype_max'},ns)
+    original=(torch.linspace(-2048,1536,128).reshape(2,64)).to(torch.bfloat16);state={'phase':'setup'}
+    def oracle(x):return ns['_mx_reference'](x) if mx else ns['_reference_quant'](x,torch.float8_e4m3fn,'dyn_token')
+    cached=oracle(original);inputs=[]
+    def randn(*args,**kwargs):
+        x=original.clone();inputs.append(x);return x
+    original_zeros=torch.zeros
+    monkeypatch.setattr(torch,'randn',randn)
+    monkeypatch.setattr(torch,'zeros',lambda *args,**kwargs:original_zeros(*args,**{**kwargs,'device':'cpu'}))
+    monkeypatch.setattr(torch.cuda,'synchronize',lambda:None)
+    def compute(*args):
+        x=args[0] if mx else args[1];y,scale=oracle(x)
+        if behavior==state['phase']+'_wrong':y.view(torch.uint8).zero_()
+        if state['phase']=='replay':
+            if behavior=='cached':y,scale=(v.clone() for v in cached)
+            if behavior=='stale_scale':scale=cached[1].clone()
+            if behavior=='input_modified':x.add_(1)
+        if not mx:args[0].copy_(y);args[2].copy_(scale);y,scale=args[0],args[2]
+        if state['phase']=='measured':
+            if behavior=='shape':y=y.reshape(-1)
+            if behavior=='dtype':y=y.view(torch.uint8)
+            if behavior=='scale_dtype':scale=scale.to(torch.bfloat16)
+            if behavior=='nonfinite':y.view(torch.uint8).fill_(127)
+        return y,scale
+    class Collector:bound=False
+    calls=[]
+    def benchmark(fn,*,warmup,repetition,timed_run):
+        calls.append((warmup,repetition));state['phase']='measured';timed_run.outputs=fn();timed_run.bound=True;state['phase']='setup'
+        def replay():
+            state['phase']='replay'
+            try:return fn()
+            finally:state['phase']='setup'
+        timed_run.rerun=replay
+        return .1,{'benchmark_method':'cuda_graph','benchmark_timed_run_kind':'captured_graph'}
+    ns.update(TimedRun=Collector,benchmark_cuda_graph_or_events=benchmark,require_unchanged=checks.require_unchanged,
+        _HERE=str(tmp_path),Path=Path,json=json,math=math,WARMUP=10,ITERS=100,SEED=20,
+        TEST_SHAPES=[{'name':'controlled','shape':(2,64),'M':2,'N':64}],_fp8_e4m3_dtype=lambda:torch.float8_e4m3fn,
+        _load_source=lambda:types.SimpleNamespace(dynamic_mxfp8_quant=compute,dynamic_per_token_quant_fp8_i8=compute))
+    _harness_functions(task,{'run_benchmark','_checked_mx_pair','_mx_reference','_compare_mx_pair','_checked_quant_output','_compare_token_outputs','_verify_quant_timed'},ns)
+    if behavior=='correct':
+        result=ns['run_benchmark'](verbose=False);assert result[0]['timed_output_correctness']==result[0]['replay_correctness']=='PASS'
+        assert calls==[(0,100)]
+    else:
+        with pytest.raises(AssertionError):ns['run_benchmark'](verbose=False)
+    assert len(inputs)==1 and torch.equal(inputs[0],original)
+
+
+def test_triton_mxfp8_preserves_three_dimensional_output_and_exact_scale_rule():
+    import torch
+    task=ROOT/'tasks/triton2flydsl/aiter/dynamic_mxfp8_quant';ns={'QUANT_BLOCK_SIZE':32,'_E8M0_MASK_INT32':-8388608}
+    _harness_functions(task,{'_torch_mxfp8_quant_from_fp32','_checked_mx_pair','_mx_reference','_compare_mx_pair'},ns)
+    x=torch.full((4,8,128),2.,dtype=torch.bfloat16);expected=ns['_mx_reference'](x)
+    assert expected[0].shape==(4,8,128) and expected[1].shape==(4,8,4)
+    actual=[v.clone() for v in expected];actual[0].view(torch.uint8)[0,0,0]+=1
+    ns['_compare_mx_pair'](actual,expected,x)
+    actual[0].view(torch.uint8)[0,0,0]+=1
+    with pytest.raises(AssertionError):ns['_compare_mx_pair'](actual,expected,x)
+    actual=[v.clone() for v in expected];actual[1][0,0,0]+=1
+    with pytest.raises(AssertionError):ns['_compare_mx_pair'](actual,expected,x)
+    with pytest.raises(AssertionError):ns['_compare_mx_pair']((expected[0].reshape(-1,128),expected[1]),expected,x)
+
+
+@pytest.mark.parametrize('mode',['static','dyn_tensor','dyn_token'])
+@pytest.mark.parametrize('fault',['correct','shape','dtype','unwritten_output','unwritten_scale','input_modified'])
+def test_triton_quant_original_check_enforces_caller_buffers_and_input_contract(mode,fault,monkeypatch):
+    import torch,types
+    task=ROOT/'tasks/triton2flydsl/aiter/dynamic_quant_fp8';checks=module(task/'scripts/replay_checks.py')
+    ns={'SEED':20,'require_unchanged':checks.require_unchanged}
+    _harness_functions(task,{'_check','_reference_quant','_dtype_max','_checked_quant_output'},ns)
+    # Real CPU original arithmetic; only GPU tensor placement is redirected.
+    for op in ['randn','rand','zeros','tensor']:
+        original=getattr(torch,op)
+        monkeypatch.setattr(torch,op,lambda *args,__op=original,**kw:__op(*args,**({**kw,'device':'cpu'} if 'device' in kw else kw)))
+    monkeypatch.setattr(torch.cuda,'synchronize',lambda:None)
+    def call(qx,x,scale):
+        y,s=ns['_reference_quant'](x,torch.int8,mode,scale if mode=='static' else None)
+        if mode!='static':scale.copy_(s)
+        qx.copy_(y);out=qx
+        if fault=='shape':out=out[:1]
+        if fault=='dtype':out=out.float()
+        if fault=='unwritten_output':out=out.clone();qx.zero_()
+        if fault=='unwritten_scale' and mode!='static':s=scale.clone();scale.fill_(1000)
+        else:s=scale
+        if fault=='input_modified':x.add_(1)
+        return out if mode=='static' else (out,s)
+    mod=types.SimpleNamespace(static_per_tensor_quant_fp8_i8=call,dynamic_per_tensor_quant_fp8_i8=call,dynamic_per_token_quant_fp8_i8=call)
+    if fault=='correct' or (fault=='unwritten_scale' and mode=='static'):
+        assert ns['_check'](mode,mod,2,64,torch.int8,False)[0]
+    else:
+        with pytest.raises(AssertionError):ns['_check'](mode,mod,2,64,torch.int8,False)
+
+
+def test_triton_quant_multi_entry_candidate_audit_keeps_nested_valid_launch_scope():
+    import torch,types
+    task=ROOT/'tasks/triton2flydsl/aiter/dynamic_quant_fp8';audit=module(task/'scripts/candidate_checks.py')
+    scope={'__name__':'flydsl.cpu_profile_fixture'}
+    exec('class CompiledKernel:\n def __call__(self,x):return x\n',scope)
+    launch=scope['CompiledKernel']();original=types.SimpleNamespace(inner=lambda x:launch(x))
+    original.outer=lambda x:original.inner(x)
+    h=types.SimpleNamespace(ARENA_FINAL_CANDIDATE=True,ENTRIES=('inner','outer'),_load_source=lambda:original)
+    with audit.audit_candidate_calls(h) as observed:
+        proxy=h._load_source();x=torch.tensor([1.]);assert proxy.outer(x) is x
+        assert original.inner is not proxy.inner
+    assert observed=={'flydsl.cpu_profile_fixture.CompiledKernel'}
+    original.outer=lambda x: x.square()
+    with pytest.raises(RuntimeError,match='non-preparation PyTorch operation'):
+        with audit.audit_candidate_calls(h):h._load_source().outer(x)
+
+
+def test_triton_quant_original_inputs_arithmetic_tolerances_and_timing_preserved():
+    hashes={'dynamic_mxfp8_quant': {'_torch_mxfp8_quant_from_fp32': '5fd469d7046f8984c262098d559492bcf0ac0bc126efb9b5a1b1b2f8efd4a26d', 'run_correctness': 'c63fc2198d788e2d285a88d5c7040448d89c1e7270b9a1262dc067db18200f51', 'run_benchmark': '3060e07030b082af72987af732af1b6657933c25a27cbdddbd77afc9a2235445'}, 'dynamic_quant_fp8': {'_reference_quant': 'ad89f40181f40e0ac1ab7e54952a3b896117c6681c2e69b5e968994fcb87fffd', '_check': '5931205268555e732dc4cc23a254efb9a30e42535d983488385ae9feee7653b0', 'run_correctness': '3f0ff796227f37c3053e57da55ad8d709b5f7b2d96a7cc7df8132f5cabeae895', 'run_benchmark': 'b01afa95ca0efbc085dc327633f9167fb952fb90d9a2cb81800646efda97cb5c'}}
+    for name,functions in hashes.items():
+        tree=ast.parse((ROOT/'tasks/triton2flydsl/aiter'/name/'test_kernel_harness.py').read_text())
+        for fn in tree.body:
+            if isinstance(fn,ast.FunctionDef) and fn.name in functions:
+                normalized=_RemoveTritonQuantChecks().visit(fn)
                 assert hashlib.sha256(ast.dump(normalized,include_attributes=False).encode()).hexdigest()==functions[fn.name],(name,fn.name)
