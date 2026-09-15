@@ -1678,3 +1678,33 @@ def test_ck_fp8_activation_groups_preserve_token_topk_axes(shape):
             torch.testing.assert_close(scales.reshape(-1,2)[i,group],scale)
             expected = (raw/scale).to(dtype).float()
             torch.testing.assert_close(actual.float().reshape(-1,256)[i,group*128:(group+1)*128],expected,rtol=0,atol=0)
+
+
+@pytest.mark.parametrize("workspace_already_on_path", [False, True])
+def test_hip_paged_attention_imports_declared_package_first(tmp_path, monkeypatch, workspace_already_on_path):
+    import importlib
+    h = load_module(TASKS / "mi355x_vllm_hip_paged_attention_decode/scripts/task_runner.py")
+    workspace, installed = tmp_path / "role", tmp_path / "installed"
+    for root, identity in ((workspace, "declared"), (installed, "external")):
+        (root / "aiter").mkdir(parents=True)
+        (root / "aiter/__init__.py").write_text(f"identity = {identity!r}\n")
+    (workspace / "aiter_meta").mkdir()
+    monkeypatch.setattr(h, "WORKSPACE", workspace)
+    paths = [str(installed), *sys.path]
+    if workspace_already_on_path:
+        paths.append(str(workspace))
+    monkeypatch.setattr(sys, "path", paths)
+    monkeypatch.setattr(h, "os", SimpleNamespace(environ={}, chdir=lambda path: None))
+    monkeypatch.delitem(sys.modules, "aiter", raising=False)
+    try:
+        h._configure()
+        imported = importlib.import_module("aiter")
+        assert imported.identity == "declared"
+        assert Path(imported.__file__).parent == workspace / "aiter"
+        assert sys.path.count(str(workspace)) == 1
+        assert h.os.environ["AITER_REBUILD"] == "1"
+        assert h.os.environ["AITER_META_DIR"] == str(workspace / "aiter_meta")
+        h._configure()
+        assert sys.path.count(str(workspace)) == 1
+    finally:
+        sys.modules.pop("aiter", None)

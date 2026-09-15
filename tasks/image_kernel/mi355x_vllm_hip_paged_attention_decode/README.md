@@ -74,8 +74,8 @@ four files listed in `config.yaml` (`pa_kernels.cuh`, `pa.cuh`, `pa_common.cuh`,
 would otherwise keep serving a stale `lib.so`. Two things prevent that:
 
 - `AITER_REBUILD=1` clears the template-op build cache at import.
-  AgentKernelArena injects it per build subprocess (`src/jit_rebuild.py`); the
-  task runner also sets it by default so standalone runs stay honest.
+  The task adapter starts a fresh per-action cache; the runner enforces rebuild
+  for direct task commands as well.
 - `AITER_META_DIR` points the importable `csrc` package — and therefore
   `AITER_CORE_DIR`, the jinja template and every include — at the workspace copy.
   `_import_aiter()` asserts this resolved to the seeded tree and fails loudly
@@ -209,3 +209,12 @@ The recorded vLLM image and historical timings above remain provenance, not a
 claim that the new runtime has passed qualification. Scalar cache-layout
 controls cover non-contiguous slots, padding and refresh behavior; fresh full
 GPU validation is still required.
+
+
+The runner promotes the role workspace to the front of Python's import search
+path before importing AITER. Changing the working directory alone does not do
+this when Python launches `scripts/evaluate.py`. Job 139599 exposed that error:
+the package-origin guard rejected the installed image dispatch before baseline
+checks could run. That failure is retained; this import-path fix requires fresh
+GPU validation. The guard still rejects pre-imported external packages, and no
+case, numerical gate, timing method or source-compilation check is relaxed.

@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import sys
 from pathlib import Path
 
 WORKSPACE = Path(__file__).resolve().parents[1]
@@ -32,49 +33,19 @@ PARTITION_SIZE = 256
 PROFILE_CASE_ID = SPEC.get("profile_case") or CASES[0]["id"]
 
 
-def _sources_edited() -> bool:
-    """True unless every editable source still matches its in-image original.
-
-    Fails safe: anything we cannot positively verify counts as edited. Serving a
-    prebuilt .so for an edited kernel would silently benchmark the ORIGINAL, so
-    a false "unedited" is far worse than a redundant rebuild.
-    """
-    try:
-        import yaml
-
-        cfg = yaml.safe_load((WORKSPACE / "config.yaml").read_text()) or {}
-        image_root = Path(str(cfg["image_repo_path"]))
-        sources = cfg["source_file_path"] or []
-        if isinstance(sources, str):
-            sources = [sources]
-        if not sources or not image_root.is_dir():
-            return True
-        for rel in sources:
-            ours = WORKSPACE / REPO_SUBDIR / str(rel)
-            if ours.read_bytes() != (image_root / str(rel)).read_bytes():
-                return True
-        return False
-    except Exception:  # noqa: BLE001 - unverifiable means "assume edited"
-        return True
-
-
 def _configure() -> None:
     for key in ("GPU_ARCHS", "PYTORCH_ROCM_ARCH", "AMDGPU_TARGETS", "GPU_TARGETS"):
         os.environ.setdefault(key, "gfx950")
 
-    # compile_template_op caches purely by template arguments, so an edited
-    # kernel would otherwise keep serving the previously built lib.so. Clearing
-    # the cache is what makes a source edit take effect. AgentKernelArena also
-    # injects AITER_REBUILD=1 per build subprocess (src/jit_rebuild.py); the
-    # default here keeps standalone runs honest.
-    #
-    # Only force it once something has actually been edited. aiter treats any
-    # non-zero AITER_REBUILD as "rebuild this module on first use", without
-    # checking the source, and the profiler re-spawns this driver once per
-    # counter pass, so an unedited baseline would re-enter the rebuild path
-    # over and over for a kernel that never changed.
-    if _sources_edited():
-        os.environ.setdefault("AITER_REBUILD", "1")
+    # Import the declared role-local dispatch package even when Python starts
+    # from scripts/evaluate.py or inherits an installed package search path.
+    # The adapter still rejects an already imported external package.
+    workspace_path = str(WORKSPACE)
+    sys.path[:] = [workspace_path] + [p for p in sys.path if p != workspace_path]
+
+    # The template cache is keyed by arguments, not editable source contents.
+    # Each v2 action has a fresh cache and must compile the declared sources.
+    os.environ["AITER_REBUILD"] = "1"
     # Keep the template-op build cache inside the workspace instead of the
     # shared ~/.aiter, so parallel runs cannot serve each other's kernels.
     os.environ.setdefault("AITER_ROOT_DIR", str(WORKSPACE / "build" / "aiter_root"))
