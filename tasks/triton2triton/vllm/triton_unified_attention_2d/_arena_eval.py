@@ -95,11 +95,13 @@ def evaluate(role, action):
                         ok, error = harness.run_correctness(case_index=row['params'].get('case_index', index))
                     if not ok:
                         raise RuntimeError(error or 'Original numerical/output contract rejected candidate')
-                    row['metrics']={'original_case_checks_passed':True}
+                    row['metrics'] = ({'unscored_contract_control_passed': True, 'replay': error}
+                                      if 'contract_case' in row['params']
+                                      else {'original_case_checks_passed': True})
                 except BaseException as exc:
                     row.update(status='FAIL', reason=f'{type(exc).__name__}: {exc}', failure_kind='correctness_failure')
         elif action == 'performance':
-            measured = harness.run_performance() + harness.run_contract_performance()
+            measured = harness.run_performance()
             if len(measured) != len(cases):
                 raise RuntimeError('Performance omitted declared cases')
             rows_by_id = {r['test_case_id']:r for r in measured}

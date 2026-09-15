@@ -55,13 +55,21 @@ compared against a new reference. Inputs are restored afterward. No reference,
 poisoning, comparison, or extra GPU check is added inside the timed invocation.
 A timing fallback that cannot expose the actual measured outputs fails closed.
 
-Additional scored controls are declared with concrete shapes, dtypes, sequence
+Additional correctness-only controls are declared with concrete shapes, dtypes, sequence
 lengths, optional arguments and seeds in `workloads.json`; the protected evaluator
 requires those parameters to match the actual generator. All original scored
 cases remain unchanged. Each added case runs the real public wrapper with the
-same 0.01 gates, ten warmups, 100 samples and checked captured-graph replay.
+same 0.01 gates and an unscored captured-replay diagnostic during correctness.
+That diagnostic uses ten warmups and 100 samples; it is never a performance row.
 The control combines ragged query/KV lengths, non-identity page routing, a
 sliding window and positive softcap. Segmented attention additionally uses three
 segments, including empty segments. Full segment outputs and both statistics
 are checked; an unvisited empty segment retains initialized (0,-inf,0), while
 the original recurrence uses a zero maximum anchor for visited all-masked logits.
+
+The official scoring domain remains exactly `perf1` through `perf5`, with their
+original inputs, tolerances, timing boundaries, ten warmups and 100 samples.
+Every added control declares only `correctness`. Its real measured/replayed
+branch is checked inside the correctness action and reported as an explicitly
+unscored diagnostic in that case's metrics. The performance action executes
+only the five original workloads; neither their weights nor aggregation change.

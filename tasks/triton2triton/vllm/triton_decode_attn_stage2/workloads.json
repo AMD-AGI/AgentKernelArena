@@ -225,8 +225,7 @@
         "seed": 814
       },
       "checks": [
-        "correctness",
-        "performance"
+        "correctness"
       ],
       "status": "PASS"
     }

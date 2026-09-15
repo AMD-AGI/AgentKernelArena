@@ -202,8 +202,7 @@
         }
       },
       "checks": [
-        "correctness",
-        "performance"
+        "correctness"
       ],
       "status": "PASS"
     },
@@ -262,8 +261,7 @@
         }
       },
       "checks": [
-        "correctness",
-        "performance"
+        "correctness"
       ],
       "status": "PASS"
     }

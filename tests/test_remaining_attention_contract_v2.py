@@ -65,6 +65,20 @@ def contract(request, monkeypatch):
     return checks, harness, args, kwargs
 
 
+def cpu_graph_double(h):
+    h._TimedRun=SimpleNamespace
+    def benchmark(fn, *, timed_run, **options):
+        assert options=={'warmup':10,'repetition':100}
+        outputs=fn()
+        def replay():
+            new=fn()
+            for output,wanted in zip(outputs,new):output.copy_(wanted)
+            return outputs
+        timed_run.outputs,timed_run.rerun=outputs,replay
+        return .125,{'benchmark_method':'cuda_graph','benchmark_warmup':10,'benchmark_samples':100}
+    h._benchmark_cuda_graph_or_events=benchmark
+
+
 def numerical_candidate(checks, harness):
     """Pure CPU oracle double, explicitly bypassed by numerical tests only."""
     def candidate(*args, **kwargs):
@@ -299,12 +313,14 @@ def test_new_decode_control_execution_and_declared_shapes(name, monkeypatch):
     good = numerical_candidate(checks, h)
     h.load_module = lambda: SimpleNamespace(**{checks.SYMBOL:good})
     monkeypatch.setattr(checks, 'control_inputs', lambda h, case: inputs(h, case, 'cpu'))
+    cpu_graph_double(h)
     checks.install_controls(h)
     for case, config in checks.CONTRACT_CASES.items():
         args, kwargs = inputs(h, case, 'cpu')
         assert args[0].shape[0] == config['batch']
         assert args[5].tolist() == config['sequence_lengths']
-        assert h.run_contract_correctness(case) == (True, None)
+        ok,evidence=h.run_contract_correctness(case)
+        assert ok and evidence['unscored_control'] and evidence['perturbed_input_replay_checked']
         if name.endswith('stage2'):
             assert args[0][1,:,2:,:-1].eq(7000).all()
             assert args[0][1,:,2:,-1].eq(80).all()
@@ -432,8 +448,11 @@ def test_optional_controls_use_installed_correctness_guard(name, monkeypatch):
     good=numerical_candidate(checks,h)
     h.load_module=lambda:SimpleNamespace(**{checks.SYMBOL:good})
     monkeypatch.setattr(checks,'control_inputs',lambda h,case:inputs(h,case,'cpu'))
+    cpu_graph_double(h)
     checks.install_controls(h)
-    for case in checks.CONTRACT_CASES:assert h.run_contract_correctness(case)==(True,None)
+    for case in checks.CONTRACT_CASES:
+        ok,evidence=h.run_contract_correctness(case)
+        assert ok and evidence['unscored_control'] and evidence['perturbed_input_replay_checked']
 
 ORIGINALS.pop("triton_paged_prefix_prefill/source/triton_paged_prefix_prefill.py")
 PREFIX_ORIGINAL_AST_SHA256 = '28235795082c5af8e1d0d83cd5a7557f56c6468bce56a5bee526af116fe4d7e1'
@@ -485,3 +504,21 @@ def test_control_manifest_shapes_match_actual_tensors_and_full_outputs(name, mon
             assert value.dtype==expected_dtype
         outputs=checks.expected_outputs(h,values)
         assert [list(v.shape) for v in outputs]==list(c['output_shapes'].values())
+
+
+@pytest.mark.parametrize('name', FIRST[1:]+REMAINING)
+def test_original_performance_domain_excludes_every_added_control(name, monkeypatch):
+    import json
+    monkeypatch.chdir(ROOT)
+    evaluator=load(TASKS/name/'_arena_eval.py');checks=load(TASKS/name/'_arena_checks.py')
+    data=json.loads((TASKS/name/'workloads.json').read_text())
+    assert all(row['checks']==['correctness'] for row in data['cases'][5:])
+    assert [r['test_case_id'] for r in data['cases'] if 'performance' in r['checks']]==['perf1','perf2','perf3','perf4','perf5']
+    def forbidden(*args,**kwargs):pytest.fail('Performance must not execute or score added controls')
+    h=SimpleNamespace(TEST_SHAPES=data['input_table'],CONTRACT_CASES=checks.CONTRACT_CASES,
+        run_contract_correctness=forbidden,run_contract_performance=forbidden,
+        run_performance=lambda:[{'test_case_id':'perf'+str(i),'execution_time_ms':.125,'benchmark_method':'cuda_graph'} for i in range(1,6)])
+    monkeypatch.setattr(evaluator,'load_harness',lambda:h)
+    result=evaluator.evaluate('candidate','performance')
+    assert result['status']=='PASS'
+    assert [r['test_case_id'] for r in result['cases']]==['perf1','perf2','perf3','perf4','perf5']

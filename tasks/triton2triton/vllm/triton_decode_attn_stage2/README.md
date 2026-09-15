@@ -59,10 +59,17 @@ compared against a new reference. Inputs are restored afterward. No reference,
 poisoning, comparison, or extra GPU check is added inside the timed invocation.
 A timing fallback that cannot expose the actual measured outputs fails closed.
 
-The five original scored cases remain unchanged. Additional explicitly scored
+The five original scored cases remain unchanged. Additional correctness-only
 controls in `workloads.json` execute the same public wrapper and the same
-10-warmup/100-sample measured-graph checks, with their own concrete input shapes,
+10-warmup/100-sample unscored graph-replay checks, with concrete input shapes,
 dtypes, routing and seed. Their exact manifest parameters are checked against
-the protected generator. They do not silently replace or rescale old scores.
+the protected generator. They do not contribute performance rows or change the original scoring case set.
 The stage-2 control uses lengths 63 and 2 with four splits, with large finite
 values in inactive partials that must be ignored. Replay also exchanges lengths.
+
+The official scoring domain remains exactly `perf1` through `perf5`, with their
+original inputs, tolerances, timing boundaries, ten warmups and 100 samples.
+Every added control declares only `correctness`. Its real measured/replayed
+branch is checked inside the correctness action and reported as an explicitly
+unscored diagnostic in that case's metrics. The performance action executes
+only the five original workloads; neither their weights nor aggregation change.

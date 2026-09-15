@@ -397,19 +397,13 @@ def install_controls(harness):
             module = harness.load_module()
             args, kwargs = control_inputs(harness, case)
             getattr(module, SYMBOL)(*args, **kwargs)
-        return True, None
-
-    def performance():
-        rows = []
-        for case in CONTRACT_CASES:
-            mod = harness.load_module()
-            args, kwargs = control_inputs(harness, case)
-            def fn():
-                getattr(mod, SYMBOL)(*args, **kwargs)
-            ms, metadata = checked_benchmark(harness, harness._benchmark_cuda_graph_or_events, fn,
-                        warmup=harness.WARMUP_ITERATIONS, repetition=harness.BENCHMARK_ITERATIONS)
-            rows.append({'test_case_id':case, 'execution_time_ms':ms, **metadata, 'params':CONTRACT_CASES[case]})
-        return rows
+        # These branch controls are correctness-only. Observe their actual
+        # captured replay without adding a row to the official score domain.
+        mod = harness.load_module()
+        def fn():
+            getattr(mod, SYMBOL)(*args, **kwargs)
+        ms, metadata = checked_benchmark(harness, harness._benchmark_cuda_graph_or_events, fn,
+                    warmup=harness.WARMUP_ITERATIONS, repetition=harness.BENCHMARK_ITERATIONS)
+        return True, {'unscored_control': True, 'unscored_diagnostic_time_ms': ms, **metadata}
 
     harness.run_contract_correctness = correctness
-    harness.run_contract_performance = performance

@@ -251,8 +251,7 @@
         "page_mapping": "reversed physical page order"
       },
       "checks": [
-        "correctness",
-        "performance"
+        "correctness"
       ],
       "status": "PASS"
     }
