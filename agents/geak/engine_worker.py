@@ -33,6 +33,7 @@ def run(job_path: Path) -> int:
             done_poll_seconds=0.25, quiet=True,
             runtime_metadata=runtime,
             require_workflow_result=True,
+            runtime_metadata_path=bridge.root / "runtime_identity.json",
         )
         error_code = "missing_terminal_workflow_result"
         returned = _read_json(bridge.eval_dir / "workflow_return.json")

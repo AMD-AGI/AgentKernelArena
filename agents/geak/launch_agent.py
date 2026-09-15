@@ -16,12 +16,17 @@ import uuid
 import yaml
 
 from agents import register_agent
+from agents.geak_v4.workflow_runner import _read_json
 from src.harness_guard import snapshot_workspace_harness
 from src.task_execution import _run_process
 from src.task_spec import load_task_spec
 from .bridge import (Bridge, TaskContext, candidate_files, copy_task, digests,
                      remaining_budget, snapshot_mapping, write_json)
 from .compatibility import prepare_engine
+
+
+_RUNTIME_FIELDS = ("requested_model", "sdk_version", "cli_version", "init_model",
+                   "assistant_models", "workflow_models", "workflow_agent_errors")
 
 
 def load_options(eval_config: dict) -> dict:
@@ -176,9 +181,7 @@ def launch_agent(eval_config: dict, task_config_dir: str, workspace: str) -> str
                   "workflow_completed": raw_engine.get("workflow_completed") is True}
         runtime = raw_engine.get("runtime")
         if isinstance(runtime, dict):
-            engine["runtime"] = {key: runtime[key] for key in (
-                "requested_model", "sdk_version", "cli_version", "init_model",
-                "assistant_models", "workflow_models", "workflow_agent_errors") if key in runtime}
+            engine["runtime"] = {key: runtime[key] for key in _RUNTIME_FIELDS if key in runtime}
         for key in ("rounds", "budget_used", "error_code"):
             if key in raw_engine:
                 engine[key] = raw_engine[key]
@@ -199,6 +202,13 @@ def launch_agent(eval_config: dict, task_config_dir: str, workspace: str) -> str
         raise RuntimeError(f"GEAK failed ({type(exc).__name__}); see its delivery.json artifact") from None
     finally:
         if run_dir.is_dir():
+            # A hard deadline can kill the worker before its terminal result.
+            # Preserve observed identity without implying Workflow completion.
+            runtime = _read_json(run_dir / "runtime_identity.json")
+            if runtime is not None:
+                engine = status.setdefault("engine", {"status": "MISSING", "workflow_completed": False})
+                if "runtime" not in engine:
+                    engine["runtime"] = {key: runtime[key] for key in _RUNTIME_FIELDS if key in runtime}
             status["elapsed_s"] = time.monotonic() - started
             try:
                 status["retained_workspace_sources"] = digests(candidate_files(context.spec, context.workspace))

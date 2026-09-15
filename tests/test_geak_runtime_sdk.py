@@ -67,3 +67,49 @@ def test_director_marker_does_not_preempt_runtime_return(tmp_path, monkeypatch):
     assert len(transcript) <= 2048
     assert identity["workflow_models"] == ["actual-child"]
     assert not (eval_dir / "workflow_return.json").exists()
+
+
+def test_observed_identity_persists_before_sdk_timeout(tmp_path, monkeypatch):
+    from agents.geak_v4 import workflow_runner as runner
+
+    path = tmp_path / "runtime_identity.json"
+    eval_dir = tmp_path / "eval"
+    eval_dir.mkdir()
+
+    def message(name, **kwargs):
+        return type(name, (SimpleNamespace,), {})(**kwargs)
+
+    class Client:
+        def __init__(self, **kwargs):
+            pass
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *args):
+            pass
+        async def query(self, prompt):
+            pass
+        async def receive_messages(self):
+            yield message("SystemMessage", subtype="init", data={
+                "model": "init-model", "claude_code_version": "probe-cli",
+                "apiKey": "FAKE_SECRET_DO_NOT_LOG"})
+            yield message("AssistantMessage", model="observed", content=[])
+            # Evidence exists while the Workflow is still running, before any
+            # terminal worker result or cleanup can be written.
+            assert json.loads(path.read_text())["assistant_models"] == ["observed"]
+            yield message("TaskStartedMessage", task_id="unfinished")
+            await anyio.sleep_forever()
+
+    sdk = ModuleType("claude_agent_sdk")
+    sdk.ClaudeAgentOptions = lambda **kwargs: kwargs
+    sdk.ClaudeSDKClient = Client
+    monkeypatch.setitem(sys.modules, "claude_agent_sdk", sdk)
+    monkeypatch.setattr(runner.importlib.metadata, "version", lambda _: "probe-sdk")
+    monkeypatch.setattr(runner.os, "geteuid", lambda: 1000)
+    with pytest.raises(TimeoutError):
+        runner.invoke_via_sdk("fixture", workflow_dir=tmp_path, eval_dir=eval_dir,
+            model="requested", effort="low", settings="{}", cli_path="unused", timeout_seconds=0.2,
+            done_grace_seconds=1, done_poll_seconds=0.1, quiet=True,
+            require_workflow_result=True, runtime_metadata_path=path)
+    assert json.loads(path.read_text()) == {"requested_model": "requested", "sdk_version": "probe-sdk",
+        "init_model": "init-model", "cli_version": "probe-cli", "assistant_models": ["observed"]}
+    assert "FAKE_SECRET_DO_NOT_LOG" not in path.read_text()

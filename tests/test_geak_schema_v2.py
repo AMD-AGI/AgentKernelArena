@@ -432,6 +432,33 @@ def test_launcher_retains_delivery_but_reports_engine_failure(task_factory, monk
     assert report["retained_workspace_sources"] == report["candidate"]["sources"]
 
 
+def test_launcher_retains_observed_identity_after_worker_timeout(task_factory, monkeypatch):
+    bridge = task_factory()
+    launcher = importlib.import_module("agents.geak.launch_agent")
+    monkeypatch.setenv("ARENA_TASK_CONTEXT", str(bridge.root / "context.json"))
+    monkeypatch.setenv("GEAK_HOME", str(bridge.root))
+    monkeypatch.setenv("GEAK_CLAUDE_BIN", "unused")
+    monkeypatch.setattr("agents.geak.compatibility.verify_upstream", lambda *a, **kw: None)
+    monkeypatch.setattr(launcher, "prepare_engine", lambda *a, **kw: {})
+
+    def timed_out(new_bridge, python):
+        write_json(new_bridge.root / "runtime_identity.json", {
+            "requested_model": "requested", "assistant_models": ["observed"],
+            "untrusted_extra": "FAKE_SECRET_DO_NOT_LOG"})
+        raise subprocess.TimeoutExpired("worker", 1)
+
+    monkeypatch.setattr(launcher, "_run_engine", timed_out)
+    with pytest.raises(RuntimeError, match="GEAK failed"):
+        launcher.launch_agent({}, str(bridge.context.workspace / "config.yaml"), str(bridge.context.workspace))
+    path = next(bridge.context.workspace.parent.glob(".*_geak/*/delivery.json"))
+    report = json.loads(path.read_text())
+    assert report["status"] == "FAILED"
+    assert report["delivery"] == "NOT_ATTEMPTED"
+    assert report["engine"] == {"status": "MISSING", "workflow_completed": False,
+                                "runtime": {"requested_model": "requested", "assistant_models": ["observed"]}}
+    assert "FAKE_SECRET_DO_NOT_LOG" not in path.read_text()
+
+
 @pytest.mark.parametrize("terminal", ["valid", "missing", "wrong_path", "sdk_error"])
 def test_engine_worker_requires_truthful_terminal_result(task_factory, monkeypatch, terminal):
     from agents.geak import engine_worker

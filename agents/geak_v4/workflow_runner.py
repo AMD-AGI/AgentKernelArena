@@ -506,6 +506,7 @@ def invoke_via_sdk(
     quiet: bool = False,
     runtime_metadata: dict[str, Any] | None = None,
     require_workflow_result: bool = False,
+    runtime_metadata_path: Path | None = None,
 ) -> str:
     """Invoke Claude Code while surviving synchronous and background Workflows."""
     try:
@@ -529,9 +530,23 @@ def invoke_via_sdk(
     sdk_env = {
         "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1",
     }
+    if runtime_metadata is None and runtime_metadata_path is not None:
+        runtime_metadata = {}
+    recorded_identity: str | None = None
+
+    def persist_identity() -> None:
+        nonlocal recorded_identity
+        if runtime_metadata_path is None or runtime_metadata is None:
+            return
+        encoded = json.dumps(runtime_metadata, sort_keys=True)
+        if encoded != recorded_identity:
+            _atomic_write_json(runtime_metadata_path, runtime_metadata)
+            recorded_identity = encoded
+
     if runtime_metadata is not None:
         runtime_metadata.update(requested_model=model,
                                 sdk_version=importlib.metadata.version("claude-agent-sdk"))
+        persist_identity()
 
     options = ClaudeAgentOptions(
         model=model,
@@ -568,6 +583,7 @@ def invoke_via_sdk(
                         async for message in client.receive_messages():
                             if runtime_metadata is not None:
                                 _record_runtime_identity(message, runtime_metadata)
+                                persist_identity()
                             for text in _iter_message_text(message):
                                 remaining = _TRANSCRIPT_SIZE_LIMIT - captured_chars
                                 if remaining > 0:
@@ -679,6 +695,7 @@ def invoke_via_sdk(
         if runtime_metadata is not None:
             for notification in runtime_notifications:
                 _record_runtime_identity(notification, runtime_metadata)
+            persist_identity()
         transcript = "\n".join(chunks)[:_TRANSCRIPT_SIZE_LIMIT]
         if captured_return is not None:
             terminal = json.dumps(captured_return, separators=(",", ":"))
