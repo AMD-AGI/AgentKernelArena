@@ -102,6 +102,15 @@ def check_dependencies(paths, final_language=True):
                 imported = [module] + [f"{module}.{a.name}" for a in node.names]
                 for a in node.names:
                     aliases[a.asname or a.name] = f"{module}.{a.name}"
+            # The original optional quantization branch reads only a dtype
+            # constant. Do not permit importing the package or other members.
+            dtype_constants_only = (
+                isinstance(node, ast.ImportFrom) and node.level == 0
+                and node.module == "aiter.utility"
+                and all(a.name == "dtypes" for a in node.names)
+            )
+            if dtype_constants_only:
+                imported = []
             for module in imported:
                 parts = set(module.split("."))
                 if parts & forbidden:

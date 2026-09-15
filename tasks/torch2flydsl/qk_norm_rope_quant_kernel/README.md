@@ -76,3 +76,11 @@ are unchanged. Final candidate arithmetic must run FlyDSL; the candidate-only
 auditor permits host preparation and checks operator calls outside timing.
 This original source uses the older FlyDSL buffer_ops API, so its full GPU
 qualification requires the pinned compatible image recorded with the report.
+
+The allowed preparation dependencies include exactly
+`from aiter.utility import dtypes` (with an optional alias), used by the original
+lazy quantization helper to select a hardware dtype constant. Importing the
+AITER package, other utility members, operators or wildcard members remains
+forbidden. This allowance does not permit AITER operator compute; the final
+candidate's actual calls still undergo FlyDSL and PyTorch-operation checks.
+The six evaluated cases all use quant=False and do not execute that helper.

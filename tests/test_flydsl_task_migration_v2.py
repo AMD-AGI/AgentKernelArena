@@ -6918,7 +6918,7 @@ def test_qk_original_model_strided_inputs_rotary_scope_and_timing_preserved():
             normalized=_RemoveQkChecks().visit(fn)
             assert hashlib.sha256(ast.dump(normalized,include_attributes=False).encode()).hexdigest()==hashes[fn.name],fn.name
     peer=ROOT/'tasks/torch2flydsl/rmsnorm2d_kernel'
-    for rel in ['scripts/candidate_checks.py','scripts/replay_checks.py','task_runtime.py']:assert (task/rel).read_bytes()==(peer/rel).read_bytes()
+    for rel in ['scripts/candidate_checks.py','scripts/replay_checks.py']:assert (task/rel).read_bytes()==(peer/rel).read_bytes()
 
 
 class _RemoveSortingChecks(_RemoveSglangElementwiseChecks):
@@ -7095,3 +7095,32 @@ def test_jagged_original_group_model_metadata_allocation_and_timing_unchanged():
     result=invoke(task,'validate-task');assert result.passed,result.reason;assert len(result.cases)==5
     peer=ROOT/'tasks/torch2flydsl/rmsnorm2d_kernel'
     for rel in ['scripts/replay_checks.py','task_runtime.py']:assert (task/rel).read_bytes()==(peer/rel).read_bytes()
+
+
+@pytest.mark.parametrize('statement,allowed',[
+    ('from aiter.utility import dtypes',True),
+    ('from aiter.utility import dtypes as hardware_types',True),
+    ('import aiter',False),
+    ('import aiter.utility',False),
+    ('from aiter import utility',False),
+    ('from aiter.utility import *',False),
+    ('from aiter.utility import dtypes, kernel',False),
+    ('from aiter.utility import kernel as dtypes',False),
+    ('from aiter.fused_moe import fused_moe',False),
+    ('from scripts import task_reference',False),
+])
+def test_qk_dependency_allowance_is_only_hardware_dtype_constants(statement,allowed,tmp_path):
+    task=ROOT/'tasks/torch2flydsl/qk_norm_rope_quant_kernel';runtime=module(task/'task_runtime.py');source=tmp_path/'kernel.py';source.write_text('import flydsl\n'+statement+'\ndef compute(): return None\n')
+    if allowed:runtime.check_dependencies([source],True)
+    else:
+        with pytest.raises(ValueError):runtime.check_dependencies([source],True)
+
+
+def test_qk_original_source_passes_static_compile_without_kernel_or_case_edit():
+    task=ROOT/'tasks/torch2flydsl/qk_norm_rope_quant_kernel';runtime=module(task/'task_runtime.py')
+    runtime.check_dependencies([task/'kernel.py'],True)
+    result=invoke(task,'baseline','compile');assert result.passed,result.reason
+    assert result.metadata['compile_kind']=='python_bytecode'
+    # Syntax evidence only: GPU compilation/correctness/performance are required
+    # again with the corrected dependency policy and unchanged old API source.
+    assert hashlib.sha256((task/'kernel.py').read_bytes()).hexdigest()=='be6c11328764ac59054301e1d8a9312287227718eee498731698ddc45079fa46'
