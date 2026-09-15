@@ -354,6 +354,67 @@ def test_resume_checks_current_bundle_not_config_initial_stub(tmp_path, monkeypa
     assert "forge-loop" in commands[0]
 
 
+@pytest.mark.parametrize("initial_state", ["implemented", "unimplemented"])
+@pytest.mark.parametrize("outcome", ["normal", "timeout", "exit_error"])
+def test_completed_no_keep_search_retains_verified_input_bundle(tmp_path, monkeypatch, initial_state, outcome):
+    context, _, _ = fixture_task(tmp_path, initial_state=initial_state)
+    # Also cover resuming a generated implementation: the selected starting
+    # candidate can differ from the independently frozen production baseline.
+    if initial_state == "unimplemented":
+        (context.workspace / "source/kernel.py").write_text("3")
+        (context.workspace / "source/helper.py").write_text("2")
+    expected = {name: (context.workspace / name).read_bytes()
+                for name in ("source/kernel.py", "source/helper.py")}
+    monkeypatch.setenv("ARENA_TASK_CONTEXT", str(context.path))
+    mock_engine(monkeypatch, timeout=outcome == "timeout", fail=outcome == "exit_error")
+    run = adapter.run_forge_subprocess
+
+    def no_keep(*args, **kwargs):
+        output = run(*args, **kwargs)
+        plan = json.loads(Path(kwargs["env"]["ARENA_FORGE_PLAN"]).read_text())
+        result_path = Path(plan["result"])
+        result = json.loads(result_path.read_text())
+        result.update(best_commit="", best_iteration=0, iteration_count=1)
+        result_path.write_text(json.dumps(result))
+        # This discarded working tree must never become the delivery.
+        (Path(kwargs["workspace"]) / "source/helper.py").write_text("999")
+        return output
+
+    monkeypatch.setattr(adapter, "run_forge_subprocess", no_keep)
+    if outcome == "normal":
+        output = adapter.launch({}, "unused", str(context.workspace))
+        assert '"delivery_selection": "initial_validated_implementation"' in output
+    else:
+        with pytest.raises(adapter.ForgeRunError):
+            adapter.launch({}, "unused", str(context.workspace))
+        status_path, = tmp_path.glob("workspace-forge-*/arena_forge_status.json")
+        assert json.loads(status_path.read_text())["status"] == "FAILED"
+    assert {name: (context.workspace / name).read_bytes() for name in expected} == expected
+    assert (context.baseline_workspace / "source/helper.py").read_text() == "3"
+
+
+@pytest.mark.parametrize("result", [
+    {}, {"best_iteration": 1, "iteration_count": 1},
+    {"best_iteration": 0}, {"best_iteration": 0, "iteration_count": True},
+])
+def test_no_commit_fallback_rejects_incomplete_or_contradictory_result(tmp_path, monkeypatch, result):
+    context, _, _ = fixture_task(tmp_path)
+    monkeypatch.setenv("ARENA_TASK_CONTEXT", str(context.path))
+    mock_engine(monkeypatch)
+    run = adapter.run_forge_subprocess
+
+    def omit_identity(*args, **kwargs):
+        output = run(*args, **kwargs)
+        plan = json.loads(Path(kwargs["env"]["ARENA_FORGE_PLAN"]).read_text())
+        Path(plan["result"]).write_text(json.dumps(result))
+        return output
+
+    monkeypatch.setattr(adapter, "run_forge_subprocess", omit_identity)
+    with pytest.raises(adapter.ForgeRunError):
+        adapter.launch({}, "unused", str(context.workspace))
+    assert (context.workspace / "source/helper.py").read_text() == "3"
+
+
 def test_broken_changed_candidate_not_reclassified_as_empty(tmp_path, monkeypatch):
     context, _, _ = fixture_task(tmp_path, initial_state="unimplemented")
     (context.workspace / "source/helper.py").write_text("100")

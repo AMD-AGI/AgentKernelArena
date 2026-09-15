@@ -234,6 +234,13 @@ def launch(eval_config: dict, task_config_dir: str, workspace: str) -> str:
         if plan["workflow"] != "rewrite":
             allow_candidate_paths(engine, context.spec)
         _initialize_git(engine)
+        if target_verified:
+            # A normal no-KEEP search may omit best_commit. Preserve the exact
+            # already checked input, never whichever files the search left.
+            status["initial_candidate_commit"] = subprocess.run(
+                ["git", "rev-parse", "HEAD"], cwd=engine, check=True,
+                capture_output=True, text=True,
+            ).stdout.strip()
         if plan["workflow"] != "rewrite":
             baseline = bridge.execute(plan, engine, role="baseline", action="performance")
             values = bridge.timings(baseline)
@@ -269,6 +276,14 @@ def launch(eval_config: dict, task_config_dir: str, workspace: str) -> str:
             resolve_task_path(engine, attempts[0], must_exist=True)
             prefix = attempts[0]
             selected_commit = result.get("flydsl_best_commit") or result.get("best_commit")
+        elif plan["workflow"] == "optimize" and not selected_commit:
+            iterations = result.get("iteration_count")
+            best_iteration = result.get("best_iteration")
+            if (not target_verified or type(best_iteration) is not int or best_iteration != 0
+                    or type(iterations) is not int or iterations < 0):
+                raise ForgeRunError("Forge omitted the identity of its selected best candidate")
+            selected_commit = status["initial_candidate_commit"]
+            status["delivery_selection"] = "initial_validated_implementation"
         elif plan["workflow"] == "initialize" and not selected_commit:
             # Native loop results can omit best_commit when no iteration earns
             # KEEP. Preserve the independently validated first implementation;

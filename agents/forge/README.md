@@ -138,6 +138,14 @@ Python files retain their protected statements and tests.
 
 The status record separates `DELIVERED` from the eventual Arena verdict, which
 remains `pending`. A correct candidate can be delivered without an improvement.
+If a successful optimization search reports no KEEP and omits `best_commit`,
+the adapter retains the exact starting candidate commit that passed its public
+checks. This also covers a validated generated implementation on resume. The
+status records `delivery_selection: initial_validated_implementation`; discarded
+search files are not installed. A claimed later best without its commit, missing
+iteration metadata, or an unsuccessful engine cannot use this fallback. Arena
+still checks and measures the delivered bundle independently, and retaining it
+does not claim an optimization gain or prove that a search iteration ran.
 A timeout, failed PORT, nonzero engine exit or missing structured result reports
 failure and leaves the original task candidate unchanged. Diagnostic scratch,
 logs, result JSON and selected artifact hashes are preserved in the fresh Forge
