@@ -33,3 +33,16 @@ syntax and import/interface checks. Missing candidates, incomplete measurements 
 invalid timing fail; commands emit `arena-eval-v1`, never final Arena score reports.
 Canonical benchmark helpers must be materialized by Arena; do not edit their generated regions.
 
+
+
+Protected checks use pristine mapping/source/counts to independently validate
+both the returned destination view and every destination row, including untouched
+rows/tails. The original five scored shapes, seeds, exact integer gate, identity
+mapping/full-length timed inputs, full wrapper, 10 warmups and 100 samples remain.
+
+An unscored 5x1031 table diagnostic checks a second 1024-element tile, partial
+tail, duplicate/nonidentity mapping and zero-length rows with nonzero destination
+sentinels. Actual timed output and replay with changed source, routing and counts
+must pass; only declared replay writes are poisoned, and untouched regions must
+retain their prior contents. All input and destination buffers are restored in
+finally, including replay failure. These checks run outside timing.

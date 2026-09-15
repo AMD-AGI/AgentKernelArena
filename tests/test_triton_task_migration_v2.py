@@ -4189,3 +4189,125 @@ def test_reduce_segments_adapter_installs_checks(monkeypatch):
     adapter = module_at(ROOT/'tasks/triton2triton/vllm/triton_reduce_segments/_arena_eval.py', monkeypatch)
     h = adapter.load_harness()
     assert h.run_correctness.__module__ == h.run_performance.__module__ == '_reduce_segments_checks'
+
+
+def _gather_tables_cpu(mapping, source, destination, counts):
+    for row, request in enumerate(mapping.tolist()):
+        length = int(counts[request])
+        destination[row, :length].copy_(source[request, :length])
+    return destination[:mapping.numel()]
+
+
+def test_gather_tables_independent_known_answer_retains_unwritten_regions(monkeypatch):
+    task = ROOT/'tasks/triton2triton/vllm/triton_gather_block_tables'
+    h = module_at(task/'scripts/task_runner.py', monkeypatch)
+    checks = module_at(task/'_arena_checks.py', monkeypatch)
+    source = torch.arange(24, dtype=torch.int32).reshape(4, 6)
+    mapping, counts = torch.tensor([3, 1, 3], dtype=torch.int32), torch.tensor([0, 0, 1, 4], dtype=torch.int32)
+    destination = torch.full_like(source, -9)
+    expected = torch.tensor([[18, 19, 20, 21, -9, -9], [-9]*6, [18, 19, 20, 21, -9, -9], [-9]*6], dtype=torch.int32)
+    torch.testing.assert_close(checks.reference(h, (mapping, source, counts), destination), expected, atol=0, rtol=0)
+    output = _gather_tables_cpu(mapping, source, destination, counts)
+    checks.check_output(output, destination, expected, 3)
+
+
+@pytest.mark.parametrize('mode', ['correct', 'dtype', 'device', 'shape', 'return_copy', 'mutate_mapping',
+                                 'mutate_counts', 'mutate_source_and_destination', 'ignore_counts',
+                                 'identity_mapping', 'first_tile_only', 'clear_unwritten', 'ignore_duplicate'])
+def test_gather_tables_actual_correctness_mapping_tail_and_source_controls(monkeypatch, mode):
+    task = ROOT/'tasks/triton2triton/vllm/triton_gather_block_tables'
+    h = module_at(task/'scripts/task_runner.py', monkeypatch)
+    checks = module_at(task/'_arena_checks.py', monkeypatch)
+    for name in ('randperm', 'randint', 'arange', 'full'):
+        factory = getattr(torch, name)
+        monkeypatch.setattr(torch, name, lambda *a, _factory=factory, **kw: _factory(*a, **{**kw, 'device': 'cpu'}))
+    monkeypatch.setattr(torch.cuda, 'synchronize', lambda: None)
+    calls = []
+    def candidate(mapping, source, destination, counts):
+        calls.append((mapping.numel(), tuple(source.shape)))
+        if mode == 'mutate_mapping': mapping.zero_()
+        if mode == 'mutate_counts': counts.zero_()
+        if mode == 'mutate_source_and_destination': source.zero_(); destination.zero_()
+        if mode == 'clear_unwritten': destination.zero_()
+        seen = set()
+        for row, request in enumerate(mapping.tolist()):
+            if mode == 'ignore_duplicate' and request in seen: continue
+            seen.add(request)
+            if mode == 'identity_mapping': request = row
+            length = source.shape[1] if mode == 'ignore_counts' else int(counts[request])
+            if mode == 'first_tile_only': length = min(length, 1024)
+            destination[row, :length].copy_(source[request, :length])
+        output = destination[:mapping.numel()]
+        if mode == 'dtype': output = output.long()
+        if mode == 'device': output = torch.empty_like(output, device='meta')
+        if mode == 'shape': output = output[:1]
+        if mode == 'return_copy': output = output.clone()
+        return output
+    mod = SimpleNamespace(gather_block_tables=candidate)
+    h.load_module = lambda: mod
+    checks.install(h)
+    ok, reason = h.run_correctness()
+    assert ok is (mode == 'correct'), reason
+    if mode == 'correct':
+        assert [c for c in calls if c[1] != (5, 1031)] == [(n, (r, b)) for n, r, b in h.TEST_SHAPES]
+        assert [c for c in calls if c[1] == (5, 1031)] == [(3, (5, 1031))]
+    assert mod.gather_block_tables is candidate
+
+
+@pytest.mark.parametrize('mode', ['correct', 'wrong_timed', 'stale', 'no_write', 'wrong_replay',
+                                 'mutate_timed', 'mutate_replay', 'zero_source_and_destination',
+                                 'overwrite_tail', 'overwrite_inactive', 'raise_replay'])
+def test_gather_tables_original_full_row_timing_partial_replay_restores_buffers(monkeypatch, mode):
+    import inspect
+    task = ROOT/'tasks/triton2triton/vllm/triton_gather_block_tables'
+    h = module_at(task/'scripts/task_runner.py', monkeypatch)
+    checks = module_at(task/'_arena_checks.py', monkeypatch)
+    h._TimedRun = SimpleNamespace
+    for name in ('randint', 'arange', 'full'):
+        factory = getattr(torch, name)
+        monkeypatch.setattr(torch, name, lambda *a, _factory=factory, **kw: _factory(*a, **{**kw, 'device': 'cpu'}))
+    buffers, snapshots, options = [], [], []
+    mod = SimpleNamespace(gather_block_tables=_gather_tables_cpu)
+    h.load_module = lambda: mod
+    def benchmark(measured, *, timed_run, **kwargs):
+        fn = inspect.getclosurevars(measured).nonlocals['fn']
+        c = inspect.getclosurevars(fn).nonlocals
+        mapping, source, counts, destination = (c[k] for k in ('idx_mapping', 'src_block_table', 'num_blocks', 'dst_block_table'))
+        assert torch.equal(mapping, torch.arange(mapping.numel(), dtype=mapping.dtype))
+        assert (counts == source.shape[1]).all(), 'Original full-length scored copy is retained'
+        values = (mapping, source, counts, destination)
+        buffers.append(values); snapshots.append(tuple(v.clone() for v in values)); options.append(kwargs)
+        output = measured(); cached = destination.clone()
+        if mode == 'wrong_timed': destination[0, 0] = -1
+        if mode == 'mutate_timed': source.zero_()
+        def replay():
+            if mode == 'raise_replay': raise RuntimeError('replay failed')
+            if mode == 'stale': destination.copy_(cached)
+            elif mode != 'no_write': measured()
+            if mode == 'wrong_replay': destination[0, 0] = -1
+            if mode == 'mutate_replay': counts.zero_()
+            if mode == 'zero_source_and_destination': source.zero_(); destination.zero_()
+            if mode == 'overwrite_tail':
+                for row, request in enumerate(mapping.tolist()): destination[row].copy_(source[request])
+            if mode == 'overwrite_inactive': destination[mapping.numel():].fill_(-1)
+            return output
+        timed_run.outputs, timed_run.rerun = output, replay
+        return .125, {'benchmark_method': 'cuda_graph'}
+    h._benchmark_cuda_graph_or_events = benchmark
+    checks.install(h)
+    rows = h.run_performance()
+    assert len(rows) == 5
+    assert options == [dict(warmup=10, repetition=100)] * 5
+    for case, row in zip(h.TEST_SHAPES, rows):
+        assert row['params'] == dict(num_reqs=case[0], max_num_reqs=case[1], max_num_blocks=case[2])
+        assert row['execution_time_ms'] == (.125 if mode == 'correct' else -1.)
+        if mode == 'correct': assert row['perturbed_input_replay_checked']
+    for values, saved in zip(buffers, snapshots): checks.unchanged(values, saved)
+    assert mod.gather_block_tables is _gather_tables_cpu
+    assert h._benchmark_cuda_graph_or_events is benchmark
+
+
+def test_gather_tables_adapter_installs_checks(monkeypatch):
+    adapter = module_at(ROOT/'tasks/triton2triton/vllm/triton_gather_block_tables/_arena_eval.py', monkeypatch)
+    h = adapter.load_harness()
+    assert h.run_correctness.__module__ == h.run_performance.__module__ == '_gather_table_checks'
