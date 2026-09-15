@@ -34,6 +34,25 @@ syntax and import/interface checks. Missing candidates, incomplete measurements 
 invalid timing fail; commands emit `arena-eval-v1`, never final Arena score reports.
 Canonical benchmark helpers must be materialized by Arena; do not edit their generated regions.
 
+### Public operator and scored unit
+
+Correctness checks the public `lora_shrink` operator, including its output reset
+and supported input forms. Performance scores the declared `_lora_shrink_kernel`
+invocation with prebuilt pointer/stride tables and a prepared output buffer.
+It does not report the end-to-end latency of the Python `lora_shrink` wrapper.
+Testing that wrapper for correctness does not add its pointer construction or
+reset cost to the explicitly declared scored unit.
+
+This is the original benchmark boundary for both baseline and candidate.
+`output_tensor.zero_` prepares split-K accumulation on the measurement stream
+outside the measured interval; all projection, scaling and accumulation work
+remains in the timed kernel. Candidates may not move that work into pointer
+construction, preparation or cached answers. The full-output, read-only-input
+and changed-input replay checks still apply to the actual measured invocation.
+Assess timing fairness against this declared unit and its symmetric preparation,
+while continuing to reject omitted computation, different role boundaries or
+incorrect timed/replayed outputs.
+
 
 Protected checks retain the original full-output comparison on `.float()` values
 at `atol=rtol=5e-2`, with shape/dtype/device and finite-output checks. Inputs,
