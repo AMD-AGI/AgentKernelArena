@@ -58,8 +58,10 @@ def _config(eval_config: dict) -> dict:
         raise ValueError("agent run configuration must be a mapping")
     allowed = {"workflow", "model", "timeout_seconds", "permission_mode", "agent_backend",
                "python", "max_port_attempts", "supervisor_backend", "session_timeout_seconds",
-               "initialization_max_attempts", "initialization_budget_fraction"}
+               "initialization_max_attempts", "initialization_budget_fraction", "codex_auth_mode"}
     config.update({key: value for key, value in overrides.items() if key in allowed})
+    if config["codex_auth_mode"] not in ("gateway", "cli"):
+        raise ValueError("Forge codex_auth_mode must be gateway or cli")
     if overrides.get("agent_backend") not in (None, "claude") and "model" not in overrides:
         # A Claude default is not a model ID for another provider. Let upstream
         # resolve that provider's configured model unless explicitly overridden.

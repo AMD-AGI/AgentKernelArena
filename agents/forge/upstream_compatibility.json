@@ -3,11 +3,13 @@
   "package_version": "1.1.0",
   "sources": {
     "kernelforge.agent_backends.base": "6461c07adb8d98d21ab92b460f0ed5d2e273f64a284fac42d11cd2f7752f29ef",
+    "kernelforge.agent_backends.codex": "b85894c1bb76621995510086ee30e32e6a3223036cc28f27de2a85bc7e5eb327",
     "kernelforge.agent_backends.registry": "ecc3e18f653075f5a0a0de38b1a745c870404ce9e015ae9851c17fe52ad9def2",
     "kernelforge.agent_backends.workspace_guard": "8591c83b78184d578a414b41782d70f869b48c333704aa5da43070e6014117a2",
     "kernelforge.cli": "c36da1a92988f4e8d3613eed315ceb428ad27adc1b9fd6c6a2d1d85e6c760dd4",
     "kernelforge.config": "58ff169aec64d00dfe153f281fd9c6a6f98cab3eacfe59fe13949b189ed1b912",
     "kernelforge.kernel_backends.base": "14df83d172d749e73d34fb80d42e50415ebe3e9958043015a09a5236bf875559",
+    "kernelforge.llm.gateway": "b50d17f6b19d587041191476cb2689148a627a9439115e9d432366f517adc4cf",
     "kernelforge.loop.canonical_correctness": "3441c2e76634cd469d5d24a5a3232de97a72d3dcdb020335147d0c7815db8c99",
     "kernelforge.loop.insession_gate": "674fd3d072ab5e3bb1b40e15055f0447b6e53362c9b3ad946cf34fabd4b50a0a",
     "kernelforge.loop.new_path_allowlist": "3ff023df1eb0bfc2c72c0aa7daf1716a722f9d617619e1cfc81c483c9be7d76e",

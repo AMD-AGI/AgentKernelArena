@@ -207,11 +207,20 @@ present for FlyDSL tasks. Provider authentication must be available to the
 selected backend; existing authentication environment values are preserved.
 A dedicated interpreter can be selected with run-level `agent.python`.
 
+The pinned upstream Codex backend normally requires `OPENAI_BASE_URL` and
+`OPENAI_API_KEY`. For an existing native ChatGPT login, explicitly select
+`agent.codex_auth_mode: cli`. The adapter keeps the real Forge Codex SDK backend
+and copies only the caller's `CODEX_HOME/auth.json` into each isolated SDK HOME.
+The Codex CLI consumes and refreshes that login itself; no OAuth token is turned
+into an API key, and no refreshed state is copied back to the source. Gateway
+variables cannot be combined with this mode. Missing login state fails before
+the campaign starts. Gateway mode remains the default.
+
 Search defaults live in [agent_config.yaml](agent_config.yaml); the run may
 override `workflow`, `model`, `agent_backend`, `permission_mode`,
 `timeout_seconds`, `session_timeout_seconds`, `max_port_attempts`,
 `initialization_max_attempts`, `initialization_budget_fraction`,
-`supervisor_backend`, and `python`. An empty supervisor follows the selected
+`supervisor_backend`, `codex_auth_mode`, and `python`. An empty supervisor follows the selected
 backend. This adapter currently uses one lane and disables profiling/probes
 because the public task protocol provides no profiler invocation. Knowledge
 warm starts and publication are disabled for this integration so single-file
