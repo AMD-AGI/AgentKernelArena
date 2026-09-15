@@ -48,3 +48,11 @@ Any older validation reports in this directory predate this migration and do not
 qualify the v2 runner. The parent integration schedules new GPU validation.
 
 Upstream source: {"commit": "28a18d328b4882c999864b2df2f8f9fe3fcc8b47", "date": "2026-06-01", "path": "kernels/fp8_gemm_4wave.py", "repo": "https://github.com/ROCm/FlyDSL"}.
+
+The scored invocation must also pass its task-specific numerical comparison. The
+benchmark exposes the last measured output through the canonical `TimedRun`,
+then checks that output before changing inputs. Outside all timed regions it
+perturbs inputs in place, poisons the output, replays the measured unit, and
+compares against the original numerical policy again. Read-only inputs must
+remain unchanged by either execution. Output shape, dtype and device are part
+of the contract. Unsupported replay collection fails; it is never a PASS/SKIP.

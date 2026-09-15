@@ -26,7 +26,9 @@ import os
 import sys
 import time
 from pathlib import Path
-from _aka_benchmark import benchmark_cuda_graph_or_events
+from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
+from scripts.replay_checks import (allclose_output, normalized_output,
+                                  require_tensor_contract, verify_timed_run)
 
 from task_runtime import candidate_relative_path
 KERNEL_FILE = candidate_relative_path()
@@ -138,8 +140,8 @@ def run_correctness(verbose=True):
         inp = _make_inputs(shape)
         model = mmod.Model(*mmod.get_init_inputs())
         with torch.no_grad():
-            ref = model(inp).float()
-            truth = _retry(lambda: _aiter_op(inp), what="aiter.silu_and_mul").float()
+            ref = _checked_silu_result(model(inp), inp).float()
+            truth = _checked_silu_result(_retry(lambda: _aiter_op(inp), what="aiter.silu_and_mul"), inp).float()
         torch.cuda.synchronize()
 
         max_abs = (ref - truth).abs().max().item()
@@ -194,10 +196,31 @@ def run_correctness(verbose=True):
     return True
 
 
-def _mean_ms(fn, warmup, iters):
+def _checked_silu_result(result, inp):
+    require_tensor_contract(result, inp[:, :inp.shape[1] // 2])
+    return result
+
+
+def _silu_replay_validator(inp, oracle):
+    originals = (inp.clone(),)
+    expected = oracle(inp)
+
+    def validate(timed):
+        return verify_timed_run(
+            timed, inputs=(inp,), originals=originals, expected=expected,
+            perturb=lambda: inp.neg_(), reference=lambda: oracle(inp),
+            compare=lambda actual, ref: normalized_output(actual, ref, tolerance=REL_TOL),
+        )
+    return validate
+
+
+def _mean_ms(fn, warmup, iters, validate=None):
+    timed = TimedRun() if validate is not None else None
     mean_ms, bench_meta = benchmark_cuda_graph_or_events(
-        fn, warmup=warmup, repetition=iters
+        fn, warmup=warmup, repetition=iters, timed_run=timed
     )
+    if validate is not None:
+        bench_meta.update(validate(timed))
     _mean_ms.benchmark_metadata = bench_meta
     return mean_ms
 
@@ -218,13 +241,17 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
         model = mmod.Model(*mmod.get_init_inputs())
         with torch.no_grad():
             op_ms = _mean_ms(lambda: _aiter_op(inp), warmup, iters)
-            ref_ms = _mean_ms(lambda: model(inp), warmup, iters)
+            # The original provided baseline is Model; AITER remains its
+            # independent numerical oracle and diagnostic timing.
+            ref_validate = None if has_kernel else _silu_replay_validator(inp, _aiter_op)
+            ref_ms = _mean_ms(lambda: model(inp), warmup, iters, validate=ref_validate)
             ref_bench_meta = _mean_ms.benchmark_metadata
             ker_ms = None
             if has_kernel:
                 try:
                     ker_ms = _mean_ms(
-                        lambda: kmod.flydsl_silu_and_mul(inp, LIMIT), warmup, iters
+                        lambda: kmod.flydsl_silu_and_mul(inp, LIMIT), warmup, iters,
+                        validate=_silu_replay_validator(inp, model),
                     )
                 except NotImplementedError:
                     raise RuntimeError("Executed candidate is unimplemented; no baseline fallback")
@@ -311,7 +338,7 @@ def _require_candidate_outputs(mod):
                     raise RuntimeError("Executed candidate is unimplemented; no baseline fallback") from exc
                 if result is None:
                     raise RuntimeError("Candidate operator returned None; output is required")
-                return result
+                return _checked_silu_result(result, args[0])
             setattr(mod, name, checked)
 
 
@@ -332,13 +359,17 @@ def arena_benchmark(warmup=10, iters=100, verbose=True):
         model = mmod.Model(*mmod.get_init_inputs())
         with torch.no_grad():
             op_ms = _mean_ms(lambda: _aiter_op(inp), warmup, iters)
-            ref_ms = _mean_ms(lambda: model(inp), warmup, iters)
+            # The original provided baseline is Model; AITER remains its
+            # independent numerical oracle and diagnostic timing.
+            ref_validate = None if has_kernel else _silu_replay_validator(inp, _aiter_op)
+            ref_ms = _mean_ms(lambda: model(inp), warmup, iters, validate=ref_validate)
             ref_bench_meta = _mean_ms.benchmark_metadata
             ker_ms = None
             if has_kernel:
                 try:
                     ker_ms = _mean_ms(
-                        lambda: kmod.flydsl_silu_and_mul(inp, LIMIT), warmup, iters
+                        lambda: kmod.flydsl_silu_and_mul(inp, LIMIT), warmup, iters,
+                        validate=_silu_replay_validator(inp, model),
                     )
                 except NotImplementedError:
                     raise RuntimeError("Executed candidate is unimplemented; no baseline fallback")

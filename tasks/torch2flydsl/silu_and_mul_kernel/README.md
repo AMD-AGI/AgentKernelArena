@@ -6,8 +6,9 @@ The candidate starts **unimplemented**. The runner explicitly selects the provid
 The original harness's primary implementation timing is retained; additional
 reference/operator timings are diagnostic only. `test_kernel_harness.py` defines
 the exact dispatch and allocation boundary for this task. The provided path uses
-the task-local PyTorch model or installed AITER operator specified there, with its
-original graph/event policy. `model.py` is protected reference/source material;
+the task-local PyTorch `Model`, with its original graph/event policy. The
+installed AITER SiLU operator independently validates this baseline and has an
+additional diagnostic timing; it is not the scored baseline for this task. `model.py` is protected reference/source material;
 its presence alone does not select the performance baseline.
 
 There are 4 declared cases in `cases.json`. All original dimensions,
@@ -50,3 +51,11 @@ The runtime image supplies ROCm, PyTorch, FlyDSL and required AITER operators. A
 must materialize the canonical `_aka_benchmark.py` helper. CPU controls do not
 establish GPU correctness or timing support. Historical validation files predate
 this migration; the parent integration schedules fresh GPU validation.
+
+The scored invocation must also pass its task-specific numerical comparison. The
+benchmark exposes the last measured output through the canonical `TimedRun`,
+then checks that output before changing inputs. Outside all timed regions it
+perturbs inputs in place, poisons the output, replays the measured unit, and
+compares against the original numerical policy again. Read-only inputs must
+remain unchanged by either execution. Output shape, dtype and device are part
+of the contract. Unsupported replay collection fails; it is never a PASS/SKIP.

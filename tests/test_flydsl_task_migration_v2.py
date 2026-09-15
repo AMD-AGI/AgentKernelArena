@@ -172,6 +172,8 @@ def test_original_f2f_numerical_gates_and_output_contracts_unchanged():
         if name=="topk_gating_softmax_kernel":
             start=next(i for i,n in enumerate(fn.body) if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id=="atol_weight" for t in n.targets))
             fn=ast.Module(fn.body[start:],type_ignores=[])
+        if name == "fp8_gemm_4wave_kernel":
+            fn = _RemoveAddedReplayChecks().visit(fn)
         actual=ast.dump(fn,include_attributes=False).replace("build_flash_attn_func_module_primary","build_flash_attn_func_module")
         assert hashlib.sha256(actual.encode()).hexdigest()==expected,name
         original=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name in ("run_benchmark","run_geak_benchmark"))
@@ -347,6 +349,8 @@ def test_torch_numerical_gates_cases_and_models_preserved():
                 assert isinstance(handler.body[0],ast.Raise)
                 assert "no baseline fallback" in ast.unparse(handler.body[0])
                 handler.body.pop(0)
+        if name == "silu_and_mul_kernel":
+            fn = _RemoveAddedReplayChecks().visit(fn)
         assert hashlib.sha256(ast.dump(fn,include_attributes=False).encode()).hexdigest()==expected,name
         assert hashlib.sha256((task/"model.py").read_bytes()).hexdigest()==model_hash,name
         original=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=="run_benchmark")
@@ -383,8 +387,10 @@ class _InlineTritonReference(ast.NodeTransformer):
         return self.generic_visit(node)
 
 
-def _protected_triton_fingerprint(source):
+def _protected_triton_fingerprint(source, *, added_replay_checks=False):
     tree=ast.parse(source)
+    if added_replay_checks:
+        tree = _RemoveAddedReplayChecks().visit(tree)
     excluded={"_load_source","load_module","run_compile","_prepare_kernel","_make_prepared_fused_moe_runner",
               "_reference_softmax","_reference_gemm","_reference_layernorm","_reference_quant"}
     nodes=[]
@@ -399,7 +405,7 @@ def _protected_triton_fingerprint(source):
 def test_triton_preserves_original_harness_semantics_inputs_and_timing():
     for name,expected in TRITON_PROTECTED_SHA256.items():
         task=ROOT/"tasks/triton2flydsl"/name
-        assert _protected_triton_fingerprint((task/"test_kernel_harness.py").read_text())==expected,name
+        assert _protected_triton_fingerprint((task/"test_kernel_harness.py").read_text(), added_replay_checks=name=="aiter/gemm_a16w16")==expected,name
         cfg=yaml.safe_load((task/"config.yaml").read_text())
         assert cfg["baseline"]["kind"]=="initial_candidate"
         assert cfg["baseline"]["language"]=="triton"
@@ -656,3 +662,252 @@ ORIGINAL_REQUIRED_ARCH = {'flydsl2flydsl/flash_attn_func_kernel': 'gfx942',
  'torch2flydsl/quant_mxfp4_kernel': 'gfx950',
  'triton2flydsl/aiter/fav3_sage_mxfp4': 'gfx950',
  'triton2flydsl/aiter/gemm_afp8wfp8': 'gfx950'}
+
+
+class _RemoveAddedReplayChecks(ast.NodeTransformer):
+    """Normalize only the added controls; retain the original numeric/timing AST.
+
+    The controls themselves are exercised below. No original comparison,
+    tolerance, seed, input generator, warmup or sample count is removed here.
+    """
+    def visit_Expr(self, node):
+        value = node.value
+        if isinstance(value, ast.Call):
+            if isinstance(value.func, ast.Name) and value.func.id == "require_tensor_contract":
+                return None
+            if (isinstance(value.func, ast.Attribute) and value.func.attr == "update"
+                    and len(value.args) == 1 and isinstance(value.args[0], ast.Call)
+                    and isinstance(value.args[0].func, ast.Name)
+                    and value.args[0].func.id == "verify_timed_run"):
+                return None
+        return self.generic_visit(node)
+
+    def visit_Assign(self, node):
+        if len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
+            if node.targets[0].id in {"originals", "expected", "timed"}:
+                return None
+        return self.generic_visit(node)
+
+    def visit_Call(self, node):
+        if isinstance(node.func, ast.Name) and node.func.id == "_checked_silu_result":
+            return self.visit(node.args[0])
+        if isinstance(node.func, ast.Name) and node.func.id == "benchmark_cuda_graph_or_events":
+            node.keywords = [k for k in node.keywords if k.arg != "timed_run"]
+        return self.generic_visit(node)
+
+
+_REPLAY_TASKS = ["triton2flydsl/aiter/gemm_a16w16",
+                 "flydsl2flydsl/fp8_gemm_4wave_kernel",
+                 "torch2flydsl/silu_and_mul_kernel"]
+
+
+@pytest.mark.parametrize("task_name", _REPLAY_TASKS)
+@pytest.mark.parametrize("behavior", ["correct", "cached", "cheap_wrong", "last_measured_wrong", "input_modified"])
+def test_measured_and_replayed_outputs_use_real_numerical_controls(task_name, behavior):
+    import torch
+    from types import SimpleNamespace
+
+    checks = module(ROOT / "tasks" / task_name / "scripts/replay_checks.py")
+    x = torch.tensor([[1., 2.]], dtype=torch.bfloat16)
+    w = torch.tensor([[3., 4.], [5., 6.]], dtype=torch.bfloat16)
+    originals = (x.clone(), w.clone())
+    expected = x @ w.T
+    output = expected.clone()
+    timed = SimpleNamespace(bound=True, outputs=output)
+    if behavior == "last_measured_wrong":
+        output.zero_()
+    if behavior == "input_modified":
+        x.add_(1)
+
+    def replay():
+        if behavior == "cached":
+            output.copy_(expected)
+        elif behavior == "cheap_wrong":
+            output.fill_(x[0, 0].item())
+        else:
+            output.copy_(x @ w.T)
+        return output
+
+    timed.rerun = replay
+    if "silu" in task_name:
+        compare = lambda actual, ref: checks.normalized_output(actual, ref, tolerance=1e-2)
+    else:
+        atol, rtol = (1e-1, 1e-2) if "triton2flydsl" in task_name else (2e-2, 2e-2)
+        compare = lambda actual, ref: checks.allclose_output(actual, ref, atol=atol, rtol=rtol)
+    def check():
+        return checks.verify_timed_run(
+            timed, inputs=(x, w), originals=originals, expected=expected,
+            perturb=lambda: x.neg_(), reference=lambda: x @ w.T, compare=compare,
+        )
+    if behavior == "correct":
+        evidence = check()
+        assert evidence["replay_correctness"] == "PASS"
+        assert torch.equal(x, originals[0])
+        assert torch.equal(w, originals[1])
+    else:
+        with pytest.raises(AssertionError):
+            check()
+
+
+@pytest.mark.parametrize("task_name", _REPLAY_TASKS)
+@pytest.mark.parametrize("bad", ["broadcast_shape", "dtype", "device", "none", "nan"])
+def test_replay_rejects_invalid_output_contract(task_name, bad):
+    import torch
+    checks = module(ROOT / "tasks" / task_name / "scripts/replay_checks.py")
+    expected = torch.ones((2, 3), dtype=torch.bfloat16)
+    actual = {"broadcast_shape": expected[:1], "dtype": expected.float(),
+              "device": torch.empty((2, 3), dtype=torch.bfloat16, device="meta"),
+              "none": None, "nan": torch.full_like(expected, float("nan"))}[bad]
+    with pytest.raises(AssertionError):
+        checks.allclose_output(actual, expected, atol=1e-1, rtol=1e-2)
+
+
+def _harness_functions(task, names, namespace):
+    tree = ast.parse((task / "test_kernel_harness.py").read_text())
+    nodes = [n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name in names]
+    exec(compile(ast.Module(nodes, type_ignores=[]), "actual_harness_functions", "exec"), namespace)
+    return namespace
+
+
+@pytest.mark.parametrize("wrong_shape", [False, True])
+def test_triton_gemm_actual_correctness_rejects_broadcast_output(monkeypatch, wrong_shape):
+    import torch
+    from types import SimpleNamespace
+    task = ROOT / "tasks/triton2flydsl/aiter/gemm_a16w16"
+    checks = module(task / "scripts/replay_checks.py")
+    x = torch.tensor([[1., 2.], [1., 2.]], dtype=torch.bfloat16)
+    w = torch.tensor([[3., 4.], [5., 6.]], dtype=torch.bfloat16)
+    def kernel(a, b):
+        out = a @ b.T
+        return out[:1] if wrong_shape else out
+    monkeypatch.setattr(torch.cuda, "synchronize", lambda: None)
+    ns = _harness_functions(task, {"run_correctness", "_reference_gemm"}, {
+        "TEST_SHAPES": [{"name": "controlled", "M": 2, "N": 2, "K": 2}],
+        "_make_inputs": lambda *args: (x, w),
+        "_load_source": lambda: SimpleNamespace(gemm_a16w16=kernel),
+        "require_tensor_contract": checks.require_tensor_contract,
+    })
+    assert ns["run_correctness"](verbose=False) is (not wrong_shape)
+
+
+def test_silu_replay_uses_original_normalized_max_gate():
+    import torch
+    task = ROOT / "tasks/torch2flydsl/silu_and_mul_kernel"
+    checks = module(task / "scripts/replay_checks.py")
+    expected = torch.tensor([[1., 100.]], dtype=torch.float32)
+    # Global normalized error accepts a local 50% error at the small element.
+    # Replacing this with per-element allclose would silently tighten the gate.
+    actual = torch.tensor([[1.5, 100.]], dtype=torch.float32)
+    checks.normalized_output(actual, expected, tolerance=1e-2)
+    with pytest.raises(AssertionError):
+        checks.normalized_output(torch.tensor([[1., 102.]]), expected, tolerance=1e-2)
+
+
+def test_silu_provided_baseline_replay_oracle_is_independent():
+    import torch
+    from types import SimpleNamespace
+    task = ROOT / "tasks/torch2flydsl/silu_and_mul_kernel"
+    checks = module(task / "scripts/replay_checks.py")
+    model = module(task / "model.py").Model()
+    ns = _harness_functions(task, {"_silu_replay_validator"}, {
+        "verify_timed_run": checks.verify_timed_run,
+        "normalized_output": checks.normalized_output, "REL_TOL": 1e-2,
+    })
+    inp = torch.tensor([[0., 1., 2., 3.]], dtype=torch.bfloat16)
+    # Handwritten sigmoid arithmetic is independent of Model.forward/F.silu.
+    def oracle(value):
+        gate, up = value.float().chunk(2, dim=-1)
+        return ((gate / (1 + (-gate).exp())) * up).to(torch.bfloat16)
+    validate = ns["_silu_replay_validator"](inp, oracle)
+    output = model(inp)
+    timed = SimpleNamespace(bound=True, outputs=output)
+    def replay():
+        output.copy_(model(inp))
+        return output
+    timed.rerun = replay
+    assert validate(timed)["timed_output_correctness"] == "PASS"
+
+
+@pytest.mark.parametrize("task_name", _REPLAY_TASKS[:2])
+@pytest.mark.parametrize("bad_phase", [None, "measured", "replay"])
+def test_actual_gemm_benchmark_binds_and_validates_timed_output(task_name, bad_phase, monkeypatch, tmp_path):
+    """Execute task benchmark orchestration with CPU tensor / timing doubles.
+
+    This checks that the real harness calls the controls on the measured output;
+    it is not a CUDA graph or GPU timing test.
+    """
+    import math
+    import types
+    import torch
+    task = ROOT / "tasks" / task_name
+    checks = module(task / "scripts/replay_checks.py")
+    monkeypatch.setattr(torch.cuda, "synchronize", lambda: None)
+    monkeypatch.setattr(torch.cuda, "empty_cache", lambda: None)
+    monkeypatch.setattr(torch.cuda, "current_stream", lambda: None)
+    phase = {"name": "setup"}
+    seen = []
+
+    class Collector:
+        bound = False
+        outputs = None
+
+    def benchmark(fn, warmup, repetition, timed_run=None):
+        seen.append((warmup, repetition, timed_run is not None))
+        phase["name"] = "measured"
+        result = fn()
+        if timed_run is not None:
+            timed_run.outputs = result
+            timed_run.bound = True
+            def replay():
+                phase["name"] = "replay"
+                result.copy_(fn())
+                return result
+            timed_run.rerun = replay
+        phase["name"] = "setup"
+        return .1, {"benchmark_method": "cuda_graph"}
+
+    a = torch.tensor([[1., 2.], [3., 4.]], dtype=torch.bfloat16)
+    b = torch.tensor([[3., 4.], [5., 6.]], dtype=torch.bfloat16)
+    def compute():
+        if bad_phase is not None and phase["name"] == bad_phase:
+            return torch.full((2, 2), a[0, 0].item(), dtype=torch.bfloat16)
+        return a @ b.T
+    ns = {"TimedRun": Collector, "benchmark_cuda_graph_or_events": benchmark,
+          "verify_timed_run": checks.verify_timed_run, "allclose_output": checks.allclose_output,
+          "math": math, "json": json, "Path": Path}
+    if "triton2flydsl" in task_name:
+        ns.update({"_HERE": str(tmp_path), "WARMUP": 10, "ITERS": 100,
+            "TEST_SHAPES": [{"name": "controlled", "M": 2, "N": 2, "K": 2}],
+            "_make_inputs": lambda *args: (a, b),
+            "_load_source": lambda: types.SimpleNamespace(gemm_a16w16=lambda *args: compute()),
+        })
+        _harness_functions(task, {"run_benchmark", "_reference_gemm"}, ns)
+        run = lambda: ns["run_benchmark"](verbose=False)
+    else:
+        flydsl = types.ModuleType("flydsl")
+        compiler = types.ModuleType("flydsl.compiler")
+        flydsl.compiler = compiler
+        monkeypatch.setitem(sys.modules, "flydsl", flydsl)
+        monkeypatch.setitem(sys.modules, "flydsl.compiler", compiler)
+        c = torch.zeros((2, 2), dtype=torch.bfloat16)
+        scale = torch.ones(2)
+        def compiled(*args):
+            c.copy_(compute())
+        ns.update({"_CANDIDATE_DIR": str(tmp_path), "HARNESS_SHAPES": [(2, 2, 2)],
+            "ATOL": 2e-2, "RTOL": 2e-2,
+            "_load_kernel": lambda *args: object(),
+            "_make_inputs": lambda *args, **kwargs: (a, b, c, scale, scale.clone()),
+            "_kernel_b": lambda mod, value: value,
+            "_compile_and_run_once": lambda *args: (compiled, None),
+            "_kernel_args": lambda *args: (None,),
+        })
+        _harness_functions(task, {"arena_benchmark", "_torch_reference"}, ns)
+        run = lambda: ns["arena_benchmark"](verbose=False)
+    if bad_phase is None:
+        records = run()
+        assert records[0]["timed_output_correctness"] == "PASS"
+        assert records[0]["replay_correctness"] == "PASS"
+        assert seen[0] == (0, 100, True)
+    else:
+        with pytest.raises(AssertionError, match="Numerical mismatch"):
+            run()

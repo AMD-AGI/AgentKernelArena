@@ -52,3 +52,11 @@ plus any operator dependencies stated by the source. Arena must materialize the
 canonical `_aka_benchmark.py` helper before GPU execution. CPU controls/protocol
 checks do not qualify these GPU kernels. Existing legacy reports are historical;
 the parent integration schedules new GPU validation.
+
+The scored invocation must also pass its task-specific numerical comparison. The
+benchmark exposes the last measured output through the canonical `TimedRun`,
+then checks that output before changing inputs. Outside all timed regions it
+perturbs inputs in place, poisons the output, replays the measured unit, and
+compares against the original numerical policy again. Read-only inputs must
+remain unchanged by either execution. Output shape, dtype and device are part
+of the contract. Unsupported replay collection fails; it is never a PASS/SKIP.

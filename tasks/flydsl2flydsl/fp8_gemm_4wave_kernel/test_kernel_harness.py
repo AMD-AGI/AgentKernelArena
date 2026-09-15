@@ -32,7 +32,9 @@ import os
 import sys
 import tempfile
 from pathlib import Path
-from _aka_benchmark import benchmark_cuda_graph_or_events
+from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
+from scripts.replay_checks import (allclose_output, normalized_output,
+                                  require_tensor_contract, verify_timed_run)
 
 # ============================================================================
 # Bootstrap: make `from kernels...` import work + locate kernel dirs
@@ -257,6 +259,7 @@ def run_correctness(shapes=None, verbose=True):
 
             actual = C_cand.float()
             ref = _torch_reference(A, B_T, A_scale, B_scale)
+            require_tensor_contract(C_cand, ref, dtype=torch.bfloat16)
             ok = torch.allclose(actual, ref, atol=ATOL, rtol=RTOL)
             max_err = (actual - ref).abs().max().item()
             if not ok:
@@ -344,22 +347,34 @@ def run_benchmark(shapes=None, warmup=10, iters=100, verbose=True):
         try:
             A, B_T, C, A_scale, B_scale = _make_inputs(M, N, K, seed=42 + idx)
             B_k = _kernel_b(mod, B_T)
+            originals = tuple(t.clone() for t in (A, B_T, A_scale, B_scale))
+            expected = _torch_reference(A, B_T, A_scale, B_scale)
             # Compile ONCE (cached) -- timing below is pure execution.
             cf, stream = _compile_and_run_once(mod, flyc, A, B_k, C, A_scale, B_scale, M, N)
         except Exception as e:  # noqa: BLE001
-            print(f"  SKIP (M={M}, N={N}, K={K}): {str(e)[:100]}")
-            continue
+            raise RuntimeError(f"Compilation/launch failed for M={M}, N={N}, K={K}") from e
         args = _kernel_args(A, B_k, C, A_scale, B_scale, M, N, stream)
 
         for _ in range(warmup):
             cf(*args)
         torch.cuda.synchronize()
 
+        timed = TimedRun()
+
+        def launch():
+            cf(*(args[:-1] + (torch.cuda.current_stream(),)))
+            return C  # expose the actual output storage used by the timed launch
+
         kernel_ms, kernel_bench_meta = benchmark_cuda_graph_or_events(
-            lambda: cf(*(args[:-1] + (torch.cuda.current_stream(),))),
-            warmup=0,
-            repetition=iters,
+            launch, warmup=0, repetition=iters, timed_run=timed,
         )
+        kernel_bench_meta.update(verify_timed_run(
+            timed, inputs=(A, B_T, A_scale, B_scale), originals=originals,
+            expected=expected, perturb=lambda: A.copy_((-A.float()).to(A.dtype)),
+            reference=lambda: _torch_reference(A, B_T, A_scale, B_scale),
+            compare=lambda actual, ref: allclose_output(
+                actual, ref, atol=ATOL, rtol=RTOL, dtype=torch.bfloat16),
+        ))
 
         a_f = A.float()
         b_f = B_T.float()
@@ -497,22 +512,34 @@ def arena_benchmark(shapes=None, warmup=10, iters=100, verbose=True):
         try:
             A, B_T, C, A_scale, B_scale = _make_inputs(M, N, K, seed=42 + idx)
             B_k = _kernel_b(mod, B_T)
+            originals = tuple(t.clone() for t in (A, B_T, A_scale, B_scale))
+            expected = _torch_reference(A, B_T, A_scale, B_scale)
             # Compile ONCE (cached) -- timing below is pure execution.
             cf, stream = _compile_and_run_once(mod, flyc, A, B_k, C, A_scale, B_scale, M, N)
         except Exception as e:  # noqa: BLE001
-            print(f"  SKIP (M={M}, N={N}, K={K}): {str(e)[:100]}")
-            continue
+            raise RuntimeError(f"Compilation/launch failed for M={M}, N={N}, K={K}") from e
         args = _kernel_args(A, B_k, C, A_scale, B_scale, M, N, stream)
 
         for _ in range(warmup):
             cf(*args)
         torch.cuda.synchronize()
 
+        timed = TimedRun()
+
+        def launch():
+            cf(*(args[:-1] + (torch.cuda.current_stream(),)))
+            return C  # expose the actual output storage used by the timed launch
+
         kernel_ms, kernel_bench_meta = benchmark_cuda_graph_or_events(
-            lambda: cf(*(args[:-1] + (torch.cuda.current_stream(),))),
-            warmup=0,
-            repetition=iters,
+            launch, warmup=0, repetition=iters, timed_run=timed,
         )
+        kernel_bench_meta.update(verify_timed_run(
+            timed, inputs=(A, B_T, A_scale, B_scale), originals=originals,
+            expected=expected, perturb=lambda: A.copy_((-A.float()).to(A.dtype)),
+            reference=lambda: _torch_reference(A, B_T, A_scale, B_scale),
+            compare=lambda actual, ref: allclose_output(
+                actual, ref, atol=ATOL, rtol=RTOL, dtype=torch.bfloat16),
+        ))
 
         a_f = A.float()
         b_f = B_T.float()

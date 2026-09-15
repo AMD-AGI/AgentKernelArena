@@ -22,7 +22,9 @@ import math
 import os
 import sys
 from pathlib import Path
-from _aka_benchmark import benchmark_cuda_graph_or_events
+from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
+from scripts.replay_checks import (allclose_output, normalized_output,
+                                  require_tensor_contract, verify_timed_run)
 
 from task_runtime import candidate_relative_path
 SOURCE_FILE = candidate_relative_path()
@@ -98,6 +100,7 @@ def run_correctness(verbose=True):
             y = mod.gemm_a16w16(x, w)
             torch.cuda.synchronize()
             ref = _reference_gemm(x, w)
+            require_tensor_contract(y, ref, dtype=x.dtype)
             finite = bool(torch.isfinite(y).all().item())
             close = torch.allclose(y, ref, atol=1e-1, rtol=1e-2)
             ok = finite and close
@@ -127,6 +130,9 @@ def run_benchmark(verbose=True):
     report, latencies = [], []
     for idx, shape in enumerate(TEST_SHAPES):
         x, w = _make_inputs(shape["M"], shape["N"], shape["K"])
+        originals = (x.clone(), w.clone())
+        expected = _reference_gemm(x, w)
+        timed = TimedRun()
         fn = lambda: mod.gemm_a16w16(x, w)  # noqa: E731
         fn()
         torch.cuda.synchronize()
@@ -134,8 +140,13 @@ def run_benchmark(verbose=True):
             fn()
         torch.cuda.synchronize()
         ms, bench_meta = benchmark_cuda_graph_or_events(
-            fn, warmup=0, repetition=ITERS
+            fn, warmup=0, repetition=ITERS, timed_run=timed
         )
+        bench_meta.update(verify_timed_run(
+            timed, inputs=(x, w), originals=originals, expected=expected,
+            perturb=lambda: x.neg_(), reference=lambda: _reference_gemm(x, w),
+            compare=lambda actual, ref: allclose_output(actual, ref, atol=1e-1, rtol=1e-2),
+        ))
         latencies.append(ms)
         flops = 2.0 * shape["M"] * shape["N"] * shape["K"]
         report.append(
