@@ -29,3 +29,11 @@ syntax and import/interface checks. Missing candidates, incomplete measurements 
 invalid timing fail; commands emit `arena-eval-v1`, never final Arena score reports.
 Canonical benchmark helpers must be materialized by Arena; do not edit their generated regions.
 
+
+Protected checks retain the original equation, `hidden_states * sum(expert_scales)`,
+and atol=1e-2, rtol=1e-2. They additionally require the returned tensor's declared
+shape, dtype, device and finite values, and prevent candidate input mutation from
+changing the reference. The actual timed output and captured replay after input
+perturbation must satisfy that same rule. Perturbed inputs are restored in
+`finally`; original cases, seeds, warmups, samples, kernel and generated helpers
+remain unchanged.

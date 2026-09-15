@@ -1633,3 +1633,81 @@ def test_index_conversion_adapter_installs_correctness_and_timing_checks(monkeyp
     adapter=module_at(ROOT/'tasks/triton2triton/vllm/triton_convert_req_to_global_index/_arena_eval.py',monkeypatch)
     harness=adapter.load_harness()
     assert harness.run_correctness.__module__==harness.run_performance.__module__=='_index_conversion_checks'
+
+
+def identity_inputs():
+    hidden=torch.tensor([[2.,-4.],[3.,5.]],dtype=torch.float16)
+    scales=torch.tensor([[0.25,0.5],[0.5,0.75]],dtype=torch.float32)
+    expected=torch.tensor([[1.5,-3.],[3.75,6.25]],dtype=torch.float16)
+    return hidden,scales,expected
+
+
+def test_identity_reference_independent_known_answer(monkeypatch):
+    task=ROOT/'tasks/triton2triton/vllm/triton_compute_identity'
+    checks=module_at(task/'_arena_checks.py',monkeypatch)
+    harness=module_at(task/'scripts/task_runner.py',monkeypatch)
+    hidden,scales,expected=identity_inputs()
+    assert torch.equal(checks.reference(hidden,scales,2),expected)
+    assert torch.equal(harness.reference_compute_identity(hidden,scales,2),expected)
+
+
+@pytest.mark.parametrize('mode',['correct','shape','dtype','nonfinite','wrong_output','mutate_inputs'])
+def test_identity_correctness_requires_output_contract_and_pristine_inputs(monkeypatch,mode):
+    checks=module_at(ROOT/'tasks/triton2triton/vllm/triton_compute_identity/_arena_checks.py',monkeypatch)
+    hidden,scales,expected=identity_inputs()
+    def candidate(a,b,top_k):
+        out=expected.clone()
+        if mode=='shape':out=out[:1]
+        elif mode=='dtype':out=out.float()
+        elif mode=='nonfinite':out[0,0]=float('nan')
+        elif mode=='wrong_output':out.zero_()
+        elif mode=='mutate_inputs':a.zero_();b.zero_();out.zero_()
+        return out
+    mod=SimpleNamespace(compute_identity=candidate);load=lambda:mod
+    harness=SimpleNamespace(load_module=load)
+    with checks.checked_modules(harness):
+        if mode=='correct':assert torch.equal(harness.load_module().compute_identity(hidden,scales,2),expected)
+        else:
+            with pytest.raises(AssertionError):harness.load_module().compute_identity(hidden,scales,2)
+    assert harness.load_module is load and mod.compute_identity is candidate
+
+
+@pytest.mark.parametrize('mode',['correct','wrong_timed','stale','no_write','wrong_replay','mutate_inputs','replay_raises'])
+def test_identity_actual_timed_output_replay_and_input_restore(monkeypatch,mode):
+    checks=module_at(ROOT/'tasks/triton2triton/vllm/triton_compute_identity/_arena_checks.py',monkeypatch)
+    hidden_states,expert_scales,expected=identity_inputs();top_k=2
+    original=lambda a,b,k:sum((a.float()*b[:,i:i+1] for i in range(k))).to(a.dtype)
+    mod=SimpleNamespace(compute_identity=original)
+    harness=SimpleNamespace(_TimedRun=SimpleNamespace)
+    pristine=(hidden_states.clone(),expert_scales.clone())
+    def fn():mod.compute_identity(hidden_states,expert_scales,top_k)
+    options=[]
+    def benchmark(measured,*,timed_run,**kwargs):
+        options.append(kwargs);output=measured();cached=output.clone()
+        assert torch.equal(output,expected)
+        if mode=='wrong_timed':output.zero_()
+        def replay():
+            if mode=='replay_raises':raise RuntimeError('injected replay failure')
+            if mode=='stale':output.copy_(cached)
+            elif mode!='no_write':
+                output.copy_(measured())
+                if mode=='wrong_replay':output.fill_(123.)
+                elif mode=='mutate_inputs':hidden_states.zero_();expert_scales.zero_();output.zero_()
+            return output
+        timed_run.outputs=output;timed_run.rerun=replay
+        return 0.25,dict(benchmark_method='cuda_graph')
+    call=lambda:checks.checked_benchmark(harness,benchmark,fn,warmup=10,repetition=100)
+    if mode=='correct':
+        ms,metadata=call();assert ms==0.25 and metadata['perturbed_input_replay_checked']
+    elif mode=='replay_raises':
+        with pytest.raises(RuntimeError,match='injected replay failure'):call()
+    else:
+        with pytest.raises(AssertionError):call()
+    assert options==[dict(warmup=10,repetition=100)] and mod.compute_identity is original
+    assert all(torch.equal(value,saved) for value,saved in zip((hidden_states,expert_scales),pristine))
+
+
+def test_identity_adapter_installs_correctness_and_timing_checks(monkeypatch):
+    adapter=module_at(ROOT/'tasks/triton2triton/vllm/triton_compute_identity/_arena_eval.py',monkeypatch)
+    harness=adapter.load_harness()
+    assert harness.run_correctness.__module__==harness.run_performance.__module__=='_identity_checks'
