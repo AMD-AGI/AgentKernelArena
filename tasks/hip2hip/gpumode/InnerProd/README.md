@@ -79,3 +79,10 @@ receive the same numerical repair. Input shapes/values, explicit affine controls
 reference tolerance and sampling remain unchanged; the new baseline timing is
 not comparable to the former less accurate implementation. Final candidates may
 use any allowed reduction that passes the full original numerical gate.
+
+The native kernels receive the bias device pointer and load its scalar inside
+the kernel on the current HIP stream. The host must not dereference a GPU
+pointer or capture a potentially stale bias value before queued state updates.
+This applies to forward, nosum and pixelwise paths in both candidate and provided
+baseline. It also keeps captured replay bound to the current device bias buffer;
+no host synchronization or additional timed operator is introduced.
