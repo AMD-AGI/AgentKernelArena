@@ -24,7 +24,8 @@ TASK_DIR = os.path.dirname(os.path.abspath(__file__))
 os.chdir(TASK_DIR)
 
 TASK_NAME = "triton2flydsl/aiter/fav3_sage"
-SOURCE_FILE = os.path.join(TASK_DIR, "fav3_sage.py")
+from task_runtime import candidate_relative_path
+SOURCE_FILE = candidate_relative_path()
 
 # Small kernel config so several seqlen blocks are exercised cheaply on a shared GPU.
 # BLKQ == BLOCK_M and BLKK == BLOCK_N must stay consistent (the descale tables are
@@ -56,6 +57,7 @@ BENCHMARK_ITERATIONS = 100
 def load_module():
     spec = importlib.util.spec_from_file_location("fav3_sage_src", SOURCE_FILE)
     mod = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = mod
     spec.loader.exec_module(mod)
     return mod
 

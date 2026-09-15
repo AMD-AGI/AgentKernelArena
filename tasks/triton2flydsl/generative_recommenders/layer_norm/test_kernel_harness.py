@@ -27,7 +27,8 @@ TASK_DIR = os.path.dirname(os.path.abspath(__file__))
 os.chdir(TASK_DIR)
 
 TASK_NAME = "triton2flydsl/generative_recommenders/layer_norm"
-SOURCE_FILE = os.path.join(TASK_DIR, "layer_norm.py")
+from task_runtime import candidate_relative_path
+SOURCE_FILE = candidate_relative_path()
 
 # Test configurations: (N, D, learnable)
 #   N         = number of rows
@@ -54,6 +55,7 @@ PASS_FRACTION = 0.999
 def load_module():
     spec = importlib.util.spec_from_file_location("layer_norm_src", SOURCE_FILE)
     mod = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = mod
     spec.loader.exec_module(mod)
     return mod
 

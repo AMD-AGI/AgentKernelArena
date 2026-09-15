@@ -30,7 +30,8 @@ import sys
 from pathlib import Path
 from _aka_benchmark import benchmark_cuda_graph_or_events
 
-SOURCE_FILE = "gemm_a16w8_blockscale.py"
+from task_runtime import candidate_relative_path
+SOURCE_FILE = candidate_relative_path()
 ENTRY = "gemm_a16w8_blockscale"
 KERNEL = "_gemm_a16w8_blockscale_kernel"
 BLOCK_N, BLOCK_K = 128, 128
@@ -66,6 +67,7 @@ def _load_source():
     entry = os.path.join(_HERE, SOURCE_FILE)
     spec = importlib.util.spec_from_file_location("gemm_a16w8_blockscale_src", entry)
     mod = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = mod
     spec.loader.exec_module(mod)
     return mod
 

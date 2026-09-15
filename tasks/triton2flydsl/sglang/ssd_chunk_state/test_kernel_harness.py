@@ -24,7 +24,8 @@ TASK_DIR = os.path.dirname(os.path.abspath(__file__))
 os.chdir(TASK_DIR)
 
 TASK_NAME = "triton2flydsl/sglang/ssd_chunk_state"
-SOURCE_FILE = os.path.join(TASK_DIR, "ssd_chunk_state.py")
+from task_runtime import candidate_relative_path
+SOURCE_FILE = candidate_relative_path()
 
 # Mamba2 SSD shapes: seqlen = nchunks * chunk_size (dense, full chunks).
 # b, nheads(H), headdim(P), ngroups(G), dstate(N), chunk_size(cs), nchunks(C).
@@ -45,6 +46,7 @@ _DTYPES = {"bf16": "bfloat16", "fp16": "float16", "fp32": "float32"}
 def load_module():
     spec = importlib.util.spec_from_file_location("ssd_chunk_state_src", SOURCE_FILE)
     mod = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = mod
     spec.loader.exec_module(mod)
     return mod
 

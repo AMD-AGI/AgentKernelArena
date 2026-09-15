@@ -29,7 +29,8 @@ import sys
 from pathlib import Path
 from _aka_benchmark import benchmark_cuda_graph_or_events
 
-SOURCE_FILE = "batched_gemm_a8w8.py"
+from task_runtime import candidate_relative_path
+SOURCE_FILE = candidate_relative_path()
 ENTRY = "batched_gemm_a8w8"
 KERNEL = "_batched_gemm_a8w8_kernel"
 
@@ -55,6 +56,7 @@ def _load_source():
     entry = os.path.join(_HERE, SOURCE_FILE)
     spec = importlib.util.spec_from_file_location("batched_gemm_a8w8_src", entry)
     mod = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = mod
     spec.loader.exec_module(mod)
     return mod
 

@@ -26,7 +26,8 @@ import sys
 from pathlib import Path
 from _aka_benchmark import benchmark_cuda_graph_or_events
 
-SOURCE_FILE = "dynamic_mxfp8_quant.py"
+from task_runtime import candidate_relative_path
+SOURCE_FILE = candidate_relative_path()
 ENTRY = "dynamic_mxfp8_quant"
 KERNEL = "_dynamic_mxfp8_quant_kernel"
 QUANT_BLOCK_SIZE = 32
@@ -57,6 +58,7 @@ def _load_source():
     entry = os.path.join(_HERE, SOURCE_FILE)
     spec = importlib.util.spec_from_file_location("dynamic_mxfp8_quant_src", entry)
     mod = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = mod
     spec.loader.exec_module(mod)
     return mod
 

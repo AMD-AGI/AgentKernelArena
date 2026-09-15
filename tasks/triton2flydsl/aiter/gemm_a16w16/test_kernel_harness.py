@@ -24,7 +24,8 @@ import sys
 from pathlib import Path
 from _aka_benchmark import benchmark_cuda_graph_or_events
 
-SOURCE_FILE = "gemm_a16w16.py"
+from task_runtime import candidate_relative_path
+SOURCE_FILE = candidate_relative_path()
 ENTRY = "gemm_a16w16"
 KERNEL = "_gemm_a16_w16_kernel"
 
@@ -52,6 +53,7 @@ def _load_source():
     entry = os.path.join(_HERE, SOURCE_FILE)
     spec = importlib.util.spec_from_file_location("gemm_a16w16_src", entry)
     mod = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = mod
     spec.loader.exec_module(mod)
     return mod
 
@@ -78,6 +80,11 @@ def run_compile():
     return True
 
 
+def _reference_gemm(x, w):
+    import torch.nn.functional as F
+    return F.linear(x, w, bias=None)
+
+
 def run_correctness(verbose=True):
     import torch
     import torch.nn.functional as F
@@ -90,7 +97,7 @@ def run_correctness(verbose=True):
             x, w = _make_inputs(shape["M"], shape["N"], shape["K"])
             y = mod.gemm_a16w16(x, w)
             torch.cuda.synchronize()
-            ref = F.linear(x, w, bias=None)
+            ref = _reference_gemm(x, w)
             finite = bool(torch.isfinite(y).all().item())
             close = torch.allclose(y, ref, atol=1e-1, rtol=1e-2)
             ok = finite and close

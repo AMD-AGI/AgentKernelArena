@@ -24,7 +24,8 @@ TASK_DIR = os.path.dirname(os.path.abspath(__file__))
 os.chdir(TASK_DIR)
 
 TASK_NAME = "triton2flydsl/sglang/decode_attention"
-SOURCE_FILE = os.path.join(TASK_DIR, "decode_attention.py")
+from task_runtime import candidate_relative_path
+SOURCE_FILE = candidate_relative_path()
 MAX_KV_SPLITS = 8
 
 # Per-batch KV seq lens + head config. kv_group=1 hits the MHA normal stage1;
@@ -45,6 +46,7 @@ MAX_OOM_RETRIES = 5
 def load_module():
     spec = importlib.util.spec_from_file_location("decode_attention_src", SOURCE_FILE)
     mod = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = mod
     spec.loader.exec_module(mod)
     return mod
 

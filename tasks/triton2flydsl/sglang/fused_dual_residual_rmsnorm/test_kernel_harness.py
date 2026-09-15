@@ -25,7 +25,8 @@ TASK_DIR = os.path.dirname(os.path.abspath(__file__))
 os.chdir(TASK_DIR)
 
 TASK_NAME = "triton2flydsl/sglang/fused_dual_residual_rmsnorm"
-SOURCE_FILE = os.path.join(TASK_DIR, "fused_dual_residual_rmsnorm.py")
+from task_runtime import candidate_relative_path
+SOURCE_FILE = candidate_relative_path()
 EPS = 1e-6
 
 # [batch_size, hidden_dim] real transformer norm shapes (Llama/Qwen hidden dims).
@@ -50,6 +51,7 @@ def load_module():
     spec = importlib.util.spec_from_file_location(
         "fused_dual_residual_rmsnorm_src", SOURCE_FILE)
     mod = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = mod
     spec.loader.exec_module(mod)
     return mod
 

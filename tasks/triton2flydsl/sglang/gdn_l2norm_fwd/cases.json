@@ -1,0 +1,116 @@
+{
+  "cases": [
+    {
+      "test_case_id": "case_0000",
+      "params": {
+        "rows": 2048,
+        "D": 128,
+        "seed": 42,
+        "dtype": "bfloat16"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bfloat16"
+    },
+    {
+      "test_case_id": "case_0001",
+      "params": {
+        "rows": 16384,
+        "D": 128,
+        "seed": 43,
+        "dtype": "bfloat16"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bfloat16"
+    },
+    {
+      "test_case_id": "case_0002",
+      "params": {
+        "rows": 131072,
+        "D": 128,
+        "seed": 44,
+        "dtype": "bfloat16"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bfloat16"
+    },
+    {
+      "test_case_id": "case_0003",
+      "params": {
+        "rows": 245760,
+        "D": 128,
+        "seed": 45,
+        "dtype": "bfloat16"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bfloat16"
+    },
+    {
+      "test_case_id": "case_0004",
+      "params": {
+        "rows": 4096,
+        "D": 64,
+        "seed": 46,
+        "dtype": "bfloat16"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bfloat16"
+    },
+    {
+      "test_case_id": "case_0005",
+      "params": {
+        "rows": 4096,
+        "D": 256,
+        "seed": 47,
+        "dtype": "bfloat16"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bfloat16"
+    },
+    {
+      "test_case_id": "case_0006",
+      "params": {
+        "rows": 1024,
+        "D": 512,
+        "seed": 48,
+        "dtype": "bfloat16"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bfloat16"
+    },
+    {
+      "test_case_id": "case_0007",
+      "params": {
+        "rows": 1024,
+        "D": 1024,
+        "seed": 49,
+        "dtype": "bfloat16"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bfloat16"
+    }
+  ]
+}

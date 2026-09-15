@@ -29,7 +29,8 @@ TASK_DIR = os.path.dirname(os.path.abspath(__file__))
 os.chdir(TASK_DIR)
 
 TASK_NAME = "triton2flydsl/sglang/gdn_fused_recurrent_decode"
-SOURCE_FILE = os.path.join(TASK_DIR, "gdn_fused_recurrent_decode.py")
+from task_runtime import candidate_relative_path
+SOURCE_FILE = candidate_relative_path()
 
 # Test configs: (B, H, HV, K, V, pool_size) -- real Qwen3.5-35B-A3B GDN decode.
 #   TP=2 serving => H=8,  HV=16, K=128, V=128 ; batch swept around CONC~16.
@@ -50,12 +51,13 @@ WARMUP_ITERATIONS = 10
 BENCHMARK_ITERATIONS = 100
 MAX_OOM_RETRIES = 5
 
-DTYPE_NAME = os.environ.get("GDN_DTYPE", "bfloat16")
+DTYPE_NAME = 'bfloat16'  # protected suite dtype
 
 
 def load_module():
     spec = importlib.util.spec_from_file_location("gdn_decode_src", SOURCE_FILE)
     mod = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = mod
     spec.loader.exec_module(mod)
     return mod
 

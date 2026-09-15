@@ -1,0 +1,124 @@
+{
+  "cases": [
+    {
+      "test_case_id": "case_0000",
+      "params": {
+        "tokens": 128,
+        "combine_k": 1,
+        "hidden": 4096,
+        "dtype": "bf16",
+        "seed": 42
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bf16"
+    },
+    {
+      "test_case_id": "case_0001",
+      "params": {
+        "tokens": 128,
+        "combine_k": 2,
+        "hidden": 4096,
+        "dtype": "bf16",
+        "seed": 43
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bf16"
+    },
+    {
+      "test_case_id": "case_0002",
+      "params": {
+        "tokens": 64,
+        "combine_k": 4,
+        "hidden": 2048,
+        "dtype": "bf16",
+        "seed": 44
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bf16"
+    },
+    {
+      "test_case_id": "case_0003",
+      "params": {
+        "tokens": 256,
+        "combine_k": 8,
+        "hidden": 1024,
+        "dtype": "bf16",
+        "seed": 45
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bf16"
+    },
+    {
+      "test_case_id": "case_0004",
+      "params": {
+        "tokens": 1,
+        "combine_k": 2,
+        "hidden": 7168,
+        "dtype": "bf16",
+        "seed": 46
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bf16"
+    },
+    {
+      "test_case_id": "case_0005",
+      "params": {
+        "tokens": 32,
+        "combine_k": 2,
+        "hidden": 3072,
+        "dtype": "bf16",
+        "seed": 47
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bf16"
+    },
+    {
+      "test_case_id": "case_0006",
+      "params": {
+        "tokens": 16,
+        "combine_k": 2,
+        "hidden": 4096,
+        "dtype": "fp16",
+        "seed": 48
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "fp16"
+    },
+    {
+      "test_case_id": "case_0007",
+      "params": {
+        "tokens": 8,
+        "combine_k": 2,
+        "hidden": 2048,
+        "dtype": "fp32",
+        "seed": 49
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "fp32"
+    }
+  ]
+}

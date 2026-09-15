@@ -1,0 +1,123 @@
+{
+  "cases": [
+    {
+      "test_case_id": "case_0000",
+      "params": {
+        "b": 1,
+        "s": 64,
+        "hq": 4,
+        "hk": 4,
+        "d": 64,
+        "causal": true,
+        "window": 0,
+        "seed": 42
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0001",
+      "params": {
+        "b": 1,
+        "s": 128,
+        "hq": 8,
+        "hk": 8,
+        "d": 64,
+        "causal": true,
+        "window": 0,
+        "seed": 43
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0002",
+      "params": {
+        "b": 2,
+        "s": 128,
+        "hq": 8,
+        "hk": 2,
+        "d": 64,
+        "causal": true,
+        "window": 0,
+        "seed": 44
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0003",
+      "params": {
+        "b": 1,
+        "s": 128,
+        "hq": 8,
+        "hk": 8,
+        "d": 128,
+        "causal": true,
+        "window": 0,
+        "seed": 45
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0004",
+      "params": {
+        "b": 1,
+        "s": 128,
+        "hq": 8,
+        "hk": 8,
+        "d": 64,
+        "causal": false,
+        "window": 0,
+        "seed": 46
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0005",
+      "params": {
+        "b": 1,
+        "s": 256,
+        "hq": 8,
+        "hk": 8,
+        "d": 64,
+        "causal": true,
+        "window": 0,
+        "seed": 47
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0006",
+      "params": {
+        "b": 2,
+        "s": 128,
+        "hq": 8,
+        "hk": 8,
+        "d": 64,
+        "causal": true,
+        "window": 32,
+        "seed": 48
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    }
+  ]
+}

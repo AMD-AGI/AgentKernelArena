@@ -16,7 +16,7 @@ from src.task_protocol import CaseManifest, parse_command_result
 from src.task_spec import load_task_spec
 
 ROOT=Path(__file__).resolve().parents[1]
-FAMILIES=("flydsl2flydsl","torch2flydsl")
+FAMILIES=("flydsl2flydsl","torch2flydsl","triton2flydsl")
 TASKS=sorted(p.parent for family in FAMILIES for p in (ROOT/"tasks"/family).rglob("config.yaml"))
 
 
@@ -354,3 +354,305 @@ def test_torch_numerical_gates_cases_and_models_preserved():
         def calls(fn):
             return [ast.dump(n,include_attributes=False) for n in ast.walk(fn) if isinstance(n,ast.Call) and getattr(n.func,"id","") in {"benchmark_cuda_graph_or_events","_mean_ms"}]
         assert calls(original)==calls(direct),name
+
+# Base fingerprints cover original input generation, cases, tolerances, output
+# checks, timing, warmups and resets. Only declaration/loader plumbing and the
+# explicitly extracted reference expressions are normalized below.
+class _InlineTritonReference(ast.NodeTransformer):
+    def visit_Call(self, node):
+        self.generic_visit(node)
+        if isinstance(node.func, ast.Name):
+            name=node.func.id
+            if name=="_reference_softmax":
+                return ast.parse("torch.softmax(x, axis=1)",mode="eval").body
+            if name=="_reference_gemm":
+                return ast.parse("F.linear(x, w, bias=None)",mode="eval").body
+            if name=="_reference_layernorm":
+                return ast.parse('F.layer_norm(x, (shape["N"],), weight=weight, bias=bias, eps=EPS)',mode="eval").body
+        return node
+
+    def visit_Assign(self,node):
+        if isinstance(node.value,ast.Call) and getattr(node.value.func,"id",None)=="_reference_quant":
+            mode=ast.literal_eval(node.value.args[2])
+            source={
+                "static":"ref = (x / scale).to(qdtype)",
+                "dyn_tensor":"x_f32 = x.to(torch.float32)\nx_max = torch.max(torch.abs(x_f32))\nscale_ref = x_max / _dtype_max(qdtype)\nref = (x_f32 / scale_ref).to(qdtype)",
+                "dyn_token":"x_max, _ = torch.max(torch.abs(x), axis=-1)\nscale_ref = x_max.to(torch.float32) / _dtype_max(qdtype)\nref = (x * (1 / scale_ref[:, None])).to(qdtype)",
+            }[mode]
+            return ast.parse(source).body
+        return self.generic_visit(node)
+
+
+def _protected_triton_fingerprint(source):
+    tree=ast.parse(source)
+    excluded={"_load_source","load_module","run_compile","_prepare_kernel","_make_prepared_fused_moe_runner",
+              "_reference_softmax","_reference_gemm","_reference_layernorm","_reference_quant"}
+    nodes=[]
+    for n in tree.body:
+        if isinstance(n,ast.FunctionDef) and n.name not in excluded:
+            nodes.append(_InlineTritonReference().visit(n))
+        elif isinstance(n,ast.Assign) and all(isinstance(t,ast.Name) and t.id not in {"SOURCE_FILE","DTYPE_NAME","_HERE"} for t in n.targets):
+            nodes.append(n)
+    return hashlib.sha256(ast.dump(ast.Module(nodes,type_ignores=[]),include_attributes=False).encode()).hexdigest()
+
+
+def test_triton_preserves_original_harness_semantics_inputs_and_timing():
+    for name,expected in TRITON_PROTECTED_SHA256.items():
+        task=ROOT/"tasks/triton2flydsl"/name
+        assert _protected_triton_fingerprint((task/"test_kernel_harness.py").read_text())==expected,name
+        cfg=yaml.safe_load((task/"config.yaml").read_text())
+        assert cfg["baseline"]["kind"]=="initial_candidate"
+        assert cfg["baseline"]["language"]=="triton"
+        assert cfg["candidate"]["initial_language"]=="triton"
+        assert cfg["candidate"]["initial_state"]=="implemented"
+
+
+@pytest.mark.parametrize("task",[t for t in TASKS if "triton2flydsl" in t.parts],ids=lambda t:t.name)
+def test_triton_initial_syntax_compiles_but_is_not_a_final_flydsl_candidate(task):
+    result=invoke(task,"baseline","compile")
+    assert result.passed,result.reason
+    assert result.metadata["compile_kind"]=="python_bytecode"
+    result=invoke(task,"candidate","compile")
+    assert not result.passed
+    assert "FlyDSL" in result.reason,result.reason
+
+
+def test_triton_manifest_covers_every_original_variant():
+    tasks=[t for t in TASKS if "triton2flydsl" in t.parts]
+    assert len(tasks)==51
+    counts=[0,0]
+    for task in tasks:
+        rows=json.loads((task/"cases.json").read_text())["cases"]
+        actions=module(task/"scripts/task_actions.py")
+        assert len(rows)==actions.CORRECTNESS_COUNT
+        assert set(actions.PERFORMANCE_IDS.values())=={r["test_case_id"] for r in rows if "performance" in r["checks"]}
+        counts[0]+=len(rows);counts[1]+=len(actions.PERFORMANCE_IDS)
+        for row in rows:
+            assert "correctness" in row["checks"]
+    assert counts==[593,363]
+    def variants(name,key):
+        rows=json.loads((ROOT/"tasks/triton2flydsl/aiter"/name/"cases.json").read_text())["cases"]
+        return {r["params"][key] for r in rows}
+    assert variants("dynamic_quant_fp8","mode")=={"static","dyn_tensor","dyn_token"}
+    assert variants("dynamic_quant_fp8","quant_dtype")=={"int8","fp8"}
+    assert variants("batched_gemm_bf16","with_bias")=={False,True}
+    assert variants("ff_a16w16","activation")=={None,"gelu_tanh","relu","silu_exp2"}
+    assert variants("moe_fused_gemm","mul_routed_weight")=={False,True}
+    assert variants("rope_fwd","style")=={"NEOX","GPTJ"}
+
+
+def test_triton_actions_reject_partial_or_failed_correctness():
+    import types
+    task=ROOT/"tasks/triton2flydsl/sglang/gdn_chunk_fwd_h"
+    actions=module(task/"scripts/task_actions.py")
+    for result in (False,None,(True,None,[]),(False,"wrong state",[{}]*actions.CORRECTNESS_COUNT)):
+        with pytest.raises(RuntimeError):actions.check(types.SimpleNamespace(run_correctness=lambda:result))
+    actions.check(types.SimpleNamespace(run_correctness=lambda:(True,None,[{}]*actions.CORRECTNESS_COUNT)))
+
+
+def test_real_moe_host_dtype_bridge_preserves_original_triton_tokens():
+    import types
+    import torch
+    for rel,name in [("aiter/moe_fused_gemm/moe_fused_gemm.py","fused_moe"),("sglang/sglang_fused_moe/sglang_fused_moe.py","invoke_fused_moe_kernel")]:
+        p=ROOT/"tasks/triton2flydsl"/rel
+        fn=next(n for n in ast.parse(p.read_text()).body if isinstance(n,ast.FunctionDef) and n.name==name)
+        body=[n for n in fn.body if not (isinstance(n,ast.Expr) and isinstance(n.value,ast.Constant) and isinstance(n.value.value,str))]
+        bridge=body[0]
+        assert isinstance(bridge,ast.If) and "compute_type" in ast.unparse(bridge)
+        tl=types.SimpleNamespace(bfloat16=object(),float16=object())
+        for source,expected in [(torch.bfloat16,tl.bfloat16),(torch.float16,tl.float16),(tl.bfloat16,tl.bfloat16),(tl.float16,tl.float16)]:
+            ns={"torch":torch,"tl":tl,"compute_type":source}
+            exec(compile(ast.Module([bridge],type_ignores=[]),str(p),"exec"),ns)
+            assert ns["compute_type"] is expected
+
+
+def test_triton_known_answer_detects_a_state_update_bug(tmp_path):
+    src=ROOT/"tasks/triton2flydsl/sglang/gdn_chunk_fwd_h"
+    task=tmp_path/"task";shutil.copytree(src,task)
+    p=task/"test_kernel_harness.py"
+    source=p.read_text()
+    old="state = state + bv_bf.T @ k_c"
+    assert old in source
+    p.write_text(source.replace(old,"state = state - bv_bf.T @ k_c"))
+    result=invoke(task,"validate-task")
+    assert not result.passed and "known answer" in result.reason
+
+
+def test_triton_negative_control_detects_broken_task_comparator(tmp_path):
+    src=ROOT/"tasks/triton2flydsl/generative_recommenders/swiglu"
+    task=tmp_path/"task";shutil.copytree(src,task)
+    p=task/"test_kernel_harness.py";s=p.read_text();lines=s.splitlines()
+    fn=next(n for n in ast.parse(s).body if isinstance(n,ast.FunctionDef) and n.name=="_close")
+    lines[fn.lineno-1:fn.end_lineno]=['def _close(ref, out):','    return True, 1., 0.']
+    p.write_text('\n'.join(lines)+'\n')
+    result=invoke(task,"validate-task")
+    assert not result.passed and "deliberately incorrect" in result.reason
+
+
+def test_benchmark_metadata_expansion_is_accepted_without_inventing_method():
+    runtime=module(ROOT/"tasks/triton2flydsl/aiter/gemm_a16w16/task_runtime.py")
+    cases=runtime.manifest();actions=module(ROOT/"tasks/triton2flydsl/aiter/gemm_a16w16/scripts/task_actions.py")
+    cases=[c for c in cases if "performance" in c["checks"]]
+    # Public helper returns (ms, metadata); legacy harness expands that mapping.
+    meta={"benchmark_method":"cuda_event_fallback","fallback_reason":"fixture"}
+    records=[{"test_case_id":old,"execution_time_ms":.1,**meta} for old in actions.PERFORMANCE_IDS]
+    rows=runtime.require_result_rows(records,cases,actions.PERFORMANCE_IDS)
+    assert len(rows)==len(cases)
+    assert all(r["benchmark_method"]=="cuda_event_fallback" for r in rows)
+    assert all(r["metadata"]["fallback_reason"]=="fixture" for r in rows)
+
+
+TRITON_PROTECTED_SHA256 = {'aiter/batched_gemm_a8w8': 'd8740097efba2676164543599ebf3b1a6f6dff9b3ce2b47429a559f88b97226c',
+ 'aiter/batched_gemm_bf16': 'a0331afcc0b7e04b7df26cd339ae02bc408a4c8ad53e8dc6ca0e515faa7747fe',
+ 'aiter/dynamic_mxfp8_quant': '2b7fd1deb4cd4510eec598d674844d95f93242ae87dffe38d29dfeebf23d50b7',
+ 'aiter/dynamic_quant_fp8': '2f48c1322f84ec9b3b62feb05510f57d448d19c8c8aa6afafb623a5b5b4474ca',
+ 'aiter/fav3_sage': '5ede8776efee40a6ceb8f989bcec3f5d9e859e60fddcc346dc3eb19bfc94c19c',
+ 'aiter/fav3_sage_mxfp4': 'd238e3d4ae01cb47cd8324ed7af06442e475369d3855c7e504bf9611126b1a2a',
+ 'aiter/ff_a16w16': '85661a08ea4feaa4bf121ed30380abff7893f782263bf09f909a5002b83e3fba',
+ 'aiter/fp8_mqa_logits': 'd3b8d3059b8a76c20d37903501dcdf28dea6672edb320dae5401c92e8ecdc8a0',
+ 'aiter/fused_add_rmsnorm': '106759ede5640fb35d0b3ef7f4e1bbe91fa2a8659e70d391b0d9db7b2f9e9bbd',
+ 'aiter/fused_clamp_act_mul': '889f2343ef464df5b06a467ddba02e92b360fca1a28dd0574b85dc83f2dc6cc2',
+ 'aiter/fused_silu_mul': '79fdf195148b9f089b910d85f7217c1fa07481dac46e4dbb80c2b80670a981c2',
+ 'aiter/gemm_a16w16': '282a1199cc83a47a57f02e7b3f7ad84bc3ba804efa5b2714a3249e388b3fd3ee',
+ 'aiter/gemm_a16w8_blockscale': '2eaa821a6f6ad09ff2ad5cd42ff98fea704576c15d7d66d7d4bc2b51e51b6075',
+ 'aiter/gemm_a8w8': '0699185f68711faafff6caac01859f38d807def2d9d4b652962f95bb3fe04aa1',
+ 'aiter/gemm_a8w8_blockscale': '0736be31cb99af41a8d00ebccd24a11153a040bf291337f526d4b4469c174674',
+ 'aiter/gemm_afp8wfp8': 'e23e2d7e24bf8965fd43ab10521debeb6df4c7caee75e4b08dce812f6c4d5a2b',
+ 'aiter/layernorm': '6ce5fe3a4c299f3da1b738d7edd4180a6bd85cfe7fde7fb1079ca3fc229c2de9',
+ 'aiter/mha': 'baa74537ab3aa7abccd2e3a756f11b16d765baa9e2f0b32b93f8a3369715ac2e',
+ 'aiter/mla': 'dfddf7034947d7f4e4854e664487f1f9d8594d675e2d54dde55b006b03048059',
+ 'aiter/moe_fused_gemm': 'f0f85aa10cef13505d6b5ff9c4fa82b57916d76ae3b0b10ed6e2dd7a8527df99',
+ 'aiter/moe_routing_sigmoid_top1': '4c6cdef84f310dc209fe27e5962cfd32c7905def5c5cc5c9c2f178d0d1124a84',
+ 'aiter/rmsnorm': 'dfa1a9ad60af1cfbf595e8bb3c5095636b531bd4618ef4007e9ca16d93d1eb54',
+ 'aiter/rope_fwd': '7f344854df63ee74dbe8ed66a5857237d7483092da5d8569b5d75725b15a90c5',
+ 'aiter/softmax': '0824d5bcbf1efbcb0ef00b772506d500fbe66320bc081d4ecdd37567dc3daf0a',
+ 'aiter/unified_attention': 'dc52a073b202c5cec75a4d672766a7115d7461e426bc3d28527ab6bf11c4397e',
+ 'aiter/unified_attention_sparse_mla': '730c276f56b2313e2e08090ff597c4a8e5196c9e667fc98257596e92f5ca05ec',
+ 'generative_recommenders/jagged_dense_bmm_broadcast_add': 'a134469a78b7d386deaad6106d6443fa26dba1490529b32ab71beeed2fe42a9e',
+ 'generative_recommenders/jagged_dense_broadcast_add': '8070ed47d66de6dc07a80fb89f1379be5a51a148a633760a77eb02f11e91c7be',
+ 'generative_recommenders/layer_norm': '91e577e22379b564b07fc980b09b381ba12bc4c7ff2e3f537795b101e1693506',
+ 'generative_recommenders/swiglu': '8cff11ca2f29f2d20b70f672bd08f5c978eb84e4d0685e5987b974124d68bc8d',
+ 'sglang/chunk_local_cumsum': 'c19460a041ef88d6d1bda3f5dc273e06547083b66ecab5812e3fc487cc61ef6d',
+ 'sglang/chunk_scaled_dot_kkt_fwd': 'd5494cea25747437be1f6a7a2e498bf48a0c88617148c8c6c636254d75fa0ba9',
+ 'sglang/decode_attention': '841ae724d2fef05e643d830eadf8ecb87811b769af5c0e7462b79718ee940436',
+ 'sglang/dsv4_fp4_indexer': '2f44475812d6ff8ee771b3f7ea13eac0d2b904e6af769a2e92814322f32cb684',
+ 'sglang/experts_combine': 'c2b615576def29c1873a2d6e47a1e27211a54fb3d11e2536916adf40bba8563c',
+ 'sglang/extend_attention': 'dfe3ced0bea49210a61dc05b274397796dfd1e64f2087b98bf3007dd8e4542b4',
+ 'sglang/fused_dual_residual_rmsnorm': '1d8e18122149c7d81e7fa7319c2f5b6e000b43a205dd96d703ce5aafc925b727',
+ 'sglang/fused_gdn_gating': '647ddcb0a163d4eabf7583d81602e253b343ff2bc0d3306b9498a730e8a136c9',
+ 'sglang/fused_moe_router': 'a75dacd36cc4d930f0f36c8ef412953a798de35f76bffd8a64dc2657bcf607c2',
+ 'sglang/fused_norm_gate': 'f8e383d43355b3d261abf8ad6a1479e30fabb9fe458f4d068b993e1a3700ecb9',
+ 'sglang/gdn_chunk_fwd_h': 'e483d4c746630d49b5a70fcdc9c484d5a0f81493ab742fa8dd0e637080c6fffc',
+ 'sglang/gdn_chunk_fwd_o': '21fa391b4f23d75c555b0d08adff5c88b9f2fc07ec8f52ac8179ec9e945ea447',
+ 'sglang/gdn_fused_recurrent_decode': 'a2cf95190db9acb593241a181cd22df4621672a29debc6dbd03f237d57103b45',
+ 'sglang/gdn_l2norm_fwd': 'b9eea5fb7b300894b925f551bac954f220bad6fe6a1ecd7d803a12f268ecea96',
+ 'sglang/lightning_attn': '2f0f517ad6145f8129529c223624d14edad55b3060007ff7aa16ffb73345fbff',
+ 'sglang/merge_state': 'c2d19e307d111ddf8d6e26ad087b5f59f4cf6e67cd203bc308b10cdc8ad457c9',
+ 'sglang/prefill_attention': '5fb5a5b43e867327cf5a112689fbfc6103fed43c6eeabe3d7a9db0f1ad20c61d',
+ 'sglang/sglang_fused_moe': '005a78bdc7551901bf06507c31882ba1a9ba3479b08606526be1692dc323d758',
+ 'sglang/ssd_chunk_state': '88f7c12cefc1ac6ad586fd0e7b7ae109ff47242e7b4b989f63103c32a600c96e',
+ 'sglang/triton_mrope_fused': '408a924868dc1ec3114e8d97b48598c95dd6033f1b7296f1e9a5fe7e5c5b94c0',
+ 'sglang/wy_fast': 'a7bbbb6b8d61f6caa3c300bf7b299fc679b767abccde60833a72401d3517c799'}
+
+
+def test_triton_initial_implementation_preserves_original_compute():
+    bridges={"aiter/moe_fused_gemm/moe_fused_gemm.py":"fused_moe", "sglang/sglang_fused_moe/sglang_fused_moe.py":"invoke_fused_moe_kernel"}
+    for rel,expected in TRITON_SOURCE_SHA256.items():
+        tree=ast.parse((ROOT/"tasks/triton2flydsl"/rel).read_text())
+        if rel in bridges:
+            fn=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name==bridges[rel])
+            # The independently exercised neutral host dtype bridge is the sole
+            # source change; original Triton kernels/launches remain bytecode-equivalent.
+            bridge=fn.body[1]
+            assert isinstance(bridge,ast.If) and "compute_type" in ast.unparse(bridge)
+            fn.body.pop(1)
+        assert hashlib.sha256(ast.dump(tree,include_attributes=False).encode()).hexdigest()==expected,rel
+
+
+def test_invalid_candidate_syntax_is_reported_in_protocol(tmp_path):
+    task=tmp_path/"task";shutil.copytree(ROOT/"tasks/triton2flydsl/aiter/softmax",task)
+    (task/"softmax.py").write_text("def broken(:\n")
+    result=invoke(task,"baseline","compile")
+    assert not result.passed and "SyntaxError" in result.reason
+
+TRITON_SOURCE_SHA256 = {'aiter/batched_gemm_a8w8/batched_gemm_a8w8.py': 'd10dcaef6641455d478c865bd1862ba8bd6d33d0b698538cd136c2a9ea3472dc',
+ 'aiter/batched_gemm_bf16/batched_gemm_bf16.py': '9b4cbeb1af22308f4888d93e2527e569803c9ef53fe3905545c19dc0333cd505',
+ 'aiter/dynamic_mxfp8_quant/dynamic_mxfp8_quant.py': 'f62a40d00fdfdce03664e2fe265881eff3596d82baf6e29ff9bb52c55809fba5',
+ 'aiter/dynamic_quant_fp8/dynamic_quant_fp8.py': '91eeb794415a8699273d5a9c1158debce795348eada895778deb8af324829c8f',
+ 'aiter/fav3_sage/fav3_sage.py': '134c3ca42fa42c77110dcaa3d0b30bdef260fa37e3316214f2776c355dad4964',
+ 'aiter/fav3_sage_mxfp4/fav3_sage_mxfp4.py': '69bd08c06f42d90c5881281ab752d52f86b162b7119a02945392ba6d68a3cb1b',
+ 'aiter/ff_a16w16/ff_a16w16.py': 'ccbb25db76cb6de4913c553856a3dbdc3218d645eb48298ade6e096152046917',
+ 'aiter/fp8_mqa_logits/fp8_mqa_logits.py': 'bfbaf7644d3b8e9bbde7e7cde46b6ae6dd16b97b115c8abb946b4e2ef6a30acb',
+ 'aiter/fused_add_rmsnorm/fused_add_rmsnorm.py': '77b6199eec5e5c891b16a48d50726a8ea42954633a9989596546e6ea8cb9c555',
+ 'aiter/fused_clamp_act_mul/fused_clamp_act_mul.py': 'bb0447f6ce9c58eb73cde2fd097d1fedca01db7e79bb8a9c8a162c5172af12f6',
+ 'aiter/fused_silu_mul/fused_silu_mul.py': '56542d48a81297de542bc6899664de6ee31f1ca0faf7758c9e6dbf3e0f4120eb',
+ 'aiter/gemm_a16w16/gemm_a16w16.py': 'af467b6c10f9a39982dfa4b67932ac3987df7c5e37e7bd660b5d7ac614135789',
+ 'aiter/gemm_a16w8_blockscale/gemm_a16w8_blockscale.py': 'e461e0f6b0c4065dadb3aa7f6b8d42090e45a2caafedaf2e632e604bcc7c3733',
+ 'aiter/gemm_a8w8/gemm_a8w8.py': '76a4497ad2258280ca2e7dbcf70bf2e75cdc513ac6a727e06b2c581c8e57acc1',
+ 'aiter/gemm_a8w8_blockscale/gemm_a8w8_blockscale.py': 'c273807cf10546c5a77f90338129dac7b6f9bfcf4dfe53298d555e17ec584850',
+ 'aiter/gemm_afp8wfp8/gemm_afp8wfp8.py': '63631b70d3cf97f3dc2c682f322a7f1e71272bbc78e6760693ad34465b737786',
+ 'aiter/layernorm/layernorm.py': '42035db0231238ef54943cc30dfb986c7994bf50cee40d2b4a7951680ec27136',
+ 'aiter/mha/mha.py': 'b567863379b1d0133c67035dcc238b4a837cb989c3687a110d28d3d505a26070',
+ 'aiter/mla/mla.py': 'e2e25d493b2fd95423a1b264e145180c81b3dc4a0990627b6661ad7c8b9f51b3',
+ 'aiter/moe_fused_gemm/moe_fused_gemm.py': '9762ceea15b969bcbfc482a25f581be621ca171807b479ff4eea4961c2aff379',
+ 'aiter/moe_routing_sigmoid_top1/moe_routing_sigmoid_top1.py': '882d4404d5e585ae98f9c0f7d2e3828eb4bf6b10d08ee280530ad95d8f5f83be',
+ 'aiter/rmsnorm/rmsnorm.py': '641e4b54a0be80e2d9b24c33f0006c9e16e8a4388941b80d6b17b6f9200ba725',
+ 'aiter/rope_fwd/rope_fwd.py': 'e98a37cb518f93e3fb40f29c63a23996403adb0f540787e9a41932c93a2457c3',
+ 'aiter/softmax/softmax.py': '829494ee4a57cd87892d89fabb20400d7e92467e17721861114bb2354e7426ab',
+ 'aiter/unified_attention/unified_attention.py': '9d889380751998cc6b518a1db5e166669ca36e125e335ef77e7bc379ac470bac',
+ 'aiter/unified_attention_sparse_mla/unified_attention_sparse_mla.py': 'e3a90181251c6a9d5995f63d638cf70b4badaaeda1c1696f82414276a768441e',
+ 'generative_recommenders/jagged_dense_bmm_broadcast_add/jagged_dense_bmm_broadcast_add.py': 'f42f3f4fa08c588907a749551a7463e4b8e77f5dfca92a9e1f1ed1958bda2e3c',
+ 'generative_recommenders/jagged_dense_broadcast_add/jagged_dense_broadcast_add.py': '05ac1765b2138ac27c8ca59fa1bf57fbac2965f6f6c44dc7cf26789cda653373',
+ 'generative_recommenders/layer_norm/layer_norm.py': '0118682f3a8700e1e8c735806aed8b20945e7592cacfa24d857ea836c344045b',
+ 'generative_recommenders/swiglu/swiglu.py': '96f77e03f9da841209d4603f1d3d308e05b973a12f5220761c907e92dbe6d712',
+ 'sglang/chunk_local_cumsum/chunk_local_cumsum.py': 'ecc8ac458425000fd12617bd84cbd393c2d89bf1d838398e1ea1cf719e1f254f',
+ 'sglang/chunk_scaled_dot_kkt_fwd/chunk_scaled_dot_kkt_fwd.py': 'cba5027df64812f48adfc41db29cafd1722218be22612ceb5ae3c6340464fadc',
+ 'sglang/decode_attention/decode_attention.py': '02421eccd7c46ed7e07fc8edbda2bed5f0f7fc67dd85288dee8d4660585a87d5',
+ 'sglang/dsv4_fp4_indexer/dsv4_fp4_indexer.py': 'abef459c844dc66404d09c9152d82288da1e19a3a380807f97452edddcb03ed5',
+ 'sglang/experts_combine/experts_combine.py': '165b80ce60456b5bc0d1125aaba9e06fd983d2a6ab77040b6b447aa4c7fdd31e',
+ 'sglang/extend_attention/extend_attention.py': '7cc30ba6bae3f45b1a300c7f34e37a71d8a39afb9c9eb451c607ddc27ac0b642',
+ 'sglang/fused_dual_residual_rmsnorm/fused_dual_residual_rmsnorm.py': 'de66df3f2b5d3984cd772c7c3e8b055944ff90e0ab1c58850724183b978417b7',
+ 'sglang/fused_gdn_gating/fused_gdn_gating.py': 'a7dfcef320613e938f56848f7c277647a2cc8faa2c51f7aa4d6496036269aa08',
+ 'sglang/fused_moe_router/fused_moe_router.py': 'a15625819a74cda7858bcbba0b821a240d852657f279fc572b2f404540f44309',
+ 'sglang/fused_norm_gate/fused_norm_gate.py': 'ca5b89fe8cf05428b505238049f4de4ccc635ed095a9168d7479d9ba25d4c7d0',
+ 'sglang/gdn_chunk_fwd_h/gdn_chunk_fwd_h.py': 'ca6f0993262fb1553d19eaffc15892956568b28ef812e5b0db4bfdf3d30ba37b',
+ 'sglang/gdn_chunk_fwd_o/gdn_chunk_fwd_o.py': '4291d6f8e3f5b97aad01cd6df5ff8ae5fd142ae38d3b5467a893296a231a1fe2',
+ 'sglang/gdn_fused_recurrent_decode/gdn_fused_recurrent_decode.py': '74257035ccbf4b4d4b3414d9fbded34e555cc967159b0e8a0acdfda70c56fd20',
+ 'sglang/gdn_l2norm_fwd/gdn_l2norm_fwd.py': 'f9d3a410e435bddbdefc7d9a1783e49096910d4f1d0e1a84eecdddfc99ce3690',
+ 'sglang/lightning_attn/lightning_attn.py': '56ab2e6b9acda62d47f31d5857eaa6717a09eb986207ab0c616c7e442f94fa47',
+ 'sglang/merge_state/merge_state.py': 'd465567a07f58e8fd2fcb3a01ec5cf218342cca2d1c26780efb0dfe36f7640d6',
+ 'sglang/prefill_attention/prefill_attention.py': '5a82ede42327451bf8860eb33364547fb9009b629fda53b2a0c352e5f0126802',
+ 'sglang/sglang_fused_moe/sglang_fused_moe.py': '195ac64c3f673af2c3192ec4f4461491e675a38901b9b627bb9842c990f7d194',
+ 'sglang/ssd_chunk_state/ssd_chunk_state.py': '1d9741ea3f23217ad6c2dced5d82928413b60501fcc200f2497d3b6b56bb6c50',
+ 'sglang/triton_mrope_fused/triton_mrope_fused.py': '80c9daa2ec4a3723983ada981f2363d49f8cd466b1b8226ef3b8814bf85f4a50',
+ 'sglang/wy_fast/wy_fast.py': '2e7c2c821cdec65faf508ffe2e573f80b76b7cbb2b06f534a059b9ba8f244da2'}
+
+
+def test_declared_gpu_constraints_are_retained_without_unverified_widening():
+    observed={}
+    for task in TASKS:
+        cfg=yaml.safe_load((task/"config.yaml").read_text())
+        arch=cfg.get("platform_support",{}).get("required_arch")
+        if arch:observed[str(task.relative_to(ROOT/"tasks"))]=arch
+    assert observed==ORIGINAL_REQUIRED_ARCH
+
+ORIGINAL_REQUIRED_ARCH = {'flydsl2flydsl/flash_attn_func_kernel': 'gfx942',
+ 'flydsl2flydsl/fp8_gemm_4wave_kernel': 'gfx950',
+ 'flydsl2flydsl/fp8_gemm_8wave_kernel': 'gfx950',
+ 'flydsl2flydsl/fused_rope_cache_kernel': 'gfx942',
+ 'flydsl2flydsl/hgemm_splitk_kernel': 'gfx942',
+ 'flydsl2flydsl/layernorm_kernel': 'gfx942',
+ 'flydsl2flydsl/moe_sorting_kernel': 'gfx942',
+ 'flydsl2flydsl/pa_decode_swa_kernel': 'gfx942',
+ 'flydsl2flydsl/rmsnorm_kernel': 'gfx942',
+ 'flydsl2flydsl/silu_and_mul_fq_kernel': 'gfx942',
+ 'flydsl2flydsl/softmax_kernel': 'gfx942',
+ 'flydsl2flydsl/topk_gating_softmax_kernel': 'gfx942',
+ 'torch2flydsl/gemm_a16wfp4_kernel': 'gfx950',
+ 'torch2flydsl/gemm_a4w4_kernel': 'gfx950',
+ 'torch2flydsl/gemm_a8wfp4_kernel': 'gfx950',
+ 'torch2flydsl/gemm_afp4wfp4_kernel': 'gfx950',
+ 'torch2flydsl/gemm_afp8wfp8_kernel': 'gfx950',
+ 'torch2flydsl/quant_mxfp4_kernel': 'gfx950',
+ 'triton2flydsl/aiter/fav3_sage_mxfp4': 'gfx950',
+ 'triton2flydsl/aiter/gemm_afp8wfp8': 'gfx950'}

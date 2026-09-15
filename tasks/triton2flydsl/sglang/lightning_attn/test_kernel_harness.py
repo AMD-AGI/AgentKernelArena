@@ -27,7 +27,8 @@ TASK_DIR = os.path.dirname(os.path.abspath(__file__))
 os.chdir(TASK_DIR)
 
 TASK_NAME = "triton2flydsl/sglang/lightning_attn"
-SOURCE_FILE = os.path.join(TASK_DIR, "lightning_attn.py")
+from task_runtime import candidate_relative_path
+SOURCE_FILE = candidate_relative_path()
 
 # [B, H, D]; D % BLOCK_SIZE == 0. Real MiniMax linear-attn head_dim is 96/128.
 TEST_SHAPES = [
@@ -48,6 +49,7 @@ _DTYPES = {"bf16": "bfloat16", "fp16": "float16", "fp32": "float32"}
 def load_module():
     spec = importlib.util.spec_from_file_location("lightning_attn_src", SOURCE_FILE)
     mod = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = mod
     spec.loader.exec_module(mod)
     return mod
 

@@ -23,7 +23,8 @@ TASK_DIR = os.path.dirname(os.path.abspath(__file__))
 os.chdir(TASK_DIR)
 
 TASK_NAME = "triton2flydsl/aiter/unified_attention_sparse_mla"
-SOURCE_FILE = os.path.join(TASK_DIR, "unified_attention_sparse_mla.py")
+from task_runtime import candidate_relative_path
+SOURCE_FILE = candidate_relative_path()
 
 # Test configurations:
 # (num_seqs, tokens_per_seq, num_query_heads, kv_lora_rank, rope_rank,
@@ -50,6 +51,7 @@ _OOM_BACKOFF_S = 1.5
 def load_module():
     spec = importlib.util.spec_from_file_location("sparse_mla_src", SOURCE_FILE)
     mod = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = mod
     spec.loader.exec_module(mod)
     return mod
 

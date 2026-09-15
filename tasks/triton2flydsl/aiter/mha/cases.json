@@ -1,0 +1,100 @@
+{
+  "cases": [
+    {
+      "test_case_id": "case_0000",
+      "params": {
+        "batch": 2,
+        "seqlen": 128,
+        "nqh": 8,
+        "nkvh": 8,
+        "hs": 64,
+        "causal": false,
+        "seed": 42
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0001",
+      "params": {
+        "batch": 2,
+        "seqlen": 128,
+        "nqh": 8,
+        "nkvh": 8,
+        "hs": 64,
+        "causal": true,
+        "seed": 43
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0002",
+      "params": {
+        "batch": 1,
+        "seqlen": 256,
+        "nqh": 16,
+        "nkvh": 16,
+        "hs": 128,
+        "causal": true,
+        "seed": 44
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0003",
+      "params": {
+        "batch": 4,
+        "seqlen": 64,
+        "nqh": 16,
+        "nkvh": 4,
+        "hs": 64,
+        "causal": true,
+        "seed": 45
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0004",
+      "params": {
+        "batch": 1,
+        "seqlen": 512,
+        "nqh": 8,
+        "nkvh": 2,
+        "hs": 128,
+        "causal": false,
+        "seed": 46
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0005",
+      "params": {
+        "batch": 2,
+        "seqlen": 384,
+        "nqh": 12,
+        "nkvh": 12,
+        "hs": 64,
+        "causal": true,
+        "seed": 47
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,112 @@
+{
+  "cases": [
+    {
+      "test_case_id": "case_0000",
+      "params": {
+        "ns": 1,
+        "nt": 1,
+        "nqh": 16,
+        "nkvh": 1,
+        "lora": 128,
+        "rope": 64,
+        "bs": 64,
+        "slk": 128,
+        "seed": 42
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0001",
+      "params": {
+        "ns": 2,
+        "nt": 1,
+        "nqh": 16,
+        "nkvh": 1,
+        "lora": 128,
+        "rope": 64,
+        "bs": 64,
+        "slk": 256,
+        "seed": 43
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0002",
+      "params": {
+        "ns": 4,
+        "nt": 1,
+        "nqh": 16,
+        "nkvh": 1,
+        "lora": 256,
+        "rope": 64,
+        "bs": 64,
+        "slk": 512,
+        "seed": 44
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0003",
+      "params": {
+        "ns": 1,
+        "nt": 1,
+        "nqh": 128,
+        "nkvh": 1,
+        "lora": 512,
+        "rope": 64,
+        "bs": 64,
+        "slk": 1024,
+        "seed": 45
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0004",
+      "params": {
+        "ns": 2,
+        "nt": 1,
+        "nqh": 32,
+        "nkvh": 1,
+        "lora": 128,
+        "rope": 64,
+        "bs": 32,
+        "slk": 192,
+        "seed": 46
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0005",
+      "params": {
+        "ns": 1,
+        "nt": 4,
+        "nqh": 16,
+        "nkvh": 1,
+        "lora": 128,
+        "rope": 64,
+        "bs": 64,
+        "slk": 256,
+        "seed": 47
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,269 @@
+{
+  "cases": [
+    {
+      "test_case_id": "case_0000",
+      "params": {
+        "batch": 1,
+        "hidden": 1,
+        "intermediate": 1,
+        "activation": "gelu_tanh",
+        "seed": 0
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0001",
+      "params": {
+        "batch": 1,
+        "hidden": 1,
+        "intermediate": 1,
+        "activation": "silu_exp2",
+        "seed": 0
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0002",
+      "params": {
+        "batch": 1,
+        "hidden": 1,
+        "intermediate": 1,
+        "activation": "relu",
+        "seed": 0
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0003",
+      "params": {
+        "batch": 1,
+        "hidden": 1,
+        "intermediate": 1,
+        "activation": null,
+        "seed": 0
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0004",
+      "params": {
+        "batch": 3,
+        "hidden": 5,
+        "intermediate": 2,
+        "activation": "gelu_tanh",
+        "seed": 0
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0005",
+      "params": {
+        "batch": 3,
+        "hidden": 5,
+        "intermediate": 2,
+        "activation": "silu_exp2",
+        "seed": 0
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0006",
+      "params": {
+        "batch": 3,
+        "hidden": 5,
+        "intermediate": 2,
+        "activation": "relu",
+        "seed": 0
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0007",
+      "params": {
+        "batch": 3,
+        "hidden": 5,
+        "intermediate": 2,
+        "activation": null,
+        "seed": 0
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0008",
+      "params": {
+        "batch": 32,
+        "hidden": 1024,
+        "intermediate": 1024,
+        "activation": "gelu_tanh",
+        "seed": 0
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0009",
+      "params": {
+        "batch": 32,
+        "hidden": 1024,
+        "intermediate": 1024,
+        "activation": "silu_exp2",
+        "seed": 0
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0010",
+      "params": {
+        "batch": 32,
+        "hidden": 1024,
+        "intermediate": 1024,
+        "activation": "relu",
+        "seed": 0
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0011",
+      "params": {
+        "batch": 32,
+        "hidden": 1024,
+        "intermediate": 1024,
+        "activation": null,
+        "seed": 0
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0012",
+      "params": {
+        "batch": 128,
+        "hidden": 2048,
+        "intermediate": 8192,
+        "activation": "gelu_tanh",
+        "seed": 0
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0013",
+      "params": {
+        "batch": 128,
+        "hidden": 2048,
+        "intermediate": 8192,
+        "activation": "silu_exp2",
+        "seed": 0
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0014",
+      "params": {
+        "batch": 128,
+        "hidden": 2048,
+        "intermediate": 8192,
+        "activation": "relu",
+        "seed": 0
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0015",
+      "params": {
+        "batch": 128,
+        "hidden": 2048,
+        "intermediate": 8192,
+        "activation": null,
+        "seed": 0
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0016",
+      "params": {
+        "batch": 64,
+        "hidden": 5120,
+        "intermediate": 2880,
+        "activation": "gelu_tanh",
+        "seed": 0
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0017",
+      "params": {
+        "batch": 64,
+        "hidden": 5120,
+        "intermediate": 2880,
+        "activation": "silu_exp2",
+        "seed": 0
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0018",
+      "params": {
+        "batch": 64,
+        "hidden": 5120,
+        "intermediate": 2880,
+        "activation": "relu",
+        "seed": 0
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0019",
+      "params": {
+        "batch": 64,
+        "hidden": 5120,
+        "intermediate": 2880,
+        "activation": null,
+        "seed": 0
+      },
+      "checks": [
+        "correctness"
+      ]
+    }
+  ]
+}

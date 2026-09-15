@@ -22,7 +22,8 @@ from pathlib import Path
 
 from _aka_benchmark import benchmark_cuda_graph_or_events
 
-SOURCE_FILE = "fp8_mqa_logits.py"
+from task_runtime import candidate_relative_path
+SOURCE_FILE = candidate_relative_path()
 ENTRY = "fp8_mqa_logits"
 KERNEL = "_fp8_mqa_logits_kernel"
 
@@ -64,6 +65,7 @@ def load_module():
     entry = os.path.join(_TASK_DIR, SOURCE_FILE)
     spec = importlib.util.spec_from_file_location("fp8_mqa_logits_src", entry)
     mod = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = mod
     spec.loader.exec_module(mod)
     return mod
 

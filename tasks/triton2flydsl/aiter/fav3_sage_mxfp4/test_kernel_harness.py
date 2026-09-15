@@ -28,7 +28,8 @@ TASK_DIR = os.path.dirname(os.path.abspath(__file__))
 os.chdir(TASK_DIR)
 
 TASK_NAME = "triton2flydsl/aiter/fav3_sage_mxfp4"
-SOURCE_FILE = os.path.join(TASK_DIR, "fav3_sage_mxfp4.py")
+from task_runtime import candidate_relative_path
+SOURCE_FILE = candidate_relative_path()
 
 # Tuned MXFP4 config (matches get_sage_fwd_configs_mxfp4 on gfx950). BLOCK_N is the
 # K-block granularity at which P is rounded to FP8, so the reference must use the
@@ -64,6 +65,7 @@ def _block_r(head_dim):
 def load_module():
     spec = importlib.util.spec_from_file_location("fav3_sage_mxfp4_src", SOURCE_FILE)
     mod = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = mod
     spec.loader.exec_module(mod)
     return mod
 

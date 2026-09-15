@@ -25,7 +25,8 @@ TASK_DIR = os.path.dirname(os.path.abspath(__file__))
 os.chdir(TASK_DIR)
 
 TASK_NAME = "triton2flydsl/sglang/triton_mrope_fused"
-SOURCE_FILE = os.path.join(TASK_DIR, "triton_mrope_fused.py")
+from task_runtime import candidate_relative_path
+SOURCE_FILE = candidate_relative_path()
 MAX_POS = 4096
 
 # Real Qwen2-VL / Qwen2.5-VL M-RoPE shapes. mrope_section sums to rotary_dim//2.
@@ -57,6 +58,7 @@ MAX_OOM_RETRIES = 5
 def load_module():
     spec = importlib.util.spec_from_file_location("triton_mrope_fused_src", SOURCE_FILE)
     mod = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = mod
     spec.loader.exec_module(mod)
     return mod
 

@@ -25,7 +25,8 @@ TASK_DIR = os.path.dirname(os.path.abspath(__file__))
 os.chdir(TASK_DIR)
 
 TASK_NAME = "triton2flydsl/sglang/chunk_local_cumsum"
-SOURCE_FILE = os.path.join(TASK_DIR, "chunk_local_cumsum.py")
+from task_runtime import candidate_relative_path
+SOURCE_FILE = candidate_relative_path()
 CHUNK_SIZE = 64
 
 # Test configs: dicts. scalar (ndim=3): [B,T,H]; vector (ndim=4): [B,T,H,S].
@@ -50,6 +51,7 @@ MAX_OOM_RETRIES = 5
 def load_module():
     spec = importlib.util.spec_from_file_location("chunk_local_cumsum_src", SOURCE_FILE)
     mod = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = mod
     spec.loader.exec_module(mod)
     return mod
 

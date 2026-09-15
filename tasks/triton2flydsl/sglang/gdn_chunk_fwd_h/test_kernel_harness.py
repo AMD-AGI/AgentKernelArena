@@ -24,7 +24,8 @@ TASK_DIR = os.path.dirname(os.path.abspath(__file__))
 os.chdir(TASK_DIR)
 
 TASK_NAME = "triton2flydsl/sglang/gdn_chunk_fwd_h"
-SOURCE_FILE = os.path.join(TASK_DIR, "gdn_chunk_fwd_h.py")
+from task_runtime import candidate_relative_path
+SOURCE_FILE = candidate_relative_path()
 BT = 64  # CHUNK_SIZE
 
 # Test configs: (B, T, Hg, H, K, V, pool). real Qwen3.5-35B GDN prefill:
@@ -42,12 +43,13 @@ TEST_SHAPES = [
 WARMUP_ITERATIONS = 10
 BENCHMARK_ITERATIONS = 100
 MAX_OOM_RETRIES = 5
-DTYPE_NAME = os.environ.get("GDN_DTYPE", "bfloat16")
+DTYPE_NAME = 'bfloat16'  # protected suite dtype
 
 
 def load_module():
     spec = importlib.util.spec_from_file_location("gdn_chunk_fwd_h_src", SOURCE_FILE)
     mod = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = mod
     spec.loader.exec_module(mod)
     return mod
 

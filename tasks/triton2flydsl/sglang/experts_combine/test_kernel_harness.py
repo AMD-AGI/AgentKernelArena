@@ -25,7 +25,8 @@ TASK_DIR = os.path.dirname(os.path.abspath(__file__))
 os.chdir(TASK_DIR)
 
 TASK_NAME = "triton2flydsl/sglang/experts_combine"
-SOURCE_FILE = os.path.join(TASK_DIR, "experts_combine.py")
+from task_runtime import candidate_relative_path
+SOURCE_FILE = candidate_relative_path()
 SQRT2 = 1.4142135623730951
 
 # [num_tokens, combine_k, hidden_dim]; combine_k=1 => 2D pre-combined path.
@@ -49,6 +50,7 @@ _DTYPES = {"bf16": "bfloat16", "fp16": "float16", "fp32": "float32"}
 def load_module():
     spec = importlib.util.spec_from_file_location("experts_combine_src", SOURCE_FILE)
     mod = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = mod
     spec.loader.exec_module(mod)
     return mod
 

@@ -26,7 +26,8 @@ import sys
 from pathlib import Path
 from _aka_benchmark import benchmark_cuda_graph_or_events
 
-SOURCE_FILE = "moe_fused_gemm.py"
+from task_runtime import candidate_relative_path
+SOURCE_FILE = candidate_relative_path()
 ENTRY = "fused_moe"
 KERNEL = "_fused_moe_kernel"
 
@@ -50,6 +51,7 @@ def _load_source():
     entry = os.path.join(_HERE, SOURCE_FILE)
     spec = importlib.util.spec_from_file_location("moe_fused_gemm_src", entry)
     mod = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = mod
     spec.loader.exec_module(mod)
     return mod
 
@@ -76,7 +78,6 @@ def _make_inputs(M, K, N, E, top_k, device="cuda"):
 
 def _prepare_kernel(mod, A, B, topk_ids, topk_weights, top_k, mul_routed_weight):
     import torch
-    import triton.language as tl
 
     M, K = A.shape
     E, N, _ = B.shape
@@ -103,7 +104,7 @@ def _prepare_kernel(mod, A, B, topk_ids, topk_weights, top_k, mul_routed_weight)
             num_post,
             mul_routed_weight,
             top_k,
-            tl.bfloat16,
+            torch.bfloat16,
             config=config,
         )
         return C

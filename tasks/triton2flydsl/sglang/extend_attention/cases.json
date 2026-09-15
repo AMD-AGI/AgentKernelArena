@@ -1,0 +1,159 @@
+{
+  "cases": [
+    {
+      "test_case_id": "case_0000",
+      "params": {
+        "prefix": [
+          64,
+          128
+        ],
+        "extend": [
+          32,
+          32
+        ],
+        "head": 32,
+        "kv_head": 8,
+        "Lq": 128,
+        "Lv": 128,
+        "causal": true,
+        "seed": 42
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0001",
+      "params": {
+        "prefix": [
+          200
+        ],
+        "extend": [
+          50
+        ],
+        "head": 16,
+        "kv_head": 16,
+        "Lq": 128,
+        "Lv": 128,
+        "causal": true,
+        "seed": 43
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0002",
+      "params": {
+        "prefix": [
+          0,
+          64,
+          100
+        ],
+        "extend": [
+          16,
+          16,
+          24
+        ],
+        "head": 28,
+        "kv_head": 4,
+        "Lq": 128,
+        "Lv": 128,
+        "causal": true,
+        "seed": 44
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0003",
+      "params": {
+        "prefix": [
+          128,
+          128
+        ],
+        "extend": [
+          40,
+          40
+        ],
+        "head": 16,
+        "kv_head": 2,
+        "Lq": 64,
+        "Lv": 64,
+        "causal": true,
+        "seed": 45
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0004",
+      "params": {
+        "prefix": [
+          128
+        ],
+        "extend": [
+          32
+        ],
+        "head": 16,
+        "kv_head": 16,
+        "Lq": 192,
+        "Lv": 128,
+        "causal": true,
+        "seed": 46
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0005",
+      "params": {
+        "prefix": [
+          96
+        ],
+        "extend": [
+          48
+        ],
+        "head": 32,
+        "kv_head": 8,
+        "Lq": 128,
+        "Lv": 128,
+        "causal": false,
+        "seed": 47
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0006",
+      "params": {
+        "prefix": [
+          150
+        ],
+        "extend": [
+          70
+        ],
+        "head": 8,
+        "kv_head": 1,
+        "Lq": 128,
+        "Lv": 128,
+        "causal": true,
+        "seed": 48
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    }
+  ]
+}

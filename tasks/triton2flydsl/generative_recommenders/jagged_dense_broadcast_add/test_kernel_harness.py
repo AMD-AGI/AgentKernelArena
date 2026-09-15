@@ -27,7 +27,8 @@ TASK_DIR = os.path.dirname(os.path.abspath(__file__))
 os.chdir(TASK_DIR)
 
 TASK_NAME = "triton2flydsl/generative_recommenders/jagged_dense_broadcast_add"
-SOURCE_FILE = os.path.join(TASK_DIR, "jagged_dense_broadcast_add.py")
+from task_runtime import candidate_relative_path
+SOURCE_FILE = candidate_relative_path()
 
 # Test configurations: (B, max_seq_len, D)
 #   B           = batch size (number of jagged segments)
@@ -55,6 +56,7 @@ def load_module():
         "jagged_dense_broadcast_add_src", SOURCE_FILE
     )
     mod = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = mod
     spec.loader.exec_module(mod)
     return mod
 

@@ -23,7 +23,8 @@ TASK_DIR = os.path.dirname(os.path.abspath(__file__))
 os.chdir(TASK_DIR)
 
 TASK_NAME = "triton2flydsl/sglang/prefill_attention"
-SOURCE_FILE = os.path.join(TASK_DIR, "prefill_attention.py")
+from task_runtime import candidate_relative_path
+SOURCE_FILE = candidate_relative_path()
 
 # Varlen prefill: list of per-batch sequence lengths, q heads, kv heads, head_dim,
 # causal flag. GQA group = head // kv_head.
@@ -44,6 +45,7 @@ MAX_OOM_RETRIES = 5
 def load_module():
     spec = importlib.util.spec_from_file_location("prefill_attention_src", SOURCE_FILE)
     mod = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = mod
     spec.loader.exec_module(mod)
     return mod
 

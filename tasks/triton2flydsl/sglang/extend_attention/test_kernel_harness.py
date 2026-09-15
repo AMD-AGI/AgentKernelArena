@@ -23,7 +23,8 @@ TASK_DIR = os.path.dirname(os.path.abspath(__file__))
 os.chdir(TASK_DIR)
 
 TASK_NAME = "triton2flydsl/sglang/extend_attention"
-SOURCE_FILE = os.path.join(TASK_DIR, "extend_attention.py")
+from task_runtime import candidate_relative_path
+SOURCE_FILE = candidate_relative_path()
 
 # Per-batch (prefix_len, extend_len) plus head config. Lk == Lq (q/k share head
 # dim); Lv may differ (MLA: Lq=Lk=192, Lv=128 exercises the BLOCK_DPE rope-PE path).
@@ -51,6 +52,7 @@ MAX_OOM_RETRIES = 5
 def load_module():
     spec = importlib.util.spec_from_file_location("extend_attention_src", SOURCE_FILE)
     mod = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = mod
     spec.loader.exec_module(mod)
     return mod
 

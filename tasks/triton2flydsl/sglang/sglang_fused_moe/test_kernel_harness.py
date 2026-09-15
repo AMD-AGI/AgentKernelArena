@@ -29,7 +29,8 @@ TASK_DIR = os.path.dirname(os.path.abspath(__file__))
 os.chdir(TASK_DIR)
 
 TASK_NAME = "triton2flydsl/sglang/sglang_fused_moe"
-SOURCE_FILE = os.path.join(TASK_DIR, "sglang_fused_moe.py")
+from task_runtime import candidate_relative_path
+SOURCE_FILE = candidate_relative_path()
 
 # Qwen3.5-35B-A3B MoE: K(hidden)=2048, I(moe_inter)=512, E=256, topk=8.
 K_HIDDEN = 2048
@@ -51,12 +52,13 @@ TEST_SHAPES = [
 WARMUP_ITERATIONS = 10
 BENCHMARK_ITERATIONS = 100
 MAX_OOM_RETRIES = 5
-DTYPE_NAME = os.environ.get("MOE_DTYPE", "bfloat16")
+DTYPE_NAME = 'bfloat16'  # protected suite dtype
 
 
 def load_module():
     spec = importlib.util.spec_from_file_location("sglang_fused_moe_src", SOURCE_FILE)
     mod = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = mod
     spec.loader.exec_module(mod)
     return mod
 
@@ -121,7 +123,7 @@ def _make_prepared_fused_moe_runner(mod, inp):
     )
     dtype = inp["hidden"].dtype
     config = mod._default_config()
-    compute_type = mod.tl.bfloat16 if dtype == torch.bfloat16 else mod.tl.float16
+    compute_type = dtype
 
     # Data-dependent routing and its host-visible padded size are fixed for a
     # benchmark case, so compute them before capture.

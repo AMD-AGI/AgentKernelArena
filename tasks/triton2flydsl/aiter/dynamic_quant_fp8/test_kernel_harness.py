@@ -31,7 +31,8 @@ import sys
 from pathlib import Path
 from _aka_benchmark import benchmark_cuda_graph_or_events
 
-SOURCE_FILE = "dynamic_quant_fp8.py"
+from task_runtime import candidate_relative_path
+SOURCE_FILE = candidate_relative_path()
 ENTRIES = (
     "static_per_tensor_quant_fp8_i8",
     "dynamic_per_tensor_quant_fp8_i8",
@@ -76,6 +77,7 @@ def _load_source():
     entry = os.path.join(_HERE, SOURCE_FILE)
     spec = importlib.util.spec_from_file_location("dynamic_quant_fp8_src", entry)
     mod = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = mod
     spec.loader.exec_module(mod)
     return mod
 
@@ -102,6 +104,21 @@ def run_compile():
     return True
 
 
+def _reference_quant(x, qdtype, mode, scale=None):
+    """Original reference expressions, including token-path dtype rounding."""
+    import torch
+    if mode == "static":
+        return (x / scale).to(qdtype), scale
+    if mode == "dyn_tensor":
+        x_f32 = x.to(torch.float32)
+        x_max = torch.max(torch.abs(x_f32))
+        scale_ref = x_max / _dtype_max(qdtype)
+        return (x_f32 / scale_ref).to(qdtype), scale_ref
+    x_max, _ = torch.max(torch.abs(x), axis=-1)
+    scale_ref = x_max.to(torch.float32) / _dtype_max(qdtype)
+    return (x * (1 / scale_ref[:, None])).to(qdtype), scale_ref
+
+
 def _check(mode, mod, M, N, qdtype, verbose):
     import torch
 
@@ -109,7 +126,7 @@ def _check(mode, mod, M, N, qdtype, verbose):
     if mode == "static":
         x = torch.randn((M, N), dtype=torch.bfloat16, device="cuda")
         scale = torch.randn(1, dtype=torch.float32, device="cuda")
-        ref = (x / scale).to(qdtype)
+        ref, _ = _reference_quant(x, qdtype, "static", scale)
         qx = torch.empty_like(x, dtype=qdtype)
         out = mod.static_per_tensor_quant_fp8_i8(qx, x, scale)
         torch.cuda.synchronize()
@@ -120,10 +137,7 @@ def _check(mode, mod, M, N, qdtype, verbose):
         return finite and close, finite, close
     elif mode == "dyn_tensor":
         x = torch.randn((M, N), dtype=torch.bfloat16, device="cuda")
-        x_f32 = x.to(torch.float32)
-        x_max = torch.max(torch.abs(x_f32))
-        scale_ref = x_max / _dtype_max(qdtype)
-        ref = (x_f32 / scale_ref).to(qdtype)
+        ref, scale_ref = _reference_quant(x, qdtype, "dyn_tensor")
         qx = torch.empty_like(x, dtype=qdtype)
         scale_out = torch.zeros(1, dtype=torch.float32, device="cuda")
         out, s = mod.dynamic_per_tensor_quant_fp8_i8(qx, x, scale_out)
@@ -138,9 +152,7 @@ def _check(mode, mod, M, N, qdtype, verbose):
         return finite and s_close and v_close, finite, (s_close and v_close)
     else:  # dyn_token
         x = torch.rand((M, N), dtype=torch.bfloat16, device="cuda")
-        x_max, _ = torch.max(torch.abs(x), axis=-1)
-        scale_ref = x_max.to(torch.float32) / _dtype_max(qdtype)
-        ref = (x * (1 / scale_ref[:, None])).to(qdtype)
+        ref, scale_ref = _reference_quant(x, qdtype, "dyn_token")
         qx = torch.empty_like(x, dtype=qdtype)
         scale_out = torch.zeros(M, dtype=torch.float32, device="cuda")
         out, s = mod.dynamic_per_token_quant_fp8_i8(qx, x, scale_out)

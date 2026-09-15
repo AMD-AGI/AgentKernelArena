@@ -1,0 +1,114 @@
+{
+  "cases": [
+    {
+      "test_case_id": "case_0000",
+      "params": {
+        "seqs": [
+          128,
+          256,
+          64,
+          200
+        ],
+        "head": 32,
+        "kv_head": 32,
+        "Lk": 128,
+        "Lv": 128,
+        "seed": 42
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0001",
+      "params": {
+        "seqs": [
+          512,
+          300
+        ],
+        "head": 32,
+        "kv_head": 8,
+        "Lk": 128,
+        "Lv": 128,
+        "seed": 43
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0002",
+      "params": {
+        "seqs": [
+          128,
+          128,
+          77
+        ],
+        "head": 16,
+        "kv_head": 1,
+        "Lk": 128,
+        "Lv": 128,
+        "seed": 44
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0003",
+      "params": {
+        "seqs": [
+          256,
+          128
+        ],
+        "head": 16,
+        "kv_head": 2,
+        "Lk": 64,
+        "Lv": 64,
+        "seed": 45
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0004",
+      "params": {
+        "seqs": [
+          1000
+        ],
+        "head": 8,
+        "kv_head": 8,
+        "Lk": 128,
+        "Lv": 128,
+        "seed": 46
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0005",
+      "params": {
+        "seqs": [
+          100,
+          33
+        ],
+        "head": 28,
+        "kv_head": 4,
+        "Lk": 128,
+        "Lv": 128,
+        "seed": 47
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    }
+  ]
+}
