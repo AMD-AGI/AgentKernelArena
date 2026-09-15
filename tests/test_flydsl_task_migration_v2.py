@@ -4039,3 +4039,29 @@ def test_fused_quant_two_original_inputs_models_comparators_and_timing_retained(
                 assert hashlib.sha256(ast.dump(normalized,include_attributes=False).encode()).hexdigest()==functions[fn.name],(name,fn.name)
         cfg=yaml.safe_load((task/'config.yaml').read_text())
         assert [e['symbol'] for e in cfg['candidate']['entrypoints']]==['flydsl_'+name.removesuffix('_kernel')]
+
+
+@pytest.mark.parametrize("name", _ROPE_TWO_NAMES)
+@pytest.mark.parametrize("correct", [True, False])
+def test_rope_action_imports_are_task_local_and_propagate_correctness(name, correct):
+    # Execute the actual action and audit imports from the isolated task cwd.
+    # No fake scripts package can conceal a missing copied dependency here.
+    task = ROOT / "tasks/torch2flydsl" / name
+    program = """
+from types import SimpleNamespace
+from scripts.task_actions import check
+calls = []
+def run_correctness(verbose):
+    calls.append(verbose)
+    return EXPECTED
+h = SimpleNamespace(ARENA_PROVIDED_BASELINE=True, run_correctness=run_correctness)
+try:
+    observed = check(h)
+except RuntimeError as error:
+    assert not EXPECTED and 'Correctness/output-contract' in str(error)
+else:
+    assert EXPECTED and observed == []
+assert calls == [True]
+""".replace("EXPECTED", repr(correct))
+    result = subprocess.run([sys.executable, "-c", program], cwd=task, capture_output=True, text=True)
+    assert result.returncode == 0, result.stdout + result.stderr
