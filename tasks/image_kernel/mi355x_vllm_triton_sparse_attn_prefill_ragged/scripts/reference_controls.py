@@ -64,4 +64,15 @@ def check_reference(h):
     equal(h._reference(inputs),expected)
     h._assert_close(inputs,expected)
     rejects(lambda bad:h._assert_close(inputs,bad),torch.zeros_like(expected))
+    # Three different row lengths: no selection, one exact KV value, and a
+    # two-value softmax with analytical weights 1/4 and 3/4.
+    inputs["q"] = inputs["q"].expand(3, 1, 2).contiguous()
+    inputs["indices"] = torch.tensor([1, 0, 1], dtype=torch.int32)
+    inputs["indptr"] = torch.tensor([0, 0, 1, 3], dtype=torch.int32)
+    expected = torch.tensor([[[0., 0.]], [[1., 4.]], [[0.75, 3.5]]])
+    equal(h._reference(inputs), expected)
+    h._assert_close(inputs, expected)
+    rejects(lambda bad: h._assert_close(inputs, bad), torch.zeros_like(expected))
+    # A candidate that treats the flat CSR payload as fixed-width rows is wrong.
+    rejects(lambda bad: h._assert_close(inputs, bad), expected[-1:].expand_as(expected))
     return {"known_answer": "PASS", "negative_control": "PASS", "scored": False}

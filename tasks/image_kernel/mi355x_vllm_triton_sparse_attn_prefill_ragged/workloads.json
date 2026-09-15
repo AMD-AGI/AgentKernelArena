@@ -175,6 +175,82 @@
         "gpu_pct": null,
         "timed_replay_seed": 47
       }
+    },
+    {
+      "test_case_id": "dsv4-ragged-boundaries-sq64",
+      "params": {
+        "num_queries": 64,
+        "num_heads": 64,
+        "head_dim": 512,
+        "nope_head_dim": 448,
+        "rope_head_dim": 64,
+        "num_kv": 4096,
+        "topk": 512,
+        "dtype": "bf16",
+        "row_lengths": [
+          0,
+          1,
+          15,
+          16,
+          17,
+          31,
+          32,
+          33,
+          127,
+          255,
+          511,
+          512
+        ],
+        "seed": 29
+      },
+      "checks": [
+        "correctness"
+      ],
+      "dtype": "bf16",
+      "metadata": {
+        "csr_seed": 53,
+        "timed_replay_seed": 47,
+        "scored": false,
+        "coverage": "Nonuniform CSR, empty rows, partial 16-position blocks; direct and captured replay"
+      }
+    },
+    {
+      "test_case_id": "dsv4-ragged-boundaries-sq1073",
+      "params": {
+        "num_queries": 1073,
+        "num_heads": 64,
+        "head_dim": 512,
+        "nope_head_dim": 448,
+        "rope_head_dim": 64,
+        "num_kv": 4096,
+        "topk": 512,
+        "dtype": "bf16",
+        "row_lengths": [
+          0,
+          1,
+          15,
+          16,
+          17,
+          31,
+          32,
+          33,
+          127,
+          255,
+          511,
+          512
+        ],
+        "seed": 29
+      },
+      "checks": [
+        "correctness"
+      ],
+      "dtype": "bf16",
+      "metadata": {
+        "csr_seed": 53,
+        "timed_replay_seed": 47,
+        "scored": false,
+        "coverage": "Nonuniform CSR, empty rows, partial 16-position blocks; direct and captured replay"
+      }
     }
   ]
 }

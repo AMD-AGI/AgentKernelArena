@@ -557,7 +557,10 @@ def test_inventory_and_declared_roles():
                     assert (node.module or "").split(".")[0] not in {"src", "agents"}
                 elif isinstance(node, ast.Import):
                     assert not any(alias.name.split(".")[0] in {"src", "agents"} for alias in node.names)
-    assert (total_c, total_p) == (98, 68)
+    # Preserve all 98 migrated correctness cases and 68 measured cases; add two
+    # unscored ragged-CSR checks after the GPU quality review found uniform-only
+    # coverage of the sparse attention operator.
+    assert (total_c, total_p) == (100, 68)
 
 
 @pytest.mark.parametrize("directory", DIRECTORIES, ids=lambda d: d.name)
@@ -698,6 +701,93 @@ def test_manifest_includes_non_scored_buckets_and_attention_paths():
     small = [c for c in attention["cases"] if c["test_case_id"].endswith(":2d")]
     assert len(small) == 5
     assert all(c["params"]["ctx_len"] == 128 and c["checks"] == ["correctness"] for c in small)
+
+
+def test_sparse_ragged_manifest_preserves_all_scored_cases():
+    directory = TASKS / "mi355x_vllm_triton_sparse_attn_prefill_ragged"
+    harness = load_module(directory / "scripts/task_runner.py")
+    adapter = load_module(directory / "scripts/task_adapter.py")
+    adapter.validate_workloads(harness)
+    data = json.loads((directory / "workloads.json").read_text())
+    scored = [c for c in data["cases"] if "performance" in c["checks"]]
+    assert [c["test_case_id"] for c in scored] == [c["id"] for c in harness.CASES]
+    extra = [c for c in data["cases"] if c["checks"] == ["correctness"]]
+    assert len(extra) == 2
+    assert [c["params"]["num_queries"] for c in extra] == [64, 1073]
+    assert all(c["params"]["row_lengths"] == [0, 1, 15, 16, 17, 31, 32, 33, 127, 255, 511, 512]
+               for c in extra)
+    harness.RAGGED_CASES = harness.RAGGED_CASES[:-1]
+    with pytest.raises(ValueError, match="ragged manifest"):
+        adapter.validate_workloads(harness)
+
+
+@pytest.mark.parametrize("chunk", [1, 3, 512])
+def test_sparse_ragged_reference_matches_independent_row_oracle(monkeypatch, chunk):
+    torch = pytest.importorskip("torch")
+    directory = TASKS / "mi355x_vllm_triton_sparse_attn_prefill_ragged"
+    h = load_module(directory / "scripts/task_runner.py")
+    h._torch = lambda: torch
+    h._load_kernel_module = lambda: None
+    h._REFERENCE_QUERY_CHUNK = chunk
+    # Exercise the actual input generator on CPU, including its seeds and CSR
+    # construction. Only redirect its explicit device placement.
+    for name in ("randn", "randint", "tensor", "arange"):
+        original = getattr(torch, name)
+        def cpu_factory(*args, _original=original, **kwargs):
+            if kwargs.get("device") == "cuda":
+                kwargs["device"] = "cpu"
+            return _original(*args, **kwargs)
+        monkeypatch.setattr(torch, name, cpu_factory)
+    case = deepcopy(h.RAGGED_CASES[0])
+    case["params"].update(num_queries=24, num_heads=2, head_dim=4,
+                          nope_head_dim=2, rope_head_dim=2)
+    inputs = h._make_ragged(case)
+    lengths = inputs["indptr"].diff().tolist()
+    assert lengths == case["params"]["row_lengths"] * 2
+    assert inputs["indices"].numel() == sum(lengths)
+    assert inputs["indices"].dtype == inputs["indptr"].dtype == torch.int32
+    expected = torch.zeros_like(inputs["q"])
+    for i, width in enumerate(lengths):
+        if not width:
+            continue
+        begin, end = map(int, inputs["indptr"][i:i+2])
+        values = inputs["kv"][inputs["indices"][begin:end].long()].double()
+        for head in range(inputs["q"].shape[1]):
+            scores = values @ inputs["q"][i, head].double() * inputs["scale"]
+            expected[i, head] = (torch.softmax(scores, dim=0) @ values).to(expected.dtype)
+    torch.testing.assert_close(h._reference(inputs), expected, atol=0.004, rtol=0.004)
+    h._assert_close(inputs, expected)
+    with pytest.raises(AssertionError):
+        h._assert_close(inputs, torch.zeros_like(expected))
+    bad = dict(inputs, indptr=inputs["indptr"].clone())
+    bad["indptr"][-1] += 1
+    with pytest.raises(ValueError, match="CSR offsets"):
+        h._reference(bad)
+
+
+def test_sparse_additional_checks_reject_incorrect_captured_path():
+    directory = TASKS / "mi355x_vllm_triton_sparse_attn_prefill_ragged"
+    adapter = load_module(directory / "scripts/task_adapter.py")
+    h = load_module(directory / "scripts/task_runner.py")
+    events = []
+    h.run_correctness = lambda: events.append("original checks")
+    h._make_ragged = lambda case: {"case": case}
+    h._run = lambda inputs: "correct immediate output"
+    h._torch = lambda: SimpleNamespace(cuda=SimpleNamespace(synchronize=lambda: None))
+    h._assert_close = lambda inputs, got: events.append(got)
+    h._TimedRun = lambda: SimpleNamespace(bound=False)
+    def capture(call, **options):
+        assert call() == "correct immediate output"
+        options["timed_run"].bound = True
+        events.append("captured")
+    h._benchmark_cuda_graph_or_events = capture
+    def reject(inputs, timed):
+        assert timed.bound
+        raise AssertionError("wrong captured result")
+    h._assert_timed_outputs = reject
+    with pytest.raises(AssertionError, match="wrong captured result"):
+        adapter.run_correctness(h)
+    assert events == ["original checks", "correct immediate output", "captured"]
 
 
 def test_reduced_ck_checks_do_not_claim_scored_shape_coverage(monkeypatch):

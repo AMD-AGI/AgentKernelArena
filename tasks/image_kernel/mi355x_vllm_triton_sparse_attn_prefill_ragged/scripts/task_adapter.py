@@ -40,6 +40,11 @@ def validate_workloads(harness):
               "performance": getattr(harness, "PERF_CASES", None)}
     if json.loads(json.dumps(actual)) != data["original_cases"]:
         raise ValueError("Protected manifest and harness case definitions disagree")
+    extra = [{"id": row["test_case_id"], "params": {
+        key: value for key, value in row["params"].items() if key != "seed"
+    }} for row in data["cases"] if row["checks"] == ["correctness"]]
+    if extra != harness.RAGGED_CASES:
+        raise ValueError("Protected ragged manifest and harness cases disagree")
 
 
 def prepare(harness):
@@ -90,3 +95,17 @@ def prepare(harness):
 
 def run_correctness(harness):
     harness.run_correctness()
+    for case in harness.RAGGED_CASES:
+        inputs = harness._make_ragged(case)
+        got = harness._run(inputs)
+        harness._torch().cuda.synchronize()
+        harness._assert_close(inputs, got)
+        # Exercise the actual captured path with fresh inputs and poisoned
+        # output. These additional semantic checks produce no scored latency.
+        timed = harness._TimedRun()
+        harness._benchmark_cuda_graph_or_events(
+            lambda: harness._run(inputs), warmup=10, repetition=100,
+            target_ms=1.0, max_graph_repeats=1000, timed_run=timed,
+        )
+        harness._assert_timed_outputs(inputs, timed)
+        print("correctness and replay PASS", case["id"])

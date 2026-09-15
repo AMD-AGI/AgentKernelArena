@@ -19,6 +19,20 @@ reconstruction (>= topk); the kernel is pure ragged gather-attention, so
 correctness is well-defined for any synthesized sparse pattern. See
 `session_cases.json` for full provenance.
 
+The three historical scored cases synthesize **uniform 512-position CSR rows**;
+their latency measures that fixed-top-k workload, not a distribution of ragged
+row lengths. Those cases, seeds, and timing policy are retained. Two additional
+mandatory correctness cases use 64 and 1073 queries with repeating row lengths
+`[0, 1, 15, 16, 17, 31, 32, 33, 127, 255, 511, 512]`. They cover empty rows,
+short rows, and partial blocks around the original kernel's 16-position block.
+Selections contain valid KV indices; attention sinks are outside this task's
+contract. An empty row produces zero output. Both ordinary execution and captured
+graph replay with refreshed Q/KV and poisoned output must pass the same BF16
+`atol=rtol=0.08` rule. These extra semantic checks contribute no scored latency.
+The FP32 reference groups equal-length rows for bounded-memory dense attention;
+independent analytical controls cover empty, one-position, and two-position rows
+and reject zero-output and fixed-width interpretations of the same CSR payload.
+
 The kernel is loaded from the editable workspace copy of the in-image source tree,
 so agent edits to `rocm_aiter_mla_sparse.py` take effect (Triton JIT recompiles on
 source change).
