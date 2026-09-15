@@ -151,7 +151,8 @@ Every generated phase prompt preserves the task's implementation and dependency
 constraints and gives them priority over backend guides, examples, and knowledge
 base suggestions. A passing driver does not waive those constraints. This prompt
 guidance is not a dependency enforcement mechanism; task evaluation must still
-check the implementations it accepts.
+check the implementations it accepts. A prohibited replacement operator remains
+prohibited when that library operator happens to use the target language internally.
 
 Task references, comparison rules, inputs, timings, and complete case manifest
 remain authoritative. The driver translates the task verdict into `allclose`;

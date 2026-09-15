@@ -125,7 +125,9 @@ def program_text(plan: dict, *, prefix: str = "", port: bool = False, initialize
         "Task implementation and dependency constraints take precedence over backend guides, examples, "
         "and knowledge-base suggestions. Passing the driver does not waive these constraints. "
         "Do not treat an available library or backend example as permission to delegate an operator "
-        "when the task forbids that delegation.",
+        "when the task forbids that delegation. A prohibited library operator remains prohibited "
+        "even if it uses the target language internally. Wrapping that operator or tuning its launch "
+        "parameters does not satisfy a requirement to implement the operator in candidate-owned kernels.",
         "The following paths are relative to " + (prefix or "the workspace root") + ".",
         "Editable declarations and real entrypoints (do not invent a factory convention):",
         json.dumps(declarations, indent=2),

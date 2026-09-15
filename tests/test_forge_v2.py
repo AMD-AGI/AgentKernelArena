@@ -112,6 +112,7 @@ def test_task_constraints_preserved_across_native_phases(tmp_path, phase):
     assert rule in program
     assert "constraints take precedence over backend guides" in program
     assert "Passing the driver does not waive these constraints" in program
+    assert "A prohibited library operator remains prohibited even if it uses the target language internally" in program
     if phase.get("initialize"):
         assert "Full task correctness and all declared implementation constraints are required" in program
         assert "no speedup is required" in program
