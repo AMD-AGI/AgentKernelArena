@@ -92,3 +92,9 @@ compiled-module finalizers from unloading HIP modules during a later graph
 capture. It does not alter kernels, inputs, warmups, samples or the graph policy.
 The motivating failed run reported hipModuleUnload/StreamCaptureUnsupported,
 followed by capture invalidation; a fresh full GPU run must qualify this fix.
+
+The imported dtype alias may only be read as `<alias>.fp8`; module reassignment,
+passing the module to another function, dynamic attribute access, other members
+(including any library imported by the dtype module), and relative/package
+import alternatives are rejected. Reading a hardware dtype constant does not
+expose an AITER operator dependency to the candidate.

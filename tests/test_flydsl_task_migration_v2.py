@@ -7204,3 +7204,33 @@ def test_jagged_proxy_supplies_only_actual_protected_offset_argument(entry, posi
         proxy=h._load_module(None,'kernel.py',None)
         if keyword: getattr(proxy,entry)(*[data]*position,**{key:offsets})
         else: getattr(proxy,entry)(*[data]*position,offsets)
+
+
+@pytest.mark.parametrize('statement', [
+    'import aiter.utility.dtypes', 'import aiter.utility.dtypes as dt',
+    'from aiter.utility.dtypes import fp8', 'from aiter.utility.dtypes import *',
+    'from .aiter.utility import dtypes', 'from . import aiter',
+    'from ..aiter import utility', 'from aiter import dtypes',
+    'from aiter.utility import gemm_a8w8 as dtypes',
+])
+def test_qk_dtype_exception_rejects_alternate_package_imports(statement,tmp_path):
+    runtime=module(ROOT/'tasks/torch2flydsl/qk_norm_rope_quant_kernel/task_runtime.py')
+    source=tmp_path/'kernel.py';source.write_text('import flydsl\n'+statement+'\n')
+    with pytest.raises(ValueError): runtime.check_dependencies([source],True)
+
+
+@pytest.mark.parametrize('use,allowed', [
+    ('dtype = constants.fp8',True),
+    ('def dtype(): return constants.fp8',True),
+    ('module = constants',False), ('consume(constants)',False),
+    ('constants.torch.matmul(a,b)',False), ('constants.gemm_a8w8(a,b)',False),
+    ('constants.__dict__["torch"].mm(a,b)',False), ('getattr(constants,"fp8")',False),
+    ('constants.fp8 = replacement',False), ('del constants.fp8',False),
+    ('def leaking(): return constants',False),
+])
+def test_qk_dtype_exception_exposes_only_scalar_fp8_attribute(use,allowed,tmp_path):
+    runtime=module(ROOT/'tasks/torch2flydsl/qk_norm_rope_quant_kernel/task_runtime.py')
+    source=tmp_path/'kernel.py';source.write_text('import flydsl\nfrom aiter.utility import dtypes as constants\n'+use+'\n')
+    if allowed:runtime.check_dependencies([source],True)
+    else:
+        with pytest.raises(ValueError):runtime.check_dependencies([source],True)

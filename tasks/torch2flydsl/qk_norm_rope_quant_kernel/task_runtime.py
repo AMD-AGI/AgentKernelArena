@@ -91,6 +91,8 @@ def check_dependencies(paths, final_language=True):
     for path in paths:
         tree = ast.parse(path.read_text(), filename=str(path))
         aliases = {}
+        dtype_aliases = set()
+        parents = {child: node for node in ast.walk(tree) for child in ast.iter_child_nodes(node)}
         for node in ast.walk(tree):
             imported = []
             if isinstance(node, ast.Import):
@@ -110,14 +112,21 @@ def check_dependencies(paths, final_language=True):
                 and all(a.name == "dtypes" for a in node.names)
             )
             if dtype_constants_only:
+                dtype_aliases.update(a.asname or a.name for a in node.names)
                 imported = []
             for module in imported:
                 parts = set(module.split("."))
                 if parts & forbidden:
                     raise ValueError(f"Protected dependency in candidate: {module}")
-                if final_language and module.split(".")[0] in {"triton", "cupy", "numba", "aiter", "ctypes", "subprocess"}:
+                if final_language and module.lstrip(".").split(".")[0] in {"triton", "cupy", "numba", "aiter", "ctypes", "subprocess"}:
                     raise ValueError(f"Final operator must execute FlyDSL, not {module}")
                 backend_seen |= module == "flydsl" or module.startswith("flydsl.")
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load) and node.id in dtype_aliases:
+                parent = parents.get(node)
+                if not (isinstance(parent, ast.Attribute) and parent.value is node
+                        and parent.attr == "fp8" and isinstance(parent.ctx, ast.Load)):
+                    raise ValueError("AITER dtype access is limited to the fp8 constant; module access is forbidden")
         def dotted(node):
             if isinstance(node, ast.Name): return aliases.get(node.id, node.id)
             if isinstance(node, ast.Attribute): return dotted(node.value) + "." + node.attr
