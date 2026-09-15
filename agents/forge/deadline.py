@@ -96,7 +96,7 @@ def bound_session(spec, plan):
     return replace(spec, timeout_sec=timeout, user_prompt=prompt)
 
 
-def install():
+def install(plan=None):
     """Called only after the exact upstream source/signature probe succeeds."""
     from kernelforge.loop import insession_gate, runner
 
@@ -121,6 +121,11 @@ def install():
         _arena_absolute_deadline = True
 
         def __init__(self, iter_config, tracker, config=None, resume=False):
+            if plan is not None:
+                from agents.forge.action_budget import driver_limits
+                from agents.forge.task_context import TaskContext
+                limits = driver_limits(TaskContext.load(plan["context"]).spec, plan)
+                iter_config = replace(iter_config, **limits)
             if iter_config.deadline_unix is not None:
                 available = max(0, min(iter_config.max_time_hours * 3600,
                                        iter_config.deadline_unix - time.time()))

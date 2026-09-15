@@ -39,6 +39,15 @@ admission also take time. FlyDSL's `port_budget.json` records the phase deadline
 and outcome. A correct PORT is still not evidence of a completed search round;
 the native iteration records and final Arena acceptance establish that.
 
+Native driver timeouts cover the task's complete action sequence: compile and
+correctness for validation; compile, correctness and performance for candidate
+benchmarking. The adapter derives these outer ceilings from the public task
+timeouts instead of the upstream five-minute benchmark default. Every action
+keeps its own declared timeout, and the shared campaign/initialization deadline
+still applies. The implementer session budget also includes its in-session
+checks, so a task with long checks needs enough session time as well as campaign
+time; increasing a driver ceiling does not extend either budget.
+
 ### HIP/Triton initialization
 
 The examined loop can continue after its initial candidate benchmark fails when

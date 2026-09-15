@@ -88,7 +88,8 @@ def probe() -> dict:
         (modules.port_loop, "run_port_loop", {"spec", "driver_path", "config", "stop_at_unix"}),
         (modules.runner, "_ensure_git_committed", {"workspace", "message", "paths", "branch"}),
         (modules.agent, "make_agent_fn", {"source_files", "target_functions", "task_type", "correctness_only",
-                                          "usage", "insession_gate", "interposed_driver_path"}),
+                                          "usage", "insession_gate", "interposed_driver_path",
+                                          "validation_timeout_sec", "bench_timeout_sec"}),
         (modules.optimize, "_forge_loop_argv", set()),
         (modules.new_path_allowlist, "matches_commit_new_paths", {"path", "patterns"}),
     ]
@@ -141,7 +142,7 @@ def install_hooks(plan: dict) -> None:
     from agents.forge.gate_targets import install as install_gate_targets
     install_gate_targets()
     from agents.forge.deadline import install as install_deadline, bound_agent, bound_session
-    install_deadline()
+    install_deadline(plan)
     if plan.get("agent_config", {}).get("codex_auth_mode") == "cli":
         from agents.forge.codex_auth import install_cli_auth
         install_cli_auth()
@@ -171,6 +172,10 @@ def install_hooks(plan: dict) -> None:
         configured_timeout = plan.get("agent_config", {}).get("session_timeout_seconds", 1200)
         timeout = values.get("session_timeout_sec")
         values["session_timeout_sec"] = min(timeout, configured_timeout) if timeout is not None else configured_timeout
+        from agents.forge.action_budget import driver_limits
+        limits = driver_limits(spec, plan)
+        values["validation_timeout_sec"] = limits["validate_stage_timeout_sec"]
+        values["bench_timeout_sec"] = limits["bench_timeout_sec"]
         return bound_agent(original_agent(*bound.args, **bound.kwargs), plan,
                            values["session_timeout_sec"])
 
