@@ -6,6 +6,8 @@ The kernel under test is AITER's 16-bit GEMM Triton kernel (`gemm_a16w16` ->
 `_gemm_a16_w16_kernel`): Y = X @ W^T with fp32 accumulation, an XCD-balanced +
 grouped pid remap, and bf16/fp16 output. The standalone source keeps the
 non-split-K (NUM_KSPLIT == 1) triton path with a static tile config.
+This task selects the default BF16, no-bias, newly allocated output path for
+all eight declared shapes; other options in the upstream API are not covered.
 
 Modes:
   --compile         ast-parse + import the standalone source, assert entry/kernel symbols

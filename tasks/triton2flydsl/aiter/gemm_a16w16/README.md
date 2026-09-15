@@ -19,9 +19,22 @@ module loading, external native kernels, subprocess dispatch or launch bypasses.
 The protected harness's existing glue operations and allocation/reset boundaries
 remain identical for baseline and candidate.
 
-`cases.json` contains 8 independent correctness identities and 8
-performance identities, including every original dtype, bias, activation, routing
-and shape variant. Performance variants have correctness coverage. Input generators,
+The evaluated workload is `gemm_a16w16(x, w)` with contiguous BF16 inputs,
+FP32 accumulation and a newly allocated BF16 output: `Y = X @ W.T`, without
+bias, using the source's default configuration and non-split-K path. All eight
+original matrix shapes in `cases.json` have both correctness and performance
+coverage. The numerical gate is finite output and element-wise
+`torch.allclose(..., atol=1e-1, rtol=1e-2)`; measured outputs and perturbed
+replays use the same gate.
+
+The upstream source also documents FP16, bias, a caller-provided output `y`,
+and explicit configuration arguments. Those describe the source's broader API;
+this task does not claim to validate or score those additional modes. Preserve
+the declared entrypoint and the calling convention exercised by this workload.
+Adding other modes requires corresponding protected manifest, reference and
+benchmark cases, rather than inferring coverage from the source signature.
+
+Input generators,
 explicit seeds, numerical gates, output-contract checks, warmups, sample counts,
 state reset and graph/event benchmark calls remain in `test_kernel_harness.py`.
 Where the original suite allowed an environment dtype override, the manifest now
