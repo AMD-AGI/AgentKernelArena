@@ -46,3 +46,25 @@ Do not edit `test_kernel_harness.py`, `_arena_*.py`, `workloads.json`, or genera
 next to the original harness even though the public runner is `_arena_eval.py`.
 Unsupported hardware or missing dependencies return a failing envelope; use a
 compatible image/GPU before scheduling this task.
+
+
+## Complete outputs and measured replay
+
+The original correctness entrypoint returns `True` only after checking all four
+outputs and the updated KV cache. The runner requires that boolean result for
+each of the original 128 cases. The reference is evaluated from pristine inputs
+before the candidate runs; query/key inputs, scales, positions, frequencies,
+routing and the caller's original cache are read-only. All returned tensors must
+retain their shapes, dtypes and devices. The original `atol=rtol=0.1` gate remains,
+including the original FP8-cache conversion to BF16 before comparison and the
+full-cache check covering untouched slots.
+
+Timing still measures the original allocating public wrapper with 50 warmups,
+200 samples and its original byte-wise cache-slot reset. After timing, the actual
+captured four outputs and cache are compared with the same protected reference.
+An unscored replay changes query/key inputs, scale, positions and routing, poisons
+the outputs and written cache slots, and replays the exact measured invocation.
+The original reset executes before the diagnostic cache poison. All caller inputs
+and private cache state are restored even if verification fails. The additional
+checks do not change the scored input distributions, allocation boundaries or
+case list. GPU qualification requires a new complete validator report.

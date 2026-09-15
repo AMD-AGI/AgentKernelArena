@@ -1,6 +1,9 @@
 """Explicit task actions. Public evaluation dispatch is independent of agents."""
 import os
 import test_kernel_harness as h
+from _arena_checks import install
+
+install(h)
 
 
 def inputs():
@@ -13,7 +16,7 @@ def validate():
 
 def correctness(require):
     for cfg in h.ALL_CONFIGS:
-        require(h._check_correctness_single(cfg), 'none', 1)
+        require(h._check_correctness_single(cfg), 'bool', 1)
 
 
 def performance():

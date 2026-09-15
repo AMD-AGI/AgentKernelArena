@@ -5664,3 +5664,180 @@ def test_block_gemm_int8_preserves_underlying_performance_failure(monkeypatch,ca
     assert len(rows)==5 and all(row['execution_time_ms']==-1 for row in rows)
     assert capsys.readouterr().err.count('Block INT8 GEMM performance check failed: RuntimeError: Device capture diagnostic marker')==5
     assert getattr(mod,checks.SYMBOL) is _block_gemm_cpu and h._benchmark_cuda_graph_or_events is failure
+
+
+_MLA_TASK = ROOT/'tasks/triton2triton/geak_eval/L3/fused_qk_rope_cache_mla'
+
+
+def _mla_cpu_harness(monkeypatch, fp8=False, neox=False, reuse=False):
+    import sys
+    from enum import IntEnum
+    perf = module_at(ROOT/'src/tools/perf/aka_benchmark.py', monkeypatch)
+    monkeypatch.setitem(sys.modules, '_aka_benchmark', perf)
+    checks = module_at(_MLA_TASK/'_arena_checks.py', monkeypatch)
+    names = {'RotateStyle', 'rotate_half_neox', 'rotate_half_gptj', 'ref_rope_sbhd_fwd',
+             '_run_reference', '_run_kernel', '_check_correctness_single', '_benchmark_single'}
+    path = _MLA_TASK/'test_kernel_harness.py'
+    tree = ast.parse(path.read_text())
+    h = SimpleNamespace(torch=torch, IntEnum=IntEnum, WARMUP=50, ITERATIONS=200)
+    nodes = [node for node in tree.body if isinstance(node, (ast.FunctionDef, ast.ClassDef)) and node.name in names]
+    exec(compile(ast.Module(body=nodes, type_ignores=[]), str(path), 'exec'), h.__dict__)
+    zeros = torch.zeros
+    monkeypatch.setattr(torch, 'zeros', lambda *a, **kw: zeros(*a, **{**kw, 'device':'cpu'}))
+    angles = torch.tensor([0., .3, -.7, 1.1]).reshape(4,1,1,1).expand(4,1,1,2 if reuse else 4).clone()
+    inp = dict(T=2, QH_per_KH=2, KH=1, D=4, D_q_nope=2, D_lora=2,
+        q_nope=torch.arange(1,9).reshape(2,2,2).to(torch.bfloat16),
+        q_pe=(torch.arange(1,17).reshape(2,2,4)/8).to(torch.bfloat16),
+        k_lora=torch.tensor([[[.5,1.]],[[1.5,2.]]],dtype=torch.bfloat16),
+        k_pe=(torch.arange(1,9).reshape(2,1,4)/8).to(torch.bfloat16),
+        kv_cache=torch.full((5,1,6), .25, dtype=torch.bfloat16),
+        slot_mapping=torch.tensor([3,1]), positions=torch.tensor([1,2]),
+        freqs=angles, cos=angles.reshape(4,-1).cos(), sin=angles.reshape(4,-1).sin(),
+        offsets=None, k_scale=torch.tensor(2.), rotate_style=h.RotateStyle.NEOX if neox else h.RotateStyle.GPTJ,
+        reuse_freqs_front_part=reuse, cache_dtype=torch.bfloat16,
+        cache_dtype_actual=None, dtype=torch.bfloat16)
+    if fp8:
+        inp.update(cache_dtype=torch.uint8, cache_dtype_actual=torch.float8_e4m3fn,
+                   kv_cache=inp['kv_cache'].to(torch.float8_e4m3fn).view(torch.uint8))
+    h._setup_inputs = lambda cfg: inp
+
+    def candidate(q_nope, q_pe, k_nope, k_pe, cache, slots, positions, cos, sin, scale, is_neox, **kw):
+        # Independent per-coordinate rotation. No protected reference call.
+        def rotate(x):
+            out=torch.empty_like(x)
+            dim=x.shape[-1]
+            for t in range(x.shape[0]):
+                for j in range(dim):
+                    partner=(j+dim//2)%dim if is_neox else j^1
+                    sign=-1 if (j<dim//2 if is_neox else j%2==0) else 1
+                    f=(j%(dim//2) if is_neox else j//2) if cos.shape[-1]==dim//2 else j
+                    out[t,:,j]=(x[t,:,j].float()*cos[positions[t],f]+sign*x[t,:,partner].float()*sin[positions[t],f]).to(x.dtype)
+            return out
+        q_rot,k_rot=rotate(q_pe),rotate(k_pe)
+        keys=torch.cat((k_nope.float(),k_rot.float()),-1)
+        if kw['apply_scale']:keys=keys/scale
+        cache.view(torch.uint8).index_copy_(0,slots,keys.to(cache.dtype).view(torch.uint8))
+        return torch.cat((q_nope,q_rot),-1),q_rot,k_rot,torch.zeros((q_nope.shape[0],q_nope.shape[1],k_nope.shape[-1]),dtype=q_nope.dtype)
+    h.fused_qk_rope_cat_and_cache_mla=candidate
+    return h, checks, inp
+
+
+@pytest.mark.parametrize('fp8,neox,reuse', [(a,b,c) for a in [False,True] for b in [False,True] for c in [False,True]])
+def test_mla_reference_known_rotation_routing_and_full_cache(monkeypatch,fp8,neox,reuse):
+    h,checks,inp=_mla_cpu_harness(monkeypatch,fp8,neox,reuse)
+    inp['freqs'].zero_();inp['cos'].fill_(1);inp['sin'].zero_()
+    expected=h._run_reference(inp)
+    assert torch.equal(expected[0],torch.cat((inp['q_nope'],inp['q_pe']),-1))
+    assert torch.equal(expected[1],inp['q_pe']) and torch.equal(expected[2],inp['k_pe'])
+    assert not torch.count_nonzero(expected[3])
+    cache=expected[4].view(inp['cache_dtype_actual']).float() if fp8 else expected[4].float()
+    torch.testing.assert_close(cache[3],torch.cat((inp['k_lora'][0],inp['k_pe'][0]),-1).float()/(2 if fp8 else 1),atol=0,rtol=0)
+    assert torch.equal(cache[[0,2,4]],torch.full((3,1,6),.25))
+    checks.check_output(h._run_kernel(inp),expected,inp)
+    inp['freqs'].fill_(torch.pi/2);inp['cos'].copy_(inp['freqs'].reshape(4,-1).cos());inp['sin'].copy_(inp['freqs'].reshape(4,-1).sin())
+    x=inp['q_pe'];known=torch.cat((-x[...,2:],x[...,:2]),-1) if neox else torch.stack((-x[...,1::2],x[...,::2]),-1).flatten(-2)
+    torch.testing.assert_close(h._run_reference(inp)[1],known,atol=.02,rtol=0)
+    checks.check_output(h._run_kernel(inp),h._run_reference(inp),inp)
+
+
+@pytest.mark.parametrize('mode', ['correct','mutate_q','mutate_cache','mutate_positions','zero_input_and_outputs',
+    'short_tuple','wrong_dtype','wrong_shape','nan']+[f'wrong_{i}' for i in range(5)])
+def test_mla_original_correctness_checks_all_outputs_and_pristine_inputs(monkeypatch,mode):
+    h,checks,inp=_mla_cpu_harness(monkeypatch)
+    saved=checks.snapshot(inp);original=h.fused_qk_rope_cat_and_cache_mla
+    def candidate(*a,**kw):
+        if mode in ('mutate_q','zero_input_and_outputs'):inp['q_nope'].zero_()
+        result=list(original(*a,**kw))
+        if mode=='mutate_cache':inp['kv_cache'].zero_()
+        if mode=='mutate_positions':inp['positions'].zero_()
+        if mode=='zero_input_and_outputs':result[0].zero_()
+        if mode=='short_tuple':return result[:3]
+        if mode=='wrong_dtype':result[0]=result[0].float()
+        if mode=='wrong_shape':result[0]=result[0].flatten()
+        if mode=='nan':result[0].fill_(float('nan'))
+        if mode.startswith('wrong_') and mode[-1].isdigit():
+            index=int(mode[-1])
+            if index==4:a[4][-1].add_(1)
+            else:result[index].add_(1)
+        return tuple(result)
+    h.fused_qk_rope_cat_and_cache_mla=candidate
+    h.benchmark_cuda_graph_or_events=lambda *a,**kw:None
+    checks.install(h)
+    if mode=='correct':assert h._check_correctness_single({}) is True
+    else:
+        with pytest.raises((AssertionError,ValueError)):
+            h._check_correctness_single({})
+    checks.unchanged(inp,saved)
+
+
+@pytest.mark.parametrize('fp8', [False,True])
+@pytest.mark.parametrize('mode',['correct','wrong_timed','stale','no_write','no_cache_write',
+    'wrong_replay','mutate_timed','mutate_replay','raise_replay','prepare_failure','zero_input_and_outputs'])
+def test_mla_original_timing_full_output_prepared_replay_and_restoration(monkeypatch,fp8,mode):
+    import inspect
+    h,checks,inp=_mla_cpu_harness(monkeypatch,fp8)
+    pristine=checks.snapshot(inp);records=[]
+    def benchmark(measured,*,timed_run,prepare_fn,**options):
+        assert options==dict(warmup=50,repetition=200)
+        fn=inspect.getclosurevars(measured).nonlocals['fn']
+        cache=inspect.getclosurevars(fn).nonlocals['kv_cache_clone']
+        cache_before=cache.clone();records.append((cache,cache_before,[]))
+        # Exercise the original preparation on multiple scored invocations.
+        for _ in range(3):
+            prepare_fn()
+            assert torch.equal(cache.view(torch.uint8).index_select(0,inp['slot_mapping']),cache_before.view(torch.uint8).index_select(0,inp['slot_mapping']))
+            output=measured()
+        cached=tuple(v.clone() for v in output)
+        if mode=='wrong_timed':output[0].zero_()
+        if mode in ('mutate_timed','zero_input_and_outputs'):inp['q_nope'].zero_()
+        if mode=='zero_input_and_outputs':output[0].zero_()
+        def replay():
+            records[-1][2].append(True)
+            for value in output[:4]:assert torch.isnan(value).all()
+            for key in ['q_nope','q_pe','k_lora','k_pe','k_scale','positions','slot_mapping']:
+                assert not torch.equal(inp[key],pristine[key]),key
+            if mode=='prepare_failure':raise RuntimeError('Preparation failed')
+            prepare_fn()
+            assert torch.isnan(cache.float().index_select(0,inp['slot_mapping'])).all()
+            if mode=='raise_replay':raise RuntimeError('Replay failed')
+            if mode not in ('no_write','stale'):
+                poison=cache.clone();fresh=measured()
+                for dest,source in zip(output[:4],fresh[:4]):dest.copy_(source)
+                if mode=='no_cache_write':cache.copy_(poison)
+            if mode=='stale':
+                for dest,source in zip(output,cached):dest.copy_(source)
+            if mode=='wrong_replay':output[3].add_(1)
+            if mode=='mutate_replay':inp['k_pe'].zero_()
+            return output
+        timed_run._bind(replay,output)
+        return .125,{'benchmark_method':'cuda_graph'}
+    h.benchmark_cuda_graph_or_events=benchmark;checks.install(h)
+    if mode=='correct':
+        ms,meta=h._benchmark_single({})
+        assert ms==.125 and meta['prepared_cache_replay_checked']
+    else:
+        with pytest.raises((AssertionError,RuntimeError)):
+            h._benchmark_single({})
+    checks.unchanged(inp,pristine)
+    assert len(records)==1
+    cache,old,replays=records[0]
+    assert torch.equal(cache.view(torch.uint8),old.view(torch.uint8))
+    assert len(replays)==(0 if mode in ['wrong_timed','mutate_timed','zero_input_and_outputs'] else 1)
+
+
+def test_mla_actions_require_actual_boolean_and_all128_cases(monkeypatch):
+    import sys
+    manifest=json.loads((_MLA_TASK/'workloads.json').read_text())
+    configs=manifest['input_tables']['performance'];seen=[];installed=[]
+    assert len(configs)==len(manifest['cases'])==128
+    h=SimpleNamespace(ALL_CONFIGS=configs,_check_correctness_single=lambda cfg:seen.append(cfg) or True)
+    monkeypatch.setitem(sys.modules,'test_kernel_harness',h)
+    monkeypatch.setitem(sys.modules,'_arena_checks',SimpleNamespace(install=lambda h:installed.append(h)))
+    actions=module_at(_MLA_TASK/'_arena_actions.py',monkeypatch)
+    runner=module_at(_MLA_TASK/'_arena_eval.py',monkeypatch)
+    actions.correctness(runner.require_success)
+    assert seen==configs and installed==[h]
+    h._check_correctness_single=lambda cfg:False
+    with pytest.raises(RuntimeError):actions.correctness(runner.require_success)
+    h._check_correctness_single=lambda cfg:None
+    with pytest.raises(RuntimeError):actions.correctness(runner.require_success)
