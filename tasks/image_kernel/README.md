@@ -363,11 +363,14 @@ source, aliasing, independent recurrence and baseline comparison boundaries.
 
 The [runtime qualification record](../../docs/reference/runtime-upgrade-qualification.md)
 supersedes the historical source/setup-only checkpoints above. As of
-2026-09-15 10:54 UTC, 20 current task packages have complete framework-finalized
-validator PASS: 14 on the explicit SGLang 0.5.19 image and six on the original
-vLLM 0.24.0 image. KDA's five ordinary correctness cases pass, but its last timed
-long-sequence state check still fails; it is not qualified. Exact report and
-source identities are retained under `logs/image-v2-gpu-validation/`.
+2026-09-15, 11:16 UTC, all 21 current task packages have complete framework-finalized
+validator PASS: 14 on the explicit SGLang 0.5.19 image and seven on the original
+vLLM 0.24.0 image. The public KDA port additionally passed the actual unchanged
+candidate through the shared final evaluator in job 140103. Exact report,
+completion-marker, runtime and source identities are retained under
+`logs/image-v2-gpu-validation/`. Historical failures remain separate evidence.
 
-A task's recorded runtime matters: a vLLM-image PASS does not qualify that task
-on SGLang. No default image promotion or optimized-agent result is implied.
+These runs cover the complete 100 correctness cases and 68 performance cases
+listed above. A task's recorded runtime matters: a vLLM-image PASS does not
+qualify that task on SGLang. No default image promotion or optimized-agent result
+is implied; the original custom KDA source bytes remain unavailable.

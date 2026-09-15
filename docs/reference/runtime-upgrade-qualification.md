@@ -29,9 +29,9 @@ The subsequent full image-task runs below exercise this cache configuration.
 They neither promote the default image nor change the separately pinned
 evaluation-tool compatibility gate.
 
-## Image task qualification checkpoint (2026-09-15, 10:54 UTC)
+## Image task qualification checkpoint (2026-09-15, 11:16 UTC)
 
-**20 of 21 current image-task packages have a complete, framework-finalized
+**All 21 current image-task packages have a complete, framework-finalized
 `task_validator` PASS.** These are full Codex medium reviews plus the shared
 framework's task, baseline compilation, correctness and performance actions.
 The report/completion markers bind each result to its frozen task tree,
@@ -41,7 +41,7 @@ is not counted as a complete validator result.
 | Qualification runtime | Current complete image-task PASS | Scope |
 | --- | ---: | --- |
 | SGLang 0.5.19 / ROCm 10, immutable manifest below | 14 | Five older AITER tasks, both recovered SGLang MXFP8 tasks, Kimi MoE, three CK tasks, HIP quantization and paged attention, AITER unified attention. |
-| Original vLLM 0.24.0, `sha256:3832d79d9e514ce2e072580689da078726454596d833c8ab803f29f3cea5ea28` | 6 | TileLang mHC, Gemma4/GPTQ-AWQ MoE, paged attention 2D, sparse prefill and Gemma4 unified attention. |
+| Original vLLM 0.24.0, `sha256:3832d79d9e514ce2e072580689da078726454596d833c8ab803f29f3cea5ea28` | 7 | TileLang mHC, Gemma4/GPTQ-AWQ MoE, paged attention 2D, sparse prefill, Gemma4 unified attention and the public KDA port. |
 | SGLang 0.5.18 / ROCm 10, immutable manifest below | Not an image-suite validator run | Actual HIP/Triton/FlyDSL v2 representatives passed on both ROCm 10 images in job 139982; see the separate comparison below. |
 
 The original vLLM results establish compatibility with that runtime, not with
@@ -54,14 +54,42 @@ fixed synthetic workload (139960). Both original timed outputs and perturbed
 replay outputs are checked where required. The fresh reports supersede only
 their matching older failures; those failed reports remain preserved.
 
-KDA is the sole outstanding task. Its public-source port uses pinned vLLM
-commit `000c7df9ffd3e470980fd4cd6b8ec1b0585500ff` in the original vLLM runtime;
-the custom historical kernel bytes were not recovered. Job 139994 passes all
-five ordinary correctness cases and completes four timed cases, but the
-32,768-token case fails its final-state check because only one compared vector
-is zero. The full validator is FAIL, and the final candidate pipeline is not
-run. Exact-source numerical diagnosis is separate from qualification; no
-numerical threshold, workload, warmup or timing policy is relaxed to accept it.
+KDA completed full validation in job **140103**, frozen task source `288bb2ed`,
+with all five correctness and five performance cases. The same job then ran the
+unchanged candidate through the real shared final evaluator: compilation,
+correctness, workload/method consistency and positive device timing all passed.
+The final evaluation kept the validator report complete. No agent optimization
+was performed. Raw evidence is under `logs/image-v2-gpu-validation/140103/vllm/`:
+`reports.json`, `candidate-pipeline.json`, `candidate-pipeline.log`, the task
+session actions, and the framework-owned `task_result.yaml`.
+The independent final audit is
+`logs/image-v2-gpu-validation/140103/kda-final-independent-audit.json`.
+It verifies all seven actions and all nine candidate files against the actual
+workspace, independent frozen baseline and initial source manifest.
+
+The unchanged-code mean device timings were 0.790660 ms for the baseline and
+1.556085 ms for the candidate. The raw per-case timings and effective replay
+counts are retained; this single sequential run does not establish stable
+relative performance, and the difference must be investigated before using it
+as comparative performance evidence. No optimization gain is claimed.
+The original vLLM runtime also lacks optional `matplotlib`: plot creation was
+skipped, while the raw score, numerical checks and device timings completed.
+
+This task explicitly ports the retained operator to public vLLM commit
+`000c7df9ffd3e470980fd4cd6b8ec1b0585500ff`; the custom historical kernel bytes
+were not recovered. New baselines and candidates use that same public source
+and pinned runtime. No performance equivalence with the unavailable historical
+implementation is claimed.
+
+The earlier KDA failures remain preserved. Job 139994 completed four timed
+cases but rejected the last state comparison. Diagnostic 140067 found actual
+FP32 state zero and independent FP64 reference at most `6.06615263031705e-128`;
+correctly rounding the reference to FP32 yields exactly the actual zero vector.
+The revised comparator permits this representation boundary only when the
+rounded reference exactly equals the zero output. It still rejects zero for any
+representable nonzero reference and uses the original unrounded magnitude gate.
+Nonzero cosine, thresholds, cases, seeds and timing settings are unchanged.
+The diagnostic alone was not counted as a validator PASS.
 
 Detailed report paths, report/completion hashes, frozen task-tree identities,
 materialization records and runtime evidence are preserved under
