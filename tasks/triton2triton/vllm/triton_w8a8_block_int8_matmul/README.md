@@ -45,3 +45,7 @@ output and checks the same graph's replay. These checks are outside timing.
 Input buffers are verified read-only and restored even on replay failure.
 Numerical failures or FP16 overflow in any original scored case remain failures;
 the check does not substitute an easier timing workload.
+
+Performance check failures also emit the underlying exception to stderr before
+the original harness records its failing timing sentinel. Failed cases remain
+failures; diagnostic output does not substitute for a valid measurement.

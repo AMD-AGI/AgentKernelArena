@@ -171,7 +171,17 @@ def install(harness):
 
     def checked_performance():
         benchmark = harness._benchmark_cuda_graph_or_events
-        harness._benchmark_cuda_graph_or_events = lambda fn, **kwargs: checked_benchmark(harness, benchmark, fn, **kwargs)
+        def measured_and_checked(fn, **kwargs):
+            try:
+                return checked_benchmark(harness, benchmark, fn, **kwargs)
+            except Exception as exc:
+                # The original harness returns a failing sentinel after catching
+                # each case's exception. Keep that behavior and retain the cause.
+                import sys
+                print(f'Block INT8 GEMM performance check failed: {type(exc).__name__}: {exc}', file=sys.stderr)
+                raise
+
+        harness._benchmark_cuda_graph_or_events = measured_and_checked
         try:
             return performance()
         finally:

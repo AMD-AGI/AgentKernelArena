@@ -5631,3 +5631,15 @@ def test_solve_tril_original_timing_actual_poisoned_replay_and_restore(monkeypat
 def test_solve_tril_adapter_installs_checks(monkeypatch):
     h=module_at(ROOT/'tasks/triton2triton/vllm/triton_solve_tril_16x16/_arena_eval.py',monkeypatch).load_harness()
     assert h.run_correctness.__module__==h.run_performance.__module__=='_solve_tril_checks'
+
+
+def test_block_gemm_int8_preserves_underlying_performance_failure(monkeypatch,capsys):
+    h,checks=_block_gemm_cpu_harness(monkeypatch,'w8a8_block_int8_matmul')
+    h._TimedRun=module_at(ROOT/'src/tools/perf/aka_benchmark.py',monkeypatch).TimedRun
+    mod=SimpleNamespace(**{checks.SYMBOL:_block_gemm_cpu});h.load_module=lambda:mod
+    def failure(fn,**kwargs):raise RuntimeError('Device capture diagnostic marker')
+    h._benchmark_cuda_graph_or_events=failure;checks.install(h)
+    rows=h.run_performance()
+    assert len(rows)==5 and all(row['execution_time_ms']==-1 for row in rows)
+    assert capsys.readouterr().err.count('Block INT8 GEMM performance check failed: RuntimeError: Device capture diagnostic marker')==5
+    assert getattr(mod,checks.SYMBOL) is _block_gemm_cpu and h._benchmark_cuda_graph_or_events is failure
