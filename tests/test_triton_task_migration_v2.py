@@ -7382,3 +7382,139 @@ def test_silu_fp8_dg_actual_timing_valid_pair_poison_replay_and_input_restore(mo
 def test_silu_fp8_dg_adapter_installs_checks(monkeypatch):
     h=module_at(ROOT/'tasks/triton2triton/vllm/triton_silu_mul_fp8_quant_dg/_arena_eval.py',monkeypatch).load_harness()
     assert h.run_correctness.__module__==h.run_performance.__module__=='_silu_fp8_dg_checks'
+
+
+def _mrope_cpu(q,k,cos,sin,sections,head_size,rotary_dim,interleaved=False):
+    # Complex multiplication is independent of the harness's head loops and
+    # separate real-valued products; retain the original half-split pairing.
+    half=rotary_dim//2;positions=torch.arange(half)
+    if interleaved:
+        axes=torch.where((positions%3==1)&(positions<3*sections[1]),1,
+                         torch.where((positions%3==2)&(positions<3*sections[2]),2,0))
+    else:axes=torch.repeat_interleave(torch.arange(3),torch.tensor(sections))
+    c=cos[axes,:,positions].t().double()[:,None,:]
+    s=sin[axes,:,positions].t().double()[:,None,:]
+    phase=torch.complex(c,s)
+    for value in (q,k):
+        shaped=value.reshape(len(value),-1,head_size)
+        z=torch.complex(shaped[...,:half].double(),shaped[...,half:rotary_dim].double())*phase
+        shaped[...,:half]=z.real.to(value.dtype)
+        shaped[...,half:rotary_dim]=z.imag.to(value.dtype)
+    return q,k
+
+
+def _mrope_cpu_harness(monkeypatch):
+    h,checks=_fp8_group_cpu_harness(monkeypatch,'mrope')
+    for name in ('zeros','tensor'):
+        factory=getattr(torch,name)
+        monkeypatch.setattr(torch,name,lambda *a,_factory=factory,**kw:_factory(*a,**{**kw,'device':'cpu'}))
+    return h,checks
+
+
+def test_mrope_independent_three_axis_known_answer_pair_metadata_and_original_gate(monkeypatch):
+    h,checks=_mrope_cpu_harness(monkeypatch)
+    q=torch.tensor([[1,2,3,4,5,6,7,8]],dtype=torch.float16)
+    k=torch.tensor([[8,7,6,5,4,3,2,1]],dtype=torch.float16)
+    cos=torch.zeros(3,1,3,dtype=q.dtype);sin=torch.tensor([2,3,5],dtype=q.dtype)[:,None,None].expand(3,1,3)
+    expected=(torch.tensor([[-8,-15,-30,2,6,15,7,8]],dtype=q.dtype),torch.tensor([[-10,-12,-15,16,21,30,2,1]],dtype=k.dtype))
+    for flag in (False,True):
+        actual=checks.reference(h,(q,k,cos,sin),[1,1,1],8,6,flag)
+        checks.check_outputs(actual,expected)
+        checks.check_outputs(_mrope_cpu(q.clone(),k.clone(),cos,sin,[1,1,1],8,6,flag),expected)
+    for bad in [(expected[0].float(),expected[1]),(expected[0],expected[1].flatten()),
+                (expected[0].to('meta'),expected[1]),(expected[0],),list(expected)]:
+        with pytest.raises(AssertionError):checks.check_outputs(bad,expected)
+    zero=torch.zeros(1,dtype=q.dtype)
+    checks.check_outputs((zero+.009,zero+.009),(zero,zero))
+    with pytest.raises(AssertionError):checks.check_outputs((zero+.011,zero),(zero,zero))
+
+
+@pytest.mark.parametrize('mode',['correct','wrong_q','wrong_k','missing_return','fresh_only','q_dtype',
+    'mutate_cos','mutate_sin','mutate_sections','ignore_interleaved','ignore_sections','omit_token_tail','omit_head_tail','modify_nonrotary'])
+def test_mrope_actual_fivecase_correctness_inplace_pair_sections_and_interleaved_heads(monkeypatch,mode):
+    h,checks=_mrope_cpu_harness(monkeypatch);calls=[];saved_inputs=[];saved_sections=[]
+    def public(q,k,cos,sin,sections,head_size,rotary_dim,interleaved):
+        calls.append((q.shape,k.shape,list(sections),head_size,rotary_dim,interleaved))
+        saved_inputs.append(((cos,sin),checks.snapshot((cos,sin))));saved_sections.append((sections,list(sections)))
+        if mode=='mutate_cos':cos.zero_()
+        if mode=='mutate_sin':sin.zero_()
+        if mode=='mutate_sections':sections[0]-=1;sections[2]+=1
+        target=(q.clone(),k.clone()) if mode=='fresh_only' else (q,k)
+        selected=[16,8,8] if mode=='ignore_sections' else sections
+        result=_mrope_cpu(*target,cos,sin,selected,head_size,rotary_dim,False if mode=='ignore_interleaved' else interleaved)
+        if mode=='wrong_q':q.add_(1)
+        if mode=='wrong_k':k.add_(1)
+        if mode=='missing_return':return None
+        if mode=='q_dtype':return result[0].float(),result[1]
+        if mode=='omit_token_tail' and len(q)==17:q[-1].zero_()
+        if mode=='omit_head_tail' and q.shape[1]==3*64:q[:,-64:].zero_()
+        if mode=='modify_nonrotary':q.reshape(len(q),-1,head_size)[...,rotary_dim:].zero_()
+        return result
+    mod=SimpleNamespace(triton_mrope=public);h.load_module=lambda:mod;checks.install(h)
+    ok,reason=h.run_correctness();assert ok is (mode=='correct'),reason
+    if ok:
+        assert [v[0][0] for v in calls]==[32,17,17,64,128,256,16]
+        assert [v[2:] for v in calls[1:3]]==[([7,12,13],64,64,False),([12,10,10],64,64,True)]
+    for inputs,saved in saved_inputs:checks.unchanged(inputs,saved)
+    assert all(value==saved for value,saved in saved_sections)
+    assert mod.triton_mrope is public
+
+
+@pytest.mark.parametrize('mode',['correct','wrong_timed_q','wrong_timed_k','stale','no_write','skip_prepare',
+    'skip_q','skip_k','wrong_replay','mutate_timed_q','mutate_timed_k','mutate_timed_cos','mutate_timed_sin',
+    'mutate_replay_q','mutate_replay_k','mutate_replay_cos','mutate_replay_sin','raise_replay'])
+def test_mrope_actual_raw_timing_replays_prepared_rotation_and_restores_six_buffers(monkeypatch,mode):
+    import inspect
+    h,checks=_mrope_cpu_harness(monkeypatch)
+    h._TimedRun=module_at(ROOT/'src/tools/perf/aka_benchmark.py',monkeypatch).TimedRun
+    launches=[]
+    class Raw:
+        def __getitem__(self,grid):
+            def launch(q,k,cos,sin,n,nqh,nkh,hd,rd,pnq,pnk,ph,t,hh,w,flag):
+                assert grid==(n,) and not flag
+                assert (pnq,pnk,ph)==tuple(1<<(v-1).bit_length() for v in (nqh,nkh,hd))
+                launches.append(n);return _mrope_cpu(q,k,cos,sin,[t,hh,w],hd,rd,flag)
+            return launch
+    mod=SimpleNamespace(_triton_mrope_forward=Raw(),triton=SimpleNamespace(next_power_of_2=lambda v:1<<(v-1).bit_length()))
+    h.load_module=lambda:mod
+    all_buffers,all_saved,options,replays=[],[],[],[]
+    def benchmark(measured,*,timed_run,**kwargs):
+        fn=inspect.getclosurevars(measured).nonlocals['fn'];state=inspect.getclosurevars(fn).nonlocals
+        prepare=kwargs['prepare_fn'];prepared=inspect.getclosurevars(prepare).nonlocals
+        inputs=(prepared['q'],prepared['k'],state['cos'],state['sin'])
+        outputs=(state['q_tmp'],state['k_tmp']);buffers=(*inputs,*outputs);saved=checks.snapshot(buffers)
+        all_buffers.append(buffers);all_saved.append(saved);options.append(kwargs)
+        generator=torch.Generator().manual_seed(41+len(options))
+        checks.unchanged(inputs,tuple(torch.randn(*v.shape,dtype=v.dtype,generator=generator) for v in inputs))
+        prepare();measured();cache=checks.snapshot(outputs)
+        if mode.startswith('wrong_timed_'):outputs[0 if mode.endswith('q') else 1].add_(1)
+        if mode.startswith('mutate_timed_'):inputs[{'q':0,'k':1,'cos':2,'sin':3}[mode.rsplit('_',1)[-1]]].zero_()
+        def replay():
+            replays.append(True)
+            checks.unchanged(inputs,(saved[0]*-.5+.25,saved[1]*.75-.5,saved[2]*.25+.25,saved[3]*-.5+.125))
+            assert all(torch.isnan(v).all() for v in outputs)
+            if mode=='raise_replay':raise RuntimeError('Replay failed')
+            if mode!='skip_prepare':prepare()
+            seeds=checks.snapshot(outputs)
+            if mode=='stale':
+                for value,old in zip(outputs,cache):value.copy_(old)
+            elif mode!='no_write':measured()
+            if mode=='skip_q':outputs[0].copy_(seeds[0])
+            if mode=='skip_k':outputs[1].copy_(seeds[1])
+            if mode=='wrong_replay':outputs[0].add_(1)
+            if mode.startswith('mutate_replay_'):inputs[{'q':0,'k':1,'cos':2,'sin':3}[mode.rsplit('_',1)[-1]]].zero_()
+            return outputs
+        timed_run._bind(replay,outputs)
+        return .125,{'benchmark_method':'cuda_graph'}
+    h._benchmark_cuda_graph_or_events=benchmark;checks.install(h);rows=h.run_performance()
+    assert len(options)==5 and all(set(kw)=={'warmup','repetition','prepare_fn'} and kw['warmup']==10 and kw['repetition']==100 for kw in options)
+    for cfg,row in zip(h.TEST_SHAPES,rows):
+        assert row['params']==dict(zip(('num_tokens','num_q_heads','num_kv_heads','head_size','rotary_dim'),cfg[:5]))
+        assert row['execution_time_ms']==(.125 if mode=='correct' else -1.)
+    for buffers,saved in zip(all_buffers,all_saved):checks.unchanged(buffers,saved)
+    assert len(replays)==(0 if mode.startswith(('wrong_timed_','mutate_timed_')) else 5)
+
+
+def test_mrope_adapter_installs_checks(monkeypatch):
+    h=module_at(ROOT/'tasks/triton2triton/vllm/triton_mrope/_arena_eval.py',monkeypatch).load_harness()
+    assert h.run_correctness.__module__==h.run_performance.__module__=='_mrope_checks'
