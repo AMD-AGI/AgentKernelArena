@@ -5,14 +5,67 @@ import logging
 import threading
 import os
 import shlex
+import signal
 import sys
 from pathlib import Path
-from datetime import datetime
 from typing import Any
 import yaml
 from agents import register_agent
 from src.module_registration import AgentType, load_prompt_builder
-from src.runtime_env import PYTHON_ENV_VAR
+from src.runtime_env import PYTHON_ENV_VAR, build_subprocess_env
+
+
+def _load_agent_config(eval_config: dict[str, Any]) -> dict[str, Any]:
+    with Path(__file__).with_name("agent_config.yaml").open() as f:
+        config = yaml.safe_load(f) or {}
+    overrides = eval_config.get("agent", {})
+    if overrides is None:
+        overrides = {}
+    if not isinstance(overrides, dict):
+        raise ValueError("agent must be a mapping")
+    for key in ("model", "timeout_seconds", "max_iterations", "python_path", "effort"):
+        if key in overrides:
+            config[key] = overrides[key]
+    timeout = config.get("timeout_seconds")
+    if isinstance(timeout, bool) or not isinstance(timeout, int) or timeout <= 0:
+        raise ValueError("agent.timeout_seconds must be a positive integer")
+    model = config.get("model")
+    if model is not None and (not isinstance(model, str) or not model.strip()):
+        raise ValueError("agent.model must be a nonempty string or null")
+    if config.get("effort") is not None:
+        raise ValueError(
+            "Cursor has no standalone effort option; select a model variant from "
+            "`cursor-agent models` or use a supported parameterized model ID"
+        )
+    return config
+
+
+def _build_command(
+    agent_bin: str, workspace: str, prompt: str, config: dict[str, Any]
+) -> list[str]:
+    cmd = [
+        agent_bin, "--force", "--print", "--output-format", "stream-json",
+        "--stream-partial-output", "--trust", "--workspace", workspace,
+    ]
+    if config.get("model"):
+        cmd.extend(["--model", config["model"]])
+    cmd.extend(["--", prompt])
+    return cmd
+
+
+def _stop_process(process: subprocess.Popen) -> None:
+    """Terminate only this invocation and its tool children."""
+    for sig in (signal.SIGTERM, signal.SIGKILL):
+        try:
+            os.killpg(process.pid, sig)
+        except ProcessLookupError:
+            break
+        if sig == signal.SIGTERM:
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                pass
+    process.wait()
 
 
 def _get_cli_version(agent_cmd: str) -> str:
@@ -50,25 +103,6 @@ def integrate_agent_config(prompt, agent_config: dict[str, Any], python_path: st
         prompt = prompt.rstrip() + f"\n\nUse this Python interpreter: `{python_path}`."
     return prompt
 
-def write_debug_script(workspace: str, cmd: str, agent: str) -> None:
-    """Optionally write the invocation command to a shell script for debugging."""
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    script_file = f"run_agent_{timestamp}.sh"
-
-    script_lines = [
-        "#!/bin/bash",
-        f"# Generated at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
-        f"# Workspace: {workspace}",
-        f"# Agent: {agent}",
-        "",
-        f"cd {workspace}",
-        cmd,
-    ]
-
-    script_file.write_text("\n".join(script_lines) + "\n")
-    os.chmod(script_file, 0o755)
-
-
 @register_agent("cursor")
 def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: str) -> str:
     """
@@ -83,12 +117,7 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
         str: Combined agent output (stdout plus stderr summary if present)
     """
     AGENT = "cursor-agent"
-    # Use stream-json format with partial output for real-time streaming
-    OPTIONS = "--force --print --output-format stream-json --stream-partial-output"
-    
-    config_path = Path(__file__).with_name("agent_config.yaml")
-    with config_path.open("r") as f:
-        agent_config = yaml.safe_load(f) or {}
+    agent_config = _load_agent_config(eval_config)
     logger = logging.getLogger(__name__)
 
     # Check if the command exists
@@ -104,27 +133,17 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
     runtime_python = _runtime_python_path(agent_config)
     prompt = integrate_agent_config(prompt, agent_config, runtime_python)
     configured_model = agent_config.get("model")
-    quoted_prompt = shlex.quote(prompt)
-    dynamic_options = OPTIONS
-    if configured_model:
-        dynamic_options += f" --model {shlex.quote(str(configured_model))}"
-    cmd = f"{AGENT} {dynamic_options} {quoted_prompt}"
+    process_env = build_subprocess_env(runtime_python)
+    cmd = _build_command(agent_bin, workspace, prompt, agent_config)
 
     logger.info("Cursor Agent Preflight")
     logger.info(f"  binary: {agent_bin}")
-    logger.info(f"  version: {_get_cli_version(AGENT)}")
+    logger.info(f"  version: {_get_cli_version(agent_bin)}")
     logger.info(f"  workspace: {workspace}")
     logger.info(f"  python_path: {runtime_python}")
     logger.info(f"  model: {configured_model if configured_model else '<cursor CLI default/config>'}")
-    logger.info("  effort: <not a separate Cursor CLI flag; use a thinking model variant, e.g. sonnet-4-thinking>")
-
-    # Enable to save the command to a shell script for manual replay/debugging.
-    if False:
-        write_debug_script(workspace, cmd, AGENT)
-        logger.info("Debug script written; skipping live run.")
-        return ""
-    
-    logger.info(f"Running command: {cmd}")
+    logger.info("  effort: <encoded in supported model variants or parameterized model IDs>")
+    logger.info("Running command: %s <prompt>", shlex.join(cmd[:-1]))
     logger.info("=" * 80)
     logger.info("Agent Output (streaming):")
     logger.info("=" * 80)
@@ -136,13 +155,14 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
     # Use Popen for real-time output streaming with interactive input support
     process = subprocess.Popen(
         cmd,
-        shell=True,  # nosec B602 -- shell=True is required to launch agent process
         stdin=subprocess.PIPE,  # Keep stdin closed so the agent exits when done
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
         cwd=workspace,
-        bufsize=1  # Line buffered
+        bufsize=1,
+        env=process_env,
+        start_new_session=True,
     )
 
     # Close stdin immediately; leaving it attached keeps the agent alive waiting
@@ -153,6 +173,7 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
     # Collect output while streaming
     stdout_lines = []
     stderr_lines = []
+    failed_result = threading.Event()
 
     def format_agent_event(data):
         """Convert cursor stream-json payloads into a readable single-line string."""
@@ -160,6 +181,10 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
             return str(data)
 
         event_type = data.get("type")
+        if event_type == "result" and (
+            data.get("is_error") or str(data.get("subtype", "")).startswith("error")
+        ):
+            failed_result.set()
         if event_type == "assistant":
             content = data.get("message", {}).get("content", [])
             texts = []
@@ -265,16 +290,16 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
     stderr_thread.start()
 
     # Wait for process to complete
+    timed_out = False
     try:
         process.wait(timeout=timeout_seconds)
     except subprocess.TimeoutExpired:
+        timed_out = True
         logger.warning(f"Cursor agent timed out after {timeout_seconds}s; terminating process")
-        process.terminate()
-        try:
-            process.wait(timeout=10)
-        except subprocess.TimeoutExpired:
-            logger.warning("Force killing cursor agent process")
-            process.kill()
+        _stop_process(process)
+    except BaseException:
+        _stop_process(process)
+        raise
 
     # Wait for output threads to finish reading
     stdout_thread.join(timeout=1)
@@ -295,4 +320,10 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
     if stderr_lines:
         output += "\n=== STDERR ===\n" + "\n".join(stderr_lines)
 
+    if timed_out:
+        raise TimeoutError(f"Cursor timed out after {timeout_seconds}s; see agent logs")
+    if process.returncode != 0:
+        raise RuntimeError(f"Cursor exited with code {process.returncode}; see agent logs")
+    if failed_result.is_set():
+        raise RuntimeError("Cursor reported a failed result; see agent logs")
     return output

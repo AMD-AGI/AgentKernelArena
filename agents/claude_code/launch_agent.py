@@ -2,16 +2,80 @@
 import subprocess
 import shutil
 import logging
+import math
 import threading
 import os
 import shlex
+import signal
 import sys
 from pathlib import Path
 from typing import Any
 import yaml
 from agents import register_agent
 from src.module_registration import AgentType, load_prompt_builder
-from src.runtime_env import PYTHON_ENV_VAR
+from src.runtime_env import PYTHON_ENV_VAR, build_subprocess_env
+
+
+def _load_agent_config(eval_config: dict[str, Any]) -> dict[str, Any]:
+    """Run settings override defaults; task configs never select a provider/model."""
+    with Path(__file__).with_name("agent_config.yaml").open() as f:
+        config = yaml.safe_load(f) or {}
+    overrides = eval_config.get("agent", {})
+    if overrides is None:
+        overrides = {}
+    if not isinstance(overrides, dict):
+        raise ValueError("agent must be a mapping")
+    for key in (
+        "model", "effort", "timeout_seconds", "max_iterations", "python_path",
+        "max_budget_usd",
+    ):
+        if key in overrides:
+            config[key] = overrides[key]
+    timeout = config.get("timeout_seconds")
+    if isinstance(timeout, bool) or not isinstance(timeout, int) or timeout <= 0:
+        raise ValueError("agent.timeout_seconds must be a positive integer")
+    for key in ("model", "effort"):
+        value = config.get(key)
+        if value is not None and (not isinstance(value, str) or not value.strip()):
+            raise ValueError(f"agent.{key} must be a nonempty string or null")
+    budget = config.get("max_budget_usd")
+    if budget is not None and (
+        isinstance(budget, bool) or not isinstance(budget, (int, float))
+        or not math.isfinite(budget) or budget <= 0
+    ):
+        raise ValueError("agent.max_budget_usd must be a positive finite number or null")
+    return config
+
+
+def _build_command(agent_bin: str, prompt: str, config: dict[str, Any]) -> list[str]:
+    cmd = [
+        agent_bin, "--print", "--verbose", "--output-format", "stream-json",
+        "--include-partial-messages", "--permission-mode", "bypassPermissions",
+        "--no-session-persistence",
+    ]
+    for key, option in (
+        ("model", "--model"), ("effort", "--effort"),
+        ("max_budget_usd", "--max-budget-usd"),
+    ):
+        if config.get(key) is not None:
+            cmd.extend([option, str(config[key])])
+    cmd.extend(["--", prompt])
+    return cmd
+
+
+def _stop_process(process: subprocess.Popen) -> None:
+    """Terminate only this invocation and its tool children."""
+    for sig in (signal.SIGTERM, signal.SIGKILL):
+        try:
+            os.killpg(process.pid, sig)
+        except ProcessLookupError:
+            break
+        if sig == signal.SIGTERM:
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                pass
+    process.wait()
 
 
 def _get_cli_version(agent_cmd: str) -> str:
@@ -64,26 +128,13 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
         str: Combined agent output (stdout plus stderr summary if present)
     """
     AGENT = "claude"
-    # Streamed output (partial messages) and permissive permissions for sandboxed runs.
-    # Note: --dangerously-skip-permissions is exactly equivalent to
-    # `--permission-mode bypassPermissions`, so we only pass the latter.
-    OPTIONS = (
-        "--print "
-        "--verbose "
-        "--output-format stream-json "
-        "--include-partial-messages "
-        "--permission-mode bypassPermissions"
-    )
-
     agent_bin = shutil.which(AGENT)
     if not agent_bin:
         raise RuntimeError(
             f"Command '{AGENT}' not found. Please ensure Claude Code CLI is installed and in your PATH."
         )
 
-    config_path = Path(__file__).with_name("agent_config.yaml")
-    with config_path.open("r") as f:
-        agent_config = yaml.safe_load(f) or {}
+    agent_config = _load_agent_config(eval_config)
     logger = logging.getLogger(__name__)
 
     prompt_builder = load_prompt_builder(AgentType.CLAUDE_CODE, logger)
@@ -93,28 +144,22 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
     prompt = integrate_agent_config(prompt, agent_config, runtime_python)
     configured_model = agent_config.get("model")
     configured_effort = agent_config.get("effort")
-    quoted_prompt = shlex.quote(prompt)
-
-    dynamic_options = OPTIONS
-    if configured_model:
-        dynamic_options += f" --model {shlex.quote(str(configured_model))}"
-    if configured_effort:
-        dynamic_options += f" --effort {shlex.quote(str(configured_effort))}"
-
     # IS_SANDBOX=1 allows skip-permissions even when invoked from a privileged user.
     # CLAUDE_CODE_DISABLE_AUTO_MEMORY=1 turns off the auto-memory feature (ON by
     # default in CLI >=2.1.59) so headless runs never read/write learned memory.
-    cmd = f"IS_SANDBOX=1 CLAUDE_CODE_DISABLE_AUTO_MEMORY=1 {AGENT} {dynamic_options} {quoted_prompt}"
+    process_env = build_subprocess_env(runtime_python)
+    process_env.update(IS_SANDBOX="1", CLAUDE_CODE_DISABLE_AUTO_MEMORY="1")
+    cmd = _build_command(agent_bin, prompt, agent_config)
 
     logger.info("Claude Code Preflight")
     logger.info(f"  binary: {agent_bin}")
-    logger.info(f"  version: {_get_cli_version(AGENT)}")
+    logger.info(f"  version: {_get_cli_version(agent_bin)}")
     logger.info(f"  workspace: {workspace}")
     logger.info(f"  python_path: {runtime_python}")
     logger.info(f"  model: {configured_model if configured_model else '<claude CLI default/config>'}")
     logger.info(f"  effort: {configured_effort if configured_effort else '<claude CLI default/config>'}")
 
-    logger.info(f"Running command: {cmd}")
+    logger.info("Running command: %s <prompt>", shlex.join(cmd[:-1]))
     logger.info("=" * 80)
     logger.info("Agent Output (streaming):")
     logger.info("=" * 80)
@@ -123,19 +168,21 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
 
     process = subprocess.Popen(
         cmd,
-        shell=True,  # nosec B602 -- shell=True is required to launch agent process
         stdin=subprocess.PIPE,  # keep stdin closed to avoid lingering sessions
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
         cwd=workspace,
-        bufsize=1
+        bufsize=1,
+        env=process_env,
+        start_new_session=True,
     )
     if process.stdin:
         process.stdin.close()
 
     stdout_lines: list[str] = []
     stderr_lines: list[str] = []
+    failed_result = threading.Event()
 
     def format_agent_event(data):
         """Convert Claude stream-json payloads into a readable single-line string."""
@@ -143,6 +190,10 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
             return str(data)
 
         event_type = data.get("type")
+        if event_type == "result" and (
+            data.get("is_error") or str(data.get("subtype", "")).startswith("error")
+        ):
+            failed_result.set()
         if event_type == "assistant":
             content = data.get("message", {}).get("content", [])
             texts = []
@@ -294,16 +345,16 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
     stdout_thread.start()
     stderr_thread.start()
 
+    timed_out = False
     try:
         process.wait(timeout=timeout_seconds)
     except subprocess.TimeoutExpired:
+        timed_out = True
         logger.warning(f"Claude Code timed out after {timeout_seconds}s; terminating process")
-        process.terminate()
-        try:
-            process.wait(timeout=10)
-        except subprocess.TimeoutExpired:
-            logger.warning("Force killing Claude Code process")
-            process.kill()
+        _stop_process(process)
+    except BaseException:
+        _stop_process(process)
+        raise
 
     stdout_thread.join(timeout=1)
     stderr_thread.join(timeout=1)
@@ -321,4 +372,10 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
     if stderr_lines:
         output += "\n=== STDERR ===\n" + "\n".join(stderr_lines)
 
+    if timed_out:
+        raise TimeoutError(f"Claude Code timed out after {timeout_seconds}s; see agent logs")
+    if process.returncode != 0:
+        raise RuntimeError(f"Claude Code exited with code {process.returncode}; see agent logs")
+    if failed_result.is_set():
+        raise RuntimeError("Claude Code reported a failed result; see agent logs")
     return output
