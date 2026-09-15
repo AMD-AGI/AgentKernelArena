@@ -32,3 +32,14 @@ syntax and import/interface checks. Missing candidates, incomplete measurements 
 invalid timing fail; commands emit `arena-eval-v1`, never final Arena score reports.
 Canonical benchmark helpers must be materialized by Arena; do not edit their generated regions.
 
+
+The original five FP16 shapes, seeds and atol=rtol=1e-2 gate remain. Protected
+checks require the complete output shape, input dtype/device and finite values,
+using the original FP32 log-softmax formula on pristine inputs. An unscored
+2x3x7 control checks flattening, a column tail, equal logits and finite logits
+spanning -1000 to 1000. The public dim argument remains last-dimension only.
+
+The original full public wrapper, 10 warmups and 100 samples are unchanged.
+Actual captured outputs and a poisoned replay on sign-changed inputs must match
+the corresponding pristine-input reference. Inputs are read-only and restored
+on every exit path; additional reference/replay work is outside timing.

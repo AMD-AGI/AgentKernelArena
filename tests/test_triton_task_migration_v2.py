@@ -3322,3 +3322,97 @@ def test_sampled_count_adapter_installs_checks(monkeypatch):
     adapter = module_at(ROOT/'tasks/triton2triton/vllm/triton_get_num_sampled_and_rejected/_arena_eval.py', monkeypatch)
     h = adapter.load_harness()
     assert h.run_correctness.__module__ == h.run_performance.__module__ == '_sampled_checks'
+
+
+def _log_softmax_cpu(x, dim=-1):
+    values = x.float()
+    return (values - torch.logsumexp(values, dim=dim, keepdim=True)).to(x.dtype)
+
+
+def test_log_softmax_equal_and_extreme_known_answers(monkeypatch):
+    import math
+    checks = module_at(ROOT/'tasks/triton2triton/vllm/triton_log_softmax/_arena_checks.py', monkeypatch)
+    x = torch.tensor([[0., 0., 0.], [1000., 0., -1000.]], dtype=torch.float16)
+    expected = torch.tensor([[-math.log(3)]*3, [0., -1000., -2000.]], dtype=torch.float16)
+    torch.testing.assert_close(checks.reference(x), expected, atol=0, rtol=0)
+    torch.testing.assert_close(_log_softmax_cpu(x), expected, atol=0, rtol=0)
+
+
+@pytest.mark.parametrize('mode', ['correct', 'dtype', 'shape', 'nonfinite', 'mutate_source', 'fixed_rank', 'no_stability'])
+def test_log_softmax_actual_correctness_tail_and_stability(monkeypatch, mode):
+    task = ROOT/'tasks/triton2triton/vllm/triton_log_softmax'
+    h = module_at(task/'scripts/task_runner.py', monkeypatch)
+    checks = module_at(task/'_arena_checks.py', monkeypatch)
+    factory = torch.randn
+    monkeypatch.setattr(torch, 'randn', lambda *args, **kwargs: factory(*args, **{**kwargs, 'device': 'cpu'}))
+    monkeypatch.setattr(torch.cuda, 'synchronize', lambda: None)
+    calls = []
+    def candidate(x, dim=-1):
+        calls.append((tuple(x.shape), dim))
+        if mode == 'mutate_source': x.zero_()
+        out = _log_softmax_cpu(x, dim)
+        if mode == 'no_stability': out = (x.float()-x.float().exp().sum(dim, keepdim=True).log()).to(x.dtype)
+        if mode == 'dtype': out = out.float()
+        if mode == 'shape': out = out[..., :1]
+        if mode == 'nonfinite': out.fill_(float('nan'))
+        if mode == 'fixed_rank' and x.ndim != 2: out.zero_()
+        return out
+    mod = SimpleNamespace(log_softmax=candidate)
+    h.load_module = lambda: mod
+    checks.install(h)
+    ok, reason = h.run_correctness()
+    assert ok is (mode == 'correct'), reason
+    if mode == 'correct':
+        assert calls[::2] == [((2, 3, 7), 2)] * 5
+        assert calls[1::2] == [(tuple(shape), -1) for shape in h.TEST_SHAPES]
+    assert mod.log_softmax is candidate
+
+
+@pytest.mark.parametrize('mode', ['correct', 'wrong_timed', 'stale', 'no_write', 'wrong_replay',
+                                 'mutate_timed', 'mutate_replay', 'raise_replay'])
+def test_log_softmax_actual_scored_performance_and_replay(monkeypatch, mode):
+    import inspect
+    task = ROOT/'tasks/triton2triton/vllm/triton_log_softmax'
+    h = module_at(task/'scripts/task_runner.py', monkeypatch)
+    checks = module_at(task/'_arena_checks.py', monkeypatch)
+    h._TimedRun = SimpleNamespace
+    factory = torch.randn
+    monkeypatch.setattr(torch, 'randn', lambda *args, **kwargs: factory(*args, **{**kwargs, 'device': 'cpu'}))
+    inputs, pristine, options = [], [], []
+    mod = SimpleNamespace(log_softmax=_log_softmax_cpu)
+    h.load_module = lambda: mod
+    def benchmark(measured, *, timed_run, **kwargs):
+        options.append(kwargs)
+        fn = inspect.getclosurevars(measured).nonlocals['fn']
+        x = inspect.getclosurevars(fn).nonlocals['x']
+        inputs.append(x); pristine.append(x.clone())
+        output = measured(); cached = output.clone()
+        if mode == 'wrong_timed': output.zero_()
+        if mode == 'mutate_timed': x.zero_()
+        def replay():
+            if mode == 'raise_replay': raise RuntimeError('replay failed')
+            if mode == 'stale': output.copy_(cached)
+            elif mode != 'no_write': output.copy_(measured())
+            if mode == 'wrong_replay': output.zero_()
+            if mode == 'mutate_replay': x.zero_()
+            return output
+        timed_run.outputs, timed_run.rerun = output, replay
+        return .125, {'benchmark_method': 'cuda_graph'}
+    h._benchmark_cuda_graph_or_events = benchmark
+    checks.install(h)
+    rows = h.run_performance()
+    assert len(rows) == len(h.TEST_SHAPES) == 5
+    assert options == [dict(warmup=10, repetition=100)] * 5
+    for row, (rows_count, cols_count) in zip(rows, h.TEST_SHAPES):
+        assert row['params'] == dict(rows=rows_count, cols=cols_count)
+        assert row['execution_time_ms'] == (.125 if mode == 'correct' else -1.)
+        if mode == 'correct': assert row['perturbed_input_replay_checked']
+    for x, saved in zip(inputs, pristine): checks.unchanged(x, saved)
+    assert mod.log_softmax is _log_softmax_cpu
+    assert h._benchmark_cuda_graph_or_events is benchmark
+
+
+def test_log_softmax_adapter_installs_checks(monkeypatch):
+    adapter = module_at(ROOT/'tasks/triton2triton/vllm/triton_log_softmax/_arena_eval.py', monkeypatch)
+    h = adapter.load_harness()
+    assert h.run_correctness.__module__ == h.run_performance.__module__ == '_logsoftmax_checks'
