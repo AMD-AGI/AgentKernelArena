@@ -3053,3 +3053,87 @@ def test_expand_adapter_installs_checks(monkeypatch):
     adapter = module_at(ROOT/'tasks/triton2triton/vllm/triton_expand/_arena_eval.py', monkeypatch)
     h = adapter.load_harness()
     assert h.run_correctness.__module__ == h.run_performance.__module__ == '_expand_checks'
+
+
+def _num_nans_cpu(logits):
+    return (logits != logits).sum(-1).to(torch.int32)
+
+
+@pytest.mark.parametrize('mode', ['correct', 'dtype', 'shape', 'nonfinite_as_nan', 'mutate_source', 'change_nan_payload'])
+def test_num_nans_known_answers_and_pristine_nan_payloads(monkeypatch, mode):
+    task = ROOT/'tasks/triton2triton/vllm/triton_num_nans'
+    h = module_at(task/'scripts/task_runner.py', monkeypatch)
+    checks = module_at(task/'_arena_checks.py', monkeypatch)
+    x = torch.tensor([[float('nan'), float('inf'), -float('inf')], [0., 1., -1.]], dtype=torch.float16)
+    known = torch.tensor([1, 0], dtype=torch.int32)
+    torch.testing.assert_close(h.reference_num_nans(x), known, atol=0, rtol=0)
+    torch.testing.assert_close(_num_nans_cpu(x), known, atol=0, rtol=0)
+    checks.unchanged(x, x.clone())
+    def candidate(logits):
+        if mode == 'mutate_source': logits.nan_to_num_()
+        if mode == 'change_nan_payload':
+            raw = logits.view(torch.int16)
+            raw[logits != logits] = 0x7e01
+        out = (~torch.isfinite(logits)).sum(-1).int() if mode == 'nonfinite_as_nan' else _num_nans_cpu(logits)
+        if mode == 'dtype': out = out.long()
+        if mode == 'shape': out = out[:1]
+        return out
+    mod = SimpleNamespace(get_num_nans=candidate)
+    h.load_module = lambda: mod
+    with checks.checked_modules(h):
+        checked = h.load_module().get_num_nans
+        if mode == 'correct': torch.testing.assert_close(checked(x), known, atol=0, rtol=0)
+        else:
+            with pytest.raises(AssertionError): checked(x)
+    assert mod.get_num_nans is candidate
+
+
+@pytest.mark.parametrize('mode', ['correct', 'wrong_timed', 'stale', 'no_write', 'wrong_replay',
+                                 'mutate_timed', 'mutate_replay', 'raise_replay'])
+def test_num_nans_actual_finite_timing_and_nan_replay(monkeypatch, mode):
+    import inspect
+    task = ROOT/'tasks/triton2triton/vllm/triton_num_nans'
+    h = module_at(task/'scripts/task_runner.py', monkeypatch)
+    checks = module_at(task/'_arena_checks.py', monkeypatch)
+    h._TimedRun = SimpleNamespace
+    factory = torch.randn
+    monkeypatch.setattr(torch, 'randn', lambda *args, **kwargs: factory(*args, **{**kwargs, 'device': 'cpu'}))
+    inputs, pristine, options = [], [], []
+    mod = SimpleNamespace(get_num_nans=_num_nans_cpu)
+    h.load_module = lambda: mod
+    def benchmark(measured, *, timed_run, **kwargs):
+        options.append(kwargs)
+        fn = inspect.getclosurevars(measured).nonlocals['fn']
+        logits = inspect.getclosurevars(fn).nonlocals['logits']
+        assert torch.isfinite(logits).all(), 'Original finite scored inputs are retained'
+        inputs.append(logits); pristine.append(logits.clone())
+        output = measured(); cached = output.clone()
+        if mode == 'wrong_timed': output.fill_(-1)
+        if mode == 'mutate_timed': logits.zero_()
+        def replay():
+            if mode == 'raise_replay': raise RuntimeError('replay failed')
+            if mode == 'stale': output.copy_(cached)
+            elif mode != 'no_write': output.copy_(measured())
+            if mode == 'wrong_replay': output.zero_()
+            if mode == 'mutate_replay': logits.nan_to_num_()
+            return output
+        timed_run.outputs, timed_run.rerun = output, replay
+        return .125, {'benchmark_method': 'cuda_graph'}
+    h._benchmark_cuda_graph_or_events = benchmark
+    checks.install(h)
+    rows = h.run_performance()
+    assert len(rows) == len(h.TEST_SHAPES) == 5
+    assert options == [dict(warmup=10, repetition=100)] * 5
+    for row, (reqs, vocab) in zip(rows, h.TEST_SHAPES):
+        assert row['params'] == dict(num_reqs=reqs, vocab_size=vocab)
+        assert row['execution_time_ms'] == (.125 if mode == 'correct' else -1.)
+        if mode == 'correct': assert row['perturbed_input_replay_checked']
+    for x, saved in zip(inputs, pristine): checks.unchanged(x, saved)
+    assert mod.get_num_nans is _num_nans_cpu
+    assert h._benchmark_cuda_graph_or_events is benchmark
+
+
+def test_num_nans_adapter_installs_checks(monkeypatch):
+    adapter = module_at(ROOT/'tasks/triton2triton/vllm/triton_num_nans/_arena_eval.py', monkeypatch)
+    h = adapter.load_harness()
+    assert h.run_correctness.__module__ == h.run_performance.__module__ == '_nancount_checks'

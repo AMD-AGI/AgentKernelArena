@@ -33,3 +33,16 @@ syntax and import/interface checks. Missing candidates, incomplete measurements 
 invalid timing fail; commands emit `arena-eval-v1`, never final Arena score reports.
 Canonical benchmark helpers must be materialized by Arena; do not edit their generated regions.
 
+
+The complete output contract is one int32 count per request on the input device,
+with exact values from a pristine-input reference. Read-only logits are checked
+byte-for-byte so unchanged NaNs are accepted while source mutation is rejected.
+An unscored 3x7 control distinguishes NaNs from positive/negative infinity and
+covers empty/all-NaN rows and a vocabulary tail.
+
+The original five shapes, correctness NaN-mask seeds, finite performance inputs,
+10 warmups, 100 samples and full public wrapper are unchanged. After the actual
+captured output is checked, an untimed replay injects different row-wise NaN
+counts and poisons the output. Correct counting must overwrite the poison and
+match the new reference; logits are restored even if replay fails. A cached or
+constant-zero answer cannot pass this replay check.
