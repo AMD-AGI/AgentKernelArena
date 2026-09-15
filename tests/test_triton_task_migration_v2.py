@@ -3137,3 +3137,88 @@ def test_num_nans_adapter_installs_checks(monkeypatch):
     adapter = module_at(ROOT/'tasks/triton2triton/vllm/triton_num_nans/_arena_eval.py', monkeypatch)
     h = adapter.load_harness()
     assert h.run_correctness.__module__ == h.run_performance.__module__ == '_nancount_checks'
+
+
+def _mean_cpu(x, dim, keepdim=False, dtype=None):
+    dtype = dtype or (x.dtype if x.is_floating_point() else torch.float32)
+    return (x.to(dtype).float().sum(dim=dim, keepdim=keepdim) / x.shape[dim]).to(dtype)
+
+
+@pytest.mark.parametrize('mode', ['correct', 'dtype', 'shape', 'nonfinite', 'mutate_source',
+                                 'ignores_keepdim', 'ignores_dtype', 'ignores_negative_dim'])
+def test_mean_known_answer_optional_arguments_and_negative_controls(monkeypatch, mode):
+    task = ROOT/'tasks/triton2triton/vllm/triton_mean'
+    h = module_at(task/'scripts/task_runner.py', monkeypatch)
+    checks = module_at(task/'_arena_checks.py', monkeypatch)
+    x = torch.arange(30, dtype=torch.float16).reshape(2, 3, 5)
+    expected = torch.tensor([[[2.], [7.], [12.]], [[17.], [22.], [27.]]])
+    torch.testing.assert_close(checks.reference(x, -1, True, torch.float32), expected, atol=0, rtol=0)
+    torch.testing.assert_close(_mean_cpu(x, -1, True, torch.float32), expected, atol=0, rtol=0)
+    def candidate(x, dim, keepdim=False, dtype=None):
+        if mode == 'mutate_source': x.zero_()
+        if mode == 'ignores_keepdim': keepdim = False
+        if mode == 'ignores_dtype': dtype = None
+        if mode == 'ignores_negative_dim' and dim < 0: dim = 0
+        output = _mean_cpu(x, dim, keepdim, dtype)
+        if mode == 'dtype': output = output.double()
+        if mode == 'shape': output = output[:1]
+        if mode == 'nonfinite': output.fill_(float('nan'))
+        return output
+    mod = SimpleNamespace(mean_dim=candidate)
+    h.load_module = lambda: mod
+    with checks.checked_modules(h):
+        call = h.load_module().mean_dim
+        if mode == 'correct': torch.testing.assert_close(call(x, -1, True, torch.float32), expected)
+        else:
+            with pytest.raises(AssertionError): call(x, -1, True, torch.float32)
+    assert mod.mean_dim is candidate
+
+
+@pytest.mark.parametrize('mode', ['correct', 'wrong_timed', 'stale', 'no_write', 'wrong_replay',
+                                 'mutate_timed', 'mutate_replay', 'raise_replay'])
+def test_mean_original_scored_performance_and_actual_replay(monkeypatch, mode):
+    import inspect
+    task = ROOT/'tasks/triton2triton/vllm/triton_mean'
+    h = module_at(task/'scripts/task_runner.py', monkeypatch)
+    checks = module_at(task/'_arena_checks.py', monkeypatch)
+    h._TimedRun = SimpleNamespace
+    factory = torch.randn
+    monkeypatch.setattr(torch, 'randn', lambda *args, **kwargs: factory(*args, **{**kwargs, 'device': 'cpu'}))
+    inputs, pristine, options = [], [], []
+    mod = SimpleNamespace(mean_dim=_mean_cpu)
+    h.load_module = lambda: mod
+    def benchmark(measured, *, timed_run, **kwargs):
+        options.append(kwargs)
+        fn = inspect.getclosurevars(measured).nonlocals['fn']
+        x = inspect.getclosurevars(fn).nonlocals['x']
+        inputs.append(x); pristine.append(x.clone())
+        output = measured(); cached = output.clone()
+        if mode == 'wrong_timed': output.fill_(100)
+        if mode == 'mutate_timed': x.zero_()
+        def replay():
+            if mode == 'raise_replay': raise RuntimeError('replay failed')
+            if mode == 'stale': output.copy_(cached)
+            elif mode != 'no_write': output.copy_(measured())
+            if mode == 'wrong_replay': output.fill_(100)
+            if mode == 'mutate_replay': x.zero_()
+            return output
+        timed_run.outputs, timed_run.rerun = output, replay
+        return .125, {'benchmark_method': 'cuda_graph'}
+    h._benchmark_cuda_graph_or_events = benchmark
+    checks.install(h)
+    rows = h.run_performance()
+    assert len(rows) == len(h.TEST_SHAPES) == 5
+    assert options == [dict(warmup=10, repetition=100)] * 5
+    for row, (shape, dim) in zip(rows, h.TEST_SHAPES):
+        assert row['params'] == dict(shape=list(shape), dim=dim)
+        assert row['execution_time_ms'] == (.125 if mode == 'correct' else -1.)
+        if mode == 'correct': assert row['perturbed_input_replay_checked']
+    for x, saved in zip(inputs, pristine): checks.unchanged(x, saved)
+    assert mod.mean_dim is _mean_cpu
+    assert h._benchmark_cuda_graph_or_events is benchmark
+
+
+def test_mean_adapter_installs_checks(monkeypatch):
+    adapter = module_at(ROOT/'tasks/triton2triton/vllm/triton_mean/_arena_eval.py', monkeypatch)
+    h = adapter.load_harness()
+    assert h.run_correctness.__module__ == h.run_performance.__module__ == '_mean_checks'
