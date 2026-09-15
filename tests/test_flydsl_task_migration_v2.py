@@ -2695,6 +2695,11 @@ class _RemoveQuantGemmChecks(_RemoveAddedReplayChecks):
         return super().visit_Assign(node)
     def visit_Call(self,node):
         if getattr(node.func,'id',None)=='_checked_quant_gemm_output':return self.visit(node.args[0])
+        if getattr(node.func,'id',None)=='gemm_afp8wfp8':
+            for keyword in node.keywords:
+                if keyword.arg=='x_scale_group_size':
+                    assert isinstance(keyword.value,ast.Constant) and keyword.value.value==32
+            node.keywords=[kw for kw in node.keywords if kw.arg!='x_scale_group_size']
         return super().visit_Call(node)
 
 
@@ -2819,3 +2824,39 @@ def test_remaining_quant_gemm_original_inputs_numerics_and_timing_preserved():
             if isinstance(fn,ast.FunctionDef) and fn.name in functions:
                 restored=_RemoveQuantGemmChecks().visit(fn)
                 assert hashlib.sha256(ast.dump(restored,include_attributes=False).encode()).hexdigest()==functions[fn.name],(name,fn.name)
+
+
+@pytest.mark.parametrize('k',[128,256])
+def test_afp8wfp8_production_binding_preserves_actual_mx32_scales(k,monkeypatch):
+    import torch,types
+    task=ROOT/'tasks/torch2flydsl/gemm_afp8wfp8_kernel';model=module(task/'model.py')
+    # Each group has a different power-of-two range, so treating four MX32
+    # groups as one 128-wide scale cannot accidentally produce the same data.
+    a=torch.arange(1,2*k+1,dtype=torch.float32).reshape(2,k)
+    a=(a*torch.exp2(torch.arange(k,dtype=torch.float32)//32-3)).to(torch.bfloat16)
+    w=(torch.arange(128*k,dtype=torch.float32).reshape(128,k)%11-5).to(torch.bfloat16)
+    actual_inputs=model.quantize_afp8wfp8(a,w);calls=[]
+    def production(x,weight,x_scale,w_scale,*,dtype=torch.bfloat16,x_scale_group_size=128):
+        assert x_scale.shape==(x.shape[0],x.shape[1]//x_scale_group_size)
+        calls.append(x_scale_group_size)
+        # Independently decode the supplied bytes and perform a CPU/FP64 dot.
+        dx=x.double()*torch.exp2(x_scale.double()-127).repeat_interleave(32,1)
+        dw=weight.double()*torch.exp2(w_scale.double()-127).repeat_interleave(128,0).repeat_interleave(128,1)
+        return (dx@dw.T).to(dtype)
+    with pytest.raises(AssertionError):production(actual_inputs[0],actual_inputs[2],actual_inputs[1],actual_inputs[3])
+    monkeypatch.setitem(sys.modules,'aiter.ops.triton.gemm.basic.gemm_afp8wfp8',types.SimpleNamespace(gemm_afp8wfp8=production))
+    ns={};_harness_functions(task,{'_aiter_ground_truth'},ns)
+    actual=ns['_aiter_ground_truth'](model,a,w);expected=model.Model()(a,w)
+    assert calls==[32]
+    torch.testing.assert_close(actual,expected,atol=0,rtol=0)
+
+
+def test_afp8wfp8_production_binding_propagates_runtime_error(monkeypatch):
+    import types
+    def production(*args,**kwargs):
+        assert kwargs['x_scale_group_size']==32
+        raise RuntimeError('device launch failed')
+    monkeypatch.setitem(sys.modules,'aiter.ops.triton.gemm.basic.gemm_afp8wfp8',types.SimpleNamespace(gemm_afp8wfp8=production))
+    model=types.SimpleNamespace(quantize_afp8wfp8=lambda a,w:(1,2,3,4));ns={}
+    _harness_functions(ROOT/'tasks/torch2flydsl/gemm_afp8wfp8_kernel',{'_aiter_ground_truth'},ns)
+    with pytest.raises(RuntimeError,match='device launch failed'):ns['_aiter_ground_truth'](model,None,None)

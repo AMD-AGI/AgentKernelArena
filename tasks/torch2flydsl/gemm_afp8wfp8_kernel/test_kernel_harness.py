@@ -110,7 +110,12 @@ def _aiter_ground_truth(mmod, a, w):
     import torch
 
     x_fp8, x_scale, w_fp8, w_scale = mmod.quantize_afp8wfp8(a, w)
-    return gemm_afp8wfp8(x_fp8, w_fp8, x_scale, w_scale, dtype=torch.bfloat16)
+    # This task's activation scales are per 32 K elements. Current AITER also
+    # supports blockscale activations and defaults to groups of 128.
+    return gemm_afp8wfp8(
+        x_fp8, w_fp8, x_scale, w_scale, dtype=torch.bfloat16,
+        x_scale_group_size=32,
+    )
 
 
 def _norm_worst(ref, out):

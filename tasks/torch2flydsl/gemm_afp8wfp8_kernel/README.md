@@ -74,3 +74,10 @@ zero-reference denominator, timing policy, warmups and samples are unchanged.
 Candidate-only auditing requires actual FlyDSL computation, with host allocation,
 layout/casts and launch preparation allowed. Baseline library dispatch and final
 candidate are checked separately; a starter is not a final implementation.
+
+The production AITER call explicitly selects `x_scale_group_size=32`, matching
+the unchanged MXFP8 activation scales `[M,K/32]`. Current AITER defaults to 128
+for its additional blockscale mode; that default does not describe this task.
+The runtime must support this explicit argument. Weight scales remain per
+128x128 block. No quantizer, input, reference, tolerance or sampling change is
+part of this API adaptation; it requires fresh GPU qualification.
