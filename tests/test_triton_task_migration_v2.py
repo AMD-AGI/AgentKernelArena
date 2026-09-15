@@ -1711,3 +1711,112 @@ def test_identity_adapter_installs_correctness_and_timing_checks(monkeypatch):
     adapter=module_at(ROOT/'tasks/triton2triton/vllm/triton_compute_identity/_arena_eval.py',monkeypatch)
     harness=adapter.load_harness()
     assert harness.run_correctness.__module__==harness.run_performance.__module__=='_identity_checks'
+
+
+def eagle_inputs():
+    return (torch.tensor([10,11,12,13],dtype=torch.int32),
+            torch.tensor([100,101,102,103],dtype=torch.int32),
+            torch.tensor([99],dtype=torch.int32),
+            torch.tensor([0,4],dtype=torch.int32),torch.tensor([1],dtype=torch.int32))
+
+
+@pytest.mark.parametrize('shift',[False,True])
+def test_eagle_scalar_reference_has_six_independent_known_outputs(monkeypatch,shift):
+    task=ROOT/'tasks/triton2triton/vllm/triton_copy_and_expand_eagle_inputs'
+    harness=module_at(task/'scripts/task_runner.py',monkeypatch)
+    checks=module_at(task/'_arena_checks.py',monkeypatch)
+    expected=[torch.zeros(16,dtype=torch.int32),torch.zeros(16,dtype=torch.int32),
+              torch.zeros(16,dtype=torch.bool),torch.zeros(16,dtype=torch.bool),
+              torch.tensor([1,2] if shift else [2,3],dtype=torch.int32),
+              torch.arange(4,dtype=torch.int32) if shift else torch.zeros(4,dtype=torch.int32)]
+    if shift:
+        expected[0][:5]=torch.tensor([11,99,-2,-1,-1]);expected[1][:5]=torch.tensor([100,101,102,0,0])
+        expected[2][3:5]=True;expected[3][2]=True
+    else:
+        expected[0][:6]=torch.tensor([10,11,99,-2,-1,-1]);expected[1][:6]=torch.tensor([100,101,102,103,0,0])
+        expected[2][4:6]=True;expected[3][3]=True
+    result=checks.reference(harness,eagle_inputs(),-1,-2,2,shift)
+    assert len(result)==6
+    for value,gold in zip(result,expected):assert value.dtype==gold.dtype and torch.equal(value,gold)
+
+
+@pytest.mark.parametrize('output_index',range(6))
+@pytest.mark.parametrize('mode',['dtype','wrong_value'])
+def test_eagle_correctness_checks_each_output_dtype_and_values(monkeypatch,output_index,mode):
+    task=ROOT/'tasks/triton2triton/vllm/triton_copy_and_expand_eagle_inputs'
+    harness=module_at(task/'scripts/task_runner.py',monkeypatch)
+    checks=module_at(task/'_arena_checks.py',monkeypatch)
+    def candidate(*args):
+        result=list(harness.reference_copy_and_expand(*args[:-1]))
+        if mode=='dtype':result[output_index]=result[output_index].long()
+        elif result[output_index].dtype==torch.bool:result[output_index].logical_not_()
+        else:result[output_index].fill_(123)
+        return tuple(result)
+    mod=SimpleNamespace(copy_and_expand_eagle_inputs=candidate);load=lambda:mod
+    harness.load_module=load
+    with checks.checked_modules(harness):
+        with pytest.raises(AssertionError):harness.load_module().copy_and_expand_eagle_inputs(*eagle_inputs(),-1,-2,2,True,11)
+    assert harness.load_module is load and mod.copy_and_expand_eagle_inputs is candidate
+
+
+@pytest.mark.parametrize('mode',['correct','missing_output','extra_output','shape','mutate_inputs'])
+def test_eagle_correctness_rejects_incomplete_tuples_and_input_mutation(monkeypatch,mode):
+    task=ROOT/'tasks/triton2triton/vllm/triton_copy_and_expand_eagle_inputs'
+    harness=module_at(task/'scripts/task_runner.py',monkeypatch)
+    checks=module_at(task/'_arena_checks.py',monkeypatch)
+    def candidate(*args):
+        result=harness.reference_copy_and_expand(*args[:-1])
+        if mode=='missing_output':return result[:-1]
+        if mode=='extra_output':return (*result,result[0])
+        if mode=='shape':return (result[0][:1],*result[1:])
+        if mode=='mutate_inputs':args[0].zero_()
+        return result
+    mod=SimpleNamespace(copy_and_expand_eagle_inputs=candidate);load=lambda:mod;harness.load_module=load
+    with checks.checked_modules(harness):
+        call=lambda:harness.load_module().copy_and_expand_eagle_inputs(*eagle_inputs(),-1,-2,2,False,11)
+        if mode=='correct':call()
+        else:
+            with pytest.raises(AssertionError):call()
+    assert harness.load_module is load and mod.copy_and_expand_eagle_inputs is candidate
+
+
+@pytest.mark.parametrize('mode',['correct','wrong_timed','stale','no_write','wrong_replay','mutate_inputs','replay_raises'])
+def test_eagle_actual_six_timed_outputs_and_replay_restore(monkeypatch,mode):
+    task=ROOT/'tasks/triton2triton/vllm/triton_copy_and_expand_eagle_inputs'
+    harness=module_at(task/'scripts/task_runner.py',monkeypatch)
+    checks=module_at(task/'_arena_checks.py',monkeypatch);harness._TimedRun=SimpleNamespace
+    tt,tp,nt,qsl,qel=eagle_inputs();nps=2;tpr=4
+    inputs=(tt,tp,nt,qsl,qel);pristine=tuple(value.clone() for value in inputs)
+    original=lambda *args:harness.reference_copy_and_expand(*args[:-1])
+    mod=SimpleNamespace(copy_and_expand_eagle_inputs=original)
+    def fn():mod.copy_and_expand_eagle_inputs(tt,tp,nt,qsl,qel,-1,-2,nps,False,tpr+nps+5)
+    options=[]
+    def benchmark(measured,*,timed_run,**kwargs):
+        options.append(kwargs);outputs=measured();cached=tuple(value.clone() for value in outputs)
+        if mode=='wrong_timed':outputs[4].zero_()
+        def replay():
+            if mode=='replay_raises':raise RuntimeError('injected replay failure')
+            if mode=='stale':
+                for value,saved in zip(outputs,cached):value.copy_(saved)
+            elif mode!='no_write':
+                for value,new in zip(outputs,measured()):value.copy_(new)
+                if mode=='wrong_replay':outputs[4].zero_()
+                elif mode=='mutate_inputs':tt.zero_()
+            return outputs
+        timed_run.outputs=outputs;timed_run.rerun=replay
+        return 0.25,dict(benchmark_method='cuda_graph')
+    call=lambda:checks.checked_benchmark(harness,benchmark,fn,warmup=10,repetition=100)
+    if mode=='correct':
+        ms,metadata=call();assert ms==0.25 and metadata['all_six_outputs_checked'] and metadata['perturbed_input_replay_checked']
+    elif mode=='replay_raises':
+        with pytest.raises(RuntimeError,match='injected replay failure'):call()
+    else:
+        with pytest.raises(AssertionError):call()
+    assert options==[dict(warmup=10,repetition=100)] and mod.copy_and_expand_eagle_inputs is original
+    assert all(torch.equal(value,saved) for value,saved in zip(inputs,pristine))
+
+
+def test_eagle_adapter_installs_correctness_and_timing_checks(monkeypatch):
+    adapter=module_at(ROOT/'tasks/triton2triton/vllm/triton_copy_and_expand_eagle_inputs/_arena_eval.py',monkeypatch)
+    harness=adapter.load_harness()
+    assert harness.run_correctness.__module__==harness.run_performance.__module__=='_eagle_checks'
