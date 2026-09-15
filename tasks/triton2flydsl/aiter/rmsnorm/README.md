@@ -54,7 +54,16 @@ checks do not qualify these GPU kernels. Existing legacy reports are historical;
 the parent integration schedules new GPU validation.
 
 
-All 20 original correctness cases remain (ten shapes, BF16/FP16); the ten original benchmark cases use BF16. Return input-shaped output in the input dtype. EPS=1e-5 remains passed to the operator; the original RMS oracle and 0.01 atol/rtol are unchanged. Input and weight are read-only.
+All 20 original correctness cases remain (ten shapes, BF16/FP16); the ten original
+benchmark cases use BF16. Return input-shaped output in the input dtype. EPS=1e-5
+and the 0.01 atol/rtol gate are unchanged. Input and weight are read-only.
+
+The reference explicitly computes `x * rsqrt(mean(x*x) + EPS) * weight` in FP32
+before converting to the output dtype. The earlier harness omitted `+ EPS` even
+though the public contract and frozen Triton implementation include it. This
+reference correction restores that contract; it does not change the baseline
+algorithm, workloads, tolerances, seeds or timings. Independent zero-input and
+EPS-scale known answers reject that omission and retain wrong-output controls.
 
 The frozen original Triton baseline is unchanged. Final candidate import/operator
 calls are audited for FlyDSL computation independently of the oracle and timing.

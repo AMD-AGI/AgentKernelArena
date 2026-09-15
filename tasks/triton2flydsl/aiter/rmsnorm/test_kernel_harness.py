@@ -81,13 +81,13 @@ def _make_inputs(M, N, dtype, device="cuda"):
 
 
 def _torch_rmsnorm(x, g, out_dtype):
-    # fp32-reduce reference (matches test_rmsnorm.py:torch_rmsnorm).
+    # fp32 reduction with the same EPS term specified by rms_norm's interface.
     import torch
 
     N = x.shape[1]
     x_f32 = x.float()
     g_f32 = g.float()
-    rms = torch.sqrt(torch.sum(x_f32 * x_f32, dim=-1) * (1.0 / N))
+    rms = torch.sqrt(torch.sum(x_f32 * x_f32, dim=-1) * (1.0 / N) + EPS)
     rsigma = 1.0 / rms
     out = x_f32 * rsigma.unsqueeze(1) * g_f32
     return out.to(out_dtype)

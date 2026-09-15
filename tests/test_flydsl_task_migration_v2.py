@@ -3763,6 +3763,21 @@ _TRITON_ELEMENTWISE_NAMES=['ff_a16w16','fused_silu_mul','fused_clamp_act_mul','r
 
 
 class _RemoveElementwiseChecks(_RemoveTritonBatchedChecks):
+    def visit_FunctionDef(self, node):
+        if node.name == '_torch_rmsnorm':
+            # Explicit reference repair: preserve the historical fingerprint
+            # except for the missing stabilizer, tested independently below.
+            for statement in node.body:
+                if (isinstance(statement, ast.Assign)
+                        and len(statement.targets) == 1
+                        and getattr(statement.targets[0], 'id', None) == 'rms'):
+                    argument = statement.value.args[0]
+                    if (isinstance(argument, ast.BinOp)
+                            and isinstance(argument.op, ast.Add)
+                            and getattr(argument.right, 'id', None) == 'EPS'):
+                        statement.value.args[0] = argument.left
+        return self.generic_visit(node)
+
     def visit_Expr(self,node):
         if isinstance(node.value,ast.Call) and getattr(node.value.func,'id',None)=='_checked_elementwise_output':return None
         return super().visit_Expr(node)
@@ -4065,3 +4080,48 @@ assert calls == [True]
 """.replace("EXPECTED", repr(correct))
     result = subprocess.run([sys.executable, "-c", program], cwd=task, capture_output=True, text=True)
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+@pytest.mark.parametrize('fault', ['none', 'missing_eps', 'squared_eps'])
+def test_rmsnorm_reference_controls_reject_missing_or_misplaced_epsilon(fault, tmp_path):
+    task = tmp_path / 'rmsnorm'
+    shutil.copytree(ROOT / 'tasks/triton2flydsl/aiter/rmsnorm', task)
+    if fault != 'none':
+        path = task / 'test_kernel_harness.py'
+        source = path.read_text()
+        assert source.count(' * (1.0 / N) + EPS)') == 1
+        replacement = ' * (1.0 / N) + ' + ('0.0)' if fault == 'missing_eps' else 'EPS * EPS)')
+        path.write_text(source.replace(' * (1.0 / N) + EPS)', replacement))
+    result = invoke(task, 'validate-task')
+    assert result.passed == (fault == 'none'), result.reason
+    if fault == 'none':
+        assert len(result.cases) == 20
+        controls = result.metadata['reference_controls']
+        assert len(controls) == 3
+        assert all(row['negative_output'] == 'rejected' for row in controls)
+    else:
+        assert 'reference output' in result.reason or 'known answer' in result.reason
+
+
+@pytest.mark.parametrize('dtype_name', ['float32', 'float16', 'bfloat16'])
+def test_rmsnorm_reference_epsilon_scale_matches_independent_fp64_math(dtype_name):
+    import math
+    import torch
+    task = ROOT / 'tasks/triton2flydsl/aiter/rmsnorm'
+    tree = ast.parse((task / 'test_kernel_harness.py').read_text())
+    eps = next(ast.literal_eval(n.value) for n in tree.body if isinstance(n, ast.Assign) and any(getattr(t, 'id', None) == 'EPS' for t in n.targets))
+    ns = {'EPS': eps}
+    _harness_functions(task, {'_torch_rmsnorm'}, ns)
+    dtype = getattr(torch, dtype_name)
+    v = math.sqrt(ns['EPS'])
+    x = torch.tensor([[0., 0.], [v, -v], [1., 3.]], dtype=dtype)
+    weight = torch.tensor([2., 4.], dtype=dtype)
+    expected = []
+    for row in x.tolist():
+        denominator = math.sqrt(sum(value * value for value in row) / 2 + ns['EPS'])
+        expected.append([value * w / denominator for value, w in zip(row, weight.tolist())])
+    expected = torch.tensor(expected, dtype=dtype)
+    actual = ns['_torch_rmsnorm'](x, weight, dtype)
+    assert actual.dtype == dtype
+    assert torch.isfinite(actual).all()
+    torch.testing.assert_close(actual, expected, atol=1e-6, rtol=1e-6)
