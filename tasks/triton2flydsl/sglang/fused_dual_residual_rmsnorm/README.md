@@ -52,3 +52,19 @@ plus any operator dependencies stated by the source. Arena must materialize the
 canonical `_aka_benchmark.py` helper before GPU execution. CPU controls/protocol
 checks do not qualify these GPU kernels. Existing legacy reports are historical;
 the parent integration schedules new GPU validation.
+
+
+All eight original cases remain, including BF16/FP16/FP32 input and non-power-of-2
+hidden dimensions. Both output and intermediate residual must retain the input
+shape, dtype and device. All input tensors are read-only. The two outputs use
+the original FP32 allclose checks: atol=rtol=0.01 for BF16/FP16,0.0001for FP32,
+with EPS=1e-6 in both normalizations and the original intermediate rounding.
+
+The actual measured pair and the same captured graph replay must both satisfy
+these rules. Untimed replay negates x and residual, which negates both outputs
+without changing either RMS denominator. Both measured output buffers are
+poisoned before replay; inputs are restored afterwards. Independent EPS-scale
+known answers check both stages separately. Originalcase identities,seeds42+i,
+ten externalwarmups and100graphsamples remain; capture failure cannot bypass
+validation. Only final candidate calls are audited for FlyDSL computation;
+the original frozen Triton implementation and numerical reference are unchanged.
