@@ -18,7 +18,8 @@ import os
 import json
 import argparse
 import importlib.util
-from _aka_benchmark import benchmark_cuda_graph_or_events
+from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
+from scripts.replay_checks import require_tensor_contract, require_unchanged, verify_timed_run
 
 TASK_DIR = os.path.dirname(os.path.abspath(__file__))
 os.chdir(TASK_DIR)
@@ -26,6 +27,7 @@ os.chdir(TASK_DIR)
 TASK_NAME = "triton2flydsl/aiter/fav3_sage"
 from task_runtime import candidate_relative_path
 SOURCE_FILE = candidate_relative_path()
+ENTRY = 'fav3_sage'
 
 # Small kernel config so several seqlen blocks are exercised cheaply on a shared GPU.
 # BLKQ == BLOCK_M and BLKK == BLOCK_N must stay consistent (the descale tables are
@@ -235,6 +237,39 @@ def run_compile():
         return False, str(e)
 
 
+def _checked_sage_output(actual, layout):
+    import torch
+    require_tensor_contract(actual, layout, dtype=torch.bfloat16)
+    if not bool(torch.isfinite(actual).all()):
+        raise AssertionError("Non-finite SageAttention output")
+
+
+def _compare_sage_output(actual, expected):
+    import torch
+    _checked_sage_output(actual, expected)
+    if not bool(torch.isfinite(expected).all()):
+        raise AssertionError("Non-finite SageAttention reference")
+    metrics = _compare(actual, expected)
+    if not (metrics["norm_max_err"] <= NORM_MAX_ERR_TOL
+            and metrics["frac_exceeding_pct"] <= MAX_DIFF_PCT):
+        raise AssertionError(f"Numerical mismatch: original SageAttention gates: {metrics}")
+
+
+def _sage_replay_validator(q, k, v, scale, causal, window):
+    inputs = (q, k, v)
+    originals = tuple(value.clone() for value in inputs)
+    def oracle():
+        return _attention_reference(q, k, v, scale, causal, window)
+    expected = oracle()
+    def perturb():
+        v.neg_()
+    def validate(timed):
+        return verify_timed_run(timed, inputs=inputs, originals=originals,
+                                expected=expected, perturb=perturb,
+                                reference=oracle, compare=_compare_sage_output)
+    return validate
+
+
 def run_correctness():
     # Runs the Triton kernel on TEST_SHAPES and compares against a full-precision
     # torch attention reference (ported from aiter test_fav3_sage.py::test_sage),
@@ -255,10 +290,14 @@ def run_correctness():
         try:
             torch.manual_seed(42 + i)
             q, k, v, scale = make_test_data(b, s, hq, hk, d, device)
+            protected_inputs = (q, k, v)
+            originals = tuple(value.clone() for value in protected_inputs)
 
             result = _call_kernel(mod, q, k, v, scale, causal, window)
             torch.cuda.synchronize()
 
+            require_unchanged(protected_inputs, originals)
+            _checked_sage_output(result, q)
             finite = bool(torch.isfinite(result).all().item())
 
             reference = _attention_reference(q, k, v, scale, causal, window)
@@ -327,29 +366,32 @@ def run_performance():
         try:
             torch.manual_seed(42 + test_idx)
             q, k, v, scale = make_test_data(b, s, hq, hk, d, device)
+            replay_validate = _sage_replay_validator(q, k, v, scale, causal, window)
 
             for _ in range(WARMUP_ITERATIONS):
                 _call_kernel(mod, q, k, v, scale, causal, window)
             torch.cuda.synchronize()
 
+            timed = TimedRun()
             elapsed_ms, bench_meta = benchmark_cuda_graph_or_events(
                 lambda: _call_kernel(mod, q, k, v, scale, causal, window),
                 warmup=0,
-                repetition=BENCHMARK_ITERATIONS,
+                repetition=BENCHMARK_ITERATIONS, timed_run=timed,
             )
 
+            bench_meta.update(replay_validate(timed))
             test_cases.append({
                 "test_case_id": f"perf{test_idx + 1}",
                 "execution_time_ms": elapsed_ms,
                 **bench_meta,
                 "params": params,
             })
-        except Exception:
+        except Exception as error:
             test_cases.append({
                 "test_case_id": f"perf{test_idx + 1}",
                 "execution_time_ms": -1.0,
                 "benchmark_method": "benchmark_failed",
-                "benchmark_fallback_reason": "performance case failed before timing completed",
+                "benchmark_fallback_reason": "performance case failed: " + str(error),
                 "params": params,
             })
     return test_cases

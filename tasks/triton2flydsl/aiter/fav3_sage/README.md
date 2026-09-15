@@ -52,3 +52,23 @@ plus any operator dependencies stated by the source. Arena must materialize the
 canonical `_aka_benchmark.py` helper before GPU execution. CPU controls/protocol
 checks do not qualify these GPU kernels. Existing legacy reports are historical;
 the parent integration schedules new GPU validation.
+
+
+This task retains its original seven BF16 bshd cases, return_lse=False,
+smooth_k=True, with the declared GQA/causal/sliding-window variants and scale.
+The required numerical gate is unchanged: normalized maximum error<=0.05 AND
+at most0.5% elements exceeding the original atol=0.3/rtol=0.25 rule.
+
+These fixed workload choices define the evaluated Arena suite; extra upstream
+wrapper modes are not qualified by these reports. No original case or selected
+flag was removed. The candidate must preserve the public entry and all calls
+made by this suite; private module constants/kernel symbol names are not new
+candidate requirements. Output must be finite BF16 with q.shape/device, and
+Q/K/V are read-only. The independent full-precision reference and its original
+comparison expressions remain unchanged. The actual measured output is checked,
+then V is negated outside timing, the previous output poisoned, and that same
+measured invocation replayed under both numerical gates. This also validates the
+quantization and internal preparation performed inside the original wrapper.
+The original10external warmups,100samples, seed42+i, kernel config and allocation
+boundaries are unchanged for baseline and candidate. Final FlyDSL invocation
+auditing is separate from oracle computation and runs outside timing.
