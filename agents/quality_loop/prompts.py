@@ -2,8 +2,10 @@
 from __future__ import annotations
 
 from pathlib import Path
+import shlex
 
 import yaml
+from src.task_spec import TaskSpec
 
 
 def repair_prompt(report: dict, task_id: str) -> str:
@@ -16,6 +18,11 @@ this task workspace. Do not spend time fixing WARN-only findings. Preserve the
 task's intended computation and public contract. Run the relevant compile and
 correctness commands after editing. Do not use GitHub, git, network services, or
 edit anything outside this workspace.
+Keep config.yaml in schema_version: 2. Use candidate, baseline, and evaluation
+declarations; never introduce task_type, source_file_path, target_kernel_functions,
+or the legacy compile/correctness/performance_command fields. Do not write reports
+on behalf of the framework. A missing report or infrastructure failure must be
+resolved by the controller, not repaired by weakening the task.
 
 Validation report:
 ```yaml
@@ -24,7 +31,7 @@ Validation report:
 """
 
 
-def optimizer_prompt(base_prompt: str, task_id: str) -> str:
+def optimizer_prompt(base_prompt: str, task_id: str, spec: TaskSpec) -> str:
     return base_prompt.rstrip() + f"""
 
 ## quality_loop single-iteration boundary
@@ -32,10 +39,21 @@ def optimizer_prompt(base_prompt: str, task_id: str) -> str:
 This is the one and only optimization iteration for `{task_id}`. Produce at most
 one candidate implementation. Complete all analysis, implementation, compile,
 correctness, and performance checks needed for that candidate in this single
-iteration. You may edit only declared kernel/source files. Do not edit config,
-tests, scripts, performance helpers, or any other harness file. Do not use git or
+iteration. Follow exactly the candidate.editable file, tree, or symbol scopes.
+Do not edit task configuration, protected harness logic, or performance helpers. Do not use git or
 GitHub. Preserve the exact computation, outputs, dtypes, shapes, aliasing, and
 side effects of the original task.
+
+Candidate language: `{spec.candidate.language}`.
+Declared starting state: `{spec.candidate.initial_state}`.
+Starting language: `{spec.candidate.initial_language or 'unimplemented'}`.
+Baseline role: `{spec.baseline.kind}`; its framework snapshot and provided
+baseline implementation are read-only. Edit the candidate working copy only.
+The directory name is an identifier and does not select language or state.
+Final candidate actions (all cases must pass; no stub exemption):
+{chr(10).join(' - ' + shlex.join(command) for action in ('compile', 'correctness', 'performance') for command in spec.action('candidate', action).commands)}
+Run these with `ARENA_EVAL_PHASE=candidate_evaluation`. Emit command evidence only;
+the framework owns task_result.yaml and validation_report.yaml.
 """
 
 
@@ -77,6 +95,10 @@ Strengthen correctness coverage only where the rationale identifies a real gap.
 Add a small, targeted set of valid boundary/shape/dtype cases. Do not modify the
 kernel/source implementation, computation contract, tolerances merely to accept
 wrong answers, benchmark timing helpers, or performance methodology. Every new
-case must be valid for and pass the original pre-audit kernel. Run the appropriate
-correctness command. Do not use git, GitHub, or network services.
+case must be valid for the original baseline/reference contract. The controller
+will check the initial task under its declared baseline policy and the actual
+optimized candidate under full final-candidate correctness. A generation task
+has no pre-audit candidate implementation; do not pretend its stub is executable.
+Use the configured evaluation.workloads file when cases live outside tests/scripts.
+Run the appropriate v2 action. Do not use git, GitHub, or network services.
 """

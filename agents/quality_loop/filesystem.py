@@ -23,12 +23,14 @@ GENERATED_NAMES = {
     "quality_loop_review.yaml",
     "performance_report.json",
     "compile_report.json",
+    ".validation_complete",
 }
 GENERATED_DIRS = {
     ".git",
     ".pytest_cache",
     ".quality_loop_no_gh",
     ".quality_loop_original_sources",
+    ".quality_loop_history",
     ".rocprofv3",
     "__pycache__",
     "build",
@@ -79,13 +81,13 @@ def diff_trees(before: dict[str, str], after: dict[str, str]) -> TreeChanges:
     )
 
 
-def is_generated_path(relative: str, *, repo_subdir: str | None = None) -> bool:
+def is_generated_path(relative: str, *, materialized: tuple[str, ...] = ()) -> bool:
     path = Path(relative)
     if path.name in GENERATED_NAMES:
         return True
     if any(part in GENERATED_DIRS for part in path.parts):
         return True
-    if repo_subdir and path.parts and path.parts[0] == repo_subdir:
+    if any(relative == dest or relative.startswith(dest + "/") for dest in materialized):
         return True
     return False
 
