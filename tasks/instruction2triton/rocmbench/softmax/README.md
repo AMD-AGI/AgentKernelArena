@@ -13,9 +13,10 @@ Run `python3 _arena_eval.py validate-task`, or `python3 _arena_eval.py baseline|
 with one role and one action. Submitted checks use `ARENA_EVAL_PHASE=candidate_evaluation`.
 The adapter emits `arena-eval-v1`; Arena owns final score/validation reports.
 `workloads.json` retains 31 original collected cases, including 21 performance cases.
-Collection is checked against this independent manifest. Original correctness
-functions run unchanged. Performance inputs additionally run the task-local
-oracle in `_arena_reference.py`, before timing and against observed timed output.
+Collection is checked against this independent manifest. The 10 original FP32 correctness cases keep their original allclose assertion,
+now using an independent pre-invocation reference snapshot. All 21 performance
+cases also check full output and read-only input before timing, against the
+actual measured output, and after changed-input replay.
 Seeds, case parameters, original assertions/tolerances, launch parameters,
 prepare/reset callbacks, warmups and sample counts are unchanged.
 
@@ -30,6 +31,48 @@ manifest: missing hardware features, unsupported combinations, missing reference
 or incomplete execution cannot qualify this task. These require explicit task
 qualification/repair before a campaign; the migration is not a GPU validation.
 A missing/empty final kernel never falls back to a reference or starting kernel.
+
+## Numerical and replay contract
+
+The mathematical operator is row-wise softmax. Preserve the allocating public
+wrapper, kernel, launch/autotune policy, all 10 FP32 correctness cases, and all
+21 performance cases (seven shapes times fp16/bf16/fp32). No shape, seed, warmup,
+sample count or timed allocation boundary changes.
+
+Original `test_softmax` creates FP32 input, computes `torch.softmax`, and uses
+`torch.allclose` with its defaults: `atol=1e-8`, `rtol=1e-5`. It does not contain
+an FP16/BF16 numerical rule: those dtypes originally appeared only in timing.
+The migrated wrapper incorrectly applied the FP32 rule directly to two already
+rounded low-precision outputs. This repair keeps the FP32 gate and explicitly
+extends it through the required output storage conversion:
+
+1. From a pristine input snapshot, compute `r = torch.softmax(x.float(), dim=1)`.
+2. For FP32 output, require the original full-tensor allclose rule.
+3. For FP16/BF16, compute `d = 1e-8 + 1e-5 * abs(r)` in FP32. Every output element
+   must lie between `(r-d).to(output_dtype)` and `(r+d).to(output_dtype)`.
+
+Thus a low-precision value must be obtainable by rounding a value within the
+original FP32 accuracy interval. This is an explicit extension of the original
+FP32 contract, not a historical low-precision threshold, a dtype-wide tolerance
+chosen from baseline failures, or permission to return arbitrary nearby values.
+Shape, dtype, device, finite output and a separate output allocation are checked.
+The same rule applies to initial baseline, final candidate, and timed replay.
+[PyTorch allclose](https://docs.pytorch.org/docs/2.11/generated/torch.allclose.html)
+defines the preserved FP32 interval;
+[softmax dtype](https://docs.pytorch.org/docs/2.11/generated/torch.nn.functional.softmax.html)
+defines input casting for the independent reference.
+
+Input bytes are read-only and references use private pre-call snapshots. The
+canonical `TimedRun` exposes the actual measured tensor, including the original
+wrapper's allocation behavior. Outside timing, replay changes column values by
+reversing/negating the input and adding column-varying offsets (a constant row
+shift would not change softmax). It recomputes the independent reference,
+poisons the measured output, and reruns the bound measured invocation. Input and
+poisoned output are restored in `finally`, including failures. The same original
+inputs are used for baseline/candidate timing with ten warmups, 100 samples and
+unchanged graph calibration/batching defaults. Explicit observable event timing
+is supported; unobservable automatic graph fallback fails. Single-column
+correctness cases retain their mathematically constant output of one.
 
 ## Original operator instructions
 

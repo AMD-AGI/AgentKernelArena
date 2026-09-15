@@ -218,16 +218,27 @@ def run_softmax(M, N):
 def test_softmax(M, N, request):
     set_seed()
     x = torch.randn(M, N, device='cuda')
-    y_triton = softmax(x)
-    y_torch = torch.softmax(x, axis=1)
-    ################### save tri_out in result_gold ###################
-    test_case_name = request.node.name
-    sanitized_key_name = test_case_name.replace("::", "_").replace("[", "_").replace("]", "").replace("-", "_")
-    result_gold[sanitized_key_name] = y_triton.clone().detach().cpu()
-    ###################################################################
-    result_gold['_CALL_SUCCESS_'] = torch.tensor([[1.0]])
-    
-    assert torch.allclose(y_triton, y_torch), (y_triton, y_torch)
+    from _arena_reference import SoftmaxCheck
+    check = SoftmaxCheck(x)
+    try:
+        y_triton = softmax(x)
+        y_torch = check.expected
+        ################### save tri_out in result_gold ###################
+        test_case_name = request.node.name
+        sanitized_key_name = test_case_name.replace("::", "_").replace("[", "_").replace("]", "").replace("-", "_")
+        result_gold[sanitized_key_name] = y_triton.clone().detach().cpu()
+        ###################################################################
+        result_gold['_CALL_SUCCESS_'] = torch.tensor([[1.0]])
+
+        assert torch.allclose(y_triton, y_torch), (y_triton, y_torch)
+        check(y_triton)
+        request.node.user_properties.append(('softmax_contract', {
+            'readonly_input_checked': True, 'independent_input_snapshot': True,
+            'full_output_checked': True, 'original_fp32_gate': True,
+        }))
+    finally:
+        check.restore()
+
 
 
 #Benchmark
