@@ -285,12 +285,12 @@ def test_every_task_performance_entrypoint_uses_a_supported_family():
     assert config_count == 438
     assert problems == []
     assert sum(counts.values()) == config_count
-    # Both copies of add, block-copy, RNG and load-reduce now call the canonical
-    # sample API directly to validate and replay their actual measured outputs.
+    # Add, block-copy, RNG, load-reduce and both softmax variants call the
+    # canonical sample API directly to validate and replay measured outputs.
     assert counts == {
-        "canonical_python": 244,
+        "canonical_python": 248,
         "native_graph_driver": 2,
-        "rocmbench_adapter": 53,
+        "rocmbench_adapter": 49,
         "vllm_adapter": 139,
     }
 
