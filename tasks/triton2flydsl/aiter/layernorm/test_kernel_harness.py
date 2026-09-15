@@ -21,7 +21,8 @@ import math
 import os
 import sys
 from pathlib import Path
-from _aka_benchmark import benchmark_cuda_graph_or_events
+from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
+from scripts.replay_checks import allclose_output, require_tensor_contract, require_unchanged, verify_timed_run
 
 from task_runtime import candidate_relative_path
 SOURCE_FILE = candidate_relative_path()
@@ -103,9 +104,12 @@ def run_correctness(verbose=True):
             tag = f"{shape['name']}_{dt}"
             try:
                 x, weight, bias = _make_inputs(shape["M"], shape["N"], _torch_dtype(dt))
+                originals = tuple(t.clone() for t in (x, weight, bias))
                 y = mod.layer_norm(x, weight, bias, EPS)
                 torch.cuda.synchronize()
+                require_unchanged((x, weight, bias), originals)
                 ref = _reference_layernorm(x, shape["N"], weight, bias)
+                require_tensor_contract(y, ref, dtype=x.dtype)
                 finite = bool(torch.isfinite(y).all().item())
                 close = torch.allclose(y, ref, atol=1e-2, rtol=1e-2)
                 ok = finite and close
@@ -135,6 +139,9 @@ def run_benchmark(verbose=True):
     report, latencies = [], []
     for idx, shape in enumerate(TEST_SHAPES):
         x, weight, bias = _make_inputs(shape["M"], shape["N"], _torch_dtype("bf16"))
+        originals = tuple(t.clone() for t in (x, weight, bias))
+        expected = _reference_layernorm(x, shape["N"], weight, bias)
+        timed = TimedRun()
         fn = lambda: mod.layer_norm(x, weight, bias, EPS)  # noqa: E731
         fn()
         torch.cuda.synchronize()
@@ -142,8 +149,13 @@ def run_benchmark(verbose=True):
             fn()
         torch.cuda.synchronize()
         ms, bench_meta = benchmark_cuda_graph_or_events(
-            fn, warmup=0, repetition=ITERS
+            fn, warmup=0, repetition=ITERS, timed_run=timed
         )
+        bench_meta.update(verify_timed_run(
+            timed, inputs=(x, weight, bias), originals=originals, expected=expected,
+            perturb=lambda: x.neg_(), reference=lambda: _reference_layernorm(x, shape["N"], weight, bias),
+            compare=lambda actual, wanted: allclose_output(
+                actual, wanted, atol=1e-2, rtol=1e-2, dtype=x.dtype)))
         latencies.append(ms)
         nbytes = 2.0 * shape["M"] * shape["N"] * 2  # bf16 read+write
         report.append(

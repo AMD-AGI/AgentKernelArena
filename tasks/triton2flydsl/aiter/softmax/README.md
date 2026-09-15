@@ -52,3 +52,11 @@ plus any operator dependencies stated by the source. Arena must materialize the
 canonical `_aka_benchmark.py` helper before GPU execution. CPU controls/protocol
 checks do not qualify these GPU kernels. Existing legacy reports are historical;
 the parent integration schedules new GPU validation.
+
+Correctness requires the declared output shape/dtype/device and unchanged
+operator inputs. The measured output and the exact measured launch replay must
+both pass the original `atol=1e-2, rtol=1e-2` rule. After timing, the harness
+negates the input, recomputes its protected reference, poisons the measured
+output, and replays the same invocation. It restores inputs before continuing.
+Reference work, cloning, validation and restoration are outside device timing.
+All original shapes, dtypes, seeds, warmups and samples remain unchanged.

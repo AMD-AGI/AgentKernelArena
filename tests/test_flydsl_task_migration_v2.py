@@ -408,7 +408,7 @@ def _protected_triton_fingerprint(source, *, added_replay_checks=False):
 def test_triton_preserves_original_harness_semantics_inputs_and_timing():
     for name,expected in TRITON_PROTECTED_SHA256.items():
         task=ROOT/"tasks/triton2flydsl"/name
-        assert _protected_triton_fingerprint((task/"test_kernel_harness.py").read_text(), added_replay_checks=name=="aiter/gemm_a16w16")==expected,name
+        assert _protected_triton_fingerprint((task/"test_kernel_harness.py").read_text(), added_replay_checks=name in {"aiter/gemm_a16w16", "aiter/softmax", "aiter/layernorm"})==expected,name
         cfg=yaml.safe_load((task/"config.yaml").read_text())
         assert cfg["baseline"]["kind"]=="initial_candidate"
         assert cfg["baseline"]["language"]=="triton"
@@ -676,7 +676,7 @@ class _RemoveAddedReplayChecks(ast.NodeTransformer):
     def visit_Expr(self, node):
         value = node.value
         if isinstance(value, ast.Call):
-            if isinstance(value.func, ast.Name) and value.func.id in {"require_tensor_contract", "_validate_pa_contract"}:
+            if isinstance(value.func, ast.Name) and value.func.id in {"require_tensor_contract", "require_unchanged", "_validate_pa_contract"}:
                 return None
             if (isinstance(value.func, ast.Attribute) and value.func.attr == "update"
                     and len(value.args) == 1 and isinstance(value.args[0], ast.Call)
@@ -705,7 +705,8 @@ _REPLAY_TASKS = ["triton2flydsl/aiter/gemm_a16w16",
                  "flydsl2flydsl/fp8_gemm_8wave_kernel",
                  "flydsl2flydsl/blockscale_preshuffle_gemm_kernel",
                  "flydsl2flydsl/preshuffle_gemm_v2_kernel",
-                 "flydsl2flydsl/pa_decode_fp8_kernel"]
+                 "flydsl2flydsl/pa_decode_fp8_kernel",
+                 "triton2flydsl/aiter/softmax", "triton2flydsl/aiter/layernorm"]
 
 
 @pytest.mark.parametrize("task_name", _REPLAY_TASKS)
@@ -1086,3 +1087,83 @@ def test_pa_build_case_records_inputs_before_metadata_and_excludes_writable_scra
         launch.arena_perturb()
         assert not torch.equal(before, launch.arena_reference())
         assert launch() is out
+
+
+@pytest.mark.parametrize("name", ["softmax", "layernorm"])
+@pytest.mark.parametrize("bad_phase", [None, "measured", "replay", "input_modified"])
+def test_normalization_benchmark_validates_measured_and_replayed_values(name, bad_phase, monkeypatch, tmp_path):
+    import math
+    import types
+    import torch
+    import torch.nn.functional as F
+    task = ROOT / "tasks/triton2flydsl/aiter" / name
+    checks = module(task / "scripts/replay_checks.py")
+    monkeypatch.setattr(torch.cuda, "synchronize", lambda: None)
+    x = torch.tensor([[1., 2., 4.], [-2., 3., 1.]], dtype=torch.bfloat16)
+    weight, bias = torch.ones(3, dtype=x.dtype), torch.ones(3, dtype=x.dtype)
+    originals = tuple(t.clone() for t in (x, weight, bias))
+    def reference():
+        return torch.softmax(x, 1) if name == "softmax" else F.layer_norm(x, (3,), weight, bias, 1e-5)
+    phase = {"name": "setup"}
+    def compute(*args):
+        if bad_phase == "input_modified" and phase["name"] == "measured":
+            x.add_(1)
+        return torch.zeros_like(x) if phase["name"] == bad_phase else reference()
+    seen = []
+    def benchmark(fn, warmup, repetition, timed_run):
+        seen.append((warmup, repetition))
+        phase["name"] = "measured"
+        timed_run.outputs = fn()
+        timed_run.bound = True
+        def replay():
+            phase["name"] = "replay"
+            timed_run.outputs.copy_(fn())
+            return timed_run.outputs
+        timed_run.rerun = replay
+        return .1, {"benchmark_method": "cuda_graph"}
+    ns = {"math": math, "json": json, "Path": Path, "_HERE": str(tmp_path),
+          "EPS": 1e-5, "WARMUP": 10, "ITERS": 100,
+          "TEST_SHAPES": [{"name": "controlled", "M": 2, "N": 3}],
+          "_torch_dtype": lambda dt: torch.bfloat16,
+          "_make_inputs": lambda *args: x if name == "softmax" else (x, weight, bias),
+          "_load_source": lambda: types.SimpleNamespace(softmax=compute, layer_norm=compute),
+          "TimedRun": types.SimpleNamespace, "benchmark_cuda_graph_or_events": benchmark,
+          "verify_timed_run": checks.verify_timed_run, "allclose_output": checks.allclose_output}
+    _harness_functions(task, {"run_benchmark", "_reference_softmax", "_reference_layernorm"}, ns)
+    if bad_phase is None:
+        records = ns["run_benchmark"](verbose=False)
+        assert records[0]["timed_output_correctness"] == "PASS"
+        assert records[0]["replay_correctness"] == "PASS"
+        assert seen == [(0, 100)]
+        checks.require_unchanged((x, weight, bias), originals)
+    else:
+        with pytest.raises(AssertionError):
+            ns["run_benchmark"](verbose=False)
+
+
+@pytest.mark.parametrize("name", ["softmax", "layernorm"])
+@pytest.mark.parametrize("behavior", ["correct", "input_modified", "wrong_shape", "wrong_dtype"])
+def test_normalization_correctness_enforces_input_and_output_contract(name, behavior, monkeypatch):
+    import types
+    import torch
+    import torch.nn.functional as F
+    task = ROOT / "tasks/triton2flydsl/aiter" / name
+    checks = module(task / "scripts/replay_checks.py")
+    monkeypatch.setattr(torch.cuda, "synchronize", lambda: None)
+    x = torch.tensor([[1., 2., 4.], [-2., 3., 1.]], dtype=torch.bfloat16)
+    weight, bias = torch.ones(3, dtype=x.dtype), torch.ones(3, dtype=x.dtype)
+    def compute(*args):
+        if behavior == "input_modified":
+            x.add_(1)
+        result = torch.softmax(x, 1) if name == "softmax" else F.layer_norm(x, (3,), weight, bias, 1e-5)
+        if behavior == "wrong_shape":
+            return result.unsqueeze(0)
+        return result.float() if behavior == "wrong_dtype" else result
+    ns = {"EPS": 1e-5, "DTYPES": ["bf16"],
+          "TEST_SHAPES": [{"name": "controlled", "M": 2, "N": 3}],
+          "_torch_dtype": lambda dt: torch.bfloat16,
+          "_make_inputs": lambda *args: x if name == "softmax" else (x, weight, bias),
+          "_load_source": lambda: types.SimpleNamespace(softmax=compute, layer_norm=compute),
+          "require_tensor_contract": checks.require_tensor_contract, "require_unchanged": checks.require_unchanged}
+    _harness_functions(task, {"run_correctness", "_reference_softmax", "_reference_layernorm"}, ns)
+    assert ns["run_correctness"](verbose=False) is (behavior == "correct")
