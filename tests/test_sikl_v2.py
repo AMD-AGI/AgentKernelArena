@@ -513,6 +513,7 @@ def test_diagnostic_policy_only_names_tasks_with_specific_evidence():
         'gemm_a16w16_nt_n256_k6144': 'ab062308fe3266fcf2bfd116160ce593e4909ce2a68c007b8a302abfbf9a2c48',
         'gemm_a16w16_nt_n2624_k6144': 'c7ae7cf39328e1711f19c25f3b61cac2e584763891d395c63d71378f3a13225d',
         'gemm_a16w16_nt_n6144_k2048': '95770d8f910e865b28d493aa234cc3205a61fe4e1709cd84443761619c950e76',
+        'gemm_a16w16_nt_n6144_k3072': '9488e7dd33b407bbbbb193b258d812870132d1a31708475bebe7d93f36a6da55',
     }
     diagnostic = []
     for path in TASKS:
