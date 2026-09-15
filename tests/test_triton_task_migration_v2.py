@@ -6440,3 +6440,88 @@ def test_token_logprob_actual_timing_perturbs_ids_and_logits_and_restores_inputs
 def test_token_logprob_adapter_installs_checks(monkeypatch):
     h=module_at(ROOT/'tasks/triton2triton/vllm/triton_topk_log_softmax/_arena_eval.py',monkeypatch).load_harness()
     assert h.run_correctness.__module__==h.run_performance.__module__=='_token_logprob_checks'
+
+
+def _swiglustep_cpu(x,limit=7.):
+    gate,up=x.double().chunk(2,dim=-1)
+    return ((gate/(1+(-gate).exp())).clamp(max=limit)*up.clamp(-limit,limit)).to(x.dtype)
+
+
+def test_swiglustep_independent_known_clamps_and_gate(monkeypatch):
+    h,checks=_fp8_group_cpu_harness(monkeypatch,'swiglustep_and_mul')
+    x=torch.tensor([[20.,-1.,1.,-20.,8.,-8.]],dtype=torch.float16)
+    expected=torch.tensor([[-49.,-1.88258995,-5.11741005]],dtype=torch.float16)
+    checks.check_output(checks.reference(h,x,7.),expected)
+    checks.check_output(_swiglustep_cpu(x),expected)
+    allowed=expected.clone();allowed[0,1]+=.01
+    checks.check_output(allowed,expected)
+    allowed[0,1]+=.1
+    with pytest.raises(AssertionError):checks.check_output(allowed,expected)
+
+
+@pytest.mark.parametrize('mode',['correct','shape','dtype','nonfinite','zero_output','mutate_input',
+                                 'ignore_gate_clamp','ignore_up_clamp','lower_gate_clamp','ignore_limit','omit_tail'])
+def test_swiglustep_original_correctness_and_saturation_controls(monkeypatch,mode):
+    h,checks=_fp8_group_cpu_harness(monkeypatch,'swiglustep_and_mul');calls=[]
+    def public(x,limit=7.):
+        calls.append((tuple(x.shape),x.stride(),limit))
+        if mode=='mutate_input':x.zero_()
+        result=_swiglustep_cpu(x,7. if mode=='ignore_limit' else limit)
+        gate,up=x.double().chunk(2,dim=-1);activated=gate/(1+(-gate).exp())
+        if mode=='ignore_gate_clamp':result=(activated*up.clamp(-limit,limit)).to(x.dtype)
+        if mode=='ignore_up_clamp':result=(activated.clamp(max=limit)*up).to(x.dtype)
+        if mode=='lower_gate_clamp':result=(activated.clamp(-limit,limit)*up.clamp(-limit,limit)).to(x.dtype)
+        if mode=='omit_tail' and x.shape[-1]==2062:result[:,-1].add_(10)
+        if mode=='shape':result=result.flatten()
+        if mode=='dtype':result=result.double()
+        if mode=='nonfinite':result.fill_(float('nan'))
+        if mode=='zero_output':result.zero_()
+        return result
+    mod=SimpleNamespace(swiglustep_and_mul=public);h.load_module=lambda:mod;checks.install(h)
+    ok,reason=h.run_correctness()
+    assert ok is (mode=='correct'),reason
+    if mode=='correct':
+        assert [v[0] for v in calls if v[0]!=(3,2062)]==h.TEST_SHAPES
+        assert [v for v in calls if v[0]==(3,2062)]==[((3,2062),(4124,1),7.),((3,2062),(4124,1),.1)]
+    assert mod.swiglustep_and_mul is public
+
+
+@pytest.mark.parametrize('mode',['correct','wrong_timed','stale','no_write','wrong_replay',
+                                 'mutate_timed','mutate_replay','zero_input_and_output','raise_replay'])
+def test_swiglustep_original_timing_poisoned_replay_and_restore(monkeypatch,mode):
+    import inspect
+    h,checks=_fp8_group_cpu_harness(monkeypatch,'swiglustep_and_mul')
+    h._TimedRun=module_at(ROOT/'src/tools/perf/aka_benchmark.py',monkeypatch).TimedRun
+    mod=SimpleNamespace(swiglustep_and_mul=_swiglustep_cpu);h.load_module=lambda:mod
+    inputs,saved,options,replays=[],[],[],[]
+    def benchmark(measured,*,timed_run,**kwargs):
+        fn=inspect.getclosurevars(measured).nonlocals['fn'];data=inspect.getclosurevars(fn).nonlocals['x']
+        inputs.append(data);saved.append(data.clone());options.append(kwargs)
+        output=measured();cached=output.clone()
+        if mode=='wrong_timed':output.zero_()
+        if mode=='mutate_timed':data.zero_()
+        if mode=='zero_input_and_output':data.zero_();output.zero_()
+        def replay():
+            replays.append(True)
+            assert torch.equal(data,saved[-1]*-3.) and torch.isnan(output).all()
+            if mode=='raise_replay':raise RuntimeError('Replay failed')
+            if mode!='no_write':output.copy_(cached if mode=='stale' else measured())
+            if mode=='wrong_replay':output[0,0]+=1
+            if mode=='mutate_replay':data.zero_()
+            return output
+        timed_run._bind(replay,output)
+        return .125,{'benchmark_method':'cuda_graph'}
+    h._benchmark_cuda_graph_or_events=benchmark;checks.install(h)
+    rows=h.run_performance()
+    assert options==[dict(warmup=10,repetition=100)]*5
+    for shape,row in zip(h.TEST_SHAPES,rows):
+        assert row['params']==dict(zip(('batch','two_d'),shape))
+        assert row['execution_time_ms']==(.125 if mode=='correct' else -1.)
+    for data,pristine in zip(inputs,saved):checks.unchanged(data,pristine)
+    assert len(replays)==(0 if mode in ['wrong_timed','mutate_timed','zero_input_and_output'] else 5)
+    assert mod.swiglustep_and_mul is _swiglustep_cpu
+
+
+def test_swiglustep_adapter_installs_checks(monkeypatch):
+    h=module_at(ROOT/'tasks/triton2triton/vllm/triton_swiglustep_and_mul/_arena_eval.py',monkeypatch).load_harness()
+    assert h.run_correctness.__module__==h.run_performance.__module__=='_swiglustep_checks'

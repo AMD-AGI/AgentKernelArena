@@ -31,3 +31,18 @@ syntax and import/interface checks. Missing candidates, incomplete measurements 
 invalid timing fail; commands emit `arena-eval-v1`, never final Arena score reports.
 Canonical benchmark helpers must be materialized by Arena; do not edit their generated regions.
 
+
+## Clamp coverage and measured output
+
+Full output shape, dtype, device and finiteness are checked against a pristine
+input's original reference at `atol=rtol=1e-2`; input must remain read-only.
+Unscored controls exercise both signs of the up-input clamp, the gate's upper
+clamp (with no lower gate clamp), limits 7.0 and 0.1, a partial second 1024-column
+tile, and row-strided inputs with contiguous columns.
+
+The five original scored cases, random seeds, input distribution, default limit,
+10 warmups and 100 device samples remain unchanged. Timing still measures the
+public wrapper including allocation. After timing, its captured output is
+checked, input is multiplied by -3 and the output poisoned with NaN. The same
+captured graph must produce the new reference output on replay. Checks are
+outside timing and original input is restored even when replay fails.
