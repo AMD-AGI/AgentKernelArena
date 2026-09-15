@@ -35,3 +35,15 @@ syntax and import/interface checks. Missing candidates, incomplete measurements 
 invalid timing fail; commands emit `arena-eval-v1`, never final Arena score reports.
 Canonical benchmark helpers must be materialized by Arena; do not edit their generated regions.
 
+Protected checks require the supplied output buffer to be updated and returned,
+with the original FP16 numerical gate and unchanged query, slope and KV inputs.
+An additional unscored 273-token case checks a second main block, a partial
+sub-block and four-dimensional slopes. The original five scored inputs, seeds,
+10 warmups, 100 samples and public wrapper remain unchanged.
+
+The existing `prepare_fn` copies the original diagonal result into the output
+before each measured invocation; this reset remains outside timing and retains
+one call per graph replay. Checks now inspect the actual timed output, perturb
+query/slope/KV/diagonal inputs, and validate the same prepared replay against the
+independent block formula. All checks run outside timing, and input/output state
+is restored even when replay or validation fails.
