@@ -52,3 +52,24 @@ plus any operator dependencies stated by the source. Arena must materialize the
 canonical `_aka_benchmark.py` helper before GPU execution. CPU controls/protocol
 checks do not qualify these GPU kernels. Existing legacy reports are historical;
 the parent integration schedules new GPU validation.
+
+
+All six original BF16 cases, shapes, input generation, seed42+i, ten external
+warmups and100graph samples are retained. Outputs must have the operator's
+exact shape, BF16 dtype and input device. All input tensors, including weights,
+biases and segment offsets where present, are read-only.
+
+The numerical gate remains normalized maximum error<=0.01. Elementwise
+allclose at0.01 is diagnostic only.
+The zero-reference comparator branch is explicitly repaired: it previously
+reported zero error for every candidate when the reference was entirely zero.
+It now reports the actual maximum absolute error when the normalization scale
+is zero. The nonzero-reference rule and all tolerances remain unchanged.
+Independent zero-output/incorrect-output controls enforce this correction.
+
+The actual measured output and same captured graph replay must satisfy the
+same numerical rule. Perturbation changes floating operands within their domain;
+segment offsets and shapes remain unchanged. Poisoning, perturbation, reference
+calculation and restoration are outside timing. Capture failure cannot bypass
+validation. Final candidate calls are audited for FlyDSL operator execution;
+the original Triton source and frozen baseline algorithm remain unchanged.
