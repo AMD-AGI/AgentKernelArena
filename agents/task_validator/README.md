@@ -2,9 +2,11 @@
 
 Validator prompts reach Codex and Claude through stdin, avoiding operating-system
 argument-size limits on large image-backed tasks. The prompt contains a compact
-guard/action index; the full captured evidence remains in the framework context
-file and is checked by the finalizer. Summarizing the prompt does not reduce the
-protected file boundary or the required review.
+guard/action index and a bounded sample of initial failures. Large exceptions
+(for example, thousands of unreadable cache paths) stay in the framework context
+file and command logs, with their full captured evidence checked by the finalizer.
+The reviewer is directed to that complete evidence. Summarizing the prompt does
+not reduce the protected file boundary, recorded failures, or required review.
 
 `task_validator` reviews task quality. It does not optimize candidates. For schema
 v2, Arena first executes the task's initial validation actions through `TaskSession`;

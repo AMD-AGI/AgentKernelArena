@@ -55,9 +55,21 @@ def build_v2_validation_prompt(*, task_id: str, task_config: dict, workspace: st
         "protected_paths_sample": protected[:24],
         "complete_guard": "Read harness in context_path for the full captured boundary",
     }
+    initial = context.get("initial_validation") or {}
+    errors = initial.get("errors", [])
+    # Exceptions can include thousands of unreadable cache filenames. Keep the
+    # complete failures in trusted evidence, rather than exhausting the model's
+    # context before it can inspect that evidence and the task's source.
+    initial_summary = {key: value for key, value in initial.items() if key != "errors"}
+    initial_summary.update(
+        error_count=len(errors),
+        errors_sample=[{"message": error[:1200], "truncated": len(error) > 1200}
+                       for error in errors[:3]],
+        complete_errors="Read initial_validation.errors in context_path for full failures",
+    )
     transport = {"context_path": context_path, "workspace": workspace,
                  "baseline_workspace": context.get("baseline_workspace"),
-                 "initial_validation": context.get("initial_validation"),
+                 "initial_validation": initial_summary,
                  "actions": summary, "harness": guard_summary}
     return f"""You are Arena's task quality reviewer. Review the task; do not optimize it.
 

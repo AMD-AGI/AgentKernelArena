@@ -451,6 +451,26 @@ def test_large_guard_is_indexed_without_discarding_trusted_evidence(tmp_path):
     assert len(trusted.to_mapping()["harness"]["protected_paths"]) == 14000
 
 
+def test_large_initial_failure_is_indexed_without_losing_finalizer_evidence(tmp_path):
+    from agents.task_validator.validation_prompt_v2 import build_v2_validation_prompt
+
+    ctx = context(tmp_path)
+    failures = ["PermissionError: unreadable cache 汉字 " * 50000 + "last-cache-file.so"] * 8
+    ctx["initial_validation"].update(accepted=False, errors=failures)
+    trusted = snapshot_task_evidence(ctx, task_id=TASK_ID)
+    digest = trusted.sha256
+    prompt = build_v2_validation_prompt(task_id=TASK_ID, task_config=ctx["task_config"],
+        workspace=ctx["workspace"], trusted_task_evidence=trusted,
+        validation_request_id=REQUEST_ID, context_path="/framework/context.json")
+    assert len(prompt.encode()) < 30000
+    assert '"accepted": false' in prompt and '"error_count": 8' in prompt
+    assert '"truncated": true' in prompt and "PermissionError" in prompt
+    assert "initial_validation.errors in context_path" in prompt
+    assert "last-cache-file.so" not in prompt
+    assert trusted.sha256 == digest
+    assert trusted.to_mapping()["initial_validation"]["errors"] == failures
+
+
 @pytest.mark.parametrize("backend", ["codex", "claude_code"])
 def test_backend_argv_keeps_literal_values_and_disables_persistence(monkeypatch, backend):
     captured = {}
