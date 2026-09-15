@@ -132,6 +132,7 @@ def test_declaring_flydsl_without_executing_it_is_rejected():
 
 
 CANDIDATE_AUDIT_TASKS = [ROOT / "tasks/torch2flydsl" / name for name in (
+    "moe_biased_grouped_topk_kernel",
     'per_tensor_fp8_quant_kernel', 'per_token_fp8_quant_kernel', 'per_1x128_fp8_quant_kernel', 'per_token_i8_quant_kernel',
     "layernorm2d_kernel", "layernorm2d_with_add_kernel",
     'gemm_a8w8_kernel', 'gemm_a8w8_per_token_scale_kernel', 'gemm_a8wfp4_kernel', 'gemm_afp4wfp4_kernel', 'gemm_afp8wfp8_kernel',
@@ -3084,3 +3085,125 @@ def test_standard_quantizers_preserve_original_numerics_inputs_and_timing():
             if isinstance(fn,ast.FunctionDef) and fn.name in functions:
                 restored=_RemoveStandardQuantChecks().visit(fn)
                 assert hashlib.sha256(ast.dump(restored,include_attributes=False).encode()).hexdigest()==functions[fn.name],(name,fn.name)
+
+
+@pytest.mark.parametrize("function", ["run_benchmark", "arena_benchmark"])
+@pytest.mark.parametrize("provided", [False, True])
+@pytest.mark.parametrize("behavior", ["correct", "measured_wrong", "replay_wrong", "cached", "input_modified", "bad_ids", "nonfinite"])
+def test_biased_grouped_routing_actual_measured_and_replay( function, provided, behavior, monkeypatch, tmp_path):
+    import math
+    import types
+    import torch
+    task=ROOT/"tasks/torch2flydsl"/"moe_biased_grouped_topk_kernel"
+    checks=module(task/"scripts/replay_checks.py")
+    mmod=module(task/"model.py")
+    model = mmod.Model(8,2,4,2,True,2.5)
+    with torch.no_grad():model.correction_bias.copy_(torch.tensor([-.1,.2,.05,.1,.15,-.2,.05,.25]))
+    original_bias = model.correction_bias.detach().clone()
+    gating=torch.tensor([[-2.,1.,-1.,2.,0.,3.,-3.,4.],[4.,-1.,3.,-2.,2.,-3.,1.,0.]],dtype=torch.float32)
+    original=gating.clone();cached=model(gating)
+    phase={"value":"setup"}
+    monkeypatch.setattr(torch.cuda,"synchronize",lambda:None)
+    monkeypatch.setattr(torch.cuda,"empty_cache",lambda:None)
+    def compute():
+        w,ids=model(gating)
+        if behavior==phase["value"]+"_wrong":w=w+1.
+        if phase["value"]=="replay":
+            if behavior=="cached":w,ids=(x.clone() for x in cached)
+            if behavior=="input_modified":gating.add_(1)
+        if phase["value"]=="measured":
+            if behavior=="bad_ids":ids[:,0]=-1
+            if behavior=="nonfinite":w[:,0]=float("nan")
+        return w,ids
+    def aiter_op(gating,bias,w,ids,*args,**kwargs):
+        actual_w,actual_ids=compute();w.copy_(actual_w);ids.copy_(actual_ids)
+    monkeypatch.setitem(sys.modules,"aiter",types.SimpleNamespace(biased_grouped_topk_hip=aiter_op))
+    kmod=types.SimpleNamespace(flydsl_biased_grouped_topk=lambda *args:compute())
+    class Collector:
+        bound=False
+        outputs=None
+    calls=[]
+    def benchmark(fn,*,warmup,repetition,timed_run=None):
+        calls.append((warmup,repetition,timed_run is not None))
+        phase["value"]="measured";out=fn()
+        if timed_run is not None:
+            timed_run.outputs=out;timed_run.bound=True
+            def replay():
+                phase["value"]="replay";result=fn();phase["value"]="setup";return result
+            timed_run.rerun=replay
+        phase["value"]="setup"
+        return .1,{"benchmark_method":"cuda_graph","benchmark_timed_run_kind":"captured_graph"}
+    ns={"TimedRun":Collector,"benchmark_cuda_graph_or_events":benchmark,"require_unchanged":checks.require_unchanged,
+        "math":math,"json":json,"Path":Path,"_KERNEL_DIR":str(tmp_path),"MODEL_FILE":"model.py","KERNEL_FILE":"kernel.py",
+        "_TIE_TOL":1e-4,"_WEIGHT_ATOL":1e-2,"_BIAS_ID_ERR_TOL":.05,"REL_TOL":1e-2,
+        "SHAPES":[{"name":"controlled","tokens":2,"experts":8,"topk":2,"num_expert_group":4,"topk_group":2,"route_scale":2.5,"renormalize":True}],
+        "_load_module":lambda directory,filename,alias:mmod if filename=="model.py" else (None if provided else kmod),
+        "_build_model":lambda *args:(model,gating),"_retry":lambda fn,**kwargs:fn()}
+    _harness_functions(task,{function,"_require_routing_contract","_routing_reference","_verify_routing_timed","_compare_routing"},ns)
+    if behavior=="correct":
+        result=ns[function](verbose=False)
+        if function=="run_benchmark":result=json.loads((tmp_path/"build/performance_report.json").read_text())
+        assert result[0]["timed_output_correctness"]==result[0]["replay_correctness"]=="PASS"
+        assert result[0]["replay_checked_outputs"]==["weights","expert_ids"]
+        assert calls==[(0,100,True),(0,100,False)]
+    else:
+        with pytest.raises(AssertionError):ns[function](verbose=False)
+    assert torch.equal(gating,original)
+
+    if original_bias is not None: assert torch.equal(model.correction_bias, original_bias)
+
+
+@pytest.mark.parametrize("bad", ["shape", "weight_dtype", "id_dtype", "device", "out_of_range", "duplicate", "nonfinite"])
+def test_biased_grouped_routing_contract_rejects_invalid_outputs( bad):
+    import torch
+    task=ROOT/"tasks/torch2flydsl"/"moe_biased_grouped_topk_kernel"
+    ns={}
+    _harness_functions(task,{"_require_routing_contract"},ns)
+    gating=torch.zeros(2,4,dtype=torch.bfloat16)
+    w=torch.ones(2,2,dtype=torch.float32);ids=torch.tensor([[1,2],[2,3]],dtype=torch.int32)
+    ns["_require_routing_contract"](w,ids,gating,2)
+    if bad=="shape":w=w[:1]
+    if bad=="weight_dtype":w=w.bfloat16()
+    if bad=="id_dtype":ids=ids.long()
+    if bad=="device":w=w.to("meta")
+    if bad=="out_of_range":ids[0,0]=4
+    if bad=="duplicate":ids[0,0]=ids[0,1]
+    if bad=="nonfinite":w[0,0]=float("nan")
+    with pytest.raises(AssertionError):ns["_require_routing_contract"](w,ids,gating,2)
+
+
+_BIASED_GROUPED_ORIGINAL_FUNCTIONS = {'_make_gating': '1ccf0c7f77ad760039746631cb1c44c10cab0fadec179ee31014f43d06bf55da', '_build_model': '9a013352090c4df22a6384224b63461e67ae4a87ce781fa66f8b8edb41ed7afc', '_aiter_grouped': 'd7c1f3ea52ef575594530ff2537e1552b735e98f094d88adce8e2a9aa37ebb46', '_compare_routing': '85889d660dbf6741317e8f6ce46fc02a7693e1197d96b25a5e0dcf0dd9e5ed30', 'run_correctness': '1a6dc48db9799bbde6206651c1600a14410bced99b0fb07b260650d16ccf7897', 'run_benchmark': '2ec3211da94b77e9e5eb1f90a9add21390e3a103618a618b24a4916c923407e2', 'arena_benchmark': '75cef4eddb3c911259a6835be33147226b8144360103e50f1cffbef0f9435432'}
+
+
+def test_biased_grouped_preserves_original_tie_policy_inputs_and_timing():
+    task=ROOT/'tasks/torch2flydsl/moe_biased_grouped_topk_kernel'
+    tree=ast.parse((task/'test_kernel_harness.py').read_text())
+    for fn in tree.body:
+        if isinstance(fn,ast.FunctionDef) and fn.name in _BIASED_GROUPED_ORIGINAL_FUNCTIONS:
+            restored=_RemoveAddedReplayChecks().visit(fn)
+            assert hashlib.sha256(ast.dump(restored,include_attributes=False).encode()).hexdigest()==_BIASED_GROUPED_ORIGINAL_FUNCTIONS[fn.name],fn.name
+
+
+def test_biased_grouped_scalar_known_answer_and_comparator_negative_control():
+    import math,torch
+    task=ROOT/'tasks/torch2flydsl/moe_biased_grouped_topk_kernel';mmod=module(task/'model.py')
+    x=torch.tensor([[-2.,1.,-1.,2.,0.,3.,-3.,4.],[4.,-1.,3.,-2.,2.,-3.,1.,0.]])
+    bias=torch.tensor([-.1,.2,.05,.1,.15,-.2,.05,.25])
+    expected_w=[];expected_id=[]
+    for row in x.tolist():
+        scores=[1/(1+math.exp(-v)) for v in row];choice=[v+b for v,b in zip(scores,bias.tolist())]
+        groups=sorted(range(4),key=lambda g:sum(choice[2*g:2*g+2]),reverse=True)[:2]
+        ids=sorted([i for g in groups for i in (2*g,2*g+1)],key=choice.__getitem__,reverse=True)[:2]
+        denom=sum(scores[i] for i in ids);expected_id.append(ids);expected_w.append([2.5*scores[i]/denom for i in ids])
+    expected=(torch.tensor(expected_w),torch.tensor(expected_id,dtype=torch.int32))
+    actual_w,actual_ids,selection=mmod.grouped_route(x,bias,2,True,4,2,2.5)
+    ns={'_TIE_TOL':1e-4};_harness_functions(task,{'_compare_routing'},ns);compare=ns['_compare_routing']
+    mismatch,error=compare(*expected,actual_w,actual_ids,selection,2)
+    assert mismatch==0 and error<1e-6
+    wrong_ids=actual_ids.clone();wrong_ids[:,0]=0
+    assert compare(*expected,actual_w,wrong_ids,selection,2)[0]>0
+    assert compare(*expected,actual_w+1,actual_ids,selection,2)[1]>.01
+    # Keep genuine boundary-tie acceptance and reject an expert away from it.
+    weights=torch.tensor([[1.25,1.25]]);ids=torch.tensor([[0,1]],dtype=torch.int32);sel=torch.tensor([[.8,.5,.5,.1]])
+    assert compare(weights,ids,weights,torch.tensor([[0,2]],dtype=torch.int32),sel,2)==(0,0.)
+    assert compare(weights,ids,weights,torch.tensor([[0,3]],dtype=torch.int32),sel,2)[0]==1

@@ -50,3 +50,22 @@ The runtime image supplies ROCm, PyTorch, FlyDSL and required AITER operators. A
 must materialize the canonical `_aka_benchmark.py` helper. CPU controls do not
 establish GPU correctness or timing support. Historical validation files predate
 this migration; the parent integration schedules fresh GPU validation.
+
+
+The primary provided baseline is installed AITER `biased_grouped_topk_hip`;
+`model.py` is the independent PyTorch routing oracle. All three DeepSeek-V3
+cases use FP32 logits/bias, eight selected experts from the four selected groups,
+and routed scale2.5. Return FP32 weights and INT32 unique in-range expert IDs,
+both shaped `[tokens, topk]` on the input device. Preserve logits and bias.
+The original genuine-boundary-tie allowance1e-4 and matched-expert normalized
+weight-error bound1e-2 apply unchanged to correctness and actual timed replay.
+
+Both roles retain the original10 external warmups and100 CUDA-graph samples,
+including their original output allocation boundary. The harness validates the
+output captured by the timing helper, then rolls logits and bias, poisons both
+weights and IDs, and replays that same graph against the original reference.
+Setup/comparison/input restoration happen outside timing. Replay metadata names
+`captured_graph`; a capture failure remains a failure. Reference timing is a
+separate diagnostic and never substitutes for primary measured outputs.
+Candidate-only dispatch/profile checks require actual FlyDSL calls and reject
+PyTorch routing computations, without instrumenting any timed invocation.
