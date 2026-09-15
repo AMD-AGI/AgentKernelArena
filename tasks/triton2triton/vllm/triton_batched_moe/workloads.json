@@ -136,6 +136,28 @@
         "performance"
       ],
       "status": "PASS"
+    },
+    {
+      "test_case_id": "control_zero_experts",
+      "dtype": "float16,int32",
+      "params": {
+        "control": "zero_experts"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control_ragged_tail",
+      "dtype": "float16,int32",
+      "params": {
+        "control": "ragged_tail"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
     }
   ],
   "migration": {

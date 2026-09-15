@@ -126,6 +126,17 @@
         "performance"
       ],
       "status": "PASS"
+    },
+    {
+      "test_case_id": "control_rectangular_tail",
+      "dtype": "float16,int32",
+      "params": {
+        "control": "rectangular_tail"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
     }
   ],
   "migration": {

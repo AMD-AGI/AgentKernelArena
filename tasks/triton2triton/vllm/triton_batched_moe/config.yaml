@@ -4,7 +4,11 @@ candidate:
   language: triton
   initial_state: implemented
   editable:
-  - source/triton_batched_moe.py
+  - path: source/triton_batched_moe.py
+    scope: symbols
+    symbols:
+    - batched_triton_kernel
+    allow_new_helpers: true
   entrypoints:
   - file: source/triton_batched_moe.py
     kind: function

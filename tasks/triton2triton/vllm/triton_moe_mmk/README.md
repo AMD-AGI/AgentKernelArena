@@ -29,3 +29,24 @@ syntax and import/interface checks. Missing candidates, incomplete measurements 
 invalid timing fail; commands emit `arena-eval-v1`, never final Arena score reports.
 Canonical benchmark helpers must be materialized by Arena; do not edit their generated regions.
 
+
+## Protected kernel and validation boundaries
+
+Only the declared Triton kernel and permitted implementation helpers are editable.
+The host launch, routing, output allocation and standalone wrapper remain protected,
+so the task always invokes the declared implementation. All five scored shapes,
+seed 42 + case index, input distributions, atol=0.05/rtol=0.05, 10 warmups,
+100 samples and original graph timing are retained.
+
+Every correctness check uses a private reference computed before the candidate,
+checks exact output shape/dtype/device and finite values, and detects mutation of
+all read-only inputs. Performance checks both the original measured output and
+the same captured graph with changed activations and poisoned outputs; all checks
+and copies occur outside timing, and inputs are restored even on failure.
+
+Additional manifest cases are correctness-only: rectangular_tail.
+They exercise inactive output zeros and/or partial matrix tiles with deterministic
+integer-valued operands. The original five score rows remain unchanged.
+The standalone wrapper now applies modulo N to the full global column index;
+previously a second partial N tile could address weight columns beyond N. This
+corrects the public rectangular matrix contract; original scored cases are unchanged.

@@ -4,7 +4,11 @@ candidate:
   language: triton
   initial_state: implemented
   editable:
-  - source/triton_moe_mmk.py
+  - path: source/triton_moe_mmk.py
+    scope: symbols
+    symbols:
+    - moe_mmk
+    allow_new_helpers: true
   entrypoints:
   - file: source/triton_moe_mmk.py
     kind: function
