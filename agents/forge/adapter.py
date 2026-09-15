@@ -99,6 +99,14 @@ def _anchor(context: TaskContext) -> str:
     return next(iter(files))
 
 
+def require_supported_backend(spec, capabilities: dict) -> str:
+    """Preserve the task language; an unrelated backend is not a substitute."""
+    language = spec.candidate.language
+    if language not in capabilities["backends"]:
+        raise ForgeRunError(f"KernelForge has no {language} backend")
+    return language
+
+
 def build_command(plan: dict, context: TaskContext, config: dict, *, gpu_arch: str, gpu_type: str) -> list[str]:
     root = Path(plan["engine_root"])
     command = [config.get("python") or sys.executable, str(Path(__file__).with_name("upstream.py")),
@@ -186,8 +194,7 @@ def launch(eval_config: dict, task_config_dir: str, workspace: str) -> str:
             raise ForgeRunError("KernelForge runtime preflight failed: " + probe.stderr[-3000:])
         capabilities = json.loads(probe.stdout)
         status["engine"] = capabilities
-        if context.spec.candidate.language not in capabilities["backends"]:
-            raise ForgeRunError(f"KernelForge has no {context.spec.candidate.language} backend")
+        require_supported_backend(context.spec, capabilities)
         candidate = context.spec.candidate
         initially_target = candidate.initial_state == "implemented" and candidate.initial_language == candidate.language
         changed = _digest(context.spec, context.workspace) != _digest(context.spec, context.baseline_workspace)

@@ -337,7 +337,8 @@ def _normalize_fellow_backend(value: Any) -> str:
 def _infer_backend(task_config: dict[str, Any]) -> str:
     """Resolve the configured backend name that Arena forwards to KernelForge.
 
-    Two task families need different signals:
+    Schema v2 reads the validated candidate language. Legacy private callers
+    without a schema version retain these older interpretation rules:
 
       * Repository / image_kernel tasks ship a whole source tree, not a
         "<src>2<dst>" pair, so their explicit ``kernel_kind`` wins when present;
@@ -351,6 +352,13 @@ def _infer_backend(task_config: dict[str, Any]) -> str:
     the installed KernelForge serves is ``_resolve_kernel_backend``'s job, and it
     reads the registry from the package rather than keeping a copy here.
     """
+    if "schema_version" in task_config:
+        from src.task_spec import TaskSpec
+
+        # Validate the complete contract; never recover invalid v2 declarations
+        # by reading removed task_type/kernel_kind fields.
+        return TaskSpec.from_mapping(task_config, task_id="forge/backend-selection").candidate.language
+
     task_type = _normalize_fellow_backend(task_config.get("task_type"))
 
     if task_type in ("image_kernel", "repository"):
@@ -398,28 +406,10 @@ _BACKEND_REGISTRY_IMPORTS = (
     ("kernel_agents.fellows.constants", "FELLOW_BACKENDS"),  # pre-merge standalone
 )
 
-# Backends upstream does not serve, mapped to the nearest one Arena has evidence
-# for. Different in kind from KernelForge's own unknown-name fallback: that one
-# is silent and treats a typo exactly like a deliberate gap.
-#
-# tilelang: neither KernelForge tree registers a tilelang backend, and neither
-# ships a languages/tilelang/ knowledge folder, so no correct value exists to
-# send. flydsl is what upstream's fallback has been selecting in production all
-# along, and the daily-CI record says it costs nothing measurable: across 12
-# runs of mi355x_sglang_tilelang_dsa_sparse_mla_glm5, 13/13 correct, mean 1.83x,
-# best 3.52x, forge still ahead of geak (1.83x vs 1.74x -- a margin in line with
-# the triton and hip benchmarks). No iteration in any of those runs mentions
-# FlyDSL: the agent reads the source and stays in TileLang, so the mismatched
-# expertise prompt is inert. Drop this entry once upstream registers tilelang.
-_DELIBERATE_BACKEND_ALIASES = {"tilelang": "flydsl"}
-
-
 def _installed_kernel_backends() -> set[str] | None:
     """Backends the installed KernelForge serves, or None when unreadable.
 
-    None preserves the behaviour that predates this check. If the registry
-    cannot be read there is nothing to validate against, and refusing every run
-    would be a worse failure than the one being guarded.
+    None means capability discovery failed; callers must not infer support.
     """
     import importlib
 
@@ -444,29 +434,15 @@ def _resolve_kernel_backend(fellow: str, logger: logging.Logger) -> str:
     Nothing in the logs would connect the two.
     """
     backend = re.sub(r"-fellow$", "", str(fellow).strip())
-    alias = _DELIBERATE_BACKEND_ALIASES.get(backend.lower())
-    if alias:
-        logger.warning(
-            f"forge: KernelForge serves no {backend!r} backend; deliberately "
-            f"sending --kernel-backend {alias} instead "
-            "(see _DELIBERATE_BACKEND_ALIASES for the evidence)"
-        )
-        backend = alias
-
     supported = _installed_kernel_backends()
     if supported is None:
-        logger.warning(
-            "forge: could not read KernelForge's backend registry; sending "
-            f"--kernel-backend {backend} unvalidated"
-        )
-        return backend
+        raise RuntimeError("Cannot verify KernelForge's backend registry")
     if backend.lower() not in supported:
         raise ValueError(
             f"KernelForge does not serve the {backend!r} backend "
             f"(registered: {', '.join(sorted(supported))}). Sending it anyway "
             "would silently fall back to flydsl and optimise the kernel under "
-            "the wrong expertise prompt. Register the backend upstream, or add "
-            "a deliberate alias to _DELIBERATE_BACKEND_ALIASES in this file."
+            "the wrong expertise prompt. Add native backend support upstream."
         )
     return backend
 

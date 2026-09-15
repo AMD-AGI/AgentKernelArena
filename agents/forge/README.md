@@ -207,6 +207,13 @@ present for FlyDSL tasks. Provider authentication must be available to the
 selected backend; existing authentication environment values are preserved.
 A dedicated interpreter can be selected with run-level `agent.python`.
 
+Backend selection follows validated `candidate.language`. Operator and source
+owner identity come from `kernel_identity`; a CK operator written in HIP keeps
+its CK operator identity while using the HIP backend. The pinned engine does not
+provide a TileLang backend. TileLang tasks remain valid Arena tasks, but Forge
+rejects them explicitly; it never substitutes FlyDSL. The retained legacy backend
+helper also rejects missing registries and unsupported languages.
+
 The pinned upstream Codex backend normally requires `OPENAI_BASE_URL` and
 `OPENAI_API_KEY`. For an existing native ChatGPT login, explicitly select
 `agent.codex_auth_mode: cli`. The adapter keeps the real Forge Codex SDK backend

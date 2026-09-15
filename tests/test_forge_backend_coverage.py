@@ -1,118 +1,64 @@
-"""Every backend a task declares must be one KernelForge actually serves.
-
-The companion to `test_cheatsheet_language_coverage.py`, guarding the same class
-of failure one layer down. There, an unregistered `repository_language` made the
-agent never start and the run report a speedup of exactly 1.0. Here, a backend
-KernelForge does not register does not stop anything: upstream maps the unknown
-name onto flydsl and says nothing, so the run starts, finishes, and reports a
-plausible number reached under the wrong expertise prompt. Nothing in the logs
-connects the two, which is worse than the crash.
-
-`_resolve_kernel_backend` refuses such a name at launch. These tests make sure
-the task tree stays inside what it will accept, so a task added with a backend
-nobody serves is a red test rather than a wasted GPU-day.
-"""
-
-from __future__ import annotations
-
-import logging
-import sys
+"""Public v2 task coverage and explicit limits of the audited Forge engine."""
 from pathlib import Path
 
 import pytest
-import yaml
 
-from agents.forge.common import (
-    _DELIBERATE_BACKEND_ALIASES,
-    _infer_backend,
-    _resolve_kernel_backend,
-)
+from agents.forge.adapter import ForgeRunError, require_supported_backend
+from agents.forge.common import _infer_backend
+from src.task_spec import TaskConfigError, TaskSpec, load_task_spec
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-
-# The union of what the two KernelForge layouts register. Only a test fixture:
-# the launcher itself reads the registry from the installed package, precisely so
-# this list cannot become the thing that decides what runs. Kept here so the
-# suite is meaningful in a checkout with no KernelForge installed.
-KNOWN_BACKENDS = {
-    "aiter",
-    "ck",
-    "flydsl",
-    "fusion",
-    "gluon",
-    "hip",
-    "hipblaslt",
-    "intellikit",  # pre-merge standalone only
-    "triton",
-}
+ROOT = Path(__file__).resolve().parents[1]
+# CPU fixture for audited Hyperloom 0425bde3, not the runtime's source of truth.
+# Production launch uses the actual registry returned by the source-pinned probe.
+KNOWN_BACKENDS = {'aiter', 'ck', 'flydsl', 'fusion', 'gluon', 'hip', 'hipblaslt', 'triton'}
+EXPLICITLY_UNSUPPORTED = {'tilelang': 'No native backend in the pinned KernelForge release'}
 
 
-def _declared_backends() -> dict[str, list[str]]:
-    """Map each backend the task tree infers to the tasks that infer it."""
-    backends: dict[str, list[str]] = {}
-    for path in (PROJECT_ROOT / "tasks").rglob("config.yaml"):
-        try:
-            cfg = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-        except yaml.YAMLError:
-            continue
-        if not isinstance(cfg, dict):
-            continue
-        try:
-            backend = _infer_backend(cfg)
-        except ValueError:
-            continue  # a task that cannot resolve one is the other test's problem
-        backends.setdefault(backend, []).append(path.parent.name)
-    return backends
+def test_every_task_is_validated_and_its_forge_capability_is_explicit():
+    paths = sorted((ROOT/'tasks').rglob('config.yaml'))
+    assert paths, 'No task configs found'
+    checked = []
+    unsupported = set()
+    for path in paths:
+        task_id = path.parent.relative_to(ROOT/'tasks').as_posix()
+        # No exception-catching skips: malformed or unmigrated configs fail here.
+        spec = load_task_spec(path, task_id=task_id)
+        language = _infer_backend(spec.to_mapping())
+        assert language == spec.candidate.language
+        if language in EXPLICITLY_UNSUPPORTED:
+            unsupported.add(language)
+            with pytest.raises(ForgeRunError, match=f'has no {language} backend'):
+                require_supported_backend(spec, {'backends': sorted(KNOWN_BACKENDS)})
+        else:
+            assert require_supported_backend(spec, {'backends': sorted(KNOWN_BACKENDS)}) == language
+        checked.append(task_id)
+    assert len(checked) == len(paths)
+    assert len(set(checked)) == len(paths)
+    assert unsupported == set(EXPLICITLY_UNSUPPORTED), 'Review stale capability exclusions'
+    assert not set(EXPLICITLY_UNSUPPORTED) & KNOWN_BACKENDS
 
 
-def test_every_task_resolves_to_a_backend_forge_will_accept():
-    declared = _declared_backends()
-    assert declared, "no task configs found; the walk is broken, not the tree"
-
-    unserved: dict[str, list[str]] = {}
-    for backend, tasks in declared.items():
-        if backend in KNOWN_BACKENDS or backend in _DELIBERATE_BACKEND_ALIASES:
-            continue
-        unserved[backend] = sorted(tasks)[:5]
-
-    assert not unserved, (
-        "these tasks declare a backend KernelForge does not serve and no "
-        f"deliberate alias covers: {unserved}. Register it upstream, or add an "
-        "entry to _DELIBERATE_BACKEND_ALIASES with the evidence for the "
-        "substitution."
-    )
+def _config(language='triton'):
+    return {'schema_version': 2, 'candidate': {'language': language, 'editable': ['kernel.py']},
+            'evaluation': {'runner': ['python3', 'evaluate.py']}}
 
 
-@pytest.mark.parametrize("declared", sorted(_DELIBERATE_BACKEND_ALIASES))
-def test_each_alias_points_at_a_backend_that_exists(declared):
-    """An alias onto another unserved name would just relocate the problem."""
-    assert _DELIBERATE_BACKEND_ALIASES[declared] in KNOWN_BACKENDS
+@pytest.mark.parametrize('language', ['hip', 'triton', 'flydsl', 'tilelang'])
+def test_v2_backend_is_declared_language(language):
+    assert _infer_backend(_config(language)) == language
 
 
-@pytest.mark.parametrize("declared", sorted(_DELIBERATE_BACKEND_ALIASES))
-def test_each_alias_is_still_needed(declared):
-    """Delete the entry once upstream registers the backend for real.
-
-    An alias left in place after upstream catches up would keep sending the
-    substitute forever, silently, which is the behaviour being removed.
-    """
-    assert declared not in KNOWN_BACKENDS, (
-        f"{declared} is served now; drop it from _DELIBERATE_BACKEND_ALIASES so "
-        "the real backend is used"
-    )
+@pytest.mark.parametrize('changes', [{'task_type': 'triton2triton'},
+                                    {'kernel_identity': {'kernel_kind': 'flydsl'}},
+                                    {'candidate': {'editable': ['kernel.py']}}])
+def test_invalid_v2_contract_is_not_recovered_using_legacy_hints(changes):
+    with pytest.raises(TaskConfigError):
+        _infer_backend({**_config(), **changes})
 
 
-def test_the_tilelang_alias_is_what_the_launcher_actually_sends(monkeypatch):
-    """Ties the tree-level guard to the value that reaches the CLI."""
-    # Patch where the function is defined, not where the launcher imports it
-    # from: _resolve_kernel_backend resolves the registry lookup against
-    # common.py's globals, so patching the launcher's namespace does nothing.
-    monkeypatch.setattr(
-        sys.modules["agents.forge.common"],
-        "_installed_kernel_backends",
-        lambda: KNOWN_BACKENDS,
-    )
-    assert (
-        _resolve_kernel_backend("tilelang-fellow", logging.getLogger(__name__))
-        == "flydsl"
-    )
+def test_capability_check_uses_reported_registry_without_aliases():
+    spec = TaskSpec.from_mapping(_config('tilelang'), task_id='arbitrary/operator')
+    with pytest.raises(ForgeRunError, match='has no tilelang backend'):
+        require_supported_backend(spec, {'backends': ['flydsl', 'triton']})
+    # If a future audited upstream actually supplies it, preserve its name.
+    assert require_supported_backend(spec, {'backends': ['tilelang']}) == 'tilelang'

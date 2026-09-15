@@ -5,6 +5,7 @@ import importlib.util
 import logging
 import subprocess
 import sys
+import time
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -16,6 +17,8 @@ import yaml
 # the launcher, so patching the launcher's namespace would have no effect.
 import agents.forge.common  # noqa: F401
 from agents.forge.drivers import arena_task_adapter
+from agents.forge import adapter
+from src.task_spec import load_task_spec
 forge_common = sys.modules["agents.forge.common"]
 
 from agents.forge.common import (
@@ -35,7 +38,6 @@ from agents.forge.launch_agent import (
     _resolve_framework,
     _resolve_gpu_type,
     _resolve_kernel_backend,
-    _resolve_kernel_kind,
 )
 
 CK_TASK_NAMES = (
@@ -219,32 +221,16 @@ def test_a_served_backend_passes_through_with_the_suffix_stripped(monkeypatch):
     assert _resolve_kernel_backend("ck-fellow", logger) == "ck"
 
 
-def test_tilelang_takes_the_deliberate_flydsl_alias_and_says_so(monkeypatch, caplog):
-    """tilelang has no upstream backend, so flydsl is a decision, not a default.
-
-    Asserting the alias rather than `--kernel-backend tilelang` is the fix for
-    the review on this file: the value Arena sends must be one KernelForge
-    serves. The alias stays deliberate -- and logged -- until upstream registers
-    tilelang, at which point the entry is deleted and this test with it.
-    """
+def test_legacy_backend_helper_also_rejects_tilelang_substitution(monkeypatch):
     _backend_registry(monkeypatch, {"triton", "flydsl", "hip", "ck"})
-    with caplog.at_level(logging.WARNING):
-        resolved = _resolve_kernel_backend(
-            "tilelang-fellow", logging.getLogger(__name__)
-        )
-    assert resolved == "flydsl"
-    assert "serves no 'tilelang' backend" in caplog.text
+    with pytest.raises(ValueError, match="does not serve the 'tilelang' backend"):
+        _resolve_kernel_backend("tilelang-fellow", logging.getLogger(__name__))
 
 
-def test_an_unreadable_registry_validates_nothing_rather_than_failing_everything(
-    monkeypatch, caplog
-):
-    """No registry means no grounds to reject, not grounds to reject everything."""
+def test_an_unreadable_registry_does_not_claim_backend_support(monkeypatch):
     _backend_registry(monkeypatch, None)
-    with caplog.at_level(logging.WARNING):
-        resolved = _resolve_kernel_backend("triton-fellow", logging.getLogger(__name__))
-    assert resolved == "triton"
-    assert "unvalidated" in caplog.text
+    with pytest.raises(RuntimeError, match="Cannot verify KernelForge's backend registry"):
+        _resolve_kernel_backend("triton-fellow", logging.getLogger(__name__))
 
 
 def test_the_registry_is_read_from_kernelforge_not_copied_here(monkeypatch):
@@ -469,8 +455,25 @@ def test_gpu_type_uses_normalized_arena_hardware_model():
         _resolve_gpu_type({"target_gpu_model": ""})
 
 
+def _v2_command(tmp_path, spec, *, workflow="optimize"):
+    """Exercise actual adapter argv construction without image/GPU execution."""
+    engine = tmp_path / "engine"
+    engine.mkdir()
+    for scope in spec.candidate.editable:
+        assert scope.scope != "tree", "This image-task fixture expects declared source files"
+        path = engine / scope.path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("")
+    context = SimpleNamespace(spec=spec, workspace=engine)
+    anchor = spec.candidate.entrypoints[0].file if spec.candidate.entrypoints else spec.candidate.editable[0].path
+    plan = dict(workflow=workflow, engine_root=str(engine), anchor=anchor,
+                deadline_unix=time.time() + 3600, result=str(tmp_path / "result.json"),
+                baseline=str(tmp_path / "baseline.json"), program=str(engine / "arena_program.md"))
+    return adapter.build_command(plan, context, adapter._config({}), gpu_arch="gfx950", gpu_type="mi355x")
+
+
 @pytest.mark.parametrize(
-    ("task_name", "logical_operator", "kernel_kind", "source_owner"),
+    ("task_name", "logical_operator", "language", "source_owner"),
     [
         (
             "mi355x_vllm_aiter_mxfp4_moe_2stage_kimi_k3",
@@ -484,17 +487,17 @@ def test_gpu_type_uses_normalized_arena_hardware_model():
             "triton",
             "aiter",
         ),
-        ("mi355x_vllm_ck_moe_2stage", "ck_moe_2stage", "ck", "aiter"),
+        ("mi355x_vllm_ck_moe_2stage", "ck_moe_2stage", "hip", "aiter"),
         (
             "mi355x_vllm_ck_cktile_moe_2stage",
             "cktile_moe_2stage",
-            "ck",
+            "hip",
             "aiter",
         ),
         (
             "mi355x_vllm_ck_a8w8_blockscale_gemm",
             "gemm_a8w8_blockscale_ck",
-            "ck",
+            "hip",
             "aiter",
         ),
         (
@@ -548,24 +551,33 @@ def test_gpu_type_uses_normalized_arena_hardware_model():
     ],
 )
 def test_all_mi355x_tasks_declare_kernel_identity(
+    tmp_path,
     task_name,
     logical_operator,
-    kernel_kind,
+    language,
     source_owner,
 ):
     root = Path(__file__).resolve().parents[1]
     config_path = root / "tasks" / "image_kernel" / task_name / "config.yaml"
-    config = yaml.safe_load(config_path.read_text())
+    spec = load_task_spec(config_path, task_id=f"image_kernel/{task_name}")
+    config = spec.to_mapping()
     identity = config["kernel_identity"]
 
     assert identity["logical_operator"] == logical_operator
-    assert identity["kernel_kind"] == kernel_kind
+    assert spec.candidate.language == language
     assert identity["source_owner"] == source_owner
     assert _logical_operator(config) == logical_operator
-    assert _resolve_kernel_kind(config) == kernel_kind
     assert _resolve_framework(config) == source_owner
-    assert _infer_backend(config) == kernel_kind
-    assert _resolve_fellow(config, {}) == f"{kernel_kind}-fellow"
+    assert _infer_backend(config) == language
+    argv = _v2_command(tmp_path, spec)
+    assert _value(argv, "--operator-name") == logical_operator
+    assert _value(argv, "--framework") == source_owner
+    assert _value(argv, "--kernel-backend") == language
+    assert "--shapes-json" not in argv
+    assert "--workload-key" not in argv
+    assert "--kernel-kind" not in argv
+    # This is command serialization; runtime capability rejection is tested
+    # separately. Serializing TileLang must never silently substitute FlyDSL.
 
 
 def test_unified_attention_metadata():
@@ -577,14 +589,15 @@ def test_unified_attention_metadata():
         / "mi355x_vllm_triton_unified_attention"
         / "config.yaml"
     )
-    config = yaml.safe_load(config_path.read_text())
+    spec = load_task_spec(config_path, task_id="image_kernel/mi355x_vllm_triton_unified_attention")
+    config = spec.to_mapping()
     assert _infer_backend(config) == "triton"
     assert _logical_operator(config) == "unified_attention_with_output"
-    assert _resolve_kernel_kind(config) == "triton"
+    assert spec.candidate.language == "triton"
     assert _resolve_framework(config) == "aiter"
-    assert _declared_editable_sources(config) == [
-        "ops/triton/_triton_kernels/attention/unified_attention.py",
-        "ops/triton/attention/unified_attention.py",
+    assert [scope.path for scope in spec.candidate.editable] == [
+        "aiter/ops/triton/_triton_kernels/attention/unified_attention.py",
+        "aiter/ops/triton/attention/unified_attention.py",
     ]
     assert {
         "unified_attention",
@@ -593,10 +606,12 @@ def test_unified_attention_metadata():
         "kernel_unified_attention_2d",
         "kernel_unified_attention_3d",
         "reduce_segments",
-    }.issubset(config["target_kernel_functions"])
+    } == {entry.symbol for entry in spec.candidate.entrypoints}
+    assert config["evaluation"]["workloads"] == "workloads.json"
+    assert (config_path.parent / config["evaluation"]["workloads"]).is_file()
 
 
-def test_the_real_tilelang_task_reaches_forge_as_the_flydsl_alias(tmp_path):
+def test_the_real_tilelang_task_is_explicitly_unsupported_by_pinned_forge(tmp_path):
     root = Path(__file__).resolve().parents[1]
     config_path = (
         root
@@ -605,17 +620,12 @@ def test_the_real_tilelang_task_reaches_forge_as_the_flydsl_alias(tmp_path):
         / "mi355x_vllm_tilelang_mhc_fused_post_pre"
         / "config.yaml"
     )
-    config = yaml.safe_load(config_path.read_text())
-    fellow = _resolve_fellow(config, {})
-
-    assert fellow == "tilelang-fellow"
-    # The task declares tilelang and the fellow name preserves that. What reaches
-    # KernelForge is the alias, because KernelForge serves no tilelang backend
-    # and would substitute flydsl on its own without saying so.
-    backend = _resolve_kernel_backend(fellow, logging.getLogger(__name__))
-    assert backend == "flydsl"
-    argv = _command(tmp_path, kernel_backend=backend)
-    assert _value(argv, "--kernel-backend") == "flydsl"
+    spec = load_task_spec(config_path, task_id="image_kernel/mi355x_vllm_tilelang_mhc_fused_post_pre")
+    assert spec.candidate.language == "tilelang"
+    with pytest.raises(adapter.ForgeRunError, match="has no tilelang backend"):
+        adapter.require_supported_backend(spec, {"backends": ["hip", "triton", "flydsl", "ck"]})
+    argv = _v2_command(tmp_path, spec)
+    assert _value(argv, "--kernel-backend") == "tilelang"
     assert "--fellow" not in argv
     assert "--max-iters" not in argv
 
