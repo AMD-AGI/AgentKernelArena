@@ -57,3 +57,15 @@ NaN, following [OCP MX specification section 5.4.1/table 7](https://www.opencomp
 CPU regression checks cover all 256 encodings against PyTorch's native E8M0
 conversion. Original numerical tolerances and performance code are unchanged;
 GPU qualification remains required.
+
+Correctness now snapshots activations, packed weights and E8M0 scales before
+calling the candidate. Modifying those inputs fails even if a later reference
+would otherwise observe the same corruption. The independent decoder/matmul
+reference and `atol=rtol=1e-2` remain unchanged. Shape, dtype, device and finiteness
+are checked on both ordinary outputs and actual captured/timed outputs.
+
+A diagnostic replay changes activations and weight/scale row mapping in place,
+poisons the captured output, and checks the new numerical answer. Inputs are
+restored in `finally`, including replay failures. This preserves all 55 cases,
+seed 42, the full public wrapper and its allocation boundary, 50 warmups and
+200 default samples. References and diagnostics run outside measured time.

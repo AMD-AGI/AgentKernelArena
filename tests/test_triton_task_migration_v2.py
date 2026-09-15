@@ -1355,6 +1355,107 @@ def test_quant_sort_action_adapter_retains_replay_metadata(monkeypatch):
     assert h.benchmark_cuda_graph_or_events is benchmark
 
 
+def _fp4_gemm_cpu_harness():
+    from types import ModuleType
+    path = ROOT/'tasks/triton2triton/geak_eval/L3/gemm_a16wfp4/test_kernel_harness.py'
+    decoder = pure_functions(path, ['mxfp4_to_f32'], {'torch': SimpleNamespace(
+        float32=torch.float32, tensor=lambda values, **kwargs: torch.tensor(
+            values, **{**kwargs, 'device': 'cpu'}))})
+    ref = pure_functions(path, ['e8m0_to_f32', 'run_torch_reference'],
+        {'SCALE_GROUP_SIZE': 32, 'mxfp4_to_f32': decoder.mxfp4_to_f32})
+    h = ModuleType('_fp4_gemm_cpu')
+    h.run_torch_reference = ref.run_torch_reference
+    h.DTYPE = torch.bfloat16
+    h.ATOL = h.RTOL = 1e-2
+    h.ALL_SHAPES = h.HARNESS_SHAPES = [(1, 2, 32)]
+    h.is_fp4_avail = lambda: True
+    h._label = str
+    h._shape_indices = lambda shapes: [0]
+    h.math = __import__('math')
+    h.torch = SimpleNamespace(cuda=SimpleNamespace(synchronize=lambda: None, empty_cache=lambda: None),
+                              testing=torch.testing)
+    x = torch.arange(1, 33, dtype=h.DTYPE).reshape(1, 32)
+    w = torch.tensor([[0x22]*16, [0xaa]*16], dtype=torch.uint8)
+    scales = torch.tensor([[127], [128]], dtype=torch.uint8)
+    h.generate_inputs = lambda *args: (x, w, w, scales, scales)
+    h.gemm_a16wfp4 = lambda x, w, scales, **kw: ref.run_torch_reference(x, w, scales, kw['dtype'])
+    nodes = [n for n in ast.parse(path.read_text()).body if isinstance(n, ast.FunctionDef)
+             and n.name in ('run_correctness', 'run_benchmark')]
+    exec(compile(ast.Module(body=nodes, type_ignores=[]), str(path), 'exec'), h.__dict__)
+    return h, (x, w, scales)
+
+
+def test_fp4_gemm_original_reference_known_answer_and_postcall_mutation_control(monkeypatch):
+    task = ROOT/'tasks/triton2triton/geak_eval/L3/gemm_a16wfp4'
+    checks = module_at(task/'_arena_checks.py', monkeypatch)
+    h, inputs = _fp4_gemm_cpu_harness()
+    expected = torch.tensor([[528., -1056.]], dtype=torch.bfloat16)
+    torch.testing.assert_close(h.run_torch_reference(*inputs, h.DTYPE), expected, atol=0, rtol=0)
+    original = h.gemm_a16wfp4
+    def corrupt(x, w, scales, **kwargs):
+        x.zero_(); w.zero_()
+        return original(x, w, scales, **kwargs)
+    h.gemm_a16wfp4 = corrupt
+    # Execute the real old orchestration, which incorrectly accepts corruption.
+    assert h.run_correctness()['correct'] is True
+    h, inputs = _fp4_gemm_cpu_harness()
+    h.gemm_a16wfp4 = corrupt
+    with checks.checked_correctness(h):
+        result = h.run_correctness()
+    assert result['correct'] is False and result['num_failed'] == 1
+    assert 'read-only inputs' in result['failures'][0]['error']
+
+
+@pytest.mark.parametrize('mode', ['correct', 'wrong_value', 'dtype', 'shape', 'nonfinite'])
+def test_fp4_gemm_correctness_retains_output_contract(monkeypatch, mode):
+    checks = module_at(ROOT/'tasks/triton2triton/geak_eval/L3/gemm_a16wfp4/_arena_checks.py', monkeypatch)
+    h, inputs = _fp4_gemm_cpu_harness()
+    original = h.gemm_a16wfp4
+    def candidate(*args, **kwargs):
+        output = original(*args, **kwargs)
+        if mode == 'wrong_value': output.zero_()
+        if mode == 'dtype': output = output.float()
+        if mode == 'shape': output = output[:, :1]
+        if mode == 'nonfinite': output.fill_(float('nan'))
+        return output
+    h.gemm_a16wfp4 = candidate
+    with checks.checked_correctness(h): result = h.run_correctness()
+    assert result['correct'] is (mode == 'correct')
+    assert h.gemm_a16wfp4 is candidate
+
+
+@pytest.mark.parametrize('mode', ['correct', 'wrong_timed', 'stale', 'no_write', 'wrong_replay',
+                                 'mutate_timed', 'mutate_replay', 'raise_replay'])
+def test_fp4_gemm_original_benchmark_replay_and_source_restoration(monkeypatch, mode):
+    import sys
+    checks = module_at(ROOT/'tasks/triton2triton/geak_eval/L3/gemm_a16wfp4/_arena_checks.py', monkeypatch)
+    monkeypatch.setitem(sys.modules, '_aka_benchmark', SimpleNamespace(TimedRun=SimpleNamespace))
+    h, inputs = _fp4_gemm_cpu_harness()
+    pristine = checks.snapshots(inputs)
+    options = []
+    def benchmark(fn, *, timed_run, **kwargs):
+        options.append(kwargs)
+        checks.unchanged(inputs, pristine)
+        output = fn(); cached = output.clone()
+        if mode == 'wrong_timed': output.zero_()
+        if mode == 'mutate_timed': inputs[0].zero_()
+        def replay():
+            if mode == 'raise_replay': raise RuntimeError('replay failed')
+            if mode == 'stale': output.copy_(cached)
+            elif mode != 'no_write': output.copy_(fn())
+            if mode == 'wrong_replay': output.zero_()
+            if mode == 'mutate_replay': inputs[1].zero_()
+            return output
+        timed_run.outputs, timed_run.rerun = output, replay
+        return 0.125, {'benchmark_method': 'cuda_graph'}
+    h.benchmark_cuda_graph_or_events = lambda fn, **kwargs: checks.checked_benchmark(h, benchmark, fn, **kwargs)
+    if mode == 'correct': h.run_benchmark()
+    else:
+        with pytest.raises((AssertionError, RuntimeError)): h.run_benchmark()
+    assert options == [dict(warmup=50, repetition=200)]
+    checks.unchanged(inputs, pristine)
+
+
 def test_geak_boolean_integer_and_skipped_result_contracts(monkeypatch):
     adapter=module_at(GEAK[0].parent/'_arena_eval.py',monkeypatch)
     adapter.require_success(None,'none',1)
