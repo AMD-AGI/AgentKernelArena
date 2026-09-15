@@ -585,9 +585,9 @@ kernel_identity:
 workspace:
   sources:
     - kind: image
-      image_path: /sgl-workspace/aiter
-      destination: aiter_source
-      exclude: [jit, aiter/jit/flydsl_cache, __pycache__]
+      image_path: /sgl-workspace/aiter/aiter
+      destination: aiter_source/aiter
+      exclude: [jit/build, jit/flydsl_cache, __pycache__]
 platform_support:
   required_arch: gfx950
   status: active
@@ -604,6 +604,11 @@ evaluation:
   runner: [python3, scripts/evaluate.py]
   workloads: workload.json
 ```
+
+The copied AITER package provides source context. Baseline actions use the
+installed package in the pinned runtime; they do not import this copy. Preserve
+the package's Python JIT sources while excluding generated build/cache trees.
+Copying the whole upstream repository is unnecessary for this task contract.
 
 The existing SIKL suite contains 17 BF16 GEMM tasks and four MXFP4 MoE tasks,
 each covering its declared case set. The same schema fits both families. A MoE
