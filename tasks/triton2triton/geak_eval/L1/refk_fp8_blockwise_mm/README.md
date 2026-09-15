@@ -38,8 +38,8 @@ correctness-only cases remain in the manifest; repeated performance configuratio
 keep their separate indices. No skipped/missing case or incomplete action passes.
 
 Compilation retains the original syntax check. Numerical checks actually execute
-the candidate and compare with the protected references; tolerances and output
-checks are unchanged. Full benchmark input order, seeds, allocation/reset behavior,
+the candidate and compare with the protected references; original numerical tolerances are retained; the additional output checks below
+are required. Full benchmark input order, seeds, allocation/reset behavior,
 warmups, iterations and the canonical helper's median calculation remain unchanged.
 The adapter collects fresh device measurements directly from the benchmark calls;
 old `build/performance_report.json` files and log text cannot supply evidence.
@@ -47,8 +47,21 @@ The original optional reference timings remain diagnostic; Arena uses the frozen
 initial implementation's measured times for scoring. No GPU qualification is
 implied by the CPU migration checks.
 
-Do not edit `test_kernel_harness.py`, `_arena_*.py`, `workloads.json`, or generated
+Do not edit `test_kernel_harness.py`, `_arena_*.py`, `_timed_contract.py`, `workloads.json`, or generated
 `_aka_benchmark.py`. The runtime must materialize the canonical benchmark helper
 next to the original harness even though the public runner is `_arena_eval.py`.
 Unsupported hardware or missing dependencies return a failing envelope; use a
 compatible image/GPU before scheduling this task.
+
+## Complete output and replay checks
+
+Correctness computes its reference from private input snapshots before invoking
+the candidate. All read-only inputs retain their original bytes, shape, strides,
+dtype and device. Every output must have its declared shape, dtype and device
+and contain only finite values; casts cannot hide an invalid public dtype.
+Performance retains every original case, seed, allocation boundary, warmup,
+sample count and median/adaptive-repeat policy. It additionally compares the
+actual `TimedRun.outputs`, then perturbs inputs in place, poisons output buffers
+and validates the same captured invocation through `TimedRun.rerun()`.
+The reference, snapshots and replay checks run outside device timing. Inputs
+are restored even on failure. `_timed_contract.py` is protected task code.

@@ -819,6 +819,32 @@
         128256,
         8
       ]
+    ],
+    "controls": [
+      {
+        "test_case_id": "control-ties-one-stage",
+        "shape": [
+          2,
+          16
+        ],
+        "dtype": "float32",
+        "params": {
+          "k": 3,
+          "strided": false
+        }
+      },
+      {
+        "test_case_id": "control-ties-two-stage-strided",
+        "shape": [
+          2,
+          16384
+        ],
+        "dtype": "float32",
+        "params": {
+          "k": 3,
+          "strided": true
+        }
+      }
     ]
   },
   "cases": [
@@ -2101,6 +2127,36 @@
         "performance"
       ],
       "status": "PASS"
+    },
+    {
+      "test_case_id": "control-ties-one-stage",
+      "shape": [
+        2,
+        16
+      ],
+      "dtype": "float32",
+      "params": {
+        "k": 3,
+        "strided": false
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "control-ties-two-stage-strided",
+      "shape": [
+        2,
+        16384
+      ],
+      "dtype": "float32",
+      "params": {
+        "k": 3,
+        "strided": true
+      },
+      "checks": [
+        "correctness"
+      ]
     }
   ],
   "timing_calls_per_case": [

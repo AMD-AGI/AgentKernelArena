@@ -10,6 +10,7 @@ import math
 import os
 import sys
 from _aka_benchmark import benchmark_cuda_graph_or_events_samples
+from _timed_contract import checked_call, checked_benchmark, assert_output_contract
 
 
 def benchmark_cuda_graph_or_events(*args, **kwargs):
@@ -55,22 +56,35 @@ def _label(cfg):
     return "M={} N={} K={}".format(cfg["m"], cfg["n"], cfg["k"])
 
 
+def _reference_mm(tensors, output):
+    result = torch.empty_like(output)
+    return fp8_blockwise_mm_pytorch(tensors['a'], tensors['b'], tensors['a_scale'], tensors['b_scale'], result)
+
+
+def _check_mm(actual, expected):
+    torch.testing.assert_close(actual.float(), expected.float(), rtol=RTOL, atol=ATOL)
+
+
 def check_correctness(cfg):
-    a, b, a_scale, b_scale, c_triton = get_inputs(**cfg)
-    c_ref = c_triton.clone()
-    fp8_blockwise_mm_triton(a, b, a_scale, b_scale, c_triton)
-    fp8_blockwise_mm_pytorch(a, b, a_scale, b_scale, c_ref)
-    torch.cuda.synchronize()
-    return torch.allclose(c_triton.float(), c_ref.float(), rtol=RTOL, atol=ATOL)
+    a, b, a_scale, b_scale, output = get_inputs(**cfg)
+    checked_call(
+        lambda: fp8_blockwise_mm_triton(a, b, a_scale, b_scale, output),
+        inputs=dict(a=a, b=b, a_scale=a_scale, b_scale=b_scale),
+        reference=lambda saved: _reference_mm(saved, output), check=_check_mm,
+    )
+    return True
 
 
 def _bench_one(cfg, warmup, iters):
     a, b, a_scale, b_scale, c = get_inputs(**cfg)
     output = c.clone()
-    return benchmark_cuda_graph_or_events(
+    return checked_benchmark(
+        benchmark_cuda_graph_or_events,
         lambda: fp8_blockwise_mm_triton(a, b, a_scale, b_scale, output),
-        warmup=warmup,
-        repetition=iters,
+        inputs=dict(a=a, b=b, a_scale=a_scale, b_scale=b_scale),
+        reference=lambda saved: _reference_mm(saved, output), check=_check_mm,
+        perturb=lambda saved: {**saved, 'a': (-saved['a'].float()).to(a.dtype)},
+        warmup=warmup, repetition=iters,
     )
 
 
