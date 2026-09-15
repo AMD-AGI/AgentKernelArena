@@ -12,7 +12,8 @@ import flydsl.expr as fx
 from flydsl._mlir import ir
 from flydsl._mlir.dialects import llvm
 from flydsl.compiler.kernel_function import CompilationContext
-from flydsl.expr import arith, buffer_ops, const_expr, gpu, range_constexpr, rocdl, vector
+from flydsl.expr import arith, const_expr, gpu, range_constexpr, rocdl
+from flydsl_compat import buffer_ops, vector
 from flydsl.expr import math as fly_math
 from flydsl.expr.typing import Int32, T
 from flydsl.runtime.device import get_rocm_arch as get_hip_arch
@@ -61,6 +62,32 @@ _N_V = VHELOOP * VTLOOP * 2  # 16
 
 # Tiles per block (1024 tokens / 256 tokens per tile = 4, matches SP3 kNumBlockTiles)
 TILES_PER_BLOCK = KV_BLOCK_SIZE // KV_COMPUTE_BLOCK  # 4
+
+
+"""Explicit in-register encoding conversion for existing FNUZ KV tensors on gfx950."""
+_KV_USES_OCP_INSTRUCTIONS = get_hip_arch().split(':')[0] == 'gfx950'
+
+
+def _kv_word_for_arch(word):
+    # gfx942 retains its original FNUZ MFMA path. gfx950's MFMA consumes OCP
+    # bytes; convert the existing cache values inside the timed GPU kernel.
+    if not _KV_USES_OCP_INSTRUCTIONS:
+        return word
+    packed = fx.Int64(word)
+    result = fx.Int64(0)
+    for index in range_constexpr(8):
+        byte = (packed >> fx.Int64(index * 8)) & fx.Int64(255)
+        magnitude = byte & fx.Int64(127)
+        sign = byte & fx.Int64(128)
+        # Exponent bias 8 -> 7. Values below the OCP normal range use RNE;
+        # exactly the ordinary FNUZ -> OCP conversion, never reinterpretation.
+        half = magnitude >> fx.Int64(1)
+        round_up = arith.select((magnitude & fx.Int64(3)) == fx.Int64(3), fx.Int64(1), fx.Int64(0))
+        subnormal = half + fx.Int64(round_up)
+        value = fx.Int64(arith.select(magnitude >= fx.Int64(16), magnitude - fx.Int64(8), subnormal)) | sign
+        value = fx.Int64(arith.select(byte == fx.Int64(128), fx.Int64(127), value))
+        result = result | (value << fx.Int64(index * 8))
+    return result.ir_value()
 
 
 def _cdiv(numer: int, denom: int) -> int:
@@ -642,7 +669,7 @@ def _make_pa_phase_helpers(
         for td in range_constexpr(TLOOP):
             acc = arith.constant_vector(0.0, T.f32x4)
             for k_step in range_constexpr(QKHELOOP * 2):
-                acc = rocdl.mfma_f32_16x16x32_fp8_fp8(T.f32x4, [k_ops[td][k_step], q_frags[k_step], acc, 0, 0, 0])
+                acc = rocdl.mfma_f32_16x16x32_fp8_fp8(T.f32x4, [_kv_word_for_arch(k_ops[td][k_step]), q_frags[k_step], acc, 0, 0, 0])
             if const_expr(per_token_kv):
                 k_scale_vec = _load_k_scale_vec(td)
                 scale_vec = (
@@ -795,7 +822,7 @@ def _make_pa_phase_helpers(
                     tmp_out = rocdl.mfma_f32_16x16x32_fp8_fp8(
                         T.f32x4,
                         [
-                            v_i64x2[j],
+                            _kv_word_for_arch(v_i64x2[j]),
                             p_i64,
                             tmp_out,
                             0,

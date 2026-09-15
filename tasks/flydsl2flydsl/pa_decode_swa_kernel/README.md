@@ -49,3 +49,18 @@ Any older validation reports in this directory predate this migration and do not
 qualify the v2 runner. The parent integration schedules new GPU validation.
 
 Upstream source: {"commit": "28a18d328b4882c999864b2df2f8f9fe3fcc8b47", "date": "2026-06-01", "path": "kernels/pa_decode_swa.py", "repo": "https://github.com/ROCm/FlyDSL"}.
+
+
+The task retains its original FNUZ FP8 caches and independent FNUZ reference.
+On gfx950, the GPU kernel converts loaded K/V register bytes to the OCP FP8
+encoding consumed by that architecture's MFMA instructions, using normal
+round-to-nearest-even conversion. The gfx942 path uses its original bytes. No
+harness input encoding, stored cache contents, dequantization scales, cases or
+tolerance is changed. The conversion executes inside the original timed launch.
+See [AMD's FP8 format support](https://rocm.docs.amd.com/projects/HIP/en/latest/reference/low_fp_types.html).
+
+The bundled `flydsl_compat/` package adapts removed buffer/vector APIs; its source
+pin and license are included. Performance checks the actual measured decode
+output, changes query values in place, poisons output and replays the same graph
+against the unchanged independent reference. All original shapes, tolerance,
+warmups, samples, allocations and timed stage/reduction calls are preserved.

@@ -24,7 +24,8 @@ import math
 import os
 import sys
 from pathlib import Path
-from _aka_benchmark import benchmark_cuda_graph_or_events
+from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
+from scripts.replay_checks import verify_timed_run, compare_output
 
 # ============================================================================
 # Bootstrap / path discipline
@@ -542,7 +543,10 @@ def arena_benchmark(shapes=None, warmup=10, iters=100, verbose=True):
     for idx, (num_seqs, ctx, kvh, sw) in enumerate(shapes):
         try:
             data = _create_inputs(num_seqs, ctx, kvh, sw, seed=42)
-            run_fn, _ = _make_decode(mod, data)
+            run_fn, output = _make_decode(mod, data)
+            inputs = tuple(value for value in data.values() if isinstance(value, torch.Tensor))
+            originals = tuple(value.clone() for value in inputs)
+            expected = reference_swa_decode(data)
 
             # one trial launch to surface any error before timing
             run_fn()
@@ -552,9 +556,18 @@ def arena_benchmark(shapes=None, warmup=10, iters=100, verbose=True):
                 run_fn()
             torch.cuda.synchronize()
 
+            timed = TimedRun()
+            def launch():
+                run_fn()
+                return output
             kernel_ms, kernel_bench_meta = benchmark_cuda_graph_or_events(
-                run_fn, warmup=0, repetition=iters
+                launch, warmup=0, repetition=iters, timed_run=timed,
             )
+            kernel_bench_meta.update(verify_timed_run(
+                timed, inputs=inputs, originals=originals, expected=expected,
+                perturb=lambda: data['query'].neg_(), reference=lambda: reference_swa_decode(data),
+                compare=lambda actual, ref: compare_output(actual, ref, ATOL),
+            ))
             status = ""
         except Exception as ex:
             kernel_ms = float("nan")
