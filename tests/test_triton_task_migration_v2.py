@@ -1083,11 +1083,12 @@ def test_rocm_v2_preserves_original_source_and_complete_parameter_manifest(path)
             'test_chained_dot_fp8': ('_chained_dot', 'bc43aa5087aa0cf21f2c23972f6b552fc502cb34b87306841b0e0020b781ede1'),
             'test_batched_vecmat': ('batched_vecmat', '8d592a7bb4da730aeeb5343ddfc710d49f543241fca6b38a9a1e3f5299df5452'),
             'test_iv_dependent_matmul': ('iv_dependent_matmul', '32aa40116bcef34a66544bda60ce024c6db2282e1abc42993fdefd86e2fe6485'),
-            'multreduce_matmul_dot_kernel': ('triton_matmul_kernel', '5281e0dd6e6cc02ecfe827a1e54ffe17a4ba3cd13b9c02b9a9e966ed368fb788'),
+            'multreduce_matmul_dot_kernel': ('triton_matmul_kernel', '214e2c0bcf62588deb394babebadea80b5f35e426238e94707d5d759473a7f4e'),
         }
         if task.name in repaired_kernels:
             # Explicitly reviewed repairs: FP32 tiles/reduction, operand masks
-            # and block-pointer bounds. Dedicated tests reverse these edits to
+            # and block-pointer bounds, plus compensated dot accumulation. Dedicated
+            # tests reverse these edits to
             # compare with the original kernel AST, and exercise their semantics.
             kernel_name, reviewed_hash = repaired_kernels[task.name]
             current_source = source.read_text()
