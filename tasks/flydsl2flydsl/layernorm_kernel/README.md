@@ -48,11 +48,13 @@ qualify the v2 runner. The parent integration schedules new GPU validation.
 
 Upstream source: {"commit": "28a18d328b4882c999864b2df2f8f9fe3fcc8b47", "date": "2026-06-01", "path": "kernels/layernorm_kernel.py", "repo": "https://github.com/ROCm/FlyDSL"}.
 
-## Port preparation and measured replay checks
+## Architecture compatibility and measured replay checks
 
-The original gfx942 declaration remains until full gfx950 qualification. The port
-uses current FlyDSL vector helpers while preserving the original operator and
-legacy runtime path. Unused legacy pointer helpers load their dependency lazily.
+Every declared correctness and performance case executed successfully on MI355X
+gfx950. The original gfx942 declaration and implementation path are retained;
+gfx942 was not revalidated by this port. Support is scoped to `cases.json`.
+The port uses current FlyDSL vector APIs while preserving the operator. Unused
+legacy pointer helpers load their dependency lazily.
 
 The public benchmark checks its actual measured output, then changes input in place,
 poisons every output, and replays the same captured graph. Both roles retain their

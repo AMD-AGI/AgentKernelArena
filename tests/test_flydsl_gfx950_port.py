@@ -65,7 +65,7 @@ def test_vector_helpers_support_both_dependency_layouts_without_masking_errors(t
         assert namespace['full'] is expected.full
 
 
-@pytest.mark.parametrize('task', ['rmsnorm_kernel', 'softmax_kernel'])
+@pytest.mark.parametrize('task', ['rmsnorm_kernel', 'softmax_kernel', 'layernorm_kernel', 'topk_gating_softmax_kernel'])
 def test_port_retains_original_architecture_and_adds_explicit_target(task):
     from src.task_spec import load_task_spec
     spec = load_task_spec(ROOT / task / 'config.yaml', task_id='flydsl2flydsl/' + task)
