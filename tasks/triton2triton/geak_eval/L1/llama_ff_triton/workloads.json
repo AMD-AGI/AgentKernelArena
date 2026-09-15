@@ -1,0 +1,109 @@
+{
+  "version": 1,
+  "source": "kernel.py",
+  "candidate_symbols": [
+    {
+      "name": "ff_llama",
+      "jit": true
+    },
+    {
+      "name": "ff_llama_opt",
+      "jit": true
+    }
+  ],
+  "input_tables": {
+    "performance": [
+      [
+        2,
+        4,
+        64
+      ],
+      [
+        3,
+        4,
+        64
+      ],
+      [
+        2,
+        5,
+        64
+      ]
+    ],
+    "original_correctness": [
+      [
+        2,
+        4,
+        64
+      ],
+      [
+        3,
+        4,
+        64
+      ],
+      [
+        2,
+        5,
+        64
+      ]
+    ]
+  },
+  "cases": [
+    {
+      "test_case_id": "case/0",
+      "params": {
+        "case_index": 0,
+        "configuration": [
+          2,
+          4,
+          64
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/1",
+      "params": {
+        "case_index": 1,
+        "configuration": [
+          3,
+          4,
+          64
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/2",
+      "params": {
+        "case_index": 2,
+        "configuration": [
+          2,
+          5,
+          64
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    }
+  ],
+  "timing_calls_per_case": [
+    "candidate",
+    "reference"
+  ],
+  "migration": {
+    "original_harness_sha256": "ed6afdcdf9d3e35ef56bc81a47615f8df6dcaeeb4c8405cace2689e5888e9dcf",
+    "original_source_sha256": "304d098a4968051af91857b832cd739fd6af6308a5710684eebd10e60baf36e1",
+    "preservation": "Original correctness subset executes first, in its original order; additional performance cases are checked afterward. Original performance order, RNG calls, reset callbacks, sample counts and median reduction remain intact."
+  }
+}

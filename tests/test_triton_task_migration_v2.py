@@ -253,3 +253,119 @@ def test_rocm_missing_candidate_fails_every_applicable_case(tmp_path,monkeypatch
     assert result['status']=='FAIL'
     assert result['cases'] and all(r['status']=='FAIL' and 'performance' in r['checks'] for r in result['cases'])
     result_record(result)
+
+
+GEAK = sorted((ROOT/'tasks/triton2triton/geak_eval').rglob('config.yaml'))
+
+
+@pytest.mark.parametrize('path', GEAK, ids=lambda p:p.parent.name)
+def test_geak_v2_preserves_original_functions_and_freezes_the_complete_manifest(path):
+    task=path.parent
+    spec=load_task_spec(path,task_id=task.relative_to(ROOT/'tasks').as_posix())
+    assert spec.candidate.initial_state=='implemented' and spec.baseline.kind=='initial_candidate'
+    assert spec.candidate.language=='triton'
+    assert all(edit.scope=='symbols' for edit in spec.candidate.editable)
+    data=json.loads((task/'workloads.json').read_text())
+    source=(task/data['source']).relative_to(ROOT).as_posix()
+    original=subprocess.check_output(['git','show',f'{BASE}:{source}'],cwd=ROOT)
+    assert (ROOT/source).read_bytes()==original
+    before=subprocess.check_output(['git','show',f'{BASE}:{task.relative_to(ROOT).as_posix()}/test_kernel_harness.py'],cwd=ROOT,text=True)
+    after=(task/'test_kernel_harness.py').read_text()
+    assert data['migration']['original_harness_sha256']==hashlib.sha256(before.encode()).hexdigest()
+    assert data['migration']['original_source_sha256']==hashlib.sha256(original).hexdigest()
+    olddefs={n.name:n for n in ast.parse(before).body if isinstance(n,(ast.FunctionDef,ast.ClassDef))}
+    newdefs={n.name:n for n in ast.parse(after).body if isinstance(n,(ast.FunctionDef,ast.ClassDef))}
+    bootstrap={'_find_baseline_kernel_dir','_load_baseline_triton','_resolve_geak_kernel_dir','_register_geak_aliases'}
+    for name in olddefs.keys()-bootstrap:
+        assert ast.get_source_segment(before,olddefs[name])==ast.get_source_segment(after,newdefs[name]),name
+    assert 'os.environ.get("GEAK_WORK_DIR"' not in after
+    assert 'os.environ.get("GEAK_REPO_ROOT"' not in after
+    perfrows=[r for r in data['cases'] if 'performance' in r['checks']]
+    assert [r['params']['configuration'] for r in perfrows]==data['input_tables']['performance']
+    assert [r['params']['case_index'] for r in perfrows]==list(range(len(perfrows)))
+    configs=[r['params']['configuration'] for r in data['cases']]
+    assert all(v in configs for v in data['input_tables']['original_correctness'])
+    assert all('correctness' in r['checks'] for r in data['cases'])
+    result_record({'protocol':'arena-eval-v1','role':'task','action':'validate-task','status':'PASS','cases':data['cases']})
+    for role in ('baseline','candidate'):
+        # Real command smoke: AST compilation only, no JIT/GPU execution.
+        run=subprocess.run([__import__('sys').executable,'_arena_eval.py',role,'compile'],cwd=task,text=True,capture_output=True)
+        parsed=parse_command_result(run.stdout,role=role,action='compile',returncode=run.returncode)
+        assert parsed.status=='PASS',run.stdout+run.stderr
+
+
+def test_geak_boolean_integer_and_skipped_result_contracts(monkeypatch):
+    adapter=module_at(GEAK[0].parent/'_arena_eval.py',monkeypatch)
+    adapter.require_success(None,'none',1)
+    adapter.require_success(0,'zero',1)
+    adapter.require_success(True,'bool',1)
+    for value,kind in [(None,'bool'),(False,'zero'),(True,'zero'),(0,'bool'),
+                       ({'correct':True,'num_correct':0,'num_failed':0,'skipped':True},'dict'),
+                       ({'correct':True,'num_correct':1,'num_failed':0},'dict')]:
+        with pytest.raises(RuntimeError):adapter.require_success(value,kind,2)
+
+
+def test_geak_performance_uses_current_candidate_timing_and_rejects_missing_calls(monkeypatch):
+    adapter=module_at(GEAK[0].parent/'_arena_eval.py',monkeypatch)
+    measurements=iter([17.,3.,19.,5.])
+    h=SimpleNamespace(benchmark_cuda_graph_or_events=lambda *a,**k:(next(measurements),{'benchmark_method':'cuda_graph'}))
+    actions=SimpleNamespace(h=h,performance=lambda:[h.benchmark_cuda_graph_or_events(None) for _ in range(4)])
+    data={'cases':[{'checks':['correctness','performance']},{'checks':['correctness','performance']}],
+          'timing_calls_per_case':['reference','candidate']}
+    assert [ms for ms,meta in adapter.capture_performance(actions,data)]==[3.,5.]
+    # A stale saved report has no role in supplying the missing current call.
+    h.benchmark_cuda_graph_or_events=lambda *a,**k:(2.,{'benchmark_method':'cuda_graph'})
+    actions.performance=lambda:h.benchmark_cuda_graph_or_events(None)
+    with pytest.raises(RuntimeError,match='Missing/extra'):adapter.capture_performance(actions,data)
+
+
+def test_geak_failure_envelope_and_manifest_drift(monkeypatch):
+    adapter=module_at(GEAK[0].parent/'_arena_eval.py',monkeypatch)
+    data=json.loads((GEAK[0].parent/'workloads.json').read_text())
+    actions=SimpleNamespace(inputs=lambda:data['input_tables'],validate=lambda:None,
+                            correctness=lambda require:require(False,'bool',len(data['cases'])))
+    monkeypatch.setattr(adapter,'load_actions',lambda:actions)
+    result=adapter.evaluate('candidate','correctness')
+    assert result['status']=='FAIL' and all(row['status']=='FAIL' for row in result['cases'])
+    assert result['failure_kind']!='numerical_mismatch'
+    result_record(result)
+    actions.inputs=lambda:{'performance':[],'original_correctness':[]}
+    result=adapter.evaluate('task','validate-task')
+    assert result['status']=='FAIL' and 'manifest' in result['reason']
+
+
+def pure_functions(path, names, namespace=None):
+    """Load protected CPU reference functions without importing GPU dependencies."""
+    tree=ast.parse(path.read_text())
+    selected=[n for n in tree.body if isinstance(n,(ast.FunctionDef,ast.ClassDef)) and n.name in names]
+    assert {n.name for n in selected}==set(names)
+    scope={'torch':torch,**(namespace or {})}
+    exec(compile(ast.Module(body=selected,type_ignores=[]),str(path),'exec'),scope)
+    return SimpleNamespace(**scope)
+
+
+def test_geak_rope_references_have_independent_known_answers():
+    path=ROOT/'tasks/triton2triton/geak_eval/L3/fused_qk_rope_cache_mla/test_kernel_harness.py'
+    from enum import IntEnum
+    ref=pure_functions(path,['RotateStyle','rotate_half_neox','rotate_half_gptj','ref_rope_sbhd_fwd'],{'IntEnum':IntEnum})
+    x=torch.tensor([[1.,2.,3.,4.]])
+    torch.testing.assert_close(ref.rotate_half_neox(x),torch.tensor([[-3.,-4.,1.,2.]]))
+    torch.testing.assert_close(ref.rotate_half_gptj(x),torch.tensor([[-2.,1.,-4.,3.]]))
+    got=ref.ref_rope_sbhd_fwd(x,torch.full((1,4),torch.pi/2),ref.RotateStyle.GPTJ,False,False)
+    expected=torch.tensor([[-2.,1.,-4.,3.]])
+    torch.testing.assert_close(got,expected)
+    with pytest.raises(AssertionError):torch.testing.assert_close(got,x)
+
+
+def test_geak_fp4_reference_decodes_independent_known_values():
+    path=ROOT/'tasks/triton2triton/geak_eval/L3/gemm_a16wfp4/test_kernel_harness.py'
+    # Only the lookup-table allocation is redirected to CPU; arithmetic is unchanged.
+    cpu_torch=SimpleNamespace(float32=torch.float32,
+        tensor=lambda values,**kwargs:torch.tensor(values,**{**kwargs,'device':'cpu'}))
+    ref=pure_functions(path,['mxfp4_to_f32'],{'torch':cpu_torch})
+    # Low/high nibbles enumerate the E2M1 positive and negative values.
+    packed=torch.tensor([[0x10,0x32,0x54,0x76,0x98,0xba,0xdc,0xfe]],dtype=torch.uint8)
+    expected=torch.tensor([[0.,.5,1.,1.5,2.,3.,4.,6.,-0.,-.5,-1.,-1.5,-2.,-3.,-4.,-6.]])
+    got=ref.mxfp4_to_f32(packed)
+    torch.testing.assert_close(got,expected)
+    with pytest.raises(AssertionError):torch.testing.assert_close(got,torch.zeros_like(expected))

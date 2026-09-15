@@ -1,15 +1,24 @@
-task_type: triton2triton
-source_file_path:
-- kernel.py
-harness_path: test_kernel_harness.py
-compile_command:
-- python3 -c "import ast; ast.parse(open('kernel.py').read())"
-correctness_command:
-- python3 test_kernel_harness.py --correctness
-performance_command:
-- python3 test_kernel_harness.py --full-benchmark
-target_kernel_functions:
-- fused_dynamic_mxfp4_quant_moe_sort
-prompt:
-  instructions: Optimize the fused MXFP4 quantization + MOE sort Triton kernel for
-    AMD MI300X GPU. Fuses dynamic microscaling FP4 quantization with MOE token sorting.
+schema_version: 2
+description: Optimize the declared Triton implementation of fused_mxfp4_quant_moe_sort, preserving the
+  protected operator and output contracts.
+candidate:
+  language: triton
+  initial_state: implemented
+  editable:
+  - path: kernel.py
+    scope: symbols
+    symbols:
+    - fused_dynamic_mxfp4_quant_moe_sort
+    allow_new_helpers: true
+  entrypoints:
+  - file: kernel.py
+    kind: function
+    symbol: fused_dynamic_mxfp4_quant_moe_sort
+baseline:
+  kind: initial_candidate
+  language: triton
+evaluation:
+  runner:
+  - python3
+  - _arena_eval.py
+  workloads: workloads.json

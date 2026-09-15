@@ -34,13 +34,7 @@ def benchmark_cuda_graph_or_events(*args, **kwargs):
     return median_ms, metadata
 
 # Ensure aiter is importable
-REPO_ROOT = os.environ.get(
-    "GEAK_WORK_DIR",
-    os.environ.get(
-        "GEAK_REPO_ROOT",
-        os.path.dirname(os.path.abspath(__file__)),
-    ),
-)
+REPO_ROOT = os.path.dirname(os.path.abspath(__file__))
 if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 

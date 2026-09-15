@@ -1,0 +1,6426 @@
+{
+  "version": 1,
+  "source": "kernel.py",
+  "candidate_symbols": [
+    {
+      "name": "_fused_qk_rope_cat_and_cache_mla_kernel",
+      "jit": true
+    }
+  ],
+  "input_tables": {
+    "performance": [
+      {
+        "T": 1,
+        "QH_per_KH": 1,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2,
+        "QH_per_KH": 1,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 4,
+        "QH_per_KH": 1,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2048,
+        "QH_per_KH": 1,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 1,
+        "QH_per_KH": 16,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2,
+        "QH_per_KH": 16,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 4,
+        "QH_per_KH": 16,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2048,
+        "QH_per_KH": 16,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 1,
+        "QH_per_KH": 1,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2,
+        "QH_per_KH": 1,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 4,
+        "QH_per_KH": 1,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2048,
+        "QH_per_KH": 1,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 1,
+        "QH_per_KH": 16,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2,
+        "QH_per_KH": 16,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 4,
+        "QH_per_KH": 16,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2048,
+        "QH_per_KH": 16,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 1,
+        "QH_per_KH": 1,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2,
+        "QH_per_KH": 1,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 4,
+        "QH_per_KH": 1,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2048,
+        "QH_per_KH": 1,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 1,
+        "QH_per_KH": 16,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2,
+        "QH_per_KH": 16,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 4,
+        "QH_per_KH": 16,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2048,
+        "QH_per_KH": 16,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 1,
+        "QH_per_KH": 1,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2,
+        "QH_per_KH": 1,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 4,
+        "QH_per_KH": 1,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2048,
+        "QH_per_KH": 1,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 1,
+        "QH_per_KH": 16,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2,
+        "QH_per_KH": 16,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 4,
+        "QH_per_KH": 16,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2048,
+        "QH_per_KH": 16,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 1,
+        "QH_per_KH": 1,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2,
+        "QH_per_KH": 1,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 4,
+        "QH_per_KH": 1,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2048,
+        "QH_per_KH": 1,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 1,
+        "QH_per_KH": 16,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2,
+        "QH_per_KH": 16,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 4,
+        "QH_per_KH": 16,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2048,
+        "QH_per_KH": 16,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 1,
+        "QH_per_KH": 1,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2,
+        "QH_per_KH": 1,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 4,
+        "QH_per_KH": 1,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2048,
+        "QH_per_KH": 1,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 1,
+        "QH_per_KH": 16,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2,
+        "QH_per_KH": 16,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 4,
+        "QH_per_KH": 16,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2048,
+        "QH_per_KH": 16,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 1,
+        "QH_per_KH": 1,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2,
+        "QH_per_KH": 1,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 4,
+        "QH_per_KH": 1,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2048,
+        "QH_per_KH": 1,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 1,
+        "QH_per_KH": 16,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2,
+        "QH_per_KH": 16,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 4,
+        "QH_per_KH": 16,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2048,
+        "QH_per_KH": 16,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 1,
+        "QH_per_KH": 1,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2,
+        "QH_per_KH": 1,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 4,
+        "QH_per_KH": 1,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2048,
+        "QH_per_KH": 1,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 1,
+        "QH_per_KH": 16,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2,
+        "QH_per_KH": 16,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 4,
+        "QH_per_KH": 16,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2048,
+        "QH_per_KH": 16,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 1,
+        "QH_per_KH": 1,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2,
+        "QH_per_KH": 1,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 4,
+        "QH_per_KH": 1,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2048,
+        "QH_per_KH": 1,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 1,
+        "QH_per_KH": 16,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2,
+        "QH_per_KH": 16,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 4,
+        "QH_per_KH": 16,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2048,
+        "QH_per_KH": 16,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 1,
+        "QH_per_KH": 1,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2,
+        "QH_per_KH": 1,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 4,
+        "QH_per_KH": 1,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2048,
+        "QH_per_KH": 1,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 1,
+        "QH_per_KH": 16,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2,
+        "QH_per_KH": 16,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 4,
+        "QH_per_KH": 16,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2048,
+        "QH_per_KH": 16,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 1,
+        "QH_per_KH": 1,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2,
+        "QH_per_KH": 1,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 4,
+        "QH_per_KH": 1,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2048,
+        "QH_per_KH": 1,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 1,
+        "QH_per_KH": 16,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2,
+        "QH_per_KH": 16,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 4,
+        "QH_per_KH": 16,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2048,
+        "QH_per_KH": 16,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 1,
+        "QH_per_KH": 1,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2,
+        "QH_per_KH": 1,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 4,
+        "QH_per_KH": 1,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2048,
+        "QH_per_KH": 1,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 1,
+        "QH_per_KH": 16,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2,
+        "QH_per_KH": 16,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 4,
+        "QH_per_KH": 16,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2048,
+        "QH_per_KH": 16,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 1,
+        "QH_per_KH": 1,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2,
+        "QH_per_KH": 1,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 4,
+        "QH_per_KH": 1,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2048,
+        "QH_per_KH": 1,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 1,
+        "QH_per_KH": 16,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2,
+        "QH_per_KH": 16,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 4,
+        "QH_per_KH": 16,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2048,
+        "QH_per_KH": 16,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 1,
+        "QH_per_KH": 1,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2,
+        "QH_per_KH": 1,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 4,
+        "QH_per_KH": 1,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2048,
+        "QH_per_KH": 1,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 1,
+        "QH_per_KH": 16,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2,
+        "QH_per_KH": 16,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 4,
+        "QH_per_KH": 16,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2048,
+        "QH_per_KH": 16,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 1,
+        "QH_per_KH": 1,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2,
+        "QH_per_KH": 1,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 4,
+        "QH_per_KH": 1,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2048,
+        "QH_per_KH": 1,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 1,
+        "QH_per_KH": 16,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2,
+        "QH_per_KH": 16,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 4,
+        "QH_per_KH": 16,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2048,
+        "QH_per_KH": 16,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 1,
+        "QH_per_KH": 1,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2,
+        "QH_per_KH": 1,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 4,
+        "QH_per_KH": 1,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2048,
+        "QH_per_KH": 1,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 1,
+        "QH_per_KH": 16,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2,
+        "QH_per_KH": 16,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 4,
+        "QH_per_KH": 16,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2048,
+        "QH_per_KH": 16,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      }
+    ],
+    "original_correctness": [
+      {
+        "T": 1,
+        "QH_per_KH": 1,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2,
+        "QH_per_KH": 1,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 4,
+        "QH_per_KH": 1,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2048,
+        "QH_per_KH": 1,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 1,
+        "QH_per_KH": 16,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2,
+        "QH_per_KH": 16,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 4,
+        "QH_per_KH": 16,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2048,
+        "QH_per_KH": 16,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 1,
+        "QH_per_KH": 1,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2,
+        "QH_per_KH": 1,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 4,
+        "QH_per_KH": 1,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2048,
+        "QH_per_KH": 1,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 1,
+        "QH_per_KH": 16,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2,
+        "QH_per_KH": 16,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 4,
+        "QH_per_KH": 16,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2048,
+        "QH_per_KH": 16,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 1,
+        "QH_per_KH": 1,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2,
+        "QH_per_KH": 1,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 4,
+        "QH_per_KH": 1,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2048,
+        "QH_per_KH": 1,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 1,
+        "QH_per_KH": 16,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2,
+        "QH_per_KH": 16,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 4,
+        "QH_per_KH": 16,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2048,
+        "QH_per_KH": 16,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 1,
+        "QH_per_KH": 1,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2,
+        "QH_per_KH": 1,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 4,
+        "QH_per_KH": 1,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2048,
+        "QH_per_KH": 1,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 1,
+        "QH_per_KH": 16,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2,
+        "QH_per_KH": 16,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 4,
+        "QH_per_KH": 16,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2048,
+        "QH_per_KH": 16,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 1,
+        "QH_per_KH": 1,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2,
+        "QH_per_KH": 1,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 4,
+        "QH_per_KH": 1,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2048,
+        "QH_per_KH": 1,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 1,
+        "QH_per_KH": 16,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2,
+        "QH_per_KH": 16,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 4,
+        "QH_per_KH": 16,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2048,
+        "QH_per_KH": 16,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 1,
+        "QH_per_KH": 1,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2,
+        "QH_per_KH": 1,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 4,
+        "QH_per_KH": 1,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2048,
+        "QH_per_KH": 1,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 1,
+        "QH_per_KH": 16,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2,
+        "QH_per_KH": 16,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 4,
+        "QH_per_KH": 16,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2048,
+        "QH_per_KH": 16,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 1,
+        "QH_per_KH": 1,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2,
+        "QH_per_KH": 1,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 4,
+        "QH_per_KH": 1,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2048,
+        "QH_per_KH": 1,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 1,
+        "QH_per_KH": 16,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2,
+        "QH_per_KH": 16,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 4,
+        "QH_per_KH": 16,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2048,
+        "QH_per_KH": 16,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 1,
+        "QH_per_KH": 1,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2,
+        "QH_per_KH": 1,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 4,
+        "QH_per_KH": 1,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2048,
+        "QH_per_KH": 1,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 1,
+        "QH_per_KH": 16,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2,
+        "QH_per_KH": 16,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 4,
+        "QH_per_KH": 16,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2048,
+        "QH_per_KH": 16,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.bfloat16",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 1,
+        "QH_per_KH": 1,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2,
+        "QH_per_KH": 1,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 4,
+        "QH_per_KH": 1,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2048,
+        "QH_per_KH": 1,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 1,
+        "QH_per_KH": 16,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2,
+        "QH_per_KH": 16,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 4,
+        "QH_per_KH": 16,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2048,
+        "QH_per_KH": 16,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 1,
+        "QH_per_KH": 1,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2,
+        "QH_per_KH": 1,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 4,
+        "QH_per_KH": 1,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2048,
+        "QH_per_KH": 1,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 1,
+        "QH_per_KH": 16,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2,
+        "QH_per_KH": 16,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 4,
+        "QH_per_KH": 16,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2048,
+        "QH_per_KH": 16,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 1,
+        "QH_per_KH": 1,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2,
+        "QH_per_KH": 1,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 4,
+        "QH_per_KH": 1,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2048,
+        "QH_per_KH": 1,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 1,
+        "QH_per_KH": 16,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2,
+        "QH_per_KH": 16,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 4,
+        "QH_per_KH": 16,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2048,
+        "QH_per_KH": 16,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 1,
+        "QH_per_KH": 1,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2,
+        "QH_per_KH": 1,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 4,
+        "QH_per_KH": 1,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2048,
+        "QH_per_KH": 1,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 1,
+        "QH_per_KH": 16,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2,
+        "QH_per_KH": 16,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 4,
+        "QH_per_KH": 16,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2048,
+        "QH_per_KH": 16,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": false,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 1,
+        "QH_per_KH": 1,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2,
+        "QH_per_KH": 1,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 4,
+        "QH_per_KH": 1,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2048,
+        "QH_per_KH": 1,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 1,
+        "QH_per_KH": 16,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2,
+        "QH_per_KH": 16,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 4,
+        "QH_per_KH": 16,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2048,
+        "QH_per_KH": 16,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 1,
+        "QH_per_KH": 1,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2,
+        "QH_per_KH": 1,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 4,
+        "QH_per_KH": 1,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2048,
+        "QH_per_KH": 1,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 1,
+        "QH_per_KH": 16,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2,
+        "QH_per_KH": 16,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 4,
+        "QH_per_KH": 16,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2048,
+        "QH_per_KH": 16,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 1,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 1,
+        "QH_per_KH": 1,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2,
+        "QH_per_KH": 1,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 4,
+        "QH_per_KH": 1,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2048,
+        "QH_per_KH": 1,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 1,
+        "QH_per_KH": 16,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2,
+        "QH_per_KH": 16,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 4,
+        "QH_per_KH": 16,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2048,
+        "QH_per_KH": 16,
+        "KH": 1,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 1,
+        "QH_per_KH": 1,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2,
+        "QH_per_KH": 1,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 4,
+        "QH_per_KH": 1,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2048,
+        "QH_per_KH": 1,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 1,
+        "QH_per_KH": 16,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2,
+        "QH_per_KH": 16,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 4,
+        "QH_per_KH": 16,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      },
+      {
+        "T": 2048,
+        "QH_per_KH": 16,
+        "KH": 8,
+        "D": 128,
+        "D_q_nope": 128,
+        "D_lora": 512,
+        "num_kv_cache_tokens": 16384,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": true,
+        "cache_dtype": "torch.uint8",
+        "dtype": "torch.bfloat16"
+      }
+    ]
+  },
+  "cases": [
+    {
+      "test_case_id": "case/0",
+      "params": {
+        "case_index": 0,
+        "configuration": {
+          "T": 1,
+          "QH_per_KH": 1,
+          "KH": 1,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 1,
+          "reuse_freqs_front_part": false,
+          "cache_dtype": "torch.bfloat16",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/1",
+      "params": {
+        "case_index": 1,
+        "configuration": {
+          "T": 2,
+          "QH_per_KH": 1,
+          "KH": 1,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 1,
+          "reuse_freqs_front_part": false,
+          "cache_dtype": "torch.bfloat16",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/2",
+      "params": {
+        "case_index": 2,
+        "configuration": {
+          "T": 4,
+          "QH_per_KH": 1,
+          "KH": 1,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 1,
+          "reuse_freqs_front_part": false,
+          "cache_dtype": "torch.bfloat16",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/3",
+      "params": {
+        "case_index": 3,
+        "configuration": {
+          "T": 2048,
+          "QH_per_KH": 1,
+          "KH": 1,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 1,
+          "reuse_freqs_front_part": false,
+          "cache_dtype": "torch.bfloat16",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/4",
+      "params": {
+        "case_index": 4,
+        "configuration": {
+          "T": 1,
+          "QH_per_KH": 16,
+          "KH": 1,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 1,
+          "reuse_freqs_front_part": false,
+          "cache_dtype": "torch.bfloat16",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/5",
+      "params": {
+        "case_index": 5,
+        "configuration": {
+          "T": 2,
+          "QH_per_KH": 16,
+          "KH": 1,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 1,
+          "reuse_freqs_front_part": false,
+          "cache_dtype": "torch.bfloat16",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/6",
+      "params": {
+        "case_index": 6,
+        "configuration": {
+          "T": 4,
+          "QH_per_KH": 16,
+          "KH": 1,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 1,
+          "reuse_freqs_front_part": false,
+          "cache_dtype": "torch.bfloat16",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/7",
+      "params": {
+        "case_index": 7,
+        "configuration": {
+          "T": 2048,
+          "QH_per_KH": 16,
+          "KH": 1,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 1,
+          "reuse_freqs_front_part": false,
+          "cache_dtype": "torch.bfloat16",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/8",
+      "params": {
+        "case_index": 8,
+        "configuration": {
+          "T": 1,
+          "QH_per_KH": 1,
+          "KH": 8,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 1,
+          "reuse_freqs_front_part": false,
+          "cache_dtype": "torch.bfloat16",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/9",
+      "params": {
+        "case_index": 9,
+        "configuration": {
+          "T": 2,
+          "QH_per_KH": 1,
+          "KH": 8,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 1,
+          "reuse_freqs_front_part": false,
+          "cache_dtype": "torch.bfloat16",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/10",
+      "params": {
+        "case_index": 10,
+        "configuration": {
+          "T": 4,
+          "QH_per_KH": 1,
+          "KH": 8,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 1,
+          "reuse_freqs_front_part": false,
+          "cache_dtype": "torch.bfloat16",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/11",
+      "params": {
+        "case_index": 11,
+        "configuration": {
+          "T": 2048,
+          "QH_per_KH": 1,
+          "KH": 8,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 1,
+          "reuse_freqs_front_part": false,
+          "cache_dtype": "torch.bfloat16",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/12",
+      "params": {
+        "case_index": 12,
+        "configuration": {
+          "T": 1,
+          "QH_per_KH": 16,
+          "KH": 8,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 1,
+          "reuse_freqs_front_part": false,
+          "cache_dtype": "torch.bfloat16",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/13",
+      "params": {
+        "case_index": 13,
+        "configuration": {
+          "T": 2,
+          "QH_per_KH": 16,
+          "KH": 8,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 1,
+          "reuse_freqs_front_part": false,
+          "cache_dtype": "torch.bfloat16",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/14",
+      "params": {
+        "case_index": 14,
+        "configuration": {
+          "T": 4,
+          "QH_per_KH": 16,
+          "KH": 8,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 1,
+          "reuse_freqs_front_part": false,
+          "cache_dtype": "torch.bfloat16",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/15",
+      "params": {
+        "case_index": 15,
+        "configuration": {
+          "T": 2048,
+          "QH_per_KH": 16,
+          "KH": 8,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 1,
+          "reuse_freqs_front_part": false,
+          "cache_dtype": "torch.bfloat16",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/16",
+      "params": {
+        "case_index": 16,
+        "configuration": {
+          "T": 1,
+          "QH_per_KH": 1,
+          "KH": 1,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 0,
+          "reuse_freqs_front_part": false,
+          "cache_dtype": "torch.bfloat16",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/17",
+      "params": {
+        "case_index": 17,
+        "configuration": {
+          "T": 2,
+          "QH_per_KH": 1,
+          "KH": 1,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 0,
+          "reuse_freqs_front_part": false,
+          "cache_dtype": "torch.bfloat16",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/18",
+      "params": {
+        "case_index": 18,
+        "configuration": {
+          "T": 4,
+          "QH_per_KH": 1,
+          "KH": 1,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 0,
+          "reuse_freqs_front_part": false,
+          "cache_dtype": "torch.bfloat16",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/19",
+      "params": {
+        "case_index": 19,
+        "configuration": {
+          "T": 2048,
+          "QH_per_KH": 1,
+          "KH": 1,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 0,
+          "reuse_freqs_front_part": false,
+          "cache_dtype": "torch.bfloat16",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/20",
+      "params": {
+        "case_index": 20,
+        "configuration": {
+          "T": 1,
+          "QH_per_KH": 16,
+          "KH": 1,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 0,
+          "reuse_freqs_front_part": false,
+          "cache_dtype": "torch.bfloat16",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/21",
+      "params": {
+        "case_index": 21,
+        "configuration": {
+          "T": 2,
+          "QH_per_KH": 16,
+          "KH": 1,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 0,
+          "reuse_freqs_front_part": false,
+          "cache_dtype": "torch.bfloat16",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/22",
+      "params": {
+        "case_index": 22,
+        "configuration": {
+          "T": 4,
+          "QH_per_KH": 16,
+          "KH": 1,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 0,
+          "reuse_freqs_front_part": false,
+          "cache_dtype": "torch.bfloat16",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/23",
+      "params": {
+        "case_index": 23,
+        "configuration": {
+          "T": 2048,
+          "QH_per_KH": 16,
+          "KH": 1,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 0,
+          "reuse_freqs_front_part": false,
+          "cache_dtype": "torch.bfloat16",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/24",
+      "params": {
+        "case_index": 24,
+        "configuration": {
+          "T": 1,
+          "QH_per_KH": 1,
+          "KH": 8,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 0,
+          "reuse_freqs_front_part": false,
+          "cache_dtype": "torch.bfloat16",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/25",
+      "params": {
+        "case_index": 25,
+        "configuration": {
+          "T": 2,
+          "QH_per_KH": 1,
+          "KH": 8,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 0,
+          "reuse_freqs_front_part": false,
+          "cache_dtype": "torch.bfloat16",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/26",
+      "params": {
+        "case_index": 26,
+        "configuration": {
+          "T": 4,
+          "QH_per_KH": 1,
+          "KH": 8,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 0,
+          "reuse_freqs_front_part": false,
+          "cache_dtype": "torch.bfloat16",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/27",
+      "params": {
+        "case_index": 27,
+        "configuration": {
+          "T": 2048,
+          "QH_per_KH": 1,
+          "KH": 8,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 0,
+          "reuse_freqs_front_part": false,
+          "cache_dtype": "torch.bfloat16",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/28",
+      "params": {
+        "case_index": 28,
+        "configuration": {
+          "T": 1,
+          "QH_per_KH": 16,
+          "KH": 8,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 0,
+          "reuse_freqs_front_part": false,
+          "cache_dtype": "torch.bfloat16",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/29",
+      "params": {
+        "case_index": 29,
+        "configuration": {
+          "T": 2,
+          "QH_per_KH": 16,
+          "KH": 8,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 0,
+          "reuse_freqs_front_part": false,
+          "cache_dtype": "torch.bfloat16",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/30",
+      "params": {
+        "case_index": 30,
+        "configuration": {
+          "T": 4,
+          "QH_per_KH": 16,
+          "KH": 8,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 0,
+          "reuse_freqs_front_part": false,
+          "cache_dtype": "torch.bfloat16",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/31",
+      "params": {
+        "case_index": 31,
+        "configuration": {
+          "T": 2048,
+          "QH_per_KH": 16,
+          "KH": 8,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 0,
+          "reuse_freqs_front_part": false,
+          "cache_dtype": "torch.bfloat16",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/32",
+      "params": {
+        "case_index": 32,
+        "configuration": {
+          "T": 1,
+          "QH_per_KH": 1,
+          "KH": 1,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 1,
+          "reuse_freqs_front_part": true,
+          "cache_dtype": "torch.bfloat16",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/33",
+      "params": {
+        "case_index": 33,
+        "configuration": {
+          "T": 2,
+          "QH_per_KH": 1,
+          "KH": 1,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 1,
+          "reuse_freqs_front_part": true,
+          "cache_dtype": "torch.bfloat16",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/34",
+      "params": {
+        "case_index": 34,
+        "configuration": {
+          "T": 4,
+          "QH_per_KH": 1,
+          "KH": 1,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 1,
+          "reuse_freqs_front_part": true,
+          "cache_dtype": "torch.bfloat16",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/35",
+      "params": {
+        "case_index": 35,
+        "configuration": {
+          "T": 2048,
+          "QH_per_KH": 1,
+          "KH": 1,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 1,
+          "reuse_freqs_front_part": true,
+          "cache_dtype": "torch.bfloat16",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/36",
+      "params": {
+        "case_index": 36,
+        "configuration": {
+          "T": 1,
+          "QH_per_KH": 16,
+          "KH": 1,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 1,
+          "reuse_freqs_front_part": true,
+          "cache_dtype": "torch.bfloat16",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/37",
+      "params": {
+        "case_index": 37,
+        "configuration": {
+          "T": 2,
+          "QH_per_KH": 16,
+          "KH": 1,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 1,
+          "reuse_freqs_front_part": true,
+          "cache_dtype": "torch.bfloat16",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/38",
+      "params": {
+        "case_index": 38,
+        "configuration": {
+          "T": 4,
+          "QH_per_KH": 16,
+          "KH": 1,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 1,
+          "reuse_freqs_front_part": true,
+          "cache_dtype": "torch.bfloat16",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/39",
+      "params": {
+        "case_index": 39,
+        "configuration": {
+          "T": 2048,
+          "QH_per_KH": 16,
+          "KH": 1,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 1,
+          "reuse_freqs_front_part": true,
+          "cache_dtype": "torch.bfloat16",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/40",
+      "params": {
+        "case_index": 40,
+        "configuration": {
+          "T": 1,
+          "QH_per_KH": 1,
+          "KH": 8,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 1,
+          "reuse_freqs_front_part": true,
+          "cache_dtype": "torch.bfloat16",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/41",
+      "params": {
+        "case_index": 41,
+        "configuration": {
+          "T": 2,
+          "QH_per_KH": 1,
+          "KH": 8,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 1,
+          "reuse_freqs_front_part": true,
+          "cache_dtype": "torch.bfloat16",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/42",
+      "params": {
+        "case_index": 42,
+        "configuration": {
+          "T": 4,
+          "QH_per_KH": 1,
+          "KH": 8,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 1,
+          "reuse_freqs_front_part": true,
+          "cache_dtype": "torch.bfloat16",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/43",
+      "params": {
+        "case_index": 43,
+        "configuration": {
+          "T": 2048,
+          "QH_per_KH": 1,
+          "KH": 8,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 1,
+          "reuse_freqs_front_part": true,
+          "cache_dtype": "torch.bfloat16",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/44",
+      "params": {
+        "case_index": 44,
+        "configuration": {
+          "T": 1,
+          "QH_per_KH": 16,
+          "KH": 8,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 1,
+          "reuse_freqs_front_part": true,
+          "cache_dtype": "torch.bfloat16",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/45",
+      "params": {
+        "case_index": 45,
+        "configuration": {
+          "T": 2,
+          "QH_per_KH": 16,
+          "KH": 8,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 1,
+          "reuse_freqs_front_part": true,
+          "cache_dtype": "torch.bfloat16",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/46",
+      "params": {
+        "case_index": 46,
+        "configuration": {
+          "T": 4,
+          "QH_per_KH": 16,
+          "KH": 8,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 1,
+          "reuse_freqs_front_part": true,
+          "cache_dtype": "torch.bfloat16",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/47",
+      "params": {
+        "case_index": 47,
+        "configuration": {
+          "T": 2048,
+          "QH_per_KH": 16,
+          "KH": 8,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 1,
+          "reuse_freqs_front_part": true,
+          "cache_dtype": "torch.bfloat16",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/48",
+      "params": {
+        "case_index": 48,
+        "configuration": {
+          "T": 1,
+          "QH_per_KH": 1,
+          "KH": 1,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 0,
+          "reuse_freqs_front_part": true,
+          "cache_dtype": "torch.bfloat16",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/49",
+      "params": {
+        "case_index": 49,
+        "configuration": {
+          "T": 2,
+          "QH_per_KH": 1,
+          "KH": 1,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 0,
+          "reuse_freqs_front_part": true,
+          "cache_dtype": "torch.bfloat16",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/50",
+      "params": {
+        "case_index": 50,
+        "configuration": {
+          "T": 4,
+          "QH_per_KH": 1,
+          "KH": 1,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 0,
+          "reuse_freqs_front_part": true,
+          "cache_dtype": "torch.bfloat16",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/51",
+      "params": {
+        "case_index": 51,
+        "configuration": {
+          "T": 2048,
+          "QH_per_KH": 1,
+          "KH": 1,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 0,
+          "reuse_freqs_front_part": true,
+          "cache_dtype": "torch.bfloat16",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/52",
+      "params": {
+        "case_index": 52,
+        "configuration": {
+          "T": 1,
+          "QH_per_KH": 16,
+          "KH": 1,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 0,
+          "reuse_freqs_front_part": true,
+          "cache_dtype": "torch.bfloat16",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/53",
+      "params": {
+        "case_index": 53,
+        "configuration": {
+          "T": 2,
+          "QH_per_KH": 16,
+          "KH": 1,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 0,
+          "reuse_freqs_front_part": true,
+          "cache_dtype": "torch.bfloat16",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/54",
+      "params": {
+        "case_index": 54,
+        "configuration": {
+          "T": 4,
+          "QH_per_KH": 16,
+          "KH": 1,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 0,
+          "reuse_freqs_front_part": true,
+          "cache_dtype": "torch.bfloat16",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/55",
+      "params": {
+        "case_index": 55,
+        "configuration": {
+          "T": 2048,
+          "QH_per_KH": 16,
+          "KH": 1,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 0,
+          "reuse_freqs_front_part": true,
+          "cache_dtype": "torch.bfloat16",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/56",
+      "params": {
+        "case_index": 56,
+        "configuration": {
+          "T": 1,
+          "QH_per_KH": 1,
+          "KH": 8,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 0,
+          "reuse_freqs_front_part": true,
+          "cache_dtype": "torch.bfloat16",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/57",
+      "params": {
+        "case_index": 57,
+        "configuration": {
+          "T": 2,
+          "QH_per_KH": 1,
+          "KH": 8,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 0,
+          "reuse_freqs_front_part": true,
+          "cache_dtype": "torch.bfloat16",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/58",
+      "params": {
+        "case_index": 58,
+        "configuration": {
+          "T": 4,
+          "QH_per_KH": 1,
+          "KH": 8,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 0,
+          "reuse_freqs_front_part": true,
+          "cache_dtype": "torch.bfloat16",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/59",
+      "params": {
+        "case_index": 59,
+        "configuration": {
+          "T": 2048,
+          "QH_per_KH": 1,
+          "KH": 8,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 0,
+          "reuse_freqs_front_part": true,
+          "cache_dtype": "torch.bfloat16",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/60",
+      "params": {
+        "case_index": 60,
+        "configuration": {
+          "T": 1,
+          "QH_per_KH": 16,
+          "KH": 8,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 0,
+          "reuse_freqs_front_part": true,
+          "cache_dtype": "torch.bfloat16",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/61",
+      "params": {
+        "case_index": 61,
+        "configuration": {
+          "T": 2,
+          "QH_per_KH": 16,
+          "KH": 8,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 0,
+          "reuse_freqs_front_part": true,
+          "cache_dtype": "torch.bfloat16",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/62",
+      "params": {
+        "case_index": 62,
+        "configuration": {
+          "T": 4,
+          "QH_per_KH": 16,
+          "KH": 8,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 0,
+          "reuse_freqs_front_part": true,
+          "cache_dtype": "torch.bfloat16",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/63",
+      "params": {
+        "case_index": 63,
+        "configuration": {
+          "T": 2048,
+          "QH_per_KH": 16,
+          "KH": 8,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 0,
+          "reuse_freqs_front_part": true,
+          "cache_dtype": "torch.bfloat16",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/64",
+      "params": {
+        "case_index": 64,
+        "configuration": {
+          "T": 1,
+          "QH_per_KH": 1,
+          "KH": 1,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 1,
+          "reuse_freqs_front_part": false,
+          "cache_dtype": "torch.uint8",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/65",
+      "params": {
+        "case_index": 65,
+        "configuration": {
+          "T": 2,
+          "QH_per_KH": 1,
+          "KH": 1,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 1,
+          "reuse_freqs_front_part": false,
+          "cache_dtype": "torch.uint8",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/66",
+      "params": {
+        "case_index": 66,
+        "configuration": {
+          "T": 4,
+          "QH_per_KH": 1,
+          "KH": 1,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 1,
+          "reuse_freqs_front_part": false,
+          "cache_dtype": "torch.uint8",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/67",
+      "params": {
+        "case_index": 67,
+        "configuration": {
+          "T": 2048,
+          "QH_per_KH": 1,
+          "KH": 1,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 1,
+          "reuse_freqs_front_part": false,
+          "cache_dtype": "torch.uint8",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/68",
+      "params": {
+        "case_index": 68,
+        "configuration": {
+          "T": 1,
+          "QH_per_KH": 16,
+          "KH": 1,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 1,
+          "reuse_freqs_front_part": false,
+          "cache_dtype": "torch.uint8",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/69",
+      "params": {
+        "case_index": 69,
+        "configuration": {
+          "T": 2,
+          "QH_per_KH": 16,
+          "KH": 1,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 1,
+          "reuse_freqs_front_part": false,
+          "cache_dtype": "torch.uint8",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/70",
+      "params": {
+        "case_index": 70,
+        "configuration": {
+          "T": 4,
+          "QH_per_KH": 16,
+          "KH": 1,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 1,
+          "reuse_freqs_front_part": false,
+          "cache_dtype": "torch.uint8",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/71",
+      "params": {
+        "case_index": 71,
+        "configuration": {
+          "T": 2048,
+          "QH_per_KH": 16,
+          "KH": 1,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 1,
+          "reuse_freqs_front_part": false,
+          "cache_dtype": "torch.uint8",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/72",
+      "params": {
+        "case_index": 72,
+        "configuration": {
+          "T": 1,
+          "QH_per_KH": 1,
+          "KH": 8,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 1,
+          "reuse_freqs_front_part": false,
+          "cache_dtype": "torch.uint8",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/73",
+      "params": {
+        "case_index": 73,
+        "configuration": {
+          "T": 2,
+          "QH_per_KH": 1,
+          "KH": 8,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 1,
+          "reuse_freqs_front_part": false,
+          "cache_dtype": "torch.uint8",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/74",
+      "params": {
+        "case_index": 74,
+        "configuration": {
+          "T": 4,
+          "QH_per_KH": 1,
+          "KH": 8,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 1,
+          "reuse_freqs_front_part": false,
+          "cache_dtype": "torch.uint8",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/75",
+      "params": {
+        "case_index": 75,
+        "configuration": {
+          "T": 2048,
+          "QH_per_KH": 1,
+          "KH": 8,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 1,
+          "reuse_freqs_front_part": false,
+          "cache_dtype": "torch.uint8",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/76",
+      "params": {
+        "case_index": 76,
+        "configuration": {
+          "T": 1,
+          "QH_per_KH": 16,
+          "KH": 8,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 1,
+          "reuse_freqs_front_part": false,
+          "cache_dtype": "torch.uint8",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/77",
+      "params": {
+        "case_index": 77,
+        "configuration": {
+          "T": 2,
+          "QH_per_KH": 16,
+          "KH": 8,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 1,
+          "reuse_freqs_front_part": false,
+          "cache_dtype": "torch.uint8",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/78",
+      "params": {
+        "case_index": 78,
+        "configuration": {
+          "T": 4,
+          "QH_per_KH": 16,
+          "KH": 8,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 1,
+          "reuse_freqs_front_part": false,
+          "cache_dtype": "torch.uint8",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/79",
+      "params": {
+        "case_index": 79,
+        "configuration": {
+          "T": 2048,
+          "QH_per_KH": 16,
+          "KH": 8,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 1,
+          "reuse_freqs_front_part": false,
+          "cache_dtype": "torch.uint8",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/80",
+      "params": {
+        "case_index": 80,
+        "configuration": {
+          "T": 1,
+          "QH_per_KH": 1,
+          "KH": 1,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 0,
+          "reuse_freqs_front_part": false,
+          "cache_dtype": "torch.uint8",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/81",
+      "params": {
+        "case_index": 81,
+        "configuration": {
+          "T": 2,
+          "QH_per_KH": 1,
+          "KH": 1,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 0,
+          "reuse_freqs_front_part": false,
+          "cache_dtype": "torch.uint8",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/82",
+      "params": {
+        "case_index": 82,
+        "configuration": {
+          "T": 4,
+          "QH_per_KH": 1,
+          "KH": 1,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 0,
+          "reuse_freqs_front_part": false,
+          "cache_dtype": "torch.uint8",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/83",
+      "params": {
+        "case_index": 83,
+        "configuration": {
+          "T": 2048,
+          "QH_per_KH": 1,
+          "KH": 1,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 0,
+          "reuse_freqs_front_part": false,
+          "cache_dtype": "torch.uint8",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/84",
+      "params": {
+        "case_index": 84,
+        "configuration": {
+          "T": 1,
+          "QH_per_KH": 16,
+          "KH": 1,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 0,
+          "reuse_freqs_front_part": false,
+          "cache_dtype": "torch.uint8",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/85",
+      "params": {
+        "case_index": 85,
+        "configuration": {
+          "T": 2,
+          "QH_per_KH": 16,
+          "KH": 1,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 0,
+          "reuse_freqs_front_part": false,
+          "cache_dtype": "torch.uint8",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/86",
+      "params": {
+        "case_index": 86,
+        "configuration": {
+          "T": 4,
+          "QH_per_KH": 16,
+          "KH": 1,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 0,
+          "reuse_freqs_front_part": false,
+          "cache_dtype": "torch.uint8",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/87",
+      "params": {
+        "case_index": 87,
+        "configuration": {
+          "T": 2048,
+          "QH_per_KH": 16,
+          "KH": 1,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 0,
+          "reuse_freqs_front_part": false,
+          "cache_dtype": "torch.uint8",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/88",
+      "params": {
+        "case_index": 88,
+        "configuration": {
+          "T": 1,
+          "QH_per_KH": 1,
+          "KH": 8,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 0,
+          "reuse_freqs_front_part": false,
+          "cache_dtype": "torch.uint8",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/89",
+      "params": {
+        "case_index": 89,
+        "configuration": {
+          "T": 2,
+          "QH_per_KH": 1,
+          "KH": 8,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 0,
+          "reuse_freqs_front_part": false,
+          "cache_dtype": "torch.uint8",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/90",
+      "params": {
+        "case_index": 90,
+        "configuration": {
+          "T": 4,
+          "QH_per_KH": 1,
+          "KH": 8,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 0,
+          "reuse_freqs_front_part": false,
+          "cache_dtype": "torch.uint8",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/91",
+      "params": {
+        "case_index": 91,
+        "configuration": {
+          "T": 2048,
+          "QH_per_KH": 1,
+          "KH": 8,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 0,
+          "reuse_freqs_front_part": false,
+          "cache_dtype": "torch.uint8",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/92",
+      "params": {
+        "case_index": 92,
+        "configuration": {
+          "T": 1,
+          "QH_per_KH": 16,
+          "KH": 8,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 0,
+          "reuse_freqs_front_part": false,
+          "cache_dtype": "torch.uint8",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/93",
+      "params": {
+        "case_index": 93,
+        "configuration": {
+          "T": 2,
+          "QH_per_KH": 16,
+          "KH": 8,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 0,
+          "reuse_freqs_front_part": false,
+          "cache_dtype": "torch.uint8",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/94",
+      "params": {
+        "case_index": 94,
+        "configuration": {
+          "T": 4,
+          "QH_per_KH": 16,
+          "KH": 8,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 0,
+          "reuse_freqs_front_part": false,
+          "cache_dtype": "torch.uint8",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/95",
+      "params": {
+        "case_index": 95,
+        "configuration": {
+          "T": 2048,
+          "QH_per_KH": 16,
+          "KH": 8,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 0,
+          "reuse_freqs_front_part": false,
+          "cache_dtype": "torch.uint8",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/96",
+      "params": {
+        "case_index": 96,
+        "configuration": {
+          "T": 1,
+          "QH_per_KH": 1,
+          "KH": 1,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 1,
+          "reuse_freqs_front_part": true,
+          "cache_dtype": "torch.uint8",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/97",
+      "params": {
+        "case_index": 97,
+        "configuration": {
+          "T": 2,
+          "QH_per_KH": 1,
+          "KH": 1,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 1,
+          "reuse_freqs_front_part": true,
+          "cache_dtype": "torch.uint8",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/98",
+      "params": {
+        "case_index": 98,
+        "configuration": {
+          "T": 4,
+          "QH_per_KH": 1,
+          "KH": 1,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 1,
+          "reuse_freqs_front_part": true,
+          "cache_dtype": "torch.uint8",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/99",
+      "params": {
+        "case_index": 99,
+        "configuration": {
+          "T": 2048,
+          "QH_per_KH": 1,
+          "KH": 1,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 1,
+          "reuse_freqs_front_part": true,
+          "cache_dtype": "torch.uint8",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/100",
+      "params": {
+        "case_index": 100,
+        "configuration": {
+          "T": 1,
+          "QH_per_KH": 16,
+          "KH": 1,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 1,
+          "reuse_freqs_front_part": true,
+          "cache_dtype": "torch.uint8",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/101",
+      "params": {
+        "case_index": 101,
+        "configuration": {
+          "T": 2,
+          "QH_per_KH": 16,
+          "KH": 1,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 1,
+          "reuse_freqs_front_part": true,
+          "cache_dtype": "torch.uint8",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/102",
+      "params": {
+        "case_index": 102,
+        "configuration": {
+          "T": 4,
+          "QH_per_KH": 16,
+          "KH": 1,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 1,
+          "reuse_freqs_front_part": true,
+          "cache_dtype": "torch.uint8",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/103",
+      "params": {
+        "case_index": 103,
+        "configuration": {
+          "T": 2048,
+          "QH_per_KH": 16,
+          "KH": 1,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 1,
+          "reuse_freqs_front_part": true,
+          "cache_dtype": "torch.uint8",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/104",
+      "params": {
+        "case_index": 104,
+        "configuration": {
+          "T": 1,
+          "QH_per_KH": 1,
+          "KH": 8,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 1,
+          "reuse_freqs_front_part": true,
+          "cache_dtype": "torch.uint8",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/105",
+      "params": {
+        "case_index": 105,
+        "configuration": {
+          "T": 2,
+          "QH_per_KH": 1,
+          "KH": 8,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 1,
+          "reuse_freqs_front_part": true,
+          "cache_dtype": "torch.uint8",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/106",
+      "params": {
+        "case_index": 106,
+        "configuration": {
+          "T": 4,
+          "QH_per_KH": 1,
+          "KH": 8,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 1,
+          "reuse_freqs_front_part": true,
+          "cache_dtype": "torch.uint8",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/107",
+      "params": {
+        "case_index": 107,
+        "configuration": {
+          "T": 2048,
+          "QH_per_KH": 1,
+          "KH": 8,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 1,
+          "reuse_freqs_front_part": true,
+          "cache_dtype": "torch.uint8",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/108",
+      "params": {
+        "case_index": 108,
+        "configuration": {
+          "T": 1,
+          "QH_per_KH": 16,
+          "KH": 8,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 1,
+          "reuse_freqs_front_part": true,
+          "cache_dtype": "torch.uint8",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/109",
+      "params": {
+        "case_index": 109,
+        "configuration": {
+          "T": 2,
+          "QH_per_KH": 16,
+          "KH": 8,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 1,
+          "reuse_freqs_front_part": true,
+          "cache_dtype": "torch.uint8",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/110",
+      "params": {
+        "case_index": 110,
+        "configuration": {
+          "T": 4,
+          "QH_per_KH": 16,
+          "KH": 8,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 1,
+          "reuse_freqs_front_part": true,
+          "cache_dtype": "torch.uint8",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/111",
+      "params": {
+        "case_index": 111,
+        "configuration": {
+          "T": 2048,
+          "QH_per_KH": 16,
+          "KH": 8,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 1,
+          "reuse_freqs_front_part": true,
+          "cache_dtype": "torch.uint8",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/112",
+      "params": {
+        "case_index": 112,
+        "configuration": {
+          "T": 1,
+          "QH_per_KH": 1,
+          "KH": 1,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 0,
+          "reuse_freqs_front_part": true,
+          "cache_dtype": "torch.uint8",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/113",
+      "params": {
+        "case_index": 113,
+        "configuration": {
+          "T": 2,
+          "QH_per_KH": 1,
+          "KH": 1,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 0,
+          "reuse_freqs_front_part": true,
+          "cache_dtype": "torch.uint8",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/114",
+      "params": {
+        "case_index": 114,
+        "configuration": {
+          "T": 4,
+          "QH_per_KH": 1,
+          "KH": 1,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 0,
+          "reuse_freqs_front_part": true,
+          "cache_dtype": "torch.uint8",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/115",
+      "params": {
+        "case_index": 115,
+        "configuration": {
+          "T": 2048,
+          "QH_per_KH": 1,
+          "KH": 1,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 0,
+          "reuse_freqs_front_part": true,
+          "cache_dtype": "torch.uint8",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/116",
+      "params": {
+        "case_index": 116,
+        "configuration": {
+          "T": 1,
+          "QH_per_KH": 16,
+          "KH": 1,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 0,
+          "reuse_freqs_front_part": true,
+          "cache_dtype": "torch.uint8",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/117",
+      "params": {
+        "case_index": 117,
+        "configuration": {
+          "T": 2,
+          "QH_per_KH": 16,
+          "KH": 1,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 0,
+          "reuse_freqs_front_part": true,
+          "cache_dtype": "torch.uint8",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/118",
+      "params": {
+        "case_index": 118,
+        "configuration": {
+          "T": 4,
+          "QH_per_KH": 16,
+          "KH": 1,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 0,
+          "reuse_freqs_front_part": true,
+          "cache_dtype": "torch.uint8",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/119",
+      "params": {
+        "case_index": 119,
+        "configuration": {
+          "T": 2048,
+          "QH_per_KH": 16,
+          "KH": 1,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 0,
+          "reuse_freqs_front_part": true,
+          "cache_dtype": "torch.uint8",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/120",
+      "params": {
+        "case_index": 120,
+        "configuration": {
+          "T": 1,
+          "QH_per_KH": 1,
+          "KH": 8,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 0,
+          "reuse_freqs_front_part": true,
+          "cache_dtype": "torch.uint8",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/121",
+      "params": {
+        "case_index": 121,
+        "configuration": {
+          "T": 2,
+          "QH_per_KH": 1,
+          "KH": 8,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 0,
+          "reuse_freqs_front_part": true,
+          "cache_dtype": "torch.uint8",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/122",
+      "params": {
+        "case_index": 122,
+        "configuration": {
+          "T": 4,
+          "QH_per_KH": 1,
+          "KH": 8,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 0,
+          "reuse_freqs_front_part": true,
+          "cache_dtype": "torch.uint8",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/123",
+      "params": {
+        "case_index": 123,
+        "configuration": {
+          "T": 2048,
+          "QH_per_KH": 1,
+          "KH": 8,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 0,
+          "reuse_freqs_front_part": true,
+          "cache_dtype": "torch.uint8",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/124",
+      "params": {
+        "case_index": 124,
+        "configuration": {
+          "T": 1,
+          "QH_per_KH": 16,
+          "KH": 8,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 0,
+          "reuse_freqs_front_part": true,
+          "cache_dtype": "torch.uint8",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/125",
+      "params": {
+        "case_index": 125,
+        "configuration": {
+          "T": 2,
+          "QH_per_KH": 16,
+          "KH": 8,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 0,
+          "reuse_freqs_front_part": true,
+          "cache_dtype": "torch.uint8",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/126",
+      "params": {
+        "case_index": 126,
+        "configuration": {
+          "T": 4,
+          "QH_per_KH": 16,
+          "KH": 8,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 0,
+          "reuse_freqs_front_part": true,
+          "cache_dtype": "torch.uint8",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/127",
+      "params": {
+        "case_index": 127,
+        "configuration": {
+          "T": 2048,
+          "QH_per_KH": 16,
+          "KH": 8,
+          "D": 128,
+          "D_q_nope": 128,
+          "D_lora": 512,
+          "num_kv_cache_tokens": 16384,
+          "rotate_style": 0,
+          "reuse_freqs_front_part": true,
+          "cache_dtype": "torch.uint8",
+          "dtype": "torch.bfloat16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    }
+  ],
+  "timing_calls_per_case": [
+    "candidate"
+  ],
+  "migration": {
+    "original_harness_sha256": "337073156a17185991092260eeb7b7b62a6b79e72753b69af4e6375c3211cffc",
+    "original_source_sha256": "e448ff5f237e7c0548dc52aea35032711e735c723e3670c87c194867a890423c",
+    "preservation": "Original correctness subset executes first, in its original order; additional performance cases are checked afterward. Original performance order, RNG calls, reset callbacks, sample counts and median reduction remain intact."
+  }
+}

@@ -1,0 +1,364 @@
+{
+  "version": 1,
+  "source": "kernel.py",
+  "candidate_symbols": [
+    {
+      "name": "_gemm_a16_w16_atomic_kernel",
+      "jit": false
+    }
+  ],
+  "input_tables": {
+    "performance": [
+      [
+        1,
+        1280,
+        8192
+      ],
+      [
+        32,
+        1280,
+        8192
+      ],
+      [
+        64,
+        1280,
+        8192
+      ],
+      [
+        128,
+        1280,
+        8192
+      ],
+      [
+        192,
+        1280,
+        8192
+      ],
+      [
+        256,
+        1280,
+        8192
+      ],
+      [
+        320,
+        1280,
+        8192
+      ],
+      [
+        512,
+        1280,
+        8192
+      ],
+      [
+        1024,
+        1280,
+        8192
+      ],
+      [
+        2048,
+        1280,
+        8192
+      ],
+      [
+        4096,
+        1280,
+        8192
+      ],
+      [
+        8192,
+        1280,
+        8192
+      ],
+      [
+        16384,
+        1280,
+        8192
+      ]
+    ],
+    "original_correctness": [
+      [
+        1,
+        1280,
+        8192
+      ],
+      [
+        32,
+        1280,
+        8192
+      ],
+      [
+        64,
+        1280,
+        8192
+      ],
+      [
+        128,
+        1280,
+        8192
+      ],
+      [
+        192,
+        1280,
+        8192
+      ],
+      [
+        256,
+        1280,
+        8192
+      ],
+      [
+        320,
+        1280,
+        8192
+      ],
+      [
+        512,
+        1280,
+        8192
+      ],
+      [
+        1024,
+        1280,
+        8192
+      ],
+      [
+        2048,
+        1280,
+        8192
+      ],
+      [
+        4096,
+        1280,
+        8192
+      ],
+      [
+        8192,
+        1280,
+        8192
+      ],
+      [
+        16384,
+        1280,
+        8192
+      ]
+    ]
+  },
+  "cases": [
+    {
+      "test_case_id": "case/0",
+      "params": {
+        "case_index": 0,
+        "configuration": [
+          1,
+          1280,
+          8192
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/1",
+      "params": {
+        "case_index": 1,
+        "configuration": [
+          32,
+          1280,
+          8192
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/2",
+      "params": {
+        "case_index": 2,
+        "configuration": [
+          64,
+          1280,
+          8192
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/3",
+      "params": {
+        "case_index": 3,
+        "configuration": [
+          128,
+          1280,
+          8192
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/4",
+      "params": {
+        "case_index": 4,
+        "configuration": [
+          192,
+          1280,
+          8192
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/5",
+      "params": {
+        "case_index": 5,
+        "configuration": [
+          256,
+          1280,
+          8192
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/6",
+      "params": {
+        "case_index": 6,
+        "configuration": [
+          320,
+          1280,
+          8192
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/7",
+      "params": {
+        "case_index": 7,
+        "configuration": [
+          512,
+          1280,
+          8192
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/8",
+      "params": {
+        "case_index": 8,
+        "configuration": [
+          1024,
+          1280,
+          8192
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/9",
+      "params": {
+        "case_index": 9,
+        "configuration": [
+          2048,
+          1280,
+          8192
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/10",
+      "params": {
+        "case_index": 10,
+        "configuration": [
+          4096,
+          1280,
+          8192
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/11",
+      "params": {
+        "case_index": 11,
+        "configuration": [
+          8192,
+          1280,
+          8192
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/12",
+      "params": {
+        "case_index": 12,
+        "configuration": [
+          16384,
+          1280,
+          8192
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    }
+  ],
+  "timing_calls_per_case": [
+    "candidate"
+  ],
+  "migration": {
+    "original_harness_sha256": "e3ffe851a5a6627093072c4d87903015ff999bb84a833b245a4f1d9bd4612e7a",
+    "original_source_sha256": "39e2b4ebadc09167a070e4e5cb7b199815827dcc4a0bec261d5edd2cfe34eccc",
+    "preservation": "Original correctness subset executes first, in its original order; additional performance cases are checked afterward. Original performance order, RNG calls, reset callbacks, sample counts and median reduction remain intact."
+  }
+}

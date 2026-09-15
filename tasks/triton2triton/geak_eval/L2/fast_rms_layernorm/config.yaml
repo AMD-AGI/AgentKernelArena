@@ -1,18 +1,32 @@
-task_type: triton2triton
-source_file_path:
-- kernel.py
-harness_path: test_kernel_harness.py
-compile_command:
-- python3 -c "import ast; ast.parse(open('kernel.py').read())"
-correctness_command:
-- python3 test_kernel_harness.py --correctness
-performance_command:
-- python3 test_kernel_harness.py --full-benchmark
-target_kernel_functions:
-- _rms_layernorm_forward
-- _rms_layernorm_backward
-- _gemma_rms_layernorm_forward
-prompt:
-  instructions: Optimize this Triton RMS LayerNorm kernel for AMD MI300X GPU. The
-    kernel implements fast RMS layer normalization with forward, backward, and Gemma
-    variants.
+schema_version: 2
+description: Optimize the declared Triton implementation of fast_rms_layernorm, preserving the protected
+  operator and output contracts.
+candidate:
+  language: triton
+  initial_state: implemented
+  editable:
+  - path: kernel.py
+    scope: symbols
+    symbols:
+    - _rms_layernorm_forward
+    - _rms_layernorm_backward
+    - _gemma_rms_layernorm_forward
+    allow_new_helpers: true
+  entrypoints:
+  - file: kernel.py
+    kind: function
+    symbol: _rms_layernorm_forward
+  - file: kernel.py
+    kind: function
+    symbol: _rms_layernorm_backward
+  - file: kernel.py
+    kind: function
+    symbol: _gemma_rms_layernorm_forward
+baseline:
+  kind: initial_candidate
+  language: triton
+evaluation:
+  runner:
+  - python3
+  - _arena_eval.py
+  workloads: workloads.json

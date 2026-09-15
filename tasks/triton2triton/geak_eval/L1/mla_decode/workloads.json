@@ -1,0 +1,2798 @@
+{
+  "version": 1,
+  "source": "kernel.py",
+  "candidate_symbols": [
+    {
+      "name": "_decode_grouped_att_m_fwd_rope",
+      "jit": false
+    },
+    {
+      "name": "_decode_softmax_reducev_fwd",
+      "jit": false
+    }
+  ],
+  "input_tables": {
+    "performance": [
+      [
+        21,
+        1,
+        16
+      ],
+      [
+        21,
+        3,
+        16
+      ],
+      [
+        21,
+        5,
+        16
+      ],
+      [
+        21,
+        16,
+        16
+      ],
+      [
+        21,
+        32,
+        16
+      ],
+      [
+        21,
+        64,
+        16
+      ],
+      [
+        21,
+        128,
+        16
+      ],
+      [
+        21,
+        256,
+        16
+      ],
+      [
+        64,
+        1,
+        16
+      ],
+      [
+        64,
+        3,
+        16
+      ],
+      [
+        64,
+        5,
+        16
+      ],
+      [
+        64,
+        16,
+        16
+      ],
+      [
+        64,
+        32,
+        16
+      ],
+      [
+        64,
+        64,
+        16
+      ],
+      [
+        64,
+        128,
+        16
+      ],
+      [
+        64,
+        256,
+        16
+      ],
+      [
+        256,
+        1,
+        16
+      ],
+      [
+        256,
+        3,
+        16
+      ],
+      [
+        256,
+        5,
+        16
+      ],
+      [
+        256,
+        16,
+        16
+      ],
+      [
+        256,
+        32,
+        16
+      ],
+      [
+        256,
+        64,
+        16
+      ],
+      [
+        256,
+        128,
+        16
+      ],
+      [
+        256,
+        256,
+        16
+      ],
+      [
+        512,
+        1,
+        16
+      ],
+      [
+        512,
+        3,
+        16
+      ],
+      [
+        512,
+        5,
+        16
+      ],
+      [
+        512,
+        16,
+        16
+      ],
+      [
+        512,
+        32,
+        16
+      ],
+      [
+        512,
+        64,
+        16
+      ],
+      [
+        512,
+        128,
+        16
+      ],
+      [
+        512,
+        256,
+        16
+      ],
+      [
+        1200,
+        1,
+        16
+      ],
+      [
+        1200,
+        3,
+        16
+      ],
+      [
+        1200,
+        5,
+        16
+      ],
+      [
+        1200,
+        16,
+        16
+      ],
+      [
+        1200,
+        32,
+        16
+      ],
+      [
+        1200,
+        64,
+        16
+      ],
+      [
+        1200,
+        128,
+        16
+      ],
+      [
+        1200,
+        256,
+        16
+      ],
+      [
+        3200,
+        1,
+        16
+      ],
+      [
+        3200,
+        3,
+        16
+      ],
+      [
+        3200,
+        5,
+        16
+      ],
+      [
+        3200,
+        16,
+        16
+      ],
+      [
+        3200,
+        32,
+        16
+      ],
+      [
+        3200,
+        64,
+        16
+      ],
+      [
+        3200,
+        128,
+        16
+      ],
+      [
+        3200,
+        256,
+        16
+      ],
+      [
+        5200,
+        1,
+        16
+      ],
+      [
+        5200,
+        3,
+        16
+      ],
+      [
+        5200,
+        5,
+        16
+      ],
+      [
+        5200,
+        16,
+        16
+      ],
+      [
+        5200,
+        32,
+        16
+      ],
+      [
+        5200,
+        64,
+        16
+      ],
+      [
+        5200,
+        128,
+        16
+      ],
+      [
+        5200,
+        256,
+        16
+      ],
+      [
+        8192,
+        1,
+        16
+      ],
+      [
+        8192,
+        3,
+        16
+      ],
+      [
+        8192,
+        5,
+        16
+      ],
+      [
+        8192,
+        16,
+        16
+      ],
+      [
+        8192,
+        32,
+        16
+      ],
+      [
+        8192,
+        64,
+        16
+      ],
+      [
+        8192,
+        128,
+        16
+      ],
+      [
+        8192,
+        256,
+        16
+      ],
+      [
+        21,
+        1,
+        128
+      ],
+      [
+        21,
+        3,
+        128
+      ],
+      [
+        21,
+        5,
+        128
+      ],
+      [
+        21,
+        16,
+        128
+      ],
+      [
+        21,
+        32,
+        128
+      ],
+      [
+        21,
+        64,
+        128
+      ],
+      [
+        21,
+        128,
+        128
+      ],
+      [
+        21,
+        256,
+        128
+      ],
+      [
+        64,
+        1,
+        128
+      ],
+      [
+        64,
+        3,
+        128
+      ],
+      [
+        64,
+        5,
+        128
+      ],
+      [
+        64,
+        16,
+        128
+      ],
+      [
+        64,
+        32,
+        128
+      ],
+      [
+        64,
+        64,
+        128
+      ],
+      [
+        64,
+        128,
+        128
+      ],
+      [
+        64,
+        256,
+        128
+      ],
+      [
+        256,
+        1,
+        128
+      ],
+      [
+        256,
+        3,
+        128
+      ],
+      [
+        256,
+        5,
+        128
+      ],
+      [
+        256,
+        16,
+        128
+      ],
+      [
+        256,
+        32,
+        128
+      ],
+      [
+        256,
+        64,
+        128
+      ],
+      [
+        256,
+        128,
+        128
+      ],
+      [
+        256,
+        256,
+        128
+      ],
+      [
+        512,
+        1,
+        128
+      ],
+      [
+        512,
+        3,
+        128
+      ],
+      [
+        512,
+        5,
+        128
+      ],
+      [
+        512,
+        16,
+        128
+      ],
+      [
+        512,
+        32,
+        128
+      ],
+      [
+        512,
+        64,
+        128
+      ],
+      [
+        512,
+        128,
+        128
+      ],
+      [
+        512,
+        256,
+        128
+      ],
+      [
+        1200,
+        1,
+        128
+      ],
+      [
+        1200,
+        3,
+        128
+      ],
+      [
+        1200,
+        5,
+        128
+      ],
+      [
+        1200,
+        16,
+        128
+      ],
+      [
+        1200,
+        32,
+        128
+      ],
+      [
+        1200,
+        64,
+        128
+      ],
+      [
+        1200,
+        128,
+        128
+      ],
+      [
+        1200,
+        256,
+        128
+      ],
+      [
+        3200,
+        1,
+        128
+      ],
+      [
+        3200,
+        3,
+        128
+      ],
+      [
+        3200,
+        5,
+        128
+      ],
+      [
+        3200,
+        16,
+        128
+      ],
+      [
+        3200,
+        32,
+        128
+      ],
+      [
+        3200,
+        64,
+        128
+      ],
+      [
+        3200,
+        128,
+        128
+      ],
+      [
+        3200,
+        256,
+        128
+      ],
+      [
+        5200,
+        1,
+        128
+      ],
+      [
+        5200,
+        3,
+        128
+      ],
+      [
+        5200,
+        5,
+        128
+      ],
+      [
+        5200,
+        16,
+        128
+      ],
+      [
+        5200,
+        32,
+        128
+      ],
+      [
+        5200,
+        64,
+        128
+      ],
+      [
+        5200,
+        128,
+        128
+      ],
+      [
+        5200,
+        256,
+        128
+      ],
+      [
+        8192,
+        1,
+        128
+      ],
+      [
+        8192,
+        3,
+        128
+      ],
+      [
+        8192,
+        5,
+        128
+      ],
+      [
+        8192,
+        16,
+        128
+      ],
+      [
+        8192,
+        32,
+        128
+      ],
+      [
+        8192,
+        64,
+        128
+      ],
+      [
+        8192,
+        128,
+        128
+      ],
+      [
+        8192,
+        256,
+        128
+      ]
+    ],
+    "original_correctness": [
+      [
+        21,
+        1,
+        16
+      ],
+      [
+        64,
+        1,
+        16
+      ],
+      [
+        256,
+        3,
+        16
+      ],
+      [
+        512,
+        3,
+        16
+      ],
+      [
+        1200,
+        5,
+        16
+      ],
+      [
+        3200,
+        5,
+        16
+      ],
+      [
+        5200,
+        16,
+        16
+      ],
+      [
+        8192,
+        16,
+        16
+      ],
+      [
+        21,
+        32,
+        128
+      ],
+      [
+        64,
+        32,
+        128
+      ],
+      [
+        256,
+        64,
+        128
+      ],
+      [
+        512,
+        64,
+        128
+      ],
+      [
+        1200,
+        128,
+        128
+      ],
+      [
+        3200,
+        128,
+        128
+      ],
+      [
+        5200,
+        256,
+        128
+      ],
+      [
+        8192,
+        256,
+        128
+      ]
+    ]
+  },
+  "cases": [
+    {
+      "test_case_id": "case/0",
+      "params": {
+        "case_index": 0,
+        "configuration": [
+          21,
+          1,
+          16
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/1",
+      "params": {
+        "case_index": 1,
+        "configuration": [
+          21,
+          3,
+          16
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/2",
+      "params": {
+        "case_index": 2,
+        "configuration": [
+          21,
+          5,
+          16
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/3",
+      "params": {
+        "case_index": 3,
+        "configuration": [
+          21,
+          16,
+          16
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/4",
+      "params": {
+        "case_index": 4,
+        "configuration": [
+          21,
+          32,
+          16
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/5",
+      "params": {
+        "case_index": 5,
+        "configuration": [
+          21,
+          64,
+          16
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/6",
+      "params": {
+        "case_index": 6,
+        "configuration": [
+          21,
+          128,
+          16
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/7",
+      "params": {
+        "case_index": 7,
+        "configuration": [
+          21,
+          256,
+          16
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/8",
+      "params": {
+        "case_index": 8,
+        "configuration": [
+          64,
+          1,
+          16
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/9",
+      "params": {
+        "case_index": 9,
+        "configuration": [
+          64,
+          3,
+          16
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/10",
+      "params": {
+        "case_index": 10,
+        "configuration": [
+          64,
+          5,
+          16
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/11",
+      "params": {
+        "case_index": 11,
+        "configuration": [
+          64,
+          16,
+          16
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/12",
+      "params": {
+        "case_index": 12,
+        "configuration": [
+          64,
+          32,
+          16
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/13",
+      "params": {
+        "case_index": 13,
+        "configuration": [
+          64,
+          64,
+          16
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/14",
+      "params": {
+        "case_index": 14,
+        "configuration": [
+          64,
+          128,
+          16
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/15",
+      "params": {
+        "case_index": 15,
+        "configuration": [
+          64,
+          256,
+          16
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/16",
+      "params": {
+        "case_index": 16,
+        "configuration": [
+          256,
+          1,
+          16
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/17",
+      "params": {
+        "case_index": 17,
+        "configuration": [
+          256,
+          3,
+          16
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/18",
+      "params": {
+        "case_index": 18,
+        "configuration": [
+          256,
+          5,
+          16
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/19",
+      "params": {
+        "case_index": 19,
+        "configuration": [
+          256,
+          16,
+          16
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/20",
+      "params": {
+        "case_index": 20,
+        "configuration": [
+          256,
+          32,
+          16
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/21",
+      "params": {
+        "case_index": 21,
+        "configuration": [
+          256,
+          64,
+          16
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/22",
+      "params": {
+        "case_index": 22,
+        "configuration": [
+          256,
+          128,
+          16
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/23",
+      "params": {
+        "case_index": 23,
+        "configuration": [
+          256,
+          256,
+          16
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/24",
+      "params": {
+        "case_index": 24,
+        "configuration": [
+          512,
+          1,
+          16
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/25",
+      "params": {
+        "case_index": 25,
+        "configuration": [
+          512,
+          3,
+          16
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/26",
+      "params": {
+        "case_index": 26,
+        "configuration": [
+          512,
+          5,
+          16
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/27",
+      "params": {
+        "case_index": 27,
+        "configuration": [
+          512,
+          16,
+          16
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/28",
+      "params": {
+        "case_index": 28,
+        "configuration": [
+          512,
+          32,
+          16
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/29",
+      "params": {
+        "case_index": 29,
+        "configuration": [
+          512,
+          64,
+          16
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/30",
+      "params": {
+        "case_index": 30,
+        "configuration": [
+          512,
+          128,
+          16
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/31",
+      "params": {
+        "case_index": 31,
+        "configuration": [
+          512,
+          256,
+          16
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/32",
+      "params": {
+        "case_index": 32,
+        "configuration": [
+          1200,
+          1,
+          16
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/33",
+      "params": {
+        "case_index": 33,
+        "configuration": [
+          1200,
+          3,
+          16
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/34",
+      "params": {
+        "case_index": 34,
+        "configuration": [
+          1200,
+          5,
+          16
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/35",
+      "params": {
+        "case_index": 35,
+        "configuration": [
+          1200,
+          16,
+          16
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/36",
+      "params": {
+        "case_index": 36,
+        "configuration": [
+          1200,
+          32,
+          16
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/37",
+      "params": {
+        "case_index": 37,
+        "configuration": [
+          1200,
+          64,
+          16
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/38",
+      "params": {
+        "case_index": 38,
+        "configuration": [
+          1200,
+          128,
+          16
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/39",
+      "params": {
+        "case_index": 39,
+        "configuration": [
+          1200,
+          256,
+          16
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/40",
+      "params": {
+        "case_index": 40,
+        "configuration": [
+          3200,
+          1,
+          16
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/41",
+      "params": {
+        "case_index": 41,
+        "configuration": [
+          3200,
+          3,
+          16
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/42",
+      "params": {
+        "case_index": 42,
+        "configuration": [
+          3200,
+          5,
+          16
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/43",
+      "params": {
+        "case_index": 43,
+        "configuration": [
+          3200,
+          16,
+          16
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/44",
+      "params": {
+        "case_index": 44,
+        "configuration": [
+          3200,
+          32,
+          16
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/45",
+      "params": {
+        "case_index": 45,
+        "configuration": [
+          3200,
+          64,
+          16
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/46",
+      "params": {
+        "case_index": 46,
+        "configuration": [
+          3200,
+          128,
+          16
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/47",
+      "params": {
+        "case_index": 47,
+        "configuration": [
+          3200,
+          256,
+          16
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/48",
+      "params": {
+        "case_index": 48,
+        "configuration": [
+          5200,
+          1,
+          16
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/49",
+      "params": {
+        "case_index": 49,
+        "configuration": [
+          5200,
+          3,
+          16
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/50",
+      "params": {
+        "case_index": 50,
+        "configuration": [
+          5200,
+          5,
+          16
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/51",
+      "params": {
+        "case_index": 51,
+        "configuration": [
+          5200,
+          16,
+          16
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/52",
+      "params": {
+        "case_index": 52,
+        "configuration": [
+          5200,
+          32,
+          16
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/53",
+      "params": {
+        "case_index": 53,
+        "configuration": [
+          5200,
+          64,
+          16
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/54",
+      "params": {
+        "case_index": 54,
+        "configuration": [
+          5200,
+          128,
+          16
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/55",
+      "params": {
+        "case_index": 55,
+        "configuration": [
+          5200,
+          256,
+          16
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/56",
+      "params": {
+        "case_index": 56,
+        "configuration": [
+          8192,
+          1,
+          16
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/57",
+      "params": {
+        "case_index": 57,
+        "configuration": [
+          8192,
+          3,
+          16
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/58",
+      "params": {
+        "case_index": 58,
+        "configuration": [
+          8192,
+          5,
+          16
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/59",
+      "params": {
+        "case_index": 59,
+        "configuration": [
+          8192,
+          16,
+          16
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/60",
+      "params": {
+        "case_index": 60,
+        "configuration": [
+          8192,
+          32,
+          16
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/61",
+      "params": {
+        "case_index": 61,
+        "configuration": [
+          8192,
+          64,
+          16
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/62",
+      "params": {
+        "case_index": 62,
+        "configuration": [
+          8192,
+          128,
+          16
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/63",
+      "params": {
+        "case_index": 63,
+        "configuration": [
+          8192,
+          256,
+          16
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/64",
+      "params": {
+        "case_index": 64,
+        "configuration": [
+          21,
+          1,
+          128
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/65",
+      "params": {
+        "case_index": 65,
+        "configuration": [
+          21,
+          3,
+          128
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/66",
+      "params": {
+        "case_index": 66,
+        "configuration": [
+          21,
+          5,
+          128
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/67",
+      "params": {
+        "case_index": 67,
+        "configuration": [
+          21,
+          16,
+          128
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/68",
+      "params": {
+        "case_index": 68,
+        "configuration": [
+          21,
+          32,
+          128
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/69",
+      "params": {
+        "case_index": 69,
+        "configuration": [
+          21,
+          64,
+          128
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/70",
+      "params": {
+        "case_index": 70,
+        "configuration": [
+          21,
+          128,
+          128
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/71",
+      "params": {
+        "case_index": 71,
+        "configuration": [
+          21,
+          256,
+          128
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/72",
+      "params": {
+        "case_index": 72,
+        "configuration": [
+          64,
+          1,
+          128
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/73",
+      "params": {
+        "case_index": 73,
+        "configuration": [
+          64,
+          3,
+          128
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/74",
+      "params": {
+        "case_index": 74,
+        "configuration": [
+          64,
+          5,
+          128
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/75",
+      "params": {
+        "case_index": 75,
+        "configuration": [
+          64,
+          16,
+          128
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/76",
+      "params": {
+        "case_index": 76,
+        "configuration": [
+          64,
+          32,
+          128
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/77",
+      "params": {
+        "case_index": 77,
+        "configuration": [
+          64,
+          64,
+          128
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/78",
+      "params": {
+        "case_index": 78,
+        "configuration": [
+          64,
+          128,
+          128
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/79",
+      "params": {
+        "case_index": 79,
+        "configuration": [
+          64,
+          256,
+          128
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/80",
+      "params": {
+        "case_index": 80,
+        "configuration": [
+          256,
+          1,
+          128
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/81",
+      "params": {
+        "case_index": 81,
+        "configuration": [
+          256,
+          3,
+          128
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/82",
+      "params": {
+        "case_index": 82,
+        "configuration": [
+          256,
+          5,
+          128
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/83",
+      "params": {
+        "case_index": 83,
+        "configuration": [
+          256,
+          16,
+          128
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/84",
+      "params": {
+        "case_index": 84,
+        "configuration": [
+          256,
+          32,
+          128
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/85",
+      "params": {
+        "case_index": 85,
+        "configuration": [
+          256,
+          64,
+          128
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/86",
+      "params": {
+        "case_index": 86,
+        "configuration": [
+          256,
+          128,
+          128
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/87",
+      "params": {
+        "case_index": 87,
+        "configuration": [
+          256,
+          256,
+          128
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/88",
+      "params": {
+        "case_index": 88,
+        "configuration": [
+          512,
+          1,
+          128
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/89",
+      "params": {
+        "case_index": 89,
+        "configuration": [
+          512,
+          3,
+          128
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/90",
+      "params": {
+        "case_index": 90,
+        "configuration": [
+          512,
+          5,
+          128
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/91",
+      "params": {
+        "case_index": 91,
+        "configuration": [
+          512,
+          16,
+          128
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/92",
+      "params": {
+        "case_index": 92,
+        "configuration": [
+          512,
+          32,
+          128
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/93",
+      "params": {
+        "case_index": 93,
+        "configuration": [
+          512,
+          64,
+          128
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/94",
+      "params": {
+        "case_index": 94,
+        "configuration": [
+          512,
+          128,
+          128
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/95",
+      "params": {
+        "case_index": 95,
+        "configuration": [
+          512,
+          256,
+          128
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/96",
+      "params": {
+        "case_index": 96,
+        "configuration": [
+          1200,
+          1,
+          128
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/97",
+      "params": {
+        "case_index": 97,
+        "configuration": [
+          1200,
+          3,
+          128
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/98",
+      "params": {
+        "case_index": 98,
+        "configuration": [
+          1200,
+          5,
+          128
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/99",
+      "params": {
+        "case_index": 99,
+        "configuration": [
+          1200,
+          16,
+          128
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/100",
+      "params": {
+        "case_index": 100,
+        "configuration": [
+          1200,
+          32,
+          128
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/101",
+      "params": {
+        "case_index": 101,
+        "configuration": [
+          1200,
+          64,
+          128
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/102",
+      "params": {
+        "case_index": 102,
+        "configuration": [
+          1200,
+          128,
+          128
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/103",
+      "params": {
+        "case_index": 103,
+        "configuration": [
+          1200,
+          256,
+          128
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/104",
+      "params": {
+        "case_index": 104,
+        "configuration": [
+          3200,
+          1,
+          128
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/105",
+      "params": {
+        "case_index": 105,
+        "configuration": [
+          3200,
+          3,
+          128
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/106",
+      "params": {
+        "case_index": 106,
+        "configuration": [
+          3200,
+          5,
+          128
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/107",
+      "params": {
+        "case_index": 107,
+        "configuration": [
+          3200,
+          16,
+          128
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/108",
+      "params": {
+        "case_index": 108,
+        "configuration": [
+          3200,
+          32,
+          128
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/109",
+      "params": {
+        "case_index": 109,
+        "configuration": [
+          3200,
+          64,
+          128
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/110",
+      "params": {
+        "case_index": 110,
+        "configuration": [
+          3200,
+          128,
+          128
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/111",
+      "params": {
+        "case_index": 111,
+        "configuration": [
+          3200,
+          256,
+          128
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/112",
+      "params": {
+        "case_index": 112,
+        "configuration": [
+          5200,
+          1,
+          128
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/113",
+      "params": {
+        "case_index": 113,
+        "configuration": [
+          5200,
+          3,
+          128
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/114",
+      "params": {
+        "case_index": 114,
+        "configuration": [
+          5200,
+          5,
+          128
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/115",
+      "params": {
+        "case_index": 115,
+        "configuration": [
+          5200,
+          16,
+          128
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/116",
+      "params": {
+        "case_index": 116,
+        "configuration": [
+          5200,
+          32,
+          128
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/117",
+      "params": {
+        "case_index": 117,
+        "configuration": [
+          5200,
+          64,
+          128
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/118",
+      "params": {
+        "case_index": 118,
+        "configuration": [
+          5200,
+          128,
+          128
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/119",
+      "params": {
+        "case_index": 119,
+        "configuration": [
+          5200,
+          256,
+          128
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/120",
+      "params": {
+        "case_index": 120,
+        "configuration": [
+          8192,
+          1,
+          128
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/121",
+      "params": {
+        "case_index": 121,
+        "configuration": [
+          8192,
+          3,
+          128
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/122",
+      "params": {
+        "case_index": 122,
+        "configuration": [
+          8192,
+          5,
+          128
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/123",
+      "params": {
+        "case_index": 123,
+        "configuration": [
+          8192,
+          16,
+          128
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/124",
+      "params": {
+        "case_index": 124,
+        "configuration": [
+          8192,
+          32,
+          128
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/125",
+      "params": {
+        "case_index": 125,
+        "configuration": [
+          8192,
+          64,
+          128
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/126",
+      "params": {
+        "case_index": 126,
+        "configuration": [
+          8192,
+          128,
+          128
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/127",
+      "params": {
+        "case_index": 127,
+        "configuration": [
+          8192,
+          256,
+          128
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    }
+  ],
+  "timing_calls_per_case": [
+    "candidate"
+  ],
+  "migration": {
+    "original_harness_sha256": "600b9768cf939677a42aaae3fe0d2085b27eb9623dca21a0c39d5bdb69a8326a",
+    "original_source_sha256": "53a2ce4062faaa70caad54cb923447c4d3ff71d7238b69dd2ae91cc7304cc9f3",
+    "preservation": "Original correctness subset executes first, in its original order; additional performance cases are checked afterward. Original performance order, RNG calls, reset callbacks, sample counts and median reduction remain intact."
+  }
+}
