@@ -52,3 +52,18 @@ plus any operator dependencies stated by the source. Arena must materialize the
 canonical `_aka_benchmark.py` helper before GPU execution. CPU controls/protocol
 checks do not qualify these GPU kernels. Existing legacy reports are historical;
 the parent integration schedules new GPU validation.
+
+
+The seven original packed prefill cases write the supplied BF16 output buffer
+with exactly the query shape and device. The original numerical policy remains:
+finite outputs and (at least99.9% elements close at atol=rtol=0.01 OR normalized
+maximum error<=0.01). This allows sparse deviations under its fraction branch;
+it is the existing task rule, applied equally to correctness and measured replay.
+Q, K, V and any sequence metadata are read-only. The actual measured graph output
+and the same captured graph replay must meet the original independent reference
+and numerical gate. Replay negates V with shapes, logits and layouts unchanged;
+reference calculation, output poisoning and input restoration stay outside timing.
+Original cases, seed42+i, 10 external warmups and 100 graph samples are retained.
+Capture failure cannot bypass validation. Only final candidate calls are audited
+for FlyDSL compute and protected/backend dependencies; the original Triton source
+and its frozen baseline remain unchanged.

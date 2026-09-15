@@ -3,10 +3,9 @@
 
 Self-contained harness mirroring the triton2flydsl/unified_attention template:
   - compile      : ast-parse + import the standalone source, assert entry/kernel symbols
-  - correctness  : run the triton forward on TEST_SHAPES, assert finite output
-                   (fp16), causal + non-causal, incl. GQA. No torch comparison:
-                   the flydsl-vs-triton comparison is added when the FlyDSL target
-                   lands (the Triton kernel is the reference here).
+  - correctness  : compare forward outputs with the independent FP32-upcast
+                   PyTorch attention oracle, under the original normalized-error
+                   rule, including FP16 output and read-only input contracts.
   - performance  : graph-first GPU timing, write build/performance_report.json
 
 The kernel under test is the Triton MHA forward (`_attn_fwd`). Forward-only:
@@ -19,7 +18,8 @@ import json
 import time
 import argparse
 import importlib.util
-from _aka_benchmark import benchmark_cuda_graph_or_events
+from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
+from scripts.replay_checks import require_tensor_contract, require_unchanged, verify_timed_run
 
 TASK_DIR = os.path.dirname(os.path.abspath(__file__))
 os.chdir(TASK_DIR)
@@ -27,6 +27,7 @@ os.chdir(TASK_DIR)
 TASK_NAME = "triton2flydsl/aiter/mha"
 from task_runtime import candidate_relative_path
 SOURCE_FILE = candidate_relative_path()
+ENTRY = 'flash_attn_func'
 
 # Test configurations:
 # (batch, seqlen, num_query_heads, num_kv_heads, head_size, causal)
@@ -173,6 +174,36 @@ def run_compile():
         return False, str(e)
 
 
+def _checked_attention_output(out, q):
+    require_tensor_contract(out, q)
+
+
+def _compare_attention_output(actual, expected):
+    import torch
+    require_tensor_contract(actual, expected, dtype=torch.float16)
+    if not bool(torch.isfinite(actual).all() and torch.isfinite(expected).all()):
+        raise AssertionError("Non-finite attention/reference output")
+    norm_err, max_abs, _ = _compare(expected, actual)
+    if norm_err > NORM_ERR_TOL:
+        raise AssertionError(f"Numerical mismatch: normalized_max_error={norm_err}, max_abs={max_abs}")
+
+
+def _attention_replay_validator(q, k, v, scale, causal):
+    inputs = (q, k, v)
+    originals = tuple(x.clone() for x in inputs)
+    expected = torch_mha_ref(q, k, v, scale, causal)
+    def perturb():
+        # V changes output while preserving attention logits, shapes and dtype.
+        v.neg_()
+    def replay_reference():
+        return torch_mha_ref(q, k, v, scale, causal)
+    def validate(timed):
+        return verify_timed_run(timed, inputs=inputs, originals=originals,
+                                expected=expected, perturb=perturb,
+                                reference=replay_reference, compare=_compare_attention_output)
+    return validate
+
+
 def run_correctness():
     import torch
     try:
@@ -188,9 +219,13 @@ def run_correctness():
         try:
             torch.manual_seed(42 + i)
             q, k, v, scale = make_test_data(batch, seqlen, nqh, nkvh, hs, device, dtype)
+            protected_inputs = (q, k, v)
+            originals = tuple(v.clone() for v in protected_inputs)
 
             result = _with_oom_retry(lambda: _call_kernel(mod, q, k, v, scale, causal))
             torch.cuda.synchronize()
+            require_unchanged(protected_inputs, originals)
+            _checked_attention_output(result, q)
 
             finite = bool(torch.isfinite(result).all().item())
 
@@ -247,29 +282,32 @@ def run_performance():
         try:
             torch.manual_seed(42 + test_idx)
             q, k, v, scale = make_test_data(batch, seqlen, nqh, nkvh, hs, device, dtype)
+            replay_validate = _attention_replay_validator(q, k, v, scale, causal)
 
             for _ in range(WARMUP_ITERATIONS):
                 _with_oom_retry(lambda: _call_kernel(mod, q, k, v, scale, causal))
             torch.cuda.synchronize()
 
+            timed = TimedRun()
             elapsed_ms, bench_meta = benchmark_cuda_graph_or_events(
                 lambda: _call_kernel(mod, q, k, v, scale, causal),
                 warmup=0,
-                repetition=BENCHMARK_ITERATIONS,
+                repetition=BENCHMARK_ITERATIONS, timed_run=timed,
             )
 
+            bench_meta.update(replay_validate(timed))
             test_cases.append({
                 "test_case_id": f"perf{test_idx + 1}",
                 "execution_time_ms": elapsed_ms,
                 **bench_meta,
                 "params": params,
             })
-        except Exception:
+        except Exception as error:
             test_cases.append({
                 "test_case_id": f"perf{test_idx + 1}",
                 "execution_time_ms": -1.0,
                 "benchmark_method": "benchmark_failed",
-                "benchmark_fallback_reason": "performance case failed before timing completed",
+                "benchmark_fallback_reason": "performance case failed: " + str(error),
                 "params": params,
             })
     return test_cases

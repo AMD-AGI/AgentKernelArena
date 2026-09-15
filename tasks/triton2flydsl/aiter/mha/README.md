@@ -52,3 +52,16 @@ plus any operator dependencies stated by the source. Arena must materialize the
 canonical `_aka_benchmark.py` helper before GPU execution. CPU controls/protocol
 checks do not qualify these GPU kernels. Existing legacy reports are historical;
 the parent integration schedules new GPU validation.
+
+
+The six original MHA/GQA cases use FP16 [batch,sequence,query_heads,head_dim]
+outputs on the input device. The gating normalized maximum error stays <=0.01;
+allclose(atol=rtol=0.01) remains diagnostic only.
+Q, K, V and any sequence metadata are read-only. The actual measured graph output
+and the same captured graph replay must meet the original independent reference
+and numerical gate. Replay negates V with shapes, logits and layouts unchanged;
+reference calculation, output poisoning and input restoration stay outside timing.
+Original cases, seed42+i, 10 external warmups and 100 graph samples are retained.
+Capture failure cannot bypass validation. Only final candidate calls are audited
+for FlyDSL compute and protected/backend dependencies; the original Triton source
+and its frozen baseline remain unchanged.
