@@ -6,14 +6,14 @@ import os as _os
 import sys as _sys
 
 _THIS = _os.path.dirname(_os.path.abspath(__file__))
-_F2F = _os.path.join(_THIS, "..")
+_F2F = _THIS
 if _F2F not in _sys.path:
     _sys.path.insert(0, _F2F)
 if _THIS not in _sys.path:
     _sys.path.insert(0, _THIS)
 
 _spec = importlib.util.spec_from_file_location(
-    "kernels.topk_gating_softmax_kernel", _os.path.join(_THIS, "kernel.py")
+    "kernels.topk_gating_softmax_kernel", _os.path.join(_THIS, __import__("task_runtime").candidate_relative_path())
 )
 _tk = importlib.util.module_from_spec(_spec)
 assert _spec.loader is not None
@@ -75,6 +75,22 @@ def _torch_dtype(dtype_str):
     return {"f32": DTYPE_FP32, "f16": DTYPE_FP16, "bf16": DTYPE_BF16}[dtype_str]
 
 
+def reference_topk(gating_for_ref, topk, renormalize=True):
+    num_tokens = gating_for_ref.shape[0]
+    probs_ref = torch.softmax(gating_for_ref, dim=1)
+    ref_weights, ref_indices = torch.topk(probs_ref, topk, dim=1)
+    if renormalize:
+        ref_weights = ref_weights / ref_weights.sum(dim=1, keepdim=True).clamp(min=1e-20)
+    ref_weights = ref_weights.to(DTYPE_FP32)
+    ref_indices = ref_indices.to(torch.int32)
+
+    # token_expert_indices reference: k * num_tokens + row
+    ref_tei = torch.zeros_like(ref_indices)
+    for k in range(topk):
+        ref_tei[:, k] = k * num_tokens + torch.arange(num_tokens, device=gating_for_ref.device, dtype=torch.int32)
+
+    return probs_ref, ref_weights, ref_indices, ref_tei
+
 def run_test(num_tokens, num_experts, topk, dtype_str, renormalize=True):
     print(
         f"\nTesting TopK Gating Softmax: "
@@ -107,17 +123,7 @@ def run_test(num_tokens, num_experts, topk, dtype_str, renormalize=True):
     gating_for_ref = gating_dev.to(DTYPE_FP32)
 
     # --- PyTorch reference ---
-    probs_ref = torch.softmax(gating_for_ref, dim=1)
-    ref_weights, ref_indices = torch.topk(probs_ref, topk, dim=1)
-    if renormalize:
-        ref_weights = ref_weights / ref_weights.sum(dim=1, keepdim=True).clamp(min=1e-20)
-    ref_weights = ref_weights.to(DTYPE_FP32)
-    ref_indices = ref_indices.to(torch.int32)
-
-    # token_expert_indices reference: k * num_tokens + row
-    ref_tei = torch.zeros_like(ref_indices)
-    for k in range(topk):
-        ref_tei[:, k] = k * num_tokens + torch.arange(num_tokens, device="cuda", dtype=torch.int32)
+    probs_ref, ref_weights, ref_indices, ref_tei = reference_topk(gating_for_ref, topk, renormalize)
 
     # --- Device tensors ---
     topk_weights_dev = torch.empty((num_tokens, topk), device="cuda", dtype=DTYPE_FP32)
@@ -385,3 +391,64 @@ if __name__ == "__main__":
         run_geak_benchmark(warmup=args.warmup, iters=args.iterations)
         raise SystemExit(0)
     test_all()
+
+
+# V2 action entrypoint; original timing boundaries and sample counts above apply.
+def arena_benchmark(warmup=10, iters=100):
+    import json
+    import math
+
+    configs = [
+        (256, 128, 8, "bf16"),
+        (512, 128, 6, "bf16"),
+    ]
+    latencies, report_cases = [], []
+    for idx, (num_tokens, num_experts, topk, dtype_str) in enumerate(configs):
+        ok, _ = run_test(num_tokens, num_experts, topk, dtype_str, renormalize=True)
+        if not ok:
+            continue
+        torch_dtype = _torch_dtype(dtype_str)
+        torch.manual_seed(42)
+        gating_fp32 = (torch.rand((num_tokens, num_experts), device="cuda", dtype=DTYPE_FP32) * 4.0) - 2.0
+        gating_dev = gating_fp32.to(torch_dtype).contiguous()
+        topk_weights_dev = torch.empty((num_tokens, topk), device="cuda", dtype=DTYPE_FP32)
+        topk_indices_dev = torch.empty((num_tokens, topk), device="cuda", dtype=torch.int32)
+        token_expert_indices_dev = torch.empty((num_tokens, topk), device="cuda", dtype=torch.int32)
+        launch_fn = build_topk_gating_softmax_module(
+            num_experts=num_experts, topk=topk, dtype_str=dtype_str, renormalize=True
+        )
+        def kernel_launch():
+            launch_fn(
+                gating_dev,
+                topk_weights_dev,
+                topk_indices_dev,
+                token_expert_indices_dev,
+                num_tokens,
+                stream=torch.cuda.current_stream(),
+            )
+
+        for _ in range(warmup):
+            kernel_launch()
+        torch.cuda.synchronize()
+        ms, bench_meta = benchmark_cuda_graph_or_events(
+            kernel_launch, warmup=0, repetition=iters
+        )
+        latencies.append(ms)
+        report_cases.append(
+            {
+                "test_case_id": f"topk_{idx}",
+                "execution_time_ms": ms,
+                **bench_meta,
+                "shape": [num_tokens, num_experts, topk],
+                "params": {"num_tokens": num_tokens, "num_experts": num_experts, "topk": topk, "dtype": dtype_str},
+            }
+        )
+    if not latencies:
+        return
+    geo = math.exp(sum(math.log(x) for x in latencies) / len(latencies))
+    bd = _os.path.join(_THIS, "build")
+    _os.makedirs(bd, exist_ok=True)
+    with open(_os.path.join(bd, "performance_report.json"), "w") as f:
+        json.dump(report_cases, f, indent=2)
+    print(f"GEAK_RESULT_LATENCY_MS={geo:.4f}", flush=True)
+    return report_cases

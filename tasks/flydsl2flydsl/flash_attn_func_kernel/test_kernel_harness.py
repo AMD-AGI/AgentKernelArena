@@ -13,34 +13,18 @@ from _aka_benchmark import benchmark_cuda_graph_or_events
 # GEAK bootstrap
 # ============================================================================
 
-KERNEL_FILE = "kernel.py"
+from task_runtime import candidate_relative_path
+KERNEL_FILE = candidate_relative_path()
 
 
 def _find_baseline_kernel_dir():
-    work = os.environ.get("GEAK_WORK_DIR", "").strip()
-    if not work:
-        return None
-    d = Path(work).resolve()
-    for _ in range(10):
-        if d is None or not d.exists():
-            break
-        if (d / "benchmark_baseline.txt").is_file():
-            return str(d)
-        d = d.parent
-    return None
+    """The framework supplies a separate frozen workspace for each role."""
+    return str(__import__("pathlib").Path(__file__).resolve().parent)
 
 
 def _resolve_kernel_dir():
-    candidates = []
-    work_dir = os.environ.get("GEAK_WORK_DIR", "").strip()
-    if work_dir:
-        candidates.append(work_dir)
-    original = os.path.dirname(os.path.abspath(__file__))
-    candidates.append(original)
-    for c in candidates:
-        if c and os.path.isfile(os.path.join(c, KERNEL_FILE)):
-            return c
-    return original
+    """The framework supplies a separate frozen workspace for each role."""
+    return str(__import__("pathlib").Path(__file__).resolve().parent)
 
 
 def _load_kernel(kernel_dir, alias="flydsl_kernel"):
@@ -132,7 +116,7 @@ def run_correctness(shapes=None, verbose=True):
             torch_dtype = dtype_map[dtype_str]
             torch.manual_seed(42 + i)
 
-            exe = mod.build_flash_attn_func_module(
+            exe = mod.build_flash_attn_func_module_primary(
                 num_heads=H, head_dim=D, causal=causal, dtype_str=dtype_str,
             )
 
@@ -194,7 +178,7 @@ def run_profile(shapes=None, warmup=10, iters=50, verbose=True):
     dtype_map = {"f16": torch.float16, "bf16": torch.bfloat16}
     for B, S, H, D, dtype_str, causal in shapes:
         torch_dtype = dtype_map[dtype_str]
-        exe = mod.build_flash_attn_func_module(
+        exe = mod.build_flash_attn_func_module_primary(
             num_heads=H, head_dim=D, causal=causal, dtype_str=dtype_str,
         )
         q = torch.randn(B * S * H * D, dtype=torch_dtype, device="cuda")
@@ -235,7 +219,7 @@ def run_benchmark(shapes=None, warmup=10, iters=100, verbose=True):
         torch_dtype = dtype_map[dtype_str]
         torch.manual_seed(42)
 
-        exe = mod.build_flash_attn_func_module(
+        exe = mod.build_flash_attn_func_module_primary(
             num_heads=H, head_dim=D, causal=causal, dtype_str=dtype_str,
         )
 
@@ -369,3 +353,124 @@ if __name__ == "__main__":
         run_benchmark(HARNESS_SHAPES, warmup=args.warmup, iters=args.iterations)
 
     print("=" * 62)
+
+
+# V2 action entrypoint; original timing boundaries and sample counts above apply.
+def arena_benchmark(shapes=None, warmup=10, iters=100, verbose=True):
+    import torch
+
+    if shapes is None:
+        shapes = HARNESS_SHAPES
+
+    mod = _load_kernel(_KERNEL_DIR)
+    if mod is None:
+        print("FAIL: cannot load kernel.py")
+        return report_cases
+
+    dtype_map = {"f16": torch.float16, "bf16": torch.bfloat16}
+    latencies, speedups, report_cases = [], [], []
+
+    print(f"Running benchmark on {len(shapes)} shapes, {warmup} warmup, {iters} iterations...")
+    print(f"{'Config':<42} {'Ref':>10} {'FlyDSL':>10} {'Speedup':>10}")
+    print("-" * 76)
+
+    for idx, (B, S, H, D, dtype_str, causal) in enumerate(shapes):
+        torch_dtype = dtype_map[dtype_str]
+        torch.manual_seed(42)
+
+        exe = mod.build_flash_attn_func_module_primary(
+            num_heads=H, head_dim=D, causal=causal, dtype_str=dtype_str,
+        )
+
+        q_4d = torch.randn(B, S, H, D, dtype=torch_dtype, device="cuda")
+        k_4d = torch.randn(B, S, H, D, dtype=torch_dtype, device="cuda")
+        v_4d = torch.randn(B, S, H, D, dtype=torch_dtype, device="cuda")
+        q_flat = q_4d.contiguous().view(-1)
+        k_flat = k_4d.contiguous().view(-1)
+        v_flat = v_4d.contiguous().view(-1)
+        o_flat = torch.zeros_like(q_flat)
+
+        for _ in range(warmup):
+            exe(q_flat, k_flat, v_flat, o_flat, B, S)
+        torch.cuda.synchronize()
+
+        kernel_ms, kernel_bench_meta = benchmark_cuda_graph_or_events(
+            lambda: exe(
+                q_flat,
+                k_flat,
+                v_flat,
+                o_flat,
+                B,
+                S,
+                stream=torch.cuda.current_stream(),
+            ),
+            warmup=0,
+            repetition=iters,
+        )
+
+        ref_ms, ref_bench_meta = benchmark_cuda_graph_or_events(
+            lambda: reference_flash_attn(q_4d, k_4d, v_4d, causal=causal).to(torch_dtype), warmup=0, repetition=iters
+        )
+
+        methods_match = kernel_bench_meta["benchmark_method"] == ref_bench_meta["benchmark_method"]
+        speedup = (
+            ref_ms / kernel_ms if methods_match and kernel_ms > 0 else None
+        )
+        speedup_display = (
+            format(speedup, ">8.2f") + "x"
+            if speedup is not None
+            else f"{'N/A':>9}"
+        )
+        latencies.append(kernel_ms)
+        if speedup is not None:
+            speedups.append(speedup)
+
+        s_eff = S / 2.0 if causal else float(S)
+        flops = 4.0 * S * s_eff * D * H * B
+        tflops = flops / (kernel_ms * 1e-3) / 1e12
+
+        report_cases.append({
+            "test_case_id": f"test_case_{idx}",
+            "execution_time_ms": kernel_ms,
+            **kernel_bench_meta,
+            "reference_benchmark_method": ref_bench_meta["benchmark_method"],
+            "benchmark_method_consistent": kernel_bench_meta["benchmark_method"] == ref_bench_meta["benchmark_method"],
+            "shape": [B, S, H, D],
+            "params": {"B": B, "S": S, "H": H, "D": D, "dtype": dtype_str, "causal": causal},
+            "tflops": tflops,
+        })
+
+        marker = " *" if speedup is not None and speedup > 1.0 else ""
+        causal_tag = "causal" if causal else "nocausal"
+        if verbose:
+            print(
+                f"(B={B:>2},S={S:>5},H={H:>3},D={D},{dtype_str},{causal_tag})"
+                f" {ref_ms:>8.4f}ms {kernel_ms:>8.4f}ms {speedup_display}{marker}",
+                flush=True,
+            )
+
+        del q_4d, k_4d, v_4d, q_flat, k_flat, v_flat, o_flat
+        torch.cuda.empty_cache()
+
+    geomean_latency = math.exp(sum(math.log(l) for l in latencies) / len(latencies))
+    geomean_speedup = math.exp(sum(math.log(s) for s in speedups) / len(speedups)) if speedups else None
+    geomean_speedup_display = (
+        format(geomean_speedup, ".2f") + "x"
+        if geomean_speedup is not None
+        else "N/A"
+    )
+
+    build_dir = Path(_KERNEL_DIR) / "build"
+    build_dir.mkdir(exist_ok=True)
+    with open(build_dir / "performance_report.json", "w") as f:
+        json.dump(report_cases, f, indent=2)
+
+    print("-" * 76)
+    print(f"{'Geometric mean latency:':<26} {geomean_latency:.4f} ms")
+    print(f"{'Geometric mean speedup:':<26} {geomean_speedup_display}")
+    print(f"GEAK_RESULT_LATENCY_MS={geomean_latency:.4f}", flush=True)
+    if geomean_speedup is not None:
+        print(f"GEAK_RESULT_GEOMEAN_SPEEDUP={geomean_speedup:.4f}", flush=True)
+
+    return report_cases
+    return report_cases

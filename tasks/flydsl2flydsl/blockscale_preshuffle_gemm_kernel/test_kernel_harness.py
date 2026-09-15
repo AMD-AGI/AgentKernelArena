@@ -41,55 +41,29 @@ from _aka_benchmark import benchmark_cuda_graph_or_events
 # GEAK bootstrap
 # ============================================================================
 
-KERNEL_FILE = "kernel.py"
+from task_runtime import candidate_relative_path
+KERNEL_FILE = candidate_relative_path()
 
 # The flydsl2flydsl dir (parent of this task dir) holds the shared `kernels`
 # package; make `from kernels.fp8_gemm_utils import preshuffle_b` importable.
 _TASK_DIR = os.path.dirname(os.path.abspath(__file__))
-_FLYDSL2_DIR = os.path.abspath(os.path.join(_TASK_DIR, ".."))
+_FLYDSL2_DIR = _TASK_DIR
 for _p in (_FLYDSL2_DIR, _TASK_DIR):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
 
 def _ensure_writable_flydsl_home():
-    """FlyDSL JIT cache lives under ~/.flydsl; redirect HOME when read-only."""
-    home = os.path.expanduser("~")
-    cache = os.path.join(home, ".flydsl")
-    try:
-        os.makedirs(cache, exist_ok=True)
-        probe = os.path.join(cache, ".write_probe")
-        with open(probe, "w") as f:
-            f.write("ok")
-        os.remove(probe)
-        return
-    except OSError:
-        pass
-    for base in (
-        os.environ.get("GEAK_WORK_DIR", "").strip(),
-        tempfile.gettempdir(),
-        _FLYDSL2_DIR,
-    ):
-        if not base:
-            continue
-        try:
-            new_home = os.path.join(base, ".flydsl_home")
-            os.makedirs(os.path.join(new_home, ".flydsl"), exist_ok=True)
-            os.environ["HOME"] = new_home
-            return
-        except OSError:
-            continue
+    """Runtime cache configuration is owned by the container environment."""
+    return None
 
 
 _ensure_writable_flydsl_home()
 
 
 def _candidate_kernel_dir():
-    """Kernel-under-test: $GEAK_WORK_DIR if it has kernel.py, else task dir."""
-    work_dir = os.environ.get("GEAK_WORK_DIR", "").strip()
-    if work_dir and os.path.isfile(os.path.join(work_dir, KERNEL_FILE)):
-        return work_dir
-    return _TASK_DIR
+    """The framework supplies a separate frozen workspace for each role."""
+    return str(__import__("pathlib").Path(__file__).resolve().parent)
 
 
 def _load_kernel(kernel_dir, alias):
@@ -498,3 +472,109 @@ if __name__ == "__main__":
         run_benchmark(HARNESS_SHAPES, warmup=args.warmup, iters=args.iterations)
 
     print("=" * 62)
+
+
+# V2 action entrypoint; original timing boundaries and sample counts above apply.
+def arena_benchmark(shapes=None, warmup=10, iters=100, verbose=True):
+    import torch
+    import flydsl.compiler as flyc
+
+    if shapes is None:
+        shapes = HARNESS_SHAPES
+
+    mod = _load_kernel(_KERNEL_DIR, "bs_gemm_candidate")
+    if mod is None:
+        print("FAIL: cannot load kernel.py")
+        return report_cases
+
+    latencies, speedups, report_cases = [], [], []
+
+    print(f"Running benchmark on {len(shapes)} shapes, {warmup} warmup, {iters} iterations...")
+    print(f"{'Config (M,N,K)':<28} {'Ref':>10} {'FlyDSL':>10} {'Speedup':>10} {'TFLOP/s':>10}")
+    print("-" * 74)
+
+    for idx, (M, N, K) in enumerate(shapes):
+        inp = _make_inputs(M, N, K, seed=42)
+
+        # Compile ONCE (outside the timing loop) then time EXECUTION only.
+        c = inp["c"]
+        cf, stream = _compile_and_run_once(mod, flyc, c, inp)
+        args = _launch_args(inp, c, stream)
+
+        # torch reference for speedup display: mm of logical A,B in float.
+        a_ref = inp["a_fp8"].float()                 # [M, K]
+        b_ref = inp["b_fp8"].float()                 # [N, K] logical
+
+        def kfn():
+            cf(*(args[:-1] + (torch.cuda.current_stream(),)))
+
+        def reffn():
+            torch.mm(a_ref, b_ref.t())
+
+        kernel_ms, kernel_bench_meta = _time_mean_ms(kfn, warmup, iters)
+        ref_ms, ref_bench_meta = _time_mean_ms(reffn, warmup, iters)
+
+        methods_match = kernel_bench_meta["benchmark_method"] == ref_bench_meta["benchmark_method"]
+        speedup = (
+            ref_ms / kernel_ms if methods_match and kernel_ms > 0 else None
+        )
+        speedup_display = (
+            format(speedup, ">8.2f") + "x"
+            if speedup is not None
+            else f"{'N/A':>9}"
+        )
+        latencies.append(kernel_ms)
+        if speedup is not None:
+            speedups.append(speedup)
+
+        flops = 2.0 * M * N * K
+        tflops = flops / (kernel_ms * 1e-3) / 1e12
+
+        report_cases.append({
+            "test_case_id": f"test_case_{idx}",
+            "execution_time_ms": kernel_ms,
+            **kernel_bench_meta,
+            "reference_benchmark_method": ref_bench_meta["benchmark_method"],
+            "benchmark_method_consistent": kernel_bench_meta["benchmark_method"] == ref_bench_meta["benchmark_method"],
+            "shape": [M, N, K],
+            "params": {"M": M, "N": N, "K": K, "dtype": OUT_DTYPE,
+                       "tile_m": TILE_M, "tile_n": TILE_N, "tile_k": TILE_K},
+            "tflops": tflops,
+            "ref_time_ms": ref_ms,
+            "speedup_vs_torch": speedup,
+        })
+
+        marker = " *" if speedup is not None and speedup > 1.0 else ""
+        if verbose:
+            print(
+                f"(M={M:>5}, N={N:>5}, K={K:>5})"
+                f" {ref_ms:>8.4f}ms {kernel_ms:>8.4f}ms {speedup_display}{marker}"
+                f" {tflops:>9.1f}",
+                flush=True,
+            )
+
+        del inp, c, a_ref, b_ref
+        torch.cuda.empty_cache()
+
+    geomean_latency = math.exp(sum(math.log(l) for l in latencies) / len(latencies))
+    geomean_speedup = math.exp(sum(math.log(s) for s in speedups) / len(speedups)) if speedups else None
+    geomean_speedup_display = (
+        format(geomean_speedup, ".2f") + "x"
+        if geomean_speedup is not None
+        else "N/A"
+    )
+
+    build_dir = Path(_KERNEL_DIR) / "build"
+    build_dir.mkdir(exist_ok=True)
+    with open(build_dir / "performance_report.json", "w") as f:
+        json.dump(report_cases, f, indent=2)
+
+    print("-" * 74)
+    print(f"{'Geometric mean latency:':<26} {geomean_latency:.4f} ms")
+    print(f"{'Geometric mean speedup:':<26} {geomean_speedup_display}")
+    print(f"GEAK_RESULT_LATENCY_MS={geomean_latency:.4f}", flush=True)
+    if geomean_speedup is not None:
+        print(f"GEAK_RESULT_GEOMEAN_SPEEDUP={geomean_speedup:.4f}", flush=True)
+
+    return report_cases
+    return report_cases

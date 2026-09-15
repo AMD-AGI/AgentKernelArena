@@ -37,46 +37,20 @@ from _aka_benchmark import benchmark_cuda_graph_or_events
 # Bootstrap: make `from kernels...` import work + locate kernel dirs
 # ============================================================================
 
-KERNEL_FILE = "kernel.py"
+from task_runtime import candidate_relative_path
+KERNEL_FILE = candidate_relative_path()
 
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 # flydsl2flydsl dir is the parent of this task's kernel dir; it contains the
 # `kernels` package used by kernel.py (from kernels.fp8_gemm_utils import ...).
-_FLYDSL2_DIR = os.path.abspath(os.path.join(_THIS_DIR, ".."))
+_FLYDSL2_DIR = _THIS_DIR
 if _FLYDSL2_DIR not in sys.path:
     sys.path.insert(0, _FLYDSL2_DIR)
 
 
 def _ensure_writable_flydsl_home():
-    """FlyDSL's JIT writes its compile cache under ``~/.flydsl``. In the
-    container HOME may be a read-only mount, which breaks kernel execution. If
-    the default cache dir is not writable, redirect HOME to a writable location.
-    No-op when HOME is already writable."""
-    home = os.path.expanduser("~")
-    cache = os.path.join(home, ".flydsl")
-    try:
-        os.makedirs(cache, exist_ok=True)
-        probe = os.path.join(cache, ".write_probe")
-        with open(probe, "w") as f:
-            f.write("ok")
-        os.remove(probe)
-        return
-    except OSError:
-        pass
-    for base in (
-        os.environ.get("GEAK_WORK_DIR", "").strip(),
-        tempfile.gettempdir(),
-        _FLYDSL2_DIR,
-    ):
-        if not base:
-            continue
-        try:
-            new_home = os.path.join(base, ".flydsl_home")
-            os.makedirs(os.path.join(new_home, ".flydsl"), exist_ok=True)
-            os.environ["HOME"] = new_home
-            return
-        except OSError:
-            continue
+    """Runtime cache configuration is owned by the container environment."""
+    return None
 
 
 # Must run before any flydsl import (flydsl resolves the cache dir from HOME).
@@ -84,17 +58,13 @@ _ensure_writable_flydsl_home()
 
 
 def _candidate_kernel_dir():
-    """Candidate kernel.py: GEAK_WORK_DIR first, else this task dir."""
-    work_dir = os.environ.get("GEAK_WORK_DIR", "").strip()
-    for c in [work_dir, _THIS_DIR]:
-        if c and os.path.isfile(os.path.join(c, KERNEL_FILE)):
-            return c
-    return _THIS_DIR
+    """The framework supplies a separate frozen workspace for each role."""
+    return str(__import__("pathlib").Path(__file__).resolve().parent)
 
 
 def _oracle_kernel_dir():
-    """Oracle kernel.py: ALWAYS the pristine copy shipped in this task dir."""
-    return _THIS_DIR
+    """The framework supplies a separate frozen workspace for each role."""
+    return str(__import__("pathlib").Path(__file__).resolve().parent)
 
 
 def _load_kernel(kernel_dir, alias):
@@ -499,3 +469,118 @@ if __name__ == "__main__":
         run_benchmark(HARNESS_SHAPES, warmup=args.warmup, iters=args.iterations)
 
     print("=" * 62)
+
+
+# V2 action entrypoint; original timing boundaries and sample counts above apply.
+def arena_benchmark(shapes=None, warmup=10, iters=100, verbose=True):
+    import torch
+    import flydsl.compiler as flyc
+
+    if shapes is None:
+        shapes = HARNESS_SHAPES
+
+    mod = _load_kernel(_CANDIDATE_DIR, "fp8_8w_candidate")
+    if mod is None:
+        print("FAIL: cannot load kernel.py")
+        return report_cases
+
+    latencies, speedups, report_cases = [], [], []
+
+    print(f"Running benchmark on {len(shapes)} shapes, {warmup} warmup, {iters} iterations...")
+    print(f"{'Config (M,N,K)':<28} {'Ref':>10} {'FlyDSL':>10} {'Speedup':>10}")
+    print("-" * 70)
+
+    for idx, (M, N, K) in enumerate(shapes):
+        try:
+            A, B_T, C, A_scale, B_scale = _make_inputs(M, N, K, seed=42 + idx)
+            B_k = _kernel_b(mod, B_T)
+            # Compile ONCE (cached) -- timing below is pure execution.
+            cf, stream = _compile_and_run_once(mod, flyc, A, B_k, C, A_scale, B_scale, M, N)
+        except Exception as e:  # noqa: BLE001
+            print(f"  SKIP (M={M}, N={N}, K={K}): {str(e)[:100]}")
+            continue
+        args = _kernel_args(A, B_k, C, A_scale, B_scale, M, N, stream)
+
+        for _ in range(warmup):
+            cf(*args)
+        torch.cuda.synchronize()
+
+        kernel_ms, kernel_bench_meta = benchmark_cuda_graph_or_events(
+            lambda: cf(*(args[:-1] + (torch.cuda.current_stream(),))),
+            warmup=0,
+            repetition=iters,
+        )
+
+        a_f = A.float()
+        b_f = B_T.float()
+        for _ in range(min(warmup, 5)):
+            _ = torch.mm(a_f, b_f.T)
+        torch.cuda.synchronize()
+        ref_ms, ref_bench_meta = benchmark_cuda_graph_or_events(
+            lambda: torch.mm(a_f, b_f.T), warmup=0, repetition=iters
+        )
+
+        methods_match = kernel_bench_meta["benchmark_method"] == ref_bench_meta["benchmark_method"]
+        speedup = (
+            ref_ms / kernel_ms if methods_match and kernel_ms > 0 else None
+        )
+        speedup_display = (
+            format(speedup, ">8.2f") + "x"
+            if speedup is not None
+            else f"{'N/A':>9}"
+        )
+        latencies.append(kernel_ms)
+        if speedup is not None:
+            speedups.append(speedup)
+
+        flops = 2.0 * M * N * K
+        tflops = flops / (kernel_ms * 1e-3) / 1e12
+
+        report_cases.append({
+            "test_case_id": f"test_case_{idx}",
+            "execution_time_ms": kernel_ms,
+            **kernel_bench_meta,
+            "reference_benchmark_method": ref_bench_meta["benchmark_method"],
+            "benchmark_method_consistent": kernel_bench_meta["benchmark_method"] == ref_bench_meta["benchmark_method"],
+            "shape": [M, N, K],
+            "params": {"M": M, "N": N, "K": K, "dtype": "fp8"},
+            "tflops": tflops,
+        })
+
+        marker = " *" if speedup is not None and speedup > 1.0 else ""
+        if verbose:
+            print(
+                f"(M={M:>5}, N={N:>5}, K={K:>5})"
+                f" {ref_ms:>8.4f}ms {kernel_ms:>8.4f}ms {speedup_display}{marker}",
+                flush=True,
+            )
+
+        del A, B_T, C, A_scale, B_scale, B_k, a_f, b_f
+        torch.cuda.empty_cache()
+
+    if not latencies:
+        print("FAIL: no shapes produced timings")
+        return report_cases
+
+    geomean_latency = math.exp(sum(math.log(l) for l in latencies) / len(latencies))
+    geomean_speedup = math.exp(sum(math.log(s) for s in speedups) / len(speedups)) if speedups else None
+    geomean_speedup_display = (
+        format(geomean_speedup, ".2f") + "x"
+        if geomean_speedup is not None
+        else "N/A"
+    )
+
+    build_dir = Path(_CANDIDATE_DIR) / "build"
+    build_dir.mkdir(exist_ok=True)
+    with open(build_dir / "performance_report.json", "w") as f:
+        json.dump(report_cases, f, indent=2)
+
+    print("-" * 70)
+    print(f"{'Geometric mean latency:':<26} {geomean_latency:.4f} ms")
+    print(f"{'Geometric mean speedup:':<26} {geomean_speedup_display}")
+    print(f"GEAK_RESULT_LATENCY_MS={geomean_latency:.4f}", flush=True)
+    if geomean_speedup is not None:
+        print(f"GEAK_RESULT_GEOMEAN_SPEEDUP={geomean_speedup:.4f}", flush=True)
+
+    return report_cases
+    return report_cases

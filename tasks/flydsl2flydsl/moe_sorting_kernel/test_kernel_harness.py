@@ -6,7 +6,7 @@ import os as _os
 import sys as _sys
 
 _THIS = _os.path.dirname(_os.path.abspath(__file__))
-_F2F = _os.path.join(_THIS, "..")
+_F2F = _THIS
 if _F2F not in _sys.path:
     _sys.path.insert(0, _F2F)
 if _THIS not in _sys.path:
@@ -14,36 +14,14 @@ if _THIS not in _sys.path:
 
 
 def _ensure_writable_flydsl_home():
-    """FlyDSL JIT cache lives under ~/.flydsl; redirect HOME when read-only."""
-    home = _os.path.expanduser("~")
-    cache = _os.path.join(home, ".flydsl")
-    try:
-        _os.makedirs(cache, exist_ok=True)
-        probe = _os.path.join(cache, ".write_probe")
-        with open(probe, "w") as f:
-            f.write("ok")
-        _os.remove(probe)
-        return
-    except OSError:
-        pass
-    import tempfile
-
-    for base in (_os.environ.get("GEAK_WORK_DIR", "").strip(), tempfile.gettempdir(), _F2F):
-        if not base:
-            continue
-        try:
-            new_home = _os.path.join(base, ".flydsl_home")
-            _os.makedirs(_os.path.join(new_home, ".flydsl"), exist_ok=True)
-            _os.environ["HOME"] = new_home
-            return
-        except OSError:
-            continue
+    """Runtime cache configuration is owned by the container environment."""
+    return None
 
 
 _ensure_writable_flydsl_home()
 
 _spec = importlib.util.spec_from_file_location(
-    "kernels.moe_sorting_kernel", _os.path.join(_THIS, "kernel.py")
+    "kernels.moe_sorting_kernel", _os.path.join(_THIS, __import__("task_runtime").candidate_relative_path())
 )
 _moe = importlib.util.module_from_spec(_spec)
 assert _spec.loader is not None
@@ -892,3 +870,44 @@ if __name__ == "__main__":
         run_geak_benchmark(warmup=args.warmup, iters=args.iterations)
         raise SystemExit(0)
     main()
+
+
+# V2 action entrypoint; original timing boundaries and sample counts above apply.
+def arena_benchmark(shapes=None, warmup=10, iters=100, verbose=True):
+    import math
+    import torch
+    if shapes is None:
+        shapes = [(32, 64, 8), (128, 64, 8)]
+    latencies, report_cases = [], []
+    for idx, (T, E, k) in enumerate(shapes):
+        ok, _ = run_test(T, E, k)
+        if not ok:
+            continue
+        torch.manual_seed(42)
+        topk_ids, topk_weights = generate_topk_ids(T, E, k)
+        launch = _make_preallocated_flydsl_call(
+            topk_ids, topk_weights, E, model_dim=4096, topk=k
+        )
+        ms, bench_meta = benchmark_cuda_graph_or_events(
+            launch, warmup=warmup, repetition=iters
+        )
+        latencies.append(ms)
+        report_cases.append({
+            "test_case_id": f"moe_sort_{idx}",
+            "execution_time_ms": ms,
+            **bench_meta,
+            "shape": [T, E, k],
+            "params": {"T": T, "E": E, "topk": k},
+        })
+    if not latencies:
+        return report_cases
+    geo = math.exp(sum(math.log(x) for x in latencies) / len(latencies))
+    bd = _os.path.join(_THIS, "build")
+    _os.makedirs(bd, exist_ok=True)
+    import json
+
+    with open(_os.path.join(bd, "performance_report.json"), "w") as _f:
+        json.dump(report_cases, _f, indent=2)
+    print(f"GEAK_RESULT_LATENCY_MS={geo:.4f}", flush=True)
+    return report_cases
+    return report_cases

@@ -1,0 +1,340 @@
+{
+  "cases": [
+    {
+      "test_case_id": "case_0000",
+      "params": {
+        "M": 32,
+        "N": 384,
+        "K": 7168,
+        "dtype": "f16",
+        "launch_options": {
+          "TILE_M": 16,
+          "TILE_N": 64,
+          "TILE_K": 128,
+          "STAGES": 2,
+          "SPLIT_K": 14,
+          "BLOCK_M_WARPS": 1,
+          "BLOCK_N_WARPS": 2,
+          "BLOCK_K_WARPS": 1
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "f16"
+    },
+    {
+      "test_case_id": "case_0001",
+      "params": {
+        "M": 4,
+        "N": 384,
+        "K": 7168,
+        "dtype": "f16",
+        "launch_options": {
+          "TILE_M": 16,
+          "TILE_N": 64,
+          "TILE_K": 128,
+          "STAGES": 2,
+          "SPLIT_K": 14,
+          "BLOCK_M_WARPS": 1,
+          "BLOCK_N_WARPS": 2,
+          "BLOCK_K_WARPS": 1
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "f16"
+    },
+    {
+      "test_case_id": "case_0002",
+      "params": {
+        "M": 65,
+        "N": 1024,
+        "K": 8192,
+        "dtype": "f16",
+        "launch_options": {
+          "TILE_M": 48,
+          "TILE_N": 64,
+          "TILE_K": 128,
+          "STAGES": 2,
+          "SPLIT_K": 8,
+          "BLOCK_M_WARPS": 1,
+          "BLOCK_N_WARPS": 2,
+          "BLOCK_K_WARPS": 1
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "f16"
+    },
+    {
+      "test_case_id": "case_0003",
+      "params": {
+        "M": 8,
+        "N": 5120,
+        "K": 2880,
+        "dtype": "f16",
+        "launch_options": {
+          "TILE_M": 32,
+          "TILE_N": 128,
+          "TILE_K": 64,
+          "STAGES": 2,
+          "SPLIT_K": 9,
+          "BLOCK_M_WARPS": 2,
+          "BLOCK_N_WARPS": 2,
+          "BLOCK_K_WARPS": 1
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "f16"
+    },
+    {
+      "test_case_id": "case_0004",
+      "params": {
+        "M": 4096,
+        "N": 4096,
+        "K": 4096,
+        "dtype": "f16",
+        "launch_options": {
+          "TILE_M": 128,
+          "TILE_N": 128,
+          "TILE_K": 64,
+          "STAGES": 2,
+          "SPLIT_K": 1,
+          "BLOCK_M_WARPS": 2,
+          "BLOCK_N_WARPS": 2,
+          "BLOCK_K_WARPS": 1
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "f16"
+    },
+    {
+      "test_case_id": "case_0005",
+      "params": {
+        "M": 8192,
+        "N": 8192,
+        "K": 8192,
+        "dtype": "f16",
+        "launch_options": {
+          "TILE_M": 128,
+          "TILE_N": 128,
+          "TILE_K": 64,
+          "STAGES": 2,
+          "SPLIT_K": 1,
+          "BLOCK_M_WARPS": 2,
+          "BLOCK_N_WARPS": 2,
+          "BLOCK_K_WARPS": 1
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "f16"
+    },
+    {
+      "test_case_id": "case_0006",
+      "params": {
+        "M": 32,
+        "N": 2880,
+        "K": 2048,
+        "dtype": "f16",
+        "launch_options": {
+          "TILE_M": 32,
+          "TILE_N": 64,
+          "TILE_K": 128,
+          "STAGES": 2,
+          "SPLIT_K": 4,
+          "BLOCK_M_WARPS": 1,
+          "BLOCK_N_WARPS": 2,
+          "BLOCK_K_WARPS": 1
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "f16"
+    },
+    {
+      "test_case_id": "case_0007",
+      "params": {
+        "M": 32,
+        "N": 384,
+        "K": 7168,
+        "dtype": "bf16",
+        "launch_options": {
+          "TILE_M": 16,
+          "TILE_N": 64,
+          "TILE_K": 128,
+          "STAGES": 2,
+          "SPLIT_K": 14,
+          "BLOCK_M_WARPS": 1,
+          "BLOCK_N_WARPS": 2,
+          "BLOCK_K_WARPS": 1
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bf16"
+    },
+    {
+      "test_case_id": "case_0008",
+      "params": {
+        "M": 4,
+        "N": 384,
+        "K": 7168,
+        "dtype": "bf16",
+        "launch_options": {
+          "TILE_M": 16,
+          "TILE_N": 64,
+          "TILE_K": 128,
+          "STAGES": 2,
+          "SPLIT_K": 14,
+          "BLOCK_M_WARPS": 1,
+          "BLOCK_N_WARPS": 2,
+          "BLOCK_K_WARPS": 1
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bf16"
+    },
+    {
+      "test_case_id": "case_0009",
+      "params": {
+        "M": 65,
+        "N": 1024,
+        "K": 8192,
+        "dtype": "bf16",
+        "launch_options": {
+          "TILE_M": 48,
+          "TILE_N": 64,
+          "TILE_K": 128,
+          "STAGES": 2,
+          "SPLIT_K": 8,
+          "BLOCK_M_WARPS": 1,
+          "BLOCK_N_WARPS": 2,
+          "BLOCK_K_WARPS": 1
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bf16"
+    },
+    {
+      "test_case_id": "case_0010",
+      "params": {
+        "M": 8,
+        "N": 5120,
+        "K": 2880,
+        "dtype": "bf16",
+        "launch_options": {
+          "TILE_M": 32,
+          "TILE_N": 128,
+          "TILE_K": 64,
+          "STAGES": 2,
+          "SPLIT_K": 9,
+          "BLOCK_M_WARPS": 2,
+          "BLOCK_N_WARPS": 2,
+          "BLOCK_K_WARPS": 1
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bf16"
+    },
+    {
+      "test_case_id": "case_0011",
+      "params": {
+        "M": 4096,
+        "N": 4096,
+        "K": 4096,
+        "dtype": "bf16",
+        "launch_options": {
+          "TILE_M": 128,
+          "TILE_N": 128,
+          "TILE_K": 64,
+          "STAGES": 2,
+          "SPLIT_K": 1,
+          "BLOCK_M_WARPS": 2,
+          "BLOCK_N_WARPS": 2,
+          "BLOCK_K_WARPS": 1
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bf16"
+    },
+    {
+      "test_case_id": "case_0012",
+      "params": {
+        "M": 8192,
+        "N": 8192,
+        "K": 8192,
+        "dtype": "bf16",
+        "launch_options": {
+          "TILE_M": 128,
+          "TILE_N": 128,
+          "TILE_K": 64,
+          "STAGES": 2,
+          "SPLIT_K": 1,
+          "BLOCK_M_WARPS": 2,
+          "BLOCK_N_WARPS": 2,
+          "BLOCK_K_WARPS": 1
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bf16"
+    },
+    {
+      "test_case_id": "case_0013",
+      "params": {
+        "M": 32,
+        "N": 2880,
+        "K": 2048,
+        "dtype": "bf16",
+        "launch_options": {
+          "TILE_M": 32,
+          "TILE_N": 64,
+          "TILE_K": 128,
+          "STAGES": 2,
+          "SPLIT_K": 4,
+          "BLOCK_M_WARPS": 1,
+          "BLOCK_N_WARPS": 2,
+          "BLOCK_K_WARPS": 1
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bf16"
+    }
+  ]
+}

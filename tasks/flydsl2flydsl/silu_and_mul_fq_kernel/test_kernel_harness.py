@@ -12,7 +12,7 @@ graph-first benchmark helper over `iters`.
 
 Correctness oracle = SELF-REFERENCE: the PRISTINE original kernel in this task
 dir (kernel.py) is loaded as the oracle, and the candidate kernel from
-$GEAK_WORK_DIR/kernel.py (fallback: this task dir) is run on identical inputs.
+the candidate path declared in config.yaml is run on identical inputs.
 The candidate's outputs (out_buf + out_scale_sorted) must match the oracle's
 exactly. Deriving a full torch SiLU+mul+fp4 reference is impractical, so
 self-reference is the accepted way to validate that an optimization preserves
@@ -36,56 +36,27 @@ from _aka_benchmark import benchmark_cuda_graph_or_events
 # GEAK bootstrap — make `from kernels...` imports work and load kernel.py
 # ============================================================================
 
-KERNEL_FILE = "kernel.py"
+from task_runtime import candidate_relative_path
+KERNEL_FILE = candidate_relative_path()
 
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
-_F2F_DIR = os.path.abspath(os.path.join(_THIS_DIR, ".."))  # tasks/flydsl2flydsl
+_F2F_DIR = _THIS_DIR  # tasks/flydsl2flydsl
 for _p in (_F2F_DIR, _THIS_DIR):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
 
 def _ensure_writable_home():
-    """FlyDSL caches compiled kernels under $HOME/.flydsl. In the GEAK
-    container $HOME is often read-only, so redirect HOME to a writable dir
-    (must happen before flydsl is imported)."""
-
-    def _writable(d):
-        if not d:
-            return False
-        try:
-            os.makedirs(d, exist_ok=True)
-            t = os.path.join(d, ".geak_write_test")
-            with open(t, "w") as fh:
-                fh.write("ok")
-            os.remove(t)
-            return True
-        except Exception:
-            return False
-
-    home = os.environ.get("HOME", "")
-    if home and _writable(home):
-        return
-    for cand in (
-        os.environ.get("GEAK_WORK_DIR", "").strip(),
-        os.path.join(tempfile.gettempdir(), "geak_flydsl_home"),
-    ):
-        if _writable(cand):
-            os.environ["HOME"] = cand
-            return
+    """The container configures the runtime cache."""
+    return None
 
 
 _ensure_writable_home()
 
 
 def _resolve_candidate_dir():
-    """Directory of the kernel under test: $GEAK_WORK_DIR, else this task dir."""
-    work_dir = os.environ.get("GEAK_WORK_DIR", "").strip()
-    candidates = [work_dir, _THIS_DIR]
-    for c in candidates:
-        if c and os.path.isfile(os.path.join(c, KERNEL_FILE)):
-            return c
-    return _THIS_DIR
+    """The framework supplies a separate frozen workspace for each role."""
+    return str(__import__("pathlib").Path(__file__).resolve().parent)
 
 
 def _load_kernel(kernel_dir, alias):
@@ -678,3 +649,130 @@ if __name__ == "__main__":
         run_benchmark(HARNESS_SHAPES, warmup=args.warmup, iters=args.iterations)
 
     print("=" * 62)
+
+
+# V2 action entrypoint; original timing boundaries and sample counts above apply.
+def arena_benchmark(shapes=None, warmup=10, iters=100, verbose=True):
+    import torch
+
+    if shapes is None:
+        shapes = HARNESS_SHAPES
+
+    mod = _load_kernel(_CANDIDATE_DIR, "silu_candidate")
+    if mod is None:
+        print("FAIL: cannot load kernel.py")
+        return report_cases
+
+    stream = torch.cuda.current_stream()
+    latencies, speedups, report_cases = [], [], []
+
+    print(f"Running benchmark on {len(shapes)} config(s), {warmup} warmup, {iters} iterations...")
+    print(f"{'Config (tok,inter,topk,q)':<30} {'Ref':>10} {'FlyDSL':>10} {'Speedup':>10}")
+    print("-" * 68)
+
+    for idx, cfg in enumerate(shapes):
+        token_num, inter_dim, topk, quant_mode = cfg
+        inputs = _make_inputs(cfg, seed=42)
+        out_buf, out_scale = _alloc_outputs(inputs)
+
+        # Compile ONCE (first launch triggers FlyDSL JIT), outside timing.
+        launcher = _build_launcher(mod, cfg)
+        _launch(launcher, inputs, out_buf, out_scale, stream)
+        torch.cuda.synchronize()
+
+        for _ in range(warmup):
+            _launch(launcher, inputs, out_buf, out_scale, stream)
+        torch.cuda.synchronize()
+
+        kernel_ms, kernel_bench_meta = benchmark_cuda_graph_or_events(
+            lambda: _launch(
+                launcher,
+                inputs,
+                out_buf,
+                out_scale,
+                torch.cuda.current_stream(),
+            ),
+            warmup=0,
+            repetition=iters,
+        )
+
+        # Display-only torch reference (silu(gate)*mul). Not the oracle.
+        x = inputs["x"]
+        for _ in range(min(warmup, 5)):
+            _ = _torch_ref_silu_mul(x, inter_dim)
+        torch.cuda.synchronize()
+        ref_ms, ref_bench_meta = benchmark_cuda_graph_or_events(
+            lambda: _torch_ref_silu_mul(x, inter_dim), warmup=0, repetition=iters
+        )
+
+        methods_match = kernel_bench_meta["benchmark_method"] == ref_bench_meta["benchmark_method"]
+        speedup = (
+            ref_ms / kernel_ms if methods_match and kernel_ms > 0 else None
+        )
+        speedup_display = (
+            format(speedup, ">8.2f") + "x"
+            if speedup is not None
+            else f"{'N/A':>9}"
+        )
+        latencies.append(kernel_ms)
+        if speedup is not None:
+            speedups.append(speedup)
+
+        rows = inputs["rows"]
+        # Bytes moved: read 2*inter_dim bf16 in, write inter_dim fp4 nibbles (+ scales).
+        in_bytes = rows * inter_dim * 2 * 2
+        out_bytes = rows * (inter_dim // 2 if quant_mode == "fp4" else inter_dim)
+        gbps = (in_bytes + out_bytes) / (kernel_ms * 1e-3) / 1e9
+
+        report_cases.append(
+            {
+                "test_case_id": f"test_case_{idx}",
+                "execution_time_ms": kernel_ms,
+                **kernel_bench_meta,
+                "reference_benchmark_method": ref_bench_meta["benchmark_method"],
+                "benchmark_method_consistent": kernel_bench_meta["benchmark_method"] == ref_bench_meta["benchmark_method"],
+                "shape": [token_num, inter_dim, topk],
+                "params": {
+                    "token_num": token_num,
+                    "inter_dim": inter_dim,
+                    "topk": topk,
+                    "quant_mode": quant_mode,
+                    "rows": rows,
+                },
+                "gbytes_per_s": gbps,
+            }
+        )
+
+        marker = " *" if speedup is not None and speedup > 1.0 else ""
+        if verbose:
+            print(
+                f"(t={token_num:>5}, i={inter_dim:>5}, k={topk}, {quant_mode})"
+                f" {ref_ms:>8.4f}ms {kernel_ms:>8.4f}ms {speedup_display}{marker}",
+                flush=True,
+            )
+
+        del out_buf, out_scale, inputs
+        torch.cuda.empty_cache()
+
+    geomean_latency = math.exp(sum(math.log(max(l, 1e-9)) for l in latencies) / len(latencies))
+    geomean_speedup = math.exp(sum(math.log(max(s, 1e-9)) for s in speedups) / len(speedups)) if speedups else None
+    geomean_speedup_display = (
+        format(geomean_speedup, ".2f") + "x"
+        if geomean_speedup is not None
+        else "N/A"
+    )
+
+    build_dir = Path(_CANDIDATE_DIR) / "build"
+    build_dir.mkdir(exist_ok=True)
+    with open(build_dir / "performance_report.json", "w") as f:
+        json.dump(report_cases, f, indent=2)
+
+    print("-" * 68)
+    print(f"{'Geometric mean latency:':<26} {geomean_latency:.4f} ms")
+    print(f"{'Geometric mean speedup:':<26} {geomean_speedup_display}")
+    print(f"GEAK_RESULT_LATENCY_MS={geomean_latency:.4f}", flush=True)
+    if geomean_speedup is not None:
+        print(f"GEAK_RESULT_GEOMEAN_SPEEDUP={geomean_speedup:.4f}", flush=True)
+
+    return report_cases
+    return report_cases
