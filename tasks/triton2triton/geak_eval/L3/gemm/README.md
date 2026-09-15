@@ -37,6 +37,12 @@ checks are unchanged. Full benchmark input order, seeds, allocation/reset behavi
 warmups, iterations and the canonical helper's median calculation remain unchanged.
 The adapter collects fresh device measurements directly from the benchmark calls;
 old `build/performance_report.json` files and log text cannot supply evidence.
+The protected `_arena_checks.py` rejects nonfinite candidate outputs during the
+original correctness run. It additionally compares the actual timed output
+against the same `F.linear` reference with `atol=1e-1, rtol=1e-1`. After timing,
+it changes the captured input buffers, poisons the output, replays that same graph,
+and compares again. Shape, dtype, device and finiteness must also match. This
+requires observable graph replay; unobservable event fallback fails explicitly.
 The original optional reference timings remain diagnostic; Arena uses the frozen
 initial implementation's measured times for scoring. No GPU qualification is
 implied by the CPU migration checks.

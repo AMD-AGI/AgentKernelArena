@@ -32,3 +32,9 @@ syntax and import/interface checks. Missing candidates, incomplete measurements 
 invalid timing fail; commands emit `arena-eval-v1`, never final Arena score reports.
 Canonical benchmark helpers must be materialized by Arena; do not edit their generated regions.
 
+The protected `_arena_checks.py` adds explicit output shape, dtype, device and
+finite-value checks to the original correctness harness. During performance it
+checks the actual captured output, changes the captured inputs, poisons the output,
+and checks the same graph's replay against the original RMS reference and tolerance.
+These extra checks run after timing. Observable graph replay is required; an
+unobservable event fallback fails instead of claiming replay validation.

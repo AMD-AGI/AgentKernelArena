@@ -12,12 +12,21 @@ def validate():
 
 
 def correctness(require):
+    from _arena_checks import checked_correctness
+
     original_indices = list(range(len(h.ALL_CONFIGS)))
-    require(h.run_correctness(original_indices), 'none', len(original_indices))
+    require(checked_correctness(h, original_indices), 'none', len(original_indices))
     additional = [i for i in range(len(h.ALL_CONFIGS)) if i not in original_indices]
     if additional:
-        require(h.run_correctness(additional), 'none', len(additional))
+        require(checked_correctness(h, additional), 'none', len(additional))
 
 
 def performance():
-    return h.run_benchmark(list(range(len(h.ALL_CONFIGS))))
+    from _arena_checks import checked_benchmark
+
+    benchmark = h.benchmark_cuda_graph_or_events
+    h.benchmark_cuda_graph_or_events = lambda fn, **kwargs: checked_benchmark(benchmark, fn, **kwargs)
+    try:
+        return h.run_benchmark(list(range(len(h.ALL_CONFIGS))))
+    finally:
+        h.benchmark_cuda_graph_or_events = benchmark

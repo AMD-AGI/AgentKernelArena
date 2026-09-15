@@ -104,6 +104,146 @@ def test_rms_reference_has_independent_known_answers(monkeypatch):
     assert not torch.allclose(result,torch.ones_like(result),atol=1e-2,rtol=1e-2)
 
 
+@pytest.mark.parametrize('invalid', ['shape', 'dtype', 'device', 'nonfinite', 'values'])
+def test_rms_output_contract_rejects_invalid_outputs(monkeypatch, invalid):
+    task = ROOT/'tasks/triton2triton/vllm/triton_rms_norm'
+    checks = module_at(task/'_arena_checks.py', monkeypatch)
+    harness = module_at(task/'scripts/task_runner.py', monkeypatch)
+    x = torch.tensor([[3., 4.], [4., 3.]])
+    weight = torch.tensor([2., 0.5])
+    expected = harness.reference_rms_norm(x, weight)
+    checks.check_output(expected, x, weight, 1e-6, harness.reference_rms_norm)
+    output = {'shape': expected[:1], 'dtype': expected.double(),
+              'device': torch.empty_like(expected, device='meta'),
+              'nonfinite': torch.full_like(expected, float('inf')),
+              'values': torch.zeros_like(expected)}[invalid]
+    with pytest.raises(AssertionError):
+        checks.check_output(output, x, weight, 1e-6, harness.reference_rms_norm)
+
+
+@pytest.mark.parametrize('mode', ['correct', 'incorrect_timed', 'stale', 'no_write', 'changing_wrong'])
+def test_rms_exact_timed_output_and_changed_input_replay(monkeypatch, mode):
+    """CPU simulation of captured buffers; this does not claim GPU execution."""
+    task = ROOT/'tasks/triton2triton/vllm/triton_rms_norm'
+    checks = module_at(task/'_arena_checks.py', monkeypatch)
+    harness = module_at(task/'scripts/task_runner.py', monkeypatch)
+    harness._TimedRun = SimpleNamespace
+    x = torch.tensor([[3., 4.], [4., 3.]])
+    weight = torch.tensor([2., 0.5])
+    eps = 1e-6
+    mod = SimpleNamespace(rms_norm=harness.reference_rms_norm)
+    original = mod.rms_norm
+    seen = []
+
+    def fn():
+        # Match the original harness, including its discarded return value.
+        mod.rms_norm(x, weight, eps=eps)
+
+    def benchmark(measured, *, timed_run, **kwargs):
+        seen.append(kwargs)
+        output = measured()
+        cached = output.clone()
+        if mode == 'incorrect_timed':
+            output.zero_()
+
+        def replay():
+            if mode == 'correct':
+                output.copy_(harness.reference_rms_norm(x, weight, eps))
+            elif mode == 'stale':
+                output.copy_(cached)
+            elif mode == 'changing_wrong':
+                output.fill_(x[0, 0])
+            return output
+
+        timed_run.outputs = output
+        timed_run.rerun = replay
+        return 0.25, {'benchmark_method': 'cuda_graph'}
+
+    if mode == 'correct':
+        ms, metadata = checks.checked_benchmark(harness, benchmark, fn, warmup=10, repetition=100)
+        assert ms == 0.25
+        assert metadata['timed_output_checked'] and metadata['perturbed_input_replay_checked']
+    else:
+        with pytest.raises(AssertionError):
+            checks.checked_benchmark(harness, benchmark, fn, warmup=10, repetition=100)
+    assert mod.rms_norm is original
+    assert seen == [{'warmup': 10, 'repetition': 100}]
+
+
+def test_rms_adapter_installs_output_checks(monkeypatch):
+    adapter = module_at(ROOT/'tasks/triton2triton/vllm/triton_rms_norm/_arena_eval.py', monkeypatch)
+    harness = adapter.load_harness()
+    assert harness.run_correctness.__module__ == '_rms_output_checks'
+    assert harness.run_performance.__module__ == '_rms_output_checks'
+
+
+@pytest.mark.parametrize('mode', ['correct', 'incorrect_timed', 'stale', 'no_write', 'changing_wrong'])
+def test_geak_gemm_exact_timed_output_and_changed_input_replay(monkeypatch, mode):
+    checks = module_at(ROOT/'tasks/triton2triton/geak_eval/L3/gemm/_arena_checks.py', monkeypatch)
+    monkeypatch.setitem(__import__('sys').modules, '_aka_benchmark', SimpleNamespace(TimedRun=SimpleNamespace))
+    x = torch.tensor([[1., 2.], [3., 4.]])
+    w = torch.tensor([[2., 1.], [4., 3.]])
+    bias = torch.tensor([1., 2.])
+    expected = torch.tensor([[5., 12.], [11., 26.]])
+    checks.check_output(expected, x, w, bias)
+    metadata = {'benchmark_method': 'cuda_graph'}
+    seen = []
+
+    def fn():
+        return torch.nn.functional.linear(x, w, bias)
+
+    def benchmark(measured, *, timed_run, **kwargs):
+        seen.append(kwargs)
+        output = measured()
+        cached = output.clone()
+        if mode == 'incorrect_timed':
+            output.zero_()
+
+        def replay():
+            if mode == 'correct':
+                output.copy_(torch.nn.functional.linear(x, w, bias))
+            elif mode == 'stale':
+                output.copy_(cached)
+            elif mode == 'changing_wrong':
+                output.fill_(x[0, 0])
+            return output
+
+        timed_run.outputs = output
+        timed_run.rerun = replay
+        return 0.5, metadata
+
+    if mode == 'correct':
+        ms, returned = checks.checked_benchmark(benchmark, fn, warmup=50, repetition=200)
+        assert ms == 0.5 and returned is metadata
+        assert metadata['timed_output_checked'] and metadata['perturbed_input_replay_checked']
+    else:
+        with pytest.raises(AssertionError):
+            checks.checked_benchmark(benchmark, fn, warmup=50, repetition=200)
+        assert 'perturbed_input_replay_checked' not in metadata
+    assert seen == [{'warmup': 50, 'repetition': 200}]
+
+
+@pytest.mark.parametrize('value', [1., float('inf'), float('nan')])
+def test_geak_gemm_correctness_rejects_nonfinite_output(monkeypatch, value):
+    checks = module_at(ROOT/'tasks/triton2triton/geak_eval/L3/gemm/_arena_checks.py', monkeypatch)
+    original = lambda: torch.tensor([[value]])
+    harness = SimpleNamespace(gemm_a16w16=original)
+    visited = []
+
+    def run(indices):
+        visited.extend(indices)
+        # Even a harness comparing matching infinities must not bypass the gate.
+        torch.testing.assert_close(harness.gemm_a16w16(), original(), equal_nan=True)
+
+    harness.run_correctness = run
+    if value == 1.:
+        assert checks.checked_correctness(harness, [0, 1, 2]) is None
+    else:
+        with pytest.raises(AssertionError, match='finite tensor'):
+            checks.checked_correctness(harness, [0, 1, 2])
+    assert visited == [0, 1, 2] and harness.gemm_a16w16 is original
+
+
 ROCM = sorted([*(ROOT/'tasks/triton2triton/rocmbench').rglob('config.yaml'),
                *(ROOT/'tasks/instruction2triton').rglob('config.yaml')])
 
