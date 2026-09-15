@@ -146,6 +146,14 @@ def gemma_rms_layernorm_reference(x, weight, eps=1e-5):
     return x * torch.rsqrt(variance + eps) * (weight + 1.0)
 
 
+def _forward_for_timing(layernorm, x):
+    # Keep the original forward and its exact output allocation. Detach only
+    # the Python autograd view so post-timing poison/replay can inspect the
+    # same storage without invalidating a custom backward view. No copy or
+    # additional GPU operation is introduced into the measured workload.
+    return fast_rms_layernorm(layernorm, x, gemma=False).detach()
+
+
 def benchmark_fn(fn, warmup=50, iterations=200):
     """Time a callable with graph replay, falling back to CUDA events."""
     return benchmark_cuda_graph_or_events(
@@ -285,7 +293,7 @@ def run_benchmark(shapes, warmup=50, iterations=200):
 
         kernel_ms, kernel_meta = checked_benchmark(
             benchmark_cuda_graph_or_events,
-            lambda: fast_rms_layernorm(layernorm, x, gemma=False),
+            lambda: _forward_for_timing(layernorm, x),
             inputs={'x': x, 'weight': layernorm.weight},
             reference=lambda saved: rms_layernorm_reference(saved['x'], saved['weight'], eps=1e-5),
             check=lambda actual, expected: torch.testing.assert_close(actual, expected, atol=1e-2, rtol=1e-2),

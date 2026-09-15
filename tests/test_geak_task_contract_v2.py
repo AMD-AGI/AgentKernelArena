@@ -252,3 +252,30 @@ class FP8VariantOracleTests(unittest.TestCase):
     def test_rms_missing_optional_outputs_stay_none(self):
         out = self.oracle.rms({'x1': torch.ones(2, 128), 'w1': torch.ones(128)}, self.dtype, show=False)
         self.assertEqual(out[1:], (None, None, None))
+
+
+class AutogradOutputStorageTests(unittest.TestCase):
+    def test_timing_handle_preserves_custom_view_storage_without_autograd_replay_error(self):
+        class Forward(torch.autograd.Function):
+            @staticmethod
+            def forward(ctx, x):
+                return (x * 3).view_as(x)
+        original = []
+        def public(layernorm, x, gemma):
+            self.assertFalse(gemma)
+            original.append(Forward.apply(x))
+            return original[-1]
+        wrapped = function(TASKS / 'L2/fast_rms_layernorm/test_kernel_harness.py',
+                           '_forward_for_timing', fast_rms_layernorm=public)
+        x = torch.ones(2, requires_grad=True)
+        output = wrapped(None, x)
+        self.assertEqual(output.data_ptr(), original[0].data_ptr())
+        self.assertFalse(output.requires_grad)
+        with torch.no_grad():
+            output.fill_(float('nan'))
+            output.copy_(torch.full((2,), 3.))
+        torch.testing.assert_close(output, torch.full((2,), 3.))
+        # The original autograd view becomes invalid for arithmetic after this
+        # legitimate storage reuse, reproducing the reported GPU guard error.
+        with self.assertRaises(RuntimeError):
+            original[0] - 3

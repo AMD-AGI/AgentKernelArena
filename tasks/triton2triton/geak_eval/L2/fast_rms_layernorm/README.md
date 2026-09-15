@@ -65,3 +65,9 @@ place and poisoning writable outputs. Its complete outputs must match a newly
 computed private oracle. Every read-only input is checked byte-for-byte and
 restored in `finally`, including failure paths. These checks run outside timing
 and identically for the frozen initial candidate and submitted candidate.
+
+The forward timing wrapper detaches the returned autograd view without copying
+its storage. This leaves the original GPU launch and allocation unchanged while
+allowing post-timing poisoning and replay to inspect that same output buffer.
+The optimization score is explicitly standard forward only; Gemma and backward
+are required preserved functionality verified by unscored correctness controls.
