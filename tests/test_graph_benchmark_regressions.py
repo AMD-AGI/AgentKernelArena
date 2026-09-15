@@ -94,7 +94,7 @@ def test_flydsl_topk_fallback_matches_allocating_output_contract():
         assert "fused_idx = torch.empty(" in run_fused, harness
 
 
-def test_hipblaslt_starter_baselines_are_predetermined_event_only():
+def test_hipblaslt_baseline_and_candidate_share_predetermined_event_policy():
     tasks = [
         "batched_gemm_a8w8_kernel",
         "batched_gemm_bf16_kernel",
@@ -111,7 +111,8 @@ def test_hipblaslt_starter_baselines_are_predetermined_event_only():
     for task in tasks:
         harness = ROOT / "tasks/torch2flydsl" / task / "test_kernel_harness.py"
         source = harness.read_text()
-        assert "use_graph = has_kernel" in source, harness
+        assert "use_graph = has_kernel" not in source, harness
+        assert source.count("use_graph = False") == 2, harness
         assert "capture_unsafe_aiter_hipblaslt" in source, harness
 
 
