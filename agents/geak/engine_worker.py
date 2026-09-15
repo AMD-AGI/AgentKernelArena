@@ -20,6 +20,7 @@ def run(job_path: Path) -> int:
     handoff = bridge.job["engine"]
     options = bridge.job["options"]
     result_path = bridge.root / "engine_result.json"
+    runtime = {"requested_model": options.get("model")}
     try:
         script = Path(handoff["script_path"])
         args = handoff["args"]
@@ -29,6 +30,7 @@ def run(job_path: Path) -> int:
             settings=json.dumps(DEFAULT_SETTINGS), cli_path=options["claude_cli_path"],
             timeout_seconds=bridge.remaining(), done_grace_seconds=min(30, bridge.remaining()),
             done_poll_seconds=0.25, quiet=True,
+            runtime_metadata=runtime,
         )
         returned = _read_json(bridge.eval_dir / "workflow_return.json")
         if returned is None:
@@ -41,11 +43,11 @@ def run(job_path: Path) -> int:
             raise RuntimeError("GEAK returned an unknown terminal status")
         write_json(result_path, {"status": status,
                                 "mode": args["mode"], "target_language": args["target_language"],
-                                "workflow_completed": True})
+                                "workflow_completed": True, "runtime": runtime})
         return 0 if status == "accepted" else 1
     except Exception as exc:
         write_json(result_path, {"status": "FAILED", "error_type": type(exc).__name__,
-                                "workflow_completed": False})
+                                "workflow_completed": False, "runtime": runtime})
         return 1
 
 

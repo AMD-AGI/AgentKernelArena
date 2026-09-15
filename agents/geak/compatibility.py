@@ -59,7 +59,8 @@ def adapt_lane(source: str) -> str:
     marker = "async function agentT(p, o) {"
     if source.count(marker) != 1:
         raise ValueError("GEAK agent extension point changed")
-    source = source.replace(marker, marker + "\n  p += '\\n\\n' + A.arena_contract;", 1)
+    source = source.replace(marker, marker + "\n  p += '\\n\\n' + A.arena_contract;"
+                            "\n  if (A.arena_model) o = { ...o, model: A.arena_model };", 1)
     # A failed clock must never turn a bounded run into an unlimited one.
     source = source.replace("return Infinity;\n  }\n  return DEADLINE_EPOCH - r.epoch;",
                             "return 0;\n  }\n  return DEADLINE_EPOCH - r.epoch;")
@@ -164,7 +165,7 @@ def prepare_engine(checkout: Path, bridge: Bridge, *, python: str, options: dict
         "warm_start": "off", "update_experience": "off", "use_learned_kb": "false",
         "kb_remote": "off",
         "dra_enabled": "false", "use_expert_skills": "false", "frozen_oracle": "false",
-        "arena_contract": contract, "task": contract,
+        "arena_contract": contract, "task": contract, "arena_model": options.get("model"),
         "arena_setup": {"eval_dir": str(bridge.eval_dir),
                         "workspace": str(bridge.eval_dir / "workspace"),
                         "baseline_dir": str(bridge.context.baseline), "kernel_name": "arena_candidate",

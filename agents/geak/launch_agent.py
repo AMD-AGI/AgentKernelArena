@@ -174,6 +174,11 @@ def launch_agent(eval_config: dict, task_config_dir: str, workspace: str) -> str
         engine = {"status": raw_engine.get("status") if raw_engine.get("status") in
                   {"accepted", "flagged", "author_failed", "no_baseline", "FAILED"} else "MISSING",
                   "workflow_completed": raw_engine.get("workflow_completed") is True}
+        runtime = raw_engine.get("runtime")
+        if isinstance(runtime, dict):
+            engine["runtime"] = {key: runtime[key] for key in (
+                "requested_model", "sdk_version", "cli_version", "init_model",
+                "assistant_models", "workflow_models") if key in runtime}
         status["engine"] = engine
         # A full canonical candidate includes the author seed, unlike a patch
         # relative to its first commit. Preserve correct no-gain implementations.

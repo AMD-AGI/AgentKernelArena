@@ -444,6 +444,7 @@ def test_engine_worker_requires_truthful_terminal_result(task_factory, monkeypat
     def sdk(prompt, **kwargs):
         assert kwargs["quiet"] is True
         assert 0 < kwargs["timeout_seconds"] <= bridge.remaining() + 0.1
+        kwargs["runtime_metadata"].update(init_model="probe-model", assistant_models=["probe-model"])
         result = {"eval_dir": str(bridge.eval_dir), "validation_status": "accepted", "final_geomean": 0.5,
                   "final_patch": str(bridge.eval_dir / "final_patch.diff")}
         if terminal == "wrong_path":
@@ -459,6 +460,54 @@ def test_engine_worker_requires_truthful_terminal_result(task_factory, monkeypat
     assert code == (0 if terminal == "valid" else 1)
     assert "FAKE_PROVIDER_SECRET_DO_NOT_LOG" not in output
     assert json.loads(output)["workflow_completed"] is (terminal == "valid")
+    assert json.loads(output)["runtime"]["assistant_models"] == ["probe-model"]
+
+
+def test_runtime_identity_records_observed_models_without_credentials(tmp_path):
+    from types import SimpleNamespace
+    from agents.geak_v4.workflow_runner import _record_runtime_identity
+
+    identity = {}
+    def message(name, **kwargs):
+        return type(name, (SimpleNamespace,), {})(**kwargs)
+    _record_runtime_identity(message("SystemMessage", subtype="init", data={
+        "model": "configured-alias", "claude_code_version": "probe-cli",
+        "authToken": "secret-never-recorded"}), identity)
+    _record_runtime_identity(message("AssistantMessage", model="actual-model"), identity)
+    _record_runtime_identity(message("AssistantMessage", model="actual-model"), identity)
+    path = tmp_path / "workflow-output.json"
+    write_json(path, {"workflowProgress": [{"model": "actual-child-model", "promptPreview": "private"}]})
+    _record_runtime_identity(message("TaskNotificationMessage", status="completed", output_file=str(path)), identity)
+    assert identity == {"init_model": "configured-alias", "cli_version": "probe-cli",
+                        "assistant_models": ["actual-model"], "workflow_models": ["actual-child-model"]}
+
+
+def test_runtime_identity_handles_synchronous_and_unknown_workflow_output(tmp_path):
+    from types import SimpleNamespace
+    from agents.geak_v4.workflow_runner import _record_runtime_identity
+
+    def message(name, **kwargs):
+        return type(name, (SimpleNamespace,), {})(**kwargs)
+    identity = {}
+    _record_runtime_identity(message("SystemMessage", subtype="init", data=None), identity)
+    path = tmp_path / "output.json"
+    write_json(path, {"workflowProgress": None})
+    _record_runtime_identity(message("TaskNotificationMessage", status="completed", output_file=str(path)), identity)
+    payload = json.dumps({"workflowProgress": [{"model": "observed-child"}, None, {"model": 42}]})
+    _record_runtime_identity(message("AssistantMessage", content=[message("TextBlock", text=payload)]), identity)
+    assert identity == {}
+    _record_runtime_identity(message("UserMessage", content=[
+        message("ToolResultBlock", content="unstructured"),
+        message("ToolResultBlock", content=[{"type": "text", "text": payload}])]), identity)
+    assert identity == {"workflow_models": ["observed-child"]}
+    # Real CLI completion can arrive while its output JSON is still partial.
+    path.write_text('{"workflowProgress": [')
+    notification = message("TaskNotificationMessage", status="completed", output_file=str(path))
+    _record_runtime_identity(notification, identity)
+    assert identity == {"workflow_models": ["observed-child"]}
+    write_json(path, {"workflowProgress": [{"model": "late-child"}]})
+    _record_runtime_identity(notification, identity)
+    assert identity == {"workflow_models": ["late-child", "observed-child"]}
 
 
 def test_compatibility_rejects_unknown_engine_source():
@@ -480,10 +529,12 @@ def upstream():
 @pytest.mark.parametrize("state", ["implemented", "unimplemented"])
 def test_pinned_upstream_preparation(task_factory, upstream, language, state):
     bridge = task_factory(language, state)
+    bridge.job["options"]["model"] = "explicit-model"
     engine = prepare_engine(upstream, bridge, python=sys.executable, options=bridge.job["options"])
     args = engine["args"]
     assert args["mode"] == ("author" if state == "unimplemented" else "optimize")
     assert args["target_language"] == language
+    assert args["arena_model"] == "explicit-model"
     assert args["arena_setup"]["baseline_dir"] == str(bridge.context.baseline)
     assert args["apply_to_original"] == "false"
     assert args["warm_start"] == args["update_experience"] == "off"
@@ -526,6 +577,7 @@ def test_actual_geak_dispatcher_and_lane_run_on_cpu(task_factory, upstream, tmp_
     if not node:
         pytest.skip("Node required for the real GEAK JavaScript interface probe")
     bridge = task_factory(language, state)
+    bridge.job["options"]["model"] = "explicit-model"
     engine = prepare_engine(upstream, bridge, python=sys.executable, options=bridge.job["options"])
     args = engine["args"]
     args.update(deadline_epoch=0, agent_timeout_ms=0)
@@ -540,6 +592,7 @@ const globals = {
     const label = options.label;
     calls.push(label);
     if (!prompt.includes('Arena task contract')) throw Error('missing task contract');
+    if (options.model !== 'explicit-model') throw Error('wrong child model');
     if (label.startsWith('author:')) return {authored: true, correctness: 'pass'};
     if (label === 'tech_lead:analyze') return {kernel_type:'arbitrary', roadmap_summary:'probe'};
     if (label.includes('profile_engineer')) return {bottleneck:'unknown',top_opportunities:[],device:'gfx950'};

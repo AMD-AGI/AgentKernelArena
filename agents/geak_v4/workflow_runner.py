@@ -19,6 +19,7 @@ Claude Agent SDK or contacting a model.
 from __future__ import annotations
 
 import argparse
+import importlib.metadata
 import json
 import math
 import os
@@ -439,6 +440,47 @@ def _completed_producer_error(
     return None
 
 
+def _record_runtime_identity(message: Any, identity: dict[str, Any]) -> None:
+    """Retain observed CLI/model identity without conversation or auth material."""
+    def record_workflow_models(wrapper: Any) -> None:
+        rows = wrapper.get("workflowProgress") if isinstance(wrapper, dict) else None
+        if not isinstance(rows, list):
+            return
+        models = {row["model"] for row in rows
+                  if isinstance(row, dict) and isinstance(row.get("model"), str)}
+        if models:
+            identity["workflow_models"] = sorted(set(identity.get("workflow_models", [])) | models)
+
+    name = type(message).__name__
+    if name == "SystemMessage" and getattr(message, "subtype", None) == "init":
+        data = getattr(message, "data", {})
+        for source, target in (("model", "init_model"), ("claude_code_version", "cli_version")):
+            value = data.get(source) if isinstance(data, dict) else None
+            if isinstance(value, str):
+                identity[target] = value
+    if name == "AssistantMessage":
+        model = getattr(message, "model", None)
+        if isinstance(model, str):
+            identity["assistant_models"] = sorted(set(identity.get("assistant_models", [])) | {model})
+    if name == "TaskNotificationMessage" and getattr(message, "status", None) == "completed":
+        output = getattr(message, "output_file", None)
+        wrapper = _read_json(Path(output)) if output else None
+        record_workflow_models(wrapper)
+    # Fast Workflows may complete synchronously without a task notification.
+    # Read structured tool output only; assistant prose is not runtime evidence.
+    if name == "UserMessage":
+        for block in getattr(message, "content", []) or []:
+            if type(block).__name__ != "ToolResultBlock":
+                continue
+            for text in _iter_message_text(block):
+                if len(text) > _JSON_SIZE_LIMIT:
+                    continue
+                try:
+                    record_workflow_models(json.loads(text))
+                except json.JSONDecodeError:
+                    pass
+
+
 def invoke_via_sdk(
     prompt: str,
     *,
@@ -452,6 +494,7 @@ def invoke_via_sdk(
     done_grace_seconds: float,
     done_poll_seconds: float,
     quiet: bool = False,
+    runtime_metadata: dict[str, Any] | None = None,
 ) -> str:
     """Invoke Claude Code while surviving synchronous and background Workflows."""
     try:
@@ -475,6 +518,9 @@ def invoke_via_sdk(
     sdk_env = {
         "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1",
     }
+    if runtime_metadata is not None:
+        runtime_metadata.update(requested_model=model,
+                                sdk_version=importlib.metadata.version("claude-agent-sdk"))
 
     options = ClaudeAgentOptions(
         model=model,
@@ -489,6 +535,7 @@ def invoke_via_sdk(
 
     async def _run() -> str:
         chunks: list[str] = []
+        runtime_notifications: list[Any] = []
         captured_chars = 0
         pending: set[str] = set()
         state = {
@@ -507,6 +554,8 @@ def invoke_via_sdk(
                     nonlocal captured_chars
                     try:
                         async for message in client.receive_messages():
+                            if runtime_metadata is not None:
+                                _record_runtime_identity(message, runtime_metadata)
                             for text in _iter_message_text(message):
                                 remaining = _TRANSCRIPT_SIZE_LIMIT - captured_chars
                                 if remaining > 0:
@@ -528,6 +577,8 @@ def invoke_via_sdk(
                                     pending.add(str(task_id))
                                     state["background_started"] = True
                             elif name == "TaskNotificationMessage":
+                                if runtime_metadata is not None:
+                                    runtime_notifications.append(message)
                                 state["terminal_task_seen"] = True
                                 task_id = getattr(message, "task_id", None)
                                 if task_id:
@@ -596,6 +647,11 @@ def invoke_via_sdk(
                             break
                         await anyio.sleep(max(0.1, done_poll_seconds))
                     task_group.cancel_scope.cancel()
+        # CLI 2.1.272 can notify completion before the JSON output file has
+        # finished being written. Read it again after the lifecycle completes.
+        if runtime_metadata is not None:
+            for notification in runtime_notifications:
+                _record_runtime_identity(notification, runtime_metadata)
         return "\n".join(chunks)[:_TRANSCRIPT_SIZE_LIMIT]
 
     return anyio.run(_run)
