@@ -76,7 +76,7 @@ def run_compile():
         return False, str(e)
 
 
-def run_correctness():
+def run_correctness(*, case_index=None):
     import torch
     try:
         mod = load_module()
@@ -87,6 +87,8 @@ def run_correctness():
     dtype = torch.float16
 
     for i, (B, lengths_list, D) in enumerate(TEST_SHAPES):
+        if case_index is not None and i != case_index:
+            continue
         try:
             torch.manual_seed(42 + i)
 

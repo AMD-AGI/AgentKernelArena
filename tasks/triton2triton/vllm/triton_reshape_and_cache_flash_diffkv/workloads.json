@@ -1,0 +1,165 @@
+{
+  "version": 1,
+  "candidate_symbols": {
+    "source/triton_reshape_and_cache_flash_diffkv.py": [
+      {
+        "name": "reshape_and_cache_kernel_flash_diffkv",
+        "jit": true
+      }
+    ]
+  },
+  "case_table": "TEST_SHAPES",
+  "input_table": [
+    [
+      32,
+      8,
+      64,
+      32,
+      16,
+      16
+    ],
+    [
+      64,
+      16,
+      128,
+      64,
+      32,
+      16
+    ],
+    [
+      128,
+      32,
+      64,
+      64,
+      64,
+      16
+    ],
+    [
+      256,
+      8,
+      128,
+      128,
+      32,
+      32
+    ],
+    [
+      48,
+      16,
+      64,
+      128,
+      24,
+      8
+    ]
+  ],
+  "cases": [
+    {
+      "test_case_id": "perf1",
+      "dtype": "float16,float32,int64",
+      "params": {
+        "case_index": 0,
+        "configuration": [
+          32,
+          8,
+          64,
+          32,
+          16,
+          16
+        ],
+        "configuration_names": "(num_tokens, num_heads, hk, hv, num_blocks, block_size)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf2",
+      "dtype": "float16,float32,int64",
+      "params": {
+        "case_index": 1,
+        "configuration": [
+          64,
+          16,
+          128,
+          64,
+          32,
+          16
+        ],
+        "configuration_names": "(num_tokens, num_heads, hk, hv, num_blocks, block_size)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf3",
+      "dtype": "float16,float32,int64",
+      "params": {
+        "case_index": 2,
+        "configuration": [
+          128,
+          32,
+          64,
+          64,
+          64,
+          16
+        ],
+        "configuration_names": "(num_tokens, num_heads, hk, hv, num_blocks, block_size)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf4",
+      "dtype": "float16,float32,int64",
+      "params": {
+        "case_index": 3,
+        "configuration": [
+          256,
+          8,
+          128,
+          128,
+          32,
+          32
+        ],
+        "configuration_names": "(num_tokens, num_heads, hk, hv, num_blocks, block_size)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf5",
+      "dtype": "float16,float32,int64",
+      "params": {
+        "case_index": 4,
+        "configuration": [
+          48,
+          16,
+          64,
+          128,
+          24,
+          8
+        ],
+        "configuration_names": "(num_tokens, num_heads, hk, hv, num_blocks, block_size)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    }
+  ],
+  "migration": {
+    "original_harness_sha256": "cf288392da354e2512107dbbc8622cda91001c3e864ef8fdb39eb6b6604b1193",
+    "original_correctness_sha256": "606d474f618d6090675bbadc9f7a8b1269b77fc7edd39821be6005dafb58699e"
+  }
+}

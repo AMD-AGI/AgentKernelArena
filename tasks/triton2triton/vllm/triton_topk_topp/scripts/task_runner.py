@@ -172,12 +172,14 @@ def prepare_direct_launch(mod, logits, k, p, mask_value=float("-inf")):
         "p_ptr": p_ptr,
     }
 
-def run_correctness():
+def run_correctness(*, case_index=None):
     import torch
     try: mod = load_module()
     except Exception as e: return False, f"Failed to load module: {e}"
     device = "cuda"
     for i, (batch_size, vocab_size) in enumerate(TEST_SHAPES):
+        if case_index is not None and i != case_index:
+            continue
         try:
             torch.manual_seed(42 + i)
             logits = torch.randn(batch_size, vocab_size, device=device, dtype=torch.float32)

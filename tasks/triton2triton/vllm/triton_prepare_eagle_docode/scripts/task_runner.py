@@ -125,7 +125,7 @@ def run_compile():
         return False, str(e)
 
 
-def run_correctness():
+def run_correctness(*, case_index=None):
     import torch
     try:
         mod = load_module()
@@ -134,6 +134,8 @@ def run_correctness():
 
     device = "cuda"
     for i, (nr, tt, hs, mml, mnr) in enumerate(TEST_SHAPES):
+        if case_index is not None and i != case_index:
+            continue
         try:
             inputs_gpu = make_inputs(nr, tt, hs, mml, mnr, device)
             inputs_cpu = make_inputs(nr, tt, hs, mml, mnr, "cpu")

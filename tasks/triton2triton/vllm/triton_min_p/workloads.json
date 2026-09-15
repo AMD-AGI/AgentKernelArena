@@ -1,0 +1,125 @@
+{
+  "version": 1,
+  "candidate_symbols": {
+    "source/triton_min_p.py": [
+      {
+        "name": "_min_p_kernel",
+        "jit": true
+      }
+    ]
+  },
+  "case_table": "TEST_SHAPES",
+  "input_table": [
+    [
+      4,
+      256
+    ],
+    [
+      8,
+      1024
+    ],
+    [
+      16,
+      4096
+    ],
+    [
+      32,
+      8192
+    ],
+    [
+      64,
+      32768
+    ]
+  ],
+  "cases": [
+    {
+      "test_case_id": "perf1",
+      "dtype": "float32,int32",
+      "params": {
+        "case_index": 0,
+        "configuration": [
+          4,
+          256
+        ],
+        "configuration_names": "(batch, vocab)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf2",
+      "dtype": "float32,int32",
+      "params": {
+        "case_index": 1,
+        "configuration": [
+          8,
+          1024
+        ],
+        "configuration_names": "(batch, vocab)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf3",
+      "dtype": "float32,int32",
+      "params": {
+        "case_index": 2,
+        "configuration": [
+          16,
+          4096
+        ],
+        "configuration_names": "(batch, vocab)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf4",
+      "dtype": "float32,int32",
+      "params": {
+        "case_index": 3,
+        "configuration": [
+          32,
+          8192
+        ],
+        "configuration_names": "(batch, vocab)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf5",
+      "dtype": "float32,int32",
+      "params": {
+        "case_index": 4,
+        "configuration": [
+          64,
+          32768
+        ],
+        "configuration_names": "(batch, vocab)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    }
+  ],
+  "migration": {
+    "original_harness_sha256": "675f35aa887859aeb47ba0a8bbc7f2ea0934d49da25818f06056e88e9f498c40",
+    "original_correctness_sha256": "2dc9c8a63cc384ab798513874b4bf2967bca8a06d29b5c2c910aa9452dc33acb"
+  }
+}

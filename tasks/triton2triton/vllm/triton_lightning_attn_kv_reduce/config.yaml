@@ -1,39 +1,19 @@
-source_file_path:
+schema_version: 2
+description: Optimize triton_lightning_attn_kv_reduce with the original Triton operator contract.
+candidate:
+  language: triton
+  initial_state: implemented
+  editable:
   - source/triton_lightning_attn_kv_reduce.py
-
-target_kernel_functions:
-  - _fwd_kv_reduce
-
-compile_command:
-  - python3 scripts/task_runner.py compile
-
-correctness_command:
-  - python3 scripts/task_runner.py correctness
-
-performance_command:
-  - python3 scripts/task_runner.py performance
-
-task_type: triton2triton
-
-task_result_template: null
-
-prompt:
-  source_code: null
-  instructions: |
-    Optimize the Triton Lightning Attention KV reduce kernel `_fwd_kv_reduce`
-    for maximum GPU throughput while maintaining numerical correctness.
-
-    The kernel reduces partial KV outer products from parallel computation into
-    final accumulated KV state using a prefix sum with exponential decay. It also
-    updates the KV history carry-over tensor.
-
-    Key parameters:
-    - BLOCK: main block size (default 256)
-    - D_FBLOCK, E_FBLOCK: feature block dimensions
-    - The kernel processes blocks sequentially to compute prefix sums
-
-    Constraints:
-    - Must maintain the same function signature for `lightning_attn_kv_reduce_forward`
-    - Output must match reference within atol=1e-2, rtol=1e-2 for float32
-    - The kernel must handle arbitrary sequence lengths
-  cheatsheet: null
+  entrypoints:
+  - file: source/triton_lightning_attn_kv_reduce.py
+    kind: function
+    symbol: _fwd_kv_reduce
+baseline:
+  kind: initial_candidate
+  language: triton
+evaluation:
+  runner:
+  - python3
+  - _arena_eval.py
+  workloads: workloads.json

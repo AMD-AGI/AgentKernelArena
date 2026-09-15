@@ -97,7 +97,7 @@ def run_compile():
         return False, str(e)
 
 
-def run_correctness():
+def run_correctness(*, case_index=None):
     import torch
     try:
         mod = load_module()
@@ -106,6 +106,8 @@ def run_correctness():
 
     device = "cuda"
     for i, seed in enumerate(SEEDS):
+        if case_index is not None and i != case_index:
+            continue
         try:
             args, kwargs = gen_inputs(seed, device)
             args_cpu = tuple(a.float().cpu() if isinstance(a, torch.Tensor) else a for a in args)

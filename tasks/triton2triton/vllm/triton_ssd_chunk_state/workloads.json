@@ -1,0 +1,165 @@
+{
+  "version": 1,
+  "candidate_symbols": {
+    "source/triton_ssd_chunk_state.py": [
+      {
+        "name": "_chunk_state_fwd_kernel",
+        "jit": true
+      }
+    ]
+  },
+  "case_table": "TEST_SHAPES",
+  "input_table": [
+    [
+      128,
+      4,
+      32,
+      2,
+      16,
+      64
+    ],
+    [
+      256,
+      8,
+      64,
+      4,
+      32,
+      64
+    ],
+    [
+      512,
+      4,
+      32,
+      2,
+      16,
+      128
+    ],
+    [
+      256,
+      8,
+      64,
+      2,
+      64,
+      64
+    ],
+    [
+      384,
+      4,
+      128,
+      2,
+      32,
+      128
+    ]
+  ],
+  "cases": [
+    {
+      "test_case_id": "perf1",
+      "dtype": "float16,float32,int32",
+      "params": {
+        "case_index": 0,
+        "configuration": [
+          128,
+          4,
+          32,
+          2,
+          16,
+          64
+        ],
+        "configuration_names": "(seqlen, nheads, headdim, ngroups, dstate, chunk_size)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf2",
+      "dtype": "float16,float32,int32",
+      "params": {
+        "case_index": 1,
+        "configuration": [
+          256,
+          8,
+          64,
+          4,
+          32,
+          64
+        ],
+        "configuration_names": "(seqlen, nheads, headdim, ngroups, dstate, chunk_size)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf3",
+      "dtype": "float16,float32,int32",
+      "params": {
+        "case_index": 2,
+        "configuration": [
+          512,
+          4,
+          32,
+          2,
+          16,
+          128
+        ],
+        "configuration_names": "(seqlen, nheads, headdim, ngroups, dstate, chunk_size)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf4",
+      "dtype": "float16,float32,int32",
+      "params": {
+        "case_index": 3,
+        "configuration": [
+          256,
+          8,
+          64,
+          2,
+          64,
+          64
+        ],
+        "configuration_names": "(seqlen, nheads, headdim, ngroups, dstate, chunk_size)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf5",
+      "dtype": "float16,float32,int32",
+      "params": {
+        "case_index": 4,
+        "configuration": [
+          384,
+          4,
+          128,
+          2,
+          32,
+          128
+        ],
+        "configuration_names": "(seqlen, nheads, headdim, ngroups, dstate, chunk_size)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    }
+  ],
+  "migration": {
+    "original_harness_sha256": "81d8f2bd052fd5b2c6da28b0138a93ec246212147fc0eecca28d16c89f0a5d57",
+    "original_correctness_sha256": "43fd6a69e8ccee881e3f3cb8e1180a8c3ea51d6c66d4e41dfcdd2819f318f72e"
+  }
+}

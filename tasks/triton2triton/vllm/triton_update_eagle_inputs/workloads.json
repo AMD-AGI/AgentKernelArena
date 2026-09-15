@@ -1,0 +1,135 @@
+{
+  "version": 1,
+  "candidate_symbols": {
+    "source/triton_update_eagle_inputs.py": [
+      {
+        "name": "_update_eagle_inputs_kernel",
+        "jit": true
+      }
+    ]
+  },
+  "case_table": "TEST_SHAPES",
+  "input_table": [
+    [
+      4,
+      256,
+      2048
+    ],
+    [
+      8,
+      512,
+      4096
+    ],
+    [
+      16,
+      768,
+      4096
+    ],
+    [
+      32,
+      1024,
+      8192
+    ],
+    [
+      64,
+      2048,
+      8192
+    ]
+  ],
+  "cases": [
+    {
+      "test_case_id": "perf1",
+      "dtype": "float16,int32,int64",
+      "params": {
+        "case_index": 0,
+        "configuration": [
+          4,
+          256,
+          2048
+        ],
+        "configuration_names": "(nr, hs, mml)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf2",
+      "dtype": "float16,int32,int64",
+      "params": {
+        "case_index": 1,
+        "configuration": [
+          8,
+          512,
+          4096
+        ],
+        "configuration_names": "(nr, hs, mml)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf3",
+      "dtype": "float16,int32,int64",
+      "params": {
+        "case_index": 2,
+        "configuration": [
+          16,
+          768,
+          4096
+        ],
+        "configuration_names": "(nr, hs, mml)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf4",
+      "dtype": "float16,int32,int64",
+      "params": {
+        "case_index": 3,
+        "configuration": [
+          32,
+          1024,
+          8192
+        ],
+        "configuration_names": "(nr, hs, mml)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf5",
+      "dtype": "float16,int32,int64",
+      "params": {
+        "case_index": 4,
+        "configuration": [
+          64,
+          2048,
+          8192
+        ],
+        "configuration_names": "(nr, hs, mml)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    }
+  ],
+  "migration": {
+    "original_harness_sha256": "9d9782c0cae9f8c5e0c76fbb77f85979924649262e8ebc0f9218d701ea00e294",
+    "original_correctness_sha256": "24c46c640e6806c930260bc9b4b9c2647adb2c6b59e0b7b84edad4f1ca9321c6"
+  }
+}

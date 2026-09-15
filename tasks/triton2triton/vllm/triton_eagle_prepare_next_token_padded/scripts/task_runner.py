@@ -108,7 +108,7 @@ def run_compile():
         return False, str(e)
 
 
-def run_correctness():
+def run_correctness(*, case_index=None):
     import torch
     try:
         mod = load_module()
@@ -117,6 +117,8 @@ def run_correctness():
 
     device = "cuda"
     for i, (nr, ns, vs) in enumerate(TEST_SHAPES):
+        if case_index is not None and i != case_index:
+            continue
         try:
             sampled, dm, backup = make_inputs(nr, ns, vs, device)
             res_next, res_vc = mod.eagle_prepare_next_token_padded(sampled, dm, backup, vs)

@@ -57,7 +57,7 @@ def run_compile():
         return False, str(e)
 
 
-def run_correctness():
+def run_correctness(*, case_index=None):
     import torch
     try:
         mod = load_module()
@@ -66,6 +66,8 @@ def run_correctness():
 
     device = "cuda"
     for i, (E, max_tokens, K, N) in enumerate(TEST_SHAPES):
+        if case_index is not None and i != case_index:
+            continue
         try:
             torch.manual_seed(42 + i)
             A = torch.randn(E, max_tokens, K, device=device, dtype=torch.float16) * 0.1

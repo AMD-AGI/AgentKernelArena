@@ -1,35 +1,19 @@
-source_file_path:
+schema_version: 2
+description: Optimize triton_eagle_prepare_inputs_padded with the original Triton operator contract.
+candidate:
+  language: triton
+  initial_state: implemented
+  editable:
   - source/triton_eagle_prepare_inputs_padded.py
-
-target_kernel_functions:
-  - eagle_prepare_inputs_padded_kernel
-
-compile_command:
-  - python3 scripts/task_runner.py compile
-
-correctness_command:
-  - python3 scripts/task_runner.py correctness
-
-performance_command:
-  - python3 scripts/task_runner.py performance
-
-task_type: triton2triton
-
-task_result_template: null
-
-prompt:
-  source_code: null
-  instructions: |
-    Optimize the Triton `eagle_prepare_inputs_padded_kernel` for maximum GPU throughput.
-    This kernel computes per-request token index to sample and number of rejected tokens
-    for EAGLE speculative decoding, using cumulative draft token counts and valid sampled
-    token counts.
-
-    Key optimization opportunities:
-    - Memory access patterns
-    - Minimize divergent branches
-
-    Constraints:
-    - Must maintain the same function signature for `eagle_prepare_inputs_padded`
-    - Output must match reference exactly (integer computation)
-  cheatsheet: null
+  entrypoints:
+  - file: source/triton_eagle_prepare_inputs_padded.py
+    kind: function
+    symbol: eagle_prepare_inputs_padded_kernel
+baseline:
+  kind: initial_candidate
+  language: triton
+evaluation:
+  runner:
+  - python3
+  - _arena_eval.py
+  workloads: workloads.json

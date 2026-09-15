@@ -1,0 +1,125 @@
+{
+  "version": 1,
+  "candidate_symbols": {
+    "source/triton_scale_swizzle.py": [
+      {
+        "name": "triton_scale_swizzle",
+        "jit": true
+      }
+    ]
+  },
+  "case_table": "TEST_SHAPES",
+  "input_table": [
+    [
+      128,
+      4
+    ],
+    [
+      256,
+      8
+    ],
+    [
+      128,
+      16
+    ],
+    [
+      384,
+      12
+    ],
+    [
+      512,
+      8
+    ]
+  ],
+  "cases": [
+    {
+      "test_case_id": "perf1",
+      "dtype": "uint8",
+      "params": {
+        "case_index": 0,
+        "configuration": [
+          128,
+          4
+        ],
+        "configuration_names": "(rows, cols)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf2",
+      "dtype": "uint8",
+      "params": {
+        "case_index": 1,
+        "configuration": [
+          256,
+          8
+        ],
+        "configuration_names": "(rows, cols)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf3",
+      "dtype": "uint8",
+      "params": {
+        "case_index": 2,
+        "configuration": [
+          128,
+          16
+        ],
+        "configuration_names": "(rows, cols)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf4",
+      "dtype": "uint8",
+      "params": {
+        "case_index": 3,
+        "configuration": [
+          384,
+          12
+        ],
+        "configuration_names": "(rows, cols)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf5",
+      "dtype": "uint8",
+      "params": {
+        "case_index": 4,
+        "configuration": [
+          512,
+          8
+        ],
+        "configuration_names": "(rows, cols)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    }
+  ],
+  "migration": {
+    "original_harness_sha256": "70ba2117cd61cfaf81490969cf88878c35dd704bb09e4d5b740e19ebb8b301be",
+    "original_correctness_sha256": "2abd0d32196c386f3fb0e0953f7f060e7155f1cfb95d27cc3567bf345cf296f0"
+  }
+}

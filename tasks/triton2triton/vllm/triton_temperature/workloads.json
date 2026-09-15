@@ -1,0 +1,125 @@
+{
+  "version": 1,
+  "candidate_symbols": {
+    "source/triton_temperature.py": [
+      {
+        "name": "_temperature_kernel",
+        "jit": true
+      }
+    ]
+  },
+  "case_table": "TEST_SHAPES",
+  "input_table": [
+    [
+      4,
+      256
+    ],
+    [
+      8,
+      1024
+    ],
+    [
+      16,
+      4096
+    ],
+    [
+      32,
+      8192
+    ],
+    [
+      64,
+      32768
+    ]
+  ],
+  "cases": [
+    {
+      "test_case_id": "perf1",
+      "dtype": "float32,int32",
+      "params": {
+        "case_index": 0,
+        "configuration": [
+          4,
+          256
+        ],
+        "configuration_names": "(num_reqs, vocab_size)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf2",
+      "dtype": "float32,int32",
+      "params": {
+        "case_index": 1,
+        "configuration": [
+          8,
+          1024
+        ],
+        "configuration_names": "(num_reqs, vocab_size)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf3",
+      "dtype": "float32,int32",
+      "params": {
+        "case_index": 2,
+        "configuration": [
+          16,
+          4096
+        ],
+        "configuration_names": "(num_reqs, vocab_size)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf4",
+      "dtype": "float32,int32",
+      "params": {
+        "case_index": 3,
+        "configuration": [
+          32,
+          8192
+        ],
+        "configuration_names": "(num_reqs, vocab_size)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf5",
+      "dtype": "float32,int32",
+      "params": {
+        "case_index": 4,
+        "configuration": [
+          64,
+          32768
+        ],
+        "configuration_names": "(num_reqs, vocab_size)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    }
+  ],
+  "migration": {
+    "original_harness_sha256": "1b4e57356fc4402c0452da895f430568163ba9b579f24dc3462ea893e242a6e7",
+    "original_correctness_sha256": "6b49e35775b2686d1814338e3558ecf2180ec03b59570841b018c86e8532e45c"
+  }
+}

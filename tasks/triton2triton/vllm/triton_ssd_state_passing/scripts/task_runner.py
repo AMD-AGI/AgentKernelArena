@@ -77,7 +77,7 @@ def run_compile():
         return False, str(e)
 
 
-def run_correctness():
+def run_correctness(*, case_index=None):
     import torch
     try:
         mod = load_module()
@@ -85,6 +85,8 @@ def run_correctness():
         return False, f"Load failed: {e}"
     device = "cuda"
     for i, (nchunks, nheads, dim, chunk_size) in enumerate(TEST_SHAPES):
+        if case_index is not None and i != case_index:
+            continue
         try:
             torch.manual_seed(42 + i)
             states = torch.randn(nchunks, nheads, dim, device=device, dtype=torch.float32) * 0.1

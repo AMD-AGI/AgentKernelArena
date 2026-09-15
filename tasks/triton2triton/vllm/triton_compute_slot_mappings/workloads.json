@@ -1,0 +1,145 @@
+{
+  "version": 1,
+  "candidate_symbols": {
+    "source/triton_compute_slot_mappings.py": [
+      {
+        "name": "_compute_slot_mappings_kernel",
+        "jit": true
+      }
+    ]
+  },
+  "case_table": "TEST_SHAPES",
+  "input_table": [
+    [
+      4,
+      32,
+      16,
+      64
+    ],
+    [
+      8,
+      64,
+      16,
+      128
+    ],
+    [
+      16,
+      128,
+      32,
+      128
+    ],
+    [
+      32,
+      256,
+      16,
+      256
+    ],
+    [
+      64,
+      512,
+      32,
+      256
+    ]
+  ],
+  "cases": [
+    {
+      "test_case_id": "perf1",
+      "dtype": "int32,int64",
+      "params": {
+        "case_index": 0,
+        "configuration": [
+          4,
+          32,
+          16,
+          64
+        ],
+        "configuration_names": "(num_reqs, query_len, block_size, max_num_blocks)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf2",
+      "dtype": "int32,int64",
+      "params": {
+        "case_index": 1,
+        "configuration": [
+          8,
+          64,
+          16,
+          128
+        ],
+        "configuration_names": "(num_reqs, query_len, block_size, max_num_blocks)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf3",
+      "dtype": "int32,int64",
+      "params": {
+        "case_index": 2,
+        "configuration": [
+          16,
+          128,
+          32,
+          128
+        ],
+        "configuration_names": "(num_reqs, query_len, block_size, max_num_blocks)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf4",
+      "dtype": "int32,int64",
+      "params": {
+        "case_index": 3,
+        "configuration": [
+          32,
+          256,
+          16,
+          256
+        ],
+        "configuration_names": "(num_reqs, query_len, block_size, max_num_blocks)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf5",
+      "dtype": "int32,int64",
+      "params": {
+        "case_index": 4,
+        "configuration": [
+          64,
+          512,
+          32,
+          256
+        ],
+        "configuration_names": "(num_reqs, query_len, block_size, max_num_blocks)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    }
+  ],
+  "migration": {
+    "original_harness_sha256": "47fd13898abc39bbb0cbc7a490b7f1f407cd4edf39aa35818619fd6ab55eb12d",
+    "original_correctness_sha256": "5a478de0367818b14542c2bca97f64ea5496c66904224d567fdb6391899ebfd8"
+  }
+}

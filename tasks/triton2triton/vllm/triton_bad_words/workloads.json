@@ -1,0 +1,135 @@
+{
+  "version": 1,
+  "candidate_symbols": {
+    "source/triton_bad_words.py": [
+      {
+        "name": "_bad_words_kernel",
+        "jit": true
+      }
+    ]
+  },
+  "case_table": "TEST_SHAPES",
+  "input_table": [
+    [
+      4,
+      256,
+      2
+    ],
+    [
+      8,
+      1024,
+      4
+    ],
+    [
+      16,
+      4096,
+      8
+    ],
+    [
+      32,
+      8192,
+      16
+    ],
+    [
+      64,
+      16384,
+      8
+    ]
+  ],
+  "cases": [
+    {
+      "test_case_id": "perf1",
+      "dtype": "float32,int32",
+      "params": {
+        "case_index": 0,
+        "configuration": [
+          4,
+          256,
+          2
+        ],
+        "configuration_names": "(batch, vocab, nbw)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf2",
+      "dtype": "float32,int32",
+      "params": {
+        "case_index": 1,
+        "configuration": [
+          8,
+          1024,
+          4
+        ],
+        "configuration_names": "(batch, vocab, nbw)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf3",
+      "dtype": "float32,int32",
+      "params": {
+        "case_index": 2,
+        "configuration": [
+          16,
+          4096,
+          8
+        ],
+        "configuration_names": "(batch, vocab, nbw)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf4",
+      "dtype": "float32,int32",
+      "params": {
+        "case_index": 3,
+        "configuration": [
+          32,
+          8192,
+          16
+        ],
+        "configuration_names": "(batch, vocab, nbw)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf5",
+      "dtype": "float32,int32",
+      "params": {
+        "case_index": 4,
+        "configuration": [
+          64,
+          16384,
+          8
+        ],
+        "configuration_names": "(batch, vocab, nbw)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    }
+  ],
+  "migration": {
+    "original_harness_sha256": "d2236c7ab71cc377ca22e321ddbbaf2f851586148a9d316e0eaae54ae6fa9626",
+    "original_correctness_sha256": "328b1df71bcdfbe085ca3898ac77063f8aaeff2c2848858ba4c26afec55aad67"
+  }
+}

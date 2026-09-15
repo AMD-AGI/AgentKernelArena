@@ -1,0 +1,135 @@
+{
+  "version": 1,
+  "candidate_symbols": {
+    "source/triton_logit_bias.py": [
+      {
+        "name": "_bias_kernel",
+        "jit": true
+      }
+    ]
+  },
+  "case_table": "TEST_SHAPES",
+  "input_table": [
+    [
+      4,
+      256,
+      16
+    ],
+    [
+      8,
+      1024,
+      32
+    ],
+    [
+      16,
+      4096,
+      64
+    ],
+    [
+      32,
+      8192,
+      128
+    ],
+    [
+      64,
+      16384,
+      128
+    ]
+  ],
+  "cases": [
+    {
+      "test_case_id": "perf1",
+      "dtype": "float32,int32,int64",
+      "params": {
+        "case_index": 0,
+        "configuration": [
+          4,
+          256,
+          16
+        ],
+        "configuration_names": "(batch, vocab, max_bt)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf2",
+      "dtype": "float32,int32,int64",
+      "params": {
+        "case_index": 1,
+        "configuration": [
+          8,
+          1024,
+          32
+        ],
+        "configuration_names": "(batch, vocab, max_bt)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf3",
+      "dtype": "float32,int32,int64",
+      "params": {
+        "case_index": 2,
+        "configuration": [
+          16,
+          4096,
+          64
+        ],
+        "configuration_names": "(batch, vocab, max_bt)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf4",
+      "dtype": "float32,int32,int64",
+      "params": {
+        "case_index": 3,
+        "configuration": [
+          32,
+          8192,
+          128
+        ],
+        "configuration_names": "(batch, vocab, max_bt)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf5",
+      "dtype": "float32,int32,int64",
+      "params": {
+        "case_index": 4,
+        "configuration": [
+          64,
+          16384,
+          128
+        ],
+        "configuration_names": "(batch, vocab, max_bt)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    }
+  ],
+  "migration": {
+    "original_harness_sha256": "8baf50740612087b7ad21dcbd36d15816387772e3b3cc463b24d594b6544f742",
+    "original_correctness_sha256": "1351ee6be73943fa951ae5363676e88f4fecbea095be600faf49ca7977ede529"
+  }
+}

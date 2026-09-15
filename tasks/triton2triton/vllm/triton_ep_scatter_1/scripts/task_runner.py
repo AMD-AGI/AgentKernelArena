@@ -80,7 +80,7 @@ def run_compile():
         return False, str(e)
 
 
-def run_correctness():
+def run_correctness(*, case_index=None):
     import torch
     try:
         mod = load_module()
@@ -89,6 +89,8 @@ def run_correctness():
 
     device = "cuda"
     for i, (num_experts, max_tpe) in enumerate(TEST_SHAPES):
+        if case_index is not None and i != case_index:
+            continue
         try:
             torch.manual_seed(42 + i)
             tokens_per_expert = torch.randint(0, max_tpe + 1, (num_experts,), device=device, dtype=torch.int32)

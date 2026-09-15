@@ -1,0 +1,95 @@
+{
+  "version": 1,
+  "candidate_symbols": {
+    "source/triton_merge_16x16_to_32x32.py": [
+      {
+        "name": "merge_16x16_to_32x32_inverse_kernel",
+        "jit": false
+      }
+    ]
+  },
+  "case_table": "SEEDS",
+  "input_table": [
+    42,
+    43,
+    44,
+    45,
+    46
+  ],
+  "cases": [
+    {
+      "test_case_id": "perf1",
+      "dtype": "float32",
+      "params": {
+        "case_index": 0,
+        "configuration": 42,
+        "configuration_names": "seed"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf2",
+      "dtype": "float32",
+      "params": {
+        "case_index": 1,
+        "configuration": 43,
+        "configuration_names": "seed"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf3",
+      "dtype": "float32",
+      "params": {
+        "case_index": 2,
+        "configuration": 44,
+        "configuration_names": "seed"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf4",
+      "dtype": "float32",
+      "params": {
+        "case_index": 3,
+        "configuration": 45,
+        "configuration_names": "seed"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf5",
+      "dtype": "float32",
+      "params": {
+        "case_index": 4,
+        "configuration": 46,
+        "configuration_names": "seed"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    }
+  ],
+  "migration": {
+    "original_harness_sha256": "c73af8e51607ebcf0cec31d8817f1041277392bc22764129c155e60d1a2e5acc",
+    "original_correctness_sha256": "95bd785a41467cfd556c26ab83de638d270a6d8724e78490519176331f0ba900"
+  }
+}

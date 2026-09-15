@@ -161,7 +161,7 @@ def run_compile():
         return False, str(e)
 
 
-def run_correctness():
+def run_correctness(*, case_index=None):
     """Run correctness checks against PyTorch reference."""
     import torch
     try:
@@ -173,6 +173,8 @@ def run_correctness():
     dtype = torch.float16
 
     for i, (bs, nh, nkv, hd, max_seq, num_splits, ps) in enumerate(TEST_SHAPES):
+        if case_index is not None and i != case_index:
+            continue
         try:
             mid_o, q, o, lse, v_buffer, b_seqlen = \
                 make_stage1_outputs(bs, nh, nkv, hd, max_seq, num_splits, ps, device, dtype)

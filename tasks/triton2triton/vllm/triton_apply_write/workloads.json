@@ -1,0 +1,135 @@
+{
+  "version": 1,
+  "candidate_symbols": {
+    "source/triton_apply_write.py": [
+      {
+        "name": "_apply_write_kernel",
+        "jit": true
+      }
+    ]
+  },
+  "case_table": "TEST_SHAPES",
+  "input_table": [
+    [
+      4,
+      128,
+      8
+    ],
+    [
+      8,
+      256,
+      16
+    ],
+    [
+      16,
+      512,
+      32
+    ],
+    [
+      32,
+      1024,
+      64
+    ],
+    [
+      64,
+      2048,
+      128
+    ]
+  ],
+  "cases": [
+    {
+      "test_case_id": "perf1",
+      "dtype": "int32",
+      "params": {
+        "case_index": 0,
+        "configuration": [
+          4,
+          128,
+          8
+        ],
+        "configuration_names": "(num_writes, row_size, avg_content_len)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf2",
+      "dtype": "int32",
+      "params": {
+        "case_index": 1,
+        "configuration": [
+          8,
+          256,
+          16
+        ],
+        "configuration_names": "(num_writes, row_size, avg_content_len)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf3",
+      "dtype": "int32",
+      "params": {
+        "case_index": 2,
+        "configuration": [
+          16,
+          512,
+          32
+        ],
+        "configuration_names": "(num_writes, row_size, avg_content_len)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf4",
+      "dtype": "int32",
+      "params": {
+        "case_index": 3,
+        "configuration": [
+          32,
+          1024,
+          64
+        ],
+        "configuration_names": "(num_writes, row_size, avg_content_len)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf5",
+      "dtype": "int32",
+      "params": {
+        "case_index": 4,
+        "configuration": [
+          64,
+          2048,
+          128
+        ],
+        "configuration_names": "(num_writes, row_size, avg_content_len)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    }
+  ],
+  "migration": {
+    "original_harness_sha256": "849c29dc09e36fc8e57be918c09b4088867df397d674b6b0540c6d13d28d46ad",
+    "original_correctness_sha256": "919e0741e73c447f39ce523b03d6a32e52ff073526dd75cf4574c8ae89781c95"
+  }
+}

@@ -70,12 +70,14 @@ def cpu_reference(draft_token_ids_list, target_argmax_list, bonus_token_ids, max
             output[b, len(draft)] = bonus_token_ids[b]
     return output
 
-def run_correctness():
+def run_correctness(*, case_index=None):
     import torch
     try: mod = load_module()
     except Exception as e: return False, f"Failed to load module: {e}"
     device = "cuda"
     for i, (batch_size, max_draft, max_spec_len) in enumerate(TEST_SHAPES):
+        if case_index is not None and i != case_index:
+            continue
         try:
             torch.manual_seed(42 + i)
             vocab_size = 100
