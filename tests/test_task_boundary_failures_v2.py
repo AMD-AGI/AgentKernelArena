@@ -1,6 +1,8 @@
 """CPU subprocess regressions for malformed state and exporter evidence loss."""
 import json
+import signal
 import sys
+import time
 
 import pytest
 import yaml
@@ -133,4 +135,86 @@ output.write_text('{}')
     first, second = read_report(workspace)["exports"]
     assert first["status"] == "PASS" and first["command"]["returncode"] == 0
     assert second["status"] == "FAIL" and "command" not in second
+    assert outside.read_text() == '{}'
+
+
+@pytest.mark.parametrize("partial_artifact", [False, True])
+def test_export_timeout_retains_partial_process_evidence_in_final_report(tmp_path, partial_artifact):
+    code = """import os, pathlib, sys, time
+print('EXPORT_TIMEOUT_STDOUT', flush=True)
+print('EXPORT_TIMEOUT_STDERR', file=sys.stderr, flush=True)
+"""
+    if partial_artifact:
+        code += """output = pathlib.Path(os.environ['ARENA_EXPORT_PATH'])
+output.parent.mkdir(parents=True, exist_ok=True)
+output.write_text('{"partial": true}')
+"""
+    code += "time.sleep(10)\n"
+    path = package(tmp_path, exporter=code)
+    config = yaml.safe_load(path.read_text())
+    config["exports"][0]["timeout_s"] = 1
+    path.write_text(yaml.safe_dump(config))
+    started = time.monotonic()
+    completed, workspace = run(tmp_path, path, lambda **_: None)
+    elapsed = time.monotonic() - started
+    report = read_report(workspace)
+    state = workspace.parent / ".task-sessions" / workspace.name
+    export = report["exports"][0]
+    assert export == json.loads((state / "exports.json").read_text())["exports"][0]
+    assert completed and task_run_is_complete(workspace, "suite/protocol_fixture", "codex")
+    assert export["status"] == "FAIL" and export["timed_out"] is True
+    assert "TimeoutExpired" in export["error"]
+    assert export["command"]["argv"] == [sys.executable, "export.py"]
+    assert export["command"]["returncode"] == -signal.SIGKILL
+    assert export["command"]["stdout"] == "EXPORT_TIMEOUT_STDOUT\n"
+    assert export["command"]["stderr"] == "EXPORT_TIMEOUT_STDERR\n"
+    assert 1 <= export["command"]["elapsed_s"] <= elapsed
+    assert report["delivery_status"] == "INCOMPLETE"
+    assert report["candidate_accepted"] is True and report["score"] == 220
+    if partial_artifact:
+        assert (workspace / "artifacts/solution.json").read_text() == '{"partial": true}'
+    else:
+        assert not (workspace / "artifacts/solution.json").exists()
+
+
+def test_timeout_evidence_and_flag_do_not_leak_between_exports(tmp_path):
+    outside = tmp_path / "outside.json"
+    outside.write_text('{}')
+    code = """import os, pathlib, sys, time
+mode = sys.argv[1]
+print(mode + '-stdout', flush=True)
+print(mode + '-stderr', file=sys.stderr, flush=True)
+output = pathlib.Path(os.environ['ARENA_EXPORT_PATH'])
+output.parent.mkdir(parents=True, exist_ok=True)
+if mode == 'timeout':
+    pathlib.Path('artifacts/unsafe.json').symlink_to(""" + repr(str(outside)) + """)
+    time.sleep(10)
+output.write_text('{}')
+"""
+    path = package(tmp_path, exporter=code)
+    config = yaml.safe_load(path.read_text())
+    config["exports"] = [
+        {"format": "fixture", "output": "artifacts/" + mode + ".json",
+         "command": [sys.executable, "export.py", mode], "timeout_s": 1}
+        for mode in ("before", "timeout", "unsafe", "after")
+    ]
+    path.write_text(yaml.safe_dump(config))
+    _, workspace = run(tmp_path, path, lambda **_: None)
+    report = read_report(workspace)
+    state = workspace.parent / ".task-sessions" / workspace.name
+    assert report["exports"] == json.loads((state / "exports.json").read_text())["exports"]
+    before, timeout, unsafe, after = report["exports"]
+    assert timeout["status"] == "FAIL" and timeout["timed_out"] is True
+    assert timeout["command"]["returncode"] == -signal.SIGKILL
+    assert timeout["command"]["argv"] == [sys.executable, "export.py", "timeout"]
+    assert timeout["command"]["stdout"] == "timeout-stdout\n"
+    assert timeout["command"]["stderr"] == "timeout-stderr\n"
+    assert unsafe["status"] == "FAIL" and "command" not in unsafe and "timed_out" not in unsafe
+    for name, record in (("before", before), ("after", after)):
+        assert record["status"] == "PASS" and "timed_out" not in record
+        assert record["command"]["returncode"] == 0
+        assert record["command"]["argv"] == [sys.executable, "export.py", name]
+        assert record["command"]["stdout"] == name + "-stdout\n"
+        assert record["command"]["stderr"] == name + "-stderr\n"
+    assert report["delivery_status"] == "INCOMPLETE" and report["candidate_accepted"] is True
     assert outside.read_text() == '{}'

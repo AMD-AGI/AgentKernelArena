@@ -8,6 +8,8 @@ import json
 import logging
 import os
 from pathlib import Path
+import signal
+import subprocess
 import time
 import uuid
 
@@ -18,7 +20,7 @@ from .evaluator import evaluate_task_session
 from .harness_guard import verify_workspace_harness
 from .preprocessing import setup_workspace
 from .runtime_env import build_subprocess_env
-from .task_execution import _run_process
+from .task_execution import CommandEvidence, _run_process
 from .task_runtime import bind_session_runtime
 from .task_session import TaskSession
 from .task_spec import TaskSpec, load_task_spec, resolve_task_path
@@ -104,7 +106,16 @@ def _run_exports(session: TaskSession, harness, logger: logging.Logger) -> list[
             python = env.get("AGENT_KERNEL_ARENA_PYTHON")
             if python and command[0] in {"python", "python3"}:
                 command = (python,) + command[1:]
-            executed = _run_process(command, session.workspace, env, declaration.get("timeout_s", 60))
+            started = time.monotonic()
+            try:
+                executed = _run_process(command, session.workspace, env, declaration.get("timeout_s", 60))
+            except subprocess.TimeoutExpired as exc:
+                # _run_process kills the process group and attaches its drained
+                # output to the timeout. Keep the same evidence shape as actions.
+                record["command"] = asdict(CommandEvidence(
+                    command, -signal.SIGKILL, exc.stdout or "", exc.stderr or "", time.monotonic() - started))
+                record["timed_out"] = True
+                raise
             # Artifact and source checks can raise even after the process has
             # completed. Retain its diagnostics before inspecting those outputs.
             record["command"] = asdict(executed)
