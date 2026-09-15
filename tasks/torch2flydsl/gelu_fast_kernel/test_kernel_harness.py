@@ -27,7 +27,9 @@ import os
 import sys
 import time
 from pathlib import Path
-from _aka_benchmark import benchmark_cuda_graph_or_events
+from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
+from scripts.replay_checks import (normalized_output, require_tensor_contract,
+                                  require_unchanged, verify_timed_run)
 
 from task_runtime import candidate_relative_path
 KERNEL_FILE = candidate_relative_path()
@@ -133,12 +135,14 @@ def run_correctness(verbose=True):
     failures = []
     for shape in SHAPES:
         inp = _make_inputs(shape)
+        original = inp.clone()
         model = mmod.Model(*mmod.get_init_inputs())
         with torch.no_grad():
-            ref = model(inp).float()
-            truth = _retry(lambda: _aiter_op(inp), what="aiter.gelu_fast").float()
+            ref = _checked_activation_output(model(inp), inp).float()
+            truth = _checked_activation_output(_retry(lambda: _aiter_op(inp), what="aiter.gelu_fast"), inp).float()
         torch.cuda.synchronize()
 
+        require_unchanged((inp,), (original,))
         max_abs = (ref - truth).abs().max().item()
         scale = truth.abs().max().item() + 1e-9
         rel_err = max_abs / scale
@@ -156,7 +160,7 @@ def run_correctness(verbose=True):
 
         if has_kernel:
             try:
-                kout = _retry(lambda: kmod.flydsl_gelu_fast(inp), what=KERNEL_ENTRY).float()
+                kout = _checked_activation_output(_retry(lambda: kmod.flydsl_gelu_fast(inp), what=KERNEL_ENTRY), inp).float()
             except NotImplementedError:
                 raise RuntimeError("Executed candidate is unimplemented; no baseline fallback")
                 has_kernel = False
@@ -168,6 +172,7 @@ def run_correctness(verbose=True):
                 kout = None
             if kout is not None:
                 torch.cuda.synchronize()
+                require_unchanged((inp,), (original,))
                 k_abs = (ref - kout).abs().max().item()
                 k_rel = k_abs / (ref.abs().max().item() + 1e-9)
                 k_ok = k_rel <= REL_TOL
@@ -189,10 +194,36 @@ def run_correctness(verbose=True):
     return True
 
 
-def _mean_ms(fn, warmup, iters):
+def _checked_activation_output(result, inp):
+    import torch
+
+    require_tensor_contract(result, inp)
+    if not bool(torch.isfinite(result).all()):
+        raise AssertionError("Non-finite activation output")
+    return result
+
+
+def _activation_replay_validator(inp, oracle):
+    originals = (inp.clone(),)
+    expected = _checked_activation_output(oracle(inp), inp)
+    require_unchanged((inp,), originals)
+
+    def validate(timed):
+        return verify_timed_run(
+            timed, inputs=(inp,), originals=originals, expected=expected,
+            perturb=lambda: inp.neg_(), reference=lambda: oracle(inp),
+            compare=lambda actual, ref: normalized_output(actual, ref, tolerance=REL_TOL),
+        )
+    return validate
+
+
+def _mean_ms(fn, warmup, iters, validate=None):
+    timed = TimedRun() if validate is not None else None
     mean_ms, bench_meta = benchmark_cuda_graph_or_events(
-        fn, warmup=warmup, repetition=iters
+        fn, warmup=warmup, repetition=iters, timed_run=timed
     )
+    if validate is not None:
+        bench_meta.update(validate(timed))
     _mean_ms.benchmark_metadata = bench_meta
     return mean_ms
 
@@ -225,11 +256,15 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
         inp = _make_inputs(shape)
         model = mmod.Model(*mmod.get_init_inputs())
         with torch.no_grad():
+            # Preserve the original Model baseline and AITER diagnostic timing.
+            # Capture pristine inputs/oracles before any timed invocation.
+            ref_validate = None if has_kernel else _activation_replay_validator(inp, _aiter_op)
+            ker_validate = _activation_replay_validator(inp, model) if has_kernel else None
             op_ms = _mean_ms(lambda: _aiter_op(inp), warmup, iters)
-            ref_ms = _mean_ms(lambda: model(inp), warmup, iters)
+            ref_ms = _mean_ms(lambda: model(inp), warmup, iters, validate=ref_validate)
             ref_bench_meta = _mean_ms.benchmark_metadata
             ker_ms = (
-                _mean_ms(lambda: kmod.flydsl_gelu_fast(inp), warmup, iters)
+                _mean_ms(lambda: kmod.flydsl_gelu_fast(inp), warmup, iters, validate=ker_validate)
                 if has_kernel
                 else None
             )
@@ -343,11 +378,15 @@ def arena_benchmark(warmup=10, iters=100, verbose=True):
         inp = _make_inputs(shape)
         model = mmod.Model(*mmod.get_init_inputs())
         with torch.no_grad():
+            # Preserve the original Model baseline and AITER diagnostic timing.
+            # Capture pristine inputs/oracles before any timed invocation.
+            ref_validate = None if has_kernel else _activation_replay_validator(inp, _aiter_op)
+            ker_validate = _activation_replay_validator(inp, model) if has_kernel else None
             op_ms = _mean_ms(lambda: _aiter_op(inp), warmup, iters)
-            ref_ms = _mean_ms(lambda: model(inp), warmup, iters)
+            ref_ms = _mean_ms(lambda: model(inp), warmup, iters, validate=ref_validate)
             ref_bench_meta = _mean_ms.benchmark_metadata
             ker_ms = (
-                _mean_ms(lambda: kmod.flydsl_gelu_fast(inp), warmup, iters)
+                _mean_ms(lambda: kmod.flydsl_gelu_fast(inp), warmup, iters, validate=ker_validate)
                 if has_kernel
                 else None
             )

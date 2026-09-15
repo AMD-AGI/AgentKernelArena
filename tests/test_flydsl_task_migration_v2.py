@@ -354,6 +354,8 @@ def test_torch_numerical_gates_cases_and_models_preserved():
                 handler.body.pop(0)
         if name in {"silu_and_mul_kernel", "batched_gemm_bf16_kernel", "hgemm_kernel"}:
             fn = _RemoveAddedReplayChecks().visit(fn)
+        if name in {"gelu_fast_kernel", "gelu_and_mul_kernel", "gelu_tanh_and_mul_kernel"}:
+            fn = _RemoveGeluReplayChecks().visit(fn)
         assert hashlib.sha256(ast.dump(fn,include_attributes=False).encode()).hexdigest()==expected,name
         assert hashlib.sha256((task/"model.py").read_bytes()).hexdigest()==model_hash,name
         original=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=="run_benchmark")
@@ -1315,3 +1317,146 @@ def test_torch_gemm_original_benchmark_work_and_sampling_preserved():
         fn = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == function)
         fn = _RemoveAddedReplayChecks().visit(fn)
         assert hashlib.sha256(ast.dump(fn, include_attributes=False).encode()).hexdigest() == expected_hash
+
+
+_GELU_TASKS = ["gelu_fast", "gelu_and_mul", "gelu_tanh_and_mul"]
+
+
+@pytest.mark.parametrize("name", _GELU_TASKS)
+@pytest.mark.parametrize("function", ["run_benchmark", "arena_benchmark"])
+@pytest.mark.parametrize("provided", [False, True])
+@pytest.mark.parametrize("behavior", ["correct", "measured_wrong", "replay_wrong", "cached", "input_modified", "shape", "dtype", "nonfinite"])
+def test_gelu_actual_measured_and_replayed_invocations(name, function, provided, behavior, monkeypatch, tmp_path):
+    """Run real harness orchestration with CPU outputs; this is not GPU timing."""
+    import math
+    import types
+    import torch
+    task = ROOT / "tasks/torch2flydsl" / (name + "_kernel")
+    checks = module(task / "scripts/replay_checks.py")
+    actual_model = module(task / "model.py").Model()
+    inp = torch.tensor([[-2., 1., 3., 4.], [1., 2., 3., 4.]], dtype=torch.bfloat16)
+    original = inp.clone()
+    phase = {"name": "setup"}
+    monkeypatch.setattr(torch.cuda, "empty_cache", lambda: None)
+    monkeypatch.setattr(torch.cuda, "synchronize", lambda: None)
+
+    def oracle(value):
+        x = value.float() if name == "gelu_fast" else value.float().chunk(2, -1)[0]
+        if name == "gelu_and_mul":
+            out = .5 * x * (1 + torch.erf(x / math.sqrt(2)))
+        else:
+            out = .5 * x * (1 + torch.tanh(math.sqrt(2 / math.pi) * (x + .044715 * x ** 3)))
+        if name != "gelu_fast": out *= value.float().chunk(2, -1)[1]
+        return out.to(value.dtype)
+
+    cached = actual_model(inp)
+    def compute(value, is_model):
+        out = actual_model(value)
+        if is_model == provided:
+            if behavior == phase["name"] + "_wrong": out.fill_(20.)
+            if phase["name"] == "replay":
+                if behavior == "cached": out = cached.clone()
+                if behavior == "input_modified": value.add_(1)
+            if phase["name"] == "measured":
+                if behavior == "shape": out = out[:1]
+                if behavior == "dtype": out = out.float()
+                if behavior == "nonfinite": out[0, 0] = float("nan")
+        return out
+    class Model:
+        def __call__(self, value): return compute(value, True)
+    mmod = types.SimpleNamespace(Model=Model, get_init_inputs=lambda: [])
+    kmod = types.SimpleNamespace(**{"flydsl_" + name: lambda value: compute(value, False)})
+    class Collector:
+        bound = False
+        outputs = None
+    calls = []
+    def benchmark(fn, *, warmup, repetition, timed_run):
+        calls.append((warmup, repetition, timed_run is not None))
+        phase["name"] = "measured"
+        out = fn()
+        if timed_run is not None:
+            timed_run.outputs = out
+            timed_run.bound = True
+            def replay():
+                phase["name"] = "replay"
+                result = fn()
+                phase["name"] = "setup"
+                return result
+            timed_run.rerun = replay
+        phase["name"] = "setup"
+        return .1, {"benchmark_method": "cuda_graph", "benchmark_timed_run_kind": "captured_graph"}
+    ns = {"TimedRun": Collector, "benchmark_cuda_graph_or_events": benchmark,
+          "normalized_output": checks.normalized_output, "require_tensor_contract": checks.require_tensor_contract,
+          "require_unchanged": checks.require_unchanged, "verify_timed_run": checks.verify_timed_run,
+          "_KERNEL_DIR": str(tmp_path), "MODEL_FILE": "model.py", "KERNEL_FILE": "kernel.py",
+          "KERNEL_ENTRY": "flydsl_" + name, "REL_TOL": .01, "_aiter_op": oracle,
+          "_load_module": lambda directory, filename, alias: mmod if filename == "model.py" else (None if provided else kmod),
+          "SHAPES": [{"name": "controlled", "m": 2, "n": 4}], "_make_inputs": lambda *args: inp,
+          "math": math, "json": json, "Path": Path}
+    _harness_functions(task, {function, "_mean_ms", "_activation_replay_validator", "_checked_activation_output"}, ns)
+    if behavior == "correct":
+        report = ns[function](verbose=False)
+        if function == "run_benchmark": report = json.loads((tmp_path / "build/performance_report.json").read_text())
+        assert report[0]["timed_output_correctness"] == report[0]["replay_correctness"] == "PASS"
+        assert calls == [(10, 100, False), (10, 100, provided)] + ([] if provided else [(10, 100, True)])
+    else:
+        with pytest.raises(AssertionError): ns[function](verbose=False)
+    assert torch.equal(inp, original)
+
+
+@pytest.mark.parametrize("name", _GELU_TASKS)
+@pytest.mark.parametrize("behavior", ["correct", "shape", "dtype", "device", "nonfinite", "input_modified"])
+def test_gelu_correctness_retains_output_and_input_contract(name, behavior, monkeypatch):
+    import types
+    import torch
+    task = ROOT / "tasks/torch2flydsl" / (name + "_kernel")
+    model = module(task / "model.py").Model()
+    checks = module(task / "scripts/replay_checks.py")
+    inp = torch.tensor([[1., 2., 3., 4.], [1., 2., 3., 4.]], dtype=torch.bfloat16)
+    monkeypatch.setattr(torch.cuda, "empty_cache", lambda: None)
+    monkeypatch.setattr(torch.cuda, "synchronize", lambda: None)
+    def compute(value):
+        out = model(value)
+        if behavior == "shape": out = out[:1]
+        if behavior == "dtype": out = out.float()
+        if behavior == "device": out = out.to("meta")
+        if behavior == "nonfinite": out[0, 0] = float("nan")
+        if behavior == "input_modified": value.add_(1)
+        return out
+    mmod = types.SimpleNamespace(Model=lambda: model, get_init_inputs=lambda: [])
+    kmod = types.SimpleNamespace(**{"flydsl_" + name: compute})
+    ns = {"require_tensor_contract": checks.require_tensor_contract, "require_unchanged": checks.require_unchanged,
+          "_KERNEL_DIR": ".", "MODEL_FILE": "model.py", "KERNEL_FILE": "kernel.py", "KERNEL_ENTRY": "flydsl_" + name,
+          "_load_module": lambda directory, filename, alias: mmod if filename == "model.py" else kmod,
+          "SHAPES": [{"name": "controlled", "m": 2, "n": 4}], "_make_inputs": lambda *args: inp,
+          "_aiter_op": model, "_retry": lambda fn, **kwargs: fn(), "REL_TOL": .01}
+    _harness_functions(task, {"run_correctness", "_checked_activation_output"}, ns)
+    if behavior == "correct": assert ns["run_correctness"](verbose=False)
+    else:
+        with pytest.raises(AssertionError): ns["run_correctness"](verbose=False)
+
+
+class _RemoveGeluReplayChecks(_RemoveAddedReplayChecks):
+    def visit_Assign(self, node):
+        if len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
+            if node.targets[0].id in {"original", "ref_validate", "ker_validate"}:
+                return None
+        return super().visit_Assign(node)
+
+    def visit_Call(self, node):
+        if isinstance(node.func, ast.Name) and node.func.id == "_checked_activation_output":
+            return self.visit(node.args[0])
+        if isinstance(node.func, ast.Name) and node.func.id == "_mean_ms":
+            node.keywords = [k for k in node.keywords if k.arg != "validate"]
+        return super().visit_Call(node)
+
+
+_GELU_ORIGINAL_BENCHMARKS = {('gelu_fast', 'run_benchmark'): '9c380844988351c657b3be9ac29948bbd4825f8f8146dd118b99279522a29f6e', ('gelu_fast', 'arena_benchmark'): '8af86be049fad9ef00f0a01e2e5635a5589f413e75a34cb243e38b70a63df54a', ('gelu_and_mul', 'run_benchmark'): 'cfffddd747d47293fc3de6f7e16f3b9575613cba5132650e8e072228fc92b28f', ('gelu_and_mul', 'arena_benchmark'): 'a90c92fa4f4d7adfb6e55be9c60e0d4adabaf1e2f9e4b3617315e33b00495675', ('gelu_tanh_and_mul', 'run_benchmark'): '26d26e61238601cc73c39909701917635a7f897e87cf4aacd65f175a60526b73', ('gelu_tanh_and_mul', 'arena_benchmark'): 'b9264e16963ec7cb727939225b47f18c36d219bc0f3d296a933fb9c866fe8959'}
+
+
+def test_gelu_original_timed_work_sampling_and_reference_boundaries_preserved():
+    for (name, function), expected in _GELU_ORIGINAL_BENCHMARKS.items():
+        tree = ast.parse((ROOT / "tasks/torch2flydsl" / (name + "_kernel") / "test_kernel_harness.py").read_text())
+        fn = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == function)
+        fn = _RemoveGeluReplayChecks().visit(fn)
+        assert hashlib.sha256(ast.dump(fn, include_attributes=False).encode()).hexdigest() == expected
