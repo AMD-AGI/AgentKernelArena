@@ -124,8 +124,18 @@ def _base(path):
 
 def test_original_workloads_gates_kernels_and_timing_preserved(task):
     root,h,_,_=task
-    for path in [root/'config.yaml',root/'workloads.json',*list((root/'source').glob('*.py'))]:
+    for path in [root/'workloads.json',*list((root/'source').glob('*.py'))]:
         assert path.read_text()==_base(path)
+    original_config=yaml.safe_load(_base(root/'config.yaml'))
+    current_config=yaml.safe_load((root/'config.yaml').read_text())
+    edit=current_config['candidate']['editable'][0]
+    assert edit['scope']=='symbols' and edit['allow_new_helpers'] is True
+    assert edit['path']==original_config['candidate']['editable'][0]
+    symbols=[current_config['candidate']['entrypoints'][0]['symbol']]
+    if root.name=='triton_ssd_chunk_cumsum':symbols.append('softplus')
+    assert edit['symbols']==symbols
+    current_config['candidate']['editable']=original_config['candidate']['editable']
+    assert current_config==original_config
     path=root/'scripts/task_runner.py';before=_base(path);after=path.read_text()
     trees=[ast.parse(s) for s in (before,after)]
     def protected(tree):
@@ -248,3 +258,25 @@ def test_real_performance_runner_wires_collector_and_rejects_bad_paths(task, mon
         assert records[0]['timed_output_correctness']=='PASS' and records[0]['replay_correctness']=='PASS'
     else:
         assert records[0]['execution_time_ms']<0 and records[0].get('error')
+
+
+def test_actual_framework_guard_allows_kernel_edits_but_rejects_wrapper_bypass(task,tmp_path):
+    import shutil
+    from src.task_spec import load_task_spec
+    from src.harness_guard import snapshot_workspace_harness,verify_workspace_harness
+    root,_,_,_=task
+    workspace=tmp_path/'workspace';shutil.copytree(root,workspace)
+    spec=load_task_spec(workspace/'config.yaml',task_id='triton2triton/vllm/'+root.name)
+    snapshot=snapshot_workspace_harness(workspace,task_spec=spec)
+    source=workspace/spec.candidate.editable[0].path
+    tree=ast.parse(source.read_text())
+    kernel=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name==spec.candidate.entrypoints[0].symbol)
+    kernel.body.append(ast.Pass())
+    source.write_text(ast.unparse(ast.fix_missing_locations(tree)))
+    verify_workspace_harness(snapshot)
+    wrapper=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and
+                 n.name not in spec.candidate.editable[0].symbols)
+    wrapper.body=[ast.Return(ast.Constant(None))]
+    source.write_text(ast.unparse(ast.fix_missing_locations(tree)))
+    with pytest.raises(RuntimeError,match='[Hh]arness|protected'):
+        verify_workspace_harness(snapshot)

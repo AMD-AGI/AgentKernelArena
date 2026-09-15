@@ -1,10 +1,15 @@
 schema_version: 2
-description: Optimize triton_ssd_chunk_state_varlen with the original Triton operator contract.
+description: Optimize triton_ssd_chunk_state_varlen with the original Triton operator
+  contract.
 candidate:
   language: triton
   initial_state: implemented
   editable:
-  - source/triton_ssd_chunk_state_varlen.py
+  - path: source/triton_ssd_chunk_state_varlen.py
+    scope: symbols
+    symbols:
+    - _chunk_state_varlen_kernel
+    allow_new_helpers: true
   entrypoints:
   - file: source/triton_ssd_chunk_state_varlen.py
     kind: function

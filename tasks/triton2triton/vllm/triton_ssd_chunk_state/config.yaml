@@ -4,7 +4,11 @@ candidate:
   language: triton
   initial_state: implemented
   editable:
-  - source/triton_ssd_chunk_state.py
+  - path: source/triton_ssd_chunk_state.py
+    scope: symbols
+    symbols:
+    - _chunk_state_fwd_kernel
+    allow_new_helpers: true
   entrypoints:
   - file: source/triton_ssd_chunk_state.py
     kind: function

@@ -4,7 +4,12 @@ candidate:
   language: triton
   initial_state: implemented
   editable:
-  - source/triton_ssd_chunk_cumsum.py
+  - path: source/triton_ssd_chunk_cumsum.py
+    scope: symbols
+    symbols:
+    - _chunk_cumsum_fwd_kernel
+    - softplus
+    allow_new_helpers: true
   entrypoints:
   - file: source/triton_ssd_chunk_cumsum.py
     kind: function

@@ -4,7 +4,11 @@ candidate:
   language: triton
   initial_state: implemented
   editable:
-  - source/triton_ssd_state_passing.py
+  - path: source/triton_ssd_state_passing.py
+    scope: symbols
+    symbols:
+    - _state_passing_fwd_kernel
+    allow_new_helpers: true
   entrypoints:
   - file: source/triton_ssd_state_passing.py
     kind: function

@@ -1,6 +1,6 @@
 # triton_ssd_chunk_state
 
-The starting candidate is implemented Triton. Improve the declared source files in place;
+The starting candidate is implemented Triton. Optimize the declared Triton functions in place;
 the framework freezes the initial implementation as the baseline. Baseline and candidate
 actions execute only this workspace, with no fallback to another implementation.
 
@@ -54,3 +54,10 @@ Candidate code must implement the declared Triton computation. Protected task
 references, controls, harnesses and timing helpers are evaluation dependencies,
 not implementation libraries; importing them to produce candidate results is
 outside the task contract. Task commands never write framework scores.
+
+The editable scope is the named Triton kernel (and the existing `softplus` JIT
+helper for cumsum), with new implementation helpers allowed. The public Python
+wrapper, imports, allocation behavior and launch dispatch remain protected by
+the framework's symbol-aware harness guard. Keeping an unused nominal kernel
+and replacing the wrapper with a PyTorch computation is not a valid submission.
+This boundary repair changes no initial kernel bytes or measured workload.
