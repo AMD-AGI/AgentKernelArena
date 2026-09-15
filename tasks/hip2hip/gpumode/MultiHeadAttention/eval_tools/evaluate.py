@@ -70,7 +70,7 @@ def output_contract(expected, actual):
 
 def case_rows(args):
     manifest = json.loads(local_path(args.workloads).read_text())
-    rows = manifest["cases"]
+    rows = manifest["cases"] + manifest.get("correctness_controls", [])
     if not rows or len({row["test_case_id"] for row in rows}) != len(rows):
         raise ValueError("Task workload manifest is empty or has duplicate cases")
     return copy.deepcopy(rows)
@@ -127,6 +127,12 @@ def validate_task(args, rows):
     import torch
     module = load_module(local_path(args.module), "arena_reference")
     functional = load_module(local_path(args.functional), "arena_functional")
+    import attention_controls
+    controls=[row for row in rows if row.get("checks")==["correctness"]]
+    attention_controls.self_test(getattr(module,args.model_class),getattr(functional,args.model_class),controls)
+    for row in controls:
+        check_case_identity(row,attention_controls.generate(row))
+    rows=[row for row in rows if "performance" in row.get("checks",["correctness","performance"])]
     forward = getattr(functional, args.model_class).forward
     default = inspect.signature(forward).parameters["fn"].default
     if not callable(default):
@@ -148,7 +154,8 @@ def validate_task(args, rows):
         raise ValueError(f"Initial candidate state is {actual_state}, expected {args.initial_state}")
     if not torch.version.hip or not torch.cuda.is_available():
         raise RuntimeError("Task needs a ROCm PyTorch runtime and a visible GPU")
-    return {"candidate_state": actual_state, "case_count": len(rows)}
+    return {"candidate_state": actual_state, "case_count": len(rows)+len(controls),
+            "performance_case_count":len(rows),"additional_correctness_case_count":len(controls)}
 
 
 def correctness(args, role, rows):
@@ -162,6 +169,8 @@ def correctness(args, role, rows):
     tolerance = inspect.signature(checks.correctness_check).parameters
     rtol, atol = tolerance["rtol"].default, tolerance["atol"].default
     result = []
+    controls=[row for row in rows if row.get("checks")==["correctness"]]
+    rows=[row for row in rows if "performance" in row.get("checks",["correctness","performance"])]
     for index, inputs in enumerate(inputs_gen):
         if index >= len(rows):
             raise ValueError("Correctness generated undeclared cases")
@@ -186,6 +195,29 @@ def correctness(args, role, rows):
         result.append(row)
     if len(result) != len(rows):
         raise ValueError("Correctness omitted declared cases")
+    import attention_controls
+    from replay_validation import unchanged_inputs, unchanged_model_state, separate_output
+    for row in controls:
+        # Each boundary case starts from the declared fresh heads=4 state.
+        module,functional=prepare_models(args)
+        inputs=attention_controls.generate(row,device="cuda")
+        check_case_identity(row,inputs)
+        pristine=copy.deepcopy(inputs)
+        state={k:v.detach().clone() for k,v in functional.state_dict().items()}
+        with torch.no_grad():
+            expected=attention_controls.reference(module,inputs)
+            expected_module=module(*copy.deepcopy(inputs))
+            actual=functional(*inputs) if hip_fn is None else functional(*inputs,fn=hip_fn)
+        torch.cuda.synchronize()
+        output_contract(expected,expected_module)
+        output_contract(expected,actual)
+        unchanged_inputs(pristine,inputs)
+        unchanged_model_state(state,functional)
+        separate_output(actual,inputs)
+        passed=(checks._compare_results(expected,expected_module,rtol=rtol,atol=atol)
+                and checks._compare_results(expected,actual,rtol=rtol,atol=atol))
+        result.append({**row,"status":"PASS" if passed else "FAIL", "metrics":{"rtol":rtol,"atol":atol},
+                       **({} if passed else {"failure_kind":"numerical_mismatch"})})
     return result
 
 
@@ -288,11 +320,13 @@ def run(argv=None):
         (ROOT / "build").mkdir(exist_ok=True)
         os.environ["TORCH_EXTENSIONS_DIR"] = str(ROOT / "build" / "torch_extensions")
         rows = case_rows(args)
+        if action in ("correctness","performance"):
+            rows=[row for row in rows if action in row.get("checks",["correctness","performance"])]
         if role == "candidate" and not has_implementation(local_path(args.candidate)):
             raise ValueError("HIP candidate is unimplemented; final actions cannot use a baseline")
         if action == "validate-task":
             report["metadata"] = validate_task(args, rows)
-            report["cases"] = [{**row, "checks": ["correctness", "performance"], "status": "PASS"} for row in rows]
+            report["cases"] = [{**row, "checks": row.get("checks", ["correctness", "performance"]), "status": "PASS"} for row in rows]
         elif action == "compile":
             if role == "baseline" and not args.baseline_hip:
                 for path in (args.module, args.functional):
@@ -310,7 +344,7 @@ def run(argv=None):
         report.update(reason=f"{type(exc).__name__}: {exc}", failure_kind="execution_error")
         report["cases"] = [] if action == "compile" else [
             {**row, "status": "FAIL", "failure_kind": "not_completed",
-             **({"checks": ["correctness", "performance"]} if action == "validate-task" else {})}
+             **({"checks": row.get("checks", ["correctness", "performance"])} if action == "validate-task" else {})}
             for row in rows]
     print("ARENA_EVAL_RESULT=" + json.dumps(report, allow_nan=False))
     return 0 if report["status"] == "PASS" else 1

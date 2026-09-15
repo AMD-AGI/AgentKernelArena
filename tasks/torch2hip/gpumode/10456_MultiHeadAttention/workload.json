@@ -144,5 +144,128 @@
         "correctness_seed": 1339
       }
     }
+  ],
+  "correctness_controls": [
+    {
+      "test_case_id": "heads4_lower_boundary",
+      "checks": [
+        "correctness"
+      ],
+      "params": {
+        "inputs": [
+          {
+            "shape": [
+              1,
+              139,
+              4
+            ],
+            "dtype": "torch.float32",
+            "stride": [
+              556,
+              4,
+              1
+            ]
+          },
+          {
+            "shape": [
+              1,
+              139,
+              4
+            ],
+            "dtype": "torch.float32",
+            "stride": [
+              556,
+              4,
+              1
+            ]
+          },
+          {
+            "shape": [
+              1,
+              139,
+              4
+            ],
+            "dtype": "torch.float32",
+            "stride": [
+              556,
+              4,
+              1
+            ]
+          }
+        ],
+        "model_init_seed": 0,
+        "input_seed": 4242,
+        "heads": 4,
+        "sequence_length": 139,
+        "mask": "none"
+      }
+    },
+    {
+      "test_case_id": "heads4_upper_mask",
+      "checks": [
+        "correctness"
+      ],
+      "params": {
+        "inputs": [
+          {
+            "shape": [
+              1,
+              230,
+              4
+            ],
+            "dtype": "torch.float32",
+            "stride": [
+              920,
+              4,
+              1
+            ]
+          },
+          {
+            "shape": [
+              1,
+              230,
+              4
+            ],
+            "dtype": "torch.float32",
+            "stride": [
+              920,
+              4,
+              1
+            ]
+          },
+          {
+            "shape": [
+              1,
+              230,
+              4
+            ],
+            "dtype": "torch.float32",
+            "stride": [
+              920,
+              4,
+              1
+            ]
+          },
+          {
+            "shape": [
+              1,
+              230,
+              230
+            ],
+            "dtype": "torch.uint8",
+            "stride": [
+              52900,
+              230,
+              1
+            ]
+          }
+        ],
+        "model_init_seed": 0,
+        "input_seed": 4243,
+        "heads": 4,
+        "sequence_length": 230,
+        "mask": "causal"
+      }
+    }
   ]
 }

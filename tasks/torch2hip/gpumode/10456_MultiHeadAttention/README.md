@@ -59,3 +59,22 @@ values are restored in `finally`, including on exceptions, so a failed role
 cannot alter the next role's starting state. Snapshot, checks and final cleanup
 run outside the reported samples; existing per-invocation prepare callbacks
 and the baseline's graph/Event policy retain their timing boundaries.
+
+## Additional correctness coverage, unchanged timing workload
+
+All three original `workload.json` performance cases, input generators, seeds,
+10 warmups and 100 samples remain unchanged. The independent manifest also
+lists two `correctness_controls`: sequence length 139 with no mask, and length
+230 with a causal uint8 mask. Each uses a fresh heads=4/d_model=4 model, batch=1,
+and its own declared local input generator seed. They exercise the valid
+four-head route and mask semantics; they are required numerical checks and do
+not add or replace performance rows. Neither tests dropout/training or the
+invalid d_model=4/eight-head route above length230.
+
+The task validates the controls against an independent FP64 per-head attention
+formula and negative controls for hard-coded two-head routing/ignored mask.
+Every baseline and candidate correctness action executes both controls through
+its actual implementation with the original rtol=1e-4/atol=1e-5 and complete
+output/input/model-tensor contracts. No final candidate can delegate to a
+protected reference. Task validation reports five correctness cases and three
+performance cases through the normal arena-eval-v1 manifest.
