@@ -8085,3 +8085,171 @@ def test_gumbel_validation_requires_cpu_oracle_dependency(monkeypatch):
     monkeypatch.setattr(adapter.importlib.util,'find_spec',lambda name,*a,**kw: None if name=='numpy' else (SimpleNamespace() if name in ('torch','triton') else original(name,*a,**kw)))
     result=adapter.evaluate('task','validate-task')
     assert result['status']=='FAIL' and 'numpy' in result['reason']
+
+
+def _fused_moe_lora_cpu_harness(monkeypatch):
+    h,checks=_fp8_group_cpu_harness(monkeypatch,'fused_moe_lora')
+    for name in ('randint','tensor','full','zeros','ones'):
+        factory=getattr(torch,name)
+        monkeypatch.setattr(torch,name,lambda *a,_factory=factory,**kw:_factory(*a,**{**kw,'device':'cpu'}))
+    return h,checks
+
+
+def _fused_moe_lora_cpu_module(mode='correct'):
+    # Execute the real public Python wrapper and real pointer builders, with a
+    # CPU stand-in for only the Triton device launch. The protected harness's
+    # prepare_direct_launch also calls this same raw launch stand-in.
+    tree=ast.parse((ROOT/'tasks/triton2triton/vllm/triton_fused_moe_lora/source/triton_fused_moe_lora.py').read_text())
+    names={'_next_power_of_2','_get_ptr','_adjust_kernel_inputs','fused_moe_lora'}
+    nodes=[n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name in names]
+    for node in nodes:node.decorator_list=[]
+    ns={'torch':torch,'triton':SimpleNamespace(cdiv=lambda a,b:(a+b-1)//b)}
+    exec(compile(ast.Module(body=nodes,type_ignores=[]),'<original_fused_moe_lora_host>','exec'),ns)
+    registry={};records=[];launches=[];pointer=ns['_get_ptr'];control={'replaying':False}
+    def get_ptr(weights,device):
+        records.append((weights,tuple(weights),[w.clone() for w in weights]))
+        for weight in weights:registry[weight.data_ptr()]=weight
+        if mode=='prepare_mutate':weights[0].zero_()
+        if mode=='prepare_replace':weights[0]=weights[0].clone()
+        if mode=='prepare_raise':weights[0].zero_();raise RuntimeError('pointer preparation failed')
+        return pointer(weights,device)
+    ns['_get_ptr']=get_ptr
+    class Raw:
+        def __getitem__(self,grid):
+            def launch(*args,**meta):
+                actual=grid(meta) if callable(grid) else grid
+                x,ptr,out,routed,sorted_ids,experts,padded,mapping,N,K,EM,valid,E,topk,lora_ids,enabled,NL=args[:17]
+                assert actual==(meta['SPLIT_K']*((EM+63)//64)*((N+meta['BLOCK_SIZE_N']-1)//meta['BLOCK_SIZE_N']),meta['num_slice_c'],1 if sorted_ids is None else len(lora_ids))
+                assert meta['SPLIT_K']==1 and meta['BLOCK_SIZE_M']==64 and meta['num_warps']==4 and meta['num_stages']==3
+                primary=meta['IS_PRIMARY'];launches.append((primary,actual,dict(meta)))
+                weights=[registry[int(address)] for address in ptr.tolist()];slices=len(weights);M=routed.shape[0]
+                route_lora=torch.full((valid,),-1,dtype=torch.int64);route_expert=torch.full((valid,),-1,dtype=torch.int64)
+                if sorted_ids is None:
+                    route_lora.copy_(mapping.repeat_interleave(topk));route_expert.copy_(experts)
+                else:
+                    for lid in lora_ids.tolist():
+                        for pos in range(int(padded[lid])):
+                            flat=int(sorted_ids[lid,pos])
+                            if flat<valid:route_lora[flat]=lid;route_expert[flat]=experts[lid,pos//64]
+                if mode=='ignore_sorted' and sorted_ids is not None:return
+                if mode=='omit_shrink_replay' and primary and control['replaying']:return
+                if mode=='omit_expand_replay' and not primary and control['replaying']:return
+                for flat in range(valid):
+                    lid=int(route_lora[flat]);expert=int(route_expert[flat])
+                    if lid<0 or expert<0:continue
+                    if not int(enabled[lid]) and mode!='ignore_disabled':continue
+                    for s,w in enumerate(weights):
+                        if primary:
+                            factor=topk if mode=='ignore_weighted_layout' and meta['token_mapping_factor']==1 else meta['token_mapping_factor']
+                            inp=x[flat//factor]
+                            stop=32 if mode=='omit_k_tail' and K==35 else K
+                            values=inp[:stop].double()@w[lid,expert,:,:stop].double().t()
+                            out[s,flat//topk,flat%topk]=values.to(out.dtype)
+                        else:
+                            inter=x.view(slices,valid,K)[s,flat]
+                            stop=16 if mode=='omit_rank_tail' and K==19 else K
+                            values=inter[:stop].double()@w[lid,expert,:,:stop].double().t()
+                            if meta['MUL_ROUTED_WEIGHT'] and mode!='ignore_weight':values*=routed.flatten()[flat].double()
+                            if mode=='omit_n_tail' and N==67:values[-3:]=0
+                            view=out[flat//topk,flat%topk,s*N:(s+1)*N]
+                            if mode=='ignore_add':view.copy_(values.to(out.dtype))
+                            else:view.add_(values.to(out.dtype))
+                if not primary and mode=='wrong_output':out.add_(10)
+                if primary and mode=='mutate_input':x.zero_()
+                if primary and mode=='mutate_routing':mapping.zero_()
+                if primary and mode=='mutate_ptr':ptr.zero_()
+                if primary and mode=='mutate_topk':routed.zero_()
+                if primary and mode=='mutate_experts':experts.zero_()
+                if primary and mode=='mutate_enabled':enabled.zero_()
+                if primary and mode=='mutate_lora_ids':lora_ids.zero_()
+                if primary and mode=='mutate_sorted' and sorted_ids is not None:sorted_ids.zero_()
+                if primary and mode=='mutate_padded' and padded is not None:padded.zero_()
+            return launch
+    ns['fused_moe_lora_kernel']=Raw()
+    return SimpleNamespace(**{k:v for k,v in ns.items() if not k.startswith('__')}),records,launches,control
+
+
+@pytest.mark.parametrize('weighted',[False,True])
+def test_fused_moe_lora_literal_known_addition_routing_weight_and_original_gate(monkeypatch,weighted):
+    h,checks=_fused_moe_lora_cpu_harness(monkeypatch)
+    # One adapter/expert, rank1. Shared x=2 gives30 on both routes;
+    # weighted flattened x=[2,4] gives30*(-.5),60*2 before addition.
+    args=(torch.full((1,2,3),7.,dtype=torch.float16),torch.tensor([[2.],[4.]] if weighted else [[2.]],dtype=torch.float16),
+        [torch.tensor([[[[3.]]]],dtype=torch.float16)],[torch.tensor([[[[5.]]]],dtype=torch.float16)],
+        torch.tensor([[-.5,2.]]),None,torch.tensor([0,0]),None,torch.tensor([0]),1,2,torch.tensor([0]),1,torch.tensor([1],dtype=torch.int32))
+    case=checks.capture(args,dict(mul_routed_weight=weighted,offset=1));expected=checks.answer(h,case)
+    wanted=torch.tensor([[[7.,-8. if weighted else 37.,7.],[7.,127. if weighted else 37.,7.]]],dtype=torch.float16)
+    assert torch.equal(expected[0],wanted)
+    mod,_,_,_=_fused_moe_lora_cpu_module();mod.fused_moe_lora(*args,mul_routed_weight=weighted,offset=1)
+    checks.check_output(args[0],expected,case['saved'][0])
+    template=torch.zeros((1,1,1),dtype=torch.float16);mask=torch.ones_like(template,dtype=torch.bool)
+    checks.check_output(template+.049,(template,mask,template),template)
+    with pytest.raises(AssertionError):checks.check_output(template+.051,(template,mask,template),template)
+
+
+@pytest.mark.parametrize('mode',['correct','prepare_mutate','prepare_replace','prepare_raise','wrong_output',
+    'ignore_disabled','ignore_sorted','ignore_weight','ignore_weighted_layout','ignore_add','omit_k_tail','omit_rank_tail','omit_n_tail',
+    'mutate_input','mutate_routing','mutate_ptr','mutate_topk','mutate_experts','mutate_enabled',
+    'mutate_lora_ids','mutate_sorted','mutate_padded'])
+def test_fused_moe_lora_original_public_and_prepared_wrappers_with_diagnostics(monkeypatch,mode):
+    h,checks=_fused_moe_lora_cpu_harness(monkeypatch);mod,records,launches,_=_fused_moe_lora_cpu_module(mode)
+    h.load_module=lambda:mod;checks.install(h);ok,reason=h.run_correctness()
+    assert ok is (mode=='correct'),reason
+    if ok:
+        assert len(launches)==36  # 5 original public/direct pairs +4 diagnostic pairs.
+        assert any(not meta['naive_block_assignment'] for _,_,meta in launches)
+        assert any(meta['MUL_ROUTED_WEIGHT'] for _,_,meta in launches)
+    for weights,objects,saved in records:
+        assert len(weights)==len(objects) and all(a is b for a,b in zip(weights,objects))
+        for w,before in zip(weights,saved):assert torch.equal(w,before)
+
+
+@pytest.mark.parametrize('mode',['correct','prepare_mutate','prepare_replace','prepare_raise','wrong_timed',
+    'stale','no_write','omit_shrink_replay','omit_expand_replay','mutate_timed','mutate_replay',
+    'skip_prepare','raise_replay'])
+def test_fused_moe_lora_exact_prepared_pair_replay_and_all_buffer_restoration(monkeypatch,mode):
+    h,checks=_fused_moe_lora_cpu_harness(monkeypatch)
+    h._TimedRun=module_at(ROOT/'src/tools/perf/aka_benchmark.py',monkeypatch).TimedRun
+    mod,records,launches,control=_fused_moe_lora_cpu_module(mode);h.load_module=lambda:mod
+    cases=[];aux=[];options=[];replays=[];prepare=h.prepare_direct_launch
+    def collect(module,*args,**kwargs):
+        case=checks.capture(args,kwargs);cases.append(case)
+        direct=prepare(module,*args,**kwargs);aux.append((direct,direct['intermediate'].clone(),direct['lora_a_ptrs'].clone(),direct['lora_b_ptrs'].clone()))
+        return direct
+    h.prepare_direct_launch=collect
+    def benchmark(measured,*,timed_run,**kwargs):
+        control['replaying']=False;case=cases[-1];direct=aux[-1][0];options.append(kwargs)
+        assert kwargs['warmup']==10 and kwargs['repetition']==100
+        assert kwargs['prepare_fn'].__self__ is direct['output'] and kwargs['prepare_fn'].__name__=='zero_'
+        kwargs['prepare_fn']();out=measured();cached=out.clone()
+        if mode=='wrong_timed':out.add_(10)
+        if mode=='mutate_timed':case['args'][1].zero_()
+        def replay():
+            replays.append(True);control['replaying']=True
+            assert torch.isnan(out).all() and torch.isnan(direct['intermediate']).all()
+            for i in (1,4,6,8,11,13):assert not torch.equal(case['args'][i],case['saved'][i])
+            assert all(not torch.equal(w,before) for w,before in zip(case['args'][2],case['saved'][2]))
+            assert all(not torch.equal(w,before) for w,before in zip(case['args'][3],case['saved'][3]))
+            if mode=='raise_replay':raise RuntimeError('prepared replay failed')
+            if mode!='skip_prepare':kwargs['prepare_fn']()
+            if mode=='stale':out.copy_(cached)
+            elif mode!='no_write':measured()
+            if mode=='mutate_replay':case['args'][1].zero_()
+            return out
+        timed_run._bind(replay,out);return .125,{'benchmark_method':'cuda_graph'}
+    h._benchmark_cuda_graph_or_events=benchmark;checks.install(h);rows=h.run_performance()
+    assert len(rows)==5
+    for shape,row in zip(h.TEST_SHAPES,rows):
+        assert row['params']==dict(zip(('M','K','num_experts','lora_rank','out_dim','num_loras','top_k'),shape))
+        assert row['execution_time_ms']==(.125 if mode=='correct' else -1.)
+    for case in cases:checks.unchanged(case);assert torch.equal(case['args'][0],case['saved'][0])
+    for direct,inter,a,b in aux:
+        assert torch.equal(direct['intermediate'],inter)
+        assert torch.equal(direct['lora_a_ptrs'],a) and torch.equal(direct['lora_b_ptrs'],b)
+    assert len(options)==(0 if mode.startswith('prepare_') else 5)
+    assert len(replays)==(0 if mode.startswith('prepare_') or mode in ('wrong_timed','mutate_timed') else 5)
+
+
+def test_fused_moe_lora_adapter_installs_checks(monkeypatch):
+    h=module_at(ROOT/'tasks/triton2triton/vllm/triton_fused_moe_lora/_arena_eval.py',monkeypatch).load_harness()
+    assert h.run_correctness.__module__==h.run_performance.__module__=='_fused_moe_lora_checks'

@@ -45,3 +45,36 @@ The protected manifest requires the declared kernel symbols to remain Triton JIT
 functions, including kernels originally decorated with `@triton.jit()`. Removing
 the decorator is rejected before compilation. This structural check supplements
 the numerical and timed-path checks; it does not by itself attest every dispatch.
+
+The public wrapper adds LoRA contributions to the supplied output; it does not
+clear that output. With `mul_routed_weight=False`, input activations have M rows
+and each token is shared across its top-k routes. With `mul_routed_weight=True`,
+activations have M*top_k rows in flattened route order; the expand stage applies
+the corresponding routing weight. Both use `topk_weights.shape[0] == M` and
+output shape `[M, top_k, output_columns]`. `offset` selects the first output
+column. Disabled adapters, missing adapters/experts and surrounding columns
+preserve the caller's original values.
+
+Unscored controls exercise both weighted/unweighted and sorted/naive modes,
+83 tokens, two slices, K35/rank19/N67 tails, offset5, nonzero initial output,
+negative/zero routing weights, disabled adapters and empty expert groups. Sorted
+inputs use per-adapter/expert groups padded to 64-token blocks, including a
+multi-block group and nonsequential token order. These controls use the actual
+public wrapper and the original prepared shrink/expand pair.
+
+The original five scored cases, input distributions, seeds (42+i correctness,
+0 performance), and full-output `atol=rtol=5e-2` comparison remain. The original
+FP32 two-matmul reference remains used for every scored case; the weighted
+extension follows the same arithmetic on flattened route activations. Output
+metadata, finite values, every route and untouched columns are checked. Input
+activations, weight-list membership, both weight stacks and all routing tables
+are read-only, including during pointer construction.
+
+Timing retains the original two raw launches with prebuilt pointers and
+intermediate storage, SPLIT_K=1, 10 warmups and 100 samples. The original
+`output.zero_` preparation stays outside timing. Actual `TimedRun` outputs are
+checked before and after changing operands, expert/adapter routing and enabled
+adapters in place. Replay poisons output and intermediate storage, then runs the
+same captured pair with the original preparation. Inputs, pointer tables,
+intermediate storage and output are restored even when replay fails. No new
+reset, reference work or allocation is added to the measured pair.
