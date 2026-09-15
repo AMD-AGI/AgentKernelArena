@@ -344,13 +344,30 @@ baseline under the same runtime used for the candidate. This does not change the
 Arena default image, and does not establish that compiled vLLM extensions can be
 copied into the newer SGLang image.
 
-Kimi KDA is a separate unresolved dependency: this official image lacks its
-`models/kimi_k3/amd/ops/third_party/kda` and corresponding shared FLA sources.
-The original task records custom build `0.1.dev19253+g5f76ae224.d20260727`. Its
-referenced archived session is visible on the compute node, although not on the
-development host. The accessible archive contains run reports but no matching
-`chunk.py`, `chunk_intra.py`, `chunk_intra_token_parallel.py` or
-`fused_recurrent.py` source files; its original kernel workspace is empty.
-An immutable copy of that build or its exact source/dependencies is needed before
-qualification. Retain the task and report missing sources explicitly; a different
-attention kernel or the speculative-decode entrypoint is not a substitute.
+The original Kimi KDA custom build remains unavailable: this official image
+lacks its `models/kimi_k3/amd/ops/third_party/kda` and corresponding shared FLA
+sources. The original task records custom build
+`0.1.dev19253+g5f76ae224.d20260727`. Its accessible archived session contains
+reports but no matching kernel files; the original kernel workspace is empty.
+
+The retained task now uses an explicit, semantic-preserving public-source port
+to vLLM commit `000c7df9ffd3e470980fd4cd6b8ec1b0585500ff`, with declared Git
+acquisition and protected setup. This is not recovery of the custom bytes or
+substitution of a different attention operator. The task keeps the packed
+non-speculative decode and chunk entrypoints, full workloads and original output
+gates, and additionally checks final state and actual graph replay. See its
+[task contract](mi355x_vllm_triton_kda_linear_attn_kimi_k3/README.md) for the
+source, aliasing, independent recurrence and baseline comparison boundaries.
+
+## Current GPU qualification
+
+The [runtime qualification record](../../docs/reference/runtime-upgrade-qualification.md)
+supersedes the historical source/setup-only checkpoints above. As of
+2026-09-15 10:54 UTC, 20 current task packages have complete framework-finalized
+validator PASS: 14 on the explicit SGLang 0.5.19 image and six on the original
+vLLM 0.24.0 image. KDA's five ordinary correctness cases pass, but its last timed
+long-sequence state check still fails; it is not qualified. Exact report and
+source identities are retained under `logs/image-v2-gpu-validation/`.
+
+A task's recorded runtime matters: a vLLM-image PASS does not qualify that task
+on SGLang. No default image promotion or optimized-agent result is implied.

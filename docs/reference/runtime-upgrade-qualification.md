@@ -25,45 +25,51 @@ when AITER used its default copy-on-import path. Setting `AITER_JIT_DIR` selects
 its writable-cache path instead. The override is limited to the recorded image
 references and isolated per worker; installed image packages remain unchanged.
 Docker argument tests cover the dated tag, immutable digest, and worker suffix.
-This cache fix needs a fresh GPU task validation; it neither promotes the default
-image nor changes the separately pinned evaluation-tool compatibility gate.
+The subsequent full image-task runs below exercise this cache configuration.
+They neither promote the default image nor change the separately pinned
+evaluation-tool compatibility gate.
 
-## Image task qualification checkpoint (2026-09-15, 08:59 UTC)
+## Image task qualification checkpoint (2026-09-15, 10:54 UTC)
 
-The v2 follow-up uses complete `task_validator` runs with Codex medium and the
-shared framework finalizer on allocated MI355X GPUs. At this checkpoint,
-**15 of 21 image tasks have a complete PASS whose task tree matches the current
-source**. Ten passed under the explicit SGLang 0.5.19 manifest below; five passed
-under the original, separately pinned vLLM 0.24.0 runtime. The vLLM results are
-not evidence that those tasks work in SGLang 0.5.19.
+**20 of 21 current image-task packages have a complete, framework-finalized
+`task_validator` PASS.** These are full Codex medium reviews plus the shared
+framework's task, baseline compilation, correctness and performance actions.
+The report/completion markers bind each result to its frozen task tree,
+materialized upstream sources and actual runtime. A successful action alone
+is not counted as a complete validator result.
 
-| Candidate | Completed evidence | Remaining qualification |
-| --- | --- | --- |
-| SGLang 0.5.18 / ROCm 10 | Official manifest/config verification and actual non-root CPU import inventory; FlyDSL 0.3.1. | No GPU task validation has been performed on this candidate. |
-| SGLang 0.5.19 / ROCm 10 | Actual GPU legacy probes plus ten complete v2 image-task PASS; FlyDSL 0.3.2. | Fresh CKTile packing, CK MoE quantization and HIP package-binding checks; other retained tasks still in progress. |
+| Qualification runtime | Current complete image-task PASS | Scope |
+| --- | ---: | --- |
+| SGLang 0.5.19 / ROCm 10, immutable manifest below | 14 | Five older AITER tasks, both recovered SGLang MXFP8 tasks, Kimi MoE, three CK tasks, HIP quantization and paged attention, AITER unified attention. |
+| Original vLLM 0.24.0, `sha256:3832d79d9e514ce2e072580689da078726454596d833c8ab803f29f3cea5ea28` | 6 | TileLang mHC, Gemma4/GPTQ-AWQ MoE, paged attention 2D, sparse prefill and Gemma4 unified attention. |
+| SGLang 0.5.18 / ROCm 10, immutable manifest below | Not an image-suite validator run | Actual HIP/Triton/FlyDSL v2 representatives passed on both ROCm 10 images in job 139982; see the separate comparison below. |
 
-Jobs 139332 and 139599 use node 100 with two separately masked GPUs. Job 139599
-adds a clean CK block-scale GEMM PASS and requalifies HIP per-tensor quantization;
-its old CKTile packing, CK MoE quantizer API and HIP paged-attention import
-failures are retained. CPU-tested fixes do not upgrade those failed reports.
-SGLang MXFP8 linear also has a fresh complete PASS with its explicitly pinned
-upstream source on the new image. Kimi MoE and sparse attention also need fresh PASS.
+The original vLLM results establish compatibility with that runtime, not with
+SGLang 0.5.19. None of these qualifications is an optimization campaign.
 
-The KDA task explicitly ports the retained operator to pinned public upstream
-source because the recorded custom source could not be recovered. Its earlier
-five-case GPU operator/state prototype establishes feasibility only. Job 139646,
-queued after 139599, freezes the new canonical pre-sample observer and will run
-full validation, the unchanged-candidate final pipeline, and sequential GPU
-helper before/after measurements. None of those pending results is counted.
-The original vLLM runtime remains its qualification environment.
+The latest source-specific passes include sparse attention (139802), CKTile
+packing/activation and fixed magnitude checks (139933), CK MoE quantization
+and HIP paged-attention template compilation (139983), and Kimi's explicitly
+fixed synthetic workload (139960). Both original timed outputs and perturbed
+replay outputs are checked where required. The fresh reports supersede only
+their matching older failures; those failed reports remain preserved.
 
-Detailed report paths, report/completion hashes, frozen task-tree identities and
-job evidence are preserved under `logs/image-v2-gpu-validation/`; the live
-`full21-evidence.json` and `CURRENT-QUALIFICATION.md` distinguish historical
-failures, current matching PASS, and pending work. They are experiment artifacts,
-not committed task inputs. The default scoring image remains unchanged. Neither
-candidate has completed the promotion gate, and neither has qualified sanitizer
-sidecars or a matched before/after optimization campaign.
+KDA is the sole outstanding task. Its public-source port uses pinned vLLM
+commit `000c7df9ffd3e470980fd4cd6b8ec1b0585500ff` in the original vLLM runtime;
+the custom historical kernel bytes were not recovered. Job 139994 passes all
+five ordinary correctness cases and completes four timed cases, but the
+32,768-token case fails its final-state check because only one compared vector
+is zero. The full validator is FAIL, and the final candidate pipeline is not
+run. Exact-source numerical diagnosis is separate from qualification; no
+numerical threshold, workload, warmup or timing policy is relaxed to accept it.
+
+Detailed report paths, report/completion hashes, frozen task-tree identities,
+materialization records and runtime evidence are preserved under
+`logs/image-v2-gpu-validation/`. The live `full21-evidence.json` and
+`CURRENT-QUALIFICATION.md` distinguish current matching PASS, historical
+failures and pending work. These are experiment artifacts, not task inputs.
+The default image is unchanged. Neither ROCm 10 image has completed the full
+promotion gate, sanitizer qualification or a matched optimization campaign.
 
 ## KDA observer GPU evidence (job 139646)
 
@@ -93,8 +99,9 @@ cases passed, and timed decode passed, but the chunk implementation explicitly
 uses `o=v` and the harness incorrectly required `v` to remain read-only.
 A subsequent task-local correction observes and independently verifies the
 actual repeated BF16 value updates and enforces the output alias. The old
-failure remains evidence; the fix requires fresh full GPU qualification.
-The unchanged-candidate final evaluation was not run after the failed validator.
+failure remains evidence. Later qualification, including job 139994 above, is
+recorded separately; the unchanged-candidate final evaluation was not run after
+this failed validator.
 
 ## Registry evidence (2026-09-15 UTC)
 
