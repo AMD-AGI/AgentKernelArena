@@ -20,6 +20,7 @@ from typing import Any
 import yaml
 
 from agents import register_agent
+from agents.prompt_input import prompt_input
 from .report_schema import finalize_report
 from .trusted_evidence import load_task_evidence
 from .validation_prompt import build_validation_prompt
@@ -50,12 +51,13 @@ def _stop_process(process: subprocess.Popen) -> None:
 
 
 def _run_backend(cmd: list[str], *, backend: str, workspace: str, timeout_seconds: int,
-                 logger: logging.Logger, env: dict | None = None) -> BackendResult:
+                 logger: logging.Logger, env: dict | None = None,
+                 stdin=subprocess.DEVNULL) -> BackendResult:
     if not shutil.which(cmd[0]):
         raise RuntimeError(f"Command {cmd[0]!r} not found; install/authenticate the validator backend")
     # Only argv metadata is logged here; never interpolate shell commands.
     logger.info("Launching validator backend %s in %s", backend, workspace)
-    process = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+    process = subprocess.Popen(cmd, stdin=stdin, stdout=subprocess.PIPE,
                                stderr=subprocess.PIPE, text=True, errors="replace", cwd=workspace,
                                env=env, bufsize=1, start_new_session=True)
     stdout, stderr = [], []
@@ -130,8 +132,10 @@ def _launch_codex(prompt: str, workspace: str, timeout_seconds: int, logger: log
         cmd.extend(["--model", model])
     if effort:
         cmd.extend(["-c", f"model_reasoning_effort={json.dumps(effort)}"])
-    cmd.extend(["--", prompt])
-    return _run_backend(cmd, backend="codex", workspace=workspace, timeout_seconds=timeout_seconds, logger=logger)
+    cmd.extend(["--", "-"])
+    with prompt_input(prompt) as stream:
+        return _run_backend(cmd, backend="codex", workspace=workspace,
+                            timeout_seconds=timeout_seconds, logger=logger, stdin=stream)
 
 
 def _launch_claude_code(prompt: str, workspace: str, timeout_seconds: int, logger: logging.Logger,
@@ -147,10 +151,11 @@ def _launch_claude_code(prompt: str, workspace: str, timeout_seconds: int, logge
         if type(max_budget_usd) not in (int, float) or not math.isfinite(max_budget_usd) or max_budget_usd <= 0:
             raise ValueError("max_budget_usd must be a positive finite number")
         cmd.extend(["--max-budget-usd", str(max_budget_usd)])
-    cmd.extend(["--", prompt])
+    cmd.extend(["--input-format", "text"])
     env = dict(os.environ, IS_SANDBOX="1", CLAUDE_CODE_DISABLE_AUTO_MEMORY="1")
-    return _run_backend(cmd, backend="claude_code", workspace=workspace, timeout_seconds=timeout_seconds,
-                        logger=logger, env=env)
+    with prompt_input(prompt) as stream:
+        return _run_backend(cmd, backend="claude_code", workspace=workspace, timeout_seconds=timeout_seconds,
+                            logger=logger, env=env, stdin=stream)
 
 
 def _positive_timeout(value: Any, fallback: int) -> int:

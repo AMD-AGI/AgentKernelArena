@@ -116,6 +116,7 @@ Path('invocation.json').write_text(json.dumps({
     'python': os.environ.get('AGENT_KERNEL_ARENA_PYTHON'),
     'memory': os.environ.get('CLAUDE_CODE_DISABLE_AUTO_MEMORY'),
     'sandbox': os.environ.get('IS_SANDBOX'),
+    'stdin': sys.stdin.read(),
 }))
 mode = os.environ.get('ARENA_TEST_CLI_MODE')
 if mode == 'timeout':
@@ -168,9 +169,14 @@ def test_launch_forwards_literal_argv_and_run_settings(launcher, fake_cli, caplo
     invocation = json.loads((workspace / "invocation.json").read_text())
     args = invocation["argv"]
     assert args[args.index("--model") + 1] == model
-    assert args[-2] == "--"
-    assert args[-1].startswith(prompt)
-    assert "up to" not in args[-1]
+    if name == "cursor":
+        assert args[-2] == "--"
+        delivered_prompt = args[-1]
+    else:
+        delivered_prompt = invocation["stdin"]
+        assert prompt not in args
+    assert delivered_prompt.startswith(prompt)
+    assert "up to" not in delivered_prompt
     assert invocation["cwd"] == str(workspace)
     assert invocation["python"] == sys.executable
     assert not (workspace / "SHELL_RAN").exists()
@@ -178,9 +184,11 @@ def test_launch_forwards_literal_argv_and_run_settings(launcher, fake_cli, caplo
     assert "second line" not in caplog.text  # Do not print the entire input prompt.
     assert "ARENA_FAKE_OK" in output
     if name == "codex":
+        assert args[-2:] == ["--", "-"]
         assert 'model_reasoning_effort="medium"' in args
         assert "--ephemeral" in args
     if name == "claude_code":
+        assert args[args.index("--input-format") + 1] == "text"
         assert args[args.index("--effort") + 1] == "medium"
         assert args[args.index("--max-budget-usd") + 1] == "0.5"
         assert invocation["memory"] == "1"
@@ -189,6 +197,18 @@ def test_launch_forwards_literal_argv_and_run_settings(launcher, fake_cli, caplo
     if name == "cursor":
         assert "--trust" in args
         assert args[args.index("--workspace") + 1] == str(workspace)
+
+
+@pytest.mark.parametrize("launcher", ["codex", "claude_code"], indirect=True)
+def test_large_prompts_use_stdin_without_exec_argument_limits(launcher, fake_cli, monkeypatch):
+    workspace, _ = fake_cli
+    prompt = "literal 汉字 `x` $(x)\n" * 20000
+    monkeypatch.setattr(launcher, "load_prompt_builder", lambda *args: lambda *args: prompt)
+    launcher.launch_agent({"agent": {"max_iterations": None, "timeout_seconds": 10}},
+                          "unused", str(workspace))
+    invocation = json.loads((workspace / "invocation.json").read_text())
+    assert invocation["stdin"].startswith(prompt.rstrip())
+    assert sum(len(arg.encode()) for arg in invocation["argv"]) < 4096
 
 
 @pytest.mark.parametrize("mode", ["nonzero", "failed_event"])

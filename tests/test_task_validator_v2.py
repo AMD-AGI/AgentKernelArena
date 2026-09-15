@@ -3,6 +3,7 @@ from copy import deepcopy
 from dataclasses import asdict
 from datetime import datetime, timezone
 import importlib
+import hashlib
 import json
 import logging
 import os
@@ -429,10 +430,29 @@ def test_v2_prompt_excludes_task_instructions_and_uses_no_family_policy(tmp_path
     assert "task validation report as evidence" in prompt
 
 
+def test_large_guard_is_indexed_without_discarding_trusted_evidence(tmp_path):
+    from agents.task_validator.validation_prompt_v2 import build_v2_validation_prompt
+
+    ctx = context(tmp_path)
+    ctx["harness"]["protected_paths"] = [f"upstream/source/large_directory/file_{i}.py" for i in range(14000)]
+    trusted = snapshot_task_evidence(ctx, task_id=TASK_ID)
+    digest = trusted.sha256
+    prompt = build_v2_validation_prompt(task_id=TASK_ID, task_config=ctx["task_config"],
+                                        workspace=ctx["workspace"], trusted_task_evidence=trusted,
+                                        validation_request_id=REQUEST_ID, context_path="/framework/context.json")
+    assert len(prompt.encode()) < 30000
+    assert '"protected_path_count": 14000' in prompt
+    assert "/framework/context.json" in prompt
+    assert "file_13999.py" not in prompt
+    assert trusted.sha256 == digest
+    assert len(trusted.to_mapping()["harness"]["protected_paths"]) == 14000
+
+
 @pytest.mark.parametrize("backend", ["codex", "claude_code"])
 def test_backend_argv_keeps_literal_values_and_disables_persistence(monkeypatch, backend):
     captured = {}
     def run(cmd, **kwargs):
+        captured["prompt"] = kwargs["stdin"].read()
         captured.update(cmd=cmd, **kwargs)
         return launcher.BackendResult("ok", 0, False)
     monkeypatch.setattr(launcher, "_run_backend", run)
@@ -440,14 +460,35 @@ def test_backend_argv_keeps_literal_values_and_disables_persistence(monkeypatch,
     prompt, model, effort = "--prompt $(touch evil)\n`echo evil`", "model with spaces", 'medium"quoted'
     launch(prompt, "/workspace with spaces", 50, logging.getLogger(__name__), model=model, effort=effort)
     cmd = captured["cmd"]
-    assert cmd[-2:] == ["--", prompt]
+    assert captured["prompt"] == prompt
+    assert prompt not in cmd
     assert cmd[cmd.index("--model") + 1] == model
     if backend == "codex":
+        assert cmd[-2:] == ["--", "-"]
         assert "--ephemeral" in cmd
         assert f"model_reasoning_effort={json.dumps(effort)}" in cmd
     else:
+        assert cmd[cmd.index("--input-format") + 1] == "text"
         assert "--no-session-persistence" in cmd
         assert captured["env"]["CLAUDE_CODE_DISABLE_AUTO_MEMORY"] == "1"
+
+
+@pytest.mark.parametrize("backend", ["codex", "claude_code"])
+def test_large_validator_prompt_reaches_real_subprocess_stdin(tmp_path, monkeypatch, backend):
+    executable = tmp_path / ("codex" if backend == "codex" else "claude")
+    executable.write_text(f"#!{sys.executable}\n" +
+                          "import hashlib,json,pathlib,sys\n"
+                          "data=sys.stdin.buffer.read()\n"
+                          "pathlib.Path('received.txt').write_text(hashlib.sha256(data).hexdigest())\n"
+                          "print(json.dumps({'type':'turn.completed'} if sys.argv[1]=='exec' else "
+                          "{'type':'result','subtype':'success','is_error':False}))\n")
+    executable.chmod(0o755)
+    monkeypatch.setenv("PATH", str(tmp_path) + os.pathsep + os.environ.get("PATH", ""))
+    prompt = "large prompt 汉字 $(literal) `literal`\n" * 20000
+    launch = launcher._launch_codex if backend == "codex" else launcher._launch_claude_code
+    result = launch(prompt, str(tmp_path), 10, logging.getLogger(__name__))
+    assert result.returncode == 0 and result.error is None
+    assert (tmp_path / "received.txt").read_text() == hashlib.sha256(prompt.encode()).hexdigest()
 
 
 @pytest.mark.parametrize("backend,event,ok", [

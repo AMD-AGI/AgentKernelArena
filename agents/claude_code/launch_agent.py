@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 import yaml
 from agents import register_agent
+from agents.prompt_input import prompt_input
 from src.module_registration import AgentType, load_prompt_builder
 from src.runtime_env import PYTHON_ENV_VAR, build_subprocess_env
 
@@ -47,7 +48,7 @@ def _load_agent_config(eval_config: dict[str, Any]) -> dict[str, Any]:
     return config
 
 
-def _build_command(agent_bin: str, prompt: str, config: dict[str, Any]) -> list[str]:
+def _build_command(agent_bin: str, prompt: str | None, config: dict[str, Any]) -> list[str]:
     cmd = [
         agent_bin, "--print", "--verbose", "--output-format", "stream-json",
         "--include-partial-messages", "--permission-mode", "bypassPermissions",
@@ -59,7 +60,7 @@ def _build_command(agent_bin: str, prompt: str, config: dict[str, Any]) -> list[
     ):
         if config.get(key) is not None:
             cmd.extend([option, str(config[key])])
-    cmd.extend(["--", prompt])
+    cmd.extend(["--input-format", "text"] if prompt is None else ["--", prompt])
     return cmd
 
 
@@ -149,7 +150,7 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
     # default in CLI >=2.1.59) so headless runs never read/write learned memory.
     process_env = build_subprocess_env(runtime_python)
     process_env.update(IS_SANDBOX="1", CLAUDE_CODE_DISABLE_AUTO_MEMORY="1")
-    cmd = _build_command(agent_bin, prompt, agent_config)
+    cmd = _build_command(agent_bin, None, agent_config)
 
     logger.info("Claude Code Preflight")
     logger.info(f"  binary: {agent_bin}")
@@ -159,26 +160,18 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
     logger.info(f"  model: {configured_model if configured_model else '<claude CLI default/config>'}")
     logger.info(f"  effort: {configured_effort if configured_effort else '<claude CLI default/config>'}")
 
-    logger.info("Running command: %s <prompt>", shlex.join(cmd[:-1]))
+    logger.info("Running command: %s <stdin prompt>", shlex.join(cmd))
     logger.info("=" * 80)
     logger.info("Agent Output (streaming):")
     logger.info("=" * 80)
 
     timeout_seconds = int(agent_config.get("timeout_seconds", 300))
 
-    process = subprocess.Popen(
-        cmd,
-        stdin=subprocess.PIPE,  # keep stdin closed to avoid lingering sessions
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        cwd=workspace,
-        bufsize=1,
-        env=process_env,
-        start_new_session=True,
-    )
-    if process.stdin:
-        process.stdin.close()
+    with prompt_input(prompt) as stream:
+        process = subprocess.Popen(
+            cmd, stdin=stream, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            text=True, cwd=workspace, bufsize=1, env=process_env, start_new_session=True,
+        )
 
     stdout_lines: list[str] = []
     stderr_lines: list[str] = []

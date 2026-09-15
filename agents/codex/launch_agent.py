@@ -13,6 +13,7 @@ from typing import Any
 import yaml
 
 from agents import register_agent
+from agents.prompt_input import prompt_input
 from src.module_registration import AgentType, load_prompt_builder
 from src.runtime_env import build_subprocess_env
 
@@ -40,9 +41,9 @@ def _load_agent_config(eval_config: dict[str, Any]) -> dict[str, Any]:
 
 
 def _build_command(
-    agent_bin: str, workspace: str, prompt: str, config: dict[str, Any]
+    agent_bin: str, workspace: str, prompt: str | None, config: dict[str, Any]
 ) -> list[str]:
-    """Keep model IDs and prompt text as literal argv, with no shell evaluation."""
+    """Build literal argv; None selects stdin prompt transport without a shell."""
     cmd = [
         agent_bin, "exec", "--json",
         "--dangerously-bypass-approvals-and-sandbox", "--skip-git-repo-check",
@@ -52,7 +53,7 @@ def _build_command(
         cmd.extend(["--model", config["model"]])
     if config.get("effort"):
         cmd.extend(["-c", f'model_reasoning_effort={json.dumps(config["effort"])}'])
-    cmd.extend(["--", prompt])
+    cmd.extend(["--", "-" if prompt is None else prompt])
     return cmd
 
 
@@ -239,7 +240,7 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
     configured_model = agent_config.get("model")
     configured_effort = agent_config.get("effort")
 
-    cmd = _build_command(codex_bin, workspace, prompt, agent_config)
+    cmd = _build_command(codex_bin, workspace, None, agent_config)
 
     logger.info("Codex Preflight")
     logger.info(f"  codex_binary: {codex_bin}")
@@ -251,26 +252,18 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
     else:
         logger.info("  model: <codex CLI default/config> (not explicitly set)")
     logger.info(f"  effort: {configured_effort if configured_effort else '<codex config default>'} (model_reasoning_effort)")
-    logger.info("Running command: %s <prompt>", shlex.join(cmd[:-1]))
+    logger.info("Running command: %s <stdin prompt>", shlex.join(cmd))
     logger.info("=" * 80)
     logger.info("Agent Output (streaming):")
     logger.info("=" * 80)
 
     timeout_seconds = int(agent_config.get("timeout_seconds", 600))
 
-    process = subprocess.Popen(
-        cmd,
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        cwd=workspace,
-        bufsize=1,
-        env=process_env,
-        start_new_session=True,
-    )
-    if process.stdin:
-        process.stdin.close()
+    with prompt_input(prompt) as stream:
+        process = subprocess.Popen(
+            cmd, stdin=stream, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            text=True, cwd=workspace, bufsize=1, env=process_env, start_new_session=True,
+        )
 
     stdout_lines: list[str] = []
     stderr_lines: list[str] = []

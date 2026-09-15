@@ -1,5 +1,11 @@
 # Task Validator Agent
 
+Validator prompts reach Codex and Claude through stdin, avoiding operating-system
+argument-size limits on large image-backed tasks. The prompt contains a compact
+guard/action index; the full captured evidence remains in the framework context
+file and is checked by the finalizer. Summarizing the prompt does not reduce the
+protected file boundary or the required review.
+
 `task_validator` reviews task quality. It does not optimize candidates. For schema
 v2, Arena first executes the task's initial validation actions through `TaskSession`;
 the validator backend then audits the reference, inputs, comparison, execution,

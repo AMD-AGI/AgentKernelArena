@@ -48,10 +48,19 @@ def build_v2_validation_prompt(*, task_id: str, task_config: dict, workspace: st
                         "status": result.get("status", "EXECUTION_ERROR"),
                         "case_count": len(result.get("cases", [])),
                         "invocation_id": action.get("invocation_id")})
+    guard = context.get("harness") or {}
+    protected = guard.get("protected_paths", [])
+    guard_summary = {
+        "enforced_during_optimization": guard.get("enforced_during_optimization"),
+        "editable_entrypoint_targets": guard.get("editable_entrypoint_targets", {}),
+        "protected_path_count": len(protected),
+        "protected_paths_sample": protected[:24],
+        "complete_guard": "Read harness in context_path for the full captured boundary",
+    }
     transport = {"context_path": context_path, "workspace": workspace,
                  "baseline_workspace": context.get("baseline_workspace"),
                  "initial_validation": context.get("initial_validation"),
-                 "actions": summary, "harness": context.get("harness")}
+                 "actions": summary, "harness": guard_summary}
     return f"""You are Arena's task quality reviewer. Review the task; do not optimize it.
 
 TRUST BOUNDARY
@@ -70,6 +79,8 @@ results. Additional narrowly targeted read-only diagnostics are allowed when
 needed for semantic review, bounded by this backend's remaining timeout.
 An asynchronous shell yield/session identifier is not a command result: collect
 its actual terminal result before describing a diagnostic as executed.
+The transport below is a compact index. Read relevant command evidence and the
+complete effective guard from context_path; sampled paths are not its full scope.
 
 LIFECYCLE AND AUTHORITY
 - The finalizer alone verifies TaskSpec, actual stdout/exit codes, action coverage,
