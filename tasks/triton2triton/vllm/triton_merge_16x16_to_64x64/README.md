@@ -30,3 +30,22 @@ The protected manifest requires the declared kernel symbols to remain Triton JIT
 functions, including kernels originally decorated with `@triton.jit()`. Removing
 the decorator is rejected before compilation. This structural check supplements
 the numerical and timed-path checks; it does not by itself attest every dispatch.
+
+
+## Full inverse outputs and exact measured replay
+
+The returned inverse must preserve the input shape and device, with FP32 output.
+The original CPU inverse reference and `atol=rtol=0.01` comparison remain. Checks
+snapshot the input before execution and reject changes to this read-only buffer.
+The five original seeds, shapes and distributions are unchanged. Additional
+unscored correctness probes cover a full 64-row tile followed by three rows,
+three heads, and the zero-input identity case; the public wrapper already uses
+ceiling division and the kernel's boundary checks support partial tiles.
+
+The benchmark still measures the original public wrapper, including its zeroed
+output allocation, with 10 warmups and 100 samples. Its actual captured output
+is compared with the pristine-input reference, then poisoned and replayed with a
+changed strictly-lower-triangular input. All input buffers and the public wrapper
+are restored in `finally`, including failed replay paths. The scored case list,
+allocation boundary and canonical helper are unchanged. New GPU qualification
+requires a complete finalized validator report for this task package.

@@ -5859,3 +5859,104 @@ def test_mla_actions_require_actual_boolean_and_all128_cases(monkeypatch):
     with pytest.raises(RuntimeError):actions.correctness(runner.require_success)
     h._check_correctness_single=lambda cfg:None
     with pytest.raises(RuntimeError):actions.correctness(runner.require_success)
+
+
+def _merged_inverse_cpu(data):
+    # Independently solve triangular systems; no torch.linalg.inv oracle call.
+    batch,length,heads,width=data.shape
+    output=torch.zeros_like(data,dtype=torch.float32)
+    for b in range(batch):
+        for h in range(heads):
+            for start in range(0,length,width):
+                size=min(width,length-start)
+                identity=torch.eye(size,dtype=torch.float64)
+                lower=identity+torch.tril(data[b,start:start+size,h,:size].double(),diagonal=-1)
+                output[b,start:start+size,h,:size]=torch.linalg.solve_triangular(lower,identity,upper=False,unitriangular=True).float()
+    return output
+
+
+@pytest.mark.parametrize('width',[32,64])
+def test_merged_inverse_independent_known_answer_partial_zero_columns_and_gate(monkeypatch,width):
+    h,checks=_fp8_group_cpu_harness(monkeypatch,f'merge_16x16_to_{width}x{width}')
+    data=torch.zeros(1,3,1,width);data[0,1,0,0]=.5;data[0,2,0,0]=.25;data[0,2,0,1]=.75
+    expected=torch.zeros_like(data);expected[0,:,0,:3]=torch.tensor([[1.,0.,0.],[-.5,1.,0.],[.125,-.75,1.]])
+    checks.check_output(checks.reference(h,data),expected)
+    checks.check_output(_merged_inverse_cpu(data),expected)
+    allowed=expected.clone();allowed[0,0,0,0]+=.01
+    checks.check_output(allowed,expected)
+    allowed[0,0,0,0]+=.1
+    with pytest.raises(AssertionError):checks.check_output(allowed,expected)
+    padded=expected.clone();padded[0,-1,0,-1]=.1
+    with pytest.raises(AssertionError):checks.check_output(padded,expected)
+
+
+@pytest.mark.parametrize('width',[32,64])
+@pytest.mark.parametrize('mode',['correct','shape','dtype','device','nonfinite','zero_output',
+                                 'missing_partial','wrong_identity','mutate_input'])
+def test_merged_inverse_original_correctness_partial_and_identity(monkeypatch,width,mode):
+    symbol=f'merge_16x16_to_{width}x{width}'
+    h,checks=_fp8_group_cpu_harness(monkeypatch,symbol);calls=[];inputs=[]
+    def public(data):
+        calls.append(tuple(data.shape));inputs.append((data,data.clone()))
+        if mode=='mutate_input':data.zero_()
+        result=_merged_inverse_cpu(data)
+        if mode=='shape':result=result.flatten()
+        if mode=='dtype':result=result.half()
+        if mode=='device':result=result.to('meta')
+        if mode=='nonfinite':result.fill_(float('nan'))
+        if mode=='zero_output':result.zero_()
+        if mode=='missing_partial' and data.shape[1]%width:result[:,-1].zero_()
+        if mode=='wrong_identity' and not bool(data.any()):result.zero_()
+        return result
+    mod=SimpleNamespace(**{symbol:public});h.load_module=lambda:mod;checks.install(h)
+    ok,reason=h.run_correctness()
+    assert ok is (mode=='correct'),reason
+    if mode=='correct':
+        assert calls.count((2,width*2,4 if width==32 else 2,width))==5
+        assert calls.count((1,width+3,3,width))==2
+    for data,saved in inputs:checks.unchanged(data,saved)
+    assert getattr(mod,symbol) is public
+
+
+@pytest.mark.parametrize('width',[32,64])
+@pytest.mark.parametrize('mode',['correct','wrong_timed','stale','no_write','wrong_replay',
+                                 'mutate_timed','mutate_replay','zero_input_and_output','raise_replay'])
+def test_merged_inverse_original_timing_exact_replay_restores_inputs(monkeypatch,width,mode):
+    import inspect
+    symbol=f'merge_16x16_to_{width}x{width}'
+    h,checks=_fp8_group_cpu_harness(monkeypatch,symbol)
+    h._TimedRun=module_at(ROOT/'src/tools/perf/aka_benchmark.py',monkeypatch).TimedRun
+    mod=SimpleNamespace(**{symbol:_merged_inverse_cpu});h.load_module=lambda:mod
+    inputs,saved,options,replays=[],[],[],[]
+    def benchmark(measured,*,timed_run,**kwargs):
+        fn=inspect.getclosurevars(measured).nonlocals['fn'];data=inspect.getclosurevars(fn).nonlocals['args'][0]
+        inputs.append(data);saved.append(data.clone());options.append(kwargs)
+        output=measured();cached=output.clone()
+        if mode=='wrong_timed':output.zero_()
+        if mode=='mutate_timed':data.zero_()
+        if mode=='zero_input_and_output':data.zero_();output.zero_()
+        def replay():
+            replays.append(True)
+            assert torch.equal(data,saved[-1]*-.5) and torch.isnan(output).all()
+            if mode=='raise_replay':raise RuntimeError('Replay failed')
+            if mode!='no_write':output.copy_(cached if mode=='stale' else measured())
+            if mode=='wrong_replay':output[0,0,0,0]+=1
+            if mode=='mutate_replay':data.zero_()
+            return output
+        timed_run._bind(replay,output)
+        return .125,{'benchmark_method':'cuda_graph'}
+    h._benchmark_cuda_graph_or_events=benchmark;checks.install(h)
+    rows=h.run_performance()
+    assert options==[dict(warmup=10,repetition=100)]*5
+    for seed,row in zip(h.SEEDS,rows):
+        assert row['params']=={'seed':seed}
+        assert row['execution_time_ms']==(.125 if mode=='correct' else -1.)
+    for data,pristine in zip(inputs,saved):checks.unchanged(data,pristine)
+    assert len(replays)==(0 if mode in ['wrong_timed','mutate_timed','zero_input_and_output'] else 5)
+    assert getattr(mod,symbol) is _merged_inverse_cpu
+
+
+@pytest.mark.parametrize('width',[32,64])
+def test_merged_inverse_adapter_installs_checks(monkeypatch,width):
+    h=module_at(ROOT/f'tasks/triton2triton/vllm/triton_merge_16x16_to_{width}x{width}/_arena_eval.py',monkeypatch).load_harness()
+    assert h.run_correctness.__module__==h.run_performance.__module__=='_merge_inverse_checks'
