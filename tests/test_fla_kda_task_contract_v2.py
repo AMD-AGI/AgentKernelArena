@@ -303,3 +303,12 @@ def test_structured_control_rejects_omitted_gate_or_state(task):
     wrong=h.reference(**kw)
     with pytest.raises(checks.NumericalMismatch):
         checks.check_outputs(wrong,c['expected'],atol=c['atol'],rtol=c['rtol'])
+
+@pytest.mark.parametrize('task',['triton_ssd_bmm'],indirect=True)
+def test_bmm_causal_flag_preserves_original_full_matrix_gate(task):
+    _,h,controls,checks=task
+    c=next(c for c in controls.control_cases('cpu') if c['kwargs']['causal'])
+    wrong=torch.tril(c['expected'])
+    assert torch.count_nonzero(c['expected']-wrong)>0
+    with pytest.raises(checks.NumericalMismatch):
+        checks.check_outputs(wrong,c['expected'],atol=c['atol'],rtol=c['rtol'])

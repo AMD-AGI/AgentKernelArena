@@ -5,7 +5,7 @@ the framework freezes the initial implementation as the baseline. Baseline and c
 actions execute only this workspace, with no fallback to another implementation.
 
 Optimize the Triton kernel `_bmm_chunk_fwd_kernel` for maximum GPU throughput.
-Batch matrix multiply: A @ B.T within chunks with optional causal masking.
+Batch matrix multiply: A @ B.T within chunks, producing the complete chunk matrix.
 Used in Mamba/SSD for computing chunk-level attention scores.
 Constraints:
 - Must maintain the same function signature for `bmm_chunk_fwd`
@@ -41,3 +41,12 @@ the harness checks those outputs, changes an operand, poisons outputs, and repla
 same graph against the original numerical reference. All comparisons, snapshots,
 perturbations and restoration are outside the timed window. An unobservable graph
 fallback fails instead of validating a different untimed invocation.
+
+The retained `causal` argument is a kernel scheduling flag; this task's historical
+reference and numerical gate compare the **complete** chunk matrix for both flag
+values, including all upper-triangle elements. The earlier phrase “optional causal
+masking” was inaccurate for this task's expected output. No elementwise triangular
+mask is part of the accepted result. Candidate tile choices must still produce every
+required element. The existing five workloads, kernel and comparator are unchanged.
+An additional unscored `causal=True` known answer checks the complete matrix and
+regression coverage rejects replacing its upper triangle with zeros.

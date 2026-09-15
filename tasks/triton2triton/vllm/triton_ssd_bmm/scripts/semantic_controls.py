@@ -36,7 +36,7 @@ def run_controls(mod, device="cuda"):
 def control_cases(device):
     # Features [token,1] and [1,2*token] make each dot = row+2*column,
     # with a separate group multiplier. Chunk padding must be zero.
-    for output_dtype in (None, torch.float32):
+    for causal, output_dtype in ((False,None),(False,torch.float32),(True,None)):
         a=torch.zeros(5,2,16,device=device,dtype=torch.float16)
         b=torch.zeros_like(a)
         for t in range(5):
@@ -49,13 +49,18 @@ def control_cases(device):
                 for i in range(s,e):
                     for j in range(s,e):
                         expected[c,g,i-s,j-s]=(g+1)*((i+1)+2*(j+1))
-        yield dict(name='ragged_chunks_groups_and_padding_'+str(output_dtype),entrypoint='bmm_chunk_fwd',
+        yield dict(name='ragged_chunks_groups_padding_causal_'+str(causal)+'_'+str(output_dtype),entrypoint='bmm_chunk_fwd',
                    kwargs=dict(a=a,b=b,chunk_size=32,cu_chunk_seqlens=torch.tensor([0,3,5],device=device,dtype=torch.int32),
-                               causal=False,output_dtype=output_dtype),
+                               causal=causal,output_dtype=output_dtype),
                    expected=expected,atol=1e-1,rtol=1e-1)
 
 
 def reference_controls(h):
-    c=next(control_cases('cpu'));args=dict(c['kwargs']);args.pop('output_dtype')
-    _check(h.reference_bmm(**args),c['expected'],c['atol'],c['rtol'])
-    return [dict(control=c['name'],status='PASS',negative_control='rejected')]
+    rows=[]
+    for c in control_cases('cpu'):
+        args=dict(c['kwargs']);dtype=args.pop('output_dtype')
+        # The historical reference returns the input dtype. Optional output
+        # dtype is a public storage contract, independent of this exact answer.
+        _check(h.reference_bmm(**args),c['expected'].to(args['a'].dtype),c['atol'],c['rtol'])
+        rows.append(dict(control=c['name'],status='PASS',negative_control='rejected'))
+    return rows
