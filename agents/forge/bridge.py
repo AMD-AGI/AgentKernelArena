@@ -12,22 +12,25 @@ import os
 from pathlib import Path
 import statistics
 import tempfile
+import uuid
 from urllib.parse import quote
 
 from src.task_execution import TaskExecutionError, run_action
 from src.task_spec import resolve_task_path
 from agents.forge.task_context import TaskContext, bounded_spec
 from agents.forge.bundles import copy_workspace, install_candidate
+from agents.forge.action_evidence import ActionEvidence, source_binding
 
 
 class ActionCheckFailure(RuntimeError):
     """A completed, protocol-validated check failed; execution errors stay separate."""
 
-    def __init__(self, executed):
+    def __init__(self, executed, evidence_path):
         self.result = executed.result
         self.commands = executed.commands
-        detail = "\n".join(command.stdout + command.stderr for command in self.commands)
-        super().__init__(f"{self.result.role}.{self.result.action}: {self.result.reason}\n{detail[-6000:]}")
+        self.evidence_path = evidence_path
+        detail = " ".join(str(self.result.reason).splitlines())[:1000]
+        super().__init__(f"{self.result.role}.{self.result.action}: {detail}; full evidence: {evidence_path}")
 
 
 def load_plan(path: Path) -> dict:
@@ -72,6 +75,7 @@ def evaluation_workspace(context: TaskContext, plan: dict, engine_root: Path, ro
 
 def execute(plan: dict, engine_root: Path, *, role: str, action: str):
     context = TaskContext.load(plan["context"])
+    evaluation_id = uuid.uuid4().hex
     with evaluation_workspace(context, plan, engine_root, role) as root:
         phases = ["compile"] if action == "compile" else ["compile", action]
         if role == "candidate" and action == "performance":
@@ -79,12 +83,26 @@ def execute(plan: dict, engine_root: Path, *, role: str, action: str):
         result = None
         for step in phases:
             deadline = min(plan["deadline_unix"], plan.get("phase_deadline_unix", plan["deadline_unix"]))
-            executed = run_action(bounded_spec(context.spec, deadline), root,
-                                  role=role, action=step, phase="candidate_evaluation",
-                                  manifest=context.manifest)
+            sources = source_binding(context, root)
+            spec = bounded_spec(context.spec, deadline)
+            evidence = ActionEvidence(plan, context, root, evaluation_id=evaluation_id,
+                                      role=role, action=step, requested_action=action,
+                                      source=sources, spec=spec,
+                                      engine_root=engine_root)
+            try:
+                executed = run_action(spec, root, role=role, action=step,
+                                      phase="candidate_evaluation", manifest=context.manifest)
+            except TaskExecutionError as exc:
+                exc.evidence_path = evidence.finish(error=exc)
+                # Preserve full original message/command streams above; expose a
+                # short single-line message to callers and the native engine.
+                exc.args = (f"{' '.join(str(exc).splitlines())[:1000]}; "
+                            f"full evidence: {exc.evidence_path}",)
+                raise
+            path = evidence.finish(executed=executed)
             result = executed.result
             if not result.passed:
-                raise ActionCheckFailure(executed)
+                raise ActionCheckFailure(executed, path)
         return result
 
 
@@ -131,7 +149,7 @@ def run(plan_path: str | Path, engine_root: str | Path, argv: list[str] | None =
     except Exception as exc:
         print("allclose: False")
         print(f"arena_error: {type(exc).__name__}: {exc}")
-        if isinstance(exc, TaskExecutionError) and exc.commands:
+        if isinstance(exc, (TaskExecutionError, ActionCheckFailure)) and exc.commands:
             command = exc.commands[-1]
             diagnostic = "".join(
                 value.decode(errors="replace") if isinstance(value, bytes) else value
@@ -142,6 +160,7 @@ def run(plan_path: str | Path, engine_root: str | Path, argv: list[str] | None =
             print("arena_command_failure: " + json.dumps({
                 "returncode": command.returncode,
                 "diagnostic_tail": diagnostic,
+                "evidence_path": str(getattr(exc, "evidence_path", "")),
             }))
         return 1
 

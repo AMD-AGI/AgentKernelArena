@@ -53,12 +53,23 @@ still applies. The implementer session budget also includes its in-session
 checks, so a task with long checks needs enough session time as well as campaign
 time; increasing a driver ceiling does not extend either budget.
 
-If a task process exits before emitting a valid protocol result, the bridge
-reports its exit code and the last 6,000 characters of its output. The diagnostic
-is JSON-escaped on one line, separate from the bridge's gate/timing lines. The
-nonzero exit keeps the native engine from scoring that output. These details help the native implementer
-diagnose compiler/runtime failures instead of receiving only a missing-result
-message.
+Every public action keeps an append-only diagnostic record under the Forge
+artifact root's `action-evidence/` directory, outside its temporary build tree.
+Each unique action directory contains a start record and, when the action
+returns or raises `TaskExecutionError`, its full argv, stdout, stderr, return
+codes, elapsed times and protocol result or execution error. The records bind
+the task, role, action, bridge invocation, public invocation ID when available,
+context digest and declared input file hashes. The optional framework source
+inventory is bound by path and digest; these diagnostics do not archive an
+entire build or claim to hash every runtime dependency. They include no process
+environment or authentication configuration. Build cleanup leaves them intact.
+An interrupted start or partial JSON write is not a completed action record.
+
+For both a protocol-reported failure and an execution error, the engine receives
+a short error with the full evidence path, plus the exit code and last 6,000
+characters of command output as a single JSON-escaped diagnostic line. The
+nonzero exit keeps the engine from scoring that output. Diagnostic persistence
+does not change task commands, checks, benchmark boundaries or score selection.
 
 If the newly initialized candidate's actual measured path fails, the source-pinned
 compatibility layer clears its unverified incumbent timings. The independent
