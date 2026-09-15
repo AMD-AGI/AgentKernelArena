@@ -187,6 +187,22 @@ in the session state directory outside the candidate workspace. Confirmation
 measurements reuse this same session, never snapshot an optimized candidate as
 its own baseline.
 
+Before independent review, the controller writes a unique `review-evidence-*.json`
+index in that external session directory and supplies its path and SHA256 in the
+reviewer prompt. It locates the initial contexts and this evaluation's candidate
+compile/correctness/performance records, including actual argv, exit codes, stdout
+protocol envelopes and per-case results. `task_result.yaml` is an aggregate; it
+does not need to embed those action records. An action without a completed record
+is explicitly marked `NO_COMPLETED_ACTION`, never inferred to have passed.
+
+Contexts are captured before optimization. Candidate records must match the
+controller's in-memory executions, and the result must bind the current candidate
+sources. Candidate-provided evidence paths are not consulted. Indexed files are
+checked again after review, as are the frozen baseline and existing workspace
+boundaries. The index improves evidence discovery; it does not relax numerical,
+coverage, tool, timing or reviewer gates. It is a reproducibility check, not an OS
+security sandbox. Preserve it with the external session and role receipts.
+
 The shared runtime provides:
 
 - v2 materialization through `src.preprocessing.setup_workspace`, including all

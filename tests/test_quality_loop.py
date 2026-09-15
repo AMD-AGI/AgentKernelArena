@@ -530,6 +530,9 @@ class QualityLoopTests(unittest.TestCase):
                 logger=LOGGER,
                 reviewer_backend=TamperingReviewerBackend(),
             )
+            # Isolate this workspace check; test_quality_loop_review_evidence
+            # exercises the actual external TaskSession evidence.
+            workflow._sessions[workspace] = mock.Mock()
             with self.assertRaisesRegex(RuntimeError, "protected evaluation evidence"):
                 workflow._review(
                     "hip2hip/sample",

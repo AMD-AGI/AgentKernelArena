@@ -639,11 +639,17 @@ class QualityLoop:
         }
         original_sources = workspace / ".quality_loop_original_sources"
         original_before = snapshot_tree(original_sources)
+        session = self._sessions.get(workspace)
+        if session is None:
+            raise RuntimeError("Review requires protected evaluation evidence from the controller session")
+        review_evidence = session.review_evidence(result)
         self.reviewer_backend.run(
-            reviewer_prompt(task_id, workspace / "task_result.yaml", output_name),
+            reviewer_prompt(task_id, workspace / "task_result.yaml", output_name,
+                            evidence_path=review_evidence.path, evidence_sha256=review_evidence.sha256),
             workspace,
             role="reviewer",
         )
+        session.verify_review_evidence(review_evidence)
         after = snapshot_tree(workspace)
         evidence_after = {
             name: (workspace / name).read_bytes()
