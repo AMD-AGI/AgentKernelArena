@@ -27,3 +27,16 @@ The protected manifest requires the declared kernel symbols to remain Triton JIT
 functions, including kernels originally decorated with `@triton.jit()`. Removing
 the decorator is rejected before compilation. This structural check supplements
 the numerical and timed-path checks; it does not by itself attest every dispatch.
+
+The original five scored uniform-count cases and exact integer gate are kept.
+An extra unscored control checks legal ragged cumulative counts (including an
+empty request) and nondefault value replacement. Per-request counts must stay
+within the implementation's MAX_SPEC_LEN=128 bound. The complete output shape,
+input dtype and device are required, with a reference computed from pristine
+source/count buffers before candidate invocation.
+
+The original full public wrapper, seeds, 10 warmups and 100 samples remain the
+performance workload. Its actual captured output is checked, then poisoned
+and replayed with changed values and one redistributed token at the same total
+size. Both input buffers must remain unchanged by the candidate and are restored
+even on replay failure. Added reference and replay checks are outside timing.

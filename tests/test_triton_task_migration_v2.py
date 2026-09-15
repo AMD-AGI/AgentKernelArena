@@ -2963,3 +2963,93 @@ def test_gated_norm_adapter_installs_checks(monkeypatch):
     adapter = module_at(ROOT/'tasks/triton2triton/vllm/triton_fla_layernorm_gated/_arena_eval.py', monkeypatch)
     h = adapter.load_harness()
     assert h.run_correctness.__module__ == h.run_performance.__module__ == '_gatednorm_checks'
+
+
+def _expand_cpu(x, cu, num_tokens, replace_from=0, replace_to=0):
+    counts = cu - torch.cat((cu.new_zeros(1), cu[:-1]))
+    values = torch.where(x == replace_from, replace_to, x)
+    return values.repeat_interleave(counts)
+
+
+@pytest.mark.parametrize('mode', ['correct', 'dtype', 'shape', 'mutate_source', 'mutate_counts',
+                                 'uniform_only', 'ignores_replacement'])
+def test_expand_ragged_replacement_known_answer_and_negative_controls(monkeypatch, mode):
+    task = ROOT/'tasks/triton2triton/vllm/triton_expand'
+    h = module_at(task/'scripts/task_runner.py', monkeypatch)
+    checks = module_at(task/'_arena_checks.py', monkeypatch)
+    x = torch.tensor([7, 2, 7, 9], dtype=torch.int32)
+    cu = torch.tensor([0, 1, 4, 6], dtype=torch.int64)
+    known = torch.tensor([2, -3, -3, -3, 9, 9], dtype=torch.int32)
+    torch.testing.assert_close(checks.reference(x, cu, 6, 7, -3), known, atol=0, rtol=0)
+    torch.testing.assert_close(_expand_cpu(x, cu, 6, 7, -3), known, atol=0, rtol=0)
+    def candidate(x, cu, num_tokens, replace_from=0, replace_to=0):
+        if mode == 'mutate_source': x.zero_()
+        if mode == 'mutate_counts': cu[0] += 1
+        output = _expand_cpu(x, cu, num_tokens, replace_from,
+                             replace_from if mode == 'ignores_replacement' else replace_to)
+        if mode == 'uniform_only': output = x.repeat_interleave(max(1, num_tokens//len(x)))
+        if mode == 'dtype': output = output.float()
+        if mode == 'shape': output = output[:1]
+        return output
+    mod = SimpleNamespace(expand_batch_to_tokens=candidate)
+    h.load_module = lambda: mod
+    with checks.checked_modules(h):
+        call = h.load_module().expand_batch_to_tokens
+        if mode == 'correct': torch.testing.assert_close(call(x, cu, 6, 7, -3), known)
+        else:
+            with pytest.raises(AssertionError): call(x, cu, 6, 7, -3)
+    assert mod.expand_batch_to_tokens is candidate
+
+
+@pytest.mark.parametrize('mode', ['correct', 'wrong_timed', 'stale', 'no_write', 'wrong_replay',
+                                 'mutate_timed', 'mutate_replay', 'raise_replay'])
+def test_expand_original_performance_orchestration_and_restoration(monkeypatch, mode):
+    import inspect
+    task = ROOT/'tasks/triton2triton/vllm/triton_expand'
+    h = module_at(task/'scripts/task_runner.py', monkeypatch)
+    checks = module_at(task/'_arena_checks.py', monkeypatch)
+    h._TimedRun = SimpleNamespace
+    for name in ('randint', 'full'):
+        factory = getattr(torch, name)
+        def cpu_factory(*args, _factory=factory, **kwargs):
+            return _factory(*args, **{**kwargs, 'device': 'cpu'})
+        monkeypatch.setattr(torch, name, cpu_factory)
+    inputs, pristine, options = [], [], []
+    mod = SimpleNamespace(expand_batch_to_tokens=_expand_cpu)
+    h.load_module = lambda: mod
+    def benchmark(measured, *, timed_run, **kwargs):
+        options.append(kwargs)
+        fn = inspect.getclosurevars(measured).nonlocals['fn']
+        closed = inspect.getclosurevars(fn).nonlocals
+        x, cu = closed['x'], closed['cu']
+        inputs.append((x, cu)); pristine.append((x.clone(), cu.clone()))
+        output = measured(); cached = output.clone()
+        if mode == 'wrong_timed': output.fill_(-1)
+        if mode == 'mutate_timed': x.zero_()
+        def replay():
+            if mode == 'raise_replay': raise RuntimeError('replay failed')
+            if mode == 'stale': output.copy_(cached)
+            elif mode != 'no_write': output.copy_(measured())
+            if mode == 'wrong_replay': output.fill_(-1)
+            if mode == 'mutate_replay': cu[0] += 1
+            return output
+        timed_run.outputs, timed_run.rerun = output, replay
+        return .125, {'benchmark_method': 'cuda_graph'}
+    h._benchmark_cuda_graph_or_events = benchmark
+    checks.install(h)
+    rows = h.run_performance()
+    assert len(rows) == len(h.TEST_SHAPES) == 5
+    assert options == [dict(warmup=10, repetition=100)] * 5
+    for row, (batch, tpr) in zip(rows, h.TEST_SHAPES):
+        assert row['params'] == dict(batch_size=batch, tokens_per_req=tpr)
+        assert row['execution_time_ms'] == (.125 if mode == 'correct' else -1.)
+        if mode == 'correct': assert row['perturbed_input_replay_checked']
+    for values, saved in zip(inputs, pristine): checks.unchanged(values, saved)
+    assert mod.expand_batch_to_tokens is _expand_cpu
+    assert h._benchmark_cuda_graph_or_events is benchmark
+
+
+def test_expand_adapter_installs_checks(monkeypatch):
+    adapter = module_at(ROOT/'tasks/triton2triton/vllm/triton_expand/_arena_eval.py', monkeypatch)
+    h = adapter.load_harness()
+    assert h.run_correctness.__module__ == h.run_performance.__module__ == '_expand_checks'
