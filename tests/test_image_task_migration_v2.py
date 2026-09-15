@@ -647,6 +647,12 @@ def test_original_cases_numerical_policy_and_benchmark_unchanged(directory):
                          and isinstance(n.value.func, ast.Name) and n.value.func.id == "_assert_timed_outputs"]
                 assert len(collector) == len(check) == 1
                 loop.body = [n for n in loop.body if n not in collector + check]
+                if directory.name.startswith("mi355x_vllm_ck_"):
+                    prep = [n for n in loop.body if isinstance(n, ast.Assign)
+                            and isinstance(n.value, ast.Call) and isinstance(n.value.func, ast.Name)
+                            and n.value.func.id == "_prepare_timed_check"]
+                    assert len(prep) == 1
+                    loop.body.remove(prep[0])
                 calls = [n for n in ast.walk(loop) if isinstance(n, ast.Call)
                          and isinstance(n.func, ast.Name) and n.func.id == "_benchmark_cuda_graph_or_events"]
                 assert len(calls) == 1
@@ -1237,20 +1243,23 @@ def test_hip_package_binding_rejects_installed_dispatch(name, tmp_path, monkeypa
     "mi355x_vllm_ck_a8w8_blockscale_gemm", "mi355x_vllm_ck_cktile_moe_2stage",
     "mi355x_vllm_ck_moe_2stage",
 ])
-def test_ck_replay_checks_changed_inputs_and_observed_output(name, monkeypatch):
+def test_ck_replay_checks_original_inputs_and_restores_on_failures(name, monkeypatch):
     torch = pytest.importorskip("torch")
     h = load_module(TASKS / name / "scripts/task_runner.py")
     monkeypatch.setattr(h, "_torch", lambda: torch)
     if h.OPERATOR == "a8w8_blockscale_gemm":
         inputs = {"shape": [2, 2, 128], "x": torch.ones(2,128),
                   "weight": torch.full((2,128), 2.),
-                  "x_scale": torch.full((2,1), .01), "w_scale": torch.full((1,1), .01)}
+                  "x_scale": torch.full((2,1), .1), "w_scale": torch.full((1,1), .1)}
         reference = h._gemm_reference
+        mutate = "weight"
     else:
         inputs = {"hidden": torch.tensor([[1.,2.],[-3.,4.]], dtype=torch.bfloat16)}
         reference = lambda inp: (inp["hidden"].float() * 2).to(torch.bfloat16)
         monkeypatch.setattr(h, "_moe_reference", reference)
-    initial = {key: value.clone() if isinstance(value, torch.Tensor) else value for key,value in inputs.items()}
+        mutate = "hidden"
+    initial = {key: value.clone() for key,value in inputs.items() if isinstance(value, torch.Tensor)}
+    check = h._prepare_timed_check(inputs)
     stale = reference(inputs).clone()
     output = stale.clone()
     timed = SimpleNamespace(bound=True, outputs=output)
@@ -1258,13 +1267,36 @@ def test_ck_replay_checks_changed_inputs_and_observed_output(name, monkeypatch):
         assert torch.isnan(output).all()
         output.copy_(reference(inputs))
         return output
+    def restored():
+        for key,value in initial.items(): torch.testing.assert_close(inputs[key],value,rtol=0,atol=0)
     timed.rerun = replay
-    h._assert_timed_outputs(inputs, timed)
+    h._assert_timed_outputs(inputs, timed, check)
+    restored()
     for bad in (stale, torch.zeros_like(output), torch.full_like(output, float("nan"))):
-        for key,value in initial.items():
-            if isinstance(value, torch.Tensor): inputs[key].copy_(value)
+        output.copy_(stale)
         timed.rerun = lambda bad=bad: bad
-        with pytest.raises(AssertionError): h._assert_timed_outputs(inputs, timed)
+        with pytest.raises(AssertionError): h._assert_timed_outputs(inputs, timed, check)
+        restored()
+    # A wrong original measured output cannot be rescued by a correct rerun.
+    output.zero_();timed.rerun = replay
+    with pytest.raises(AssertionError): h._assert_timed_outputs(inputs, timed, check)
+    restored()
+    # Neither original-timing nor replay input writes can contaminate the oracle.
+    inputs[mutate].zero_();output.copy_(stale)
+    with pytest.raises(AssertionError, match="Readonly input"):
+        h._assert_timed_outputs(inputs, timed, check)
+    restored()
+    def corrupt_replay():
+        result = replay();inputs[mutate].zero_();return result
+    output.copy_(stale);timed.rerun = corrupt_replay
+    with pytest.raises(AssertionError, match="Readonly input"):
+        h._assert_timed_outputs(inputs, timed, check)
+    restored()
+    def fail_replay(): raise RuntimeError("replay failed")
+    output.copy_(stale);timed.rerun = fail_replay
+    with pytest.raises(RuntimeError, match="replay failed"):
+        h._assert_timed_outputs(inputs, timed, check)
+    restored()
     with pytest.raises(AssertionError, match="BF16"):
         h._assert_output_contract(inputs, reference(inputs).float())
     with pytest.raises(AssertionError, match="shape"):

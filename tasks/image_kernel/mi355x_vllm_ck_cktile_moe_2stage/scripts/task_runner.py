@@ -738,21 +738,47 @@ def _assert_output_contract(inputs, output):
     assert torch.isfinite(output).all(), "Nonfinite CK output"
 
 
-def _assert_timed_outputs(inputs, timed):
-    assert timed.bound, "Timing must expose its captured invocation"
+def _ck_reference(inputs):
+    return (_gemm_reference(inputs) if OPERATOR == "a8w8_blockscale_gemm"
+            else _moe_reference(inputs))
+
+
+def _prepare_timed_check(inputs):
+    # Take copies before the first candidate/warmup invocation. HIP candidates
+    # only receive the live tensors, never these reference/snapshot buffers.
     torch = _torch()
+    originals = {key: value for key, value in inputs.items() if isinstance(value, torch.Tensor)}
+    snapshots = {key: value.detach().clone() for key, value in originals.items()}
+    reference_inputs = {**inputs, **snapshots}
+    expected = _ck_reference(reference_inputs)
+    perturbed = dict(snapshots)
     if OPERATOR == "a8w8_blockscale_gemm":
-        # Positive scale stress also exposes a zero-output implementation that
-        # can fit inside the original absolute tolerance on tiny random inputs.
-        # This runs after timing, with the same original comparison thresholds.
-        inputs["x_scale"].mul_(64)
-        inputs["w_scale"].mul_(64)
-        expected = _gemm_reference(inputs)
+        # Positive scales expose degenerate zero outputs even when the original
+        # absolute gate accepts tiny outputs. This adds no measured score point.
+        perturbed["x_scale"] = snapshots["x_scale"] * 64
+        perturbed["w_scale"] = snapshots["w_scale"] * 64
     else:
-        inputs["hidden"].neg_()
-        expected = _moe_reference(inputs)
-    timed.outputs.fill_(float("nan"))
-    observed = timed.rerun()
+        perturbed["hidden"] = -snapshots["hidden"]
+    perturbed_expected = _ck_reference({**inputs, **perturbed})
+    return {"originals": originals, "snapshots": snapshots, "expected": expected,
+            "perturbed": perturbed, "perturbed_expected": perturbed_expected}
+
+
+def _assert_readonly_inputs(inputs, expected, originals):
+    torch = _torch()
+    for key, before in expected.items():
+        actual = inputs[key]
+        assert actual is originals[key], (key, "Input tensor was replaced")
+        assert actual.shape == before.shape and actual.dtype == before.dtype, key
+        assert actual.device == before.device, key
+        # Byte comparison supports FP8 and detects any input write; it does not
+        # apply a floating-point tolerance to the immutable input contract.
+        assert torch.equal(actual.contiguous().view(torch.uint8),
+                           before.contiguous().view(torch.uint8)), (key, "Readonly input was modified")
+
+
+def _assert_ck_close(inputs, observed, expected):
+    torch = _torch()
     _assert_output_contract(inputs, observed)
     if OPERATOR == "a8w8_blockscale_gemm":
         torch.testing.assert_close(observed, expected, atol=0.15, rtol=0.12)
@@ -760,6 +786,27 @@ def _assert_timed_outputs(inputs, timed):
         error = 1 - torch.nn.functional.cosine_similarity(
             observed.float().flatten(), expected.float().flatten(), dim=0)
         assert float(error) < 0.03, "Incorrect CK MoE timed output"
+
+
+def _assert_timed_outputs(inputs, timed, check):
+    try:
+        assert timed.bound, "Timing must expose its captured invocation"
+        _assert_readonly_inputs(inputs, check["snapshots"], check["originals"])
+        # First inspect the buffers actually written by the measured original
+        # workload, using an oracle computed before any candidate execution.
+        _assert_ck_close(inputs, timed.outputs, check["expected"])
+        for key, value in check["perturbed"].items():
+            if value is not check["snapshots"][key]:
+                inputs[key].copy_(value)
+        timed.outputs.fill_(float("nan"))
+        observed = timed.rerun()
+        _assert_readonly_inputs(inputs, check["perturbed"], check["originals"])
+        _assert_ck_close(inputs, observed, check["perturbed_expected"])
+    finally:
+        # Failure must not leave perturbed or candidate-corrupted inputs behind.
+        for key, original in check["originals"].items():
+            original.copy_(check["snapshots"][key])
+            inputs[key] = original
 
 
 def run_correctness() -> None:
@@ -825,6 +872,7 @@ def run_performance() -> None:
     rows = []
     for case in CASES:
         inputs = _make(case, correctness=False)
+        timed_check = _prepare_timed_check(inputs)
         _run(inputs)
         _torch().cuda.synchronize()
         timed = _TimedRun()
@@ -836,7 +884,7 @@ def run_performance() -> None:
             max_graph_repeats=100,
             timed_run=timed,
         )
-        _assert_timed_outputs(inputs, timed)
+        _assert_timed_outputs(inputs, timed, timed_check)
         metadata = {
             **case["params"],
             "model": case["model"],

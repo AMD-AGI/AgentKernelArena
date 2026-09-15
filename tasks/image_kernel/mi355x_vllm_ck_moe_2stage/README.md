@@ -89,3 +89,10 @@ stress input; MoE negates hidden states. The stress input is checked after timin
 and adds no score point. A stale answer, unwritten buffer or detached correctness
 invocation is not accepted. Warmups, repetitions and graph-repeat limits remain
 unchanged; a fallback that cannot expose its timed outputs fails explicitly.
+
+The original and perturbed reference outputs are computed from private input
+copies before the first candidate invocation, including warmup. The actual
+original timed output is checked first. Every read-only input tensor is compared
+byte-for-byte before and after replay; input contamination fails. Input buffers
+are restored in `finally`, including when replay or a comparison fails. All
+snapshot, reference, comparison and restoration work remains outside timing.
