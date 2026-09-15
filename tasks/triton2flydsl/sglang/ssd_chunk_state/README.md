@@ -52,3 +52,20 @@ plus any operator dependencies stated by the source. Arena must materialize the
 canonical `_aka_benchmark.py` helper before GPU execution. CPU controls/protocol
 checks do not qualify these GPU kernels. Existing legacy reports are historical;
 the parent integration schedules new GPU validation.
+
+
+All six original cases remain with BF16/FP16/FP32 input and grouped heads.
+The public call's default states_in_fp32=True requires FP32[b,C,H,P,N]output on
+the input device for every input dtype. The numerical rule remains finite output
+and (99.9% elementwise pass at atol=rtol=0.01 OR normalized maximum error<=0.01).
+The suite uses full chunks, no seq_idx and an allocated result; other optional
+entrypoint modes are outside the declared cases. All four inputs are read-only.
+Replay negates x while preserving positive dt and negative-decay cumulative dA,
+so it does not change the workload's input-domain constraints.
+
+The actual measured output and same captured graph replay must satisfy the
+original reference and numerical rule. Reference work, input perturbation,
+output poisoning and restoration are outside timing. Originalseed42+i,
+ten externalwarmups and100graphsamples are unchanged; capture failure cannot
+bypass these checks. The original Triton algorithm remains the frozen baseline;
+final candidate calls are separately audited for FlyDSL computation.

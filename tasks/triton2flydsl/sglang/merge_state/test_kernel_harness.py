@@ -23,7 +23,8 @@ import json
 import time
 import argparse
 import importlib.util
-from _aka_benchmark import benchmark_cuda_graph_or_events
+from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
+from scripts.replay_checks import require_tensor_contract, require_unchanged, verify_timed_pair
 
 TASK_DIR = os.path.dirname(os.path.abspath(__file__))
 os.chdir(TASK_DIR)
@@ -31,6 +32,7 @@ os.chdir(TASK_DIR)
 TASK_NAME = "triton2flydsl/sglang/merge_state"
 from task_runtime import candidate_relative_path
 SOURCE_FILE = candidate_relative_path()
+ENTRY = 'merge_state_triton'
 
 # Real flash-decoding combine shapes: [num_tokens, num_heads, head_size].
 # head_size includes a non-power-of-2 case (192, DeepSeek-style) to exercise the
@@ -127,6 +129,46 @@ def run_compile():
         return False, str(e)
 
 
+def _checked_state_output(outputs, p_out, p_lse):
+    import torch
+    if not isinstance(outputs, (tuple, list)) or len(outputs) != 2:
+        raise AssertionError("Merge must return value and LSE tensors")
+    require_tensor_contract(outputs[0], p_out)
+    require_tensor_contract(outputs[1], p_lse, dtype=torch.float32)
+
+
+def _compare_state_output(actual, expected, cfg):
+    import torch
+    _checked_state_output(actual, expected[0], expected[1])
+    tolerance = 1e-4 if cfg["dtype"] == "fp32" else 1e-2
+    for out, ref, tol in zip(actual, expected, (tolerance, 1e-3)):
+        if not bool(torch.isfinite(out).all() and torch.isfinite(ref).all()):
+            raise AssertionError("Non-finite merge/reference output")
+        # Keep the original comparison in FP32, including for BF16 values.
+        if not torch.allclose(out.float(), ref.float(), atol=tol, rtol=tol):
+            raise AssertionError(f"Numerical mismatch: merge tolerance={tol}")
+
+
+def _state_replay_validator(p_out, p_lse, s_out, s_lse, cfg):
+    inputs = (p_out, p_lse, s_out, s_lse)
+    originals = tuple(v.clone() for v in inputs)
+    expected = reference_merge(p_out, p_lse, s_out, s_lse)
+    def perturb():
+        p_out.neg_()
+        s_out.neg_()
+        p_lse.add_(1.)
+        s_lse.add_(1.)
+    def replay_reference():
+        return reference_merge(p_out, p_lse, s_out, s_lse)
+    def compare(actual, expected):
+        _compare_state_output(actual, expected, cfg)
+    def validate(timed):
+        return verify_timed_pair(timed, inputs=inputs, originals=originals,
+                                expected=expected, perturb=perturb,
+                                reference=replay_reference, compare=compare)
+    return validate
+
+
 def run_correctness():
     import torch
     try:
@@ -143,9 +185,13 @@ def run_correctness():
         try:
             torch.manual_seed(42 + i)
             p_out, p_lse, s_out, s_lse = make_inputs(cfg, "cuda")
+            protected_inputs = (p_out, p_lse, s_out, s_lse)
+            originals = tuple(v.clone() for v in protected_inputs)
             o_t, lse_t = _retry_oom(lambda: mod.merge_state_triton(
                 p_out, p_lse, s_out, s_lse))
             torch.cuda.synchronize()
+            require_unchanged(protected_inputs, originals)
+            _checked_state_output((o_t, lse_t), p_out, p_lse)
             o_r, lse_r = reference_merge(p_out, p_lse, s_out, s_lse)
             finite = bool(torch.isfinite(o_t).all().item())
             diff = (o_t.float() - o_r.float()).abs().max().item()
@@ -179,26 +225,29 @@ def run_performance():
         try:
             torch.manual_seed(42 + ti)
             p_out, p_lse, s_out, s_lse = make_inputs(cfg, "cuda")
+            replay_validate = _state_replay_validator(p_out, p_lse, s_out, s_lse, cfg)
 
             def fn():
-                mod.merge_state_triton(p_out, p_lse, s_out, s_lse)
+                return mod.merge_state_triton(p_out, p_lse, s_out, s_lse)
 
             _retry_oom(fn)
             for _ in range(WARMUP_ITERATIONS):
                 fn()
             torch.cuda.synchronize()
+            timed = TimedRun()
             elapsed_ms, bench_meta = benchmark_cuda_graph_or_events(
-                fn, warmup=0, repetition=BENCHMARK_ITERATIONS
+                fn, warmup=0, repetition=BENCHMARK_ITERATIONS, timed_run=timed
             )
+            bench_meta.update(replay_validate(timed))
             test_cases.append({"test_case_id": f"perf{ti+1}",
                                "execution_time_ms": elapsed_ms,
                                **bench_meta,
                                "params": params})
-        except Exception:
+        except Exception as error:
             test_cases.append({"test_case_id": f"perf{ti+1}",
                                "execution_time_ms": -1.0,
                                "benchmark_method": "benchmark_failed",
-                               "benchmark_fallback_reason": "performance case failed before timing completed",
+                               "benchmark_fallback_reason": "performance case failed: " + str(error),
                                "params": params})
     return test_cases
 
