@@ -413,6 +413,13 @@ docker image inspect --format '{{.Id}}' <selected-image>
 
 ## Add a task adapter
 
+Read [Task definition, schema, and authoring](add-task.md) before changing a task
+or its analysis harness. That guide defines the selected v2 command-based task
+contract. This page documents the current tool implementation. In particular,
+allowing task adapters for known but disabled tools is a v2 migration requirement;
+the current merger rejects them. V2 candidate fields also need shared profile
+normalization before they can replace the legacy profile inputs below.
+
 Run-level configuration chooses tools, policy, optional image-identity
 assertions, and maximum timeout. A task can only add options for an
 already-enabled tool and lower its timeout. It cannot enable a tool, change the

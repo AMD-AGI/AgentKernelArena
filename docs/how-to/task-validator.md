@@ -12,6 +12,13 @@ reproducible, and functional. It doesn't optimize kernels — it audits them.
 Use it to validate new tasks before merging and to audit existing tasks before
 using them in controlled comparisons or RL data collection.
 
+Before adding or modifying a task, read
+[Task definition, schema, and authoring](add-task.md). That guide owns the task
+schema and authoring rules. Its v2 lifecycle is the migration target; the checks
+and field names on this page describe the current legacy runtime until that
+migration is implemented. A task config version is separate from a validator
+report schema version.
+
 ## Run the validator
 
 Save a run configuration such as `config_validator.yaml` with the validator as

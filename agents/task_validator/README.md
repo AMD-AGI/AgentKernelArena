@@ -109,154 +109,25 @@ WARN rather than an inferred failure.
 
 ---
 
-## New Task Requirements
+## Task Authoring Contract
 
-Every new task added to `tasks/` must satisfy the following requirements to pass validation.
+Before adding or modifying a task, read
+[Task definition, schema, and authoring](../../docs/how-to/add-task.md).
+It is the canonical reference and replaces the duplicated task schemas,
+authoring rules, and checklist previously maintained here.
 
-### Required Directory Structure
+The guide covers the task definition, selected unified v2 schema, command and
+result protocols, baseline/reference/candidate roles, edit boundaries,
+sanitizers, examples, and the authoring workflow. Its implementation-status and
+migration sections distinguish the v2 target from the current runtime.
 
-```
-tasks/<task_type>/[<suite>/...]/<task_name>/
-├── config.yaml                  # Task configuration (required)
-├── scripts/
-│   └── task_runner.py           # Validation runner (recommended pattern)
-└── source/
-    └── <kernel files>           # .cu, .hip, .py, etc.
-```
+The checks and generation-placeholder behavior above describe the current
+validator. The v2 general initial-state policy and result envelope require
+runtime/report-normalizer changes before use; documentation does not enable
+new skip reasons or make v2 configs pass the current validator.
 
-Alternative structures (Makefile-based, test-file-based) are acceptable as long as all config references resolve.
-
-### Required `config.yaml` Fields
-
-```yaml
-# List of source files containing kernel code (relative to task root)
-source_file_path:
-  - source/my_kernel.cu
-
-# List of kernel function names that must be found in source files
-target_kernel_functions:
-  - my_kernel_function
-
-# Command(s) to compile or build-check the task
-compile_command:
-  - python3 scripts/task_runner.py --mode compile
-
-# Command(s) to run correctness validation
-correctness_command:
-  - python3 scripts/task_runner.py --mode correctness
-
-# Task type: one of hip2hip, cuda2hip, triton2triton, triton2flydsl,
-# instruction2triton, torch2hip, torch2flydsl, flydsl2flydsl,
-# repository, image_kernel
-task_type: cuda2hip
-
-# Performance is required for current optimization tasks.
-performance_command:
-  - python3 scripts/task_runner.py --mode performance
-```
-
-### Optional `config.yaml` Fields
-
-```yaml
-# Legacy compatibility only; the centralized evaluator writes the standard schema.
-task_result_template: null
-
-# Prompt overrides for the optimization agent (null = auto-generated)
-prompt:
-  source_code: null
-  instructions: null
-  cheatsheet: null
-```
-
-### Self-Containedness Rules
-
-A normal isolated-kernel task **must** be fully self-contained. A
-`task_type: repository` task can declare an upstream repository with `repo_url`;
-its adapter scripts and dependency/setup contract must still be self-contained.
-For isolated tasks:
-
-1. **No external repo dependencies.** Do not reference paths like `../../vllm/`, `/opt/external/`, or assume a cloned repo exists in the workspace. All source code the task needs must be inside the task directory.
-
-2. **No missing headers.** Every `#include "foo.h"` in `.cu`/`.hip` files must resolve to a header that ships with the task (or is part of system/ROCm/CUDA includes).
-
-3. **No missing Python imports.** Every `import` or `from X import Y` must resolve to either:
-   - Python standard library
-   - Packages available in the Docker container environment (torch, numpy, triton, etc.)
-   - Local files within the task directory
-
-4. **No external data downloads.** Test inputs must be generated inline (random tensors, synthetic data) or bundled as small files in the task directory.
-
-### Correctness Check Rules
-
-The correctness check **must** be a real validation, not a trivial pass:
-
-1. **Compare against a reference.** Use a CPU/NumPy reference implementation, known-good output tensors, or a PyTorch eager-mode baseline.
-
-2. **Use reasonable tolerances.** For FP32: `atol=1e-3, rtol=1e-3` typical. For FP16/BF16: `atol=1e-2, rtol=1e-2` typical. For FP8/INT8: `atol=1e-1` or custom per-task.
-
-3. **Test multiple shapes.** Don't validate with a single input shape. Use at least 2-3 representative shapes covering small, medium, and large inputs.
-
-4. **Return non-zero exit code on failure.** The correctness command must `sys.exit(1)` or raise an exception if validation fails.
-
-### Compilation Check Rules
-
-1. The `compile_command` must actually compile or syntax-check the source code (not just search for text patterns).
-2. Exit code 0 means success, non-zero means failure.
-3. A `build/compile_report.json` with `{"status": "ok"}` or `{"status": "fail", "error": "..."}` is recommended.
-
-### Performance Check Rules
-
-1. The `performance_command` should measure kernel execution time and report it in a parseable format.
-2. It only needs to report the runtime for the implementation currently in the workspace. The framework runs the same command before and after agent execution and computes speedup.
-3. A `build/performance_report.json` with timing data is recommended.
-4. Every case must report finite positive device time, a stable ID/params/shape,
-   and `benchmark_method: cuda_graph` or `cuda_event_fallback`. Host/CPU timing is
-   invalid; Event fallback needs a reason and must not be candidate-controlled.
-5. Restore stateful/in-place inputs outside timing, keep avoidable scratch/JIT/reset
-   outside the timed callable, make pre/post workloads symmetric, and use
-   representative nonzero inputs. Exact output validation from the timed Graph replay
-   is strongly recommended; its absence is WARN unless runtime evidence demonstrates
-   an incorrect/stale replay or an unsafe state/reset defect.
-6. `10` warmups and `100` measured samples are recommended defaults, not a scoring
-   requirement. A sound documented alternative may receive WARN rather than FAIL.
-
-### Result Template Compatibility
-
-The task's output flow (compile → correctness → performance) must produce results that can populate the standard `task_result_template.yaml`:
-
-```yaml
-task_name: "<full path relative to tasks/>"
-pass_compilation: true/false
-compilation_error_message: null
-pass_correctness: true/false
-correctness_error_message: null
-base_execution_time: 0.0          # in ms
-best_optimized_execution_time: 0.0
-speedup_ratio: 0.0
-baseline_benchmark_methods: []
-optimized_benchmark_methods: []
-benchmark_method_consistent: true/false
-valid_baseline_cases: 0
-valid_optimized_cases: 0
-speedup_calculation_error_message: null
-optimization_summary: "Framework-generated evaluator summary"
-score: 0.0
-```
-
-### Checklist for New Task Authors
-
-Before submitting a new task, verify:
-
-- [ ] `config.yaml` has all required fields with correct types
-- [ ] All `source_file_path` entries exist
-- [ ] All `target_kernel_functions` are defined in the source files
-- [ ] `compile_command` succeeds with exit code 0
-- [ ] `correctness_command` succeeds with exit code 0
-- [ ] Correctness check compares against a real reference (not trivially passing)
-- [ ] Isolated tasks have no undeclared external paths; repository tasks declare `repo_url` and setup requirements
-- [ ] Commands complete within reasonable time (no GPU hangs)
-- [ ] Every performance case has scoreable device timing and method metadata
-- [ ] Stateful inputs, scratch/reset work, allocation, and Graph replay validation have fair boundaries
-- [ ] The declared editable targets are compatible with the protected harness boundary
-
-Run the task_validator agent on your task to automatically verify all of the above.
+New tasks and material task-contract/harness changes require a fresh
+framework-finalized validator report on compatible GPU hardware before PR
+submission. Require `overall_status: PASS`; WARN needs an explicit
+maintainer-approved justification and is not a clean pass. See
+[Validate tasks](../../docs/how-to/task-validator.md) for execution and reports.

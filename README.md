@@ -135,6 +135,9 @@ Agent-specific models, effort settings, iteration guidance, timeouts, and provid
 | `flydsl2flydsl` | Optimize an existing FlyDSL implementation |
 | `repository` | Optimize a target inside a cloned upstream repository |
 
+These names describe existing suites and legacy dispatch. The unified task
+contract and migration path are documented in
+[Task definition, schema, and authoring](docs/how-to/add-task.md).
 The prompt system also recognizes `cuda2hip`; the current bundled task tree does not include a `cuda2hip/` suite.
 
 ## Installation
@@ -331,45 +334,16 @@ For multi-case tasks, the evaluator prefers the explicit per-case average `speed
 
 ## Task Configuration
 
-Each isolated-kernel task has a `config.yaml`. Command and source fields are lists; `task_type` is a scalar string.
+Each task has one `config.yaml` plus task-local implementation and evaluation
+files. Read [Task definition, schema, and authoring](docs/how-to/add-task.md)
+for the canonical schema, examples, command/result contracts, baseline and
+candidate lifecycle, optional sanitizers, and migration instructions.
 
-```yaml
-# tasks/triton2triton/vllm/triton_rms_norm/config.yaml
-source_file_path:
-  - source/triton_rms_norm.py
-
-target_kernel_functions:
-  - _rms_norm_kernel
-
-compile_command:
-  - python3 scripts/task_runner.py compile
-
-correctness_command:
-  - python3 scripts/task_runner.py correctness
-
-# Optional, but required to produce a performance reward.
-performance_command:
-  - python3 scripts/task_runner.py performance
-
-task_type: triton2triton
-
-# Optional: limit a task to a GPU architecture.
-platform_support:
-  required_arch: gfx942
-  status: active          # active | skip
-  skip_reason: null
-
-prompt:
-  source_code: null
-  instructions: null
-  cheatsheet: null
-```
-
-Tasks marked `platform_support.status: skip`, or requiring a different GPU
-architecture, are filtered before workspace creation. Omit `platform_support`
-for tasks that run on every architecture.
-
-Repository-level tasks use `task_type: repository`, `repo_url`, and `repository_language`; their source and target hints are optional. See [docs/how-to/add-task.md](docs/how-to/add-task.md) for the complete schemas.
+The guide specifies the selected unified v2 design. This branch's runtime still
+uses legacy task fields; follow the guide's implementation-status section
+before changing an executable config. Task-family directory names remain useful
+selectors, but the v2 contract does not give SIKL or repository tasks a separate
+schema.
 
 ## Development
 
@@ -401,38 +375,17 @@ Then:
 
 ### Add a Task
 
-Recommended isolated-task layout:
+Read [Task definition, schema, and authoring](docs/how-to/add-task.md) before
+changing task code, config, references, or harnesses. Follow its
+[authoring workflow](docs/how-to/add-task.md#how-to-add-or-modify-a-task) and
+check the [migration status](docs/how-to/add-task.md#migration).
 
-```text
-tasks/<task_type>/[<suite>/...]/<task_name>/
-├── config.yaml
-├── scripts/
-│   └── task_runner.py
-└── source/
-    └── <kernel files>
-```
-
-At minimum, isolated tasks declare list-valued `source_file_path`, `target_kernel_functions`, `compile_command`, and `correctness_command`, plus a scalar `task_type`. Add `performance_command` to measure a baseline and optimized runtime.
-
-All new tasks must pass the task validator before merging:
-
-Save a run configuration such as `config_task_validator.yaml`:
-
-```yaml
-agent:
-  template: task_validator
-tasks:
-  - <full-task-path-relative-to-tasks>
-target_gpu_model: MI300
-log_directory: logs
-workspace_directory_prefix: workspace
-```
-
-```bash
-make docker-run CONFIG=config_task_validator.yaml
-```
-
-The validator runs 12 checks covering schema, source files, target symbols, compilation, correctness, performance, correctness quality, self-containedness, GPU hangs, result compatibility, benchmark integrity, and harness integrity. Reports are schema-versioned and framework-finalized; any FAIL/TIMEOUT makes the final command exit nonzero. See [agents/task_validator/README.md](agents/task_validator/README.md).
+New tasks and material task-contract/harness changes require a fresh
+framework-finalized `validation_report.yaml` on compatible GPU hardware before
+PR submission. A clean pass has `overall_status: PASS`; WARN needs an explicit
+maintainer-approved justification. See the
+[validator guide](docs/how-to/task-validator.md) for the Docker command and
+report interpretation.
 
 ## Additional Tools
 

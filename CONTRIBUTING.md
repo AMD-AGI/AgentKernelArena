@@ -5,6 +5,7 @@ Thanks for your interest in AgentKernelArena! This guide explains how to contrib
 ## Before You Start
 
 - Read `README.md` to understand the project scope: controlled A/B experiments and RL-ready feedback for GPU kernel agents.
+- Before adding or modifying a task, read [Task definition, schema, and authoring](docs/how-to/add-task.md), including its implementation-status and migration guidance. It is the single authoring reference for new and existing task families.
 - Skim the files under `example_configs/` for run-level agent/task/GPU selection and the relevant `agents/<name>/agent_config.yaml` for agent-specific model and runtime settings.
 - Ensure you have an AMD GPU with ROCm-compatible Docker access; use the architecture-specific runtime documented in the compatibility matrix.
 - Confirm that the selected agent integration and its authentication/dependencies are available.

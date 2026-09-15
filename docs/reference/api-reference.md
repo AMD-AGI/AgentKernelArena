@@ -182,57 +182,21 @@ full scheduling model.
 
 ## Task configuration
 
-Each task is defined by a `config.yaml` in its directory. Command fields are
-*lists*.
+[Task definition, schema, and authoring](../how-to/add-task.md) is the canonical
+reference for task configuration. It replaces the former separate
+isolated/repository/operator task field tables on this page and covers:
 
-For isolated-kernel tasks (`hip2hip`, `cuda2hip`, `triton2triton`,
-`triton2flydsl`, `instruction2triton`, `torch2hip`, `torch2flydsl`,
-`flydsl2flydsl`, and `operator2flydsl`):
+- The selected unified v2 schema and compact examples.
+- Command and result protocols, baseline/reference/candidate roles, and lifecycle.
+- Workspace paths, edit boundaries, agent independence, and task-local checks.
+- Optional sanitizer commands, common exports, and how to add or modify a task.
+- Legacy field mappings and runtime migration requirements.
 
-| Field | Required | Description |
-| --- | --- | --- |
-| `source_file_path` | Yes | Source files containing the kernel, relative to the task root |
-| `target_kernel_functions` | Yes | Kernel function names that must be defined in the source |
-| `compile_command` | Yes | Command(s) to compile or build-check |
-| `correctness_command` | Yes | Command(s) to validate correctness |
-| `task_type` | Yes | One of `hip2hip`, `cuda2hip`, `triton2triton`, `triton2flydsl`, `instruction2triton`, `torch2hip`, `torch2flydsl`, `flydsl2flydsl`, or `operator2flydsl` |
-| `performance_command` | No | Command(s) to measure performance |
-| `compile_timeout` | No | Per-command compilation timeout in seconds (default `3600`) |
-| `correctness_timeout` | No | Per-command correctness timeout in seconds (default `3600`) |
-| `performance_timeout` | No | Per-command performance timeout in seconds (default `3600`) |
-| `task_result_template` | No | Legacy compatibility field. The centralized evaluator writes the standard result schema regardless of this value |
-| `rewrite_source_file` | `operator2flydsl` only | The production implementation to reimplement, as a task-relative path |
-| `kernel_identity` | No | Shared operator identity: `logical_operator`, `source_owner`, optional `kernel_kind`. See [Add a task](../how-to/add-task.md) |
-| `platform_support` | No | Optional run-gating metadata; see below |
-| `prompt.source_code` | No | Override the prompt's source-code section |
-| `prompt.instructions` | No | Custom prompt instructions |
-| `prompt.cheatsheet` | No | Reference/cheatsheet content for the prompt |
-
-For repository-level tasks (`task_type: repository`):
-
-| Field | Required | Description |
-| --- | --- | --- |
-| `repo_url` | Yes | Upstream repository to clone for the task |
-| `task_type` | Yes | Must be `repository` |
-| `repository_language` | Yes | Primary optimization stack, for example `hip` or `triton` |
-| `compile_command` | Yes | Command(s) to compile or build-check |
-| `correctness_command` | Yes | Command(s) to validate correctness |
-| `performance_command` | No | Command(s) to measure performance |
-| `compile_timeout` | No | Per-command compilation timeout in seconds (default `3600`) |
-| `correctness_timeout` | No | Per-command correctness timeout in seconds (default `3600`) |
-| `performance_timeout` | No | Per-command performance timeout in seconds (default `3600`) |
-| `post_clone_install` | No | Setup command(s) to run after cloning the upstream repository |
-| `post_clone_install_mode` | No | Controls when `post_clone_install` runs, for example `every_setup` |
-| `repo_subdir` | No | Workspace subdirectory for the clone; defaults to the repository name derived from `repo_url` |
-| `source_file_path` | No | Optional target source-file hints, relative to the cloned repository root |
-| `target_kernel_functions` | No | Optional target function or kernel-symbol hints |
-| `rewrite_source_file` | `operator2flydsl` only | The production implementation to reimplement, as a task-relative path |
-| `kernel_identity` | No | Shared operator identity: `logical_operator`, `source_owner`, optional `kernel_kind`. See [Add a task](../how-to/add-task.md) |
-| `platform_support` | No | Optional run-gating metadata; see below |
-| `prompt.instructions` | No | Custom prompt instructions |
-| `prompt.cheatsheet` | No | Reference/cheatsheet content for the prompt |
-
-See [Add a task](../how-to/add-task.md) for layout and authoring rules.
+**Implementation status:** v2 is documented, not yet implemented in this branch.
+The current loader/evaluator/validator still use legacy task fields. The profile,
+tool-adapter, and platform sections below describe that current implementation;
+consult the task guide before migrating configs. Run and final-result schemas
+remain documented on this page.
 
 ### Evaluation profile
 

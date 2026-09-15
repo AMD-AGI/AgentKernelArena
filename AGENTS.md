@@ -24,7 +24,8 @@ instructions; never embed paths from a local checkout.
 When behavior and prose disagree, inspect the implementation. In particular:
 
 - Agent identifiers and loading: `src/module_registration.py`
-- Task contract: the task's `config.yaml`
+- Task definition, schema, and authoring contract: `docs/how-to/add-task.md`
+- Task-specific declarations: the task's `config.yaml`
 - Evaluation and scoring: `src/evaluator.py`, `src/performance.py`, `src/score.py`
 - Harness protection: `src/harness_guard.py`
 - Benchmark helpers: `src/tools/perf/`
@@ -73,8 +74,13 @@ that explicitly.
 
 ## Task authoring and validation
 
-Follow [the task authoring guide](docs/how-to/add-task.md) and inspect nearby
-tasks of the same type.
+Before adding or modifying any task, you MUST read
+[Task definition, schema, and authoring](docs/how-to/add-task.md), including its
+implementation-status and migration sections. This applies to task configs,
+sources, references, input generators, harnesses, and benchmark scripts.
+It is the canonical task guide; inspect nearby task implementations as well.
+Do not assume the documented v2 design is already supported by the runtime or
+migrate a live config before the shared loader/evaluator/validator support it.
 
 - Paths in an isolated task must resolve within the task directory. Do not use
   absolute paths, undeclared downloads, or external repositories.
