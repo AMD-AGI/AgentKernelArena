@@ -152,7 +152,8 @@ def test_undefined_suffix_nan_padding_metadata_and_subnormal(task):
     with pytest.raises(ValueError):ref.check_output(a,b.double(),a.clone(),None)
 
 
-@pytest.mark.parametrize('mode',['correct','cached','readonly_mutation','wrong_padding','crash'])
+@pytest.mark.parametrize('mode',['correct','cached','readonly_mutation','wrong_padding','crash',
+                                 'observable_events','unobservable_fallback'])
 @pytest.mark.parametrize('padding',[None,'zero'])
 def test_real_adapter_replay_restore_and_unchanged_timing_parameters(task,monkeypatch,mode,padding):
     path,ref=task;adapter=load(path/'_arena_eval.py');a=torch.arange(16,dtype=torch.float32);b=torch.full_like(a,19)
@@ -160,14 +161,21 @@ def test_real_adapter_replay_restore_and_unchanged_timing_parameters(task,monkey
     plugin=types.SimpleNamespace(action='performance',current_row={'test_case_id':'cpu_case'},exercised=set())
     class Base:
         def __init__(self,op_callable,**kwargs):
-            self.op_callable=op_callable;self.prepare_fn=None;self.use_cuda_graph=True;self.fallback_reason=None
+            self.op_callable=op_callable;self.prepare_fn=None;self.use_cuda_graph=mode!='observable_events'
+            self.fallback_reason='explicit observable event path' if mode=='observable_events' else None
             self.config=types.SimpleNamespace(warm_up=10,repetition=100)
     class Timed:
         def rerun(self):return self.fn()
     def benchmark(fn,**kwargs):
-        assert {k:v for k,v in kwargs.items() if k!='timed_run'}==dict(warmup=10,repetition=100,prepare_fn=None,use_cuda_graph=True,fallback_reason=None)
+        assert {k:v for k,v in kwargs.items() if k!='timed_run'}==dict(
+            warmup=10,repetition=100,prepare_fn=None,use_cuda_graph=mode!='observable_events',
+            fallback_reason='explicit observable event path' if mode=='observable_events' else None)
         if mode=='crash':raise RuntimeError('injected timing failure')
-        t=kwargs['timed_run'];t.fn=fn;t.outputs=fn();return [1.,2.],{'benchmark_method':'cuda_graph'}
+        if mode=='unobservable_fallback':raise RuntimeError('timed_run requires observable replay')
+        t=kwargs['timed_run'];t.fn=fn;t.outputs=fn()
+        return [1.,2.],({'benchmark_method':'cuda_event_fallback',
+                         'benchmark_fallback_reason':'explicit observable event path'}
+                        if mode=='observable_events' else {'benchmark_method':'cuda_graph'})
     monkeypatch.setitem(sys.modules,'_aka_benchmark',types.SimpleNamespace(TimedRun=Timed,benchmark_cuda_graph_or_events_samples=benchmark))
     monkeypatch.setitem(sys.modules,'performance_utils_pytest',types.SimpleNamespace(_compute_timing_stats=lambda ts,config:{'mean':sum(ts)/len(ts)}))
     cached=a[:8].clone()
@@ -178,10 +186,13 @@ def test_real_adapter_replay_restore_and_unchanged_timing_parameters(task,monkey
         if mode=='readonly_mutation':a[0]+=1
     wrapped=adapter.benchmark_type(Base,plugin,None)(op_callable=op)
     wrapped.context=c
-    if mode=='correct':
+    if mode in ('correct','observable_events'):
         wrapped.run_benchmark()
         assert plugin.current_row['metadata']['fresh_input_replay_checked']
         assert plugin.current_row['execution_time_ms']==1.5 and plugin.exercised=={'cpu_case'}
+        if mode=='observable_events':
+            assert plugin.current_row['metadata']['device_timing']['benchmark_fallback_reason']=='explicit observable event path'
     else:
         with pytest.raises((ref.NumericalMismatch,RuntimeError)):wrapped.run_benchmark()
+        assert not plugin.exercised and 'execution_time_ms' not in plugin.current_row
     assert torch.equal(a,initial_a) and torch.equal(b,initial_b)
