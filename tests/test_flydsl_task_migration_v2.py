@@ -573,8 +573,10 @@ class _InlineTritonReference(ast.NodeTransformer):
         return self.generic_visit(node)
 
 
-def _protected_triton_fingerprint(source, *, added_replay_checks=False, sglang_elementwise=False, attention_two=False, mla_checks=False, gr_checks=False, state_checks=False):
+def _protected_triton_fingerprint(source, *, added_replay_checks=False, sglang_elementwise=False, attention_two=False, mla_checks=False, gr_checks=False, state_checks=False, flat_checks=False):
     tree=ast.parse(source)
+    if flat_checks:
+        tree = _RemoveFlatChecks().visit(tree)
     if state_checks:
         tree = _RemoveStateChecks().visit(tree)
     if gr_checks:
@@ -592,7 +594,7 @@ def _protected_triton_fingerprint(source, *, added_replay_checks=False, sglang_e
         tree = _RemoveTritonQuantChecks().visit(tree)
         tree = _RemoveMqaChecks().visit(tree)
         tree = _RemoveElementwiseChecks().visit(tree)
-    excluded={"_checked_state_output", "_compare_state_output", "_state_replay_validator", "_checked_gr_output", "_compare_gr_output", "_gr_replay_validator", "_checked_mla_output", "_compare_mla_output", "_mla_replay_validator", "_checked_attention_output", "_compare_attention_output", "_attention_replay_validator", "_checked_pair_output", "_compare_routing_pair", "_pair_replay_validator", "_checked_scaled_gemm_output", "_scaled_gemm_replay_validator", "_checked_sglang_output", "_compare_sglang_output", "_sglang_replay_validator", "_checked_elementwise_output","_elementwise_replay_validator","_checked_mqa_output","_compare_mqa_output","_verify_mqa_timed","_checked_mx_pair","_mx_reference","_compare_mx_pair","_verify_quant_timed","_checked_quant_output","_compare_token_outputs","_batched_replay_validator","_load_source","load_module","run_compile","_prepare_kernel","_make_prepared_fused_moe_runner",
+    excluded={"_checked_flat_output", "_compare_flat_output", "_flat_replay_validator", "_checked_state_output", "_compare_state_output", "_state_replay_validator", "_checked_gr_output", "_compare_gr_output", "_gr_replay_validator", "_checked_mla_output", "_compare_mla_output", "_mla_replay_validator", "_checked_attention_output", "_compare_attention_output", "_attention_replay_validator", "_checked_pair_output", "_compare_routing_pair", "_pair_replay_validator", "_checked_scaled_gemm_output", "_scaled_gemm_replay_validator", "_checked_sglang_output", "_compare_sglang_output", "_sglang_replay_validator", "_checked_elementwise_output","_elementwise_replay_validator","_checked_mqa_output","_compare_mqa_output","_verify_mqa_timed","_checked_mx_pair","_mx_reference","_compare_mx_pair","_verify_quant_timed","_checked_quant_output","_compare_token_outputs","_batched_replay_validator","_load_source","load_module","run_compile","_prepare_kernel","_make_prepared_fused_moe_runner",
               "_reference_softmax","_reference_gemm","_reference_layernorm","_reference_quant"}
     nodes=[]
     for n in tree.body:
@@ -606,7 +608,7 @@ def _protected_triton_fingerprint(source, *, added_replay_checks=False, sglang_e
 def test_triton_preserves_original_harness_semantics_inputs_and_timing():
     for name,expected in TRITON_PROTECTED_SHA256.items():
         task=ROOT/"tasks/triton2flydsl"/name
-        assert _protected_triton_fingerprint((task/"test_kernel_harness.py").read_text(), added_replay_checks=name in {"aiter/fused_add_rmsnorm", "aiter/moe_routing_sigmoid_top1", "aiter/gemm_a8w8", "aiter/gemm_a16w8_blockscale", "aiter/gemm_a8w8_blockscale", "aiter/gemm_afp8wfp8", "aiter/ff_a16w16", "aiter/fused_silu_mul", "aiter/fused_clamp_act_mul", "aiter/rmsnorm", "aiter/fp8_mqa_logits", "aiter/dynamic_mxfp8_quant", "aiter/dynamic_quant_fp8", "aiter/batched_gemm_a8w8", "aiter/batched_gemm_bf16", "aiter/gemm_a16w16", "aiter/softmax", "aiter/layernorm", "sglang/decode_attention", "sglang/sglang_fused_moe"}, sglang_elementwise=name in {"sglang/gdn_l2norm_fwd", "sglang/fused_norm_gate", "sglang/chunk_local_cumsum"}, attention_two=name in {"aiter/mha", "sglang/prefill_attention"}, mla_checks=name == "aiter/mla", gr_checks=name.startswith("generative_recommenders/"), state_checks=name in {"sglang/merge_state", "sglang/ssd_chunk_state", "sglang/fused_dual_residual_rmsnorm"})==expected,name
+        assert _protected_triton_fingerprint((task/"test_kernel_harness.py").read_text(), added_replay_checks=name in {"aiter/fused_add_rmsnorm", "aiter/moe_routing_sigmoid_top1", "aiter/gemm_a8w8", "aiter/gemm_a16w8_blockscale", "aiter/gemm_a8w8_blockscale", "aiter/gemm_afp8wfp8", "aiter/ff_a16w16", "aiter/fused_silu_mul", "aiter/fused_clamp_act_mul", "aiter/rmsnorm", "aiter/fp8_mqa_logits", "aiter/dynamic_mxfp8_quant", "aiter/dynamic_quant_fp8", "aiter/batched_gemm_a8w8", "aiter/batched_gemm_bf16", "aiter/gemm_a16w16", "aiter/softmax", "aiter/layernorm", "sglang/decode_attention", "sglang/sglang_fused_moe"}, sglang_elementwise=name in {"sglang/gdn_l2norm_fwd", "sglang/fused_norm_gate", "sglang/chunk_local_cumsum"}, attention_two=name in {"aiter/mha", "sglang/prefill_attention"}, mla_checks=name == "aiter/mla", gr_checks=name.startswith("generative_recommenders/"), state_checks=name in {"sglang/merge_state", "sglang/ssd_chunk_state", "sglang/fused_dual_residual_rmsnorm"}, flat_checks=name in {"aiter/rope_fwd", "aiter/moe_fused_gemm"})==expected,name
         cfg=yaml.safe_load((task/"config.yaml").read_text())
         assert cfg["baseline"]["kind"]=="initial_candidate"
         assert cfg["baseline"]["language"]=="triton"
@@ -5171,3 +5173,137 @@ def test_dual_rms_original_references_rounding_inputs_gates_and_timing():
             assert hashlib.sha256(ast.dump(normalized,include_attributes=False).encode()).hexdigest()==hashes[fn.name],fn.name
     for helper in ['candidate_checks.py','replay_checks.py']:
         assert (task/'scripts'/helper).read_bytes()==(ROOT/'tasks/triton2flydsl/sglang/merge_state/scripts'/helper).read_bytes()
+
+
+class _RemoveFlatChecks(_RemoveTritonBatchedChecks):
+    def visit_Assign(self,node):
+        if len(node.targets)==1 and getattr(node.targets[0],'id',None)=='ENTRIES':return None
+        return super().visit_Assign(node)
+    def visit_Expr(self,node):
+        if isinstance(node.value,ast.Call) and getattr(node.value.func,'id',None)=='_checked_flat_output':return None
+        return super().visit_Expr(node)
+
+
+@pytest.mark.parametrize('style,reuse,nope,nope_first',[(style,reuse,nope,first) for style in [0,1] for reuse in [False,True] for nope,first in [(False,False),(True,False),(True,True)]])
+@pytest.mark.parametrize('behavior',['correct','wrong','dtype','shape','input_modified','freq_modified'])
+def test_flat_rope_all_original_style_reuse_and_nope_contracts(style,reuse,nope,nope_first,behavior,monkeypatch):
+    import torch,types
+    task=ROOT/'tasks/triton2flydsl/aiter/rope_fwd';checks=module(task/'scripts/replay_checks.py');ns=dict(require_tensor_contract=checks.require_tensor_contract,require_unchanged=checks.require_unchanged)
+    _harness_functions(task,{'_rotate_half_neox','_rotate_half_gptj','_ref_rope_sbhd_fwd','_checked_flat_output'},ns)
+    x=torch.arange(1,9,dtype=torch.bfloat16).reshape(1,1,1,8);freqs=torch.full((1,1,1,8//(2 if nope else 1)//(2 if reuse else 1)),.5,dtype=x.dtype)
+    def compute(*args,**kw):
+        out=ns['_ref_rope_sbhd_fwd'](x,freqs,style,reuse,nope_first,0)
+        if behavior=='wrong':out.zero_()
+        if behavior=='dtype':out=out.float()
+        if behavior=='shape':out=out.reshape(-1)
+        if behavior=='input_modified':x.mul_(.5)
+        if behavior=='freq_modified':freqs.mul_(.5)
+        return out
+    ns.update(_load_source=lambda:types.SimpleNamespace(RotateStyle=types.SimpleNamespace(NEOX=0,GPTJ=1),rope_fwd=compute),
+              _make_inputs=lambda *args:(x,freqs),_cases=lambda:[dict(name='control',B=1,S=1,style='NEOX' if style==0 else 'GPTJ',nope=nope,nope_first=nope_first,reuse=reuse)])
+    monkeypatch.setattr(torch.cuda,'synchronize',lambda:None);_harness_functions(task,{'run_correctness'},ns)
+    assert ns['run_correctness'](verbose=False)==(behavior=='correct')
+
+
+@pytest.mark.parametrize('behavior',['correct','measured_wrong','replay_wrong','cached','input_modified','freq_modified'])
+def test_flat_rope_actual_four_benchmark_cases_measured_and_replayed(behavior,monkeypatch,tmp_path):
+    import torch,types,math
+    task=ROOT/'tasks/triton2flydsl/aiter/rope_fwd';checks=module(task/'scripts/replay_checks.py');ns=dict(require_tensor_contract=checks.require_tensor_contract,require_unchanged=checks.require_unchanged,verify_timed_run=checks.verify_timed_run)
+    _harness_functions(task,{'_rotate_half_neox','_rotate_half_gptj','_ref_rope_sbhd_fwd','_checked_flat_output','_compare_flat_output','_flat_replay_validator'},ns)
+    state={'phase':'setup'};inputs=[];cached=[]
+    def make_inputs(*args):
+        x=torch.arange(1,9,dtype=torch.bfloat16).reshape(1,1,1,8);freqs=torch.full((1,1,1,4),.5,dtype=x.dtype)
+        inputs[:]=[x,freqs];cached[:]=[ns['_ref_rope_sbhd_fwd'](x,freqs,0,True,False,0)]
+        return x,freqs
+    def compute(*args,**kw):
+        out=ns['_ref_rope_sbhd_fwd'](*inputs,0,True,False,0)
+        if behavior==state['phase']+'_wrong':out.zero_()
+        if state['phase']=='replay' and behavior=='cached':out=cached[0].clone()
+        if state['phase']=='measured' and behavior.endswith('_modified'):inputs[behavior=='freq_modified'].mul_(.5)
+        return out
+    class Collector:bound=False
+    calls=[]
+    def benchmark(fn,*,warmup,repetition,timed_run):
+        calls.append((warmup,repetition));state['phase']='measured';timed_run.outputs=fn();timed_run.bound=True;state['phase']='setup'
+        def replay():
+            state['phase']='replay'
+            try:return fn()
+            finally:state['phase']='setup'
+        timed_run.rerun=replay
+        return .1,{'benchmark_method':'cuda_graph','benchmark_timed_run_kind':'captured_graph'}
+    ns.update(_load_source=lambda:types.SimpleNamespace(RotateStyle=types.SimpleNamespace(NEOX=0,GPTJ=1),rope_fwd=compute),_make_inputs=make_inputs,
+              TimedRun=Collector,benchmark_cuda_graph_or_events=benchmark,WARMUP=10,ITERS=100,H=1,D=8,_HERE=str(tmp_path),Path=Path,json=json,math=math)
+    monkeypatch.setattr(torch.cuda,'synchronize',lambda:None);_harness_functions(task,{'run_benchmark'},ns)
+    if behavior=='correct':
+        rows=ns['run_benchmark'](verbose=False)
+        assert len(rows)==4 and calls==[(0,100)]*4
+        assert all(row['timed_output_correctness']==row['replay_correctness']=='PASS' for row in rows)
+    else:
+        with pytest.raises(AssertionError):ns['run_benchmark'](verbose=False)
+
+
+@pytest.mark.parametrize('phase,behavior',[(phase,behavior) for phase in ['correctness','benchmark'] for behavior in ['correct','wrong','dtype','shape','nan','input_modified','ids_modified','weight_modified','measured_wrong','replay_wrong','cached'] if phase=='benchmark' or behavior not in {'measured_wrong','replay_wrong','cached'}])
+def test_flat_moe_real_preparation_both_route_modes_and_timed_replay(phase,behavior,monkeypatch,tmp_path):
+    import torch,types,math
+    task=ROOT/'tasks/triton2flydsl/aiter/moe_fused_gemm';checks=module(task/'scripts/replay_checks.py')
+    ns=dict(require_tensor_contract=checks.require_tensor_contract,require_unchanged=checks.require_unchanged,verify_timed_run=checks.verify_timed_run,BLOCK_SIZE_M=64)
+    _harness_functions(task,{'_ref_moe_gemm','_prepare_kernel','_run_kernel','_checked_flat_output','_compare_flat_output','_flat_replay_validator'},ns)
+    A=torch.tensor([[1.,2.],[3.,4.]],dtype=torch.bfloat16);B=torch.tensor([[[3.,4.]],[[5.,6.]]],dtype=A.dtype)
+    ids=torch.tensor([[1,0],[0,1]],dtype=torch.int32);weights=torch.tensor([[.25,.75],[.75,.25]])
+    data=(A,B,ids,weights);state={'phase':'setup'};prepared=[]
+    cached=ns['_ref_moe_gemm'](*data,2,True).to(A.dtype)
+    def sort(*args):
+        prepared.append(state['phase']);return ids.clone().reshape(-1),torch.tensor([0,1]),torch.tensor([4])
+    def compute(*args,**kw):
+        C=args[2];mul=args[10];top_k=args[11];out=ns['_ref_moe_gemm'](*data,top_k,mul).to(A.dtype)
+        if phase=='correctness' or state['phase']=='measured':
+            if behavior=='wrong':out.zero_()
+            if behavior=='dtype':out=out.float()
+            if behavior=='shape':out=out.reshape(-1)
+            if behavior=='nan':out.fill_(float('nan'))
+            if behavior=='input_modified':A.mul_(.5)
+            if behavior=='ids_modified':ids.zero_()
+            if behavior=='weight_modified':weights.mul_(.5)
+        if behavior==state['phase']+'_wrong':out.zero_()
+        if state['phase']=='replay' and behavior=='cached':out=cached.clone()
+        C.data=out
+    class Collector:bound=False
+    calls=[]
+    def benchmark(fn,*,warmup,repetition,prepare_fn,timed_run):
+        calls.append((warmup,repetition));prepare_fn();state['phase']='measured';timed_run.outputs=fn();timed_run.bound=True;state['phase']='setup'
+        def replay():
+            prepare_fn();state['phase']='replay'
+            try:return fn()
+            finally:state['phase']='setup'
+        timed_run.rerun=replay
+        return .1,{'benchmark_method':'cuda_graph','benchmark_timed_run_kind':'captured_graph'}
+    ns.update(_load_source=lambda:types.SimpleNamespace(moe_align_block_size=sort,fused_moe=compute),_make_inputs=lambda *args:data,
+              TEST_SHAPES=[dict(name='control',M=2,K=2,N=1,E=2,top_k=2)],TimedRun=Collector,benchmark_cuda_graph_or_events=benchmark,
+              WARMUP=10,ITERS=100,_HERE=str(tmp_path),Path=Path,json=json,math=math)
+    monkeypatch.setattr(torch.cuda,'synchronize',lambda:None);_harness_functions(task,{'run_correctness','run_benchmark'},ns)
+    if phase=='correctness':assert ns['run_correctness'](verbose=False)==(behavior=='correct')
+    elif behavior=='correct':
+        rows=ns['run_benchmark'](verbose=False);assert len(rows)==1 and calls==[(0,100)]
+        assert rows[0]['timed_output_correctness']==rows[0]['replay_correctness']=='PASS'
+        assert prepared==['setup']  # sorting stays outside measured work and replay.
+    else:
+        with pytest.raises(AssertionError):ns['run_benchmark'](verbose=False)
+
+
+@pytest.mark.parametrize('name', ['rope_fwd','moe_fused_gemm'])
+def test_flat_rope_moe_real_cpu_full_manifest_and_copied_candidate_checks(name):
+    task=ROOT/'tasks/triton2flydsl/aiter'/name;result=invoke(task,'validate-task')
+    assert result.passed,result.reason
+    assert len(result.cases)==(48 if name=='rope_fwd' else 10)
+    for helper in ['candidate_checks.py','replay_checks.py']:
+        assert (task/'scripts'/helper).read_bytes()==(ROOT/'tasks/triton2flydsl/aiter/rmsnorm/scripts'/helper).read_bytes()
+
+
+def test_flat_rope_moe_original_input_reference_rotation_and_prepare_timing_fingerprints():
+    hashes={'rope_fwd': {'_load_source': '017ca74e8b8637ad01ca6762de871208612ea351fafe400285bf447f7126e1e9', '_make_inputs': '23a4c5182690aa833c119a7d0ad65828da778d22ce91b8dfa12b400b5939e2fe', '_rotate_half_neox': '8d7d330c98e9e99e6ec1387ad8386bf055d05eb58f4ed2fdf17d48c80bf39e37', '_rotate_half_gptj': '434b5d4257c29863c21c7cba46a0cba71abb02a842e384d1e622f50ffb992b9f', '_ref_rope_sbhd_fwd': '3f450126474ef56a8365d1d4c525d6725c733eb5bc0ff0f5fbcf027125ec98d6', '_cases': '4957ee8a62fd55e1069503ad693b03ec3e9a67bb9c9731acf9e18f325de00c02', 'run_compile': '8f829e9dafe3fa510b965656f9805ccbd0727c1cb47081513760f5bd2d68c083', 'run_correctness': 'cae0149f4c1b3e66b7c371411fb0c5241610cca98effd45818d4038ca900c5b5', 'run_benchmark': 'd5fe98996e6cd12947ef6efe87c61ea096c734b9ed75b0265e6cce36f4f231b1'}, 'moe_fused_gemm': {'_load_source': 'acdced07419dae8b1803a737870c38687adf7a2bf35b3f0e183c8bb4be502574', '_make_inputs': 'b9efac3a95b3d642146377e84daf3e95da946ce0f127b00e17a5fce39dd81ede', '_prepare_kernel': '8f118965ce7ad15869b75eaf60f308ea15be3887b1cbeaae879c64079d450cf6', '_run_kernel': '97e4e85950df57de831c64d15685a877f772c9280ec5a46ce0b655ae098843f3', '_ref_moe_gemm': 'bbaf201bcabbbdb6d897c8c29b493b722fd7760a7715afd3c4b868001410b873', 'run_compile': '4dde78d7144a193df6c53c38c92b102947afbf8ae15656268d197f0ea4097d56', 'run_correctness': '5105c851019f177cb65300e38f96ca7c8f1a400ca3dddd704e2bc398c6481656', 'run_benchmark': 'f1109cf5a43830a0f14d456fcf39b9caacf3acfd134ab1bc95720cf26b24ddb5'}}
+    for name,functions in hashes.items():
+        task=ROOT/'tasks/triton2flydsl/aiter'/name
+        for fn in ast.parse((task/'test_kernel_harness.py').read_text()).body:
+            if isinstance(fn,ast.FunctionDef) and fn.name in functions:
+                normalized=_RemoveFlatChecks().visit(fn)
+                assert hashlib.sha256(ast.dump(normalized,include_attributes=False).encode()).hexdigest()==functions[fn.name],(name,fn.name)

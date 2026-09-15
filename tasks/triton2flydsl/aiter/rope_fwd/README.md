@@ -52,3 +52,18 @@ plus any operator dependencies stated by the source. Arena must materialize the
 canonical `_aka_benchmark.py` helper before GPU execution. CPU controls/protocol
 checks do not qualify these GPU kernels. Existing legacy reports are historical;
 the parent integration schedules new GPU validation.
+
+
+All48original correctness variants remain: B/S cross-products, NEOX/GPTJ,
+full/partial rotation, NOPE-first/last and frequency reuse. The four original
+NEOX/no-NOPE/reused-frequency performance cases remain. Output must match the
+input's full shape,BF16dtype and device. Inputs and frequency tensors are
+read-only. The original BF16 allclose at atol=rtol=0.1, including the original
+reference rounding, remains the numerical gate. Replay negates x; frequencies,
+rotation style, frequency reuse and non-rotary ordering are unchanged.
+
+Both the actual measured output and same captured graph replay must pass the
+original numerical rule. Oracle work, perturbation, poisoning and restoration
+are outside timing. Originalseeds,tenwarmups and100samples are retained.
+Capture failure cannot bypass validation. The original frozen Triton source
+is unchanged; final candidate execution is audited outside measurement windows.

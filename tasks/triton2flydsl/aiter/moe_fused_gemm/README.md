@@ -57,3 +57,21 @@ The prepared MoE host launch ABI accepts `torch.dtype` for `compute_type`. The
 initial Triton host wrapper converts it to its internal Triton dtype. Final
 FlyDSL code receives the same neutral dtype; it need not expose `mod.tl`. Keep
 routing preparation outside timing and preserve all fixed intermediate buffers.
+
+
+All ten original correctness cases (both routing-weight states for five shapes)
+and five performance cases remain. The output is BF16[M,top_k,N] on the input
+device. The normalized maximum-error gate remains0.01; elementwise allclose0.01
+is diagnostic only. Activations, weights, route IDs and route weights are read-only.
+Both declared entrypoints, moe_align_block_size and fused_moe, must use FlyDSL
+for their operator computation in a final candidate. Sorting and padding remain
+prepared once outside timing; output.zero_ remains the original prepare_fn,
+with its exact benchmark boundary preserved. Replay negates activations while
+keeping routing and prepared sort metadata valid. The reference retains all
+per-slot expert selection and optional route-weight computation.
+
+Both the actual measured output and same captured graph replay must pass the
+original numerical rule. Oracle work, perturbation, poisoning and restoration
+are outside timing. Originalseeds,tenwarmups and100samples are retained.
+Capture failure cannot bypass validation. The original frozen Triton source
+is unchanged; final candidate execution is audited outside measurement windows.
