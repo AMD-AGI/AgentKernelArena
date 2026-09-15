@@ -1,9 +1,11 @@
 schema_version: 2
-description: "Optimize the FlyDSL fused SiLU/SwiGLU + optional quantization + sorted-scale kernel\nfor\
-  \ AMD MI300X-class CDNA GPUs (split-K MoE stage-1 post-processing).\nYou MUST keep the kernel in FlyDSL\
-  \ \u2014 do NOT rewrite it in HIP, CUDA, or Triton.\nYou MUST NOT add FastLauncher, ctypes dispatch\
-  \ bypass, _call_state_cache extraction,\nor any wrapper that bypasses JitFunction.__call__. Only optimize\
-  \ the GPU kernel\ncomputation itself."
+description: >-
+  Optimize the declared FlyDSL SiLU-times-up MXFP4 workload with BF16 inputs,
+  inter_dim=1024, topk=2, identity sorted routing, and the five token counts
+  in cases.json. Preserve the builder interface and all numerical and timing
+  rules documented in README.md. Keep the GPU computation in FlyDSL; do not
+  add FastLauncher, ctypes dispatch, _call_state_cache extraction, or wrappers
+  that bypass JitFunction.__call__.
 instructions:
 - README.md
 candidate:

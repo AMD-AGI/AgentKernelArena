@@ -4,8 +4,8 @@ The task starts with an implemented FlyDSL candidate. Arena freezes that initial
 implementation in a separate workspace for baseline evaluation. Candidate actions
 always use this workspace's declared source; they never search other workspaces.
 
-Optimize the FlyDSL fused SiLU/SwiGLU + optional quantization + sorted-scale kernel
-for AMD MI300X-class CDNA GPUs (split-K MoE stage-1 post-processing).
+Optimize the declared FlyDSL SiLU-times-up MXFP4 workload for AMD CDNA GPUs
+(split-K MoE stage-1 post-processing).
 You MUST keep the kernel in FlyDSL — do NOT rewrite it in HIP, CUDA, or Triton.
 You MUST NOT add FastLauncher, ctypes dispatch bypass, _call_state_cache extraction,
 or any wrapper that bypasses JitFunction.__call__. Only optimize the GPU kernel
@@ -27,6 +27,23 @@ cases absent from the old correctness list receive additional correctness checks
 `test_kernel_harness.py` remains the source of truth for numerical comparisons.
 The task-owned runner returns `arena-eval-v1` evidence on stdout; Arena alone computes
 scores and writes final result files. No agent-specific driver is required.
+
+The evaluated operator is `SiLU(gate) * up`, encoded as packed E2M1 payload
+and E8M0 block scales. Its workload is the original five token counts
+`64, 128, 256, 512, 1024`, with `inter_dim=1024`, `topk=2`, BF16 inputs,
+`quant_mode=fp4`, `gui_layout=False`, `act=silu`, and `enable_bias=False`.
+The input generator uses identity sorted routing: row `i` maps to token
+`i // topk` and slot `i % topk`; every row is valid. These fixed parameters and
+routing are part of this benchmark variant. Input values still vary by case
+and are perturbed again for the actual timed-replay correctness check.
+
+The upstream builder also exposes FP8/unquantized output, SwiGLU, bias,
+alternate layouts, and general sorted routing. The task retains that builder
+interface, but its five-case result does not qualify those additional modes
+or arbitrary routing distributions. Adding coverage for them requires an
+explicit workload extension and new validation evidence. This scope records
+the original harness settings; it does not remove cases or change reference,
+precision, or measurement rules.
 
 From a materialized task workspace, the seven public commands are:
 
