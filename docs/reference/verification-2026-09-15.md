@@ -5,10 +5,9 @@ testing by the source actually exercised. The latest matrix has **117 completed
 optimization pairs and 113 accepted candidates**. All **438 current task packages**
 at 9c now have runtime-applicable validator PASS evidence, and the paired MoE
 study has passed its independent raw audit. The original 9c CPU run still records
-**one failure**; its test-only repair has focused coverage, while the full core
-successor suite is running and its result remains pending. The separate GEAK
-Codex extension is not yet qualified. Historical passes do not establish a full
-pass for that successor. The
+**one failure**. Its test-only successor `f65e1e55` passed the full CPU suite:
+**14,019 passed, 6 subtests passed and 6 skipped**, in **616.62 s**, with clean,
+unchanged source. The separate GEAK Codex extension is not yet qualified. The
 [pinned-main integration record](pr107-main-integration.md) retains the original
 merge decisions and their later qualification.
 
@@ -22,7 +21,7 @@ merge decisions and their later qualification.
 | `87e7e463` | Guard-context follow-up. Full CPU suite: **13,772 passed, 5 GPU-only skipped, 6 subtests passed**, **129 warnings**, **607.16 s**; exit 0. This CPU result did not resolve the subsequently reproduced MoE helper-policy gap. |
 | `400fcb9d` | Seven fresh full validators: **6 PASS / 1 Pack semantic FAIL**, including two MoE PASS reports. Full CPU run: **13,996 passed / 4 fixture failures / 6 skipped**, with **6 subtests passed**, in **606.52 s**. This is a failed CPU run. Five saved-candidate reevaluations passed separately. |
 | `9c4c99f1` | Fresh Pack validator **PASS**: **11 correctness / 5 scored cases**, independently audited at job 141241. Full CPU run: **14,013 passed / 1 failed / 6 skipped**, with **6 passing subtests**, in **612.74 s**. The remaining failure is the old Pack candidate-source hash assertion; full CPU qualification is still open. |
-| `f65e1e55` | Test-only follow-up pins the exact approved Pack flatten change while retaining the original hash check. **168 focused checks passed**. The immutable full core successor CPU run is in progress; its result is **PENDING**. The failed 9c result is unchanged. |
+| `f65e1e55` | Test-only follow-up pins the exact approved Pack flatten change while retaining the original hash check. **168 focused checks passed**. Immutable full CPU suite: **14,019 passed / 6 skipped / 6 subtests passed**, **129 warnings**, **616.62 s**, exit 0. Source was clean and unchanged. The failed 9c result is retained. |
 
 The 87 CPU command is `python -B -m pytest -p no:cacheprovider -q tests`,
 with `PYTHONDONTWRITEBYTECODE=1` and JUnit output retained. Its native dependency
@@ -69,9 +68,11 @@ their report. The full 9c run resolved those imports but failed the old candidat
 hash assertion in
 `test_original_manifest_rows_and_generated_region_are_byte_preserved[pack_seq]`.
 The f65 test-only follow-up handles exactly the approved flatten substitution
-before applying the original source hash assertion. Its 168 focused passes do
-not turn the earlier failed full CPU run into a pass; the full combined successor
-suite remains pending.
+before applying the original source hash assertion. Its 168 focused passes and
+subsequent full CPU PASS qualify f65 separately; the earlier failed full CPU
+reports remain unchanged. The six full-suite skips are five opt-in or GPU-only
+probes and one check requiring a materialized external image source. This CPU
+result does not qualify GPU execution or the separate GEAK Codex extension.
 
 The accepted113 intersection with the 55 runtime-changed tasks is **five saved
 candidates**: Codex, Forge and Claude AWQ dequantize, plus Codex and Forge
@@ -177,8 +178,9 @@ can proceed independently of the GEAK extension. Historical accepted
 runs retain their original model/backend identities; the 117/113 matrix is
 unchanged. Quota-rejected tasks receive no completion credit.
 
-Remaining qualification consists of a clean full core successor CPU run,
-separate native GEAK Codex qualification, and the remaining 63 agent matrix pairs.
+The core full CPU gate is complete at f65. Remaining qualification covers the
+planned Sonnet and native GEAK Codex configurations and the remaining 63 agent
+matrix pairs; Sonnet does not depend on the GEAK extension.
 There are no known unresolved GPU task issues from the original 55-task
 revalidation at this checkpoint; that statement does not qualify a new GEAK
 implementation. No GPU jobs were outstanding at the **22:56 UTC** observation.
@@ -213,7 +215,10 @@ These files are in the campaign evidence bundle under
 The separate immutable 87 checkout retains its command, dependency/source
 bindings, full log, JUnit XML and result under `logs/final-cpu-87e7e463/`.
 The failed full 9c run is retained under `logs/final-cpu-9c4c99f1/`; its source
-was clean and unchanged before and after the run. The paired study retains its
+was clean and unchanged before and after the run. The separate f65 full PASS
+retains `full-result.json`, the full log and JUnit XML under
+`logs/final-cpu-f65e1e55/`, with clean before/after source identities and all six
+skip reasons. The paired study retains its
 `paired-analysis.json` (SHA-256
 `46560203fe81034e605fadf4099df20e307698527789da89abb4467d72a5f5ba`)
 and all measured and prerequisite action records in its experiment bundle.

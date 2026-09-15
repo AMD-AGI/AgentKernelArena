@@ -17,7 +17,7 @@ The integration and its successors do not replace those reports.
 | Full 400f CPU suite | **13,996 passed / 4 fixture failures / 6 skipped**, plus 6 passing subtests. Failed output is preserved. |
 | `9c4c99f1` successor | Fresh Pack GPU **PASS**, independently audited: **11 correctness / 5 scored cases**. Full CPU: **14,013 passed / 1 old Pack source-hash fixture failure / 6 skipped**, plus 6 passing subtests, **612.74 s**. Full CPU qualification remains open. |
 | Current task applicability at 9c | All **438 task packages** have runtime-applicable validator PASS evidence with their original framework/runtime identities; this is not one fresh final-framework campaign. |
-| `f65e1e55` CPU follow-up | Test-only exact Pack source-delta check repaired; **168 focused PASS**. The immutable full core CPU run is in progress, with its result **PENDING**. The GEAK Codex extension requires separate qualification. |
+| `f65e1e55` CPU follow-up | Test-only exact Pack source-delta check repaired; **168 focused PASS**. Immutable full CPU suite **PASS: 14,019 passed / 6 skipped / 6 subtests passed**, **616.62 s**, exit 0, clean unchanged source. The GEAK Codex extension requires separate qualification. |
 | Five saved candidates | **35 formal actions PASS** at 400f; AWQ/apply_write task bytes match 9c. **Zero new optimization searches**. Original search/source evidence is retained. |
 | Agent matrix | **117 completed / 113 accepted**: Codex 45/45, Claude Code 22/21, Forge 45/42, GEAK 5/5. Completion and acceptance are separate; 63 completion pairs remain. |
 
@@ -55,6 +55,11 @@ Historical model provenance and the 117/113 matrix are unchanged. No new Forge
 runs are required. Legacy GEAK source-39 evidence still lacks complete original
 tool-ID/session correlation and is not qualification
 of the later strict completion gate.
+
+The full core CPU gate is now complete at f65; the earlier failed 400f and 9c
+reports remain preserved. Remaining campaign work is qualification of the planned
+Sonnet/native GEAK configurations and the 63 incomplete matrix pairs. The f65 CPU
+result does not qualify the separate GEAK implementation or any new GPU run.
 
 The source classification and reconciliation below describe the original c1
 merge. Later Pack changes and framework repairs are separately bound in the
