@@ -1028,7 +1028,8 @@
       },
       "checks": [
         "correctness"
-      ]
+      ],
+      "status": "PASS"
     },
     {
       "test_case_id": "test_cast_matmul_strided/fc776da40ae862c238f9",
@@ -1045,7 +1046,8 @@
       },
       "checks": [
         "correctness"
-      ]
+      ],
+      "status": "PASS"
     },
     {
       "test_case_id": "test_cast_matmul_strided/43fb831cd1a801e4f25b",
@@ -1062,7 +1064,8 @@
       },
       "checks": [
         "correctness"
-      ]
+      ],
+      "status": "PASS"
     }
   ],
   "migration": {

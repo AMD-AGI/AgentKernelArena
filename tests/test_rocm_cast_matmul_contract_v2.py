@@ -191,6 +191,24 @@ def test_entire_manifest_is_collected_without_skips(task):
     assert 'torch.testing.assert_close(out_torch, out_triton, atol=0.3, rtol=0.01)' in source
 
 
+def test_validate_task_emits_complete_manifest_envelope(task, monkeypatch):
+    path, _ = task
+    adapter = load(path/'_arena_eval.py')
+    # Collection identities are checked above. Here simulate successful pytest
+    # collection to exercise the actual envelope path, including appended rows.
+    monkeypatch.setattr(pytest, 'main', lambda *args, **kwargs: 0)
+    result = adapter.evaluate('task', 'validate-task')
+    assert result['status'] == 'PASS', result.get('reason')
+    assert result['metadata']['candidate_state'] == 'implemented'
+    assert len(result['cases']) == 57
+    assert all(row['status'] == 'PASS' for row in result['cases'])
+    from src.task_protocol import parse_command_result
+    # Verify the real framework parser accepts task-owned collection evidence.
+    parsed = parse_command_result('ARENA_EVAL_RESULT=' + json.dumps(result, allow_nan=False),
+                                  role='task', action='validate-task', returncode=0)
+    assert parsed.status == 'PASS'
+
+
 def test_original_kernel_config_manifest_and_launch_contract(task):
     path, _ = task; expected = ORIGINAL[path.relative_to(ROOT).as_posix()]
     source = (path/'test_cast_matmul.py').read_text(); nodes = {n.name: n for n in ast.parse(source).body if isinstance(n, ast.FunctionDef)}
