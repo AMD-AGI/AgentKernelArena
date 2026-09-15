@@ -56,11 +56,37 @@ def _cast_like(expected, actual):
     return expected.to(device=actual.device,dtype=actual.dtype)
 
 
-def prepare(c, module):
-    bits=philox32(c['seed_val'],c['N_elements']).view(np.int32)
+def expected_uniform(seed, count, device):
+    """Triton rand's Philox4x32-10 and uint32-to-float32 mapping, not randn."""
+    bits=philox32(seed,count).view(np.int32)
     nonnegative=np.where(bits<0,np.bitwise_not(bits),bits)
     uniform=nonnegative.astype(np.float32)*np.float32(4.6566127342e-10)
-    expected=torch.from_numpy(uniform).to(c['x_output_buffer'].device)
-    # Original 100000-element range and KS checks remain unchanged. Exact Philox
-    # values additionally cover the performance sizes, including small samples.
-    return lambda result: compare(c['x_output_buffer'],expected,exact=True)
+    return torch.from_numpy(uniform).to(device)
+
+
+def check_seeded_output(output, seed, count):
+    compare(output,expected_uniform(seed,count,output.device),exact=True)
+
+
+class UniformCheck:
+    def __init__(self, context):
+        self.output=context['x_output_buffer']
+        self.original=self.output.clone()
+        self.expected=expected_uniform(context['seed_val'],context['N_elements'],self.output.device)
+
+    def __call__(self, result):
+        # The public wrapper returns the output buffer. Checking both protects
+        # against accidentally observing an unrelated tensor after capture.
+        if result is not self.output:
+            raise ValueError('Timed RNG output must be the declared output buffer')
+        compare(self.output,self.expected,exact=True)
+
+    def poison(self):
+        self.output.fill_(float('nan'))
+
+    def restore(self):
+        self.output.copy_(self.original)
+
+
+def prepare(c, module):
+    return UniformCheck(c)
