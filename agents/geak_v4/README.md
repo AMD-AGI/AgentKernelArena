@@ -75,7 +75,7 @@ python main.py --config_name example_configs/quickstart_geak_v4_mi300.yaml
 
 These are single standalone kernels. The launcher reads `source_file_path` to
 steer the optimizer ("optimize only these files") and fails early if the declared
-anchor source is missing. Authoring, translation, repository, and image-level
+anchor source is missing. Authoring, translation, and image-level
 tasks are out of scope for this integration.
 
 ## Artifacts

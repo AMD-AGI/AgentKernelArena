@@ -98,7 +98,7 @@ If a run has no accepted changes, it does not open an empty pull request.
   checked before evaluation.
 - Reviewer output is schema checked, and modifications beyond its one YAML result
   file invalidate the review.
-- External repository/image worktrees and generated benchmark helpers are never
+- Materialized image source trees and generated benchmark helpers are never
   copied into a task commit.
 - The top-level `tasks` selectors define the complete audit scope. Baseline
   promotion is attempted without a task-type allowlist and fails closed when the

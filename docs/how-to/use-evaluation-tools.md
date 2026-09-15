@@ -517,7 +517,7 @@ directory. Native HIP rocJITsu applies the same containment rule to
 `race_report` and requires the report filename to remain `race.log`. AOT replay
 does not accept a task-configured race-report path.
 
-For repository or image-kernel tasks, declare every candidate file whose change
+For image-kernel tasks, declare every candidate file whose change
 must invalidate evidence with `evaluation_profile.submission_paths`. Paths must
 be workspace-relative and cannot contain `..`. If this field is absent, capture
 falls back to `source_file_path` and `target_file_path`; silently hashing an

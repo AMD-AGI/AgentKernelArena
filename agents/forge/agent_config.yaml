@@ -9,7 +9,7 @@
 model: claude-opus-5
 
 # Backend expertise (fellow) is resolved by the launcher, per task family:
-#   * repository / image_kernel tasks -> explicit `kernel_kind` first, then
+#   * image_kernel tasks             -> explicit `kernel_kind` first, then
 #     `repository_language`.
 #   * snippet "<src>2<dst>" tasks     -> the target side picks the fellow
 #       triton2triton / instruction2triton -> triton-fellow

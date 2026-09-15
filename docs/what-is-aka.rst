@@ -49,7 +49,7 @@ AgentKernelArena includes the following key features.
   (``triton2triton``, ``instruction2triton``), Torch-to-HIP (``torch2hip``),
   Torch/Triton-to-FlyDSL (``torch2flydsl``, ``triton2flydsl``), FlyDSL
   (``flydsl2flydsl``), and production-operator-to-FlyDSL
-  (``operator2flydsl``), plus repository-level tasks.
+  (``operator2flydsl``), plus image-backed kernels (``image_kernel``).
 * **Objective metrics**: Automated compilation, correctness, and real GPU
   performance speedups.
 * **Performance timing provenance**: Timing method metadata is recorded for

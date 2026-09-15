@@ -11,7 +11,7 @@ The platform provides:
 - **Controlled A/B experiments**: Label and compare repeated runs while holding tasks, hardware, environment, and evaluation rules constant.
 - **RL-ready feedback**: Produce per-task compilation, correctness, runtime, speedup, and score signals that can be consumed as rewards by an external reinforcement-learning system.
 - **Multiple agent integrations**: Run Cursor Agent, Claude Code, Codex, GEAK-based agents, mini-swe-agent-based flows, or custom agents through a shared interface.
-- **Real GPU task environments**: Work with HIP, Triton, FlyDSL, PyTorch-to-kernel conversion, instruction-to-kernel generation, and repository-level optimization tasks.
+- **Real GPU task environments**: Work with HIP, Triton, FlyDSL, PyTorch-to-kernel conversion, instruction-to-kernel generation, and image-backed kernel optimization tasks.
 - **Isolated and reproducible execution**: Give every task its own timestamped workspace and preserve logs, modified sources, and structured results.
 - **Centralized evaluation**: Measure compilation, correctness, and GPU performance independently of the optimizing agent.
 - **Multi-GPU scheduling**: Start one isolated Docker worker per GPU and dynamically claim tasks from a shared queue.
@@ -60,7 +60,7 @@ AgentKernelArena/
 ├── example_configs/                # Quickstart and curated benchmark run configs
 ├── src/
 │   ├── module_registration.py     # Agent registration and handler selection
-│   ├── preprocessing.py            # Workspace and repository setup
+│   ├── preprocessing.py            # Workspace and source setup
 │   ├── prompt_builder.py           # Task prompt construction
 │   ├── evaluator.py                # Compilation and correctness evaluation
 │   ├── performance.py              # Baseline and optimized timing
@@ -87,7 +87,7 @@ AgentKernelArena/
 │   ├── torch2flydsl/
 │   ├── triton2flydsl/
 │   ├── flydsl2flydsl/
-│   └── repository/                 # Full-repository AITER and rocPRIM tasks
+│   └── image_kernel/               # Kernels from declared in-image source trees
 └── docs/                            # Full documentation
 ```
 
@@ -95,7 +95,7 @@ AgentKernelArena/
 
 1. Load the run configuration and selected agent.
 2. Discover task `config.yaml` files matching the configured selectors.
-3. Create an isolated task workspace, cloning an upstream repository when required.
+3. Create an isolated task workspace and materialize its declared sources.
 4. Compile and measure the original implementation to establish a baseline.
 5. Build the task prompt and run the selected agent inside the workspace.
 6. Independently compile, check, and time the agent's modified implementation.
@@ -133,7 +133,7 @@ Agent-specific models, effort settings, iteration guidance, timeouts, and provid
 | `torch2flydsl` | Replace a PyTorch reference with a FlyDSL implementation |
 | `triton2flydsl` | Translate a Triton implementation to FlyDSL |
 | `flydsl2flydsl` | Optimize an existing FlyDSL implementation |
-| `repository` | Optimize a target inside a cloned upstream repository |
+| `image_kernel` | Optimize a kernel from a declared source tree in the runtime image |
 
 These names describe existing suites and legacy dispatch. The unified task
 contract and migration path are documented in
@@ -309,7 +309,6 @@ tasks:
   - torch2flydsl
   - triton2flydsl
   - flydsl2flydsl
-  - repository/rocprim
 ```
 
 ## Reward and Scoring Signals
@@ -342,8 +341,7 @@ candidate lifecycle, optional sanitizers, and migration instructions.
 The guide specifies the selected unified v2 design. This branch's runtime still
 uses legacy task fields; follow the guide's implementation-status section
 before changing an executable config. Task-family directory names remain useful
-selectors, but the v2 contract does not give SIKL or repository tasks a separate
-schema.
+selectors, but the v2 contract does not give any task family a separate schema.
 
 ## Development
 

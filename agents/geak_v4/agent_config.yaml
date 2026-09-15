@@ -23,7 +23,7 @@ done_poll_seconds: 5
 
 # V1 deliberately targets existing, isolated kernels with one declared source
 # file. Author/translation tasks need a separate frozen-baseline adapter, while
-# repository/image tasks need a storage/copy-cost qualification first.
+# image tasks need a storage/copy-cost qualification first.
 supported_task_types:
   - hip2hip
   - triton2triton

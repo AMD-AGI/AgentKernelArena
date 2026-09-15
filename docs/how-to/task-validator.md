@@ -102,7 +102,7 @@ The `task_validator` runs the following checks in order.
 | 5 | `correctness` | `correctness_command` succeeds within `correctness_timeout` |
 | 6 | `performance` | `performance_command` succeeds within `performance_timeout`, if present |
 | 7 | `correctness_implementation_review` | The correctness check is meaningful, not trivially passing |
-| 8 | `self_contained` | No missing headers/imports; isolated tasks avoid undeclared external repos/paths, and repository tasks declare their upstream in `repo_url` |
+| 8 | `self_contained` | No missing headers/imports; tasks avoid undeclared external paths and declare required runtime dependencies |
 | 9 | `gpu_hang_check` | No command hangs or times out |
 | 10 | `result_template_compatibility` | Command and per-case output signals can be consumed by the centralized evaluator |
 | 11 | `benchmark_integrity` | Every case has scoreable device timing/method metadata, stable identity, and fair state/allocation boundaries; missing exact replay validation is WARN |

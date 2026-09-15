@@ -92,7 +92,6 @@ migrate a live config before the shared loader/evaluator/validator support it.
   trivially passing harness.
 - Performance checks must emit scoreable device timing and preserve equivalent
   work, state, and allocation boundaries for baseline and candidate.
-- Repository tasks must declare upstream sources and setup steps explicitly.
 - Use `platform_support` for real architecture constraints instead of silently
   skipping cases inside a runner.
 

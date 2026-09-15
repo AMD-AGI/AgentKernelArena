@@ -183,8 +183,8 @@ full scheduling model.
 ## Task configuration
 
 [Task definition, schema, and authoring](../how-to/add-task.md) is the canonical
-reference for task configuration. It replaces the former separate
-isolated/repository/operator task field tables on this page and covers:
+reference for task configuration. It replaces the former task-family-specific
+field tables on this page and covers:
 
 - The selected unified v2 schema and compact examples.
 - Command and result protocols, baseline/reference/candidate roles, and lifecycle.
@@ -215,7 +215,7 @@ ignored, so use only the documented keys.
 | `evaluation_profile.instrumentation_control` | string | `compiler_controlled`, `recompile`, `none`, or `unknown`. This describes whether the selected candidate can be rebuilt/instrumented. |
 | `evaluation_profile.adapter` | string or `null` | Explicit adapter identity, for example `triton_aot`, `flydsl_aot`, or `hip_fpsan_manual`. It is a claim that must still be supported by adapter options/evidence. |
 | `evaluation_profile.source_available` | boolean | Whether source for the selected candidate is available to the evaluator. |
-| `evaluation_profile.submission_paths` | string or list of strings | Workspace-relative candidate files captured before agent edits and fingerprinted after optimization. Required when repository/image tasks change files beyond the normal source fields. Absolute paths and `..` are rejected. |
+| `evaluation_profile.submission_paths` | string or list of strings | Workspace-relative candidate files captured before agent edits and fingerprinted after optimization. Required when image tasks change files beyond the normal source fields. Absolute paths and `..` are rejected. |
 | `evaluation_profile.fpsan_ported` | boolean | Explicit evidence that the HIP reference and candidate were manually ported to HIP-FpSan value semantics. |
 | `evaluation_profile.rebuilt_from_source` | boolean | Explicit evidence used when a framework/library path is rebuilt from controlled source. It does not replace artifact attestation. |
 

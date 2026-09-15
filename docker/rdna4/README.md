@@ -96,8 +96,6 @@ Known limits of existing tasks with this image include:
 - Image-bound tasks: existing `image_kernel` contracts can refer to source
   trees and Python package paths from a different image. Those paths are not
   interchangeable with this image's packages.
-- Repository tasks: some rocPRIM test instantiations require wave64 operations
-  unavailable on this wave32 device.
 
 Keep task shapes, correctness tolerances, and timing policy intact when
 investigating failures. Honor architecture restrictions, and qualify task or

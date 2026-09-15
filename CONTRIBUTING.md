@@ -74,7 +74,7 @@ This project depends on GPU hardware/drivers and orchestrates external LLM agent
 
 - Test environment (GPU model, ROCm version, Docker image, OS)
 - Agent(s) used and their versions
-- Task selector exercised (for example `hip2hip`, `triton2triton`, `instruction2triton`, `torch2hip`, a FlyDSL task type, or `repository`)
+- Task selector exercised (for example `hip2hip`, `triton2triton`, `instruction2triton`, `torch2hip`, a FlyDSL task type, or `image_kernel`)
 - Key commands and output summary, e.g.:
 
 ```bash
@@ -103,7 +103,7 @@ This project executes third-party AI agents permissively inside privileged Docke
 ## Suggested Contributions
 
 - Add new agent integrations under `agents/`
-- Extend task coverage across HIP, Triton, FlyDSL, PyTorch conversion, instruction-generated, or repository-level tasks
+- Extend task coverage across HIP, Triton, FlyDSL, PyTorch conversion, instruction-generated, or image-backed tasks
 - Improve scoring or fairness logic in `src/score.py`
 - Improve A/B comparison, experiment tracking, or visualization (`src/visualization/`)
 - Add support for new models / providers (OpenAI, Anthropic, OpenRouter, vLLM)
