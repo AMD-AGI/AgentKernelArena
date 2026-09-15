@@ -19,8 +19,9 @@ baseline session, evaluator and validator are connected through
 `src/task_run.py`. Normal runs and quality_loop use the same final evaluation
 and initial validation entrypoints. CPU process fixtures cover their integration;
 this does not certify GPU task quality or an agent's optimization capability.
-The 21 SIKL tasks use v2; other families are being migrated and still use the
-legacy path until their runners are converted. Do not replace a config without
+SIKL, HIP, Triton, and FlyDSL task migrations are being integrated in batches;
+unconverted tasks still use the legacy path until their runners are converted.
+The task's own config identifies its version. Do not replace a config without
 implementing its task-owned actions. See [Migration](#migration) before changing
 an executable task. Task config version 2, runner protocol 1 and validator report
 version 4 are separate contracts.
