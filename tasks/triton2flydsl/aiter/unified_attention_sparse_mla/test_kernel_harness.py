@@ -17,7 +17,8 @@ import json
 import time
 import argparse
 import importlib.util
-from _aka_benchmark import benchmark_cuda_graph_or_events
+from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
+from scripts.replay_checks import require_tensor_contract, require_unchanged, verify_timed_run
 
 TASK_DIR = os.path.dirname(os.path.abspath(__file__))
 os.chdir(TASK_DIR)
@@ -25,6 +26,7 @@ os.chdir(TASK_DIR)
 TASK_NAME = "triton2flydsl/aiter/unified_attention_sparse_mla"
 from task_runtime import candidate_relative_path
 SOURCE_FILE = candidate_relative_path()
+ENTRY = 'unified_attention_sparse_mla'
 
 # Test configurations:
 # (num_seqs, tokens_per_seq, num_query_heads, kv_lora_rank, rope_rank,
@@ -135,7 +137,7 @@ def make_test_data(num_seqs, tokens_per_seq, num_query_heads, kv_lora_rank,
 
 def _call_kernel(mod, q, kv, out, cu_seqlens_q, max_seqlen_q, seqused_k,
                  max_seqlen_k, scale, topk_indices, block_table, kv_lora_rank):
-    return mod.unified_attention_sparse_mla(
+    mod.unified_attention_sparse_mla(
         q,
         kv,
         out,
@@ -148,6 +150,7 @@ def _call_kernel(mod, q, kv, out, cu_seqlens_q, max_seqlen_q, seqused_k,
         block_table,
         kv_lora_rank,
     )
+    return out
 
 
 def _unpack(shape):
@@ -235,6 +238,43 @@ ALLCLOSE_ATOL = 1e-2
 ALLCLOSE_RTOL = 1e-2
 
 
+def _checked_unified_output(actual, out, q, lora):
+    layout = q[..., :lora]
+    require_tensor_contract(actual, layout)
+    require_tensor_contract(out, layout)
+    if actual.data_ptr() != out.data_ptr() or actual.stride() != out.stride():
+        raise AssertionError("Attention must write the supplied output buffer")
+
+
+def _compare_unified_output(actual, expected):
+    import torch
+    require_tensor_contract(actual, expected, dtype=torch.bfloat16)
+    if not bool(torch.isfinite(actual).all() and torch.isfinite(expected).all()):
+        raise AssertionError("Non-finite attention/reference output")
+    norm_err, max_abs, _ = _norm_max_error(expected, actual)
+    if norm_err > NORM_ERR_TOL:
+        raise AssertionError(f"Numerical mismatch: normalized_max_error={norm_err}, max_abs={max_abs}")
+
+
+def _unified_replay_validator(q, kv, out, cu_seqlens_q, seqused_k, topk_indices, block_table, scale, bs, lora):
+    inputs = (q, kv, topk_indices, block_table, cu_seqlens_q, seqused_k)
+    originals = tuple(v.clone() for v in inputs)
+    def reference():
+        return ref_sparse_mla(q, kv, topk_indices, bs, lora, scale)
+    expected = reference()
+    def perturb():
+        q.neg_()
+        kv.neg_()
+    def compare(actual, expected):
+        _checked_unified_output(actual, out, q, lora)
+        _compare_unified_output(actual, expected)
+    def validate(timed):
+        return verify_timed_run(timed, inputs=inputs, originals=originals,
+                                expected=expected, perturb=perturb,
+                                reference=reference, compare=compare)
+    return validate
+
+
 def run_correctness():
     import torch
     try:
@@ -256,6 +296,9 @@ def run_correctness():
             q, kv, out, cu_seqlens_q, seqused_k, topk_indices, block_table, scale = \
                 make_test_data(ns, tps, nqh, lora, rope, bs, nblk, topk,
                                pad_invalid=pad_invalid, device=device, dtype=dtype)
+            out.fill_(float("nan"))
+            protected_inputs = (q, kv, topk_indices, block_table, cu_seqlens_q, seqused_k)
+            originals = tuple(v.clone() for v in protected_inputs)
             max_seqlen_q = tps
             max_seqlen_k = nblk * bs
 
@@ -264,6 +307,8 @@ def run_correctness():
                 max_seqlen_k, scale, topk_indices, block_table, lora,
             ))
             torch.cuda.synchronize()
+            require_unchanged(protected_inputs, originals)
+            _checked_unified_output(out, out, q, lora)
 
             # out is written in-place; assert the kernel produced finite output.
             finite = bool(torch.isfinite(out.float()).all().item())
@@ -334,6 +379,8 @@ def run_performance():
             q, kv, out, cu_seqlens_q, seqused_k, topk_indices, block_table, scale = \
                 make_test_data(ns, tps, nqh, lora, rope, bs, nblk, topk,
                                pad_invalid=(test_idx == 3), device=device, dtype=dtype)
+            out.fill_(float("nan"))
+            replay_validate = _unified_replay_validator(q, kv, out, cu_seqlens_q, seqused_k, topk_indices, block_table, scale, bs, lora)
             max_seqlen_q = tps
             max_seqlen_k = nblk * bs
 
@@ -344,24 +391,26 @@ def run_performance():
                 ))
             torch.cuda.synchronize()
 
+            timed = TimedRun()
             elapsed_ms, bench_meta = benchmark_cuda_graph_or_events(
                 lambda: _call_kernel(mod, q, kv, out, cu_seqlens_q, max_seqlen_q, seqused_k, max_seqlen_k, scale, topk_indices, block_table, lora),
                 warmup=0,
-                repetition=BENCHMARK_ITERATIONS,
+                repetition=BENCHMARK_ITERATIONS, timed_run=timed,
             )
 
+            bench_meta.update(replay_validate(timed))
             test_cases.append({
                 "test_case_id": f"perf{test_idx + 1}",
                 "execution_time_ms": elapsed_ms,
                 **bench_meta,
                 "params": params,
             })
-        except Exception:
+        except Exception as error:
             test_cases.append({
                 "test_case_id": f"perf{test_idx + 1}",
                 "execution_time_ms": -1.0,
                 "benchmark_method": "benchmark_failed",
-                "benchmark_fallback_reason": "performance case failed before timing completed",
+                "benchmark_fallback_reason": "performance case failed: " + str(error),
                 "params": params,
             })
     return test_cases

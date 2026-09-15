@@ -17,7 +17,8 @@ import os
 import json
 import argparse
 import importlib.util
-from _aka_benchmark import benchmark_cuda_graph_or_events
+from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
+from scripts.replay_checks import require_tensor_contract, require_unchanged, verify_timed_run
 
 TASK_DIR = os.path.dirname(os.path.abspath(__file__))
 os.chdir(TASK_DIR)
@@ -25,6 +26,7 @@ os.chdir(TASK_DIR)
 TASK_NAME = "triton2flydsl/aiter/unified_attention"
 from task_runtime import candidate_relative_path
 SOURCE_FILE = candidate_relative_path()
+ENTRY = 'unified_attention'
 
 # Test configurations:
 # (num_seqs, seq_len_q, seq_len_k, num_query_heads, num_kv_heads, head_size,
@@ -252,6 +254,46 @@ ALLCLOSE_ATOL = 1e-2
 ALLCLOSE_RTOL = 1e-2
 
 
+def _checked_unified_output(actual, out, q, lora):
+    layout = q[..., :lora]
+    require_tensor_contract(actual, layout)
+    require_tensor_contract(out, layout)
+    if actual.data_ptr() != out.data_ptr() or actual.stride() != out.stride():
+        raise AssertionError("Attention must write the supplied output buffer")
+
+
+def _compare_unified_output(actual, expected):
+    import torch
+    require_tensor_contract(actual, expected, dtype=torch.bfloat16)
+    if not bool(torch.isfinite(actual).all() and torch.isfinite(expected).all()):
+        raise AssertionError("Non-finite attention/reference output")
+    norm_err, max_abs, _ = _norm_max_error(expected, actual)
+    if norm_err > NORM_ERR_TOL:
+        raise AssertionError(f"Numerical mismatch: normalized_max_error={norm_err}, max_abs={max_abs}")
+
+
+def _unified_replay_validator(q, key_cache, value_cache, out, block_table, cu_seqlens_q, seqused_k, scale, num_seqs, seq_len_q, seq_len_k, sliding_window, softcap):
+    inputs = (q, key_cache, value_cache, block_table, cu_seqlens_q, seqused_k)
+    originals = tuple(v.clone() for v in inputs)
+    def reference():
+        return ref_paged_attn(q, key_cache, value_cache,
+                              [seq_len_q] * num_seqs, [seq_len_k] * num_seqs,
+                              block_table, scale, q.dtype,
+                              sliding_window=sliding_window if sliding_window > 0 else None,
+                              soft_cap=softcap if softcap > 0 else None, causal=1)
+    expected = reference()
+    def perturb():
+        value_cache.neg_()
+    def compare(actual, expected):
+        _checked_unified_output(actual, out, q, q.shape[-1])
+        _compare_unified_output(actual, expected)
+    def validate(timed):
+        return verify_timed_run(timed, inputs=inputs, originals=originals,
+                                expected=expected, perturb=perturb,
+                                reference=reference, compare=compare)
+    return validate
+
+
 def run_correctness():
     import torch
     try:
@@ -270,12 +312,17 @@ def run_correctness():
             torch.manual_seed(42 + i)
             q, key_cache, value_cache, out, block_table, cu_seqlens_q, seqused_k, scale = \
                 make_test_data(num_seqs, seq_len_q, seq_len_k, nqh, nkvh, hs, bs, device, dtype)
+            out.fill_(float("nan"))
+            protected_inputs = (q, key_cache, value_cache, block_table, cu_seqlens_q, seqused_k)
+            originals = tuple(v.clone() for v in protected_inputs)
 
             result = _call_kernel(
                 mod, q, key_cache, value_cache, out, block_table, cu_seqlens_q,
                 seqused_k, scale, seq_len_q, seq_len_k, sliding_window, softcap,
             )
             torch.cuda.synchronize()
+            require_unchanged(protected_inputs, originals)
+            _checked_unified_output(result, out, q, q.shape[-1])
 
             finite = bool(torch.isfinite(result.float()).all().item())
 
@@ -354,6 +401,8 @@ def run_performance():
             torch.manual_seed(42 + test_idx)
             q, key_cache, value_cache, out, block_table, cu_seqlens_q, seqused_k, scale = \
                 make_test_data(num_seqs, seq_len_q, seq_len_k, nqh, nkvh, hs, bs, device, dtype)
+            out.fill_(float("nan"))
+            replay_validate = _unified_replay_validator(q, key_cache, value_cache, out, block_table, cu_seqlens_q, seqused_k, scale, num_seqs, seq_len_q, seq_len_k, sliding_window, softcap)
 
             for _ in range(WARMUP_ITERATIONS):
                 _call_kernel(mod, q, key_cache, value_cache, out, block_table,
@@ -361,24 +410,26 @@ def run_performance():
                              sliding_window, softcap)
             torch.cuda.synchronize()
 
+            timed = TimedRun()
             elapsed_ms, bench_meta = benchmark_cuda_graph_or_events(
                 lambda: _call_kernel(mod, q, key_cache, value_cache, out, block_table, cu_seqlens_q, seqused_k, scale, seq_len_q, seq_len_k, sliding_window, softcap),
                 warmup=0,
-                repetition=BENCHMARK_ITERATIONS,
+                repetition=BENCHMARK_ITERATIONS, timed_run=timed,
             )
 
+            bench_meta.update(replay_validate(timed))
             test_cases.append({
                 "test_case_id": f"perf{test_idx + 1}",
                 "execution_time_ms": elapsed_ms,
                 **bench_meta,
                 "params": params,
             })
-        except Exception:
+        except Exception as error:
             test_cases.append({
                 "test_case_id": f"perf{test_idx + 1}",
                 "execution_time_ms": -1.0,
                 "benchmark_method": "benchmark_failed",
-                "benchmark_fallback_reason": "performance case failed before timing completed",
+                "benchmark_fallback_reason": "performance case failed: " + str(error),
                 "params": params,
             })
     return test_cases

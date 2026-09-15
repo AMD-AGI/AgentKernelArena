@@ -52,3 +52,19 @@ plus any operator dependencies stated by the source. Arena must materialize the
 canonical `_aka_benchmark.py` helper before GPU execution. CPU controls/protocol
 checks do not qualify these GPU kernels. Existing legacy reports are historical;
 the parent integration schedules new GPU validation.
+
+
+All seven original paged-attention cases remain: GQA, decode/prefill, sliding
+windows, softcap and both 2D/3D dispatch paths. The entrypoint must return and
+fully write the supplied BF16 output with Q's shape/device. Returning a separate
+correct tensor while leaving the caller's buffer unchanged fails. All six input
+tensors are read-only, including block table and sequence metadata. Replay
+negates value_cache while preserving attention logits, masks and block addresses.
+
+Correctness and actual measured replay retain the normalized maximum error
+<=0.01 gate (denominator floored at1e-12); the reported allclose@0.01 statistic
+remains diagnostic. Both reference and output must be finite. Caller output is
+poisoned before correctness and replay. Reference work, input perturbation and
+restoration happen outside timing. Originalseed42+i, ten externalwarmups,
+100samples and original retry policy remain. Final candidate FlyDSL calls are
+audited independently of the frozen baseline and protected reference.

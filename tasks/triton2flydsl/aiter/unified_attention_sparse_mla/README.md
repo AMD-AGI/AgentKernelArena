@@ -52,3 +52,23 @@ plus any operator dependencies stated by the source. Arena must materialize the
 canonical `_aka_benchmark.py` helper before GPU execution. CPU controls/protocol
 checks do not qualify these GPU kernels. Existing legacy reports are historical;
 the parent integration schedules new GPU validation.
+
+
+All five original sparse MLA cases remain, including multi-token queries,
+non-tile-multiple top-k and invalid -1 entries. The original entrypoint writes
+out in place and returns None; the harness returns that same buffer to the
+benchmark collector without adding another kernel call. The entire supplied
+BF16[total_tokens,heads,lora] output must be written. All input tensors, including
+indices, sequence metadata and the required-but-unused block table, are read-only.
+Replay negates Q and the shared KV cache: QK logits and indices stay fixed,
+while the latent V slice and correct output negate. Every declared token retains
+at least one valid sparse entry; empty rows in CPU oracle controls do not extend
+the GPU workload to a mode the baseline does not promise.
+
+Correctness and actual measured replay retain the normalized maximum error
+<=0.01 gate (denominator floored at1e-12); the reported allclose@0.01 statistic
+remains diagnostic. Both reference and output must be finite. Caller output is
+poisoned before correctness and replay. Reference work, input perturbation and
+restoration happen outside timing. Originalseed42+i, ten externalwarmups,
+100samples and original retry policy remain. Final candidate FlyDSL calls are
+audited independently of the frozen baseline and protected reference.

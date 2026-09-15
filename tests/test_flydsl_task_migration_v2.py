@@ -573,8 +573,10 @@ class _InlineTritonReference(ast.NodeTransformer):
         return self.generic_visit(node)
 
 
-def _protected_triton_fingerprint(source, *, added_replay_checks=False, sglang_elementwise=False, attention_two=False, mla_checks=False, gr_checks=False, state_checks=False, flat_checks=False, router_checks=False, combine_checks=False, gdn_checks=False):
+def _protected_triton_fingerprint(source, *, added_replay_checks=False, sglang_elementwise=False, attention_two=False, mla_checks=False, gr_checks=False, state_checks=False, flat_checks=False, router_checks=False, combine_checks=False, gdn_checks=False, unified_checks=False):
     tree=ast.parse(source)
+    if unified_checks:
+        tree = _RemoveUnifiedChecks().visit(tree)
     if gdn_checks:
         tree = _RemoveGdnChecks().visit(tree)
     if combine_checks:
@@ -600,7 +602,7 @@ def _protected_triton_fingerprint(source, *, added_replay_checks=False, sglang_e
         tree = _RemoveTritonQuantChecks().visit(tree)
         tree = _RemoveMqaChecks().visit(tree)
         tree = _RemoveElementwiseChecks().visit(tree)
-    excluded={"_checked_gdn_output", "_compare_gdn_output", "_gdn_replay_validator", "_checked_combine_output", "_compare_combine_output", "_combine_replay_validator", "_check_output_buffer", "_checked_router_output", "_compare_router_output", "_router_replay_validator", "_checked_flat_output", "_compare_flat_output", "_flat_replay_validator", "_checked_state_output", "_compare_state_output", "_state_replay_validator", "_checked_gr_output", "_compare_gr_output", "_gr_replay_validator", "_checked_mla_output", "_compare_mla_output", "_mla_replay_validator", "_checked_attention_output", "_compare_attention_output", "_attention_replay_validator", "_checked_pair_output", "_compare_routing_pair", "_pair_replay_validator", "_checked_scaled_gemm_output", "_scaled_gemm_replay_validator", "_checked_sglang_output", "_compare_sglang_output", "_sglang_replay_validator", "_checked_elementwise_output","_elementwise_replay_validator","_checked_mqa_output","_compare_mqa_output","_verify_mqa_timed","_checked_mx_pair","_mx_reference","_compare_mx_pair","_verify_quant_timed","_checked_quant_output","_compare_token_outputs","_batched_replay_validator","_load_source","load_module","run_compile","_prepare_kernel","_make_prepared_fused_moe_runner",
+    excluded={"_checked_unified_output", "_compare_unified_output", "_unified_replay_validator", "_checked_gdn_output", "_compare_gdn_output", "_gdn_replay_validator", "_checked_combine_output", "_compare_combine_output", "_combine_replay_validator", "_check_output_buffer", "_checked_router_output", "_compare_router_output", "_router_replay_validator", "_checked_flat_output", "_compare_flat_output", "_flat_replay_validator", "_checked_state_output", "_compare_state_output", "_state_replay_validator", "_checked_gr_output", "_compare_gr_output", "_gr_replay_validator", "_checked_mla_output", "_compare_mla_output", "_mla_replay_validator", "_checked_attention_output", "_compare_attention_output", "_attention_replay_validator", "_checked_pair_output", "_compare_routing_pair", "_pair_replay_validator", "_checked_scaled_gemm_output", "_scaled_gemm_replay_validator", "_checked_sglang_output", "_compare_sglang_output", "_sglang_replay_validator", "_checked_elementwise_output","_elementwise_replay_validator","_checked_mqa_output","_compare_mqa_output","_verify_mqa_timed","_checked_mx_pair","_mx_reference","_compare_mx_pair","_verify_quant_timed","_checked_quant_output","_compare_token_outputs","_batched_replay_validator","_load_source","load_module","run_compile","_prepare_kernel","_make_prepared_fused_moe_runner",
               "_reference_softmax","_reference_gemm","_reference_layernorm","_reference_quant"}
     nodes=[]
     for n in tree.body:
@@ -614,7 +616,7 @@ def _protected_triton_fingerprint(source, *, added_replay_checks=False, sglang_e
 def test_triton_preserves_original_harness_semantics_inputs_and_timing():
     for name,expected in TRITON_PROTECTED_SHA256.items():
         task=ROOT/"tasks/triton2flydsl"/name
-        assert _protected_triton_fingerprint((task/"test_kernel_harness.py").read_text(), added_replay_checks=name in {"aiter/fused_add_rmsnorm", "aiter/moe_routing_sigmoid_top1", "aiter/gemm_a8w8", "aiter/gemm_a16w8_blockscale", "aiter/gemm_a8w8_blockscale", "aiter/gemm_afp8wfp8", "aiter/ff_a16w16", "aiter/fused_silu_mul", "aiter/fused_clamp_act_mul", "aiter/rmsnorm", "aiter/fp8_mqa_logits", "aiter/dynamic_mxfp8_quant", "aiter/dynamic_quant_fp8", "aiter/batched_gemm_a8w8", "aiter/batched_gemm_bf16", "aiter/gemm_a16w16", "aiter/softmax", "aiter/layernorm", "sglang/decode_attention", "sglang/sglang_fused_moe"}, sglang_elementwise=name in {"sglang/gdn_l2norm_fwd", "sglang/fused_norm_gate", "sglang/chunk_local_cumsum"}, attention_two=name in {"aiter/mha", "sglang/prefill_attention"}, mla_checks=name == "aiter/mla", gr_checks=name.startswith("generative_recommenders/"), state_checks=name in {"sglang/merge_state", "sglang/ssd_chunk_state", "sglang/fused_dual_residual_rmsnorm"}, flat_checks=name in {"aiter/rope_fwd", "aiter/moe_fused_gemm"}, router_checks=name in {"sglang/fused_gdn_gating", "sglang/fused_moe_router"}, combine_checks=name in {"sglang/experts_combine", "sglang/gdn_chunk_fwd_o"}, gdn_checks=name in {"sglang/chunk_scaled_dot_kkt_fwd", "sglang/wy_fast"})==expected,name
+        assert _protected_triton_fingerprint((task/"test_kernel_harness.py").read_text(), added_replay_checks=name in {"aiter/fused_add_rmsnorm", "aiter/moe_routing_sigmoid_top1", "aiter/gemm_a8w8", "aiter/gemm_a16w8_blockscale", "aiter/gemm_a8w8_blockscale", "aiter/gemm_afp8wfp8", "aiter/ff_a16w16", "aiter/fused_silu_mul", "aiter/fused_clamp_act_mul", "aiter/rmsnorm", "aiter/fp8_mqa_logits", "aiter/dynamic_mxfp8_quant", "aiter/dynamic_quant_fp8", "aiter/batched_gemm_a8w8", "aiter/batched_gemm_bf16", "aiter/gemm_a16w16", "aiter/softmax", "aiter/layernorm", "sglang/decode_attention", "sglang/sglang_fused_moe"}, sglang_elementwise=name in {"sglang/gdn_l2norm_fwd", "sglang/fused_norm_gate", "sglang/chunk_local_cumsum"}, attention_two=name in {"aiter/mha", "sglang/prefill_attention"}, mla_checks=name == "aiter/mla", gr_checks=name.startswith("generative_recommenders/"), state_checks=name in {"sglang/merge_state", "sglang/ssd_chunk_state", "sglang/fused_dual_residual_rmsnorm"}, flat_checks=name in {"aiter/rope_fwd", "aiter/moe_fused_gemm"}, router_checks=name in {"sglang/fused_gdn_gating", "sglang/fused_moe_router"}, combine_checks=name in {"sglang/experts_combine", "sglang/gdn_chunk_fwd_o"}, gdn_checks=name in {"sglang/chunk_scaled_dot_kkt_fwd", "sglang/wy_fast"}, unified_checks=name in {"aiter/unified_attention", "aiter/unified_attention_sparse_mla"})==expected,name
         cfg=yaml.safe_load((task/"config.yaml").read_text())
         assert cfg["baseline"]["kind"]=="initial_candidate"
         assert cfg["baseline"]["language"]=="triton"
@@ -5717,4 +5719,111 @@ def test_sglang_kkt_wy_preserves_original_math_input_generation_shapes_tolerance
         for fn in ast.parse((task/'test_kernel_harness.py').read_text()).body:
             if isinstance(fn,ast.FunctionDef) and fn.name in functions:
                 normalized=_RemoveGdnChecks().visit(fn)
+                assert hashlib.sha256(ast.dump(normalized,include_attributes=False).encode()).hexdigest()==functions[fn.name],(name,fn.name)
+
+
+_UNIFIED_TWO = ['unified_attention','unified_attention_sparse_mla']
+
+
+class _RemoveUnifiedChecks(_RemoveMlaChecks):
+    def visit_Expr(self, node):
+        if isinstance(node.value,ast.Call) and getattr(node.value.func,'id',None)=='_checked_unified_output':return None
+        return super().visit_Expr(node)
+    def visit_FunctionDef(self,node):
+        if node.name=='_call_kernel' and any(isinstance(n,ast.Call) and getattr(n.func,'attr',None)=='unified_attention_sparse_mla' for n in ast.walk(node)):
+            node.body=[ast.Return(n.value) if isinstance(n,ast.Expr) and isinstance(n.value,ast.Call) else n for n in node.body if not (isinstance(n,ast.Return) and isinstance(n.value,ast.Name) and n.value.id=='out')]
+        return super().visit_FunctionDef(node)
+
+
+@pytest.mark.parametrize('name',_UNIFIED_TWO)
+@pytest.mark.parametrize('variant',[0,1,2])
+@pytest.mark.parametrize('phase,behavior',[(phase,behavior) for phase in ['correctness','performance'] for behavior in ['correct','wrong','shape','dtype','device','nan','unwritten','input_modified','metadata_modified','measured_wrong','replay_wrong','cached'] if phase=='performance' or behavior not in {'measured_wrong','replay_wrong','cached'}])
+def test_unified_two_real_caller_buffer_inputs_original_gates_and_measured_replay(name,variant,phase,behavior,monkeypatch):
+    import torch
+    import types
+    task=ROOT/'tasks/triton2flydsl/aiter'/name;sparse=name.endswith('sparse_mla');checks=module(task/'scripts/replay_checks.py')
+    ns=dict(NORM_ERR_TOL=.01,ALLCLOSE_ATOL=.01,ALLCLOSE_RTOL=.01,WARMUP_ITERATIONS=10,BENCHMARK_ITERATIONS=100,
+            require_tensor_contract=checks.require_tensor_contract,require_unchanged=checks.require_unchanged,verify_timed_run=checks.verify_timed_run)
+    _harness_functions(task,{'make_test_data','ref_paged_attn','ref_sparse_mla','_window_size','_unpack','_norm_max_error','_checked_unified_output','_compare_unified_output','_unified_replay_validator','_call_kernel'},ns)
+    torch.manual_seed(1)
+    if sparse:
+        shape=(1,3,2,2,2,2,3,4)
+        q,kv,out,cu,used,idx,table,scale=ns['make_test_data'](*shape,pad_invalid=True,device='cpu',dtype=torch.bfloat16)
+        if variant==1:idx[:,0]=1
+        if variant==2:q.zero_()
+        data=(q,kv,idx,table,cu,used)
+        values=(q,kv,out,cu,used,idx,table,scale)
+        def oracle():return ns['ref_sparse_mla'](q,kv,idx,2,2,scale).to(q.dtype)
+    else:
+        shape=(1,2,4,2,1,2,2,1 if variant==1 else 0,1. if variant==2 else 0.)
+        q,k,v,out,table,cu,used,scale=ns['make_test_data'](*shape[:7],device='cpu',dtype=torch.bfloat16)
+        table[:]=torch.tensor([[1,0]],dtype=table.dtype)
+        data=(q,k,v,table,cu,used);values=(q,k,v,out,table,cu,used,scale)
+        def oracle():return ns['ref_paged_attn'](q,k,v,[2],[4],table,scale,q.dtype,sliding_window=shape[7] or None,soft_cap=shape[8] or None)
+    originals=tuple(v.clone() for v in data);cached=oracle().clone();state={'phase':'setup'}
+    def compute(*args,**kwargs):
+        value=oracle()
+        if behavior=='unwritten':return value
+        if phase=='correctness' or state['phase']=='measured':
+            if behavior=='wrong':value.fill_(100)
+            if behavior=='shape':out.resize_(out.numel())
+            if behavior=='dtype':out.data=out.double()
+            if behavior=='device':return value.to('meta') if not sparse else out.resize_(0)
+            if behavior=='nan':value.fill_(float('nan'))
+            if behavior=='input_modified':q.add_(1.)
+            if behavior=='metadata_modified':cu.add_(1)
+        if behavior==state['phase']+'_wrong':value.fill_(100)
+        if state['phase']=='replay' and behavior=='cached':value=cached.clone()
+        if out.shape==value.shape:out.copy_(value)
+        return None if sparse else out
+    class Collector:bound=False
+    calls=[]
+    def benchmark(fn,*,warmup,repetition,timed_run):
+        calls.append((warmup,repetition));state['phase']='measured';timed_run.outputs=fn();timed_run.bound=True;state['phase']='setup'
+        def replay():
+            state['phase']='replay'
+            try:return fn()
+            finally:state['phase']='setup'
+        timed_run.rerun=replay
+        return .1,{'benchmark_method':'cuda_graph','benchmark_timed_run_kind':'captured_graph'}
+    monkeypatch.setattr(torch.cuda,'synchronize',lambda:None)
+    ns.update(TEST_SHAPES=[shape],TimedRun=Collector,benchmark_cuda_graph_or_events=benchmark,
+              load_module=lambda:types.SimpleNamespace(**{name:compute}),_retry_gpu=lambda fn:fn(),make_test_data=lambda *args,**kw:values)
+    _harness_functions(task,{'run_correctness','run_performance'},ns)
+    result=ns['run_'+phase]()
+    if phase=='correctness':assert result[0]==(behavior=='correct'),result
+    else:
+        assert len(result)==1 and calls==[(0,100)]
+        if behavior=='correct':assert result[0]['timed_output_correctness']==result[0]['replay_correctness']=='PASS'
+        else:assert result[0]['execution_time_ms']==-1,result
+    if not behavior.endswith('_modified'):checks.require_unchanged(data,originals)
+
+
+@pytest.mark.parametrize('name',_UNIFIED_TWO)
+def test_unified_two_real_cpu_controls_exact_source_helpers_and_original_numeric_gate(name):
+    import torch
+    task=ROOT/'tasks/triton2flydsl/aiter'/name;result=invoke(task,'validate-task')
+    assert result.passed,result.reason
+    assert len(result.cases)==(7 if name=='unified_attention' else 5)
+    assert all(c['known_answer']=='PASS' and c['negative_output']=='rejected' for c in result.metadata['reference_controls'])
+    base=ROOT/'tasks/triton2flydsl/aiter/mla'
+    for rel in ['scripts/candidate_checks.py','scripts/replay_checks.py','task_runtime.py']:
+        assert (task/rel).read_bytes()==(base/rel).read_bytes()
+    checks=module(task/'scripts/replay_checks.py');ns=dict(require_tensor_contract=checks.require_tensor_contract,NORM_ERR_TOL=.01)
+    _harness_functions(task,{'_compare_unified_output','_norm_max_error'},ns)
+    ref=torch.zeros(1,200,dtype=torch.bfloat16);ref[0,0]=100;actual=ref.clone();actual[0,1]=.5
+    # Original normalized maximum gate accepts this while allclose does not.
+    assert not torch.allclose(actual,ref,atol=.01,rtol=.01)
+    ns['_compare_unified_output'](actual,ref)
+    actual[0,1]=2
+    with pytest.raises(AssertionError):ns['_compare_unified_output'](actual,ref)
+
+
+def test_unified_two_original_input_reference_shape_gates_and_timing_preserved():
+    hashes={'unified_attention': {'load_module': 'da543b694e9e8e49ed822cd28b157f289f28cc27a1fa66b318ccbbbbb52e3e7d', '_window_size': '58b7ed377c80408ac52ef5162f54cb36f2bd58cf0f80d295b89c225972f8010b', 'make_test_data': '8335c704a809b530e69d7a2f26f063888323286ab9b5f7178b77d10b511759e4', '_call_kernel': '49bb2f03586610b3b6dac0c8736a3859e9cfd4e5f0ecd8c1557a6f31e7e1e880', 'run_compile': '056a57080274176635a2a643f381dd543a5dce9d165cdbe6a9bea424c124d19a', 'ref_paged_attn': 'e0525f372d1bfc70652ef5128e3e77adf476f45b38757d4d4d049f3d85fb7305', '_norm_max_error': '55c6bde927ff7593fe520345457735b3761659cabf8cf393ea152fb36b2494ab', 'run_correctness': 'd1715b24f57a3e72ba5879d72243a7fbbaa66f5486fd28a920ad39c705b1b7ac', 'run_performance': '28d7c4bb7aa1d21b4d27e8a5e27db6283af33773a9d53525ccd87ed3000cd846', 'main': 'ae915290c7834aa9a52d1d50bbc8ddff3839957c7e33779fc40f4f273f44e570'}, 'unified_attention_sparse_mla': {'load_module': 'c69a5e50d4a1f6e951a8ee1b303999136bdf405e311c6feb4940803ef19054d8', '_is_transient_gpu_error': '5afa68828c130e63eef28cb95296055fe9a8ce93f9e0ff74d37824d5c545adb2', '_retry_gpu': '011da24c8f60af67764f9f5800d76e003e13ed1ace6a6eb6a579f9ca0bf8d2bf', 'make_test_data': '05fc8aff143cf4431f218857d83d5f389ab2df7dde7560016252e86add739182', '_call_kernel': '43ee9176e819ab524b8b59584ecbe9d5e5368dab72f4baa5d46c9cd7b74fd8cd', '_unpack': 'a765356918b85ccba19f042716a2008a18f82947e702ebd11c394d526a200547', 'run_compile': 'bc9ad52c127fb0cc8e0dbb100c209827ca626dfa0b2dd353fd19f169d0058446', 'ref_sparse_mla': '8a92f55b80542d3f2a495e529825ed8293a59b9c79cfddee6a5caaa9a443d42c', '_norm_max_error': '55c6bde927ff7593fe520345457735b3761659cabf8cf393ea152fb36b2494ab', 'run_correctness': '44587fde9a66f94a44e6865dd8a94cdc2379b395a2e0b87a6665eb2b5a7d780d', 'run_performance': '12e785ffbfe19fc40fb594d271788de737122678701f4d538de59e251eb69f31', 'main': '70b77b8c9c03f4f1eae39318c37362de53ab6fdc96dff90aaa838c841de2b310'}}
+    for name,functions in hashes.items():
+        task=ROOT/'tasks/triton2flydsl/aiter'/name
+        for fn in ast.parse((task/'test_kernel_harness.py').read_text()).body:
+            if isinstance(fn,ast.FunctionDef) and fn.name in functions:
+                normalized=_RemoveUnifiedChecks().visit(fn)
                 assert hashlib.sha256(ast.dump(normalized,include_attributes=False).encode()).hexdigest()==functions[fn.name],(name,fn.name)
