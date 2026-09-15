@@ -1,8 +1,8 @@
 schema_version: 2
 description: >-
   Optimize the declared FlyDSL SiLU-times-up MXFP4 workload with BF16 inputs,
-  inter_dim=1024, topk=2, identity sorted routing, and the five token counts
-  in cases.json. Preserve the builder interface and all numerical and timing
+  inter_dim=1024, topk=2, input-order payload and sorted-position block scales.
+  Preserve the five scored cases in cases.json, the builder interface, and all numerical and timing
   rules documented in README.md. Keep the GPU computation in FlyDSL; do not
   add FastLauncher, ctypes dispatch, _call_state_cache extraction, or wrappers
   that bypass JitFunction.__call__.

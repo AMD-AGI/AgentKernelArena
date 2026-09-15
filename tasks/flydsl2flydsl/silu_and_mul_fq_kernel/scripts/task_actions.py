@@ -7,6 +7,9 @@ def check(h):
     result = h.run_correctness(shapes=CORRECTNESS_CASES, verbose=True)
     if not isinstance(result, dict) or result.get("correct") is not True or result.get("num_correct") != len(CORRECTNESS_CASES):
         raise RuntimeError(f"Incomplete or failed correctness check: {result}")
+    routing = h.run_routing_correctness()
+    if routing.get('routing_correctness') != 'PASS':
+        raise RuntimeError(f"Incomplete or failed unscored routing check: {routing}")
 
 def performance(h):
     return h.arena_benchmark(shapes=PERFORMANCE_CASES, warmup=10, iters=100)

@@ -692,6 +692,10 @@ def arena_benchmark(shapes=None, warmup=10, iters=100, verbose=True):
             launch, warmup=0, repetition=iters, timed_run=timed,
         )
         kernel_bench_meta.update(verify_timed_run(timed, **check))
+        if cfg == ALL_SHAPES[0]:
+            from scripts.routing_checks import verify_routing_replay
+            kernel_bench_meta.update(verify_routing_replay(
+                timed, inputs, _torch_ref_silu_mul, reference_mxfp4, decode_kernel_fp4))
 
         # Display-only torch reference (silu(gate)*mul). Not the oracle.
         x = inputs["x"]
@@ -773,3 +777,27 @@ def arena_benchmark(shapes=None, warmup=10, iters=100, verbose=True):
 
     return report_cases
     return report_cases
+
+
+def run_routing_correctness():
+    """Unscored all-valid routing control at the original smallest shape."""
+    import torch
+    from scripts.routing_checks import check_routing_call
+
+    cfg = ALL_SHAPES[0]
+    inputs = _make_inputs(cfg, seed=42)
+    module = _load_kernel(_CANDIDATE_DIR, 'silu_routing_candidate')
+    if module is None:
+        raise RuntimeError('Cannot load selected implementation for routing control')
+    launcher = _build_launcher(module, cfg)
+    out_buf, out_scale = _alloc_outputs(inputs)
+
+    def invoke():
+        _launch(launcher, inputs, out_buf, out_scale, torch.cuda.current_stream())
+        torch.cuda.synchronize()
+        return out_buf, out_scale
+
+    result = check_routing_call(inputs, (out_buf, out_scale), invoke,
+                                _torch_ref_silu_mul, reference_mxfp4, decode_kernel_fp4)
+    print('Unscored MXFP4 routing control: ' + json.dumps(result))
+    return result

@@ -32,18 +32,35 @@ The evaluated operator is `SiLU(gate) * up`, encoded as packed E2M1 payload
 and E8M0 block scales. Its workload is the original five token counts
 `64, 128, 256, 512, 1024`, with `inter_dim=1024`, `topk=2`, BF16 inputs,
 `quant_mode=fp4`, `gui_layout=False`, `act=silu`, and `enable_bias=False`.
-The input generator uses identity sorted routing: row `i` maps to token
-`i // topk` and slot `i % topk`; every row is valid. These fixed parameters and
-routing are part of this benchmark variant. Input values still vary by case
-and are perturbed again for the actual timed-replay correctness check.
+The historical scored input generator uses identity sorted routing: row `i`
+maps to token `i // topk` and slot `i % topk`; every row is valid. Those five
+scored inputs, seeds and timing parameters are unchanged. Identity routing
+alone does not check the distinction between input and sorted coordinates.
+Packed FP4 payload belongs to input row `token * topk + slot`; the corresponding
+E8M0 block scales belong to the position of that packed ID in `sorted_ids`.
 
-The upstream builder also exposes FP8/unquantized output, SwiGLU, bias,
-alternate layouts, and general sorted routing. The task retains that builder
-interface, but its five-case result does not qualify those additional modes
-or arbitrary routing distributions. Adding coverage for them requires an
-explicit workload extension and new validation evidence. This scope records
-the original harness settings; it does not remove cases or change reference,
-precision, or measurement rules.
+An additional, unscored correctness control uses the existing 64-token shape
+and an all-valid bijection: sorted position `j` addresses input row
+`(j + 33) % 128`, packed as `(slot << 24) | token`. It crosses slots and
+32-row scale-tile boundaries. Distinct BF16 row amplitudes, signed payload
+patterns and block magnitudes expose identity-only scale writes and payload
+writes to sorted rather than input rows. The independent SiLU/MXFP4 reference
+computes input-row results, then orders the expected scales by the packed IDs.
+The unchanged exact-scale, 1% grid-tie and residual rules apply.
+
+Both roles execute that control through their selected builder. Performance
+also checks the same bound measured invocation after changing activation values
+and `sorted_ids` in place outside timing and poisoning both outputs. All input
+tensors are restored in `finally`, including on a failed launch or comparison.
+No routing-control launch enters a timed window or adds a performance row.
+The existing sign-perturbation replay remains. This control uses every valid
+row; it does not add partial-valid or padding-output requirements.
+
+The upstream builder also exposes FP8/unquantized output, SwiGLU, bias and
+alternate layouts. The task retains that builder interface; this fixed FP4
+workload does not qualify those other compile modes. The added routing check
+tests the active FP4 path rather than expanding the scored workload. It does
+not establish exhaustive coverage of routing distributions or optional modes.
 
 From a materialized task workspace, the seven public commands are:
 
@@ -77,9 +94,11 @@ captured replay. All original cases, exact scales, 1% grid-tie rule, tolerances,
 warmups, samples and timed launches are retained. Reference work and checks
 remain outside timing. Unused scale padding is outside the numerical output.
 
-Every declared case passed on MI355X gfx950 with the unchanged MXFP4 rule and
-measured payload/scale replay checks. The original gfx942 path is retained;
-gfx942 was not revalidated by this port. Support is scoped to `cases.json`.
+The earlier MI355X gfx950 port passed the five identity-routed cases with the
+unchanged MXFP4 rule and measured payload/scale replay checks. That historical
+evidence does not qualify the new nonidentity routing control, which requires
+a fresh full GPU task-validator pass. The original gfx942 path is retained;
+gfx942 was not revalidated by the port.
 
 Candidate dependency enforcement runs before candidate import for compile,
 correctness and performance. AITER package/operator imports are forbidden,
