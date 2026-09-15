@@ -3222,3 +3222,103 @@ def test_mean_adapter_installs_checks(monkeypatch):
     adapter = module_at(ROOT/'tasks/triton2triton/vllm/triton_mean/_arena_eval.py', monkeypatch)
     h = adapter.load_harness()
     assert h.run_correctness.__module__ == h.run_performance.__module__ == '_mean_checks'
+
+
+def _sampled_counts_cpu(num_sampled, seq, cu, mapping, prefill):
+    chunked = seq < prefill[mapping.long()]
+    samples = torch.where(chunked, 0, num_sampled)
+    rejected = torch.where(chunked, 0, cu[1:] - cu[:-1] - samples)
+    num_sampled.copy_(samples)
+    return num_sampled, rejected
+
+
+@pytest.mark.parametrize('mode', ['correct', 'dtype', 'shape', 'wrong_second', 'skip_in_place',
+                                 'identity_mapping', 'inclusive_threshold', 'mutate_readonly'])
+def test_sampled_count_ragged_mapping_and_in_place_known_answers(monkeypatch, mode):
+    task = ROOT/'tasks/triton2triton/vllm/triton_get_num_sampled_and_rejected'
+    h = module_at(task/'scripts/task_runner.py', monkeypatch)
+    checks = module_at(task/'_arena_checks.py', monkeypatch)
+    inputs = checks.diagnostic_inputs('cpu')
+    expected = torch.tensor([1, 0, 0, 3], dtype=torch.int32), torch.tensor([1, 0, 0, 1], dtype=torch.int32)
+    for value, known in zip(checks.reference(h, inputs), expected):
+        torch.testing.assert_close(value, known, atol=0, rtol=0)
+    def candidate(ns, seq, cu, mapping, prefill):
+        if mode == 'mutate_readonly': seq.zero_()
+        if mode == 'identity_mapping': mapping = torch.arange(len(mapping)).int()
+        if mode == 'inclusive_threshold': seq = seq-1
+        result = list(_sampled_counts_cpu(ns.clone() if mode == 'skip_in_place' else ns, seq, cu, mapping, prefill))
+        if mode == 'dtype': result[1] = result[1].long()
+        if mode == 'shape': result[1] = result[1][:1]
+        if mode == 'wrong_second': result[1].fill_(-1)
+        return tuple(result)
+    mod = SimpleNamespace(get_num_sampled_and_rejected=candidate)
+    h.load_module = lambda: mod
+    with checks.checked_modules(h):
+        call = h.load_module().get_num_sampled_and_rejected
+        if mode == 'correct': checks.check_outputs(call(*inputs), expected, inputs[0])
+        else:
+            with pytest.raises(AssertionError): call(*inputs)
+    assert mod.get_num_sampled_and_rejected is candidate
+
+
+@pytest.mark.parametrize('mode', ['correct', 'wrong_timed', 'stale', 'no_write', 'wrong_replay',
+                                 'mutate_seed', 'mutate_replay', 'raise_replay'])
+def test_sampled_count_original_prepared_timing_and_replay_restoration(monkeypatch, mode):
+    import inspect
+    task = ROOT/'tasks/triton2triton/vllm/triton_get_num_sampled_and_rejected'
+    h = module_at(task/'scripts/task_runner.py', monkeypatch)
+    checks = module_at(task/'_arena_checks.py', monkeypatch)
+    h._TimedRun = SimpleNamespace
+    for name in ('arange', 'randint', 'full', 'zeros'):
+        factory = getattr(torch, name)
+        def cpu_factory(*args, _factory=factory, **kwargs):
+            return _factory(*args, **{**kwargs, 'device': 'cpu'})
+        monkeypatch.setattr(torch, name, cpu_factory)
+    all_inputs, pristine, options = [], [], []
+    mod = SimpleNamespace(get_num_sampled_and_rejected=_sampled_counts_cpu)
+    h.load_module = lambda: mod
+    def benchmark(fn, *, timed_run, **kwargs):
+        options.append({key: val for key, val in kwargs.items() if key != 'prepare_fn'})
+        closed = inspect.getclosurevars(fn).nonlocals
+        prepare = kwargs['prepare_fn']
+        prepared = inspect.getclosurevars(prepare).nonlocals
+        assert prepared['num_sampled_work'] is closed['num_sampled_work']
+        seed = prepared['num_sampled']
+        inputs = (seed, closed['seq_lens'], closed['cu_num_logits'], closed['idx_mapping'],
+                  closed['prefill_len'], closed['num_sampled_work'])
+        all_inputs.append(inputs); pristine.append(checks.snapshots(inputs))
+        prepare()
+        outputs = fn(); cached = checks.snapshots(outputs)
+        if mode == 'wrong_timed': outputs[1].fill_(-1)
+        if mode == 'mutate_seed': seed.zero_()
+        def replay():
+            if mode == 'raise_replay': raise RuntimeError('replay failed')
+            prepare()
+            if mode == 'stale':
+                for out, saved in zip(outputs, cached): out.copy_(saved)
+            elif mode != 'no_write':
+                computed = fn()
+                for out, value in zip(outputs, computed): out.copy_(value)
+            if mode == 'wrong_replay': outputs[1].fill_(-1)
+            if mode == 'mutate_replay': closed['seq_lens'].zero_()
+            return outputs
+        timed_run.outputs, timed_run.rerun = outputs, replay
+        return .125, {'benchmark_method': 'cuda_graph'}
+    h._benchmark_cuda_graph_or_events = benchmark
+    checks.install(h)
+    rows = h.run_performance()
+    assert len(rows) == len(h.TEST_SHAPES) == 5
+    assert options == [dict(warmup=10, repetition=100, target_ms=20.)] * 5
+    for row, (reqs, spec) in zip(rows, h.TEST_SHAPES):
+        assert row['params'] == dict(num_reqs=reqs, num_spec_steps=spec)
+        assert row['execution_time_ms'] == (.125 if mode == 'correct' else -1.)
+        if mode == 'correct': assert row['in_place_sampled_state_checked'] and row['perturbed_input_replay_checked']
+    for inputs, saved in zip(all_inputs, pristine): checks.unchanged(inputs, saved)
+    assert mod.get_num_sampled_and_rejected is _sampled_counts_cpu
+    assert h._benchmark_cuda_graph_or_events is benchmark
+
+
+def test_sampled_count_adapter_installs_checks(monkeypatch):
+    adapter = module_at(ROOT/'tasks/triton2triton/vllm/triton_get_num_sampled_and_rejected/_arena_eval.py', monkeypatch)
+    h = adapter.load_harness()
+    assert h.run_correctness.__module__ == h.run_performance.__module__ == '_sampled_checks'

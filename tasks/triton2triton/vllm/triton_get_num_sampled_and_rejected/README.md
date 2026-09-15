@@ -31,3 +31,17 @@ syntax and import/interface checks. Missing candidates, incomplete measurements 
 invalid timing fail; commands emit `arena-eval-v1`, never final Arena score reports.
 Canonical benchmark helpers must be materialized by Arena; do not edit their generated regions.
 
+
+Both returned vectors must have the original int32 dtype, request shape and
+input device, and exactly match the pristine-input reference. The mutable
+`num_sampled` input must also hold the resulting sampled counts. Sequence
+lengths, cumulative logits, request mapping and prefill lengths are read-only.
+An unscored diagnostic covers nonidentity mapping, ragged logits counts, both
+decode and chunked prefill, and equality at the prefill boundary.
+
+The original five scored decode cases, seeds, full public lambda, prepare_fn,
+10 warmups, 100 samples and target_ms=20 remain unchanged. Checks validate the
+actual measured buffers, then poison and replay them with changed request
+mapping and mixed decode/prefill conditions. TimedRun uses the same original
+preparation before replay. Input seeds, read-only arrays and mutable working
+state are restored even on failure. All added validation is outside timing.
