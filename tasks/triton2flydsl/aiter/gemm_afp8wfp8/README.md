@@ -52,3 +52,15 @@ plus any operator dependencies stated by the source. Arena must materialize the
 canonical `_aka_benchmark.py` helper before GPU execution. CPU controls/protocol
 checks do not qualify these GPU kernels. Existing legacy reports are historical;
 the parent integration schedules new GPU validation.
+
+
+All 5 original correctness and 5 performance cases remain: MXFP8 activations and FP8 weights with E8M0 scale codes. The output is exactly [M,N] BF16 on the input device. The original allclose gate remains atol=0.03, rtol=0.01, with finite outputs. Inputs, weights, scales and optional bias are read-only.
+
+The actual measured output and the same captured graph replay must meet that
+same reference and numerical rule. Replay changes activation values or scales
+within the operand domain; E8M0 codes125..129 decrement to124..128 without
+wrapping. This perturbation, output poisoning, reference work and restoration
+are outside timing. Original seeds, input generation, 10 external warmups and
+100 graph samples are unchanged. Capture failure cannot bypass replay validation.
+The frozen original Triton source is unchanged; final FlyDSL candidate calls are
+audited separately and cannot use protected references or another operator backend.

@@ -31,7 +31,8 @@ import math
 import os
 import sys
 from pathlib import Path
-from _aka_benchmark import benchmark_cuda_graph_or_events
+from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
+from scripts.replay_checks import require_unchanged, verify_timed_run, allclose_output
 
 from task_runtime import candidate_relative_path
 SOURCE_FILE = candidate_relative_path()
@@ -123,6 +124,31 @@ def run_compile():
     return True
 
 
+def _checked_scaled_gemm_output(out, x, w, out_dtype):
+    import torch
+    if (not isinstance(out, torch.Tensor) or out.shape != (x.shape[0], w.shape[0])
+            or out.dtype != out_dtype or out.device != x.device):
+        raise AssertionError("Scaled GEMM output shape/dtype/device contract mismatch")
+
+
+def _scaled_gemm_replay_validator(x, w, x_scale, w_scale, out_dtype):
+    inputs = tuple(v for v in (x, w, x_scale, w_scale,) if v is not None)
+    originals = tuple(v.clone() for v in inputs)
+    expected = _torch_ref(x, w, x_scale, w_scale, out_dtype)
+    def perturb():
+        x_scale.mul_(0.5)
+    def reference():
+        return _torch_ref(x, w, x_scale, w_scale, out_dtype)
+    def compare(actual, expected):
+        _checked_scaled_gemm_output(actual, x, w, out_dtype)
+        allclose_output(actual, expected, atol=0.01, rtol=0.01)
+    def validate(timed):
+        return verify_timed_run(timed, inputs=inputs, originals=originals,
+                                expected=expected, perturb=perturb,
+                                reference=reference, compare=compare)
+    return validate
+
+
 def run_correctness(verbose=True):
     import torch
 
@@ -138,7 +164,11 @@ def run_correctness(verbose=True):
             x, w, x_scale, w_scale = _make_inputs(
                 shape["M"], shape["N"], shape["K"], in_dtype
             )
+            protected_inputs = tuple(v for v in (x, w, x_scale, w_scale,) if v is not None)
+            originals = tuple(v.clone() for v in protected_inputs)
             y = mod.gemm_a8w8_blockscale(x, w, x_scale, w_scale, out_dtype)
+            require_unchanged(protected_inputs, originals)
+            _checked_scaled_gemm_output(y, x, w, out_dtype)
             torch.cuda.synchronize()
             ref = _torch_ref(x, w, x_scale, w_scale, out_dtype)
             finite = bool(torch.isfinite(y).all().item())
@@ -174,6 +204,7 @@ def run_benchmark(verbose=True):
         x, w, x_scale, w_scale = _make_inputs(
             shape["M"], shape["N"], shape["K"], in_dtype
         )
+        replay_validate = _scaled_gemm_replay_validator(x, w, x_scale, w_scale, out_dtype)
         fn = lambda: mod.gemm_a8w8_blockscale(  # noqa: E731
             x, w, x_scale, w_scale, out_dtype
         )
@@ -182,9 +213,11 @@ def run_benchmark(verbose=True):
         for _ in range(WARMUP):
             fn()
         torch.cuda.synchronize()
+        timed = TimedRun()
         ms, bench_meta = benchmark_cuda_graph_or_events(
-            fn, warmup=0, repetition=ITERS
+            fn, warmup=0, repetition=ITERS, timed_run=timed
         )
+        bench_meta.update(replay_validate(timed))
         latencies.append(ms)
         flops = 2.0 * shape["M"] * shape["N"] * shape["K"]
         report.append(
