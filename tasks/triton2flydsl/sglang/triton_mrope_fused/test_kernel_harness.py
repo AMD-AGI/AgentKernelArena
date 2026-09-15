@@ -19,7 +19,8 @@ import json
 import time
 import argparse
 import importlib.util
-from _aka_benchmark import benchmark_cuda_graph_or_events
+from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
+from scripts.replay_checks import require_tensor_contract, require_unchanged, verify_timed_pair
 
 TASK_DIR = os.path.dirname(os.path.abspath(__file__))
 os.chdir(TASK_DIR)
@@ -27,6 +28,7 @@ os.chdir(TASK_DIR)
 TASK_NAME = "triton2flydsl/sglang/triton_mrope_fused"
 from task_runtime import candidate_relative_path
 SOURCE_FILE = candidate_relative_path()
+ENTRY = 'triton_mrope_fused'
 MAX_POS = 4096
 
 # Real Qwen2-VL / Qwen2.5-VL M-RoPE shapes. mrope_section sums to rotary_dim//2.
@@ -174,6 +176,69 @@ def run_compile():
         return False, str(e)
 
 
+def _checked_mrope_output(actual, layout):
+    import torch
+    if not isinstance(actual, (tuple, list)) or len(actual) != 2:
+        raise AssertionError("Missing in-place Q/K outputs")
+    for out, expected in zip(actual, layout):
+        require_tensor_contract(out, expected)
+        if not bool(torch.isfinite(out).all()):
+            raise AssertionError("Non-finite M-RoPE output")
+
+
+def _compare_mrope_output(actual, expected):
+    import torch
+    _checked_mrope_output(actual, expected)
+    for out, ref in zip(actual, expected):
+        if not bool(torch.isfinite(ref).all()) or not torch.allclose(out.float(), ref.float(), atol=1e-2, rtol=1e-2):
+            raise AssertionError("Numerical mismatch: original M-RoPE allclose gate")
+
+
+def _reference_glm(q, k, cache, positions, axis_map, cfg):
+    import torch
+    half = cfg["rd"] // 2
+    columns = torch.arange(half, device=q.device)
+    rows = positions[axis_map[:half].long(), :].T
+    cos = cache[rows, columns]
+    sin = cache[rows, columns + half]
+    return (_apply_rope(q, cfg["n_qh"], cfg, cos, sin).to(q.dtype),
+            _apply_rope(k, cfg["n_kh"], cfg, cos, sin).to(k.dtype))
+
+
+def _check_glm_axis_map(mod, q, k, cache, positions, cfg):
+    import torch
+    # GLM loads a padded half-head axis vector. Sentinel 3 disables loads beyond
+    # the active rotary half, including the original rd<head_size case.
+    padded_half = (1 << (cfg["hd"] - 1).bit_length()) // 2
+    axes = torch.full((padded_half,), 3, dtype=torch.int32, device=q.device)
+    half = cfg["rd"] // 2
+    axes[:half] = (torch.arange(half, device=q.device) + 2) % 3
+    inputs = (q, k, cache, positions, axes)
+    originals = tuple(v.clone() for v in inputs)
+    expected = _reference_glm(q, k, cache, positions, axes, cfg)
+    qc, kc = q.clone(), k.clone()
+    mod.triton_mrope_fused(qc, kc, cache, positions, cfg["section"], cfg["hd"],
+                          cfg["rd"], True, True, cfg["neox"], axes)
+    require_unchanged(inputs, originals)
+    _compare_mrope_output((qc, kc), expected)
+
+
+def _mrope_replay_validator(q, k, cache, positions, axis_map, cfg):
+    inputs = (q, k, cache, positions, axis_map)
+    originals = tuple(v.clone() for v in inputs)
+    def oracle():
+        return reference(q, k, cache, positions, cfg)
+    expected = oracle()
+    def perturb():
+        q.neg_()
+        k.neg_()
+    def validate(timed):
+        return verify_timed_pair(timed, inputs=inputs, originals=originals,
+                                 expected=expected, perturb=perturb,
+                                 reference=oracle, compare=_compare_mrope_output)
+    return validate
+
+
 def run_correctness():
     import torch
     try:
@@ -188,11 +253,15 @@ def run_correctness():
         try:
             torch.manual_seed(42 + i)
             q, k, cache, positions, axis_map = make_inputs(cfg, "cuda")
+            protected_inputs = (q, k, cache, positions, axis_map)
+            originals = tuple(v.clone() for v in protected_inputs)
             q_in, k_in = q.clone(), k.clone()
             _retry_oom(lambda: mod.triton_mrope_fused(
                 q_in, k_in, cache, positions, cfg["section"], cfg["hd"], cfg["rd"],
                 cfg["interleaved"], False, cfg["neox"], axis_map))
             torch.cuda.synchronize()
+            require_unchanged(protected_inputs, originals)
+            _checked_mrope_output((q_in, k_in), (q, k))
             q_ref, k_ref = reference(q, k, cache, positions, cfg)
             finite = bool(torch.isfinite(q_in).all().item() and
                           torch.isfinite(k_in).all().item())
@@ -203,6 +272,7 @@ def run_correctness():
             k_close = bool(torch.allclose(k_in.float(), k_ref.float(),
                                           atol=atol, rtol=rtol))
             passed = finite and q_close and k_close
+            _check_glm_axis_map(mod, q, k, cache, positions, cfg)
             details.append({"shape_id": i + 1, "shape": shape,
                             "interleaved": cfg["interleaved"], "neox": cfg["neox"],
                             "q_diff": qd, "k_diff": kd, "passed": passed})
@@ -231,6 +301,7 @@ def run_performance():
             torch.manual_seed(42 + ti)
             q, k, cache, positions, axis_map = make_inputs(cfg, "cuda")
             qc, kc = q.clone(), k.clone()
+            replay_validate = _mrope_replay_validator(q, k, cache, positions, axis_map, cfg)
 
             def prepare_fn():
                 qc.copy_(q)
@@ -240,6 +311,7 @@ def run_performance():
                 mod.triton_mrope_fused(
                     qc, kc, cache, positions, cfg["section"], cfg["hd"], cfg["rd"],
                     cfg["interleaved"], False, cfg["neox"], axis_map)
+                return qc, kc
 
             prepare_fn()
             _retry_oom(fn)
@@ -247,19 +319,21 @@ def run_performance():
                 prepare_fn()
                 fn()
             torch.cuda.synchronize()
+            timed = TimedRun()
             elapsed_ms, bench_meta = benchmark_cuda_graph_or_events(
                 fn, warmup=0, repetition=BENCHMARK_ITERATIONS,
-                prepare_fn=prepare_fn,
+                prepare_fn=prepare_fn, timed_run=timed,
             )
+            bench_meta.update(replay_validate(timed))
             test_cases.append({"test_case_id": f"perf{ti+1}",
                                "execution_time_ms": elapsed_ms,
                                **bench_meta,
                                "params": params})
-        except Exception:
+        except Exception as error:
             test_cases.append({"test_case_id": f"perf{ti+1}",
                                "execution_time_ms": -1.0,
                                "benchmark_method": "benchmark_failed",
-                               "benchmark_fallback_reason": "performance case failed before timing completed",
+                               "benchmark_fallback_reason": "performance case failed: " + str(error),
                                "params": params})
     return test_cases
 

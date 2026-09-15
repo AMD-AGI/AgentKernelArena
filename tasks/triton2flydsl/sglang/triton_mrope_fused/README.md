@@ -52,3 +52,20 @@ plus any operator dependencies stated by the source. Arena must materialize the
 canonical `_aka_benchmark.py` helper before GPU execution. CPU controls/protocol
 checks do not qualify these GPU kernels. Existing legacy reports are historical;
 the parent integration schedules new GPU validation.
+
+
+All eight original M-RoPE cases and allclose(atol=0.01,rtol=0.01) remain.
+Q/K must be updated in place with their complete original shape/dtype/device and
+finite contents. Cache, positions and axis-map inputs are read-only. Each case
+also checks the public GLM interleaved mode with a nontrivial temporal/height/width
+axis map for both original rotation styles. The axis map has padded-half-head
+storage, with sentinel3 outside rotary_dim/2 to suppress inactive cache loads;
+this covers rotary_dim<head_size without reading past the supplied map.
+The original non-GLM workload is still the measured workload. The captured
+invocation exposes the actual in-place Q/K buffers. Replay negates the pristine
+Q/K, poisons the previous output, and restores the new Q/K outside the measured
+window through the original prepare_fn before executing that same invocation.
+
+The original seed42+i, ten external warmups,100samples and state preparation
+are unchanged for both roles. No separate untimed operator call substitutes for
+the measured result. Final FlyDSL calls are audited separately from oracle work.

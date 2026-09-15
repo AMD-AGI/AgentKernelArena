@@ -573,8 +573,10 @@ class _InlineTritonReference(ast.NodeTransformer):
         return self.generic_visit(node)
 
 
-def _protected_triton_fingerprint(source, *, added_replay_checks=False, sglang_elementwise=False, attention_two=False, mla_checks=False, gr_checks=False, state_checks=False, flat_checks=False, router_checks=False, combine_checks=False, gdn_checks=False, unified_checks=False, recurrent_checks=False):
+def _protected_triton_fingerprint(source, *, added_replay_checks=False, sglang_elementwise=False, attention_two=False, mla_checks=False, gr_checks=False, state_checks=False, flat_checks=False, router_checks=False, combine_checks=False, gdn_checks=False, unified_checks=False, recurrent_checks=False, prepared_two=False):
     tree=ast.parse(source)
+    if prepared_two:
+        tree = _RemovePreparedTwoChecks().visit(tree)
     if recurrent_checks:
         tree = _RemoveRecurrentChecks().visit(tree)
     if unified_checks:
@@ -604,7 +606,7 @@ def _protected_triton_fingerprint(source, *, added_replay_checks=False, sglang_e
         tree = _RemoveTritonQuantChecks().visit(tree)
         tree = _RemoveMqaChecks().visit(tree)
         tree = _RemoveElementwiseChecks().visit(tree)
-    excluded={"_checked_recurrent_output", "_compare_recurrent_output", "_recurrent_replay_validator", "_require_unused_state", "_checked_unified_output", "_compare_unified_output", "_unified_replay_validator", "_checked_gdn_output", "_compare_gdn_output", "_gdn_replay_validator", "_checked_combine_output", "_compare_combine_output", "_combine_replay_validator", "_check_output_buffer", "_checked_router_output", "_compare_router_output", "_router_replay_validator", "_checked_flat_output", "_compare_flat_output", "_flat_replay_validator", "_checked_state_output", "_compare_state_output", "_state_replay_validator", "_checked_gr_output", "_compare_gr_output", "_gr_replay_validator", "_checked_mla_output", "_compare_mla_output", "_mla_replay_validator", "_checked_attention_output", "_compare_attention_output", "_attention_replay_validator", "_checked_pair_output", "_compare_routing_pair", "_pair_replay_validator", "_checked_scaled_gemm_output", "_scaled_gemm_replay_validator", "_checked_sglang_output", "_compare_sglang_output", "_sglang_replay_validator", "_checked_elementwise_output","_elementwise_replay_validator","_checked_mqa_output","_compare_mqa_output","_verify_mqa_timed","_checked_mx_pair","_mx_reference","_compare_mx_pair","_verify_quant_timed","_checked_quant_output","_compare_token_outputs","_batched_replay_validator","_load_source","load_module","run_compile","_prepare_kernel","_make_prepared_fused_moe_runner",
+    excluded={"_checked_mrope_output", "_compare_mrope_output", "_reference_glm", "_check_glm_axis_map", "_mrope_replay_validator", "_checked_lightning_output", "_lightning_gate", "_compare_lightning_output", "_check_lightning_slots", "_lightning_replay_validator", "_checked_recurrent_output", "_compare_recurrent_output", "_recurrent_replay_validator", "_require_unused_state", "_checked_unified_output", "_compare_unified_output", "_unified_replay_validator", "_checked_gdn_output", "_compare_gdn_output", "_gdn_replay_validator", "_checked_combine_output", "_compare_combine_output", "_combine_replay_validator", "_check_output_buffer", "_checked_router_output", "_compare_router_output", "_router_replay_validator", "_checked_flat_output", "_compare_flat_output", "_flat_replay_validator", "_checked_state_output", "_compare_state_output", "_state_replay_validator", "_checked_gr_output", "_compare_gr_output", "_gr_replay_validator", "_checked_mla_output", "_compare_mla_output", "_mla_replay_validator", "_checked_attention_output", "_compare_attention_output", "_attention_replay_validator", "_checked_pair_output", "_compare_routing_pair", "_pair_replay_validator", "_checked_scaled_gemm_output", "_scaled_gemm_replay_validator", "_checked_sglang_output", "_compare_sglang_output", "_sglang_replay_validator", "_checked_elementwise_output","_elementwise_replay_validator","_checked_mqa_output","_compare_mqa_output","_verify_mqa_timed","_checked_mx_pair","_mx_reference","_compare_mx_pair","_verify_quant_timed","_checked_quant_output","_compare_token_outputs","_batched_replay_validator","_load_source","load_module","run_compile","_prepare_kernel","_make_prepared_fused_moe_runner",
               "_reference_softmax","_reference_gemm","_reference_layernorm","_reference_quant"}
     nodes=[]
     for n in tree.body:
@@ -618,7 +620,7 @@ def _protected_triton_fingerprint(source, *, added_replay_checks=False, sglang_e
 def test_triton_preserves_original_harness_semantics_inputs_and_timing():
     for name,expected in TRITON_PROTECTED_SHA256.items():
         task=ROOT/"tasks/triton2flydsl"/name
-        assert _protected_triton_fingerprint((task/"test_kernel_harness.py").read_text(), added_replay_checks=name in {"aiter/fused_add_rmsnorm", "aiter/moe_routing_sigmoid_top1", "aiter/gemm_a8w8", "aiter/gemm_a16w8_blockscale", "aiter/gemm_a8w8_blockscale", "aiter/gemm_afp8wfp8", "aiter/ff_a16w16", "aiter/fused_silu_mul", "aiter/fused_clamp_act_mul", "aiter/rmsnorm", "aiter/fp8_mqa_logits", "aiter/dynamic_mxfp8_quant", "aiter/dynamic_quant_fp8", "aiter/batched_gemm_a8w8", "aiter/batched_gemm_bf16", "aiter/gemm_a16w16", "aiter/softmax", "aiter/layernorm", "sglang/decode_attention", "sglang/sglang_fused_moe"}, sglang_elementwise=name in {"sglang/gdn_l2norm_fwd", "sglang/fused_norm_gate", "sglang/chunk_local_cumsum"}, attention_two=name in {"aiter/mha", "sglang/prefill_attention"}, mla_checks=name == "aiter/mla", gr_checks=name.startswith("generative_recommenders/"), state_checks=name in {"sglang/merge_state", "sglang/ssd_chunk_state", "sglang/fused_dual_residual_rmsnorm"}, flat_checks=name in {"aiter/rope_fwd", "aiter/moe_fused_gemm"}, router_checks=name in {"sglang/fused_gdn_gating", "sglang/fused_moe_router"}, combine_checks=name in {"sglang/experts_combine", "sglang/gdn_chunk_fwd_o"}, gdn_checks=name in {"sglang/chunk_scaled_dot_kkt_fwd", "sglang/wy_fast"}, unified_checks=name in {"aiter/unified_attention", "aiter/unified_attention_sparse_mla"}, recurrent_checks=name in {"sglang/gdn_chunk_fwd_h", "sglang/gdn_fused_recurrent_decode"})==expected,name
+        assert _protected_triton_fingerprint((task/"test_kernel_harness.py").read_text(), added_replay_checks=name in {"aiter/fused_add_rmsnorm", "aiter/moe_routing_sigmoid_top1", "aiter/gemm_a8w8", "aiter/gemm_a16w8_blockscale", "aiter/gemm_a8w8_blockscale", "aiter/gemm_afp8wfp8", "aiter/ff_a16w16", "aiter/fused_silu_mul", "aiter/fused_clamp_act_mul", "aiter/rmsnorm", "aiter/fp8_mqa_logits", "aiter/dynamic_mxfp8_quant", "aiter/dynamic_quant_fp8", "aiter/batched_gemm_a8w8", "aiter/batched_gemm_bf16", "aiter/gemm_a16w16", "aiter/softmax", "aiter/layernorm", "sglang/decode_attention", "sglang/sglang_fused_moe"}, sglang_elementwise=name in {"sglang/gdn_l2norm_fwd", "sglang/fused_norm_gate", "sglang/chunk_local_cumsum"}, attention_two=name in {"aiter/mha", "sglang/prefill_attention"}, mla_checks=name == "aiter/mla", gr_checks=name.startswith("generative_recommenders/"), state_checks=name in {"sglang/merge_state", "sglang/ssd_chunk_state", "sglang/fused_dual_residual_rmsnorm"}, flat_checks=name in {"aiter/rope_fwd", "aiter/moe_fused_gemm"}, router_checks=name in {"sglang/fused_gdn_gating", "sglang/fused_moe_router"}, combine_checks=name in {"sglang/experts_combine", "sglang/gdn_chunk_fwd_o"}, gdn_checks=name in {"sglang/chunk_scaled_dot_kkt_fwd", "sglang/wy_fast"}, unified_checks=name in {"aiter/unified_attention", "aiter/unified_attention_sparse_mla"}, recurrent_checks=name in {"sglang/gdn_chunk_fwd_h", "sglang/gdn_fused_recurrent_decode"}, prepared_two=name in {"sglang/triton_mrope_fused", "sglang/lightning_attn"})==expected,name
         cfg=yaml.safe_load((task/"config.yaml").read_text())
         assert cfg["baseline"]["kind"]=="initial_candidate"
         assert cfg["baseline"]["language"]=="triton"
@@ -5942,4 +5944,169 @@ def test_gdn_recurrence_two_original_math_rounding_inputs_shapes_gates_prepare_a
         for fn in ast.parse((task/'test_kernel_harness.py').read_text()).body:
             if isinstance(fn,ast.FunctionDef) and fn.name in functions:
                 normalized=_RemoveRecurrentChecks().visit(fn)
+                assert hashlib.sha256(ast.dump(normalized,include_attributes=False).encode()).hexdigest()==functions[fn.name],(name,fn.name)
+
+
+_PREPARED_TWO=['triton_mrope_fused','lightning_attn']
+
+
+class _RemovePreparedTwoChecks(_RemoveSglangElementwiseChecks):
+    def visit_Expr(self,node):
+        if isinstance(node.value,ast.Call) and getattr(node.value.func,'id',None) in {'_checked_mrope_output','_checked_lightning_output','_check_glm_axis_map','_check_lightning_slots'}:return None
+        return super().visit_Expr(node)
+    def visit_FunctionDef(self,node):
+        if node.name=='fn':
+            node.body=[ast.Expr(n.value) if isinstance(n,ast.Assign) and getattr(n.targets[0],'id',None)=='output' else n for n in node.body if not isinstance(n,ast.Return)]
+        return self.generic_visit(node)
+
+
+def _prepared_two_namespace(name):
+    task=ROOT/'tasks/triton2flydsl/sglang'/name;checks=module(task/'scripts/replay_checks.py')
+    ns=dict(MAX_POS=8,_DTYPES={'bf16':'bfloat16','fp16':'float16','fp32':'float32'},WARMUP_ITERATIONS=10,BENCHMARK_ITERATIONS=100,
+            require_tensor_contract=checks.require_tensor_contract,require_unchanged=checks.require_unchanged,verify_timed_pair=checks.verify_timed_pair)
+    names={n.name for n in ast.parse((task/'test_kernel_harness.py').read_text()).body if isinstance(n,ast.FunctionDef)}
+    _harness_functions(task,names,ns)
+    return task,checks,ns
+
+
+@pytest.mark.parametrize('name',_PREPARED_TWO)
+@pytest.mark.parametrize('variant',[0,1,2])
+@pytest.mark.parametrize('phase,behavior',[(phase,behavior) for phase in ['correctness','performance'] for behavior in ['correct','wrong','state_wrong','shape','dtype','nan','readonly_modified','measured_wrong','replay_wrong','cached','missing_prepare'] if phase=='performance' or behavior not in {'measured_wrong','replay_wrong','cached','missing_prepare'}])
+def test_prepared_two_real_output_state_contracts_original_gate_and_timed_replay(name,variant,phase,behavior,monkeypatch):
+    import torch
+    import types
+    task,checks,ns=_prepared_two_namespace(name);rope=name=='triton_mrope_fused';torch.manual_seed(5)
+    if rope:
+        cfg=dict(nt=2,n_qh=2,n_kh=1,hd=8,rd=6,section=[1,1,1],interleaved=variant==1,neox=variant!=2)
+        values=ns['make_inputs'](cfg,'cpu');q,k,cache,pos,axes=values
+        # Use distinct positions with a deterministic nonzero rotation.
+        pos[:]=torch.tensor([[1,2],[3,4],[5,6]])
+        pristine=values;cached=ns['reference'](q,k,cache,pos,cfg);entry='triton_mrope_fused'
+    else:
+        cfg=dict(B=1 if variant==0 else 3,H=2,D=4,block=2,dtype=['bf16','fp16','fp32'][variant])
+        values=ns['make_inputs'](cfg,'cpu');q,k,v,initial,slope,slots=values
+        pristine=values;cached=ns['reference'](*values,cfg);entry='linear_decode_forward_triton'
+    originals=tuple(v.clone() for v in pristine);state={'phase':'setup'}
+    def compute(*args,**kwargs):
+        if rope:
+            qc,kc,ca,po,section,hd,rd,il,glm,neox,ax=args
+            conf=dict(cfg,interleaved=il,neox=neox)
+            output=list(ns['_reference_glm'](qc,kc,ca,po,ax,conf) if glm else ns['reference'](qc,kc,ca,po,conf))
+            target=(qc,kc);ro=ca
+        else:
+            qq,kk,vv,working,sl,idx=args
+            output=list(ns['reference'](qq,kk,vv,working,sl,idx,cfg));ro=sl
+        active=phase=='correctness' or state['phase']=='measured'
+        if active:
+            if behavior=='wrong':output[0].fill_(100)
+            if behavior=='state_wrong':output[1].fill_(100)
+            if behavior=='shape':output[0]=output[0].reshape(-1)
+            if behavior=='dtype':output[0]=output[0].double()
+            if behavior=='nan':output[1].fill_(float('nan'))
+            if behavior=='readonly_modified':ro.add_(1)
+        if behavior==state['phase']+'_wrong':output[0].fill_(100)
+        if state['phase']=='replay' and behavior=='cached':output=[v.clone() for v in cached]
+        if rope:
+            for dst,src in zip(target,output):
+                if dst.shape!=src.shape:dst.resize_(src.shape)
+                if dst.dtype!=src.dtype:dst.data=src.clone()
+                else:dst.copy_(src)
+        else:
+            working.copy_(output[1]);return output[0]
+    class Collector:bound=False
+    calls=[];prep=[]
+    def benchmark(fn,*,warmup,repetition,prepare_fn,timed_run):
+        calls.append((warmup,repetition));prepare_fn();prep.append('measured');state['phase']='measured';timed_run.outputs=fn();timed_run.bound=True;state['phase']='setup'
+        def replay():
+            if behavior!='missing_prepare':prepare_fn();prep.append('replay')
+            state['phase']='replay'
+            try:return fn()
+            finally:state['phase']='setup'
+        timed_run.rerun=replay
+        return .1,{'benchmark_method':'cuda_graph','benchmark_timed_run_kind':'captured_graph'}
+    monkeypatch.setattr(torch.cuda,'synchronize',lambda:None)
+    ns.update(TEST_SHAPES=[cfg],make_inputs=lambda *args:values,load_module=lambda:types.SimpleNamespace(**{entry:compute}),
+              _retry_oom=lambda fn:fn(),TimedRun=Collector,benchmark_cuda_graph_or_events=benchmark)
+    result=ns['run_'+phase]()
+    if phase=='correctness':assert result[0]==(behavior=='correct'),result
+    else:
+        assert calls==[(0,100)] and len(result)==1
+        if behavior=='correct':
+            assert result[0]['timed_output_correctness']==result[0]['replay_correctness']=='PASS'
+            assert prep==['measured','replay']
+        else:assert result[0]['execution_time_ms']==-1,result
+    protected=pristine if rope or phase=='performance' else (q,k,v,slope,slots)
+    before=originals if rope or phase=='performance' else tuple(originals[i] for i in [0,1,2,4,5])
+    if behavior!='readonly_modified':checks.require_unchanged(protected,before)
+
+
+@pytest.mark.parametrize('neox',[False,True])
+@pytest.mark.parametrize('behavior',['correct','ignore_glm','ignore_axes','modify_axes'])
+def test_mrope_glm_actual_control_catches_ignored_modes_and_protects_padded_axis_storage(neox,behavior):
+    import torch
+    import types
+    task,checks,ns=_prepared_two_namespace('triton_mrope_fused')
+    cfg=dict(nt=1,n_qh=1,n_kh=1,hd=8,rd=6,section=[1,1,1],interleaved=False,neox=neox)
+    q=torch.tensor([[1,2,3,4,5,6,9,10]],dtype=torch.bfloat16);k=q.clone()
+    ca=torch.tensor([[0,0,0,1,1,1],[1,1,1,0,0,0],[-1,-1,-1,0,0,0]],dtype=torch.float32);pos=torch.tensor([[0],[1],[2]])
+    def compute(qc,kc,cache,positions,section,hd,rd,il,glm,neox,axes):
+        assert il and glm and axes.tolist()==[2,0,1,3]
+        conf=dict(cfg,interleaved=True)
+        out=ns['_reference_glm'](qc,kc,cache,positions,axes,conf)
+        if behavior=='ignore_glm':out=ns['reference'](qc,kc,cache,positions,conf)
+        if behavior=='ignore_axes':out=ns['_reference_glm'](qc,kc,cache,positions,torch.zeros_like(axes),conf)
+        qc.copy_(out[0]);kc.copy_(out[1])
+        if behavior=='modify_axes':axes.zero_()
+    action=lambda:ns['_check_glm_axis_map'](types.SimpleNamespace(triton_mrope_fused=compute),q,k,ca,pos,cfg)
+    if behavior=='correct':action()
+    else:
+        with pytest.raises(AssertionError):action()
+
+
+@pytest.mark.parametrize('batch',[1,3])
+@pytest.mark.parametrize('behavior',['correct','ignore_slots','write_untouched','nan_padding_only'])
+def test_lightning_padding_leaves_output_undefined_but_unselected_state_exact(batch,behavior):
+    import torch
+    import types
+    task,checks,ns=_prepared_two_namespace('lightning_attn');cfg=dict(B=batch,H=1,D=2,block=2,dtype='bf16')
+    q,k,v,initial,slope,slots=ns['make_inputs'](cfg,'cpu')
+    def compute(qq,kk,vv,state,sl,idx,**kw):
+        chosen=torch.arange(batch) if behavior=='ignore_slots' else idx
+        out,updated=ns['reference'](qq,kk,vv,state,sl,chosen,cfg)
+        if behavior=='write_untouched':updated[0].add_(1)
+        if behavior=='nan_padding_only':out[idx<0]=float('nan')
+        state.copy_(updated);return out
+    action=lambda:ns['_check_lightning_slots'](types.SimpleNamespace(linear_decode_forward_triton=compute),q,k,v,initial,slope,cfg)
+    if behavior in {'correct','nan_padding_only'}:action()
+    else:
+        with pytest.raises(AssertionError):action()
+
+
+@pytest.mark.parametrize('name',_PREPARED_TWO)
+def test_prepared_two_real_controls_reject_bad_outputs_and_reviewed_helpers_match(name):
+    task,checks,ns=_prepared_two_namespace(name);result=invoke(task,'validate-task')
+    assert result.passed,result.reason
+    assert len(result.cases)==(8 if name=='triton_mrope_fused' else 6)
+    assert len(result.metadata['reference_controls'])>=6
+    base=ROOT/'tasks/triton2flydsl/sglang/merge_state'
+    for rel in ['scripts/candidate_checks.py','scripts/replay_checks.py','task_runtime.py']:
+        assert (task/rel).read_bytes()==(base/rel).read_bytes()
+
+
+def test_lightning_preserves_disjunctive_numeric_rule_with_explicit_finiteness():
+    import torch
+    task,checks,ns=_prepared_two_namespace('lightning_attn')
+    expected=torch.ones(2000);actual=expected.clone();actual[0]=1000
+    assert ns['_lightning_gate'](actual,expected) # 1999/2000 pass, original OR rule.
+    actual[:3]=1000
+    assert not ns['_lightning_gate'](actual,expected)
+
+
+def test_prepared_two_original_reference_inputs_cases_numerics_and_prepare_timing_unchanged():
+    hashes={'triton_mrope_fused': {'load_module': '72c199ad26151efd47533f227891435dc000d2abba61c61dee07935b478c808d', '_is_oom': '9b550282f3f34c68d3d9934df68176f5cf533a34ff50825c814de4dc90f3294e', '_retry_oom': '5b0f6dc7bbb2b6e687ae64a186e2c883d9c7db2bbdc01ef6764de12f4e8c1dbc', 'make_inputs': '4b9135853c7a10ec765d34bf776b25b4a3ae8e19233173ee1828af385cc8e644', '_section_masks': '545f7f3dfd3fbb471a5f3c5708cbd3df9551e10edd12183f101e8642bd5e2780', '_apply_rope': 'c54a454b9e9c1feb2be61a52639e2a0ec93fe9e9e54a1ee341edcf5d4ea71ff2', 'reference': '045a6d88ef996ff9a16505be2110e193b4732e5d617ebcfefb32eefde4cbbac2', '_shape_of': '183cf43272b4cafe530f8438351a69cfdbd86aadd5ae9cc1a30d0dba790946e3', 'run_compile': '56f4abd81cf08a68bb1c4c10e571a6d9cad514452e14523ca314cdb6bebcebf2', 'run_correctness': 'd549c49e01eb2ad8aea4a1e701e8c77e65bfb5fe1f122e65b9c9042aa7d6cb83', 'run_performance': '7a7679c46f415aba88c8e91c13790198c9e2ae4975a73293c7adde03d2e3fc91', 'main': '4aecc33264619974fff19fbdc1b9fcba660fb2f7d6c5ea0e6e0802160c62551e'}, 'lightning_attn': {'load_module': 'ba094f8ea6921953561f0c3aa650ad06748e27c02ac156644dcf14c735d93e6f', '_is_oom': '9b550282f3f34c68d3d9934df68176f5cf533a34ff50825c814de4dc90f3294e', '_retry_oom': '5b0f6dc7bbb2b6e687ae64a186e2c883d9c7db2bbdc01ef6764de12f4e8c1dbc', 'make_inputs': '488a8b2e733e925a859b97adb6660ade2f453dad9bf6a1cc911aa25c66146e37', 'reference': '4dc1622e5b5a7f65c8d5550b605d692a25dd9e772e5ab4d72ec6d4ee024d03b7', '_shape_of': '0e69d019394bb3662469eda4db27e54eaddfd2a72921495b441937f19cc16947', 'run_compile': 'dd90f2e6abf7cbf6cfaf20de66a835209c88e514e25072ebe607fcd8f2389488', 'run_correctness': '57bbf7e8b4d1504483ae3264f8b76000a72572626918ba1061451ae818b2bdc3', 'run_performance': '61f63c0b8a5c12dbac35e9bce88156b9c2a0e3e8d20ed0154b68032529a638b6', 'main': '30a37cc2d481124e28d610ae8c9d21191535d60bda4e65dcff55a3697d78ab0f'}}
+    for name,functions in hashes.items():
+        task=ROOT/'tasks/triton2flydsl/sglang'/name
+        for fn in ast.parse((task/'test_kernel_harness.py').read_text()).body:
+            if isinstance(fn,ast.FunctionDef) and fn.name in functions:
+                normalized=_RemovePreparedTwoChecks().visit(fn)
                 assert hashlib.sha256(ast.dump(normalized,include_attributes=False).encode()).hexdigest()==functions[fn.name],(name,fn.name)

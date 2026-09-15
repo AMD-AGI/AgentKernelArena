@@ -21,7 +21,8 @@ import json
 import time
 import argparse
 import importlib.util
-from _aka_benchmark import benchmark_cuda_graph_or_events
+from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
+from scripts.replay_checks import require_tensor_contract, require_unchanged, verify_timed_pair
 
 TASK_DIR = os.path.dirname(os.path.abspath(__file__))
 os.chdir(TASK_DIR)
@@ -29,6 +30,7 @@ os.chdir(TASK_DIR)
 TASK_NAME = "triton2flydsl/sglang/lightning_attn"
 from task_runtime import candidate_relative_path
 SOURCE_FILE = candidate_relative_path()
+ENTRY = 'linear_decode_forward_triton'
 
 # [B, H, D]; D % BLOCK_SIZE == 0. Real MiniMax linear-attn head_dim is 96/128.
 TEST_SHAPES = [
@@ -129,6 +131,78 @@ def run_compile():
         return False, str(e)
 
 
+def _checked_lightning_output(actual, layout, slots, cfg):
+    import torch
+    if not isinstance(actual, (tuple, list)) or len(actual) != 2:
+        raise AssertionError("Missing lightning output/state")
+    q, state = layout
+    out, updated = actual
+    expected_out = q.reshape(cfg["B"], cfg["H"] * cfg["D"])
+    require_tensor_contract(out, expected_out)
+    require_tensor_contract(updated, state, dtype=torch.float32)
+    # Padded output rows are undefined by the original public operator.
+    # All original timed cases are unpadded, and must be finite throughout.
+    if not bool(torch.isfinite(out[slots >= 0]).all() and torch.isfinite(updated).all()):
+        raise AssertionError("Non-finite lightning output/state")
+
+
+def _lightning_gate(out, ref):
+    import torch
+    diff = (out.float() - ref.float()).abs().max().item()
+    denom = ref.float().abs().max().item()
+    rel = diff / denom if denom > 0 else diff
+    frac = torch.isclose(out.float(), ref.float(),
+                         atol=1e-2, rtol=1e-2).float().mean().item()
+    return frac >= 0.999 or rel <= 1e-2
+
+
+def _compare_lightning_output(actual, expected, q, slots, cfg):
+    import torch
+    _checked_lightning_output(actual, (q, expected[1]), slots, cfg)
+    valid = slots >= 0
+    selected = slots[valid].long()
+    untouched = torch.ones(expected[1].shape[0], dtype=torch.bool, device=q.device)
+    untouched[selected] = False
+    require_unchanged((actual[1][untouched],), (expected[1][untouched],))
+    if bool(valid.any()):
+        for out, ref in [(actual[0][valid], expected[0][valid]), (actual[1][selected], expected[1][selected])]:
+            if not bool(torch.isfinite(ref).all()) or not _lightning_gate(out, ref):
+                raise AssertionError("Numerical mismatch: original lightning output/state gate")
+
+
+def _check_lightning_slots(mod, q, k, v, initial, slope, cfg):
+    import torch
+    # Additional semantic control, same original inputs/shapes; timed identities
+    # remain unchanged. Unique active slots avoid unspecified concurrent writes.
+    slots = torch.arange(cfg["B"], device=q.device, dtype=torch.int32).roll(1)
+    slots[-1] = -1
+    inputs = (q, k, v, initial, slope, slots)
+    originals = tuple(v.clone() for v in inputs)
+    expected = reference(q, k, v, initial, slope, slots, cfg)
+    working = initial.clone()
+    out = mod.linear_decode_forward_triton(q, k, v, working, slope, slots, BLOCK_SIZE=cfg["block"])
+    require_unchanged(inputs, originals)
+    _compare_lightning_output((out, working), expected, q, slots, cfg)
+
+
+def _lightning_replay_validator(q, k, v, initial, slope, slots, cfg):
+    inputs = (q, k, v, initial, slope, slots)
+    originals = tuple(v.clone() for v in inputs)
+    def oracle():
+        return reference(q, k, v, initial, slope, slots, cfg)
+    expected = oracle()
+    def perturb():
+        v.neg_()
+        initial.neg_()
+    def compare(actual, expected):
+        _compare_lightning_output(actual, expected, q, slots, cfg)
+    def validate(timed):
+        return verify_timed_pair(timed, inputs=inputs, originals=originals,
+                                 expected=expected, perturb=perturb,
+                                 reference=oracle, compare=compare)
+    return validate
+
+
 def run_correctness():
     import torch
     try:
@@ -154,15 +228,20 @@ def run_correctness():
         try:
             torch.manual_seed(42 + i)
             q, k, v, kv_caches, slope_rate, slot_idx = make_inputs(cfg, "cuda")
+            protected_inputs = (q, k, v, slope_rate, slot_idx)
+            originals = tuple(v.clone() for v in protected_inputs)
             kv_clone = kv_caches.clone()
             out = _retry_oom(lambda: mod.linear_decode_forward_triton(
                 q, k, v, kv_caches, slope_rate, slot_idx, BLOCK_SIZE=cfg["block"]))
             torch.cuda.synchronize()
+            require_unchanged(protected_inputs, originals)
+            _checked_lightning_output((out, kv_caches), (q, kv_clone), slot_idx, cfg)
             ref_out, ref_kv = reference(q, k, v, kv_clone, slope_rate, slot_idx, cfg)
             finite = bool(torch.isfinite(out).all().item())
             odiff, orel, ofrac, ook = _gate(out, ref_out)
             kvdiff, kvrel, kvfrac, kvok = _gate(kv_caches, ref_kv)
             passed = finite and ook and kvok
+            _check_lightning_slots(mod, q, k, v, kv_clone, slope_rate, cfg)
             details.append({"shape_id": i + 1, "shape": shape, "dtype": cfg["dtype"],
                             "out_diff": odiff, "out_rel": orel, "kv_diff": kvdiff,
                             "kv_rel": kvrel, "passed": passed})
@@ -190,13 +269,15 @@ def run_performance():
             torch.manual_seed(42 + ti)
             q, k, v, kv_caches, slope_rate, slot_idx = make_inputs(cfg, "cuda")
             kvc = kv_caches.clone()
+            replay_validate = _lightning_replay_validator(q, k, v, kv_caches, slope_rate, slot_idx, cfg)
 
             def prepare_fn():
                 kvc.copy_(kv_caches)
 
             def fn():
-                mod.linear_decode_forward_triton(
+                output = mod.linear_decode_forward_triton(
                     q, k, v, kvc, slope_rate, slot_idx, BLOCK_SIZE=cfg["block"])
+                return output, kvc
 
             prepare_fn()
             _retry_oom(fn)
@@ -204,19 +285,21 @@ def run_performance():
                 prepare_fn()
                 fn()
             torch.cuda.synchronize()
+            timed = TimedRun()
             elapsed_ms, bench_meta = benchmark_cuda_graph_or_events(
                 fn, warmup=0, repetition=BENCHMARK_ITERATIONS,
-                prepare_fn=prepare_fn,
+                prepare_fn=prepare_fn, timed_run=timed,
             )
+            bench_meta.update(replay_validate(timed))
             test_cases.append({"test_case_id": f"perf{ti+1}",
                                "execution_time_ms": elapsed_ms,
                                **bench_meta,
                                "params": params})
-        except Exception:
+        except Exception as error:
             test_cases.append({"test_case_id": f"perf{ti+1}",
                                "execution_time_ms": -1.0,
                                "benchmark_method": "benchmark_failed",
-                               "benchmark_fallback_reason": "performance case failed before timing completed",
+                               "benchmark_fallback_reason": "performance case failed: " + str(error),
                                "params": params})
     return test_cases
 

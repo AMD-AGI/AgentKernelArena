@@ -52,3 +52,22 @@ plus any operator dependencies stated by the source. Arena must materialize the
 canonical `_aka_benchmark.py` helper before GPU execution. CPU controls/protocol
 checks do not qualify these GPU kernels. Existing legacy reports are historical;
 the parent integration schedules new GPU validation.
+
+
+All six original lightning-attention cases and the original finite-value gate
+remain for output and updated FP32 state: normalized maximum error<=0.01 OR
+at least99.9% isclose(atol=0.01,rtol=0.01). This disjunction is intentional here;
+it is not an all-elements allclose guarantee. Non-finite valid outputs or state
+always fail. Output shape/dtype/device and FP32 state storage are checked.
+Q/K/V, slopes and slot indices are read-only. Additional correctness invocations
+use nonidentity unique slots and a -1 padding entry with the original inputs.
+Padded output rows are undefined by this interface; untouched state slots must
+remain byte-identical. No ordering is promised for repeated active slots.
+Original identity-slot cases remain the only timed workload. The collector
+exposes the actual measured output and mutable cache. Replay negates V and the
+pristine cache (Q/K and slopes unchanged), so both expected results negate.
+The original prepare_fn restores the requested cache outside the timed window.
+
+The original seed42+i, ten external warmups,100samples and state preparation
+are unchanged for both roles. No separate untimed operator call substitutes for
+the measured result. Final FlyDSL calls are audited separately from oracle work.
