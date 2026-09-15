@@ -30,7 +30,9 @@ invalid timing fail; commands emit `arena-eval-v1`, never final Arena score repo
 Canonical benchmark helpers must be materialized by Arena; do not edit their generated regions.
 
 The runner retains all destination buffers from the measured graph and compares
-every byte with its corresponding source. After timing it changes every source,
+every byte against a source snapshot saved before candidate execution. Correctness,
+timed execution and replay also require that caller-owned source buffers remain
+unchanged. After timing it changes every source, saves fresh reference copies,
 clears the destinations and verifies the exact same graph replay. Pointer tables,
 variable copy lengths, seeds, allocations, warmups and sample counts stay unchanged
 for the original five timed workloads; the replay checks run outside device timing.

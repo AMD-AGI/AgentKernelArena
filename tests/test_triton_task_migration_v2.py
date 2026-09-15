@@ -162,20 +162,28 @@ def test_staged_write_adapter_installs_checks(monkeypatch):
     assert adapter.load_harness().run_performance.__module__ == '_staged_write_checks'
 
 
-@pytest.mark.parametrize('mode', ['correct','incorrect_timed','stale','no_write','omit_last','truncate_tail','wrong_source'])
+@pytest.mark.parametrize('mode', ['correct','incorrect_timed','stale','no_write','omit_last','truncate_tail','wrong_source',
+                                 'zero_source_and_dest_timed','zero_source_and_dest_replay',
+                                 'mutate_source_only_timed','mutate_source_only_replay'])
 def test_batch_memcpy_checks_every_timed_destination_and_replay(monkeypatch, mode):
     task = ROOT/'tasks/triton2triton/vllm/triton_batch_memcpy'
     checks = module_at(task/'_arena_checks.py',monkeypatch)
     harness = SimpleNamespace(_TimedRun=SimpleNamespace)
     sources = [torch.tensor([1,2,3],dtype=torch.uint8), torch.tensor([11,12,13,14,15],dtype=torch.uint8)]
+    initial_sources = [source.clone() for source in sources]
     destinations = [torch.zeros_like(value) for value in sources]
     def fn():
         for dst,src in zip(destinations,sources): dst.copy_(src)
     observed = []
     def benchmark(measured, *, timed_run, **kwargs):
         observed.append(kwargs)
+        for source, initial in zip(sources,initial_sources):
+            assert torch.equal(source,initial)
         outputs = measured(); cached = [value.clone() for value in outputs]
         if mode == 'incorrect_timed': outputs[-1].zero_()
+        if mode == 'zero_source_and_dest_timed':
+            sources[-1].zero_(); outputs[-1].zero_()
+        if mode == 'mutate_source_only_timed': sources[-1].zero_()
         def replay():
             for i,(out,src) in enumerate(zip(outputs,sources)):
                 if mode == 'no_write' or mode == 'omit_last' and i == len(outputs)-1: continue
@@ -183,12 +191,15 @@ def test_batch_memcpy_checks_every_timed_destination_and_replay(monkeypatch, mod
                 elif mode == 'truncate_tail': out[:-1].copy_(src[:-1])
                 elif mode == 'wrong_source': out.fill_(sources[1-i][0])
                 else: out.copy_(src)
+            if mode == 'zero_source_and_dest_replay':
+                sources[-1].zero_(); outputs[-1].zero_()
+            if mode == 'mutate_source_only_replay': sources[-1].zero_()
             return outputs
         timed_run.outputs = outputs; timed_run.rerun = replay
         return 0.25, {'benchmark_method':'cuda_graph'}
     if mode == 'correct':
         ms,metadata=checks.checked_benchmark(harness,benchmark,fn,sources,destinations,warmup=10,repetition=100)
-        assert ms==0.25 and metadata['perturbed_input_replay_checked']
+        assert ms==0.25 and metadata['perturbed_input_replay_checked'] and metadata['source_buffers_unchanged']
     else:
         with pytest.raises(AssertionError):
             checks.checked_benchmark(harness,benchmark,fn,sources,destinations,warmup=10,repetition=100)
@@ -204,7 +215,8 @@ def test_batch_memcpy_retains_original_inputs_and_restores_hooks(monkeypatch):
     calls=[]
     def make_inputs(*args,**kwargs): calls.append((args,kwargs));return sentinel
     benchmark=object()
-    h=SimpleNamespace(make_inputs=make_inputs,_benchmark_cuda_graph_or_events=benchmark)
+    h=SimpleNamespace(make_inputs=make_inputs,_benchmark_cuda_graph_or_events=benchmark,
+                      run_correctness=lambda **kwargs:(True,None))
     def run():
         assert h.make_inputs(4,8,device='cuda') is sentinel
         return h._benchmark_cuda_graph_or_events('protected-fn',warmup=10,repetition=100)
@@ -222,7 +234,44 @@ def test_batch_memcpy_retains_original_inputs_and_restores_hooks(monkeypatch):
 
 def test_batch_memcpy_adapter_installs_checks(monkeypatch):
     adapter=module_at(ROOT/'tasks/triton2triton/vllm/triton_batch_memcpy/_arena_eval.py',monkeypatch)
-    assert adapter.load_harness().run_performance.__module__=='_batch_memcpy_checks'
+    harness=adapter.load_harness()
+    assert harness.run_performance.__module__=='_batch_memcpy_checks'
+    assert harness.run_correctness.__module__=='_batch_memcpy_checks'
+
+
+@pytest.mark.parametrize('case_index', [None, 0, 4])
+@pytest.mark.parametrize('mode', ['correct','zero_source_and_dest','mutate_source_only','incorrect_output'])
+def test_batch_memcpy_original_correctness_uses_pristine_sources(monkeypatch, case_index, mode):
+    task=ROOT/'tasks/triton2triton/vllm/triton_batch_memcpy'
+    harness=module_at(task/'scripts/task_runner.py',monkeypatch)
+    checks=module_at(task/'_arena_checks.py',monkeypatch)
+    original_inputs=harness.make_inputs
+    current=[]
+    seen=[]
+    def make_inputs(batch,size,device):
+        assert device=='cuda'
+        inputs=original_inputs(batch,size,device='cpu')
+        current[:]=inputs[:2]
+        seen.append((batch,size))
+        return inputs
+    def candidate(src_ptrs,dst_ptrs,sizes):
+        sources,destinations=current
+        for source,destination in zip(sources,destinations): destination.copy_(source)
+        if mode=='zero_source_and_dest':
+            sources[-1].zero_(); destinations[-1].zero_()
+        elif mode=='mutate_source_only': sources[-1].zero_()
+        elif mode=='incorrect_output': destinations[-1].zero_()
+    monkeypatch.setattr(harness,'make_inputs',make_inputs)
+    monkeypatch.setattr(harness,'load_module',lambda:SimpleNamespace(batch_memcpy=candidate))
+    monkeypatch.setattr(torch.cuda,'synchronize',lambda:None)
+    checks.install(harness)
+    ok,error=harness.run_correctness(case_index=case_index)
+    assert ok is (mode=='correct')
+    if mode=='zero_source_and_dest': assert 'caller-owned source' in error
+    if mode=='correct' or mode=='zero_source_and_dest':
+        assert seen==[value for i,value in enumerate(harness.TEST_SHAPES)
+                      if case_index is None or case_index==i]
+    assert harness.make_inputs is make_inputs
 
 def test_rms_reference_has_independent_known_answers(monkeypatch):
     runner = ROOT/'tasks/triton2triton/vllm/triton_rms_norm/scripts/task_runner.py'
