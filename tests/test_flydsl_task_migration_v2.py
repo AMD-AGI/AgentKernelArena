@@ -527,6 +527,8 @@ def test_torch_numerical_gates_cases_and_models_preserved():
             fn = _RemoveStandardQuantChecks().visit(fn)
         if name == "rmsnorm2d_dynamicquant_kernel":
             fn = _RemoveRmsDynamicQuantChecks().visit(fn)
+        if name == "moe_2stage_generic_kernel":
+            fn = _RemoveGenericMoeChecks().visit(fn)
         if name in _QUANT_GEMM_CONTROL_NAMES:
             fn = _RemoveQuantGemmChecks().visit(fn)
         if name == "fused_add_rmsnorm_kernel":
@@ -6232,4 +6234,105 @@ def test_rms_dynamic_quant_original_model_case_seed_gate_and_sampling_preserved(
     for fn in ast.parse((task/'test_kernel_harness.py').read_text()).body:
         if isinstance(fn,ast.FunctionDef) and fn.name in hashes:
             normalized=_RemoveRmsDynamicQuantChecks().visit(fn)
+            assert hashlib.sha256(ast.dump(normalized,include_attributes=False).encode()).hexdigest()==hashes[fn.name],fn.name
+
+
+class _RemoveGenericMoeChecks(_RemoveAddedReplayChecks):
+    def visit_Expr(self,node):
+        if isinstance(node.value,ast.Call):
+            if getattr(node.value.func,'id',None)=='_checked_generic_output':return None
+            if getattr(node.value.func,'attr',None)=='update' and node.value.args and isinstance(node.value.args[0],ast.Call) and getattr(node.value.args[0].func,'id',None)=='validate':return None
+        return super().visit_Expr(node)
+    def visit_Assign(self,node):
+        if len(node.targets)==1 and getattr(node.targets[0],'id',None) in {'protected_inputs','routing_originals','validate'}:return None
+        return super().visit_Assign(node)
+
+
+@pytest.mark.parametrize('function,behavior',[(fn,bad) for fn in ['run_benchmark','arena_benchmark','run_correctness'] for bad in ['correct','wrong','shape','dtype','nonfinite','hidden_modified','weight_modified','route_modified','measured_wrong','replay_wrong','cached'] if fn!='run_correctness' or bad not in {'measured_wrong','replay_wrong','cached'}])
+@pytest.mark.parametrize('provided',[True,False])
+def test_generic_moe_actual_roles_input_protection_and_unchanged_prepared_replay(function,provided,behavior,monkeypatch,tmp_path):
+    import torch,types,math
+    task=ROOT/'tasks/torch2flydsl/moe_2stage_generic_kernel';real=module(task/'model.py');checks=module(task/'scripts/replay_checks.py');state={'phase':'setup'}
+    correctness=function=='run_correctness'
+    def build(mmod,shape):
+        torch.manual_seed(1)
+        model=real.Model(8,4,3,2).eval();hidden=torch.randn(2,8,dtype=torch.bfloat16)
+        state.update(model=model,cached=None)
+        return model,hidden
+    def compute(hidden,w1,w2,weights,ids,is_baseline):
+        model=state['model'];out=model.forward_with_routing(hidden,weights,ids)
+        if state['cached'] is None:state['cached']=out.clone()
+        if provided==is_baseline:
+            if correctness or state['phase']=='measured':
+                if behavior=='wrong':out.fill_(100)
+                if behavior=='shape':out=out.reshape(-1)
+                if behavior=='dtype':out=out.float()
+                if behavior=='nonfinite':out.fill_(float('nan'))
+                if behavior=='hidden_modified':hidden.add_(1)
+                if behavior=='weight_modified':w1.add_(1)
+                if behavior=='route_modified':weights.mul_(.5)
+            if behavior==state['phase']+'_wrong':out.fill_(100)
+            if state['phase']=='replay' and behavior=='cached':out=state['cached'].clone()
+        return out
+    def baseline(mmod,model,hidden,topk):
+        weights,ids=real.route_topk(model.gate(hidden),topk)
+        return compute(hidden,model.w1.detach(),model.w2.detach(),weights,ids,True)
+    def prepared(model,hidden,weights,ids):
+        return lambda:compute(hidden,model.w1.detach(),model.w2.detach(),weights,ids,True)
+    kmod=types.SimpleNamespace(flydsl_moe_2stage_generic=lambda *args:compute(*args,False))
+    class Collector:bound=False
+    calls=[]
+    def benchmark(fn,*,warmup,repetition,timed_run=None):
+        calls.append((warmup,repetition,timed_run is not None));state['phase']='measured'
+        out=fn();state['phase']='setup'
+        if timed_run is not None:
+            timed_run.outputs=out;timed_run.bound=True
+            def replay():
+                state['phase']='replay'
+                try:return fn()
+                finally:state['phase']='setup'
+            timed_run.rerun=replay
+        return .1,{'benchmark_method':'cuda_graph','benchmark_timed_run_kind':'captured_graph'}
+    ns=dict(_KERNEL_DIR=str(tmp_path),MODEL_FILE='model.py',KERNEL_FILE='kernel.py',KERNEL_ENTRY='flydsl_moe_2stage_generic',
+            SHAPES=[{'name':'controlled','tokens':2,'model_dim':8,'inter_dim':4,'experts':3,'topk':2}],TOL=.01,
+            _load_module=lambda directory,filename,alias:real if filename=='model.py' else None if provided else kmod,
+            _build_model=build,_aiter_op=baseline,_make_prepared_aiter_op=prepared,_retry=lambda fn,**kwargs:fn(),
+            TimedRun=Collector,benchmark_cuda_graph_or_events=benchmark,require_tensor_contract=checks.require_tensor_contract,
+            require_unchanged=checks.require_unchanged,verify_timed_run=checks.verify_timed_run,math=math,json=json,Path=Path)
+    _harness_functions(task,{function,'_norm_worst','_checked_generic_output','_compare_generic_output','_generic_replay_validator'},ns)
+    monkeypatch.setattr(torch.cuda,'synchronize',lambda:None);monkeypatch.setattr(torch.cuda,'empty_cache',lambda:None)
+    # Baseline routing is internal to its correctness call; the prepared timing
+    # and candidate calls expose explicit routing inputs and protect their bytes.
+    accepted=behavior=='correct' or (correctness and provided and behavior=='route_modified')
+    if accepted:
+        result=ns[function](verbose=False)
+        if not correctness:
+            if function=='run_benchmark':result=json.loads((tmp_path/'build/performance_report.json').read_text())
+            assert result[0]['timed_output_correctness']==result[0]['replay_correctness']=='PASS'
+            assert calls==[(0,100,True),(0,100,False)]
+    else:
+        with pytest.raises(AssertionError):ns[function](verbose=False)
+
+
+def test_generic_moe_real_controls_and_original_normalized_denominator():
+    import torch
+    task=ROOT/'tasks/torch2flydsl/moe_2stage_generic_kernel';result=invoke(task,'validate-task')
+    assert result.passed and len(result.cases)==2,result.reason
+    checks=module(task/'scripts/replay_checks.py');ns=dict(TOL=.01,require_tensor_contract=checks.require_tensor_contract)
+    _harness_functions(task,{'_norm_worst','_checked_generic_output','_compare_generic_output'},ns)
+    ref=torch.zeros(2,2,dtype=torch.bfloat16)
+    ns['_compare_generic_output'](ref+.009,ref)
+    with pytest.raises(AssertionError,match='Numerical'):ns['_compare_generic_output'](ref+.011,ref)
+    actual=ref.clone();actual[0,0]=float('nan')
+    with pytest.raises(AssertionError,match='Non-finite'):ns['_compare_generic_output'](actual,ref)
+    for rel in ['scripts/candidate_checks.py','scripts/replay_checks.py','task_runtime.py']:
+        assert (task/rel).read_bytes()==(ROOT/'tasks/torch2flydsl/rmsnorm2d_kernel'/rel).read_bytes()
+
+
+def test_generic_moe_original_math_cases_seed_preparation_and_timing_unchanged():
+    hashes={'_resolve_kernel_dir': 'ebfabcdd05c1a3f254b035e42b1783890c241f92613bda21ccb77fa064039f1a', '_load_module': 'caae8222257891caee15a695bfc7cff029ec363f792c4331f20ff92c86efb520', '_retry': '2c647a98efad5980933400f6a6091f76fc876e9f7e0b1488eff7bd9e8b0104e1', '_build_model': '9281e5efbec053c54f509ce05e3e5c92d09a444559d9eecaf9039b907275a9cb', '_make_prepared_aiter_op': 'a0047c80f53524844725f1144d7556f8cc508773988ecf1f502eba3859e06cc8', '_aiter_op': '0cfbb21956cf556b226ef93461ef6e3775f96cb18e7d8b80b93e6f72b9370a62', '_norm_worst': '30ce97d4508b520ddfe031026030fa4fe8375e82f199635f936cbf9fcd2f1014', 'run_correctness': 'f4f4cc46cd1ea3b9d8e41014bd403bf96b530ab5f7f8e8be7dd841ba8ef430f1', 'run_benchmark': '1b665ef9d07419dad83faa84a90fe070e909d95f926f3b897405f9e7fe60cadb', '_require_candidate_outputs': 'e5f69466d2ec4497fe192bf53ce8d7b034bb14cd59272fc7b1dea160a574e09e', 'arena_benchmark': '46ab8023d6667e35d3766cc6d7d5baac606084060995dd43278f0d52179e728a'}
+    task=ROOT/'tasks/torch2flydsl/moe_2stage_generic_kernel'
+    for fn in ast.parse((task/'test_kernel_harness.py').read_text()).body:
+        if isinstance(fn,ast.FunctionDef) and fn.name in hashes:
+            normalized=_RemoveGenericMoeChecks().visit(fn)
             assert hashlib.sha256(ast.dump(normalized,include_attributes=False).encode()).hexdigest()==hashes[fn.name],fn.name

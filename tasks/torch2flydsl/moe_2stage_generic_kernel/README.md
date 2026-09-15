@@ -50,3 +50,20 @@ The runtime image supplies ROCm, PyTorch, FlyDSL and required AITER operators. A
 must materialize the canonical `_aka_benchmark.py` helper. CPU controls do not
 establish GPU correctness or timing support. Historical validation files predate
 this migration; the parent integration schedules fresh GPU validation.
+
+
+Both original generic BF16 MoE cases remain with seed20260401, normalized
+maximum error<=0.01 and denominator1 only when the reference maximum is zero.
+Require a finite BF16 output with hidden.shape/device. Hidden activations, model
+parameters and explicit routing weights/IDs are read-only. The model's FP32
+GEMMs, BF16 activation intermediate, stable routing, and weighted combine are
+unchanged. AITER remains the provided timed baseline; the independent task-local
+model is the numerical reference and its separate diagnostic timing is retained.
+The primary measured operator consumes precomputed routing. Router computation,
+expert-plan construction and baseline weight shuffle stay outside timing; retain
+the original10warmups/100samples and graph policy for both roles. The collector
+exposes that actual primary output. After timing, negate hidden while keeping
+explicit routing fixed, recompute the same reference, poison the previous output,
+and replay the exact measured invocation under the unchanged numerical gate.
+Restore all inputs before the original reference timing. Candidate-only FlyDSL
+execution auditing is outside timing and cannot be satisfied by oracle launches.

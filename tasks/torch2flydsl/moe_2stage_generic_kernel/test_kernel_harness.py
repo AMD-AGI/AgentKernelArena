@@ -27,7 +27,8 @@ import os
 import sys
 import time
 from pathlib import Path
-from _aka_benchmark import benchmark_cuda_graph_or_events
+from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
+from scripts.replay_checks import require_tensor_contract, require_unchanged, verify_timed_run
 
 from task_runtime import candidate_relative_path
 KERNEL_FILE = candidate_relative_path()
@@ -150,6 +151,39 @@ def _norm_worst(ref, out):
     return worst, worst / denom
 
 
+def _checked_generic_output(actual, hidden):
+    import torch
+    require_tensor_contract(actual, hidden)
+    if not bool(torch.isfinite(actual).all()):
+        raise AssertionError("Non-finite generic MoE output")
+    return actual
+
+
+def _compare_generic_output(actual, expected):
+    _checked_generic_output(actual, expected)
+    _checked_generic_output(expected, expected)
+    if _norm_worst(expected, actual)[1] > TOL:
+        raise AssertionError("Numerical mismatch: original generic MoE normalized maximum gate")
+
+
+def _generic_replay_validator(model, hidden, weights, ids, expert_plan):
+    inputs = (hidden, *(p.detach() for p in model.parameters()), weights, ids)
+    originals = tuple(v.clone() for v in inputs)
+    def oracle():
+        return model.forward_with_routing(hidden, weights, ids, expert_plan)
+    expected = _checked_generic_output(oracle(), hidden)
+    require_unchanged(inputs, originals)
+    def perturb():
+        # Routing is already an explicit prepared input to the measured operator;
+        # keep it fixed while changing the activations supplied to both GEMMs.
+        hidden.neg_()
+    def validate(timed):
+        return verify_timed_run(timed, inputs=inputs, originals=originals,
+                                expected=expected, perturb=perturb,
+                                reference=oracle, compare=_compare_generic_output)
+    return validate
+
+
 def run_correctness(verbose=True):
     import torch
 
@@ -164,6 +198,8 @@ def run_correctness(verbose=True):
     for shape in SHAPES:
         try:
             model, hidden = _build_model(mmod, shape)
+            protected_inputs = (hidden, *(p.detach() for p in model.parameters()))
+            originals = tuple(v.clone() for v in protected_inputs)
             with torch.no_grad():
                 ref = model(hidden)
                 gt = _retry(
@@ -172,12 +208,16 @@ def run_correctness(verbose=True):
                 )
             torch.cuda.synchronize()
 
+            require_unchanged(protected_inputs, originals)
+            _checked_generic_output(ref, hidden)
+            _checked_generic_output(gt, hidden)
             worst, norm = _norm_worst(ref, gt)
             ok = norm <= TOL
             note = ""
             if has_kernel:
                 logits = model.gate(hidden)
                 topk_weights, topk_ids = mmod.route_topk(logits, shape["topk"])
+                routing_originals = (topk_weights.clone(), topk_ids.clone())
                 try:
                     out = _retry(
                         lambda: kmod.flydsl_moe_2stage_generic(
@@ -195,6 +235,9 @@ def run_correctness(verbose=True):
                     )
                 else:
                     torch.cuda.synchronize()
+                    require_unchanged(protected_inputs, originals)
+                    require_unchanged((topk_weights, topk_ids), routing_originals)
+                    _checked_generic_output(out, hidden)
                     _, knorm = _norm_worst(ref, out)
                     kok = knorm <= TOL
                     ok = ok and kok
@@ -262,6 +305,7 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
             logits = model.gate(hidden)
             topk_weights, topk_ids = mmod.route_topk(logits, topk)
             expert_plan = mmod.prepare_expert_plan(topk_ids, model.experts)
+            validate = _generic_replay_validator(model, hidden, topk_weights, topk_ids, expert_plan)
 
             if has_kernel:
                 def device_op():
@@ -279,10 +323,12 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
             for _ in range(warmup):
                 device_op()
             torch.cuda.synchronize()
+            timed = TimedRun()
             kernel_ms, kernel_bench_meta = benchmark_cuda_graph_or_events(
-                device_op, warmup=0, repetition=iters
+                device_op, warmup=0, repetition=iters, timed_run=timed
             )
 
+            kernel_bench_meta.update(validate(timed))
             ref_ms, ref_bench_meta = benchmark_cuda_graph_or_events(
                 lambda: model.forward_with_routing(
                     hidden, topk_weights, topk_ids, expert_plan
@@ -417,6 +463,7 @@ def arena_benchmark(warmup=10, iters=100, verbose=True):
             logits = model.gate(hidden)
             topk_weights, topk_ids = mmod.route_topk(logits, topk)
             expert_plan = mmod.prepare_expert_plan(topk_ids, model.experts)
+            validate = _generic_replay_validator(model, hidden, topk_weights, topk_ids, expert_plan)
 
             if has_kernel:
                 def device_op():
@@ -434,10 +481,12 @@ def arena_benchmark(warmup=10, iters=100, verbose=True):
             for _ in range(warmup):
                 device_op()
             torch.cuda.synchronize()
+            timed = TimedRun()
             kernel_ms, kernel_bench_meta = benchmark_cuda_graph_or_events(
-                device_op, warmup=0, repetition=iters
+                device_op, warmup=0, repetition=iters, timed_run=timed
             )
 
+            kernel_bench_meta.update(validate(timed))
             ref_ms, ref_bench_meta = benchmark_cuda_graph_or_events(
                 lambda: model.forward_with_routing(
                     hidden, topk_weights, topk_ids, expert_plan
