@@ -23,7 +23,8 @@ import math
 import os
 import sys
 from pathlib import Path
-from _aka_benchmark import benchmark_cuda_graph_or_events
+from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
+from scripts.replay_checks import require_unchanged, verify_timed_run, allclose_output
 
 from task_runtime import candidate_relative_path
 SOURCE_FILE = candidate_relative_path()
@@ -102,6 +103,28 @@ def run_compile():
     return True
 
 
+def _checked_elementwise_output(out, x):
+    import torch
+    if not isinstance(out, torch.Tensor) or out.shape != (*x.shape[:-1], x.shape[-1] // 2) or out.dtype != x.dtype or out.device != x.device:
+        raise AssertionError("Output shape/dtype/device violates the operator contract")
+
+
+def _elementwise_replay_validator(x):
+    inputs = (x,)
+    originals = tuple(v.clone() for v in inputs)
+    expected = _torch_silu_mul(x)
+    def perturb():
+        x[..., x.shape[-1] // 2:].neg_()
+    def reference():
+        return _torch_silu_mul(x)
+    def compare(actual, expected):
+        _checked_elementwise_output(actual, x)
+        allclose_output(actual, expected, atol=1e-2, rtol=1e-2)
+    def validate(timed):
+        return verify_timed_run(timed, inputs=inputs, originals=originals, expected=expected, perturb=perturb, reference=reference, compare=compare)
+    return validate
+
+
 def run_correctness(verbose=True):
     import torch
 
@@ -112,7 +135,11 @@ def run_correctness(verbose=True):
             tag = f"{shape['name']}_{dt}"
             try:
                 x = _make_inputs(shape["rows"], shape["last"], _torch_dtype(dt))
+                protected_inputs = (x,)
+                originals = tuple(v.clone() for v in protected_inputs)
                 y = mod.fused_silu_mul(x)
+                require_unchanged(protected_inputs, originals)
+                _checked_elementwise_output(y, x)
                 torch.cuda.synchronize()
                 ref = _torch_silu_mul(x)
                 finite = bool(torch.isfinite(y).all().item())
@@ -145,15 +172,18 @@ def run_benchmark(verbose=True):
     report, latencies = [], []
     for idx, shape in enumerate(TEST_SHAPES):
         x = _make_inputs(shape["rows"], shape["last"], _torch_dtype("bf16"))
+        replay_validate = _elementwise_replay_validator(x)
         fn = lambda: mod.fused_silu_mul(x)  # noqa: E731
         fn()
         torch.cuda.synchronize()
         for _ in range(WARMUP):
             fn()
         torch.cuda.synchronize()
+        timed = TimedRun()
         ms, bench_meta = benchmark_cuda_graph_or_events(
-            fn, warmup=0, repetition=ITERS
+            fn, warmup=0, repetition=ITERS, timed_run=timed
         )
+        bench_meta.update(replay_validate(timed))
         latencies.append(ms)
         # read 2*d + write d per row, bf16
         nbytes = shape["rows"] * (shape["last"] + shape["last"] // 2) * 2

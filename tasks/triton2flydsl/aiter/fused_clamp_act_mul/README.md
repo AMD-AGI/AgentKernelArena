@@ -52,3 +52,13 @@ plus any operator dependencies stated by the source. Arena must materialize the
 canonical `_aka_benchmark.py` helper before GPU execution. CPU controls/protocol
 checks do not qualify these GPU kernels. Existing legacy reports are historical;
 the parent integration schedules new GPU validation.
+
+
+All 60 original correctness cases remain (M/D, clamp limits 0/7, and no/broadcast/element weights). The four original benchmark cases use M=8/32, clamp 7 and no weights. Return BF16 half-width output. The original PyTorch SiLU, clamp/weight arithmetic and 0.01 atol/rtol remain; input and supplied weights are read-only.
+
+The frozen original Triton baseline is unchanged. Final candidate import/operator
+calls are audited for FlyDSL computation independently of the oracle and timing.
+Both roles retain 10 external warmups and 100 graph samples. Actual measured
+outputs and the same graph replay after changing input values must satisfy the
+original numerical gate and output contract. Inputs are restored and outputs
+poisoned for replay outside timing; capture failure is not an unchecked fallback.

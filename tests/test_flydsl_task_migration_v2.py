@@ -577,7 +577,8 @@ def _protected_triton_fingerprint(source, *, added_replay_checks=False):
         tree = _RemoveTritonBatchedChecks().visit(tree)
         tree = _RemoveTritonQuantChecks().visit(tree)
         tree = _RemoveMqaChecks().visit(tree)
-    excluded={"_checked_mqa_output","_compare_mqa_output","_verify_mqa_timed","_checked_mx_pair","_mx_reference","_compare_mx_pair","_verify_quant_timed","_checked_quant_output","_compare_token_outputs","_batched_replay_validator","_load_source","load_module","run_compile","_prepare_kernel","_make_prepared_fused_moe_runner",
+        tree = _RemoveElementwiseChecks().visit(tree)
+    excluded={"_checked_elementwise_output","_elementwise_replay_validator","_checked_mqa_output","_compare_mqa_output","_verify_mqa_timed","_checked_mx_pair","_mx_reference","_compare_mx_pair","_verify_quant_timed","_checked_quant_output","_compare_token_outputs","_batched_replay_validator","_load_source","load_module","run_compile","_prepare_kernel","_make_prepared_fused_moe_runner",
               "_reference_softmax","_reference_gemm","_reference_layernorm","_reference_quant"}
     nodes=[]
     for n in tree.body:
@@ -591,7 +592,7 @@ def _protected_triton_fingerprint(source, *, added_replay_checks=False):
 def test_triton_preserves_original_harness_semantics_inputs_and_timing():
     for name,expected in TRITON_PROTECTED_SHA256.items():
         task=ROOT/"tasks/triton2flydsl"/name
-        assert _protected_triton_fingerprint((task/"test_kernel_harness.py").read_text(), added_replay_checks=name in {"aiter/fp8_mqa_logits", "aiter/dynamic_mxfp8_quant", "aiter/dynamic_quant_fp8", "aiter/batched_gemm_a8w8", "aiter/batched_gemm_bf16", "aiter/gemm_a16w16", "aiter/softmax", "aiter/layernorm", "sglang/decode_attention", "sglang/sglang_fused_moe"})==expected,name
+        assert _protected_triton_fingerprint((task/"test_kernel_harness.py").read_text(), added_replay_checks=name in {"aiter/ff_a16w16", "aiter/fused_silu_mul", "aiter/fused_clamp_act_mul", "aiter/rmsnorm", "aiter/fp8_mqa_logits", "aiter/dynamic_mxfp8_quant", "aiter/dynamic_quant_fp8", "aiter/batched_gemm_a8w8", "aiter/batched_gemm_bf16", "aiter/gemm_a16w16", "aiter/softmax", "aiter/layernorm", "sglang/decode_attention", "sglang/sglang_fused_moe"})==expected,name
         cfg=yaml.safe_load((task/"config.yaml").read_text())
         assert cfg["baseline"]["kind"]=="initial_candidate"
         assert cfg["baseline"]["language"]=="triton"
@@ -3752,3 +3753,83 @@ def test_mqa_real_runner_emits_complete_or_failed_protocol(fault,monkeypatch,cap
         assert [row['params'] for row in report['cases']]==[row['params'] for row in manifest]
         assert all(row['execution_time_ms']==.1 and row['benchmark_method']=='cuda_graph' for row in report['cases'])
     else:assert all('execution_time_ms' not in row for row in report['cases'])
+
+
+_TRITON_ELEMENTWISE_NAMES=['ff_a16w16','fused_silu_mul','fused_clamp_act_mul','rmsnorm']
+
+
+class _RemoveElementwiseChecks(_RemoveTritonBatchedChecks):
+    def visit_Expr(self,node):
+        if isinstance(node.value,ast.Call) and getattr(node.value.func,'id',None)=='_checked_elementwise_output':return None
+        return super().visit_Expr(node)
+
+
+@pytest.mark.parametrize('name',_TRITON_ELEMENTWISE_NAMES)
+@pytest.mark.parametrize('phase,behavior',[(phase,behavior) for phase in ['correctness','benchmark'] for behavior in ['correct','shape','dtype','device','nan','input_modified','weight_modified','measured_wrong','replay_wrong','cached'] if phase=='benchmark' or behavior not in {'measured_wrong','replay_wrong','cached'}])
+def test_triton_elementwise_original_numeric_gate_actual_measured_replay(name,phase,behavior,monkeypatch,tmp_path):
+    import torch,types,math
+    t=ROOT/'tasks/triton2flydsl/aiter'/name;checks=module(t/'scripts/replay_checks.py');ns={'LOG2_E':1.44269504089}
+    _harness_functions(t,{'_torch_ref','_torch_silu_mul','_torch_reference','_torch_rmsnorm','_torch_dtype','_cases'},ns)
+    current={};state={'value':'setup'}
+    def make_inputs(*args):
+        dtype=args[-1] if isinstance(args[-1],torch.dtype) else torch.bfloat16
+        if name=='ff_a16w16':result=(torch.tensor([[1.,-1.],[.5,2.]],dtype=dtype),torch.eye(2,dtype=dtype),torch.tensor([[2.,1.],[-1.,3.]],dtype=dtype))
+        elif name=='rmsnorm':result=(torch.tensor([[1.,2.,3.,4.],[-2.,1.,4.,1.]],dtype=dtype),torch.tensor([.5,1.,-.5,2.],dtype=dtype))
+        elif name=='fused_clamp_act_mul':
+            wm=args[-1];result=(torch.tensor([[20.,-1.,-12.,4.],[.5,1.,-1.,2.]],dtype=dtype),None if wm=='none' else torch.tensor([[.5],[1.25]],dtype=torch.float32) if wm=='broadcast' else torch.tensor([[.5,1.25],[.25,.75]],dtype=torch.float32))
+        else:result=(torch.tensor([[2.,-1.,3.,4.],[.5,1.,-1.,2.]],dtype=dtype),)
+        current['values']=tuple(v for v in result if v is not None);current['originals']=tuple(v.clone() for v in current['values']);current.pop('cached',None)
+        return result[0] if name=='fused_silu_mul' else result
+    def compute(*args,**kwargs):
+        if name=='ff_a16w16':out=ns['_torch_ref'](*args[:3],kwargs['activation'])
+        elif name=='fused_silu_mul':out=ns['_torch_silu_mul'](args[0])
+        elif name=='fused_clamp_act_mul':out=ns['_torch_reference'](args[0],kwargs['swiglu_limit'],kwargs['weights'])
+        else:out=ns['_torch_rmsnorm'](*args[:2],args[0].dtype)
+        if 'cached' not in current:current['cached']=out.clone()
+        if phase=='correctness' or state['value']=='measured':
+            if behavior=='shape':out=out[:1]
+            if behavior=='dtype':out=out.float()
+            if behavior=='device':out=out.to('meta')
+            if behavior=='nan':out.fill_(float('nan'))
+            if behavior=='input_modified':args[0].add_(1)
+            if behavior=='weight_modified':current['values'][-1].add_(1)
+        if behavior==state['value']+'_wrong':out.add_(100)
+        if state['value']=='replay' and behavior=='cached':out=current['cached'].clone()
+        return out
+    class Collector:bound=False
+    samples=[]
+    def benchmark(fn,*,warmup,repetition,timed_run):
+        samples.append((warmup,repetition));state['value']='measured';timed_run.outputs=fn();timed_run.bound=True;state['value']='setup'
+        def replay():
+            state['value']='replay'
+            try:return fn()
+            finally:state['value']='setup'
+        timed_run.rerun=replay
+        return .1,{'benchmark_method':'cuda_graph','benchmark_timed_run_kind':'captured_graph'}
+    monkeypatch.setattr(torch.cuda,'synchronize',lambda:None)
+    entries={'ff_a16w16':'ff_a16w16_nogate','fused_silu_mul':'fused_silu_mul','fused_clamp_act_mul':'fused_clamp_act_mul','rmsnorm':'rms_norm'}
+    ns.update(TimedRun=Collector,benchmark_cuda_graph_or_events=benchmark,require_unchanged=checks.require_unchanged,
+        verify_timed_run=checks.verify_timed_run,allclose_output=checks.allclose_output,_HERE=str(tmp_path),Path=Path,json=json,math=math,WARMUP=10,ITERS=100,
+        TEST_SHAPES=[{'name':'controlled','batch':2,'hidden':2,'intermediate':2,'rows':2,'last':4,'M':2,'N':4}],
+        ACTIVATIONS=['gelu_tanh','silu_exp2','relu',None],DTYPES=['bf16','fp16'],EPS=1e-5,
+        MS=[2],DS=[4],LIMITS=[0.,7.],WEIGHT_MODES=['none','broadcast','elementwise'],
+        _load_source=lambda:types.SimpleNamespace(**{entries[name]:compute}),_make_inputs=make_inputs)
+    _harness_functions(t,{'_checked_elementwise_output','_elementwise_replay_validator','run_correctness','run_benchmark'},ns)
+    if phase=='correctness':assert ns['run_correctness'](verbose=False) is (behavior=='correct')
+    elif behavior=='correct':
+        rows=ns['run_benchmark'](verbose=False)
+        assert all(row['timed_output_correctness']==row['replay_correctness']=='PASS' for row in rows)
+        assert samples==[(0,100)]*(2 if name=='fused_clamp_act_mul' else 1)
+        checks.require_unchanged(current['values'],current['originals'])
+    else:
+        with pytest.raises(AssertionError):ns['run_benchmark'](verbose=False)
+
+
+def test_triton_elementwise_original_math_cases_and_timing_preserved():
+    hashes={'ff_a16w16': {'_make_inputs': '1d20457066b97fb6d915307a899281b0ca4158fbcda9a95c1a44b5f8248fc0f7', '_torch_ref': 'e9997ea7b309abd3b0d775ea166838be4742859f0fd36d2a20dbfb3dd02f2f06', 'run_correctness': 'c3664fc353a1d6ae2f7237f21b56e931e3d58d2b6c14734e041c2b3554746cb0', 'run_benchmark': '4d17a4fde8eb9009731cce6f94d7edd74bd5c681036c5ba35007a995ee70756a'}, 'fused_silu_mul': {'_torch_dtype': '664e9bfa3e0f1b752c5ff297485baf851e06ceaa2bc5873012159e8ccff77add', '_make_inputs': 'cb3d2a74241c7e5e43322f9ad9012d3d15f78b982ff9b30252db15088031f7fe', '_torch_silu_mul': '5101cf3a84972ba87ee20666543fe377bbbc2cec45d007d2e57d8a539ac8abd1', 'run_correctness': 'ae04a207e6407d253191b44a55e157dc014c1a36e7c4e80dfc059d1610f9e59c', 'run_benchmark': '699d90764342286d45dbbc6c167ad605612ee39253449946a818c5641c4941ec'}, 'fused_clamp_act_mul': {'_make_inputs': '4141c4cd053618d4c28302405ea076c203dd61d3c869619acb541f54f5e16927', '_torch_reference': '21a38febcca29b3929afce48f5665aab1d11224bcc5b7307b57310d703fac298', '_cases': '7e046fa5de5141a3f79224ee5b1609fba75f5361ef221b91dfd64942abc641ab', 'run_correctness': 'e8c9cbaff5f22a5084f0c42d34adfd50badea4721a1401d23e94aad017026ef7', 'run_benchmark': '2d2790a34d14b3f9d8a0f6a97bba0665fd3a3de446329947951d997ad191ca9b'}, 'rmsnorm': {'_torch_dtype': '664e9bfa3e0f1b752c5ff297485baf851e06ceaa2bc5873012159e8ccff77add', '_make_inputs': 'a580372ddba80a3ab421ca36d1bc22ada43dd0de2cb2ddeded1660176980e219', '_torch_rmsnorm': '3cefb6753eee682122bf267e3d587f5d1d7765545ecc36122d8fe82befbac3a4', 'run_correctness': 'cec48cbe43d807df0a3ac556b3bfb55354a9b80063796da549585ca535fe851f', 'run_benchmark': 'd76c41e25a86d0f9391405eed6fb88399e2789dcbb244f2a5ef4b7c57371a30f'}}
+    for name,functions in hashes.items():
+        t=ROOT/'tasks/triton2flydsl/aiter'/name
+        for fn in ast.parse((t/'test_kernel_harness.py').read_text()).body:
+            if isinstance(fn,ast.FunctionDef) and fn.name in functions:
+                normalized=_RemoveElementwiseChecks().visit(fn)
+                assert hashlib.sha256(ast.dump(normalized,include_attributes=False).encode()).hexdigest()==functions[fn.name],(name,fn.name)
