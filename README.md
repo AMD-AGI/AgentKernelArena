@@ -10,7 +10,7 @@ The platform provides:
 
 - **Controlled A/B experiments**: Label and compare repeated runs while holding tasks, hardware, environment, and evaluation rules constant.
 - **RL-ready feedback**: Produce per-task compilation, correctness, runtime, speedup, and score signals that can be consumed as rewards by an external reinforcement-learning system.
-- **Multiple agent integrations**: Run Cursor Agent, Claude Code, Codex, GEAK-based agents, mini-swe-agent-based flows, or custom agents through a shared interface.
+- **Multiple agent integrations**: Run Cursor Agent, Claude Code, Codex, GEAK v4, Forge, or custom agents through a shared interface.
 - **Real GPU task environments**: Work with HIP, Triton, FlyDSL, PyTorch-to-kernel conversion, instruction-to-kernel generation, and repository-level optimization tasks.
 - **Isolated and reproducible execution**: Give every task its own timestamped workspace and preserve logs, modified sources, and structured results.
 - **Centralized evaluation**: Measure compilation, correctness, and GPU performance independently of the optimizing agent.
@@ -75,9 +75,8 @@ AgentKernelArena/
 │   ├── cursor/                     # Cursor Agent CLI
 │   ├── claude_code/                # Claude Code CLI
 │   ├── codex/                      # Codex CLI
-│   ├── geak_v3/                    # GEAK HIP optimization
-│   ├── geak_v3_triton/             # GEAK Triton optimization
-│   ├── mini_swe_triton/            # mini-swe-agent Triton optimization
+│   ├── geak_v4/                    # GEAK kernel workflow integration
+│   ├── forge/                      # KernelForge integration
 │   └── task_validator/             # Task quality validator
 ├── tasks/
 │   ├── hip2hip/
@@ -115,9 +114,8 @@ Each run selects one `agent.template`. Repeated runs can compare different agent
 | `cursor` | Cursor Agent CLI integration |
 | `claude_code` | Claude Code CLI integration |
 | `codex` | Codex CLI integration |
-| `geak_v3` | GEAK optimization for HIP tasks |
-| `geak_v3_triton` | GEAK optimization for Triton tasks |
-| `mini_swe_triton` | mini-swe-agent-based Triton optimization |
+| `geak_v4` | GEAK kernel workflow through Claude Code |
+| `forge` | KernelForge optimization loop |
 | `task_validator` | Task quality validation; does not optimize kernels |
 
 Agent-specific models, effort settings, iteration guidance, timeouts, and provider configuration live under `agents/<agent_name>/agent_config.yaml` or in the selected agent CLI. Specialized agents may require additional setup; inspect their directories and agent-specific README files where present.
@@ -239,9 +237,9 @@ make docker-check-agents CONFIG="$CONFIG_PATH"
 ```
 
 Use `AGENTS=claude_code,codex` to check an explicit subset or `AGENTS=all` to
-check Cursor, Claude Code, and Codex together. Specialized integrations such as
-GEAK and mini-swe have their own dependency checks and are not handled by this
-command.
+check Cursor, Claude Code, and Codex together. Additional setup for specialized
+integrations is documented under [GEAK v4](agents/geak_v4/README.md) and
+[Forge](agents/forge/README.md).
 
 ### Run Serially
 
@@ -261,9 +259,9 @@ make docker-parallel-run CONFIG="$CONFIG_PATH"
 ```
 
 The Docker parallel path is verified for `cursor`, `claude_code`, `codex`, and
-`task_validator`. Specialized GEAK/mini-swe integrations need their own
-dependencies and GPU-ID configuration before they are used with isolated
-workers.
+`task_validator`. Other integrations require their documented runtime
+dependencies and worker-visible GPU configuration before they are used with
+isolated workers.
 
 ### Run From a Slurm/Spur Login Node
 

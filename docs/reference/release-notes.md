@@ -9,6 +9,18 @@ myst:
 
 This topic summarizes the features available in each AgentKernelArena release. For the hardware and software versions validated for a release, see the [Compatibility matrix](compatibility-matrix.md).
 
+## Unreleased
+
+- Removed the unused `geak_v3`, `geak_v3_triton`, and `mini_swe_triton`
+  integrations, their configuration files, and their shared parallel-count
+  helper. These names, including hyphenated and uppercase spellings, are no
+  longer accepted as `agent.template` values. New runs must select a
+  [supported agent](../how-to/agents.md#supported-agents); to resume an old run
+  with its original retired agent, use a revision from before this removal.
+- Removed the retired integrations' `num_parallel` and `run_mode` settings
+  from the configuration reference. GEAK v4 and Forge remain supported, and
+  GEAK-derived task packages and saved experiment results are unchanged.
+
 ## AgentKernelArena 0.2.0
 
 AgentKernelArena 0.2.0 evolves the initial kernel-agent framework into a
@@ -73,7 +85,7 @@ The legacy 184-task `instruction2triton/tritonbench` suite and several obsolete 
 
 #### Agent and validator updates
 
-The supported agent templates are now:
+The agent templates shipped in 0.2.0 were:
 
 - `claude_code`
 - `codex`
@@ -108,7 +120,7 @@ The task validator now includes Codex backend support, repository-task validatio
 
 - Docker is now required for supported experiment execution.
 - The root `requirements.txt` and host-venv workflow have been removed.
-- The legacy `SWE_agent`, `geak_hip`, `geak_optimagentv2`, `geak_ourllm_kernel2kernel`, `openevolve`, and `single_llm_call` templates were removed. Use `geak_v3`, `geak_v3_triton`, or `mini_swe_triton` for current GEAK-oriented workflows.
+- The legacy `SWE_agent`, `geak_hip`, `geak_optimagentv2`, `geak_ourllm_kernel2kernel`, `openevolve`, and `single_llm_call` templates were removed. The GEAK v3 and mini-swe replacements shipped in this release have since been retired; see [Unreleased](#unreleased) for the current upgrade notes.
 - The legacy instruction2triton/tritonbench task paths are no longer available.
 - Held-out evaluation moved under `src.held_out`.
 - Visualization is now invoked through `python3 -m src.visualization`.

@@ -140,7 +140,7 @@ make docker-parallel-run \
 ```
 
 The Docker parallel path is verified for `cursor`, `claude_code`, `codex`, and
-`task_validator`. Specialized GEAK/mini-swe templates require their own
+`task_validator`. Other integrations require their documented runtime
 dependencies and worker-visible GPU configuration. See
 [Run tasks in parallel across multiple GPUs](parallel-run.md) for scheduling,
 GPU isolation, resume behavior, and failure handling.

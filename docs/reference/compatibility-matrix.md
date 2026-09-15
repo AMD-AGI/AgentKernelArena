@@ -74,9 +74,8 @@ The following templates are selectable in the current `AgentType` registry. See
 | `cursor` | Cursor Agent CLI and host login state. |
 | `claude_code` | Native/local or npm-installed Claude Code CLI and host login state. |
 | `codex` | Codex CLI and host login state. |
-| `geak_v3` | GEAK CLI; HIP-oriented integration. |
-| `geak_v3_triton` | GEAK CLI; Triton-oriented integration. |
-| `mini_swe_triton` | mini-swe-agent/GEAK dependencies. |
+| `geak_v4` | GEAK kernel workflow, Claude Code, and Claude Agent SDK; see [setup](../../agents/geak_v4/README.md). |
+| `forge` | KernelForge `kernel-agents` CLI; see [integration documentation](../../agents/forge/README.md). |
 | `task_validator` | Claude Code or Codex backend configured in `agents/task_validator/agent_config.yaml`. |
 
 ## Model providers

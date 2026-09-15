@@ -23,14 +23,11 @@ A run configuration defines a single experiment. Start from a file under
 | `log_directory` | string | Directory for run logs. |
 | `workspace_directory_prefix` | string | Prefix for the workspace directory. The full name is `<prefix>_<gpu>_<agent>`. |
 
-Specialized GEAK and mini-swe integrations also accept some optional top-level
-fields:
+GEAK v4 also accepts an optional top-level GPU selection field:
 
 | Field | Type | Description |
 | --- | --- | --- |
-| `gpu_ids` | string | Comma-separated GPU IDs exposed to specialized internal workers. This is separate from the host runner's `GPU_IDS` variable. |
-| `num_parallel` | integer | Number of GEAK sub-agents/worktrees to run in parallel. mini-swe configures this under its agent config instead. |
-| `run_mode` | string | `geak_v3_triton` mode override, such as `quick` or `full`. |
+| `gpu_ids` | string or list | Fallback logical GPU IDs for GEAK v4. Worker isolation, visible-device mappings, and `GEAK_V4_GPU_IDS` take precedence; see `agents/geak_v4/launch_agent.py`. This is separate from the host runner's `GPU_IDS` variable. |
 
 Agent-specific settings remain in `agents/<agent_name>/agent_config.yaml`; see
 the selected integration's directory for precedence rules and additional fields.

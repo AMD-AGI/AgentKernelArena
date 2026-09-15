@@ -21,9 +21,8 @@ The following agents are available.
 | `cursor` | Cursor Agent CLI |
 | `claude_code` | Anthropic Claude Code CLI |
 | `codex` | OpenAI Codex CLI |
-| `geak_v3` | Specialized GEAK integration for HIP optimization |
-| `geak_v3_triton` | Specialized GEAK integration for Triton optimization |
-| `mini_swe_triton` | mini-swe-agent-based Triton optimization |
+| `geak_v4` | GEAK kernel workflow through Claude Code |
+| `forge` | KernelForge optimization loop |
 | `task_validator` | Task quality validator; does not optimize kernels (see [Validate tasks](task-validator.md)) |
 
 Select one in a run configuration:
@@ -35,6 +34,10 @@ agent:
 
 Each agent lives under `agents/<agent_name>/` and is registered into a shared
 registry, so the framework loads only the agent you select.
+
+The supported identifiers are defined by `AgentType` in
+`src/module_registration.py`. Retired templates and compatibility notes are
+listed in the [release notes](../reference/release-notes.md#unreleased).
 
 The Cursor, Claude Code, and Codex integrations reuse their host CLI login
 state. Specialized integrations have additional setup and configuration under
@@ -63,9 +66,10 @@ make docker-check-agents CONFIG="$CONFIG_PATH"
 ```
 
 Use `AGENTS=<comma-separated names>` for an explicit subset or `AGENTS=all` for
-all three first-class CLIs and login states. Specialized integrations are not
-handled by this command; their README files document their own dependencies,
-API keys, and endpoint configuration.
+all three first-class CLIs and login states. The
+[GEAK v4](../../agents/geak_v4/README.md) and
+[Forge](../../agents/forge/README.md) documentation describes additional
+integration-specific setup.
 
 `make vllm` starts an OpenAI-compatible local endpoint on port `30001`, but it
 does not automatically reconfigure an agent. Point the selected integration at

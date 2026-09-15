@@ -41,8 +41,8 @@ AgentKernelArena includes the following key features.
   model, prompt, MCP server, skill, tool, memory strategy, or agent policy.
 * **RL-ready feedback**: Export compilation, correctness, timing, speedup, and
   score fields for use by external reinforcement-learning systems.
-* **Multiple agent integrations**: Cursor Agent, Claude Code, Codex, GEAK,
-  mini-swe-agent-based flows, and custom agents.
+* **Multiple agent integrations**: Cursor Agent, Claude Code, Codex, GEAK v4,
+  Forge, and custom agents.
 * **Docker-first runtime**: Experiments execute inside pinned ROCm/SGLang
   Docker images selected from the target GPU architecture.
 * **Task categories**: HIP (``hip2hip``), CUDA-to-HIP (``cuda2hip``), Triton
