@@ -24,7 +24,7 @@ BASE = '5c9f8ef2'
 # timer settings, and reject incorrect measured/replay output through real runners.
 VLLM_CHECKED_RUNNERS = {
     'triton_fused_moe': 'e3c3c28504797346f7af6a02847118bf7a886059f8de176cd799cfedcec7206a',
-    'triton_fused_moe_gptq_awq': '6012428b1517683d3fa73578025c8d03932a5b259fab66c753c09acf6e449c87',
+    'triton_fused_moe_gptq_awq': '8342f51a982e65dd6b5db1cf7c04b7113ac4dea1a315d22ac63844f28a439cac',
 
     'triton_batched_moe': 'd804d6902c7036d97f1ba24b719435d9c9240af0fe38fdcd161a4776e60a7d05',
     'triton_moe_mmk': '445e4603b0521be7a87256158a7d1d834a1670e277c205b5c922328276325dfa',
