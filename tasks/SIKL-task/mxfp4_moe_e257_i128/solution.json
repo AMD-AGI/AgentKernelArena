@@ -1,0 +1,22 @@
+{
+  "name": "kernel-forges_642dfb",
+  "definition": "aiter_fused_moe_per_1x32_d6144_e257_topk9_n512_k3072_i128",
+  "author": "kernel-forges",
+  "spec": {
+    "language": "",
+    "target_hardware": [
+      "MI355X"
+    ],
+    "entry_point": "",
+    "dependencies": [],
+    "destination_passing_style": false,
+    "binding": null
+  },
+  "sources": [
+    {
+      "path": "",
+      "content": ""
+    }
+  ],
+  "description": "kernel-forges kernel slot for aiter_fused_moe_per_1x32_d6144_e257_topk9_n512_k3072_i128 -- language, entry_point and sources to be filled in."
+}

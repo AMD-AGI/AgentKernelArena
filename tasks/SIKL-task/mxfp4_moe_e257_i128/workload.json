@@ -1,16 +1,16 @@
 {
-  "definition": "aiter_fused_moe_per_1x32_d6144_e33_topk9_n4096_k3072_i1024",
+  "definition": "aiter_fused_moe_per_1x32_d6144_e257_topk9_n512_k3072_i128",
   "op_type": "moe",
-  "builder_symbol": "build_mxfp4_moe_e33_i1024_codex_0916_module",
+  "builder_symbol": "build_mxfp4_moe_e257_i128_codex_0916_module",
   "axes": {
     "model_dim": 6144,
-    "num_experts": 33,
+    "num_experts": 257,
     "topk": 9,
-    "w1_rows": 4096,
+    "w1_rows": 512,
     "w1_cols": 3072,
-    "w2_cols": 1024,
+    "w2_cols": 128,
     "w1_scale_cols": 192,
-    "w2_scale_cols": 64
+    "w2_scale_cols": 8
   },
   "seed": 29,
   "bench": {
@@ -24,67 +24,67 @@
   "cases": [
     {
       "case_id": "num_tokens_1",
-      "uuid": "30d23d94d9ba1dbe",
+      "uuid": "8244d317ce374a3e",
       "num_tokens": 1
     },
     {
       "case_id": "num_tokens_2",
-      "uuid": "6f312260ad430ee3",
+      "uuid": "9e92887af1dca30c",
       "num_tokens": 2
     },
     {
       "case_id": "num_tokens_4",
-      "uuid": "f95418a0fbc6ac24",
+      "uuid": "83e9c1600b2aaeb8",
       "num_tokens": 4
     },
     {
       "case_id": "num_tokens_8",
-      "uuid": "f576a01c012bb305",
+      "uuid": "032aa97dbe2b2149",
       "num_tokens": 8
     },
     {
       "case_id": "num_tokens_16",
-      "uuid": "a25885fe53e5b7cd",
+      "uuid": "6d8041f25a515b5d",
       "num_tokens": 16
     },
     {
       "case_id": "num_tokens_32",
-      "uuid": "d359ba2488e0c401",
+      "uuid": "532007920f3c0489",
       "num_tokens": 32
     },
     {
       "case_id": "num_tokens_64",
-      "uuid": "d940d9de84396c0a",
+      "uuid": "bcb4276b91f86b96",
       "num_tokens": 64
     },
     {
       "case_id": "num_tokens_128",
-      "uuid": "a3c49f4c7b9f5cde",
+      "uuid": "b52bc228fcecd82a",
       "num_tokens": 128
     },
     {
       "case_id": "num_tokens_256",
-      "uuid": "268bec06408bf478",
+      "uuid": "5e1aefa887d9fa01",
       "num_tokens": 256
     },
     {
       "case_id": "num_tokens_512",
-      "uuid": "ebab22e2a10985ed",
+      "uuid": "01afd5ee73dc6e83",
       "num_tokens": 512
     },
     {
       "case_id": "num_tokens_1024",
-      "uuid": "e583c8f79f073fbb",
+      "uuid": "b14df7f0a9f31878",
       "num_tokens": 1024
     },
     {
       "case_id": "num_tokens_2048",
-      "uuid": "20608609642c1a64",
+      "uuid": "decd09cfefbcb078",
       "num_tokens": 2048
     },
     {
       "case_id": "num_tokens_4096",
-      "uuid": "2d03c2fd5e1f8e4c",
+      "uuid": "1f5dd2a464693250",
       "num_tokens": 4096
     }
   ]
