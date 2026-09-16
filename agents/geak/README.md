@@ -152,7 +152,7 @@ role defaults that create harnesses or publish shared knowledge are overridden
 inside the per-run copy. These are reproducibility boundaries within Arena's
 existing permissive container model, not a security sandbox.
 
-## CPU validation and remaining qualification
+## Validation evidence and remaining scope
 
 The focused suite uses executable CPU fixture runners with synthetic protocol
 timings. With a configured upstream checkout and Node it also executes the
@@ -170,9 +170,21 @@ GEAK_TEST_CHECKOUT="$GEAK_HOME" GEAK_TEST_NODE=<node-binary> \
 Optional probe dependencies can live in the ignored `agents/geak/.scratch-env`
 environment; do not install into a shared GEAK or global environment. SDK
 interface imports were checked with the version in `requirements.txt`; the
-JavaScript probe used Node 24.19.0. A live authenticated Workflow invocation,
-Docker qualification, large image-task copy cost, and actual GPU campaigns
-remain untested here. Generic profiling is explicitly unavailable because the
+JavaScript probe used Node 24.19.0. These CPU checks are separate from the actual
+authenticated Workflow and Docker/GPU campaign evidence in the
+[dated verification checkpoint](../../docs/reference/verification-2026-09-15.md#agent-matrix-checkpoint).
+That checkpoint records five historical completed GEAK tasks with accepted
+candidates, retaining their original source/model identities. The source-39
+records lack full tool-ID/session correlation and do not qualify the later
+strict-return gate.
+A subsequent real CPU Workflow probe verified matched native completion on
+`27f28461`; it adds no GPU or matrix credit. Native author activity in the
+continuation is also partial evidence, not proof of a completed planner,
+engineer, verifier and Director sequence with a matching strict Workflow return.
+Neither these probes nor author activity establish completion of the 180-pair
+matrix or quantify large image-task copy cost.
+
+Generic profiling is explicitly unavailable because the
 v2 public protocol has no profiling action; no evaluator-tool analysis is
 claimed. GEAK bakeoff, cross-run resume and external knowledge publication are
 not exposed by this adapter.
