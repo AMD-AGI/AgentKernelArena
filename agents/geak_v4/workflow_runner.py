@@ -540,6 +540,121 @@ def _record_runtime_identity(message: Any, identity: dict[str, Any]) -> None:
                     pass
 
 
+_SDK_FAILURE_REASONS = {
+    "GEAK Workflow invocation does not match its pinned script and arguments": "workflow_arguments_mismatch",
+    "GEAK Workflow invocation has no tool identity": "workflow_identity_missing",
+    "GEAK requires exactly one outer Workflow invocation": "workflow_count_invalid",
+    "GEAK Workflow background task did not complete successfully": "workflow_background_failed",
+    "GEAK Workflow tool returned an error": "workflow_tool_error",
+    "GEAK ended without an observed native Workflow return": "native_return_missing",
+    "GEAK did not return a valid terminal Workflow result": "native_return_invalid",
+    "GEAK returned an unknown terminal status": "terminal_status_invalid",
+    "GEAK could not dispatch a search after child-agent errors": "workflow_agent_errors_before_search",
+}
+_SDK_EXCEPTION_CLASSES = {
+    "RuntimeError", "ValueError", "TypeError", "OSError", "TimeoutError", "CancelledError",
+    "FileNotFoundError", "PermissionError", "BrokenPipeError", "ConnectionError",
+    "ClaudeSDKError", "CLIConnectionError", "CLINotFoundError", "ProcessError",
+    "ResultError", "CLIJSONDecodeError", "MessageParseError",
+}
+
+
+def _record_sdk_failure(identity: dict[str, Any], exc: BaseException) -> None:
+    """Bound group/chain traversal; never serialize exception messages or locals."""
+    stack = [exc]
+    seen: set[int] = set()
+    leaves = []
+    truncated = False
+    while stack and len(seen) < 32 and len(leaves) < 16:
+        current = stack.pop()
+        if id(current) in seen:
+            continue
+        seen.add(id(current))
+        if isinstance(current, BaseExceptionGroup):
+            truncated |= len(current.exceptions) > 16
+            stack.extend(reversed(current.exceptions[:16]))
+        else:
+            name = type(current).__name__
+            reason = {"ProcessError": "cli_process_failed", "ResultError": "cli_result_error",
+                      "CLIConnectionError": "cli_connection_error", "CLINotFoundError": "cli_not_found",
+                      "CLIJSONDecodeError": "cli_json_error", "MessageParseError": "sdk_message_parse_error"}.get(
+                          name, "timeout" if isinstance(current, TimeoutError) else "unclassified")
+            if current.args and type(current.args[0]) is str and len(current.args[0]) <= 512:
+                reason = _SDK_FAILURE_REASONS.get(current.args[0], reason)
+            row = {"exception_class": name if name in _SDK_EXCEPTION_CLASSES else "UnknownException",
+                   "reason": reason}
+            for attribute in ("exit_code", "returncode"):
+                code = getattr(current, attribute, None)
+                if type(code) is int and -(2 ** 31) <= code < 2 ** 31:
+                    row["exit_code"] = code
+                    break
+            leaves.append(row)
+        cause = current.__cause__
+        if cause is None and not current.__suppress_context__:
+            cause = current.__context__
+        if cause is not None:
+            stack.append(cause)
+    identity.setdefault("sdk_diagnostics", {})["failure"] = {
+        "leaves": leaves, "truncated": truncated or bool(stack),
+    }
+
+
+def _diagnostic_type(value: Any) -> str:
+    return {dict: "object", list: "array", str: "string", bool: "boolean",
+            int: "integer", float: "number", type(None): "null"}.get(type(value), "other")
+
+
+def _record_workflow_calls(message: Any, identity: dict[str, Any], expected: dict[str, Any] | None) -> None:
+    """Record the observed message prefix, not a reconstructed full CLI session.
+
+    Only trusted expected field names are copied. Unknown keys are counted;
+    nested values, paths, source text and credentials are never retained.
+    """
+    if type(message).__name__ != "AssistantMessage":
+        return
+    diagnostic = identity["sdk_diagnostics"]
+    for block in getattr(message, "content", []) or []:
+        if type(block).__name__ != "ToolUseBlock" or getattr(block, "name", None) != "Workflow":
+            continue
+        inputs = getattr(block, "input", None)
+        diagnostic["observed_workflow_calls"] += 1
+        matches = (isinstance(inputs, dict) and expected is not None
+                   and all(inputs.get(key) == value for key, value in expected.items()))
+        diagnostic["matched_workflow_calls"] += int(matches)
+        calls = diagnostic.setdefault("calls", [])
+        if len(calls) >= 8:
+            diagnostic["calls_truncated"] = True
+            continue
+        row = {"input_type": _diagnostic_type(inputs),
+               "expected_fields_match": matches if expected is not None else None, "differences": []}
+        calls.append(row)
+        if not isinstance(inputs, dict) or expected is None:
+            continue
+        if "run_in_background" in inputs and "run_in_background" not in expected:
+            # Known dispatch mistake: retain its key/type, never the value.
+            row["extra_key_types"] = {"run_in_background": _diagnostic_type(inputs["run_in_background"])}
+        # One level of args is enough to locate a mismatch without dumping an
+        # arbitrary nested contract. Extra keys never enter the diagnostic.
+        for prefix, wanted, actual in (([], expected, inputs),
+                                       (["args"], expected.get("args"), inputs.get("args"))):
+            if not isinstance(wanted, dict) or not isinstance(actual, dict):
+                continue
+            row["args_extra_keys" if prefix else "extra_keys"] = len(actual.keys() - wanted.keys())
+            if len(wanted) > 64:
+                row["differences_truncated"] = True
+            for key in list(wanted)[:64]:
+                if not isinstance(key, str) or not key.isidentifier() or len(key) > 64:
+                    continue
+                if key in actual and type(actual[key]) is type(wanted[key]) and actual[key] == wanted[key]:
+                    continue
+                if len(row["differences"]) >= 16:
+                    row["differences_truncated"] = True
+                    break
+                row["differences"].append({"field": prefix + [key],
+                    "expected_type": _diagnostic_type(wanted[key]),
+                    "actual_type": _diagnostic_type(actual[key]) if key in actual else "missing"})
+
+
 def invoke_via_sdk(
     prompt: str,
     *,
@@ -596,7 +711,39 @@ def invoke_via_sdk(
     if runtime_metadata is not None:
         runtime_metadata.update(requested_model=model,
                                 sdk_version=importlib.metadata.version("claude-agent-sdk"))
+        runtime_metadata["sdk_diagnostics"] = {"observed_workflow_calls": 0,
+            "matched_workflow_calls": 0, "match_checked": expected_workflow is not None}
         persist_identity()
+
+    def record_stderr(line: str) -> None:
+        # This is supplementary evidence, never an acceptance/auth policy input.
+        # Do not enable verbose SDK output or forward raw stderr to the parent.
+        if runtime_metadata is None or not isinstance(line, str):
+            return
+        diagnostic = runtime_metadata["sdk_diagnostics"]
+        if diagnostic.get("stderr_truncated"):
+            return
+        diagnostic["stderr_callbacks"] = diagnostic.get("stderr_callbacks", 0) + 1
+        if diagnostic["stderr_callbacks"] > 1024:
+            diagnostic["stderr_truncated"] = True
+        codes = set(diagnostic.get("stderr_codes", []))
+        text = line[:4096].lower() if not diagnostic.get("stderr_truncated") else ""
+        for phrase, code in (("oauth session expired", "oauth_session_expired"),
+                             ("could not be refreshed", "oauth_refresh_failed"),
+                             ("failed to authenticate", "authentication_failed"),
+                             ("rate_limit_error", "rate_limit"),
+                             ("invalid_request_error", "invalid_request"),
+                             ("overloaded_error", "server_error")):
+            if phrase in text:
+                codes.add(code)
+        changed = sorted(codes) != diagnostic.get("stderr_codes")
+        diagnostic["stderr_codes"] = sorted(codes)
+        if not changed and not diagnostic.get("stderr_truncated"):
+            return  # Persist counters at the next SDK message or completion.
+        try:
+            persist_identity()
+        except OSError:
+            pass  # A supplemental log write must not replace the SDK failure.
 
     options = ClaudeAgentOptions(
         model=model,
@@ -606,6 +753,7 @@ def invoke_via_sdk(
         extra_args=option_extras,
         cwd=str(workflow_dir),
         env=sdk_env,
+        **({"stderr": record_stderr} if runtime_metadata is not None else {}),
         **({"cli_path": cli_path} if cli_path else {}),
     )
 
@@ -689,11 +837,12 @@ def invoke_via_sdk(
                     nonlocal captured_chars
                     try:
                         async for message in client.receive_messages():
-                            if require_workflow_result:
-                                observe_workflow(message)
                             if runtime_metadata is not None:
                                 _record_runtime_identity(message, runtime_metadata)
+                                _record_workflow_calls(message, runtime_metadata, expected_workflow)
                                 persist_identity()
+                            if require_workflow_result:
+                                observe_workflow(message)
                             for text in _iter_message_text(message):
                                 remaining = _TRANSCRIPT_SIZE_LIMIT - captured_chars
                                 if remaining > 0:
@@ -813,7 +962,16 @@ def invoke_via_sdk(
             transcript = transcript[:max(0, _TRANSCRIPT_SIZE_LIMIT - len(terminal) - 1)] + "\n" + terminal
         return transcript
 
-    return anyio.run(_run)
+    try:
+        return anyio.run(_run)
+    except Exception as exc:
+        if runtime_metadata is not None:
+            _record_sdk_failure(runtime_metadata, exc)
+            try:
+                persist_identity()
+            except OSError:
+                pass  # Preserve the original exception and failure semantics.
+        raise
 
 
 def _number(value: Any) -> float | None:

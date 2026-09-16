@@ -128,6 +128,16 @@ provider messages. A rate-limit event with `status: rejected` indicates a
 rejected request; `overage_status: rejected` alone does not establish that the
 regular allowance is exhausted.
 
+The private, atomically written `runtime_identity.json` also retains bounded
+`sdk_diagnostics`: observed Workflow call/match counts, trusted field names and
+type differences (no argument values), nested exception classes with fixed
+reason codes and actual exit codes when available, and allowlisted CLI stderr
+codes. Counts cover only the observed SDK message prefix; they do not recover
+an earlier CLI session. Unknown extra keys are counted without copying their
+names; the known `run_in_background` key can retain its type. Raw stderr,
+exception text and tracebacks are not retained. These fields
+are diagnostic evidence only and do not change native completion or acceptance.
+
 Read these diagnostics alongside `engine_result.json`, `delivery.json`, and
 Arena's `task_result.yaml`. Candidate acceptance means the retained source
 passed Arena's evaluation. It does not establish that GEAK completed its

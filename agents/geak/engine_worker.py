@@ -10,7 +10,8 @@ if __package__ in (None, ""):
 
 from agents.geak.bridge import Bridge, write_json
 from agents.geak_v4.workflow_runner import (
-    DEFAULT_SETTINGS, _extract_workflow_return, _valid_workflow_return,
+    DEFAULT_SETTINGS, _atomic_write_json, _extract_workflow_return,
+    _record_sdk_failure, _valid_workflow_return,
     build_prompt, invoke_via_sdk,
 )
 
@@ -57,6 +58,11 @@ def run(job_path: Path) -> int:
                                 "rounds": returned.get("rounds"), "budget_used": returned.get("budget_used")})
         return 0 if status == "accepted" else 1
     except Exception as exc:
+        _record_sdk_failure(runtime, exc)
+        try:
+            _atomic_write_json(bridge.root / "runtime_identity.json", runtime)
+        except OSError:
+            pass  # Retain the original failure if supplementary persistence fails.
         error_code = next((code for code in ("oauth_session_expired", "oauth_refresh_failed",
                                              "authentication_failed", "rate_limit", "billing_error",
                                              "invalid_request", "server_error")

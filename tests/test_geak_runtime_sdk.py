@@ -140,5 +140,9 @@ def test_observed_identity_persists_before_sdk_timeout(tmp_path, monkeypatch):
             done_grace_seconds=1, done_poll_seconds=0.1, quiet=True,
             require_workflow_result=True, runtime_metadata_path=path)
     assert json.loads(path.read_text()) == {"requested_model": "requested", "sdk_version": "probe-sdk",
-        "init_model": "init-model", "cli_version": "probe-cli", "assistant_models": ["observed"]}
+        "init_model": "init-model", "cli_version": "probe-cli", "assistant_models": ["observed"],
+        "sdk_diagnostics": {"observed_workflow_calls": 0, "matched_workflow_calls": 0,
+            "match_checked": False, "failure": {"leaves": [
+                {"exception_class": "TimeoutError", "reason": "timeout"},
+                {"exception_class": "CancelledError", "reason": "unclassified"}], "truncated": False}}}
     assert "FAKE_SECRET_DO_NOT_LOG" not in path.read_text()
