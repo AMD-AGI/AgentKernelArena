@@ -9,6 +9,7 @@ GPU.
 
 from __future__ import annotations
 
+import copy
 import importlib
 import json
 import logging
@@ -298,6 +299,48 @@ def test_apply_to_original_is_handoff_driven(tmp_path):
     prompt = workflow_runner.build_prompt(script_path, args)
     assert "apply_to_original is true" in prompt
     assert "the caller owns patch import" not in prompt
+
+
+@pytest.mark.parametrize("apply_to_original", ["true", "false", True, False])
+def test_prompt_dispatch_is_exact_json_with_unchanged_nested_args(tmp_path, apply_to_original):
+    script = tmp_path / 'GEAK "quoted" \\ 路径\nworkflow.js'
+    args = {
+        "eval_dir": str(tmp_path / 'eval "quoted" \\ 结果\nnext'),
+        "apply_to_original": apply_to_original,
+        "nested": {"enabled": True, "disabled": False, "string_bool": "false",
+                   "values": [None, 0, 1.25, 'quote " slash \\ newline\nUnicode 雪'],
+                   "run_in_background": False},
+    }
+    original = copy.deepcopy(args)
+    prompt = workflow_runner.build_prompt(script, args)
+    assert prompt.count("```json\n") == 1
+    payload = prompt.split("```json\n", 1)[1].split("\n```", 1)[0]
+    dispatch = json.loads(payload)
+    assert set(dispatch) == {"scriptPath", "args"}
+    assert dispatch["scriptPath"] == str(script)
+    assert dispatch["args"] == original
+    assert type(dispatch["args"]["apply_to_original"]) is type(apply_to_original)
+    assert dispatch["args"]["nested"]["enabled"] is True
+    assert dispatch["args"]["nested"]["disabled"] is False
+    assert dispatch["args"]["nested"]["string_bool"] == "false"
+    assert dispatch["args"]["nested"]["run_in_background"] is False
+    assert args == original
+    assert json.dumps(args, ensure_ascii=False, sort_keys=True) == json.dumps(
+        original, ensure_ascii=False, sort_keys=True
+    )
+    assert "Use ONLY the two top-level Workflow keys scriptPath and args" in prompt
+    assert "including run_in_background (even with a false value)" in prompt
+    assert "may complete synchronously or return a background task" in prompt
+    assert "matching native completion notification and result" in prompt
+    assert "without invoking Workflow again" in prompt
+    assert json.dumps(f'{args["eval_dir"]}/workflow_return.json', ensure_ascii=False) in prompt
+
+
+def test_prompt_does_not_silently_coerce_non_json_workflow_args(tmp_path):
+    with pytest.raises(TypeError):
+        workflow_runner.build_prompt(tmp_path / "workflow.js", {
+            "eval_dir": str(tmp_path), "unsupported": object(),
+        })
 
 
 def test_invalid_apply_to_original_is_rejected(tmp_path):

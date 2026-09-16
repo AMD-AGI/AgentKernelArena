@@ -271,6 +271,10 @@ def map_workflow_args(handoff: dict[str, Any]) -> tuple[Path, dict[str, Any]]:
 
 def build_prompt(script_path: Path, workflow_args: dict[str, Any]) -> str:
     eval_dir = workflow_args["eval_dir"]
+    workflow_input = json.dumps(
+        {"scriptPath": str(script_path), "args": workflow_args}, ensure_ascii=False
+    )
+    return_path = json.dumps(f"{eval_dir}/workflow_return.json", ensure_ascii=False)
     if workflow_args.get("apply_to_original") == "true":
         patch_note = (
             "apply_to_original is true, so the Director writes the validated patch "
@@ -282,13 +286,18 @@ def build_prompt(script_path: Path, workflow_args: dict[str, Any]) -> str:
             "false and the caller owns patch import. "
         )
     return (
-        "Invoke the Workflow tool exactly once with:\n"
-        f'  scriptPath: "{script_path}"\n'
-        f"  args: {json.dumps(workflow_args, ensure_ascii=False)}\n"
+        "Invoke the Workflow tool exactly once with this exact JSON object:\n"
+        f"```json\n{workflow_input}\n```\n"
+        "Use ONLY the two top-level Workflow keys scriptPath and args. "
+        "Do not add any other top-level keys, including run_in_background "
+        "(even with a false value). Preserve every nested args value and JSON type "
+        "exactly as supplied. The tool may complete synchronously or return a "
+        "background task; if it returns a background task, wait for its matching "
+        "native completion notification and result without invoking Workflow again. "
         "Run the complete GEAK kernel pipeline through independent Director "
         f"validation. {patch_note}When the "
         "Workflow finishes, write its exact full return object as compact JSON to "
-        f'"{eval_dir}/workflow_return.json", then print exactly that compact JSON '
+        f"{return_path}, then print exactly that compact JSON "
         "as the final line and print nothing after it."
     )
 

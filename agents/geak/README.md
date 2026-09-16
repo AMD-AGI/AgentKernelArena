@@ -139,6 +139,10 @@ tool identity with its synchronous result or completed background notification.
 The invocation must match the prepared script and arguments. Assistant prose,
 Director markers, and an assistant-written `workflow_return.json` cannot prove
 native completion. A failed or missing runtime return remains an engine failure.
+The dispatch prompt supplies one exact JSON object containing only `scriptPath`
+and `args`, explicitly excluding extra keys such as `run_in_background`. This
+clarifies the requested call without guaranteeing model compliance or forcing
+synchronous execution; matching native background completion remains supported.
 
 ## Security and reproducibility review
 
