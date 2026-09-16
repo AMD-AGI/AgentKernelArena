@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import fcntl
+import hashlib
 import importlib
 import json
 import os
@@ -16,7 +17,7 @@ import yaml
 
 from agents.geak.bridge import (Bridge, TaskContext, candidate_files, copy_task,
                                 copy_tree, digests, remaining_budget, write_json)
-from agents.geak.compatibility import adapt_lane, prepare_engine, verify_upstream
+from agents.geak.compatibility import adapt_lane, adapt_workflow, prepare_engine, verify_upstream
 from agents.geak.launch_agent import prepare_job
 from src.task_session import TaskSession
 from src.task_spec import TaskSpec
@@ -628,6 +629,19 @@ def test_engine_rejects_child_errors_before_search(task_factory, monkeypatch):
 def test_compatibility_rejects_unknown_engine_source():
     with pytest.raises(ValueError, match="unknown GEAK lane"):
         adapt_lane("export const meta = {}; return {};")
+    with pytest.raises(ValueError, match="unknown GEAK workflow"):
+        adapt_workflow("export const meta = {}; return {};", "contract")
+
+
+@pytest.mark.parametrize("source", ["const A = args;", "const A = args || {};\nconst A = args || {};"])
+def test_workflow_adapter_rejects_changed_argument_marker(monkeypatch, source):
+    from agents.geak import compatibility
+
+    # Exercise the marker guard independently of the preceding upstream hash guard.
+    monkeypatch.setitem(compatibility.SCRIPT_SHA256, "kernel_workflow.js",
+                        hashlib.sha256(source.encode()).hexdigest())
+    with pytest.raises(ValueError, match="argument extension point changed"):
+        adapt_workflow(source, "contract")
 
 
 @pytest.fixture
@@ -653,7 +667,18 @@ def test_pinned_upstream_preparation(task_factory, upstream, language, state):
     assert args["arena_setup"]["baseline_dir"] == str(bridge.context.baseline)
     assert args["apply_to_original"] == "false"
     assert args["warm_start"] == args["update_experience"] == "off"
+    assert "arena_contract" not in args and "task" not in args
+    contract = (bridge.eval_dir / "COMMANDMENT.md").read_text()
+    dispatcher = Path(engine["script_path"])
+    assert dispatcher.read_text() == adapt_workflow(
+        (upstream / "kernel_workflow/kernel_workflow.js").read_text(), contract)
+    identity = json.loads((bridge.root / "engine_identity.json").read_text())
+    assert identity["adapter_version"] == 2
+    assert identity["adapted_workflow_sha256"] == hashlib.sha256(dispatcher.read_bytes()).hexdigest()
     lane = Path(args["kernel_lane_script"]).read_text()
+    assert identity["adapted_lane_sha256"] == hashlib.sha256(lane.encode()).hexdigest()
+    assert lane == adapt_lane((upstream / "kernel_workflow/kernel_lane.js").read_text())
+    assert len(json.dumps(engine, ensure_ascii=False).encode()) < 8192
     assert "const setup = A.arena_setup;" in lane
     assert "const bench = A.arena_benchmark;" in lane
     assert "const results = await pipeline(" in lane
@@ -666,6 +691,70 @@ def test_pinned_upstream_preparation(task_factory, upstream, language, state):
     assert "const KB_WRITE_OK = false;" in lane
     assert args["kb_remote"] == "off"
     # Verify preparation never mutates the engine being shared with other runs.
+    verify_upstream(upstream)
+
+
+@pytest.mark.parametrize("mode", ["author", "optimize"])
+@pytest.mark.parametrize("conflicting_input", [False, True])
+def test_native_dispatcher_restores_exact_lane_args(upstream, tmp_path, mode, conflicting_input):
+    node = os.environ.get("GEAK_TEST_NODE") or shutil.which("node")
+    if not node:
+        pytest.skip("Node required for the real GEAK JavaScript interface probe")
+    original = upstream / "kernel_workflow/kernel_workflow.js"
+    # Deliberately includes JS interpolation/injection syntax and line separators:
+    # these must reach the lane as literal text, never execute in the dispatcher.
+    contract = ('Arena task contract: "quotes" \\ slash\nUnicode 雪 🧪\u2028\u2029\n'
+                '` ${globalThis.contractInjected = true} "}; throw Error("injected"); //\n'
+                + 'Preserve every case, tolerance and protected file.\n' * 128)
+    adapted = tmp_path / "kernel_workflow.js"
+    adapted.write_text(adapt_workflow(original.read_text(), contract))
+    compact = {
+        "mode": mode, "kernel_path": "/private/original", "workflow_dir": "/private/workflow",
+        "kernel_lane_script": "/private/workflow/kernel_lane.js", "eval_dir": "/private/eval",
+        "gpu_ids": "0", "budget": 2, "agent_timeout_ms": 1800000,
+        "nested": {"boolean": False, "string": "false", "values": [None, 0, 1.25, "雪"]},
+    }
+    old_args = {**compact, "arena_contract": contract, "task": contract}
+    if conflicting_input:
+        compact.update(arena_contract="untrusted override", task="incomplete override")
+    request = tmp_path / "dispatch.json"
+    write_json(request, {"original": str(original), "adapted": str(adapted),
+                         "old_args": old_args, "compact_args": compact})
+    probe = tmp_path / "dispatch.js"
+    probe.write_text(r'''
+const fs = require('fs');
+const input = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+async function run(path, args) {
+  const calls = [];
+  const before = JSON.stringify(args);
+  const body = fs.readFileSync(path, 'utf8').replace(/^export const meta/m, 'const meta');
+  const workflow = async (ref, passedArgs) => {
+    calls.push({ref, args: passedArgs});
+    return {nativeChildSentinel: true};
+  };
+  const result = await new Function('args', 'workflow', 'phase', 'log',
+    'return (async()=>{' + body + '})();')(args, workflow, () => {}, () => {});
+  if (before !== JSON.stringify(args)) throw Error('dispatcher mutated caller args');
+  return {calls, result, injected: globalThis.contractInjected === true};
+}
+(async () => {
+  console.log(JSON.stringify({old: await run(input.original, input.old_args),
+                             adapted: await run(input.adapted, input.compact_args)}));
+})().catch(error => { console.error(error); process.exit(1); });
+''')
+    completed = subprocess.run([node, str(probe), str(request)], text=True,
+                               capture_output=True, timeout=10)
+    assert completed.returncode == 0, completed.stderr
+    result = json.loads(completed.stdout)
+    assert result["adapted"] == result["old"]
+    assert result["adapted"]["injected"] is False
+    assert result["adapted"]["calls"] == [{"ref": {"scriptPath": compact["kernel_lane_script"]},
+                                          "args": old_args}]
+    assert result["adapted"]["result"] == {"nativeChildSentinel": True}
+    if not conflicting_input:
+        # A representative tool input stays compact without increasing any model
+        # budget. Bytes are measured here, not assumed to equal tokenizer tokens.
+        assert len(json.dumps(compact).encode()) < 8192 < len(json.dumps(old_args).encode())
     verify_upstream(upstream)
 
 

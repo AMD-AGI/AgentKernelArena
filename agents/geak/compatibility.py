@@ -44,6 +44,22 @@ def verify_upstream(checkout: Path, *, remaining: Callable[[], float] | None = N
     timeout()
 
 
+def adapt_workflow(source: str, contract: str) -> str:
+    """Restore the full task contract in native JS, outside the outer tool input."""
+    if hashlib.sha256(source.encode()).hexdigest() != SCRIPT_SHA256["kernel_workflow.js"]:
+        raise ValueError("Refusing to adapt an unknown GEAK workflow")
+    marker = "const A = args || {};"
+    if source.count(marker) != 1:
+        raise ValueError("GEAK workflow argument extension point changed")
+    if not isinstance(contract, str) or not contract:
+        raise ValueError("GEAK task contract must be a nonempty string")
+    # JSON string literals preserve quotes, backticks, newlines and Unicode as
+    # data. Trusted values follow the spread so callers cannot replace them.
+    literal = json.dumps(contract, ensure_ascii=True)
+    return source.replace(marker, "const A = { ...(args || {}), "
+                          f"arena_contract: {literal}, task: {literal} }};", 1)
+
+
 def adapt_lane(source: str) -> str:
     if hashlib.sha256(source.encode()).hexdigest() != SCRIPT_SHA256["kernel_lane.js"]:
         raise ValueError("Refusing to adapt an unknown GEAK lane")
@@ -131,6 +147,8 @@ def prepare_engine(checkout: Path, bridge: Bridge, *, python: str, options: dict
     for role in roles.glob("*.md"):
         copy_file(role, workflow / "roles" / role.name, remaining=bridge.remaining, overwrite=True)
     contract = arena_contract(bridge, python)
+    dispatcher = workflow / "kernel_workflow.js"
+    dispatcher.write_text(adapt_workflow(dispatcher.read_text(), contract))
     for role in (workflow / "roles").glob("*.md"):
         bridge.remaining()
         content = role.read_text()
@@ -173,7 +191,7 @@ def prepare_engine(checkout: Path, bridge: Bridge, *, python: str, options: dict
         "warm_start": "off", "update_experience": "off", "use_learned_kb": "false",
         "kb_remote": "off",
         "dra_enabled": "false", "use_expert_skills": "false", "frozen_oracle": "false",
-        "arena_contract": contract, "task": contract, "arena_model": options.get("model"),
+        "arena_model": options.get("model"),
         "arena_setup": {"eval_dir": str(bridge.eval_dir),
                         "workspace": str(bridge.eval_dir / "workspace"),
                         "baseline_dir": str(bridge.context.baseline), "kernel_name": "arena_candidate",
@@ -186,8 +204,9 @@ def prepare_engine(checkout: Path, bridge: Bridge, *, python: str, options: dict
     }
     write_json(bridge.root / "engine_identity.json", {
         "upstream_revision": UPSTREAM_REVISION, "upstream_scripts": SCRIPT_SHA256,
+        "adapted_workflow_sha256": hashlib.sha256(dispatcher.read_bytes()).hexdigest(),
         "adapted_lane_sha256": hashlib.sha256(lane.read_bytes()).hexdigest(),
-        "adapter_version": 1,
+        "adapter_version": 2,
     })
     bridge.remaining()
     return {"script_path": str(workflow / "kernel_workflow.js"), "args": args}

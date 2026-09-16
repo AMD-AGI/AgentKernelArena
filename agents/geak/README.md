@@ -156,6 +156,12 @@ The dispatch prompt supplies one exact JSON object containing only `scriptPath`
 and `args`, explicitly excluding extra keys such as `run_in_background`. This
 clarifies the requested call without guaranteeing model compliance or forcing
 synchronous execution; matching native background completion remains supported.
+The outer `args` omit the two duplicate full-contract fields. A hash-checked
+private copy of the native dispatcher restores `arena_contract` and `task` from
+trusted JSON string literals before the author/optimize lane receives its
+arguments. The lane and role inputs retain the full contract; model output
+budgets stay unchanged. Adapter identity version 2 records the adapted
+dispatcher hash as well as the adapted lane hash.
 
 ## Security and reproducibility review
 
