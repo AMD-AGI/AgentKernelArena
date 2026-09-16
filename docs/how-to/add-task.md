@@ -13,7 +13,18 @@ contract and replaces the previous task-family-specific configuration guidance.
 
 ## Status and scope
 
-**All 438 retained tasks use schema v2; GPU qualification is in progress.**
+**All retained tasks use schema v2.** Task-package GPU qualification, framework
+regression results and agent execution coverage are separate, source-bound
+claims; see the [dated verification record](../reference/verification-2026-09-15.md)
+for their evidence and qualification limits, including the completed 180-pair
+agent matrix and its separately recorded candidate outcomes.
+The final canonical counts and independent set reconciliation are located in
+that record's [primary proofs](../reference/verification-2026-09-15.md#retained-primary-proofs).
+That record separates completed native attempts from candidate acceptance and
+speedup. An agent failure does not waive task checks or by itself invalidate a
+candidate that the shared evaluator independently accepts. Missing original
+native terminal evidence cannot be replaced by a candidate report or model text.
+
 The shared declaration parser, action/result protocol, materialization,
 baseline session, evaluator and validator are connected through
 `src/task_run.py`. Normal runs and quality_loop use the same final evaluation

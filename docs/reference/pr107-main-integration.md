@@ -1,75 +1,38 @@
 # PR107 integration with pinned main — 2026-09-15
 
-Continuation plan updated **2026-09-16**; historical results keep their original
-source and timestamps.
+Historical reconciliation results retain their original source and timestamps.
+The linked verification record maintains the current execution checkpoint.
 
-This record retains the `c1dc5e09` merge decisions and the subsequent qualification
-checkpoint. For source-specific CPU, GPU, quality-loop and agent-matrix proofs, see the
-[2026-09-15 verification checkpoint](verification-2026-09-15.md).
-
-The frozen `e8ec5d6b` campaign remains historical evidence for all **438** retained
-task packages, with each report's actual source, runtime and model identity.
-The integration and its successors do not replace those reports.
+This record describes the `c1dc5e09` merge decisions. Current source-specific
+CPU, GPU, quality-loop and matrix evidence is maintained in the
+[verification checkpoint](verification-2026-09-15.md); subsequent fixes do not
+rewrite these historical results.
 
 ## Qualification checkpoint
 
-| Scope | Recorded outcome |
-| --- | --- |
-| Original c1 revalidation | All 55 outcomes retained: **49 PASS / 1 WARN / 5 FAIL**. One QKV task-level PASS carries an explicit outer bytecode-inventory exception; its original outer FAIL remains recorded. |
-| Fresh `400fcb9d` task validators | **6 PASS / 1 Pack semantic FAIL**. Both MoE tasks passed full validation. Paired study 141240 passed independent reparse of 76 public actions, including 32 measured actions / 512 case observations. |
-| Full 400f CPU suite | **13,996 passed / 4 fixture failures / 6 skipped**, plus 6 passing subtests. Failed output is preserved. |
-| `9c4c99f1` successor | Fresh Pack GPU **PASS**, independently audited: **11 correctness / 5 scored cases**. Full CPU: **14,013 passed / 1 old Pack source-hash fixture failure / 6 skipped**, plus 6 passing subtests, **612.74 s**. This failed run is retained separately from the f65 PASS. |
-| Current task applicability at 9c | All **438 task packages** have runtime-applicable validator PASS evidence with their original framework/runtime identities; this is not one fresh final-framework campaign. |
-| `f65e1e55` CPU follow-up | Test-only exact Pack source-delta check repaired; **168 focused PASS**. Immutable full CPU suite **PASS: 14,019 passed / 6 skipped / 6 subtests passed**, **616.62 s**, exit 0, clean unchanged source; completed **2026-09-15 23:13:13 UTC**. |
-| Five saved candidates | **35 formal actions PASS** at 400f; AWQ/apply_write task bytes match 9c. **Zero new optimization searches**. Original search/source evidence is retained. |
-| Agent matrix | **2026-09-15 21:36:41 UTC** receipt: **117 completed / 113 accepted**: Codex 45/45, Claude Code 22/21, Forge 45/42, GEAK 5/5. Completion and acceptance are separate; 63 completion pairs remain. |
+The original 55-task c1 revalidation produced **49 PASS / 1 WARN / 5 FAIL**.
+One QKV task-level PASS also retains an outer bytecode-inventory FAIL caused by
+review-created interpreter caches; tracked source bytes were verified unchanged.
+This exception is separate from the WARN and five semantic failures.
 
-The corrected 438-task aggregate reuses 383 historical reports already qualified
-for the e8 task versions, preserving their individual actual worker revisions;
-e8 is their applicability checkpoint, not their common execution revision.
-The remaining applicability checkpoints are c1 (48), 400f (six) and 9c (one).
-These counts describe applicability, not execution revisions. The v2 aggregate
-retains worker IDs as recorded, including abbreviated IDs, without changing any
-PASS or source binding.
+Subsequent source-bound repairs restored applicability for all **438** retained
+task packages and closed the core CPU gate at `f65e1e55`. The aggregate preserves
+each report's actual worker, runtime and model identity; e8-qualified task versions
+are not a single campaign executed at e8. The later Pack repair, paired MoE timing
+study, saved-candidate reevaluations and failed intermediate CPU runs are recorded
+in the verification checkpoint rather than duplicated here.
 
-The original Pack GPU probe passed the 2-D all-empty zero-grid path and failed
-the 3-D all-empty `reshape(0, -1)` before JIT. The successor uses
-`flatten(start_dim=1)`, retaining the original launch and scored cases; it does
-not bypass the work with an early return. Job 141241's fresh full validator
-covered both new unscored controls and passed; this does not erase the earlier
-semantic FAIL or qualify the separate failed CPU run.
-
-The paired MoE study reports median after/before latencies of **0.9357/0.9330**
-for instruction baseline/candidate and **0.9488/0.9484** for hard MoE. With unchanged
-candidate code, after candidate/baseline ratios are **1.0007/1.0011**. This is a
-harness preparation-boundary effect, not agent optimization gain. Source binding,
-measurement limits and the completed independent raw audit are recorded in the
-dated checkpoint.
-
-Authentication is repaired; the historical shared Claude/GEAK quota rejection
-reported a reset at **2026-09-16 00:00 UTC**. The revised plan supersedes the old midnight dispatch:
-both old waiters are **DISARMED**, and no new Fable/Opus dispatch is authorized.
-The **2026-09-16** continuation uses **Sonnet / medium** for the remaining 23
-Claude Code tasks and 40 GEAK tasks, with GEAK's native Workflow retaining its
-Claude Code backend. The experimental GEAK Codex backend remains off-branch and
-outside this PR; it is not a completion prerequisite. New runs retain the normal
-source, model, backend and runtime admission checks.
-Historical model provenance and the 117/113 matrix are unchanged. No new Forge
-runs are required. Legacy GEAK source-39 evidence still lacks complete original
-tool-ID/session correlation and is not qualification
-of the later strict completion gate.
-
-The full core CPU gate is now complete at f65; the earlier failed 400f and 9c
-reports remain preserved. Remaining integration coverage is the 63 incomplete
-matrix pairs. Completed native searches with rejected candidates or explicitly
-recorded no-candidate outcomes are legitimate results; the target does not
-require universal acceptance or speedup. Pre-model infrastructure failures do
-not count, and model failures are not automatically retried to force acceptance.
-The f65 CPU result does not by itself qualify any new GPU run.
-
-The source classification and reconciliation below describe the original c1
-merge. Later Pack changes and framework repairs are separately bound in the
-dated verification checkpoint; no historical outcome is silently upgraded.
+Task-package qualification, completed native attempts, agent success and candidate
+acceptance are separate claims. Final matrix outcomes and qualification limits belong
+to the linked checkpoint. No current scheduler status, launch authorization or
+whole-final-framework GPU qualification should be inferred from this merge history.
+The later `68ccbaac` runtime has passing PR/push CI and source-bound actual v4
+object-path native integration evidence. The completed 180-pair matrix and its
+173 accepted candidates are recorded there. These results do not rewrite c1's 55 original
+outcomes or imply every task ran on the final adapter/framework revision.
+The [retained primary proofs](verification-2026-09-15.md#retained-primary-proofs)
+identify the parent-adopted final canonical report and independent 180-pair set
+reconciliation.
 
 ## Pinned inputs and scope
 
@@ -194,10 +157,11 @@ a qualified pinned runtime described in
 5. Review quality-loop repair/publication behavior after separately integrating
    the backend evidence work. CPU mocks do not prove real model activity.
 
-All 55 original task outcomes are now recorded, with repairs and remaining gates
-listed above. Newly exposed baseline/compiler or coverage issues remain failures
-until separately repaired and requalified; no cases or tolerances are relaxed to
-match the baseline. The original merge construction and this documentation update
+All 55 original task outcomes are recorded; subsequent repairs and current gates
+are listed in the dated verification checkpoint. Newly exposed baseline/compiler
+or coverage issues remain failures until separately repaired and requalified;
+no cases or tolerances are relaxed to match the baseline. The original merge
+construction and this documentation update
 did not themselves run GPU/provider jobs, push the PR, change its base ref or
 mutate campaign controls. Actual subsequent runs are identified in the dated
 verification record.
