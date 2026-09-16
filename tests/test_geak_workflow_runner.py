@@ -1,8 +1,8 @@
-"""Offline tests for the GEAK v4 Arena adapter.
+"""Offline tests for the shared GEAK Workflow runtime.
 
 These tests exercise the SDK-free surface: handoff mapping (including the
 handoff-driven ``apply_to_original``), on-disk result recovery/normalization, GPU
-namespace mapping, and the simplified launcher's handoff construction. They
+mapping and on-disk handoff handling. They
 intentionally do not invoke Claude, the Claude Agent SDK, GEAK, a container, or a
 GPU.
 """
@@ -10,18 +10,12 @@ GPU.
 from __future__ import annotations
 
 import copy
-import importlib
 import json
-import logging
 from pathlib import Path
 
 import pytest
 
-from agents.geak_v4 import workflow_runner
-from src.module_registration import AgentType, load_agent_launcher
-
-
-geak_launcher = importlib.import_module("agents.geak_v4.launch_agent")
+from agents.geak import workflow_runner
 
 
 def _write_json(path: Path, value: object) -> None:
@@ -119,145 +113,6 @@ def _prepare_normalized_result(
         encoding="utf-8",
     )
     return eval_dir, workflow_runner.normalize_result(eval_dir)
-
-
-def _make_task(tmp_path: Path) -> tuple[Path, Path]:
-    """Create a minimal task workspace + config.yaml with one kernel source."""
-    workspace = tmp_path / "workspace"
-    source = workspace / "src" / "kernel.py"
-    source.parent.mkdir(parents=True)
-    source.write_text("value = 1\n", encoding="utf-8")
-    config = tmp_path / "config.yaml"
-    config.write_text(
-        "task_type: hip2hip\nsource_file_path:\n  - src/kernel.py\n",
-        encoding="utf-8",
-    )
-    return workspace, config
-
-
-# --------------------------------------------------------------------------- #
-# Registration + launcher
-# --------------------------------------------------------------------------- #
-def test_agent_registry_loads_geak_v4():
-    assert AgentType.from_string("geak_v4") is AgentType.GEAK_V4
-    assert (
-        load_agent_launcher(AgentType.GEAK_V4, logging.getLogger(__name__))
-        is geak_launcher.launch_agent
-    )
-
-
-def test_declared_sources_accepts_str_and_list(tmp_path):
-    workspace, _ = _make_task(tmp_path)
-    assert geak_launcher._declared_sources(
-        {"source_file_path": "src/kernel.py"}, workspace
-    ) == ["src/kernel.py"]
-    assert geak_launcher._declared_sources(
-        {"source_file_path": ["src/kernel.py"]}, workspace
-    ) == ["src/kernel.py"]
-
-
-def test_declared_sources_empty_when_unset(tmp_path):
-    workspace, _ = _make_task(tmp_path)
-    assert geak_launcher._declared_sources({}, workspace) == []
-
-
-def test_declared_sources_fails_when_anchor_missing(tmp_path):
-    workspace, _ = _make_task(tmp_path)
-    with pytest.raises(FileNotFoundError, match="not found in workspace"):
-        geak_launcher._declared_sources(
-            {"source_file_path": ["src/missing.py"]}, workspace
-        )
-
-
-def test_launch_agent_rejects_unsupported_task_type(tmp_path):
-    workspace, _ = _make_task(tmp_path)
-    config = tmp_path / "bad.yaml"
-    config.write_text(
-        "task_type: repo2repo\nsource_file_path: [src/kernel.py]\n",
-        encoding="utf-8",
-    )
-    with pytest.raises(ValueError, match="does not support task_type"):
-        geak_launcher.launch_agent({}, str(config), str(workspace))
-
-
-def test_launch_agent_writes_apply_in_place_handoff(tmp_path, monkeypatch):
-    workspace, config = _make_task(tmp_path)
-    workflow_dir = tmp_path / "geak" / "kernel_workflow"
-    workflow_dir.mkdir(parents=True)
-    (workflow_dir / "kernel_workflow.js").write_text("// fixture\n", encoding="utf-8")
-
-    monkeypatch.setenv("GEAK_V4_WORKFLOW_DIR", str(workflow_dir))
-    monkeypatch.setattr(geak_launcher.shutil, "which", lambda name: "/usr/bin/claude")
-    monkeypatch.setattr(
-        geak_launcher,
-        "load_prompt_builder",
-        lambda *args, **kwargs: (lambda *a, **k: "BASE PROMPT"),
-    )
-
-    captured: dict[str, object] = {}
-
-    def fake_runner(handoff_path, result_path, *, timeout_seconds, logger):
-        handoff = json.loads(Path(handoff_path).read_text(encoding="utf-8"))
-        captured["handoff"] = handoff
-        Path(result_path).write_text(
-            json.dumps(
-                {
-                    "schema_version": 1,
-                    "status": "ok",
-                    "applied_to_original": "true",
-                    "final_speedup": 1.3,
-                    "eval_dir": handoff["eval_dir"],
-                }
-            )
-            + "\n",
-            encoding="utf-8",
-        )
-        return "runner-output"
-
-    monkeypatch.setattr(geak_launcher, "_run_workflow_runner", fake_runner)
-
-    output = geak_launcher.launch_agent({"gpu_ids": "0"}, str(config), str(workspace))
-
-    handoff = captured["handoff"]
-    assert handoff["schema_version"] == 1
-    # GEAK edits the workspace directly; Arena's harness guard re-scores it.
-    assert handoff["apply_to_original"] == "true"
-    assert handoff["kernel_path"] == str(workspace.resolve())
-    assert handoff["workflow_dir"] == str(workflow_dir.resolve())
-    assert handoff["claude_cli_path"] == "/usr/bin/claude"
-    assert "BASE PROMPT" in handoff["task"]
-    assert "src/kernel.py" in handoff["task"]
-
-    # Artifacts must live OUTSIDE the scored workspace (hidden sibling dir).
-    eval_dir = Path(handoff["eval_dir"]).resolve()
-    assert not eval_dir.is_relative_to(workspace.resolve())
-    artifact_root = workspace.parent / f".{workspace.name}_geak_v4"
-    assert eval_dir.parent.parent == artifact_root.resolve()
-
-    assert "runner-output" in output
-    assert '"status": "ok"' in output
-
-
-def test_launch_agent_errors_without_claude_cli(tmp_path, monkeypatch):
-    workspace, config = _make_task(tmp_path)
-    workflow_dir = tmp_path / "geak" / "kernel_workflow"
-    workflow_dir.mkdir(parents=True)
-    (workflow_dir / "kernel_workflow.js").write_text("// fixture\n", encoding="utf-8")
-    monkeypatch.setenv("GEAK_V4_WORKFLOW_DIR", str(workflow_dir))
-    monkeypatch.setattr(geak_launcher.shutil, "which", lambda name: None)
-
-    with pytest.raises(RuntimeError, match="Claude Code CLI"):
-        geak_launcher.launch_agent({}, str(config), str(workspace))
-
-
-def test_parallel_worker_maps_host_gpu_to_logical_zero(monkeypatch):
-    monkeypatch.setenv("AGENT_KERNEL_ARENA_HOST_GPU_ID", "7")
-    monkeypatch.setenv("ROCR_VISIBLE_DEVICES", "7")
-    monkeypatch.setenv("HIP_VISIBLE_DEVICES", "7")
-    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "7")
-    monkeypatch.setenv("GEAK_V4_GPU_IDS", "7")
-
-    assert geak_launcher._logical_gpu_ids({"gpu_ids": "7"}) == "0"
 
 
 # --------------------------------------------------------------------------- #

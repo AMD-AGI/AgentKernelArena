@@ -23,10 +23,11 @@ A run configuration defines a single experiment. Start from a file under
 | `log_directory` | string | Directory for run logs. |
 | `workspace_directory_prefix` | string | Prefix for the workspace directory. The full name is `<prefix>_<gpu>_<agent>`. |
 
-The legacy v1 `geak_v4` integration accepts top-level `gpu_ids`, a string of
-comma-separated process-visible GPU IDs. This differs from the host runner's
-`GPU_IDS` variable; a masked worker uses logical IDs. V2 GEAK search settings
-use the `agent` mapping in the [GEAK guide](../../agents/geak/README.md#runtime-setup).
+GEAK resolves GPU IDs within the process-visible namespace; a masked Docker
+worker uses logical device zero. Host allocations remain controlled by the
+Docker/Slurm runner. GEAK search settings use the `agent` mapping in the
+[GEAK guide](../../agents/geak/README.md#runtime-setup). The `geak_v4` template
+name is a registry alias for this same integration.
 
 Agent-specific defaults live in `agents/<agent_name>/agent_config.yaml`.
 Supported fields in the run config's `agent` mapping override those defaults;

@@ -148,6 +148,26 @@ def program_text(plan: dict, *, prefix: str = "", port: bool = False, initialize
     ])
 
 
+def protected_agent_paths(plan: dict, spec, root: Path) -> tuple[dict, list[str]]:
+    """Require the engine/lane Git root, never a nested rewrite attempt."""
+    root = root.resolve()
+    top = Path(subprocess.check_output(
+        ["git", "rev-parse", "--show-toplevel"], cwd=root, text=True).strip()).resolve()
+    if root != top:
+        raise ValueError("Forge config.workspace must be the engine/lane Git root")
+    tracked = set(filter(None, subprocess.check_output(
+        ["git", "ls-files", "-z"], cwd=root, text=True).split("\0")))
+    required = {"config.yaml", "arena_forge_driver.py"} | {
+        name for name in protected_paths(spec) if (Path(plan["template"]) / name).is_file()
+    }
+    missing = sorted(required - tracked)
+    if missing:
+        raise ValueError(f"Forge protected files are not tracked: {missing}")
+    files = candidate_files(spec, bound_candidate_root(plan, root), required=False)
+    editable = set(files.values())
+    return files, [str(root / name) for name in sorted(tracked) if root / name not in editable]
+
+
 def install_hooks(plan: dict) -> None:
     probe()  # No private-interface patches on unreviewed upstream code.
     from agents.forge.protected_inventory import install as install_inventory
@@ -174,14 +194,10 @@ def install_hooks(plan: dict) -> None:
         bound = agent_signature.bind_partial(*args, **kwargs)
         values = bound.arguments
         root = Path(values["config"].workspace).resolve()
-        candidate_root = bound_candidate_root(plan, root)
-        files = candidate_files(spec, candidate_root, required=False)
+        files, protected = protected_agent_paths(plan, spec, root)
         values["source_files"] = list(map(str, files.values()))
         values["target_functions"] = [entry.symbol for entry in spec.candidate.entrypoints if entry.symbol]
         values["task_type"] = "image_kernel"  # upstream multi-file switch only
-        tracked = subprocess.check_output(["git", "ls-files", "-z"], cwd=root, text=True).split("\0")
-        editable = set(files.values())
-        protected = [str(root / name) for name in filter(None, tracked) if root / name not in editable]
         values["extra_protected_paths"] = list(dict.fromkeys([*(values.get("extra_protected_paths") or []), *protected]))
         # Both CLI providers must run the root-level public bridge, even with a
         # nested anchor. Never infer the working directory from the anchor file.
@@ -401,7 +417,11 @@ def main(argv=None):
     install_hooks(plan)
     from kernelforge.cli import main as cli
     from agents.forge.process_tree import managed_children
-    with managed_children():
+    # A stage can SIGKILL a driver before its TemporaryDirectory unwinds.
+    # This surviving parent removes only this campaign's disposable copies,
+    # after reaping even detached compilers/GPU workers. Logs remain outside.
+    from agents.forge.bridge import cleanup_evaluation_workspaces
+    with managed_children(after_stop=lambda: cleanup_evaluation_workspaces(plan)):
         initialization = None
         if argv and argv[0] == "--arena-initialize":
             from agents.forge.initialization import initialize, prepare_loop

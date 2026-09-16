@@ -11,7 +11,7 @@ anyio = pytest.importorskip("anyio")
 @pytest.mark.parametrize("status", ["allowed_warning", "rejected"])
 def test_actual_sdk_rate_limit_event_retains_only_bounded_metadata(status):
     sdk = pytest.importorskip("claude_agent_sdk")
-    from agents.geak_v4.workflow_runner import _record_runtime_identity
+    from agents.geak.workflow_runner import _record_runtime_identity
 
     info = sdk.types.RateLimitInfo(status=status, resets_at=1789462800,
         rate_limit_type="five_hour", overage_status="rejected",
@@ -28,7 +28,7 @@ def test_actual_sdk_rate_limit_event_retains_only_bounded_metadata(status):
 
 def test_actual_sdk_structured_assistant_error_does_not_retain_provider_text():
     sdk = pytest.importorskip("claude_agent_sdk")
-    from agents.geak_v4.workflow_runner import _record_runtime_identity
+    from agents.geak.workflow_runner import _record_runtime_identity
 
     identity = {}
     _record_runtime_identity(sdk.AssistantMessage(
@@ -37,7 +37,7 @@ def test_actual_sdk_structured_assistant_error_does_not_retain_provider_text():
 
 
 def test_director_marker_does_not_preempt_runtime_return(tmp_path, monkeypatch):
-    from agents.geak_v4 import workflow_runner as runner
+    from agents.geak import workflow_runner as runner
 
     eval_dir = tmp_path / "eval"
     eval_dir.mkdir()
@@ -99,7 +99,7 @@ def test_director_marker_does_not_preempt_runtime_return(tmp_path, monkeypatch):
 
 
 def test_observed_identity_persists_before_sdk_timeout(tmp_path, monkeypatch):
-    from agents.geak_v4 import workflow_runner as runner
+    from agents.geak import workflow_runner as runner
 
     path = tmp_path / "runtime_identity.json"
     eval_dir = tmp_path / "eval"

@@ -24,7 +24,7 @@ DEFAULT_RUN_CONFIG="example_configs/quickstart_claude_mi300.yaml"
 # Set by host-side commands after reading the selected run config. Keep this
 # separate from REQUIRED_AGENTS because GEAK templates normalize to claude_code
 # before Docker arguments are built.
-GEAK_V4_RUNTIME=0
+GEAK_RUNTIME=0
 # quality_loop keeps the repository checkout read-only in the agent container.
 # Only these host-validated, run-specific subdirectories are over-mounted rw.
 QUALITY_LOOP_ARTIFACT_REL=""
@@ -375,11 +375,11 @@ read_agent_template() {
     sed -nE 's/^[[:space:]]+template:[[:space:]]*["'"'"']?([A-Za-z0-9_]+).*/\1/p' "$config" | head -n 1
 }
 
-configure_geak_v4_runtime() {
+configure_geak_runtime() {
     local config="$1"
-    GEAK_V4_RUNTIME=0
+    GEAK_RUNTIME=0
     case "$(read_agent_template "$config")" in
-        geak|geak_v4) GEAK_V4_RUNTIME=1 ;;
+        geak|geak_v4) GEAK_RUNTIME=1 ;;
     esac
 }
 
@@ -1021,11 +1021,11 @@ build_docker_args() {
         -w "$CONTAINER_WORKDIR"
     )
 
-    # geak_v4's claude-agent-sdk is installed with `pip install --target` into
+    # GEAK's claude-agent-sdk is installed with `pip install --target` into
     # this host-mounted dir (see container_setup_geak). Only put it on
     # a GEAK-only path for the container bootstrap to prepend to PYTHONPATH.
     # Do not replace the image's PYTHONPATH: it can supply AITER/source imports.
-    if [[ "$GEAK_V4_RUNTIME" == "1" ]]; then
+    if [[ "$GEAK_RUNTIME" == "1" ]]; then
         docker_args+=(-e "AKA_GEAK_SDK_PATH=${CONTAINER_WORKDIR}/.aka-pyuserbase/geak-sdk")
     fi
 
@@ -1075,7 +1075,7 @@ build_docker_args() {
     # (which has no agent CLI) from receiving runtime credentials. Each var is
     # passed by name only (no "=value") so secrets stay out of argv / process
     # listings.
-    if [[ "$GEAK_V4_RUNTIME" == "1" ]] && agent_list_contains "$agents" claude_code; then
+    if [[ "$GEAK_RUNTIME" == "1" ]] && agent_list_contains "$agents" claude_code; then
         local claude_env_var
         for claude_env_var in \
             ANTHROPIC_AUTH_TOKEN ANTHROPIC_API_KEY ANTHROPIC_BASE_URL \
@@ -1195,7 +1195,7 @@ build_docker_args() {
     # Mount the pinned GEAK checkout only for GEAK runs so an exported
     # host setting does not change the container surface for existing agents.
     # The v2 adapter also reads git identity and perf_knowledge in its parent.
-    if [[ "$GEAK_V4_RUNTIME" == "1" && ( -n "${GEAK_HOME:-}" || -n "${GEAK_V4_WORKFLOW_DIR:-}" ) ]]; then
+    if [[ "$GEAK_RUNTIME" == "1" && ( -n "${GEAK_HOME:-}" || -n "${GEAK_V4_WORKFLOW_DIR:-}" ) ]]; then
         local geak_dir geak_root
         if [[ -n "${GEAK_HOME:-}" ]]; then
             geak_root="$GEAK_HOME"
@@ -1682,7 +1682,7 @@ run_parallel() {
     local config_name
     config_name="$(extract_config_name "$@")"
     select_runtime_for_config "$config_name"
-    configure_geak_v4_runtime "$config_name"
+    configure_geak_runtime "$config_name"
 
     REQUIRED_AGENTS="$(resolve_required_agents "$config_name")"
     AGENTS_STRICT=1
@@ -1765,7 +1765,7 @@ case "${1:-}" in
         shift
         config_name="$(extract_config_name "$@")"
         select_runtime_for_config "$config_name"
-        configure_geak_v4_runtime "$config_name"
+        configure_geak_runtime "$config_name"
         # Only the configured agent's CLI/auth is required for a run.
         REQUIRED_AGENTS="$(resolve_required_agents "$config_name")"
         AGENTS_STRICT=1
@@ -1826,7 +1826,7 @@ case "${1:-}" in
         shift
         config_name="$(extract_config_name "$@")"
         select_runtime_for_config "$config_name"
-        configure_geak_v4_runtime "$config_name"
+        configure_geak_runtime "$config_name"
         REQUIRED_AGENTS="$(resolve_required_agents "$config_name")"
         AGENTS_STRICT=1
         docker_exec 0 bash src/scripts/docker_benchmark.sh _container_preflight "$config_name"
@@ -1847,7 +1847,7 @@ case "${1:-}" in
         if [[ -z "${AKA_AGENTS:-}" ]]; then
             [[ -f "$config_name" ]] || die "config file not found: $config_name"
         fi
-        configure_geak_v4_runtime "$config_name"
+        configure_geak_runtime "$config_name"
         # By default, check only the CLI selected by CONFIG. AKA_AGENTS can
         # request one, several, or `all` explicitly.
         REQUIRED_AGENTS="$(normalize_check_agents "$(resolve_required_agents "$config_name")")"
@@ -1889,7 +1889,7 @@ case "${1:-}" in
         ;;
     setup-geak)
         select_runtime_for_host
-        GEAK_V4_RUNTIME=1
+        GEAK_RUNTIME=1
         REQUIRED_AGENTS=""
         AGENTS_STRICT=0
         docker_exec 0 bash src/scripts/docker_benchmark.sh _container_setup_geak

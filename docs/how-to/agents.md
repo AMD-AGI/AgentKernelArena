@@ -25,9 +25,9 @@ The following agents are available.
 | `geak` | GEAK Workflow engine through the shared v2 task interface |
 | `task_validator` | Task quality validator; does not optimize kernels (see [Validate tasks](task-validator.md)) |
 
-The [registry](../../src/module_registration.py) also retains `geak_v4`, which
-delegates v2 tasks to `geak`, and `forge_operator2flydsl`, which delegates to
-`forge`. See the [GEAK](../../agents/geak/README.md) and
+The [registry](../../src/module_registration.py) maps the legacy names
+`geak_v4` to `geak` and `forge_operator2flydsl` to `forge`, with the same
+configuration and post-processing. There is no separate v1 task integration. See the [GEAK](../../agents/geak/README.md) and
 [Forge](../../agents/forge/README.md) guides for runtime requirements. Registry
 availability alone does not establish GPU or model qualification.
 

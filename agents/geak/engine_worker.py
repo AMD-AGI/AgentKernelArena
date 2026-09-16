@@ -9,7 +9,7 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from agents.geak.bridge import Bridge, write_json
-from agents.geak_v4.workflow_runner import (
+from agents.geak.workflow_runner import (
     DEFAULT_SETTINGS, _atomic_write_json, _extract_workflow_return,
     _record_sdk_failure, _valid_workflow_return,
     build_prompt, invoke_via_sdk,

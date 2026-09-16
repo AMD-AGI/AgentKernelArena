@@ -121,8 +121,9 @@ Each run selects one `agent.template`. Repeated runs can compare different agent
 | `geak` | GEAK multi-agent Workflow engine through the shared v2 task interface |
 | `task_validator` | Task quality validation; does not optimize kernels |
 
-The registry also retains `geak_v4` (delegating v2 tasks to `geak`) and
-`forge_operator2flydsl` (delegating to `forge`) as compatibility names. See
+The registry maps the compatibility names `geak_v4` to `geak` and
+`forge_operator2flydsl` to `forge`. Each uses the canonical launcher, defaults
+and post-processing; there are no separate legacy agent directories. See
 [`src/module_registration.py`](src/module_registration.py) for selectable names
 and the [GEAK](agents/geak/README.md) and [Forge](agents/forge/README.md) guides
 for their shared v2 interfaces and runtime requirements.

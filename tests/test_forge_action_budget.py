@@ -9,7 +9,7 @@ from unittest.mock import patch
 import pytest
 
 from agents.forge.action_budget import driver_limits
-from agents.forge import adapter
+from agents.forge import adapter, bridge
 from src.task_spec import TaskSpec
 from test_forge_v2 import ROOT, fixture_task
 
@@ -62,6 +62,7 @@ def test_pinned_native_loop_and_agent_gate_receive_public_action_envelope(tmp_pa
     plan["deadline_unix"] = time.time() + 9000
     plan["agent_config"] = {"session_timeout_seconds": 1800}
     plan_path.write_text(json.dumps(plan))
+    (Path(plan["engine_root"]) / "arena_forge_driver.py").write_text(bridge.render_driver(plan_path, ROOT))
     adapter._initialize_git(Path(plan["engine_root"]))
     script = r'''
 import inspect, json, os

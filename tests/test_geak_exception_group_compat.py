@@ -9,7 +9,7 @@ from types import ModuleType
 
 import pytest
 
-from agents.geak_v4 import workflow_runner as runner
+from agents.geak import workflow_runner as runner
 
 
 @pytest.mark.parametrize("backport_state", ["missing", "invalid_type"])
@@ -97,6 +97,6 @@ assert attempts == ['exceptiongroup'], attempts
 
 def test_diagnostic_sources_parse_with_python310_grammar():
     root = Path(runner.__file__).resolve().parents[2]
-    for relative in ("agents/geak_v4/workflow_runner.py", "agents/geak/engine_worker.py",
+    for relative in ("agents/geak/workflow_runner.py", "agents/geak/engine_worker.py",
                      "tests/test_geak_sdk_diagnostics.py", "tests/test_geak_exception_group_compat.py"):
         ast.parse((root / relative).read_text(), filename=relative, feature_version=(3, 10))

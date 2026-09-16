@@ -340,15 +340,6 @@ def test_materialization_preserves_nested_inputs_and_private_git(task_factory):
         bridge.materialize(source, destination)
 
 
-@pytest.mark.parametrize("alias", ["geak_v4"])
-def test_old_aliases_delegate_v2_without_legacy_cli(task_factory, monkeypatch, alias):
-    bridge = task_factory()
-    generic = importlib.import_module("agents.geak.launch_agent")
-    monkeypatch.setattr(generic, "launch_agent", lambda *args: "generic GEAK v2")
-    legacy = importlib.import_module(f"agents.{alias}.launch_agent")
-    assert legacy.launch_agent({}, str(bridge.context.workspace / "config.yaml"),
-                               str(bridge.context.workspace)) == "generic GEAK v2"
-
 
 def test_hard_deadline_kills_detached_runner_children(task_factory, tmp_path):
     bridge = task_factory()
@@ -533,7 +524,7 @@ def test_engine_worker_requires_truthful_terminal_result(task_factory, monkeypat
 
 def test_runtime_identity_records_observed_models_without_credentials(tmp_path):
     from types import SimpleNamespace
-    from agents.geak_v4.workflow_runner import _record_runtime_identity
+    from agents.geak.workflow_runner import _record_runtime_identity
 
     identity = {}
     def message(name, **kwargs):
@@ -552,7 +543,7 @@ def test_runtime_identity_records_observed_models_without_credentials(tmp_path):
 
 def test_runtime_identity_handles_synchronous_and_unknown_workflow_output(tmp_path):
     from types import SimpleNamespace
-    from agents.geak_v4.workflow_runner import _record_runtime_identity
+    from agents.geak.workflow_runner import _record_runtime_identity
 
     def message(name, **kwargs):
         return type(name, (SimpleNamespace,), {})(**kwargs)
@@ -580,7 +571,7 @@ def test_runtime_identity_handles_synchronous_and_unknown_workflow_output(tmp_pa
 
 def test_runtime_identity_retains_error_codes_without_error_text(tmp_path):
     from types import SimpleNamespace
-    from agents.geak_v4.workflow_runner import _record_runtime_identity
+    from agents.geak.workflow_runner import _record_runtime_identity
 
     output = tmp_path / "output.json"
     write_json(output, {"workflowProgress": [{"label": "tech_lead:plan r1", "state": "error",
@@ -594,7 +585,7 @@ def test_runtime_identity_retains_error_codes_without_error_text(tmp_path):
 @pytest.mark.parametrize("model", ["<synthetic>", "real-model"])
 def test_runtime_identity_classifies_only_synthetic_oauth_failures(model):
     from types import SimpleNamespace
-    from agents.geak_v4.workflow_runner import _record_runtime_identity
+    from agents.geak.workflow_runner import _record_runtime_identity
 
     message = type("AssistantMessage", (SimpleNamespace,), {})(model=model, content=[
         SimpleNamespace(text="Failed to authenticate: OAuth session expired and could not be refreshed. "

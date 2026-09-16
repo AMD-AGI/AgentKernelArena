@@ -53,7 +53,7 @@ def _stop_children():
 
 
 @contextmanager
-def managed_children():
+def managed_children(*, after_stop=None):
     """Linux worker scope; adopted orphans stay attributable to this invocation."""
     libc = ctypes.CDLL(None, use_errno=True)
     if libc.prctl(36, 1, 0, 0, 0) != 0:  # PR_SET_CHILD_SUBREAPER
@@ -70,6 +70,8 @@ def managed_children():
             signal.signal(sig, signal.SIG_IGN)
         try:
             _stop_children()
+            if after_stop is not None:
+                after_stop()
         finally:
             for sig, handler in previous.items():
                 signal.signal(sig, handler)

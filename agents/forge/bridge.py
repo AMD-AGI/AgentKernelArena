@@ -11,6 +11,7 @@ import json
 import os
 from pathlib import Path
 import statistics
+import shutil
 import tempfile
 import uuid
 from urllib.parse import quote
@@ -64,13 +65,26 @@ def bound_candidate_root(plan: dict, engine_root: Path) -> Path:
 def evaluation_workspace(context: TaskContext, plan: dict, engine_root: Path, role: str):
     # Every invocation gets a private build tree. Candidate edits cannot change
     # the reference, harness, or a concurrently measured baseline.
-    with tempfile.TemporaryDirectory(prefix="evaluate-", dir=Path(plan["template"]).parent) as temporary:
+    directory = plan.get("evaluation_root", Path(plan["template"]).parent)
+    with tempfile.TemporaryDirectory(prefix="evaluate-", dir=directory) as temporary:
         root = Path(temporary) / "task"
         template = context.baseline_workspace if role == "baseline" else Path(plan["template"])
         copy_workspace(template, root)
         if role == "candidate":
             install_candidate(context.spec, bound_candidate_root(plan, engine_root), root)
         yield root
+
+
+def cleanup_evaluation_workspaces(plan: dict) -> None:
+    """Called by the campaign supervisor only after all children are reaped."""
+    if "evaluation_root" not in plan:
+        return  # Older plans have no dedicated disposable directory.
+    root = Path(plan["evaluation_root"])
+    expected = Path(plan["template"]).parent / "evaluation-workspaces"
+    if root != expected or root.is_symlink():
+        raise ValueError("Unexpected Forge evaluation cleanup directory")
+    if root.exists():
+        shutil.rmtree(root)
 
 
 def execute(plan: dict, engine_root: Path, *, role: str, action: str):

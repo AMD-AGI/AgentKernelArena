@@ -16,7 +16,7 @@ import uuid
 import yaml
 
 from agents import register_agent
-from agents.geak_v4.workflow_runner import _read_json
+from agents.geak.workflow_runner import _read_json
 from src.harness_guard import snapshot_workspace_harness
 from src.task_execution import _run_process
 from src.task_spec import load_task_spec

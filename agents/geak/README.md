@@ -23,10 +23,10 @@ ordinary optimization post-processing. The launcher builds its contract from
 retained candidate after GEAK returns. Task files do not contain GEAK-specific
 drivers or engine layout requirements.
 
-The retained `geak_v4` launcher delegates schema v2 to this adapter before
-probing its legacy CLI. Its v1 behavior is unchanged. The `geak_v3` and
-`geak_v3_triton` names are retired; select `geak` for their v2 tasks.
-V2 aliases use `agents/geak/agent_config.yaml` and its run-level overrides.
+The registry resolves the old `geak_v4` name directly to this adapter, using
+`agents/geak/agent_config.yaml` and its run-level overrides. The shared SDK
+lifecycle runner is [workflow_runner.py](workflow_runner.py); no schema-v1
+task launcher remains. The `geak_v3` and `geak_v3_triton` names are retired.
 
 ## Runtime setup
 
@@ -210,7 +210,7 @@ measured speedups.
 
 ```bash
 GEAK_TEST_CHECKOUT="$GEAK_HOME" GEAK_TEST_NODE=<node-binary> \
-  python3 -m pytest -q tests/test_geak_schema_v2.py tests/test_geak_v4.py
+  python3 -m pytest -q tests/test_geak_schema_v2.py tests/test_geak_workflow_runner.py
 ```
 
 Optional probe dependencies can live in the ignored `agents/geak/.scratch-env`

@@ -12,7 +12,7 @@ import pytest
 
 from agents.geak.argument_transport import validate_args_transport, workflow_inputs_match
 from agents.geak.compatibility import adapt_workflow, prepare_engine
-from agents.geak_v4.workflow_runner import build_prompt
+from agents.geak.workflow_runner import build_prompt
 from test_geak_schema_v2 import task_factory, upstream
 
 
@@ -95,7 +95,7 @@ def test_prepared_v4_worker_uses_empty_args_and_preserves_native_return_rules(
     from claude_agent_sdk import ClaudeAgentOptions
     from agents.geak import engine_worker
     from agents.geak.bridge import write_json
-    from agents.geak_v4 import workflow_runner as runner
+    from agents.geak import workflow_runner as runner
     bridge=task_factory()
     engine=prepare_engine(upstream,bridge,python=sys.executable,options=bridge.job['options'])
     bridge.job['engine']=engine;write_json(bridge.job_path,bridge.job)

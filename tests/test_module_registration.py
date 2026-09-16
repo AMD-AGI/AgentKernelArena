@@ -34,16 +34,12 @@ def test_remaining_agents_load_with_their_postprocessors(name):
     agent = AgentType.from_string(name)
     assert AgentType.from_string(name.upper().replace("_", "-")) is agent
     launcher = load_agent_launcher(agent, logger)
-    assert launcher is importlib.import_module(f"agents.{name}.launch_agent").launch_agent
+    assert launcher is importlib.import_module(f"agents.{agent.value}.launch_agent").launch_agent
 
     if name == "task_validator":
         from agents.task_validator.validation_postprocessing import validation_post_processing
 
         expected = validation_post_processing
-    elif name == "forge_operator2flydsl":
-        from agents.forge_operator2flydsl.postprocessing import forge_operator2flydsl_post_processing
-
-        expected = forge_operator2flydsl_post_processing
     else:
         from src.postprocessing import general_post_processing
 

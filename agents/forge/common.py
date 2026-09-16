@@ -1,12 +1,5 @@
 # Copyright(C) [2026] Advanced Micro Devices, Inc. All rights reserved.
-"""Shared machinery for the KernelForge-backed Arena agents.
-
-``forge`` drives ``kernel-agents forge-loop`` and ``forge_operator2flydsl`` drives
-``kernel-agents forge-rewrite-by-flydsl``. Both resolve the same GPU identity,
-prepare the same kind of git workspace, stream and hard-kill the same kind of
-subprocess tree, and read the same ``__FORGE_RESULT__`` contract, so that part
-lives here and each launcher only owns its own CLI and result handling.
-"""
+"""GPU identity, workspace and subprocess helpers for the unified Forge adapter."""
 
 from __future__ import annotations
 

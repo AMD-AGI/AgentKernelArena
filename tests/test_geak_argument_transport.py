@@ -92,7 +92,7 @@ def test_opt_in_requires_actual_v3_dispatcher(dispatcher, change, tmp_path):
     with pytest.raises(ValueError):
         validate_args_transport(expected, pin)
     # Rejection happens before SDK import/client/query, not merely at comparison.
-    from agents.geak_v4.workflow_runner import invoke_via_sdk
+    from agents.geak.workflow_runner import invoke_via_sdk
     with pytest.raises(ValueError):
         invoke_via_sdk('unused', workflow_dir=tmp_path, eval_dir=tmp_path,
                        model='unused', effort='medium', settings='{}', cli_path='unused',
@@ -111,7 +111,7 @@ def test_sdk_v3_semantics_raw_evidence_and_native_correlation(task_factory, disp
     sdk_types = pytest.importorskip('claude_agent_sdk').types
     from agents.geak import engine_worker
     from agents.geak.bridge import write_json
-    from agents.geak_v4 import workflow_runner as runner
+    from agents.geak import workflow_runner as runner
 
     bridge = task_factory()
     script, pin = dispatcher
@@ -204,7 +204,7 @@ def test_json_comparison_preserves_types_and_full_keys():
 def test_transport_sources_remain_python310_compatible():
     root = Path(__file__).resolve().parents[1]
     for relative in ('agents/geak/argument_transport.py', 'agents/geak/compatibility.py',
-                     'agents/geak/engine_worker.py', 'agents/geak_v4/workflow_runner.py'):
+                     'agents/geak/engine_worker.py', 'agents/geak/workflow_runner.py'):
         ast.parse((root / relative).read_text(), feature_version=(3, 10))
 
 

@@ -19,7 +19,7 @@ from test_geak_schema_v2 import task_factory
 def test_worker_requires_correlated_native_return(task_factory, monkeypatch, scenario):
     from agents.geak import engine_worker
     from agents.geak.bridge import write_json
-    from agents.geak_v4 import workflow_runner as runner
+    from agents.geak import workflow_runner as runner
 
     bridge = task_factory()
     script = str(bridge.root / 'engine.js')

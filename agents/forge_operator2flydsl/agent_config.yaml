@@ -1,3 +1,0 @@
-# Deprecated template alias. Settings come from agents/forge/agent_config.yaml.
-# Run-level agent overrides are forwarded to the unified Forge launcher.
-{}

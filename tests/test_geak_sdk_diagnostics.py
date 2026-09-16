@@ -44,7 +44,7 @@ def _read_private(bridge):
 
 def test_nested_sdk_failure_retains_leaf_reason_and_actual_exit_only(task_factory, monkeypatch):
     from agents.geak import engine_worker
-    from agents.geak_v4 import workflow_runner as runner
+    from agents.geak import workflow_runner as runner
 
     bridge = _job(task_factory)
     process_error = ProcessError(SECRET, exit_code=17, stderr=SECRET)
@@ -88,7 +88,7 @@ def test_observed_calls_persist_before_strict_failure(
     task_factory, monkeypatch, scenario, calls, matches, reason,
 ):
     from agents.geak import engine_worker
-    from agents.geak_v4 import workflow_runner as runner
+    from agents.geak import workflow_runner as runner
 
     bridge = _job(task_factory)
     inputs = {"scriptPath": bridge.job["engine"]["script_path"],
@@ -162,7 +162,7 @@ def _install_client(monkeypatch, runner, client):
 
 def test_sdk_stderr_is_bounded_private_and_never_an_acceptance_override(task_factory, monkeypatch, capsys):
     from agents.geak import engine_worker
-    from agents.geak_v4 import workflow_runner as runner
+    from agents.geak import workflow_runner as runner
 
     bridge = _job(task_factory)
 

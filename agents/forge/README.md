@@ -2,8 +2,8 @@
 
 Forge is one agent integration for the [public task v2 contract](../../docs/how-to/add-task.md).
 The task declares its candidate, baseline, entrypoints and evaluation commands.
-It does not supply a Forge driver or consume `KERNELFORGE_*` variables. The old
-`forge_operator2flydsl` template delegates to this same launcher and configuration.
+It does not supply a Forge driver or consume `KERNELFORGE_*` variables. The registry maps the old
+`forge_operator2flydsl` name to this same launcher and configuration.
 
 ## Workflow selection
 
@@ -165,6 +165,11 @@ that invocation use that same copy. Baseline assessments start from the separate
 baseline snapshot. Task scripts are executed through `src.task_execution.run_action`;
 no task Python modules are imported into the agent adapter.
 
+Before creating a native agent, the adapter requires `config.workspace` to be
+the engine/lane Git root and checks that the task config, generated driver and
+existing declared protected files are tracked. A nested rewrite attempt or an
+incomplete protection inventory fails before the agent starts.
+
 Every generated phase prompt preserves the task's implementation and dependency
 constraints and gives them priority over backend guides, examples, and knowledge
 base suggestions. A passing driver does not waive those constraints. This prompt
@@ -210,7 +215,13 @@ does not claim an optimization gain or prove that a search iteration ran.
 A timeout, failed PORT, nonzero engine exit or missing structured result reports
 failure and leaves the original task candidate unchanged. Diagnostic scratch,
 logs, result JSON and selected artifact hashes are preserved in the fresh Forge
-artifact directory; old experiment directories are never removed.
+artifact directory; old experiment directories are never removed. Disposable
+evaluation copies live only under this campaign's `evaluation-workspaces/`.
+After the engine exits or receives SIGTERM, its supervisor reaps all descendant
+processes, then removes that directory, including copies left by a driver
+that was SIGKILLed. Cleanup never sweeps other `evaluate-*` paths or previous
+experiments. If the supervisor itself is SIGKILLed or the machine fails, it
+cannot run this cleanup; retained artifacts require explicit recovery.
 
 One `timeout_seconds` budget covers setup, preflight, initialization and optimization.
 Commands receive the same absolute deadline, and every task action is capped by
@@ -242,9 +253,8 @@ if cleanup or publication does not finish. An intermediate KEEP or an
 initialization-only run is not an Arena completion verdict.
 
 Common Arena post-processing owns exports. Neither this launcher nor the alias
-backfills an SIKL solution or assumes `kernel.py` / `workload.json`. The legacy
-`solution_backfill.py` utility is no longer called by either agent path; its
-replacement belongs in the framework's export implementation.
+backfills an SIKL solution or assumes `kernel.py` / `workload.json`. The obsolete
+agent-specific backfill utility has been removed; exports use the framework.
 
 ## Installed KernelForge compatibility
 
