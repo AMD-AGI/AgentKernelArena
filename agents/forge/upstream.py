@@ -386,8 +386,7 @@ def configure_nested_loop(plan: dict, argv: list[str]) -> list[str]:
             argv[argv.index(flag) + 1] = value
         else:
             argv.extend([flag, value])
-    argv.extend(["--lanes", "1", "--no-profiling", "--no-specialist-probe",
-                 "--program-md-file", plan["program"]])
+    argv.extend(["--program-md-file", plan["program"]])
     return argv
 
 
