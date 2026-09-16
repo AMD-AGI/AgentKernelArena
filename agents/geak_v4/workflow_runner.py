@@ -279,10 +279,12 @@ def map_workflow_args(handoff: dict[str, Any]) -> tuple[Path, dict[str, Any]]:
     return script_path, args
 
 
-def build_prompt(script_path: Path, workflow_args: dict[str, Any]) -> str:
+def build_prompt(script_path: Path, workflow_args: dict[str, Any], *,
+                 invocation_args: dict[str, Any] | None = None) -> str:
     eval_dir = workflow_args["eval_dir"]
     workflow_input = json.dumps(
-        {"scriptPath": str(script_path), "args": workflow_args}, ensure_ascii=False
+        {"scriptPath": str(script_path),
+         "args": workflow_args if invocation_args is None else invocation_args}, ensure_ascii=False
     )
     return_path = json.dumps(f"{eval_dir}/workflow_return.json", ensure_ascii=False)
     if workflow_args.get("apply_to_original") == "true":
@@ -659,13 +661,18 @@ def _record_workflow_calls(message: Any, identity: dict[str, Any], expected: dic
             continue
         raw_args = inputs.get("args")
         row["args_encoding"] = "json_string" if type(raw_args) is str else _diagnostic_type(raw_args)
-        row["args_comparison"] = "geak_dispatch_v3" if args_transport is not None else "strict"
+        row["args_comparison"] = (f"geak_dispatch_v{args_transport['adapter_version']}"
+                                  if args_transport is not None else "strict")
         # Bind raw encoding without copying paths, prompts or arbitrary values.
         raw_json = json.dumps(raw_args, ensure_ascii=True, sort_keys=True)
         row["raw_args_sha256"] = hashlib.sha256(raw_json.encode()).hexdigest()
         if args_transport is not None:
             try:
-                decode_workflow_args(raw_args)
+                if args_transport["adapter_version"] == 4:
+                    if type(raw_args) is not dict or raw_args != {}:
+                        raise ValueError("GEAK dispatcher v4 requires empty object args")
+                else:
+                    decode_workflow_args(raw_args)
                 row["normalized_args_type"] = "object"
             except (ValueError, TypeError, OverflowError, RecursionError):
                 row["normalized_args_type"] = "invalid"

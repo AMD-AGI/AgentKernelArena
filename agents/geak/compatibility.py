@@ -14,7 +14,7 @@ import subprocess
 from typing import Callable
 
 from .bridge import Bridge, copy_file, copy_tree, write_json
-from .argument_transport import DECODER_JS
+from .argument_transport import DECODER_JS, FIXED_ARGS_GUARD_JS, decode_workflow_args
 
 
 UPSTREAM_REVISION = "c0c0e2aee5e2bec70583253058382523bdf7a3ab"
@@ -45,8 +45,8 @@ def verify_upstream(checkout: Path, *, remaining: Callable[[], float] | None = N
     timeout()
 
 
-def adapt_workflow(source: str, contract: str) -> str:
-    """Restore the full task contract in native JS, outside the outer tool input."""
+def adapt_workflow(source: str, contract: str, *, trusted_args: dict | None = None) -> str:
+    """Bind trusted arguments in native JS, outside the outer tool input."""
     if hashlib.sha256(source.encode()).hexdigest() != SCRIPT_SHA256["kernel_workflow.js"]:
         raise ValueError("Refusing to adapt an unknown GEAK workflow")
     marker = "const A = args || {};"
@@ -56,6 +56,15 @@ def adapt_workflow(source: str, contract: str) -> str:
         raise ValueError("GEAK task contract must be a nonempty string")
     # JSON string literals preserve quotes, backticks, newlines and Unicode as
     # data. Trusted values follow the spread so callers cannot replace them.
+    if trusted_args is not None:
+        if type(trusted_args) is not dict:
+            raise ValueError("GEAK trusted dispatcher arguments must be an object")
+        # Parse a JSON string literal, not an object literal: even __proto__ and
+        # quotes/backticks remain ordinary data. Nothing is reserialized by an LLM.
+        bound = {**decode_workflow_args(trusted_args), "arena_contract": contract, "task": contract}
+        serialized = json.dumps(bound, ensure_ascii=True, allow_nan=False)
+        return source.replace(marker, FIXED_ARGS_GUARD_JS +
+                              f"const A = JSON.parse({json.dumps(serialized)});", 1)
     literal = json.dumps(contract, ensure_ascii=True)
     return source.replace(marker, DECODER_JS + "const A = { ...arenaArgs, "
                           f"arena_contract: {literal}, task: {literal} }};", 1)
@@ -149,7 +158,6 @@ def prepare_engine(checkout: Path, bridge: Bridge, *, python: str, options: dict
         copy_file(role, workflow / "roles" / role.name, remaining=bridge.remaining, overwrite=True)
     contract = arena_contract(bridge, python)
     dispatcher = workflow / "kernel_workflow.js"
-    dispatcher.write_text(adapt_workflow(dispatcher.read_text(), contract))
     for role in (workflow / "roles").glob("*.md"):
         bridge.remaining()
         content = role.read_text()
@@ -203,7 +211,8 @@ def prepare_engine(checkout: Path, bridge: Bridge, *, python: str, options: dict
                             "baseline_geomean_ms": math.exp(sum(math.log(row["ms"]) for row in baseline) / len(baseline)),
                             "reliable": True},
     }
-    transport = {"adapter_version": 3,
+    dispatcher.write_text(adapt_workflow(dispatcher.read_text(), contract, trusted_args=args))
+    transport = {"adapter_version": 4,
                  "adapted_workflow_sha256": hashlib.sha256(dispatcher.read_bytes()).hexdigest()}
     write_json(bridge.root / "engine_identity.json", {
         "upstream_revision": UPSTREAM_REVISION, "upstream_scripts": SCRIPT_SHA256,
@@ -211,5 +220,5 @@ def prepare_engine(checkout: Path, bridge: Bridge, *, python: str, options: dict
         "adapted_lane_sha256": hashlib.sha256(lane.read_bytes()).hexdigest(),
     })
     bridge.remaining()
-    return {"script_path": str(workflow / "kernel_workflow.js"), "args": args,
+    return {"script_path": str(workflow / "kernel_workflow.js"), "args": {}, "engine_args": args,
             "args_transport": transport}

@@ -660,7 +660,7 @@ def test_pinned_upstream_preparation(task_factory, upstream, language, state):
     bridge = task_factory(language, state)
     bridge.job["options"]["model"] = "explicit-model"
     engine = prepare_engine(upstream, bridge, python=sys.executable, options=bridge.job["options"])
-    args = engine["args"]
+    args = engine["engine_args"]
     assert args["mode"] == ("author" if state == "unimplemented" else "optimize")
     assert args["target_language"] == language
     assert args["arena_model"] == "explicit-model"
@@ -671,9 +671,10 @@ def test_pinned_upstream_preparation(task_factory, upstream, language, state):
     contract = (bridge.eval_dir / "COMMANDMENT.md").read_text()
     dispatcher = Path(engine["script_path"])
     assert dispatcher.read_text() == adapt_workflow(
-        (upstream / "kernel_workflow/kernel_workflow.js").read_text(), contract)
+        (upstream / "kernel_workflow/kernel_workflow.js").read_text(), contract, trusted_args=args)
     identity = json.loads((bridge.root / "engine_identity.json").read_text())
-    assert identity["adapter_version"] == 3
+    assert identity["adapter_version"] == 4
+    assert engine["args"] == {}
     assert engine["args_transport"] == {key: identity[key] for key in (
         "adapter_version", "adapted_workflow_sha256")}
     assert identity["adapted_workflow_sha256"] == hashlib.sha256(dispatcher.read_bytes()).hexdigest()
@@ -788,9 +789,9 @@ def test_actual_geak_dispatcher_and_lane_run_on_cpu(task_factory, upstream, tmp_
         pytest.skip("Node required for the real GEAK JavaScript interface probe")
     bridge = task_factory(language, state)
     bridge.job["options"]["model"] = "explicit-model"
+    bridge.job["deadline_epoch"] = 0
     engine = prepare_engine(upstream, bridge, python=sys.executable, options=bridge.job["options"])
-    args = engine["args"]
-    args.update(deadline_epoch=0, agent_timeout_ms=0)
+    args = engine["engine_args"]
     probe = tmp_path / "probe.js"
     probe.write_text(r'''
 const fs = require('fs');
@@ -810,7 +811,7 @@ const globals = {
     if (label.startsWith('eng ')) return {status:'ok',speedup_geomean:2};
     if (label.startsWith('verify ')) return {status:'verified',correctness:'pass',verified_geomean:2};
     if (label.startsWith('commit ')) return {committed:true};
-    if (label === 'tech_lead:report') return {final_patch:input.args.eval_dir+'/final_patch.diff',final_speedup_geomean:0.5};
+    if (label === 'tech_lead:report') return {final_patch:input.engine_args.eval_dir+'/final_patch.diff',final_speedup_geomean:0.5};
     if (label === 'director:validate') return {validation_status:'accepted',correctness:'pass',director_verified_speedup_geomean:2};
     return {};
   },
@@ -853,5 +854,5 @@ run(input.script_path,input.args).then(result=>{
 def test_initial_language_translation_uses_author_mode(task_factory, upstream):
     bridge = task_factory("flydsl", initial_language="triton")
     engine = prepare_engine(upstream, bridge, python=sys.executable, options=bridge.job["options"])
-    assert engine["args"]["mode"] == "author"
-    assert engine["args"]["target_language"] == "flydsl"
+    assert engine["engine_args"]["mode"] == "author"
+    assert engine["engine_args"]["target_language"] == "flydsl"

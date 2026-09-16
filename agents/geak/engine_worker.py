@@ -25,9 +25,9 @@ def run(job_path: Path) -> int:
     error_code = "sdk_workflow_failed"
     try:
         script = Path(handoff["script_path"])
-        args = handoff["args"]
+        args = handoff.get("engine_args", handoff["args"])
         transcript = invoke_via_sdk(
-            build_prompt(script, args), workflow_dir=script.parent,
+            build_prompt(script, args, invocation_args=handoff["args"]), workflow_dir=script.parent,
             eval_dir=bridge.eval_dir, model=options.get("model"), effort=options["effort"],
             settings=json.dumps(DEFAULT_SETTINGS), cli_path=options["claude_cli_path"],
             timeout_seconds=bridge.remaining(), done_grace_seconds=min(30, bridge.remaining()),
@@ -35,7 +35,7 @@ def run(job_path: Path) -> int:
             runtime_metadata=runtime,
             require_workflow_result=True,
             runtime_metadata_path=bridge.root / "runtime_identity.json",
-            expected_workflow={"scriptPath": str(script), "args": args},
+            expected_workflow={"scriptPath": str(script), "args": handoff["args"]},
             workflow_args_transport=handoff.get("args_transport"),
         )
         error_code = "missing_terminal_workflow_result"

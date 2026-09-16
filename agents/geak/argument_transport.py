@@ -70,6 +70,13 @@ const arenaArgs = arenaDecodeArgs(args);
 '''
 
 
+FIXED_ARGS_GUARD_JS = """// AKA GEAK fixed arguments v4
+if (args === null || typeof args !== 'object' || Array.isArray(args)
+    || Object.keys(args).length !== 0)
+  throw Error('GEAK dispatcher v4 requires empty object args');
+"""
+
+
 def _unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     result = {}
     for key, value in pairs:
@@ -119,23 +126,26 @@ def decode_workflow_args(value: Any) -> dict[str, Any]:
 
 
 def validate_args_transport(expected: dict[str, Any] | None, transport: dict | None) -> None:
-    """Fail before SDK launch unless opt-in names the actual v3 dispatcher bytes."""
+    """Fail before SDK launch unless opt-in names the actual adapted dispatcher."""
     if transport is None:
         return
     if (type(transport) is not dict
             or set(transport) != {"adapter_version", "adapted_workflow_sha256"}
-            or type(transport["adapter_version"]) is not int or transport["adapter_version"] != 3
+            or type(transport["adapter_version"]) is not int or transport["adapter_version"] not in (3, 4)
             or type(expected) is not dict or set(expected) != {"scriptPath", "args"}
             or type(expected["scriptPath"]) is not str or type(expected["args"]) is not dict):
-        raise ValueError("Invalid GEAK v3 argument transport identity")
+        raise ValueError("Invalid GEAK argument transport identity")
+    if transport["adapter_version"] == 4 and expected["args"] != {}:
+        raise ValueError("GEAK dispatcher v4 requires empty object args")
     decode_workflow_args(expected["args"])
+    decoder = DECODER_JS if transport["adapter_version"] == 3 else FIXED_ARGS_GUARD_JS
     path = Path(expected["scriptPath"])
     if path.is_symlink():
-        raise ValueError("GEAK v3 dispatcher cannot be a symlink")
+        raise ValueError("GEAK dispatcher cannot be a symlink")
     source = path.read_bytes()
     if (hashlib.sha256(source).hexdigest() != transport["adapted_workflow_sha256"]
-            or source.count(DECODER_JS.encode()) != 1):
-        raise ValueError("GEAK v3 dispatcher transport/hash mismatch")
+            or source.count(decoder.encode()) != 1):
+        raise ValueError("GEAK dispatcher transport/hash mismatch")
 
 
 def workflow_inputs_match(inputs: Any, expected: dict[str, Any], *,
@@ -152,7 +162,9 @@ def workflow_inputs_match(inputs: Any, expected: dict[str, Any], *,
                 or type(inputs["scriptPath"]) is not str
                 or inputs["scriptPath"] != expected["scriptPath"]):
             return False
-        actual = decode_workflow_args(inputs["args"]) if args_transport is not None else inputs["args"]
+        actual = (decode_workflow_args(inputs["args"])
+                  if args_transport is not None and args_transport["adapter_version"] == 3
+                  else inputs["args"])
         return _canonical(actual) == _canonical(expected["args"])
     except (ValueError, TypeError, OverflowError, RecursionError):
         return False
