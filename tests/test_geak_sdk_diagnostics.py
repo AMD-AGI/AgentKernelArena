@@ -11,6 +11,11 @@ sdk_types = pytest.importorskip("claude_agent_sdk").types
 from claude_agent_sdk import ProcessError
 from test_geak_schema_v2 import task_factory
 
+try:
+    from builtins import ExceptionGroup
+except ImportError:
+    from exceptiongroup import ExceptionGroup
+
 
 SECRET = "FAKE_PROVIDER_SECRET_DO_NOT_RETAIN"
 

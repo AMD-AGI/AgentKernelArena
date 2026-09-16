@@ -19,6 +19,7 @@ Claude Agent SDK or contacting a model.
 from __future__ import annotations
 
 import argparse
+import builtins
 import importlib.metadata
 import json
 import math
@@ -559,18 +560,32 @@ _SDK_EXCEPTION_CLASSES = {
 }
 
 
+def _exception_group_types() -> tuple[type[BaseException], ...]:
+    """Resolve native/backported groups lazily; dry-run needs neither SDK nor backport."""
+    group_type = getattr(builtins, "BaseExceptionGroup", None)
+    if group_type is None:
+        try:
+            from exceptiongroup import BaseExceptionGroup as group_type
+        except ImportError:
+            return ()  # Plain exceptions must remain diagnosable without the SDK.
+    if isinstance(group_type, type) and issubclass(group_type, BaseException):
+        return (group_type,)
+    return ()
+
+
 def _record_sdk_failure(identity: dict[str, Any], exc: BaseException) -> None:
     """Bound group/chain traversal; never serialize exception messages or locals."""
     stack = [exc]
     seen: set[int] = set()
     leaves = []
     truncated = False
+    group_types = _exception_group_types()
     while stack and len(seen) < 32 and len(leaves) < 16:
         current = stack.pop()
         if id(current) in seen:
             continue
         seen.add(id(current))
-        if isinstance(current, BaseExceptionGroup):
+        if isinstance(current, group_types):
             truncated |= len(current.exceptions) > 16
             stack.extend(reversed(current.exceptions[:16]))
         else:

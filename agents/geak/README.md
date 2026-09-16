@@ -137,6 +137,9 @@ an earlier CLI session. Unknown extra keys are counted without copying their
 names; the known `run_in_background` key can retain its type. Raw stderr,
 exception text and tracebacks are not retained. These fields
 are diagnostic evidence only and do not change native completion or acceptance.
+On Python 3.10, grouped failures use the `exceptiongroup` backport when present;
+otherwise plain failure diagnostics remain available. Group support is resolved
+only when recording failures, so dry-run needs neither the SDK nor its backport.
 
 Read these diagnostics alongside `engine_result.json`, `delivery.json`, and
 Arena's `task_result.yaml`. Candidate acceptance means the retained source
