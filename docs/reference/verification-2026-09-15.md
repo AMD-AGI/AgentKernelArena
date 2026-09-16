@@ -1,13 +1,19 @@
 # PR107 verification checkpoint — 2026-09-15
 
+Campaign results below retain their original timestamps. The continuation plan
+was updated on **2026-09-16**; it adds no completed runs or accepted candidates.
+
 This dated checkpoint separates task validation, agent optimization, and framework
-testing by the source actually exercised. The latest matrix has **117 completed
+testing by the source actually exercised. The **2026-09-15 21:36:41 UTC** matrix
+receipt records **117 completed
 optimization pairs and 113 accepted candidates**. All **438 current task packages**
 at 9c now have runtime-applicable validator PASS evidence, and the paired MoE
 study has passed its independent raw audit. The original 9c CPU run still records
 **one failure**. Its test-only successor `f65e1e55` passed the full CPU suite:
 **14,019 passed, 6 subtests passed and 6 skipped**, in **616.62 s**, with clean,
-unchanged source. The separate GEAK Codex extension is not yet qualified. The
+unchanged source; that run completed at **2026-09-15 23:13:13 UTC**. The
+experimental GEAK Codex extension is outside this PR and is not a prerequisite
+for its completion. The
 [pinned-main integration record](pr107-main-integration.md) retains the original
 merge decisions and their later qualification.
 
@@ -20,7 +26,7 @@ merge decisions and their later qualification.
 | `27f28461` | Full CPU suite: **13,700 passed, 5 GPU-only skipped, 6 subtests passed** in **562.49 s**. The two-task quality-loop GPU smoke below completed with two accepting independent reviews. |
 | `87e7e463` | Guard-context follow-up. Full CPU suite: **13,772 passed, 5 GPU-only skipped, 6 subtests passed**, **129 warnings**, **607.16 s**; exit 0. This CPU result did not resolve the subsequently reproduced MoE helper-policy gap. |
 | `400fcb9d` | Seven fresh full validators: **6 PASS / 1 Pack semantic FAIL**, including two MoE PASS reports. Full CPU run: **13,996 passed / 4 fixture failures / 6 skipped**, with **6 subtests passed**, in **606.52 s**. This is a failed CPU run. Five saved-candidate reevaluations passed separately. |
-| `9c4c99f1` | Fresh Pack validator **PASS**: **11 correctness / 5 scored cases**, independently audited at job 141241. Full CPU run: **14,013 passed / 1 failed / 6 skipped**, with **6 passing subtests**, in **612.74 s**. The remaining failure is the old Pack candidate-source hash assertion; full CPU qualification is still open. |
+| `9c4c99f1` | Fresh Pack validator **PASS**: **11 correctness / 5 scored cases**, independently audited at job 141241. Full CPU run: **14,013 passed / 1 failed / 6 skipped**, with **6 passing subtests**, in **612.74 s**. The failure is the old Pack candidate-source hash assertion; the separate f65 successor closes the full CPU gate. |
 | `f65e1e55` | Test-only follow-up pins the exact approved Pack flatten change while retaining the original hash check. **168 focused checks passed**. Immutable full CPU suite: **14,019 passed / 6 skipped / 6 subtests passed**, **129 warnings**, **616.62 s**, exit 0. Source was clean and unchanged. The failed 9c result is retained. |
 
 The 87 CPU command is `python -B -m pytest -p no:cacheprovider -q tests`,
@@ -72,7 +78,7 @@ before applying the original source hash assertion. Its 168 focused passes and
 subsequent full CPU PASS qualify f65 separately; the earlier failed full CPU
 reports remain unchanged. The six full-suite skips are five opt-in or GPU-only
 probes and one check requiring a materialized external image source. This CPU
-result does not qualify GPU execution or the separate GEAK Codex extension.
+result does not itself qualify GPU execution or an off-branch backend extension.
 
 The accepted113 intersection with the 55 runtime-changed tasks is **five saved
 candidates**: Codex, Forge and Claude AWQ dequantize, plus Codex and Forge
@@ -160,30 +166,35 @@ earlier failed run.
 
 ## Open work and revised agent plan
 
-At **20:53:10 UTC**, retained GEAK runtime evidence confirmed an actual
+At **2026-09-15 20:53:10 UTC**, retained GEAK runtime evidence confirmed an actual
 `five_hour` quota rejection on the account shared with Claude. Its reported
-reset is **2026-09-16 00:00 UTC** (`1789516800`). Authentication has been repaired;
+reset was **2026-09-16 00:00 UTC** (`1789516800`). Authentication has been repaired;
 the quota rejection is a separate historical condition. The user subsequently
 changed the remaining campaign plan: both old midnight waiters are **DISARMED**,
 and no new Fable/Opus dispatch is authorized. The former
 midnight plan is superseded; its preparation receipts remain historical evidence,
 not current launch authorization.
 
-The remaining **23 Claude Code tasks have an explicit Sonnet 5 / medium configuration
-prepared**. The remaining **40 GEAK tasks have a draft native Workflow Codex
-implementation**, which is not yet qualified. An independent Codex run would not
-qualify a GEAK run. Each campaign remains on **HOLD** until its exact source,
-native backend, model and runtime are bound and qualified. Sonnet qualification
-can proceed independently of the GEAK extension. Historical accepted
-runs retain their original model/backend identities; the 117/113 matrix is
-unchanged. Quota-rejected tasks receive no completion credit.
+The **2026-09-16 continuation plan** uses **Sonnet with medium reasoning** for
+the remaining **23 Claude Code tasks** and **40 GEAK tasks**. GEAK retains its
+native Workflow through the Claude Code backend. Its experimental Codex backend
+stays on a separate branch, outside this PR; completing or qualifying that
+extension is not required for the remaining campaign. Each new run must bind its
+actual source, model, backend and runtime and pass the normal admission checks.
+This plan is not evidence of new executions. Historical accepted runs retain
+their original model/backend identities; the 117/113 matrix is unchanged.
+Quota-rejected tasks receive no completion credit.
 
-The core full CPU gate is complete at f65. Remaining qualification covers the
-planned Sonnet and native GEAK Codex configurations and the remaining 63 agent
-matrix pairs; Sonnet does not depend on the GEAK extension.
+The core full CPU gate is complete at f65. Remaining integration coverage is
+the **63 agent/task pairs** above. A completed native search can legitimately end
+with a rejected candidate or an explicitly recorded no-candidate outcome; the
+target is completed optimization coverage, not guaranteed acceptance or speedup.
+Infrastructure failures and pre-model startup failures do not count as completed
+searches, and model failures are not automatically retried to force acceptance.
 There are no known unresolved GPU task issues from the original 55-task
 revalidation at this checkpoint; that statement does not qualify a new GEAK
-implementation. No GPU jobs were outstanding at the **22:56 UTC** observation.
+implementation. No GPU jobs were outstanding at the **2026-09-15 22:56 UTC**
+observation; that historical observation is not current scheduler status.
 Forge coverage is complete;
 this checkpoint does not request further Forge jobs. Historical PASS reports
 retain their actual source and do not automatically qualify later shared-code

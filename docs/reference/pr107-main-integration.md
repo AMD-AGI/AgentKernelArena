@@ -1,5 +1,8 @@
 # PR107 integration with pinned main — 2026-09-15
 
+Continuation plan updated **2026-09-16**; historical results keep their original
+source and timestamps.
+
 This record retains the `c1dc5e09` merge decisions and the subsequent qualification
 checkpoint. For source-specific CPU, GPU, quality-loop and agent-matrix proofs, see the
 [2026-09-15 verification checkpoint](verification-2026-09-15.md).
@@ -15,11 +18,11 @@ The integration and its successors do not replace those reports.
 | Original c1 revalidation | All 55 outcomes retained: **49 PASS / 1 WARN / 5 FAIL**. One QKV task-level PASS carries an explicit outer bytecode-inventory exception; its original outer FAIL remains recorded. |
 | Fresh `400fcb9d` task validators | **6 PASS / 1 Pack semantic FAIL**. Both MoE tasks passed full validation. Paired study 141240 passed independent reparse of 76 public actions, including 32 measured actions / 512 case observations. |
 | Full 400f CPU suite | **13,996 passed / 4 fixture failures / 6 skipped**, plus 6 passing subtests. Failed output is preserved. |
-| `9c4c99f1` successor | Fresh Pack GPU **PASS**, independently audited: **11 correctness / 5 scored cases**. Full CPU: **14,013 passed / 1 old Pack source-hash fixture failure / 6 skipped**, plus 6 passing subtests, **612.74 s**. Full CPU qualification remains open. |
+| `9c4c99f1` successor | Fresh Pack GPU **PASS**, independently audited: **11 correctness / 5 scored cases**. Full CPU: **14,013 passed / 1 old Pack source-hash fixture failure / 6 skipped**, plus 6 passing subtests, **612.74 s**. This failed run is retained separately from the f65 PASS. |
 | Current task applicability at 9c | All **438 task packages** have runtime-applicable validator PASS evidence with their original framework/runtime identities; this is not one fresh final-framework campaign. |
-| `f65e1e55` CPU follow-up | Test-only exact Pack source-delta check repaired; **168 focused PASS**. Immutable full CPU suite **PASS: 14,019 passed / 6 skipped / 6 subtests passed**, **616.62 s**, exit 0, clean unchanged source. The GEAK Codex extension requires separate qualification. |
+| `f65e1e55` CPU follow-up | Test-only exact Pack source-delta check repaired; **168 focused PASS**. Immutable full CPU suite **PASS: 14,019 passed / 6 skipped / 6 subtests passed**, **616.62 s**, exit 0, clean unchanged source; completed **2026-09-15 23:13:13 UTC**. |
 | Five saved candidates | **35 formal actions PASS** at 400f; AWQ/apply_write task bytes match 9c. **Zero new optimization searches**. Original search/source evidence is retained. |
-| Agent matrix | **117 completed / 113 accepted**: Codex 45/45, Claude Code 22/21, Forge 45/42, GEAK 5/5. Completion and acceptance are separate; 63 completion pairs remain. |
+| Agent matrix | **2026-09-15 21:36:41 UTC** receipt: **117 completed / 113 accepted**: Codex 45/45, Claude Code 22/21, Forge 45/42, GEAK 5/5. Completion and acceptance are separate; 63 completion pairs remain. |
 
 The corrected 438-task aggregate reuses 383 historical reports already qualified
 for the e8 task versions, preserving their individual actual worker revisions;
@@ -43,23 +46,26 @@ harness preparation-boundary effect, not agent optimization gain. Source binding
 measurement limits and the completed independent raw audit are recorded in the
 dated checkpoint.
 
-Authentication is repaired, while the shared Claude/GEAK quota reset remains
-**2026-09-16 00:00 UTC**. The user's revised plan supersedes midnight dispatch:
+Authentication is repaired; the historical shared Claude/GEAK quota rejection
+reported a reset at **2026-09-16 00:00 UTC**. The revised plan supersedes the old midnight dispatch:
 both old waiters are **DISARMED**, and no new Fable/Opus dispatch is authorized.
-Remaining Claude Code 23 tasks have an explicit Sonnet 5 / medium configuration
-prepared. GEAK's remaining 40 have a draft native Workflow Codex implementation
-that is not yet qualified.
-Each campaign remains on **HOLD** until its own source, model, backend and runtime
-are qualified; Sonnet qualification is independent of the GEAK extension.
+The **2026-09-16** continuation uses **Sonnet / medium** for the remaining 23
+Claude Code tasks and 40 GEAK tasks, with GEAK's native Workflow retaining its
+Claude Code backend. The experimental GEAK Codex backend remains off-branch and
+outside this PR; it is not a completion prerequisite. New runs retain the normal
+source, model, backend and runtime admission checks.
 Historical model provenance and the 117/113 matrix are unchanged. No new Forge
 runs are required. Legacy GEAK source-39 evidence still lacks complete original
 tool-ID/session correlation and is not qualification
 of the later strict completion gate.
 
 The full core CPU gate is now complete at f65; the earlier failed 400f and 9c
-reports remain preserved. Remaining campaign work is qualification of the planned
-Sonnet/native GEAK configurations and the 63 incomplete matrix pairs. The f65 CPU
-result does not qualify the separate GEAK implementation or any new GPU run.
+reports remain preserved. Remaining integration coverage is the 63 incomplete
+matrix pairs. Completed native searches with rejected candidates or explicitly
+recorded no-candidate outcomes are legitimate results; the target does not
+require universal acceptance or speedup. Pre-model infrastructure failures do
+not count, and model failures are not automatically retried to force acceptance.
+The f65 CPU result does not by itself qualify any new GPU run.
 
 The source classification and reconciliation below describe the original c1
 merge. Later Pack changes and framework repairs are separately bound in the
