@@ -70,9 +70,8 @@ const arenaArgs = arenaDecodeArgs(args);
 '''
 
 
-FIXED_ARGS_GUARD_JS = """// AKA GEAK fixed arguments v4
-if (args === null || typeof args !== 'object' || Array.isArray(args)
-    || Object.keys(args).length !== 0)
+FIXED_ARGS_GUARD_JS = DECODER_JS + """// AKA GEAK fixed arguments v4
+if (Object.keys(arenaArgs).length !== 0)
   throw Error('GEAK dispatcher v4 requires empty object args');
 """
 
@@ -116,7 +115,7 @@ def _canonical(value: Any, *, safe_integers: bool = False) -> tuple:
 
 
 def decode_workflow_args(value: Any) -> dict[str, Any]:
-    """The private v3 dispatcher's data-only decoding, also used by collectors."""
+    """Private v3/v4 dispatcher data-only decoding, also used by collectors."""
     if type(value) is str:
         value = json.loads(value, object_pairs_hook=_unique_object, parse_constant=_reject_constant)
     if type(value) is not dict:
@@ -144,13 +143,14 @@ def validate_args_transport(expected: dict[str, Any] | None, transport: dict | N
         raise ValueError("GEAK dispatcher cannot be a symlink")
     source = path.read_bytes()
     if (hashlib.sha256(source).hexdigest() != transport["adapted_workflow_sha256"]
-            or source.count(decoder.encode()) != 1):
+            or source.count(decoder.encode()) != 1
+            or (transport["adapter_version"] == 3 and FIXED_ARGS_GUARD_JS.encode() in source)):
         raise ValueError("GEAK dispatcher transport/hash mismatch")
 
 
 def workflow_inputs_match(inputs: Any, expected: dict[str, Any], *,
                           args_transport: dict | None = None) -> bool:
-    """Exact outer keys and complete JSON values; decoding is pinned v3-only.
+    """Exact outer keys and complete JSON values; decoding requires a pinned opt-in.
 
     Does not mutate raw SDK input. External evidence collectors must pass the
     prepared engine's transport identity, never infer permission from a string.
@@ -163,7 +163,7 @@ def workflow_inputs_match(inputs: Any, expected: dict[str, Any], *,
                 or inputs["scriptPath"] != expected["scriptPath"]):
             return False
         actual = (decode_workflow_args(inputs["args"])
-                  if args_transport is not None and args_transport["adapter_version"] == 3
+                  if args_transport is not None
                   else inputs["args"])
         return _canonical(actual) == _canonical(expected["args"])
     except (ValueError, TypeError, OverflowError, RecursionError):

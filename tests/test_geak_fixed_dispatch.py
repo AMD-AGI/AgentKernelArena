@@ -45,7 +45,8 @@ Promise.all(inputs.map(run)).then(x=>console.log(JSON.stringify(x))).catch(e=>{c
 
 
 @pytest.mark.parametrize('mode', ['author','optimize'])
-def test_fixed_dispatch_preserves_every_parent_child_argument(upstream,tmp_path,mode):
+@pytest.mark.parametrize('encoding', ['object','json_string'])
+def test_fixed_dispatch_preserves_every_parent_child_argument(upstream,tmp_path,mode,encoding):
     source=(upstream/'kernel_workflow/kernel_workflow.js').read_text()
     contract='Full contract: "quotes", \\ slash, ${notCode}, `backticks`, 雪\n' * 40
     args={'kernel_path':'/private/kernel','workflow_dir':'/private/workflow',
@@ -58,7 +59,12 @@ def test_fixed_dispatch_preserves_every_parent_child_argument(upstream,tmp_path,
     old=tmp_path/'parent.js';new=tmp_path/'fixed.js'
     old.write_text(adapt_workflow(source,contract))
     new.write_text(adapt_workflow(source,contract,trusted_args=args))
-    result=run_js(tmp_path,[{'script':str(old),'args':args},{'script':str(new),'args':{}}])
+    invocation={} if encoding=='object' else ' \n{ }\t'
+    pin={'adapter_version':4,'adapted_workflow_sha256':hashlib.sha256(new.read_bytes()).hexdigest()}
+    expected={'scriptPath':str(new),'args':{}}
+    assert workflow_inputs_match({**expected,'args':invocation},expected,args_transport=pin)
+    assert workflow_inputs_match({**expected,'args':invocation},expected) is (encoding=='object')
+    result=run_js(tmp_path,[{'script':str(old),'args':args},{'script':str(new),'args':invocation}])
     assert args==saved
     assert result[0]==result[1]
     assert result[1]['error'] is None
@@ -67,8 +73,8 @@ def test_fixed_dispatch_preserves_every_parent_child_argument(upstream,tmp_path,
     assert result[1]['result']=={'childSentinel':True}
 
 
-@pytest.mark.parametrize('bad', ['{}','{"budget":6}',None,[],True,{'budget':6}, {'__proto__':{}}])
-def test_fixed_dispatch_rejects_any_nonempty_or_encoded_input(upstream,tmp_path,bad):
+@pytest.mark.parametrize('bad', ['"{}"','{','{"budget":6}',None,[],True,{'budget':6}, {'__proto__':{}}])
+def test_fixed_dispatch_rejects_invalid_or_nonempty_input(upstream,tmp_path,bad):
     path=tmp_path/'fixed.js'
     path.write_text(adapt_workflow((upstream/'kernel_workflow/kernel_workflow.js').read_text(),
         'contract',trusted_args={'kernel_path':'/k','workflow_dir':'/w','mode':'optimize'}))
@@ -76,12 +82,13 @@ def test_fixed_dispatch_rejects_any_nonempty_or_encoded_input(upstream,tmp_path,
     expected={'scriptPath':str(path),'args':{}}
     assert not workflow_inputs_match({**expected,'args':bad},expected,args_transport=pin)
     [result]=run_js(tmp_path,[{'script':str(path),'args':bad}])
-    assert result=={'calls':[],'result':None,'error':'GEAK dispatcher v4 requires empty object args'}
+    assert result['calls']==[] and result['result'] is None
+    assert result['error']
     with pytest.raises(ValueError):
         validate_args_transport({**expected,'args':{'budget':6}},pin)
 
 
-@pytest.mark.parametrize('scenario',['accepted','encoded_empty','extra_arg','extra_outer','wrong_script','wrong_return_id'])
+@pytest.mark.parametrize('scenario',['accepted','encoded_empty','double_encoded','invalid_json','extra_arg','extra_outer','wrong_script','wrong_return_id'])
 def test_prepared_v4_worker_uses_empty_args_and_preserves_native_return_rules(
         task_factory,upstream,tmp_path,monkeypatch,scenario):
     sdk_types=pytest.importorskip('claude_agent_sdk').types
@@ -95,6 +102,8 @@ def test_prepared_v4_worker_uses_empty_args_and_preserves_native_return_rules(
     expected={'scriptPath':engine['script_path'],'args':{}}
     inputs=copy.deepcopy(expected)
     if scenario=='encoded_empty':inputs['args']='{}'
+    if scenario=='double_encoded':inputs['args']='"{}"'
+    if scenario=='invalid_json':inputs['args']='{'
     if scenario=='extra_arg':inputs['args']={'budget':6}
     if scenario=='extra_outer':inputs['run_in_background']=False
     if scenario=='wrong_script':inputs['scriptPath']+='.other'
@@ -121,16 +130,18 @@ def test_prepared_v4_worker_uses_empty_args_and_preserves_native_return_rules(
     invoke=runner.invoke_via_sdk
     monkeypatch.setattr(engine_worker,'invoke_via_sdk',lambda prompt,**kw:invoke(prompt,**{**kw,'done_grace_seconds':.1,'done_poll_seconds':.05}))
     code=engine_worker.run(bridge.job_path)
-    assert code==(0 if scenario=='accepted' else 1)
+    accepted=scenario in {'accepted','encoded_empty'}
+    assert code==(0 if accepted else 1)
     report=json.loads((bridge.root/'engine_result.json').read_text())
-    assert report['workflow_completed'] is (scenario=='accepted')
-    if scenario=='accepted':
+    assert report['workflow_completed'] is accepted
+    if accepted:
         assert report['mode']==engine['engine_args']['mode']
         assert report['target_language']==engine['engine_args']['target_language']
     assert observed and inputs==original
     diag=report['runtime']['sdk_diagnostics']['calls'][0]
     assert diag['args_comparison']=='geak_dispatch_v4'
-    assert diag['normalized_args_type']==('invalid' if scenario in {'encoded_empty','extra_arg'} else 'object')
+    assert diag['normalized_args_type']==('invalid' if scenario in {'double_encoded','invalid_json','extra_arg'} else 'object')
+    assert diag['args_encoding']==('json_string' if type(inputs['args']) is str else 'object')
 
 
 def test_default_prompt_invocation_is_unchanged(tmp_path):

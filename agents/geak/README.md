@@ -159,16 +159,19 @@ synchronous execution; matching native background completion remains supported.
 The outer Workflow invocation now contains only the exact private `scriptPath`
 and `args: {}`. Adapter identity version 4 pins a per-run dispatcher containing
 all trusted engine arguments, including the full task contract, as JSON data.
-The dispatcher requires a real empty object and loads its fixed arguments before
-calling the unchanged author/optimize lane. The outer model does not copy paths,
+The dispatcher decodes an object or JSON-encoded object string, requires the
+result to be empty, then loads its fixed arguments before calling the unchanged
+author/optimize lane. The outer model does not copy paths,
 cases, timings or budgets into a tool call. `engine_args` in the private handoff
 retains the prepared values for local metadata and audit; it is not sent as the
 Workflow input. The full dispatcher SHA-256 binds the actual child arguments.
 
 The prepared `args_transport` identity is checked before SDK launch. Version 4
-requires exact outer keys `scriptPath` and `args`, the exact script path and a
-real empty object: even the string `"{}"` is rejected by both SDK matching and
-the dispatcher. Generic callers remain strict. Historical version-3 callers
+requires exact outer keys `scriptPath` and `args`, the exact script path and
+decoded empty arguments: `{}` and the string `"{}"` have identical child inputs.
+Both SDK matching and the actual dispatcher reject invalid JSON, double-encoded
+strings, non-object roots and nonempty objects. Generic callers remain strict.
+Historical version-3 callers
 retain their pinned JSON-string transport policy, including safe-integer and
 duplicate-key checks. No task, lane, role, budget, retry or native-return policy
 changes accompany version 4.
@@ -179,8 +182,9 @@ values. Native tool-ID/count/return correlation is unchanged. External collector
 must read the prepared invocation from `engine.args`, bind `args_transport` to
 `engine_identity.json` and the actual dispatcher bytes, and use
 `workflow_inputs_match` from [argument_transport.py](argument_transport.py).
-Collectors must recognize version 4 explicitly; do not reconstruct a tool call
-from `engine_args`, decode strings under v4, or reuse a predecessor dispatcher.
+Collectors must recognize version 4 explicitly and use the same pinned decoder
+before enforcing empty arguments; do not reconstruct a tool call from
+`engine_args` or reuse a predecessor dispatcher.
 
 ## Security and reproducibility review
 

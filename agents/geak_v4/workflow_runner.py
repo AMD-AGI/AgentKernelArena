@@ -668,11 +668,9 @@ def _record_workflow_calls(message: Any, identity: dict[str, Any], expected: dic
         row["raw_args_sha256"] = hashlib.sha256(raw_json.encode()).hexdigest()
         if args_transport is not None:
             try:
-                if args_transport["adapter_version"] == 4:
-                    if type(raw_args) is not dict or raw_args != {}:
-                        raise ValueError("GEAK dispatcher v4 requires empty object args")
-                else:
-                    decode_workflow_args(raw_args)
+                decoded = decode_workflow_args(raw_args)
+                if args_transport["adapter_version"] == 4 and decoded != {}:
+                    raise ValueError("GEAK dispatcher v4 requires empty object args")
                 row["normalized_args_type"] = "object"
             except (ValueError, TypeError, OverflowError, RecursionError):
                 row["normalized_args_type"] = "invalid"
