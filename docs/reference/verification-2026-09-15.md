@@ -164,6 +164,24 @@ after temporary-workspace cleanup, and two were audited while the workspace
 still existed. These success-path records do not establish the cause of the
 earlier failed run.
 
+### Unaccepted completed attempts
+
+The four unaccepted pairs remain legitimate completed optimization outcomes:
+
+| Agent and task | Observed outcome |
+| --- | --- |
+| Claude, SIKL GEMM n128/k6144 | Generated code calls `Float32.truncf`, which the installed FlyDSL API does not provide. Candidate compilation fails. |
+| Forge, Torch-to-FlyDSL batched BF16 GEMM | The archived candidate delegates computation to AITER's `flydsl_hgemm`. Its earlier numerical PASS does not satisfy the task's independent implementation contract. |
+| Forge, Triton-to-FlyDSL SGLang fused MoE | The selected dot4 kernel uses a block stride of 256 with 128 threads, leaving half the output columns unwritten and subsequently reading uninitialized allocations. The same run's baseline passed all eight cases with matching protected harness bytes. |
+| Forge, image-backed HIP paged-attention decode | The native implementer exhausted its 1,200-second session budget without an archived candidate. Later failures before optimization add no completion credit. |
+
+The MoE diagnosis is a source-level indexing proof bound to the actual archived
+candidate and original actions, not a new GPU run. The original combined
+output/reference error did not retain separate finite-state flags, so the exact
+historical NaN side remains unknown. That limitation does not remove the
+confirmed candidate defect. No task repair or repeated optimization is required
+to turn this result into a success.
+
 ## Open work and revised agent plan
 
 At **2026-09-15 20:53:10 UTC**, retained GEAK runtime evidence confirmed an actual
@@ -183,7 +201,18 @@ extension is not required for the remaining campaign. Each new run must bind its
 actual source, model, backend and runtime and pass the normal admission checks.
 This plan is not evidence of new executions. Historical accepted runs retain
 their original model/backend identities; the 117/113 matrix is unchanged.
-Quota-rejected tasks receive no completion credit.
+Quota-rejected tasks receive no completion credit. At **2026-09-16 01:29 UTC**,
+job **141786** completed one actual Sonnet/medium availability request with a
+successful native terminal result and an admitting quota event. It produced 30
+primary-model output tokens; auxiliary Haiku usage remains separately recorded.
+This CPU-only request has no GPU or matrix credit. It establishes availability
+at that instant, not a guarantee against a subsequent quota limit.
+
+The new Claude campaign limits each task to one outer optimization invocation,
+retains its 1,800-second ceiling, and sets the CLI's per-invocation budget
+threshold to USD 2. This is a CLI cost control, not a hard subscription token
+allowance. Actual input, output and cache usage must be recorded. GEAK uses its
+existing search-budget controls; those units must not be described as tokens.
 
 The core full CPU gate is complete at f65. Remaining integration coverage is
 the **63 agent/task pairs** above. A completed native search can legitimately end
@@ -218,6 +247,8 @@ These files are in the campaign evidence bundle under
 - `moe141240-parent-raw-audit.json`
 - `verified-final400f-saved5.json` (SHA-256 `595d2b901a2ebebf36282adae2050e90b2df5176b3f20316868941defb6a3641`)
 - `verified-matrix-completed117-accepted113.json`
+- `verified-forge140900-candidate-defect.json`
+- `verified-sonnet141786-availability.json`
 - `verified-forge140967-new-accepted.json` and `verified-forge475-final-action-evidence.json`
 - `observed-geak141010-quota-hold-2050.json`
 - `geak-midnight40-durable-waiter-r2.json` and `geak400f-conditional-offline-preparation.json`
