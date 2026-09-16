@@ -290,6 +290,8 @@ def build_prompt(script_path: Path, workflow_args: dict[str, Any]) -> str:
         "Invoke the Workflow tool exactly once with this exact JSON object:\n"
         f"```json\n{workflow_input}\n```\n"
         "Use ONLY the two top-level Workflow keys scriptPath and args. "
+        "The args field MUST be a JSON object, not a JSON-encoded string. "
+        "Pass the object itself: do not stringify it or put quotes around it. "
         "Do not add any other top-level keys, including run_in_background "
         "(even with a false value). Preserve every nested args value and JSON type "
         "exactly as supplied. The tool may complete synchronously or return a "
