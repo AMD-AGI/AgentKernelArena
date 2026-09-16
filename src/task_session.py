@@ -125,8 +125,8 @@ class TaskSession:
 
     @classmethod
     def load(cls, spec: TaskSpec, workspace: Path, state_directory: Path,
-             logger: logging.Logger | None = None) -> "TaskSession":
-        """Resume from original state, validating saved process evidence again."""
+             logger: logging.Logger | None = None, *, read_only: bool = False) -> "TaskSession":
+        """Validate saved state; read-only queries never clean up added harness files."""
         workspace = Path(workspace).resolve(strict=True)
         state_directory = Path(state_directory).resolve(strict=True)
         descriptor = json.loads((state_directory / "session.json").read_text())
@@ -144,7 +144,7 @@ class TaskSession:
             {key: frozenset(names) for key, names in saved_harness["initial_symbols"].items()},
         )
         session.verify_baseline_sources()
-        session.verify_candidate_harness()
+        session.verify_candidate_harness(discard_added=not read_only)
         records = sorted(state_directory.glob("action-*.json"))
         for path in records:
             number = int(path.name.split("-", 2)[1])
@@ -230,10 +230,10 @@ class TaskSession:
             if not (path.is_file() or path.is_symlink()) or _source_digest(path) != digest:
                 raise TaskExecutionError(f"Frozen baseline source changed: {relative}")
 
-    def verify_candidate_harness(self) -> None:
+    def verify_candidate_harness(self, *, discard_added: bool = True) -> None:
         if self.harness is None:
             raise TaskExecutionError("Original harness evidence is missing")
-        verify_workspace_harness(self.harness, logger=self.logger)
+        verify_workspace_harness(self.harness, logger=self.logger, discard_added=discard_added)
 
     def _execute(self, role: str, action: str, phase: str) -> ExecutedAction:
         # Initial checks always inspect the preserved starting package, even

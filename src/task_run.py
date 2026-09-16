@@ -59,7 +59,7 @@ def task_run_is_complete(workspace: Path, expected_task_name: str, agent_name: s
         state = _state_directory(workspace)
         completion = json.loads((state / "completion.json").read_text())
         spec = TaskSpec.from_mapping(json.loads((state / "task_spec.json").read_text()), task_id=expected_task_name)
-        session = TaskSession.load(spec, workspace, state)
+        session = TaskSession.load(spec, workspace, state, read_only=True)
         return completion == _completion_record(session, agent_name)
     except (OSError, ValueError, TypeError, KeyError, RuntimeError, yaml.YAMLError):
         return False

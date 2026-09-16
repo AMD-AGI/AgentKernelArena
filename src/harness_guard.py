@@ -684,7 +684,7 @@ def snapshot_workspace_harness(
     return WorkspaceSnapshot(root=root, digests=digests)
 
 
-def verify_workspace_harness(snapshot: WorkspaceSnapshot, logger=None) -> None:
+def verify_workspace_harness(snapshot: WorkspaceSnapshot, logger=None, *, discard_added: bool = True) -> None:
     """Reject tampering with protected harness files; discard ones the agent added.
 
     Editing or deleting a harness file the task shipped is harness hacking and the score
@@ -695,6 +695,8 @@ def verify_workspace_harness(snapshot: WorkspaceSnapshot, logger=None) -> None:
     a scratch file whose name happened to end in ``_test.py``.
 
     Deletions are always logged: a silent removal would be worse than a hard failure.
+    Read-only callers use ``discard_added=False`` to reject added protected files
+    without deleting them. Existing protected inputs are verified in both modes.
     """
 
     def _scan() -> dict[str, str]:
@@ -710,6 +712,8 @@ def verify_workspace_harness(snapshot: WorkspaceSnapshot, logger=None) -> None:
     current = _scan()
 
     discarded = sorted(rel for rel in current if rel not in before)
+    if discarded and not discard_added:
+        raise RuntimeError(f"Added protected harness files require review: {discarded}")
     for rel in discarded:
         (snapshot.root / rel).unlink()
         message = (

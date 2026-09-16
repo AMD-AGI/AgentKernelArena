@@ -1,3 +1,4 @@
+import logging
 import shutil
 
 import pytest
@@ -33,6 +34,20 @@ def test_file_edits_leave_all_non_candidate_task_material_protected(tmp_path):
     (root / "inputs.bin").write_bytes(b"easier case")
     with pytest.raises(RuntimeError, match="inputs.bin"):
         verify_workspace_harness(before)
+
+
+def test_read_only_guard_preserves_additions_but_evaluation_keeps_logged_cleanup(tmp_path, caplog):
+    root, _ = workspace(tmp_path)
+    before = snapshot_workspace_harness(root)
+    extra = root / "debug_test.py"
+    extra.write_text("# agent's diagnostic\n")
+    with pytest.raises(RuntimeError, match="Added protected harness files require review"):
+        verify_workspace_harness(before, discard_added=False)
+    assert extra.read_text() == "# agent's diagnostic\n"
+
+    verify_workspace_harness(before, logger=logging.getLogger(__name__))
+    assert not extra.exists()
+    assert "debug_test.py" in caplog.text
 
 
 def test_symbol_edits_only_mask_named_implementation_and_permitted_new_helpers(tmp_path):

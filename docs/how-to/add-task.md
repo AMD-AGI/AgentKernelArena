@@ -304,9 +304,14 @@ repository working directory. Source destinations must not overwrite task
 configuration or harness files.
 
 Exports run through common framework post-processing after final evaluation.
-They read the accepted candidate and framework-finalized results; they do not
-supply correctness or scores. Each exporter documents the status it accepts,
-its required inputs, and output format. Failed candidates must not be exported
+`ARENA_FINAL_RESULT_PATH` retains its existing name and points to the
+framework-owned **evaluation result before exports**, not the final delivery
+report. Exporters can read compilation/correctness/tool gates, workload and
+timing consistency, case counts, timings, and scores. They must not require
+`candidate_accepted`, `exports`, or `delivery_status`: those fields are written
+after all exports finish and candidate/protected-source checks are repeated.
+Exporters do not supply correctness or scores. Each exporter documents the status
+it accepts, its required inputs, and output format. Failed candidates must not be exported
 as accepted solutions. Preserve failure reports as diagnostics. Exporters must
 honor the configured candidate/workload paths instead of assuming `kernel.py`
 and `workload.json`. Export failures are reported separately from numerical
@@ -449,10 +454,19 @@ request/evidence identity and writes the official report. A new prompt-only
 Session state, the original harness boundary and action evidence are retained
 outside the candidate workspace. Resume verifies that state and preserves the
 original baseline; it does not capture a modified candidate as a fresh baseline.
+Completion queries are read-only. Extra files matching protected harness patterns
+make the query return incomplete and remain available for inspection. Actual
+evaluation retains its existing logged cleanup of agent-added harness files.
 Optimization completion records bind the final report to the delivered candidate.
 An agent CLI failure is recorded independently, and any retained candidate still
 receives the ordinary final checks. Export failures remain separate from numeric
 scores and make the delivery incomplete.
+Run-level text, CSV, JSON and dashboard summaries retain `candidate_accepted`
+and `delivery_status` separately from numerical correctness, timing and scores.
+Acceptance and delivery have independent counts; missing fields in historical
+reports remain unknown/N/A rather than being inferred from a positive score.
+An export that invalidates the delivered candidate is shown as `NOT_ACCEPTED`,
+while an accepted candidate with a failed export is shown as `INCOMPLETE`.
 
 ## Benchmark and edit-boundary contracts
 

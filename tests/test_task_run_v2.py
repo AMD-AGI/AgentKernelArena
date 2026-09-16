@@ -1,4 +1,5 @@
 """CPU process fixtures for orchestration; timings are synthetic, not GPU evidence."""
+import csv
 import json
 import logging
 import os
@@ -10,6 +11,7 @@ import pytest
 import yaml
 
 from src.evaluator import evaluate_task_session
+from src.postprocessing import general_post_processing
 from src.task_run import run_task_v2, task_run_is_complete
 from tests.test_task_session_v2 import RUNNER, create
 
@@ -97,6 +99,37 @@ def test_empty_candidate_is_valid_initially_but_not_a_successful_submission(tmp_
     assert report["score"] == 0
 
 
+@pytest.mark.parametrize("relative", ["debug_test.py", "scripts/diagnostic.py"])
+def test_completion_query_preserves_extra_protected_files_and_session_state(tmp_path, relative):
+    path = package(tmp_path)
+    _, workspace = run(tmp_path, path, lambda **_: None)
+    assert task_run_is_complete(workspace, "suite/protocol_fixture", "codex")
+    extra = workspace / relative
+    extra.parent.mkdir(parents=True, exist_ok=True)
+    extra.write_text("# preserve this diagnostic for inspection\n")
+
+    def contents():
+        return {p.relative_to(workspace.parent): p.read_bytes()
+                for p in workspace.parent.rglob("*") if p.is_file()}
+
+    before = contents()
+    for _ in range(2):
+        assert not task_run_is_complete(workspace, "suite/protocol_fixture", "codex")
+        assert contents() == before
+
+
+@pytest.mark.parametrize("role", ["candidate", "baseline"])
+def test_completion_query_still_rejects_modified_original_harness(tmp_path, role):
+    path = package(tmp_path)
+    _, workspace = run(tmp_path, path, lambda **_: None)
+    root = workspace if role == "candidate" else (
+        workspace.parent / ".task-sessions" / workspace.name / "baseline")
+    runner = root / "evaluate.py"
+    runner.write_text(runner.read_text() + "\n# changed original harness\n")
+    assert not task_run_is_complete(workspace, "suite/protocol_fixture", "codex")
+    assert runner.read_text().endswith("# changed original harness\n")
+
+
 def test_diagnostic_baseline_failure_stays_visible_with_passing_candidate(tmp_path):
     path = package(tmp_path, empty=True, provided=4, diagnostic=True)
 
@@ -176,10 +209,13 @@ def test_resume_retains_original_baseline_and_performs_new_candidate_checks(tmp_
 
 @pytest.mark.parametrize("modify_report", [False, "delete", "symlink", "directory"])
 def test_common_export_for_any_agent_and_report_tampering_detection(tmp_path, modify_report):
-    code = '''import json, os, pathlib
+    code = '''import json, os, pathlib, yaml
 output = pathlib.Path(os.environ["ARENA_EXPORT_PATH"])
 output.parent.mkdir(parents=True, exist_ok=True)
 report = pathlib.Path(os.environ["ARENA_FINAL_RESULT_PATH"])
+evaluation = yaml.safe_load(report.read_text())
+assert evaluation['pass_correctness'] and evaluation['score'] == 220
+assert not {'candidate_accepted', 'exports', 'delivery_status'} & evaluation.keys()
 output.write_text(json.dumps({"delivered": True}))
 '''
     if modify_report:
@@ -246,6 +282,19 @@ raise RuntimeError('failed before writing the artifact')
     assert report["delivery_status"] == "INCOMPLETE"
     assert not report["candidate_accepted"]
     assert report["exports"][0]["candidate_unchanged"] is False
+
+    general_post_processing([str(workspace)], logger=None)
+    reports = workspace.parent / "reports"
+    with (reports / "overall_summary.csv").open() as handle:
+        row, = list(csv.DictReader(handle))
+    assert row["Status"] == "NOT_ACCEPTED"
+    assert row["Candidate Accepted"] == "NO"
+    assert row["Delivery Status"] == "INCOMPLETE"
+    assert float(row["Score"]) == report["score"] == 220
+    summary = json.loads((reports / "task_type_breakdown.json").read_text())
+    assert summary["overall"]["candidate_rejected_count"] == 1
+    assert summary["overall"]["delivery_incomplete_count"] == 1
+    assert summary["overall"]["correctness_pass_count"] == 1
 
 
 @pytest.mark.parametrize("semantic_pass", [True, False])
