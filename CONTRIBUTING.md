@@ -70,6 +70,20 @@ make docker-run CONFIG=example_configs/quickstart_claude_mi300.yaml
 
 ## Testing and Verification
 
+Use **CPython 3.12** for the full CPU/mock suite and repository-wide source
+compilation, matching `.github/workflows/perf-helpers.yml`. Some task helpers use
+Python 3.12 f-string syntax, and the committed migration AST fingerprints were
+recorded with 3.12; those fingerprints are not portable across Python minor
+versions. Python 3.11 is not a supported interpreter for the full repository
+audit. Use a full Git checkout (`git fetch --unshallow` for an existing shallow
+clone), because preservation tests read historical task sources with `git show`.
+Keep those source comparisons enabled.
+
+This audit requirement does not upgrade the Docker scoring images. Actual GPU
+runs still use the task's qualified image and Python version; an older image's
+task-specific PASS does not establish compatibility with every retained task.
+See the [compatibility matrix](docs/reference/compatibility-matrix.md).
+
 This project depends on GPU hardware/drivers and orchestrates external LLM agent CLIs. In your PR, include:
 
 - Test environment (GPU model, ROCm version, Docker image, OS)
