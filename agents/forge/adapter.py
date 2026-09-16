@@ -132,12 +132,11 @@ def build_command(plan: dict, context: TaskContext, config: dict, *, gpu_arch: s
                     "--framework", identity.get("source_owner", "standalone"),
                     "--task-type", "image_kernel",  # upstream multi-file switch only
                     "--baseline-json", plan["baseline"], "--program-md-file", plan["program"],
-                    "--no-prepare-task", "--no-profiling", "--no-specialist-probe",
-                    "--no-experience-kb", "--lanes", "1", "--agent-backend", config["agent_backend"],
+                    "--agent-backend", config["agent_backend"],
                     "--session-timeout-sec", str(config["session_timeout_seconds"])]
     else:
         command += ["--source-kernel", plan["source"], "--flydsl-kernel-name", plan["anchor"],
-                    "--logical-op-name", operator, "--no-prepare-driver", "--no-rewrite-kb",
+                    "--logical-op-name", operator, "--no-prepare-driver",
                     "--max-port-attempts", str(config["max_port_attempts"]),
                     "--supervisor-backend", config["supervisor_backend"] or config["agent_backend"]]
         if identity.get("source_owner") in ("aiter", "vllm", "sglang"):

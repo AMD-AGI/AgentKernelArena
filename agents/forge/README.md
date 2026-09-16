@@ -354,10 +354,14 @@ override `workflow`, `model`, `agent_backend`, `permission_mode`,
 `timeout_seconds`, `session_timeout_seconds`, `max_port_attempts`,
 `initialization_max_attempts`, `initialization_budget_fraction`,
 `supervisor_backend`, `codex_auth_mode`, and `python`. An empty supervisor follows the selected
-backend. This adapter currently uses one lane and disables profiling/probes
-because the public task protocol provides no profiler invocation. Knowledge
-warm starts and publication are disabled for this integration so single-file
-upstream recipe formats cannot silently truncate a multi-file submission.
+backend. Lane count, task preparation, profiling, planning probes and knowledge
+warm starts follow the engine defaults; the adapter no longer forces them off.
+Arena publishes the task and leaves the search policy to Forge. Two consequences
+are load bearing. The public task protocol exposes no profiler invocation, so
+the bridge answers `--profile-run` with an explicit unsupported capability. A
+single-file upstream recipe cannot describe a multi-file candidate, so a task
+whose `candidate.editable` spans more than one file may receive a warm start
+that covers only part of its submission.
 
 ## Verification and framework integration
 
