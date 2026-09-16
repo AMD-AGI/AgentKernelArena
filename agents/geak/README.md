@@ -160,8 +160,34 @@ The outer `args` omit the two duplicate full-contract fields. A hash-checked
 private copy of the native dispatcher restores `arena_contract` and `task` from
 trusted JSON string literals before the author/optimize lane receives its
 arguments. The lane and role inputs retain the full contract; model output
-budgets stay unchanged. Adapter identity version 2 records the adapted
-dispatcher hash as well as the adapted lane hash.
+budgets stay unchanged. Adapter identity version 3 records the adapted
+dispatcher hash as well as the adapted lane hash. Its dispatcher accepts either
+an object or one JSON-encoded object string and explicitly decodes the latter
+with `JSON.parse` before restoring the trusted contract. It rejects null,
+arrays, scalars, duplicate keys at any depth and non-finite numbers.
+
+The prepared engine's `args_transport` handoff opts into matching that exact
+version-3 dispatcher SHA-256. The SDK checks that pin and the decoder before
+launch; generic workflow-runner callers remain strict unless they supply the
+validated opt-in. Only `scriptPath` and `args` are accepted at the outer tool
+boundary. The complete decoded arguments must match, including every nested
+key and value. Numeric comparison preserves exact Python integer/float equality;
+booleans and strings never coerce to numbers. V3 rejects integer-valued numbers
+outside JavaScript's safe range `[-(2**53 - 1), 2**53 - 1]` in both Python and
+the actual dispatcher, before accepting or forwarding arguments. Default strict
+callers retain large-integer distinctions instead of rounding them to floats.
+Native tool-ID/return correlation, invocation counts,
+timeouts and model budgets are unchanged.
+
+Raw SDK tool inputs are never rewritten. Diagnostics distinguish the raw
+`args_encoding`, a SHA-256 of its JSON serialization (`ensure_ascii=True`,
+`sort_keys=True`, Python's default separators), the comparison mode and the
+normalized root type. Argument values still stay out of the diagnostic report;
+original native capture artifacts retain their own raw representation. External
+evidence collectors can use `workflow_inputs_match` from
+[argument_transport.py](argument_transport.py), passing the prepared engine's
+`args_transport`. They must bind that handoff to `engine_identity.json` version
+3 and its dispatcher hash; string input alone never authorizes normalization.
 
 ## Security and reproducibility review
 

@@ -36,6 +36,7 @@ def run(job_path: Path) -> int:
             require_workflow_result=True,
             runtime_metadata_path=bridge.root / "runtime_identity.json",
             expected_workflow={"scriptPath": str(script), "args": args},
+            workflow_args_transport=handoff.get("args_transport"),
         )
         error_code = "missing_terminal_workflow_result"
         # The strict SDK path appends the observed tool return as the final line.

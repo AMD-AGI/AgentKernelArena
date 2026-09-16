@@ -21,6 +21,7 @@ from __future__ import annotations
 import argparse
 import builtins
 import importlib.metadata
+import hashlib
 import json
 import math
 import os
@@ -31,6 +32,14 @@ import tempfile
 import time
 from pathlib import Path
 from typing import Any, Iterable
+
+
+if __package__ in (None, ""):
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+from agents.geak.argument_transport import (
+    decode_workflow_args, validate_args_transport, workflow_inputs_match,
+)
 
 
 SCHEMA_VERSION = 1
@@ -621,7 +630,8 @@ def _diagnostic_type(value: Any) -> str:
             int: "integer", float: "number", type(None): "null"}.get(type(value), "other")
 
 
-def _record_workflow_calls(message: Any, identity: dict[str, Any], expected: dict[str, Any] | None) -> None:
+def _record_workflow_calls(message: Any, identity: dict[str, Any], expected: dict[str, Any] | None,
+                           args_transport: dict | None = None) -> None:
     """Record the observed message prefix, not a reconstructed full CLI session.
 
     Only trusted expected field names are copied. Unknown keys are counted;
@@ -635,8 +645,8 @@ def _record_workflow_calls(message: Any, identity: dict[str, Any], expected: dic
             continue
         inputs = getattr(block, "input", None)
         diagnostic["observed_workflow_calls"] += 1
-        matches = (isinstance(inputs, dict) and expected is not None
-                   and all(inputs.get(key) == value for key, value in expected.items()))
+        matches = (expected is not None
+                   and workflow_inputs_match(inputs, expected, args_transport=args_transport))
         diagnostic["matched_workflow_calls"] += int(matches)
         calls = diagnostic.setdefault("calls", [])
         if len(calls) >= 8:
@@ -647,6 +657,18 @@ def _record_workflow_calls(message: Any, identity: dict[str, Any], expected: dic
         calls.append(row)
         if not isinstance(inputs, dict) or expected is None:
             continue
+        raw_args = inputs.get("args")
+        row["args_encoding"] = "json_string" if type(raw_args) is str else _diagnostic_type(raw_args)
+        row["args_comparison"] = "geak_dispatch_v3" if args_transport is not None else "strict"
+        # Bind raw encoding without copying paths, prompts or arbitrary values.
+        raw_json = json.dumps(raw_args, ensure_ascii=True, sort_keys=True)
+        row["raw_args_sha256"] = hashlib.sha256(raw_json.encode()).hexdigest()
+        if args_transport is not None:
+            try:
+                decode_workflow_args(raw_args)
+                row["normalized_args_type"] = "object"
+            except (ValueError, TypeError, OverflowError, RecursionError):
+                row["normalized_args_type"] = "invalid"
         if "run_in_background" in inputs and "run_in_background" not in expected:
             # Known dispatch mistake: retain its key/type, never the value.
             row["extra_key_types"] = {"run_in_background": _diagnostic_type(inputs["run_in_background"])}
@@ -689,8 +711,10 @@ def invoke_via_sdk(
     require_workflow_result: bool = False,
     runtime_metadata_path: Path | None = None,
     expected_workflow: dict[str, Any] | None = None,
+    workflow_args_transport: dict | None = None,
 ) -> str:
     """Invoke Claude Code while surviving synchronous and background Workflows."""
+    validate_args_transport(expected_workflow, workflow_args_transport)
     try:
         import anyio
         from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
@@ -726,6 +750,8 @@ def invoke_via_sdk(
             recorded_identity = encoded
 
     if runtime_metadata is not None:
+        if workflow_args_transport is not None:
+            runtime_metadata["workflow_args_transport"] = dict(workflow_args_transport)
         runtime_metadata.update(requested_model=model,
                                 sdk_version=importlib.metadata.version("claude-agent-sdk"))
         runtime_metadata["sdk_diagnostics"] = {"observed_workflow_calls": 0,
@@ -804,8 +830,8 @@ def invoke_via_sdk(
                         continue
                     if expected_workflow is not None:
                         inputs = getattr(block, "input", None)
-                        if (not isinstance(inputs, dict)
-                                or any(inputs.get(key) != value for key, value in expected_workflow.items())):
+                        if not workflow_inputs_match(inputs, expected_workflow,
+                                                     args_transport=workflow_args_transport):
                             raise RuntimeError("GEAK Workflow invocation does not match its pinned script and arguments")
                     tool_id = getattr(block, "id", None)
                     if not isinstance(tool_id, str) or not tool_id:
@@ -856,7 +882,8 @@ def invoke_via_sdk(
                         async for message in client.receive_messages():
                             if runtime_metadata is not None:
                                 _record_runtime_identity(message, runtime_metadata)
-                                _record_workflow_calls(message, runtime_metadata, expected_workflow)
+                                _record_workflow_calls(message, runtime_metadata, expected_workflow,
+                                                       workflow_args_transport)
                                 persist_identity()
                             if require_workflow_result:
                                 observe_workflow(message)

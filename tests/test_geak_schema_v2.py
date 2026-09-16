@@ -673,7 +673,9 @@ def test_pinned_upstream_preparation(task_factory, upstream, language, state):
     assert dispatcher.read_text() == adapt_workflow(
         (upstream / "kernel_workflow/kernel_workflow.js").read_text(), contract)
     identity = json.loads((bridge.root / "engine_identity.json").read_text())
-    assert identity["adapter_version"] == 2
+    assert identity["adapter_version"] == 3
+    assert engine["args_transport"] == {key: identity[key] for key in (
+        "adapter_version", "adapted_workflow_sha256")}
     assert identity["adapted_workflow_sha256"] == hashlib.sha256(dispatcher.read_bytes()).hexdigest()
     lane = Path(args["kernel_lane_script"]).read_text()
     assert identity["adapted_lane_sha256"] == hashlib.sha256(lane.encode()).hexdigest()
@@ -696,7 +698,8 @@ def test_pinned_upstream_preparation(task_factory, upstream, language, state):
 
 @pytest.mark.parametrize("mode", ["author", "optimize"])
 @pytest.mark.parametrize("conflicting_input", [False, True])
-def test_native_dispatcher_restores_exact_lane_args(upstream, tmp_path, mode, conflicting_input):
+@pytest.mark.parametrize("encoded", [False, True])
+def test_native_dispatcher_restores_exact_lane_args(upstream, tmp_path, mode, conflicting_input, encoded):
     node = os.environ.get("GEAK_TEST_NODE") or shutil.which("node")
     if not node:
         pytest.skip("Node required for the real GEAK JavaScript interface probe")
@@ -719,7 +722,7 @@ def test_native_dispatcher_restores_exact_lane_args(upstream, tmp_path, mode, co
         compact.update(arena_contract="untrusted override", task="incomplete override")
     request = tmp_path / "dispatch.json"
     write_json(request, {"original": str(original), "adapted": str(adapted),
-                         "old_args": old_args, "compact_args": compact})
+                         "old_args": old_args, "compact_args": json.dumps(compact) if encoded else compact})
     probe = tmp_path / "dispatch.js"
     probe.write_text(r'''
 const fs = require('fs');

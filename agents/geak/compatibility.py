@@ -14,6 +14,7 @@ import subprocess
 from typing import Callable
 
 from .bridge import Bridge, copy_file, copy_tree, write_json
+from .argument_transport import DECODER_JS
 
 
 UPSTREAM_REVISION = "c0c0e2aee5e2bec70583253058382523bdf7a3ab"
@@ -56,7 +57,7 @@ def adapt_workflow(source: str, contract: str) -> str:
     # JSON string literals preserve quotes, backticks, newlines and Unicode as
     # data. Trusted values follow the spread so callers cannot replace them.
     literal = json.dumps(contract, ensure_ascii=True)
-    return source.replace(marker, "const A = { ...(args || {}), "
+    return source.replace(marker, DECODER_JS + "const A = { ...arenaArgs, "
                           f"arena_contract: {literal}, task: {literal} }};", 1)
 
 
@@ -202,11 +203,13 @@ def prepare_engine(checkout: Path, bridge: Bridge, *, python: str, options: dict
                             "baseline_geomean_ms": math.exp(sum(math.log(row["ms"]) for row in baseline) / len(baseline)),
                             "reliable": True},
     }
+    transport = {"adapter_version": 3,
+                 "adapted_workflow_sha256": hashlib.sha256(dispatcher.read_bytes()).hexdigest()}
     write_json(bridge.root / "engine_identity.json", {
         "upstream_revision": UPSTREAM_REVISION, "upstream_scripts": SCRIPT_SHA256,
-        "adapted_workflow_sha256": hashlib.sha256(dispatcher.read_bytes()).hexdigest(),
+        **transport,
         "adapted_lane_sha256": hashlib.sha256(lane.read_bytes()).hexdigest(),
-        "adapter_version": 2,
     })
     bridge.remaining()
-    return {"script_path": str(workflow / "kernel_workflow.js"), "args": args}
+    return {"script_path": str(workflow / "kernel_workflow.js"), "args": args,
+            "args_transport": transport}

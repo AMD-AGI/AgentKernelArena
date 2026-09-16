@@ -82,7 +82,7 @@ def test_nested_sdk_failure_retains_leaf_reason_and_actual_exit_only(task_factor
     ("input_type", 1, 0, "workflow_arguments_mismatch"),
     ("duplicate", 2, 2, "workflow_count_invalid"),
     ("tool_error", 1, 1, "workflow_tool_error"),
-    ("extra_only", 1, 1, None),
+    ("extra_only", 1, 0, "workflow_arguments_mismatch"),
 ])
 def test_observed_calls_persist_before_strict_failure(
     task_factory, monkeypatch, scenario, calls, matches, reason,
@@ -144,7 +144,7 @@ def test_observed_calls_persist_before_strict_failure(
     if scenario == "input_type":
         assert diagnostic["calls"][0]["input_type"] == "array"
     if scenario == "extra_only":
-        # Diagnostics must not quietly tighten or coerce the existing matcher.
+        # Unexpected native tool keys fail the exact declared invocation contract.
         assert diagnostic["calls"][0]["extra_keys"] == 1
         assert diagnostic["calls"][0]["extra_key_types"] == {"run_in_background": "boolean"}
 
