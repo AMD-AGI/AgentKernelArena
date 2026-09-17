@@ -246,7 +246,14 @@ def build_command(plan: dict, context: TaskContext, config: dict, *, gpu_arch: s
                     "--source-files", ",".join(map(str, files.values())),
                     "--target-functions", ",".join(symbols), "--operator-name", operator,
                     "--framework", identity.get("source_owner", "standalone"),
-                    "--task-type", "image_kernel",  # upstream multi-file switch only
+                    # An Arena task is a source tree carrying its own reference
+                    # and harness, which is what this value means upstream. Do
+                    # not drop it for being redundant with --source-files: that
+                    # only resolves multi-file handling, and a single-file
+                    # candidate would resolve to no task type at all, losing the
+                    # colocated test/reference protection and the entry-point
+                    # prompt sections with it.
+                    "--task-type", "repository",
                     "--baseline-json", plan["baseline"], "--program-md-file", plan["program"],
                     "--agent-backend", config["agent_backend"],
                     "--session-timeout-sec", str(config["session_timeout_seconds"])]

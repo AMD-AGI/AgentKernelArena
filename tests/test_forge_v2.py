@@ -417,6 +417,23 @@ def test_launcher_delivers_complete_bundle_without_repeating_loop(tmp_path, monk
     assert not (context.workspace / "forge_driver.py").exists()
 
 
+def test_optimize_declares_a_source_tree_task_shape(tmp_path, monkeypatch):
+    """The task shape is declared, not inferred from how many files are editable.
+
+    Upstream resolves an empty task type to a source-tree shape only when more
+    than one source file is declared, and almost every Arena task declares one.
+    Leaving it empty would drop the colocated test/reference protection and the
+    entry-point prompt sections for those candidates, and Arena has no other way
+    to inject protected paths into an engine-owned session.
+    """
+    context, _, _ = fixture_task(tmp_path)
+    monkeypatch.setenv("ARENA_TASK_CONTEXT", str(context.path))
+    commands = mock_engine(monkeypatch)
+    adapter.launch({}, "unused", str(context.workspace))
+    command, = commands
+    assert command[command.index("--task-type") + 1] == "repository"
+
+
 @pytest.mark.parametrize("kwargs", [dict(fail=True), dict(timeout=True), dict(port_ok=False)])
 def test_launcher_reports_engine_failure_and_preserves_original(tmp_path, monkeypatch, kwargs):
     context, _, _ = fixture_task(tmp_path, initial_state="unimplemented")
@@ -795,7 +812,7 @@ from kernelforge.loop.campaign_config import create_campaign_config
 probe()
 create_campaign_config(workspace_dir=sys.argv[1], kernel='kernel.py', driver='driver.py',
     source_files=['kernel.py'], program_md_file=None, target_functions=['add'],
-    gpu_target='gfx950', gpu_type='mi355x', kernel_backend='triton', task_type='image_kernel')
+    gpu_target='gfx950', gpu_type='mi355x', kernel_backend='triton', task_type='repository')
 '''
     env = dict(os.environ, PYTHONPATH=str(ROOT))
     run = subprocess.run([python, "-c", script, str(root)], cwd=root, env=env,

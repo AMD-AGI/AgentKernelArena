@@ -121,7 +121,7 @@ async def initialize(plan: dict) -> dict:
                 interposed_driver_path=str(root / "arena_forge_driver.py"),
                 session_timeout_sec=timeout, validation_timeout_sec=timeout,
                 permission_mode=settings["permission_mode"], profiling_enabled=False,
-                task_type="image_kernel", source_files=list(map(str, files.values())),
+                task_type="repository", source_files=list(map(str, files.values())),
                 target_functions=[entry.symbol for entry in spec.candidate.entrypoints if entry.symbol],
                 extra_protected_paths=[str(root / name) for name in protected])
             row = {"attempt": attempt, "status": "RUNNING", "backend": agent.backend_name,
