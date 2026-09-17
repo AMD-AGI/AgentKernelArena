@@ -6,6 +6,8 @@ import ctypes
 import os
 from pathlib import Path
 import signal
+import subprocess
+import sys
 import time
 
 
@@ -73,3 +75,37 @@ def managed_children():
         finally:
             for sig, handler in previous.items():
                 signal.signal(sig, handler)
+
+
+def main(argv=None):
+    """Supervise a command without importing or modifying the engine.
+
+    Keep this process alive around the CLI: exec would discard the signal
+    handler, and a plain process-group kill misses children that call setsid().
+    The subreaper also adopts children left behind when the CLI exits normally.
+    """
+    command = list(sys.argv[1:] if argv is None else argv)
+    if not command:
+        raise SystemExit("Usage: process_tree.py COMMAND [ARG ...]")
+    process = None
+    try:
+        with managed_children():
+            # Inherit cwd, environment and streams; preserve the native argv and
+            # interpreter. No shell, extra mounts or provider state is involved.
+            process = subprocess.Popen(command, shell=False)
+            returncode = process.wait()
+    finally:
+        if process is not None:
+            process.poll()  # managed_children may already have reaped the CLI.
+    if returncode < 0:
+        # Preserve signal termination after cleaning the descendants, rather than
+        # turning a native -SIGTERM into Python's modulo-256 exit status.
+        sig = -returncode
+        if sig != signal.SIGKILL:
+            signal.signal(sig, signal.SIG_DFL)
+        os.kill(os.getpid(), sig)
+    return returncode
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

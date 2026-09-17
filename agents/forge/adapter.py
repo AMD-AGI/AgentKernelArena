@@ -218,11 +218,12 @@ def engine_budget_hours(plan: dict) -> float:
 
 
 def engine_entry(config: dict, workflow: str) -> list[str]:
-    """Run the engine's own CLI; only initialization needs an Arena wrapper."""
+    """Run the native CLI under process supervision; initialization embeds it."""
     python = config.get("python") or sys.executable
     if workflow == "initialize":
         return [python, str(Path(__file__).with_name("engine.py")), "--arena-initialize"]
-    return [python, "-m", "kernelforge.cli"]
+    return [python, str(Path(__file__).with_name("process_tree.py")),
+            python, "-m", "kernelforge.cli"]
 
 
 def build_command(plan: dict, context: TaskContext, config: dict, *, gpu_arch: str, gpu_type: str) -> list[str]:

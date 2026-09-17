@@ -215,11 +215,18 @@ hashes are preserved in the fresh Forge artifact directory; old experiment
 directories are never removed. The only disposable copy is the baseline tree,
 which lives in a temporary directory removed when its measurement ends; the
 candidate is measured in place, so a campaign makes no copy per assessment.
-Each driver invocation reaps its own descendants, and on timeout the supervisor
-signals the engine's whole process group, because a task compiler or GPU worker
-can have moved into a process session of its own. If the supervisor is itself
-SIGKILLed or the machine fails, it cannot run that cleanup; retained artifacts
-require explicit recovery.
+Each driver invocation reaps its own descendants. Optimize and rewrite also
+run the native CLI beneath the standard-library-only [process supervisor](process_tree.py).
+It reaps the complete descendant tree on normal exit, failure or timeout,
+including nested loops and workers that create separate process sessions.
+Arena's timeout signals the supervisor's process group; the supervisor handles
+the descendants that a group signal alone cannot reach. Initialization retains
+its own equivalent supervision. Native stdout, stderr and exit status are
+preserved. If the supervisor itself receives SIGKILL before reaping finishes,
+or the machine fails, cleanup cannot be guaranteed and requires explicit recovery.
+This wrapper inherits the existing command's interpreter, arguments, working
+directory, environment and streams; it imports no engine code, invokes no shell,
+and adds no mounts or downloads. Artifact retention and task checks are unchanged.
 
 ### Recovery at the deadline
 
