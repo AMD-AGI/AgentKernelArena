@@ -22,6 +22,15 @@ from agents.forge.bundles import copy_workspace, install_candidate
 from agents.forge.action_evidence import ActionEvidence, source_binding
 
 
+#: A candidate is measured in the tree the engine is searching, which is also
+#: the tree its agent session is guarded against. Importing a task module there
+#: would leave bytecode beside it, and a task keeps its runner under a directory
+#: name the engine protects wholesale, so those caches read as protected files
+#: appearing mid-session and abort the session that ran the check. Bytecode is a
+#: cache: refusing to write it changes no measurement, only import cost.
+TASK_ENV = {"PYTHONDONTWRITEBYTECODE": "1"}
+
+
 class ActionCheckFailure(RuntimeError):
     """A completed, protocol-validated check failed; execution errors stay separate."""
 
@@ -112,7 +121,8 @@ def execute(plan: dict, engine_root: Path, *, role: str, action: str):
                                       engine_root=engine_root)
             try:
                 executed = run_action(spec, root, role=role, action=step,
-                                      phase="candidate_evaluation", manifest=context.manifest)
+                                      phase="candidate_evaluation", manifest=context.manifest,
+                                      extra_env=TASK_ENV)
             except TaskExecutionError as exc:
                 exc.evidence_path = evidence.finish(error=exc)
                 # Preserve full original message/command streams above; expose a

@@ -303,7 +303,11 @@ def launch(eval_config: dict, task_config_dir: str, workspace: str) -> str:
         env = os.environ.copy()
         env.update({"ARENA_FORGE_PLAN": str(plan_path), "PYTHONUNBUFFERED": "1", "IS_SANDBOX": "1",
                     "FORGE_AGENT_BACKEND": config["agent_backend"],
-                    "FORGE_AGENT_TIMEOUT_SEC": str(config["session_timeout_seconds"])})
+                    "FORGE_AGENT_TIMEOUT_SEC": str(config["session_timeout_seconds"]),
+                    # The bridge sets this for the actions it runs itself; the
+                    # engine's session can also reach a task module from its own
+                    # shell, and bytecode left there ends the session too.
+                    **bridge.TASK_ENV})
         arena_root = Path(__file__).resolve().parents[2]
         env["PYTHONPATH"] = os.pathsep.join([str(arena_root), *filter(None, [env.get("PYTHONPATH", "")])])
         # Probe in the exact interpreter used by both outer and nested CLIs.

@@ -149,6 +149,25 @@ def test_driver_rebuilds_and_checks_before_timing_and_isolates_roles(tmp_path, m
     assert (context.baseline_workspace / "source/kernel.py").read_text() == "2"
 
 
+def test_task_actions_leave_no_bytecode_in_the_searched_tree(tmp_path):
+    """Measuring in place must not add files the session guard then rejects.
+
+    A candidate is assessed in the tree the engine is searching, which is the
+    tree its agent session is guarded against. Task runners live under directory
+    names the engine protects wholesale, so a bytecode cache written beside one
+    reads as a protected file appearing mid-session and ends the very session
+    that ran the check.
+    """
+    context, plan, _ = fixture_task(tmp_path)
+    engine = Path(plan["engine_root"])
+    (engine / "scripts").mkdir()
+    (engine / "scripts/sidecar.py").write_text("VALUE = 1\n")
+    (engine / "runner.py").write_text(
+        "import sys\nsys.path.insert(0, 'scripts')\nimport sidecar\n" + RUNNER)
+    bridge.execute(plan, engine, role="candidate", action="compile")
+    assert not [str(path.relative_to(engine)) for path in engine.rglob("__pycache__")]
+
+
 def test_wrong_candidate_and_incomplete_cases_cannot_emit_timing(tmp_path, capsys):
     _, plan, path = fixture_task(tmp_path)
     (Path(plan["engine_root"]) / "source/helper.py").write_text("100")
