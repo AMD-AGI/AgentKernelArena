@@ -104,7 +104,7 @@ def test_context_rejects_missing_wrong_or_workspace_owned_evidence(tmp_path, mon
 
 @pytest.mark.parametrize("phase", [{}, {"port": True}, {"initialize": True}])
 def test_task_constraints_preserved_across_native_phases(tmp_path, phase):
-    from agents.forge.upstream import program_text
+    from agents.forge.program import program_text
     _, plan, _ = fixture_task(tmp_path)
     rule = "Task-specific rule: implement arithmetic in candidate-owned kernels; do not delegate it to vendor.operator."
     (Path(plan["template"]) / "README.md").write_text(rule)
@@ -227,7 +227,7 @@ def test_real_upstream_rejects_failure_diagnostics_as_benchmark_or_correctness(t
     driver.write_text(bridge.render_driver(path, ROOT))
     script = r'''
 import asyncio, json, sys
-from agents.forge.upstream import probe
+from agents.forge.engine import probe
 from kernelforge.mcp_server.tools.test import test_correctness
 from kernelforge.mcp_server.tools.bench import bench_wallclock
 probe()
@@ -547,7 +547,7 @@ def test_changed_numerical_candidate_reenters_initialization(tmp_path, monkeypat
     # prepare_loop regenerates this program after a successful initialization.
     # Retained failure evidence must describe the old input, not invalidate the
     # new checked candidate or ask the optimization loop to initialize again.
-    from agents.forge.upstream import program_text
+    from agents.forge.program import program_text
     plan = json.loads((status_path.parent / "bridge_plan.json").read_text())
     loop_program = program_text(plan)
     assert "Optimize the existing candidate" in loop_program
@@ -596,7 +596,7 @@ def test_scratch_branch_passes_real_upstream_campaign_preflight(tmp_path, monkey
     assert actual == "codex/arena-forge"
     script = r'''
 import sys
-from agents.forge.upstream import probe
+from agents.forge.engine import probe
 from kernelforge.loop.campaign_config import create_campaign_config
 probe()
 create_campaign_config(workspace_dir=sys.argv[1], kernel='kernel.py', driver='driver.py',

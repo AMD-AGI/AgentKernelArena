@@ -87,7 +87,7 @@ UPSTREAM_INITIALIZATION = r'''
 import asyncio, json, os, subprocess
 from pathlib import Path
 from types import SimpleNamespace
-from agents.forge import upstream, bridge
+from agents.forge import engine, bridge
 from agents.forge.task_context import TaskContext
 from agents.forge.bundles import committed_candidate, install_candidate
 from kernelforge import cli
@@ -171,7 +171,7 @@ def loop_callback(**kwargs):
 
 cli.main.commands['forge-loop'].callback = loop_callback
 try:
-    upstream.main(json.loads(os.environ['CPU_TEST_ARGV']))
+    engine.main(json.loads(os.environ['CPU_TEST_ARGV']))
 except BaseException as error:
     if mode == 'success':
         raise
@@ -231,7 +231,7 @@ def test_installed_upstream_initialization(tmp_path, language, mode):
     for workspace in (engine, Path(plan["template"]), context.baseline_workspace):
         runner = workspace / "runner.py"
         runner.write_text(runner.read_text().replace('else 2, benchmark_method', 'else 8, benchmark_method'))
-    from agents.forge.upstream import program_text
+    from agents.forge.program import program_text
     Path(plan["program"]).write_text(program_text(plan, initialize=True))
     (engine / "arena_forge_driver.py").write_text(bridge.render_driver(path, ROOT))
     context = type(context).load(context.path)

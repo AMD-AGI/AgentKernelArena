@@ -122,9 +122,17 @@ def engine_budget_hours(plan: dict) -> float:
     return max(ENGINE_BUDGET_FLOOR_SEC, remaining) / 3600
 
 
+def engine_entry(config: dict, workflow: str) -> list[str]:
+    """Run the engine's own CLI; only initialization needs an Arena wrapper."""
+    python = config.get("python") or sys.executable
+    if workflow == "initialize":
+        return [python, str(Path(__file__).with_name("engine.py")), "--arena-initialize"]
+    return [python, "-m", "kernelforge.cli"]
+
+
 def build_command(plan: dict, context: TaskContext, config: dict, *, gpu_arch: str, gpu_type: str) -> list[str]:
     root = Path(plan["engine_root"])
-    command = [config.get("python") or sys.executable, str(Path(__file__).with_name("upstream.py")),
+    command = [*engine_entry(config, plan["workflow"]),
                "forge-rewrite-by-flydsl" if plan["workflow"] == "rewrite" else "forge-loop",
                "--workspace", str(root), "--driver", str(root / "arena_forge_driver.py"),
                "--experiments-dir", str(root / "forge_experiments"), "--result-json", plan["result"],
@@ -156,8 +164,6 @@ def build_command(plan: dict, context: TaskContext, config: dict, *, gpu_arch: s
             command += ["--framework", identity["source_owner"]]
         if context.spec.candidate.initial_language in ("triton", "hip", "cuda", "cpp"):
             command += ["--source-language", context.spec.candidate.initial_language]
-    if plan["workflow"] == "initialize":
-        command.insert(2, "--arena-initialize")
     return command
 
 
@@ -200,7 +206,7 @@ def launch(eval_config: dict, task_config_dir: str, workspace: str) -> str:
         env["PYTHONPATH"] = os.pathsep.join([str(arena_root), *filter(None, [env.get("PYTHONPATH", "")])])
         # Probe in the exact interpreter used by both outer and nested CLIs.
         probe = subprocess.run([config.get("python") or sys.executable,
-                                str(Path(__file__).with_name("upstream.py")), "--arena-probe"],
+                                str(Path(__file__).with_name("engine.py")), "--arena-probe"],
                                env=env, capture_output=True, text=True,
                                timeout=max(1, min(60, deadline - time.time())))
         if probe.returncode:
@@ -252,7 +258,7 @@ def launch(eval_config: dict, task_config_dir: str, workspace: str) -> str:
             for path in candidate_files(context.spec, engine, required=False).values():
                 path.unlink()
         _write(plan_path, plan)
-        from agents.forge.upstream import program_text
+        from agents.forge.program import program_text
         Path(plan["program"]).write_text(program_text(plan, initialize=plan["workflow"] == "initialize"))
         (engine / "arena_forge_driver.py").write_text(bridge.render_driver(plan_path, arena_root))
         if plan["workflow"] != "rewrite":
