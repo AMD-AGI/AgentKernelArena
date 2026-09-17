@@ -39,9 +39,9 @@ def probe() -> dict:
     except importlib.metadata.PackageNotFoundError:
         version = "source-checkout"
     required = {
-        "forge-loop": {"kernel", "driver", "workspace_dir", "deadline_unix",
+        "forge-loop": {"kernel", "driver", "workspace_dir", "max_hours",
                        "source_files", "target_functions", "baseline_json"},
-        "forge-rewrite-by-flydsl": {"source_kernel", "driver", "workspace_dir", "deadline_unix",
+        "forge-rewrite-by-flydsl": {"source_kernel", "driver", "workspace_dir", "max_hours",
                                     "prepare_driver", "flydsl_kernel_name"},
     }
     for name, parameters in required.items():

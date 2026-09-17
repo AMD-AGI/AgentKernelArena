@@ -1,11 +1,21 @@
 """Forge measurement placement; CPU only, no model or GPU calls."""
 from pathlib import Path
+import time
 
 import pytest
 
-from agents.forge import bridge
+from agents.forge import adapter, bridge
 from agents.forge.bundles import copy_workspace
 from test_forge_v2 import fixture_task
+
+
+def test_engine_budget_reserves_the_startup_margin_above_the_engine_floor():
+    """The engine's clock starts after ours, so it is handed less than we have."""
+    budget = adapter.engine_budget_hours({"deadline_unix": time.time() + 4 * 3600}) * 3600
+    assert 4 * 3600 - adapter.ENGINE_STARTUP_MARGIN_SEC - 60 < budget <= 4 * 3600 - adapter.ENGINE_STARTUP_MARGIN_SEC
+    # A shorter campaign gains nothing from the margin: the engine floors it.
+    assert adapter.engine_budget_hours(
+        {"deadline_unix": time.time() + 3600}) * 3600 == adapter.ENGINE_BUDGET_FLOOR_SEC
 
 
 @pytest.mark.parametrize("rewrite", [False, True])

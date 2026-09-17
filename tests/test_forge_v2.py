@@ -401,12 +401,15 @@ def test_launcher_delivers_complete_bundle_without_repeating_loop(tmp_path, monk
     context, _, _ = fixture_task(tmp_path, initial_state=state)
     monkeypatch.setenv("ARENA_TASK_CONTEXT", str(context.path))
     commands = mock_engine(monkeypatch)
-    output = adapter.launch({"agent": {"model": "chosen", "timeout_seconds": 200}}, "ignored.yaml", str(context.workspace))
+    output = adapter.launch({"agent": {"model": "chosen", "timeout_seconds": 7200}}, "ignored.yaml", str(context.workspace))
     assert len(commands) == 1
     command = commands[0]
     assert ("forge-loop" in command) == (state == "implemented")
     assert ("forge-rewrite-by-flydsl" in command) == (state == "unimplemented")
-    assert "--deadline-unix" in command
+    # One relative budget, already short of the campaign by the startup margin.
+    assert "--deadline-unix" not in command
+    budget = float(command[command.index("--max-hours") + 1]) * 3600
+    assert 7200 - adapter.ENGINE_STARTUP_MARGIN_SEC - 120 < budget <= 7200 - adapter.ENGINE_STARTUP_MARGIN_SEC
     assert command[command.index("--model") + 1] == "chosen"
     assert (context.workspace / "source/helper.py").read_text() == "6"
     assert (context.baseline_workspace / "source/helper.py").read_text() == "3"

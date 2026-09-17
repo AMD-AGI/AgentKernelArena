@@ -106,14 +106,29 @@ def require_supported_backend(spec, capabilities: dict) -> str:
     return language
 
 
+#: The engine dates its own budget from the moment its process is up, which
+#: trails the moment this argv is built by interpreter start, the capability
+#: probe and the engine import. Measured at 42s on MI355X; keep room to spare.
+ENGINE_STARTUP_MARGIN_SEC = 600
+
+#: The engine floors its own remaining budget at an hour, so asking for less
+#: buys no shorter search; the campaign's own hard timeout stops those runs.
+ENGINE_BUDGET_FLOOR_SEC = 3600
+
+
+def engine_budget_hours(plan: dict) -> float:
+    """Hand the engine one relative budget that already expires before we do."""
+    remaining = plan["deadline_unix"] - time.time() - ENGINE_STARTUP_MARGIN_SEC
+    return max(ENGINE_BUDGET_FLOOR_SEC, remaining) / 3600
+
+
 def build_command(plan: dict, context: TaskContext, config: dict, *, gpu_arch: str, gpu_type: str) -> list[str]:
     root = Path(plan["engine_root"])
     command = [config.get("python") or sys.executable, str(Path(__file__).with_name("upstream.py")),
                "forge-rewrite-by-flydsl" if plan["workflow"] == "rewrite" else "forge-loop",
                "--workspace", str(root), "--driver", str(root / "arena_forge_driver.py"),
                "--experiments-dir", str(root / "forge_experiments"), "--result-json", plan["result"],
-               "--max-hours", str(max(1.0, (plan["deadline_unix"] - time.time()) / 3600)),
-               "--deadline-unix", str(plan["deadline_unix"]),
+               "--max-hours", str(engine_budget_hours(plan)),
                "--gpu-target", gpu_arch, "--gpu-type", gpu_type,
                "--permission-mode", config["permission_mode"]]
     if config.get("model"):
