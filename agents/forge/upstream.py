@@ -416,11 +416,7 @@ def main(argv=None):
     install_hooks(plan)
     from kernelforge.cli import main as cli
     from agents.forge.process_tree import managed_children
-    # A stage can SIGKILL a driver before its TemporaryDirectory unwinds.
-    # This surviving parent removes only this campaign's disposable copies,
-    # after reaping even detached compilers/GPU workers. Logs remain outside.
-    from agents.forge.bridge import cleanup_evaluation_workspaces
-    with managed_children(after_stop=lambda: cleanup_evaluation_workspaces(plan)):
+    with managed_children():
         initialization = None
         if argv and argv[0] == "--arena-initialize":
             from agents.forge.initialization import initialize, prepare_loop

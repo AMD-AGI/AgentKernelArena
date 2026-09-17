@@ -172,13 +172,11 @@ def launch(eval_config: dict, task_config_dir: str, workspace: str) -> str:
         copy_workspace(context.workspace, engine)
         plan = {"version": 1, "context": str(context.path), "workflow": "optimize",
                 "engine_root": str(engine), "template": str(template), "deadline_unix": deadline,
-                "evaluation_root": str(artifact_root / "evaluation-workspaces"),
                 "anchor": _anchor(context), "result": str(artifact_root / "engine_result.json"),
                 "baseline": str(artifact_root / "baseline.json"), "program": str(engine / "arena_program.md"),
                 "initialization_result": str(artifact_root / "initialization.json"),
                 "agent_config": config, "gpu_arch": _resolve_gpu_arch(eval_config),
                 "gpu_type": _resolve_gpu_type(eval_config)}
-        Path(plan["evaluation_root"]).mkdir()
         plan_path = artifact_root / "bridge_plan.json"
         _write(plan_path, plan)
         env = os.environ.copy()

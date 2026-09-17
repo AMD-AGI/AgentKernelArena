@@ -11,15 +11,13 @@ import json
 import os
 from pathlib import Path
 import statistics
-import shutil
-import tempfile
 import uuid
 from urllib.parse import quote
 
 from src.task_execution import TaskExecutionError, run_action
 from src.task_spec import resolve_task_path
 from agents.forge.task_context import TaskContext, bounded_spec
-from agents.forge.bundles import copy_workspace, install_candidate
+from agents.forge.bundles import install_candidate
 from agents.forge.action_evidence import ActionEvidence, source_binding
 
 
@@ -63,28 +61,31 @@ def bound_candidate_root(plan: dict, engine_root: Path) -> Path:
 
 @contextmanager
 def evaluation_workspace(context: TaskContext, plan: dict, engine_root: Path, role: str):
-    # Every invocation gets a private build tree. Candidate edits cannot change
-    # the reference, harness, or a concurrently measured baseline.
-    directory = plan.get("evaluation_root", Path(plan["template"]).parent)
-    with tempfile.TemporaryDirectory(prefix="evaluate-", dir=directory) as temporary:
-        root = Path(temporary) / "task"
-        template = context.baseline_workspace if role == "baseline" else Path(plan["template"])
-        copy_workspace(template, root)
-        if role == "candidate":
-            install_candidate(context.spec, bound_candidate_root(plan, engine_root), root)
-        yield root
+    """Measure where the engine already keeps the tree it is searching.
 
+    A mid-search measurement is the engine's own signal, not a verdict: the
+    framework re-runs every candidate action in its own workspace once the
+    campaign delivers. Materializing a private tree per invocation would copy
+    the whole task package, which for an image-backed task is gigabytes, to
+    guard numbers nothing downstream trusts.
 
-def cleanup_evaluation_workspaces(plan: dict) -> None:
-    """Called by the campaign supervisor only after all children are reaped."""
-    if "evaluation_root" not in plan:
-        return  # Older plans have no dedicated disposable directory.
-    root = Path(plan["evaluation_root"])
-    expected = Path(plan["template"]).parent / "evaluation-workspaces"
-    if root != expected or root.is_symlink():
-        raise ValueError("Unexpected Forge evaluation cleanup directory")
-    if root.exists():
-        shutil.rmtree(root)
+    Baseline actions still read the framework's frozen snapshot, which lives
+    outside the engine tree and carries its own digest check.
+    """
+    if role == "baseline":
+        yield context.baseline_workspace
+        return
+    candidate = bound_candidate_root(plan, engine_root)
+    installed = install_candidate(context.spec, candidate, engine_root,
+                                  reference=Path(plan["template"]))
+    try:
+        yield engine_root
+    finally:
+        # A rewrite keeps its candidate under the producer's attempt directory.
+        # Leaving a copy at the declared path would shadow the next attempt.
+        if candidate != engine_root:
+            for record in installed:
+                (engine_root / record["path"]).unlink(missing_ok=True)
 
 
 def execute(plan: dict, engine_root: Path, *, role: str, action: str):
