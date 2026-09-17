@@ -212,8 +212,9 @@ search files are not installed. A claimed later best without its commit, missing
 iteration metadata, or an unsuccessful engine cannot use this fallback. Arena
 still checks and measures the delivered bundle independently, and retaining it
 does not claim an optimization gain or prove that a search iteration ran.
-A timeout, failed PORT, nonzero engine exit or missing structured result reports
-failure and leaves the original task candidate unchanged. Diagnostic scratch,
+A failed PORT, unexplained nonzero engine exit, missing structured result, or a
+timeout that recovered no candidate reports failure and leaves the original task
+candidate unchanged. Diagnostic scratch,
 logs, result JSON and selected artifact hashes are preserved in the fresh Forge
 artifact directory; old experiment directories are never removed. Disposable
 evaluation copies live only under this campaign's `evaluation-workspaces/`.
@@ -222,6 +223,60 @@ processes, then removes that directory, including copies left by a driver
 that was SIGKILLed. Cleanup never sweeps other `evaluate-*` paths or previous
 experiments. If the supervisor itself is SIGKILLed or the machine fails, it
 cannot run this cleanup; retained artifacts require explicit recovery.
+
+### Recovery at the deadline
+
+A campaign killed at the wall never writes its final result, so the search is
+read from what the engine published as it ran. The engine publishes each KEEP
+before it may start another agent session and defers termination signals across
+that publication, so the process group the supervisor signals cannot tear it.
+The adapter reads, in order:
+
+| Record | `delivery_selection` |
+| --- | --- |
+| `forge_experiments/best_result.json` with `correctness_passed` | `timeout_recovered_keep` |
+| `forge_experiments/run_state.json` `head_commit` | `timeout_recovered_search_head` |
+| The commit Arena accepted before launch | `timeout_recovered_validated_input` |
+
+The KEEP record comes first because it carries the engine's own correctness
+verdict. The search head covers a rewrite whose port committed but whose search
+never improved on it, and it requires that rewrite to have published `port_ok`;
+the engine resolves its own current best the same way. The last row is the
+verified input an optimize or initialize campaign already had, which needs no
+engine record. A record naming no usable commit is skipped rather than trusted,
+and a timeout that reaches none of these still fails with the original candidate
+untouched. No published record is deliberately pinned to an engine schema
+version, so an engine upgrade cannot silently turn recovery off.
+
+None of these rows is a verdict or a claim of improvement. They identify a
+committed bundle, read through `git ls-tree` rather than off the killed
+campaign's working tree, for Arena to compile, check and measure normally. The
+status keeps `timed_out` alongside the selection, so a reader can tell a
+recovered candidate from one the engine chose and reported itself.
+
+### Framework apply-back
+
+The rewrite CLI ends with a stage that patches the operator back into the
+framework repository it was ported from, and folds that patch into its own
+`success`, so it exits nonzero whenever the patch fails. Arena requests no such
+patch: it delivers a standalone candidate bundle and performs its own
+acceptance. The stage cannot be switched off, because the engine decides it is
+needed from the campaign workspace having a resolvable Git HEAD, which its agent
+sessions require before any port attempt can start.
+
+A rewrite whose result reports a completed port, no failure class, and that
+patch as its only failed stage therefore keeps its outcome, and the adapter
+records `applyback_not_requested` with the engine exit code and error. A nonzero
+exit with any other explanation still fails the campaign. Delivery always reads
+`flydsl_best_commit`: once the patch commits, `best_commit` names that commit,
+whose tree carries framework edits rather than the attempt's bundle.
+
+Two costs remain rather than being worked around. The engine reserves the last
+20 minutes of whatever budget it receives for this stage, so a rewrite searches
+for that much less than `timeout_seconds` suggests. The stage also edits the
+engine's own copy of any framework sources the task materialized; that copy is
+disposable and never scored, because Arena evaluates the delivered bundle in its
+own workspace. Removing either cost needs an upstream way to decline the stage.
 
 One `timeout_seconds` budget covers setup, preflight, initialization and optimization.
 Commands receive the same absolute deadline, and every task action is capped by
@@ -269,9 +324,6 @@ entrypoints and supplies the following missing adapter capabilities:
 - Carry and commit the complete candidate bundle; admit new nested helpers only
   inside declared candidate boundaries.
 - Launch the nested loop through this same compatibility layer.
-- Mark upstream-framework apply-back as **not requested**, rather than claiming
-  that a framework patch passed. The corresponding 20-minute reserve is removed;
-  Arena receives standalone task artifacts and performs final acceptance.
 
 The preflight verifies the package version, exact reviewed module hashes in
 [upstream_compatibility.json](upstream_compatibility.json), CLI options and Python

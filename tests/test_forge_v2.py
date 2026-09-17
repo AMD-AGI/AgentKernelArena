@@ -430,6 +430,197 @@ def test_launcher_reports_engine_failure_and_preserves_original(tmp_path, monkey
     assert json.loads(statuses[0].read_text())["status"] == "FAILED"
 
 
+def rewrite_result(monkeypatch, **fields):
+    """Replace fields of the mock engine's result with the engine's own spelling."""
+    run = adapter.run_forge_subprocess
+
+    def patched(*args, **kwargs):
+        output = run(*args, **kwargs)
+        plan = json.loads(Path(kwargs["env"]["ARENA_FORGE_PLAN"]).read_text())
+        path = Path(plan["result"])
+        path.write_text(json.dumps({**json.loads(path.read_text()), **fields}))
+        return output
+
+    monkeypatch.setattr(adapter, "run_forge_subprocess", patched)
+
+
+#: A completed rewrite whose framework patch failed. The engine folds that patch
+#: into its own success, so it exits nonzero for a campaign Arena did get.
+APPLYBACK_FAILED = dict(applyback_required=True, applyback_ok=False, success=False,
+                        applyback_error="ClaudeUnavailableError: claude-agent-sdk is not installed")
+
+
+def test_unrequested_applyback_failure_still_delivers_the_port(tmp_path, monkeypatch):
+    """Arena asks for no framework patch, so that stage cannot fail its campaign."""
+    context, _, _ = fixture_task(tmp_path, initial_state="unimplemented")
+    monkeypatch.setenv("ARENA_TASK_CONTEXT", str(context.path))
+    mock_engine(monkeypatch, fail=True)
+    rewrite_result(monkeypatch, **APPLYBACK_FAILED)
+    output = adapter.launch({}, "unused", str(context.workspace))
+    assert '"status": "DELIVERED"' in output
+    assert (context.workspace / "source/kernel.py").read_text() == "1"
+    assert (context.workspace / "source/helper.py").read_text() == "6"
+    # Recorded rather than silently dropped: the run did leave a stage failed.
+    status, = tmp_path.glob("workspace-forge-*/arena_forge_status.json")
+    record = json.loads(status.read_text())["applyback_not_requested"]
+    assert record["engine_exit_code"] == 1 and "ClaudeUnavailable" in record["applyback_error"]
+
+
+@pytest.mark.parametrize("fields", [
+    dict(port_ok=False),                            # the port itself never completed
+    dict(failure_class="ATTEMPT_SETUP_FAILED"),     # another stage reported the failure
+    dict(applyback_required=False),                 # nothing explains the nonzero exit
+    dict(applyback_ok=True),
+])
+def test_nonzero_exit_without_that_explanation_stays_a_failure(tmp_path, monkeypatch, fields):
+    """Only a completed campaign whose sole failed stage is that patch is excused."""
+    context, _, _ = fixture_task(tmp_path, initial_state="unimplemented")
+    monkeypatch.setenv("ARENA_TASK_CONTEXT", str(context.path))
+    mock_engine(monkeypatch, fail=True)
+    rewrite_result(monkeypatch, **{**APPLYBACK_FAILED, **fields})
+    with pytest.raises(adapter.ForgeRunError):
+        adapter.launch({}, "unused", str(context.workspace))
+    assert (context.workspace / "source/kernel.py").read_text() == "2"
+
+
+def test_rewrite_delivers_the_flydsl_selection_not_the_applyback_commit(tmp_path, monkeypatch):
+    """Once apply-back commits, best_commit names its tree instead of the bundle."""
+    context, _, _ = fixture_task(tmp_path, initial_state="unimplemented")
+    monkeypatch.setenv("ARENA_TASK_CONTEXT", str(context.path))
+    mock_engine(monkeypatch)
+    run = adapter.run_forge_subprocess
+
+    def with_applyback(*args, **kwargs):
+        output = run(*args, **kwargs)
+        engine = Path(kwargs["workspace"])
+        (engine / ".forge_rewrite/current/source/kernel.py").write_text("999")
+        for command in (["add", "-f", ".forge_rewrite/current"], ["commit", "--quiet", "-m", "applyback"]):
+            subprocess.run(["git", *command], cwd=engine, check=True, capture_output=True)
+        commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=engine, check=True,
+                                capture_output=True, text=True).stdout.strip()
+        plan = json.loads(Path(kwargs["env"]["ARENA_FORGE_PLAN"]).read_text())
+        path = Path(plan["result"])
+        path.write_text(json.dumps({**json.loads(path.read_text()), "best_commit": commit,
+                                    "applyback_required": True, "applyback_ok": True}))
+        return output
+
+    monkeypatch.setattr(adapter, "run_forge_subprocess", with_applyback)
+    adapter.launch({}, "unused", str(context.workspace))
+    assert (context.workspace / "source/kernel.py").read_text() == "1"
+
+
+def test_rewrite_without_a_flydsl_selection_is_not_delivered(tmp_path, monkeypatch):
+    """A rewrite cannot fall back to a commit that is not its own selection."""
+    context, _, _ = fixture_task(tmp_path, initial_state="unimplemented")
+    monkeypatch.setenv("ARENA_TASK_CONTEXT", str(context.path))
+    mock_engine(monkeypatch)
+    rewrite_result(monkeypatch, flydsl_best_commit="")
+    with pytest.raises(adapter.ForgeRunError, match="selected FlyDSL commit"):
+        adapter.launch({}, "unused", str(context.workspace))
+    assert (context.workspace / "source/kernel.py").read_text() == "2"
+
+
+def timeout_engine(monkeypatch, *, publish, keep_content=None, port_ok=True):
+    """Run the mock engine, publish what it got to, then report the wall.
+
+    A campaign killed at its deadline never writes a final result, so the result
+    on disk is the interim one a rewrite persists right after PORT: the port
+    succeeded and its attempt is named, but no commit is identified yet.
+    """
+    run = adapter.run_forge_subprocess
+
+    def head(engine):
+        return subprocess.run(["git", "rev-parse", "HEAD"], cwd=engine, check=True,
+                              capture_output=True, text=True).stdout.strip()
+
+    def patched(*args, **kwargs):
+        process, out, err, _ = run(*args, **kwargs)
+        engine = Path(kwargs["workspace"])
+        port_commit, keep_commit = head(engine), ""
+        if keep_content is not None:
+            (engine / ".forge_rewrite/current/source/kernel.py").write_text(keep_content)
+            for command in (["add", "-f", ".forge_rewrite/current"], ["commit", "--quiet", "-m", "keep"]):
+                subprocess.run(["git", *command], cwd=engine, check=True, capture_output=True)
+            keep_commit = head(engine)
+        experiments = engine / "forge_experiments"
+        experiments.mkdir(parents=True, exist_ok=True)
+        for name, payload in publish(port_commit, keep_commit).items():
+            (experiments / name).write_text(json.dumps(payload))
+        plan = json.loads(Path(kwargs["env"]["ARENA_FORGE_PLAN"]).read_text())
+        Path(plan["result"]).write_text(json.dumps(
+            {"port_ok": port_ok, "temporary_paths": [".forge_rewrite/current"],
+             "best_commit": "", "flydsl_best_commit": ""}))
+        return process, out, err, True
+
+    monkeypatch.setattr(adapter, "run_forge_subprocess", patched)
+
+
+def rewrite_at_wall(tmp_path, monkeypatch, **kwargs):
+    context, _, _ = fixture_task(tmp_path, initial_state="unimplemented")
+    monkeypatch.setenv("ARENA_TASK_CONTEXT", str(context.path))
+    mock_engine(monkeypatch)
+    timeout_engine(monkeypatch, **kwargs)
+    return context
+
+
+def test_timeout_recovers_the_published_keep(tmp_path, monkeypatch):
+    """Each KEEP is durable before the next session, so the wall cannot lose it."""
+    context = rewrite_at_wall(tmp_path, monkeypatch, keep_content="4", publish=lambda port, keep: {
+        "best_result.json": {"commit_hash": keep, "correctness_passed": True},
+        "run_state.json": {"head_commit": port}})
+    output = adapter.launch({}, "unused", str(context.workspace))
+    assert '"delivery_selection": "timeout_recovered_keep"' in output
+    assert (context.workspace / "source/kernel.py").read_text() == "4"
+    assert (context.workspace / "source/helper.py").read_text() == "6"
+
+
+def test_timeout_recovers_the_port_when_no_keep_was_published(tmp_path, monkeypatch):
+    """A rewrite commits its correct port before the search that never improved it."""
+    context = rewrite_at_wall(tmp_path, monkeypatch, publish=lambda port, keep: {
+        "run_state.json": {"head_commit": port, "best": {"commit_hash": ""}}})
+    output = adapter.launch({}, "unused", str(context.workspace))
+    assert '"delivery_selection": "timeout_recovered_search_head"' in output
+    assert (context.workspace / "source/kernel.py").read_text() == "1"
+
+
+@pytest.mark.parametrize("keep", [
+    {"commit_hash": "", "correctness_passed": True},        # no commit identity
+    {"commit_hash": "not-a-commit", "correctness_passed": True},
+    {"correctness_passed": True},
+])
+def test_unattested_keep_record_falls_through_to_the_search_head(tmp_path, monkeypatch, keep):
+    """A record that names no commit cannot select one; the head still can."""
+    context = rewrite_at_wall(tmp_path, monkeypatch, keep_content="4", publish=lambda port, _: {
+        "best_result.json": keep, "run_state.json": {"head_commit": port}})
+    output = adapter.launch({}, "unused", str(context.workspace))
+    assert '"delivery_selection": "timeout_recovered_search_head"' in output
+    assert (context.workspace / "source/kernel.py").read_text() == "1"
+
+
+def test_keep_without_a_correctness_verdict_is_not_recovered(tmp_path, monkeypatch):
+    """The engine's own verdict is what makes a KEEP preferable to the head."""
+    context = rewrite_at_wall(tmp_path, monkeypatch, keep_content="4", publish=lambda port, keep: {
+        "best_result.json": {"commit_hash": keep, "correctness_passed": False},
+        "run_state.json": {"head_commit": port}})
+    adapter.launch({}, "unused", str(context.workspace))
+    assert (context.workspace / "source/kernel.py").read_text() == "1"
+
+
+@pytest.mark.parametrize("kwargs, reason", [
+    (dict(publish=lambda port, keep: {}), "nothing published"),
+    (dict(port_ok=False, publish=lambda port, keep: {"run_state.json": {"head_commit": port}}), "port never completed"),
+    (dict(publish=lambda port, keep: {"run_state.json": {"head_commit": "not-a-commit"}}), "unusable head"),
+])
+def test_timeout_without_a_recoverable_candidate_preserves_the_original(tmp_path, monkeypatch, kwargs, reason):
+    """Recovery never degrades into delivering an unidentified working tree."""
+    context = rewrite_at_wall(tmp_path, monkeypatch, **kwargs)
+    with pytest.raises(adapter.ForgeRunError, match="deadline"):
+        adapter.launch({}, "unused", str(context.workspace))
+    assert (context.workspace / "source/kernel.py").read_text() == "2", reason
+    status, = tmp_path.glob("workspace-forge-*/arena_forge_status.json")
+    assert json.loads(status.read_text())["timed_out"] is True
+
+
 def test_resume_checks_current_bundle_not_config_initial_stub(tmp_path, monkeypatch):
     context, _, _ = fixture_task(tmp_path, initial_state="unimplemented")
     (context.workspace / "source/kernel.py").write_text("1")
@@ -467,14 +658,17 @@ def test_completed_no_keep_search_retains_verified_input_bundle(tmp_path, monkey
         return output
 
     monkeypatch.setattr(adapter, "run_forge_subprocess", no_keep)
-    if outcome == "normal":
-        output = adapter.launch({}, "unused", str(context.workspace))
-        assert '"delivery_selection": "initial_validated_implementation"' in output
-    else:
+    if outcome == "exit_error":
         with pytest.raises(adapter.ForgeRunError):
             adapter.launch({}, "unused", str(context.workspace))
         status_path, = tmp_path.glob("workspace-forge-*/arena_forge_status.json")
         assert json.loads(status_path.read_text())["status"] == "FAILED"
+    else:
+        # A campaign that ran out of time still leaves the input Arena accepted,
+        # which is the same bundle a completed no-KEEP search delivers.
+        output = adapter.launch({}, "unused", str(context.workspace))
+        assert ('"delivery_selection": "timeout_recovered_validated_input"' if outcome == "timeout"
+                else '"delivery_selection": "initial_validated_implementation"') in output
     assert {name: (context.workspace / name).read_bytes() for name in expected} == expected
     assert (context.baseline_workspace / "source/helper.py").read_text() == "3"
 

@@ -7,6 +7,7 @@ import logging
 import math
 import os
 from pathlib import Path
+import re
 import statistics
 import subprocess
 import sys
@@ -104,6 +105,100 @@ def require_supported_backend(spec, capabilities: dict) -> str:
     if language not in capabilities["backends"]:
         raise ForgeRunError(f"KernelForge has no {language} backend")
     return language
+
+
+def applyback_only_failure(result: dict) -> bool:
+    """Whether a nonzero rewrite exit is explained solely by framework apply-back.
+
+    The rewrite CLI exits nonzero unless its entire result succeeded, and its own
+    success includes publishing a patch that integrates the kernel back into the
+    framework repository it was ported from. Arena never asks for that patch: it
+    delivers a standalone candidate bundle and runs its own acceptance over it.
+    The stage still executes, because the engine decides it is needed from the
+    campaign workspace having a resolvable Git HEAD, which its agent sessions
+    require before any port attempt can start.
+
+    So a campaign that completed every stage it was asked for keeps its PORT and
+    search outcome when only that patch failed. A nonzero exit with any other
+    explanation, a reported failure class, or a port that did not complete stays
+    a campaign failure. This reads the engine's own result fields; it does not
+    infer an outcome from log text or excuse a missing result.
+    """
+    return (result.get("port_ok") is True
+            and result.get("applyback_required") is True
+            and result.get("applyback_ok") is False
+            and not result.get("failure_class"))
+
+
+def _commit(value) -> str:
+    """One full Git object name, or empty when the field identifies no commit."""
+    text = str(value or "").strip()
+    return text if re.fullmatch(r"[0-9a-fA-F]{40,64}", text) else ""
+
+
+def _published(path: Path):
+    """Read one durably published engine artifact; absent or unreadable is absent."""
+    try:
+        payload = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def rewrite_prefix(result, engine: Path) -> str:
+    """The attempt directory a rewrite bound its candidate to."""
+    attempts = result.get("temporary_paths") if isinstance(result, dict) else None
+    if not isinstance(attempts, list) or len(attempts) != 1:
+        raise ForgeRunError("Forge result must identify exactly one current attempt")
+    if not str(attempts[0]).startswith(".forge_rewrite/"):
+        raise ForgeRunError("Forge result candidate is outside the attempt directory")
+    resolve_task_path(engine, attempts[0], must_exist=True)
+    return attempts[0]
+
+
+def _timeout_fallback(plan: dict, status: dict) -> str:
+    """The commit Arena itself accepted for this workflow, when it has one."""
+    if plan["workflow"] == "optimize":
+        return _commit(status.get("initial_candidate_commit"))
+    if plan["workflow"] == "initialize" and status.get("initialization", {}).get("status") == "PASS":
+        return _commit(status["initialization"].get("commit"))
+    return ""
+
+
+def recover_timeout_candidate(plan: dict, engine: Path, result, fallback: str = "") -> tuple[str, str]:
+    """Identify a committed candidate left behind by an engine that ran out of time.
+
+    A campaign killed at the wall never writes its final result, so its search is
+    read from the records it published as it went. The engine publishes each KEEP
+    before it may start another agent session and defers termination signals
+    across that publication, so the group we signalled cannot have torn it. That
+    record carries the engine's own correctness verdict, which is why it is read
+    first.
+
+    Without a KEEP there can still be a committed candidate. A rewrite commits
+    its correct port before the search begins, and the search leaves HEAD on the
+    last state it committed; the engine reads its own current best the same way.
+    That route has no single attestation, so a rewrite must also have published
+    `port_ok`, and the caller's `fallback` supplies the commit Arena itself
+    accepted before the engine started.
+
+    None of these is a verdict: they identify a bundle for Arena to evaluate
+    normally. Returns the commit and how it was chosen, or empty strings when the
+    engine published nothing that names a candidate.
+    """
+    experiments = engine / "forge_experiments"
+    keep = _published(experiments / "best_result.json") or {}
+    if keep.get("correctness_passed") is True:
+        commit = _commit(keep.get("commit_hash"))
+        if commit:
+            return commit, "timeout_recovered_keep"
+    ported = plan["workflow"] != "rewrite" or (isinstance(result, dict) and result.get("port_ok") is True)
+    head = _commit((_published(experiments / "run_state.json") or {}).get("head_commit"))
+    if head and ported:
+        return head, "timeout_recovered_search_head"
+    if fallback:
+        return fallback, "timeout_recovered_validated_input"
+    return "", ""
 
 
 #: The engine dates its own budget from the moment its process is up, which
@@ -290,38 +385,50 @@ def launch(eval_config: dict, task_config_dir: str, workspace: str) -> str:
         if Path(plan["initialization_result"]).is_file():
             status["initialization"] = json.loads(Path(plan["initialization_result"]).read_text())
         if timed_out:
-            raise TimeoutError("Forge campaign exceeded its shared deadline; partial artifacts retained")
-        if process.returncode != 0 or not isinstance(result, dict):
+            recovered, selection = recover_timeout_candidate(
+                plan, engine, result, fallback=_timeout_fallback(plan, status))
+            if not recovered:
+                raise TimeoutError("Forge campaign exceeded its shared deadline; partial artifacts retained")
+            status["delivery_selection"] = selection
+        elif (plan["workflow"] == "rewrite" and process.returncode != 0
+                and isinstance(result, dict) and applyback_only_failure(result)):
+            # Record the stage Arena did not request so a reader of this status
+            # can tell the campaign from the patch it happens to also produce.
+            status["applyback_not_requested"] = {
+                "engine_exit_code": process.returncode,
+                "applyback_error": " ".join(str(result.get("applyback_error", "")).split())[:1000]}
+        elif process.returncode != 0 or not isinstance(result, dict):
             raise ForgeRunError("Forge engine failed or omitted its structured result")
-        prefix = ""
-        selected_commit = result.get("best_commit")
-        if plan["workflow"] == "rewrite":
+        prefix = rewrite_prefix(result, engine) if plan["workflow"] == "rewrite" else ""
+        if timed_out:
+            selected_commit = recovered
+        elif plan["workflow"] == "rewrite":
             if result.get("port_ok") is not True:
                 raise ForgeRunError("Forge PORT did not deliver an implementation")
-            attempts = result.get("temporary_paths")
-            if not isinstance(attempts, list) or len(attempts) != 1:
-                raise ForgeRunError("Forge result must identify exactly one current attempt")
-            if not str(attempts[0]).startswith(".forge_rewrite/"):
-                raise ForgeRunError("Forge result candidate is outside the attempt directory")
-            resolve_task_path(engine, attempts[0], must_exist=True)
-            prefix = attempts[0]
-            selected_commit = result.get("flydsl_best_commit") or result.get("best_commit")
-        elif plan["workflow"] == "optimize" and not selected_commit:
-            iterations = result.get("iteration_count")
-            best_iteration = result.get("best_iteration")
-            if (not target_verified or type(best_iteration) is not int or best_iteration != 0
-                    or type(iterations) is not int or iterations < 0):
-                raise ForgeRunError("Forge omitted the identity of its selected best candidate")
-            selected_commit = status["initial_candidate_commit"]
-            status["delivery_selection"] = "initial_validated_implementation"
-        elif plan["workflow"] == "initialize" and not selected_commit:
-            # Native loop results can omit best_commit when no iteration earns
-            # KEEP. Preserve the independently validated first implementation;
-            # do not fabricate a loop win or rewrite its reported measurements.
-            initial = status.get("initialization", {})
-            if initial.get("status") == "PASS":
-                selected_commit = initial.get("commit")
-                status["delivery_selection"] = "initial_correct_implementation"
+            # Once apply-back runs, best_commit names its commit, whose tree holds
+            # framework edits rather than this attempt's bundle. Only the engine's
+            # own FlyDSL selection can identify the candidate to deliver.
+            selected_commit = result.get("flydsl_best_commit")
+            if not selected_commit:
+                raise ForgeRunError("Forge rewrite omitted the identity of its selected FlyDSL commit")
+        else:
+            selected_commit = result.get("best_commit")
+            if plan["workflow"] == "optimize" and not selected_commit:
+                iterations = result.get("iteration_count")
+                best_iteration = result.get("best_iteration")
+                if (not target_verified or type(best_iteration) is not int or best_iteration != 0
+                        or type(iterations) is not int or iterations < 0):
+                    raise ForgeRunError("Forge omitted the identity of its selected best candidate")
+                selected_commit = status["initial_candidate_commit"]
+                status["delivery_selection"] = "initial_validated_implementation"
+            elif plan["workflow"] == "initialize" and not selected_commit:
+                # Native loop results can omit best_commit when no iteration earns
+                # KEEP. Preserve the independently validated first implementation;
+                # do not fabricate a loop win or rewrite its reported measurements.
+                initial = status.get("initialization", {})
+                if initial.get("status") == "PASS":
+                    selected_commit = initial.get("commit")
+                    status["delivery_selection"] = "initial_correct_implementation"
         source = committed_candidate(context.spec, engine, selected_commit,
                                      artifact_root / "delivery", prefix=prefix)
         status["selected_commit"] = selected_commit
