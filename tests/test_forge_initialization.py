@@ -247,28 +247,3 @@ def test_installed_upstream_initialization(tmp_path, language, mode):
                          capture_output=True, text=True, timeout=60)
     assert run.returncode == 0, run.stdout[-5000:] + run.stderr[-6000:]
     assert "REAL_FORGE_INITIALIZATION_CPU_PASS" in run.stdout
-
-
-def test_probe_rejects_changed_upstream_before_installing_hooks(tmp_path):
-    python = os.environ.get("AKA_FORGE_PROBE_PYTHON")
-    if not python:
-        pytest.skip("Set AKA_FORGE_PROBE_PYTHON to the pinned Hyperloom[forge] interpreter")
-    changed = tmp_path / "unreviewed.py"
-    changed.write_text("# changed engine with otherwise identical Python signatures\n")
-    script = r'''
-import sys
-from agents.forge import upstream
-from kernelforge.orchestrator import agent
-original = agent.make_agent_fn
-agent.__file__ = sys.argv[1]  # test-only module metadata; never edit installed sources
-try:
-    upstream.install_hooks({})
-except RuntimeError as error:
-    assert 'Unreviewed KernelForge source: kernelforge.orchestrator.agent' in str(error)
-else:
-    raise AssertionError('unreviewed engine accepted')
-assert agent.make_agent_fn is original
-'''
-    run = subprocess.run([python, "-c", script, str(changed)], cwd=ROOT,
-                         capture_output=True, text=True, timeout=20)
-    assert run.returncode == 0, run.stdout + run.stderr

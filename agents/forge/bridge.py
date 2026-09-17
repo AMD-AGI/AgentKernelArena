@@ -11,13 +11,14 @@ import json
 import os
 from pathlib import Path
 import statistics
+import tempfile
 import uuid
 from urllib.parse import quote
 
 from src.task_execution import TaskExecutionError, run_action
 from src.task_spec import resolve_task_path
 from agents.forge.task_context import TaskContext, bounded_spec
-from agents.forge.bundles import install_candidate
+from agents.forge.bundles import copy_workspace, install_candidate
 from agents.forge.action_evidence import ActionEvidence, source_binding
 
 
@@ -69,11 +70,16 @@ def evaluation_workspace(context: TaskContext, plan: dict, engine_root: Path, ro
     the whole task package, which for an image-backed task is gigabytes, to
     guard numbers nothing downstream trusts.
 
-    Baseline actions still read the framework's frozen snapshot, which lives
-    outside the engine tree and carries its own digest check.
+    The baseline is the denominator of every number the search produces, so it
+    keeps a private tree built from the framework's frozen snapshot: a candidate
+    that breaks the runner must not also move the anchor it is compared against.
+    A campaign measures it once, not once per candidate.
     """
     if role == "baseline":
-        yield context.baseline_workspace
+        with tempfile.TemporaryDirectory(prefix="baseline-", dir=Path(plan["template"]).parent) as temporary:
+            root = Path(temporary) / "task"
+            copy_workspace(context.baseline_workspace, root)
+            yield root
         return
     candidate = bound_candidate_root(plan, engine_root)
     installed = install_candidate(context.spec, candidate, engine_root,

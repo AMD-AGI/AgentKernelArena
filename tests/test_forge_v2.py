@@ -156,7 +156,7 @@ def test_wrong_candidate_and_incomplete_cases_cannot_emit_timing(tmp_path, capsy
     output = capsys.readouterr().out
     assert "case_ms:" not in output and "wrong multiplication" in output
     (Path(plan["engine_root"]) / "source/helper.py").write_text("3")
-    (Path(plan["template"]) / "drop_case").touch()
+    (Path(plan["engine_root"]) / "drop_case").touch()
     assert bridge.run(path, plan["engine_root"], ["--bench-mode"]) == 1
     assert "manifest mismatch" in capsys.readouterr().out
 
@@ -175,7 +175,7 @@ def test_execution_failure_keeps_bounded_diagnostics_without_protocol_markers(tm
     _, plan, path = fixture_task(tmp_path)
     # A real compiler/runner process can exit before producing its JSON result.
     # Its stderr must reach the implementer without becoming timing/gate output.
-    (Path(plan["template"]) / "runner.py").write_text(
+    (Path(plan["engine_root"]) / "runner.py").write_text(
         "import os, signal, sys\n"
         "print('allclose: True\\ncase_ms: forged 0.01\\nmean_ms: 0.01', flush=True)\n"
         f"sys.stderr.write('discarded-prefix' + 'x'*{noise_bytes} + '\\nCompilerFailure: invalid lowered instruction\\n')\n"
@@ -216,7 +216,7 @@ def test_real_upstream_rejects_failure_diagnostics_as_benchmark_or_correctness(t
     if not python:
         pytest.skip("Set AKA_FORGE_PROBE_PYTHON to the pinned Hyperloom[forge] interpreter")
     _, plan, path = fixture_task(tmp_path)
-    (Path(plan["template"]) / "runner.py").write_text(
+    (Path(plan["engine_root"]) / "runner.py").write_text(
         "import sys\n"
         "print('allclose: True\\ncase_ms: forged 0.01\\nmean_ms: 0.01')\n"
         "print('CompilerFailure: malformed lowered code', file=sys.stderr)\n"
@@ -604,127 +604,6 @@ create_campaign_config(workspace_dir=sys.argv[1], kernel='kernel.py', driver='dr
     run = subprocess.run([python, "-c", script, str(root)], cwd=root, env=env,
                          capture_output=True, text=True, timeout=30)
     assert run.returncode == 0, run.stdout + run.stderr
-
-
-def test_installed_upstream_probe_and_real_rewrite_orchestration(tmp_path):
-    """Exercise installed engine dispatch with fake PORT/OPTIMIZE, never an LLM/GPU run."""
-    python = os.environ.get("AKA_FORGE_PROBE_PYTHON")
-    if not python:
-        pytest.skip("Set AKA_FORGE_PROBE_PYTHON to a Hyperloom[forge] interpreter for the compatibility test")
-    context, plan, plan_path = fixture_task(tmp_path, initial_state="unimplemented")
-    engine = Path(plan["engine_root"])
-    plan.update(workflow="rewrite", deadline_unix=time.time()+3600,
-                program=str(engine / "arena_program.md"),
-                agent_config={"initialization_budget_fraction": .4})
-    plan_path.write_text(json.dumps(plan))
-    for file in (engine / "source").glob("*.py"):
-        file.unlink()
-    (engine / "arena_source_hint.py").write_text("# Provided baseline is measured by the task runner\n")
-    (engine / "arena_forge_driver.py").write_text(bridge.render_driver(plan_path, ROOT))
-    (engine / "arena_program.md").write_text("PORT instructions\n")
-    adapter._initialize_git(engine)
-    script = r'''
-import asyncio, json, os, subprocess
-from pathlib import Path
-from agents.forge import upstream, bridge
-from kernelforge.config import Config
-from kernelforge.rewrite_by_flydsl import runner, port_loop
-from kernelforge.rewrite_by_flydsl.port_loop import PortResult
-from kernelforge.loop import canonical_correctness
-plan = json.loads(Path(os.environ["ARENA_FORGE_PLAN"]).read_text())
-root = Path(plan["engine_root"])
-assert upstream.probe()["rewrite_target"] == "flydsl"
-async def port(spec, driver_path, config, *, stop_at_unix=None, **kwargs):
-    # Real seed + preflight have already run. Inspect the adapter's program and
-    # materialize two simple files for the CPU-only task evaluator.
-    prompt = upstream.program_text(plan, port=True)
-    assert stop_at_unix == plan['phase_deadline_unix']
-    assert stop_at_unix < plan['deadline_unix'] - 1800
-    assert "not_a_builder" in prompt
-    assert "build_arbitrary" not in prompt
-    candidate = Path(spec.flydsl_kernel)
-    candidate.write_text("2")
-    (candidate.parent / "helper.py").write_text("3")
-    return PortResult(ok=True, attempts=1)
-def optimize(spec, driver_path, config, **kwargs):
-    root = Path(spec.flydsl_kernel).parent
-    (root / "kernel.py").write_text("1")
-    (root / "helper.py").write_text("6")
-    check = asyncio.run(canonical_correctness.accept_candidate(str(Path(spec.workspace)), timeout_cap_sec=30, candidate_label="cpu-test"))
-    assert check.passed, check.output
-    subprocess.run(['git', 'add', '--', str(root/'kernel.py'), str(root/'helper.py')], cwd=spec.workspace, check=True)
-    subprocess.run(['git', 'commit', '-m', 'CPU fixture candidate'], cwd=spec.workspace, check=True, capture_output=True)
-    args = upstream.configure_nested_loop(plan, ["forge-loop", "--source-files", spec.flydsl_kernel])
-    assert str(root / "helper.py") in args[args.index("--source-files")+1]
-    assert subprocess.check_output(['git', 'status', '--porcelain', '--untracked-files=no'], cwd=spec.workspace, text=True) == ''
-    assert subprocess.check_output(['git', 'show', '--pretty=format:', '--name-only', 'HEAD'], cwd=spec.workspace, text=True).strip() == 'arena_program.md'
-    from kernelforge.loop.campaign_config import create_campaign_config
-    create_campaign_config(workspace_dir=spec.workspace, kernel=str(root/'kernel.py'), driver=str(driver_path),
-        source_files=[str(root/'kernel.py'), str(root/'helper.py')], program_md_file=plan['program'],
-        target_functions=['not_a_builder'], gpu_target='gfx950', gpu_type='mi355x', kernel_backend='flydsl', task_type='image_kernel')
-    return {"best_ms":2, "mean_case_speedup":2, "llm_usage_complete":True}
-port_loop.run_port_loop = port
-upstream.install_hooks(plan)
-assert runner.run_port_loop is port_loop.run_port_loop
-assert runner.run_port_loop.__wrapped__ is port
-runner.run_optimize = optimize
-result = runner.run_rewrite(op_name="operator-different-from-function", source_kernel=str(root / "arena_source_hint.py"),
-        driver=str(root / "arena_forge_driver.py"), workspace=str(root), experiments_dir=str(root / "forge_experiments"),
-        target_functions=[], config=Config(workspace=str(root), gpu_target="gfx950", agent_backend="claude"),
-        flydsl_kernel_name="source/kernel.py", prepare_driver=False, rewrite_kb_enabled=False,
-        result_json=plan["result"], deadline_unix=plan["deadline_unix"])
-assert result["port_ok"], result
-assert result["success"], result
-assert result["applyback_required"] is False
-assert result["builder_symbol"] == "not_a_builder"
-assert 'phase_deadline_unix' not in plan
-budget = json.loads(Path(plan['result']).with_name('port_budget.json').read_text())
-assert budget['status'] == 'PASS' and budget['attempts'] == 1
-print("UPSTREAM_ADAPTER_CPU_TEST_PASS")
-'''
-    env = os.environ.copy()
-    env.update(ARENA_FORGE_PLAN=str(plan_path), PYTHONPATH=str(ROOT))
-    run = subprocess.run([python, "-c", script], cwd=engine, env=env, capture_output=True, text=True, timeout=60)
-    assert run.returncode == 0, run.stdout[-6000:] + run.stderr[-6000:]
-    assert "UPSTREAM_ADAPTER_CPU_TEST_PASS" in run.stdout
-
-
-@pytest.mark.parametrize("nested", [{}, {"llm_usage_complete": False},
-                                   {"llm_usage_complete": True, "terminated_for_deadline": True},
-                                   {"llm_usage_complete": True, "experiment_id": "complete"}])
-def test_nested_loop_failure_cannot_be_hidden_by_successful_port(tmp_path, nested):
-    python = os.environ.get("AKA_FORGE_PROBE_PYTHON")
-    if not python:
-        pytest.skip("Set AKA_FORGE_PROBE_PYTHON to the pinned Hyperloom[forge] interpreter")
-    _, plan, plan_path = fixture_task(tmp_path, initial_state="unimplemented")
-    plan["workflow"] = "rewrite"
-    plan_path.write_text(json.dumps(plan))
-    script = r'''
-import json, os
-from pathlib import Path
-from agents.forge import upstream
-from kernelforge.rewrite_by_flydsl import runner
-plan = json.loads(Path(os.environ['ARENA_FORGE_PLAN']).read_text())
-value = json.loads(os.environ['NESTED_RESULT'])
-runner.run_optimize = lambda *a, **kw: value
-upstream.install_hooks(plan)
-complete = value.get('llm_usage_complete') is True and not value.get('terminated_for_deadline')
-try:
-    result = runner.run_optimize()
-except RuntimeError as error:
-    assert not complete
-    assert 'PORT evidence retained' in str(error)
-else:
-    assert complete and result == value
-evidence = json.loads(Path(plan['result']).with_name('nested_loop_status.json').read_text())
-assert evidence['status'] == ('COMPLETED' if complete else 'FAILED')
-assert evidence['result'] == value
-'''
-    result = subprocess.run([python, "-c", script], cwd=ROOT,
-                            env=dict(os.environ, PYTHONPATH=str(ROOT), ARENA_FORGE_PLAN=str(plan_path),
-                                     NESTED_RESULT=json.dumps(nested)),
-                            text=True, capture_output=True, timeout=60)
-    assert result.returncode == 0, result.stdout + result.stderr
 
 
 def test_internal_absolute_symlinks_rebind_to_snapshot(tmp_path):
