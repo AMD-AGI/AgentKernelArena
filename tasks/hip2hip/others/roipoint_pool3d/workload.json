@@ -1,0 +1,98 @@
+{
+  "test_shapes": [
+    [
+      1,
+      100,
+      3,
+      2,
+      4
+    ],
+    [
+      2,
+      500,
+      6,
+      4,
+      16
+    ],
+    [
+      2,
+      5000,
+      6,
+      8,
+      4
+    ],
+    [
+      4,
+      2000,
+      3,
+      8,
+      32
+    ],
+    [
+      2,
+      10000,
+      6,
+      16,
+      8
+    ]
+  ],
+  "candidate_files": [
+    "src/roipoint_pool3d_kernel.hip"
+  ],
+  "cases": [
+    {
+      "test_case_id": "shape_0",
+      "params": {
+        "B": 1,
+        "N": 100,
+        "C": 3,
+        "M": 2,
+        "nsample": 4
+      }
+    },
+    {
+      "test_case_id": "shape_1",
+      "params": {
+        "B": 2,
+        "N": 500,
+        "C": 6,
+        "M": 4,
+        "nsample": 16
+      }
+    },
+    {
+      "test_case_id": "shape_2",
+      "params": {
+        "B": 2,
+        "N": 5000,
+        "C": 6,
+        "M": 8,
+        "nsample": 4
+      }
+    },
+    {
+      "test_case_id": "shape_3",
+      "params": {
+        "B": 4,
+        "N": 2000,
+        "C": 3,
+        "M": 8,
+        "nsample": 32
+      }
+    },
+    {
+      "test_case_id": "shape_4",
+      "params": {
+        "B": 2,
+        "N": 10000,
+        "C": 6,
+        "M": 16,
+        "nsample": 8
+      }
+    }
+  ],
+  "graph_policy": {
+    "enabled": true,
+    "reason": null
+  }
+}

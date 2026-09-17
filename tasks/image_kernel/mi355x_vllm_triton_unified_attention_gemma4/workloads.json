@@ -1,0 +1,237 @@
+{
+  "original_cases": {
+    "correctness": [
+      {
+        "id": "gemma4-sliding-decode-m64-ctx1024",
+        "model": "gemma-4-26B-A4B-it",
+        "kernel_ids": [
+          "k002"
+        ],
+        "gpu_pct": 19.55,
+        "params": {
+          "layer_type": "sliding_attention",
+          "num_seqs": 64,
+          "num_query_heads": 8,
+          "num_kv_heads": 4,
+          "head_size": 256,
+          "block_size": 16,
+          "ctx_len": 1024,
+          "sliding_window": 1024,
+          "kv_cache_dtype": "auto",
+          "dtype": "bf16"
+        },
+        "trace_input_shapes": [
+          "Q/O (64,8,256) bf16",
+          "K/V step (64,4,256) bf16"
+        ]
+      },
+      {
+        "id": "gemma4-sliding-decode-m64-ctx2048",
+        "model": "gemma-4-26B-A4B-it",
+        "kernel_ids": [
+          "k002"
+        ],
+        "gpu_pct": null,
+        "params": {
+          "layer_type": "sliding_attention",
+          "num_seqs": 64,
+          "num_query_heads": 8,
+          "num_kv_heads": 4,
+          "head_size": 256,
+          "block_size": 16,
+          "ctx_len": 2048,
+          "sliding_window": 1024,
+          "kv_cache_dtype": "auto",
+          "dtype": "bf16"
+        },
+        "trace_input_shapes": [
+          "Q/O (64,8,256) bf16",
+          "K/V step (64,4,256) bf16"
+        ]
+      },
+      {
+        "id": "gemma4-full-decode-m64-ctx1024",
+        "model": "gemma-4-26B-A4B-it",
+        "kernel_ids": [
+          "k009"
+        ],
+        "gpu_pct": 3.965,
+        "params": {
+          "layer_type": "full_attention",
+          "num_seqs": 64,
+          "num_query_heads": 8,
+          "num_kv_heads": 1,
+          "head_size": 512,
+          "block_size": 16,
+          "ctx_len": 1024,
+          "sliding_window": 0,
+          "kv_cache_dtype": "auto",
+          "dtype": "bf16"
+        },
+        "trace_input_shapes": [
+          "Q/O (64,8,512) bf16",
+          "K/V step (64,1,512) bf16"
+        ]
+      },
+      {
+        "id": "gemma4-full-decode-m64-ctx2048",
+        "model": "gemma-4-26B-A4B-it",
+        "kernel_ids": [
+          "k009"
+        ],
+        "gpu_pct": null,
+        "params": {
+          "layer_type": "full_attention",
+          "num_seqs": 64,
+          "num_query_heads": 8,
+          "num_kv_heads": 1,
+          "head_size": 512,
+          "block_size": 16,
+          "ctx_len": 2048,
+          "sliding_window": 0,
+          "kv_cache_dtype": "auto",
+          "dtype": "bf16"
+        },
+        "trace_input_shapes": [
+          "Q/O (64,8,512) bf16",
+          "K/V step (64,1,512) bf16"
+        ]
+      }
+    ],
+    "performance": null
+  },
+  "cases": [
+    {
+      "test_case_id": "gemma4-sliding-decode-m64-ctx1024",
+      "params": {
+        "layer_type": "sliding_attention",
+        "num_seqs": 64,
+        "num_query_heads": 8,
+        "num_kv_heads": 4,
+        "head_size": 256,
+        "block_size": 16,
+        "ctx_len": 1024,
+        "sliding_window": 1024,
+        "kv_cache_dtype": "auto",
+        "dtype": "bf16",
+        "seed": 31
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "shape": [
+        "Q/O (64,8,256) bf16",
+        "K/V step (64,4,256) bf16"
+      ],
+      "dtype": "bf16",
+      "metadata": {
+        "model": "gemma-4-26B-A4B-it",
+        "kernel_ids": [
+          "k002"
+        ],
+        "gpu_pct": 19.55,
+        "timed_replay_seed": 67
+      }
+    },
+    {
+      "test_case_id": "gemma4-sliding-decode-m64-ctx2048",
+      "params": {
+        "layer_type": "sliding_attention",
+        "num_seqs": 64,
+        "num_query_heads": 8,
+        "num_kv_heads": 4,
+        "head_size": 256,
+        "block_size": 16,
+        "ctx_len": 2048,
+        "sliding_window": 1024,
+        "kv_cache_dtype": "auto",
+        "dtype": "bf16",
+        "seed": 31
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "shape": [
+        "Q/O (64,8,256) bf16",
+        "K/V step (64,4,256) bf16"
+      ],
+      "dtype": "bf16",
+      "metadata": {
+        "model": "gemma-4-26B-A4B-it",
+        "kernel_ids": [
+          "k002"
+        ],
+        "gpu_pct": null,
+        "timed_replay_seed": 67
+      }
+    },
+    {
+      "test_case_id": "gemma4-full-decode-m64-ctx1024",
+      "params": {
+        "layer_type": "full_attention",
+        "num_seqs": 64,
+        "num_query_heads": 8,
+        "num_kv_heads": 1,
+        "head_size": 512,
+        "block_size": 16,
+        "ctx_len": 1024,
+        "sliding_window": 0,
+        "kv_cache_dtype": "auto",
+        "dtype": "bf16",
+        "seed": 31
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "shape": [
+        "Q/O (64,8,512) bf16",
+        "K/V step (64,1,512) bf16"
+      ],
+      "dtype": "bf16",
+      "metadata": {
+        "model": "gemma-4-26B-A4B-it",
+        "kernel_ids": [
+          "k009"
+        ],
+        "gpu_pct": 3.965,
+        "timed_replay_seed": 67
+      }
+    },
+    {
+      "test_case_id": "gemma4-full-decode-m64-ctx2048",
+      "params": {
+        "layer_type": "full_attention",
+        "num_seqs": 64,
+        "num_query_heads": 8,
+        "num_kv_heads": 1,
+        "head_size": 512,
+        "block_size": 16,
+        "ctx_len": 2048,
+        "sliding_window": 0,
+        "kv_cache_dtype": "auto",
+        "dtype": "bf16",
+        "seed": 31
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "shape": [
+        "Q/O (64,8,512) bf16",
+        "K/V step (64,1,512) bf16"
+      ],
+      "dtype": "bf16",
+      "metadata": {
+        "model": "gemma-4-26B-A4B-it",
+        "kernel_ids": [
+          "k009"
+        ],
+        "gpu_pct": null,
+        "timed_replay_seed": 67
+      }
+    }
+  ]
+}

@@ -1,0 +1,132 @@
+{
+  "cases": [
+    {
+      "test_case_id": "case_0000",
+      "params": {
+        "bs": 128,
+        "E": 8,
+        "hidden": 2048,
+        "topk": 2,
+        "cap": 30.0,
+        "bias": false,
+        "seed": 42
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0001",
+      "params": {
+        "bs": 64,
+        "E": 8,
+        "hidden": 2048,
+        "topk": 4,
+        "cap": 30.0,
+        "bias": false,
+        "seed": 43
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0002",
+      "params": {
+        "bs": 512,
+        "E": 8,
+        "hidden": 2048,
+        "topk": 2,
+        "cap": 30.0,
+        "bias": false,
+        "seed": 44
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0003",
+      "params": {
+        "bs": 256,
+        "E": 16,
+        "hidden": 4096,
+        "topk": 2,
+        "cap": 30.0,
+        "bias": false,
+        "seed": 45
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0004",
+      "params": {
+        "bs": 128,
+        "E": 32,
+        "hidden": 2048,
+        "topk": 2,
+        "cap": 30.0,
+        "bias": true,
+        "seed": 46
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0005",
+      "params": {
+        "bs": 64,
+        "E": 8,
+        "hidden": 2048,
+        "topk": 2,
+        "cap": 0.0,
+        "bias": false,
+        "seed": 47
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0006",
+      "params": {
+        "bs": 200,
+        "E": 64,
+        "hidden": 1024,
+        "topk": 1,
+        "cap": 30.0,
+        "bias": false,
+        "seed": 48
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0007",
+      "params": {
+        "bs": 128,
+        "E": 8,
+        "hidden": 2048,
+        "topk": 1,
+        "cap": 30.0,
+        "bias": true,
+        "seed": 49
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    }
+  ]
+}

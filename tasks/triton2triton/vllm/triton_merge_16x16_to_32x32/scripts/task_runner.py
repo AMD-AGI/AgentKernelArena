@@ -13,14 +13,6 @@ TASK_NAME = "triton2triton/triton_merge_16x16_to_32x32"
 SOURCE_FILE = os.path.join(TASK_DIR, "source", "triton_merge_16x16_to_32x32.py")
 
 SEEDS = [42, 43, 44, 45, 46]
-CORRECTNESS_CASES = [
-    {"seed": seed, "B": 2, "T": 64, "H": 4, "dtype": "float32"}
-    for seed in SEEDS
-] + [
-    {"seed": 47, "B": 1, "T": 31, "H": 1, "dtype": "float16"},
-    {"seed": 48, "B": 3, "T": 33, "H": 2, "dtype": "bfloat16"},
-    {"seed": 49, "B": 1, "T": 47, "H": 5, "dtype": "float32"},
-]
 WARMUP_ITERATIONS = 10
 BENCHMARK_ITERATIONS = 100
 
@@ -72,11 +64,11 @@ def reference(A):
     return Ai
 
 
-def gen_inputs(seed, device, B=2, T=64, H=4, dtype="float32"):
+def gen_inputs(seed, device):
     import torch
     torch.manual_seed(seed)
-    BT = 32
-    A = torch.randn(B, T, H, BT, device=device, dtype=getattr(torch, dtype)) * 0.1
+    B, T, H, BT = 2, 64, 4, 32
+    A = torch.randn(B, T, H, BT, device=device, dtype=torch.float32) * 0.1
     # The kernel expects strictly lower triangular blocks (within each BT x BT tile).
     # Zero out diagonal and upper triangular entries in the last dimension.
     idx = torch.arange(BT, device=device)
@@ -100,7 +92,10 @@ def run_compile():
         return False, str(e)
 
 
-def run_correctness():
+def run_correctness(*, case_index=None):
+    if case_index is not None and case_index >= 10000:
+        from _upstream_controls import run_control
+        return run_control(case_index - 10000, load_module)
     import torch
     try:
         mod = load_module()
@@ -108,9 +103,11 @@ def run_correctness():
         return False, f"Failed to load module: {e}"
 
     device = "cuda"
-    for i, case in enumerate(CORRECTNESS_CASES):
+    for i, seed in enumerate(SEEDS):
+        if case_index is not None and i != case_index:
+            continue
         try:
-            args, kwargs = gen_inputs(device=device, **case)
+            args, kwargs = gen_inputs(seed, device)
             args_cpu = tuple(a.float().cpu() if isinstance(a, torch.Tensor) else a for a in args)
 
             result = mod.merge_16x16_to_32x32(*args, **kwargs)
@@ -119,11 +116,11 @@ def run_correctness():
             ref_f = ref.float()
             if not torch.allclose(r_cpu, ref_f, atol=1e-2, rtol=1e-2):
                 max_diff = (r_cpu - ref_f).abs().max().item()
-                return False, f"Case {i+1} {case}: max diff = {max_diff:.6f}"
+                return False, f"Shape {i+1}: max diff = {max_diff:.6f}"
 
             torch.cuda.synchronize()
         except Exception as e:
-            return False, f"Case {i+1} {case}: exception: {e}"
+            return False, f"Shape {i+1}: exception: {e}"
     return True, None
 
 
@@ -188,7 +185,7 @@ def main():
 
     elif args_parsed.mode == "correctness":
         ok, err = run_correctness()
-        report = {"status": "ok" if ok else "fail", "error": err, "num_shapes": len(CORRECTNESS_CASES)}
+        report = {"status": "ok" if ok else "fail", "error": err, "num_shapes": len(SEEDS)}
         with open(os.path.join(build_dir, "correctness_report.json"), "w") as f:
             json.dump(report, f, indent=2)
         print(f"Correctness: {'PASS' if ok else 'FAIL'}")

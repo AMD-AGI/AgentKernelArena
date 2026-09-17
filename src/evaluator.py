@@ -27,6 +27,7 @@ from .testcases import (
 )
 
 if TYPE_CHECKING:
+    from .task_session import TaskSession
     from .eval_tools.config import EvalToolsConfig
     from .eval_tools.contracts import SourceEvidence
     from .eval_tools.manager import EvalToolManager
@@ -142,6 +143,7 @@ def evaluate_kernel(
     tool_source_evidence: Optional["SourceEvidence | Mapping[str, Any]"] = None,
     tool_artifact_root: Optional[Path] = None,
     gpu_arch: Optional[str] = None,
+    task_session: Optional["TaskSession"] = None,
 ) -> Dict[str, Any]:
     """
     Standardized evaluation of optimized kernel.
@@ -190,7 +192,12 @@ def evaluate_kernel(
     
     # 1. Compilation check
     log.info("Step 1: Checking compilation...")
-    pass_compilation, comp_error = evaluate_compilation(workspace, task_config, logger)
+    if task_session is None:
+        if task_config.get("schema_version") == 2:
+            raise ValueError("V2 evaluation requires the framework TaskSession and original case manifest")
+        pass_compilation, comp_error = evaluate_compilation(workspace, task_config, logger)
+    else:
+        pass_compilation, comp_error = _session_check(task_session, "compile")
     results['pass_compilation'] = pass_compilation
     results['compilation_error_message'] = comp_error
     
@@ -205,7 +212,7 @@ def evaluate_kernel(
     # Once an optimization agent has run, however, its declared targets must no
     # longer be unconditional NotImplementedError stubs; otherwise a harness
     # could silently time and validate its reference fallback.
-    if task_config.get("task_type") == "torch2flydsl":
+    if task_session is None and task_config.get("task_type") == "torch2flydsl":
         missing_names, stub_names = inspect_target_definitions(workspace, task_config)
         target_errors = []
         if missing_names:
@@ -225,7 +232,10 @@ def evaluate_kernel(
             log.warning(corr_error)
             return results
 
-    pass_correctness, corr_error = evaluate_correctness(workspace, task_config, logger)
+    if task_session is None:
+        pass_correctness, corr_error = evaluate_correctness(workspace, task_config, logger)
+    else:
+        pass_correctness, corr_error = _session_check(task_session, "correctness")
     results['pass_correctness'] = pass_correctness
     results['correctness_error_message'] = corr_error
     
@@ -275,7 +285,20 @@ def evaluate_kernel(
     # 4. Performance measurement (only after compilation, correctness, and any
     # required tool policy have passed).
     log.info("Step 4: Measuring performance...")
-    optimized_cases = measure_performance(workspace, task_config, logger)
+    if task_session is None:
+        optimized_cases = measure_performance(workspace, task_config, logger)
+    else:
+        from .task_protocol import performance_cases
+
+        try:
+            performance = task_session.candidate_action("performance").result
+            if not performance.passed:
+                raise ValueError(performance.reason or "Candidate performance failed")
+            optimized_cases = performance_cases(performance)
+        except (ValueError, RuntimeError, OSError) as exc:
+            results['speedup_calculation_error_message'] = str(exc)
+            log.warning("V2 candidate performance failed: %s", exc)
+            optimized_cases = []
     
     if optimized_cases:
         # Save optimized results
@@ -413,6 +436,102 @@ def evaluate_kernel(
     return results
 
 
+def _session_check(session: "TaskSession", action: str) -> Tuple[bool, Optional[str]]:
+    try:
+        result = session.candidate_action(action).result
+        return result.passed, result.reason
+    except (ValueError, RuntimeError, OSError) as exc:
+        return False, str(exc)
+
+
+def evaluate_task_session(session: "TaskSession", *, eval_config: dict,
+                          logger: Optional[logging.Logger] = None,
+                          result_metadata: Optional[dict] = None) -> Dict[str, Any]:
+    """Run the same final candidate pipeline for main, quality_loop and retries.
+
+    The session retains the original manifest, baseline and harness boundary.
+    Each call executes fresh candidate actions and writes a new scored report.
+    """
+    from dataclasses import asdict
+    from .eval_tools.config import EvalToolsConfig, merge_task_tool_config
+    from .eval_tools.contracts import SourceEvidence
+    from .eval_tools.evidence import capture_submission_evidence, load_submission_evidence
+    from .score import task_result_scoring
+    from .task_protocol import performance_cases
+    from .task_runtime import bind_session_runtime
+
+    log = logger or session.logger
+    config = session.spec.to_mapping()
+    tools = merge_task_tool_config(EvalToolsConfig.from_mapping(eval_config), config)
+    baseline = session.results.get(("task_validation", "baseline", "performance"))
+    baseline_cases = performance_cases(baseline.result) if baseline and baseline.result.passed else []
+    if baseline_cases:
+        save_performance_results(baseline_cases, session.workspace, "baseline_perf.yaml", log)
+    result = {"pass_compilation": False, "pass_correctness": False,
+              "pass_tool_gate": not tools.enabled, "tool_policy_satisfied": not tools.enabled,
+              "average_speedup": 0.0, "best_optimized_execution_time": 0.0}
+    runtime = None
+    initial = session.initial_validation
+    try:
+        runtime = bind_session_runtime(session)
+        if initial is None or not initial.accepted:
+            reasons = "; ".join(initial.errors) if initial else "not performed"
+            raise RuntimeError("Initial task validation failed: " + reasons)
+        session.verify_candidate_harness()
+        session.verify_baseline_sources()
+        manager, source, artifact_root = None, None, None
+        if tools.enabled:
+            from .eval_tools.factory import create_default_manager, task_artifact_root
+
+            storage = session.state_directory / "tool_submission"
+            original = (load_submission_evidence(storage, task_config=config,
+                                                 protected_paths=session.harness.digests)
+                        if storage.exists() else capture_submission_evidence(
+                            session.workspace, config, storage, protected_paths=session.harness.digests,
+                            original_workspace=session.baseline_workspace))
+            if original.workspace != session.workspace:
+                raise RuntimeError("Tool source evidence belongs to another candidate workspace")
+            original.verify()
+            source = SourceEvidence(
+                original_root=str(original.files_dir), original_fingerprint=original.fingerprint,
+                candidate_fingerprint=original.candidate_fingerprint(),
+                metadata={"manifest": str(original.storage_dir / "manifest.json")})
+            manager = create_default_manager()
+            artifact_root = task_artifact_root(session.workspace)
+        result = evaluate_kernel(
+            session.workspace, config, baseline_cases, log, tool_manager=manager,
+            eval_tools_config=tools, tool_source_evidence=source, tool_artifact_root=artifact_root,
+            gpu_arch=runtime["gpu_arch"], task_session=session)
+        session.verify_candidate_harness()
+        session.verify_baseline_sources()
+    except (ValueError, RuntimeError, OSError) as exc:
+        log.exception("V2 framework evaluation failed")
+        result.update(pass_compilation=False, pass_correctness=False, average_speedup=0.0,
+                      best_optimized_execution_time=0.0, framework_error=f"{type(exc).__name__}: {exc}",
+                      compilation_error_message=str(exc), benchmark_method_consistent=False)
+    result.update(task_schema_version=2, runtime_identity=runtime,
+                  initial_task_validation=asdict(initial) if initial is not None else None)
+    source_evidence = session.candidate_source_evidence()
+    result["evaluated_candidate_sources"] = source_evidence["sources"]
+    if source_evidence["error"]:
+        result.update(candidate_source_error=source_evidence["error"],
+                      pass_compilation=False, pass_correctness=False, average_speedup=0.0,
+                      best_optimized_execution_time=0.0, benchmark_method_consistent=False)
+    correctness = session.results.get(("task_validation", "baseline", "correctness"))
+    if correctness is not None:
+        result["baseline_correctness"] = correctness.result.to_mapping()
+    if result_metadata:
+        # Only supplemental agent evidence is accepted; callers cannot replace
+        # acceptance, timings, framework errors, or task/runtime identity.
+        if set(result_metadata) - {"agent_execution"}:
+            raise ValueError("Unsupported supplemental evaluation metadata")
+        result.update(result_metadata)
+    agent_name = eval_config.get("agent", {}).get("template", "unknown")
+    write_task_result(session.workspace, result, baseline_cases, session.spec.task_id, agent_name, log)
+    task_result_scoring(str(session.workspace))
+    return yaml.safe_load((session.workspace / "task_result.yaml").read_text())
+
+
 def write_task_result(
     workspace: Path,
     evaluation_results: Dict[str, Any],
@@ -509,10 +628,17 @@ def write_task_result(
     tool_evaluation = evaluation_results.get('tool_evaluation')
     if tool_evaluation is not None:
         task_result['tool_evaluation'] = tool_evaluation
+    for field in (
+        'task_schema_version', 'runtime_identity', 'initial_task_validation',
+        'baseline_correctness', 'agent_execution', 'framework_error',
+        'evaluated_candidate_sources', 'candidate_source_error',
+    ):
+        if field in evaluation_results:
+            task_result[field] = evaluation_results[field]
     
     result_file = workspace / 'task_result.yaml'
     with open(result_file, 'w') as f:
-        yaml.dump(task_result, f, default_flow_style=False, sort_keys=False)
+        yaml.safe_dump(task_result, f, default_flow_style=False, sort_keys=False)
     
     log.info(f"Written task_result.yaml to {result_file}")
     

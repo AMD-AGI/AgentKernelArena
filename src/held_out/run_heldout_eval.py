@@ -250,6 +250,16 @@ def evaluate_single_task(
 
     Returns a result dict for heldout_task_result.yaml.
     """
+    declaration_path = original_workspace / "config.yaml"
+    if declaration_path.is_file():
+        declaration = yaml.safe_load(declaration_path.read_text()) or {}
+        if "schema_version" in declaration:
+            if type(declaration["schema_version"]) is not int or declaration["schema_version"] != 2:
+                raise ValueError("Unsupported held-out task schema version")
+            from src.held_out.evaluation_v2 import evaluate_task_v2
+
+            return evaluate_task_v2(original_workspace, output_workspace, heldout_config, logger)
+
     task_id = resolve_task_id(original_workspace) or original_workspace.name
 
     run_result: Dict[str, Any] = {}

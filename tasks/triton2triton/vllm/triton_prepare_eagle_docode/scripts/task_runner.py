@@ -15,13 +15,6 @@ TEST_SHAPES = [
     (32, 512, 1024, 8192, 64),
     (64, 1024, 2048, 8192, 128),
 ]
-
-# Correctness-only boundary cases. Keep these separate so hardening coverage does
-# not change the benchmark workload.
-CORRECTNESS_TEST_SHAPES = TEST_SHAPES + [
-    (16, 256, 2049, 8192, 256),
-    (17, 272, 4096, 8192, 257),
-]
 WARMUP_ITERATIONS = 10
 BENCHMARK_ITERATIONS = 100
 
@@ -44,10 +37,11 @@ def _benchmark_cuda_graph_or_events(*args, **kwargs):
 # <<< AKA-GENERATED <<<
 
 def load_module():
-    spec = importlib.util.spec_from_file_location("triton_kernel", SOURCE_FILE)
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod
+    policy_path = os.path.join(TASK_DIR, "_arena_kernel_policy.py")
+    spec = importlib.util.spec_from_file_location("_eagle_kernel_policy", policy_path)
+    policy = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(policy)
+    return policy.load_checked(SOURCE_FILE)
 
 
 def make_inputs(num_reqs, total_tokens, hidden_size, max_model_len, max_num_reqs, device="cpu"):
@@ -132,7 +126,10 @@ def run_compile():
         return False, str(e)
 
 
-def run_correctness():
+def run_correctness(*, case_index=None):
+    if case_index is not None and case_index >= 10000:
+        from _upstream_controls import run_control
+        return run_control(case_index - 10000, load_module)
     import torch
     try:
         mod = load_module()
@@ -140,7 +137,9 @@ def run_correctness():
         return False, f"Failed to load module: {e}"
 
     device = "cuda"
-    for i, (nr, tt, hs, mml, mnr) in enumerate(CORRECTNESS_TEST_SHAPES):
+    for i, (nr, tt, hs, mml, mnr) in enumerate(TEST_SHAPES):
+        if case_index is not None and i != case_index:
+            continue
         try:
             inputs_gpu = make_inputs(nr, tt, hs, mml, mnr, device)
             inputs_cpu = make_inputs(nr, tt, hs, mml, mnr, "cpu")
@@ -255,11 +254,7 @@ def main():
         sys.exit(0 if ok else 1)
     elif args.mode == "correctness":
         ok, err = run_correctness()
-        report = {
-            "status": "ok" if ok else "fail",
-            "error": err,
-            "num_shapes": len(CORRECTNESS_TEST_SHAPES),
-        }
+        report = {"status": "ok" if ok else "fail", "error": err, "num_shapes": len(TEST_SHAPES)}
         with open(os.path.join(build_dir, "correctness_report.json"), "w") as f:
             json.dump(report, f, indent=2)
         print(f"Correctness: {'PASS' if ok else 'FAIL'}")

@@ -1,0 +1,165 @@
+{
+  "version": 1,
+  "candidate_symbols": {
+    "source/triton_causal_conv1d_update.py": [
+      {
+        "name": "_causal_conv1d_update_kernel",
+        "jit": true
+      }
+    ]
+  },
+  "case_table": "TEST_SHAPES",
+  "input_table": [
+    [
+      4,
+      64,
+      1,
+      4,
+      true,
+      "silu"
+    ],
+    [
+      8,
+      128,
+      1,
+      4,
+      false,
+      "silu"
+    ],
+    [
+      2,
+      256,
+      1,
+      3,
+      true,
+      null
+    ],
+    [
+      16,
+      64,
+      1,
+      4,
+      true,
+      "silu"
+    ],
+    [
+      4,
+      128,
+      1,
+      4,
+      true,
+      "silu"
+    ]
+  ],
+  "cases": [
+    {
+      "test_case_id": "perf1",
+      "dtype": "float32,int32",
+      "params": {
+        "case_index": 0,
+        "configuration": [
+          4,
+          64,
+          1,
+          4,
+          true,
+          "silu"
+        ],
+        "configuration_names": "(batch, dim, seqlen, width, has_bias, activation)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf2",
+      "dtype": "float32,int32",
+      "params": {
+        "case_index": 1,
+        "configuration": [
+          8,
+          128,
+          1,
+          4,
+          false,
+          "silu"
+        ],
+        "configuration_names": "(batch, dim, seqlen, width, has_bias, activation)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf3",
+      "dtype": "float32,int32",
+      "params": {
+        "case_index": 2,
+        "configuration": [
+          2,
+          256,
+          1,
+          3,
+          true,
+          null
+        ],
+        "configuration_names": "(batch, dim, seqlen, width, has_bias, activation)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf4",
+      "dtype": "float32,int32",
+      "params": {
+        "case_index": 3,
+        "configuration": [
+          16,
+          64,
+          1,
+          4,
+          true,
+          "silu"
+        ],
+        "configuration_names": "(batch, dim, seqlen, width, has_bias, activation)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf5",
+      "dtype": "float32,int32",
+      "params": {
+        "case_index": 4,
+        "configuration": [
+          4,
+          128,
+          1,
+          4,
+          true,
+          "silu"
+        ],
+        "configuration_names": "(batch, dim, seqlen, width, has_bias, activation)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    }
+  ],
+  "migration": {
+    "original_harness_sha256": "c1c653e069253dc9e2d29727af7ef614890db14228e3e7e46f229ed01c36488b",
+    "original_correctness_sha256": "90bd3d2f560a57539ee2c8c2c8831e1193e02cf431c17fcc8fd954c3e6d75a2f"
+  }
+}

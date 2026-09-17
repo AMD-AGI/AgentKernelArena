@@ -11,6 +11,7 @@ import torch
 import torch.nn.functional as F
 import triton
 from _aka_benchmark import benchmark_cuda_graph_or_events_samples
+from _timed_contract import checked_call, checked_benchmark, assert_output_contract
 
 
 def benchmark_cuda_graph_or_events(*args, **kwargs):
@@ -90,11 +91,20 @@ def reference_impl(x, w):
 # ---------------------------------------------------------------------------
 # Correctness check for one config
 # ---------------------------------------------------------------------------
+def _check_gemm(actual, expected, dtype):
+    # The public result buffer is FP32; preserve the original comparison after
+    # BF16 conversion, including its 1e-1 absolute and relative thresholds.
+    torch.testing.assert_close(actual.to(dtype), expected.to(dtype), atol=1e-1, rtol=1e-1)
+
+
 def check_correctness(M, N, K, dtype=torch.bfloat16):
     x, w, y = generate_inputs(M, N, K, dtype)
-    torch_out = reference_impl(x, w)
-    triton_out = gemm_a16w16_atomic(x, w, torch.float32, y).to(dtype)
-    torch.testing.assert_close(triton_out, torch_out, atol=1e-1, rtol=1e-1)
+    checked_call(
+        lambda: gemm_a16w16_atomic(x, w, torch.float32, y),
+        inputs=dict(x=x, w=w),
+        reference=lambda saved: reference_impl(saved['x'], saved['w']).float(),
+        check=lambda actual, expected: _check_gemm(actual, expected, dtype),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -102,16 +112,15 @@ def check_correctness(M, N, K, dtype=torch.bfloat16):
 # ---------------------------------------------------------------------------
 def bench_one(M, N, K, dtype=torch.bfloat16):
     x, w, y = generate_inputs(M, N, K, dtype)
-
-    def _fn():
-        return gemm_a16w16_atomic(x, w, torch.float32, y)
-
-    ms, metadata = benchmark_cuda_graph_or_events(
-        _fn,
-        warmup=WARMUP,
-        repetition=ITERATIONS,
+    return checked_benchmark(
+        benchmark_cuda_graph_or_events,
+        lambda: gemm_a16w16_atomic(x, w, torch.float32, y),
+        inputs=dict(x=x, w=w),
+        reference=lambda saved: reference_impl(saved['x'], saved['w']).float(),
+        check=lambda actual, expected: _check_gemm(actual, expected, dtype),
+        perturb=lambda saved: {**saved, 'x': -saved['x']},
+        warmup=WARMUP, repetition=ITERATIONS,
     )
-    return ms, metadata
 
 
 # ---------------------------------------------------------------------------

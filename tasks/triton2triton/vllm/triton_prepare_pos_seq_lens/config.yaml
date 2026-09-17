@@ -1,39 +1,19 @@
-source_file_path:
+schema_version: 2
+description: Optimize triton_prepare_pos_seq_lens with the original Triton operator contract.
+candidate:
+  language: triton
+  initial_state: implemented
+  editable:
   - source/triton_prepare_pos_seq_lens.py
-
-target_kernel_functions:
-  - _prepare_pos_seq_lens_kernel
-
-compile_command:
-  - python3 scripts/task_runner.py compile
-
-correctness_command:
-  - python3 scripts/task_runner.py correctness
-
-performance_command:
-  - python3 scripts/task_runner.py performance
-
-task_type: triton2triton
-
-task_result_template: null
-
-prompt:
-  source_code: null
-  instructions: |
-    Optimize the Triton kernel `_prepare_pos_seq_lens_kernel` for maximum GPU throughput
-    while maintaining correctness.
-
-    The kernel computes position IDs and sequence lengths for each request in a batch.
-    For each request, it writes positions starting from num_computed_tokens into pos[],
-    and stores seq_len = num_computed_tokens + query_len. The last thread block pads
-    unused seq_lens entries with zeros for CUDA graph compatibility.
-
-    Key optimization opportunities:
-    - Block size tuning
-    - Memory coalescing for position writes
-    - Efficient padding of unused slots
-
-    Constraints:
-    - Must maintain the same function signature for `prepare_pos_seq_lens`
-    - Output must match reference exactly (integer positions and lengths)
-  cheatsheet: null
+  entrypoints:
+  - file: source/triton_prepare_pos_seq_lens.py
+    kind: function
+    symbol: _prepare_pos_seq_lens_kernel
+baseline:
+  kind: initial_candidate
+  language: triton
+evaluation:
+  runner:
+  - python3
+  - _arena_eval.py
+  workloads: workloads.json

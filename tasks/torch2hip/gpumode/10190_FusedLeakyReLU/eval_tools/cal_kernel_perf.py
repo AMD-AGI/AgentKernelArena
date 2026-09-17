@@ -8,6 +8,7 @@ import torch
 import shutil
 import sys
 from typing import Any, Dict, List, Tuple, Union
+from case_controls import configure_models
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from compile import clear_workdir
@@ -256,6 +257,7 @@ def cal_kernel_perf(
                     params[f"input_{i}_shape"] = list(inp.shape)
 
             inputs_modu_cuda = [x.to('cuda') if isinstance(x, torch.Tensor) else x for x in inputs_modu]
+            configure_models((kernel_modu,), inputs_modu_cuda)
             try:
                 torch_time, torch_meta = cal_modu_latency(
                     kernel_modu,
@@ -299,6 +301,7 @@ def cal_kernel_perf(
     for case_idx, case in enumerate(input_cases):
         inputs_modu = copy.deepcopy(case)
         inputs_modu_cuda = [x.to('cuda') if isinstance(x, torch.Tensor) else x for x in inputs_modu]
+        configure_models((kernel_modu,), inputs_modu_cuda)
         try:
             torch_time, torch_meta = cal_modu_latency(
                 kernel_modu,
@@ -349,7 +352,9 @@ def cal_kernel_perf(
         inputs_func = copy.deepcopy(case)
 
         inputs_modu_cuda = [x.to('cuda') if isinstance(x, torch.Tensor) else x for x in inputs_modu]
+        configure_models((kernel_modu,), inputs_modu_cuda)
         inputs_func_cuda = [x.to('cuda') if isinstance(x, torch.Tensor) else x for x in inputs_func]
+        configure_models((kernel_func,), inputs_func_cuda)
 
         params: Dict[str, Any] = {}
         for i, inp in enumerate(inputs_func):

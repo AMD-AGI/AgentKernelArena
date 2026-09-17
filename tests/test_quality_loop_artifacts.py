@@ -45,20 +45,20 @@ def test_filtered_copy_keeps_sources_and_fixtures_but_not_run_outputs(tmp_path):
     after = snapshot_tree(source)
     # Filtering proposals must not hide artifact tampering from reviewer snapshots.
     assert set(ARTIFACTS) <= after.keys()
-    changes = _filtered_changes(before, after, repo_subdir=None, source_root=source)
+    changes = _filtered_changes(before, after, source_root=source)
     assert set(changes.paths) == set(kept)
     apply_changes(source, destination, changes)
     assert snapshot_tree(destination) == {p: after[p] for p in kept}
 
 
-@pytest.mark.parametrize("repo_subdir", ["upstream", "vendor/upstream"])
-def test_modified_outputs_and_cloned_dependencies_are_filtered(tmp_path, repo_subdir):
+@pytest.mark.parametrize("destination", ["upstream", "vendor/upstream"])
+def test_modified_outputs_and_cloned_dependencies_are_filtered(tmp_path, destination):
     write_files(tmp_path, ARTIFACTS)
     before = snapshot_tree(tmp_path)
     write_files(tmp_path, {p: data + b"updated" for p, data in ARTIFACTS.items()})
-    write_files(tmp_path, {f"{repo_subdir}/source.py": b"downloaded source"})
+    write_files(tmp_path, {f"{destination}/source.py": b"downloaded source"})
     changes = _filtered_changes(
-        before, snapshot_tree(tmp_path), repo_subdir=repo_subdir, source_root=tmp_path
+        before, snapshot_tree(tmp_path), materialized=(destination,), source_root=tmp_path
     )
     assert changes.empty
 
@@ -117,3 +117,13 @@ def test_host_allows_fixture_addition_and_legacy_artifact_removal(repository):
     assert git("status", "--porcelain") == ""
     assert git("ls-files", "--", artifact) == ""
     assert git("ls-files", "--", fixture) == fixture
+
+
+def test_all_v2_materialized_destinations_are_excluded_without_prefix_overreach(tmp_path):
+    before = snapshot_tree(tmp_path)
+    files = {"vendor/one/kernel.py": b"download", "vendor/two/lib.py": b"download",
+             "vendor/one_more/fixture.py": b"fixture", "kernel.py": b"candidate"}
+    write_files(tmp_path, files)
+    changes = _filtered_changes(before, snapshot_tree(tmp_path),
+                                materialized=("vendor/one", "vendor/two"), source_root=tmp_path)
+    assert set(changes.paths) == {"vendor/one_more/fixture.py", "kernel.py"}

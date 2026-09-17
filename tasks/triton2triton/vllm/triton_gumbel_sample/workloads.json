@@ -1,0 +1,125 @@
+{
+  "version": 1,
+  "candidate_symbols": {
+    "source/triton_gumbel_sample.py": [
+      {
+        "name": "_gumbel_sample_kernel",
+        "jit": true
+      }
+    ]
+  },
+  "case_table": "TEST_SHAPES",
+  "input_table": [
+    [
+      4,
+      256
+    ],
+    [
+      8,
+      1024
+    ],
+    [
+      16,
+      4096
+    ],
+    [
+      32,
+      8192
+    ],
+    [
+      64,
+      32768
+    ]
+  ],
+  "cases": [
+    {
+      "test_case_id": "perf1",
+      "dtype": "float32,int32,int64",
+      "params": {
+        "case_index": 0,
+        "configuration": [
+          4,
+          256
+        ],
+        "configuration_names": "(num_reqs, vocab_size)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf2",
+      "dtype": "float32,int32,int64",
+      "params": {
+        "case_index": 1,
+        "configuration": [
+          8,
+          1024
+        ],
+        "configuration_names": "(num_reqs, vocab_size)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf3",
+      "dtype": "float32,int32,int64",
+      "params": {
+        "case_index": 2,
+        "configuration": [
+          16,
+          4096
+        ],
+        "configuration_names": "(num_reqs, vocab_size)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf4",
+      "dtype": "float32,int32,int64",
+      "params": {
+        "case_index": 3,
+        "configuration": [
+          32,
+          8192
+        ],
+        "configuration_names": "(num_reqs, vocab_size)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf5",
+      "dtype": "float32,int32,int64",
+      "params": {
+        "case_index": 4,
+        "configuration": [
+          64,
+          32768
+        ],
+        "configuration_names": "(num_reqs, vocab_size)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    }
+  ],
+  "migration": {
+    "original_harness_sha256": "23400cf2225ad7d365f57098005464b86fb581311678c72007a249fd428af9cd",
+    "original_correctness_sha256": "dc79436413ca16e77c27a93e75f9b60419791c25a0c03f501c2590a96cabcce6"
+  }
+}

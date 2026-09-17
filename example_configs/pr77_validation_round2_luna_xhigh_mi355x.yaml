@@ -57,8 +57,6 @@ tasks:
   - triton2triton/vllm/triton_fused_moe_lora
   - triton2triton/vllm/triton_reshape_and_cache_flash
   - triton2triton/vllm/triton_reshape_and_cache_flash_diffkv
-  - repository/aiter/unified_attention
-  - repository/aiter/pa_decode
   - hip2hip/others/roiaware_pool3d
   - hip2hip/gpumode/MaskedLanguageModel
   - hip2hip/gpumode/CrossEntropyLossLabelSmoothing

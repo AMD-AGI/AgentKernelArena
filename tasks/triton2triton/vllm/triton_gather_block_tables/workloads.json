@@ -1,0 +1,135 @@
+{
+  "version": 1,
+  "candidate_symbols": {
+    "source/triton_gather_block_tables.py": [
+      {
+        "name": "_gather_block_tables_kernel",
+        "jit": true
+      }
+    ]
+  },
+  "case_table": "TEST_SHAPES",
+  "input_table": [
+    [
+      4,
+      32,
+      16
+    ],
+    [
+      8,
+      64,
+      32
+    ],
+    [
+      16,
+      128,
+      64
+    ],
+    [
+      32,
+      256,
+      128
+    ],
+    [
+      64,
+      512,
+      256
+    ]
+  ],
+  "cases": [
+    {
+      "test_case_id": "perf1",
+      "dtype": "int32",
+      "params": {
+        "case_index": 0,
+        "configuration": [
+          4,
+          32,
+          16
+        ],
+        "configuration_names": "(num_reqs, max_num_reqs, max_num_blocks)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf2",
+      "dtype": "int32",
+      "params": {
+        "case_index": 1,
+        "configuration": [
+          8,
+          64,
+          32
+        ],
+        "configuration_names": "(num_reqs, max_num_reqs, max_num_blocks)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf3",
+      "dtype": "int32",
+      "params": {
+        "case_index": 2,
+        "configuration": [
+          16,
+          128,
+          64
+        ],
+        "configuration_names": "(num_reqs, max_num_reqs, max_num_blocks)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf4",
+      "dtype": "int32",
+      "params": {
+        "case_index": 3,
+        "configuration": [
+          32,
+          256,
+          128
+        ],
+        "configuration_names": "(num_reqs, max_num_reqs, max_num_blocks)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf5",
+      "dtype": "int32",
+      "params": {
+        "case_index": 4,
+        "configuration": [
+          64,
+          512,
+          256
+        ],
+        "configuration_names": "(num_reqs, max_num_reqs, max_num_blocks)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    }
+  ],
+  "migration": {
+    "original_harness_sha256": "5c84be46ccbc62b56f9879e3859c6061ec0ced98e3d30897c1a36c365479f90e",
+    "original_correctness_sha256": "5875da7e7a7abe982c013a4f3429f54fc970ca11b009c8ff7a629811d8b5aaad"
+  }
+}

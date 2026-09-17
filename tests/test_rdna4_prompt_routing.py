@@ -2,6 +2,7 @@
 
 import logging
 from pathlib import Path
+import shutil
 
 import pytest
 
@@ -98,9 +99,11 @@ def test_unknown_gpu_does_not_infer_rdna_support():
 def test_complete_task_prompt_includes_rdna_context_and_harness_rules(
     task_path, language, tmp_path
 ):
+    workspace = tmp_path / "workspace"
+    shutil.copytree(ROOT / "tasks" / task_path, workspace)
     text = prompt_builder(
         str(ROOT / "tasks" / task_path / "config.yaml"),
-        tmp_path,
+        workspace,
         {"target_gpu_model": "RDNA4"},
         LOGGER,
     )
@@ -109,5 +112,6 @@ def test_complete_task_prompt_includes_rdna_context_and_harness_rules(
         "RDNA4_architecture.md", f"{language}_rdna_cheatsheet.md"
     ) in text
     assert "architecture token: `gfx1201`" in text
-    assert "### Protected Harness / Test Files" in text
-    assert "DO NOT write task_result.yaml" in text
+    assert "Keep task config, input generators, case data, reference/comparison code, harnesses, and timing policy unchanged" in text
+    assert "Do not write task_result.yaml" in text
+    assert "do not rewrite protected files" in text

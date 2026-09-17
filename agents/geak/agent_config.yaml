@@ -1,0 +1,8 @@
+# Runtime checkout and authentication are supplied by the environment.
+# GEAK_HOME must identify the revision pinned in compatibility.py.
+model: null
+effort: high
+budget: 6
+min_improve: 0.02
+deep_cost: 2
+timeout_seconds: 43200

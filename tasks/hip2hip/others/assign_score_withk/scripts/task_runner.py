@@ -58,8 +58,7 @@ def cpu_assign_score_withk_forward(scores, point_features, center_features, knn_
                     for m in range(M):
                         # neighbor kernel: (point - center, point)
                         diff = point_features[b, nb_idx, m, o] - center_features[b, center_idx, m, o]
-                        feat = point_features[b, nb_idx, m, o]
-                        val += scores[b, n, k, m] * (diff + feat)
+                        val += scores[b, n, k, m] * diff
                     output[b, o, n, k] = val
     return output
 
@@ -173,25 +172,22 @@ def run_correctness():
             requires_grad=True)
         knn_idx = torch.randint(0, N0, (B, N1, K), device="cuda", dtype=torch.int64)
 
-        gpu_out = assign_score_withk(scores, point_features, center_features, knn_idx, 'sum')
-        cpu_out = cpu_assign_score_withk_forward_vectorized(
-            scores.detach().cpu(), point_features.detach().cpu(),
-            center_features.detach().cpu(), knn_idx.cpu())
-
-        gpu_out_cpu = gpu_out.detach().cpu()
-        if not torch.allclose(gpu_out_cpu, cpu_out, atol=1e-3, rtol=1e-3):
-            max_diff = (gpu_out_cpu - cpu_out).abs().max().item()
-            return False, (f"Forward shape {i+1} (B={B},N0={N0},N1={N1},M={M},K={K},O={O}): "
-                           f"max_diff={max_diff:.6f}")
-
-        # A nonuniform upstream gradient exercises both declared backward
-        # kernels and prevents cancellation bugs from hiding behind out.sum().
-        grad_out = torch.randn_like(gpu_out)
-        gpu_out.backward(grad_out)
+        # Freeze the independent oracle before candidate execution. The
+        # nonuniform upstream gradient is a correctness-only extension.
+        readonly = (scores, point_features, center_features, knn_idx)
+        pristine = tuple(value.detach().cpu().clone() for value in readonly)
+        grad_out = torch.randn(B, O, N1, K, device="cuda", dtype=torch.float32)
+        pristine_grad = grad_out.cpu().clone()
+        cpu_out = cpu_assign_score_withk_forward_vectorized(*pristine)
         cpu_grad_scores, cpu_grad_points, cpu_grad_centers = (
-            cpu_assign_score_withk_backward_vectorized(
-                scores.detach().cpu(), point_features.detach().cpu(),
-                center_features.detach().cpu(), knn_idx.cpu(), grad_out.cpu()))
+            cpu_assign_score_withk_backward_vectorized(*pristine, pristine_grad))
+        gpu_out = assign_score_withk(scores, point_features, center_features, knn_idx, 'sum')
+        from reference_checks import close
+        close(gpu_out, cpu_out, atol=1e-3, rtol=1e-3, gpu=True)
+        gpu_out.backward(grad_out)
+        for value, saved in zip((*readonly, grad_out), (*pristine, pristine_grad)):
+            if not torch.equal(value.detach().cpu(), saved):
+                return False, 'Candidate changed a read-only forward/backward input'
 
         gradient_checks = (
             ("Backward scores", scores.grad.cpu(), cpu_grad_scores),
@@ -209,9 +205,11 @@ def run_correctness():
     return True, None
 
 
-def _time_kernel(fn, n_warmup=10, n_iter=100, prepare_fn=None):
-    return benchmark_cuda_graph_or_events(
-        fn, warmup=n_warmup, repetition=n_iter,
+def _time_kernel(fn, inputs, check, n_warmup=10, n_iter=100, prepare_fn=None):
+    from replay_validation import measure
+    return measure(
+        benchmark_cuda_graph_or_events, fn, inputs, check,
+        warmup=n_warmup, repetition=n_iter,
         use_cuda_graph=HIP_GRAPH_ENABLED,
         fallback_reason=HIP_GRAPH_FALLBACK_REASON,
         prepare_fn=prepare_fn,
@@ -230,14 +228,33 @@ def run_performance():
         center_features = torch.randn(B, N0, M, O, device="cuda", dtype=torch.float32, requires_grad=True)
         knn_idx = torch.randint(0, N0, (B, N1, K), device="cuda", dtype=torch.int64)
 
+        # Full forward and gradient reference for these exact timed inputs.
+        cpu_inputs = [value.detach().cpu().requires_grad_()
+                      for value in (scores, point_features, center_features)]
+        expected = cpu_assign_score_withk_forward_vectorized(*cpu_inputs, knn_idx.cpu())
+        expected.sum().backward()
+        expected_grads = [value.grad for value in cpu_inputs]
+        from reference_checks import close
+        def check_forward(actual):
+            close(actual, expected.detach(), atol=1e-3, rtol=1e-3, gpu=True)
+        def check_forward_backward(actual):
+            if not isinstance(actual, tuple) or len(actual) != 4:
+                raise ValueError('Timed backward must expose output and all three gradients')
+            check_forward(actual[0])
+            for grad, reference in zip(actual[1:], expected_grads):
+                close(grad, reference, atol=1e-3, rtol=1e-3, gpu=True)
+        caller_inputs = [scores, point_features, center_features, knn_idx]
         # Perf1: forward pass
-        ms_fwd, meta_fwd = _time_kernel(lambda: assign_score_withk(scores, point_features, center_features, knn_idx, 'sum'))
+        ms_fwd, meta_fwd = _time_kernel(
+            lambda: assign_score_withk(scores, point_features, center_features, knn_idx, 'sum'),
+            caller_inputs, check_forward)
 
         # Perf2: backward pass
         def fwd_bwd():
             out = assign_score_withk(scores, point_features, center_features, knn_idx, 'sum')
             loss = out.sum()
             loss.backward()
+            return out, scores.grad, point_features.grad, center_features.grad
 
         # Materialize stable leaf-gradient buffers once.  Repeated backward
         # otherwise accumulates into those buffers, so graph batching would
@@ -252,7 +269,7 @@ def run_performance():
 
         reset_input_grads()
         ms_fwd_bwd, meta_fwd_bwd = _time_kernel(
-            fwd_bwd, prepare_fn=reset_input_grads
+            fwd_bwd, caller_inputs, check_forward_backward, prepare_fn=reset_input_grads
         )
 
         # Add test cases for this shape

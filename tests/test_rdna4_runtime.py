@@ -81,7 +81,7 @@ class RuntimeLayoutTests(unittest.TestCase):
 
 
 class SmokeProfilerTests(unittest.TestCase):
-    def run_smoke(self, selected, commands, actual=None):
+    def run_smoke(self, selected, commands, actual=None, required="", gpu_available=True):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             bin_dir = root / "bin"
@@ -97,13 +97,14 @@ class SmokeProfilerTests(unittest.TestCase):
                 (root / f"{name}.py").write_text("__version__ = 'mock'\n")
             (root / "torch.py").write_text(
                 "from types import SimpleNamespace\nimport os\n"
-                "cuda = SimpleNamespace(is_available=lambda: True, "
+                f"cuda = SimpleNamespace(is_available=lambda: {gpu_available!r}, "
                 "get_device_name=lambda i: 'mock GPU', "
                 "get_device_properties=lambda i: SimpleNamespace("
                 "gcnArchName=os.environ['MOCK_GPU_ARCH']))\n"
             )
             env = {**os.environ, "PATH": str(bin_dir), "PYTHONPATH": str(root),
                    "HOME": str(root), "AGENT_KERNEL_ARENA_GPU_ARCH": selected,
+                   "AKA_REQUIRED_PROFILERS": required,
                    "MOCK_GPU_ARCH": actual or selected}
             return subprocess.run(
                 [shutil.which("bash"), str(ROOT / "src/scripts/docker_benchmark.sh"),
@@ -115,19 +116,36 @@ class SmokeProfilerTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("rocprofv3=", result.stdout)
 
-    def test_rdna4_rejects_missing_rocprofv3(self):
-        result = self.run_smoke("gfx1201", ("hipcc", "rocprof-compute"))
+    def test_explicit_rdna4_profiler_requirement_is_enforced(self):
+        result = self.run_smoke("gfx1201", ("hipcc", "rocprof-compute"), required="rocprofv3")
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("missing command: rocprofv3", result.stderr)
+        self.assertIn("missing required profiler: rocprofv3", result.stderr)
 
-    def test_cdna_still_requires_rocprof_compute(self):
-        for arch in ("gfx942", "gfx950"):
+    def test_core_smoke_reports_optional_profilers_on_all_architectures(self):
+        for arch in ("gfx942", "gfx950", "gfx1201"):
             with self.subTest(arch=arch):
-                result = self.run_smoke(arch, ("hipcc", "rocprofv3"))
-                self.assertNotEqual(result.returncode, 0)
-                self.assertIn("missing command: rocprof-compute", result.stderr)
-                result = self.run_smoke(arch, ("hipcc", "rocprof-compute"))
+                result = self.run_smoke(arch, ("hipcc",))
                 self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertIn("rocprof-compute=optional-missing", result.stdout)
+                self.assertIn("rocprofv3=optional-missing", result.stdout)
+
+    def test_explicit_compute_profiler_cannot_be_replaced_by_rocprofv3(self):
+        result = self.run_smoke("gfx950", ("hipcc", "rocprofv3"), required="rocprof-compute")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("missing required profiler: rocprof-compute", result.stderr)
+
+    def test_multiple_explicit_profilers_and_unknown_names(self):
+        result = self.run_smoke("gfx950", ("hipcc", "rocprof-compute", "rocprofv3"),
+                                required="rocprof-compute, rocprofv3")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        result = self.run_smoke("gfx950", ("hipcc",), required="rocprof-comput")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("unknown required profiler(s): rocprof-comput", result.stderr)
+
+    def test_optional_profilers_do_not_hide_missing_gpu(self):
+        result = self.run_smoke("gfx950", ("hipcc",), gpu_available=False)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("torch.cuda.is_available() is False", result.stderr)
 
     def test_rdna4_still_requires_compiler(self):
         result = self.run_smoke("gfx1201", ("rocprofv3",))

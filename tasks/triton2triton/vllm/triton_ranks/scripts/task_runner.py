@@ -32,29 +32,6 @@ TEST_SHAPES = [
     (32, 8192),
     (64, 32768),
 ]
-ADDITIONAL_CORRECTNESS_CASES = [
-    {
-        "name": "masked_tail",
-        "batch": 3,
-        "vocab": 8193,
-        "dtype": "float32",
-        "pattern": "all_ties",
-    },
-    {
-        "name": "above_32768",
-        "batch": 2,
-        "vocab": 40003,
-        "dtype": "float32",
-        "pattern": "high_tail",
-    },
-    {
-        "name": "large_batch_small_vocab_fp16_ties",
-        "batch": 65,
-        "vocab": 257,
-        "dtype": "float16",
-        "pattern": "repeated_values",
-    },
-]
 WARMUP_ITERATIONS = 10
 BENCHMARK_ITERATIONS = 100
 
@@ -76,12 +53,17 @@ def _benchmark_cuda_graph_or_events(*args, **kwargs):
     )
 # <<< AKA-GENERATED <<<
 
-def run_correctness():
+def run_correctness(*, case_index=None):
+    if case_index is not None and case_index >= 10000:
+        from _upstream_controls import run_control
+        return run_control(case_index - 10000, load_module)
     import torch
     try: mod = load_module()
     except Exception as e: return False, f"Failed to load module: {e}"
     device = "cuda"
     for i, (batch, vocab) in enumerate(TEST_SHAPES):
+        if case_index is not None and i != case_index:
+            continue
         try:
             torch.manual_seed(42 + i)
             logits = torch.randn(batch, vocab, device=device, dtype=torch.float32)
@@ -97,43 +79,6 @@ def run_correctness():
                 return False, f"Shape {i+1}: mismatch"
         except Exception as e:
             return False, f"Shape {i+1}: exception: {e}"
-
-    for i, case in enumerate(ADDITIONAL_CORRECTNESS_CASES):
-        name = case["name"]
-        batch = case["batch"]
-        vocab = case["vocab"]
-        dtype = getattr(torch, case["dtype"])
-        try:
-            if case["pattern"] == "all_ties":
-                logits = torch.zeros(batch, vocab, device=device, dtype=dtype)
-                token_ids = torch.full(
-                    (batch,), vocab - 1, dtype=torch.int64, device=device
-                )
-            elif case["pattern"] == "high_tail":
-                logits = torch.zeros(batch, vocab, device=device, dtype=dtype)
-                logits[:, 32768:] = 1
-                token_ids = torch.tensor(
-                    [0, vocab - 1], dtype=torch.int64, device=device
-                )
-            else:
-                values = (torch.arange(vocab, device=device) % 7 - 3).to(dtype)
-                logits = values.unsqueeze(0).expand(batch, -1).contiguous()
-                token_ids = (
-                    torch.arange(batch, dtype=torch.int64, device=device) * 37
-                    + vocab
-                    - 1
-                ) % vocab
-
-            result = mod.compute_ranks(logits, token_ids)
-            torch.cuda.synchronize()
-            ref = torch.zeros(batch, dtype=torch.int64, device=device)
-            for b in range(batch):
-                x = logits[b, token_ids[b].item()]
-                ref[b] = (logits[b] >= x).sum().item()
-            if not torch.equal(result, ref):
-                return False, f"Additional case {name}: mismatch"
-        except Exception as e:
-            return False, f"Additional case {name}: exception: {e}"
     return True, None
 
 def run_performance():
@@ -192,11 +137,7 @@ def main():
         sys.exit(0 if ok else 1)
     elif args.mode == "correctness":
         ok, err = run_correctness()
-        report = {
-            "status": "ok" if ok else "fail",
-            "error": err,
-            "num_shapes": len(TEST_SHAPES) + len(ADDITIONAL_CORRECTNESS_CASES),
-        }
+        report = {"status": "ok" if ok else "fail", "error": err, "num_shapes": len(TEST_SHAPES)}
         with open(os.path.join(build_dir, "correctness_report.json"), "w") as f: json.dump(report, f, indent=2)
         print(f"Correctness: {'PASS' if ok else 'FAIL'}")
         if err: print(f"Error: {err}")

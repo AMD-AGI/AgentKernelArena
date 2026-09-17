@@ -207,6 +207,16 @@ def test_rand(size, seed, dtype, const_seed,  request, device='cuda'):
     ks_stat = max(np.max(np.arange(1, n + 1) / n - x_np), np.max(x_np - np.arange(0, n) / n))
     assert ks_stat < 0.01
 
+    # Preserve both original statistical gates; also require the actual seeded
+    # Philox sequence for every original seed/index-width/seed-binding case.
+    from _arena_reference import check_seeded_output
+    check_seeded_output(x, seed, N)
+    request.node.user_properties.append(('rng_contract', {
+        'exact_seeded_sequence_checked': True,
+        'original_range_checked': True, 'original_ks_checked': True,
+        'ks_stat': float(ks_stat), 'ks_limit': 0.01,
+    }))
+
 
 def philox_rand_reference(seed, size):
     """Return Triton's expected tl.rand sequence for offsets [0, size)."""

@@ -240,12 +240,37 @@ def run_correctness() -> None:
         print(f"Correctness case {idx} {cfg}: PASS")
 
 
+
+def _assert_timed_outputs(case: dict, timed) -> None:
+    """Check the actual captured invocation with a changed input, after timing.
+
+    Negating one data input retains its original distribution/range and leaves
+    shape, routing, scales, layouts, and captured storage addresses unchanged.
+    The reference is recomputed from the changed input using the same numerical
+    rule as ordinary correctness. An old cached output is not sufficient.
+    """
+    import torch
+
+    if not timed.bound or not isinstance(timed.outputs, torch.Tensor):
+        raise RuntimeError("Benchmark did not expose its captured output")
+    data = case['x']
+    data.copy_((-data.float()).to(data.dtype))
+    timed.outputs.fill_(float("nan"))
+    got = timed.rerun()
+    expected = _run_torch(case)
+    torch.testing.assert_close(got, expected, atol=0.03, rtol=1e-2)
+
+
 def run_performance() -> None:
     results: list[dict] = []
     for test_case_id, cfg in PERF_CASES:
         case = _make_case(**cfg)
         _run_aiter(case)  # warm JIT compile / autotune
-        time_ms, bench_meta = _benchmark_cuda_graph_or_events(lambda: _run_aiter(case))
+        timed = _TimedRun()
+        time_ms, bench_meta = _benchmark_cuda_graph_or_events(
+            lambda: _run_aiter(case), timed_run=timed
+        )
+        _assert_timed_outputs(case, timed)
         p = case["params"]
         entry = {
             "test_case_id": test_case_id,
@@ -259,6 +284,7 @@ def run_performance() -> None:
         results.append(entry)
         print(f"{test_case_id}: {time_ms:.4f} ms [{bench_meta.get('benchmark_method')}]")
     _write_performance_report(results)
+    return results
 
 
 def main() -> None:

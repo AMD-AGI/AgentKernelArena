@@ -25,9 +25,11 @@ import math
 import os
 import sys
 from pathlib import Path
-from _aka_benchmark import benchmark_cuda_graph_or_events
+from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
+from scripts.replay_checks import require_unchanged, verify_timed_run, allclose_output
 
-SOURCE_FILE = "fused_clamp_act_mul.py"
+from task_runtime import candidate_relative_path
+SOURCE_FILE = candidate_relative_path()
 ENTRY = "fused_clamp_act_mul"
 KERNEL = "_fused_clamp_silu_mul_kernel"
 
@@ -49,6 +51,7 @@ def _load_source():
     entry = os.path.join(_HERE, SOURCE_FILE)
     spec = importlib.util.spec_from_file_location("fused_clamp_act_mul_src", entry)
     mod = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = mod
     spec.loader.exec_module(mod)
     return mod
 
@@ -105,6 +108,28 @@ def run_compile():
     return True
 
 
+def _checked_elementwise_output(out, inp):
+    import torch
+    if not isinstance(out, torch.Tensor) or out.shape != (*inp.shape[:-1], inp.shape[-1] // 2) or out.dtype != inp.dtype or out.device != inp.device:
+        raise AssertionError("Output shape/dtype/device violates the operator contract")
+
+
+def _elementwise_replay_validator(inp):
+    inputs = (inp,)
+    originals = tuple(v.clone() for v in inputs)
+    expected = _torch_reference(inp, 7.0, None)
+    def perturb():
+        inp[..., inp.shape[-1] // 2:].neg_()
+    def reference():
+        return _torch_reference(inp, 7.0, None)
+    def compare(actual, expected):
+        _checked_elementwise_output(actual, inp)
+        allclose_output(actual, expected, atol=1e-2, rtol=1e-2)
+    def validate(timed):
+        return verify_timed_run(timed, inputs=inputs, originals=originals, expected=expected, perturb=perturb, reference=reference, compare=compare)
+    return validate
+
+
 def run_correctness(verbose=True):
     import torch
 
@@ -115,9 +140,13 @@ def run_correctness(verbose=True):
         tag = c["name"]
         try:
             inp, w = _make_inputs(c["M"], c["D"], c["wm"])
+            protected_inputs = tuple(v for v in (inp, w) if v is not None)
+            originals = tuple(v.clone() for v in protected_inputs)
             out = mod.fused_clamp_act_mul(
                 inp, swiglu_limit=c["limit"], activation="silu", weights=w
             )
+            require_unchanged(protected_inputs, originals)
+            _checked_elementwise_output(out, inp)
             torch.cuda.synchronize()
             ref = _torch_reference(inp, c["limit"], w)
             finite = bool(torch.isfinite(out).all().item())
@@ -150,6 +179,7 @@ def run_benchmark(verbose=True):
     report, latencies = [], []
     for idx, shape in enumerate(shapes):
         inp, _ = _make_inputs(shape["M"], shape["D"], "none")
+        replay_validate = _elementwise_replay_validator(inp)
         fn = lambda: mod.fused_clamp_act_mul(  # noqa: E731
             inp, swiglu_limit=7.0, activation="silu", weights=None
         )
@@ -158,9 +188,11 @@ def run_benchmark(verbose=True):
         for _ in range(WARMUP):
             fn()
         torch.cuda.synchronize()
+        timed = TimedRun()
         ms, bench_meta = benchmark_cuda_graph_or_events(
-            fn, warmup=0, repetition=ITERS
+            fn, warmup=0, repetition=ITERS, timed_run=timed
         )
+        bench_meta.update(replay_validate(timed))
         latencies.append(ms)
         nbytes = shape["M"] * (shape["D"] + shape["D"] // 2) * 2
         report.append(

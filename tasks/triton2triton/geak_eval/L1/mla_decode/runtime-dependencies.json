@@ -1,0 +1,18 @@
+{
+  "upstream_repository": "https://github.com/ROCm/aiter",
+  "upstream_revision": "4ad99832823dde2315b361cbd3b54b1c5c12acd5",
+  "qualified_image": "lmsysorg/sglang-rocm@sha256:106a7adbeec5554b6e66a4bda0b3694af442717b9fe92754a9885520077b6f93",
+  "source_root": "dependencies/aiter_triton",
+  "files": {
+    "_triton_kernels/activation.py": "64b7d82afc123636bc82f6422f502818405bfc3a8a38b2d7af91ae154a125d9b",
+    "_triton_kernels/attention/mla_decode_rope.py": "0498aa7be8045a65a5c318729408c19a15691f4a74be1f7600c5d8c5e2187881",
+    "configs/gfx1250/triton/attention/mla_decode_rope/DEFAULT.json": "bd67ae490fa863c3f1c6001a4062688e0434557d0483c475ca5c52d37ab1fb59",
+    "configs/gfx942/triton/attention/mla_decode_rope/DEFAULT.json": "cc56752fab14495caeef8b312eea402a9401b5ba09250c6d45324a52628340ed",
+    "configs/gfx950/triton/attention/mla_decode_rope/DEFAULT.json": "a7f6de4cc61be053caad7ea7edecd4a4c513eb4df62e5d38fa913bb501a77446",
+    "utils/_triton/arch_info.py": "f20618af9b6aa87c2b4f73939cbea7daea91fd8f9a3c00af06878ae2647303af",
+    "utils/_triton/kernel_repr.py": "c65c5d8cd32b3c5df72a33d426e71901140226080b1b4f64ed46e1e7250110e1",
+    "utils/_triton/pid_preprocessing.py": "b18096d48047fd2f7f232c470886e9f154712c1fb12bd01091fd6a366689790b",
+    "utils/config_utils.py": "a12ee47a57f6ace63d2bcc4ef68da3b7d097906cbcb77ea8ebac45d3ba10a16a",
+    "utils/logger.py": "1199a4044a8a27de0822e11bb702d409a02bd766f668fd81bb8167d47ab9b9ba"
+  }
+}

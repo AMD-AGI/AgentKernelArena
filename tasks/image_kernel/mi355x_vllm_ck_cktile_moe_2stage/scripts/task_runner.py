@@ -562,6 +562,10 @@ def _prepare_moe(case: dict, correctness: bool = False) -> dict:
         quant_type == aiter.QuantType.per_1x32
         and activation_dtype in (dtypes.bf16, dtypes.fp16, dtypes.fp8)
         and weight_dtype == dtypes.fp4x2
+        # The pinned GPT-OSS CK-Tile split-K path consumes generic shuffled
+        # MXFP4 weights/scales and applies activation to standard gate/up rows.
+        # Legacy A16W4 interleaving is a different physical input contract.
+        and OPERATOR != "cktile_moe_2stage"
     ):
         w1_runtime = shuffle_weight_a16w4(w1_quant, 16, True)
         w1_scale_runtime = shuffle_scale_a16w4(
@@ -724,12 +728,118 @@ def run_compile() -> None:
     print(f"{OPERATOR} compile smoke: PASS")
 
 
+def _assert_output_contract(inputs, output):
+    torch = _torch()
+    if OPERATOR == "a8w8_blockscale_gemm":
+        source = inputs["x"]
+        expected_shape = tuple(inputs["shape"][:2])
+    else:
+        source = inputs["hidden"]
+        expected_shape = tuple(source.shape)
+    assert tuple(output.shape) == expected_shape, "Wrong CK output shape"
+    assert output.dtype == torch.bfloat16, "CK output must be BF16"
+    assert output.device == source.device, "Wrong CK output device"
+    assert torch.isfinite(output).all(), "Nonfinite CK output"
+
+
+def _ck_reference(inputs):
+    return (_gemm_reference(inputs) if OPERATOR == "a8w8_blockscale_gemm"
+            else _moe_reference(inputs))
+
+
+def _prepare_timed_check(inputs):
+    # Take copies before the first candidate/warmup invocation. HIP candidates
+    # only receive the live tensors, never these reference/snapshot buffers.
+    torch = _torch()
+    originals = {key: value for key, value in inputs.items() if isinstance(value, torch.Tensor)}
+    snapshots = {key: value.detach().clone() for key, value in originals.items()}
+    reference_inputs = {**inputs, **snapshots}
+    expected = _ck_reference(reference_inputs)
+    perturbed = dict(snapshots)
+    if OPERATOR == "a8w8_blockscale_gemm":
+        # Positive scales expose degenerate zero outputs even when the original
+        # absolute gate accepts tiny outputs. This adds no measured score point.
+        perturbed["x_scale"] = snapshots["x_scale"] * 64
+        perturbed["w_scale"] = snapshots["w_scale"] * 64
+    else:
+        perturbed["hidden"] = -snapshots["hidden"]
+    perturbed_expected = _ck_reference({**inputs, **perturbed})
+    return {"originals": originals, "snapshots": snapshots, "expected": expected,
+            "perturbed": perturbed, "perturbed_expected": perturbed_expected}
+
+
+def _assert_readonly_inputs(inputs, expected, originals):
+    torch = _torch()
+    for key, before in expected.items():
+        actual = inputs[key]
+        assert actual is originals[key], (key, "Input tensor was replaced")
+        assert actual.shape == before.shape and actual.dtype == before.dtype, key
+        assert actual.device == before.device, key
+        # Byte comparison supports FP8 and detects any input write; it does not
+        # apply a floating-point tolerance to the immutable input contract.
+        assert torch.equal(actual.contiguous().view(torch.uint8),
+                           before.contiguous().view(torch.uint8)), (key, "Readonly input was modified")
+
+
+def _assert_moe_magnitude(observed, expected):
+    # Keep the original cosine error < .03, and extend its equal-norm
+    # squared-distance bound 2*(1-cosine) to unequal output magnitudes.
+    # This fixed bound is not calibrated from a baseline's measured error.
+    torch = _torch()
+    actual = observed.float().flatten()
+    reference = expected.float().flatten()
+    assert torch.isfinite(reference).all(), "Nonfinite CK MoE reference"
+    signal = float(reference.square().sum())
+    error = float((actual - reference).square().sum())
+    assert math.isfinite(signal) and math.isfinite(error), "Nonfinite CK MoE error"
+    relative_l2_squared = error / signal if signal else (0.0 if error == 0 else float("inf"))
+    metrics = {"cosine_error": float(1 - torch.nn.functional.cosine_similarity(actual, reference, dim=0)),
+               "relative_l2_squared": relative_l2_squared,
+               "norm_ratio": math.sqrt(float(actual.square().sum()) / signal) if signal else None}
+    print("CK_MOE_NUMERICS=" + json.dumps(metrics, sort_keys=True))
+    assert relative_l2_squared < 0.06, ("Incorrect CK MoE output magnitude", metrics)
+
+
+def _assert_ck_close(inputs, observed, expected):
+    torch = _torch()
+    _assert_output_contract(inputs, observed)
+    if OPERATOR == "a8w8_blockscale_gemm":
+        torch.testing.assert_close(observed, expected, atol=0.15, rtol=0.12)
+    else:
+        error = 1 - torch.nn.functional.cosine_similarity(
+            observed.float().flatten(), expected.float().flatten(), dim=0)
+        assert float(error) < 0.03, "Incorrect CK MoE timed output"
+        _assert_moe_magnitude(observed, expected)
+
+
+def _assert_timed_outputs(inputs, timed, check):
+    try:
+        assert timed.bound, "Timing must expose its captured invocation"
+        _assert_readonly_inputs(inputs, check["snapshots"], check["originals"])
+        # First inspect the buffers actually written by the measured original
+        # workload, using an oracle computed before any candidate execution.
+        _assert_ck_close(inputs, timed.outputs, check["expected"])
+        for key, value in check["perturbed"].items():
+            if value is not check["snapshots"][key]:
+                inputs[key].copy_(value)
+        timed.outputs.fill_(float("nan"))
+        observed = timed.rerun()
+        _assert_readonly_inputs(inputs, check["perturbed"], check["originals"])
+        _assert_ck_close(inputs, observed, check["perturbed_expected"])
+    finally:
+        # Failure must not leave perturbed or candidate-corrupted inputs behind.
+        for key, original in check["originals"].items():
+            original.copy_(check["snapshots"][key])
+            inputs[key] = original
+
+
 def run_correctness() -> None:
     torch = _torch()
     for case in CASES:
         inputs = _make(case, correctness=True)
         got = _run(inputs)
         torch.cuda.synchronize()
+        _assert_output_contract(inputs, got)
         if OPERATOR == "unified_attention":
             torch.testing.assert_close(
                 got, _attention_reference(inputs), atol=0.08, rtol=0.08
@@ -779,6 +889,7 @@ def run_correctness() -> None:
                 case["id"],
                 float(cosine_error),
             )
+            _assert_moe_magnitude(got, expected)
         print("correctness PASS", case["id"])
 
 
@@ -786,15 +897,19 @@ def run_performance() -> None:
     rows = []
     for case in CASES:
         inputs = _make(case, correctness=False)
+        timed_check = _prepare_timed_check(inputs)
         _run(inputs)
         _torch().cuda.synchronize()
+        timed = _TimedRun()
         execution_time_ms, bench_meta = _benchmark_cuda_graph_or_events(
             lambda: _run(inputs),
             warmup=3,
             repetition=20,
             target_ms=1.0,
             max_graph_repeats=100,
+            timed_run=timed,
         )
+        _assert_timed_outputs(inputs, timed, timed_check)
         metadata = {
             **case["params"],
             "model": case["model"],
@@ -824,6 +939,7 @@ def run_performance() -> None:
             bench_meta.get("benchmark_fallback_reason", ""),
         )
     _write_report(rows)
+    return rows
 
 
 def main() -> None:

@@ -25,7 +25,8 @@ import flydsl.expr as fx
 from flydsl._mlir import ir
 from flydsl._mlir.dialects import llvm, scf
 from flydsl.compiler.kernel_function import CompilationContext
-from flydsl.expr import arith, buffer_ops, const_expr, range_constexpr, vector
+from flydsl.expr import arith, const_expr, range_constexpr
+from flydsl_compat import buffer_ops, vector
 from flydsl.expr.arith import ArithValue, CmpIPredicate
 from flydsl.expr.typing import Int32, T
 

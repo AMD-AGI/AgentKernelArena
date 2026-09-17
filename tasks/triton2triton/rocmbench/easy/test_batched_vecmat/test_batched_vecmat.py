@@ -27,25 +27,32 @@ def batched_vecmat(
     output_tile = (m_index * block_m + tl.arange(0, block_m))[:, None] * dim_n \
         + (n_index * block_n + tl.arange(0, block_n))[None, :]
 
-    vecmat = tl.zeros([block_m, block_n], dtype=A.dtype.element_ty)
-    k_blocks = dim_k // block_k
+    vecmat = tl.zeros([block_m, block_n], dtype=tl.float32)
+    k_blocks = tl.cdiv(dim_k, block_k)
     for k_index in range(k_blocks):
         # Load A tile
         a_tile = (m_index * block_m + tl.arange(0, block_m))[:, None] * dim_k \
             + (k_index * block_k + tl.arange(0, block_k))[None, :]
-        a = tl.load(A + a_tile)
+        a = tl.load(A + a_tile,
+                    mask=((m_index * block_m + tl.arange(0, block_m))[:, None] < dim_m) &
+                         ((k_index * block_k + tl.arange(0, block_k))[None, :] < dim_k), other=0)
 
         # Load B tile, transposed to [n, m, k] in order to broadcast A on a
         # leading dimension.
         b_tile = (m_index * block_m + tl.arange(0, block_m))[None, :, None] * dim_n * dim_k \
             + (n_index * block_n + tl.arange(0, block_n))[:, None, None] * dim_k \
             + (k_index * block_k + tl.arange(0, block_k))[None, None, :]
-        b = tl.load(B + b_tile)
+        b = tl.load(B + b_tile,
+                    mask=((m_index * block_m + tl.arange(0, block_m))[None, :, None] < dim_m) &
+                         ((n_index * block_n + tl.arange(0, block_n))[:, None, None] < dim_n) &
+                         ((k_index * block_k + tl.arange(0, block_k))[None, None, :] < dim_k), other=0)
 
         expanded_a, _ = tl.broadcast(a, b)
-        vecmat += tl.trans(tl.sum(expanded_a * b, axis=2))
+        vecmat += tl.trans(tl.sum(expanded_a * b, axis=2, dtype=tl.float32))
 
-    tl.store(output + output_tile, vecmat)
+    tl.store(output + output_tile, vecmat,
+             mask=((m_index * block_m + tl.arange(0, block_m))[:, None] < dim_m) &
+                  ((n_index * block_n + tl.arange(0, block_n))[None, :] < dim_n))
 
 
 ##################################################################################################################################################  
@@ -184,29 +191,55 @@ def test_vecmat(request, device='cuda'):
 
     grid = (M // block_m, N // block_n)
 
-    batched_vecmat[grid](
-        A_tri, B_tri, M, N, K, C_tri,  #
-        block_m=block_m, block_n=block_n, block_k=block_k,  #
-        num_warps=4, num_stages=1)
+    from _arena_reference import VecmatCheck
+    check = VecmatCheck(A_tri, B_tri)
+    try:
+        batched_vecmat[grid](
+            A_tri, B_tri, M, N, K, C_tri,  #
+            block_m=block_m, block_n=block_n, block_k=block_k,  #
+            num_warps=4, num_stages=1)
 
-    A_expanded = A[:, np.newaxis, :]
-    A_broadcasted = np.broadcast_to(A_expanded, (M, N, K))
-    AB = A_broadcasted * B
-    C_ref = np.sum(AB, axis=2)
+        A_expanded = A[:, np.newaxis, :]
+        A_broadcasted = np.broadcast_to(A_expanded, (M, N, K))
+        AB = A_broadcasted * B
+        C_ref = np.sum(AB, axis=2)
 
-    ################### save tri_out in result_gold ###################
-    # Convert C_ref (numpy array) to a torch tensor on CPU  
-    # C_ref is float32 because A_vec and B_vec are float32.  
+        ################### save tri_out in result_gold ###################
+        # Convert C_ref (numpy array) to a torch tensor on CPU
+        # C_ref is float32 because A_vec and B_vec are float32.
 
-    result_gold['_CALL_SUCCESS_'] = torch.tensor([[1.0]])
-    
-    ## triton_result is assumed to be torch tensor not numpy ndarray
-    test_case_name = request.node.name
-    sanitized_key_name = test_case_name.replace("::", "_").replace("[", "_").replace("]", "").replace("-", "_")
-    result_gold[sanitized_key_name] = C_tri.cpu()
-    ################################################################### 
-    result_gold['_CALL_SUCCESS_'] = torch.tensor([[1.0]])
-    np.testing.assert_allclose(C_ref, C_tri.cpu().numpy(), rtol=0.01, atol=1e-3)
+        result_gold['_CALL_SUCCESS_'] = torch.tensor([[1.0]])
+
+        ## triton_result is assumed to be torch tensor not numpy ndarray
+        test_case_name = request.node.name
+        sanitized_key_name = test_case_name.replace("::", "_").replace("[", "_").replace("]", "").replace("-", "_")
+        result_gold[sanitized_key_name] = C_tri.cpu()
+        ###################################################################
+        result_gold['_CALL_SUCCESS_'] = torch.tensor([[1.0]])
+        np.testing.assert_allclose(C_ref, C_tri.cpu().numpy(), rtol=0.01, atol=1e-3)
+
+        check(C_tri)
+        request.node.user_properties.append(("vecmat_contract", {"readonly_input_checked": True, "full_output_checked": True, "original_numpy_gate_checked": True}))
+    finally:
+        check.restore()
+
+
+@pytest.mark.parametrize("dtype_str", ["fp32", "fp16"])
+def test_partial_m_n_k_control(dtype_str, request):
+    from _arena_reference import VecmatCheck
+    dtype = torch.float16 if dtype_str == "fp16" else torch.float32
+    M, N, K = 17, 19, 35
+    a = ((torch.arange(M * K, device="cuda") % 9 - 4).reshape(M, K) * .125).to(dtype)
+    b = ((torch.arange(M * N * K, device="cuda") % 7 - 3).reshape(M, N, K) * .25).to(dtype)
+    check = VecmatCheck(a, b)
+    try:
+        out = batched_vecmat_triton_wrapper(a, b, 16, 32, 64)
+        check(out)
+        check.fresh(out)
+        check(batched_vecmat_triton_wrapper(a, b, 16, 32, 64))
+        request.node.user_properties.append(("vecmat_contract", {"readonly_input_checked": True, "full_output_checked": True, "fresh_input_replay_checked": True}))
+    finally:
+        check.restore()
 
 # --- Define TFLOPS and GB/s calculators for Batched VecMat ---
 def calculate_batched_vecmat_tflops(params: dict, ms: float) -> float:
@@ -291,11 +324,7 @@ BV_DTYPES_FOR_PERF = ['fp32', 'fp16'] # Original uses fp32, add fp16 for variety
 def test_performance(M, N, K, block_m, block_n, block_k, dtype_str, request):
     set_seed()
 
-    # Ensure M is divisible by block_m, N by block_n for simpler grid/kernel.
-    # The kernel itself should handle arbitrary M,N with masking.
-    # For performance, often aligned sizes are tested, but let's assume kernel handles it.
-    if M % block_m != 0 or N % block_n != 0:
-        pytest.skip(f"Skipping M={M},N={N} with block_m={block_m},block_n={block_n} due to non-divisibility for perf simplicity.")
+    # Operand/output masks make the original nondivisible N cases executable.
 
     if dtype_str == 'fp16': current_dtype = torch.float16
     elif dtype_str == 'bf16': current_dtype = torch.bfloat16 # Not in original, but for consistency

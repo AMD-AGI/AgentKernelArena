@@ -18,6 +18,44 @@ except ModuleNotFoundError:
     from src.score import resolve_speedup_ratio, task_result_scoring
 
 
+def _outcome_fields(result: Dict[str, Any]) -> Dict[str, Any]:
+    """Keep absent legacy outcomes unknown; never infer acceptance from timing."""
+    accepted = result.get("candidate_accepted")
+    delivery = result.get("delivery_status")
+    return {
+        "candidate_accepted": accepted if type(accepted) is bool else None,
+        "delivery_status": delivery if delivery in ("COMPLETE", "INCOMPLETE", "NOT_ACCEPTED") else None,
+    }
+
+
+def _outcome_counts(tasks: List[Dict[str, Any]]) -> Dict[str, int]:
+    outcomes = [_outcome_fields(task) for task in tasks]
+    return {
+        "candidate_accepted_count": sum(row["candidate_accepted"] is True for row in outcomes),
+        "candidate_rejected_count": sum(row["candidate_accepted"] is False for row in outcomes),
+        "candidate_acceptance_unknown_count": sum(row["candidate_accepted"] is None for row in outcomes),
+        "delivery_complete_count": sum(row["delivery_status"] == "COMPLETE" for row in outcomes),
+        "delivery_incomplete_count": sum(row["delivery_status"] == "INCOMPLETE" for row in outcomes),
+        "delivery_not_accepted_count": sum(row["delivery_status"] == "NOT_ACCEPTED" for row in outcomes),
+        "delivery_unknown_count": sum(row["delivery_status"] is None for row in outcomes),
+    }
+
+
+def _task_status(task: Dict[str, Any]) -> str:
+    outcome = _outcome_fields(task)
+    if outcome["candidate_accepted"] is False or outcome["delivery_status"] == "NOT_ACCEPTED":
+        return "NOT_ACCEPTED"
+    if outcome["delivery_status"] == "INCOMPLETE":
+        return "INCOMPLETE"
+    if outcome["candidate_accepted"] is True:
+        return "ACCEPTED"
+    return "PASS" if task.get("pass_correctness") else ("PARTIAL" if task.get("pass_compilation") else "FAIL")
+
+
+def _acceptance_label(value: Any) -> str:
+    return "YES" if value is True else "NO" if value is False else "N/A"
+
+
 def _build_general_report_lines(
     aggregate_result: Dict[str, Any], 
     run_metadata: Optional[Dict[str, str]] = None,
@@ -57,6 +95,18 @@ def _build_general_report_lines(
         f"  P25/P75/P90 Speedup:   {aggregate_result.get('p25_speedup', 0.0):.2f}x / {aggregate_result.get('p75_speedup', 0.0):.2f}x / {aggregate_result.get('p90_speedup', 0.0):.2f}x",
         f"  Valid Speedup Count:   {aggregate_result['valid_speedup_count']}",
     ])
+    outcomes = _outcome_counts(aggregate_result.get("task_details", []))
+    lines.extend([
+        "Final acceptance (separate from numerical results):",
+        f"  Accepted:             {outcomes['candidate_accepted_count']}",
+        f"  Rejected:             {outcomes['candidate_rejected_count']}",
+        f"  Not reported / N/A:   {outcomes['candidate_acceptance_unknown_count']}",
+        "Delivery:",
+        f"  Complete:             {outcomes['delivery_complete_count']}",
+        f"  Incomplete:           {outcomes['delivery_incomplete_count']}",
+        f"  Not accepted:         {outcomes['delivery_not_accepted_count']}",
+        f"  Not reported / N/A:   {outcomes['delivery_unknown_count']}",
+    ])
     
     # Add task type breakdowns if available
     if task_type_breakdown:
@@ -79,6 +129,16 @@ def _build_general_report_lines(
             lines.append(f"    Correctness Pass Rate: {stats['correctness_pass_rate']:.1f}%")
             lines.append(f"    Speedup > 1.0:        {stats['speedup_gt_1_count']}/{stats['count']} ({stats['speedup_gt_1_rate']:.1f}%)")
             lines.append(f"    Average Score:        {stats['average_score']:.2f}")
+            if "candidate_accepted_count" in stats:
+                lines.append(
+                    f"    Accepted / Rejected / N/A: {stats['candidate_accepted_count']} / "
+                    f"{stats['candidate_rejected_count']} / {stats['candidate_acceptance_unknown_count']}"
+                )
+                lines.append(
+                    f"    Delivery complete / incomplete / not accepted / N/A: "
+                    f"{stats['delivery_complete_count']} / {stats['delivery_incomplete_count']} / "
+                    f"{stats['delivery_not_accepted_count']} / {stats['delivery_unknown_count']}"
+                )
             lines.append("")
     
     # Add total performance summary
@@ -109,9 +169,12 @@ def _build_general_report_lines(
     ])
 
     for task in aggregate_result["task_details"]:
-        status = "PASS" if task["pass_correctness"] else ("PARTIAL" if task["pass_compilation"] else "FAIL")
+        status = _task_status(task)
+        outcome = _outcome_fields(task)
         lines.append(
-            f"{status:<8} {task['task_name']:<40} Score: {task['score']:>6.1f}  Speedup: {task['speedup_ratio']:.2f}x"
+            f"{status:<12} {task['task_name']:<40} Score: {task['score']:>6.1f}  Speedup: {task['speedup_ratio']:.2f}x"
+            f"  Accepted: {_acceptance_label(outcome['candidate_accepted'])}"
+            f"  Delivery: {outcome['delivery_status'] or 'N/A'}"
         )
         if task["error"]:
             lines.append(f"         Error: {task['error']}")
@@ -256,6 +319,7 @@ def _aggregate_by_task_type(task_details: List[Dict[str, Any]]) -> Dict[str, Dic
         'correctness_pass_count': 0,
         'speedup_gt_1_count': 0,
         'speedup_values': [],
+        'outcomes': [],
         'task_names': []
     })
     
@@ -268,6 +332,7 @@ def _aggregate_by_task_type(task_details: List[Dict[str, Any]]) -> Dict[str, Dic
         stats['count'] += 1
         stats['total_score'] += task.get('score', 0.0)
         stats['task_names'].append(task.get('task_name', ''))
+        stats['outcomes'].append(task)
         
         if task.get('pass_compilation', False):
             stats['compilation_pass_count'] += 1
@@ -303,6 +368,7 @@ def _aggregate_by_task_type(task_details: List[Dict[str, Any]]) -> Dict[str, Dic
             **speed_stats,
             'valid_speedup_count': len(speedup_values)
         }
+        result[task_type].update(_outcome_counts(stats['outcomes']))
     
     return result
 
@@ -435,6 +501,8 @@ def general_post_processing(
             'pass_compilation': False,
             'pass_correctness': False,
             'speedup_ratio': 0.0,
+            'candidate_accepted': None,
+            'delivery_status': None,
             'error': None
         }
 
@@ -452,6 +520,7 @@ def general_post_processing(
             task_info['task_name'] = result_data.get('task_name', task_name)
             task_info['pass_compilation'] = result_data.get('pass_compilation', False)
             task_info['pass_correctness'] = result_data.get('pass_correctness', False)
+            task_info.update(_outcome_fields(result_data))
 
             base_execution_time = result_data.get('base_execution_time', 0.0)
             best_optimized_execution_time = result_data.get('best_optimized_execution_time', 0.0)
@@ -525,6 +594,7 @@ def general_post_processing(
     }
 
     # Aggregate statistics by task type
+    aggregate_result.update(_outcome_counts(task_details))
     task_type_breakdown = _aggregate_by_task_type(task_details)
 
     # Determine run directory and create reports subdirectory
@@ -564,7 +634,8 @@ def general_post_processing(
                 'p25_speedup': aggregate_result.get('p25_speedup', 0.0),
                 'p75_speedup': aggregate_result.get('p75_speedup', 0.0),
                 'p90_speedup': aggregate_result.get('p90_speedup', 0.0),
-                'valid_speedup_count': aggregate_result['valid_speedup_count']
+                'valid_speedup_count': aggregate_result['valid_speedup_count'],
+                **_outcome_counts(task_details),
             },
             'task_types': task_type_breakdown
         }
@@ -600,6 +671,9 @@ def export_task_results_csv(
       - Task Type
       - Score
       - Speedup
+      - Status (final outcome when available; otherwise numerical status)
+      - Candidate Accepted (YES/NO/N/A)
+      - Delivery Status
       - Optimization_summary
     """
     if not workspace_paths:
@@ -628,12 +702,16 @@ def export_task_results_csv(
         score = task.get("score", 0.0) if isinstance(task.get("score", 0.0), (int, float)) else 0.0
         speedup = task.get("speedup_ratio", 0.0) if isinstance(task.get("speedup_ratio", 0.0), (int, float)) else 0.0
         optimization_summary = ""
+        outcome = _outcome_fields(task)
+        status = _task_status(task)
 
         # If task_result.yaml is missing or invalid, force score/speedup to 0.
         if result_file.exists():
             try:
                 with open(result_file, "r") as f:
                     result_data = yaml.safe_load(f) or {}
+                outcome = _outcome_fields(result_data)
+                status = _task_status(result_data)
                 optimization_summary = result_data.get("optimization_summary", "") or ""
                 task_name = result_data.get("task_name", task_name)
                 if "/" in task_name:
@@ -642,22 +720,30 @@ def export_task_results_csv(
                 score = 0.0
                 speedup = 0.0
                 optimization_summary = ""
+                outcome = _outcome_fields({})
+                status = "FAIL"
         else:
             score = 0.0
             speedup = 0.0
+            outcome = _outcome_fields({})
+            status = "FAIL"
 
         rows.append({
             "Task Name": task_name,
             "Task Type": task_type,
             "Score": f"{float(score):.4f}",
             "Speedup": f"{float(speedup):.4f}",
+            "Status": status,
+            "Candidate Accepted": _acceptance_label(outcome["candidate_accepted"]),
+            "Delivery Status": outcome["delivery_status"] or "N/A",
             "Optimization_summary": optimization_summary.strip(),
         })
 
     with open(csv_path, "w", newline="") as f:
         writer = csv.DictWriter(
             f,
-            fieldnames=["Task Name", "Task Type", "Score", "Speedup", "Optimization_summary"]
+            fieldnames=["Task Name", "Task Type", "Score", "Speedup", "Status",
+                        "Candidate Accepted", "Delivery Status", "Optimization_summary"]
         )
         writer.writeheader()
         writer.writerows(rows)

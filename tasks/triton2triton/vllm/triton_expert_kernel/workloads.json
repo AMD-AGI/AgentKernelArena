@@ -1,0 +1,218 @@
+{
+  "version": 1,
+  "candidate_symbols": {
+    "source/triton_expert_kernel.py": [
+      {
+        "name": "expert_triton_kernel",
+        "jit": true
+      }
+    ]
+  },
+  "case_table": "TEST_SHAPES",
+  "input_table": [
+    [
+      32,
+      64,
+      32
+    ],
+    [
+      64,
+      128,
+      64
+    ],
+    [
+      128,
+      256,
+      128
+    ],
+    [
+      256,
+      512,
+      256
+    ],
+    [
+      512,
+      1024,
+      512
+    ]
+  ],
+  "cases": [
+    {
+      "test_case_id": "perf1",
+      "dtype": "float16",
+      "params": {
+        "case_index": 0,
+        "configuration": [
+          32,
+          64,
+          32
+        ],
+        "configuration_names": "(M, K, N)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf2",
+      "dtype": "float16",
+      "params": {
+        "case_index": 1,
+        "configuration": [
+          64,
+          128,
+          64
+        ],
+        "configuration_names": "(M, K, N)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf3",
+      "dtype": "float16",
+      "params": {
+        "case_index": 2,
+        "configuration": [
+          128,
+          256,
+          128
+        ],
+        "configuration_names": "(M, K, N)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf4",
+      "dtype": "float16",
+      "params": {
+        "case_index": 3,
+        "configuration": [
+          256,
+          512,
+          256
+        ],
+        "configuration_names": "(M, K, N)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf5",
+      "dtype": "float16",
+      "params": {
+        "case_index": 4,
+        "configuration": [
+          512,
+          1024,
+          512
+        ],
+        "configuration_names": "(M, K, N)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control-upstream-1",
+      "params": {
+        "case_index": 10000,
+        "configuration": [
+          "sub_tile_tails",
+          7,
+          13,
+          11,
+          "float16",
+          "contiguous"
+        ],
+        "source_revision": "0acf65b3a967ef1025dbfc5fd4b415b259e3bd43"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control-upstream-2",
+      "params": {
+        "case_index": 10001,
+        "configuration": [
+          "multi_tile_tails_wide",
+          65,
+          97,
+          129,
+          "float16",
+          "contiguous"
+        ],
+        "source_revision": "0acf65b3a967ef1025dbfc5fd4b415b259e3bd43"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control-upstream-3",
+      "params": {
+        "case_index": 10002,
+        "configuration": [
+          "strided_bfloat16_tails",
+          73,
+          45,
+          19,
+          "bfloat16",
+          "strided"
+        ],
+        "source_revision": "0acf65b3a967ef1025dbfc5fd4b415b259e3bd43"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    }
+  ],
+  "migration": {
+    "original_harness_sha256": "ec94f285d4ee6495782dd7703dae1744552fe39b365fd61406f55b7e56fd0928",
+    "original_correctness_sha256": "463f62131348bba064ab8e8827bbc15a98a43f6d183d2a3778630187cb294bca"
+  },
+  "upstream_controls": [
+    [
+      "sub_tile_tails",
+      7,
+      13,
+      11,
+      "float16",
+      "contiguous"
+    ],
+    [
+      "multi_tile_tails_wide",
+      65,
+      97,
+      129,
+      "float16",
+      "contiguous"
+    ],
+    [
+      "strided_bfloat16_tails",
+      73,
+      45,
+      19,
+      "bfloat16",
+      "strided"
+    ]
+  ]
+}

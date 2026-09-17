@@ -1,0 +1,1137 @@
+{
+  "original_cases": {
+    "correctness": [
+      {
+        "id": "kimi-k3-prefill-flydsl-k003-k006",
+        "model": "Kimi-K3",
+        "session_breakdown_id": "20260728T091437Z",
+        "kernel_ids": [
+          "k003",
+          "k006"
+        ],
+        "gpu_pct": 6.122,
+        "exact_shape_source": "invocation_spec (trace-recorded, authoritative)",
+        "seed": 19,
+        "params": {
+          "token": 7211,
+          "model_dim": 3584,
+          "inter_dim": 384,
+          "experts": 896,
+          "topk": 16,
+          "quant_type": "per_1x32",
+          "activation": "situ",
+          "a_dtype": "bf16",
+          "w_dtype": "fp4",
+          "use_g1u1": true,
+          "min_cosine": 0.999,
+          "max_rel_norm_err": 0.05
+        },
+        "trace_input_shapes": [
+          "act (7211,3584) bf16",
+          "w1 (896,768,1792) fp4",
+          "w2 (896,3584,192) fp4",
+          "topk_weights (7211,16) fp32",
+          "topk_ids (7211,16) int32",
+          "w1_scale (688128,112) Float8_e8m0fnu",
+          "w2_scale (3211264,16) Float8_e8m0fnu"
+        ],
+        "benchmark": {
+          "warmup": 3,
+          "repetition": 20,
+          "target_ms": 1.0,
+          "max_graph_repeats": 100
+        },
+        "correctness_token": 7211
+      },
+      {
+        "id": "kimi-k3-decode-graph-k001-k002",
+        "model": "Kimi-K3",
+        "session_breakdown_id": "20260728T091437Z",
+        "kernel_ids": [
+          "k001",
+          "k002"
+        ],
+        "gpu_pct": 19.101,
+        "exact_shape_source": "RECONSTRUCTED -- k001/k002 are hipGraph synthetic ops; per-call M is not recorded in the trace.",
+        "seed": 120,
+        "params": {
+          "token": 62,
+          "model_dim": 3584,
+          "inter_dim": 384,
+          "experts": 896,
+          "topk": 16,
+          "quant_type": "per_1x32",
+          "activation": "situ",
+          "a_dtype": "bf16",
+          "w_dtype": "fp4",
+          "use_g1u1": true,
+          "min_cosine": 0.999,
+          "max_rel_norm_err": 0.05
+        },
+        "trace_input_shapes": [
+          "stage1 moe_gemm1_0 + stage2 moe_gemm2_0, decode CUDA-graph synthetic ops -- exact M not recorded. Logical dims identical to the prefill case; only M (decode batch) differs. token=62 reconstructed from the steady-state slice concurrency (conc62); the real graph-capture batch was not archived."
+        ],
+        "benchmark": {
+          "warmup": 5,
+          "repetition": 30,
+          "target_ms": 1.0,
+          "max_graph_repeats": 200
+        },
+        "correctness_token": 62
+      },
+      {
+        "id": "mbucket-1",
+        "model": "Kimi-K3",
+        "session_breakdown_id": "20260728T091437Z",
+        "kernel_ids": [
+          "k001",
+          "k002",
+          "k003",
+          "k006"
+        ],
+        "correctness_only": true,
+        "exact_shape_source": "M-bucket coverage. Same session geometry; only the token count varies so that each of the 14 tuned FlyDSL kernel pairs actually reachable in the session (M buckets 1,2,4,...,8192, all present in the session server.log) gets correctness-checked. Not scored for performance.",
+        "dispatches": "t32x64x256_w3_bnt0_xcd4_kw2 | t32x256x256_reduce_bnt2_persist",
+        "measured_worst_of_3": {
+          "cosine": 0.999997,
+          "rel_norm_err": 0.0025
+        },
+        "seed": 1001,
+        "correctness_token": 1,
+        "params": {
+          "token": 1,
+          "model_dim": 3584,
+          "inter_dim": 384,
+          "experts": 896,
+          "topk": 16,
+          "quant_type": "per_1x32",
+          "activation": "situ",
+          "a_dtype": "bf16",
+          "w_dtype": "fp4",
+          "use_g1u1": true,
+          "min_cosine": 0.999,
+          "max_rel_norm_err": 0.05
+        }
+      },
+      {
+        "id": "mbucket-2",
+        "model": "Kimi-K3",
+        "session_breakdown_id": "20260728T091437Z",
+        "kernel_ids": [
+          "k001",
+          "k002",
+          "k003",
+          "k006"
+        ],
+        "correctness_only": true,
+        "exact_shape_source": "M-bucket coverage. Same session geometry; only the token count varies so that each of the 14 tuned FlyDSL kernel pairs actually reachable in the session (M buckets 1,2,4,...,8192, all present in the session server.log) gets correctness-checked. Not scored for performance.",
+        "dispatches": "t32x64x256_w4_bnt0_xcd4 | t32x256x256_reduce_bnt2",
+        "measured_worst_of_3": {
+          "cosine": 0.999997,
+          "rel_norm_err": 0.0026
+        },
+        "seed": 1002,
+        "correctness_token": 2,
+        "params": {
+          "token": 2,
+          "model_dim": 3584,
+          "inter_dim": 384,
+          "experts": 896,
+          "topk": 16,
+          "quant_type": "per_1x32",
+          "activation": "situ",
+          "a_dtype": "bf16",
+          "w_dtype": "fp4",
+          "use_g1u1": true,
+          "min_cosine": 0.999,
+          "max_rel_norm_err": 0.05
+        }
+      },
+      {
+        "id": "mbucket-4",
+        "model": "Kimi-K3",
+        "session_breakdown_id": "20260728T091437Z",
+        "kernel_ids": [
+          "k001",
+          "k002",
+          "k003",
+          "k006"
+        ],
+        "correctness_only": true,
+        "exact_shape_source": "M-bucket coverage. Same session geometry; only the token count varies so that each of the 14 tuned FlyDSL kernel pairs actually reachable in the session (M buckets 1,2,4,...,8192, all present in the session server.log) gets correctness-checked. Not scored for performance.",
+        "dispatches": "t32x64x256_w2_bnt0_xcd4_kw2 | t32x256x128_reduce",
+        "measured_worst_of_3": {
+          "cosine": 0.999997,
+          "rel_norm_err": 0.0026
+        },
+        "seed": 1004,
+        "correctness_token": 4,
+        "params": {
+          "token": 4,
+          "model_dim": 3584,
+          "inter_dim": 384,
+          "experts": 896,
+          "topk": 16,
+          "quant_type": "per_1x32",
+          "activation": "situ",
+          "a_dtype": "bf16",
+          "w_dtype": "fp4",
+          "use_g1u1": true,
+          "min_cosine": 0.999,
+          "max_rel_norm_err": 0.05
+        }
+      },
+      {
+        "id": "mbucket-8",
+        "model": "Kimi-K3",
+        "session_breakdown_id": "20260728T091437Z",
+        "kernel_ids": [
+          "k001",
+          "k002",
+          "k003",
+          "k006"
+        ],
+        "correctness_only": true,
+        "exact_shape_source": "M-bucket coverage. Same session geometry; only the token count varies so that each of the 14 tuned FlyDSL kernel pairs actually reachable in the session (M buckets 1,2,4,...,8192, all present in the session server.log) gets correctness-checked. Not scored for performance.",
+        "dispatches": "t32x64x256_w3_xcd4 | t32x256x256_reduce",
+        "measured_worst_of_3": {
+          "cosine": 0.999729,
+          "rel_norm_err": 0.0233
+        },
+        "seed": 1008,
+        "correctness_token": 8,
+        "params": {
+          "token": 8,
+          "model_dim": 3584,
+          "inter_dim": 384,
+          "experts": 896,
+          "topk": 16,
+          "quant_type": "per_1x32",
+          "activation": "situ",
+          "a_dtype": "bf16",
+          "w_dtype": "fp4",
+          "use_g1u1": true,
+          "min_cosine": 0.999,
+          "max_rel_norm_err": 0.05
+        }
+      },
+      {
+        "id": "mbucket-16",
+        "model": "Kimi-K3",
+        "session_breakdown_id": "20260728T091437Z",
+        "kernel_ids": [
+          "k001",
+          "k002",
+          "k003",
+          "k006"
+        ],
+        "correctness_only": true,
+        "exact_shape_source": "M-bucket coverage. Same session geometry; only the token count varies so that each of the 14 tuned FlyDSL kernel pairs actually reachable in the session (M buckets 1,2,4,...,8192, all present in the session server.log) gets correctness-checked. Not scored for performance.",
+        "dispatches": "t32x64x256_w3_bnt0_xcd4 | t32x256x256_atomic_bnt2",
+        "measured_worst_of_3": {
+          "cosine": 0.999974,
+          "rel_norm_err": 0.0072
+        },
+        "seed": 1016,
+        "correctness_token": 16,
+        "params": {
+          "token": 16,
+          "model_dim": 3584,
+          "inter_dim": 384,
+          "experts": 896,
+          "topk": 16,
+          "quant_type": "per_1x32",
+          "activation": "situ",
+          "a_dtype": "bf16",
+          "w_dtype": "fp4",
+          "use_g1u1": true,
+          "min_cosine": 0.999,
+          "max_rel_norm_err": 0.05
+        }
+      },
+      {
+        "id": "mbucket-32",
+        "model": "Kimi-K3",
+        "session_breakdown_id": "20260728T091437Z",
+        "kernel_ids": [
+          "k001",
+          "k002",
+          "k003",
+          "k006"
+        ],
+        "correctness_only": true,
+        "exact_shape_source": "M-bucket coverage. Same session geometry; only the token count varies so that each of the 14 tuned FlyDSL kernel pairs actually reachable in the session (M buckets 1,2,4,...,8192, all present in the session server.log) gets correctness-checked. Not scored for performance.",
+        "dispatches": "t32x64x256_w3_bnt0_xcd4_kw4 | t32x256x256_atomic_persist",
+        "measured_worst_of_3": {
+          "cosine": 0.99996,
+          "rel_norm_err": 0.0089
+        },
+        "seed": 1032,
+        "correctness_token": 32,
+        "params": {
+          "token": 32,
+          "model_dim": 3584,
+          "inter_dim": 384,
+          "experts": 896,
+          "topk": 16,
+          "quant_type": "per_1x32",
+          "activation": "situ",
+          "a_dtype": "bf16",
+          "w_dtype": "fp4",
+          "use_g1u1": true,
+          "min_cosine": 0.999,
+          "max_rel_norm_err": 0.05
+        }
+      },
+      {
+        "id": "mbucket-128",
+        "model": "Kimi-K3",
+        "session_breakdown_id": "20260728T091437Z",
+        "kernel_ids": [
+          "k001",
+          "k002",
+          "k003",
+          "k006"
+        ],
+        "correctness_only": true,
+        "exact_shape_source": "M-bucket coverage. Same session geometry; only the token count varies so that each of the 14 tuned FlyDSL kernel pairs actually reachable in the session (M buckets 1,2,4,...,8192, all present in the session server.log) gets correctness-checked. Not scored for performance.",
+        "dispatches": "t32x64x256_w3_bnt0_xcd4_kw2 | t32x256x256_atomic_bnt2",
+        "measured_worst_of_3": {
+          "cosine": 0.999974,
+          "rel_norm_err": 0.0072
+        },
+        "seed": 1128,
+        "correctness_token": 128,
+        "params": {
+          "token": 128,
+          "model_dim": 3584,
+          "inter_dim": 384,
+          "experts": 896,
+          "topk": 16,
+          "quant_type": "per_1x32",
+          "activation": "situ",
+          "a_dtype": "bf16",
+          "w_dtype": "fp4",
+          "use_g1u1": true,
+          "min_cosine": 0.999,
+          "max_rel_norm_err": 0.05
+        }
+      },
+      {
+        "id": "mbucket-256",
+        "model": "Kimi-K3",
+        "session_breakdown_id": "20260728T091437Z",
+        "kernel_ids": [
+          "k001",
+          "k002",
+          "k003",
+          "k006"
+        ],
+        "correctness_only": true,
+        "exact_shape_source": "M-bucket coverage. Same session geometry; only the token count varies so that each of the 14 tuned FlyDSL kernel pairs actually reachable in the session (M buckets 1,2,4,...,8192, all present in the session server.log) gets correctness-checked. Not scored for performance.",
+        "dispatches": "t32x64x256_w3 | t32x256x128_atomic_bnt2",
+        "measured_worst_of_3": {
+          "cosine": 0.99996,
+          "rel_norm_err": 0.009
+        },
+        "seed": 1256,
+        "correctness_token": 256,
+        "params": {
+          "token": 256,
+          "model_dim": 3584,
+          "inter_dim": 384,
+          "experts": 896,
+          "topk": 16,
+          "quant_type": "per_1x32",
+          "activation": "situ",
+          "a_dtype": "bf16",
+          "w_dtype": "fp4",
+          "use_g1u1": true,
+          "min_cosine": 0.999,
+          "max_rel_norm_err": 0.05
+        }
+      },
+      {
+        "id": "mbucket-512",
+        "model": "Kimi-K3",
+        "session_breakdown_id": "20260728T091437Z",
+        "kernel_ids": [
+          "k001",
+          "k002",
+          "k003",
+          "k006"
+        ],
+        "correctness_only": true,
+        "exact_shape_source": "M-bucket coverage. Same session geometry; only the token count varies so that each of the 14 tuned FlyDSL kernel pairs actually reachable in the session (M buckets 1,2,4,...,8192, all present in the session server.log) gets correctness-checked. Not scored for performance.",
+        "dispatches": "t32x64x256_w3_bnt0_kw4 | t32x256x128_atomic_bnt2_persist",
+        "measured_worst_of_3": {
+          "cosine": 0.999966,
+          "rel_norm_err": 0.0082
+        },
+        "seed": 1512,
+        "correctness_token": 512,
+        "params": {
+          "token": 512,
+          "model_dim": 3584,
+          "inter_dim": 384,
+          "experts": 896,
+          "topk": 16,
+          "quant_type": "per_1x32",
+          "activation": "situ",
+          "a_dtype": "bf16",
+          "w_dtype": "fp4",
+          "use_g1u1": true,
+          "min_cosine": 0.999,
+          "max_rel_norm_err": 0.05
+        }
+      },
+      {
+        "id": "mbucket-1024",
+        "model": "Kimi-K3",
+        "session_breakdown_id": "20260728T091437Z",
+        "kernel_ids": [
+          "k001",
+          "k002",
+          "k003",
+          "k006"
+        ],
+        "correctness_only": true,
+        "exact_shape_source": "M-bucket coverage. Same session geometry; only the token count varies so that each of the 14 tuned FlyDSL kernel pairs actually reachable in the session (M buckets 1,2,4,...,8192, all present in the session server.log) gets correctness-checked. Not scored for performance.",
+        "dispatches": "t32x128x256_w3_bnt0_xcd4 | t32x256x128_atomic_bnt2_persist",
+        "measured_worst_of_3": {
+          "cosine": 0.999985,
+          "rel_norm_err": 0.0056
+        },
+        "seed": 2024,
+        "correctness_token": 1024,
+        "params": {
+          "token": 1024,
+          "model_dim": 3584,
+          "inter_dim": 384,
+          "experts": 896,
+          "topk": 16,
+          "quant_type": "per_1x32",
+          "activation": "situ",
+          "a_dtype": "bf16",
+          "w_dtype": "fp4",
+          "use_g1u1": true,
+          "min_cosine": 0.999,
+          "max_rel_norm_err": 0.05
+        }
+      },
+      {
+        "id": "mbucket-2048",
+        "model": "Kimi-K3",
+        "session_breakdown_id": "20260728T091437Z",
+        "kernel_ids": [
+          "k001",
+          "k002",
+          "k003",
+          "k006"
+        ],
+        "correctness_only": true,
+        "exact_shape_source": "M-bucket coverage. Same session geometry; only the token count varies so that each of the 14 tuned FlyDSL kernel pairs actually reachable in the session (M buckets 1,2,4,...,8192, all present in the session server.log) gets correctness-checked. Not scored for performance.",
+        "dispatches": "t32x128x256_w3_xcd4 | t32x256x256_atomic",
+        "measured_worst_of_3": {
+          "cosine": 0.999984,
+          "rel_norm_err": 0.0057
+        },
+        "seed": 3048,
+        "correctness_token": 2048,
+        "params": {
+          "token": 2048,
+          "model_dim": 3584,
+          "inter_dim": 384,
+          "experts": 896,
+          "topk": 16,
+          "quant_type": "per_1x32",
+          "activation": "situ",
+          "a_dtype": "bf16",
+          "w_dtype": "fp4",
+          "use_g1u1": true,
+          "min_cosine": 0.999,
+          "max_rel_norm_err": 0.05
+        }
+      },
+      {
+        "id": "mbucket-4096",
+        "model": "Kimi-K3",
+        "session_breakdown_id": "20260728T091437Z",
+        "kernel_ids": [
+          "k001",
+          "k002",
+          "k003",
+          "k006"
+        ],
+        "correctness_only": true,
+        "exact_shape_source": "M-bucket coverage. Same session geometry; only the token count varies so that each of the 14 tuned FlyDSL kernel pairs actually reachable in the session (M buckets 1,2,4,...,8192, all present in the session server.log) gets correctness-checked. Not scored for performance.",
+        "dispatches": "t32x128x256_w3_xcd4 | t32x256x128_atomic_xcd4",
+        "measured_worst_of_3": {
+          "cosine": 0.99998,
+          "rel_norm_err": 0.0063
+        },
+        "seed": 5096,
+        "correctness_token": 4096,
+        "params": {
+          "token": 4096,
+          "model_dim": 3584,
+          "inter_dim": 384,
+          "experts": 896,
+          "topk": 16,
+          "quant_type": "per_1x32",
+          "activation": "situ",
+          "a_dtype": "bf16",
+          "w_dtype": "fp4",
+          "use_g1u1": true,
+          "min_cosine": 0.999,
+          "max_rel_norm_err": 0.05
+        }
+      }
+    ],
+    "performance": null
+  },
+  "cases": [
+    {
+      "test_case_id": "kimi-k3-prefill-flydsl-k003-k006",
+      "params": {
+        "token": 7211,
+        "model_dim": 3584,
+        "inter_dim": 384,
+        "experts": 896,
+        "topk": 16,
+        "quant_type": "per_1x32",
+        "activation": "situ",
+        "a_dtype": "bf16",
+        "w_dtype": "fp4",
+        "use_g1u1": true,
+        "min_cosine": 0.999,
+        "max_rel_norm_err": 0.05,
+        "seed": 19
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "shape": [
+        "act (7211,3584) bf16",
+        "w1 (896,768,1792) fp4",
+        "w2 (896,3584,192) fp4",
+        "topk_weights (7211,16) fp32",
+        "topk_ids (7211,16) int32",
+        "w1_scale (688128,112) Float8_e8m0fnu",
+        "w2_scale (3211264,16) Float8_e8m0fnu"
+      ],
+      "dtype": "bf16",
+      "metadata": {
+        "model": "Kimi-K3",
+        "session_breakdown_id": "20260728T091437Z",
+        "kernel_ids": [
+          "k003",
+          "k006"
+        ],
+        "gpu_pct": 6.122,
+        "exact_shape_source": "invocation_spec (trace-recorded, authoritative)",
+        "seed": 19,
+        "benchmark": {
+          "warmup": 3,
+          "repetition": 20,
+          "target_ms": 1.0,
+          "max_graph_repeats": 100
+        },
+        "correctness_token": 7211,
+        "timed_replay_seed": 43,
+        "workload_kind": "deterministic_synthetic",
+        "shape_authority": "declared_case_params",
+        "historical_trace_replay": false
+      }
+    },
+    {
+      "test_case_id": "kimi-k3-decode-graph-k001-k002",
+      "params": {
+        "token": 62,
+        "model_dim": 3584,
+        "inter_dim": 384,
+        "experts": 896,
+        "topk": 16,
+        "quant_type": "per_1x32",
+        "activation": "situ",
+        "a_dtype": "bf16",
+        "w_dtype": "fp4",
+        "use_g1u1": true,
+        "min_cosine": 0.999,
+        "max_rel_norm_err": 0.05,
+        "seed": 120
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "shape": [
+        "stage1 moe_gemm1_0 + stage2 moe_gemm2_0, decode CUDA-graph synthetic ops -- exact M not recorded. Logical dims identical to the prefill case; only M (decode batch) differs. token=62 reconstructed from the steady-state slice concurrency (conc62); the real graph-capture batch was not archived."
+      ],
+      "dtype": "bf16",
+      "metadata": {
+        "model": "Kimi-K3",
+        "session_breakdown_id": "20260728T091437Z",
+        "kernel_ids": [
+          "k001",
+          "k002"
+        ],
+        "gpu_pct": 19.101,
+        "exact_shape_source": "RECONSTRUCTED -- k001/k002 are hipGraph synthetic ops; per-call M is not recorded in the trace.",
+        "seed": 120,
+        "benchmark": {
+          "warmup": 5,
+          "repetition": 30,
+          "target_ms": 1.0,
+          "max_graph_repeats": 200
+        },
+        "correctness_token": 62,
+        "timed_replay_seed": 43,
+        "workload_kind": "deterministic_synthetic",
+        "shape_authority": "declared_case_params",
+        "historical_trace_replay": false
+      }
+    },
+    {
+      "test_case_id": "mbucket-1",
+      "params": {
+        "token": 1,
+        "model_dim": 3584,
+        "inter_dim": 384,
+        "experts": 896,
+        "topk": 16,
+        "quant_type": "per_1x32",
+        "activation": "situ",
+        "a_dtype": "bf16",
+        "w_dtype": "fp4",
+        "use_g1u1": true,
+        "min_cosine": 0.999,
+        "max_rel_norm_err": 0.05,
+        "seed": 1001
+      },
+      "checks": [
+        "correctness"
+      ],
+      "dtype": "bf16",
+      "metadata": {
+        "model": "Kimi-K3",
+        "session_breakdown_id": "20260728T091437Z",
+        "kernel_ids": [
+          "k001",
+          "k002",
+          "k003",
+          "k006"
+        ],
+        "correctness_only": true,
+        "exact_shape_source": "M-bucket coverage. Same session geometry; only the token count varies so that each of the 14 tuned FlyDSL kernel pairs actually reachable in the session (M buckets 1,2,4,...,8192, all present in the session server.log) gets correctness-checked. Not scored for performance.",
+        "dispatches": "t32x64x256_w3_bnt0_xcd4_kw2 | t32x256x256_reduce_bnt2_persist",
+        "measured_worst_of_3": {
+          "cosine": 0.999997,
+          "rel_norm_err": 0.0025
+        },
+        "seed": 1001,
+        "correctness_token": 1,
+        "timed_replay_seed": 43,
+        "workload_kind": "deterministic_synthetic",
+        "shape_authority": "declared_case_params",
+        "historical_trace_replay": false
+      }
+    },
+    {
+      "test_case_id": "mbucket-2",
+      "params": {
+        "token": 2,
+        "model_dim": 3584,
+        "inter_dim": 384,
+        "experts": 896,
+        "topk": 16,
+        "quant_type": "per_1x32",
+        "activation": "situ",
+        "a_dtype": "bf16",
+        "w_dtype": "fp4",
+        "use_g1u1": true,
+        "min_cosine": 0.999,
+        "max_rel_norm_err": 0.05,
+        "seed": 1002
+      },
+      "checks": [
+        "correctness"
+      ],
+      "dtype": "bf16",
+      "metadata": {
+        "model": "Kimi-K3",
+        "session_breakdown_id": "20260728T091437Z",
+        "kernel_ids": [
+          "k001",
+          "k002",
+          "k003",
+          "k006"
+        ],
+        "correctness_only": true,
+        "exact_shape_source": "M-bucket coverage. Same session geometry; only the token count varies so that each of the 14 tuned FlyDSL kernel pairs actually reachable in the session (M buckets 1,2,4,...,8192, all present in the session server.log) gets correctness-checked. Not scored for performance.",
+        "dispatches": "t32x64x256_w4_bnt0_xcd4 | t32x256x256_reduce_bnt2",
+        "measured_worst_of_3": {
+          "cosine": 0.999997,
+          "rel_norm_err": 0.0026
+        },
+        "seed": 1002,
+        "correctness_token": 2,
+        "timed_replay_seed": 43,
+        "workload_kind": "deterministic_synthetic",
+        "shape_authority": "declared_case_params",
+        "historical_trace_replay": false
+      }
+    },
+    {
+      "test_case_id": "mbucket-4",
+      "params": {
+        "token": 4,
+        "model_dim": 3584,
+        "inter_dim": 384,
+        "experts": 896,
+        "topk": 16,
+        "quant_type": "per_1x32",
+        "activation": "situ",
+        "a_dtype": "bf16",
+        "w_dtype": "fp4",
+        "use_g1u1": true,
+        "min_cosine": 0.999,
+        "max_rel_norm_err": 0.05,
+        "seed": 1004
+      },
+      "checks": [
+        "correctness"
+      ],
+      "dtype": "bf16",
+      "metadata": {
+        "model": "Kimi-K3",
+        "session_breakdown_id": "20260728T091437Z",
+        "kernel_ids": [
+          "k001",
+          "k002",
+          "k003",
+          "k006"
+        ],
+        "correctness_only": true,
+        "exact_shape_source": "M-bucket coverage. Same session geometry; only the token count varies so that each of the 14 tuned FlyDSL kernel pairs actually reachable in the session (M buckets 1,2,4,...,8192, all present in the session server.log) gets correctness-checked. Not scored for performance.",
+        "dispatches": "t32x64x256_w2_bnt0_xcd4_kw2 | t32x256x128_reduce",
+        "measured_worst_of_3": {
+          "cosine": 0.999997,
+          "rel_norm_err": 0.0026
+        },
+        "seed": 1004,
+        "correctness_token": 4,
+        "timed_replay_seed": 43,
+        "workload_kind": "deterministic_synthetic",
+        "shape_authority": "declared_case_params",
+        "historical_trace_replay": false
+      }
+    },
+    {
+      "test_case_id": "mbucket-8",
+      "params": {
+        "token": 8,
+        "model_dim": 3584,
+        "inter_dim": 384,
+        "experts": 896,
+        "topk": 16,
+        "quant_type": "per_1x32",
+        "activation": "situ",
+        "a_dtype": "bf16",
+        "w_dtype": "fp4",
+        "use_g1u1": true,
+        "min_cosine": 0.999,
+        "max_rel_norm_err": 0.05,
+        "seed": 1008
+      },
+      "checks": [
+        "correctness"
+      ],
+      "dtype": "bf16",
+      "metadata": {
+        "model": "Kimi-K3",
+        "session_breakdown_id": "20260728T091437Z",
+        "kernel_ids": [
+          "k001",
+          "k002",
+          "k003",
+          "k006"
+        ],
+        "correctness_only": true,
+        "exact_shape_source": "M-bucket coverage. Same session geometry; only the token count varies so that each of the 14 tuned FlyDSL kernel pairs actually reachable in the session (M buckets 1,2,4,...,8192, all present in the session server.log) gets correctness-checked. Not scored for performance.",
+        "dispatches": "t32x64x256_w3_xcd4 | t32x256x256_reduce",
+        "measured_worst_of_3": {
+          "cosine": 0.999729,
+          "rel_norm_err": 0.0233
+        },
+        "seed": 1008,
+        "correctness_token": 8,
+        "timed_replay_seed": 43,
+        "workload_kind": "deterministic_synthetic",
+        "shape_authority": "declared_case_params",
+        "historical_trace_replay": false
+      }
+    },
+    {
+      "test_case_id": "mbucket-16",
+      "params": {
+        "token": 16,
+        "model_dim": 3584,
+        "inter_dim": 384,
+        "experts": 896,
+        "topk": 16,
+        "quant_type": "per_1x32",
+        "activation": "situ",
+        "a_dtype": "bf16",
+        "w_dtype": "fp4",
+        "use_g1u1": true,
+        "min_cosine": 0.999,
+        "max_rel_norm_err": 0.05,
+        "seed": 1016
+      },
+      "checks": [
+        "correctness"
+      ],
+      "dtype": "bf16",
+      "metadata": {
+        "model": "Kimi-K3",
+        "session_breakdown_id": "20260728T091437Z",
+        "kernel_ids": [
+          "k001",
+          "k002",
+          "k003",
+          "k006"
+        ],
+        "correctness_only": true,
+        "exact_shape_source": "M-bucket coverage. Same session geometry; only the token count varies so that each of the 14 tuned FlyDSL kernel pairs actually reachable in the session (M buckets 1,2,4,...,8192, all present in the session server.log) gets correctness-checked. Not scored for performance.",
+        "dispatches": "t32x64x256_w3_bnt0_xcd4 | t32x256x256_atomic_bnt2",
+        "measured_worst_of_3": {
+          "cosine": 0.999974,
+          "rel_norm_err": 0.0072
+        },
+        "seed": 1016,
+        "correctness_token": 16,
+        "timed_replay_seed": 43,
+        "workload_kind": "deterministic_synthetic",
+        "shape_authority": "declared_case_params",
+        "historical_trace_replay": false
+      }
+    },
+    {
+      "test_case_id": "mbucket-32",
+      "params": {
+        "token": 32,
+        "model_dim": 3584,
+        "inter_dim": 384,
+        "experts": 896,
+        "topk": 16,
+        "quant_type": "per_1x32",
+        "activation": "situ",
+        "a_dtype": "bf16",
+        "w_dtype": "fp4",
+        "use_g1u1": true,
+        "min_cosine": 0.999,
+        "max_rel_norm_err": 0.05,
+        "seed": 1032
+      },
+      "checks": [
+        "correctness"
+      ],
+      "dtype": "bf16",
+      "metadata": {
+        "model": "Kimi-K3",
+        "session_breakdown_id": "20260728T091437Z",
+        "kernel_ids": [
+          "k001",
+          "k002",
+          "k003",
+          "k006"
+        ],
+        "correctness_only": true,
+        "exact_shape_source": "M-bucket coverage. Same session geometry; only the token count varies so that each of the 14 tuned FlyDSL kernel pairs actually reachable in the session (M buckets 1,2,4,...,8192, all present in the session server.log) gets correctness-checked. Not scored for performance.",
+        "dispatches": "t32x64x256_w3_bnt0_xcd4_kw4 | t32x256x256_atomic_persist",
+        "measured_worst_of_3": {
+          "cosine": 0.99996,
+          "rel_norm_err": 0.0089
+        },
+        "seed": 1032,
+        "correctness_token": 32,
+        "timed_replay_seed": 43,
+        "workload_kind": "deterministic_synthetic",
+        "shape_authority": "declared_case_params",
+        "historical_trace_replay": false
+      }
+    },
+    {
+      "test_case_id": "mbucket-128",
+      "params": {
+        "token": 128,
+        "model_dim": 3584,
+        "inter_dim": 384,
+        "experts": 896,
+        "topk": 16,
+        "quant_type": "per_1x32",
+        "activation": "situ",
+        "a_dtype": "bf16",
+        "w_dtype": "fp4",
+        "use_g1u1": true,
+        "min_cosine": 0.999,
+        "max_rel_norm_err": 0.05,
+        "seed": 1128
+      },
+      "checks": [
+        "correctness"
+      ],
+      "dtype": "bf16",
+      "metadata": {
+        "model": "Kimi-K3",
+        "session_breakdown_id": "20260728T091437Z",
+        "kernel_ids": [
+          "k001",
+          "k002",
+          "k003",
+          "k006"
+        ],
+        "correctness_only": true,
+        "exact_shape_source": "M-bucket coverage. Same session geometry; only the token count varies so that each of the 14 tuned FlyDSL kernel pairs actually reachable in the session (M buckets 1,2,4,...,8192, all present in the session server.log) gets correctness-checked. Not scored for performance.",
+        "dispatches": "t32x64x256_w3_bnt0_xcd4_kw2 | t32x256x256_atomic_bnt2",
+        "measured_worst_of_3": {
+          "cosine": 0.999974,
+          "rel_norm_err": 0.0072
+        },
+        "seed": 1128,
+        "correctness_token": 128,
+        "timed_replay_seed": 43,
+        "workload_kind": "deterministic_synthetic",
+        "shape_authority": "declared_case_params",
+        "historical_trace_replay": false
+      }
+    },
+    {
+      "test_case_id": "mbucket-256",
+      "params": {
+        "token": 256,
+        "model_dim": 3584,
+        "inter_dim": 384,
+        "experts": 896,
+        "topk": 16,
+        "quant_type": "per_1x32",
+        "activation": "situ",
+        "a_dtype": "bf16",
+        "w_dtype": "fp4",
+        "use_g1u1": true,
+        "min_cosine": 0.999,
+        "max_rel_norm_err": 0.05,
+        "seed": 1256
+      },
+      "checks": [
+        "correctness"
+      ],
+      "dtype": "bf16",
+      "metadata": {
+        "model": "Kimi-K3",
+        "session_breakdown_id": "20260728T091437Z",
+        "kernel_ids": [
+          "k001",
+          "k002",
+          "k003",
+          "k006"
+        ],
+        "correctness_only": true,
+        "exact_shape_source": "M-bucket coverage. Same session geometry; only the token count varies so that each of the 14 tuned FlyDSL kernel pairs actually reachable in the session (M buckets 1,2,4,...,8192, all present in the session server.log) gets correctness-checked. Not scored for performance.",
+        "dispatches": "t32x64x256_w3 | t32x256x128_atomic_bnt2",
+        "measured_worst_of_3": {
+          "cosine": 0.99996,
+          "rel_norm_err": 0.009
+        },
+        "seed": 1256,
+        "correctness_token": 256,
+        "timed_replay_seed": 43,
+        "workload_kind": "deterministic_synthetic",
+        "shape_authority": "declared_case_params",
+        "historical_trace_replay": false
+      }
+    },
+    {
+      "test_case_id": "mbucket-512",
+      "params": {
+        "token": 512,
+        "model_dim": 3584,
+        "inter_dim": 384,
+        "experts": 896,
+        "topk": 16,
+        "quant_type": "per_1x32",
+        "activation": "situ",
+        "a_dtype": "bf16",
+        "w_dtype": "fp4",
+        "use_g1u1": true,
+        "min_cosine": 0.999,
+        "max_rel_norm_err": 0.05,
+        "seed": 1512
+      },
+      "checks": [
+        "correctness"
+      ],
+      "dtype": "bf16",
+      "metadata": {
+        "model": "Kimi-K3",
+        "session_breakdown_id": "20260728T091437Z",
+        "kernel_ids": [
+          "k001",
+          "k002",
+          "k003",
+          "k006"
+        ],
+        "correctness_only": true,
+        "exact_shape_source": "M-bucket coverage. Same session geometry; only the token count varies so that each of the 14 tuned FlyDSL kernel pairs actually reachable in the session (M buckets 1,2,4,...,8192, all present in the session server.log) gets correctness-checked. Not scored for performance.",
+        "dispatches": "t32x64x256_w3_bnt0_kw4 | t32x256x128_atomic_bnt2_persist",
+        "measured_worst_of_3": {
+          "cosine": 0.999966,
+          "rel_norm_err": 0.0082
+        },
+        "seed": 1512,
+        "correctness_token": 512,
+        "timed_replay_seed": 43,
+        "workload_kind": "deterministic_synthetic",
+        "shape_authority": "declared_case_params",
+        "historical_trace_replay": false
+      }
+    },
+    {
+      "test_case_id": "mbucket-1024",
+      "params": {
+        "token": 1024,
+        "model_dim": 3584,
+        "inter_dim": 384,
+        "experts": 896,
+        "topk": 16,
+        "quant_type": "per_1x32",
+        "activation": "situ",
+        "a_dtype": "bf16",
+        "w_dtype": "fp4",
+        "use_g1u1": true,
+        "min_cosine": 0.999,
+        "max_rel_norm_err": 0.05,
+        "seed": 2024
+      },
+      "checks": [
+        "correctness"
+      ],
+      "dtype": "bf16",
+      "metadata": {
+        "model": "Kimi-K3",
+        "session_breakdown_id": "20260728T091437Z",
+        "kernel_ids": [
+          "k001",
+          "k002",
+          "k003",
+          "k006"
+        ],
+        "correctness_only": true,
+        "exact_shape_source": "M-bucket coverage. Same session geometry; only the token count varies so that each of the 14 tuned FlyDSL kernel pairs actually reachable in the session (M buckets 1,2,4,...,8192, all present in the session server.log) gets correctness-checked. Not scored for performance.",
+        "dispatches": "t32x128x256_w3_bnt0_xcd4 | t32x256x128_atomic_bnt2_persist",
+        "measured_worst_of_3": {
+          "cosine": 0.999985,
+          "rel_norm_err": 0.0056
+        },
+        "seed": 2024,
+        "correctness_token": 1024,
+        "timed_replay_seed": 43,
+        "workload_kind": "deterministic_synthetic",
+        "shape_authority": "declared_case_params",
+        "historical_trace_replay": false
+      }
+    },
+    {
+      "test_case_id": "mbucket-2048",
+      "params": {
+        "token": 2048,
+        "model_dim": 3584,
+        "inter_dim": 384,
+        "experts": 896,
+        "topk": 16,
+        "quant_type": "per_1x32",
+        "activation": "situ",
+        "a_dtype": "bf16",
+        "w_dtype": "fp4",
+        "use_g1u1": true,
+        "min_cosine": 0.999,
+        "max_rel_norm_err": 0.05,
+        "seed": 3048
+      },
+      "checks": [
+        "correctness"
+      ],
+      "dtype": "bf16",
+      "metadata": {
+        "model": "Kimi-K3",
+        "session_breakdown_id": "20260728T091437Z",
+        "kernel_ids": [
+          "k001",
+          "k002",
+          "k003",
+          "k006"
+        ],
+        "correctness_only": true,
+        "exact_shape_source": "M-bucket coverage. Same session geometry; only the token count varies so that each of the 14 tuned FlyDSL kernel pairs actually reachable in the session (M buckets 1,2,4,...,8192, all present in the session server.log) gets correctness-checked. Not scored for performance.",
+        "dispatches": "t32x128x256_w3_xcd4 | t32x256x256_atomic",
+        "measured_worst_of_3": {
+          "cosine": 0.999984,
+          "rel_norm_err": 0.0057
+        },
+        "seed": 3048,
+        "correctness_token": 2048,
+        "timed_replay_seed": 43,
+        "workload_kind": "deterministic_synthetic",
+        "shape_authority": "declared_case_params",
+        "historical_trace_replay": false
+      }
+    },
+    {
+      "test_case_id": "mbucket-4096",
+      "params": {
+        "token": 4096,
+        "model_dim": 3584,
+        "inter_dim": 384,
+        "experts": 896,
+        "topk": 16,
+        "quant_type": "per_1x32",
+        "activation": "situ",
+        "a_dtype": "bf16",
+        "w_dtype": "fp4",
+        "use_g1u1": true,
+        "min_cosine": 0.999,
+        "max_rel_norm_err": 0.05,
+        "seed": 5096
+      },
+      "checks": [
+        "correctness"
+      ],
+      "dtype": "bf16",
+      "metadata": {
+        "model": "Kimi-K3",
+        "session_breakdown_id": "20260728T091437Z",
+        "kernel_ids": [
+          "k001",
+          "k002",
+          "k003",
+          "k006"
+        ],
+        "correctness_only": true,
+        "exact_shape_source": "M-bucket coverage. Same session geometry; only the token count varies so that each of the 14 tuned FlyDSL kernel pairs actually reachable in the session (M buckets 1,2,4,...,8192, all present in the session server.log) gets correctness-checked. Not scored for performance.",
+        "dispatches": "t32x128x256_w3_xcd4 | t32x256x128_atomic_xcd4",
+        "measured_worst_of_3": {
+          "cosine": 0.99998,
+          "rel_norm_err": 0.0063
+        },
+        "seed": 5096,
+        "correctness_token": 4096,
+        "timed_replay_seed": 43,
+        "workload_kind": "deterministic_synthetic",
+        "shape_authority": "declared_case_params",
+        "historical_trace_replay": false
+      }
+    }
+  ]
+}

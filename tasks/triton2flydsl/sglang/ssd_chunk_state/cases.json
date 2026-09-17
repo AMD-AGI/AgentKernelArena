@@ -1,0 +1,118 @@
+{
+  "cases": [
+    {
+      "test_case_id": "case_0000",
+      "params": {
+        "b": 1,
+        "H": 8,
+        "P": 64,
+        "G": 1,
+        "N": 128,
+        "cs": 128,
+        "C": 2,
+        "dtype": "bf16",
+        "seed": 42
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bf16"
+    },
+    {
+      "test_case_id": "case_0001",
+      "params": {
+        "b": 2,
+        "H": 16,
+        "P": 64,
+        "G": 1,
+        "N": 128,
+        "cs": 256,
+        "C": 2,
+        "dtype": "bf16",
+        "seed": 43
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bf16"
+    },
+    {
+      "test_case_id": "case_0002",
+      "params": {
+        "b": 1,
+        "H": 24,
+        "P": 128,
+        "G": 8,
+        "N": 64,
+        "cs": 128,
+        "C": 3,
+        "dtype": "bf16",
+        "seed": 44
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bf16"
+    },
+    {
+      "test_case_id": "case_0003",
+      "params": {
+        "b": 1,
+        "H": 4,
+        "P": 64,
+        "G": 1,
+        "N": 64,
+        "cs": 64,
+        "C": 2,
+        "dtype": "bf16",
+        "seed": 45
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bf16"
+    },
+    {
+      "test_case_id": "case_0004",
+      "params": {
+        "b": 2,
+        "H": 8,
+        "P": 64,
+        "G": 2,
+        "N": 128,
+        "cs": 128,
+        "C": 2,
+        "dtype": "fp16",
+        "seed": 46
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "fp16"
+    },
+    {
+      "test_case_id": "case_0005",
+      "params": {
+        "b": 1,
+        "H": 8,
+        "P": 96,
+        "G": 1,
+        "N": 80,
+        "cs": 128,
+        "C": 2,
+        "dtype": "fp32",
+        "seed": 47
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "fp32"
+    }
+  ]
+}

@@ -1,0 +1,159 @@
+{
+  "cases": [
+    {
+      "test_case_id": "case_0000",
+      "params": {
+        "M": 64,
+        "K": 1024,
+        "N": 512,
+        "E": 8,
+        "top_k": 2,
+        "mul_routed_weight": true,
+        "seed": 20260601
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0001",
+      "params": {
+        "M": 64,
+        "K": 1024,
+        "N": 512,
+        "E": 8,
+        "top_k": 2,
+        "mul_routed_weight": false,
+        "seed": 20260601
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0002",
+      "params": {
+        "M": 128,
+        "K": 2048,
+        "N": 1024,
+        "E": 8,
+        "top_k": 2,
+        "mul_routed_weight": true,
+        "seed": 20260601
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0003",
+      "params": {
+        "M": 128,
+        "K": 2048,
+        "N": 1024,
+        "E": 8,
+        "top_k": 2,
+        "mul_routed_weight": false,
+        "seed": 20260601
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0004",
+      "params": {
+        "M": 256,
+        "K": 4096,
+        "N": 512,
+        "E": 16,
+        "top_k": 1,
+        "mul_routed_weight": true,
+        "seed": 20260601
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0005",
+      "params": {
+        "M": 256,
+        "K": 4096,
+        "N": 512,
+        "E": 16,
+        "top_k": 1,
+        "mul_routed_weight": false,
+        "seed": 20260601
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0006",
+      "params": {
+        "M": 512,
+        "K": 1024,
+        "N": 768,
+        "E": 16,
+        "top_k": 2,
+        "mul_routed_weight": true,
+        "seed": 20260601
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0007",
+      "params": {
+        "M": 512,
+        "K": 1024,
+        "N": 768,
+        "E": 16,
+        "top_k": 2,
+        "mul_routed_weight": false,
+        "seed": 20260601
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0008",
+      "params": {
+        "M": 1024,
+        "K": 2048,
+        "N": 256,
+        "E": 32,
+        "top_k": 4,
+        "mul_routed_weight": true,
+        "seed": 20260601
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0009",
+      "params": {
+        "M": 1024,
+        "K": 2048,
+        "N": 256,
+        "E": 32,
+        "top_k": 4,
+        "mul_routed_weight": false,
+        "seed": 20260601
+      },
+      "checks": [
+        "correctness"
+      ]
+    }
+  ]
+}

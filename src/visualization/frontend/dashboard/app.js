@@ -308,7 +308,7 @@
   function renderLeaderboard(visibleReports) {
     if (!visibleReports.length) {
       elements.leaderboardBody.innerHTML =
-        '<tr><td colspan="8"><div class="empty-state">No reports selected.</div></td></tr>';
+        '<tr><td colspan="10"><div class="empty-state">No reports selected.</div></td></tr>';
       return;
     }
 
@@ -332,6 +332,8 @@
             <td>${formatSpeedup(overall.median_speedup || 0)}</td>
             <td><span class="metric-pill">${formatPercent(overall.compilation_pass_rate || 0)}</span></td>
             <td><span class="metric-pill">${formatPercent(overall.correctness_pass_rate || 0)}</span></td>
+            <td>${formatOutcomeCount(overall, "candidate_accepted_count", "candidate_acceptance_unknown_count")}</td>
+            <td>${formatOutcomeCount(overall, "delivery_complete_count", "delivery_unknown_count")}</td>
             <td><span class="metric-pill">${formatPercent(overall.speedup_gt_1_rate || 0)}</span></td>
             <td>
               <div class="source-links">
@@ -519,6 +521,8 @@
                       task.optimizationSummary || "No optimization summary"
                     )}">
                       <span class="status-pill ${statusClass(status)}">${escapeHtml(status)}</span>
+                      <div class="task-submetric">accepted: ${task.candidateAccepted === true ? "yes" : task.candidateAccepted === false ? "no" : "N/A"}
+                        • delivery: ${escapeHtml(task.deliveryStatus || "N/A")}</div>
                       <div class="task-metric">${escapeHtml(formatSpeedup(task.speedup || 0))}</div>
                       <div class="task-submetric">score ${escapeHtml(formatScore(task.score || 0))}</div>
                     </div>
@@ -640,27 +644,36 @@
     return String(value).replace(/[&<>"']/g, (char) => lookup[char] || char);
   }
 
+  function formatOutcomeCount(overall, countKey, unknownKey) {
+    if (!Number.isInteger(overall[countKey]) || !Number.isInteger(overall[unknownKey])) {
+      return "N/A";
+    }
+    const unknown = overall[unknownKey];
+    const known = (overall.total_tasks || 0) - unknown;
+    return known > 0 ? `${overall[countKey]}/${known}${unknown ? ` (${unknown} N/A)` : ""}` : "N/A";
+  }
+
   function statusClass(status) {
-    if (status === "PASS") {
+    if (status === "PASS" || status === "ACCEPTED") {
       return "status-pass";
     }
-    if (status === "PARTIAL") {
+    if (status === "PARTIAL" || status === "INCOMPLETE") {
       return "status-partial";
     }
-    if (status === "FAIL") {
+    if (status === "FAIL" || status === "NOT_ACCEPTED") {
       return "status-fail";
     }
     return "status-unknown";
   }
 
   function statusRank(status) {
-    if (status === "PASS") {
+    if (status === "PASS" || status === "ACCEPTED") {
       return 0;
     }
-    if (status === "PARTIAL") {
+    if (status === "PARTIAL" || status === "INCOMPLETE") {
       return 1;
     }
-    if (status === "FAIL") {
+    if (status === "FAIL" || status === "NOT_ACCEPTED") {
       return 2;
     }
     return 3;

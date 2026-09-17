@@ -226,7 +226,10 @@ def _mhc_reference(inputs: dict):
 
 def _assert_mhc_close(inputs: dict, got) -> None:
     torch = _torch()
-    for actual, expected in zip(got, _mhc_reference(inputs)):
+    expected_outputs = _mhc_reference(inputs)
+    if not isinstance(got, (tuple, list)) or len(got) != len(expected_outputs):
+        raise AssertionError("MHC must return all four outputs in contract order")
+    for actual, expected in zip(got, expected_outputs):
         torch.testing.assert_close(actual, expected, atol=0.08, rtol=0.08)
 
 
@@ -358,6 +361,7 @@ def run_performance() -> None:
             bench_meta.get("benchmark_fallback_reason", ""),
         )
     _write_report(rows)
+    return rows
 
 
 def main() -> None:

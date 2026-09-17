@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "helpers": [
+    {
+      "symbol": "aiter.ops.attention.get_pa_metadata_info_v1",
+      "file": "kernel.py",
+      "function": "get_pa_metadata"
+    },
+    {
+      "symbol": "aiter.ops.attention.get_pa_metadata_v1",
+      "file": "kernel.py",
+      "function": "get_pa_metadata"
+    },
+    {
+      "symbol": "aiter.ops.attention.pa_reduce_v1",
+      "file": "kernel.py",
+      "function": "pa_decode_ps_launch"
+    }
+  ]
+}

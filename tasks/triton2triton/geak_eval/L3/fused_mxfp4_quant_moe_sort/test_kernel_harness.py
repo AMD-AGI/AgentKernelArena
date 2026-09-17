@@ -9,11 +9,9 @@ triton kernels are inlined from aiter (op_tests + aiter.utility.fp4_utils).
 
 import argparse
 import itertools
-import json
 import math
 import os
 import sys
-from pathlib import Path
 from _aka_benchmark import benchmark_cuda_graph_or_events_samples
 
 
@@ -28,8 +26,10 @@ def benchmark_cuda_graph_or_events(*args, **kwargs):
     )
     return median_ms, metadata
 
-# Ensure line-buffered stdout
-sys.stdout.reconfigure(line_buffering=True)
+# Use line buffering for terminal/file streams. Arena captures action logs in
+# StringIO, which has no reconfigure method and already writes synchronously.
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(line_buffering=True)
 
 import torch
 import triton
@@ -97,9 +97,11 @@ def mxfp4_to_f32(x):
 
 
 def e8m0_to_f32(x):
-    x_f32 = 2 ** ((x - 127).to(torch.float32))
-    x_f32[x_f32 == 128] = float("nan")
-    return x_f32
+    """Decode unsigned E8M0: finite biased exponents 0..254, NaN code 255."""
+    codes = x.to(torch.float32)
+    # Convert before subtraction: uint8 arithmetic would wrap below bias 127.
+    values = torch.exp2(codes - 127)
+    return torch.where(codes == 255, float("nan"), values)
 
 
 # from op_tests/triton_tests/quant/test_fused_mxfp4_quant.py
@@ -793,7 +795,6 @@ def run_benchmark(indices):
     print(f"Running benchmark on {len(indices)} configs...")
     latencies = []
     methods = []
-    report_cases = []
     for idx in indices:
         cfg = ALL_CONFIGS[idx]
         label = _cfg_label(cfg)
@@ -814,27 +815,7 @@ def run_benchmark(indices):
         )
         latencies.append(ms)
         methods.append(metadata["benchmark_method"])
-        report_cases.append(
-            {
-                "test_case_id": f"case={idx} {label}",
-                "params": {
-                    "case_index": idx,
-                    "hidden_dim": inp["hidden_dim"],
-                    "token_num": inp["token_num"],
-                    "token_num_sort": inp["token_num_sort"],
-                    "num_valid_ids_0": inp["num_valid_ids_0"],
-                    "topk": inp["topk"],
-                    "dtype": str(inp["dtype"]),
-                },
-                "execution_time_ms": ms,
-                **metadata,
-            }
-        )
         print(f"  [{idx}] {label}  {ms:.4f}ms")
-
-    report_path = Path("build/performance_report.json")
-    report_path.parent.mkdir(parents=True, exist_ok=True)
-    report_path.write_text(json.dumps(report_cases, indent=2))
 
     log_sum = sum(math.log(max(lat, 1e-12)) for lat in latencies)
     geo_mean = math.exp(log_sum / len(latencies))

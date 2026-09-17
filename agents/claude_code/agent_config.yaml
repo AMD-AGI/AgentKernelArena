@@ -1,8 +1,11 @@
 max_iterations: 3
 timeout_seconds: 3600
 python_path: null
-# Optional: set explicit Claude model / effort so logs record exact runtime settings.
-model: claude-sonnet-5
-# Reasoning effort maxed out. Passed as `--effort`.
-# Valid for Sonnet 5: low | medium | high | xhigh | max  (max is the maximum).
+# Verified model and CLI evidence: docs/reference/agent-model-defaults.md.
+# Fable 5.1 requires Claude Code >= 2.1.257 and account access.
+# Run config agent.model / agent.effort override these defaults.
+model: claude-fable-5-1
+# Preserve the previous effort setting. Supported: low | medium | high | xhigh | max.
 effort: max
+# Optional per-invocation CLI spending limit; no implicit model fallback.
+max_budget_usd: null

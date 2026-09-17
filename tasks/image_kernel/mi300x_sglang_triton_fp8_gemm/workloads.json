@@ -1,0 +1,128 @@
+{
+  "original_cases": {
+    "correctness": [
+      {
+        "m": 16,
+        "n": 1024,
+        "k": 1024,
+        "in_dtype_str": "fp8e4m3"
+      },
+      {
+        "m": 32,
+        "n": 2048,
+        "k": 512,
+        "in_dtype_str": "fp8e5m2"
+      }
+    ],
+    "performance": [
+      [
+        "fp8_gemm_m4096_n4096_k4096",
+        {
+          "m": 4096,
+          "n": 4096,
+          "k": 4096,
+          "in_dtype_str": "fp8e4m3"
+        }
+      ],
+      [
+        "fp8_gemm_m8192_n8192_k8192",
+        {
+          "m": 8192,
+          "n": 8192,
+          "k": 8192,
+          "in_dtype_str": "fp8e4m3"
+        }
+      ]
+    ]
+  },
+  "cases": [
+    {
+      "test_case_id": "correctness-0",
+      "params": {
+        "m": 16,
+        "n": 1024,
+        "k": 1024,
+        "in_dtype_str": "fp8e4m3",
+        "seed": 0
+      },
+      "checks": [
+        "correctness"
+      ],
+      "shape": [
+        16,
+        1024,
+        1024
+      ],
+      "dtype": "fp8e4m3"
+    },
+    {
+      "test_case_id": "correctness-1",
+      "params": {
+        "m": 32,
+        "n": 2048,
+        "k": 512,
+        "in_dtype_str": "fp8e5m2",
+        "seed": 0
+      },
+      "checks": [
+        "correctness"
+      ],
+      "shape": [
+        32,
+        2048,
+        512
+      ],
+      "dtype": "fp8e5m2"
+    },
+    {
+      "test_case_id": "fp8_gemm_m4096_n4096_k4096",
+      "params": {
+        "m": 4096,
+        "n": 4096,
+        "k": 4096,
+        "in_dtype_str": "fp8e4m3",
+        "seed": 0
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "shape": [
+        4096,
+        4096,
+        4096
+      ],
+      "dtype": "fp8e4m3",
+      "metadata": {
+        "timed_replay_input_transform": {
+          "x": "negate_in_place"
+        }
+      }
+    },
+    {
+      "test_case_id": "fp8_gemm_m8192_n8192_k8192",
+      "params": {
+        "m": 8192,
+        "n": 8192,
+        "k": 8192,
+        "in_dtype_str": "fp8e4m3",
+        "seed": 0
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "shape": [
+        8192,
+        8192,
+        8192
+      ],
+      "dtype": "fp8e4m3",
+      "metadata": {
+        "timed_replay_input_transform": {
+          "x": "negate_in_place"
+        }
+      }
+    }
+  ]
+}

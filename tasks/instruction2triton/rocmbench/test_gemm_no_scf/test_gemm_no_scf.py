@@ -163,8 +163,6 @@ def is_hip():
 def test_gemm_no_scf(M, N, K, NUM_CTAS, NUM_WARPS, TRANS_A, TRANS_B, OUTPUT_TYPE, USE_TMA_EPILOGUE, request):
     set_seed()
     
-    if is_hip() and NUM_CTAS > 1:
-        pytest.skip("NUM_CTAS > 1 is not supported in HIP backend")
 
     if (TRANS_A):
         a = torch.randn((K, M), device='cuda', dtype=torch.float16).T
@@ -180,33 +178,51 @@ def test_gemm_no_scf(M, N, K, NUM_CTAS, NUM_WARPS, TRANS_A, TRANS_B, OUTPUT_TYPE
     else:
         c = torch.empty((M, N), device=a.device, dtype=torch.float32)
 
-    matmul_no_scf_kernel[(1, 1)](
-        a_ptr=a, b_ptr=b, c_ptr=c,  #
-        M=M, N=N, K=K,  #
-        stride_am=a.stride(0), stride_ak=a.stride(1),  #
-        stride_bk=b.stride(0), stride_bn=b.stride(1),  #
-        stride_cm=c.stride(0), stride_cn=c.stride(1),  #
-        BLOCK_M=M, BLOCK_N=N, BLOCK_K=K,  #
-        num_warps=NUM_WARPS,  #
-        num_ctas=NUM_CTAS,  #
-        FLOAT16_OUTPUT=(OUTPUT_TYPE == "float16"),  #
-        USE_TMA_EPILOGUE=USE_TMA_EPILOGUE)
-    a_f32 = a.to(torch.float32)
-    b_f32 = b.to(torch.float32)
-    golden = torch.matmul(a_f32, b_f32)
-    torch.set_printoptions(profile="full")
+    from _arena_reference import GemmCheck, rejected_cta_arch, check_cta_rejection
+    check = GemmCheck(a, b, c)
+    def launch():
+        matmul_no_scf_kernel[(1, 1)](
+            a_ptr=a, b_ptr=b, c_ptr=c,  #
+            M=M, N=N, K=K,  #
+            stride_am=a.stride(0), stride_ak=a.stride(1),  #
+            stride_bk=b.stride(0), stride_bn=b.stride(1),  #
+            stride_cm=c.stride(0), stride_cn=c.stride(1),  #
+            BLOCK_M=M, BLOCK_N=N, BLOCK_K=K,  #
+            num_warps=NUM_WARPS,  #
+            num_ctas=NUM_CTAS,  #
+            FLOAT16_OUTPUT=(OUTPUT_TYPE == "float16"),  #
+            USE_TMA_EPILOGUE=USE_TMA_EPILOGUE)
+    try:
+        arch = rejected_cta_arch(NUM_CTAS)
+        if arch is not None:
+            check_cta_rejection(launch, check, arch)
+            request.node.user_properties.append(('gemm_contract', {
+                'expected_error_verified': True, 'expected_error_code': 'hip_multi_cta_unsupported',
+                'readonly_input_checked': True, 'rejected_output_unchanged': True,
+                'unsupported_arch': arch, 'requested_num_ctas': NUM_CTAS}))
+            return
+        launch()
+        a_f32 = check.original[0].to(torch.float32)
+        b_f32 = check.original[1].to(torch.float32)
+        golden = torch.matmul(a_f32, b_f32)
+        torch.set_printoptions(profile="full")
 
-    result_gold['_CALL_SUCCESS_'] = torch.tensor([[1.0]])
-    
-    ################### save tri_out in result_gold ###################
-    test_case_name = request.node.name
-    sanitized_key_name = test_case_name.replace("::", "_").replace("[", "_").replace("]", "").replace("-", "_")
-    result_gold[sanitized_key_name] = c.clone().detach().cpu()
-    ###################################################################
+        result_gold['_CALL_SUCCESS_'] = torch.tensor([[1.0]])
+
+        ################### save tri_out in result_gold ###################
+        test_case_name = request.node.name
+        sanitized_key_name = test_case_name.replace("::", "_").replace("[", "_").replace("]", "").replace("-", "_")
+        result_gold[sanitized_key_name] = c.clone().detach().cpu()
+        ###################################################################
 
 
-    assert_close(c, golden, rtol=1e-2, atol=1e-3, check_dtype=False)
-
+        assert_close(c, golden, rtol=1e-2, atol=1e-3, check_dtype=False)
+        check(c)
+        request.node.user_properties.append(('gemm_contract', {
+            'readonly_input_checked': True, 'independent_input_snapshot': True,
+            'full_output_checked': True, 'original_numeric_gate': True}))
+    finally:
+        check.restore()
 
 def gemm_no_scf_triton_wrapper(a_tensor, b_tensor, c_buffer, 
                                M_dim, N_dim, K_dim, 
@@ -371,3 +387,12 @@ def test_save_performance_results():
     save_all_benchmark_results(output_directory)
     print(f"All benchmark results attempted to save to: {output_directory}")
 ######################################## HELPERS for Eval ########################################
+
+@pytest.mark.parametrize("M,N,K,OUTPUT_TYPE,USE_TMA_EPILOGUE", [
+    (32, 16, 64, "float16", False), (32, 16, 64, "float16", True),
+    (32, 16, 64, "float32", False), (32, 16, 64, "float32", True),
+])
+def test_transposed_left_control(M, N, K, OUTPUT_TYPE, USE_TMA_EPILOGUE, request):
+    """Unscored stride/epilogue combinations absent from the original rows."""
+    test_gemm_no_scf(M, N, K, 1, 4, True, False,
+                     OUTPUT_TYPE, USE_TMA_EPILOGUE, request)

@@ -1,15 +1,24 @@
-task_type: triton2triton
-source_file_path:
-- kernel.py
-harness_path: test_kernel_harness.py
-compile_command:
-- python3 -c "import ast; ast.parse(open('kernel.py').read())"
-correctness_command:
-- python3 test_kernel_harness.py --correctness
-performance_command:
-- python3 test_kernel_harness.py --full-benchmark
-target_kernel_functions:
-- _routing_sigmoid_top1_kernel
-prompt:
-  instructions: Optimize the fused sigmoid-gated top-1 MOE routing Triton kernel for
-    AMD MI300X GPU. The kernel fuses GEMM (X @ W), sigmoid gating, and top-1 selection.
+schema_version: 2
+description: Optimize the declared Triton implementation of moe_routing_sigmoid_top1, preserving the protected
+  operator and output contracts.
+candidate:
+  language: triton
+  initial_state: implemented
+  editable:
+  - path: kernel.py
+    scope: symbols
+    symbols:
+    - _routing_sigmoid_top1_kernel
+    allow_new_helpers: true
+  entrypoints:
+  - file: kernel.py
+    kind: function
+    symbol: _routing_sigmoid_top1_kernel
+baseline:
+  kind: initial_candidate
+  language: triton
+evaluation:
+  runner:
+  - python3
+  - _arena_eval.py
+  workloads: workloads.json

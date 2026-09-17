@@ -36,11 +36,12 @@ Qwen3-8B gets no dedicated cases: its geometry, dtypes and workload are identica
 to Llama-3.1-8B-Instruct, so the `llama3_1-8b-*` cases already cover it exactly
 and duplicate ids would only double suite runtime.
 
-Correctness and performance sweep all seven cases. Profiling is a single-shape
-probe pinned to `llama3_1-8b-decode-m64-ctx1024` via `profile_case` in
-`session_cases.json` (surfaced as `PROFILE_CASE_ID` / `profile_case()` in the task
-runner) — GQA 4:1 at `head_size=128` is the most common decode geometry here, and
-pinning keeps the profiled kernel from drifting with measurement noise.
+Correctness and performance sweep all seven cases. The historical profiling
+probe used one shape, pinned to `llama3_1-8b-decode-m64-ctx1024` via
+`profile_case` in `session_cases.json` (surfaced as `PROFILE_CASE_ID` /
+`profile_case()` in the task runner; these helpers and the recorded pin remain
+available) — GQA 4:1 at `head_size=128` is the most common decode geometry here,
+and pinning keeps the profiled kernel from drifting with measurement noise.
 
 ## Which kernel this measures
 
@@ -73,20 +74,25 @@ four files listed in `config.yaml` (`pa_kernels.cuh`, `pa.cuh`, `pa_common.cuh`,
 would otherwise keep serving a stale `lib.so`. Two things prevent that:
 
 - `AITER_REBUILD=1` clears the template-op build cache at import.
-  AgentKernelArena injects it per build subprocess (`src/jit_rebuild.py`); the
-  task runner also sets it by default so standalone runs stay honest.
+  The task adapter starts a fresh per-action cache; the runner enforces rebuild
+  for direct task commands as well.
 - `AITER_META_DIR` points the importable `csrc` package — and therefore
   `AITER_CORE_DIR`, the jinja template and every include — at the workspace copy.
   `_import_aiter()` asserts this resolved to the seeded tree and fails loudly
   rather than silently measuring the in-image source.
 
 The cache key includes `gqa_ratio`, so the suite builds three specializations
-(GQA 2 / 4 / 5) at roughly 15 s each. All cases give
-`npar_loops = ceil(ceil(ctx_len/256) / 64) = 1`, matching the sessions'
-`paged_attention_ll4mi_reduce_kernel<..., 128, 128, 256, 1>`. Profiling builds
-only the one pinned specialization.
+(GQA 2 / 4 / 5) at roughly 15 s each. All cases give `npar_loops =
+ceil(ceil(ctx_len/256) / 64) = 1`, matching the sessions'
+`paged_attention_ll4mi_reduce_kernel<..., 128, 128, 256, 1>`. The historical
+profiling driver built only the one pinned specialization.
 
-## Verified locally
+## Historical pre-v2 verification
+
+The observations below predate the v2 migration. The quoted `forge_driver`
+commands belonged to the retired task-shipped Forge adapter; they are historical
+output, not current invocation instructions or v2 qualification evidence.
+Current evaluation uses `scripts/evaluate.py` as declared in `config.yaml`.
 
 Workspace materialized through `src.preprocessing.setup_workspace` on
 MI355X/gfx950:
@@ -113,3 +119,116 @@ Expected runtime image:
 ```text
 harbor.crusoe.primus-safe.amd.com/sync/vllm-openai-rocm:v0.24.0
 ```
+
+## Effective task instructions
+
+Optimize the ROCm custom paged-attention decode kernels on MI355X/gfx950. The device kernels are paged_attention_ll4mi_QKV_mfma16_kernel (partial attention per KV partition) and paged_attention_ll4mi_reduce_kernel (cross-partition softmax reduction), reached through aiter.paged_attention_rocm. Both are JIT specialized per (gqa_ratio, head_size, npar_loops, dtype, block_size, ...) from csrc/cpp_itfs/pa/pa.cpp.jinja, whose device code lives in pa.cuh / pa_kernels.cuh / pa_common.cuh - all four files are editable and every edit is recompiled before each scoring step. The workload is BF16 decode with 64 sequences, head_size 128, block_size 16 and 1024-2048 tokens of KV context, across the three head geometries these models produce: GQA 2:1 (16 q / 8 kv), 4:1 (32 q / 8 kv) and 5:1 (40 q / 8 kv). That is three JIT specializations for the seven cases, so a rebuild costs three compiles. Do not tune one gqa_ratio at the expense of another. Cases come from four MI355X Hyperloom 2026-08-01 sessions (Llama-3.1-8B-Instruct, Qwen3-8B, Qwen3-0.6B, Qwen3-14B-FP8) and are stored in session_cases.json. Preserve all correctness cases and improve CUDA-graph measured performance. Do not change the signature of aiter.paged_attention_rocm or the launch contract in pa.cpp.jinja.
+
+## Arena v2 contract
+
+The candidate is the existing implementation in the declared image sources.
+Its required final language and exact task-relative editable files are in
+`config.yaml`; directory names do not select execution behavior. The framework
+freezes this initial implementation into a separate baseline workspace. Both
+roles run the same protected harness in their own workspace; an absent candidate
+or missing image source is an error, never permission to use the installed copy.
+
+Setup runs `python3 scripts/setup_task.py` after declared image materialization
+and before baseline capture. It validates source paths and required build assets.
+Do not edit `scripts/`, workload files or references. Additional source files
+outside `candidate.editable` are dependencies, not editable implementation.
+Preserve the original numerical gates, seeds, layouts, dispatch, state handling
+and CUDA graph/event timing. `workloads.json` enumerates the complete manifest
+independently of reported timings; `session_cases.json`, when present, retains
+its original session provenance. Cases marked correctness-only are not scored.
+
+Use the agent-neutral commands:
+
+```bash
+python3 scripts/evaluate.py validate-task
+python3 scripts/evaluate.py baseline compile
+python3 scripts/evaluate.py baseline correctness
+python3 scripts/evaluate.py baseline performance
+python3 scripts/evaluate.py candidate compile
+python3 scripts/evaluate.py candidate correctness
+python3 scripts/evaluate.py candidate performance
+```
+
+Baseline commands run in the framework's frozen workspace. Each command emits
+one `ARENA_EVAL_RESULT=` envelope. A failed dependency, dispatch or output contract
+is a failure, not an accepted baseline numerical diagnostic. The original
+`task_runner.py` remains the protected operator implementation of these checks;
+its generated performance region must be materialized by Arena. Optional
+profiling does not supply final evaluation evidence. Agent CLI adaptation belongs
+to the agent integration; use the declared v2 runner for task evaluation, with
+the task's full numerical and workload checks.
+This migration has CPU regression coverage; formal GPU task validation and the
+optimization campaign are coordinated separately. Runtime source availability
+must be checked against the selected immutable image, not inferred from a tag.
+
+HIP evaluation uses a fresh task-local JIT directory per action. The runner
+requires a successful compilation whose inputs include a declared candidate
+translation unit or template header. It records the covered files and rejects
+unrelated/precompiled dispatch. This is build-source evidence, not exhaustive
+proof that every launched GPU instruction belongs to every editable file.
+No compiler-triggered repository cloning or checkout resets are permitted.
+
+The qualified SGLang runtime stores AITER as a complete source repository at
+`/sgl-workspace/aiter`, not as an installed `aiter_meta` wheel directory.
+`workspace.sources` explicitly copies that repository to the task's metadata
+root; the unified-attention task separately copies its `aiter/` Python package.
+Editable task-relative paths and operator semantics remain unchanged. This fixes
+source availability only; dispatch, compilation and numerical compatibility
+still require full GPU validation on the selected immutable runtime.
+
+## Materialized AITER package and build helpers
+
+The declared runtime provides both `aiter/` (Python dispatch and JIT utilities)
+and `aiter_meta/` (C++ sources and bundled compiler dependencies). They are
+siblings inside each role's workspace. Code generation resolves helpers such as
+`aiter/jit/utils/chip_info.py` relative to that layout. Both copies come from
+the same selected image; the candidate remains limited to its declared HIP
+sources, while Python dispatch, test inputs and references stay protected.
+
+The task adapter verifies that `import aiter` resolves to this materialized
+package. An installed image package is not a fallback. Each action still uses a
+fresh build directory and must record compilation of a declared candidate source.
+
+
+## Serving-independent cache preparation
+
+The protected harness constructs the public ROCm paged-cache layout directly:
+keys `[block, head, dim / x, offset, x]`, values `[block, head, dim, offset]`,
+where `x = 16 / element_size`. It scatters BF16 keys/values using the existing
+physical slot mapping with task-owned PyTorch indexing before timing.
+The attention implementation remains `aiter.paged_attention_rocm`; no serving
+engine is imported merely to create its input buffers. This removes the missing
+vLLM binary dependency in the SGLang runtime without changing any measured
+attention work, allocation boundary, case, seed, tolerance or warmup.
+The recorded vLLM image and historical timings above remain provenance, not a
+claim that the new runtime has passed qualification. Scalar cache-layout
+controls cover non-contiguous slots, padding and refresh behavior; fresh full
+GPU validation is still required.
+
+
+The runner promotes the role workspace to the front of Python's import search
+path before importing AITER. Changing the working directory alone does not do
+this when Python launches `scripts/evaluate.py`. Job 139599 exposed that error:
+the package-origin guard rejected the installed image dispatch before baseline
+checks could run. That failure is retained; this import-path fix requires fresh
+GPU validation. The guard still rejects pre-imported external packages, and no
+case, numerical gate, timing method or source-compilation check is relaxed.
+
+## Template compilation provenance
+
+This operator compiles through `csrc.cpp_itfs.utils.compile_lib`. The protected
+adapter observes that template compiler and verifies its metadata root is the
+current role's declared AITER tree. It records declared candidate headers only
+after successful compilation. An unrelated build, installed package, compiler
+error or reused binary without a fresh compilation remains a failure.
+
+Job 139797 compiled and executed the workspace PA template, but the former
+adapter observed `aiter.jit.core.build_module`, a different build path, and
+reported missing candidate compilation evidence. Selecting the actual template
+compiler corrects the observation without changing the kernel, cases, numerical
+gates, cache isolation or device timing. Fresh full GPU validation is required.

@@ -1,0 +1,104 @@
+{
+  "cases": [
+    {
+      "test_case_id": "case_0000",
+      "params": {
+        "arguments": [
+          1,
+          1,
+          16,
+          128,
+          64,
+          64,
+          8,
+          64
+        ],
+        "seed": 42
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0001",
+      "params": {
+        "arguments": [
+          2,
+          1,
+          16,
+          128,
+          64,
+          64,
+          8,
+          64
+        ],
+        "seed": 43
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0002",
+      "params": {
+        "arguments": [
+          1,
+          1,
+          32,
+          128,
+          64,
+          64,
+          16,
+          128
+        ],
+        "seed": 44
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0003",
+      "params": {
+        "arguments": [
+          1,
+          4,
+          16,
+          256,
+          64,
+          64,
+          8,
+          96
+        ],
+        "seed": 45
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0004",
+      "params": {
+        "arguments": [
+          2,
+          2,
+          16,
+          128,
+          64,
+          32,
+          16,
+          64
+        ],
+        "seed": 46
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    }
+  ]
+}

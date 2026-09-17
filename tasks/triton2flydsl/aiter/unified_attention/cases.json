@@ -1,0 +1,137 @@
+{
+  "cases": [
+    {
+      "test_case_id": "case_0000",
+      "params": {
+        "num_seqs": 2,
+        "seq_len_q": 4,
+        "seq_len_k": 64,
+        "nqh": 8,
+        "nkvh": 8,
+        "hs": 64,
+        "bs": 16,
+        "sliding_window": 0,
+        "softcap": 0.0,
+        "seed": 42
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0001",
+      "params": {
+        "num_seqs": 1,
+        "seq_len_q": 1,
+        "seq_len_k": 128,
+        "nqh": 16,
+        "nkvh": 4,
+        "hs": 64,
+        "bs": 16,
+        "sliding_window": 0,
+        "softcap": 0.0,
+        "seed": 43
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0002",
+      "params": {
+        "num_seqs": 4,
+        "seq_len_q": 1,
+        "seq_len_k": 256,
+        "nqh": 32,
+        "nkvh": 8,
+        "hs": 128,
+        "bs": 16,
+        "sliding_window": 0,
+        "softcap": 0.0,
+        "seed": 44
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0003",
+      "params": {
+        "num_seqs": 2,
+        "seq_len_q": 8,
+        "seq_len_k": 128,
+        "nqh": 16,
+        "nkvh": 16,
+        "hs": 64,
+        "bs": 32,
+        "sliding_window": 32,
+        "softcap": 0.0,
+        "seed": 45
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0004",
+      "params": {
+        "num_seqs": 1,
+        "seq_len_q": 16,
+        "seq_len_k": 512,
+        "nqh": 8,
+        "nkvh": 8,
+        "hs": 128,
+        "bs": 32,
+        "sliding_window": 64,
+        "softcap": 1.0,
+        "seed": 46
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0005",
+      "params": {
+        "num_seqs": 1,
+        "seq_len_q": 8,
+        "seq_len_k": 1024,
+        "nqh": 8,
+        "nkvh": 8,
+        "hs": 128,
+        "bs": 32,
+        "sliding_window": 0,
+        "softcap": 0.0,
+        "seed": 47
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0006",
+      "params": {
+        "num_seqs": 1,
+        "seq_len_q": 16,
+        "seq_len_k": 768,
+        "nqh": 8,
+        "nkvh": 8,
+        "hs": 64,
+        "bs": 32,
+        "sliding_window": 0,
+        "softcap": 1.0,
+        "seed": 48
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    }
+  ]
+}

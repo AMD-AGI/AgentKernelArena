@@ -4,6 +4,10 @@ import sys, os, json, argparse, importlib.util
 
 TASK_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 os.chdir(TASK_DIR)
+if TASK_DIR not in sys.path:
+    sys.path.insert(0, TASK_DIR)
+from scripts.contract_checks import InputSnapshot, check_outputs, validate_timed
+from scripts import semantic_controls
 SOURCE_FILE = os.path.join(TASK_DIR, "source", "triton_ssd_bmm.py")
 
 # (seqlen, ngroups, k, chunk_size, causal)
@@ -35,10 +39,14 @@ def _benchmark_cuda_graph_or_events(*args, **kwargs):
     )
 # <<< AKA-GENERATED <<<
 
+_LOADED_MODULES = []
+
+
 def load_module():
     spec = importlib.util.spec_from_file_location("kernel", SOURCE_FILE)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
+    _LOADED_MODULES.append(mod)
     return mod
 
 
@@ -74,7 +82,7 @@ def run_compile():
         return False, str(e)
 
 
-def run_correctness():
+def run_correctness(*, case_index=None):
     import torch
     try:
         mod = load_module()
@@ -82,13 +90,19 @@ def run_correctness():
         return False, f"Load failed: {e}"
     device = "cuda"
     for i, (seqlen, ngroups, k, chunk_size, causal) in enumerate(TEST_SHAPES):
+        if case_index is not None and i != case_index:
+            continue
         try:
             torch.manual_seed(42 + i)
             nchunks = seqlen // chunk_size
             a = torch.randn(seqlen, ngroups, k, device=device, dtype=torch.float16)
             b = torch.randn(seqlen, ngroups, k, device=device, dtype=torch.float16)
             cu = torch.arange(0, nchunks + 1, device=device, dtype=torch.int32) * chunk_size
+            readonly = InputSnapshot(dict(a=a, b=b, cu=cu))
             result = mod.bmm_chunk_fwd(a, b, chunk_size, cu, causal=causal)
+            readonly.check()
+            check_outputs(result, reference_bmm(a, b, chunk_size, cu, causal).to(device), atol=1e-1, rtol=1e-1,
+                          inputs=[e[1] for e in readonly.entries])
             ref = reference_bmm(a, b, chunk_size, cu, causal).to(device)
             if not torch.allclose(result.float(), ref.float(), atol=1e-1, rtol=1e-1):
                 diff = (result.float() - ref.float()).abs().max().item()
@@ -114,13 +128,20 @@ def run_performance():
             a = torch.randn(seqlen, ngroups, k, device=device, dtype=torch.float16)
             b = torch.randn(seqlen, ngroups, k, device=device, dtype=torch.float16)
             cu = torch.arange(0, nchunks + 1, device=device, dtype=torch.int32) * chunk_size
+            readonly = InputSnapshot(dict(a=a, b=b, cu=cu))
+            from _aka_benchmark import TimedRun
+            timed = TimedRun()
             def _bench_fn():
-                mod.bmm_chunk_fwd(a, b, chunk_size, cu, causal=causal)
+                return mod.bmm_chunk_fwd(a, b, chunk_size, cu, causal=causal)
             elapsed_ms, benchmark_metadata = _benchmark_cuda_graph_or_events(
                 _bench_fn,
                 warmup=WARMUP_ITERATIONS,
                 repetition=BENCHMARK_ITERATIONS,
+                timed_run=timed,
             )
+            benchmark_metadata.update(validate_timed(
+                timed, readonly, lambda: reference_bmm(a, b, chunk_size, cu, causal).to(device),
+                lambda: a.neg_(), atol=1e-1, rtol=1e-1))
 
             test_cases.append({
                 "test_case_id": f"perf{test_idx + 1}",
@@ -134,8 +155,9 @@ def run_performance():
                     "causal": causal
                 }
             })
-        except Exception:
+        except Exception as exc:
             test_cases.append({
+                "error": f"{type(exc).__name__}: {exc}",
                 "test_case_id": f"perf{test_idx + 1}",
                 "execution_time_ms": -1.0,
                 "params": {
@@ -147,6 +169,14 @@ def run_performance():
                 }
             })
     return test_cases
+
+
+def run_reference_controls():
+    return semantic_controls.reference_controls(sys.modules[__name__])
+
+
+def run_semantic_controls():
+    return semantic_controls.run_controls(load_module(), device="cuda")
 
 
 def main():
@@ -164,6 +194,7 @@ def main():
         if err: print(f"Error: {err}")
         sys.exit(0 if ok else 1)
     elif args.mode == "correctness":
+        run_semantic_controls()
         ok, err = run_correctness()
         report = {"status": "ok" if ok else "fail", "error": err}
         with open(os.path.join(build_dir, "correctness_report.json"), "w") as f:

@@ -1,0 +1,123 @@
+{
+  "original_cases": {
+    "correctness": [
+      {
+        "id": "decode-t1",
+        "regime": "decode",
+        "params": {
+          "tokens": 1,
+          "hidden": 6144,
+          "inter": 384,
+          "experts": 128,
+          "top_k": 4,
+          "alpha": 1.702,
+          "beta": 1.0,
+          "limit": 7.0,
+          "max_relerr": 0.08
+        }
+      },
+      {
+        "id": "decode-t64",
+        "regime": "decode",
+        "params": {
+          "tokens": 64,
+          "hidden": 6144,
+          "inter": 384,
+          "experts": 128,
+          "top_k": 4,
+          "alpha": 1.702,
+          "beta": 1.0,
+          "limit": 7.0,
+          "max_relerr": 0.08
+        }
+      },
+      {
+        "id": "prefill-t16384",
+        "regime": "prefill",
+        "params": {
+          "tokens": 16384,
+          "hidden": 6144,
+          "inter": 384,
+          "experts": 128,
+          "top_k": 4,
+          "alpha": 1.702,
+          "beta": 1.0,
+          "limit": 7.0,
+          "max_relerr": 0.08
+        }
+      }
+    ],
+    "performance": null
+  },
+  "cases": [
+    {
+      "test_case_id": "decode-t1",
+      "params": {
+        "tokens": 1,
+        "hidden": 6144,
+        "inter": 384,
+        "experts": 128,
+        "top_k": 4,
+        "alpha": 1.702,
+        "beta": 1.0,
+        "limit": 7.0,
+        "max_relerr": 0.08,
+        "seed": 0
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bfloat16",
+      "metadata": {
+        "regime": "decode"
+      }
+    },
+    {
+      "test_case_id": "decode-t64",
+      "params": {
+        "tokens": 64,
+        "hidden": 6144,
+        "inter": 384,
+        "experts": 128,
+        "top_k": 4,
+        "alpha": 1.702,
+        "beta": 1.0,
+        "limit": 7.0,
+        "max_relerr": 0.08,
+        "seed": 0
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bfloat16",
+      "metadata": {
+        "regime": "decode"
+      }
+    },
+    {
+      "test_case_id": "prefill-t16384",
+      "params": {
+        "tokens": 16384,
+        "hidden": 6144,
+        "inter": 384,
+        "experts": 128,
+        "top_k": 4,
+        "alpha": 1.702,
+        "beta": 1.0,
+        "limit": 7.0,
+        "max_relerr": 0.08,
+        "seed": 0
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bfloat16",
+      "metadata": {
+        "regime": "prefill"
+      }
+    }
+  ]
+}

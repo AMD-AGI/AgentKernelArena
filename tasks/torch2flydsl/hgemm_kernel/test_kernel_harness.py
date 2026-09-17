@@ -17,23 +17,22 @@ import math
 import os
 import sys
 from pathlib import Path
-from _aka_benchmark import benchmark_cuda_graph_or_events
+from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
+from scripts.replay_checks import require_tensor_contract, require_unchanged, verify_timed_run
 
-KERNEL_FILE = "kernel.py"
+from task_runtime import candidate_relative_path
+KERNEL_FILE = candidate_relative_path()
+ARENA_PROVIDED_BASELINE = False
 MODEL_FILE = "model.py"
 
 
 def _resolve_kernel_dir():
-    here = os.path.dirname(os.path.abspath(__file__))
-    if os.path.isfile(os.path.join(here, KERNEL_FILE)):
-        return here
-    cwd = os.getcwd()
-    if os.path.isfile(os.path.join(cwd, KERNEL_FILE)):
-        return cwd
-    return here
+    return str(__import__("pathlib").Path(__file__).resolve().parent)
 
 
 def _load_module(kernel_dir, filename, alias):
+    if filename == KERNEL_FILE and ARENA_PROVIDED_BASELINE:
+        return None
     entry = os.path.join(kernel_dir, filename)
     if not os.path.isfile(entry):
         return None
@@ -45,6 +44,8 @@ def _load_module(kernel_dir, filename, alias):
     mod = importlib.util.module_from_spec(spec)
     sys.modules[alias] = mod
     spec.loader.exec_module(mod)
+    if filename == KERNEL_FILE:
+        _require_candidate_outputs(mod)
     return mod
 
 
@@ -76,6 +77,28 @@ def _make_inputs(m, n, k, device="cuda"):
     return a, b
 
 
+def _checked_gemm_output(actual, expected):
+    import torch
+    require_tensor_contract(actual, expected)
+    if not bool(torch.isfinite(actual).all() and torch.isfinite(expected).all()):
+        raise AssertionError("Non-finite operator/reference output")
+    return actual
+
+
+def _gemm_reference(a, b):
+    import torch
+    return torch.matmul(a.float(), b.float().transpose(-1, -2)).to(a.dtype)
+
+
+def _compare_gemm_output(actual, expected):
+    import torch
+    _checked_gemm_output(actual, expected)
+    close = torch.isclose(expected.float(), actual.float(), atol=ATOL, rtol=RTOL)
+    pct = close.float().mean().item() * 100.0
+    if pct < PASS_PCT:
+        raise AssertionError(f"Numerical mismatch: {pct}% close, required={PASS_PCT}%")
+
+
 def run_correctness(verbose=True):
     import torch
 
@@ -93,11 +116,14 @@ def run_correctness(verbose=True):
         tiling = {k: shape[k] for k in TILING_KEYS if k in shape}
         try:
             a, b = _make_inputs(shape["m"], shape["n"], shape["k"])
+            originals = (a.clone(), b.clone())
             with torch.no_grad():
                 ref = model(a, b)
             out = kmod.flydsl_hgemm(a, b, **tiling)
             torch.cuda.synchronize()
 
+            require_unchanged((a, b), originals)
+            _checked_gemm_output(out, ref)
             ref_f, out_f = ref.float(), out.float()
             close = torch.isclose(ref_f, out_f, atol=ATOL, rtol=RTOL)
             pct = close.float().mean().item() * 100.0
@@ -139,6 +165,8 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
         tiling = {kk: shape[kk] for kk in TILING_KEYS if kk in shape}
         a, b = _make_inputs(m, n, k)
 
+        originals = (a.clone(), b.clone())
+        expected = _gemm_reference(a, b)
         kmod.flydsl_hgemm(a, b, **tiling)
         torch.cuda.synchronize()
         for _ in range(warmup):
@@ -146,11 +174,18 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
         torch.cuda.synchronize()
 
         event_reason = "capture_unsafe_hipblaslt_reference"
+        timed = TimedRun()
         kernel_ms, kernel_bench_meta = benchmark_cuda_graph_or_events(
             lambda: kmod.flydsl_hgemm(a, b, **tiling),
             warmup=0, repetition=iters, use_cuda_graph=False,
             fallback_reason=event_reason,
+            timed_run=timed,
         )
+        kernel_bench_meta.update(verify_timed_run(
+            timed, inputs=(a, b), originals=originals, expected=expected,
+            perturb=lambda: (a.mul_(0.5), b.mul_(0.5)),
+            reference=lambda: _gemm_reference(a, b), compare=_compare_gemm_output,
+        ))
 
         ref_ms, ref_bench_meta = benchmark_cuda_graph_or_events(
             lambda: torch.mm(a, b.transpose(-1, -2)),
@@ -227,3 +262,112 @@ if __name__ == "__main__":
         sys.exit(0)
     else:
         run_benchmark(warmup=args.warmup, iters=args.iterations)
+
+
+def _require_candidate_outputs(mod):
+    import functools
+    for name in tuple(vars(mod)):
+        target = getattr(mod, name)
+        if name.startswith("flydsl_") and callable(target):
+            @functools.wraps(target)
+            def checked(*args, __target=target, **kwargs):
+                try:
+                    result = __target(*args, **kwargs)
+                except NotImplementedError as exc:
+                    raise RuntimeError("Executed candidate is unimplemented; no baseline fallback") from exc
+                if result is None:
+                    raise RuntimeError("Candidate operator returned None; output is required")
+                return result
+            setattr(mod, name, checked)
+
+
+# V2 direct timing evidence from this invocation.
+def arena_benchmark(warmup=10, iters=100, verbose=True):
+    import torch
+
+    kmod = _load_module(_KERNEL_DIR, KERNEL_FILE, "flydsl_kernel")
+    if kmod is None:
+        print("FAIL: cannot load kernel.py")
+        return {"geomean_latency_ms": -1, "geomean_speedup": -1}
+
+    latencies, speedups, report = [], [], []
+    print(f"{'Config (M,N,K)':<28} {'Ref':>10} {'FlyDSL':>10} {'Speedup':>10}")
+    print("-" * 62)
+    for idx, shape in enumerate(SHAPES):
+        m, n, k = shape["m"], shape["n"], shape["k"]
+        tiling = {kk: shape[kk] for kk in TILING_KEYS if kk in shape}
+        a, b = _make_inputs(m, n, k)
+
+        originals = (a.clone(), b.clone())
+        expected = _gemm_reference(a, b)
+        kmod.flydsl_hgemm(a, b, **tiling)
+        torch.cuda.synchronize()
+        for _ in range(warmup):
+            kmod.flydsl_hgemm(a, b, **tiling)
+        torch.cuda.synchronize()
+
+        event_reason = "capture_unsafe_hipblaslt_reference"
+        timed = TimedRun()
+        kernel_ms, kernel_bench_meta = benchmark_cuda_graph_or_events(
+            lambda: kmod.flydsl_hgemm(a, b, **tiling),
+            warmup=0, repetition=iters, use_cuda_graph=False,
+            fallback_reason=event_reason,
+            timed_run=timed,
+        )
+        kernel_bench_meta.update(verify_timed_run(
+            timed, inputs=(a, b), originals=originals, expected=expected,
+            perturb=lambda: (a.mul_(0.5), b.mul_(0.5)),
+            reference=lambda: _gemm_reference(a, b), compare=_compare_gemm_output,
+        ))
+
+        ref_ms, ref_bench_meta = benchmark_cuda_graph_or_events(
+            lambda: torch.mm(a, b.transpose(-1, -2)),
+            warmup=0, repetition=iters, use_cuda_graph=False,
+            fallback_reason=event_reason,
+        )
+
+        methods_match = kernel_bench_meta["benchmark_method"] == ref_bench_meta["benchmark_method"]
+        speedup = (
+            ref_ms / kernel_ms if methods_match and kernel_ms > 0 else None
+        )
+        speedup_display = (
+            format(speedup, ">8.2f") + "x"
+            if speedup is not None
+            else f"{'N/A':>9}"
+        )
+        latencies.append(kernel_ms)
+        if speedup is not None:
+            speedups.append(speedup)
+        tflops = 2.0 * m * n * k / (kernel_ms * 1e-3) / 1e12
+        report.append({
+            "test_case_id": f"test_case_{idx}",
+            "execution_time_ms": kernel_ms,
+            **kernel_bench_meta,
+            "reference_benchmark_method": ref_bench_meta["benchmark_method"],
+            "benchmark_method_consistent": kernel_bench_meta["benchmark_method"] == ref_bench_meta["benchmark_method"],
+            "shape": [m, n, k],
+            "params": {"M": m, "N": n, "K": k, "dtype": "bf16"},
+            "tflops": tflops,
+        })
+        if verbose:
+            print(f"(M={m:>4}, N={n:>5}, K={k:>5}) {ref_ms:>8.4f}ms {kernel_ms:>8.4f}ms {speedup_display}")
+        del a, b
+        torch.cuda.empty_cache()
+
+    geomean_latency = math.exp(sum(math.log(x) for x in latencies) / len(latencies))
+    geomean_speedup = math.exp(sum(math.log(x) for x in speedups) / len(speedups)) if speedups else None
+    geomean_speedup_display = (
+        format(geomean_speedup, ".2f") + "x"
+        if geomean_speedup is not None
+        else "N/A"
+    )
+
+    build_dir = Path(_KERNEL_DIR) / "build"
+    build_dir.mkdir(exist_ok=True)
+    with open(build_dir / "performance_report.json", "w") as f:
+        json.dump(report, f, indent=2)
+
+    print("-" * 62)
+    print(f"Geometric mean latency: {geomean_latency:.4f} ms")
+    print(f"Geometric mean speedup: {geomean_speedup_display}")
+    return report

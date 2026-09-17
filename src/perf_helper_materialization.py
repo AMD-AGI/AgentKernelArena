@@ -329,7 +329,7 @@ def _python_entrypoint(tokens: list[str], index: int, workspace: Path) -> Path |
 
 
 def configured_performance_entrypoints(workspace: Path) -> set[Path]:
-    """Resolve source files directly invoked by ``performance_command``.
+    """Resolve source files directly invoked by declared performance actions.
 
     The parser deliberately selects executable scripts, not arbitrary file-valued
     arguments such as ``--hip_file source.hip``.  This protects benchmark harnesses
@@ -339,6 +339,30 @@ def configured_performance_entrypoints(workspace: Path) -> set[Path]:
     workspace = Path(workspace)
     config = _load_workspace_config(workspace)
     entrypoints: set[Path] = set()
+
+    if config.get("schema_version") == 2:
+        from .task_spec import TaskSpec
+
+        spec = TaskSpec.from_mapping(config, task_id="materialized/task")
+        for role in ("baseline", "candidate"):
+            for command in spec.action(role, "performance").commands:
+                tokens = list(command)
+                executable = Path(tokens[0]).name
+                path = None
+                if executable.startswith("python") or executable in {"pypy", "pypy3"}:
+                    path = _python_entrypoint(tokens, 0, workspace)
+                elif executable in {"bash", "sh"} and len(tokens) > 1:
+                    path = _resolved_workspace_file(workspace, tokens[1])
+                elif executable.startswith("pytest"):
+                    for token in tokens[1:]:
+                        path = _resolved_workspace_file(workspace, token)
+                        if path is not None:
+                            break
+                else:
+                    path = _resolved_workspace_file(workspace, tokens[0])
+                if path is not None:
+                    entrypoints.add(path)
+        return entrypoints
 
     harness_path = config.get("harness_path")
     if isinstance(harness_path, str):
@@ -377,10 +401,9 @@ def configured_performance_entrypoints(workspace: Path) -> set[Path]:
 
 def _aka_importing_entrypoints(workspace: Path) -> set[Path]:
     candidates = configured_performance_entrypoints(workspace)
-    candidates.update(workspace.glob("*.py"))
-    for directory in (workspace / "scripts", workspace / "eval_tools"):
-        if directory.is_dir():
-            candidates.update(directory.glob("*.py"))
+    ignored = {".git", ".venv", ".task-venv", "__pycache__", "build", ".pytest_cache"}
+    candidates.update(path for path in workspace.rglob("*.py")
+                      if not set(path.relative_to(workspace).parts[:-1]) & ignored)
 
     importers: set[Path] = set()
     for path in candidates:

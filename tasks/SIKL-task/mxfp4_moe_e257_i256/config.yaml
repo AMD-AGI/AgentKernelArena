@@ -1,0 +1,52 @@
+schema_version: 2
+description: Implement mxfp4_moe_e257_i256 in FlyDSL over every declared case.
+instructions:
+- README.md
+kernel_identity:
+  logical_operator: mxfp4_moe_e257_i256
+  source_owner: aiter
+candidate:
+  language: flydsl
+  initial_state: unimplemented
+  editable:
+  - kernel.py
+  entrypoints:
+  - file: kernel.py
+    kind: builder
+    symbol: build_mxfp4_moe_e257_i256_module
+baseline:
+  kind: provided
+  source_files:
+  - aiter_source/aiter/fused_moe.py
+  correctness_policy: required
+workspace:
+  sources:
+  - kind: image
+    image_path: /sgl-workspace/aiter/aiter
+    destination: aiter_source/aiter
+    exclude:
+    - jit/build
+    - jit/flydsl_cache
+    - __pycache__
+evaluation:
+  runner:
+  - python3
+  - scripts/evaluate.py
+  workloads: workload.json
+  timeout_s: 3600
+  baseline:
+    correctness:
+      timeout_s: 1800
+  candidate:
+    correctness:
+      timeout_s: 1800
+platform_support:
+  required_arch: gfx950
+  status: active
+exports:
+- format: sikl-solution
+  output: artifacts/solution.json
+  command:
+  - python3
+  - scripts/export_solution.py
+  timeout_s: 60

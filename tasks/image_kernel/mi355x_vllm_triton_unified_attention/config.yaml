@@ -1,45 +1,59 @@
-task_type: image_kernel
-image_repo_path: /usr/local/lib/python3.12/dist-packages/aiter
-repo_subdir: aiter
-repository_language: triton
-source_file_path:
-- ops/triton/_triton_kernels/attention/unified_attention.py
-editable_sources:
-- ops/triton/attention/unified_attention.py
-target_kernel_functions:
-- unified_attention
-- select_3d_config
-- use_2d_kernel
-- kernel_unified_attention_2d
-- kernel_unified_attention_3d
-- reduce_segments
+schema_version: 2
+description: Optimize the existing triton implementation; preserve the task-local operator and workload
+  contracts.
+candidate:
+  language: triton
+  initial_state: implemented
+  editable:
+  - aiter/ops/triton/_triton_kernels/attention/unified_attention.py
+  - aiter/ops/triton/attention/unified_attention.py
+  entrypoints:
+  - file: aiter/ops/triton/attention/unified_attention.py
+    kind: function
+    symbol: unified_attention
+  - file: aiter/ops/triton/attention/unified_attention.py
+    kind: function
+    symbol: select_3d_config
+  - file: aiter/ops/triton/attention/unified_attention.py
+    kind: function
+    symbol: use_2d_kernel
+  - file: aiter/ops/triton/_triton_kernels/attention/unified_attention.py
+    kind: function
+    symbol: kernel_unified_attention_2d
+  - file: aiter/ops/triton/_triton_kernels/attention/unified_attention.py
+    kind: function
+    symbol: kernel_unified_attention_3d
+  - file: aiter/ops/triton/_triton_kernels/attention/unified_attention.py
+    kind: function
+    symbol: reduce_segments
+baseline:
+  kind: initial_candidate
+  correctness_policy: required
+workspace:
+  sources:
+  - kind: image
+    image_path: /sgl-workspace/aiter/aiter
+    destination: aiter
+    exclude:
+    - jit/build
+    - jit/flydsl_cache
+  - kind: image
+    image_path: /sgl-workspace/aiter
+    destination: aiter_meta
+    exclude:
+    - aiter/jit/build
+    - aiter/jit/flydsl_cache
+  setup:
+  - - python3
+    - scripts/setup_task.py
+evaluation:
+  runner:
+  - python3
+  - scripts/evaluate.py
+  workloads: workloads.json
+  timeout_s: 3600
 kernel_identity:
   logical_operator: unified_attention_with_output
-  kernel_kind: triton
   source_owner: aiter
-  workload:
-    source: session_cases.json
-    primary_case: minimax-k004
-    selector_schema:
-      name: hyperloom-v1
-      fields:
-        q_tokens: QTOKENS
-        num_q_heads: QHEADS
-        num_kv_heads: KVHEADS
-        head_size: HEADSIZE
-compile_command:
-- python3 scripts/task_runner.py compile
-correctness_command:
-- python3 scripts/task_runner.py correctness
-performance_command:
-- python3 scripts/task_runner.py performance
-task_result_template: null
-prompt:
-  source_code: null
-  instructions: Optimize unified_attention on MI355X/gfx950. The harness cases are
-    parsed from Hyperloom 2026-07-20 sessions and stored in session_cases.json. Preserve
-    all correctness cases and improve CUDA-graph measured performance.
-  cheatsheet: null
-image_repo_exclude:
-- jit/build
-- jit/flydsl_cache
+instructions:
+- README.md

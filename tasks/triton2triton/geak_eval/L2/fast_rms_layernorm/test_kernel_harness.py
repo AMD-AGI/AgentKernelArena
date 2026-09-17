@@ -6,6 +6,7 @@ import sys
 import types
 from pathlib import Path
 from _aka_benchmark import benchmark_cuda_graph_or_events_samples
+from _timed_contract import checked_call, checked_benchmark, assert_output_contract
 
 
 def benchmark_cuda_graph_or_events(*args, **kwargs):
@@ -20,54 +21,15 @@ def benchmark_cuda_graph_or_events(*args, **kwargs):
     return median_ms, metadata
 
 def _find_baseline_kernel_dir():
-    """Find preprocess dir (has benchmark_baseline.txt) by walking up from GEAK_WORK_DIR."""
-    work = os.environ.get("GEAK_WORK_DIR", "").strip()
-    if not work:
-        return None
-    d = Path(work).resolve()
-    for _ in range(10):
-        if d is None or not d.exists():
-            break
-        bb = d / "benchmark_baseline.txt"
-        if bb.is_file():
-            return str(d)
-        d = d.parent
+    """Arena's session owns the frozen baseline; external worktrees are not inputs."""
     return None
 
-def _load_baseline_triton(baseline_dir, module_alias, entry_name):
-    """Load kernel from baseline_dir. Returns callable or None."""
-    entry_file = Path(baseline_dir) / "kernel.py"
-    if not entry_file.is_file():
-        return None
-    if baseline_dir not in sys.path:
-        sys.path.insert(0, baseline_dir)
-    spec = importlib.util.spec_from_file_location(module_alias, entry_file)
-    if spec is None or spec.loader is None:
-        return None
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[module_alias] = module
-    try:
-        spec.loader.exec_module(module)
-        return getattr(module, entry_name, None)
-    except Exception:
-        return None
+def _load_baseline_triton(*args, **kwargs):
+    raise RuntimeError("External baseline loading is not part of the v2 task contract")
 
 def _resolve_geak_kernel_dir():
-    candidates = []
-    work_dir = os.environ.get("GEAK_WORK_DIR", "").strip()
-    if work_dir:
-        candidates.append(work_dir)
-    repo_root = os.environ.get("GEAK_REPO_ROOT", "").strip()
-    rel_kernel_dir = '.'
-    if repo_root and rel_kernel_dir:
-        candidates.append(os.path.join(repo_root, rel_kernel_dir))
-    original_kernel_dir = os.path.dirname(os.path.abspath(__file__))
-    if original_kernel_dir:
-        candidates.append(original_kernel_dir)
-    for candidate in candidates:
-        if candidate and os.path.isfile(os.path.join(candidate, "kernel.py")):
-            return candidate
-    return original_kernel_dir or os.getcwd()
+    """Resolve only the local candidate (or the session's frozen task copy)."""
+    return os.path.dirname(os.path.abspath(__file__))
 
 def _ensure_geak_package(module_name):
     parts = module_name.split(".")
@@ -106,6 +68,9 @@ def _register_geak_aliases(kernel_dir):
         return
     for alias in aliases:
         if alias in sys.modules:
+            existing = getattr(sys.modules[alias], "__file__", None)
+            if existing is None or Path(existing).resolve() != Path(entry_file).resolve():
+                raise RuntimeError("Candidate module alias resolved outside the task workspace")
             continue
         _ensure_geak_package(alias)
         spec = importlib.util.spec_from_file_location(alias, entry_file)
@@ -181,6 +146,14 @@ def gemma_rms_layernorm_reference(x, weight, eps=1e-5):
     return x * torch.rsqrt(variance + eps) * (weight + 1.0)
 
 
+def _forward_for_timing(layernorm, x):
+    # Keep the original forward and its exact output allocation. Detach only
+    # the Python autograd view so post-timing poison/replay can inspect the
+    # same storage without invalidating a custom backward view. No copy or
+    # additional GPU operation is introduced into the measured workload.
+    return fast_rms_layernorm(layernorm, x, gemma=False).detach()
+
+
 def benchmark_fn(fn, warmup=50, iterations=200):
     """Time a callable with graph replay, falling back to CUDA events."""
     return benchmark_cuda_graph_or_events(
@@ -188,12 +161,57 @@ def benchmark_fn(fn, warmup=50, iterations=200):
     )
 
 
+def _rms_reference_with_gradient(saved, gemma, upstream=None):
+    x = saved['x'].detach().clone().requires_grad_(True)
+    weight = saved['weight'].detach().clone()
+    ref = gemma_rms_layernorm_reference if gemma else rms_layernorm_reference
+    output = ref(x, weight, eps=1e-5)
+    if upstream is None:
+        output.mean().backward()
+    else:
+        output.backward(upstream.detach().clone())
+    return output.detach(), x.grad.detach().clone()
+
+
+def _check_rms_outputs(actual, expected, atol=1e-2, rtol=1e-2):
+    assert_output_contract(actual, expected)
+    for output, reference in zip(actual, expected):
+        torch.testing.assert_close(output, reference, atol=atol, rtol=rtol)
+
+
+CONTROL_CASES = [
+    {'test_case_id': f'control-rms-{width}-{gemma}', 'shape': [3, width],
+     'params': {'gemma': gemma, 'nonuniform_gradient': True}}
+    for width in (17, 257, 1024) for gemma in (False, True)
+]
+
+
+def run_contract_controls():
+    for case in CONTROL_CASES:
+        shape, gemma = case['shape'], case['params']['gemma']
+        x = torch.linspace(-2, 3, math.prod(shape), device='cuda').reshape(shape).requires_grad_(True)
+        layernorm = SimpleLayerNorm(shape[-1], eps=1e-5).to('cuda')
+        with torch.no_grad():
+            layernorm.weight.copy_(torch.linspace(-1.5, 2, shape[-1], device='cuda'))
+        upstream = torch.sin(torch.arange(x.numel(), device='cuda', dtype=x.dtype)).reshape(shape)
+        def invoke():
+            output = fast_rms_layernorm(layernorm, x, gemma=gemma)
+            # The original backward consumes dY in place. Give it a private,
+            # contiguous gradient; X and weight remain read-only.
+            output.backward(upstream.clone())
+            return output.detach(), x.grad.clone()
+        checked_call(invoke, inputs={'x': x, 'weight': layernorm.weight, 'upstream': upstream},
+                     reference=lambda saved: _rms_reference_with_gradient(saved, gemma, saved['upstream']),
+                     check=_check_rms_outputs)
+        print(case['test_case_id'], 'PASS')
+
+
 def run_correctness(shapes, atol=1e-2, rtol=1e-2):
     """Run correctness tests matching the eval test cases exactly.
 
     Mirrors test_fast_rms_layernorm_with_backward():
-      test_case_1: forward output and backward grad for gemma=False
-      test_case_2: forward output and backward grad for gemma=True
+      test_case_1: backward grad for gemma=False
+      test_case_2: backward grad for gemma=True
     """
     set_seed(42)
     print(f"Running correctness tests on {len(shapes)} shapes (atol={atol}, rtol={rtol})...")
@@ -204,52 +222,23 @@ def run_correctness(shapes, atol=1e-2, rtol=1e-2):
         x = torch.randn(*shape, dtype=torch.float32, device='cuda', requires_grad=True)
         layernorm = SimpleLayerNorm(hidden_dim, eps=1e-5).to('cuda')
 
-        output = fast_rms_layernorm(layernorm, x, gemma=False)
-        expected_output = rms_layernorm_reference(
-            x.detach(), layernorm.weight.detach(), eps=1e-5
-        )
-        try:
-            torch.testing.assert_close(output, expected_output, rtol=rtol, atol=atol)
-            print(f"  PASS: {shape} gemma=False forward")
-        except AssertionError as e:
-            print(f"  FAIL: {shape} gemma=False forward: {e}")
-            all_passed = False
-
-        output.mean().backward()
-        grad1 = x.grad.clone()
-        x.grad.zero_()
-
-        x_ref = x.detach().clone().requires_grad_(True)
-        rms_layernorm_reference(x_ref, layernorm.weight, eps=1e-5).mean().backward()
-        try:
-            torch.testing.assert_close(grad1, x_ref.grad, rtol=rtol, atol=atol)
-            print(f"  PASS: {shape} gemma=False backward")
-        except AssertionError as e:
-            print(f"  FAIL: {shape} gemma=False backward: {e}")
-            all_passed = False
-
-        output_g = fast_rms_layernorm(layernorm, x, gemma=True)
-        expected_output_g = gemma_rms_layernorm_reference(
-            x.detach(), layernorm.weight.detach(), eps=1e-5
-        )
-        try:
-            torch.testing.assert_close(output_g, expected_output_g, rtol=rtol, atol=atol)
-            print(f"  PASS: {shape} gemma=True forward")
-        except AssertionError as e:
-            print(f"  FAIL: {shape} gemma=True forward: {e}")
-            all_passed = False
-
-        output_g.mean().backward()
-        grad2 = x.grad.clone()
-
-        x_ref2 = x.detach().clone().requires_grad_(True)
-        gemma_rms_layernorm_reference(x_ref2, layernorm.weight, eps=1e-5).mean().backward()
-        try:
-            torch.testing.assert_close(grad2, x_ref2.grad, rtol=rtol, atol=atol)
-            print(f"  PASS: {shape} gemma=True backward")
-        except AssertionError as e:
-            print(f"  FAIL: {shape} gemma=True backward: {e}")
-            all_passed = False
+        for gemma in (False, True):
+            if x.grad is not None:
+                x.grad.zero_()
+            def invoke():
+                output = fast_rms_layernorm(layernorm, x, gemma=gemma)
+                output.mean().backward()
+                return output.detach(), x.grad.clone()
+            try:
+                checked_call(
+                    invoke, inputs={'x': x, 'weight': layernorm.weight},
+                    reference=lambda saved: _rms_reference_with_gradient(saved, gemma),
+                    check=lambda actual, expected: _check_rms_outputs(actual, expected, atol, rtol),
+                )
+                print(f"  PASS: {shape} gemma={gemma} forward + backward")
+            except AssertionError as e:
+                print(f"  FAIL: {shape} gemma={gemma}: {e}")
+                all_passed = False
 
     if all_passed:
         print("\nAll correctness tests PASSED!")
@@ -302,9 +291,14 @@ def run_benchmark(shapes, warmup=50, iterations=200):
         x = torch.randn(*shape, dtype=torch.float32, device='cpu').to('cuda')
         layernorm = SimpleLayerNorm(hidden_dim, eps=1e-5).to('cuda')
 
-        kernel_ms, kernel_meta = benchmark_fn(
-            lambda: fast_rms_layernorm(layernorm, x, gemma=False),
-            warmup=warmup, iterations=iterations,
+        kernel_ms, kernel_meta = checked_benchmark(
+            benchmark_cuda_graph_or_events,
+            lambda: _forward_for_timing(layernorm, x),
+            inputs={'x': x, 'weight': layernorm.weight},
+            reference=lambda saved: rms_layernorm_reference(saved['x'], saved['weight'], eps=1e-5),
+            check=lambda actual, expected: torch.testing.assert_close(actual, expected, atol=1e-2, rtol=1e-2),
+            perturb=lambda saved: {**saved, 'x': -saved['x']},
+            warmup=warmup, repetition=iterations,
         )
         if baseline_fn is not None:
             ref_ms, ref_meta = benchmark_fn(

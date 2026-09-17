@@ -1,0 +1,134 @@
+{
+  "cases": [
+    {
+      "test_case_id": "case_0000",
+      "params": {
+        "M": 32,
+        "N": 1024,
+        "dtype": "f32"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "f32"
+    },
+    {
+      "test_case_id": "case_0001",
+      "params": {
+        "M": 64,
+        "N": 1024,
+        "dtype": "f32"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "f32"
+    },
+    {
+      "test_case_id": "case_0002",
+      "params": {
+        "M": 32,
+        "N": 2048,
+        "dtype": "f32"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "f32"
+    },
+    {
+      "test_case_id": "case_0003",
+      "params": {
+        "M": 64,
+        "N": 2048,
+        "dtype": "f32"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "f32"
+    },
+    {
+      "test_case_id": "case_0004",
+      "params": {
+        "M": 128,
+        "N": 2048,
+        "dtype": "f32"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "f32"
+    },
+    {
+      "test_case_id": "case_0005",
+      "params": {
+        "M": 128,
+        "N": 4096,
+        "dtype": "f32"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "f32"
+    },
+    {
+      "test_case_id": "case_0006",
+      "params": {
+        "M": 256,
+        "N": 4096,
+        "dtype": "f32"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "f32"
+    },
+    {
+      "test_case_id": "case_0007",
+      "params": {
+        "M": 512,
+        "N": 4096,
+        "dtype": "f32"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "f32"
+    },
+    {
+      "test_case_id": "case_0008",
+      "params": {
+        "M": 256,
+        "N": 8192,
+        "dtype": "f32"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "f32"
+    },
+    {
+      "test_case_id": "case_0009",
+      "params": {
+        "M": 512,
+        "N": 8192,
+        "dtype": "f32"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "f32"
+    }
+  ]
+}

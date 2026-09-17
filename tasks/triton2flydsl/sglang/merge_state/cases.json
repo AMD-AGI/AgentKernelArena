@@ -1,0 +1,109 @@
+{
+  "cases": [
+    {
+      "test_case_id": "case_0000",
+      "params": {
+        "N": 128,
+        "H": 32,
+        "D": 128,
+        "dtype": "bf16",
+        "seed": 42
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bf16"
+    },
+    {
+      "test_case_id": "case_0001",
+      "params": {
+        "N": 1,
+        "H": 32,
+        "D": 128,
+        "dtype": "bf16",
+        "seed": 43
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bf16"
+    },
+    {
+      "test_case_id": "case_0002",
+      "params": {
+        "N": 256,
+        "H": 8,
+        "D": 64,
+        "dtype": "bf16",
+        "seed": 44
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bf16"
+    },
+    {
+      "test_case_id": "case_0003",
+      "params": {
+        "N": 64,
+        "H": 16,
+        "D": 256,
+        "dtype": "bf16",
+        "seed": 45
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bf16"
+    },
+    {
+      "test_case_id": "case_0004",
+      "params": {
+        "N": 100,
+        "H": 40,
+        "D": 192,
+        "dtype": "bf16",
+        "seed": 46
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bf16"
+    },
+    {
+      "test_case_id": "case_0005",
+      "params": {
+        "N": 512,
+        "H": 64,
+        "D": 128,
+        "dtype": "fp16",
+        "seed": 47
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "fp16"
+    },
+    {
+      "test_case_id": "case_0006",
+      "params": {
+        "N": 33,
+        "H": 12,
+        "D": 128,
+        "dtype": "fp32",
+        "seed": 48
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "fp32"
+    }
+  ]
+}

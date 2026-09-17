@@ -193,7 +193,7 @@ def run_compile():
         return False, str(e)
 
 
-def run_correctness():
+def run_correctness(*, case_index=None):
     import torch
     try:
         mod = load_module()
@@ -204,6 +204,8 @@ def run_correctness():
     dtype = torch.float16
 
     for i, (num_seqs, seq_len_q, seq_len_k, nqh, nkvh, hs, bs, nseg) in enumerate(TEST_SHAPES):
+        if case_index is not None and i != case_index:
+            continue
         try:
             torch.manual_seed(42 + i)
             q, key_cache, value_cache, block_table, cu_seqlens_q, seqused_k, scale = \

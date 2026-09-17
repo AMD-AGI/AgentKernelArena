@@ -24,23 +24,22 @@ import os
 import sys
 import time
 from pathlib import Path
-from _aka_benchmark import benchmark_cuda_graph_or_events
+from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
+from scripts.replay_checks import require_tensor_contract, require_unchanged, verify_timed_run
 
-KERNEL_FILE = "kernel.py"
+from task_runtime import candidate_relative_path
+KERNEL_FILE = candidate_relative_path()
+ARENA_PROVIDED_BASELINE = False
 MODEL_FILE = "model.py"
 
 
 def _resolve_kernel_dir():
-    here = os.path.dirname(os.path.abspath(__file__))
-    if os.path.isfile(os.path.join(here, KERNEL_FILE)):
-        return here
-    cwd = os.getcwd()
-    if os.path.isfile(os.path.join(cwd, KERNEL_FILE)):
-        return cwd
-    return here
+    return str(__import__("pathlib").Path(__file__).resolve().parent)
 
 
 def _load_module(kernel_dir, filename, alias):
+    if filename == KERNEL_FILE and ARENA_PROVIDED_BASELINE:
+        return None
     entry = os.path.join(kernel_dir, filename)
     if not os.path.isfile(entry):
         return None
@@ -52,6 +51,8 @@ def _load_module(kernel_dir, filename, alias):
     mod = importlib.util.module_from_spec(spec)
     sys.modules[alias] = mod
     spec.loader.exec_module(mod)
+    if filename == KERNEL_FILE:
+        _require_candidate_outputs(mod)
     return mod
 
 
@@ -116,6 +117,51 @@ def _make_inputs(m, n, k, device="cuda"):
     return x, weight
 
 
+def _checked_preshuffle(kmod, wq):
+    """Check the original (16,16) packed layout, outside operator timing."""
+    from scripts.candidate_checks import candidate_preparation_only
+    import torch
+
+    original = wq.clone()
+    n, k = wq.shape
+    expected = wq.view(n // 16, 16, k // 32, 2, 16).permute(0, 2, 3, 1, 4).contiguous().view(n, k)
+    with candidate_preparation_only():
+        actual = kmod.preshuffle_weight_a8(wq)
+    require_unchanged((wq,), (original,))
+    require_tensor_contract(actual, expected)
+    if not torch.equal(actual.contiguous().view(torch.uint8), expected.view(torch.uint8)):
+        raise AssertionError("Weight preshuffle must preserve the exact (16,16) byte permutation")
+    return actual
+
+
+def _compare_preshuffle_output(actual, expected):
+    import torch
+
+    require_tensor_contract(actual, expected)
+    if not bool(torch.isfinite(actual).all() and torch.isfinite(expected).all()):
+        raise AssertionError("Non-finite GEMM output/reference")
+    delta = (actual.float() - expected.float()).abs().max().item()
+    denom = expected.float().abs().max().item()
+    norm = delta / denom if denom > 0 else delta
+    if norm > NORM_TOL:
+        raise AssertionError(f"Numerical mismatch: normalized_max_error={norm}, tolerance={NORM_TOL}")
+
+
+def _quantized_dense_reference(xq, wq, x_scale, w_scale):
+    """Original model's quantized FP32 accumulation, before BF16 output cast."""
+    import torch
+
+    acc = torch.matmul(xq.float(), wq.float().transpose(-1, -2))
+    return (acc * x_scale * w_scale.transpose(0, 1)).to(torch.bfloat16)
+
+
+def _perturb_preshuffle_scales(x_scale, w_scale):
+    # Positive finite scales stay in-domain; change the actual measured inputs
+    # without changing the timed case, quantization or packed-weight preparation.
+    x_scale.mul_(0.5)
+    w_scale.mul_(0.5)
+
+
 def run_correctness(verbose=True):
     import torch
 
@@ -141,7 +187,9 @@ def run_correctness(verbose=True):
 
             xq, x_scale = mmod.pertoken_quant(x)
             wq, w_scale = mmod.pertoken_quant(weight)
-            wq_shuf = kmod.preshuffle_weight_a8(wq)
+            wq_shuf = _checked_preshuffle(kmod, wq)
+            protected_inputs = (x, weight, xq, wq, wq_shuf, x_scale, w_scale)
+            originals = tuple(v.clone() for v in protected_inputs)
             out = _retry(
                 lambda: kmod.flydsl_gemm_a8w8_bpreshuffle(
                     xq, wq_shuf, x_scale, w_scale, **tiling
@@ -150,6 +198,8 @@ def run_correctness(verbose=True):
             )
             torch.cuda.synchronize()
 
+            require_unchanged(protected_inputs, originals)
+            _compare_preshuffle_output(out, ref)
             ref_f, out_f = ref.float(), out.float()
             denom = ref_f.abs().max().item()
             max_delta = (ref_f - out_f).abs().max().item()
@@ -197,7 +247,11 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
         x, weight = _make_inputs(m, n, k)
         xq, x_scale = mmod.pertoken_quant(x)
         wq, w_scale = mmod.pertoken_quant(weight)
-        wq_shuf = kmod.preshuffle_weight_a8(wq)
+        wq_shuf = _checked_preshuffle(kmod, wq)
+
+        protected_inputs = (x, weight, xq, wq, wq_shuf, x_scale, w_scale)
+        originals = tuple(v.clone() for v in protected_inputs)
+        expected = _quantized_dense_reference(xq, wq, x_scale, w_scale)
 
         def _call():
             return kmod.flydsl_gemm_a8w8_bpreshuffle(
@@ -214,13 +268,22 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
         # capture in this image. Predetermine an Event-only policy for both
         # sides so the candidate cannot select a different timing method.
         event_reason = "capture_unsafe_hipblaslt_reference"
+        timed = TimedRun()
         kernel_ms, kernel_bench_meta = benchmark_cuda_graph_or_events(
             _call,
             warmup=0,
             repetition=iters,
             use_cuda_graph=False,
             fallback_reason=event_reason,
+            timed_run=timed,
         )
+
+        kernel_bench_meta.update(verify_timed_run(
+            timed, inputs=protected_inputs, originals=originals, expected=expected,
+            perturb=lambda: _perturb_preshuffle_scales(x_scale, w_scale),
+            reference=lambda: _quantized_dense_reference(xq, wq, x_scale, w_scale),
+            compare=_compare_preshuffle_output,
+        ))
 
         ref_ms, ref_bench_meta = benchmark_cuda_graph_or_events(
             lambda: torch.matmul(x, weight.transpose(-1, -2)),
@@ -300,3 +363,133 @@ if __name__ == "__main__":
         sys.exit(0)
     else:
         run_benchmark(warmup=args.warmup, iters=args.iterations)
+
+
+def _require_candidate_outputs(mod):
+    import functools
+    for name in tuple(vars(mod)):
+        target = getattr(mod, name)
+        if name.startswith("flydsl_") and callable(target):
+            @functools.wraps(target)
+            def checked(*args, __target=target, **kwargs):
+                try:
+                    result = __target(*args, **kwargs)
+                except NotImplementedError as exc:
+                    raise RuntimeError("Executed candidate is unimplemented; no baseline fallback") from exc
+                if result is None:
+                    raise RuntimeError("Candidate operator returned None; output is required")
+                return result
+            setattr(mod, name, checked)
+
+
+# V2 direct timing evidence from this invocation.
+def arena_benchmark(warmup=10, iters=100, verbose=True):
+    import torch
+
+    kmod = _load_module(_KERNEL_DIR, KERNEL_FILE, "flydsl_kernel")
+    mmod = _load_module(_KERNEL_DIR, MODEL_FILE, "torch_model")
+    if kmod is None or mmod is None:
+        print("FAIL: cannot load kernel.py / model.py")
+        return {"geomean_latency_ms": -1, "geomean_speedup": -1}
+
+    latencies, speedups, report = [], [], []
+    print(f"{'Config (M,N,K)':<28} {'Ref':>10} {'FlyDSL':>10} {'Speedup':>10}")
+    print("-" * 62)
+    for idx, shape in enumerate(SHAPES):
+        m, n, k = shape["m"], shape["n"], shape["k"]
+        tiling = {kk: shape[kk] for kk in TILING_KEYS if kk in shape}
+        x, weight = _make_inputs(m, n, k)
+        xq, x_scale = mmod.pertoken_quant(x)
+        wq, w_scale = mmod.pertoken_quant(weight)
+        wq_shuf = _checked_preshuffle(kmod, wq)
+
+        protected_inputs = (x, weight, xq, wq, wq_shuf, x_scale, w_scale)
+        originals = tuple(v.clone() for v in protected_inputs)
+        expected = _quantized_dense_reference(xq, wq, x_scale, w_scale)
+
+        def _call():
+            return kmod.flydsl_gemm_a8w8_bpreshuffle(
+                xq, wq_shuf, x_scale, w_scale, **tiling
+            )
+
+        _retry(_call, what=shape["name"])
+        torch.cuda.synchronize()
+        for _ in range(warmup):
+            _call()
+        torch.cuda.synchronize()
+
+        # The PyTorch reference dispatches hipBLASLt, which rejects stream
+        # capture in this image. Predetermine an Event-only policy for both
+        # sides so the candidate cannot select a different timing method.
+        event_reason = "capture_unsafe_hipblaslt_reference"
+        timed = TimedRun()
+        kernel_ms, kernel_bench_meta = benchmark_cuda_graph_or_events(
+            _call,
+            warmup=0,
+            repetition=iters,
+            use_cuda_graph=False,
+            fallback_reason=event_reason,
+            timed_run=timed,
+        )
+
+        kernel_bench_meta.update(verify_timed_run(
+            timed, inputs=protected_inputs, originals=originals, expected=expected,
+            perturb=lambda: _perturb_preshuffle_scales(x_scale, w_scale),
+            reference=lambda: _quantized_dense_reference(xq, wq, x_scale, w_scale),
+            compare=_compare_preshuffle_output,
+        ))
+
+        ref_ms, ref_bench_meta = benchmark_cuda_graph_or_events(
+            lambda: torch.matmul(x, weight.transpose(-1, -2)),
+            warmup=0,
+            repetition=iters,
+            use_cuda_graph=False,
+            fallback_reason=event_reason,
+        )
+
+        methods_match = kernel_bench_meta["benchmark_method"] == ref_bench_meta["benchmark_method"]
+        speedup = (
+            ref_ms / kernel_ms if methods_match and kernel_ms > 0 else None
+        )
+        speedup_display = (
+            format(speedup, ">8.2f") + "x"
+            if speedup is not None
+            else f"{'N/A':>9}"
+        )
+        latencies.append(kernel_ms)
+        if speedup is not None:
+            speedups.append(speedup)
+        tflops = 2.0 * m * n * k / (kernel_ms * 1e-3) / 1e12
+        report.append({
+            "test_case_id": f"test_case_{idx}",
+            "execution_time_ms": kernel_ms,
+            **kernel_bench_meta,
+            "reference_benchmark_method": ref_bench_meta["benchmark_method"],
+            "benchmark_method_consistent": kernel_bench_meta["benchmark_method"] == ref_bench_meta["benchmark_method"],
+            "shape": [m, n, k],
+            "params": {"M": m, "N": n, "K": k, "dtype": "fp8_e4m3", "out": "bf16"},
+            "tflops": tflops,
+        })
+        if verbose:
+            print(f"(M={m:>5}, N={n:>5}, K={k:>5}) "
+                  f"{ref_ms:>8.4f}ms {kernel_ms:>8.4f}ms {speedup_display}")
+        del x, weight, xq, wq, wq_shuf
+        torch.cuda.empty_cache()
+
+    geomean_latency = math.exp(sum(math.log(x) for x in latencies) / len(latencies))
+    geomean_speedup = math.exp(sum(math.log(x) for x in speedups) / len(speedups)) if speedups else None
+    geomean_speedup_display = (
+        format(geomean_speedup, ".2f") + "x"
+        if geomean_speedup is not None
+        else "N/A"
+    )
+
+    build_dir = Path(_KERNEL_DIR) / "build"
+    build_dir.mkdir(exist_ok=True)
+    with open(build_dir / "performance_report.json", "w") as f:
+        json.dump(report, f, indent=2)
+
+    print("-" * 62)
+    print(f"Geometric mean latency: {geomean_latency:.4f} ms")
+    print(f"Geometric mean speedup: {geomean_speedup_display}")
+    return report

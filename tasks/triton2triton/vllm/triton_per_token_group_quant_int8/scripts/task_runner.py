@@ -12,9 +12,7 @@ os.chdir(TASK_DIR)
 TASK_NAME = "triton2triton/triton_per_token_group_quant_int8"
 SOURCE_FILE = os.path.join(TASK_DIR, "source", "triton_per_token_group_quant_int8.py")
 
-# Performance configs and seeded-Gaussian correctness cases: (M, N, group_size).
-# Keep boundary-only correctness coverage separate so benchmark methodology and
-# reported performance cases remain unchanged.
+# Test configs: (M, N, group_size)
 TEST_SHAPES = [
     (32, 128, 128),
     (64, 256, 128),
@@ -76,95 +74,6 @@ def reference_per_token_group_quant_int8(x, group_size, eps=1e-10):
     return x_q, x_s
 
 
-def boundary_correctness_cases(torch, device):
-    """Small deterministic cases for values Gaussian inputs do not cover."""
-    group_size = 96
-
-    all_zero = torch.zeros(
-        (1, group_size), device=device, dtype=torch.float16
-    )
-
-    # Every magnitude is strictly below eps, including the largest FP16 value
-    # below 1.0, so eps rather than the observed absmax determines the scale.
-    eps_pattern = torch.tensor(
-        [
-            -0.99951171875,
-            -0.5,
-            -0.25,
-            -0.003937007874015748,
-            -0.0,
-            0.0,
-            0.003937007874015748,
-            0.25,
-            0.5,
-            0.99951171875,
-            -0.125,
-            0.125,
-        ],
-        device=device,
-        dtype=torch.float16,
-    )
-    eps_dominated = eps_pattern.repeat(8).reshape(1, group_size)
-
-    # The first group includes both finite FP16 extrema and its smallest normal
-    # and subnormal magnitudes. The second anchors absmax at 1.0 and samples
-    # integer and half-step INT8 quantization boundaries on both signs.
-    extrema_pattern = torch.tensor(
-        [
-            -65504.0,
-            65504.0,
-            -32752.0,
-            32752.0,
-            -1024.0,
-            1024.0,
-            -6.103515625e-05,
-            6.103515625e-05,
-            -5.960464477539063e-08,
-            5.960464477539063e-08,
-            -0.0,
-            0.0,
-        ],
-        device=device,
-        dtype=torch.float16,
-    )
-    boundary_pattern = torch.tensor(
-        [
-            -1.0,
-            -126.5 / 127.0,
-            -126.0 / 127.0,
-            -64.5 / 127.0,
-            -64.0 / 127.0,
-            -1.5 / 127.0,
-            -1.0 / 127.0,
-            -0.5 / 127.0,
-            0.5 / 127.0,
-            1.0 / 127.0,
-            1.5 / 127.0,
-            64.0 / 127.0,
-            64.5 / 127.0,
-            126.0 / 127.0,
-            126.5 / 127.0,
-            1.0,
-        ],
-        device=device,
-        dtype=torch.float16,
-    )
-    extrema_and_boundaries = torch.cat(
-        (extrema_pattern.repeat(8), boundary_pattern.repeat(6))
-    ).reshape(1, 2 * group_size)
-
-    return [
-        ("all_zero_g96", all_zero, group_size, 1.0),
-        ("eps_dominated_g96", eps_dominated, group_size, 1.0),
-        (
-            "fp16_extrema_and_quant_boundaries_g96",
-            extrema_and_boundaries,
-            group_size,
-            1e-10,
-        ),
-    ]
-
-
 def run_compile():
     try:
         import ast
@@ -179,7 +88,10 @@ def run_compile():
         return False, str(e)
 
 
-def run_correctness():
+def run_correctness(*, case_index=None):
+    if case_index is not None and case_index >= 10000:
+        from _upstream_controls import run_control
+        return run_control(case_index - 10000, load_module)
     import torch
     try:
         mod = load_module()
@@ -188,22 +100,17 @@ def run_correctness():
 
     device = "cuda"
 
-    cases = []
     for i, (M, N, group_size) in enumerate(TEST_SHAPES):
-        torch.manual_seed(42 + i)
-        x = torch.randn(M, N, device=device, dtype=torch.float16).contiguous()
-        cases.append((f"gaussian_{i + 1}", x, group_size, 1e-10))
-    cases.extend(boundary_correctness_cases(torch, device))
-
-    for case_name, x, group_size, eps in cases:
-        M, N = x.shape
+        if case_index is not None and i != case_index:
+            continue
         try:
-            x_q, x_s = mod.per_token_group_quant_int8(x, group_size, eps=eps)
+            torch.manual_seed(42 + i)
+            x = torch.randn(M, N, device=device, dtype=torch.float16).contiguous()
+
+            x_q, x_s = mod.per_token_group_quant_int8(x, group_size)
             torch.cuda.synchronize()
 
-            ref_q, ref_s = reference_per_token_group_quant_int8(
-                x, group_size, eps=eps
-            )
+            ref_q, ref_s = reference_per_token_group_quant_int8(x, group_size)
             ref_q = ref_q.to(device)
             ref_s = ref_s.to(device)
 
@@ -211,7 +118,7 @@ def run_correctness():
             if not torch.allclose(x_s, ref_s, atol=1e-4, rtol=1e-3):
                 max_diff = (x_s - ref_s).abs().max().item()
                 return False, (
-                    f"Case {case_name} (M={M}, N={N}, G={group_size}): "
+                    f"Shape {i+1} (M={M}, N={N}, G={group_size}): "
                     f"scale max diff = {max_diff:.6f}"
                 )
 
@@ -219,12 +126,12 @@ def run_correctness():
             if not torch.allclose(x_q.float(), ref_q.float(), atol=1.0, rtol=0.0):
                 max_diff = (x_q.float() - ref_q.float()).abs().max().item()
                 return False, (
-                    f"Case {case_name} (M={M}, N={N}, G={group_size}): "
+                    f"Shape {i+1} (M={M}, N={N}, G={group_size}): "
                     f"quant max diff = {max_diff:.1f}"
                 )
         except Exception as e:
             return False, (
-                f"Case {case_name} (M={M}, N={N}, G={group_size}): exception: {e}"
+                f"Shape {i+1} (M={M}, N={N}, G={group_size}): exception: {e}"
             )
 
     return True, None
@@ -296,11 +203,7 @@ def main():
 
     elif args.mode == "correctness":
         ok, err = run_correctness()
-        report = {
-            "status": "ok" if ok else "fail",
-            "error": err,
-            "num_shapes": len(TEST_SHAPES) + 3,
-        }
+        report = {"status": "ok" if ok else "fail", "error": err, "num_shapes": len(TEST_SHAPES)}
         with open(os.path.join(build_dir, "correctness_report.json"), "w") as f:
             json.dump(report, f, indent=2)
         print(f"Correctness: {'PASS' if ok else 'FAIL'}")

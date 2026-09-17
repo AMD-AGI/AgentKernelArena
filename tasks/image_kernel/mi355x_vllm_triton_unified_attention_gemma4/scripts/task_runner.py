@@ -368,6 +368,7 @@ def run_performance() -> None:
             bench_meta.get("benchmark_fallback_reason", ""),
         )
     _write_report(rows)
+    return rows
 
 
 def main() -> None:

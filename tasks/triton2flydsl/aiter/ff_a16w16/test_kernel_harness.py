@@ -26,9 +26,11 @@ import math
 import os
 import sys
 from pathlib import Path
-from _aka_benchmark import benchmark_cuda_graph_or_events
+from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
+from scripts.replay_checks import require_unchanged, verify_timed_run, allclose_output
 
-SOURCE_FILE = "ff_a16w16.py"
+from task_runtime import candidate_relative_path
+SOURCE_FILE = candidate_relative_path()
 ENTRY = "ff_a16w16_nogate"
 KERNEL = "_gemm_a16_w16_kernel"
 
@@ -54,6 +56,7 @@ def _load_source():
     entry = os.path.join(_HERE, SOURCE_FILE)
     spec = importlib.util.spec_from_file_location("ff_a16w16_src", entry)
     mod = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = mod
     spec.loader.exec_module(mod)
     return mod
 
@@ -99,6 +102,29 @@ def run_compile():
     return True
 
 
+def _checked_elementwise_output(out, x):
+    import torch
+    if not isinstance(out, torch.Tensor) or out.shape != x.shape or out.dtype != x.dtype or out.device != x.device:
+        raise AssertionError("Output shape/dtype/device violates the operator contract")
+
+
+def _elementwise_replay_validator(x, w1, w2):
+    inputs = (x, w1, w2)
+    originals = tuple(v.clone() for v in inputs)
+    expected = _torch_ref(x, w1, w2, "silu_exp2")
+    def perturb():
+        x.neg_()
+        w2.mul_(0.5)
+    def reference():
+        return _torch_ref(x, w1, w2, "silu_exp2")
+    def compare(actual, expected):
+        _checked_elementwise_output(actual, x)
+        allclose_output(actual, expected, atol=5e-2, rtol=5e-2)
+    def validate(timed):
+        return verify_timed_run(timed, inputs=inputs, originals=originals, expected=expected, perturb=perturb, reference=reference, compare=compare)
+    return validate
+
+
 def run_correctness(verbose=True):
     import torch
 
@@ -112,7 +138,11 @@ def run_correctness(verbose=True):
                 x, w1, w2 = _make_inputs(
                     shape["batch"], shape["hidden"], shape["intermediate"], dtype
                 )
+                protected_inputs = (x, w1, w2)
+                originals = tuple(v.clone() for v in protected_inputs)
                 y = mod.ff_a16w16_nogate(x, w1, w2, dtype, activation=act)
+                require_unchanged(protected_inputs, originals)
+                _checked_elementwise_output(y, x)
                 torch.cuda.synchronize()
                 ref = _torch_ref(x, w1, w2, act)
                 finite = bool(torch.isfinite(y).all().item())
@@ -148,15 +178,18 @@ def run_benchmark(verbose=True):
         x, w1, w2 = _make_inputs(
             shape["batch"], shape["hidden"], shape["intermediate"], dtype
         )
+        replay_validate = _elementwise_replay_validator(x, w1, w2)
         fn = lambda: mod.ff_a16w16_nogate(x, w1, w2, dtype, activation="silu_exp2")  # noqa: E731
         fn()
         torch.cuda.synchronize()
         for _ in range(WARMUP):
             fn()
         torch.cuda.synchronize()
+        timed = TimedRun()
         ms, bench_meta = benchmark_cuda_graph_or_events(
-            fn, warmup=0, repetition=ITERS
+            fn, warmup=0, repetition=ITERS, timed_run=timed
         )
+        bench_meta.update(replay_validate(timed))
         latencies.append(ms)
         flops = 4.0 * shape["batch"] * shape["hidden"] * shape["intermediate"]
         report.append(

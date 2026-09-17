@@ -1,0 +1,229 @@
+{
+  "cases": [
+    {
+      "test_case_id": "case_0",
+      "params": {
+        "inputs": [
+          {
+            "shape": [
+              4,
+              1,
+              4
+            ],
+            "dtype": "torch.float32",
+            "stride": [
+              4,
+              4,
+              1
+            ]
+          },
+          {
+            "shape": [
+              4,
+              4,
+              4,
+              4
+            ],
+            "dtype": "torch.float32",
+            "stride": [
+              64,
+              16,
+              4,
+              1
+            ]
+          }
+        ],
+        "model_init_seed": 0,
+        "correctness_seed": 1337,
+        "operator": {
+          "scale": {
+            "pattern": "channel_ramp",
+            "offset": 0.5,
+            "span": 0.5
+          },
+          "bias": 0.125
+        }
+      }
+    },
+    {
+      "test_case_id": "case_1",
+      "params": {
+        "inputs": [
+          {
+            "shape": [
+              8,
+              1,
+              4
+            ],
+            "dtype": "torch.float32",
+            "stride": [
+              4,
+              4,
+              1
+            ]
+          },
+          {
+            "shape": [
+              8,
+              4,
+              8,
+              8
+            ],
+            "dtype": "torch.float32",
+            "stride": [
+              256,
+              64,
+              8,
+              1
+            ]
+          }
+        ],
+        "model_init_seed": 0,
+        "correctness_seed": 1338,
+        "operator": {
+          "scale": {
+            "pattern": "channel_ramp",
+            "offset": 0.5,
+            "span": 0.5
+          },
+          "bias": -0.25
+        }
+      }
+    },
+    {
+      "test_case_id": "case_2",
+      "params": {
+        "inputs": [
+          {
+            "shape": [
+              16,
+              1,
+              4
+            ],
+            "dtype": "torch.float32",
+            "stride": [
+              4,
+              4,
+              1
+            ]
+          },
+          {
+            "shape": [
+              16,
+              4,
+              16,
+              16
+            ],
+            "dtype": "torch.float32",
+            "stride": [
+              1024,
+              256,
+              16,
+              1
+            ]
+          }
+        ],
+        "model_init_seed": 0,
+        "correctness_seed": 1339,
+        "operator": {
+          "scale": {
+            "pattern": "channel_ramp",
+            "offset": 0.5,
+            "span": 0.5
+          },
+          "bias": 0.5
+        }
+      }
+    },
+    {
+      "test_case_id": "case_3",
+      "params": {
+        "inputs": [
+          {
+            "shape": [
+              32,
+              1,
+              4
+            ],
+            "dtype": "torch.float32",
+            "stride": [
+              4,
+              4,
+              1
+            ]
+          },
+          {
+            "shape": [
+              32,
+              4,
+              32,
+              32
+            ],
+            "dtype": "torch.float32",
+            "stride": [
+              4096,
+              1024,
+              32,
+              1
+            ]
+          }
+        ],
+        "model_init_seed": 0,
+        "correctness_seed": 1340,
+        "operator": {
+          "scale": {
+            "pattern": "channel_ramp",
+            "offset": 0.5,
+            "span": 0.5
+          },
+          "bias": -0.75
+        }
+      }
+    },
+    {
+      "test_case_id": "case_4",
+      "params": {
+        "inputs": [
+          {
+            "shape": [
+              64,
+              1,
+              4
+            ],
+            "dtype": "torch.float32",
+            "stride": [
+              4,
+              4,
+              1
+            ]
+          },
+          {
+            "shape": [
+              64,
+              4,
+              64,
+              64
+            ],
+            "dtype": "torch.float32",
+            "stride": [
+              16384,
+              4096,
+              64,
+              1
+            ]
+          }
+        ],
+        "model_init_seed": 0,
+        "correctness_seed": 1341,
+        "operator": {
+          "scale": {
+            "pattern": "channel_ramp",
+            "offset": 0.5,
+            "span": 0.5
+          },
+          "bias": 1.25
+        }
+      }
+    }
+  ]
+}

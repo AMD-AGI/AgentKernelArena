@@ -34,7 +34,7 @@ def get_inputs():
         [4096, 32768],         # large 2D
     ]
     for shape in configs:
-        yield [torch.rand(shape)]
+        yield [torch.rand(shape).mul_(12).sub_(6)]
 
 
 def get_init_inputs():

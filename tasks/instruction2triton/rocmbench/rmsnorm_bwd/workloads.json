@@ -1,0 +1,1407 @@
+{
+  "version": 1,
+  "source": "rmsnorm_bwd.py",
+  "kernel_symbols": [
+    "rms_bwd_kernel"
+  ],
+  "cases": [
+    {
+      "test_case_id": "test_rmsnorm/31f4f13a587b22a07ada",
+      "params": {
+        "function": "test_rmsnorm",
+        "arguments": {
+          "in_dtype_str": "fp16",
+          "out_dtype_str": "fp16",
+          "ZERO_CENTERED_GAMMA": true,
+          "M": 1,
+          "N": 4
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_rmsnorm/228f061778bb13d66e1c",
+      "params": {
+        "function": "test_rmsnorm",
+        "arguments": {
+          "in_dtype_str": "fp16",
+          "out_dtype_str": "fp16",
+          "ZERO_CENTERED_GAMMA": true,
+          "M": 2,
+          "N": 10
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_rmsnorm/fd58912d0a5ba59b46b7",
+      "params": {
+        "function": "test_rmsnorm",
+        "arguments": {
+          "in_dtype_str": "fp16",
+          "out_dtype_str": "fp16",
+          "ZERO_CENTERED_GAMMA": true,
+          "M": 256,
+          "N": 4096
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_rmsnorm/4c1e97db3e92fd9193a7",
+      "params": {
+        "function": "test_rmsnorm",
+        "arguments": {
+          "in_dtype_str": "fp16",
+          "out_dtype_str": "fp16",
+          "ZERO_CENTERED_GAMMA": true,
+          "M": 1,
+          "N": 31744
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_rmsnorm/594e22c02c4afc4beda0",
+      "params": {
+        "function": "test_rmsnorm",
+        "arguments": {
+          "in_dtype_str": "fp16",
+          "out_dtype_str": "fp16",
+          "ZERO_CENTERED_GAMMA": true,
+          "M": 873,
+          "N": 1245
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_rmsnorm/2d3c1c2db38dec72ae58",
+      "params": {
+        "function": "test_rmsnorm",
+        "arguments": {
+          "in_dtype_str": "fp16",
+          "out_dtype_str": "fp16",
+          "ZERO_CENTERED_GAMMA": false,
+          "M": 1,
+          "N": 4
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_rmsnorm/7d8e1c2f8a8ac4b28a34",
+      "params": {
+        "function": "test_rmsnorm",
+        "arguments": {
+          "in_dtype_str": "fp16",
+          "out_dtype_str": "fp16",
+          "ZERO_CENTERED_GAMMA": false,
+          "M": 2,
+          "N": 10
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_rmsnorm/50ea412f97c51ba23fec",
+      "params": {
+        "function": "test_rmsnorm",
+        "arguments": {
+          "in_dtype_str": "fp16",
+          "out_dtype_str": "fp16",
+          "ZERO_CENTERED_GAMMA": false,
+          "M": 256,
+          "N": 4096
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_rmsnorm/75d776dbd6c4781a6cdc",
+      "params": {
+        "function": "test_rmsnorm",
+        "arguments": {
+          "in_dtype_str": "fp16",
+          "out_dtype_str": "fp16",
+          "ZERO_CENTERED_GAMMA": false,
+          "M": 1,
+          "N": 31744
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_rmsnorm/2711ebaa6d02280cbfac",
+      "params": {
+        "function": "test_rmsnorm",
+        "arguments": {
+          "in_dtype_str": "fp16",
+          "out_dtype_str": "fp16",
+          "ZERO_CENTERED_GAMMA": false,
+          "M": 873,
+          "N": 1245
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_rmsnorm/070c1e19a1862b8bf1e1",
+      "params": {
+        "function": "test_rmsnorm",
+        "arguments": {
+          "in_dtype_str": "fp16",
+          "out_dtype_str": "bf16",
+          "ZERO_CENTERED_GAMMA": true,
+          "M": 1,
+          "N": 4
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_rmsnorm/4595e2d07fb6b38604a9",
+      "params": {
+        "function": "test_rmsnorm",
+        "arguments": {
+          "in_dtype_str": "fp16",
+          "out_dtype_str": "bf16",
+          "ZERO_CENTERED_GAMMA": true,
+          "M": 2,
+          "N": 10
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_rmsnorm/9cafc65ebd7ddcf3ae9a",
+      "params": {
+        "function": "test_rmsnorm",
+        "arguments": {
+          "in_dtype_str": "fp16",
+          "out_dtype_str": "bf16",
+          "ZERO_CENTERED_GAMMA": true,
+          "M": 256,
+          "N": 4096
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_rmsnorm/6a5901691a5fc270635f",
+      "params": {
+        "function": "test_rmsnorm",
+        "arguments": {
+          "in_dtype_str": "fp16",
+          "out_dtype_str": "bf16",
+          "ZERO_CENTERED_GAMMA": true,
+          "M": 1,
+          "N": 31744
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_rmsnorm/9abd5dd4c58e55161a69",
+      "params": {
+        "function": "test_rmsnorm",
+        "arguments": {
+          "in_dtype_str": "fp16",
+          "out_dtype_str": "bf16",
+          "ZERO_CENTERED_GAMMA": true,
+          "M": 873,
+          "N": 1245
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_rmsnorm/5b160694a072a8170e74",
+      "params": {
+        "function": "test_rmsnorm",
+        "arguments": {
+          "in_dtype_str": "fp16",
+          "out_dtype_str": "bf16",
+          "ZERO_CENTERED_GAMMA": false,
+          "M": 1,
+          "N": 4
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_rmsnorm/869c121405cd5a2a882f",
+      "params": {
+        "function": "test_rmsnorm",
+        "arguments": {
+          "in_dtype_str": "fp16",
+          "out_dtype_str": "bf16",
+          "ZERO_CENTERED_GAMMA": false,
+          "M": 2,
+          "N": 10
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_rmsnorm/4b99c44fcf76c386ec47",
+      "params": {
+        "function": "test_rmsnorm",
+        "arguments": {
+          "in_dtype_str": "fp16",
+          "out_dtype_str": "bf16",
+          "ZERO_CENTERED_GAMMA": false,
+          "M": 256,
+          "N": 4096
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_rmsnorm/7deccc7e7ddc96e49dc2",
+      "params": {
+        "function": "test_rmsnorm",
+        "arguments": {
+          "in_dtype_str": "fp16",
+          "out_dtype_str": "bf16",
+          "ZERO_CENTERED_GAMMA": false,
+          "M": 1,
+          "N": 31744
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_rmsnorm/709916c25583e5c1994d",
+      "params": {
+        "function": "test_rmsnorm",
+        "arguments": {
+          "in_dtype_str": "fp16",
+          "out_dtype_str": "bf16",
+          "ZERO_CENTERED_GAMMA": false,
+          "M": 873,
+          "N": 1245
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_rmsnorm/94e3c35c81ecda0478db",
+      "params": {
+        "function": "test_rmsnorm",
+        "arguments": {
+          "in_dtype_str": "bf16",
+          "out_dtype_str": "fp16",
+          "ZERO_CENTERED_GAMMA": true,
+          "M": 1,
+          "N": 4
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_rmsnorm/b6ec6a5df15c7fa82f1e",
+      "params": {
+        "function": "test_rmsnorm",
+        "arguments": {
+          "in_dtype_str": "bf16",
+          "out_dtype_str": "fp16",
+          "ZERO_CENTERED_GAMMA": true,
+          "M": 2,
+          "N": 10
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_rmsnorm/7c3c5eb5138f37cb09ca",
+      "params": {
+        "function": "test_rmsnorm",
+        "arguments": {
+          "in_dtype_str": "bf16",
+          "out_dtype_str": "fp16",
+          "ZERO_CENTERED_GAMMA": true,
+          "M": 256,
+          "N": 4096
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_rmsnorm/0b775f4dbce60bce74a5",
+      "params": {
+        "function": "test_rmsnorm",
+        "arguments": {
+          "in_dtype_str": "bf16",
+          "out_dtype_str": "fp16",
+          "ZERO_CENTERED_GAMMA": true,
+          "M": 1,
+          "N": 31744
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_rmsnorm/382438f1d32960fe9f35",
+      "params": {
+        "function": "test_rmsnorm",
+        "arguments": {
+          "in_dtype_str": "bf16",
+          "out_dtype_str": "fp16",
+          "ZERO_CENTERED_GAMMA": true,
+          "M": 873,
+          "N": 1245
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_rmsnorm/10c7f06b620fcd3827ee",
+      "params": {
+        "function": "test_rmsnorm",
+        "arguments": {
+          "in_dtype_str": "bf16",
+          "out_dtype_str": "fp16",
+          "ZERO_CENTERED_GAMMA": false,
+          "M": 1,
+          "N": 4
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_rmsnorm/23eebdd43a5c5f6057f0",
+      "params": {
+        "function": "test_rmsnorm",
+        "arguments": {
+          "in_dtype_str": "bf16",
+          "out_dtype_str": "fp16",
+          "ZERO_CENTERED_GAMMA": false,
+          "M": 2,
+          "N": 10
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_rmsnorm/084195a1058cca8151eb",
+      "params": {
+        "function": "test_rmsnorm",
+        "arguments": {
+          "in_dtype_str": "bf16",
+          "out_dtype_str": "fp16",
+          "ZERO_CENTERED_GAMMA": false,
+          "M": 256,
+          "N": 4096
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_rmsnorm/c6c95974fe01c0572777",
+      "params": {
+        "function": "test_rmsnorm",
+        "arguments": {
+          "in_dtype_str": "bf16",
+          "out_dtype_str": "fp16",
+          "ZERO_CENTERED_GAMMA": false,
+          "M": 1,
+          "N": 31744
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_rmsnorm/0067385d86359480e30a",
+      "params": {
+        "function": "test_rmsnorm",
+        "arguments": {
+          "in_dtype_str": "bf16",
+          "out_dtype_str": "fp16",
+          "ZERO_CENTERED_GAMMA": false,
+          "M": 873,
+          "N": 1245
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_rmsnorm/b9c10629a194f9baf177",
+      "params": {
+        "function": "test_rmsnorm",
+        "arguments": {
+          "in_dtype_str": "bf16",
+          "out_dtype_str": "bf16",
+          "ZERO_CENTERED_GAMMA": true,
+          "M": 1,
+          "N": 4
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_rmsnorm/0c2eaba9e4f0e340feb0",
+      "params": {
+        "function": "test_rmsnorm",
+        "arguments": {
+          "in_dtype_str": "bf16",
+          "out_dtype_str": "bf16",
+          "ZERO_CENTERED_GAMMA": true,
+          "M": 2,
+          "N": 10
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_rmsnorm/a9c72eb2aac6044ca350",
+      "params": {
+        "function": "test_rmsnorm",
+        "arguments": {
+          "in_dtype_str": "bf16",
+          "out_dtype_str": "bf16",
+          "ZERO_CENTERED_GAMMA": true,
+          "M": 256,
+          "N": 4096
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_rmsnorm/6d8cd6d17a6ebff201af",
+      "params": {
+        "function": "test_rmsnorm",
+        "arguments": {
+          "in_dtype_str": "bf16",
+          "out_dtype_str": "bf16",
+          "ZERO_CENTERED_GAMMA": true,
+          "M": 1,
+          "N": 31744
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_rmsnorm/ea5379fb74ef7d71453b",
+      "params": {
+        "function": "test_rmsnorm",
+        "arguments": {
+          "in_dtype_str": "bf16",
+          "out_dtype_str": "bf16",
+          "ZERO_CENTERED_GAMMA": true,
+          "M": 873,
+          "N": 1245
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_rmsnorm/157b279c454355ad57d3",
+      "params": {
+        "function": "test_rmsnorm",
+        "arguments": {
+          "in_dtype_str": "bf16",
+          "out_dtype_str": "bf16",
+          "ZERO_CENTERED_GAMMA": false,
+          "M": 1,
+          "N": 4
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_rmsnorm/0d238cfdc78172bc5c48",
+      "params": {
+        "function": "test_rmsnorm",
+        "arguments": {
+          "in_dtype_str": "bf16",
+          "out_dtype_str": "bf16",
+          "ZERO_CENTERED_GAMMA": false,
+          "M": 2,
+          "N": 10
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_rmsnorm/0d7282aef49dc58ef63f",
+      "params": {
+        "function": "test_rmsnorm",
+        "arguments": {
+          "in_dtype_str": "bf16",
+          "out_dtype_str": "bf16",
+          "ZERO_CENTERED_GAMMA": false,
+          "M": 256,
+          "N": 4096
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_rmsnorm/616cd491d45dca0db1be",
+      "params": {
+        "function": "test_rmsnorm",
+        "arguments": {
+          "in_dtype_str": "bf16",
+          "out_dtype_str": "bf16",
+          "ZERO_CENTERED_GAMMA": false,
+          "M": 1,
+          "N": 31744
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_rmsnorm/5b879662d63ec0387417",
+      "params": {
+        "function": "test_rmsnorm",
+        "arguments": {
+          "in_dtype_str": "bf16",
+          "out_dtype_str": "bf16",
+          "ZERO_CENTERED_GAMMA": false,
+          "M": 873,
+          "N": 1245
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/2bb5c17a18ce5531341c",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 256,
+          "N": 4096,
+          "dtype_str": "fp16",
+          "ZERO_CENTERED_GAMMA": false
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/0804740baf92f36791b1",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 256,
+          "N": 4096,
+          "dtype_str": "fp16",
+          "ZERO_CENTERED_GAMMA": true
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/aa2bf4f91bfc3539f09f",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 256,
+          "N": 4096,
+          "dtype_str": "bf16",
+          "ZERO_CENTERED_GAMMA": false
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/e257c650a691e6f283b4",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 256,
+          "N": 4096,
+          "dtype_str": "bf16",
+          "ZERO_CENTERED_GAMMA": true
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/a1dc44f2c004706eef92",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 256,
+          "N": 4096,
+          "dtype_str": "fp32",
+          "ZERO_CENTERED_GAMMA": false
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/6a27238cf9b19e4257a9",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 256,
+          "N": 4096,
+          "dtype_str": "fp32",
+          "ZERO_CENTERED_GAMMA": true
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/a2b1304accaeff99f9cb",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 2048,
+          "N": 2048,
+          "dtype_str": "fp16",
+          "ZERO_CENTERED_GAMMA": false
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/c273b30cc81f97235609",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 2048,
+          "N": 2048,
+          "dtype_str": "fp16",
+          "ZERO_CENTERED_GAMMA": true
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/2d48b45361a42fc0a75a",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 2048,
+          "N": 2048,
+          "dtype_str": "bf16",
+          "ZERO_CENTERED_GAMMA": false
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/ea4277e49e9d6a0358e2",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 2048,
+          "N": 2048,
+          "dtype_str": "bf16",
+          "ZERO_CENTERED_GAMMA": true
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/ac89507fd683309c7ed8",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 2048,
+          "N": 2048,
+          "dtype_str": "fp32",
+          "ZERO_CENTERED_GAMMA": false
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/883d056a138f869c5ce3",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 2048,
+          "N": 2048,
+          "dtype_str": "fp32",
+          "ZERO_CENTERED_GAMMA": true
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/d450850ff196703e5499",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 4096,
+          "N": 8192,
+          "dtype_str": "fp16",
+          "ZERO_CENTERED_GAMMA": false
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/d5de710957d262cad395",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 4096,
+          "N": 8192,
+          "dtype_str": "fp16",
+          "ZERO_CENTERED_GAMMA": true
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/0b3a0940fe91a658514b",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 4096,
+          "N": 8192,
+          "dtype_str": "bf16",
+          "ZERO_CENTERED_GAMMA": false
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/66f7686206fb37134cce",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 4096,
+          "N": 8192,
+          "dtype_str": "bf16",
+          "ZERO_CENTERED_GAMMA": true
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/b76a864586c3cad42555",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 4096,
+          "N": 8192,
+          "dtype_str": "fp32",
+          "ZERO_CENTERED_GAMMA": false
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/dd3d5884443ae0a563e7",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 4096,
+          "N": 8192,
+          "dtype_str": "fp32",
+          "ZERO_CENTERED_GAMMA": true
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/096bcd43a28c99ead047",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 8192,
+          "N": 8192,
+          "dtype_str": "fp16",
+          "ZERO_CENTERED_GAMMA": false
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/aa8eef8a7b6e851cbfa7",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 8192,
+          "N": 8192,
+          "dtype_str": "fp16",
+          "ZERO_CENTERED_GAMMA": true
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/1816767aa40f450bb4ca",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 8192,
+          "N": 8192,
+          "dtype_str": "bf16",
+          "ZERO_CENTERED_GAMMA": false
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/1f59a51a6e38caf5e353",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 8192,
+          "N": 8192,
+          "dtype_str": "bf16",
+          "ZERO_CENTERED_GAMMA": true
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/713c8882da48ea13df86",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 8192,
+          "N": 8192,
+          "dtype_str": "fp32",
+          "ZERO_CENTERED_GAMMA": false
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/0c8044e077e6a0e6a197",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 8192,
+          "N": 8192,
+          "dtype_str": "fp32",
+          "ZERO_CENTERED_GAMMA": true
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/db8b68a7264323d8243f",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 1,
+          "N": 31744,
+          "dtype_str": "fp16",
+          "ZERO_CENTERED_GAMMA": false
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/a8fa19365868c78439c2",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 1,
+          "N": 31744,
+          "dtype_str": "fp16",
+          "ZERO_CENTERED_GAMMA": true
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/ebbe4589e0887bd29cbb",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 1,
+          "N": 31744,
+          "dtype_str": "bf16",
+          "ZERO_CENTERED_GAMMA": false
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/bdf943827dc66360fed7",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 1,
+          "N": 31744,
+          "dtype_str": "bf16",
+          "ZERO_CENTERED_GAMMA": true
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/737df45cba6c01d7702d",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 1,
+          "N": 31744,
+          "dtype_str": "fp32",
+          "ZERO_CENTERED_GAMMA": false
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/5106beddc2df915ce4fb",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 1,
+          "N": 31744,
+          "dtype_str": "fp32",
+          "ZERO_CENTERED_GAMMA": true
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/aa9db28cbeadb792a583",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 1,
+          "N": 131072,
+          "dtype_str": "fp16",
+          "ZERO_CENTERED_GAMMA": false
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/f412b9bc5bdf8f45d625",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 1,
+          "N": 131072,
+          "dtype_str": "fp16",
+          "ZERO_CENTERED_GAMMA": true
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/b2150f406a7d29c9bf83",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 1,
+          "N": 131072,
+          "dtype_str": "bf16",
+          "ZERO_CENTERED_GAMMA": false
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/a539b5c8bcf1ea79bbef",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 1,
+          "N": 131072,
+          "dtype_str": "bf16",
+          "ZERO_CENTERED_GAMMA": true
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/42a5539bf3c65883552d",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 1,
+          "N": 131072,
+          "dtype_str": "fp32",
+          "ZERO_CENTERED_GAMMA": false
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/8be95db9926739573b6e",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 1,
+          "N": 131072,
+          "dtype_str": "fp32",
+          "ZERO_CENTERED_GAMMA": true
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/c045456ab169cae9daed",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 512,
+          "N": 10240,
+          "dtype_str": "fp16",
+          "ZERO_CENTERED_GAMMA": false
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/0423aa7e0e8d22a85e46",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 512,
+          "N": 10240,
+          "dtype_str": "fp16",
+          "ZERO_CENTERED_GAMMA": true
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/7fb5d9e907b94e877297",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 512,
+          "N": 10240,
+          "dtype_str": "bf16",
+          "ZERO_CENTERED_GAMMA": false
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/20d3b1f1550e31c2929b",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 512,
+          "N": 10240,
+          "dtype_str": "bf16",
+          "ZERO_CENTERED_GAMMA": true
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/4ea57ba6919206211792",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 512,
+          "N": 10240,
+          "dtype_str": "fp32",
+          "ZERO_CENTERED_GAMMA": false
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/f7c4d57eb2a5c24c7830",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 512,
+          "N": 10240,
+          "dtype_str": "fp32",
+          "ZERO_CENTERED_GAMMA": true
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    }
+  ],
+  "migration": {
+    "original_source_sha256": "3d450bd77b9d59f0aa3f15a716e2a034a2ce52cec1614ee47351a44487a31aca",
+    "case_policy": "All original parametrizations retained; runtime skips are failures, not passing or omitted cases."
+  }
+}

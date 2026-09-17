@@ -17,6 +17,7 @@ def iv_dependent_matmul(a_ptr, b_ptr, c_ptr,  #
             stride_cm, stride_cn,  #
             BLOCK_SIZE_M: tl.constexpr, BLOCK_SIZE_N: tl.constexpr, BLOCK_SIZE_K: tl.constexpr,  #
             type: tl.constexpr):
+    TILE_K: tl.constexpr = BLOCK_SIZE_K // 2 if a_ptr.dtype.element_ty == tl.float32 and (BLOCK_SIZE_M + BLOCK_SIZE_N) * BLOCK_SIZE_K > 8192 else BLOCK_SIZE_K
     pid = tl.program_id(axis=0)
     num_pid_n = tl.cdiv(N, BLOCK_SIZE_N)
     pid_m = pid // num_pid_n
@@ -24,47 +25,47 @@ def iv_dependent_matmul(a_ptr, b_ptr, c_ptr,  #
 
     offs_am = (pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)) % M
     offs_bn = (pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)) % N
-    offs_k = tl.arange(0, BLOCK_SIZE_K)
+    offs_k = tl.arange(0, TILE_K)
     a_ptr = a_ptr + (offs_am[:, None] * stride_am + offs_k[None, :] * stride_ak)
     b_ptr = b_ptr + (offs_k[:, None] * stride_bk + offs_bn[None, :] * stride_bn)
     a_ptrs = a_ptr
     b_ptrs = b_ptr
     if type == "post_load_two_iters":
-        a_ptrs_next = a_ptr + BLOCK_SIZE_K * stride_ak
-        b_ptrs_next = b_ptr + BLOCK_SIZE_K * stride_bk
+        a_ptrs_next = a_ptr + TILE_K * stride_ak
+        b_ptrs_next = b_ptr + TILE_K * stride_bk
     elif type == "post_load_three_iters":
-        a_ptrs_next = a_ptr + BLOCK_SIZE_K * stride_ak
-        b_ptrs_next = b_ptr + BLOCK_SIZE_K * stride_bk
-        a_ptrs_next_next = a_ptr + 2 * BLOCK_SIZE_K * stride_ak
-        b_ptrs_next_next = b_ptr + 2 * BLOCK_SIZE_K * stride_bk
+        a_ptrs_next = a_ptr + TILE_K * stride_ak
+        b_ptrs_next = b_ptr + TILE_K * stride_bk
+        a_ptrs_next_next = a_ptr + 2 * TILE_K * stride_ak
+        b_ptrs_next_next = b_ptr + 2 * TILE_K * stride_bk
 
     accumulator = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)
-    for k in range(0, tl.cdiv(K, BLOCK_SIZE_K)):
+    for k in range(0, tl.cdiv(K, TILE_K)):
         if type == "pre_load":
-            a_ptrs = a_ptr + k * BLOCK_SIZE_K * stride_ak
-            b_ptrs = b_ptr + k * BLOCK_SIZE_K * stride_bk
+            a_ptrs = a_ptr + k * TILE_K * stride_ak
+            b_ptrs = b_ptr + k * TILE_K * stride_bk
         elif type == "post_pre_mixed":
-            a_ptrs = a_ptr + k * BLOCK_SIZE_K * stride_ak
-        a = tl.load(a_ptrs, mask=offs_k[None, :] < K - k * BLOCK_SIZE_K, other=0.0)
-        b = tl.load(b_ptrs, mask=offs_k[:, None] < K - k * BLOCK_SIZE_K, other=0.0)
+            a_ptrs = a_ptr + k * TILE_K * stride_ak
+        a = tl.load(a_ptrs, mask=offs_k[None, :] < K - k * TILE_K, other=0.0)
+        b = tl.load(b_ptrs, mask=offs_k[:, None] < K - k * TILE_K, other=0.0)
         accumulator += tl.dot(a, b)
         if type == "post_load":
-            a_ptrs = a_ptr + (k + 1) * BLOCK_SIZE_K * stride_ak
-            b_ptrs = b_ptr + (k + 1) * BLOCK_SIZE_K * stride_bk
+            a_ptrs = a_ptr + (k + 1) * TILE_K * stride_ak
+            b_ptrs = b_ptr + (k + 1) * TILE_K * stride_bk
         elif type == "post_pre_mixed":
-            b_ptrs = b_ptr + (k + 1) * BLOCK_SIZE_K * stride_bk
+            b_ptrs = b_ptr + (k + 1) * TILE_K * stride_bk
         elif type == "post_load_two_iters":
             a_ptrs = a_ptrs_next
             b_ptrs = b_ptrs_next
-            a_ptrs_next = a_ptr + (k + 2) * BLOCK_SIZE_K * stride_ak
-            b_ptrs_next = b_ptr + (k + 2) * BLOCK_SIZE_K * stride_bk
+            a_ptrs_next = a_ptr + (k + 2) * TILE_K * stride_ak
+            b_ptrs_next = b_ptr + (k + 2) * TILE_K * stride_bk
         elif type == "post_load_three_iters":
             a_ptrs = a_ptrs_next
             b_ptrs = b_ptrs_next
             a_ptrs_next = a_ptrs_next_next
             b_ptrs_next = b_ptrs_next_next
-            a_ptrs_next_next = a_ptr + (k + 3) * BLOCK_SIZE_K * stride_ak
-            b_ptrs_next_next = b_ptr + (k + 3) * BLOCK_SIZE_K * stride_bk
+            a_ptrs_next_next = a_ptr + (k + 3) * TILE_K * stride_ak
+            b_ptrs_next_next = b_ptr + (k + 3) * TILE_K * stride_bk
     c = accumulator.to(tl.float16)
 
     offs_cm = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
@@ -142,24 +143,32 @@ def test_iv_dependent_matmul(type, request, device='cuda'):
     def grid(META):
         return (triton.cdiv(M, META['BLOCK_SIZE_M']) * triton.cdiv(N, META['BLOCK_SIZE_N']), )
 
-    num_stages = 4 if type == "post_load_three_iters" else 3
-    iv_dependent_matmul[grid](
-        a, b, triton_output, M, N, K,  #
-        a.stride(0), a.stride(1), b.stride(0), b.stride(1),  #
-        triton_output.stride(0), triton_output.stride(1),  #
-        BLOCK_SIZE_M=BLOCK_SIZE_M, BLOCK_SIZE_N=BLOCK_SIZE_N, BLOCK_SIZE_K=BLOCK_SIZE_K, type=type,  #
-        num_stages=num_stages)
+    from _arena_reference import IVMatmulCheck
+    check = IVMatmulCheck(a, b, triton_output)
+    try:
+        num_stages = 4 if type == "post_load_three_iters" else 3
+        iv_dependent_matmul[grid](
+            a, b, triton_output, M, N, K,  #
+            a.stride(0), a.stride(1), b.stride(0), b.stride(1),  #
+            triton_output.stride(0), triton_output.stride(1),  #
+            BLOCK_SIZE_M=BLOCK_SIZE_M, BLOCK_SIZE_N=BLOCK_SIZE_N, BLOCK_SIZE_K=BLOCK_SIZE_K, type=type,  #
+            num_stages=num_stages)
 
-    result_gold['_CALL_SUCCESS_'] = torch.tensor([[1.0]])
-    
-    ################### save triton_output in result_gold ###################
-    test_case_name = request.node.name
-    sanitized_key_name = test_case_name.replace("::", "_").replace("[", "_").replace("]", "").replace("-", "_")
-    result_gold[sanitized_key_name] = triton_output.clone().detach().cpu()
-    ################################################################### 
+        result_gold['_CALL_SUCCESS_'] = torch.tensor([[1.0]])
 
-    torch.testing.assert_close(torch_output, triton_output, rtol=1e-2, atol=1e-2)
+        ################### save triton_output in result_gold ###################
+        test_case_name = request.node.name
+        sanitized_key_name = test_case_name.replace("::", "_").replace("[", "_").replace("]", "").replace("-", "_")
+        result_gold[sanitized_key_name] = triton_output.clone().detach().cpu()
+        ###################################################################
 
+        torch.testing.assert_close(torch_output, triton_output, rtol=1e-2, atol=1e-2)
+        check(triton_output)
+        request.node.user_properties.append(('iv_matmul_contract', {
+            'readonly_input_checked': True, 'independent_input_snapshot': True,
+            'full_output_checked': True, 'original_numeric_gate': True}))
+    finally:
+        check.restore()
 
 # --- Python wrapper for the kernel for benchmarking ---
 def iv_dependent_matmul_triton_wrapper(a_tensor, b_tensor, c_buffer,
@@ -239,11 +248,9 @@ def test_performance(m_n_k_shape, block_config, kernel_type_str, input_dtype_str
     M, N, K = m_n_k_shape
     BLOCK_M, BLOCK_N, BLOCK_K = block_config
 
-    # Skip if BLOCK_K is too large for K (kernel has K-loop)
-    if BLOCK_K > K :
-        pytest.skip(f"BLOCK_K ({BLOCK_K}) > K ({K}) not meaningful for tiled K-loop.")
+    # A partial first K tile is legal; the original kernel masks its K loads.
     
-    # Shared memory check (approx for one dot A(BM,BK) @ B(BK,BN) -> C(BM,BN))
+    # The real compiler validates actual shared memory usage for this specialization.
     # Max shared mem usage is for A and B blocks in one dot.
     # Smem elements = BM*BK + BK*BN
     # This kernel has a K-loop, so BK is a tile size, not full K.
@@ -254,14 +261,7 @@ def test_performance(m_n_k_shape, block_config, kernel_type_str, input_dtype_str
     # Output is always fp16 by the kernel
     output_dtype = torch.float16
 
-    smem_elements_needed = (BLOCK_M * BLOCK_K) + (BLOCK_K * BLOCK_N)
-    # num_stages can increase shared memory usage for pipelining
-    # A rough factor could be num_stages, or num_stages/2 + 1 etc.
-    # Let's use a factor of num_stages for a conservative estimate.
-    if smem_elements_needed * elem_size * (num_stages_launch if num_stages_launch > 1 else 1) > 65536:
-        pytest.skip(f"Skipping M{M}N{N}K{K} Blocks({BLOCK_M},{BLOCK_N},{BLOCK_K}) "
-                    f"dtype {input_dtype_str} stages {num_stages_launch} "
-                    f"due to estimated shared memory.")
+    # No fixed 64KB estimate may discard a declared case before compilation.
 
     a = torch.randn((M, K), device='cuda', dtype=current_in_dtype)
     b = torch.randn((K, N), device='cuda', dtype=current_in_dtype)
@@ -324,3 +324,24 @@ def test_save_performance_results():
 
 
 ######################################## HELPERS for Eval ########################################
+
+@pytest.mark.parametrize("M,N,K,kernel_type,input_dtype,BM,BN,BK,num_stages,num_warps", [(17, 19, 13, 'pre_load', 'fp16', 16, 16, 32, 3, 4), (17, 19, 13, 'pre_load', 'fp32', 16, 16, 32, 3, 4), (17, 19, 13, 'post_load', 'fp16', 16, 16, 32, 3, 4), (17, 19, 13, 'post_load', 'fp32', 16, 16, 32, 3, 4), (17, 19, 13, 'post_pre_mixed', 'fp16', 16, 16, 32, 3, 4), (17, 19, 13, 'post_pre_mixed', 'fp32', 16, 16, 32, 3, 4), (17, 19, 13, 'post_load_two_iters', 'fp16', 16, 16, 32, 3, 4), (17, 19, 13, 'post_load_two_iters', 'fp32', 16, 16, 32, 3, 4), (17, 19, 13, 'post_load_three_iters', 'fp16', 16, 16, 32, 4, 4), (17, 19, 13, 'post_load_three_iters', 'fp32', 16, 16, 32, 4, 4)])
+def test_partial_tile_control(M, N, K, kernel_type, input_dtype, BM, BN, BK,
+                              num_stages, num_warps, request):
+    """Unscored masks and single partial K iteration for all addressing variants."""
+    from _arena_reference import IVMatmulCheck
+    set_seed()
+    dtype = torch.float16 if input_dtype == 'fp16' else torch.float32
+    a = torch.randn((M, K), dtype=dtype, device='cuda')
+    b = torch.randn((K, N), dtype=dtype, device='cuda')
+    output = torch.empty((M, N), dtype=torch.float16, device='cuda')
+    check = IVMatmulCheck(a, b, output)
+    try:
+        check(iv_dependent_matmul_triton_wrapper(a, b, output, M, N, K,
+              BM, BN, BK, kernel_type, num_stages, num_warps))
+        request.node.user_properties.append(('iv_matmul_contract', {
+            'readonly_input_checked': True, 'independent_input_snapshot': True,
+            'full_output_checked': True, 'original_numeric_gate': True,
+            'unscored_partial_tile_control': True}))
+    finally:
+        check.restore()

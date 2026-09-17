@@ -76,20 +76,26 @@ def triton_matmul_kernel(a_ptr, b_ptr, c_ptr, bias_ptr,  #
     acc_dtype = tl.float32 if a_ptr.type.element_ty != tl.int8 else tl.int32  
     accumulator = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=acc_dtype)  
   
+    # Preserve low-order FP32 contributions across K tiles.
+    compensation = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=acc_dtype)
     # GEMM loop:  
   
     for k in range(0, tl.cdiv(K, BLOCK_SIZE_K)):  
         if EVEN_K:  
             # Unmasked load of A and B:  
-            a = tl.load(a_ptrs)  
-            b = tl.load(b_ptrs)  
+            a = tl.load(a_ptrs, mask=offs_am[:, None] < M, other=0)
+            b = tl.load(b_ptrs, mask=offs_bn[None, :] < N, other=0)
         else:  
             # Masked load of A and B:  
-            a = tl.load(a_ptrs, mask=offs_k[None, :] < K - k * BLOCK_SIZE_K, other=0)  
-            b = tl.load(b_ptrs, mask=offs_k[:, None] < K - k * BLOCK_SIZE_K, other=0)  
+            a = tl.load(a_ptrs, mask=(offs_am[:, None] < M) & (offs_k[None, :] < K - k * BLOCK_SIZE_K), other=0)
+            b = tl.load(b_ptrs, mask=(offs_bn[None, :] < N) & (offs_k[:, None] < K - k * BLOCK_SIZE_K), other=0)
         # Compute dot product:  
         if USE_DOT:  
-            accumulator += tl.dot(a, b)  
+            product = tl.dot(a, b)
+            adjusted = product - compensation
+            total = accumulator + adjusted
+            compensation = (total - accumulator) - adjusted
+            accumulator = total
         else:  
             a = tl.reshape(a, (BLOCK_SIZE_M, BLOCK_SIZE_K, 1)).to(acc_dtype)  
             b = tl.reshape(b, (1, BLOCK_SIZE_K, BLOCK_SIZE_N)).to(acc_dtype)  
@@ -330,17 +336,49 @@ def test_matmul(M: int, N: int, K: int, use_bias: bool,request) -> None:
     bias: Optional[Tensor]  
     a, b, bias = gen_input(M, N, K, use_bias)  
   
-    c_torch: Tensor = matmul("torch", a, b, bias)  
-    c_triton_dot: Tensor = matmul("triton-dot", a, b, bias)  
+    from _arena_reference import BiasCheck
+    check = BiasCheck(a, b, bias)
+    try:
+        c_torch: Tensor = matmul("torch", check.original[0], check.original[1], check.original[2] if bias is not None else None)
+        c_triton_dot: Tensor = matmul("triton-dot", a, b, bias)
 
-    ################### save c_triton_dot in result_gold ###################
-    test_case_name = request.node.name
-    sanitized_key_name = test_case_name.replace("::", "_").replace("[", "_").replace("]", "").replace("-", "_")
-    result_gold[sanitized_key_name] = c_triton_dot.clone().detach().cpu()
-    ###################################################################
-    result_gold['_CALL_SUCCESS_'] = torch.tensor([[1.0]])
-    
-    assert allclose(c_torch, c_triton_dot), "PyTorch and Triton Dot results don't match."  
+        ################### save c_triton_dot in result_gold ###################
+        test_case_name = request.node.name
+        sanitized_key_name = test_case_name.replace("::", "_").replace("[", "_").replace("]", "").replace("-", "_")
+        result_gold[sanitized_key_name] = c_triton_dot.clone().detach().cpu()
+        ###################################################################
+        result_gold['_CALL_SUCCESS_'] = torch.tensor([[1.0]])
+
+        assert allclose(c_torch, c_triton_dot), "PyTorch and Triton Dot results don't match."
+
+        check(c_triton_dot)
+        request.node.user_properties.append(("bias_contract", {"readonly_input_checked": True, "full_output_checked": True, "original_fp16_gate_checked": True}))
+    finally:
+        check.restore()
+
+
+@pytest.mark.parametrize("dtype_str", ["fp16", "bf16"])
+def test_nonzero_row_bias_control(dtype_str, request):
+    from _arena_reference import BiasCheck
+    dtype = torch.float16 if dtype_str == "fp16" else torch.bfloat16
+    M, N, K = 16, 32, 128
+    a = ((torch.arange(M * K, device="cuda") % 7 - 3).reshape(M, K) * .125).to(dtype)
+    b = ((torch.arange(K * N, device="cuda") % 5 - 2).reshape(K, N) * .25).to(dtype)
+    bias = (torch.arange(M, device="cuda") % 9 - 4).to(dtype) * .5
+    check = BiasCheck(a, b, bias)
+    try:
+        check(triton_matmul("triton-dot", a, b, bias))
+        # An independently obvious answer forces the entire row-varying bias.
+        check.replace([torch.zeros_like(a), check.original[1], check.original[2]])
+        out = triton_matmul("triton-dot", a, b, bias)
+        check(out)
+        torch.testing.assert_close(out, bias[:, None].expand(M, N), atol=0., rtol=0.)
+        check.fresh(out)
+        check(triton_matmul("triton-dot", a, b, bias))
+        request.node.user_properties.append(("bias_contract", {"readonly_input_checked": True, "full_output_checked": True,
+                                                             "fresh_input_replay_checked": True, "bias_known_answer_checked": True}))
+    finally:
+        check.restore()
 
 
 # --- Define TFLOPS and GB/s calculators for GEMM ---

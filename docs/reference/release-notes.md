@@ -49,7 +49,7 @@ execution, and RL-ready GPU kernel evaluation.
 - Added architecture-aware ROCm/SGLang runtime selection for gfx942 and gfx950.
 - Added GPU, agent CLI, authentication-state, and writable runtime-cache provisioning.
 - Added native standalone Codex mounting alongside the existing npm installation path.
-- Improved environment handling for PyTorch, Triton, MIOpen, HIP, and repository-level tasks.
+- Improved environment handling for PyTorch, Triton, MIOpen, and HIP tasks.
 - Stopped mounting host SSH credentials into benchmark containers.
 
 #### Multi-GPU parallel runs
@@ -70,7 +70,7 @@ This release adds 146 task packages:
 - 51 triton2flydsl tasks.
 - 17 GEAK-oriented triton2triton tasks covering GEMM, attention, MoE, normalization, quantization, routing, and other workloads.
 
-Version 0.2.0 contains 397 task packages across `hip2hip`, `instruction2triton`, `torch2hip`, `torch2flydsl`, `triton2triton`, `triton2flydsl`, `flydsl2flydsl`, and `repository`.
+Version 0.2.0 shipped 397 task packages. This historical count is not the current task inventory.
 
 The legacy 184-task `instruction2triton/tritonbench` suite and several obsolete HIP tasks were removed as part of repository cleanup.
 
@@ -95,7 +95,7 @@ The agent templates shipped in 0.2.0 were:
 - `mini_swe_triton`
 - `task_validator`
 
-The task validator now includes Codex backend support, repository-task validation, improved Python-environment propagation, stronger source and target checks, starter-stub detection, and standardized validation reports.
+The task validator now includes Codex backend support, improved Python-environment propagation, stronger source and target checks, starter-stub detection, and standardized validation reports.
 
 #### Documentation and onboarding
 
@@ -111,7 +111,6 @@ The task validator now includes Codex backend support, repository-task validatio
 - Fixed large-shape reduction accuracy in `InnerProd` and `MaskedLanguageModel`.
 - Strengthened `ball_query` correctness validation against its CPU reference.
 - Fixed MIOpen cache permission and lockfile failures.
-- Ensured repository task subprocesses use the ROCm-enabled Python environment.
 - Added `/usr/bin/time` to the container where required by build scripts.
 - Rejected missing or unimplemented generated targets before performance scoring.
 - Improved benchmark integrity by moving correctness and timing logic outside editable kernel files.
@@ -189,8 +188,8 @@ agent-launch, evaluation, scoring, logging, and report-generation pipeline.
 
 At that release, the registry included Cursor, Claude Code, Codex, SWE-agent,
 single-call, OpenEvolve, and earlier GEAK integrations. The bundled top-level
-task directories were `hip2hip`, `triton2triton`, `instruction2triton`,
-`torch2hip`, `flydsl2flydsl`, and `repository`. Later development replaced
+task directories included `hip2hip`, `triton2triton`, `instruction2triton`,
+`torch2hip`, and `flydsl2flydsl`. Later development replaced
 several agent integrations and added the current parallel runner, shared
 performance helpers, FlyDSL conversion suites, and other capabilities listed
 above.

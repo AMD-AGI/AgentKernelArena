@@ -1,0 +1,264 @@
+{
+  "version": 1,
+  "candidate_symbols": {
+    "source/triton_unified_attention_2d.py": [
+      {
+        "name": "kernel_unified_attention_2d",
+        "jit": true
+      }
+    ]
+  },
+  "case_table": "TEST_SHAPES",
+  "input_table": [
+    [
+      2,
+      4,
+      64,
+      8,
+      8,
+      64,
+      16,
+      0,
+      0.0
+    ],
+    [
+      1,
+      1,
+      128,
+      16,
+      4,
+      64,
+      16,
+      64,
+      0.0
+    ],
+    [
+      4,
+      1,
+      256,
+      32,
+      8,
+      128,
+      16,
+      0,
+      0.0
+    ],
+    [
+      2,
+      8,
+      128,
+      16,
+      16,
+      64,
+      32,
+      32,
+      0.0
+    ],
+    [
+      1,
+      16,
+      512,
+      8,
+      8,
+      128,
+      32,
+      64,
+      1.0
+    ]
+  ],
+  "cases": [
+    {
+      "test_case_id": "perf1",
+      "dtype": "float16,float32,int32",
+      "params": {
+        "case_index": 0,
+        "configuration": [
+          2,
+          4,
+          64,
+          8,
+          8,
+          64,
+          16,
+          0,
+          0.0
+        ],
+        "configuration_names": "(num_seqs, seq_len_q, seq_len_k, nqh, nkvh, hs, bs, sliding_window, softcap)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf2",
+      "dtype": "float16,float32,int32",
+      "params": {
+        "case_index": 1,
+        "configuration": [
+          1,
+          1,
+          128,
+          16,
+          4,
+          64,
+          16,
+          64,
+          0.0
+        ],
+        "configuration_names": "(num_seqs, seq_len_q, seq_len_k, nqh, nkvh, hs, bs, sliding_window, softcap)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf3",
+      "dtype": "float16,float32,int32",
+      "params": {
+        "case_index": 2,
+        "configuration": [
+          4,
+          1,
+          256,
+          32,
+          8,
+          128,
+          16,
+          0,
+          0.0
+        ],
+        "configuration_names": "(num_seqs, seq_len_q, seq_len_k, nqh, nkvh, hs, bs, sliding_window, softcap)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf4",
+      "dtype": "float16,float32,int32",
+      "params": {
+        "case_index": 3,
+        "configuration": [
+          2,
+          8,
+          128,
+          16,
+          16,
+          64,
+          32,
+          32,
+          0.0
+        ],
+        "configuration_names": "(num_seqs, seq_len_q, seq_len_k, nqh, nkvh, hs, bs, sliding_window, softcap)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf5",
+      "dtype": "float16,float32,int32",
+      "params": {
+        "case_index": 4,
+        "configuration": [
+          1,
+          16,
+          512,
+          8,
+          8,
+          128,
+          32,
+          64,
+          1.0
+        ],
+        "configuration_names": "(num_seqs, seq_len_q, seq_len_k, nqh, nkvh, hs, bs, sliding_window, softcap)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "ragged_permuted_window_softcap",
+      "dtype": "float16,float32,int32",
+      "params": {
+        "batch": 2,
+        "query_heads": 8,
+        "kv_heads": 2,
+        "head_dim": 64,
+        "seed": 927,
+        "dtypes": {
+          "data": "float16",
+          "statistics": "float32",
+          "routing": "int32"
+        },
+        "contract_case": "ragged_permuted_window_softcap",
+        "sequence_lengths": [
+          19,
+          7
+        ],
+        "query_lengths": [
+          3,
+          1
+        ],
+        "block_size": 16,
+        "sliding_window": 12,
+        "softcap": 2.0,
+        "input_shapes": {
+          "q": [
+            4,
+            8,
+            64
+          ],
+          "key_cache": [
+            8,
+            16,
+            2,
+            64
+          ],
+          "value_cache": [
+            8,
+            16,
+            2,
+            64
+          ],
+          "block_table": [
+            2,
+            2
+          ],
+          "cu_seqlens_q": [
+            3
+          ],
+          "seqused_k": [
+            2
+          ]
+        },
+        "output_shapes": {
+          "output": [
+            4,
+            8,
+            64
+          ]
+        },
+        "page_mapping": "reversed physical page order"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    }
+  ],
+  "migration": {
+    "original_harness_sha256": "16a529e4e71f977db1c42c997e559473b42e64c27eaad76fce4f604e4f0ad07b",
+    "original_correctness_sha256": "bbadf45385579390ccc88cba9be8fcc205136a493d37aa1ceca6688f72a9b1c6"
+  }
+}

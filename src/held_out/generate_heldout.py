@@ -8,7 +8,8 @@ the existing test infrastructure, understand shape constraints, and produce
 a held_out_shapes.yaml with replacement code that can be injected by
 run_heldout_eval.py.
 
-Supported task types (scope):
+All schema-v2 task families use the public runner and manifest contract.
+Legacy shape-generation helpers remain for:
   - triton2triton/vllm
   - triton2triton/rocmbench
   - hip2hip/gpumode
@@ -29,6 +30,7 @@ import shutil
 import subprocess
 import sys
 import threading
+import tempfile
 import yaml
 from pathlib import Path
 from typing import Any, List, Optional, Tuple
@@ -111,7 +113,15 @@ For EACH shape, add a short inline comment identifying its category, e.g.:
 
 def discover_tasks(tasks_dir: Path) -> List[Tuple[str, Path]]:
     """Return list of (task_id, task_dir) for all in-scope tasks."""
-    results = []
+    from src.task_spec import load_task_spec
+
+    results = {}
+    for config_path in tasks_dir.rglob("config.yaml"):
+        config = yaml.safe_load(config_path.read_text()) or {}
+        if "schema_version" in config:
+            task_id = config_path.parent.relative_to(tasks_dir).as_posix()
+            load_task_spec(config_path, task_id=task_id)
+            results[task_id] = config_path.parent
     for task_type, subdir_filters in SUPPORTED_SCOPES.items():
         for subdir_filter in subdir_filters:
             base = tasks_dir / task_type / subdir_filter
@@ -121,8 +131,8 @@ def discover_tasks(tasks_dir: Path) -> List[Tuple[str, Path]]:
                 task_dir = config_path.parent
                 rel = task_dir.relative_to(tasks_dir)
                 task_id = str(rel)
-                results.append((task_id, task_dir))
-    return sorted(results)
+                results[task_id] = task_dir
+    return sorted(results.items())
 
 
 # ---------------------------------------------------------------------------
@@ -189,7 +199,9 @@ injections:
 """
 
 
-def build_prompt(task_id: str, output_path: str) -> str:
+def build_prompt(task_id: str, output_path: str, task_config: dict | None = None) -> str:
+    if task_config is not None and task_config.get("schema_version") == 2:
+        return _build_prompt_v2(task_id, output_path)
     task_type = task_id.split("/")[0]
     sub_scope = task_id.split("/")[1] if "/" in task_id else ""
 
@@ -199,6 +211,39 @@ def build_prompt(task_id: str, output_path: str) -> str:
         return _build_prompt_triton(task_id, output_path)
     else:
         return _build_prompt_hip(task_id, task_type, output_path)
+
+
+def _build_prompt_v2(task_id: str, output_path: str) -> str:
+    return f"""Create held-out inputs for the task {task_id} in this disposable task copy.
+Read config.yaml, README.md, declared instructions and the task-owned evaluation
+runner. Its schema is v2: candidate declarations identify implementation, while
+evaluation actions and task files define cases, input generators and references.
+
+Write only {output_path}. Do not change the task files. Produce YAML with
+task_schema_version: 2 and a nonempty injections list. Each injection has file
+(task-relative), find_marker and replacement_code. Supported markers are
+TEST_SHAPES, def get_inputs, or raw_replace; raw_replace also requires old_code
+that exactly matches one source fragment. raw_replace can update JSON workload
+data as well as Python. Do not change config.yaml, candidates, import statements,
+references, tolerances, dtype contracts, timing policy or dependency setup.
+
+Inspect evaluation.workloads if declared and every action consuming those cases.
+Update the case manifest and any independently maintained case generator together;
+the runtime rejects mismatched IDs, shape, dtype, parameters or missing coverage.
+Baseline and candidate must execute the same new cases. Every performance case
+must have correctness coverage and a shape/dtype/parameter identity absent from
+the original manifest. Merely renaming an original case does not make it held out.
+
+Generate {NUM_HELDOUT_SHAPES} meaningful cases inside the documented operator
+domain and memory limit. The categories below are suggestions when compatible
+with this task's semantics. Document unsupported categories instead of changing
+fixed dimensions, routing or quantization semantics to force them. Shape edits
+may touch the harness part of a symbol-scoped file but must preserve every
+candidate function, permitted helper and import. Explain the original case count,
+constraints, and each proposed shape category in YAML comments.
+
+{GENERALIZATION_CATEGORIES.format(n=NUM_HELDOUT_SHAPES)}
+"""
 
 
 def _build_prompt_triton(task_id: str, output_path: str) -> str:
@@ -582,15 +627,29 @@ def generate_for_task(
     out_path = output_dir / task_id / "held_out_shapes.yaml"
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
-    prompt = build_prompt(task_id, str(out_path))
-
     launcher = BACKENDS.get(backend)
     if not launcher:
         log.error(f"Unknown backend: {backend}")
         return False
 
+    if out_path.exists():
+        log.error("Held-out data already exists; choose a new output directory: %s", out_path)
+        return False
+
     try:
-        agent_output = launcher(prompt, str(task_dir), timeout, log, model=model)
+        from src.task_session import _snapshot
+
+        # Shape authors inspect a disposable copy, never committed task sources.
+        with tempfile.TemporaryDirectory(prefix="aka-heldout-generation-") as temporary:
+            scratch = Path(temporary) / "task"
+            _snapshot(task_dir.resolve(), scratch)
+            generated = scratch / "held_out_shapes.yaml"
+            config = yaml.safe_load((scratch / "config.yaml").read_text()) or {}
+            prompt = build_prompt(task_id, str(generated), config)
+            agent_output = launcher(prompt, str(scratch), timeout, log, model=model)
+            if generated.is_file() and not generated.is_symlink():
+                with out_path.open("x") as handle:
+                    handle.write(generated.read_text())
     except Exception as e:
         log.error(f"Agent launch failed: {e}")
         return False
@@ -610,8 +669,9 @@ def generate_for_task(
     if out_path.exists():
         try:
             config = yaml.safe_load(out_path.read_text())
-            if not config or "injections" not in config:
-                log.error("Generated YAML missing 'injections' key")
+            if (not isinstance(config, dict) or not isinstance(config.get("injections"), list)
+                    or not config["injections"]):
+                log.error("Generated YAML requires a nonempty 'injections' list")
                 return False
             log.info(f"Generated held-out config -> {out_path}")
             return True

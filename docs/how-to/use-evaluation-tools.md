@@ -413,9 +413,19 @@ docker image inspect --format '{{.Id}}' <selected-image>
 
 ## Add a task adapter
 
+Read [Task definition, schema, and authoring](add-task.md) before changing a task
+or its analysis harness. All retained tasks use that v2 command-based contract.
+The shared evaluator invokes optional tools after candidate correctness and
+before performance; the profile/evidence adapters read the task's v2 candidate
+and protected-file declarations. This page documents tool configuration,
+evidence requirements, and capability limits.
+
 Run-level configuration chooses tools, policy, optional image-identity
-assertions, and maximum timeout. A task can only add options for an
-already-enabled tool and lower its timeout. It cannot enable a tool, change the
+assertions, and maximum timeout. A task may register adapters for known tools,
+including ones the run has not enabled. Disabled adapters are validated but
+remain dormant; they do not trigger a runtime probe or execution. Unknown tools
+and malformed options are rejected. For an enabled tool, task options can
+specialize its invocation and lower its timeout. A task cannot enable a tool, change the
 image or top-level policy, or raise the run-level timeout.
 Reserved framework options are rejected at both run and task level. They are
 `positive_control_required`; GPU ASan's `asan_runtime_dir`,
@@ -426,7 +436,7 @@ Waitcheck's `waitcheck_binary` and `waitcheck_capi_wrapper`; ConSan's
 host/runtime probe is the only authority for those values.
 
 Commands must be argv lists, never shell strings. A dedicated tool command is
-required because reusing `correctness_command` could instrument the reference,
+required because blindly reusing an ordinary correctness action could instrument the reference,
 load a precompiled library kernel, or sanitize the wrong candidate.
 
 For example, a HIP task can declare the shape of its adapters as follows:
@@ -510,11 +520,13 @@ directory. Native HIP rocJITsu applies the same containment rule to
 `race_report` and requires the report filename to remain `race.log`. AOT replay
 does not accept a task-configured race-report path.
 
-For repository or image-kernel tasks, declare every candidate file whose change
-must invalidate evidence with `evaluation_profile.submission_paths`. Paths must
-be workspace-relative and cannot contain `..`. If this field is absent, capture
-falls back to `source_file_path` and `target_file_path`; silently hashing an
-entire multi-gigabyte repository is intentionally avoided.
+For v2 tasks, evidence includes every declared candidate path, protected task
+input, and directly referenced local command input. Use
+`evaluation_profile.submission_paths` for additional evidence files, not to
+replace that set or declare edit permission. Paths must be workspace-relative
+and cannot contain `..`. Legacy configurations retain the explicit-profile or
+`source_file_path`/`target_file_path` fallback. Undeclared dependency trees are
+not automatically treated as editable candidate code.
 
 Put evaluator-owned adapter code under a harness-protected path such as
 `scripts/`, not an arbitrary agent-editable `eval_tools/` directory. Also list
@@ -667,10 +679,10 @@ The report keeps ordinary scoring fields and adds:
 pass_tool_gate: true
 tool_policy_satisfied: false
 tool_evaluation:
-  schema_version: 1
+  schema_version: 2
   plan_fingerprint: "..."
   plan:
-    schema_version: 1
+    schema_version: 2
     policy: advisory
     profile: {}
     tools:
@@ -711,7 +723,7 @@ for audit without relying on the digest alone.
 
 ## Artifact and evidence layout
 
-For a normal run, the relevant files are:
+For a v2 task run, the relevant files are:
 
 ```text
 <repository-root>/
@@ -742,13 +754,20 @@ For a normal run, the relevant files are:
 │               ├── stderr.log
 │               └── build_attestation.json
 └── experiments/workspace_<gpu>_<agent>/run_<timestamp>/
-    ├── .eval-tool-evidence/
+    ├── .task-sessions/
     │   └── <task-workspace-name>/
-    │       ├── manifest.json
-    │       └── files/                     # captured original declared files
+    │       └── tool_submission/
+    │           ├── manifest.json
+    │           └── files/                 # original files from frozen baseline
     └── <task-workspace-name>/
         └── task_result.yaml               # nested tool_evaluation summary
 ```
+
+At final evaluation initialization, v2 captures the original declared files
+from the session's frozen baseline into `tool_submission/`; an existing capture
+is loaded and verified before use. This is separate from the candidate being
+analyzed. Legacy runs use `.eval-tool-evidence/<task-workspace-name>/`, captured
+before agent execution.
 
 Each tool attempt gets a newly created invocation directory, so a repeated plan
 cannot consume an old attestation or race report. Each stdout and stderr file is
@@ -800,9 +819,12 @@ and presence of a tools mapping; it does not prove that every tool completed or
 that its result is clean. The serialized `plan` makes the inputs auditable but
 does not by itself change resume scheduling.
 
-The top-level `--resume-run` and `--resume-latest` paths currently skip a task
-when its `task_result.yaml` already exists; they do not yet rebuild the tool plan
-and call that fingerprint check. Until this is wired into run scheduling:
+The top-level `--resume-run` and `--resume-latest` paths verify a v2 task's saved
+session, completion record, result digest, and candidate source identity before
+treating it as complete. Legacy optimization workspaces without v2 state retain
+the `task_result.yaml` existence check. Neither path currently rebuilds the tool
+plan from this run's tool configuration and calls the fingerprint check. Until
+that check is wired into run scheduling:
 
 - use a new `--run-suffix` after changing tool configuration, plugin code,
   sidecar image, adapter, source declaration, or positive-control policy;
@@ -915,12 +937,13 @@ pre-create evidence unless the adapter independently verifies its provenance.
 Filesystem placement and a SHA-256 inside an agent-writable JSON file are
 integrity checks, not signatures.
 
-The pre-agent `.eval-tool-evidence` copy is checked against an in-memory
-manifest during an uninterrupted task, which detects ordinary mutation. It is
-still stored on the current writable run mount and is not signed. After a crash,
-an interrupted-run resume loads that on-disk manifest as its starting point, so
-it is not a durable trust anchor against an adversarial process that can rewrite
-both the manifest and copied files.
+The v2 `tool_submission` copy, captured from the frozen baseline at final
+evaluation initialization, is checked against its loaded manifest. Legacy runs
+instead capture `.eval-tool-evidence` before the agent. These checks detect
+ordinary mutation, but both layouts remain on the writable run mount and are
+not signed. Resume verifies saved session/evidence consistency without creating
+an external trust anchor against an adversarial process that can rewrite both
+the manifests and copied files.
 
 For adversarial or reward-bearing evaluation, use a separate evaluation phase:
 stop the agent container, snapshot the candidate, start fresh sidecars with

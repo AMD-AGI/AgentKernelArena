@@ -1,16 +1,34 @@
-task_type: image_kernel
-image_repo_path: /sgl-workspace/aiter
-image_repo_exclude:
-- aiter/jit/build
-- aiter/jit/flydsl_cache
-repository_language: triton
-source_file_path:
-- aiter/ops/triton/_triton_kernels/gemm/basic/gemm_a8w8.py
-target_kernel_functions:
-- _gemm_a8w8_kernel
-compile_command:
-- python3 scripts/task_runner.py compile
-correctness_command:
-- python3 scripts/task_runner.py correctness
-performance_command:
-- python3 scripts/task_runner.py performance
+schema_version: 2
+description: Optimize the existing triton implementation; preserve the task-local operator and workload
+  contracts.
+candidate:
+  language: triton
+  initial_state: implemented
+  editable:
+  - aiter/aiter/ops/triton/_triton_kernels/gemm/basic/gemm_a8w8.py
+  entrypoints:
+  - file: aiter/aiter/ops/triton/_triton_kernels/gemm/basic/gemm_a8w8.py
+    kind: function
+    symbol: _gemm_a8w8_kernel
+baseline:
+  kind: initial_candidate
+  correctness_policy: required
+workspace:
+  sources:
+  - kind: image
+    image_path: /sgl-workspace/aiter
+    destination: aiter
+    exclude:
+    - aiter/jit/build
+    - aiter/jit/flydsl_cache
+  setup:
+  - - python3
+    - scripts/setup_task.py
+evaluation:
+  runner:
+  - python3
+  - scripts/evaluate.py
+  workloads: workloads.json
+  timeout_s: 3600
+instructions:
+- README.md

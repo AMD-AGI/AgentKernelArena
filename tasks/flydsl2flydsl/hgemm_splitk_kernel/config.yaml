@@ -1,30 +1,33 @@
-task_type: flydsl2flydsl
-source_file_path:
+schema_version: 2
+description: "Optimize the FlyDSL HGEMM SplitK kernel for AMD MI300X GPU.\nThe kernel implements high-performance\
+  \ half-precision GEMM with split-K\nparallelism, MFMA-based wave-level matrix multiply, double-buffered\
+  \ LDS\nwith XOR swizzle, DMA-to-LDS async copy, and pre-shuffled B matrix layout.\nYou MUST keep the\
+  \ kernel in FlyDSL \u2014 do NOT rewrite it in HIP, CUDA, or Triton."
+instructions:
+- README.md
+candidate:
+  language: flydsl
+  initial_state: implemented
+  initial_language: flydsl
+  editable:
   - kernel.py
-harness_path: test_kernel_harness.py
-compile_command:
-  - python3 -c "from kernel import compile_hgemm_kernel; compile_hgemm_kernel('f16', 4096, 4096); print('compile ok')"
-correctness_command:
-  - python3 test_kernel_harness.py --correctness
-performance_command:
-  - python3 test_kernel_harness.py --full-benchmark
-target_kernel_functions:
-  - compile_hgemm_kernel
-  - hgemm_splitk_
-source_origin:
-  repo: https://github.com/ROCm/FlyDSL
-  path: kernels/hgemm_splitk.py
-  commit: 28a18d328b4882c999864b2df2f8f9fe3fcc8b47
-  date: 2026-06-01  # v0.2.0 (28a18d3)
-prompt:
-  instructions: |
-    Optimize the FlyDSL HGEMM SplitK kernel for AMD MI300X GPU.
-    The kernel implements high-performance half-precision GEMM with split-K
-    parallelism, MFMA-based wave-level matrix multiply, double-buffered LDS
-    with XOR swizzle, DMA-to-LDS async copy, and pre-shuffled B matrix layout.
-    You MUST keep the kernel in FlyDSL — do NOT rewrite it in HIP, CUDA, or Triton.
-
+  entrypoints:
+  - file: kernel.py
+    kind: builder
+    symbol: compile_hgemm_kernel
+  - file: kernel.py
+    kind: function
+    symbol: hgemm_splitk_
+baseline:
+  kind: initial_candidate
+  language: flydsl
+  correctness_policy: required
+evaluation:
+  runner:
+  - python3
+  - scripts/evaluate.py
+  workloads: cases.json
+  timeout_s: 3600
 platform_support:
-  required_arch: gfx942
-  runnable_on_gfx942: true
+  required_arch: [gfx942, gfx950]
   status: active

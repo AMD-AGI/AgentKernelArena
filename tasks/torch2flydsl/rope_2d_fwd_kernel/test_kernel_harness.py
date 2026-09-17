@@ -4,8 +4,7 @@
 """Harness for the torch2flydsl 2D-image RoPE forward (model-only) task.
 
 ``model.py`` is the pure-torch reference (NEOX 2D RoPE on a [b, H*W, h, d] grid,
-fp32 rotation). No ``kernel.py`` ships: a clean standalone FlyDSL kernel for this
-op does not exist in aiter, so FlyDSL is the agent's target.
+fp32 rotation). ``kernel.py`` is an unimplemented FlyDSL starter.
 
 Correctness validates the reference in ``model.py`` against the REAL AMD runtime
 op ``aiter.rope_2d_fwd`` (rotate_style=NEOX, reuse_freqs_front_part=False,
@@ -29,9 +28,12 @@ import os
 import sys
 import time
 from pathlib import Path
-from _aka_benchmark import benchmark_cuda_graph_or_events
+from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
+from scripts.replay_checks import require_unchanged, verify_timed_run
 
-KERNEL_FILE = "kernel.py"
+from task_runtime import candidate_relative_path
+KERNEL_FILE = candidate_relative_path()
+ARENA_PROVIDED_BASELINE = False
 MODEL_FILE = "model.py"
 KERNEL_ENTRY = "flydsl_rope_2d_fwd"
 
@@ -39,16 +41,12 @@ ROTATE_NEOX = 0
 
 
 def _resolve_kernel_dir():
-    here = os.path.dirname(os.path.abspath(__file__))
-    if os.path.isfile(os.path.join(here, MODEL_FILE)):
-        return here
-    cwd = os.getcwd()
-    if os.path.isfile(os.path.join(cwd, MODEL_FILE)):
-        return cwd
-    return here
+    return str(__import__("pathlib").Path(__file__).resolve().parent)
 
 
 def _load_module(kernel_dir, filename, alias):
+    if filename == KERNEL_FILE and ARENA_PROVIDED_BASELINE:
+        return None
     entry = os.path.join(kernel_dir, filename)
     if not os.path.isfile(entry):
         return None
@@ -60,6 +58,8 @@ def _load_module(kernel_dir, filename, alias):
     mod = importlib.util.module_from_spec(spec)
     sys.modules[alias] = mod
     spec.loader.exec_module(mod)
+    if filename == KERNEL_FILE:
+        _require_candidate_outputs(mod)
     return mod
 
 
@@ -106,13 +106,43 @@ def _compare(ref, out):
     """Return (ok, rel_worst, pass_pct) for the bf16 output."""
     import torch
 
+    if not isinstance(out, torch.Tensor) or (
+        out.shape != ref.shape or out.dtype != ref.dtype or out.device != ref.device
+    ):
+        raise AssertionError("2D RoPE output shape/dtype/device violates the contract")
     r = ref.float()
     o = out.float()
     den = r.abs().max().item() + 1e-12
     rel_worst = (r - o).abs().max().item() / den
     pass_pct = torch.isclose(r, o, atol=1e-2, rtol=1e-2).float().mean().item() * 100.0
-    ok = rel_worst <= REL_TOL or pass_pct >= PASS_PCT
+    ok = rel_worst <= REL_TOL and pass_pct >= PASS_PCT
     return ok, rel_worst, pass_pct
+
+
+def _rope_replay_validator(inp, shape):
+    originals = tuple(value.clone() for value in inp)
+
+    def reference():
+        return _aiter_op(*inp, shape["height"], shape["width"])
+
+    expected = reference()
+    require_unchanged(inp, originals)
+
+    def perturb():
+        # RoPE is linear in its data input; keep the angle tables unchanged.
+        inp[0].neg_()
+
+    def compare(actual, wanted):
+        if not _compare(wanted, actual)[0]:
+            raise AssertionError("Numerical mismatch: 2D RoPE output")
+
+    def validate(timed):
+        return verify_timed_run(
+            timed, inputs=inp, originals=originals, expected=expected,
+            perturb=perturb, reference=reference, compare=compare,
+        )
+
+    return validate
 
 
 def _retry(fn, tries=5, what="op"):
@@ -155,6 +185,7 @@ def run_correctness(verbose=True):
     failures = []
     for shape in SHAPES:
         inp = _make_inputs(shape, mmod)
+        originals = tuple(value.clone() for value in inp)
         model = mmod.Model(shape["height"], shape["width"]).to("cuda")
         with torch.no_grad():
             ref = model(*inp)
@@ -164,6 +195,7 @@ def run_correctness(verbose=True):
             )
         torch.cuda.synchronize()
 
+        require_unchanged(inp, originals)
         ok, rel, pct = _compare(ref, truth)
         if verbose:
             print(
@@ -182,6 +214,7 @@ def run_correctness(verbose=True):
                     what=KERNEL_ENTRY,
                 )
             except NotImplementedError:
+                raise RuntimeError("Executed candidate is unimplemented; no baseline fallback")
                 has_kernel = False
                 if verbose:
                     print(
@@ -191,6 +224,7 @@ def run_correctness(verbose=True):
                 kout = None
             if kout is not None:
                 torch.cuda.synchronize()
+                require_unchanged(inp, originals)
                 k_ok, kr, kp = _compare(truth, kout)
                 if verbose:
                     print(
@@ -210,10 +244,12 @@ def run_correctness(verbose=True):
     return True
 
 
-def _mean_ms(fn, warmup, iters):
+def _mean_ms(fn, warmup, iters, *, validate):
+    timed = TimedRun()
     mean_ms, bench_meta = benchmark_cuda_graph_or_events(
-        fn, warmup=warmup, repetition=iters
+        fn, warmup=warmup, repetition=iters, timed_run=timed
     )
+    bench_meta.update(validate(timed))
     _mean_ms.benchmark_metadata = bench_meta
     return mean_ms
 
@@ -234,6 +270,7 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
             )
             del _probe
         except NotImplementedError:
+            raise RuntimeError("Executed candidate is unimplemented; no baseline fallback")
             has_kernel = False
             print(
                 "SKIP: kernel.py FlyDSL target not implemented yet "
@@ -248,12 +285,14 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
         inp = _make_inputs(shape, mmod)
         model = mmod.Model(shape["height"], shape["width"]).to("cuda")
         with torch.no_grad():
+            validate = _rope_replay_validator(inp, shape)
             op_ms = _mean_ms(
                 lambda: _aiter_op(*inp, shape["height"], shape["width"]),
                 warmup,
                 iters,
+                validate=validate,
             )
-            ref_ms = _mean_ms(lambda: model(*inp), warmup, iters)
+            ref_ms = _mean_ms(lambda: model(*inp), warmup, iters, validate=validate)
             ref_bench_meta = _mean_ms.benchmark_metadata
             ker_ms = (
                 _mean_ms(
@@ -262,6 +301,7 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
                     ),
                     warmup,
                     iters,
+                    validate=validate,
                 )
                 if has_kernel
                 else None
@@ -335,3 +375,112 @@ if __name__ == "__main__":
         sys.exit(0)
     else:
         run_benchmark(warmup=args.warmup, iters=args.iterations)
+
+
+def _require_candidate_outputs(mod):
+    import functools
+    for name in tuple(vars(mod)):
+        target = getattr(mod, name)
+        if name.startswith("flydsl_") and callable(target):
+            @functools.wraps(target)
+            def checked(*args, __target=target, **kwargs):
+                try:
+                    result = __target(*args, **kwargs)
+                except NotImplementedError as exc:
+                    raise RuntimeError("Executed candidate is unimplemented; no baseline fallback") from exc
+                if result is None:
+                    raise RuntimeError("Candidate operator returned None; output is required")
+                return result
+            setattr(mod, name, checked)
+
+
+# V2 direct timing evidence from this invocation.
+def arena_benchmark(warmup=10, iters=100, verbose=True):
+    import torch
+
+    mmod = _load_module(_KERNEL_DIR, MODEL_FILE, "torch_model")
+    assert mmod is not None, "cannot load model.py"
+    kmod = _load_module(_KERNEL_DIR, KERNEL_FILE, "flydsl_kernel")
+    has_kernel = kmod is not None and hasattr(kmod, KERNEL_ENTRY)
+
+    if has_kernel:
+        try:
+            _probe = _make_inputs(SHAPES[0], mmod)
+            kmod.flydsl_rope_2d_fwd(
+                *_probe, SHAPES[0]["height"], SHAPES[0]["width"]
+            )
+            del _probe
+        except NotImplementedError:
+            raise RuntimeError("Executed candidate is unimplemented; no baseline fallback")
+            has_kernel = False
+            print(
+                "SKIP: kernel.py FlyDSL target not implemented yet "
+                "(benchmarking reference instead)"
+            )
+        import torch as _t; _t.cuda.empty_cache()
+
+    latencies, report = [], []
+    print(f"{'Config':<20} {'aiter':>10} {'ref':>10} {'kernel':>10}")
+    print("-" * 56)
+    for idx, shape in enumerate(SHAPES):
+        inp = _make_inputs(shape, mmod)
+        model = mmod.Model(shape["height"], shape["width"]).to("cuda")
+        with torch.no_grad():
+            validate = _rope_replay_validator(inp, shape)
+            op_ms = _mean_ms(
+                lambda: _aiter_op(*inp, shape["height"], shape["width"]),
+                warmup,
+                iters,
+                validate=validate,
+            )
+            ref_ms = _mean_ms(lambda: model(*inp), warmup, iters, validate=validate)
+            ref_bench_meta = _mean_ms.benchmark_metadata
+            ker_ms = (
+                _mean_ms(
+                    lambda: kmod.flydsl_rope_2d_fwd(
+                        *inp, shape["height"], shape["width"]
+                    ),
+                    warmup,
+                    iters,
+                    validate=validate,
+                )
+                if has_kernel
+                else None
+            )
+
+        primary_ms = ker_ms if ker_ms is not None else ref_ms
+        bench_meta = _mean_ms.benchmark_metadata
+        latencies.append(primary_ms)
+        report.append({
+            "test_case_id": f"test_case_{idx}",
+            "execution_time_ms": primary_ms,
+            **bench_meta,
+            "reference_benchmark_method": ref_bench_meta["benchmark_method"],
+            "benchmark_method_consistent": bench_meta["benchmark_method"] == ref_bench_meta["benchmark_method"],
+            "shape": [shape["b"], shape["height"] * shape["width"], shape["h"], shape["d"]],
+            "params": {
+                "b": shape["b"],
+                "height": shape["height"],
+                "width": shape["width"],
+                "h": shape["h"],
+                "d": shape["d"],
+                "dtype": "bf16",
+            },
+            "aiter_ms": op_ms,
+            "reference_ms": ref_ms,
+        })
+        if verbose:
+            ker_s = f"{ker_ms:>8.4f}ms" if ker_ms is not None else f"{'n/a':>10}"
+            print(f"{shape['name']:<20} {op_ms:>8.4f}ms {ref_ms:>8.4f}ms {ker_s}")
+        del inp, model
+        torch.cuda.empty_cache()
+
+    geomean = math.exp(sum(math.log(x) for x in latencies) / len(latencies))
+    build_dir = Path(_KERNEL_DIR) / "build"
+    build_dir.mkdir(exist_ok=True)
+    with open(build_dir / "performance_report.json", "w") as f:
+        json.dump(report, f, indent=2)
+
+    print("-" * 56)
+    print(f"Geometric mean latency: {geomean:.4f} ms")
+    return report

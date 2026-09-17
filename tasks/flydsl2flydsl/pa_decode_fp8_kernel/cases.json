@@ -1,0 +1,140 @@
+{
+  "cases": [
+    {
+      "test_case_id": "case_0000",
+      "params": {
+        "batch_size": 3,
+        "query_length": 1,
+        "num_heads": [
+          8,
+          1
+        ],
+        "quant_mode": "per_token"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bf16,fp8"
+    },
+    {
+      "test_case_id": "case_0001",
+      "params": {
+        "batch_size": 3,
+        "query_length": 1,
+        "num_heads": [
+          16,
+          1
+        ],
+        "quant_mode": "per_token"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bf16,fp8"
+    },
+    {
+      "test_case_id": "case_0002",
+      "params": {
+        "batch_size": 3,
+        "query_length": 2,
+        "num_heads": [
+          8,
+          1
+        ],
+        "quant_mode": "per_token"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bf16,fp8"
+    },
+    {
+      "test_case_id": "case_0003",
+      "params": {
+        "batch_size": 3,
+        "query_length": 4,
+        "num_heads": [
+          16,
+          1
+        ],
+        "quant_mode": "per_token"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bf16,fp8"
+    },
+    {
+      "test_case_id": "case_0004",
+      "params": {
+        "batch_size": 81,
+        "query_length": 1,
+        "num_heads": [
+          8,
+          1
+        ],
+        "quant_mode": "per_token"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bf16,fp8"
+    },
+    {
+      "test_case_id": "case_0005",
+      "params": {
+        "batch_size": 3,
+        "query_length": 1,
+        "num_heads": [
+          8,
+          1
+        ],
+        "quant_mode": "per_tensor"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bf16,fp8"
+    },
+    {
+      "test_case_id": "case_0006",
+      "params": {
+        "batch_size": 3,
+        "query_length": 1,
+        "num_heads": [
+          16,
+          1
+        ],
+        "quant_mode": "per_tensor"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bf16,fp8"
+    },
+    {
+      "test_case_id": "case_0007",
+      "params": {
+        "batch_size": 81,
+        "query_length": 1,
+        "num_heads": [
+          16,
+          1
+        ],
+        "quant_mode": "per_token"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bf16,fp8"
+    }
+  ]
+}

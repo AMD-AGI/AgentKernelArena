@@ -30,10 +30,13 @@ def cpu_runner(tmp_path, monkeypatch):
         task_dir = ROOT / "tasks/triton2triton/vllm" / task_name
         workspace = tmp_path / task_name
         scripts = workspace / "scripts"
-        scripts.mkdir(parents=True)
+        shutil.copytree(task_dir, workspace, ignore=shutil.ignore_patterns('build', '__pycache__', '.pytest_cache'))
         path = scripts / "task_runner.py"
-        shutil.copyfile(task_dir / "scripts/task_runner.py", path)
-        shutil.copyfile(task_dir / "config.yaml", workspace / "config.yaml")
+        monkeypatch.syspath_prepend(str(workspace))
+        monkeypatch.syspath_prepend(str(scripts))
+        for file in workspace.glob('*.py'):
+            monkeypatch.delitem(sys.modules, file.stem, raising=False)
+
         assert apply_injection(workspace, {
             "file": "scripts/task_runner.py",
             "find_marker": "TEST_SHAPES",
@@ -68,10 +71,10 @@ def test_moe_checks_every_injected_shape(cpu_runner, monkeypatch, fail_case):
                          mul_routed_weight, routed is not None))
         if len(visited) == fail_case:
             raise RuntimeError("deliberate held-out failure")
-        return task.reference_fused_moe(
-            x, weights, scales, zeros, ids, routed,
-            mul_routed_weight, group_size, use_int4,
-        ).half()
+        return task.reference(dict(A=x, qweight=weights, scales=scales, zeros=zeros,
+                                   ids=ids, weights=routed),
+                              dict(mul_routed_weight=mul_routed_weight,
+                                   group_size=group_size, use_int4=use_int4))
 
     monkeypatch.setattr(task, "load_module", lambda: SimpleNamespace(
         fused_moe_gptq_awq=kernel,
@@ -85,18 +88,18 @@ def test_moe_checks_every_injected_shape(cpu_runner, monkeypatch, fail_case):
         assert report["status"] == "ok"
         assert report["num_shapes"] == len(visited) == len(shapes)
         assert visited == [shape[0] for shape in shapes]
-        assert set(variants) == set(task.CORRECTNESS_VARIANTS)
+        assert set(variants) == {(True, True, True, True)}  # original scored INT4 path
     else:
         ok, error = task.run_correctness()
         assert not ok
-        assert f"Shape {fail_case}: exception: deliberate held-out failure" in error
+        assert "deliberate held-out failure" in str(error)
         assert visited == [shape[0] for shape in shapes[:fail_case]]
 
 
 @pytest.mark.parametrize("task_name, shapes, extra_shapes", [
     ("triton_awq_dequantize", [(48, 8, 16), (80, 16, 16)],
      [(33, 9), (96, 33), (512, 65), (1024, 128)]),
-    ("triton_scale_swizzle", [(257, 9), (513, 7)], [(129, 4), (128, 5)]),
+    ("triton_scale_swizzle", [(384, 12), (640, 8)], []),
 ])
 def test_injected_shapes_reach_correctness_and_performance(
     cpu_runner, monkeypatch, task_name, shapes, extra_shapes,
@@ -137,7 +140,7 @@ def test_injected_shapes_reach_correctness_and_performance(
     monkeypatch.setattr(task, "_benchmark_cuda_graph_or_events", benchmark)
     injected = [shape[:2] for shape in shapes]
     assert task.run_correctness() == (True, None)
-    assert visited == injected + extra_shapes
+    assert visited == injected  # extra controls have separate v2 manifest indices
     visited.clear()
     cases = task.run_performance()
     assert visited == injected
@@ -182,12 +185,12 @@ def test_zero_replay_checks_destination_and_restores_state(
             return None
         return output
 
-    def benchmark(fn, *, prepare_fn, timed_run, **kwargs):
-        prepare_fn()
+    def benchmark(fn, *, timed_run, prepare_fn=None, **kwargs):
+        if prepare_fn is not None: prepare_fn()
         captured_output = fn()
 
         def replay():
-            prepare_fn()
+            if prepare_fn is not None: prepare_fn()
             fn()
             return captured_output
 
@@ -197,9 +200,18 @@ def test_zero_replay_checks_destination_and_restores_state(
 
     monkeypatch.setattr(task, "load_module", lambda: SimpleNamespace(write_zeros=kernel))
     monkeypatch.setattr(task, "_benchmark_cuda_graph_or_events", benchmark)
+    root = Path(task.TASK_DIR)
+    def local(name):
+        spec = __import__('importlib.util', fromlist=['spec_from_file_location']).spec_from_file_location(name, root / (name+'.py'))
+        module = __import__('importlib.util', fromlist=['module_from_spec']).module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+    local('_arena_replay').install(task, local('_arena_contract'))
     cases = task.run_performance()
     assert len(cases) == 1
     assert cases[0]["execution_time_ms"] == (1.0 if valid else -1.0)
-    assert len(initial_states) == 3
+    assert len(initial_states) >= 2
     assert torch.count_nonzero(initial_states[0]) > 0
-    assert all(torch.equal(state, initial_states[0]) for state in initial_states)
+    if valid:
+        assert torch.equal(initial_states[0], initial_states[1])
+        assert torch.all(initial_states[-1] == 1)  # real changed-input replay

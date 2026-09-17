@@ -1,32 +1,19 @@
-source_file_path:
+schema_version: 2
+description: Optimize triton_w8a8_block_scaled_mm with the original Triton operator contract.
+candidate:
+  language: triton
+  initial_state: implemented
+  editable:
   - source/triton_w8a8_block_scaled_mm.py
-
-target_kernel_functions:
-  - _w8a8_triton_block_scaled_mm
-
-compile_command:
-  - python3 scripts/task_runner.py compile
-
-correctness_command:
-  - python3 scripts/task_runner.py correctness
-
-performance_command:
-  - python3 scripts/task_runner.py performance
-
-task_type: triton2triton
-
-task_result_template: null
-
-prompt:
-  source_code: null
-  instructions: |
-    Optimize the Triton W8A8 block-scaled FP8 matmul kernel
-    `_w8a8_triton_block_scaled_mm` for maximum GPU throughput.
-
-    The kernel performs block-wise quantized matrix multiplication where both
-    A and B have per-block scaling factors.
-
-    Constraints:
-    - Must maintain the same function signature for `w8a8_triton_block_scaled_mm`
-    - Output must match reference within atol=1e-1, rtol=1e-1
-  cheatsheet: null
+  entrypoints:
+  - file: source/triton_w8a8_block_scaled_mm.py
+    kind: function
+    symbol: _w8a8_triton_block_scaled_mm
+baseline:
+  kind: initial_candidate
+  language: triton
+evaluation:
+  runner:
+  - python3
+  - _arena_eval.py
+  workloads: workloads.json

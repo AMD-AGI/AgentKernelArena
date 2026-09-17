@@ -24,7 +24,8 @@ instructions; never embed paths from a local checkout.
 When behavior and prose disagree, inspect the implementation. In particular:
 
 - Agent identifiers and loading: `src/module_registration.py`
-- Task contract: the task's `config.yaml`
+- Task definition, schema, and authoring contract: `docs/how-to/add-task.md`
+- Task-specific declarations: the task's `config.yaml`
 - Evaluation and scoring: `src/evaluator.py`, `src/performance.py`, `src/score.py`
 - Harness protection: `src/harness_guard.py`
 - Benchmark helpers: `src/tools/perf/`
@@ -73,8 +74,14 @@ that explicitly.
 
 ## Task authoring and validation
 
-Follow [the task authoring guide](docs/how-to/add-task.md) and inspect nearby
-tasks of the same type.
+Before adding or modifying any task, you MUST read
+[Task definition, schema, and authoring](docs/how-to/add-task.md), including its
+implementation-status and migration sections. This applies to task configs,
+sources, references, input generators, harnesses, and benchmark scripts.
+It is the canonical task guide; inspect nearby task implementations as well.
+All retained tasks use schema v2 and the shared loader/evaluator/validator.
+New tasks must use that contract and implement its task-owned actions; adding a
+field to YAML alone does not implement the associated behavior.
 
 - Paths in an isolated task must resolve within the task directory. Do not use
   absolute paths, undeclared downloads, or external repositories.
@@ -86,7 +93,6 @@ tasks of the same type.
   trivially passing harness.
 - Performance checks must emit scoreable device timing and preserve equivalent
   work, state, and allocation boundaries for baseline and candidate.
-- Repository tasks must declare upstream sources and setup steps explicitly.
 - Use `platform_support` for real architecture constraints instead of silently
   skipping cases inside a runner.
 

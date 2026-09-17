@@ -1,0 +1,276 @@
+{
+  "version": 1,
+  "candidate_symbols": {
+    "source/triton_logit_bias.py": [
+      {
+        "name": "_bias_kernel",
+        "jit": true
+      }
+    ]
+  },
+  "case_table": "TEST_SHAPES",
+  "input_table": [
+    [
+      4,
+      256,
+      16
+    ],
+    [
+      8,
+      1024,
+      32
+    ],
+    [
+      16,
+      4096,
+      64
+    ],
+    [
+      32,
+      8192,
+      128
+    ],
+    [
+      64,
+      16384,
+      128
+    ]
+  ],
+  "cases": [
+    {
+      "test_case_id": "perf1",
+      "dtype": "float32,int32,int64",
+      "params": {
+        "case_index": 0,
+        "configuration": [
+          4,
+          256,
+          16
+        ],
+        "configuration_names": "(batch, vocab, max_bt)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf2",
+      "dtype": "float32,int32,int64",
+      "params": {
+        "case_index": 1,
+        "configuration": [
+          8,
+          1024,
+          32
+        ],
+        "configuration_names": "(batch, vocab, max_bt)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf3",
+      "dtype": "float32,int32,int64",
+      "params": {
+        "case_index": 2,
+        "configuration": [
+          16,
+          4096,
+          64
+        ],
+        "configuration_names": "(batch, vocab, max_bt)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf4",
+      "dtype": "float32,int32,int64",
+      "params": {
+        "case_index": 3,
+        "configuration": [
+          32,
+          8192,
+          128
+        ],
+        "configuration_names": "(batch, vocab, max_bt)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf5",
+      "dtype": "float32,int32,int64",
+      "params": {
+        "case_index": 4,
+        "configuration": [
+          64,
+          16384,
+          128
+        ],
+        "configuration_names": "(batch, vocab, max_bt)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "allowlist",
+      "shape": [
+        2,
+        256,
+        16
+      ],
+      "dtype": "torch.float32",
+      "params": {
+        "case_index": -1,
+        "seed": 777,
+        "batch": 2,
+        "vocab": 256,
+        "max_bt": 16,
+        "num_allowed": [
+          4,
+          8
+        ]
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "contract_controls",
+      "status": "PASS",
+      "checks": [
+        "correctness"
+      ],
+      "params": {
+        "case_index": 5,
+        "coverage": "Controls combine remapped requests, allowlists, nonzero heterogeneous biases and stop-token minimum lengths. Original scored cases remain the original bias-only workload."
+      }
+    },
+    {
+      "test_case_id": "perf_combined_filtering",
+      "status": "PASS",
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "params": {
+        "case_index": 6,
+        "variant": "allowlist_bias_and_minimum_length_stop_mask",
+        "logits": {
+          "generator": "linspace",
+          "start": -2.0,
+          "stop": 2.0,
+          "numel": 32768,
+          "reshape": [
+            32,
+            1024
+          ]
+        },
+        "request_mapping_pattern": [
+          2,
+          0,
+          3,
+          1
+        ],
+        "pattern_repeats": 8,
+        "positions_pattern": [
+          0,
+          4,
+          2,
+          9
+        ],
+        "allowed_tokens_by_request": [
+          [],
+          [
+            1,
+            3
+          ],
+          [
+            0,
+            2,
+            4
+          ],
+          []
+        ],
+        "biases_by_request": [
+          {
+            "token_ids": [
+              1
+            ],
+            "values": [
+              0.5
+            ]
+          },
+          {
+            "token_ids": [
+              3
+            ],
+            "values": [
+              -1.0
+            ]
+          },
+          {
+            "token_ids": [
+              2,
+              4
+            ],
+            "values": [
+              2.0,
+              -2.0
+            ]
+          },
+          {
+            "token_ids": [],
+            "values": []
+          }
+        ],
+        "minimum_lengths": [
+          2,
+          3,
+          1,
+          4
+        ],
+        "stop_tokens_by_request": [
+          [
+            1
+          ],
+          [
+            3
+          ],
+          [
+            4
+          ],
+          [
+            2
+          ]
+        ]
+      },
+      "shape": [
+        32,
+        1024
+      ],
+      "dtype": "float32"
+    }
+  ],
+  "migration": {
+    "original_harness_sha256": "8baf50740612087b7ad21dcbd36d15816387772e3b3cc463b24d594b6544f742",
+    "original_correctness_sha256": "1351ee6be73943fa951ae5363676e88f4fecbea095be600faf49ca7977ede529",
+    "additional_correctness": "Original targeted cases beyond the main shape table are retained explicitly. case_index=-1 executes the protected additional group without the main shape loop."
+  }
+}

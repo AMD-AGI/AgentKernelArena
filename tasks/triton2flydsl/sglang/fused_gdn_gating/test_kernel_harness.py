@@ -21,13 +21,16 @@ import json
 import time
 import argparse
 import importlib.util
-from _aka_benchmark import benchmark_cuda_graph_or_events
+from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
+from scripts.replay_checks import require_tensor_contract, require_unchanged, verify_timed_pair
 
 TASK_DIR = os.path.dirname(os.path.abspath(__file__))
 os.chdir(TASK_DIR)
 
 TASK_NAME = "triton2flydsl/sglang/fused_gdn_gating"
-SOURCE_FILE = os.path.join(TASK_DIR, "fused_gdn_gating.py")
+from task_runtime import candidate_relative_path
+SOURCE_FILE = candidate_relative_path()
+ENTRY = 'fused_gdn_gating'
 
 BETA = 1.0
 THRESHOLD = 20.0
@@ -48,12 +51,13 @@ TEST_SHAPES = [
 WARMUP_ITERATIONS = 10
 BENCHMARK_ITERATIONS = 100
 MAX_OOM_RETRIES = 5
-DTYPE_NAME = os.environ.get("GDN_DTYPE", "bfloat16")
+DTYPE_NAME = 'bfloat16'  # protected suite dtype
 
 
 def load_module():
     spec = importlib.util.spec_from_file_location("fused_gdn_gating_src", SOURCE_FILE)
     mod = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = mod
     spec.loader.exec_module(mod)
     return mod
 
@@ -119,6 +123,47 @@ def run_compile():
         return False, str(e)
 
 
+def _checked_router_output(outputs, x, shape):
+    import torch
+    if not isinstance(outputs, (tuple, list)) or len(outputs) != 2:
+        raise AssertionError("Operator must return both result tensors")
+    for output, dtype in zip(outputs, (torch.float32, torch.float32)):
+        if (not isinstance(output, torch.Tensor) or output.shape != shape
+                or output.dtype != dtype or output.device != x.device):
+            raise AssertionError("Output shape/dtype/device contract mismatch")
+
+
+def _compare_router_output(actual, expected, dtype):
+    import torch
+    _checked_router_output(actual, expected[0], tuple(expected[0].shape))
+    if not all(bool(torch.isfinite(v).all()) for pair in (actual, expected) for v in pair):
+        raise AssertionError("Non-finite operator/reference output")
+    bo_atol = 1e-4 if dtype == torch.float32 else 2e-2
+    bo_rtol = 1e-4 if dtype == torch.float32 else 1e-2
+    g_ok = torch.allclose(actual[0].float(), expected[0].float(), atol=1e-3, rtol=1e-3)
+    bo_ok = torch.allclose(actual[1].float(), expected[1].float(), atol=bo_atol, rtol=bo_rtol)
+    if not (g_ok and bo_ok):
+        raise AssertionError("Numerical mismatch: GDN gate or sigmoid output")
+
+
+def _router_replay_validator(inp):
+    inputs = tuple(inp.values())
+    originals = tuple(v.clone() for v in inputs)
+    expected = reference_gating(inp)
+    def perturb():
+        inp["a"].add_(1.)
+        inp["b"].neg_()
+    def replay_reference():
+        return reference_gating(inp)
+    def compare(actual, expected):
+        _compare_router_output(actual, expected, inp["a"].dtype)
+    def validate(timed):
+        return verify_timed_pair(timed, inputs=inputs, originals=originals,
+                                 expected=expected, perturb=perturb,
+                                 reference=replay_reference, compare=compare)
+    return validate
+
+
 def run_correctness():
     import torch
     try:
@@ -137,9 +182,13 @@ def run_correctness():
         try:
             torch.manual_seed(42 + i)
             inp = make_test_data(batch, num_heads, "cuda", dtype)
+            protected_inputs = tuple(inp.values())
+            originals = tuple(v.clone() for v in protected_inputs)
             g_t, bo_t = _retry_oom(lambda: mod.fused_gdn_gating(
                 inp["A_log"], inp["a"], inp["b"], inp["dt_bias"], BETA, THRESHOLD))
             torch.cuda.synchronize()
+            require_unchanged(protected_inputs, originals)
+            _checked_router_output((g_t, bo_t), inp["a"], (1, batch, num_heads))
             g_r, bo_r = reference_gating(inp)
             g_diff = (g_t.float() - g_r.float()).abs().max().item()
             bo_diff = (bo_t.float() - bo_r.float()).abs().max().item()
@@ -172,27 +221,30 @@ def run_performance():
         try:
             torch.manual_seed(42 + ti)
             inp = make_test_data(batch, num_heads, "cuda", dtype)
+            replay_validate = _router_replay_validator(inp)
 
             def fn():
-                mod.fused_gdn_gating(
+                return mod.fused_gdn_gating(
                     inp["A_log"], inp["a"], inp["b"], inp["dt_bias"], BETA, THRESHOLD)
 
             _retry_oom(fn)
             for _ in range(WARMUP_ITERATIONS):
                 fn()
             torch.cuda.synchronize()
+            timed = TimedRun()
             elapsed_ms, bench_meta = benchmark_cuda_graph_or_events(
-                fn, warmup=0, repetition=BENCHMARK_ITERATIONS
+                fn, warmup=0, repetition=BENCHMARK_ITERATIONS, timed_run=timed
             )
+            bench_meta.update(replay_validate(timed))
             test_cases.append({"test_case_id": f"perf{ti+1}",
                                "execution_time_ms": elapsed_ms,
                                **bench_meta,
                                "params": params})
-        except Exception:
+        except Exception as error:
             test_cases.append({"test_case_id": f"perf{ti+1}",
                                "execution_time_ms": -1.0,
                                "benchmark_method": "benchmark_failed",
-                               "benchmark_fallback_reason": "performance case failed before timing completed",
+                               "benchmark_fallback_reason": "performance case failed: " + str(error),
                                "params": params})
     return test_cases
 

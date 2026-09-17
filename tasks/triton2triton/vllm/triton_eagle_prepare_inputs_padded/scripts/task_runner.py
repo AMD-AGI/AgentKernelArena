@@ -114,7 +114,7 @@ def run_compile():
         return False, str(e)
 
 
-def run_correctness():
+def run_correctness(*, case_index=None):
     import torch
     try:
         mod = load_module()
@@ -123,6 +123,8 @@ def run_correctness():
 
     device = "cuda"
     for i, (nr, md, mq) in enumerate(TEST_SHAPES):
+        if case_index is not None and i != case_index:
+            continue
         try:
             cu, vs, qsl, _ = make_inputs(nr, md, mq, device)
             res_idx, res_rej = mod.eagle_prepare_inputs_padded(cu, vs, qsl)

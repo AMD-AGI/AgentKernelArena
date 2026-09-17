@@ -26,24 +26,23 @@ import os
 import sys
 import time
 from pathlib import Path
-from _aka_benchmark import benchmark_cuda_graph_or_events
+from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
+from scripts.replay_checks import require_tensor_contract, require_unchanged, verify_timed_run
 
-KERNEL_FILE = "kernel.py"
+from task_runtime import candidate_relative_path
+KERNEL_FILE = candidate_relative_path()
+ARENA_PROVIDED_BASELINE = False
 MODEL_FILE = "model.py"
 KERNEL_ENTRY = "flydsl_batched_gemm_a8w8"
 
 
 def _resolve_kernel_dir():
-    here = os.path.dirname(os.path.abspath(__file__))
-    if os.path.isfile(os.path.join(here, KERNEL_FILE)):
-        return here
-    cwd = os.getcwd()
-    if os.path.isfile(os.path.join(cwd, KERNEL_FILE)):
-        return cwd
-    return here
+    return str(__import__("pathlib").Path(__file__).resolve().parent)
 
 
 def _load_module(kernel_dir, filename, alias):
+    if filename == KERNEL_FILE and ARENA_PROVIDED_BASELINE:
+        return None
     entry = os.path.join(kernel_dir, filename)
     if not os.path.isfile(entry):
         return None
@@ -55,6 +54,8 @@ def _load_module(kernel_dir, filename, alias):
     mod = importlib.util.module_from_spec(spec)
     sys.modules[alias] = mod
     spec.loader.exec_module(mod)
+    if filename == KERNEL_FILE:
+        _require_candidate_outputs(mod)
     return mod
 
 
@@ -111,6 +112,29 @@ def _norm_worst(ref, out):
     return worst, worst / denom
 
 
+def _checked_batched_output(actual, x, w):
+    import torch
+    if not isinstance(actual, torch.Tensor):
+        raise AssertionError("Batched GEMM output must be a Tensor")
+    if actual.shape != (x.shape[0], x.shape[1], w.shape[1]):
+        raise AssertionError("Batched GEMM output shape mismatch")
+    if actual.dtype != torch.bfloat16 or actual.device != x.device:
+        raise AssertionError("Batched GEMM requires BF16 output on the input device")
+    if not bool(torch.isfinite(actual).all()):
+        raise AssertionError("Non-finite batched GEMM output")
+    return actual
+
+
+def _compare_batched_output(actual, expected):
+    import torch
+    require_tensor_contract(actual, expected)
+    if not bool(torch.isfinite(actual).all() and torch.isfinite(expected).all()):
+        raise AssertionError("Non-finite batched GEMM output/reference")
+    # Exactly the original zero-reference denominator and normalized-max gate.
+    if _norm_worst(expected, actual)[1] > TOL:
+        raise AssertionError("Numerical mismatch: batched INT8 GEMM normalized error")
+
+
 def run_correctness(verbose=True):
     import torch
     import aiter
@@ -129,8 +153,9 @@ def run_correctness(verbose=True):
         b, m, n, k = shape["b"], shape["m"], shape["n"], shape["k"]
         try:
             x, w = _make_inputs(b, m, n, k)
+            originals = (x.clone(), w.clone())
             with torch.no_grad():
-                ref = model(x, w)
+                ref = _checked_batched_output(model(x, w), x, w)
 
             x_i8, x_scale, w_i8, w_scale = mmod.quantize_batched_a8w8(x, w)
             gt = _retry(
@@ -141,6 +166,8 @@ def run_correctness(verbose=True):
             )
             torch.cuda.synchronize()
 
+            require_unchanged((x, w), originals)
+            _checked_batched_output(gt, x, w)
             worst, norm = _norm_worst(ref, gt)
             ok = norm <= TOL
             note = ""
@@ -151,6 +178,7 @@ def run_correctness(verbose=True):
                         what="flydsl kernel",
                     )
                 except NotImplementedError:
+                    raise RuntimeError("Executed candidate is unimplemented; no baseline fallback")
                     has_kernel = False
                     print(
                         "  SKIP: kernel.py FlyDSL target not implemented yet "
@@ -158,6 +186,8 @@ def run_correctness(verbose=True):
                     )
                 else:
                     torch.cuda.synchronize()
+                    require_unchanged((x, w), originals)
+                    _checked_batched_output(out, x, w)
                     _, knorm = _norm_worst(ref, out)
                     kok = knorm <= TOL
                     ok = ok and kok
@@ -199,6 +229,7 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
         try:
             kmod.flydsl_batched_gemm_a8w8(x0, w0)
         except NotImplementedError:
+            raise RuntimeError("Executed candidate is unimplemented; no baseline fallback")
             has_kernel = False
             print(
                 "SKIP: kernel.py FlyDSL target not implemented yet "
@@ -220,6 +251,9 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
     for idx, shape in enumerate(SHAPES):
         b, m, n, k = shape["b"], shape["m"], shape["n"], shape["k"]
         x, w = _make_inputs(b, m, n, k)
+        originals = (x.clone(), w.clone())
+        expected = _checked_batched_output(mmod.Model()(x, w), x, w)
+        require_unchanged((x, w), originals)
 
         _retry(lambda: device_op(x, w), what="benchmark warmup")
         torch.cuda.synchronize()
@@ -227,20 +261,24 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
             device_op(x, w)
         torch.cuda.synchronize()
 
-        # The independent aiter starter baseline dispatches hipBLASLt, which is
-        # known to reject stream capture.  Make that case explicitly Event-only
-        # before timing rather than attempting Graph and falling back after a
-        # candidate-controlled failure.  An implemented FlyDSL kernel retains
-        # the normal Graph-first policy.
-        use_graph = has_kernel
-        event_reason = None if use_graph else "capture_unsafe_aiter_hipblaslt"
+        # Pair both roles with the provided baseline's fixed Event policy.
+        # A candidate's capture support must not change the scoring method.
+        use_graph = False
+        event_reason = "capture_unsafe_aiter_hipblaslt"
+        timed = TimedRun()
         kernel_ms, kernel_bench_meta = benchmark_cuda_graph_or_events(
             lambda: device_op(x, w),
             warmup=0,
             repetition=iters,
             use_cuda_graph=use_graph,
             fallback_reason=event_reason,
+            timed_run=timed,
         )
+        kernel_bench_meta.update(verify_timed_run(
+            timed, inputs=(x, w), originals=originals, expected=expected,
+            perturb=lambda: x.neg_(), reference=lambda: mmod.Model()(x, w),
+            compare=_compare_batched_output,
+        ))
 
         ref_ms, ref_bench_meta = benchmark_cuda_graph_or_events(
             lambda: torch.bmm(x.float(), w.float().transpose(1, 2)),
@@ -322,3 +360,144 @@ if __name__ == "__main__":
         sys.exit(0)
     else:
         run_benchmark(warmup=args.warmup, iters=args.iterations)
+
+
+def _require_candidate_outputs(mod):
+    import functools
+    for name in tuple(vars(mod)):
+        target = getattr(mod, name)
+        if name.startswith("flydsl_") and callable(target):
+            @functools.wraps(target)
+            def checked(*args, __target=target, **kwargs):
+                try:
+                    result = __target(*args, **kwargs)
+                except NotImplementedError as exc:
+                    raise RuntimeError("Executed candidate is unimplemented; no baseline fallback") from exc
+                if result is None:
+                    raise RuntimeError("Candidate operator returned None; output is required")
+                return result
+            setattr(mod, name, checked)
+
+
+# V2 direct timing evidence from this invocation.
+def arena_benchmark(warmup=10, iters=100, verbose=True):
+    import torch
+    import aiter
+
+    mmod = _load_module(_KERNEL_DIR, MODEL_FILE, "torch_model")
+    kmod = _load_module(_KERNEL_DIR, KERNEL_FILE, "flydsl_kernel")
+    has_kernel = kmod is not None and hasattr(kmod, KERNEL_ENTRY)
+
+    if has_kernel:
+        s0 = SHAPES[0]
+        x0, w0 = _make_inputs(s0["b"], s0["m"], s0["n"], s0["k"])
+        try:
+            kmod.flydsl_batched_gemm_a8w8(x0, w0)
+        except NotImplementedError:
+            raise RuntimeError("Executed candidate is unimplemented; no baseline fallback")
+            has_kernel = False
+            print(
+                "SKIP: kernel.py FlyDSL target not implemented yet "
+                "(benchmarking aiter op instead)"
+            )
+        del x0, w0
+        torch.cuda.empty_cache()
+
+    def device_op(x, w):
+        if has_kernel:
+            return kmod.flydsl_batched_gemm_a8w8(x, w)
+        x_i8, x_scale, w_i8, w_scale = mmod.quantize_batched_a8w8(x, w)
+        return aiter.batched_gemm_a8w8_CK(x_i8, w_i8, x_scale, w_scale, None)
+
+    label = "FlyDSL" if has_kernel else "aiter"
+    latencies, speedups, report = [], [], []
+    print(f"{'Config (B,M,N,K)':<30} {'Ref':>10} {label:>10} {'Speedup':>10}")
+    print("-" * 64)
+    for idx, shape in enumerate(SHAPES):
+        b, m, n, k = shape["b"], shape["m"], shape["n"], shape["k"]
+        x, w = _make_inputs(b, m, n, k)
+        originals = (x.clone(), w.clone())
+        expected = _checked_batched_output(mmod.Model()(x, w), x, w)
+        require_unchanged((x, w), originals)
+
+        _retry(lambda: device_op(x, w), what="benchmark warmup")
+        torch.cuda.synchronize()
+        for _ in range(warmup):
+            device_op(x, w)
+        torch.cuda.synchronize()
+
+        # Pair both roles with the provided baseline's fixed Event policy.
+        # A candidate's capture support must not change the scoring method.
+        use_graph = False
+        event_reason = "capture_unsafe_aiter_hipblaslt"
+        timed = TimedRun()
+        kernel_ms, kernel_bench_meta = benchmark_cuda_graph_or_events(
+            lambda: device_op(x, w),
+            warmup=0,
+            repetition=iters,
+            use_cuda_graph=use_graph,
+            fallback_reason=event_reason,
+            timed_run=timed,
+        )
+        kernel_bench_meta.update(verify_timed_run(
+            timed, inputs=(x, w), originals=originals, expected=expected,
+            perturb=lambda: x.neg_(), reference=lambda: mmod.Model()(x, w),
+            compare=_compare_batched_output,
+        ))
+
+        ref_ms, ref_bench_meta = benchmark_cuda_graph_or_events(
+            lambda: torch.bmm(x.float(), w.float().transpose(1, 2)),
+            warmup=0,
+            repetition=iters,
+            use_cuda_graph=use_graph,
+            fallback_reason=event_reason,
+        )
+
+        methods_match = kernel_bench_meta["benchmark_method"] == ref_bench_meta["benchmark_method"]
+        speedup = (
+            ref_ms / kernel_ms if methods_match and kernel_ms > 0 else None
+        )
+        speedup_display = (
+            format(speedup, ">8.2f") + "x"
+            if speedup is not None
+            else f"{'N/A':>9}"
+        )
+        latencies.append(kernel_ms)
+        if speedup is not None:
+            speedups.append(speedup)
+        tflops = 2.0 * b * m * n * k / (kernel_ms * 1e-3) / 1e12
+        report.append({
+            "test_case_id": f"test_case_{idx}",
+            "execution_time_ms": kernel_ms,
+            **kernel_bench_meta,
+            "reference_benchmark_method": ref_bench_meta["benchmark_method"],
+            "benchmark_method_consistent": kernel_bench_meta["benchmark_method"] == ref_bench_meta["benchmark_method"],
+            "shape": [b, m, n, k],
+            "params": {"B": b, "M": m, "N": n, "K": k, "dtype": "int8"},
+            "tflops": tflops,
+        })
+        if verbose:
+            print(
+                f"(B={b:>2}, M={m:>4}, N={n:>5}, K={k:>5}) {ref_ms:>8.4f}ms "
+                f"{kernel_ms:>8.4f}ms {speedup_display}"
+            )
+        del x, w
+        torch.cuda.empty_cache()
+
+    geomean_latency = math.exp(sum(math.log(x) for x in latencies) / len(latencies))
+    geomean_speedup = math.exp(sum(math.log(x) for x in speedups) / len(speedups)) if speedups else None
+    geomean_speedup_display = (
+        format(geomean_speedup, ".2f") + "x"
+        if geomean_speedup is not None
+        else "N/A"
+    )
+
+    build_dir = Path(_KERNEL_DIR) / "build"
+    build_dir.mkdir(exist_ok=True)
+    with open(build_dir / "performance_report.json", "w") as f:
+        json.dump(report, f, indent=2)
+
+    print("-" * 64)
+    print(f"Geometric mean latency: {geomean_latency:.4f} ms")
+    print(f"Geometric mean speedup: {geomean_speedup_display}")
+    return report

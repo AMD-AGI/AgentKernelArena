@@ -5,6 +5,7 @@ Thanks for your interest in AgentKernelArena! This guide explains how to contrib
 ## Before You Start
 
 - Read `README.md` to understand the project scope: controlled A/B experiments and RL-ready feedback for GPU kernel agents.
+- Before adding or modifying a task, read [Task definition, schema, and authoring](docs/how-to/add-task.md), including its implementation-status and migration guidance. It is the single authoring reference for new and existing task families.
 - Skim the files under `example_configs/` for run-level agent/task/GPU selection and the relevant `agents/<name>/agent_config.yaml` for agent-specific model and runtime settings.
 - Ensure you have an AMD GPU with ROCm-compatible Docker access; use the architecture-specific runtime documented in the compatibility matrix.
 - Confirm that the selected agent integration and its authentication/dependencies are available.
@@ -69,11 +70,25 @@ make docker-run CONFIG=example_configs/quickstart_claude_mi300.yaml
 
 ## Testing and Verification
 
+Use **CPython 3.12** for the full CPU/mock suite and repository-wide source
+compilation, matching `.github/workflows/perf-helpers.yml`. Some task helpers use
+Python 3.12 f-string syntax, and the committed migration AST fingerprints were
+recorded with 3.12; those fingerprints are not portable across Python minor
+versions. Python 3.11 is not a supported interpreter for the full repository
+audit. Use a full Git checkout (`git fetch --unshallow` for an existing shallow
+clone), because preservation tests read historical task sources with `git show`.
+Keep those source comparisons enabled.
+
+This audit requirement does not upgrade the Docker scoring images. Actual GPU
+runs still use the task's qualified image and Python version; an older image's
+task-specific PASS does not establish compatibility with every retained task.
+See the [compatibility matrix](docs/reference/compatibility-matrix.md).
+
 This project depends on GPU hardware/drivers and orchestrates external LLM agent CLIs. In your PR, include:
 
 - Test environment (GPU model, ROCm version, Docker image, OS)
 - Agent(s) used and their versions
-- Task selector exercised (for example `hip2hip`, `triton2triton`, `instruction2triton`, `torch2hip`, a FlyDSL task type, or `repository`)
+- Task selector exercised (for example `hip2hip`, `triton2triton`, `instruction2triton`, `torch2hip`, a FlyDSL task type, or `image_kernel`)
 - Key commands and output summary, e.g.:
 
 ```bash
@@ -102,7 +117,7 @@ This project executes third-party AI agents permissively inside privileged Docke
 ## Suggested Contributions
 
 - Add new agent integrations under `agents/`
-- Extend task coverage across HIP, Triton, FlyDSL, PyTorch conversion, instruction-generated, or repository-level tasks
+- Extend task coverage across HIP, Triton, FlyDSL, PyTorch conversion, instruction-generated, or image-backed tasks
 - Improve scoring or fairness logic in `src/score.py`
 - Improve A/B comparison, experiment tracking, or visualization (`src/visualization/`)
 - Add support for new models / providers (OpenAI, Anthropic, OpenRouter, vLLM)

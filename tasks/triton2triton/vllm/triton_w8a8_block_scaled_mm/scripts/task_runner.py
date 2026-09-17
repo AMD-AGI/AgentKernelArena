@@ -101,7 +101,7 @@ def run_compile():
         return False, str(e)
 
 
-def run_correctness():
+def run_correctness(*, case_index=None):
     import torch
     try:
         mod = load_module()
@@ -112,6 +112,8 @@ def run_correctness():
     fp8_dtype = mod._get_fp8_dtype()
 
     for i, (M, N, K, block_n, block_k) in enumerate(TEST_SHAPES):
+        if case_index is not None and i != case_index:
+            continue
         try:
             torch.manual_seed(42 + i)
 

@@ -1,0 +1,2 @@
+# SDK interface import/option probe performed without contacting a model.
+claude-agent-sdk==0.2.152

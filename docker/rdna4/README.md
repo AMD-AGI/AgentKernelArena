@@ -55,9 +55,13 @@ container-local `/tmp` caches, with the runner's worker suffix when set, so
 repository and installed-package builds do not write under the unmounted host
 home directory.
 
-The `gfx1201` smoke check requires `hipcc` and `rocprofv3`. Other architectures
-retain the existing `hipcc` and `rocprof-compute` checks. Finding a profiler does
-not imply that a task or candidate was profiled.
+Smoke requires `hipcc`, the Python dependencies, and a visible GPU matching the
+selected architecture. It reports `rocprofv3` and `rocprof-compute` availability
+separately: core correctness and graph/event timing do not launch either tool.
+For a workflow that requires profiling, use `AKA_REQUIRED_PROFILERS=rocprofv3`
+(or a comma-separated list) to fail smoke if the requested binary is absent.
+Finding a profiler does not establish hardware-counter support or imply that
+a task or candidate was profiled; evaluation tools retain their separate gates.
 
 ## Agent architecture guidance
 
@@ -96,8 +100,6 @@ Known limits of existing tasks with this image include:
 - Image-bound tasks: existing `image_kernel` contracts can refer to source
   trees and Python package paths from a different image. Those paths are not
   interchangeable with this image's packages.
-- Repository tasks: some rocPRIM test instantiations require wave64 operations
-  unavailable on this wave32 device.
 
 Keep task shapes, correctness tolerances, and timing policy intact when
 investigating failures. Honor architecture restrictions, and qualify task or

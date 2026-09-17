@@ -29,7 +29,7 @@ repository.
       * :doc:`Check kernels with evaluation tools <how-to/use-evaluation-tools>`
       * :doc:`Run tasks in parallel across multiple GPUs <how-to/parallel-run>`
       * :doc:`Configure agents and models <how-to/agents>`
-      * :doc:`Add a task <how-to/add-task>`
+      * :doc:`Task definition, schema, and authoring <how-to/add-task>`
       * :doc:`Validate tasks <how-to/task-validator>`
       * :doc:`Visualize and compare runs <how-to/visualization>`
 

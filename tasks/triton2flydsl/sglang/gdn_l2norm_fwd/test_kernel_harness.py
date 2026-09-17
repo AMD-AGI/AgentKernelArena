@@ -16,13 +16,17 @@ import json
 import time
 import argparse
 import importlib.util
-from _aka_benchmark import benchmark_cuda_graph_or_events
+from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
+from scripts.replay_checks import require_unchanged, require_tensor_contract, verify_timed_run
+
+ENTRY = 'l2norm_fwd'
 
 TASK_DIR = os.path.dirname(os.path.abspath(__file__))
 os.chdir(TASK_DIR)
 
 TASK_NAME = "triton2flydsl/sglang/gdn_l2norm_fwd"
-SOURCE_FILE = os.path.join(TASK_DIR, "gdn_l2norm_fwd.py")
+from task_runtime import candidate_relative_path
+SOURCE_FILE = candidate_relative_path()
 
 # Test configs: (rows, D). rows = flattened (B*T*H); D = head dim.
 #   GDN q/k L2-norm => D=128, rows = T*H (real prefill: T=15360, H=16 => 245760).
@@ -40,12 +44,13 @@ WARMUP_ITERATIONS = 10
 BENCHMARK_ITERATIONS = 100
 MAX_OOM_RETRIES = 5
 EPS = 1e-6
-DTYPE_NAME = os.environ.get("GDN_DTYPE", "bfloat16")
+DTYPE_NAME = 'bfloat16'  # protected suite dtype
 
 
 def load_module():
     spec = importlib.util.spec_from_file_location("gdn_l2norm_src", SOURCE_FILE)
     mod = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = mod
     spec.loader.exec_module(mod)
     return mod
 
@@ -97,6 +102,39 @@ def run_compile():
         return False, str(e)
 
 
+def _checked_sglang_output(out, x):
+    import torch
+    require_tensor_contract(out, x)
+    if not bool(torch.isfinite(out).all()):
+        raise AssertionError("Non-finite operator output")
+
+
+def _compare_sglang_output(actual, expected):
+    import torch
+    _checked_sglang_output(actual, expected)
+    if not bool(torch.isfinite(expected).all()):
+        raise AssertionError("Non-finite reference output")
+    atol = 1e-4 if actual.dtype == torch.float32 else 2e-2
+    rtol = 1e-4 if actual.dtype == torch.float32 else 1e-2
+    if not torch.allclose(actual.float(), expected.float(), atol=atol, rtol=rtol):
+        raise AssertionError("Numerical mismatch: original allclose gate failed")
+
+
+def _sglang_replay_validator(x):
+    inputs = (x,)
+    originals = tuple(v.clone() for v in inputs)
+    expected = reference_l2norm(x, EPS)
+    def perturb():
+        x.neg_()
+    def reference():
+        return reference_l2norm(x, EPS)
+    def validate(timed):
+        return verify_timed_run(timed, inputs=inputs, originals=originals,
+                                expected=expected, perturb=perturb,
+                                reference=reference, compare=_compare_sglang_output)
+    return validate
+
+
 def run_correctness():
     import torch
     try:
@@ -112,7 +150,11 @@ def run_correctness():
         try:
             torch.manual_seed(42 + i)
             x = make_x(rows, D, "cuda", dtype)
+            protected_inputs = (x,)
+            originals = tuple(v.clone() for v in protected_inputs)
             y = _retry_oom(lambda: mod.l2norm_fwd(x, EPS))
+            require_unchanged(protected_inputs, originals)
+            _checked_sglang_output(y, x)
             torch.cuda.synchronize()
             ref = reference_l2norm(x, EPS)
             diff = (y.float() - ref.float()).abs().max().item()
@@ -141,26 +183,29 @@ def run_performance():
         try:
             torch.manual_seed(42 + ti)
             x = make_x(rows, D, "cuda", dtype)
+            replay_validate = _sglang_replay_validator(x)
 
             def fn():
-                mod.l2norm_fwd(x, EPS)
+                return mod.l2norm_fwd(x, EPS)
 
             _retry_oom(fn)
             for _ in range(WARMUP_ITERATIONS):
                 fn()
             torch.cuda.synchronize()
+            timed = TimedRun()
             elapsed_ms, bench_meta = benchmark_cuda_graph_or_events(
-                fn, warmup=0, repetition=BENCHMARK_ITERATIONS
+                fn, warmup=0, repetition=BENCHMARK_ITERATIONS, timed_run=timed
             )
+            bench_meta.update(replay_validate(timed))
             test_cases.append({"test_case_id": f"perf{ti+1}",
                                "execution_time_ms": elapsed_ms,
                                **bench_meta,
                                "params": params})
-        except Exception:
+        except Exception as error:
             test_cases.append({"test_case_id": f"perf{ti+1}",
                                "execution_time_ms": -1.0,
                                "benchmark_method": "benchmark_failed",
-                               "benchmark_fallback_reason": "performance case failed before timing completed",
+                               "benchmark_fallback_reason": "performance case failed: " + str(error),
                                "params": params})
     return test_cases
 

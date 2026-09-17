@@ -1,7 +1,9 @@
 max_iterations: 3
 timeout_seconds: 3600
 python_path: null
-# Optional: set explicit Cursor model so logs record exact runtime settings.
+# Verified model and CLI evidence: docs/reference/agent-model-defaults.md.
+# Still the current Composer release returned by `cursor-agent models`.
+# Run config agent.model overrides this default.
 model: composer-2.5
-# Note: Cursor Agent CLI has NO reasoning-effort dial (no --effort flag, no config key).
-# Reasoning depth is inherent to the model; composer-2.5 is the current max-capability model.
+# No standalone --effort flag. Select a variant from `cursor-agent models`,
+# e.g. claude-opus-5-thinking-medium; parameterized IDs need backend support.

@@ -7,40 +7,25 @@ import math
 import os
 import sys
 from pathlib import Path
-from _aka_benchmark import benchmark_cuda_graph_or_events
+from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
+from scripts.replay_checks import verify_timed_run
 
 # ============================================================================
 # GEAK bootstrap
 # ============================================================================
 
-KERNEL_FILE = "kernel.py"
+from task_runtime import candidate_relative_path
+KERNEL_FILE = candidate_relative_path()
 
 
 def _find_baseline_kernel_dir():
-    work = os.environ.get("GEAK_WORK_DIR", "").strip()
-    if not work:
-        return None
-    d = Path(work).resolve()
-    for _ in range(10):
-        if d is None or not d.exists():
-            break
-        if (d / "benchmark_baseline.txt").is_file():
-            return str(d)
-        d = d.parent
-    return None
+    """The framework supplies a separate frozen workspace for each role."""
+    return str(__import__("pathlib").Path(__file__).resolve().parent)
 
 
 def _resolve_kernel_dir():
-    candidates = []
-    work_dir = os.environ.get("GEAK_WORK_DIR", "").strip()
-    if work_dir:
-        candidates.append(work_dir)
-    original = os.path.dirname(os.path.abspath(__file__))
-    candidates.append(original)
-    for c in candidates:
-        if c and os.path.isfile(os.path.join(c, KERNEL_FILE)):
-            return c
-    return original
+    """The framework supplies a separate frozen workspace for each role."""
+    return str(__import__("pathlib").Path(__file__).resolve().parent)
 
 
 def _load_kernel(kernel_dir, alias="flydsl_kernel"):
@@ -320,3 +305,113 @@ if __name__ == "__main__":
         run_benchmark(HARNESS_SHAPES, warmup=args.warmup, iters=args.iterations)
 
     print("=" * 62)
+
+
+# V2 action entrypoint; original timing boundaries and sample counts above apply.
+def arena_benchmark(shapes=None, warmup=10, iters=100, verbose=True):
+    import torch
+
+    if shapes is None:
+        shapes = HARNESS_SHAPES
+
+    mod = _load_kernel(_KERNEL_DIR)
+    if mod is None:
+        print("FAIL: cannot load kernel.py")
+        return report_cases
+
+    latencies, speedups, report_cases = [], [], []
+
+    print(f"Running benchmark on {len(shapes)} shapes, {warmup} warmup, {iters} iterations...")
+    print(f"  Comparing kernel vs PyTorch")
+    print(f"{'Config (M,N,dtype)':<26} {'Ref':>10} {'FlyDSL':>10} {'Speedup':>10}")
+    print("-" * 62)
+
+    for idx, (M, N, dtype_str) in enumerate(shapes):
+        torch_dtype = getattr(torch, DTYPE_MAP[dtype_str])
+        torch.manual_seed(42)
+        x = torch.randn(M, N, device="cuda", dtype=torch_dtype)
+        output = torch.empty_like(x)
+        originals = tuple(value.clone() for value in (x,))
+        expected = reference_softmax(x)
+
+        launch_fn = mod.build_softmax_module(M, N, dtype_str)
+
+        for _ in range(warmup):
+            launch_fn(x, output, M)
+        torch.cuda.synchronize()
+
+        timed = TimedRun()
+
+        def launch():
+            launch_fn(x, output, M, stream=torch.cuda.current_stream())
+            return output
+
+        kernel_ms, kernel_bench_meta = benchmark_cuda_graph_or_events(
+            launch, warmup=0, repetition=iters, timed_run=timed,
+        )
+        kernel_bench_meta.update(verify_timed_run(
+            timed, inputs=(x,), originals=originals, expected=expected,
+            perturb=lambda: x.neg_(), reference=lambda: reference_softmax(x),
+            compare=lambda actual, ref: torch.testing.assert_close(
+                actual, ref, atol=ATOL, rtol=RTOL),
+        ))
+
+        ref_ms, ref_bench_meta = benchmark_cuda_graph_or_events(
+            lambda: reference_softmax(x), warmup=0, repetition=iters
+        )
+
+        methods_match = kernel_bench_meta["benchmark_method"] == ref_bench_meta["benchmark_method"]
+        speedup = (
+            ref_ms / kernel_ms if methods_match and kernel_ms > 0 else None
+        )
+        speedup_display = (
+            format(speedup, ">8.2f") + "x"
+            if speedup is not None
+            else f"{'N/A':>9}"
+        )
+        latencies.append(kernel_ms)
+        if speedup is not None:
+            speedups.append(speedup)
+        report_cases.append({
+            "test_case_id": f"test_case_{idx}",
+            "execution_time_ms": kernel_ms,
+            **kernel_bench_meta,
+            "reference_benchmark_method": ref_bench_meta["benchmark_method"],
+            "benchmark_method_consistent": kernel_bench_meta["benchmark_method"] == ref_bench_meta["benchmark_method"],
+            "shape": [M, N],
+            "params": {"M": M, "N": N, "dtype": dtype_str},
+        })
+
+        marker = " *" if speedup is not None and speedup > 1.0 else ""
+        if verbose:
+            print(
+                f"(M={M:>4}, N={N:>5}, {dtype_str}){' ':2} "
+                f"{ref_ms:>8.4f}ms {kernel_ms:>8.4f}ms {speedup_display}{marker}",
+                flush=True,
+            )
+
+        del x, output
+        torch.cuda.empty_cache()
+
+    geomean_latency = math.exp(sum(math.log(l) for l in latencies) / len(latencies))
+    geomean_speedup = math.exp(sum(math.log(s) for s in speedups) / len(speedups)) if speedups else None
+    geomean_speedup_display = (
+        format(geomean_speedup, ".2f") + "x"
+        if geomean_speedup is not None
+        else "N/A"
+    )
+
+    build_dir = Path(_KERNEL_DIR) / "build"
+    build_dir.mkdir(exist_ok=True)
+    with open(build_dir / "performance_report.json", "w") as f:
+        json.dump(report_cases, f, indent=2)
+
+    print("-" * 62)
+    print(f"{'Geometric mean latency:':<26} {geomean_latency:.4f} ms")
+    print(f"{'Geometric mean speedup:':<26} {geomean_speedup_display}")
+    print(f"GEAK_RESULT_LATENCY_MS={geomean_latency:.4f}", flush=True)
+    if geomean_speedup is not None:
+        print(f"GEAK_RESULT_GEOMEAN_SPEEDUP={geomean_speedup:.4f}", flush=True)
+
+    return report_cases
+    return report_cases

@@ -36,3 +36,33 @@ workspace, or `make materialize-perf-task TASK=tasks/...` for local inspection.
 
 See `docs/reference/benchmark-methodology.md` for measurement and fairness
 rules, including paired graph/Event baseline selection.
+
+## Observing measured outputs
+
+Pass `TimedRun()` as `timed_run` to retain the actual measured output and a
+callable for subsequent numerical validation. Graph timing binds the captured
+output buffers and replays the measured graph. Explicit Event timing
+(`use_cuda_graph=False`, including the paired forced-Event setting) retains the
+return value from the last measured sample; `rerun()` calls the same eager
+callable again and can return new buffers. Metadata distinguishes these as
+`benchmark_timed_run_kind: captured_graph` or `eager_callable`. Eager re-invocation
+is not captured graph replay and cannot freeze Python dispatch decisions.
+
+Preparation runs before the start Event, outside the measured interval, and
+before each eager re-invocation. The collector never makes a post-timing call
+to obtain its initial output. A failed benchmark clears any previous binding.
+Automatic graph-to-Event fallback with a collector still fails closed; Event
+collection must be explicitly selected. Both methods require actual GPU timing.
+Task harnesses must check the last measured value before re-invoking, then check
+the returned replay value with the task's reference and numerical policy.
+
+For evolving state, set `timed_run.before_sample` to a callback accepting the
+number of logical calls in that sample's replay. The helper invokes it on the
+measurement stream, after `prepare_fn` (when present) and before the start event
+of each reported sample. It is not called during warmup, capture, estimation,
+graph priming, or `rerun()`. The task may retain a private copy of the last
+sample's starting state and use that state plus the replay count for an
+independent reference after timing. The callback must only observe state; it
+must not reset inputs or run the reference. It does not change graph batching.
+Apply the same observation and state policy to baseline and candidate. An
+observer exception rejects the measurement and leaves the collector unbound.

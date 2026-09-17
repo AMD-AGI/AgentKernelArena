@@ -10,13 +10,13 @@ The platform provides:
 
 - **Controlled A/B experiments**: Label and compare repeated runs while holding tasks, hardware, environment, and evaluation rules constant.
 - **RL-ready feedback**: Produce per-task compilation, correctness, runtime, speedup, and score signals that can be consumed as rewards by an external reinforcement-learning system.
-- **Multiple agent integrations**: Run Cursor Agent, Claude Code, Codex, GEAK v4, Forge, or custom agents through a shared interface.
-- **Real GPU task environments**: Work with HIP, Triton, FlyDSL, PyTorch-to-kernel conversion, instruction-to-kernel generation, and repository-level optimization tasks.
+- **Multiple agent integrations**: Run Cursor Agent, Claude Code, Codex, GEAK-based agents, or custom agents through a shared interface.
+- **Real GPU task environments**: Work with HIP, Triton, FlyDSL, PyTorch-to-kernel conversion, instruction-to-kernel generation, and image-backed kernel optimization tasks.
 - **Isolated and reproducible execution**: Give every task its own timestamped workspace and preserve logs, modified sources, and structured results.
 - **Centralized evaluation**: Measure compilation, correctness, and GPU performance independently of the optimizing agent.
 - **Multi-GPU scheduling**: Start one isolated Docker worker per GPU and dynamically claim tasks from a shared queue.
 - **Slurm/Spur login-node workflow**: Allocate one or eight MI355X GPUs, then launch the same Docker runtime on the assigned compute node.
-- **Resumable experiments**: Resume a run without repeating tasks that already produced a completion report.
+- **Resumable experiments**: Resume a run without repeating tasks whose framework completion and source evidence remain valid.
 - **Held-out evaluation**: Test optimized kernels on unseen shapes and measure the generalization gap.
 - **Task validation and visualization**: Validate task quality with a dedicated agent and compare local run reports in a dashboard.
 
@@ -60,7 +60,7 @@ AgentKernelArena/
 ├── example_configs/                # Quickstart and curated benchmark run configs
 ├── src/
 │   ├── module_registration.py     # Agent registration and handler selection
-│   ├── preprocessing.py            # Workspace and repository setup
+│   ├── preprocessing.py            # Workspace and source setup
 │   ├── prompt_builder.py           # Task prompt construction
 │   ├── evaluator.py                # Compilation and correctness evaluation
 │   ├── performance.py              # Baseline and optimized timing
@@ -75,8 +75,8 @@ AgentKernelArena/
 │   ├── cursor/                     # Cursor Agent CLI
 │   ├── claude_code/                # Claude Code CLI
 │   ├── codex/                      # Codex CLI
-│   ├── geak_v4/                    # GEAK kernel workflow integration
-│   ├── forge/                      # KernelForge integration
+│   ├── forge/                      # KernelForge through the shared task contract
+│   ├── geak/                       # Native GEAK Workflow integration
 │   └── task_validator/             # Task quality validator
 ├── tasks/
 │   ├── hip2hip/
@@ -86,7 +86,8 @@ AgentKernelArena/
 │   ├── torch2flydsl/
 │   ├── triton2flydsl/
 │   ├── flydsl2flydsl/
-│   └── repository/                 # Full-repository AITER and rocPRIM tasks
+│   ├── SIKL-task/                  # Production GEMM and MoE to FlyDSL
+│   └── image_kernel/               # Kernels from declared in-image source trees
 └── docs/                            # Full documentation
 ```
 
@@ -94,11 +95,13 @@ AgentKernelArena/
 
 1. Load the run configuration and selected agent.
 2. Discover task `config.yaml` files matching the configured selectors.
-3. Create an isolated task workspace, cloning an upstream repository when required.
-4. Compile and measure the original implementation to establish a baseline.
+3. Create an isolated task workspace and materialize its declared sources.
+4. Validate the task, establish its independent baseline, and check an existing
+   initial candidate when present. Generation targets may start unimplemented.
 5. Build the task prompt and run the selected agent inside the workspace.
 6. Independently compile, check, and time the agent's modified implementation.
-7. Write a structured `task_result.yaml` containing reward signals and a score.
+7. Write a structured `task_result.yaml` containing reward signals and a score,
+   then run any task-declared exports for an accepted candidate.
 8. Aggregate all task results into run-level CSV, JSON, and text reports.
 
 `task_validator` follows a validation-specific path and writes `validation_report.yaml` instead of optimizing and scoring a kernel.
@@ -114,11 +117,21 @@ Each run selects one `agent.template`. Repeated runs can compare different agent
 | `cursor` | Cursor Agent CLI integration |
 | `claude_code` | Claude Code CLI integration |
 | `codex` | Codex CLI integration |
-| `geak_v4` | GEAK kernel workflow through Claude Code |
-| `forge` | KernelForge optimization loop |
+| `forge` | KernelForge search through the shared task interface; initialize, translate, or optimize as required |
+| `geak` | GEAK multi-agent Workflow engine through the shared v2 task interface |
 | `task_validator` | Task quality validation; does not optimize kernels |
 
-Agent-specific models, effort settings, iteration guidance, timeouts, and provider configuration live under `agents/<agent_name>/agent_config.yaml` or in the selected agent CLI. Specialized agents may require additional setup; inspect their directories and agent-specific README files where present.
+The registry maps the compatibility names `geak_v4` to `geak` and
+`forge_operator2flydsl` to `forge`. Each uses the canonical launcher, defaults
+and post-processing; there are no separate legacy agent directories. See
+[`src/module_registration.py`](src/module_registration.py) for selectable names
+and the [GEAK](agents/geak/README.md) and [Forge](agents/forge/README.md) guides
+for their shared v2 interfaces and runtime requirements.
+
+Agent-specific defaults live under `agents/<agent_name>/agent_config.yaml` or in the selected agent CLI. Supported run-level overrides take precedence over agent-local defaults. Specialized agents may require additional setup; inspect their directories and agent-specific README files where present.
+
+See [CLI agent defaults and verification](docs/reference/agent-model-defaults.md)
+for tested CLI/model versions, run-level overrides, and the scope of live checks.
 
 ## Task Environments
 
@@ -131,8 +144,12 @@ Agent-specific models, effort settings, iteration guidance, timeouts, and provid
 | `torch2flydsl` | Replace a PyTorch reference with a FlyDSL implementation |
 | `triton2flydsl` | Translate a Triton implementation to FlyDSL |
 | `flydsl2flydsl` | Optimize an existing FlyDSL implementation |
-| `repository` | Optimize a target inside a cloned upstream repository |
+| `image_kernel` | Optimize a kernel from a declared source tree in the runtime image |
+| `SIKL-task` | Reimplement production BF16 GEMM and MXFP4 MoE operators in FlyDSL |
 
+These names organize task selection; the candidate and evaluation declarations
+determine behavior. Every retained suite uses the unified task contract in
+[Task definition, schema, and authoring](docs/how-to/add-task.md).
 The prompt system also recognizes `cuda2hip`; the current bundled task tree does not include a `cuda2hip/` suite.
 
 ## Installation
@@ -224,9 +241,11 @@ the copy:
 cp example_configs/quickstart_claude_mi300.yaml my_experiment.yaml
 ```
 
-Run agent-specific settings such as `model`, `effort`, `max_iterations`, and
-`timeout_seconds` are configured in the selected agent's `agent_config.yaml`,
-not in the run configuration.
+For Codex and Claude Code, the run config's `agent` mapping can override
+`model`, `effort`, `max_iterations`, and `timeout_seconds` from the selected
+agent's `agent_config.yaml`. Cursor accepts the same overrides except a
+standalone `effort`. See [run-level overrides](docs/reference/agent-model-defaults.md#run-level-overrides)
+for exact semantics; other integrations define their own supported settings.
 
 For a Cursor, Claude Code, Codex, or task-validator config, verify only the
 selected first-class host CLI (the validator resolves to its configured backend):
@@ -237,9 +256,10 @@ make docker-check-agents CONFIG="$CONFIG_PATH"
 ```
 
 Use `AGENTS=claude_code,codex` to check an explicit subset or `AGENTS=all` to
-check Cursor, Claude Code, and Codex together. Additional setup for specialized
-integrations is documented under [GEAK v4](agents/geak_v4/README.md) and
-[Forge](agents/forge/README.md).
+check Cursor, Claude Code, and Codex together. Specialized integrations such as
+Forge and legacy mini-swe have their own dependency checks. GEAK and its v2 aliases
+resolve to Claude Code for this CLI check; a normal run additionally checks the
+pinned GEAK engine and SDK.
 
 ### Run Serially
 
@@ -259,9 +279,9 @@ make docker-parallel-run CONFIG="$CONFIG_PATH"
 ```
 
 The Docker parallel path is verified for `cursor`, `claude_code`, `codex`, and
-`task_validator`. Other integrations require their documented runtime
-dependencies and worker-visible GPU configuration before they are used with
-isolated workers.
+`task_validator`. Specialized GEAK integrations need their own
+dependencies and GPU-ID configuration before they are used with isolated
+workers.
 
 ### Run From a Slurm/Spur Login Node
 
@@ -304,7 +324,6 @@ tasks:
   - torch2flydsl
   - triton2flydsl
   - flydsl2flydsl
-  - repository/rocprim
 ```
 
 ## Reward and Scoring Signals
@@ -329,45 +348,15 @@ For multi-case tasks, the evaluator prefers the explicit per-case average `speed
 
 ## Task Configuration
 
-Each isolated-kernel task has a `config.yaml`. Command and source fields are lists; `task_type` is a scalar string.
+Each task has one `config.yaml` plus task-local implementation and evaluation
+files. Read [Task definition, schema, and authoring](docs/how-to/add-task.md)
+for the canonical schema, examples, command/result contracts, baseline and
+candidate lifecycle, optional sanitizers, and migration instructions.
 
-```yaml
-# tasks/triton2triton/vllm/triton_rms_norm/config.yaml
-source_file_path:
-  - source/triton_rms_norm.py
-
-target_kernel_functions:
-  - _rms_norm_kernel
-
-compile_command:
-  - python3 scripts/task_runner.py compile
-
-correctness_command:
-  - python3 scripts/task_runner.py correctness
-
-# Optional, but required to produce a performance reward.
-performance_command:
-  - python3 scripts/task_runner.py performance
-
-task_type: triton2triton
-
-# Optional: limit a task to a GPU architecture.
-platform_support:
-  required_arch: gfx942
-  status: active          # active | skip
-  skip_reason: null
-
-prompt:
-  source_code: null
-  instructions: null
-  cheatsheet: null
-```
-
-Tasks marked `platform_support.status: skip`, or requiring a different GPU
-architecture, are filtered before workspace creation. Omit `platform_support`
-for tasks that run on every architecture.
-
-Repository-level tasks use `task_type: repository`, `repo_url`, and `repository_language`; their source and target hints are optional. See [docs/how-to/add-task.md](docs/how-to/add-task.md) for the complete schemas.
+All 438 retained tasks declare schema v2 and task-owned evaluation actions.
+GPU qualification and agent campaign results are tracked separately from that
+migration. Task-family directory names remain useful selectors; no family has
+a separate configuration schema.
 
 ## Development
 
@@ -399,38 +388,18 @@ Then:
 
 ### Add a Task
 
-Recommended isolated-task layout:
+Read [Task definition, schema, and authoring](docs/how-to/add-task.md) before
+changing task code, config, references, or harnesses. Follow its
+[authoring workflow](docs/how-to/add-task.md#how-to-add-or-modify-a-task).
+When converting an external legacy task, also read the
+[compatibility and migration guidance](docs/how-to/add-task.md#migration).
 
-```text
-tasks/<task_type>/[<suite>/...]/<task_name>/
-├── config.yaml
-├── scripts/
-│   └── task_runner.py
-└── source/
-    └── <kernel files>
-```
-
-At minimum, isolated tasks declare list-valued `source_file_path`, `target_kernel_functions`, `compile_command`, and `correctness_command`, plus a scalar `task_type`. Add `performance_command` to measure a baseline and optimized runtime.
-
-All new tasks must pass the task validator before merging:
-
-Save a run configuration such as `config_task_validator.yaml`:
-
-```yaml
-agent:
-  template: task_validator
-tasks:
-  - <full-task-path-relative-to-tasks>
-target_gpu_model: MI300
-log_directory: logs
-workspace_directory_prefix: workspace
-```
-
-```bash
-make docker-run CONFIG=config_task_validator.yaml
-```
-
-The validator runs 12 checks covering schema, source files, target symbols, compilation, correctness, performance, correctness quality, self-containedness, GPU hangs, result compatibility, benchmark integrity, and harness integrity. Reports are schema-versioned and framework-finalized; any FAIL/TIMEOUT makes the final command exit nonzero. See [agents/task_validator/README.md](agents/task_validator/README.md).
+New tasks and material task-contract/harness changes require a fresh
+framework-finalized `validation_report.yaml` on compatible GPU hardware before
+PR submission. A clean pass has `overall_status: PASS`; WARN needs an explicit
+maintainer-approved justification. See the
+[validator guide](docs/how-to/task-validator.md) for the Docker command and
+report interpretation.
 
 ## Additional Tools
 

@@ -1,0 +1,247 @@
+{
+  "cases": [
+    {
+      "test_case_id": "case_0000",
+      "params": {
+        "M": 1,
+        "N": 1,
+        "K": 1,
+        "with_bias": false,
+        "seed": 0
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0001",
+      "params": {
+        "M": 1,
+        "N": 1,
+        "K": 1,
+        "with_bias": true,
+        "seed": 0
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0002",
+      "params": {
+        "M": 3,
+        "N": 5,
+        "K": 2,
+        "with_bias": false,
+        "seed": 0
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0003",
+      "params": {
+        "M": 3,
+        "N": 5,
+        "K": 2,
+        "with_bias": true,
+        "seed": 0
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0004",
+      "params": {
+        "M": 16,
+        "N": 1024,
+        "K": 1024,
+        "with_bias": false,
+        "seed": 0
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0005",
+      "params": {
+        "M": 16,
+        "N": 1024,
+        "K": 1024,
+        "with_bias": true,
+        "seed": 0
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0006",
+      "params": {
+        "M": 128,
+        "N": 8192,
+        "K": 512,
+        "with_bias": false,
+        "seed": 0
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0007",
+      "params": {
+        "M": 128,
+        "N": 8192,
+        "K": 512,
+        "with_bias": true,
+        "seed": 0
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0008",
+      "params": {
+        "M": 256,
+        "N": 512,
+        "K": 8192,
+        "with_bias": false,
+        "seed": 0
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0009",
+      "params": {
+        "M": 256,
+        "N": 512,
+        "K": 8192,
+        "with_bias": true,
+        "seed": 0
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0010",
+      "params": {
+        "M": 1024,
+        "N": 1024,
+        "K": 1024,
+        "with_bias": false,
+        "seed": 0
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0011",
+      "params": {
+        "M": 1024,
+        "N": 1024,
+        "K": 1024,
+        "with_bias": true,
+        "seed": 0
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0012",
+      "params": {
+        "M": 2048,
+        "N": 2048,
+        "K": 2048,
+        "with_bias": false,
+        "seed": 0
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0013",
+      "params": {
+        "M": 2048,
+        "N": 2048,
+        "K": 2048,
+        "with_bias": true,
+        "seed": 0
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0014",
+      "params": {
+        "M": 4096,
+        "N": 4096,
+        "K": 4096,
+        "with_bias": false,
+        "seed": 0
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0015",
+      "params": {
+        "M": 4096,
+        "N": 4096,
+        "K": 4096,
+        "with_bias": true,
+        "seed": 0
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0016",
+      "params": {
+        "M": 256,
+        "N": 10240,
+        "K": 8192,
+        "with_bias": false,
+        "seed": 0
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0017",
+      "params": {
+        "M": 256,
+        "N": 10240,
+        "K": 8192,
+        "with_bias": true,
+        "seed": 0
+      },
+      "checks": [
+        "correctness"
+      ]
+    }
+  ]
+}

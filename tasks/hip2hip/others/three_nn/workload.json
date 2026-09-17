@@ -1,0 +1,78 @@
+{
+  "test_shapes": [
+    [
+      2,
+      32,
+      64
+    ],
+    [
+      4,
+      128,
+      256
+    ],
+    [
+      8,
+      1024,
+      2048
+    ],
+    [
+      2,
+      512,
+      4096
+    ],
+    [
+      4,
+      2048,
+      128
+    ]
+  ],
+  "candidate_files": [
+    "src/three_nn_cuda.hip"
+  ],
+  "cases": [
+    {
+      "test_case_id": "shape_0",
+      "params": {
+        "B": 2,
+        "N_target": 32,
+        "M_source": 64
+      }
+    },
+    {
+      "test_case_id": "shape_1",
+      "params": {
+        "B": 4,
+        "N_target": 128,
+        "M_source": 256
+      }
+    },
+    {
+      "test_case_id": "shape_2",
+      "params": {
+        "B": 8,
+        "N_target": 1024,
+        "M_source": 2048
+      }
+    },
+    {
+      "test_case_id": "shape_3",
+      "params": {
+        "B": 2,
+        "N_target": 512,
+        "M_source": 4096
+      }
+    },
+    {
+      "test_case_id": "shape_4",
+      "params": {
+        "B": 4,
+        "N_target": 2048,
+        "M_source": 128
+      }
+    }
+  ],
+  "graph_policy": {
+    "enabled": true,
+    "reason": null
+  }
+}

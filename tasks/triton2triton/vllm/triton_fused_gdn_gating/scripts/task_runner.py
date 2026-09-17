@@ -83,7 +83,7 @@ def run_compile():
         return False, str(e)
 
 
-def run_correctness():
+def run_correctness(*, case_index=None):
     import torch
     try:
         mod = load_module()
@@ -92,6 +92,8 @@ def run_correctness():
 
     device = "cuda"
     for i, (batch, nh) in enumerate(TEST_SHAPES):
+        if case_index is not None and i != case_index:
+            continue
         try:
             inputs = make_inputs(batch, nh, device)
             res_g, res_beta = mod.fused_gdn_gating(*inputs)

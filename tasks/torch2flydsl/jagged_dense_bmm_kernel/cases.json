@@ -1,0 +1,86 @@
+{
+  "cases": [
+    {
+      "test_case_id": "case_0000",
+      "params": {
+        "m_per_group": [
+          100,
+          128,
+          64,
+          200
+        ],
+        "seed": 20260601
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0001",
+      "params": {
+        "m_per_group": [
+          128,
+          256,
+          128
+        ],
+        "seed": 20260601
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0002",
+      "params": {
+        "m_per_group": [
+          0,
+          130,
+          0,
+          300,
+          50
+        ],
+        "seed": 20260601
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0003",
+      "params": {
+        "m_per_group": [
+          10,
+          33,
+          128,
+          200,
+          1,
+          64,
+          129,
+          255
+        ],
+        "seed": 20260601
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0004",
+      "params": {
+        "m_per_group": [
+          64,
+          96
+        ],
+        "seed": 20260601
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    }
+  ]
+}

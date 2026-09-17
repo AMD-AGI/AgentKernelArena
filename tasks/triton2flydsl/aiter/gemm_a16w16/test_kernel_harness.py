@@ -6,6 +6,8 @@ The kernel under test is AITER's 16-bit GEMM Triton kernel (`gemm_a16w16` ->
 `_gemm_a16_w16_kernel`): Y = X @ W^T with fp32 accumulation, an XCD-balanced +
 grouped pid remap, and bf16/fp16 output. The standalone source keeps the
 non-split-K (NUM_KSPLIT == 1) triton path with a static tile config.
+This task selects the default BF16, no-bias, newly allocated output path for
+all eight declared shapes; other options in the upstream API are not covered.
 
 Modes:
   --compile         ast-parse + import the standalone source, assert entry/kernel symbols
@@ -22,9 +24,12 @@ import math
 import os
 import sys
 from pathlib import Path
-from _aka_benchmark import benchmark_cuda_graph_or_events
+from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
+from scripts.replay_checks import (allclose_output, normalized_output,
+                                  require_tensor_contract, verify_timed_run)
 
-SOURCE_FILE = "gemm_a16w16.py"
+from task_runtime import candidate_relative_path
+SOURCE_FILE = candidate_relative_path()
 ENTRY = "gemm_a16w16"
 KERNEL = "_gemm_a16_w16_kernel"
 
@@ -52,6 +57,7 @@ def _load_source():
     entry = os.path.join(_HERE, SOURCE_FILE)
     spec = importlib.util.spec_from_file_location("gemm_a16w16_src", entry)
     mod = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = mod
     spec.loader.exec_module(mod)
     return mod
 
@@ -78,6 +84,11 @@ def run_compile():
     return True
 
 
+def _reference_gemm(x, w):
+    import torch.nn.functional as F
+    return F.linear(x, w, bias=None)
+
+
 def run_correctness(verbose=True):
     import torch
     import torch.nn.functional as F
@@ -90,7 +101,8 @@ def run_correctness(verbose=True):
             x, w = _make_inputs(shape["M"], shape["N"], shape["K"])
             y = mod.gemm_a16w16(x, w)
             torch.cuda.synchronize()
-            ref = F.linear(x, w, bias=None)
+            ref = _reference_gemm(x, w)
+            require_tensor_contract(y, ref, dtype=x.dtype)
             finite = bool(torch.isfinite(y).all().item())
             close = torch.allclose(y, ref, atol=1e-1, rtol=1e-2)
             ok = finite and close
@@ -120,6 +132,9 @@ def run_benchmark(verbose=True):
     report, latencies = [], []
     for idx, shape in enumerate(TEST_SHAPES):
         x, w = _make_inputs(shape["M"], shape["N"], shape["K"])
+        originals = (x.clone(), w.clone())
+        expected = _reference_gemm(x, w)
+        timed = TimedRun()
         fn = lambda: mod.gemm_a16w16(x, w)  # noqa: E731
         fn()
         torch.cuda.synchronize()
@@ -127,8 +142,13 @@ def run_benchmark(verbose=True):
             fn()
         torch.cuda.synchronize()
         ms, bench_meta = benchmark_cuda_graph_or_events(
-            fn, warmup=0, repetition=ITERS
+            fn, warmup=0, repetition=ITERS, timed_run=timed
         )
+        bench_meta.update(verify_timed_run(
+            timed, inputs=(x, w), originals=originals, expected=expected,
+            perturb=lambda: x.neg_(), reference=lambda: _reference_gemm(x, w),
+            compare=lambda actual, ref: allclose_output(actual, ref, atol=1e-1, rtol=1e-2),
+        ))
         latencies.append(ms)
         flops = 2.0 * shape["M"] * shape["N"] * shape["K"]
         report.append(

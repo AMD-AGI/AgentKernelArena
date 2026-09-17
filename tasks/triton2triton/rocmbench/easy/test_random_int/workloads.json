@@ -1,0 +1,2422 @@
+{
+  "version": 1,
+  "source": "test_random_int.py",
+  "kernel_symbols": [
+    "randint_kernel_runtime_seed",
+    "randint_kernel_const_seed"
+  ],
+  "cases": [
+    {
+      "test_case_id": "test_randint/e016a4b622eb329d444b",
+      "params": {
+        "function": "test_randint",
+        "arguments": {
+          "size": [
+            10
+          ],
+          "seed": 0,
+          "dtype": "int32",
+          "const_seed": true
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_randint/c092848cbc15357c6eb0",
+      "params": {
+        "function": "test_randint",
+        "arguments": {
+          "size": [
+            10
+          ],
+          "seed": 0,
+          "dtype": "int32",
+          "const_seed": false
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_randint/b68d2fc7d200edb21c7f",
+      "params": {
+        "function": "test_randint",
+        "arguments": {
+          "size": [
+            10
+          ],
+          "seed": 0,
+          "dtype": "int64",
+          "const_seed": true
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_randint/1e9e4df2b9764a6728df",
+      "params": {
+        "function": "test_randint",
+        "arguments": {
+          "size": [
+            10
+          ],
+          "seed": 0,
+          "dtype": "int64",
+          "const_seed": false
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_randint/142dc9a2e94da7d9f6a9",
+      "params": {
+        "function": "test_randint",
+        "arguments": {
+          "size": [
+            10
+          ],
+          "seed": 42,
+          "dtype": "int32",
+          "const_seed": true
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_randint/90d4e58896ba19509b7e",
+      "params": {
+        "function": "test_randint",
+        "arguments": {
+          "size": [
+            10
+          ],
+          "seed": 42,
+          "dtype": "int32",
+          "const_seed": false
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_randint/e18d60b51284fe225fbe",
+      "params": {
+        "function": "test_randint",
+        "arguments": {
+          "size": [
+            10
+          ],
+          "seed": 42,
+          "dtype": "int64",
+          "const_seed": true
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_randint/f8f0677c9a86ed8e10e4",
+      "params": {
+        "function": "test_randint",
+        "arguments": {
+          "size": [
+            10
+          ],
+          "seed": 42,
+          "dtype": "int64",
+          "const_seed": false
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_randint/2f30ca11b27aca388492",
+      "params": {
+        "function": "test_randint",
+        "arguments": {
+          "size": [
+            10
+          ],
+          "seed": 124,
+          "dtype": "int32",
+          "const_seed": true
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_randint/5616bbbeb95b3b20503e",
+      "params": {
+        "function": "test_randint",
+        "arguments": {
+          "size": [
+            10
+          ],
+          "seed": 124,
+          "dtype": "int32",
+          "const_seed": false
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_randint/fc7936b71270912ee8ca",
+      "params": {
+        "function": "test_randint",
+        "arguments": {
+          "size": [
+            10
+          ],
+          "seed": 124,
+          "dtype": "int64",
+          "const_seed": true
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_randint/28801c986e4b41bf41ba",
+      "params": {
+        "function": "test_randint",
+        "arguments": {
+          "size": [
+            10
+          ],
+          "seed": 124,
+          "dtype": "int64",
+          "const_seed": false
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_randint/ac492495a9ba12b70bb8",
+      "params": {
+        "function": "test_randint",
+        "arguments": {
+          "size": [
+            10
+          ],
+          "seed": 54,
+          "dtype": "int32",
+          "const_seed": true
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_randint/22f96daa1aeb926d3652",
+      "params": {
+        "function": "test_randint",
+        "arguments": {
+          "size": [
+            10
+          ],
+          "seed": 54,
+          "dtype": "int32",
+          "const_seed": false
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_randint/d6ecac9f1ddeea86df30",
+      "params": {
+        "function": "test_randint",
+        "arguments": {
+          "size": [
+            10
+          ],
+          "seed": 54,
+          "dtype": "int64",
+          "const_seed": true
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_randint/3c5138fb3a3e9708b8dc",
+      "params": {
+        "function": "test_randint",
+        "arguments": {
+          "size": [
+            10
+          ],
+          "seed": 54,
+          "dtype": "int64",
+          "const_seed": false
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_randint/78a94d15eb733c1760e2",
+      "params": {
+        "function": "test_randint",
+        "arguments": {
+          "size": [
+            10
+          ],
+          "seed": 4294967295,
+          "dtype": "int32",
+          "const_seed": true
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_randint/40f84aeb28aa86120bf9",
+      "params": {
+        "function": "test_randint",
+        "arguments": {
+          "size": [
+            10
+          ],
+          "seed": 4294967295,
+          "dtype": "int32",
+          "const_seed": false
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_randint/5d41c9631fb01a259496",
+      "params": {
+        "function": "test_randint",
+        "arguments": {
+          "size": [
+            10
+          ],
+          "seed": 4294967295,
+          "dtype": "int64",
+          "const_seed": true
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_randint/2603df7dd9e808512281",
+      "params": {
+        "function": "test_randint",
+        "arguments": {
+          "size": [
+            10
+          ],
+          "seed": 4294967295,
+          "dtype": "int64",
+          "const_seed": false
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_randint/363305eee774801131cc",
+      "params": {
+        "function": "test_randint",
+        "arguments": {
+          "size": [
+            10
+          ],
+          "seed": 67830198458,
+          "dtype": "int32",
+          "const_seed": true
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_randint/41450f6160a98a4352cd",
+      "params": {
+        "function": "test_randint",
+        "arguments": {
+          "size": [
+            10
+          ],
+          "seed": 67830198458,
+          "dtype": "int32",
+          "const_seed": false
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_randint/1218bb13b754e89f5e3c",
+      "params": {
+        "function": "test_randint",
+        "arguments": {
+          "size": [
+            10
+          ],
+          "seed": 67830198458,
+          "dtype": "int64",
+          "const_seed": true
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_randint/66829f76c350f5bd5cd1",
+      "params": {
+        "function": "test_randint",
+        "arguments": {
+          "size": [
+            10
+          ],
+          "seed": 67830198458,
+          "dtype": "int64",
+          "const_seed": false
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_randint/ea19b8ca76cbbf9e47aa",
+      "params": {
+        "function": "test_randint",
+        "arguments": {
+          "size": [
+            4,
+            53
+          ],
+          "seed": 0,
+          "dtype": "int32",
+          "const_seed": true
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_randint/39e62f42de0c2d3a515e",
+      "params": {
+        "function": "test_randint",
+        "arguments": {
+          "size": [
+            4,
+            53
+          ],
+          "seed": 0,
+          "dtype": "int32",
+          "const_seed": false
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_randint/9be759315e16177d782d",
+      "params": {
+        "function": "test_randint",
+        "arguments": {
+          "size": [
+            4,
+            53
+          ],
+          "seed": 0,
+          "dtype": "int64",
+          "const_seed": true
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_randint/ff608afc20324ab4ee95",
+      "params": {
+        "function": "test_randint",
+        "arguments": {
+          "size": [
+            4,
+            53
+          ],
+          "seed": 0,
+          "dtype": "int64",
+          "const_seed": false
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_randint/f16d5f2072131747a6d9",
+      "params": {
+        "function": "test_randint",
+        "arguments": {
+          "size": [
+            4,
+            53
+          ],
+          "seed": 42,
+          "dtype": "int32",
+          "const_seed": true
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_randint/1e045427f08107a517da",
+      "params": {
+        "function": "test_randint",
+        "arguments": {
+          "size": [
+            4,
+            53
+          ],
+          "seed": 42,
+          "dtype": "int32",
+          "const_seed": false
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_randint/54f62bd8bfcefc54a986",
+      "params": {
+        "function": "test_randint",
+        "arguments": {
+          "size": [
+            4,
+            53
+          ],
+          "seed": 42,
+          "dtype": "int64",
+          "const_seed": true
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_randint/7e135e1840d409116e01",
+      "params": {
+        "function": "test_randint",
+        "arguments": {
+          "size": [
+            4,
+            53
+          ],
+          "seed": 42,
+          "dtype": "int64",
+          "const_seed": false
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_randint/33a040a7fe400678bfee",
+      "params": {
+        "function": "test_randint",
+        "arguments": {
+          "size": [
+            4,
+            53
+          ],
+          "seed": 124,
+          "dtype": "int32",
+          "const_seed": true
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_randint/9e138dabb6395b6141c6",
+      "params": {
+        "function": "test_randint",
+        "arguments": {
+          "size": [
+            4,
+            53
+          ],
+          "seed": 124,
+          "dtype": "int32",
+          "const_seed": false
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_randint/bf3755fd2addc64c8b4a",
+      "params": {
+        "function": "test_randint",
+        "arguments": {
+          "size": [
+            4,
+            53
+          ],
+          "seed": 124,
+          "dtype": "int64",
+          "const_seed": true
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_randint/c645d29044bd7f903e6f",
+      "params": {
+        "function": "test_randint",
+        "arguments": {
+          "size": [
+            4,
+            53
+          ],
+          "seed": 124,
+          "dtype": "int64",
+          "const_seed": false
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_randint/f8e55fe59edd18e8a7ee",
+      "params": {
+        "function": "test_randint",
+        "arguments": {
+          "size": [
+            4,
+            53
+          ],
+          "seed": 54,
+          "dtype": "int32",
+          "const_seed": true
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_randint/0c1057c050437f1f5858",
+      "params": {
+        "function": "test_randint",
+        "arguments": {
+          "size": [
+            4,
+            53
+          ],
+          "seed": 54,
+          "dtype": "int32",
+          "const_seed": false
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_randint/619177f898a535fbc120",
+      "params": {
+        "function": "test_randint",
+        "arguments": {
+          "size": [
+            4,
+            53
+          ],
+          "seed": 54,
+          "dtype": "int64",
+          "const_seed": true
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_randint/fa2d50a8bd54d9d08e51",
+      "params": {
+        "function": "test_randint",
+        "arguments": {
+          "size": [
+            4,
+            53
+          ],
+          "seed": 54,
+          "dtype": "int64",
+          "const_seed": false
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_randint/1c7efbab7405585ced21",
+      "params": {
+        "function": "test_randint",
+        "arguments": {
+          "size": [
+            4,
+            53
+          ],
+          "seed": 4294967295,
+          "dtype": "int32",
+          "const_seed": true
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_randint/e7c2b58cb728ae908d10",
+      "params": {
+        "function": "test_randint",
+        "arguments": {
+          "size": [
+            4,
+            53
+          ],
+          "seed": 4294967295,
+          "dtype": "int32",
+          "const_seed": false
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_randint/8ed67d261ad4abf1624b",
+      "params": {
+        "function": "test_randint",
+        "arguments": {
+          "size": [
+            4,
+            53
+          ],
+          "seed": 4294967295,
+          "dtype": "int64",
+          "const_seed": true
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_randint/c87da491d07067718315",
+      "params": {
+        "function": "test_randint",
+        "arguments": {
+          "size": [
+            4,
+            53
+          ],
+          "seed": 4294967295,
+          "dtype": "int64",
+          "const_seed": false
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_randint/7163785ff189254cb150",
+      "params": {
+        "function": "test_randint",
+        "arguments": {
+          "size": [
+            4,
+            53
+          ],
+          "seed": 67830198458,
+          "dtype": "int32",
+          "const_seed": true
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_randint/1f76f4a6728aed36dd6e",
+      "params": {
+        "function": "test_randint",
+        "arguments": {
+          "size": [
+            4,
+            53
+          ],
+          "seed": 67830198458,
+          "dtype": "int32",
+          "const_seed": false
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_randint/014884155c29746f3ac4",
+      "params": {
+        "function": "test_randint",
+        "arguments": {
+          "size": [
+            4,
+            53
+          ],
+          "seed": 67830198458,
+          "dtype": "int64",
+          "const_seed": true
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_randint/64fad12871417aaa5f97",
+      "params": {
+        "function": "test_randint",
+        "arguments": {
+          "size": [
+            4,
+            53
+          ],
+          "seed": 67830198458,
+          "dtype": "int64",
+          "const_seed": false
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_randint/bc576f39151b35b15969",
+      "params": {
+        "function": "test_randint",
+        "arguments": {
+          "size": [
+            400
+          ],
+          "seed": 0,
+          "dtype": "int32",
+          "const_seed": true
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_randint/d4f645e8f9ab46088ff9",
+      "params": {
+        "function": "test_randint",
+        "arguments": {
+          "size": [
+            400
+          ],
+          "seed": 0,
+          "dtype": "int32",
+          "const_seed": false
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_randint/a55411c1b9096ba06e41",
+      "params": {
+        "function": "test_randint",
+        "arguments": {
+          "size": [
+            400
+          ],
+          "seed": 0,
+          "dtype": "int64",
+          "const_seed": true
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_randint/2122fac7f2351c637b4e",
+      "params": {
+        "function": "test_randint",
+        "arguments": {
+          "size": [
+            400
+          ],
+          "seed": 0,
+          "dtype": "int64",
+          "const_seed": false
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_randint/eefec55488d10e0d8c03",
+      "params": {
+        "function": "test_randint",
+        "arguments": {
+          "size": [
+            400
+          ],
+          "seed": 42,
+          "dtype": "int32",
+          "const_seed": true
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_randint/7c9f8b00f472117aba25",
+      "params": {
+        "function": "test_randint",
+        "arguments": {
+          "size": [
+            400
+          ],
+          "seed": 42,
+          "dtype": "int32",
+          "const_seed": false
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_randint/5eb6e3dbbc5103c22c58",
+      "params": {
+        "function": "test_randint",
+        "arguments": {
+          "size": [
+            400
+          ],
+          "seed": 42,
+          "dtype": "int64",
+          "const_seed": true
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_randint/a482c1372fcd7d7c5ac0",
+      "params": {
+        "function": "test_randint",
+        "arguments": {
+          "size": [
+            400
+          ],
+          "seed": 42,
+          "dtype": "int64",
+          "const_seed": false
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_randint/04b8a44370ee376a981c",
+      "params": {
+        "function": "test_randint",
+        "arguments": {
+          "size": [
+            400
+          ],
+          "seed": 124,
+          "dtype": "int32",
+          "const_seed": true
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_randint/8f28f969ffd55dd8d52f",
+      "params": {
+        "function": "test_randint",
+        "arguments": {
+          "size": [
+            400
+          ],
+          "seed": 124,
+          "dtype": "int32",
+          "const_seed": false
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_randint/680dbb17778d1007f293",
+      "params": {
+        "function": "test_randint",
+        "arguments": {
+          "size": [
+            400
+          ],
+          "seed": 124,
+          "dtype": "int64",
+          "const_seed": true
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_randint/35dc312771ab6557323b",
+      "params": {
+        "function": "test_randint",
+        "arguments": {
+          "size": [
+            400
+          ],
+          "seed": 124,
+          "dtype": "int64",
+          "const_seed": false
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_randint/df568a5af5863211dbee",
+      "params": {
+        "function": "test_randint",
+        "arguments": {
+          "size": [
+            400
+          ],
+          "seed": 54,
+          "dtype": "int32",
+          "const_seed": true
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_randint/d55b1d3f1107f6eae783",
+      "params": {
+        "function": "test_randint",
+        "arguments": {
+          "size": [
+            400
+          ],
+          "seed": 54,
+          "dtype": "int32",
+          "const_seed": false
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_randint/9e78c62f3b501e9a4df6",
+      "params": {
+        "function": "test_randint",
+        "arguments": {
+          "size": [
+            400
+          ],
+          "seed": 54,
+          "dtype": "int64",
+          "const_seed": true
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_randint/b2ec86997eccbe47c128",
+      "params": {
+        "function": "test_randint",
+        "arguments": {
+          "size": [
+            400
+          ],
+          "seed": 54,
+          "dtype": "int64",
+          "const_seed": false
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_randint/180886b02ef5750f1ade",
+      "params": {
+        "function": "test_randint",
+        "arguments": {
+          "size": [
+            400
+          ],
+          "seed": 4294967295,
+          "dtype": "int32",
+          "const_seed": true
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_randint/4a772beab04f106ff524",
+      "params": {
+        "function": "test_randint",
+        "arguments": {
+          "size": [
+            400
+          ],
+          "seed": 4294967295,
+          "dtype": "int32",
+          "const_seed": false
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_randint/aa443f42fdc7a2d3b18c",
+      "params": {
+        "function": "test_randint",
+        "arguments": {
+          "size": [
+            400
+          ],
+          "seed": 4294967295,
+          "dtype": "int64",
+          "const_seed": true
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_randint/dd0baf57298b718eb48d",
+      "params": {
+        "function": "test_randint",
+        "arguments": {
+          "size": [
+            400
+          ],
+          "seed": 4294967295,
+          "dtype": "int64",
+          "const_seed": false
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_randint/50bdfd0a5edfe3c43d8c",
+      "params": {
+        "function": "test_randint",
+        "arguments": {
+          "size": [
+            400
+          ],
+          "seed": 67830198458,
+          "dtype": "int32",
+          "const_seed": true
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_randint/7d5883ac4addd3a2b6d2",
+      "params": {
+        "function": "test_randint",
+        "arguments": {
+          "size": [
+            400
+          ],
+          "seed": 67830198458,
+          "dtype": "int32",
+          "const_seed": false
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_randint/f17edecf6edbb5a5b30f",
+      "params": {
+        "function": "test_randint",
+        "arguments": {
+          "size": [
+            400
+          ],
+          "seed": 67830198458,
+          "dtype": "int64",
+          "const_seed": true
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_randint/e42dd36bfe2d4f41e211",
+      "params": {
+        "function": "test_randint",
+        "arguments": {
+          "size": [
+            400
+          ],
+          "seed": 67830198458,
+          "dtype": "int64",
+          "const_seed": false
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/2b430807faab5d0584f9",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "size_val": 65536,
+          "seed_val": 0,
+          "output_dtype_str": "int32",
+          "const_seed_bool": true
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/77e51d42a9bb57386a68",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "size_val": 65536,
+          "seed_val": 0,
+          "output_dtype_str": "int32",
+          "const_seed_bool": false
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/eb5f5f7118e292878f50",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "size_val": 65536,
+          "seed_val": 0,
+          "output_dtype_str": "int64",
+          "const_seed_bool": true
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/dbe41c89855db7a3a48d",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "size_val": 65536,
+          "seed_val": 0,
+          "output_dtype_str": "int64",
+          "const_seed_bool": false
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/85c443af466f373db53d",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "size_val": 65536,
+          "seed_val": 42,
+          "output_dtype_str": "int32",
+          "const_seed_bool": true
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/b45951af045a8a3e1e0b",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "size_val": 65536,
+          "seed_val": 42,
+          "output_dtype_str": "int32",
+          "const_seed_bool": false
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/d0a48481c16e20778dc5",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "size_val": 65536,
+          "seed_val": 42,
+          "output_dtype_str": "int64",
+          "const_seed_bool": true
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/d3f366880b332383341e",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "size_val": 65536,
+          "seed_val": 42,
+          "output_dtype_str": "int64",
+          "const_seed_bool": false
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/0b3154c1d67edfdb1e65",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "size_val": 131072,
+          "seed_val": 0,
+          "output_dtype_str": "int32",
+          "const_seed_bool": true
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/bb81a3e6a50028b83f32",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "size_val": 131072,
+          "seed_val": 0,
+          "output_dtype_str": "int32",
+          "const_seed_bool": false
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/deef4e2c2d8d6fe2d307",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "size_val": 131072,
+          "seed_val": 0,
+          "output_dtype_str": "int64",
+          "const_seed_bool": true
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/54b8f9c476dc3a5ab44f",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "size_val": 131072,
+          "seed_val": 0,
+          "output_dtype_str": "int64",
+          "const_seed_bool": false
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/ade7c9d2267fc1d96b81",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "size_val": 131072,
+          "seed_val": 42,
+          "output_dtype_str": "int32",
+          "const_seed_bool": true
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/84aa2077c88350c43564",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "size_val": 131072,
+          "seed_val": 42,
+          "output_dtype_str": "int32",
+          "const_seed_bool": false
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/5adcfb270ab0840dbee1",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "size_val": 131072,
+          "seed_val": 42,
+          "output_dtype_str": "int64",
+          "const_seed_bool": true
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/9576b1fe7ab7aeb3b3b5",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "size_val": 131072,
+          "seed_val": 42,
+          "output_dtype_str": "int64",
+          "const_seed_bool": false
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/431b97ff83dd954403e7",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "size_val": 262144,
+          "seed_val": 0,
+          "output_dtype_str": "int32",
+          "const_seed_bool": true
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/16852e1399d78d6cb37a",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "size_val": 262144,
+          "seed_val": 0,
+          "output_dtype_str": "int32",
+          "const_seed_bool": false
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/9034841e0db58a6d1f5f",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "size_val": 262144,
+          "seed_val": 0,
+          "output_dtype_str": "int64",
+          "const_seed_bool": true
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/46b7b73feed0803b08b6",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "size_val": 262144,
+          "seed_val": 0,
+          "output_dtype_str": "int64",
+          "const_seed_bool": false
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/c407d997df1d8359c6b8",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "size_val": 262144,
+          "seed_val": 42,
+          "output_dtype_str": "int32",
+          "const_seed_bool": true
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/ff476e55a1a8dec23a37",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "size_val": 262144,
+          "seed_val": 42,
+          "output_dtype_str": "int32",
+          "const_seed_bool": false
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/e0ff65ba04b65e5c1f1e",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "size_val": 262144,
+          "seed_val": 42,
+          "output_dtype_str": "int64",
+          "const_seed_bool": true
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/f7e7cf1edbd5794edfba",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "size_val": 262144,
+          "seed_val": 42,
+          "output_dtype_str": "int64",
+          "const_seed_bool": false
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/5e5ab28e8a044ab7eff7",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "size_val": 524288,
+          "seed_val": 0,
+          "output_dtype_str": "int32",
+          "const_seed_bool": true
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/2a52104e21191012bbc2",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "size_val": 524288,
+          "seed_val": 0,
+          "output_dtype_str": "int32",
+          "const_seed_bool": false
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/bbe552ad890a2c8b4ff5",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "size_val": 524288,
+          "seed_val": 0,
+          "output_dtype_str": "int64",
+          "const_seed_bool": true
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/6529c4e7ec7f56f257d5",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "size_val": 524288,
+          "seed_val": 0,
+          "output_dtype_str": "int64",
+          "const_seed_bool": false
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/831e8bc457864a7d609a",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "size_val": 524288,
+          "seed_val": 42,
+          "output_dtype_str": "int32",
+          "const_seed_bool": true
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/5a2ee889e579b3c399c8",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "size_val": 524288,
+          "seed_val": 42,
+          "output_dtype_str": "int32",
+          "const_seed_bool": false
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/6d9db2908d89139c53f9",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "size_val": 524288,
+          "seed_val": 42,
+          "output_dtype_str": "int64",
+          "const_seed_bool": true
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/f3d591c7416ca7895641",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "size_val": 524288,
+          "seed_val": 42,
+          "output_dtype_str": "int64",
+          "const_seed_bool": false
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/9fb9d26d233bc9a5ade8",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "size_val": 1048576,
+          "seed_val": 0,
+          "output_dtype_str": "int32",
+          "const_seed_bool": true
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/0da5a0ab3dc8cc480657",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "size_val": 1048576,
+          "seed_val": 0,
+          "output_dtype_str": "int32",
+          "const_seed_bool": false
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/d38639b557c42e23aefe",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "size_val": 1048576,
+          "seed_val": 0,
+          "output_dtype_str": "int64",
+          "const_seed_bool": true
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/1c06745892ab65a46a08",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "size_val": 1048576,
+          "seed_val": 0,
+          "output_dtype_str": "int64",
+          "const_seed_bool": false
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/57327ae3c6a5a45599e7",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "size_val": 1048576,
+          "seed_val": 42,
+          "output_dtype_str": "int32",
+          "const_seed_bool": true
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/35e325780442b8694516",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "size_val": 1048576,
+          "seed_val": 42,
+          "output_dtype_str": "int32",
+          "const_seed_bool": false
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/0758c8dd455eda5131f6",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "size_val": 1048576,
+          "seed_val": 42,
+          "output_dtype_str": "int64",
+          "const_seed_bool": true
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/459b6e96d32f736618d6",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "size_val": 1048576,
+          "seed_val": 42,
+          "output_dtype_str": "int64",
+          "const_seed_bool": false
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/ebc7d61ec514f0280d1c",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "size_val": 2097152,
+          "seed_val": 0,
+          "output_dtype_str": "int32",
+          "const_seed_bool": true
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/5cbbaf201d12f2194f4e",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "size_val": 2097152,
+          "seed_val": 0,
+          "output_dtype_str": "int32",
+          "const_seed_bool": false
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/6c0fd67cde734cfdc480",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "size_val": 2097152,
+          "seed_val": 0,
+          "output_dtype_str": "int64",
+          "const_seed_bool": true
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/99a25e9d3536bd328a53",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "size_val": 2097152,
+          "seed_val": 0,
+          "output_dtype_str": "int64",
+          "const_seed_bool": false
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/67cbc842f92b218ac68c",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "size_val": 2097152,
+          "seed_val": 42,
+          "output_dtype_str": "int32",
+          "const_seed_bool": true
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/e61ca9888ae1897fd1f9",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "size_val": 2097152,
+          "seed_val": 42,
+          "output_dtype_str": "int32",
+          "const_seed_bool": false
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/5b9ca50a37ff966d4514",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "size_val": 2097152,
+          "seed_val": 42,
+          "output_dtype_str": "int64",
+          "const_seed_bool": true
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/062ac18c1e0973758d3f",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "size_val": 2097152,
+          "seed_val": 42,
+          "output_dtype_str": "int64",
+          "const_seed_bool": false
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/a0f86e76b60508235414",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "size_val": 4194304,
+          "seed_val": 0,
+          "output_dtype_str": "int32",
+          "const_seed_bool": true
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/b604a418b3db66d21719",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "size_val": 4194304,
+          "seed_val": 0,
+          "output_dtype_str": "int32",
+          "const_seed_bool": false
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/95008980c70d20fea969",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "size_val": 4194304,
+          "seed_val": 0,
+          "output_dtype_str": "int64",
+          "const_seed_bool": true
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/b9223cc4a99805f38b2f",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "size_val": 4194304,
+          "seed_val": 0,
+          "output_dtype_str": "int64",
+          "const_seed_bool": false
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/36d8a254d066337bcd7c",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "size_val": 4194304,
+          "seed_val": 42,
+          "output_dtype_str": "int32",
+          "const_seed_bool": true
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/2fe727a02c8ddb85ab3e",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "size_val": 4194304,
+          "seed_val": 42,
+          "output_dtype_str": "int32",
+          "const_seed_bool": false
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/1b779a6ed2469050e3f5",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "size_val": 4194304,
+          "seed_val": 42,
+          "output_dtype_str": "int64",
+          "const_seed_bool": true
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/c737d41e4d5f2982930e",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "size_val": 4194304,
+          "seed_val": 42,
+          "output_dtype_str": "int64",
+          "const_seed_bool": false
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/57692f8f6446bf16ef2f",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "size_val": 8388608,
+          "seed_val": 0,
+          "output_dtype_str": "int32",
+          "const_seed_bool": true
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/d7a28e2bd09405f327ed",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "size_val": 8388608,
+          "seed_val": 0,
+          "output_dtype_str": "int32",
+          "const_seed_bool": false
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/8ee7e4b1b563cbba5cc2",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "size_val": 8388608,
+          "seed_val": 0,
+          "output_dtype_str": "int64",
+          "const_seed_bool": true
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/d2aaaaa5c78c39b5216c",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "size_val": 8388608,
+          "seed_val": 0,
+          "output_dtype_str": "int64",
+          "const_seed_bool": false
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/3547b5ea1aceebdfbf99",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "size_val": 8388608,
+          "seed_val": 42,
+          "output_dtype_str": "int32",
+          "const_seed_bool": true
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/55a0142807ac0b370eba",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "size_val": 8388608,
+          "seed_val": 42,
+          "output_dtype_str": "int32",
+          "const_seed_bool": false
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/94230b8f88826daa1ecc",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "size_val": 8388608,
+          "seed_val": 42,
+          "output_dtype_str": "int64",
+          "const_seed_bool": true
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/9ca847adefdac363ca6d",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "size_val": 8388608,
+          "seed_val": 42,
+          "output_dtype_str": "int64",
+          "const_seed_bool": false
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    }
+  ],
+  "migration": {
+    "original_source_sha256": "96142a916ac678c57c4492c45de373b2256a058ba1d6d09c715b02589740e698",
+    "case_policy": "All original parametrizations retained; runtime skips are failures, not passing or omitted cases."
+  }
+}

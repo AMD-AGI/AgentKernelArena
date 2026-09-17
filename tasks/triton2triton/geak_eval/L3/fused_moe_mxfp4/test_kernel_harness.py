@@ -12,6 +12,7 @@ from pathlib import Path
 import torch
 import triton
 from _aka_benchmark import benchmark_cuda_graph_or_events_samples
+from _timed_contract import checked_call, checked_benchmark, assert_output_contract
 
 
 def benchmark_cuda_graph_or_events(*args, **kwargs):
@@ -26,7 +27,7 @@ def benchmark_cuda_graph_or_events(*args, **kwargs):
     return median_ms, metadata
 
 # Kernel under test — kernel.py sits next to this harness (Python adds the
-# script's directory to sys.path[0] automatically), and GEAK copies both files
+# script's directory to sys.path[0] automatically), and Arena copies both files
 # side-by-side into each per-task workspace. Importing from `kernel` guarantees
 # the agent's edits are what we exercise.
 from kernel import fused_moe_mxfp4, torch_to_triton_dtype  # noqa: E402
@@ -331,8 +332,26 @@ def make_kernel_fn(inputs_tuple):
             config,
             torch_to_triton_dtype[c_tri.dtype],
         )
+        return c_tri
 
     return fn, c_tri
+
+
+def _readonly_moe(inputs):
+    return {str(i): value for i, value in enumerate(inputs)
+            if isinstance(value, torch.Tensor) and i != 2}
+
+
+def _moe_reference(saved, output):
+    a = torch_mxfp4_to_fp32(saved['0'], saved['5'])
+    b = torch_mxfp4_to_fp32(saved['1'], saved['6'])
+    return torch_moe_ref(a, b, torch.empty_like(output), saved['8'],
+                         dtype=torch.bfloat16)
+
+
+def _check_moe(actual, expected):
+    torch.testing.assert_close(actual.to(torch.bfloat16), expected.to(torch.bfloat16),
+                               atol=1e-1, rtol=1e-1)
 
 
 def do_correctness(indices):
@@ -355,29 +374,11 @@ def do_correctness(indices):
             top_k_out, config,
         ) = inputs_tuple
 
-        # Clone for reference
-        a_ref = a_tri.clone()
-        b_ref = b_tri.clone()
-        c_ref = c_tri.clone()
-
-        # Run triton kernel
         fn, c_out = make_kernel_fn(inputs_tuple)
-        fn()
-        torch.cuda.synchronize()
-
-        # Compute reference
-        a_ref_fp32 = torch_mxfp4_to_fp32(a_ref, a_mx_scales)
-        b_ref_fp32 = torch_mxfp4_to_fp32(b_ref, b_mx_scales)
-
-        c_ref_out = torch_moe_ref(
-            a_ref_fp32, b_ref_fp32, c_ref, topk_ids, dtype=fp16_dtype,
-        )
-
         try:
-            torch.testing.assert_close(
-                c_out.to(fp16_dtype), c_ref_out.to(fp16_dtype),
-                atol=1e-1, rtol=1e-1,
-            )
+            checked_call(fn, inputs=_readonly_moe(inputs_tuple),
+                         reference=lambda saved: _moe_reference(saved, c_out),
+                         check=_check_moe)
             print("  [PASS] {}".format(_format_config(cfg)))
         except AssertionError as e:
             print("  [FAIL] {}: {}".format(_format_config(cfg), e))
@@ -400,8 +401,13 @@ def do_benchmark(indices):
         inputs_tuple = build_inputs(cfg)
         fn, _ = make_kernel_fn(inputs_tuple)
 
-        median_ms, benchmark_meta = benchmark_cuda_graph_or_events(
-            fn, warmup=WARMUP, repetition=ITERATIONS,
+        median_ms, benchmark_meta = checked_benchmark(
+            benchmark_cuda_graph_or_events, fn, inputs=_readonly_moe(inputs_tuple),
+            reference=lambda saved: _moe_reference(saved, inputs_tuple[2]),
+            check=_check_moe,
+            # Flip the sign bit in each packed E2M1 nibble, preserving all scales.
+            perturb=lambda saved: {**saved, '0': saved['0'].bitwise_xor(0x88)},
+            warmup=WARMUP, repetition=ITERATIONS,
         )
         latencies.append(median_ms)
         methods.append(benchmark_meta["benchmark_method"])

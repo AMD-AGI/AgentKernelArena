@@ -20,18 +20,6 @@ TEST_SHAPES = [
     (1, 8, 1, 64, 64, 2, 16),    # MQA
     (8, 8, 8, 64, 128, 4, 16),
 ]
-
-# Correctness-only cases pair a shape with optional per-batch sequence lengths.
-# Keep these separate from TEST_SHAPES so coverage additions do not change the
-# scored performance workload.
-CORRECTNESS_CASES = [(shape, None) for shape in TEST_SHAPES] + [
-    # Non-power-of-two head dimension and split count. The sequence lengths
-    # exercise partial final splits (17 and 11), an inactive split (2), and
-    # per-batch length variation in one compact case.
-    ((3, 6, 2, 80, 17, 3, 16), (17, 2, 11)),
-    # NUM_KV_SPLITS lower boundary.
-    ((2, 4, 1, 64, 13, 1, 16), (13, 5)),
-]
 WARMUP_ITERATIONS = 10
 BENCHMARK_ITERATIONS = 100
 
@@ -112,8 +100,7 @@ def reference_stage2(mid_o, b_seqlen, num_kv_splits, Lv):
 
 
 def make_stage1_outputs(bs, num_heads, num_kv_heads, head_dim, max_seq,
-                        num_kv_splits, page_size, device="cuda", dtype=None,
-                        seq_lengths=None):
+                        num_kv_splits, page_size, device="cuda", dtype=None):
     """
     Create synthetic stage1 outputs for testing stage2.
 
@@ -131,22 +118,14 @@ def make_stage1_outputs(bs, num_heads, num_kv_heads, head_dim, max_seq,
     mid_o = torch.zeros(bs, num_heads, num_kv_splits, Lv + 1,
                         device=device, dtype=torch.float32)
 
-    if seq_lengths is None:
-        seq_lengths = (max_seq,) * bs
-    if len(seq_lengths) != bs:
-        raise ValueError("seq_lengths must contain one entry per batch element")
-    if any(seq_len <= 0 or seq_len > max_seq for seq_len in seq_lengths):
-        raise ValueError("sequence lengths must be in the range [1, max_seq]")
-
-    b_seqlen = torch.tensor(seq_lengths, device=device, dtype=torch.int32)
+    b_seqlen = torch.full((bs,), max_seq, device=device, dtype=torch.int32)
+    kv_len_per_split = (max_seq + num_kv_splits - 1) // num_kv_splits
 
     for b in range(bs):
-        seq_len = seq_lengths[b]
-        kv_len_per_split = (seq_len + num_kv_splits - 1) // num_kv_splits
         for h in range(num_heads):
             for s in range(num_kv_splits):
                 start = kv_len_per_split * s
-                end = min(start + kv_len_per_split, seq_len)
+                end = min(start + kv_len_per_split, max_seq)
                 if end <= start:
                     continue
                 # Random partial output (normalized, like after softmax @ V)
@@ -182,7 +161,10 @@ def run_compile():
         return False, str(e)
 
 
-def run_correctness():
+def run_correctness(*, case_index=None):
+    if case_index is not None and case_index >= 10000:
+        from _upstream_controls import run_control
+        return run_control(case_index - 10000, load_module)
     """Run correctness checks against PyTorch reference."""
     import torch
     try:
@@ -193,14 +175,12 @@ def run_correctness():
     device = "cuda"
     dtype = torch.float16
 
-    for i, (shape, seq_lengths) in enumerate(CORRECTNESS_CASES):
-        bs, nh, nkv, hd, max_seq, num_splits, ps = shape
+    for i, (bs, nh, nkv, hd, max_seq, num_splits, ps) in enumerate(TEST_SHAPES):
+        if case_index is not None and i != case_index:
+            continue
         try:
             mid_o, q, o, lse, v_buffer, b_seqlen = \
-                make_stage1_outputs(
-                    bs, nh, nkv, hd, max_seq, num_splits, ps, device, dtype,
-                    seq_lengths=seq_lengths,
-                )
+                make_stage1_outputs(bs, nh, nkv, hd, max_seq, num_splits, ps, device, dtype)
 
             mod.decode_softmax_reducev_fwd(
                 mid_o, q, o, lse, v_buffer, b_seqlen, num_splits,
@@ -318,7 +298,7 @@ def main():
         report = {
             "status": "ok" if ok else "fail",
             "error": err,
-            "num_shapes": len(CORRECTNESS_CASES),
+            "num_shapes": len(TEST_SHAPES),
         }
         with open(os.path.join(build_dir, "correctness_report.json"), "w") as f:
             json.dump(report, f, indent=2)

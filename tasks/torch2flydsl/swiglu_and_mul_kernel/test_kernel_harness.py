@@ -27,24 +27,26 @@ import os
 import sys
 import time
 from pathlib import Path
-from _aka_benchmark import benchmark_cuda_graph_or_events
+from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
+from scripts.replay_checks import (normalized_output, require_tensor_contract,
+                                  require_unchanged, verify_timed_run)
 
-KERNEL_FILE = "kernel.py"
+from scripts.swiglu_controls import saturation_input_
+
+from task_runtime import candidate_relative_path
+KERNEL_FILE = candidate_relative_path()
+ARENA_PROVIDED_BASELINE = False
 MODEL_FILE = "model.py"
 KERNEL_ENTRY = "flydsl_swiglu_and_mul"
 
 
 def _resolve_kernel_dir():
-    here = os.path.dirname(os.path.abspath(__file__))
-    if os.path.isfile(os.path.join(here, MODEL_FILE)):
-        return here
-    cwd = os.getcwd()
-    if os.path.isfile(os.path.join(cwd, MODEL_FILE)):
-        return cwd
-    return here
+    return str(__import__("pathlib").Path(__file__).resolve().parent)
 
 
 def _load_module(kernel_dir, filename, alias):
+    if filename == KERNEL_FILE and ARENA_PROVIDED_BASELINE:
+        return None
     entry = os.path.join(kernel_dir, filename)
     if not os.path.isfile(entry):
         return None
@@ -56,6 +58,8 @@ def _load_module(kernel_dir, filename, alias):
     mod = importlib.util.module_from_spec(spec)
     sys.modules[alias] = mod
     spec.loader.exec_module(mod)
+    if filename == KERNEL_FILE:
+        _require_candidate_outputs(mod)
     return mod
 
 
@@ -135,12 +139,14 @@ def run_correctness(verbose=True):
     failures = []
     for shape in SHAPES:
         inp = _make_inputs(shape)
+        original = inp.clone()
         model = mmod.Model(*mmod.get_init_inputs())
         with torch.no_grad():
-            ref = model(inp).float()
-            truth = _retry(lambda: _aiter_op(inp), what="aiter.swiglu_and_mul").float()
+            ref = _checked_activation_output(model(inp), inp).float()
+            truth = _checked_activation_output(_retry(lambda: _aiter_op(inp), what="aiter.swiglu_and_mul"), inp).float()
         torch.cuda.synchronize()
 
+        require_unchanged((inp,), (original,))
         max_abs = (ref - truth).abs().max().item()
         scale = truth.abs().max().item() + 1e-9
         rel_err = max_abs / scale
@@ -158,10 +164,11 @@ def run_correctness(verbose=True):
 
         if has_kernel:
             try:
-                kout = _retry(
+                kout = _checked_activation_output(_retry(
                     lambda: kmod.flydsl_swiglu_and_mul(inp), what=KERNEL_ENTRY
-                ).float()
+                ), inp).float()
             except NotImplementedError:
+                raise RuntimeError("Executed candidate is unimplemented; no baseline fallback")
                 has_kernel = False
                 if verbose:
                     print(
@@ -171,6 +178,7 @@ def run_correctness(verbose=True):
                 kout = None
             if kout is not None:
                 torch.cuda.synchronize()
+                require_unchanged((inp,), (original,))
                 k_abs = (ref - kout).abs().max().item()
                 k_rel = k_abs / (ref.abs().max().item() + 1e-9)
                 k_ok = k_rel <= REL_TOL
@@ -192,10 +200,36 @@ def run_correctness(verbose=True):
     return True
 
 
-def _mean_ms(fn, warmup, iters):
+def _checked_activation_output(result, inp):
+    import torch
+
+    require_tensor_contract(result, inp[:, :inp.shape[1] // 2])
+    if not bool(torch.isfinite(result).all()):
+        raise AssertionError("Non-finite activation output")
+    return result
+
+
+def _activation_replay_validator(inp, oracle):
+    originals = (inp.clone(),)
+    expected = _checked_activation_output(oracle(inp), inp)
+    require_unchanged((inp,), originals)
+
+    def validate(timed):
+        return verify_timed_run(
+            timed, inputs=(inp,), originals=originals, expected=expected,
+            perturb=lambda: saturation_input_(inp), reference=lambda: oracle(inp),
+            compare=lambda actual, ref: normalized_output(actual, ref, tolerance=REL_TOL),
+        )
+    return validate
+
+
+def _mean_ms(fn, warmup, iters, validate=None):
+    timed = TimedRun() if validate is not None else None
     mean_ms, bench_meta = benchmark_cuda_graph_or_events(
-        fn, warmup=warmup, repetition=iters
+        fn, warmup=warmup, repetition=iters, timed_run=timed
     )
+    if validate is not None:
+        bench_meta.update(validate(timed))
     _mean_ms.benchmark_metadata = bench_meta
     return mean_ms
 
@@ -214,6 +248,7 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
             kmod.flydsl_swiglu_and_mul(_probe)
             del _probe
         except NotImplementedError:
+            raise RuntimeError("Executed candidate is unimplemented; no baseline fallback")
             has_kernel = False
             print(
                 "SKIP: kernel.py FlyDSL target not implemented yet "
@@ -228,11 +263,15 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
         inp = _make_inputs(shape)
         model = mmod.Model(*mmod.get_init_inputs())
         with torch.no_grad():
+            # Preserve the original Model baseline and AITER diagnostic timing.
+            # Capture pristine inputs/oracles before any timed invocation.
+            ref_validate = None if has_kernel else _activation_replay_validator(inp, _aiter_op)
+            ker_validate = _activation_replay_validator(inp, model) if has_kernel else None
             op_ms = _mean_ms(lambda: _aiter_op(inp), warmup, iters)
-            ref_ms = _mean_ms(lambda: model(inp), warmup, iters)
+            ref_ms = _mean_ms(lambda: model(inp), warmup, iters, validate=ref_validate)
             ref_bench_meta = _mean_ms.benchmark_metadata
             ker_ms = (
-                _mean_ms(lambda: kmod.flydsl_swiglu_and_mul(inp), warmup, iters)
+                _mean_ms(lambda: kmod.flydsl_swiglu_and_mul(inp), warmup, iters, validate=ker_validate)
                 if has_kernel
                 else None
             )
@@ -298,3 +337,94 @@ if __name__ == "__main__":
         sys.exit(0)
     else:
         run_benchmark(warmup=args.warmup, iters=args.iterations)
+
+
+def _require_candidate_outputs(mod):
+    import functools
+    for name in tuple(vars(mod)):
+        target = getattr(mod, name)
+        if name.startswith("flydsl_") and callable(target):
+            @functools.wraps(target)
+            def checked(*args, __target=target, **kwargs):
+                try:
+                    result = __target(*args, **kwargs)
+                except NotImplementedError as exc:
+                    raise RuntimeError("Executed candidate is unimplemented; no baseline fallback") from exc
+                if result is None:
+                    raise RuntimeError("Candidate operator returned None; output is required")
+                return result
+            setattr(mod, name, checked)
+
+
+# V2 direct timing evidence from this invocation.
+def arena_benchmark(warmup=10, iters=100, verbose=True):
+    import torch
+
+    mmod = _load_module(_KERNEL_DIR, MODEL_FILE, "torch_model")
+    assert mmod is not None, "cannot load model.py"
+    kmod = _load_module(_KERNEL_DIR, KERNEL_FILE, "flydsl_kernel")
+    has_kernel = kmod is not None and hasattr(kmod, KERNEL_ENTRY)
+
+    if has_kernel:
+        try:
+            _probe = _make_inputs(SHAPES[0])
+            kmod.flydsl_swiglu_and_mul(_probe)
+            del _probe
+        except NotImplementedError:
+            raise RuntimeError("Executed candidate is unimplemented; no baseline fallback")
+            has_kernel = False
+            print(
+                "SKIP: kernel.py FlyDSL target not implemented yet "
+                "(benchmarking reference instead)"
+            )
+        import torch as _t; _t.cuda.empty_cache()
+
+    latencies, report = [], []
+    print(f"{'Config':<20} {'aiter':>10} {'ref':>10} {'kernel':>10}")
+    print("-" * 56)
+    for idx, shape in enumerate(SHAPES):
+        inp = _make_inputs(shape)
+        model = mmod.Model(*mmod.get_init_inputs())
+        with torch.no_grad():
+            # Preserve the original Model baseline and AITER diagnostic timing.
+            # Capture pristine inputs/oracles before any timed invocation.
+            ref_validate = None if has_kernel else _activation_replay_validator(inp, _aiter_op)
+            ker_validate = _activation_replay_validator(inp, model) if has_kernel else None
+            op_ms = _mean_ms(lambda: _aiter_op(inp), warmup, iters)
+            ref_ms = _mean_ms(lambda: model(inp), warmup, iters, validate=ref_validate)
+            ref_bench_meta = _mean_ms.benchmark_metadata
+            ker_ms = (
+                _mean_ms(lambda: kmod.flydsl_swiglu_and_mul(inp), warmup, iters, validate=ker_validate)
+                if has_kernel
+                else None
+            )
+
+        primary_ms = ker_ms if ker_ms is not None else ref_ms
+        bench_meta = _mean_ms.benchmark_metadata
+        latencies.append(primary_ms)
+        report.append({
+            "test_case_id": f"test_case_{idx}",
+            "execution_time_ms": primary_ms,
+            **bench_meta,
+            "reference_benchmark_method": ref_bench_meta["benchmark_method"],
+            "benchmark_method_consistent": bench_meta["benchmark_method"] == ref_bench_meta["benchmark_method"],
+            "shape": [shape["m"], shape["n"]],
+            "params": {"m": shape["m"], "n": shape["n"]},
+            "aiter_ms": op_ms,
+            "reference_ms": ref_ms,
+        })
+        if verbose:
+            ker_s = f"{ker_ms:>8.4f}ms" if ker_ms is not None else f"{'n/a':>10}"
+            print(f"{shape['name']:<20} {op_ms:>8.4f}ms {ref_ms:>8.4f}ms {ker_s}")
+        del inp, model
+        torch.cuda.empty_cache()
+
+    geomean = math.exp(sum(math.log(x) for x in latencies) / len(latencies))
+    build_dir = Path(_KERNEL_DIR) / "build"
+    build_dir.mkdir(exist_ok=True)
+    with open(build_dir / "performance_report.json", "w") as f:
+        json.dump(report, f, indent=2)
+
+    print("-" * 56)
+    print(f"Geometric mean latency: {geomean:.4f} ms")
+    return report

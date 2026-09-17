@@ -27,9 +27,11 @@ import math
 import os
 import sys
 from pathlib import Path
-from _aka_benchmark import benchmark_cuda_graph_or_events
+from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
+from scripts.replay_checks import require_tensor_contract, require_unchanged, verify_timed_run, allclose_output
 
-SOURCE_FILE = "batched_gemm_a8w8.py"
+from task_runtime import candidate_relative_path
+SOURCE_FILE = candidate_relative_path()
 ENTRY = "batched_gemm_a8w8"
 KERNEL = "_batched_gemm_a8w8_kernel"
 
@@ -55,6 +57,7 @@ def _load_source():
     entry = os.path.join(_HERE, SOURCE_FILE)
     spec = importlib.util.spec_from_file_location("batched_gemm_a8w8_src", entry)
     mod = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = mod
     spec.loader.exec_module(mod)
     return mod
 
@@ -103,6 +106,25 @@ def run_compile():
     return True
 
 
+def _batched_replay_validator(inputs, reference):
+    originals = tuple(value.clone() for value in inputs)
+    expected = reference()
+    require_unchanged(inputs, originals)
+    def perturb():
+        # Change batch associations; retain the original operand value ranges.
+        inputs[0].copy_(inputs[0].roll(1, dims=0))
+        inputs[1].copy_(inputs[1].roll(-1, dims=0))
+        inputs[2].mul_(0.5)
+        inputs[3].mul_(0.5)
+    def compare(actual, expected):
+        allclose_output(actual, expected, atol=0.01, rtol=1e-2)
+    def validate(timed):
+        return verify_timed_run(timed, inputs=inputs, originals=originals,
+                                expected=expected, perturb=perturb,
+                                reference=reference, compare=compare)
+    return validate
+
+
 def run_correctness(verbose=True):
     import torch
 
@@ -116,9 +138,13 @@ def run_correctness(verbose=True):
                 x, w, x_scale, w_scale, bias = _make_inputs(
                     shape["B"], shape["M"], shape["N"], shape["K"], out_dtype, with_bias
                 )
+                protected_inputs = tuple(value for value in (x, w, x_scale, w_scale, bias) if value is not None)
+                originals = tuple(value.clone() for value in protected_inputs)
                 y = mod.batched_gemm_a8w8(x, w, x_scale, w_scale, bias, out_dtype)
+                require_unchanged(protected_inputs, originals)
                 torch.cuda.synchronize()
                 ref = _torch_ref(x, w, x_scale, w_scale, bias, out_dtype)
+                require_tensor_contract(y, ref)
                 finite = bool(torch.isfinite(y).all().item())
                 close = torch.allclose(y, ref, atol=0.01, rtol=1e-2)
                 ok = finite and close
@@ -152,15 +178,21 @@ def run_benchmark(verbose=True):
         x, w, x_scale, w_scale, bias = _make_inputs(
             shape["B"], shape["M"], shape["N"], shape["K"], out_dtype, False
         )
+        protected_inputs = tuple(value for value in (x, w, x_scale, w_scale, bias) if value is not None)
+        replay_validate = _batched_replay_validator(
+            protected_inputs, lambda: _torch_ref(x, w, x_scale, w_scale, bias, out_dtype)
+        )
         fn = lambda: mod.batched_gemm_a8w8(x, w, x_scale, w_scale, None, out_dtype)  # noqa: E731
         fn()
         torch.cuda.synchronize()
         for _ in range(WARMUP):
             fn()
         torch.cuda.synchronize()
+        timed = TimedRun()
         ms, bench_meta = benchmark_cuda_graph_or_events(
-            fn, warmup=0, repetition=ITERS
+            fn, warmup=0, repetition=ITERS, timed_run=timed
         )
+        bench_meta.update(replay_validate(timed))
         latencies.append(ms)
         flops = 2.0 * shape["B"] * shape["M"] * shape["N"] * shape["K"]
         report.append(

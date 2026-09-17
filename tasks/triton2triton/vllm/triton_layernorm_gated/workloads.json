@@ -1,0 +1,227 @@
+{
+  "version": 1,
+  "candidate_symbols": {
+    "source/triton_layernorm_gated.py": [
+      {
+        "name": "_layer_norm_fwd_1pass_kernel",
+        "jit": true
+      }
+    ]
+  },
+  "case_table": "TEST_SHAPES",
+  "input_table": [
+    [
+      32,
+      128,
+      false,
+      true,
+      false
+    ],
+    [
+      64,
+      256,
+      true,
+      false,
+      false
+    ],
+    [
+      128,
+      512,
+      true,
+      true,
+      true
+    ],
+    [
+      256,
+      1024,
+      false,
+      true,
+      true
+    ],
+    [
+      512,
+      2048,
+      true,
+      false,
+      true
+    ]
+  ],
+  "cases": [
+    {
+      "test_case_id": "perf1",
+      "dtype": "float16",
+      "params": {
+        "case_index": 0,
+        "configuration": [
+          32,
+          128,
+          false,
+          true,
+          false
+        ],
+        "configuration_names": "(M, N, is_rms, has_bias, has_z)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf2",
+      "dtype": "float16",
+      "params": {
+        "case_index": 1,
+        "configuration": [
+          64,
+          256,
+          true,
+          false,
+          false
+        ],
+        "configuration_names": "(M, N, is_rms, has_bias, has_z)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf3",
+      "dtype": "float16",
+      "params": {
+        "case_index": 2,
+        "configuration": [
+          128,
+          512,
+          true,
+          true,
+          true
+        ],
+        "configuration_names": "(M, N, is_rms, has_bias, has_z)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf4",
+      "dtype": "float16",
+      "params": {
+        "case_index": 3,
+        "configuration": [
+          256,
+          1024,
+          false,
+          true,
+          true
+        ],
+        "configuration_names": "(M, N, is_rms, has_bias, has_z)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf5",
+      "dtype": "float16",
+      "params": {
+        "case_index": 4,
+        "configuration": [
+          512,
+          2048,
+          true,
+          false,
+          true
+        ],
+        "configuration_names": "(M, N, is_rms, has_bias, has_z)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control-upstream-1",
+      "params": {
+        "case_index": 10000,
+        "configuration": {
+          "name": "norm_before_gate_false_fp32_tail_out",
+          "M": 7,
+          "N": 130,
+          "is_rms": false,
+          "has_bias": true,
+          "has_z": true,
+          "dtype": "float32",
+          "group_size": null,
+          "norm_before_gate": false,
+          "explicit_out": true
+        },
+        "source_revision": "0acf65b3a967ef1025dbfc5fd4b415b259e3bd43"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control-upstream-2",
+      "params": {
+        "case_index": 10001,
+        "configuration": {
+          "name": "grouped_bf16_tail",
+          "M": 5,
+          "N": 390,
+          "is_rms": false,
+          "has_bias": false,
+          "has_z": false,
+          "dtype": "bfloat16",
+          "group_size": 130,
+          "norm_before_gate": true,
+          "explicit_out": false
+        },
+        "source_revision": "0acf65b3a967ef1025dbfc5fd4b415b259e3bd43"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    }
+  ],
+  "migration": {
+    "original_harness_sha256": "40619188b540ff8219b4c167812e17ddf36713ef254d85236273d111a13daeaf",
+    "original_correctness_sha256": "91345501b5921ac289c75126d83317b4af0b5a4089a0ebad60c9b1ae714528dc"
+  },
+  "upstream_controls": [
+    {
+      "name": "norm_before_gate_false_fp32_tail_out",
+      "M": 7,
+      "N": 130,
+      "is_rms": false,
+      "has_bias": true,
+      "has_z": true,
+      "dtype": "float32",
+      "group_size": null,
+      "norm_before_gate": false,
+      "explicit_out": true
+    },
+    {
+      "name": "grouped_bf16_tail",
+      "M": 5,
+      "N": 390,
+      "is_rms": false,
+      "has_bias": false,
+      "has_z": false,
+      "dtype": "bfloat16",
+      "group_size": 130,
+      "norm_before_gate": true,
+      "explicit_out": false
+    }
+  ]
+}

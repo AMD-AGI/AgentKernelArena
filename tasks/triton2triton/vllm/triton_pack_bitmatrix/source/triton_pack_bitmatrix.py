@@ -35,7 +35,8 @@ def pack_bitmatrix(
     for i in range(bm_cols):
         offs = tl.arange(0, BLOCK_SIZE_K // 32) + i * (BLOCK_SIZE_K // 32)
         x = tl.where(
-            div[:, :, None] == offs[None, None, :], (one << rem)[:, :, None], 0
+            mask[:, :, None] & (indices[:, :, None] >= 0) & (div[:, :, None] == offs[None, None, :]),
+            (one << rem)[:, :, None], 0
         )
         y = tl.reduce_or(x, axis=1)
         bitmatrix_ptrs = bitmatrix + offsets_m[:, None] * bm_cols + offs[None, :]

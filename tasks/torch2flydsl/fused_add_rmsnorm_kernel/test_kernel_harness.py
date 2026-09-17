@@ -6,8 +6,8 @@
 starter/target. Correctness always validates the reference against the independent
 AMD runtime oracle ``aiter.rmsnorm2d_fwd_with_add``. It also invokes
 ``flydsl_fused_add_rmsnorm`` and, once implemented, compares both of its outputs
-to that same oracle. Only the starter's explicit ``NotImplementedError`` is a
-SKIP; missing entry points and all other target errors fail validation.
+to that same oracle. Initial task validation explicitly runs the provided reference baseline; final
+candidate actions require an implemented operator and never fall back.
 
 Both normalized output and residual output use the normalized worst-element gate
 ``max|truth - result| / max|truth| <= REL_TOL``.
@@ -26,24 +26,23 @@ import os
 import sys
 import time
 from pathlib import Path
-from _aka_benchmark import benchmark_cuda_graph_or_events
+from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
+from scripts.replay_checks import require_tensor_contract, require_unchanged
 
-KERNEL_FILE = "kernel.py"
+from task_runtime import candidate_relative_path
+KERNEL_FILE = candidate_relative_path()
+ARENA_PROVIDED_BASELINE = False
 MODEL_FILE = "model.py"
 KERNEL_ENTRY = "flydsl_fused_add_rmsnorm"
 
 
 def _resolve_kernel_dir():
-    here = os.path.dirname(os.path.abspath(__file__))
-    if os.path.isfile(os.path.join(here, MODEL_FILE)):
-        return here
-    cwd = os.getcwd()
-    if os.path.isfile(os.path.join(cwd, MODEL_FILE)):
-        return cwd
-    return here
+    return str(__import__("pathlib").Path(__file__).resolve().parent)
 
 
 def _load_module(kernel_dir, filename, alias):
+    if filename == KERNEL_FILE and ARENA_PROVIDED_BASELINE:
+        return None
     entry = os.path.join(kernel_dir, filename)
     if not os.path.isfile(entry):
         return None
@@ -55,10 +54,14 @@ def _load_module(kernel_dir, filename, alias):
     mod = importlib.util.module_from_spec(spec)
     sys.modules[alias] = mod
     spec.loader.exec_module(mod)
+    if filename == KERNEL_FILE:
+        _require_candidate_outputs(mod)
     return mod
 
 
 def _load_target():
+    if ARENA_PROVIDED_BASELINE:
+        return None
     """Load the required target; absence is a broken task, not a starter SKIP."""
     kmod = _load_module(_KERNEL_DIR, KERNEL_FILE, "flydsl_kernel")
     assert kmod is not None, f"cannot load {KERNEL_FILE}"
@@ -98,10 +101,13 @@ def _is_pure_starter():
 
 
 def _probe_target(target, pure_starter, *args):
+    if ARENA_PROVIDED_BASELINE:
+        return (False, None)
     """Catch NotImplementedError only for a statically proven pure starter."""
     try:
         return True, target(*args)
     except NotImplementedError:
+        raise RuntimeError("Executed candidate is unimplemented; no baseline fallback")
         if not pure_starter:
             raise
         return False, None
@@ -176,6 +182,47 @@ def _norm_max_err(ref, out):
     return max_abs / denom, max_abs, denom
 
 
+def _checked_add_rmsnorm_pair(pair, input):
+    import torch
+    if not isinstance(pair, (tuple, list)) or len(pair) != 2:
+        raise AssertionError("Fused add RMSNorm must return exactly (output, residual_out)")
+    for value in pair:
+        require_tensor_contract(value, input)
+        if not bool(torch.isfinite(value).all()):
+            raise AssertionError("Non-finite fused add RMSNorm output")
+    return pair
+
+
+def _compare_add_rmsnorm_pair(pair, expected):
+    pair = _checked_add_rmsnorm_pair(pair, expected[0])
+    for actual, ref in zip(pair, expected):
+        if _norm_max_err(ref, actual)[0] > REL_TOL:
+            raise AssertionError("Numerical mismatch: fused add RMSNorm normalized error")
+
+
+def _verify_add_rmsnorm_timed(timed, inputs, originals, expected):
+    if not timed.bound:
+        raise RuntimeError("Benchmark did not expose measured fused add RMSNorm outputs")
+    require_unchanged(inputs, originals)
+    _compare_add_rmsnorm_pair(timed.outputs, expected)
+    try:
+        inputs[0].neg_()
+        inputs[1].neg_()
+        inputs[2].mul_(0.5)
+        changed = tuple(x.clone() for x in inputs)
+        replay_expected = _checked_add_rmsnorm_pair(_aiter_add_rmsnorm(*inputs), inputs[0])
+        for output in timed.outputs:
+            output.fill_(float("nan"))
+        replayed = timed.rerun()
+        require_unchanged(inputs, changed)
+        _compare_add_rmsnorm_pair(replayed, replay_expected)
+    finally:
+        for value, original in zip(inputs, originals):
+            value.copy_(original)
+    return {"timed_output_correctness": "PASS", "replay_correctness": "PASS",
+            "replay_inputs_perturbed": True, "replay_output_poisoned": True}
+
+
 def run_correctness(verbose=True):
     import torch
     import aiter  # noqa: F401
@@ -204,6 +251,7 @@ def run_correctness(verbose=True):
         m, n = shape["m"], shape["n"]
         model = mmod.Model(EPS).to("cuda").eval()
         input, weight, residual = _make_inputs(shape)
+        originals = tuple(x.clone() for x in (input, weight, residual))
 
         with torch.no_grad():
             ref_out, ref_res = model(input, weight, residual)
@@ -213,6 +261,9 @@ def run_correctness(verbose=True):
         )
         torch.cuda.synchronize()
 
+        require_unchanged((input, weight, residual), originals)
+        _checked_add_rmsnorm_pair((ref_out, ref_res), input)
+        _checked_add_rmsnorm_pair((truth_out, truth_res), input)
         err_o, ma_o, _ = _norm_max_err(truth_out, ref_out)
         err_r, ma_r, _ = _norm_max_err(truth_res, ref_res)
         err = max(err_o, err_r)
@@ -254,7 +305,8 @@ def run_correctness(verbose=True):
         if target_implemented:
             assert kout is not None, f"{KERNEL_ENTRY} returned None"
             torch.cuda.synchronize()
-            kout_o, kout_r = kout
+            require_unchanged((input, weight, residual), originals)
+            kout_o, kout_r = _checked_add_rmsnorm_pair(kout, input)
             kerr_o, _, _ = _norm_max_err(truth_out, kout_o)
             kerr_r, _, _ = _norm_max_err(truth_res, kout_r)
             kerr = max(kerr_o, kerr_r)
@@ -308,6 +360,7 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
         m, n = shape["m"], shape["n"]
         model = mmod.Model(EPS).to("cuda").eval()
         input, weight, residual = _make_inputs(shape)
+        originals = tuple(x.clone() for x in (input, weight, residual))
 
         def run_ref():
             with torch.no_grad():
@@ -322,10 +375,16 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
         _retry(run_truth, what=shape["name"])
         torch.cuda.synchronize()
 
+        expected = _checked_add_rmsnorm_pair(run_truth(), input)
+        require_unchanged((input, weight, residual), originals)
         def _mean(fn):
-            return benchmark_cuda_graph_or_events(
-                fn, warmup=warmup, repetition=iters
+            timed = TimedRun()
+            result_ms, metadata = benchmark_cuda_graph_or_events(
+                fn, warmup=warmup, repetition=iters, timed_run=timed
             )
+            metadata.update(_verify_add_rmsnorm_timed(
+                timed, (input, weight, residual), originals, expected))
+            return result_ms, metadata
 
         ref_ms, ref_bench_meta = _mean(run_ref)
         aiter_ms, _aiter_bench_meta = _mean(run_truth)
@@ -414,3 +473,126 @@ if __name__ == "__main__":
         sys.exit(0)
     else:
         run_benchmark(warmup=args.warmup, iters=args.iterations)
+
+
+def _require_candidate_outputs(mod):
+    import functools
+    for name in tuple(vars(mod)):
+        target = getattr(mod, name)
+        if name.startswith("flydsl_") and callable(target):
+            @functools.wraps(target)
+            def checked(*args, __target=target, **kwargs):
+                try:
+                    result = __target(*args, **kwargs)
+                except NotImplementedError as exc:
+                    raise RuntimeError("Executed candidate is unimplemented; no baseline fallback") from exc
+                if result is None:
+                    raise RuntimeError("Candidate operator returned None; output is required")
+                return result
+            setattr(mod, name, checked)
+
+
+# V2 direct timing evidence from this invocation.
+def arena_benchmark(warmup=10, iters=100, verbose=True):
+    import torch
+
+    mmod = _load_module(_KERNEL_DIR, MODEL_FILE, "torch_model")
+    assert mmod is not None, "cannot load model.py"
+    target = _load_target()
+    pure_starter = _is_pure_starter()
+
+    probe_input, probe_weight, probe_residual = _make_inputs(SHAPES[0])
+    target_implemented, probe_output = _probe_target(
+        target, pure_starter, probe_input, probe_weight, probe_residual, EPS
+    )
+    if not target_implemented:
+        print(
+            "SKIP: kernel.py FlyDSL starter is not implemented "
+            "(benchmarking the reference only; no target latency is claimed)"
+        )
+    else:
+        assert probe_output is not None, f"{KERNEL_ENTRY} returned None"
+    del probe_input, probe_weight, probe_residual, probe_output
+    torch.cuda.empty_cache()
+
+    latencies, report = [], []
+    print(f"{'Config':<20} {'aiter':>12} {'TorchRef':>12} {'target':>12}")
+    print("-" * 62)
+    for idx, shape in enumerate(SHAPES):
+        m, n = shape["m"], shape["n"]
+        model = mmod.Model(EPS).to("cuda").eval()
+        input, weight, residual = _make_inputs(shape)
+        originals = tuple(x.clone() for x in (input, weight, residual))
+
+        def run_ref():
+            with torch.no_grad():
+                return model(input, weight, residual)
+
+        def run_truth():
+            return _aiter_add_rmsnorm(input, weight, residual)
+
+        def run_target():
+            return target(input, weight, residual, EPS)
+
+        _retry(run_truth, what=shape["name"])
+        torch.cuda.synchronize()
+
+        expected = _checked_add_rmsnorm_pair(run_truth(), input)
+        require_unchanged((input, weight, residual), originals)
+        def _mean(fn):
+            timed = TimedRun()
+            result_ms, metadata = benchmark_cuda_graph_or_events(
+                fn, warmup=warmup, repetition=iters, timed_run=timed
+            )
+            metadata.update(_verify_add_rmsnorm_timed(
+                timed, (input, weight, residual), originals, expected))
+            return result_ms, metadata
+
+        ref_ms, ref_bench_meta = _mean(run_ref)
+        aiter_ms, _aiter_bench_meta = _mean(run_truth)
+        target_result = (
+            _mean(run_target) if target_implemented else (None, None)
+        )
+        target_ms, target_bench_meta = target_result
+        primary_ms = target_ms if target_ms is not None else ref_ms
+        bench_meta = (
+            target_bench_meta if target_ms is not None else ref_bench_meta
+        )
+        latencies.append(primary_ms)
+        # bytes moved: input + residual in, output + residual_out, weight (bf16).
+        bytes_total = (m * n * 2 * 4) + (n * 2)
+        gbps = bytes_total / (primary_ms * 1e-3) / 1e9
+        report.append(
+            {
+                "test_case_id": f"test_case_{idx}",
+                "execution_time_ms": primary_ms,
+                **bench_meta,
+                "reference_benchmark_method": ref_bench_meta["benchmark_method"],
+                "benchmark_method_consistent": bench_meta["benchmark_method"] == ref_bench_meta["benchmark_method"],
+                "shape": [m, n],
+                "params": {"m": m, "n": n, "eps": EPS, "dtype": "bf16"},
+                "aiter_ms": aiter_ms,
+                "reference_ms": ref_ms,
+                "target_ms": target_ms,
+                "target_implemented": target_implemented,
+                "gbps": gbps,
+            }
+        )
+        if verbose:
+            target_s = f"{target_ms:>10.4f}ms" if target_ms is not None else f"{'n/a':>12}"
+            print(
+                f"{shape['name']:<20} {aiter_ms:>10.4f}ms "
+                f"{ref_ms:>10.4f}ms {target_s}"
+            )
+        del model, input, weight, residual
+        torch.cuda.empty_cache()
+
+    geomean_latency = math.exp(sum(math.log(x) for x in latencies) / len(latencies))
+    build_dir = Path(_KERNEL_DIR) / "build"
+    build_dir.mkdir(exist_ok=True)
+    with open(build_dir / "performance_report.json", "w") as f:
+        json.dump(report, f, indent=2)
+    print("-" * 62)
+    latency_kind = "target" if target_implemented else "reference fallback"
+    print(f"Geometric mean {latency_kind} latency: {geomean_latency:.4f} ms")
+    return report

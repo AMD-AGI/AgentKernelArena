@@ -1,0 +1,788 @@
+{
+  "cases": [
+    {
+      "test_case_id": "case_0000",
+      "params": {
+        "M": 1,
+        "D": 2048,
+        "limit": 0.0,
+        "wm": "none",
+        "seed": 20260601
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0001",
+      "params": {
+        "M": 1,
+        "D": 2048,
+        "limit": 0.0,
+        "wm": "broadcast",
+        "seed": 20260601
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0002",
+      "params": {
+        "M": 1,
+        "D": 2048,
+        "limit": 0.0,
+        "wm": "elementwise",
+        "seed": 20260601
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0003",
+      "params": {
+        "M": 1,
+        "D": 2048,
+        "limit": 7.0,
+        "wm": "none",
+        "seed": 20260601
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0004",
+      "params": {
+        "M": 1,
+        "D": 2048,
+        "limit": 7.0,
+        "wm": "broadcast",
+        "seed": 20260601
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0005",
+      "params": {
+        "M": 1,
+        "D": 2048,
+        "limit": 7.0,
+        "wm": "elementwise",
+        "seed": 20260601
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0006",
+      "params": {
+        "M": 1,
+        "D": 3072,
+        "limit": 0.0,
+        "wm": "none",
+        "seed": 20260601
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0007",
+      "params": {
+        "M": 1,
+        "D": 3072,
+        "limit": 0.0,
+        "wm": "broadcast",
+        "seed": 20260601
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0008",
+      "params": {
+        "M": 1,
+        "D": 3072,
+        "limit": 0.0,
+        "wm": "elementwise",
+        "seed": 20260601
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0009",
+      "params": {
+        "M": 1,
+        "D": 3072,
+        "limit": 7.0,
+        "wm": "none",
+        "seed": 20260601
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0010",
+      "params": {
+        "M": 1,
+        "D": 3072,
+        "limit": 7.0,
+        "wm": "broadcast",
+        "seed": 20260601
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0011",
+      "params": {
+        "M": 1,
+        "D": 3072,
+        "limit": 7.0,
+        "wm": "elementwise",
+        "seed": 20260601
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0012",
+      "params": {
+        "M": 2,
+        "D": 2048,
+        "limit": 0.0,
+        "wm": "none",
+        "seed": 20260601
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0013",
+      "params": {
+        "M": 2,
+        "D": 2048,
+        "limit": 0.0,
+        "wm": "broadcast",
+        "seed": 20260601
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0014",
+      "params": {
+        "M": 2,
+        "D": 2048,
+        "limit": 0.0,
+        "wm": "elementwise",
+        "seed": 20260601
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0015",
+      "params": {
+        "M": 2,
+        "D": 2048,
+        "limit": 7.0,
+        "wm": "none",
+        "seed": 20260601
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0016",
+      "params": {
+        "M": 2,
+        "D": 2048,
+        "limit": 7.0,
+        "wm": "broadcast",
+        "seed": 20260601
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0017",
+      "params": {
+        "M": 2,
+        "D": 2048,
+        "limit": 7.0,
+        "wm": "elementwise",
+        "seed": 20260601
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0018",
+      "params": {
+        "M": 2,
+        "D": 3072,
+        "limit": 0.0,
+        "wm": "none",
+        "seed": 20260601
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0019",
+      "params": {
+        "M": 2,
+        "D": 3072,
+        "limit": 0.0,
+        "wm": "broadcast",
+        "seed": 20260601
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0020",
+      "params": {
+        "M": 2,
+        "D": 3072,
+        "limit": 0.0,
+        "wm": "elementwise",
+        "seed": 20260601
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0021",
+      "params": {
+        "M": 2,
+        "D": 3072,
+        "limit": 7.0,
+        "wm": "none",
+        "seed": 20260601
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0022",
+      "params": {
+        "M": 2,
+        "D": 3072,
+        "limit": 7.0,
+        "wm": "broadcast",
+        "seed": 20260601
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0023",
+      "params": {
+        "M": 2,
+        "D": 3072,
+        "limit": 7.0,
+        "wm": "elementwise",
+        "seed": 20260601
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0024",
+      "params": {
+        "M": 4,
+        "D": 2048,
+        "limit": 0.0,
+        "wm": "none",
+        "seed": 20260601
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0025",
+      "params": {
+        "M": 4,
+        "D": 2048,
+        "limit": 0.0,
+        "wm": "broadcast",
+        "seed": 20260601
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0026",
+      "params": {
+        "M": 4,
+        "D": 2048,
+        "limit": 0.0,
+        "wm": "elementwise",
+        "seed": 20260601
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0027",
+      "params": {
+        "M": 4,
+        "D": 2048,
+        "limit": 7.0,
+        "wm": "none",
+        "seed": 20260601
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0028",
+      "params": {
+        "M": 4,
+        "D": 2048,
+        "limit": 7.0,
+        "wm": "broadcast",
+        "seed": 20260601
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0029",
+      "params": {
+        "M": 4,
+        "D": 2048,
+        "limit": 7.0,
+        "wm": "elementwise",
+        "seed": 20260601
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0030",
+      "params": {
+        "M": 4,
+        "D": 3072,
+        "limit": 0.0,
+        "wm": "none",
+        "seed": 20260601
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0031",
+      "params": {
+        "M": 4,
+        "D": 3072,
+        "limit": 0.0,
+        "wm": "broadcast",
+        "seed": 20260601
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0032",
+      "params": {
+        "M": 4,
+        "D": 3072,
+        "limit": 0.0,
+        "wm": "elementwise",
+        "seed": 20260601
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0033",
+      "params": {
+        "M": 4,
+        "D": 3072,
+        "limit": 7.0,
+        "wm": "none",
+        "seed": 20260601
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0034",
+      "params": {
+        "M": 4,
+        "D": 3072,
+        "limit": 7.0,
+        "wm": "broadcast",
+        "seed": 20260601
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0035",
+      "params": {
+        "M": 4,
+        "D": 3072,
+        "limit": 7.0,
+        "wm": "elementwise",
+        "seed": 20260601
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0036",
+      "params": {
+        "M": 8,
+        "D": 2048,
+        "limit": 0.0,
+        "wm": "none",
+        "seed": 20260601
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0037",
+      "params": {
+        "M": 8,
+        "D": 2048,
+        "limit": 0.0,
+        "wm": "broadcast",
+        "seed": 20260601
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0038",
+      "params": {
+        "M": 8,
+        "D": 2048,
+        "limit": 0.0,
+        "wm": "elementwise",
+        "seed": 20260601
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0039",
+      "params": {
+        "M": 8,
+        "D": 2048,
+        "limit": 7.0,
+        "wm": "none",
+        "seed": 20260601
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0040",
+      "params": {
+        "M": 8,
+        "D": 2048,
+        "limit": 7.0,
+        "wm": "broadcast",
+        "seed": 20260601
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0041",
+      "params": {
+        "M": 8,
+        "D": 2048,
+        "limit": 7.0,
+        "wm": "elementwise",
+        "seed": 20260601
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0042",
+      "params": {
+        "M": 8,
+        "D": 3072,
+        "limit": 0.0,
+        "wm": "none",
+        "seed": 20260601
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0043",
+      "params": {
+        "M": 8,
+        "D": 3072,
+        "limit": 0.0,
+        "wm": "broadcast",
+        "seed": 20260601
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0044",
+      "params": {
+        "M": 8,
+        "D": 3072,
+        "limit": 0.0,
+        "wm": "elementwise",
+        "seed": 20260601
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0045",
+      "params": {
+        "M": 8,
+        "D": 3072,
+        "limit": 7.0,
+        "wm": "none",
+        "seed": 20260601
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0046",
+      "params": {
+        "M": 8,
+        "D": 3072,
+        "limit": 7.0,
+        "wm": "broadcast",
+        "seed": 20260601
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0047",
+      "params": {
+        "M": 8,
+        "D": 3072,
+        "limit": 7.0,
+        "wm": "elementwise",
+        "seed": 20260601
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0048",
+      "params": {
+        "M": 32,
+        "D": 2048,
+        "limit": 0.0,
+        "wm": "none",
+        "seed": 20260601
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0049",
+      "params": {
+        "M": 32,
+        "D": 2048,
+        "limit": 0.0,
+        "wm": "broadcast",
+        "seed": 20260601
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0050",
+      "params": {
+        "M": 32,
+        "D": 2048,
+        "limit": 0.0,
+        "wm": "elementwise",
+        "seed": 20260601
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0051",
+      "params": {
+        "M": 32,
+        "D": 2048,
+        "limit": 7.0,
+        "wm": "none",
+        "seed": 20260601
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0052",
+      "params": {
+        "M": 32,
+        "D": 2048,
+        "limit": 7.0,
+        "wm": "broadcast",
+        "seed": 20260601
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0053",
+      "params": {
+        "M": 32,
+        "D": 2048,
+        "limit": 7.0,
+        "wm": "elementwise",
+        "seed": 20260601
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0054",
+      "params": {
+        "M": 32,
+        "D": 3072,
+        "limit": 0.0,
+        "wm": "none",
+        "seed": 20260601
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0055",
+      "params": {
+        "M": 32,
+        "D": 3072,
+        "limit": 0.0,
+        "wm": "broadcast",
+        "seed": 20260601
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0056",
+      "params": {
+        "M": 32,
+        "D": 3072,
+        "limit": 0.0,
+        "wm": "elementwise",
+        "seed": 20260601
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0057",
+      "params": {
+        "M": 32,
+        "D": 3072,
+        "limit": 7.0,
+        "wm": "none",
+        "seed": 20260601
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0058",
+      "params": {
+        "M": 32,
+        "D": 3072,
+        "limit": 7.0,
+        "wm": "broadcast",
+        "seed": 20260601
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0059",
+      "params": {
+        "M": 32,
+        "D": 3072,
+        "limit": 7.0,
+        "wm": "elementwise",
+        "seed": 20260601
+      },
+      "checks": [
+        "correctness"
+      ]
+    }
+  ]
+}
