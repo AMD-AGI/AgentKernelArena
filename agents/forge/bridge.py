@@ -75,16 +75,37 @@ def evaluation_workspace(context: TaskContext, plan: dict, engine_root: Path, ro
         yield root
 
 
-def cleanup_evaluation_workspaces(plan: dict) -> None:
-    """Called by the campaign supervisor only after all children are reaped."""
+def cleanup_evaluation_workspaces(plan: dict, *, supervisor=None) -> bool:
+    """Clean after reaping, or resume an exited supervisor's proven cleanup.
+
+    The supervisor calls this only after reaping every descendant. Its receipt
+    lets the Arena parent finish a slow deletion interrupted by the shutdown
+    SIGKILL, without treating an arbitrary dead supervisor as proof of reaping.
+    """
     if "evaluation_root" not in plan:
-        return  # Older plans have no dedicated disposable directory.
+        return True  # Older plans have no dedicated disposable directory.
     root = Path(plan["evaluation_root"])
     expected = Path(plan["template"]).parent / "evaluation-workspaces"
     if root != expected or root.is_symlink():
         raise ValueError("Unexpected Forge evaluation cleanup directory")
-    if root.exists():
-        shutil.rmtree(root)
+    if not root.exists():
+        return True
+    # Keep the receipt outside the directory whose deletion may be interrupted.
+    marker = root.parent / "evaluation-workspaces-reaped.json"
+    if marker.is_symlink():
+        raise ValueError("Unexpected Forge evaluation cleanup receipt")
+    if supervisor is None:
+        marker.write_text(json.dumps({"supervisor_pid": os.getpid(), "evaluation_root": str(root)}))
+    else:
+        try:
+            receipt = json.loads(marker.read_text())
+        except (OSError, ValueError):
+            return False  # Missing or partial receipts cannot authorize removal.
+        if (receipt != {"supervisor_pid": supervisor.pid, "evaluation_root": str(root)}
+                or supervisor.poll() is None):
+            return False
+    shutil.rmtree(root)
+    return True
 
 
 def execute(plan: dict, engine_root: Path, *, role: str, action: str):

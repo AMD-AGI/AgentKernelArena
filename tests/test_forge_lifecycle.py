@@ -1,15 +1,18 @@
 """Real Git and process cleanup regressions; CPU only, no model or GPU calls."""
 import json
+import os
 from pathlib import Path
+import signal
 import subprocess
 import sys
+from types import SimpleNamespace
 
 import pytest
 
-from agents.forge import adapter, bridge
+from agents.forge import adapter, bridge, common
 from agents.forge.bundles import copy_workspace
 from agents.forge.upstream import protected_agent_paths
-from test_forge_v2 import ROOT, fixture_task
+from test_forge_v2 import ROOT, fixture_task, mock_engine
 
 
 @pytest.mark.parametrize("rewrite", [False, True])
@@ -122,3 +125,103 @@ def test_cleanup_refuses_symlink_or_other_directory(tmp_path):
     with pytest.raises(ValueError, match="cleanup directory"):
         bridge.cleanup_evaluation_workspaces(plan)
     assert (valuable / "keep").exists()
+
+
+def test_launcher_reclaims_copies_when_slow_cleanup_supervisor_is_killed(tmp_path, monkeypatch):
+    context, _, _ = fixture_task(tmp_path, language="hip")
+    monkeypatch.setenv("ARENA_TASK_CONTEXT", str(context.path))
+    mock_engine(monkeypatch)
+    old = tmp_path / "evaluate-old-experiment"
+    old.mkdir()
+    (old / "keep.txt").write_text("previous experiment")
+    terminate = common._terminate_process_group
+    monkeypatch.setattr(common, "_terminate_process_group", lambda process, logger: terminate(
+        process, logger, term_timeout=.5, kill_timeout=3))
+    supervisor = r'''
+import os, subprocess, sys, time
+from pathlib import Path
+from agents.forge import bridge
+from agents.forge.bundles import copy_workspace
+from agents.forge.process_tree import managed_children
+plan = bridge.load_plan(Path(os.environ["ARENA_FORGE_PLAN"]))
+artifact = Path(plan["template"]).parent
+copy_workspace(Path(plan["template"]), Path(plan["evaluation_root"]) / "evaluate-abandoned/task")
+def slow_remove(root):
+    assert not Path(f"/proc/{worker.pid}").exists(), "cleanup raced a detached worker"
+    (Path(root) / "evaluate-abandoned/task/source/helper.py").unlink()
+    (artifact / "cleanup-started").write_text("all workers reaped")
+    time.sleep(60)
+bridge.shutil.rmtree = slow_remove
+with managed_children(after_stop=lambda: bridge.cleanup_evaluation_workspaces(plan)):
+    worker = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"], start_new_session=True)
+    (artifact / "worker.pid").write_text(str(worker.pid))
+    print("engine started", flush=True)
+    time.sleep(60)
+'''
+    observed = []
+
+    def run(command, *, workspace, env, **kwargs):
+        result = common.run_forge_subprocess(
+            [sys.executable, "-c", supervisor], workspace=workspace, env=env,
+            timeout_seconds=2, logger=kwargs["logger"])
+        process, _, _, timed_out = result
+        plan = bridge.load_plan(Path(env["ARENA_FORGE_PLAN"]))
+        artifact = Path(plan["template"]).parent
+        assert timed_out and process.returncode == -signal.SIGKILL
+        assert (artifact / "cleanup-started").exists()
+        assert (Path(plan["evaluation_root"]) / "evaluate-abandoned/task").is_dir()
+        observed.append(plan)
+        return result
+
+    monkeypatch.setattr(adapter, "run_forge_subprocess", run)
+    with pytest.raises(adapter.ForgeRunError, match="exceeded its shared deadline"):
+        adapter.launch({"agent": {"timeout_seconds": 30}}, "unused", str(context.workspace))
+    plan, = observed
+    artifact = Path(plan["template"]).parent
+    assert not Path(plan["evaluation_root"]).exists()
+    assert not Path(f"/proc/{int((artifact / 'worker.pid').read_text())}").exists()
+    assert (old / "keep.txt").read_text() == "previous experiment"
+    assert "engine started" in (artifact / "engine.log").read_text()
+    status = json.loads((artifact / "arena_forge_status.json").read_text())
+    assert status["status"] == "FAILED" and status["timed_out"]
+    assert status["exit_code"] == -signal.SIGKILL
+    for root in (context.workspace, context.baseline_workspace,
+                 Path(plan["template"]), Path(plan["engine_root"])):
+        assert (root / "source/kernel.py").read_text() == "2"
+
+
+@pytest.mark.parametrize("problem", ["missing", "partial", "wrong_pid", "other_run", "live"])
+def test_recovery_requires_matching_reaped_supervisor_receipt(tmp_path, problem):
+    _, plan, _ = fixture_task(tmp_path)
+    pool = tmp_path / "evaluation-workspaces"
+    pool.mkdir()
+    (pool / "keep.txt").write_text("unconfirmed disposable copy")
+    plan["evaluation_root"] = str(pool)
+    marker = tmp_path / "evaluation-workspaces-reaped.json"
+    receipt = {"supervisor_pid": os.getpid(), "evaluation_root": str(pool)}
+    if problem == "wrong_pid":
+        receipt["supervisor_pid"] += 1
+    if problem == "other_run":
+        receipt["evaluation_root"] = str(tmp_path / "other-experiment/evaluation-workspaces")
+    if problem != "missing":
+        marker.write_text("{" if problem == "partial" else json.dumps(receipt))
+    process = SimpleNamespace(pid=os.getpid(), poll=lambda: None if problem == "live" else -signal.SIGKILL)
+    assert bridge.cleanup_evaluation_workspaces(plan, supervisor=process) is False
+    assert (pool / "keep.txt").read_text() == "unconfirmed disposable copy"
+
+
+@pytest.mark.parametrize("recover", [False, True])
+def test_cleanup_refuses_symlink_receipt(tmp_path, recover):
+    _, plan, _ = fixture_task(tmp_path)
+    pool = tmp_path / "evaluation-workspaces"
+    pool.mkdir()
+    plan["evaluation_root"] = str(pool)
+    valuable = tmp_path / "valuable.json"
+    contents = json.dumps({"supervisor_pid": os.getpid(), "evaluation_root": str(pool)})
+    valuable.write_text(contents)
+    (tmp_path / "evaluation-workspaces-reaped.json").symlink_to(valuable)
+    process = SimpleNamespace(pid=os.getpid(), poll=lambda: -signal.SIGKILL) if recover else None
+    with pytest.raises(ValueError, match="cleanup receipt"):
+        bridge.cleanup_evaluation_workspaces(plan, supervisor=process)
+    assert pool.exists()
+    assert valuable.read_text() == contents

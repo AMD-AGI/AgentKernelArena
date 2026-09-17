@@ -218,10 +218,16 @@ logs, result JSON and selected artifact hashes are preserved in the fresh Forge
 artifact directory; old experiment directories are never removed. Disposable
 evaluation copies live only under this campaign's `evaluation-workspaces/`.
 After the engine exits or receives SIGTERM, its supervisor reaps all descendant
-processes, then removes that directory, including copies left by a driver
-that was SIGKILLed. Cleanup never sweeps other `evaluate-*` paths or previous
-experiments. If the supervisor itself is SIGKILLed or the machine fails, it
-cannot run this cleanup; retained artifacts require explicit recovery.
+processes, records its PID and this directory in a cleanup receipt outside the
+directory, then removes the copies, including those left by a SIGKILLed driver.
+If slow deletion outlasts the supervisor's shutdown grace period, the Arena
+parent finishes it after confirming supervisor exit and a matching receipt.
+The execution deadline and SIGTERM/SIGKILL grace periods are unchanged; this
+recovery performs only filesystem cleanup after the workers have been reaped.
+Cleanup never sweeps other `evaluate-*` paths or previous experiments. Missing,
+partial or mismatched receipts retain the directory and emit a warning. Killing
+the supervisor before it records reaping, killing Arena itself, or losing the
+machine still requires explicit recovery of retained artifacts.
 
 One `timeout_seconds` budget covers setup, preflight, initialization and optimization.
 Commands receive the same absolute deadline, and every task action is capped by
