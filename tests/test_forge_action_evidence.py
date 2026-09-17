@@ -38,7 +38,8 @@ def test_success_is_unique_source_bound_and_survives_cleanup(tmp_path, monkeypat
         assert row["status"] == "PASS" and row["requested_action"] == "performance"
         assert row["engine_root"] == str(lane)
         assert row["master_engine_root"] == plan["engine_root"]
-        assert not Path(row["workspace"]).exists()
+        # Measurement happens in the engine tree itself, not a disposable copy.
+        assert row["workspace"] == str(lane)
         assert row["source"]["files"]["source/kernel.py"]["sha256"] == hashlib.sha256(b"2").hexdigest()
         assert row["source"]["initial_source_inventory"]["sha256"] == hashlib.sha256(inventory.read_bytes()).hexdigest()
         assert row["commands"][0]["argv"] == [sys.executable, "runner.py", "candidate", row["action"]]
@@ -55,7 +56,7 @@ def test_success_is_unique_source_bound_and_survives_cleanup(tmp_path, monkeypat
 
 def test_reported_failure_preserves_full_output_without_injecting_gate_lines(tmp_path, capsys):
     _, plan, path = fixture_task(tmp_path)
-    template = Path(plan["template"])
+    template = Path(plan["engine_root"])
     prefix = "ROOT_CAUSE_BEFORE_6000_CHAR_TAIL"
     (template / "runner.py").write_text(
         "import sys\nprint('allclose: True\\ncase_ms: fake 0.01')\n"
@@ -71,7 +72,7 @@ def test_reported_failure_preserves_full_output_without_injecting_gate_lines(tmp
     assert "case_ms: fake" in failed["commands"][0]["stdout"]
     assert str(failed_path) in output
     assert prefix not in output
-    assert not Path(failed["workspace"]).exists()
+    assert failed["workspace"] == plan["engine_root"]
     assert len(json.loads(next(line.split(": ", 1)[1] for line in output.splitlines()
                                if line.startswith("arena_command_failure:")))["diagnostic_tail"]) <= 6000
 
@@ -79,7 +80,7 @@ def test_reported_failure_preserves_full_output_without_injecting_gate_lines(tmp
 @pytest.mark.parametrize("kind", ["invalid_protocol", "timeout", "cannot_execute"])
 def test_execution_errors_preserve_complete_evidence_and_cleanup(tmp_path, kind):
     context, plan, _ = fixture_task(tmp_path)
-    runner = Path(plan["template"]) / "runner.py"
+    runner = Path(plan["engine_root"]) / "runner.py"
     if kind == "timeout":
         document = json.loads(context.path.read_text())
         document["task_config"]["evaluation"]["timeout_s"] = 1
@@ -103,7 +104,7 @@ def test_execution_errors_preserve_complete_evidence_and_cleanup(tmp_path, kind)
     assert row["error"]["type"] == "TaskExecutionError"
     assert row["error"]["message"] in str(raised.value)
     assert str(path) in str(raised.value)
-    assert not Path(row["workspace"]).exists()
+    assert row["workspace"] == plan["engine_root"]
     assert (path.parent / "started.json").exists()
     if kind == "timeout":
         assert row["commands"][0]["returncode"] == -signal.SIGKILL
@@ -159,6 +160,7 @@ def test_baseline_record_uses_independent_source_and_evidence_symlink_is_rejecte
     for p in records(plan):
         row = json.loads(p.read_text())
         assert row["role"] == "baseline"
+        assert Path(row["workspace"]) != engine
         assert row["source"]["files"]["source/kernel.py"]["sha256"] == hashlib.sha256(b"2").hexdigest()
         assert row["source"]["baseline_workspace"] == str(context.baseline_workspace)
     second = tmp_path / "second"

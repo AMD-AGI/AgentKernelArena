@@ -79,7 +79,7 @@ async def initialize(plan: dict) -> dict:
     from kernelforge.config import Config
     from kernelforge.orchestrator.agent import make_agent_fn
     from kernelforge.tracker.usage import UsageAccumulator
-    from agents.forge.upstream import program_text
+    from agents.forge.program import program_text
 
     context = TaskContext.load(plan["context"])
     spec, root = context.spec, Path(plan["engine_root"])
@@ -121,7 +121,7 @@ async def initialize(plan: dict) -> dict:
                 interposed_driver_path=str(root / "arena_forge_driver.py"),
                 session_timeout_sec=timeout, validation_timeout_sec=timeout,
                 permission_mode=settings["permission_mode"], profiling_enabled=False,
-                task_type="image_kernel", source_files=list(map(str, files.values())),
+                task_type="repository", source_files=list(map(str, files.values())),
                 target_functions=[entry.symbol for entry in spec.candidate.entrypoints if entry.symbol],
                 extra_protected_paths=[str(root / name) for name in protected])
             row = {"attempt": attempt, "status": "RUNNING", "backend": agent.backend_name,
@@ -177,7 +177,7 @@ async def initialize(plan: dict) -> dict:
 
 def prepare_loop(plan: dict, argv: list[str]) -> list[str]:
     """Refresh the full source bundle after initialization, then run one loop."""
-    from agents.forge.upstream import program_text
+    from agents.forge.program import program_text
     if not argv or argv[0] != "forge-loop":
         raise ValueError("Initialization must be followed by forge-loop")
     root = Path(plan["engine_root"])

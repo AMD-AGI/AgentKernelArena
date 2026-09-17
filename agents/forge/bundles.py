@@ -134,12 +134,19 @@ def _check_symbols(original: Path, candidate: Path, scope: EditScope) -> None:
         raise ValueError(f"Candidate changes protected statements in {scope.path}")
 
 
-def install_candidate(spec: TaskSpec, source: Path, destination: Path) -> list[dict]:
-    """Validate the complete bundle before changing destination; retain layout."""
+def install_candidate(spec: TaskSpec, source: Path, destination: Path,
+                      *, reference: Path | None = None) -> list[dict]:
+    """Validate the complete bundle before changing destination; retain layout.
+
+    ``reference`` holds the unedited declaration a symbol scope is compared
+    against. It defaults to the destination, which is only the same file when
+    the caller hands over a freshly materialized copy of the task package.
+    """
     files = candidate_files(spec, source)
+    origin = destination if reference is None else reference
     for scope in spec.candidate.editable:
         if scope.scope == "symbols":
-            _check_symbols(resolve_task_path(destination, scope.path, must_exist=True),
+            _check_symbols(resolve_task_path(origin, scope.path, must_exist=True),
                            files[scope.path], scope)
     for relative in files:
         resolve_task_path(destination, relative)
@@ -153,7 +160,8 @@ def install_candidate(spec: TaskSpec, source: Path, destination: Path) -> list[d
     for relative, path in files.items():
         target = resolve_task_path(destination, relative)
         target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(path, target)
+        if path.resolve() != target:
+            shutil.copy2(path, target)
         records.append({"path": relative, "sha256": hashlib.sha256(path.read_bytes()).hexdigest()})
     return records
 

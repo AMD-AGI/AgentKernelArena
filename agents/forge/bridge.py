@@ -11,7 +11,6 @@ import json
 import os
 from pathlib import Path
 import statistics
-import shutil
 import tempfile
 import uuid
 from urllib.parse import quote
@@ -21,6 +20,15 @@ from src.task_spec import resolve_task_path
 from agents.forge.task_context import TaskContext, bounded_spec
 from agents.forge.bundles import copy_workspace, install_candidate
 from agents.forge.action_evidence import ActionEvidence, source_binding
+
+
+#: A candidate is measured in the tree the engine is searching, which is also
+#: the tree its agent session is guarded against. Importing a task module there
+#: would leave bytecode beside it, and a task keeps its runner under a directory
+#: name the engine protects wholesale, so those caches read as protected files
+#: appearing mid-session and abort the session that ran the check. Bytecode is a
+#: cache: refusing to write it changes no measurement, only import cost.
+TASK_ENV = {"PYTHONDONTWRITEBYTECODE": "1"}
 
 
 class ActionCheckFailure(RuntimeError):
@@ -63,28 +71,36 @@ def bound_candidate_root(plan: dict, engine_root: Path) -> Path:
 
 @contextmanager
 def evaluation_workspace(context: TaskContext, plan: dict, engine_root: Path, role: str):
-    # Every invocation gets a private build tree. Candidate edits cannot change
-    # the reference, harness, or a concurrently measured baseline.
-    directory = plan.get("evaluation_root", Path(plan["template"]).parent)
-    with tempfile.TemporaryDirectory(prefix="evaluate-", dir=directory) as temporary:
-        root = Path(temporary) / "task"
-        template = context.baseline_workspace if role == "baseline" else Path(plan["template"])
-        copy_workspace(template, root)
-        if role == "candidate":
-            install_candidate(context.spec, bound_candidate_root(plan, engine_root), root)
-        yield root
+    """Measure where the engine already keeps the tree it is searching.
 
+    A mid-search measurement is the engine's own signal, not a verdict: the
+    framework re-runs every candidate action in its own workspace once the
+    campaign delivers. Materializing a private tree per invocation would copy
+    the whole task package, which for an image-backed task is gigabytes, to
+    guard numbers nothing downstream trusts.
 
-def cleanup_evaluation_workspaces(plan: dict) -> None:
-    """Called by the campaign supervisor only after all children are reaped."""
-    if "evaluation_root" not in plan:
-        return  # Older plans have no dedicated disposable directory.
-    root = Path(plan["evaluation_root"])
-    expected = Path(plan["template"]).parent / "evaluation-workspaces"
-    if root != expected or root.is_symlink():
-        raise ValueError("Unexpected Forge evaluation cleanup directory")
-    if root.exists():
-        shutil.rmtree(root)
+    The baseline is the denominator of every number the search produces, so it
+    keeps a private tree built from the framework's frozen snapshot: a candidate
+    that breaks the runner must not also move the anchor it is compared against.
+    A campaign measures it once, not once per candidate.
+    """
+    if role == "baseline":
+        with tempfile.TemporaryDirectory(prefix="baseline-", dir=Path(plan["template"]).parent) as temporary:
+            root = Path(temporary) / "task"
+            copy_workspace(context.baseline_workspace, root)
+            yield root
+        return
+    candidate = bound_candidate_root(plan, engine_root)
+    installed = install_candidate(context.spec, candidate, engine_root,
+                                  reference=Path(plan["template"]))
+    try:
+        yield engine_root
+    finally:
+        # A rewrite keeps its candidate under the producer's attempt directory.
+        # Leaving a copy at the declared path would shadow the next attempt.
+        if candidate != engine_root:
+            for record in installed:
+                (engine_root / record["path"]).unlink(missing_ok=True)
 
 
 def execute(plan: dict, engine_root: Path, *, role: str, action: str):
@@ -105,7 +121,8 @@ def execute(plan: dict, engine_root: Path, *, role: str, action: str):
                                       engine_root=engine_root)
             try:
                 executed = run_action(spec, root, role=role, action=step,
-                                      phase="candidate_evaluation", manifest=context.manifest)
+                                      phase="candidate_evaluation", manifest=context.manifest,
+                                      extra_env=TASK_ENV)
             except TaskExecutionError as exc:
                 exc.evidence_path = evidence.finish(error=exc)
                 # Preserve full original message/command streams above; expose a

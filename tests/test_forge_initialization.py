@@ -87,7 +87,7 @@ UPSTREAM_INITIALIZATION = r'''
 import asyncio, json, os, subprocess
 from pathlib import Path
 from types import SimpleNamespace
-from agents.forge import upstream, bridge
+from agents.forge import engine, bridge
 from agents.forge.task_context import TaskContext
 from agents.forge.bundles import committed_candidate, install_candidate
 from kernelforge import cli
@@ -171,7 +171,7 @@ def loop_callback(**kwargs):
 
 cli.main.commands['forge-loop'].callback = loop_callback
 try:
-    upstream.main(json.loads(os.environ['CPU_TEST_ARGV']))
+    engine.main(json.loads(os.environ['CPU_TEST_ARGV']))
 except BaseException as error:
     if mode == 'success':
         raise
@@ -231,7 +231,7 @@ def test_installed_upstream_initialization(tmp_path, language, mode):
     for workspace in (engine, Path(plan["template"]), context.baseline_workspace):
         runner = workspace / "runner.py"
         runner.write_text(runner.read_text().replace('else 2, benchmark_method', 'else 8, benchmark_method'))
-    from agents.forge.upstream import program_text
+    from agents.forge.program import program_text
     Path(plan["program"]).write_text(program_text(plan, initialize=True))
     (engine / "arena_forge_driver.py").write_text(bridge.render_driver(path, ROOT))
     context = type(context).load(context.path)
@@ -247,28 +247,3 @@ def test_installed_upstream_initialization(tmp_path, language, mode):
                          capture_output=True, text=True, timeout=60)
     assert run.returncode == 0, run.stdout[-5000:] + run.stderr[-6000:]
     assert "REAL_FORGE_INITIALIZATION_CPU_PASS" in run.stdout
-
-
-def test_probe_rejects_changed_upstream_before_installing_hooks(tmp_path):
-    python = os.environ.get("AKA_FORGE_PROBE_PYTHON")
-    if not python:
-        pytest.skip("Set AKA_FORGE_PROBE_PYTHON to the pinned Hyperloom[forge] interpreter")
-    changed = tmp_path / "unreviewed.py"
-    changed.write_text("# changed engine with otherwise identical Python signatures\n")
-    script = r'''
-import sys
-from agents.forge import upstream
-from kernelforge.orchestrator import agent
-original = agent.make_agent_fn
-agent.__file__ = sys.argv[1]  # test-only module metadata; never edit installed sources
-try:
-    upstream.install_hooks({})
-except RuntimeError as error:
-    assert 'Unreviewed KernelForge source: kernelforge.orchestrator.agent' in str(error)
-else:
-    raise AssertionError('unreviewed engine accepted')
-assert agent.make_agent_fn is original
-'''
-    run = subprocess.run([python, "-c", script, str(changed)], cwd=ROOT,
-                         capture_output=True, text=True, timeout=20)
-    assert run.returncode == 0, run.stdout + run.stderr

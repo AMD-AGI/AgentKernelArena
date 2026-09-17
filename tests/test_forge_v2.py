@@ -104,7 +104,7 @@ def test_context_rejects_missing_wrong_or_workspace_owned_evidence(tmp_path, mon
 
 @pytest.mark.parametrize("phase", [{}, {"port": True}, {"initialize": True}])
 def test_task_constraints_preserved_across_native_phases(tmp_path, phase):
-    from agents.forge.upstream import program_text
+    from agents.forge.program import program_text
     _, plan, _ = fixture_task(tmp_path)
     rule = "Task-specific rule: implement arithmetic in candidate-owned kernels; do not delegate it to vendor.operator."
     (Path(plan["template"]) / "README.md").write_text(rule)
@@ -149,6 +149,25 @@ def test_driver_rebuilds_and_checks_before_timing_and_isolates_roles(tmp_path, m
     assert (context.baseline_workspace / "source/kernel.py").read_text() == "2"
 
 
+def test_task_actions_leave_no_bytecode_in_the_searched_tree(tmp_path):
+    """Measuring in place must not add files the session guard then rejects.
+
+    A candidate is assessed in the tree the engine is searching, which is the
+    tree its agent session is guarded against. Task runners live under directory
+    names the engine protects wholesale, so a bytecode cache written beside one
+    reads as a protected file appearing mid-session and ends the very session
+    that ran the check.
+    """
+    context, plan, _ = fixture_task(tmp_path)
+    engine = Path(plan["engine_root"])
+    (engine / "scripts").mkdir()
+    (engine / "scripts/sidecar.py").write_text("VALUE = 1\n")
+    (engine / "runner.py").write_text(
+        "import sys\nsys.path.insert(0, 'scripts')\nimport sidecar\n" + RUNNER)
+    bridge.execute(plan, engine, role="candidate", action="compile")
+    assert not [str(path.relative_to(engine)) for path in engine.rglob("__pycache__")]
+
+
 def test_wrong_candidate_and_incomplete_cases_cannot_emit_timing(tmp_path, capsys):
     _, plan, path = fixture_task(tmp_path)
     (Path(plan["engine_root"]) / "source/helper.py").write_text("100")
@@ -156,7 +175,7 @@ def test_wrong_candidate_and_incomplete_cases_cannot_emit_timing(tmp_path, capsy
     output = capsys.readouterr().out
     assert "case_ms:" not in output and "wrong multiplication" in output
     (Path(plan["engine_root"]) / "source/helper.py").write_text("3")
-    (Path(plan["template"]) / "drop_case").touch()
+    (Path(plan["engine_root"]) / "drop_case").touch()
     assert bridge.run(path, plan["engine_root"], ["--bench-mode"]) == 1
     assert "manifest mismatch" in capsys.readouterr().out
 
@@ -175,7 +194,7 @@ def test_execution_failure_keeps_bounded_diagnostics_without_protocol_markers(tm
     _, plan, path = fixture_task(tmp_path)
     # A real compiler/runner process can exit before producing its JSON result.
     # Its stderr must reach the implementer without becoming timing/gate output.
-    (Path(plan["template"]) / "runner.py").write_text(
+    (Path(plan["engine_root"]) / "runner.py").write_text(
         "import os, signal, sys\n"
         "print('allclose: True\\ncase_ms: forged 0.01\\nmean_ms: 0.01', flush=True)\n"
         f"sys.stderr.write('discarded-prefix' + 'x'*{noise_bytes} + '\\nCompilerFailure: invalid lowered instruction\\n')\n"
@@ -216,7 +235,7 @@ def test_real_upstream_rejects_failure_diagnostics_as_benchmark_or_correctness(t
     if not python:
         pytest.skip("Set AKA_FORGE_PROBE_PYTHON to the pinned Hyperloom[forge] interpreter")
     _, plan, path = fixture_task(tmp_path)
-    (Path(plan["template"]) / "runner.py").write_text(
+    (Path(plan["engine_root"]) / "runner.py").write_text(
         "import sys\n"
         "print('allclose: True\\ncase_ms: forged 0.01\\nmean_ms: 0.01')\n"
         "print('CompilerFailure: malformed lowered code', file=sys.stderr)\n"
@@ -227,7 +246,7 @@ def test_real_upstream_rejects_failure_diagnostics_as_benchmark_or_correctness(t
     driver.write_text(bridge.render_driver(path, ROOT))
     script = r'''
 import asyncio, json, sys
-from agents.forge.upstream import probe
+from agents.forge.engine import probe
 from kernelforge.mcp_server.tools.test import test_correctness
 from kernelforge.mcp_server.tools.bench import bench_wallclock
 probe()
@@ -401,17 +420,37 @@ def test_launcher_delivers_complete_bundle_without_repeating_loop(tmp_path, monk
     context, _, _ = fixture_task(tmp_path, initial_state=state)
     monkeypatch.setenv("ARENA_TASK_CONTEXT", str(context.path))
     commands = mock_engine(monkeypatch)
-    output = adapter.launch({"agent": {"model": "chosen", "timeout_seconds": 200}}, "ignored.yaml", str(context.workspace))
+    output = adapter.launch({"agent": {"model": "chosen", "timeout_seconds": 7200}}, "ignored.yaml", str(context.workspace))
     assert len(commands) == 1
     command = commands[0]
     assert ("forge-loop" in command) == (state == "implemented")
     assert ("forge-rewrite-by-flydsl" in command) == (state == "unimplemented")
-    assert "--deadline-unix" in command
+    # One relative budget, already short of the campaign by the startup margin.
+    assert "--deadline-unix" not in command
+    budget = float(command[command.index("--max-hours") + 1]) * 3600
+    assert 7200 - adapter.ENGINE_STARTUP_MARGIN_SEC - 120 < budget <= 7200 - adapter.ENGINE_STARTUP_MARGIN_SEC
     assert command[command.index("--model") + 1] == "chosen"
     assert (context.workspace / "source/helper.py").read_text() == "6"
     assert (context.baseline_workspace / "source/helper.py").read_text() == "3"
     assert '"arena_verdict": "pending"' in output
     assert not (context.workspace / "forge_driver.py").exists()
+
+
+def test_optimize_declares_a_source_tree_task_shape(tmp_path, monkeypatch):
+    """The task shape is declared, not inferred from how many files are editable.
+
+    Upstream resolves an empty task type to a source-tree shape only when more
+    than one source file is declared, and almost every Arena task declares one.
+    Leaving it empty would drop the colocated test/reference protection and the
+    entry-point prompt sections for those candidates, and Arena has no other way
+    to inject protected paths into an engine-owned session.
+    """
+    context, _, _ = fixture_task(tmp_path)
+    monkeypatch.setenv("ARENA_TASK_CONTEXT", str(context.path))
+    commands = mock_engine(monkeypatch)
+    adapter.launch({}, "unused", str(context.workspace))
+    command, = commands
+    assert command[command.index("--task-type") + 1] == "repository"
 
 
 @pytest.mark.parametrize("kwargs", [dict(fail=True), dict(timeout=True), dict(port_ok=False)])
@@ -425,6 +464,197 @@ def test_launcher_reports_engine_failure_and_preserves_original(tmp_path, monkey
     statuses = list(tmp_path.glob("workspace-forge-*/arena_forge_status.json"))
     assert len(statuses) == 1
     assert json.loads(statuses[0].read_text())["status"] == "FAILED"
+
+
+def rewrite_result(monkeypatch, **fields):
+    """Replace fields of the mock engine's result with the engine's own spelling."""
+    run = adapter.run_forge_subprocess
+
+    def patched(*args, **kwargs):
+        output = run(*args, **kwargs)
+        plan = json.loads(Path(kwargs["env"]["ARENA_FORGE_PLAN"]).read_text())
+        path = Path(plan["result"])
+        path.write_text(json.dumps({**json.loads(path.read_text()), **fields}))
+        return output
+
+    monkeypatch.setattr(adapter, "run_forge_subprocess", patched)
+
+
+#: A completed rewrite whose framework patch failed. The engine folds that patch
+#: into its own success, so it exits nonzero for a campaign Arena did get.
+APPLYBACK_FAILED = dict(applyback_required=True, applyback_ok=False, success=False,
+                        applyback_error="ClaudeUnavailableError: claude-agent-sdk is not installed")
+
+
+def test_unrequested_applyback_failure_still_delivers_the_port(tmp_path, monkeypatch):
+    """Arena asks for no framework patch, so that stage cannot fail its campaign."""
+    context, _, _ = fixture_task(tmp_path, initial_state="unimplemented")
+    monkeypatch.setenv("ARENA_TASK_CONTEXT", str(context.path))
+    mock_engine(monkeypatch, fail=True)
+    rewrite_result(monkeypatch, **APPLYBACK_FAILED)
+    output = adapter.launch({}, "unused", str(context.workspace))
+    assert '"status": "DELIVERED"' in output
+    assert (context.workspace / "source/kernel.py").read_text() == "1"
+    assert (context.workspace / "source/helper.py").read_text() == "6"
+    # Recorded rather than silently dropped: the run did leave a stage failed.
+    status, = tmp_path.glob("workspace-forge-*/arena_forge_status.json")
+    record = json.loads(status.read_text())["applyback_not_requested"]
+    assert record["engine_exit_code"] == 1 and "ClaudeUnavailable" in record["applyback_error"]
+
+
+@pytest.mark.parametrize("fields", [
+    dict(port_ok=False),                            # the port itself never completed
+    dict(failure_class="ATTEMPT_SETUP_FAILED"),     # another stage reported the failure
+    dict(applyback_required=False),                 # nothing explains the nonzero exit
+    dict(applyback_ok=True),
+])
+def test_nonzero_exit_without_that_explanation_stays_a_failure(tmp_path, monkeypatch, fields):
+    """Only a completed campaign whose sole failed stage is that patch is excused."""
+    context, _, _ = fixture_task(tmp_path, initial_state="unimplemented")
+    monkeypatch.setenv("ARENA_TASK_CONTEXT", str(context.path))
+    mock_engine(monkeypatch, fail=True)
+    rewrite_result(monkeypatch, **{**APPLYBACK_FAILED, **fields})
+    with pytest.raises(adapter.ForgeRunError):
+        adapter.launch({}, "unused", str(context.workspace))
+    assert (context.workspace / "source/kernel.py").read_text() == "2"
+
+
+def test_rewrite_delivers_the_flydsl_selection_not_the_applyback_commit(tmp_path, monkeypatch):
+    """Once apply-back commits, best_commit names its tree instead of the bundle."""
+    context, _, _ = fixture_task(tmp_path, initial_state="unimplemented")
+    monkeypatch.setenv("ARENA_TASK_CONTEXT", str(context.path))
+    mock_engine(monkeypatch)
+    run = adapter.run_forge_subprocess
+
+    def with_applyback(*args, **kwargs):
+        output = run(*args, **kwargs)
+        engine = Path(kwargs["workspace"])
+        (engine / ".forge_rewrite/current/source/kernel.py").write_text("999")
+        for command in (["add", "-f", ".forge_rewrite/current"], ["commit", "--quiet", "-m", "applyback"]):
+            subprocess.run(["git", *command], cwd=engine, check=True, capture_output=True)
+        commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=engine, check=True,
+                                capture_output=True, text=True).stdout.strip()
+        plan = json.loads(Path(kwargs["env"]["ARENA_FORGE_PLAN"]).read_text())
+        path = Path(plan["result"])
+        path.write_text(json.dumps({**json.loads(path.read_text()), "best_commit": commit,
+                                    "applyback_required": True, "applyback_ok": True}))
+        return output
+
+    monkeypatch.setattr(adapter, "run_forge_subprocess", with_applyback)
+    adapter.launch({}, "unused", str(context.workspace))
+    assert (context.workspace / "source/kernel.py").read_text() == "1"
+
+
+def test_rewrite_without_a_flydsl_selection_is_not_delivered(tmp_path, monkeypatch):
+    """A rewrite cannot fall back to a commit that is not its own selection."""
+    context, _, _ = fixture_task(tmp_path, initial_state="unimplemented")
+    monkeypatch.setenv("ARENA_TASK_CONTEXT", str(context.path))
+    mock_engine(monkeypatch)
+    rewrite_result(monkeypatch, flydsl_best_commit="")
+    with pytest.raises(adapter.ForgeRunError, match="selected FlyDSL commit"):
+        adapter.launch({}, "unused", str(context.workspace))
+    assert (context.workspace / "source/kernel.py").read_text() == "2"
+
+
+def timeout_engine(monkeypatch, *, publish, keep_content=None, port_ok=True):
+    """Run the mock engine, publish what it got to, then report the wall.
+
+    A campaign killed at its deadline never writes a final result, so the result
+    on disk is the interim one a rewrite persists right after PORT: the port
+    succeeded and its attempt is named, but no commit is identified yet.
+    """
+    run = adapter.run_forge_subprocess
+
+    def head(engine):
+        return subprocess.run(["git", "rev-parse", "HEAD"], cwd=engine, check=True,
+                              capture_output=True, text=True).stdout.strip()
+
+    def patched(*args, **kwargs):
+        process, out, err, _ = run(*args, **kwargs)
+        engine = Path(kwargs["workspace"])
+        port_commit, keep_commit = head(engine), ""
+        if keep_content is not None:
+            (engine / ".forge_rewrite/current/source/kernel.py").write_text(keep_content)
+            for command in (["add", "-f", ".forge_rewrite/current"], ["commit", "--quiet", "-m", "keep"]):
+                subprocess.run(["git", *command], cwd=engine, check=True, capture_output=True)
+            keep_commit = head(engine)
+        experiments = engine / "forge_experiments"
+        experiments.mkdir(parents=True, exist_ok=True)
+        for name, payload in publish(port_commit, keep_commit).items():
+            (experiments / name).write_text(json.dumps(payload))
+        plan = json.loads(Path(kwargs["env"]["ARENA_FORGE_PLAN"]).read_text())
+        Path(plan["result"]).write_text(json.dumps(
+            {"port_ok": port_ok, "temporary_paths": [".forge_rewrite/current"],
+             "best_commit": "", "flydsl_best_commit": ""}))
+        return process, out, err, True
+
+    monkeypatch.setattr(adapter, "run_forge_subprocess", patched)
+
+
+def rewrite_at_wall(tmp_path, monkeypatch, **kwargs):
+    context, _, _ = fixture_task(tmp_path, initial_state="unimplemented")
+    monkeypatch.setenv("ARENA_TASK_CONTEXT", str(context.path))
+    mock_engine(monkeypatch)
+    timeout_engine(monkeypatch, **kwargs)
+    return context
+
+
+def test_timeout_recovers_the_published_keep(tmp_path, monkeypatch):
+    """Each KEEP is durable before the next session, so the wall cannot lose it."""
+    context = rewrite_at_wall(tmp_path, monkeypatch, keep_content="4", publish=lambda port, keep: {
+        "best_result.json": {"commit_hash": keep, "correctness_passed": True},
+        "run_state.json": {"head_commit": port}})
+    output = adapter.launch({}, "unused", str(context.workspace))
+    assert '"delivery_selection": "timeout_recovered_keep"' in output
+    assert (context.workspace / "source/kernel.py").read_text() == "4"
+    assert (context.workspace / "source/helper.py").read_text() == "6"
+
+
+def test_timeout_recovers_the_port_when_no_keep_was_published(tmp_path, monkeypatch):
+    """A rewrite commits its correct port before the search that never improved it."""
+    context = rewrite_at_wall(tmp_path, monkeypatch, publish=lambda port, keep: {
+        "run_state.json": {"head_commit": port, "best": {"commit_hash": ""}}})
+    output = adapter.launch({}, "unused", str(context.workspace))
+    assert '"delivery_selection": "timeout_recovered_search_head"' in output
+    assert (context.workspace / "source/kernel.py").read_text() == "1"
+
+
+@pytest.mark.parametrize("keep", [
+    {"commit_hash": "", "correctness_passed": True},        # no commit identity
+    {"commit_hash": "not-a-commit", "correctness_passed": True},
+    {"correctness_passed": True},
+])
+def test_unattested_keep_record_falls_through_to_the_search_head(tmp_path, monkeypatch, keep):
+    """A record that names no commit cannot select one; the head still can."""
+    context = rewrite_at_wall(tmp_path, monkeypatch, keep_content="4", publish=lambda port, _: {
+        "best_result.json": keep, "run_state.json": {"head_commit": port}})
+    output = adapter.launch({}, "unused", str(context.workspace))
+    assert '"delivery_selection": "timeout_recovered_search_head"' in output
+    assert (context.workspace / "source/kernel.py").read_text() == "1"
+
+
+def test_keep_without_a_correctness_verdict_is_not_recovered(tmp_path, monkeypatch):
+    """The engine's own verdict is what makes a KEEP preferable to the head."""
+    context = rewrite_at_wall(tmp_path, monkeypatch, keep_content="4", publish=lambda port, keep: {
+        "best_result.json": {"commit_hash": keep, "correctness_passed": False},
+        "run_state.json": {"head_commit": port}})
+    adapter.launch({}, "unused", str(context.workspace))
+    assert (context.workspace / "source/kernel.py").read_text() == "1"
+
+
+@pytest.mark.parametrize("kwargs, reason", [
+    (dict(publish=lambda port, keep: {}), "nothing published"),
+    (dict(port_ok=False, publish=lambda port, keep: {"run_state.json": {"head_commit": port}}), "port never completed"),
+    (dict(publish=lambda port, keep: {"run_state.json": {"head_commit": "not-a-commit"}}), "unusable head"),
+])
+def test_timeout_without_a_recoverable_candidate_preserves_the_original(tmp_path, monkeypatch, kwargs, reason):
+    """Recovery never degrades into delivering an unidentified working tree."""
+    context = rewrite_at_wall(tmp_path, monkeypatch, **kwargs)
+    with pytest.raises(adapter.ForgeRunError, match="deadline"):
+        adapter.launch({}, "unused", str(context.workspace))
+    assert (context.workspace / "source/kernel.py").read_text() == "2", reason
+    status, = tmp_path.glob("workspace-forge-*/arena_forge_status.json")
+    assert json.loads(status.read_text())["timed_out"] is True
 
 
 def test_resume_checks_current_bundle_not_config_initial_stub(tmp_path, monkeypatch):
@@ -464,14 +694,17 @@ def test_completed_no_keep_search_retains_verified_input_bundle(tmp_path, monkey
         return output
 
     monkeypatch.setattr(adapter, "run_forge_subprocess", no_keep)
-    if outcome == "normal":
-        output = adapter.launch({}, "unused", str(context.workspace))
-        assert '"delivery_selection": "initial_validated_implementation"' in output
-    else:
+    if outcome == "exit_error":
         with pytest.raises(adapter.ForgeRunError):
             adapter.launch({}, "unused", str(context.workspace))
         status_path, = tmp_path.glob("workspace-forge-*/arena_forge_status.json")
         assert json.loads(status_path.read_text())["status"] == "FAILED"
+    else:
+        # A campaign that ran out of time still leaves the input Arena accepted,
+        # which is the same bundle a completed no-KEEP search delivers.
+        output = adapter.launch({}, "unused", str(context.workspace))
+        assert ('"delivery_selection": "timeout_recovered_validated_input"' if outcome == "timeout"
+                else '"delivery_selection": "initial_validated_implementation"') in output
     assert {name: (context.workspace / name).read_bytes() for name in expected} == expected
     assert (context.baseline_workspace / "source/helper.py").read_text() == "3"
 
@@ -544,7 +777,7 @@ def test_changed_numerical_candidate_reenters_initialization(tmp_path, monkeypat
     # prepare_loop regenerates this program after a successful initialization.
     # Retained failure evidence must describe the old input, not invalidate the
     # new checked candidate or ask the optimization loop to initialize again.
-    from agents.forge.upstream import program_text
+    from agents.forge.program import program_text
     plan = json.loads((status_path.parent / "bridge_plan.json").read_text())
     loop_program = program_text(plan)
     assert "Optimize the existing candidate" in loop_program
@@ -593,138 +826,17 @@ def test_scratch_branch_passes_real_upstream_campaign_preflight(tmp_path, monkey
     assert actual == "codex/arena-forge"
     script = r'''
 import sys
-from agents.forge.upstream import probe
+from agents.forge.engine import probe
 from kernelforge.loop.campaign_config import create_campaign_config
 probe()
 create_campaign_config(workspace_dir=sys.argv[1], kernel='kernel.py', driver='driver.py',
     source_files=['kernel.py'], program_md_file=None, target_functions=['add'],
-    gpu_target='gfx950', gpu_type='mi355x', kernel_backend='triton', task_type='image_kernel')
+    gpu_target='gfx950', gpu_type='mi355x', kernel_backend='triton', task_type='repository')
 '''
     env = dict(os.environ, PYTHONPATH=str(ROOT))
     run = subprocess.run([python, "-c", script, str(root)], cwd=root, env=env,
                          capture_output=True, text=True, timeout=30)
     assert run.returncode == 0, run.stdout + run.stderr
-
-
-def test_installed_upstream_probe_and_real_rewrite_orchestration(tmp_path):
-    """Exercise installed engine dispatch with fake PORT/OPTIMIZE, never an LLM/GPU run."""
-    python = os.environ.get("AKA_FORGE_PROBE_PYTHON")
-    if not python:
-        pytest.skip("Set AKA_FORGE_PROBE_PYTHON to a Hyperloom[forge] interpreter for the compatibility test")
-    context, plan, plan_path = fixture_task(tmp_path, initial_state="unimplemented")
-    engine = Path(plan["engine_root"])
-    plan.update(workflow="rewrite", deadline_unix=time.time()+3600,
-                program=str(engine / "arena_program.md"),
-                agent_config={"initialization_budget_fraction": .4})
-    plan_path.write_text(json.dumps(plan))
-    for file in (engine / "source").glob("*.py"):
-        file.unlink()
-    (engine / "arena_source_hint.py").write_text("# Provided baseline is measured by the task runner\n")
-    (engine / "arena_forge_driver.py").write_text(bridge.render_driver(plan_path, ROOT))
-    (engine / "arena_program.md").write_text("PORT instructions\n")
-    adapter._initialize_git(engine)
-    script = r'''
-import asyncio, json, os, subprocess
-from pathlib import Path
-from agents.forge import upstream, bridge
-from kernelforge.config import Config
-from kernelforge.rewrite_by_flydsl import runner, port_loop
-from kernelforge.rewrite_by_flydsl.port_loop import PortResult
-from kernelforge.loop import canonical_correctness
-plan = json.loads(Path(os.environ["ARENA_FORGE_PLAN"]).read_text())
-root = Path(plan["engine_root"])
-assert upstream.probe()["rewrite_target"] == "flydsl"
-async def port(spec, driver_path, config, *, stop_at_unix=None, **kwargs):
-    # Real seed + preflight have already run. Inspect the adapter's program and
-    # materialize two simple files for the CPU-only task evaluator.
-    prompt = upstream.program_text(plan, port=True)
-    assert stop_at_unix == plan['phase_deadline_unix']
-    assert stop_at_unix < plan['deadline_unix'] - 1800
-    assert "not_a_builder" in prompt
-    assert "build_arbitrary" not in prompt
-    candidate = Path(spec.flydsl_kernel)
-    candidate.write_text("2")
-    (candidate.parent / "helper.py").write_text("3")
-    return PortResult(ok=True, attempts=1)
-def optimize(spec, driver_path, config, **kwargs):
-    root = Path(spec.flydsl_kernel).parent
-    (root / "kernel.py").write_text("1")
-    (root / "helper.py").write_text("6")
-    check = asyncio.run(canonical_correctness.accept_candidate(str(Path(spec.workspace)), timeout_cap_sec=30, candidate_label="cpu-test"))
-    assert check.passed, check.output
-    subprocess.run(['git', 'add', '--', str(root/'kernel.py'), str(root/'helper.py')], cwd=spec.workspace, check=True)
-    subprocess.run(['git', 'commit', '-m', 'CPU fixture candidate'], cwd=spec.workspace, check=True, capture_output=True)
-    args = upstream.configure_nested_loop(plan, ["forge-loop", "--source-files", spec.flydsl_kernel])
-    assert str(root / "helper.py") in args[args.index("--source-files")+1]
-    assert subprocess.check_output(['git', 'status', '--porcelain', '--untracked-files=no'], cwd=spec.workspace, text=True) == ''
-    assert subprocess.check_output(['git', 'show', '--pretty=format:', '--name-only', 'HEAD'], cwd=spec.workspace, text=True).strip() == 'arena_program.md'
-    from kernelforge.loop.campaign_config import create_campaign_config
-    create_campaign_config(workspace_dir=spec.workspace, kernel=str(root/'kernel.py'), driver=str(driver_path),
-        source_files=[str(root/'kernel.py'), str(root/'helper.py')], program_md_file=plan['program'],
-        target_functions=['not_a_builder'], gpu_target='gfx950', gpu_type='mi355x', kernel_backend='flydsl', task_type='image_kernel')
-    return {"best_ms":2, "mean_case_speedup":2, "llm_usage_complete":True}
-port_loop.run_port_loop = port
-upstream.install_hooks(plan)
-assert runner.run_port_loop is port_loop.run_port_loop
-assert runner.run_port_loop.__wrapped__ is port
-runner.run_optimize = optimize
-result = runner.run_rewrite(op_name="operator-different-from-function", source_kernel=str(root / "arena_source_hint.py"),
-        driver=str(root / "arena_forge_driver.py"), workspace=str(root), experiments_dir=str(root / "forge_experiments"),
-        target_functions=[], config=Config(workspace=str(root), gpu_target="gfx950", agent_backend="claude"),
-        flydsl_kernel_name="source/kernel.py", prepare_driver=False, rewrite_kb_enabled=False,
-        result_json=plan["result"], deadline_unix=plan["deadline_unix"])
-assert result["port_ok"], result
-assert result["success"], result
-assert result["applyback_required"] is False
-assert result["builder_symbol"] == "not_a_builder"
-assert 'phase_deadline_unix' not in plan
-budget = json.loads(Path(plan['result']).with_name('port_budget.json').read_text())
-assert budget['status'] == 'PASS' and budget['attempts'] == 1
-print("UPSTREAM_ADAPTER_CPU_TEST_PASS")
-'''
-    env = os.environ.copy()
-    env.update(ARENA_FORGE_PLAN=str(plan_path), PYTHONPATH=str(ROOT))
-    run = subprocess.run([python, "-c", script], cwd=engine, env=env, capture_output=True, text=True, timeout=60)
-    assert run.returncode == 0, run.stdout[-6000:] + run.stderr[-6000:]
-    assert "UPSTREAM_ADAPTER_CPU_TEST_PASS" in run.stdout
-
-
-@pytest.mark.parametrize("nested", [{}, {"llm_usage_complete": False},
-                                   {"llm_usage_complete": True, "terminated_for_deadline": True},
-                                   {"llm_usage_complete": True, "experiment_id": "complete"}])
-def test_nested_loop_failure_cannot_be_hidden_by_successful_port(tmp_path, nested):
-    python = os.environ.get("AKA_FORGE_PROBE_PYTHON")
-    if not python:
-        pytest.skip("Set AKA_FORGE_PROBE_PYTHON to the pinned Hyperloom[forge] interpreter")
-    _, plan, plan_path = fixture_task(tmp_path, initial_state="unimplemented")
-    plan["workflow"] = "rewrite"
-    plan_path.write_text(json.dumps(plan))
-    script = r'''
-import json, os
-from pathlib import Path
-from agents.forge import upstream
-from kernelforge.rewrite_by_flydsl import runner
-plan = json.loads(Path(os.environ['ARENA_FORGE_PLAN']).read_text())
-value = json.loads(os.environ['NESTED_RESULT'])
-runner.run_optimize = lambda *a, **kw: value
-upstream.install_hooks(plan)
-complete = value.get('llm_usage_complete') is True and not value.get('terminated_for_deadline')
-try:
-    result = runner.run_optimize()
-except RuntimeError as error:
-    assert not complete
-    assert 'PORT evidence retained' in str(error)
-else:
-    assert complete and result == value
-evidence = json.loads(Path(plan['result']).with_name('nested_loop_status.json').read_text())
-assert evidence['status'] == ('COMPLETED' if complete else 'FAILED')
-assert evidence['result'] == value
-'''
-    result = subprocess.run([python, "-c", script], cwd=ROOT,
-                            env=dict(os.environ, PYTHONPATH=str(ROOT), ARENA_FORGE_PLAN=str(plan_path),
-                                     NESTED_RESULT=json.dumps(nested)),
-                            text=True, capture_output=True, timeout=60)
-    assert result.returncode == 0, result.stdout + result.stderr
 
 
 def test_internal_absolute_symlinks_rebind_to_snapshot(tmp_path):
