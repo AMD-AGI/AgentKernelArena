@@ -1,0 +1,8 @@
+{
+  "module": "sglang.kernels.ops.attention.minimax_sparse.prefill.topk_sparse",
+  "file": "_patched/sglang.kernels.ops.attention.minimax_sparse.prefill.topk_sparse.py",
+  "sha256": "bf26c1d9ad6ad6d7716727c1ab55d09a786abf59a2cd8a7a390b90285f1e8421",
+  "size_bytes": 30761,
+  "origin": "provenance://shared-nfs/chuschen/agent-kernel-arena/top_model_kernels/headkernel_ut_0914_full/tasks/headkernel/minimax-m3__gqa_share_sparse_decode_kernel/ut/baseline_overlay/_patched/sglang.kernels.ops.attention.minimax_sparse.prefill.topk_sparse.py",
+  "observed_utc": "2026-09-20T17:10:19.412626+00:00"
+}

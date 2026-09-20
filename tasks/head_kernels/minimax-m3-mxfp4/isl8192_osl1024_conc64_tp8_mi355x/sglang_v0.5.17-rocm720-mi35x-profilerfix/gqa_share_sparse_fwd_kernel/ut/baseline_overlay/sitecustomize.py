@@ -1,5 +1,5 @@
 # Auto-generated reversible overlay (e2e_workflow). Drop this dir from PYTHONPATH to revert.
-import json, os, sys, importlib, importlib.util
+import json, os, sys, importlib, importlib.util, hashlib
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _MAN = os.path.join(_HERE, "_overlay_manifest.json")
@@ -7,12 +7,22 @@ try:
     with open(_MAN) as _fh:
         _m = json.load(_fh)
 except Exception as _e:
-    _m = {"modules": [], "rebinds": [], "markers": [], "captures": []}
+    raise SystemExit(f"required overlay manifest could not be loaded: {_e!r}")
 
 # (a) inject patched submodules under their dotted names BEFORE anything imports them.
 for _e in _m.get("modules", []):
+    _dotted = _e.get("module")
+    _previous = sys.modules.get(_dotted)
     try:
         _dotted, _file = _e["module"], os.path.join(_HERE, _e["file"])
+        _file = os.path.realpath(_file)
+        if not _file.startswith(os.path.realpath(_HERE) + os.sep) or not os.path.isfile(_file):
+            raise FileNotFoundError(f"required overlay dependency is missing or external: {_e['file']}")
+        if _e.get("sha256"):
+            with open(_file, "rb") as _stream:
+                _actual = hashlib.sha256(_stream.read()).hexdigest()
+            if _actual != _e["sha256"]:
+                raise RuntimeError(f"required overlay dependency SHA-256 mismatch: {_e['file']}")
         _spec = importlib.util.spec_from_file_location(_dotted, _file)
         _mod = importlib.util.module_from_spec(_spec)
         sys.modules[_dotted] = _mod
@@ -26,7 +36,13 @@ for _e in _m.get("modules", []):
                 pass
         sys.stderr.write("[overlay] injected module %s <- %s\n" % (_dotted, _file))
     except Exception as _ex:
-        sys.stderr.write("[overlay] module inject FAILED %r: %r\n" % (_e, _ex))
+        if _previous is None:
+            sys.modules.pop(_dotted, None)
+        else:
+            sys.modules[_dotted] = _previous
+        # SystemExit is fatal even during Python's automatic sitecustomize import.
+        # Never continue with a half-built module or silently fall back to the install.
+        raise SystemExit(f"required overlay module {_dotted} failed: {_ex!r}") from _ex
 
 # (b) rebind single attributes (monkeypatch).
 for _e in _m.get("rebinds", []):
