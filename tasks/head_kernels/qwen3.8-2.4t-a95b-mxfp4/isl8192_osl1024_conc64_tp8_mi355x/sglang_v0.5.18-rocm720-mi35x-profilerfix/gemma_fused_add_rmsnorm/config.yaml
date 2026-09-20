@@ -13,13 +13,22 @@ task_type: triton2triton
 task_result_template: null
 prompt:
   source_code: null
-  instructions: "Optimize the Qwen3.8-2.4T-A95B-MXFP4 _gemma_fused_add_rmsnorm_kernel kernel on MI355X (gfx950).\nBackend: Triton. Serving capture: ISL 8192 / OSL 1024 / CONC 64 / TP 8.\n\nEdit only the declared source files and target functions:\n  source/minimax_m3_rmsnorm.py\n  gemma_fused_add_rmsnorm\n  _gemma_fused_add_rmsnorm_kernel\n\nKeep the production callable signature and the captured shape, dtype, stride,\ntensor-attribute, routing, state-update and output-alias contracts unchanged.\nProduction seam: sglang.srt.layers.layernorm:rocm_triton_gemma_fused_add_rmsnorm.\nUse the task's frozen correctness references and complete benchmark case set.\nThe starting-source provenance is stock; archival profile\nand speedup figures in the provenance files are not measurements of this run.\nThe Arena evaluator measures the committed starting implementation and candidate\nunder the same benchmark contract. Do not edit ut/, scripts/, or config.yaml.\n"
+  instructions: "Optimize the Qwen3.8-2.4T-A95B-MXFP4 _gemma_fused_add_rmsnorm_kernel kernel on MI355X\
+    \ (gfx950).\nBackend: Triton. Serving capture: ISL 8192 / OSL 1024 / CONC 64 / TP 8.\n\nEdit only\
+    \ the declared source files and target functions:\n  source/minimax_m3_rmsnorm.py\n  gemma_fused_add_rmsnorm\n\
+    \  _gemma_fused_add_rmsnorm_kernel\n\nKeep the production callable signature and the captured shape,\
+    \ dtype, stride,\ntensor-attribute, routing, state-update and output-alias contracts unchanged.\n\
+    Production seam: sglang.srt.layers.layernorm:rocm_triton_gemma_fused_add_rmsnorm.\nUse the task's\
+    \ frozen correctness references and complete benchmark case set.\nThe starting-source provenance is\
+    \ stock; archival profile\nand speedup figures in the provenance files are not measurements of this\
+    \ run.\nThe Arena evaluator measures the committed starting implementation and candidate\nunder the\
+    \ same benchmark contract. Do not edit ut/, scripts/, or config.yaml.\n"
   cheatsheet: null
 headkernel:
   operation_id: qwen3.8-2.4t__gemma_fused_add_rmsnorm
   model: Qwen3.8-2.4T-A95B-MXFP4
   owner: Li, Zeping <zepingl@amd.com>
-  docker: harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.18-rocm720-mi35x-profilerfix
+  docker: docker.io/rocm/hyperloom@sha256:da36f56f24cb2897a56be52dd43774c1a75b1500308ed7db3ba32fb8db4d259c
   serving: ISL 8192 / OSL 1024 / CONC 64 / TP 8
   backend: Triton
   regime: prefill+decode
@@ -39,6 +48,17 @@ headkernel:
   symbol_locations:
     gemma_fused_add_rmsnorm: source/minimax_m3_rmsnorm.py
     _gemma_fused_add_rmsnorm_kernel: source/minimax_m3_rmsnorm.py
+  capture_runtime:
+    image: harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.18-rocm720-mi35x-profilerfix
+    image_id: sha256:760dd38b9b6f2bd11c13011d470eb8e377c3f0d71284a090a710d64a23bd789f
+    scope: Historical serving capture; not the current public runtime
+    sglang_version: 0.5.18
+  runtime:
+    profile: public_hyperloom_sglang_v0518
+    expected_image_id: sha256:af24798ab4d57196fa1e928e4c81202bafb06cdeb663158f4d4f038fdb18f1a3
+    sglang_version: 0.5.18
+    qualification_status: pending
+    public_tag: docker.io/rocm/hyperloom:sglang-v0.5.18-rocm7.2.0-mi350x
 compile_timeout: 600
 correctness_timeout: 3600
 performance_timeout: 3600

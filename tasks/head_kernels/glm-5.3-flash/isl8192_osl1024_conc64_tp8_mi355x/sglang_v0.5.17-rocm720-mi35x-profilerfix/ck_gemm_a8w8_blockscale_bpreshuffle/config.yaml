@@ -26,7 +26,7 @@ prompt:
 headkernel:
   operation_id: glm-5.3-flash__ck_gemm_a8w8_blockscale_bpreshuffle
   model: GLM-5.3-Flash
-  docker: harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.17-rocm720-mi35x-profilerfix
+  docker: docker.io/rocm/hyperloom@sha256:1f5464829559b086eb66f9b803cb9c7a817438c43edff2d5ef59b46a186745f6
   serving: ISL 8192 / OSL 1024 / CONC 64 / TP 8
   backend: CK / CKTile via AITER
   target_callable: aiter:gemm_a8w8_blockscale_bpreshuffle
@@ -39,4 +39,13 @@ headkernel:
   benchmark_scope: single-rank operator; graph device timing of the eager operator; not serving end-to-end
     performance
   runtime:
+    sglang_version: 0.5.17
+    profile: public_hyperloom_sglang_v0517
+    expected_image_id: sha256:ffe4af630e49b05c812db4a468bfb411c3dbb0e93124801f28349bfa31352dea
+    qualification_status: pending
+    public_tag: docker.io/rocm/hyperloom:sglang-v0.5.17-rocm7.2.0-mi350x
+  capture_runtime:
+    image: harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.17-rocm720-mi35x-profilerfix
+    image_id: null
+    scope: Historical serving capture; not the current public runtime
     sglang_version: 0.5.17

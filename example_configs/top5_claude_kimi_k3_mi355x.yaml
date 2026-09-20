@@ -1,4 +1,5 @@
-# Capture-runtime cohort: kimi_k3; 3 isolated operator tasks.
+# Public runtime task cohort: kimi_k3; 3 isolated operator tasks.
+# Kimi operators now use the public SGLang v0.5.17 runtime; qualification pending.
 # Select and verify its image through the supported Docker runner with:
 # python3 src/scripts/top5_head_kernels.py run --config example_configs/top5_claude_kimi_k3_mi355x.yaml
 # Inspect the selected image/tasks without Docker by replacing run with plan.

@@ -13,13 +13,21 @@ task_type: triton2triton
 task_result_template: null
 prompt:
   source_code: null
-  instructions: "Optimize the Kimi-K3 _fwd_grouped_kernel_stage1 kernel on MI355X (gfx950).\nBackend: triton (attention). Serving capture: ISL 8192 / OSL 1024 / CONC 64 / TP 8.\n\nEdit only the declared source files and target functions:\n  source/geak_mla_stage1.py\n  _fwd_grouped_kernel_stage1_tm\n  make_launcher\n\nKeep the production callable signature and the captured shape, dtype, stride,\ntensor-attribute, routing, state-update and output-alias contracts unchanged.\nProduction seam: sglang.kernels.ops.attention.decode_attention:_decode_grouped_att_m_fwd.\nUse the task's frozen correctness references and complete benchmark case set.\nThe starting-source provenance is prior-candidate; archival profile\nand speedup figures in the provenance files are not measurements of this run.\nThe Arena evaluator measures the committed starting implementation and candidate\nunder the same benchmark contract. Do not edit ut/, scripts/, or config.yaml.\n"
+  instructions: "Optimize the Kimi-K3 _fwd_grouped_kernel_stage1 kernel on MI355X (gfx950).\nBackend:\
+    \ triton (attention). Serving capture: ISL 8192 / OSL 1024 / CONC 64 / TP 8.\n\nEdit only the declared\
+    \ source files and target functions:\n  source/geak_mla_stage1.py\n  _fwd_grouped_kernel_stage1_tm\n\
+    \  make_launcher\n\nKeep the production callable signature and the captured shape, dtype, stride,\n\
+    tensor-attribute, routing, state-update and output-alias contracts unchanged.\nProduction seam: sglang.kernels.ops.attention.decode_attention:_decode_grouped_att_m_fwd.\n\
+    Use the task's frozen correctness references and complete benchmark case set.\nThe starting-source\
+    \ provenance is prior-candidate; archival profile\nand speedup figures in the provenance files are\
+    \ not measurements of this run.\nThe Arena evaluator measures the committed starting implementation\
+    \ and candidate\nunder the same benchmark contract. Do not edit ut/, scripts/, or config.yaml.\n"
   cheatsheet: null
 headkernel:
   operation_id: kimi-k3__fwd_grouped_kernel_stage1
   model: Kimi-K3
   owner: Hongtao
-  docker: harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang-rocm-k3:rocm720-mi35x-k3-20260727-tl312-08011830
+  docker: docker.io/rocm/hyperloom@sha256:1f5464829559b086eb66f9b803cb9c7a817438c43edff2d5ef59b46a186745f6
   serving: ISL 8192 / OSL 1024 / CONC 64 / TP 8
   backend: triton (attention)
   regime: decode
@@ -39,6 +47,16 @@ headkernel:
   symbol_locations:
     _fwd_grouped_kernel_stage1_tm: source/geak_mla_stage1.py
     make_launcher: source/geak_mla_stage1.py
+  capture_runtime:
+    image: harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang-rocm-k3:rocm720-mi35x-k3-20260727-tl312-08011830
+    image_id: null
+    scope: Historical serving capture; not the current public runtime
+  runtime:
+    profile: public_hyperloom_sglang_v0517
+    expected_image_id: sha256:ffe4af630e49b05c812db4a468bfb411c3dbb0e93124801f28349bfa31352dea
+    sglang_version: 0.5.17
+    qualification_status: pending
+    public_tag: docker.io/rocm/hyperloom:sglang-v0.5.17-rocm7.2.0-mi350x
 compile_timeout: 600
 correctness_timeout: 3600
 performance_timeout: 3600

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Select one captured head-kernel image, then use the standard Docker runner.
+"""Select one pinned public head-kernel runtime and use the Docker runner.
 
 The run YAML selects tasks and an agent. Each task's headkernel.docker field
-selects its capture image. A single container cannot mix these runtimes.
+selects its current runtime. Historical capture images remain provenance.
 """
 from __future__ import annotations
 
@@ -37,18 +37,18 @@ def environment_matrix(repo_root: Path = REPO_ROOT) -> str:
         "Generated from task configs and protected capture metadata by",
         "`python3 src/scripts/top5_head_kernels.py matrix`.",
         "Regenerate this table after changing a task's runtime metadata.", "",
-        "All tasks require an MI355X (`gfx950`). Versioned image tags are the",
-        "capture runtime references. The Qwen metadata also records a captured",
-        "Docker image/config ID, which is enforced when those tasks are selected.",
-        "Docker image IDs are distinct from registry manifest digests. The runner",
-        "records the actual launched image ID and available RepoDigests on each run.",
-        "Registry digest qualification and unlisted package versions remain to be",
-        "recorded during GPU qualification. An unlisted",
+        "All tasks require an MI355X (`gfx950`) and select pinned public HyperLoom",
+        "manifests. Every current Docker image/config ID is enforced by the host",
+        "runner and task preflight. GPU qualification remains pending. Historical",
+        "capture images and IDs are recorded separately below; they do not identify",
+        "the current public images or establish image equivalence. Docker image IDs",
+        "are distinct from registry manifest digests. An unlisted",
         "package version means the capture image supplies it; it is not permission",
         "to install a floating upgrade. This table is not a validation report.", "",
-        "| Task | Capture image | Expected Docker image ID | ROCm/HIP | Package requirements | Captured source commits | Architecture registration | Required environment |",
-        "| --- | --- | --- | --- | --- | --- | --- | --- |",
+        "| Task | Current public image | Enforced Docker image ID | ROCm/HIP | Package requirements | Captured source commits | Architecture registration | Required environment | Qualification |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
     ]
+    historical_rows = []
     for path in sorted((repo_root / "tasks/head_kernels").rglob("config.yaml")):
         task = load_mapping(path)
         requirements = runtime.runtime_requirements(task, path.parent)
@@ -66,7 +66,13 @@ def environment_matrix(repo_root: Path = REPO_ROOT) -> str:
         selector = path.parent.relative_to(repo_root / "tasks").as_posix()
         lines.append(f"| [{selector}](../../{relative_path}) | "
                      f"`{requirements['image']}` | {image_id} | {requirements['hip_version']} | "
-                     f"{packages} | {commits} | {model_types} | {environment} |")
+                     f"{packages} | {commits} | {model_types} | {environment} | {requirements['qualification_status']} |")
+        capture_id = f"`{requirements['capture_image_id']}`" if requirements["capture_image_id"] else "Not recorded"
+        historical_rows.append(f"| [{selector}](../../{relative_path}) | `{requirements['capture_image']}` | {capture_id} |")
+    lines.extend(["", "## Historical capture provenance", "",
+                  "These references are archival metadata, not runtime dependencies.", "",
+                  "| Task | Historical capture image | Historical Docker image ID |",
+                  "| --- | --- | --- |", *historical_rows])
     lines.extend(["", "See [the runtime guide](../how-to/top5-head-kernels-runtime.md) for",
                   "cohort launch commands, runtime enforcement, and remaining qualification.", ""])
     return "\n".join(lines)
@@ -89,12 +95,8 @@ def plan_run(config_path: Path, repo_root: Path = REPO_ROOT) -> dict:
     config = load_mapping(config_path)
     if config.get("target_gpu_model") != "MI355X":
         raise ValueError("Top-five head kernels require target_gpu_model: MI355X")
-    validation_runtime = config.get("headkernel_validation_runtime")
-    if validation_runtime is not None:
-        if not isinstance(validation_runtime, str) or not validation_runtime:
-            raise ValueError("headkernel_validation_runtime must be a declared runtime name")
-        if (config.get("agent") or {}).get("template") != "task_validator":
-            raise ValueError("An alternative validation runtime requires agent.template: task_validator")
+    if config.get("headkernel_validation_runtime") is not None:
+        raise ValueError("Remove headkernel_validation_runtime; public runtimes are now the task defaults")
     selectors = config.get("tasks")
     if not isinstance(selectors, list) or not selectors:
         raise ValueError("The run config must select at least one head-kernel task")
@@ -103,6 +105,7 @@ def plan_run(config_path: Path, repo_root: Path = REPO_ROOT) -> dict:
     suite_root = (tasks_root / "head_kernels").resolve()
     selected: dict[str, str] = {}
     expected_image_ids = set()
+    profiles = set()
     required_environment = {}
     runtime = runtime_contract_reader()
     for selector in selectors:
@@ -118,7 +121,7 @@ def plan_run(config_path: Path, repo_root: Path = REPO_ROOT) -> dict:
             if not task_path.resolve().is_relative_to(suite_root):
                 raise ValueError(f"Task config escapes the suite: {selector}")
             task = load_mapping(task_path)
-            requirements = runtime.runtime_requirements(task, task_path.parent, validation_runtime)
+            requirements = runtime.runtime_requirements(task, task_path.parent)
             image = requirements["image"]
             if not isinstance(image, str) or not image.strip() or image != image.strip():
                 raise ValueError(f"Missing headkernel.docker in {task_path}")
@@ -128,6 +131,8 @@ def plan_run(config_path: Path, repo_root: Path = REPO_ROOT) -> dict:
                 raise ValueError(f"A versioned image reference is required: {image!r}")
             selected[task_path.parent.relative_to(tasks_root).as_posix()] = image
             required_environment.update(requirements["environment"])
+            if requirements["profile"]:
+                profiles.add(requirements["profile"])
             if requirements["expected_image_id"]:
                 expected_image_ids.add(requirements["expected_image_id"])
 
@@ -135,16 +140,15 @@ def plan_run(config_path: Path, repo_root: Path = REPO_ROOT) -> dict:
     if len(images) != 1:
         detail = "; ".join(f"{image}: {sum(v == image for v in selected.values())} tasks"
                            for image in images)
-        raise ValueError(f"Mixed capture runtimes; use one cohort per run ({detail})")
+        raise ValueError(f"Mixed task runtimes; use one public runtime per run ({detail})")
     if len(expected_image_ids) > 1:
-        raise ValueError("Selected tasks require conflicting captured Docker image IDs")
-    if validation_runtime and len(selected) != 1:
-        raise ValueError("An alternative validation runtime must select exactly one task")
+        raise ValueError("Selected tasks require conflicting Docker image IDs")
     return {
         "config": config_path.relative_to(repo_root).as_posix(),
         "image": images[0],
-        "validation_runtime": validation_runtime,
-        "runtime_role": "validation_alternative" if validation_runtime else "capture",
+        "profiles": sorted(profiles),
+        "runtime_role": "public_portable" if profiles else "capture",
+        "qualification_status": "pending" if profiles else "not_recorded",
         "expected_image_id": next(iter(expected_image_ids), None),
         "required_environment": required_environment,
         "target_gpu_model": "MI355X",
@@ -158,15 +162,13 @@ def runtime_environment(plan: dict, environment: dict[str, str]) -> dict[str, st
     if override and override != plan["image"]:
         raise ValueError("AKA_DOCKER_IMAGE conflicts with the selected tasks' "
                          f"runtime image: expected {plan['image']}, got {override}")
-    validation_runtime = plan.get("validation_runtime") or ""
-    inherited = environment.get("AKA_HEAD_KERNEL_VALIDATION_RUNTIME") or ""
-    if inherited and inherited != validation_runtime:
-        raise ValueError("AKA_HEAD_KERNEL_VALIDATION_RUNTIME must match the explicit run config selection")
+    if environment.get("AKA_HEAD_KERNEL_VALIDATION_RUNTIME"):
+        raise ValueError("Named alternative runtime overrides are retired; use the task's pinned public default")
     result = dict(environment)
     result["AKA_DOCKER_IMAGE"] = plan["image"]
     result["AKA_VERIFY_RUNTIME_IMAGE"] = "1"
     result["AKA_TOP5_ISOLATED_CACHES"] = "1"
-    result["AKA_HEAD_KERNEL_VALIDATION_RUNTIME"] = validation_runtime
+    result.pop("AKA_HEAD_KERNEL_VALIDATION_RUNTIME", None)
     result.update(plan.get("required_environment", {}))
     expected_id = plan.get("expected_image_id")
     if expected_id:
@@ -203,8 +205,6 @@ def main(argv: list[str] | None = None) -> int:
                    "--config_name", plan["config"], *runner_args]
         if args.action == "plan":
             identity_environment = {"AKA_VERIFY_RUNTIME_IMAGE": "1", "AKA_TOP5_ISOLATED_CACHES": "1"}
-            if plan["validation_runtime"]:
-                identity_environment["AKA_HEAD_KERNEL_VALIDATION_RUNTIME"] = plan["validation_runtime"]
             if environment.get("AKA_EXPECTED_IMAGE_ID"):
                 identity_environment["AKA_EXPECTED_IMAGE_ID"] = environment["AKA_EXPECTED_IMAGE_ID"]
             print(json.dumps({**plan, "command": command,

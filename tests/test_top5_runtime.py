@@ -56,18 +56,20 @@ class CohortTests(unittest.TestCase):
                                   for path in (ROOT / "tasks/head_kernels").rglob("config.yaml"))
         for agent in ("validator", "claude"):
             plans = [launcher.plan_run(path) for path in
-                     sorted((ROOT / "example_configs").glob(f"top5_{agent}_*_mi355x.yaml"))
-                     if not yaml.safe_load(path.read_text()).get("headkernel_validation_runtime")]
+                     [ROOT / "example_configs" / f"top5_{agent}_{cohort}_mi355x.yaml"
+                      for cohort in ("sglang_v0517", "sglang_v0518", "kimi_k3")]]
             self.assertEqual(len(plans), 3)
             selected = [task for plan in plans for task in plan["tasks"]]
             self.assertEqual(len(selected), len(set(selected)))
             self.assertEqual(set(selected), expected)
-            by_image = {plan["image"]: plan["task_count"] for plan in plans}
+            by_image = Counter()
+            for plan in plans:
+                by_image[plan["image"]] += plan["task_count"]
             self.assertEqual(by_image, dict(expected_counts))
 
     def test_rejects_mixed_capture_images(self):
         config = fixture_config(self.tmp_path, ["registry/sglang:v0.5.17", "registry/sglang:v0.5.18"])
-        with self.assertRaisesRegex(ValueError, "Mixed capture runtimes"):
+        with self.assertRaisesRegex(ValueError, "Mixed task runtimes"):
             launcher.plan_run(config, self.tmp_path)
 
     def test_rejects_unversioned_or_invalid_image(self):
@@ -109,7 +111,7 @@ class CohortTests(unittest.TestCase):
         self.assertEqual(kwargs["env"]["AKA_TOP5_ISOLATED_CACHES"], "1")
         self.assertEqual(kwargs["env"]["TVM_FFI_DISABLE_TORCH_C_DLPACK"], "1")
         self.assertEqual(kwargs["env"]["AKA_EXPECTED_IMAGE_ID"],
-                         "sha256:760dd38b9b6f2bd11c13011d470eb8e377c3f0d71284a090a710d64a23bd789f")
+                         "sha256:af24798ab4d57196fa1e928e4c81202bafb06cdeb663158f4d4f038fdb18f1a3")
         self.assertEqual(kwargs["cwd"], ROOT)
 
     def test_plan_never_launches_process(self):
@@ -210,7 +212,7 @@ class RuntimeTests(unittest.TestCase):
     def test_preflight_image_mismatch_precedes_imports(self):
         with mock.patch.dict(os.environ, {"AGENT_KERNEL_ARENA_DOCKER_IMAGE": "default:v0.5.14"}), \
                 mock.patch.object(runtime.importlib, "import_module", side_effect=AssertionError("unexpected import")):
-            self.assert_runtime_rejected("Capture image mismatch")
+            self.assert_runtime_rejected("Runtime image mismatch")
 
     def test_rejects_wrong_sglang(self):
         self.modules["sglang"].__version__ = "0.5.17"
@@ -265,7 +267,7 @@ class RuntimeTests(unittest.TestCase):
 
     def test_rejects_capture_image_id_mismatch(self):
         self.config["headkernel"]["runtime"] = {"expected_image_id": "sha256:" + "b" * 64}
-        self.assert_runtime_rejected("Capture image ID mismatch")
+        self.assert_runtime_rejected("Runtime image ID mismatch")
 
     def test_records_registry_digests_separately_from_image_id(self):
         digests = ["registry/sglang@sha256:" + "c" * 64]
@@ -283,85 +285,94 @@ class RuntimeTests(unittest.TestCase):
         self.assertEqual(persisted["selected_image_id"], "sha256:" + "a" * 64)
 
 
-class PublicValidationTests(unittest.TestCase):
+class PublicDefaultTests(unittest.TestCase):
+    V17_IMAGE = "docker.io/rocm/hyperloom@sha256:1f5464829559b086eb66f9b803cb9c7a817438c43edff2d5ef59b46a186745f6"
+    V17_ID = "sha256:ffe4af630e49b05c812db4a468bfb411c3dbb0e93124801f28349bfa31352dea"
+    V18_IMAGE = "docker.io/rocm/hyperloom@sha256:da36f56f24cb2897a56be52dd43774c1a75b1500308ed7db3ba32fb8db4d259c"
+    V18_ID = "sha256:af24798ab4d57196fa1e928e4c81202bafb06cdeb663158f4d4f038fdb18f1a3"
+    CAPTURE_ID = "sha256:760dd38b9b6f2bd11c13011d470eb8e377c3f0d71284a090a710d64a23bd789f"
+
     def setUp(self):
         RuntimeTests.setUp(self)
-        self.public_task = task_directory("glm-5.3-flash__gemm_a16w16_bf16_cijk")
+        self.public_task = task_directory("qwen3.8-2.4t__gemma_fused_add_rmsnorm")
         self.public_config = yaml.safe_load((self.public_task / "config.yaml").read_text())
-        self.public_name = "public_hyperloom_rocm720"
-        self.public_spec = self.public_config["headkernel"]["validation_runtimes"][self.public_name]
 
-    def test_public_plan_is_explicit_and_preserves_capture_default(self):
-        config = ROOT / "example_configs/top5_validator_glm_bf16_public_mi355x.yaml"
-        plan = launcher.plan_run(config)
+    def test_all_tasks_pin_public_defaults_and_preserve_capture_provenance(self):
+        expected = {self.V17_IMAGE: (self.V17_ID, "0.5.17"), self.V18_IMAGE: (self.V18_ID, "0.5.18")}
+        counts = Counter()
+        for path in (ROOT / "tasks/head_kernels").rglob("config.yaml"):
+            config = yaml.safe_load(path.read_text())
+            metadata = config["headkernel"]
+            requirements = runtime.runtime_requirements(config, path.parent)
+            image = requirements["image"]
+            self.assertIn(image, expected)
+            self.assertEqual(requirements["expected_image_id"], expected[image][0])
+            self.assertEqual(requirements["package_versions"]["sglang"], expected[image][1])
+            self.assertEqual(requirements["runtime_role"], "public_portable")
+            self.assertEqual(requirements["qualification_status"], "pending")
+            self.assertNotEqual(image, metadata["capture_runtime"]["image"])
+            self.assertNotIn("validation_runtimes", metadata)
+            counts[image] += 1
+        self.assertEqual(counts, {self.V17_IMAGE: 11, self.V18_IMAGE: 7})
+
+    def test_single_bf16_validator_uses_ordinary_public_default(self):
+        path = ROOT / "example_configs/top5_validator_glm_bf16_public_mi355x.yaml"
+        plan = launcher.plan_run(path)
         self.assertEqual(plan["task_count"], 1)
-        self.assertEqual(plan["image"], self.public_spec["image"])
-        self.assertEqual(plan["expected_image_id"], self.public_spec["image_id"])
-        self.assertEqual(plan["runtime_role"], "validation_alternative")
-        environment = launcher.runtime_environment(plan, {})
-        self.assertEqual(environment["AKA_HEAD_KERNEL_VALIDATION_RUNTIME"], self.public_name)
-        capture = runtime.runtime_requirements(self.public_config, self.public_task)
-        self.assertEqual(capture["image"], self.public_config["headkernel"]["docker"])
-        self.assertEqual(capture["runtime_role"], "capture")
+        self.assertEqual(plan["image"], self.V17_IMAGE)
+        self.assertEqual(plan["expected_image_id"], self.V17_ID)
+        self.assertNotIn("headkernel_validation_runtime", yaml.safe_load(path.read_text()))
 
-    def test_public_runtime_is_declared_only_for_glm_bf16(self):
-        supported = [path.parent for path in (ROOT / "tasks/head_kernels").rglob("config.yaml")
-                     if yaml.safe_load(path.read_text())["headkernel"].get("validation_runtimes")]
-        self.assertEqual(supported, [self.public_task])
+    def test_kimi_and_v17_configs_select_the_same_public_image(self):
+        plans = [launcher.plan_run(ROOT / "example_configs" / f"top5_validator_{cohort}_mi355x.yaml")
+                 for cohort in ("sglang_v0517", "kimi_k3")]
+        self.assertTrue(all(plan["image"] == self.V17_IMAGE for plan in plans))
+        self.assertTrue(all(plan["expected_image_id"] == self.V17_ID for plan in plans))
 
-    def test_unknown_runtime_and_unsupported_task_are_rejected(self):
-        for config, name in ((self.public_config, "unknown"), (self.config, self.public_name)):
-            with self.subTest(name=name), self.assertRaisesRegex(ValueError, "not declared"):
-                runtime.runtime_requirements(config, self.task_dir, name)
+    def test_qwen_capture_identity_is_historical(self):
+        requirements = runtime.runtime_requirements(self.public_config, self.public_task)
+        self.assertEqual(requirements["capture_image_id"], self.CAPTURE_ID)
+        self.assertEqual(requirements["expected_image_id"], self.V18_ID)
 
-    def test_public_override_cannot_be_selected_only_by_host_environment(self):
-        capture_plan = {"image": self.public_config["headkernel"]["docker"]}
-        with self.assertRaisesRegex(ValueError, "explicit run config"):
-            launcher.runtime_environment(capture_plan, {"AKA_HEAD_KERNEL_VALIDATION_RUNTIME": self.public_name})
-
-    def test_unknown_image_override_is_rejected(self):
-        plan = launcher.plan_run(ROOT / "example_configs/top5_validator_glm_bf16_public_mi355x.yaml")
-        with self.assertRaisesRegex(ValueError, "conflicts"):
-            launcher.runtime_environment(plan, {"AKA_DOCKER_IMAGE": "docker.io/rocm/hyperloom:latest"})
-
-    def test_matching_public_identity_passes_environment_checks(self):
-        self.modules["sglang"].__version__ = "0.5.17"
-        self.modules["aiter.tuned_gemm"] = SimpleNamespace(torch_gemm=lambda: None)
-        environment = {
-            "AGENT_KERNEL_ARENA_HEAD_KERNEL_VALIDATION_RUNTIME": self.public_name,
-            "AGENT_KERNEL_ARENA_DOCKER_IMAGE": self.public_spec["image"],
-            "AGENT_KERNEL_ARENA_DOCKER_IMAGE_ID": self.public_spec["image_id"],
-        }
+    def test_current_public_identity_passes_and_records_historical_capture(self):
+        self.modules["sglang.srt.layers.layernorm"] = SimpleNamespace(rocm_triton_gemma_fused_add_rmsnorm=lambda: None)
+        environment = {"AGENT_KERNEL_ARENA_DOCKER_IMAGE": self.V18_IMAGE,
+                       "AGENT_KERNEL_ARENA_DOCKER_IMAGE_ID": self.V18_ID}
         with mock.patch.dict(os.environ, environment):
             report = runtime.preflight(self.public_config, self.public_task)
         self.assertEqual(report["status"], "ok", report)
-        self.assertEqual(report["runtime_role"], "validation_alternative")
-        self.assertEqual(report["capture_image"], self.public_config["headkernel"]["docker"])
+        self.assertEqual(report["capture_image_id"], self.CAPTURE_ID)
+        self.assertEqual(report["selected_image_id"], self.V18_ID)
+        self.assertEqual(report["qualification_status"], "pending")
 
-    def test_wrong_public_image_id_fails_before_import(self):
-        environment = {
-            "AGENT_KERNEL_ARENA_HEAD_KERNEL_VALIDATION_RUNTIME": self.public_name,
-            "AGENT_KERNEL_ARENA_DOCKER_IMAGE": self.public_spec["image"],
-            "AGENT_KERNEL_ARENA_DOCKER_IMAGE_ID": "sha256:" + "0" * 64,
-        }
+    def test_old_captured_image_id_is_rejected_for_public_default(self):
+        environment = {"AGENT_KERNEL_ARENA_DOCKER_IMAGE": self.V18_IMAGE,
+                       "AGENT_KERNEL_ARENA_DOCKER_IMAGE_ID": self.CAPTURE_ID}
         with mock.patch.dict(os.environ, environment), \
                 mock.patch.object(runtime.importlib, "import_module", side_effect=AssertionError("unexpected import")):
             report = runtime.preflight(self.public_config, self.public_task)
         self.assertEqual(report["status"], "fail")
         self.assertTrue(any("image ID mismatch" in error for error in report["errors"]))
 
-    def test_unpinned_public_image_is_rejected(self):
-        self.public_spec["image"] = "docker.io/rocm/hyperloom:latest"
-        with self.assertRaisesRegex(ValueError, "pin a registry manifest"):
-            runtime.runtime_requirements(self.public_config, self.public_task, self.public_name)
+    def test_missing_public_identity_never_falls_back_to_capture_id(self):
+        self.public_config["headkernel"]["runtime"].pop("expected_image_id")
+        with self.assertRaisesRegex(ValueError, "must pin its Docker"):
+            runtime.runtime_requirements(self.public_config, self.public_task)
 
-    def test_public_runtime_cannot_be_used_for_optimization_run(self):
-        path = fixture_config(self.task_dir, [self.public_config["headkernel"]["docker"]])
-        config = yaml.safe_load(path.read_text())
-        config.update(agent={"template": "claude_code"}, headkernel_validation_runtime=self.public_name)
-        path.write_text(yaml.safe_dump(config))
-        with self.assertRaisesRegex(ValueError, "task_validator"):
-            launcher.plan_run(path, self.task_dir)
+    def test_unpinned_public_image_is_rejected(self):
+        self.public_config["headkernel"]["docker"] = "docker.io/rocm/hyperloom:latest"
+        with self.assertRaisesRegex(ValueError, "pin a registry manifest"):
+            runtime.runtime_requirements(self.public_config, self.public_task)
+
+    def test_unknown_image_override_is_rejected(self):
+        plan = launcher.plan_run(ROOT / "example_configs/top5_validator_glm_bf16_public_mi355x.yaml")
+        with self.assertRaisesRegex(ValueError, "conflicts"):
+            launcher.runtime_environment(plan, {"AKA_DOCKER_IMAGE": "docker.io/rocm/hyperloom:latest"})
+
+    def test_retired_named_runtime_overrides_are_rejected(self):
+        with self.assertRaisesRegex(ValueError, "retired"):
+            launcher.runtime_environment({"image": self.V17_IMAGE},
+                                         {"AKA_HEAD_KERNEL_VALIDATION_RUNTIME": "public_hyperloom_rocm720"})
 
 
 if __name__ == "__main__":

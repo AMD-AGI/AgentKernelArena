@@ -1,103 +1,46 @@
 # Run the five-workload head-kernel suite
 
-The tasks under `tasks/head_kernels` are isolated operator benchmarks from
-five serving workloads. Their ISL 8192 / OSL 1024 / concurrency 64 / TP 8 metadata
-describes the serving captures. Each task runs a local operator or one captured
-tensor-parallel shard on an MI355X (`gfx950`); these commands do not launch the
-five models or measure eight-GPU serving throughput.
+Every task now selects a pinned public `docker.io/rocm/hyperloom` image. Runtime
+launches use the local checkout and public Docker Hub; they do not contact the
+historical capture registry or require the original compute node. The original
+capture images and known Docker image IDs remain explicit historical provenance.
+The new public runtime profiles have **GPU qualification pending** and are not
+asserted to be identical to those capture images.
 
-The [suite index](../../tasks/head_kernels/README.md) lists **18 separate kernel
-tasks** under `<model>/isl8192_osl1024_conc64_tp8_mi355x/<exact-image>/<kernel>`.
-Each of the six model/image groups includes `workload.json` and a README with
-the exact configuration and kernel list. Every kernel carries `SHAPES.json`,
-`SHAPES.md`, its own `config.yaml`, source, frozen cases, and runtime preflight.
-The full directory path relative to `tasks/` is its unique selector. Imported
-flat identifiers remain stable `headkernel.operation_id` metadata.
+The [suite index](../../tasks/head_kernels/README.md) lists 18 operator tasks from
+five serving workloads. ISL 8192 / OSL 1024 / concurrency 64 / TP 8 describes the
+serving workload. Each task runs a local operator or one tensor-parallel shard
+on an MI355X (`gfx950`); these are not eight-GPU model-serving measurements.
+Task paths retain their capture-era grouping during the runtime migration.
+`config.yaml`, rather than a directory name, selects the current runtime.
 
-The tasks span three capture runtimes. Use one cohort per run:
+| Task cohort | Current public profile | Validator config | Optimization config |
+| --- | --- | --- | --- |
+| Original v0.5.17 tasks | SGLang v0.5.17 / ROCm 7.2 | [Validator](../../example_configs/top5_validator_sglang_v0517_mi355x.yaml) | [Claude Code](../../example_configs/top5_claude_sglang_v0517_mi355x.yaml) |
+| Original v0.5.18 tasks | SGLang v0.5.18 / ROCm 7.2 | [Validator](../../example_configs/top5_validator_sglang_v0518_mi355x.yaml) | [Claude Code](../../example_configs/top5_claude_sglang_v0518_mi355x.yaml) |
+| Kimi K3 operators | SGLang v0.5.17 / ROCm 7.2 | [Validator](../../example_configs/top5_validator_kimi_k3_mi355x.yaml) | [Claude Code](../../example_configs/top5_claude_kimi_k3_mi355x.yaml) |
 
-| Capture cohort | Validation config | Optimization config |
-| --- | --- | --- |
-| SGLang v0.5.17 | [Validator](../../example_configs/top5_validator_sglang_v0517_mi355x.yaml) | [Claude Code](../../example_configs/top5_claude_sglang_v0517_mi355x.yaml) |
-| SGLang v0.5.18 | [Validator](../../example_configs/top5_validator_sglang_v0518_mi355x.yaml) | [Claude Code](../../example_configs/top5_claude_sglang_v0518_mi355x.yaml) |
-| Kimi K3 capture build | [Validator](../../example_configs/top5_validator_kimi_k3_mi355x.yaml) | [Claude Code](../../example_configs/top5_claude_kimi_k3_mi355x.yaml) |
+## Pull and run the declared public runtime
 
-## Public validation of the GLM BF16 task
-
-The [single-task public validator config](../../example_configs/top5_validator_glm_bf16_public_mi355x.yaml)
-runs the 27-case GLM BF16 task using a declared public runtime alternative.
-This task generates its tensor values locally and needs no external tensor
-fixture, model checkpoint, private registry, or shared NFS. Pull the pinned
-public image on the GPU node, then use the normal launcher:
+On an MI355X host with working Docker/ROCm access, choose a run config and read
+its exact image reference without starting a container:
 
 ```bash
-docker pull docker.io/rocm/hyperloom@sha256:1f5464829559b086eb66f9b803cb9c7a817438c43edff2d5ef59b46a186745f6
-CONFIG_PATH=example_configs/top5_validator_glm_bf16_public_mi355x.yaml
+CONFIG_PATH=example_configs/top5_validator_sglang_v0517_mi355x.yaml
 python3 src/scripts/top5_head_kernels.py plan --config "$CONFIG_PATH"
-python3 src/scripts/top5_head_kernels.py preflight --config "$CONFIG_PATH"
-python3 src/scripts/top5_head_kernels.py run --config "$CONFIG_PATH"
+IMAGE=$(python3 src/scripts/top5_head_kernels.py plan --config "$CONFIG_PATH" \
+  | python3 -c 'import json,sys; print(json.load(sys.stdin)["image"])')
+docker pull "$IMAGE"
 ```
 
-The pull is approximately 28.5 GB compressed. Validation still requires an
-MI355X (`gfx950`), working ROCm device access, and the configured validator
-backend. The config selects `headkernel_validation_runtime: public_hyperloom_rocm720`.
-Only this task declares that alternative under `headkernel.validation_runtimes`.
-The launcher permits it only for a single-task `task_validator` run and rejects
-unknown choices, unsupported tasks, and conflicting image overrides.
+The launcher reads each selected task's `headkernel.docker` and
+`headkernel.runtime.expected_image_id`. A run must select one manifest and one
+Docker image/config ID. It rejects a conflicting `AKA_DOCKER_IMAGE`, an unknown
+image substitution, or a mixture of the v0.5.17 and v0.5.18 profiles. The original
+v0.5.17 and Kimi cohorts share the same public runtime and may be combined in a
+custom run config.
 
-The declaration pins both the registry manifest above and Docker image/config
-ID `sha256:ffe4af630e49b05c812db4a468bfb411c3dbb0e93124801f28349bfa31352dea`.
-The host verifies that identity before launch. Task preflight checks the declared
-runtime, SGLang 0.5.17, ROCm 7.2, and `gfx950`; the existing UT still checks the
-native AITER source SHA-256. All 27 cases, references, source files, correctness
-checks, and benchmark controls are unchanged.
-
-This public runtime is an **unqualified validation alternative**. It is not an
-attested mirror of the Harbor capture image, and no GPU PASS is implied by its
-declaration or the CPU checks. Reports identify `runtime_role: validation_alternative`
-and retain the original capture image. Omitting the explicit selection preserves
-the original capture runtime. See the [public-image catalog](../reference/top5-public-images.md)
-for discovery evidence and dependency differences.
-
-## Capture cohorts
-
-The image references live in each task's `headkernel.docker` field. The Kimi
-build has a dated, specialized tag; its tag does not establish an SGLang release
-number. Do not relabel it as v0.5.18 or replace it with a generic SGLang image.
-GLM MoE and elementwise use v0.5.18. GLM's GEMM tasks retain their separately
-declared capture images.
-
-The [per-task environment matrix](../reference/top5-head-kernel-environments.md)
-lists the image, ROCm/HIP requirement, known package pins, and required imports
-for every kernel. It is generated from task metadata using the same contract
-reader as the task preflight:
-
-```bash
-python3 src/scripts/top5_head_kernels.py matrix
-```
-
-The standard Docker runner selects its image through `AKA_DOCKER_IMAGE`; it
-does not interpret `headkernel.docker`. The cohort launcher reads the selected
-tasks, checks that they agree on exactly one versioned image reference, and
-passes that reference to the existing runner. It rejects a conflicting
-`AKA_DOCKER_IMAGE` before starting any container.
-
-The launcher enables host-side image verification. The Docker runner inspects
-the selected tag once before spawning workers, validates any captured image ID,
-and launches all containers in that run by the resulting immutable local Docker
-image/config ID. A tag change after inspection cannot replace the image used
-for preflight, workers, or aggregation. The exact capture image must already be
-available in the host Docker daemon; this path does not pull or rebuild it.
-
-Inspect the exact task set, image, and underlying runner command without Docker:
-
-```bash
-CONFIG_PATH=example_configs/top5_validator_sglang_v0518_mi355x.yaml
-python3 src/scripts/top5_head_kernels.py plan --config "$CONFIG_PATH"
-```
-
-On an allocated MI355X host with access to the capture image and an existing,
-authenticated validator backend, check the environment and run validation:
+With the configured validator backend installed and authenticated, run:
 
 ```bash
 python3 src/scripts/top5_head_kernels.py preflight --config "$CONFIG_PATH"
@@ -105,96 +48,112 @@ python3 src/scripts/top5_head_kernels.py check-agents --config "$CONFIG_PATH"
 python3 src/scripts/top5_head_kernels.py run --config "$CONFIG_PATH"
 ```
 
-The launcher forwards trailing arguments to `docker_benchmark.sh`. Resume and
-parallel scheduling use the existing runner interfaces:
+Each task must also satisfy its local input contract before execution. The
+runtime launcher does not download model checkpoints or tensor fixtures. See
+individual task documentation for its case/input construction and availability.
+
+The standard Docker runner consumes `AKA_DOCKER_IMAGE`; it does not read task
+metadata. The cohort launcher passes the declared public manifest to that runner.
+The host resolves the local image once, compares its image/config ID with the
+current public pin, then launches preflight, workers, and aggregation by that
+resolved ID. No mutable tag can substitute different bytes after inspection.
+The image must already be available locally; the launcher does not pull or
+rebuild it automatically.
+
+## Single-task GLM BF16 validation
+
+The [single-task public validator config](../../example_configs/top5_validator_glm_bf16_public_mi355x.yaml)
+uses the same public default as the other v0.5.17 tasks. Its 27 cases generate
+synthetic BF16 tensors locally; it needs no captured tensor fixture or model
+checkpoint:
+
+```bash
+CONFIG_PATH=example_configs/top5_validator_glm_bf16_public_mi355x.yaml
+python3 src/scripts/top5_head_kernels.py plan --config "$CONFIG_PATH"
+python3 src/scripts/top5_head_kernels.py run --config "$CONFIG_PATH"
+```
+
+The former `headkernel_validation_runtime` option is retired. The task's public
+manifest and image/config ID are now its normal runtime contract. The original
+capture reference remains under `headkernel.capture_runtime`. All 27 shapes,
+references, source files, task-specific source/ABI checks, and benchmark controls
+are preserved by this runtime change.
+
+## Runtime checks and cache isolation
+
+Task preflight requires the host-reported current image/config ID, the declared
+SGLang version, ROCm/HIP 7.2, actual `gfx950` device properties, required package
+imports, and the production target callable. It writes
+`build/runtime_preflight.json`, including the current profile and image,
+`qualification_status: pending`, observed package versions, registry RepoDigests,
+and the separate historical capture image/ID. Existing task-specific native
+source and ABI checks remain required; selecting a public image does not weaken
+them. An environment preflight pass does not establish kernel correctness or
+GPU benchmark qualification.
+
+All cohorts enable `AKA_TOP5_ISOLATED_CACHES=1`. Each worker receives its own
+ordinary user-owned temporary directories through `AITER_JIT_DIR` and
+`FLYDSL_RUNTIME_CACHE_DIR`. The runner creates them before Python starts.
+Installed caches and their permissions are untouched. First use may require
+cold JIT compilation.
+
+The v0.5.18 capture attempt in job 158486 confirmed that AITER's fallback tried
+to copy an inaccessible installed FlyDSL cache into the isolated home. At the
+public images' AITER revision `d9e5ef7ce08ee7045d583aed768cff41aa9210fe`,
+[`get_user_jit_dir`](https://github.com/ROCm/aiter/blob/d9e5ef7ce08ee7045d583aed768cff41aa9210fe/aiter/jit/core.py#L438)
+uses `AITER_JIT_DIR` directly, while
+[`aiter.__init__`](https://github.com/ROCm/aiter/blob/d9e5ef7ce08ee7045d583aed768cff41aa9210fe/aiter/__init__.py#L68)
+honors the FlyDSL cache override. The same isolation policy is configured for
+both public profiles; the observed failure was on the old v0.5.18 capture image.
+Unrelated custom-runtime defaults remain unchanged without the top-five opt-in.
+
+The v0.5.18 profile also sets and checks `TVM_FFI_DISABLE_TORCH_C_DLPACK=1` to
+avoid the documented CPU-only TVM FFI addon's failing ROCm compilation path.
+These are runtime setup controls; they do not alter kernel work or timing counts.
+
+## Capture provenance and qualification
+
+`headkernel.docker` and `headkernel.runtime` describe the current public runtime.
+`headkernel.capture_runtime` describes the historical serving capture. Protected
+`ut/meta.json` records retain their historical image IDs and source revisions.
+Those old IDs are checked for provenance consistency and are never substituted
+for the new public image/config ID. In particular, Qwen's captured ID
+`sha256:760dd38b9b6f2bd11c13011d470eb8e377c3f0d71284a090a710d64a23bd789f`
+is historical; the public v0.5.18 profile enforces its own declared ID.
+
+The [environment matrix](../reference/top5-head-kernel-environments.md) shows
+current runtime requirements and historical capture identities separately. It
+is generated from the same contract reader used by preflight:
+
+```bash
+python3 src/scripts/top5_head_kernels.py matrix
+```
+
+See the [public-image catalog](../reference/top5-public-images.md) for registry
+and source-pin evidence. The Kimi attention pristine source matches public
+SGLang v0.5.17, and its MoE entry functions match public AITER d9e5ef7c after
+excluding annotation/docstring changes. These source comparisons support
+qualification on the public v0.5.17 profile; they are not a GPU pass or proof
+that the old specialized Kimi image was identical.
+
+The GLM MoE operator publishes its captured non-model settings using SGLang's
+`override_server_args` API and initializes a one-rank TP group. It does not
+load a checkpoint or use the old `glm5_next` serving architecture patch. Full
+model-serving support remains a separate deployment qualification.
+
+Run each selected task through `task_validator` and require a fresh,
+framework-finalized `validation_report.yaml` with `overall_status: PASS` before
+claiming qualification. Preserve the runtime reports and GPU environment with
+those results. Existing evaluator sidecars qualified for the repository's
+v0.5.14 default image are not qualified for these public profiles.
+
+The launcher forwards normal resume and scheduling arguments:
 
 ```bash
 python3 src/scripts/top5_head_kernels.py run --config "$CONFIG_PATH" -- --resume-latest
 GPU_IDS=0,1 python3 src/scripts/top5_head_kernels.py parallel-run --config "$CONFIG_PATH"
 ```
 
-Parallel scheduling gives each worker one GPU and an independent task. The
-number of workers does not change the captured TP shard shape. Run each of the
-three validation configs separately and require framework-finalized
-`validation_report.yaml` files with `overall_status: PASS` before PR submission;
-see [task validation](task-validator.md). The launcher performs no registry
-login, package installation, patch application, or GPU allocation.
-
-## Runtime and dependency checks
-
-The Docker runner exposes its selected reference as
-`AGENT_KERNEL_ARENA_DOCKER_IMAGE`, the resolved local image/config ID as
-`AGENT_KERNEL_ARENA_DOCKER_IMAGE_ID`, and registry manifest references, when
-available, as `AGENT_KERNEL_ARENA_DOCKER_REPO_DIGESTS`. These values come from
-host-side Docker inspection; the runner executes the resolved image ID.
-Each task includes a local `scripts/runtime_preflight.py` helper that checks
-the selected image, requires the host identity check, compares captured IDs,
-and checks the
-SGLang release when encoded in the image tag, ROCm/HIP 7.2, actual `gfx950`
-device properties, required imports, and the production target callable.
-It writes the identity, available registry digests, observed package versions,
-and any environment failures to `build/runtime_preflight.json` before benchmark
-execution. CPU syntax checks do not establish a usable GPU
-runtime. The `preflight` launcher action also runs the existing arena/agent
-environment preflight; full task checks occur when task correctness and
-performance run.
-
-Capture images supply PyTorch, Triton, AITER, and SGLang. Tasks using FlyDSL or
-TileLang require the corresponding package from that same capture image. A
-task may declare stricter known facts under `headkernel.runtime` using
-`sglang_version`, `torch_version`, `hip_version`, `package_versions` (a mapping
-of importable package names to exact versions), `required_modules`, and
-`required_model_types`. `expected_image_id` optionally asserts a Docker
-image/config ID. The helper also consumes captured IDs directly from the
-protected `ut/meta.json` source/baseline provenance. Do not install floating
-upgrades into a capture runtime.
-
-The v0.5.18 cohort also requires `TVM_FFI_DISABLE_TORCH_C_DLPACK=1`, as documented
-by the capture suite. That image ships a CPU-only TVM FFI addon; enabling the
-Torch C DLPack path triggers repeated failing ROCm addon compilations and can
-hang startup. The cohort launcher sets the flag, the Docker runner forwards
-the explicit value, and task preflight requires and records it. Other runtimes
-receive no new default. This is CPU FFI setup and does not change kernel work
-or timing iteration counts.
-
-All three top-five cohorts enable `AKA_TOP5_ISOLATED_CACHES=1`. The Docker
-runner assigns each worker a distinct temporary cache root and sets
-`AITER_JIT_DIR=<worker cache>/aiter-jit` and
-`FLYDSL_RUNTIME_CACHE_DIR=<worker cache>/flydsl`. It creates both directories
-as the ordinary container user before Python starts. Preflight requires these
-explicit paths and records them in its runtime report. Installed cache files
-and their permissions are untouched; caches are populated through normal JIT
-compilation, so the first use can take longer.
-
-The v0.5.18 GPU attempt in job 158486 confirmed that AITER's fallback copied
-the installed `jit` tree into the isolated home and failed on inaccessible
-bundled FlyDSL cache files. At captured AITER commit
-`d9e5ef7ce08ee7045d583aed768cff41aa9210fe`,
-[`get_user_jit_dir`](https://github.com/ROCm/aiter/blob/d9e5ef7ce08ee7045d583aed768cff41aa9210fe/aiter/jit/core.py#L438)
-uses `AITER_JIT_DIR` directly, and
-[`aiter.__init__`](https://github.com/ROCm/aiter/blob/d9e5ef7ce08ee7045d583aed768cff41aa9210fe/aiter/__init__.py#L68)
-honors `FLYDSL_RUNTIME_CACHE_DIR` instead of selecting the bundled cache.
-The same isolation policy is configured for the v0.5.17 and Kimi cohorts;
-the reported failure was observed on v0.5.18. Other custom-runtime defaults
-remain unchanged unless this cache opt-in is explicitly enabled.
-
-The GLM MoE capture documents PyTorch `2.9.1+rocm7.2.0`, SGLang `0.5.18`, and HIP
-`7.2.26015`. Its original model-serving bootstrap required `glm5_next`
-architecture enablement. The isolated MoE task now publishes the captured
-non-model settings through SGLang's `override_server_args` API and initializes
-only a one-rank TP group. That operator path does not load a checkpoint or use
-the architecture patch. A full model-serving run still needs independently
-qualified `glm5_next` support; the unit benchmark does not establish it.
-
-The five Qwen task metadata files record Docker image/config ID
-`sha256:760dd38b9b6f2bd11c13011d470eb8e377c3f0d71284a090a710d64a23bd789f`,
-and captured AITER or SGLang commits. That ID is enforced for a run selecting
-any of those tasks. It is not a registry manifest digest. Other tasks do not
-currently provide a captured image ID, and complete transitive dependency
-locks are unavailable. Available registry `RepoDigests` are recorded from the
-actual image rather than inferred from its ID or tag. The CPU checks for this
-import cannot certify those images, serving architecture support, dependencies,
-or GPU results. Preserve the runtime reports and actual registry metadata during
-compatible GPU qualification.
-The evaluation-tool sidecars qualified against the repository's default
-SGLang v0.5.14 scoring image are not qualified for these capture images.
+Each parallel worker gets one GPU and an independent task; worker count does
+not change captured tensor-parallel shard shapes. Keep the runtime identity
+fixed when resuming an existing run.

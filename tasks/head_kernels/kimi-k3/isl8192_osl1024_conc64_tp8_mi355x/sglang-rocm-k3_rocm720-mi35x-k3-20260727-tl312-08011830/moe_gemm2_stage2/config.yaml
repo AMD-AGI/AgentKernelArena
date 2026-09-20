@@ -20,14 +20,25 @@ task_type: flydsl2flydsl
 task_result_template: null
 prompt:
   source_code: null
-  instructions: "Optimize the Kimi-K3 moe_gemm2_0 kernel on MI355X (gfx950).\nBackend: aiter asm (AOT) / flydsl opus - fused_moe_2stages stage-2 down - mxfp4 + bf16. Serving capture: ISL 8192 / OSL 1024 / CONC 64 / TP 8.\n\nEdit only the declared source files and target functions:\n  source/flydsl/moe_kernels.py\n  source/flydsl/kernels/mixed_moe_gemm_2stage.py\n  source/flydsl/kernels/gemm_mxscale_gfx1250.py\n  source/flydsl/kernels/moe_gemm_2stage.py\n  source/flydsl/kernels/fmha_gfx1250/fmha_kernel.py\n  source/flydsl/kernels/gemm_fp8fp4_gfx1250.py\n  source/flydsl/kernels/fused_compress_attn.py\n  source/flydsl/kernels/fused_compress_attn_gfx1250.py\n  source/flydsl/kernels/fmha_gfx1250/fmha_core_loop.py\n  flydsl_moe_stage2\n\nKeep the production callable signature and the captured shape, dtype, stride,\ntensor-attribute, routing, state-update and output-alias contracts unchanged.\nProduction seam: aiter.ops.flydsl.moe_kernels:flydsl_moe_stage2.\nUse the task's frozen correctness references\
-    \ and complete benchmark case set.\nThe starting-source provenance is stock; archival profile\nand speedup figures in the provenance files are not measurements of this run.\nThe Arena evaluator measures the committed starting implementation and candidate\nunder the same benchmark contract. Do not edit ut/, scripts/, or config.yaml.\n"
+  instructions: "Optimize the Kimi-K3 moe_gemm2_0 kernel on MI355X (gfx950).\nBackend: aiter asm (AOT)\
+    \ / flydsl opus - fused_moe_2stages stage-2 down - mxfp4 + bf16. Serving capture: ISL 8192 / OSL 1024\
+    \ / CONC 64 / TP 8.\n\nEdit only the declared source files and target functions:\n  source/flydsl/moe_kernels.py\n\
+    \  source/flydsl/kernels/mixed_moe_gemm_2stage.py\n  source/flydsl/kernels/gemm_mxscale_gfx1250.py\n\
+    \  source/flydsl/kernels/moe_gemm_2stage.py\n  source/flydsl/kernels/fmha_gfx1250/fmha_kernel.py\n\
+    \  source/flydsl/kernels/gemm_fp8fp4_gfx1250.py\n  source/flydsl/kernels/fused_compress_attn.py\n\
+    \  source/flydsl/kernels/fused_compress_attn_gfx1250.py\n  source/flydsl/kernels/fmha_gfx1250/fmha_core_loop.py\n\
+    \  flydsl_moe_stage2\n\nKeep the production callable signature and the captured shape, dtype, stride,\n\
+    tensor-attribute, routing, state-update and output-alias contracts unchanged.\nProduction seam: aiter.ops.flydsl.moe_kernels:flydsl_moe_stage2.\n\
+    Use the task's frozen correctness references and complete benchmark case set.\nThe starting-source\
+    \ provenance is stock; archival profile\nand speedup figures in the provenance files are not measurements\
+    \ of this run.\nThe Arena evaluator measures the committed starting implementation and candidate\n\
+    under the same benchmark contract. Do not edit ut/, scripts/, or config.yaml.\n"
   cheatsheet: null
 headkernel:
   operation_id: kimi-k3__moe_gemm2_stage2
   model: Kimi-K3
   owner: Hongtao
-  docker: harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang-rocm-k3:rocm720-mi35x-k3-20260727-tl312-08011830
+  docker: docker.io/rocm/hyperloom@sha256:1f5464829559b086eb66f9b803cb9c7a817438c43edff2d5ef59b46a186745f6
   serving: ISL 8192 / OSL 1024 / CONC 64 / TP 8
   backend: aiter asm (AOT) / flydsl opus - fused_moe_2stages stage-2 down - mxfp4 + bf16
   regime: prefill
@@ -46,6 +57,16 @@ headkernel:
     e2e_uplift: null
   symbol_locations:
     flydsl_moe_stage2: source/flydsl/moe_kernels.py
+  capture_runtime:
+    image: harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang-rocm-k3:rocm720-mi35x-k3-20260727-tl312-08011830
+    image_id: null
+    scope: Historical serving capture; not the current public runtime
+  runtime:
+    profile: public_hyperloom_sglang_v0517
+    expected_image_id: sha256:ffe4af630e49b05c812db4a468bfb411c3dbb0e93124801f28349bfa31352dea
+    sglang_version: 0.5.17
+    qualification_status: pending
+    public_tag: docker.io/rocm/hyperloom:sglang-v0.5.17-rocm7.2.0-mi350x
 compile_timeout: 600
 correctness_timeout: 3600
 performance_timeout: 3600

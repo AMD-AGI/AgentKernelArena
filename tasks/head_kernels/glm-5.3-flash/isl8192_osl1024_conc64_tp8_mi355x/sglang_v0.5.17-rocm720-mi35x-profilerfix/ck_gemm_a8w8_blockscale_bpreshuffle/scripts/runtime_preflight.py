@@ -1,4 +1,4 @@
-"""Task-local capture-runtime checks, independent of the arena source tree.
+"""Task-local runtime checks, independent of the arena source tree.
 
 The copy under _support is canonical; scripts/runtime_preflight.py is copied
 into each isolated task. Call preflight(config) before correctness/performance.
@@ -14,16 +14,16 @@ from pathlib import Path
 import re
 
 
-def runtime_requirements(config: dict, task_dir: Path | None = None,
-                         validation_runtime: str | None = None) -> dict:
+def runtime_requirements(config: dict, task_dir: Path | None = None) -> dict:
     """Describe the contract from task metadata without importing GPU packages."""
     metadata = config.get("headkernel") or {}
     runtime = metadata.get("runtime") or {}
     image = metadata.get("docker")
-    capture_image = image
-    expected_ids = set()
-    if runtime.get("expected_image_id"):
-        expected_ids.add(str(runtime["expected_image_id"]))
+    historical = metadata.get("capture_runtime") or {}
+    capture_image = historical.get("image", image)
+    capture_ids = set()
+    if historical.get("image_id"):
+        capture_ids.add(str(historical["image_id"]))
     source_commits = {}
     capture_backend_modules = set()
     task_dir = task_dir or Path(__file__).resolve().parents[1]
@@ -39,34 +39,32 @@ def runtime_requirements(config: dict, task_dir: Path | None = None,
         ):
             evidence = capture.get(section) or {}
             if evidence.get(id_field):
-                if evidence.get(image_field) != image:
-                    raise ValueError(f"{section} image evidence disagrees with headkernel.docker")
-                expected_ids.add(str(evidence[id_field]))
+                if evidence.get(image_field) != capture_image:
+                    raise ValueError(f"{section} image evidence disagrees with historical capture provenance")
+                capture_ids.add(str(evidence[id_field]))
         provenance = capture.get("source_provenance") or {}
         if provenance.get("repo") and provenance.get("repo_commit"):
             source_commits[provenance["repo"]] = provenance["repo_commit"]
     provenance = metadata.get("runtime_source_provenance") or {}
     if provenance.get("repo") and provenance.get("commit"):
         source_commits[provenance["repo"]] = provenance["commit"]
-    if len(expected_ids) > 1:
+    if len(capture_ids) > 1:
         raise ValueError("Task metadata contains conflicting captured Docker image IDs")
-    expected_image_id = next(iter(expected_ids), None)
+    capture_image_id = next(iter(capture_ids), None)
+    if capture_image_id and re.fullmatch(r"sha256:[0-9a-f]{64}", capture_image_id) is None:
+        raise ValueError("Historical capture image ID must be a complete Docker image/config ID")
+    expected_image_id = runtime.get("expected_image_id")
+    if expected_image_id is None and not historical and not runtime.get("profile"):
+        expected_image_id = capture_image_id
     if expected_image_id and re.fullmatch(r"sha256:[0-9a-f]{64}", expected_image_id) is None:
-        raise ValueError("Captured Docker image ID must be a complete sha256 image/config ID")
-    if validation_runtime:
-        alternatives = metadata.get("validation_runtimes") or {}
-        if not isinstance(validation_runtime, str) or validation_runtime not in alternatives:
-            raise ValueError(f"Validation runtime {validation_runtime!r} is not declared for this task")
-        alternative = alternatives[validation_runtime]
-        image = alternative.get("image")
-        expected_image_id = alternative.get("image_id")
+        raise ValueError("Expected Docker image ID must be a complete sha256 image/config ID")
+    if historical or runtime.get("profile"):
         if not isinstance(image, str) or re.fullmatch(r"[^\s@]+@sha256:[0-9a-f]{64}", image) is None:
-            raise ValueError("A validation runtime must pin a registry manifest reference")
+            raise ValueError("A public runtime must pin a registry manifest reference")
         if not isinstance(expected_image_id, str) or re.fullmatch(r"sha256:[0-9a-f]{64}", expected_image_id) is None:
-            raise ValueError("A validation runtime must pin its Docker image/config ID")
-        if not isinstance(alternative.get("sglang_version"), str):
-            raise ValueError("A validation runtime must declare its SGLang version")
-        runtime = {**runtime, "sglang_version": alternative["sglang_version"]}
+            raise ValueError("A public runtime must pin its Docker image/config ID")
+        if not isinstance(runtime.get("sglang_version"), str) or not runtime.get("profile"):
+            raise ValueError("A public runtime must declare its profile and SGLang version")
     required_modules = {"torch", "sglang", "triton", "aiter"}
     required_modules.update(capture_backend_modules)
     backend = str(metadata.get("backend", "")).lower()
@@ -85,8 +83,10 @@ def runtime_requirements(config: dict, task_dir: Path | None = None,
     return {
         "image": image,
         "capture_image": capture_image,
-        "validation_runtime": validation_runtime,
-        "runtime_role": "validation_alternative" if validation_runtime else "capture",
+        "capture_image_id": capture_image_id,
+        "profile": runtime.get("profile"),
+        "runtime_role": "public_portable" if runtime.get("profile") else "capture",
+        "qualification_status": runtime.get("qualification_status", "not_recorded"),
         "expected_image_id": expected_image_id,
         "source_commits": source_commits,
         "gpu_arch": "gfx950",
@@ -121,8 +121,7 @@ def preflight(config: dict, task_dir: Path | None = None) -> dict:
     """
     metadata = config.get("headkernel") or {}
     runtime = metadata.get("runtime") or {}
-    validation_runtime = os.environ.get("AGENT_KERNEL_ARENA_HEAD_KERNEL_VALIDATION_RUNTIME") or None
-    requirements = runtime_requirements(config, task_dir, validation_runtime)
+    requirements = runtime_requirements(config, task_dir)
     expected_image = requirements["image"]
     selected_image = os.environ.get("AGENT_KERNEL_ARENA_DOCKER_IMAGE")
     selected_image_id = os.environ.get("AGENT_KERNEL_ARENA_DOCKER_IMAGE_ID")
@@ -130,7 +129,9 @@ def preflight(config: dict, task_dir: Path | None = None) -> dict:
         "status": "fail",
         "expected_image": expected_image,
         "capture_image": requirements["capture_image"],
-        "validation_runtime": requirements["validation_runtime"],
+        "capture_image_id": requirements["capture_image_id"],
+        "profile": requirements["profile"],
+        "qualification_status": requirements["qualification_status"],
         "runtime_role": requirements["runtime_role"],
         "selected_image": selected_image,
         "expected_image_id": requirements["expected_image_id"],
@@ -145,25 +146,27 @@ def preflight(config: dict, task_dir: Path | None = None) -> dict:
         "errors": [],
     }
     errors = report["errors"]
+    if os.environ.get("AGENT_KERNEL_ARENA_HEAD_KERNEL_VALIDATION_RUNTIME"):
+        errors.append("Named alternative runtimes are retired; use the task's pinned public default")
     for name, expected in requirements["environment"].items():
         if os.environ.get(name) != expected:
-            errors.append(f"Capture runtime requires {name}={expected}; use the cohort launcher")
+            errors.append(f"Task runtime requires {name}={expected}; use the cohort launcher")
     for name in requirements["cache_environment"]:
         value = os.environ.get(name)
         if not value or not Path(value).is_absolute():
-            errors.append(f"Capture runtime requires an explicit absolute {name} worker cache path; "
+            errors.append(f"Task runtime requires an explicit absolute {name} worker cache path; "
                           "use the cohort launcher")
     if not isinstance(expected_image, str) or not expected_image:
         errors.append("Task config does not declare headkernel.docker")
     if os.environ.get("AGENT_KERNEL_ARENA_DOCKER") != "1":
         errors.append("Run this task through the Docker runner")
     if selected_image != expected_image:
-        errors.append(f"{'Validation' if validation_runtime else 'Capture'} image mismatch: expected {expected_image!r}, "
+        errors.append(f"Runtime image mismatch: expected {expected_image!r}, "
                       f"runner selected {selected_image!r}; use the cohort launcher")
     if not selected_image_id or re.fullmatch(r"sha256:[0-9a-f]{64}", selected_image_id) is None:
         errors.append("The Docker runner did not supply a verified image ID; use the cohort launcher")
     elif requirements["expected_image_id"] and selected_image_id != requirements["expected_image_id"]:
-        errors.append(f"Capture image ID mismatch: expected {requirements['expected_image_id']}, "
+        errors.append(f"Runtime image ID mismatch: expected {requirements['expected_image_id']}, "
                       f"runner launched {selected_image_id}")
     try:
         digests = json.loads(os.environ.get("AGENT_KERNEL_ARENA_DOCKER_REPO_DIGESTS", "[]"))

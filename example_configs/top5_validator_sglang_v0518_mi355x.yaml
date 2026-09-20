@@ -1,4 +1,4 @@
-# Capture-runtime cohort: sglang_v0518; 7 isolated operator tasks.
+# Public runtime task cohort: sglang_v0518; 7 isolated operator tasks.
 # Select and verify its image through the supported Docker runner with:
 # python3 src/scripts/top5_head_kernels.py run --config example_configs/top5_validator_sglang_v0518_mi355x.yaml
 # Inspect the selected image/tasks without Docker by replacing run with plan.

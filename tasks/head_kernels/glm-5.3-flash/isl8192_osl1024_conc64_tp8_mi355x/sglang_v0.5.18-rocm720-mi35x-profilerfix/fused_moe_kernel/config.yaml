@@ -44,7 +44,7 @@ headkernel:
   operation_id: glm-5.3-flash__fused_moe_kernel
   model: GLM-5.3-Flash
   owner: Hongtaom
-  docker: harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.18-rocm720-mi35x-profilerfix
+  docker: docker.io/rocm/hyperloom@sha256:da36f56f24cb2897a56be52dd43774c1a75b1500308ed7db3ba32fb8db4d259c
   serving: ISL 8192 / OSL 1024 / CONC 64 / TP 8
   backend: Triton device kernel inside the protected fused-MoE operator
   regime: decode
@@ -68,6 +68,17 @@ headkernel:
   - fused_moe_kernel
   protected_dispatcher: ut/baseline_ref/fused_moe.py.orig
   standalone_context: ut/sglang_bootstrap.py
+  capture_runtime:
+    image: harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.18-rocm720-mi35x-profilerfix
+    image_id: null
+    scope: Historical serving capture; not the current public runtime
+    sglang_version: 0.5.18
+  runtime:
+    profile: public_hyperloom_sglang_v0518
+    expected_image_id: sha256:af24798ab4d57196fa1e928e4c81202bafb06cdeb663158f4d4f038fdb18f1a3
+    sglang_version: 0.5.18
+    qualification_status: pending
+    public_tag: docker.io/rocm/hyperloom:sglang-v0.5.18-rocm7.2.0-mi350x
 compile_timeout: 600
 correctness_timeout: 3600
 performance_timeout: 3600
