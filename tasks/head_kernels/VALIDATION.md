@@ -40,8 +40,23 @@ All eight indexed materialized task identities match the current source.
 The separate fresh full-check attempt **159315**, at source `76998a8f`, completed
 native correctness for DeepSeek `dsa_sparse_mla_attn` and MiniMax
 `gqa_share_sparse_fwd_kernel`. Both reports have status `ok`, including their
-randomized and replay checks. At **21:25 UTC**, their unchanged performance
-commands are still running; neither task is in the native-verified selection.
+randomized and replay checks. **Neither completed performance validation before
+the fixed 7,080-second driver cutoff.** The job ended at **22:03:51 UTC** after
+1:58:30, with native state `FAILED` and exit code `1:0`. This was the bounded
+driver stop before the two-hour allocation limit, not a reported numerical
+failure or a successful benchmark. Both owned containers were cleaned up.
+
+DeepSeek completed the additional correctness pass inside its performance
+command, but did not finalize a performance report. MiniMax did not finalize that
+additional correctness pass; its last sampled worker was in replay checks.
+Their retained `performance: running` records are
+terminal incomplete evidence, not live workers or passing phases. Neither task
+joins the native-verified selection, which remains eight tasks. No cases,
+warmups, samples, or replay checks were reduced, and no further retry was made.
+
+The collected evidence archive SHA-256 is
+`12a01f3da78ad4dc7aaf0baad49e1504bf54f8f7e1cd64d04f72a24ef545c6ab`;
+all 1,525 collected file hashes were verified.
 The correctness-report SHA-256 values are respectively
 `00df0da69c166d8933832f71330bd6bcaaac95bd96a020e36d015545454f6070` and
 `ef29cc8f15056e558a30822689d055f852aca186b0a05be69fdcb5b0958e220a`.
@@ -65,7 +80,7 @@ claimed by this native-verified selection.
 - MiniMax sparse prefill uses the observed M8192 record, including its full
   `[4097,11268]` request table, original slot `[4]` with int64 dtype, captured
   block indices, and original full KV allocations. Native correctness passed in
-  159315; complete benchmark qualification is still pending.
+  159315; performance remained incomplete at the fixed allocation cleanup cutoff.
 - GLM BF16 and FP8 GEMMs retain 27 and 21 mandatory correctness cases, but each
   scores only seven observed M64 cases. The other combinations are unscored
   generalization checks.
