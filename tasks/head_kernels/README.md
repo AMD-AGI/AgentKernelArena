@@ -20,6 +20,45 @@ entries have no task configuration and must not be counted as runnable tasks.
 The source table's reported GPU-time shares are historical selection evidence;
 historical speedups and roofline estimates are not benchmark rewards.
 
+## Run the native-verified subset
+
+The [native-verified index](native_verified.json) identifies tasks that completed
+all declared native compile/interface, correctness and performance phases on
+MI355X with the recorded public runtime and matching task sources. It records
+the source digest, source commit, evidence archive hash, and each required phase
+report hash. These results do not claim a framework `task_validator` PASS or
+complete original serving equivalence; see [validation status](VALIDATION.md)
+and [workload fidelity](WORKLOAD_FIDELITY.md) for those separate limits.
+
+The explicit configs select only indexed tasks and keep public runtimes separate:
+
+| Public runtime | Initial verified tasks | Config |
+| --- | --- | --- |
+| SGLang v0.5.17 | GLM BF16 GEMM; GLM FP8 blockscale GEMM | [Native-verified v0.5.17](../../example_configs/top5_native_verified_sglang_v0517_mi355x.yaml) |
+| SGLang v0.5.18 | Qwen dense BF16 GEMM; Qwen RMSNorm | [Native-verified v0.5.18](../../example_configs/top5_native_verified_sglang_v0518_mi355x.yaml) |
+
+From the repository root, run the native checks without an agent:
+
+```bash
+python3 src/scripts/top5_head_kernels.py verify \
+  --config example_configs/top5_native_verified_sglang_v0517_mi355x.yaml
+python3 src/scripts/top5_head_kernels.py verify \
+  --config example_configs/top5_native_verified_sglang_v0518_mi355x.yaml
+```
+
+Replace `verify` with `plan` to inspect the image and exact selection without
+starting Docker. All 18 task directories and the full-cohort configs remain
+available; omission from this subset means a complete matching native pass has
+not been recorded in the index.
+
+When extending the subset, add the completed native evidence and update the
+corresponding explicit config. The source digest is SHA-256 over canonical JSON
+of the native verifier's `source_identity.files`, after canonical performance
+helpers are materialized. The focused index test reproduces that identity from
+the current files. A changed task requires matching new evidence before its
+record can describe the new source. Raw logs and generated workspaces remain
+outside the shipping tree.
+
 ## Workload layout and kernel tasks
 
 There are **18 separate kernel tasks**, organized by complete model variant,

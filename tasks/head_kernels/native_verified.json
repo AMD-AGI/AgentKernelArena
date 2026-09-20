@@ -1,0 +1,309 @@
+{
+  "schema_version": 1,
+  "selection": "native_verified",
+  "claim_scope": "Completed native compile/interface, correctness, and performance phases for the recorded operator contracts and source identities.",
+  "framework_task_validator": "NOT_RUN",
+  "framework_PASS_claimed": false,
+  "exact_serving_equivalence_claimed": false,
+  "required_phases": [
+    "compile",
+    "correctness",
+    "performance"
+  ],
+  "source_identity_encoding": "SHA-256 of UTF-8 json.dumps(source_identity.files, sort_keys=True, separators=(\",\", \":\"), ensure_ascii=True), using verify_head_kernels.copy_task after canonical perf-helper materialization.",
+  "evidence_storage": "The archive hashes and relative member names identify externally retained native evidence; no raw reports or workspaces are included in this index.",
+  "cohorts": {
+    "sglang_v0517": {
+      "config": "example_configs/top5_native_verified_sglang_v0517_mi355x.yaml",
+      "image": "docker.io/rocm/hyperloom@sha256:1f5464829559b086eb66f9b803cb9c7a817438c43edff2d5ef59b46a186745f6",
+      "expected_image_id": "sha256:ffe4af630e49b05c812db4a468bfb411c3dbb0e93124801f28349bfa31352dea"
+    },
+    "sglang_v0518": {
+      "config": "example_configs/top5_native_verified_sglang_v0518_mi355x.yaml",
+      "image": "docker.io/rocm/hyperloom@sha256:da36f56f24cb2897a56be52dd43774c1a75b1500308ed7db3ba32fb8db4d259c",
+      "expected_image_id": "sha256:af24798ab4d57196fa1e928e4c81202bafb06cdeb663158f4d4f038fdb18f1a3"
+    }
+  },
+  "tasks": [
+    {
+      "task": "head_kernels/glm-5.3-flash/isl8192_osl1024_conc64_tp8_mi355x/sglang_v0.5.17-rocm720-mi35x-profilerfix/ck_gemm_a8w8_blockscale_bpreshuffle",
+      "cohort": "sglang_v0517",
+      "native_status": "all_native_phases_succeeded",
+      "source_identity": {
+        "schema": "aka-native-materialized-files-v1",
+        "sha256": "ae6a005ddfdebc3ce8e311a875cb6ad420336f078910aae285b84d6e8e01e78c",
+        "file_count": 23,
+        "materialized_perf_helpers": [
+          "scripts/_aka_benchmark.py"
+        ]
+      },
+      "evidence": {
+        "job_id": "159134",
+        "source_commit": "06d0838e168c8a342fd4f11ff20362808fa1029d",
+        "archive_sha256": "8249b4d4ab91569bf60eacf8d7a1f7472e58a838ea3a7a8c849cf43deb1ae1a2",
+        "direct_report": {
+          "member": "repo/workspace_parallel_verification_FbjY51/worker-000/000-ck_gemm_a8w8_blockscale_bpreshuffle.direct.json",
+          "sha256": "c007d9db9d9f0136cda68c6141bcc9207b562e198aa0c36e230a5e70aa9d3436",
+          "bytes": 6410
+        },
+        "phases": [
+          {
+            "phase": "compile",
+            "status": "native_phase_succeeded",
+            "native_status": "ok",
+            "command_returncodes": [
+              0
+            ],
+            "timed_out": false,
+            "report": {
+              "member": "repo/workspace_parallel_verification_FbjY51/worker-000/000-ck_gemm_a8w8_blockscale_bpreshuffle/direct-native-reports/compile_report.json",
+              "sha256": "072706d15792f5a273824acfd0b62d97c6d44352bafbfc4d6f6623da30aec4f0",
+              "bytes": 115
+            }
+          },
+          {
+            "phase": "correctness",
+            "status": "native_phase_succeeded",
+            "native_status": "ok",
+            "command_returncodes": [
+              0
+            ],
+            "timed_out": false,
+            "report": {
+              "member": "repo/workspace_parallel_verification_FbjY51/worker-000/000-ck_gemm_a8w8_blockscale_bpreshuffle/direct-native-reports/correctness_report.json",
+              "sha256": "dae96abe2c6e92098f10dd5552df10ac36154a7cbb2cb1865b969ac6cf0258e8",
+              "bytes": 6002
+            }
+          },
+          {
+            "phase": "performance",
+            "status": "native_phase_succeeded",
+            "native_status": "ok",
+            "command_returncodes": [
+              0
+            ],
+            "timed_out": false,
+            "report": {
+              "member": "repo/workspace_parallel_verification_FbjY51/worker-000/000-ck_gemm_a8w8_blockscale_bpreshuffle/direct-native-reports/performance_report.json",
+              "sha256": "63ed05931c77065e129fa0d28358446c553b18033e9ab72117eaf3f39aabe5ce",
+              "bytes": 6216
+            },
+            "case_count": 7,
+            "warmup_iterations": 10,
+            "benchmark_iterations": 100
+          }
+        ]
+      }
+    },
+    {
+      "task": "head_kernels/glm-5.3-flash/isl8192_osl1024_conc64_tp8_mi355x/sglang_v0.5.17-rocm720-mi35x-profilerfix/gemm_a16w16_bf16_cijk",
+      "cohort": "sglang_v0517",
+      "native_status": "all_native_phases_succeeded",
+      "source_identity": {
+        "schema": "aka-native-materialized-files-v1",
+        "sha256": "3265e88b6aff50f5d96a05ac6644091c257aa4699a892545636f9e8560c7b0a8",
+        "file_count": 22,
+        "materialized_perf_helpers": [
+          "scripts/_aka_benchmark.py"
+        ]
+      },
+      "evidence": {
+        "job_id": "159134",
+        "source_commit": "06d0838e168c8a342fd4f11ff20362808fa1029d",
+        "archive_sha256": "8249b4d4ab91569bf60eacf8d7a1f7472e58a838ea3a7a8c849cf43deb1ae1a2",
+        "direct_report": {
+          "member": "repo/workspace_parallel_verification_FbjY51/worker-001/000-gemm_a16w16_bf16_cijk.direct.json",
+          "sha256": "c251d3687cae3cef7bb71e462086c12f143c01c28a7b29f0a232d6113ecf53dd",
+          "bytes": 6237
+        },
+        "phases": [
+          {
+            "phase": "compile",
+            "status": "native_phase_succeeded",
+            "native_status": "ok",
+            "command_returncodes": [
+              0
+            ],
+            "timed_out": false,
+            "report": {
+              "member": "repo/workspace_parallel_verification_FbjY51/worker-001/000-gemm_a16w16_bf16_cijk/direct-native-reports/compile_report.json",
+              "sha256": "072706d15792f5a273824acfd0b62d97c6d44352bafbfc4d6f6623da30aec4f0",
+              "bytes": 115
+            }
+          },
+          {
+            "phase": "correctness",
+            "status": "native_phase_succeeded",
+            "native_status": "ok",
+            "command_returncodes": [
+              0
+            ],
+            "timed_out": false,
+            "report": {
+              "member": "repo/workspace_parallel_verification_FbjY51/worker-001/000-gemm_a16w16_bf16_cijk/direct-native-reports/correctness_report.json",
+              "sha256": "ab0e421231443eb65370016899a9db07f25b944750f96a10dbcea7b3ac757bc7",
+              "bytes": 3620
+            }
+          },
+          {
+            "phase": "performance",
+            "status": "native_phase_succeeded",
+            "native_status": "ok",
+            "command_returncodes": [
+              0
+            ],
+            "timed_out": false,
+            "report": {
+              "member": "repo/workspace_parallel_verification_FbjY51/worker-001/000-gemm_a16w16_bf16_cijk/direct-native-reports/performance_report.json",
+              "sha256": "8e4e08ede382c69e06096ca6d90ad60524b4fb4179bba66ccce7b956e09eb42d",
+              "bytes": 6213
+            },
+            "case_count": 7,
+            "warmup_iterations": 10,
+            "benchmark_iterations": 100
+          }
+        ]
+      }
+    },
+    {
+      "task": "head_kernels/qwen3.8-2.4t-a95b-mxfp4/isl8192_osl1024_conc64_tp8_mi355x/sglang_v0.5.18-rocm720-mi35x-profilerfix/dense_bf16_gemm_cluster",
+      "cohort": "sglang_v0518",
+      "native_status": "all_native_phases_succeeded",
+      "source_identity": {
+        "schema": "aka-native-materialized-files-v1",
+        "sha256": "a731bf05b4f7a65e27436826cc491de8f99ec0b16a0359fe257d2b0d8b820814",
+        "file_count": 30,
+        "materialized_perf_helpers": [
+          "scripts/_aka_benchmark.py"
+        ]
+      },
+      "evidence": {
+        "job_id": "159119",
+        "source_commit": "88c9bfa6b88673a4c25a8298011991cc5f545488",
+        "archive_sha256": "8cbbd519fdbde8d05dcd6f2d1b937e71ac7f3be6a62968e1e7644f6290755e76",
+        "direct_report": {
+          "member": "repo/workspace_direct_verification_9jjof81d/000-dense_bf16_gemm_cluster.direct.json",
+          "sha256": "ff7002b2451f23d1c7c76949ec66739618708fe9e47116416b61c2347d4d76a9",
+          "bytes": 7561
+        },
+        "phases": [
+          {
+            "phase": "compile",
+            "status": "native_phase_succeeded",
+            "native_status": "ok",
+            "command_returncodes": [
+              0
+            ],
+            "timed_out": false,
+            "report": {
+              "member": "repo/workspace_direct_verification_9jjof81d/000-dense_bf16_gemm_cluster/direct-native-reports/compile_report.json",
+              "sha256": "8fcd850e3a32aedcde49af316924b8d279dd22649e123dcf5932e3f60db7ed8e",
+              "bytes": 129
+            }
+          },
+          {
+            "phase": "correctness",
+            "status": "native_phase_succeeded",
+            "native_status": "ok",
+            "command_returncodes": [
+              0
+            ],
+            "timed_out": false,
+            "report": {
+              "member": "repo/workspace_direct_verification_9jjof81d/000-dense_bf16_gemm_cluster/direct-native-reports/correctness_report.json",
+              "sha256": "3660d729980aed4c9d11ced7bc3c14b7c87760837fbc117af84a98a0ac2bea49",
+              "bytes": 1751
+            }
+          },
+          {
+            "phase": "performance",
+            "status": "native_phase_succeeded",
+            "native_status": "ok",
+            "command_returncodes": [
+              0
+            ],
+            "timed_out": false,
+            "report": {
+              "member": "repo/workspace_direct_verification_9jjof81d/000-dense_bf16_gemm_cluster/direct-native-reports/performance_report.json",
+              "sha256": "d22fdfa6f3bc211dc862eaeac772d43e2d1260b767eb97a5dec9145f00ba1a32",
+              "bytes": 4482
+            },
+            "case_count": 5,
+            "warmup_iterations": 10,
+            "benchmark_iterations": 100
+          }
+        ]
+      }
+    },
+    {
+      "task": "head_kernels/qwen3.8-2.4t-a95b-mxfp4/isl8192_osl1024_conc64_tp8_mi355x/sglang_v0.5.18-rocm720-mi35x-profilerfix/gemma_fused_add_rmsnorm",
+      "cohort": "sglang_v0518",
+      "native_status": "all_native_phases_succeeded",
+      "source_identity": {
+        "schema": "aka-native-materialized-files-v1",
+        "sha256": "adf57a100ba5a1407c5cd90348c1aaba15a37a24bb6eb7d1ae19128ad6a9c085",
+        "file_count": 29,
+        "materialized_perf_helpers": [
+          "scripts/_aka_benchmark.py"
+        ]
+      },
+      "evidence": {
+        "job_id": "159135",
+        "source_commit": "06d0838e168c8a342fd4f11ff20362808fa1029d",
+        "archive_sha256": "7592e2dff048be5341ed14eabde31973f5db81651c48cd181d3007b835ea27ca",
+        "direct_report": {
+          "member": "repo/workspace_parallel_verification_2W6qjx/worker-000/000-gemma_fused_add_rmsnorm.direct.json",
+          "sha256": "871027b9907069b348f9ba91b5b24a306c406f9e4d44896935ab831f0a599486",
+          "bytes": 7424
+        },
+        "phases": [
+          {
+            "phase": "compile",
+            "status": "native_phase_succeeded",
+            "native_status": "ok",
+            "command_returncodes": [
+              0
+            ],
+            "timed_out": false,
+            "report": {
+              "member": "repo/workspace_parallel_verification_2W6qjx/worker-000/000-gemma_fused_add_rmsnorm/direct-native-reports/compile_report.json",
+              "sha256": "6ccd58431f9890f9edf4ac871aa441bc164a37198ca961c56118e8680824785c",
+              "bytes": 127
+            }
+          },
+          {
+            "phase": "correctness",
+            "status": "native_phase_succeeded",
+            "native_status": "ok",
+            "command_returncodes": [
+              0
+            ],
+            "timed_out": false,
+            "report": {
+              "member": "repo/workspace_parallel_verification_2W6qjx/worker-000/000-gemma_fused_add_rmsnorm/direct-native-reports/correctness_report.json",
+              "sha256": "8005352ba573c43b8440748d4cb0b5d9912d5e36a3f5f2c9bc03f8f9aa444079",
+              "bytes": 2425
+            }
+          },
+          {
+            "phase": "performance",
+            "status": "native_phase_succeeded",
+            "native_status": "ok",
+            "command_returncodes": [
+              0
+            ],
+            "timed_out": false,
+            "report": {
+              "member": "repo/workspace_parallel_verification_2W6qjx/worker-000/000-gemma_fused_add_rmsnorm/direct-native-reports/performance_report.json",
+              "sha256": "7fddc94729daa263ee38f3ba066e6858c9cfba3332eb117e3dc8a58e8eb90099",
+              "bytes": 1877
+            },
+            "case_count": 2,
+            "warmup_iterations": 10,
+            "benchmark_iterations": 100
+          }
+        ]
+      }
+    }
+  ]
+}

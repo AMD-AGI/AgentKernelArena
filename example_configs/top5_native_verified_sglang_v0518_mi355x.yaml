@@ -1,0 +1,11 @@
+# Explicit native-verified subset; run with the cohort launcher verify action.
+# Native verify/parallel-verify do not invoke an agent or claim framework validation.
+# Source identities and report provenance: tasks/head_kernels/native_verified.json
+agent:
+  template: task_validator
+tasks:
+- head_kernels/qwen3.8-2.4t-a95b-mxfp4/isl8192_osl1024_conc64_tp8_mi355x/sglang_v0.5.18-rocm720-mi35x-profilerfix/dense_bf16_gemm_cluster
+- head_kernels/qwen3.8-2.4t-a95b-mxfp4/isl8192_osl1024_conc64_tp8_mi355x/sglang_v0.5.18-rocm720-mi35x-profilerfix/gemma_fused_add_rmsnorm
+target_gpu_model: MI355X
+log_directory: logs
+workspace_directory_prefix: workspace
