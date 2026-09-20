@@ -4,8 +4,11 @@ Every task now selects a pinned public `docker.io/rocm/hyperloom` image. Runtime
 launches use the local checkout and public Docker Hub; they do not contact the
 historical capture registry or require the original compute node. The original
 capture images and known Docker image IDs remain explicit historical provenance.
-The new public runtime profiles have **GPU qualification pending** and are not
-asserted to be identical to those capture images.
+Completed native GPU checks are recorded per task, source identity, and runtime
+in the [native-verified index](../../tasks/head_kernels/native_verified.json).
+The [validation status](../../tasks/head_kernels/VALIDATION.md) tracks current
+results, incomplete checks, and acceptance restrictions. The public profiles are
+not asserted to be identical to the historical capture images.
 
 The [suite index](../../tasks/head_kernels/README.md) lists 18 operator tasks from
 five serving workloads. ISL 8192 / OSL 1024 / concurrency 64 / TP 8 describes the
@@ -187,8 +190,12 @@ tasks are unchanged.
 These are direct execution results: `framework_task_validator` is `NOT_RUN`,
 and no framework `validation_report.yaml`, `task_result.yaml`, or finalized
 `PASS` is created. The compile phase checks Python syntax and fixed ABI;
-correctness and performance supply device execution evidence. The public
-runtime remains unqualified until it successfully completes GPU checks.
+correctness and performance supply device execution evidence. Successful native
+verification applies to the recorded operator contract, source identity, and
+runtime; it does not establish full model-serving equivalence. Consult the
+[native-verified index](../../tasks/head_kernels/native_verified.json) and
+[validation status](../../tasks/head_kernels/VALIDATION.md) for completed phases
+and the limits of those results.
 For the separate framework quality review and its PR gate, use the existing
 `run` action with a configured validator backend as described in
 [task validation](task-validator.md).
@@ -224,6 +231,13 @@ and the separate historical capture image/ID. Existing task-specific native
 source and ABI checks remain required; selecting a public image does not weaken
 them. An environment preflight pass does not establish kernel correctness or
 GPU benchmark qualification.
+
+The `pending` marker in preflight reports, launcher plans, and the generated
+environment matrix is static runtime metadata. It does not aggregate completed
+native runs or report framework acceptance. Use the
+[native-verified index](../../tasks/head_kernels/native_verified.json) and
+[validation status](../../tasks/head_kernels/VALIDATION.md) for current per-task
+evidence; the static marker does not supersede those records.
 
 All cohorts enable `AKA_TOP5_ISOLATED_CACHES=1`. Each worker receives its own
 ordinary user-owned temporary directories through `AITER_JIT_DIR` and
@@ -293,9 +307,11 @@ model-serving support remains a separate deployment qualification.
 
 Run each selected task through `task_validator` and require a fresh,
 framework-finalized `validation_report.yaml` with `overall_status: PASS` before
-claiming qualification. Preserve the runtime reports and GPU environment with
-those results. Existing evaluator sidecars qualified for the repository's
-v0.5.14 default image are not qualified for these public profiles.
+claiming framework task-validator acceptance or satisfying the task-validation
+PR gate. Completed native verification remains a separate result. Preserve the
+runtime reports and GPU environment with both kinds of evidence. Existing
+evaluator sidecars qualified for the repository's v0.5.14 default image are not
+qualified for these public profiles.
 
 The launcher forwards normal resume and scheduling arguments:
 

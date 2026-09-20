@@ -9,8 +9,8 @@ it is not a successful GPU correctness or performance run.
 
 | Public tag under `rocm/hyperloom` | ROCm / target | AITER build commit | Use in this suite |
 | --- | --- | --- | --- |
-| `sglang-v0.5.17-rocm7.2.0-mi350x` | 7.2.0 / `gfx950` | `d9e5ef7ce08ee7045d583aed768cff41aa9210fe` | Public default for 11 tasks, including Kimi; GPU qualification pending |
-| `sglang-v0.5.18-rocm7.2.0-mi350x` | 7.2.0 / `gfx950` | `d9e5ef7ce08ee7045d583aed768cff41aa9210fe` | Public default for seven tasks; GPU qualification pending |
+| `sglang-v0.5.17-rocm7.2.0-mi350x` | 7.2.0 / `gfx950` | `d9e5ef7ce08ee7045d583aed768cff41aa9210fe` | Public default for 11 tasks, including Kimi; [native results by task](../../tasks/head_kernels/native_verified.json) |
+| `sglang-v0.5.18-rocm7.2.0-mi350x` | 7.2.0 / `gfx950` | `d9e5ef7ce08ee7045d583aed768cff41aa9210fe` | Public default for seven tasks; [native results by task](../../tasks/head_kernels/native_verified.json) |
 | `sglang-v0.5.18-main20260825-rocm7.2.0-mi350x` | 7.2.0 / `gfx950` | `d9e5ef7ce08ee7045d583aed768cff41aa9210fe` | Separate main-build variant; not qualified |
 | `sglang-v0.5.19-rocm7.2.0-mi350x` | 7.2.0 / `gfx950` | `c16d44b93a528b2a4bfd6d8d3409116d465872a9` | Different SGLang and AITER revisions; not a replacement for the frozen v0.5.17 task |
 
@@ -50,6 +50,14 @@ the installed file and executing the GPU tests.
 Use the dedicated public validation config and the cohort launcher's `verify`
 action documented in [the runtime guide](../how-to/top5-head-kernels-runtime.md).
 It runs the task's native commands without an LLM CLI or agent credentials.
+Completed compile, correctness, and performance phases are recorded in the
+[native-verified index](../../tasks/head_kernels/native_verified.json) for the
+specific operator contracts, source identities, and runtimes tested. Direct
+verification leaves `framework_task_validator: NOT_RUN` and does not create a
+framework-finalized `validation_report.yaml` or establish full model-serving
+equivalence. The separate framework acceptance route uses `run` with a configured
+task-validator backend, as described in the runtime guide.
+
 All 18 task defaults now select pinned public images. The original
 capture runtime and the current public runtime have separate recorded
 identities. The private Harbor image's exact build delta and byte identity
