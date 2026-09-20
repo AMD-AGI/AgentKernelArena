@@ -110,6 +110,14 @@ image/config ID. The helper also consumes captured IDs directly from the
 protected `ut/meta.json` source/baseline provenance. Do not install floating
 upgrades into a capture runtime.
 
+The v0.5.18 cohort also requires `TVM_FFI_DISABLE_TORCH_C_DLPACK=1`, as documented
+by the capture suite. That image ships a CPU-only TVM FFI addon; enabling the
+Torch C DLPack path triggers repeated failing ROCm addon compilations and can
+hang startup. The cohort launcher sets the flag, the Docker runner forwards
+the explicit value, and task preflight requires and records it. Other runtimes
+receive no new default. This is CPU FFI setup and does not change kernel work
+or timing iteration counts.
+
 The GLM MoE capture documents PyTorch `2.9.1+rocm7.2.0`, SGLang `0.5.18`, and HIP
 `7.2.26015`. Its original model-serving bootstrap required `glm5_next`
 architecture enablement. The isolated MoE task now publishes the captured

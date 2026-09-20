@@ -105,6 +105,7 @@ class CohortTests(unittest.TestCase):
         self.assertEqual(command[-2:], ["--run-suffix", "fixture"])
         self.assertEqual(kwargs["env"]["AKA_DOCKER_IMAGE"], launcher.plan_run(config)["image"])
         self.assertEqual(kwargs["env"]["AKA_VERIFY_RUNTIME_IMAGE"], "1")
+        self.assertEqual(kwargs["env"]["TVM_FFI_DISABLE_TORCH_C_DLPACK"], "1")
         self.assertEqual(kwargs["env"]["AKA_EXPECTED_IMAGE_ID"],
                          "sha256:760dd38b9b6f2bd11c13011d470eb8e377c3f0d71284a090a710d64a23bd789f")
         self.assertEqual(kwargs["cwd"], ROOT)
@@ -173,6 +174,7 @@ class RuntimeTests(unittest.TestCase):
         self.enterContext(mock.patch.dict(os.environ, {
             "AGENT_KERNEL_ARENA_DOCKER": "1", "AGENT_KERNEL_ARENA_DOCKER_IMAGE": image,
             "AGENT_KERNEL_ARENA_DOCKER_IMAGE_ID": "sha256:" + "a" * 64,
+            "TVM_FFI_DISABLE_TORCH_C_DLPACK": "1",
             "AGENT_KERNEL_ARENA_DOCKER_REPO_DIGESTS": "[]"}))
         self.enterContext(mock.patch.object(runtime.importlib, "import_module", side_effect=lambda name: self.modules[name]))
 
@@ -234,6 +236,14 @@ class RuntimeTests(unittest.TestCase):
     def test_rejects_missing_host_image_attestation(self):
         with mock.patch.dict(os.environ, {"AGENT_KERNEL_ARENA_DOCKER_IMAGE_ID": ""}):
             self.assert_runtime_rejected("did not supply a verified image ID")
+
+    def test_v0518_requires_documented_tvm_ffi_workaround(self):
+        with mock.patch.dict(os.environ, {"TVM_FFI_DISABLE_TORCH_C_DLPACK": "0"}):
+            self.assert_runtime_rejected("TVM_FFI_DISABLE_TORCH_C_DLPACK=1")
+
+    def test_tvm_ffi_workaround_is_scoped_to_v0518(self):
+        config = {"headkernel": {"docker": "registry/sglang:v0.5.17-rocm720-mi35x-profilerfix"}}
+        self.assertEqual(runtime.runtime_requirements(config, self.task_dir)["environment"], {})
 
     def test_rejects_capture_image_id_mismatch(self):
         self.config["headkernel"]["runtime"] = {"expected_image_id": "sha256:" + "b" * 64}

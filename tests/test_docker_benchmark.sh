@@ -252,6 +252,7 @@ forwarded_agents="$(PATH="$FAKE_BIN:$PATH" bash "$RUNNER" _container_check_agent
 mapfile -t args < <(run_shell_args AKA_GPU_ARCH=gfx950)
 assert_has "$PINNED_GFX950_IMAGE" "${args[@]}"
 assert_has "AGENT_KERNEL_ARENA_DOCKER_IMAGE=$PINNED_GFX950_IMAGE" "${args[@]}"
+assert_not_has "TVM_FFI_DISABLE_TORCH_C_DLPACK=1" "${args[@]}"
 assert_cache_args_present "" "${args[@]}"
 assert_not_has "AITER_ROOT_DIR=/tmp/aiter-root" "${args[@]}"
 
@@ -260,9 +261,11 @@ assert_not_has "AITER_ROOT_DIR=/tmp/aiter-root" "${args[@]}"
 CAPTURE_IMAGE_ID="sha256:760dd38b9b6f2bd11c13011d470eb8e377c3f0d71284a090a710d64a23bd789f"
 CAPTURE_IMAGE="example.invalid/sglang:v0.5.18"
 mapfile -t args < <(run_shell_args AKA_GPU_ARCH=gfx950 AKA_DOCKER_IMAGE="$CAPTURE_IMAGE" \
+    TVM_FFI_DISABLE_TORCH_C_DLPACK=1 \
     AKA_VERIFY_RUNTIME_IMAGE=1 AKA_EXPECTED_IMAGE_ID="$CAPTURE_IMAGE_ID" \
     FAKE_SELECTED_IMAGE_ID="$CAPTURE_IMAGE_ID")
 assert_has "AGENT_KERNEL_ARENA_DOCKER_IMAGE=$CAPTURE_IMAGE" "${args[@]}"
+assert_has "TVM_FFI_DISABLE_TORCH_C_DLPACK=1" "${args[@]}"
 assert_has "AGENT_KERNEL_ARENA_DOCKER_IMAGE_ID=$CAPTURE_IMAGE_ID" "${args[@]}"
 assert_has "AGENT_KERNEL_ARENA_DOCKER_REPO_DIGESTS=[]" "${args[@]}"
 assert_has "$CAPTURE_IMAGE_ID" "${args[@]}"

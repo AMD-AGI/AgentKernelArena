@@ -46,8 +46,8 @@ def environment_matrix(repo_root: Path = REPO_ROOT) -> str:
         "recorded during GPU qualification. An unlisted",
         "package version means the capture image supplies it; it is not permission",
         "to install a floating upgrade. This table is not a validation report.", "",
-        "| Task | Capture image | Expected Docker image ID | ROCm/HIP | Package requirements | Captured source commits | Architecture registration |",
-        "| --- | --- | --- | --- | --- | --- | --- |",
+        "| Task | Capture image | Expected Docker image ID | ROCm/HIP | Package requirements | Captured source commits | Architecture registration | Required environment |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- |",
     ]
     for path in sorted((repo_root / "tasks/head_kernels").rglob("config.yaml")):
         task = load_mapping(path)
@@ -57,13 +57,14 @@ def environment_matrix(repo_root: Path = REPO_ROOT) -> str:
                              else f"{name} (image version)"
                              for name in requirements["required_modules"])
         model_types = ", ".join(requirements["required_model_types"]) or "—"
+        environment = "; ".join(f"`{name}={value}`" for name, value in requirements["environment"].items()) or "—"
         image_id = f"`{requirements['expected_image_id']}`" if requirements["expected_image_id"] else "Not recorded"
         commits = "; ".join(f"{repo}: `{commit}`" for repo, commit in requirements["source_commits"].items()) or "Not recorded"
         relative_path = path.relative_to(repo_root).as_posix()
         selector = path.parent.relative_to(repo_root / "tasks").as_posix()
         lines.append(f"| [{selector}](../../{relative_path}) | "
                      f"`{requirements['image']}` | {image_id} | {requirements['hip_version']} | "
-                     f"{packages} | {commits} | {model_types} |")
+                     f"{packages} | {commits} | {model_types} | {environment} |")
     lines.extend(["", "See [the runtime guide](../how-to/top5-head-kernels-runtime.md) for",
                   "cohort launch commands, runtime enforcement, and remaining qualification.", ""])
     return "\n".join(lines)
@@ -94,6 +95,7 @@ def plan_run(config_path: Path, repo_root: Path = REPO_ROOT) -> dict:
     suite_root = (tasks_root / "head_kernels").resolve()
     selected: dict[str, str] = {}
     expected_image_ids = set()
+    required_environment = {}
     runtime = runtime_contract_reader()
     for selector in selectors:
         if not isinstance(selector, str) or Path(selector).is_absolute():
@@ -118,6 +120,7 @@ def plan_run(config_path: Path, repo_root: Path = REPO_ROOT) -> dict:
                 raise ValueError(f"A versioned image reference is required: {image!r}")
             selected[task_path.parent.relative_to(tasks_root).as_posix()] = image
             requirements = runtime.runtime_requirements(task, task_path.parent)
+            required_environment.update(requirements["environment"])
             if requirements["expected_image_id"]:
                 expected_image_ids.add(requirements["expected_image_id"])
 
@@ -132,6 +135,7 @@ def plan_run(config_path: Path, repo_root: Path = REPO_ROOT) -> dict:
         "config": config_path.relative_to(repo_root).as_posix(),
         "image": images[0],
         "expected_image_id": next(iter(expected_image_ids), None),
+        "required_environment": required_environment,
         "target_gpu_model": "MI355X",
         "tasks": sorted(selected),
         "task_count": len(selected),
@@ -146,6 +150,7 @@ def runtime_environment(plan: dict, environment: dict[str, str]) -> dict[str, st
     result = dict(environment)
     result["AKA_DOCKER_IMAGE"] = plan["image"]
     result["AKA_VERIFY_RUNTIME_IMAGE"] = "1"
+    result.update(plan.get("required_environment", {}))
     expected_id = plan.get("expected_image_id")
     if expected_id:
         if environment.get("AKA_EXPECTED_IMAGE_ID") not in (None, "", expected_id):
@@ -186,6 +191,7 @@ def main(argv: list[str] | None = None) -> int:
             print(json.dumps({**plan, "command": command,
                               "environment": {"AKA_DOCKER_IMAGE": plan["image"],
                                               "AKA_GPU_ARCH": "gfx950",
+                                              **plan["required_environment"],
                                               **identity_environment}}, indent=2))
             return 0
         print(f"Top-five runtime: {plan['image']} ({plan['task_count']} tasks)",

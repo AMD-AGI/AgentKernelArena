@@ -74,6 +74,8 @@ def runtime_requirements(config: dict, task_dir: Path | None = None) -> dict:
         "hip_version": runtime.get("hip_version", "7.2.x"),
         "required_modules": sorted(required_modules),
         "package_versions": versions,
+        "environment": ({"TVM_FFI_DISABLE_TORCH_C_DLPACK": "1"}
+                        if sglang_version == "0.5.18" else {}),
         "required_model_types": list(runtime.get("required_model_types") or []),
     }
 
@@ -114,9 +116,13 @@ def preflight(config: dict, task_dir: Path | None = None) -> dict:
         "required_arch": "gfx950",
         "architecture": None,
         "versions": {},
+        "environment": {name: os.environ.get(name) for name in requirements["environment"]},
         "errors": [],
     }
     errors = report["errors"]
+    for name, expected in requirements["environment"].items():
+        if os.environ.get(name) != expected:
+            errors.append(f"Capture runtime requires {name}={expected}; use the cohort launcher")
     if not isinstance(expected_image, str) or not expected_image:
         errors.append("Task config does not declare headkernel.docker")
     if os.environ.get("AGENT_KERNEL_ARENA_DOCKER") != "1":

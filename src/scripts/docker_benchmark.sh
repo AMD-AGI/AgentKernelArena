@@ -1046,6 +1046,12 @@ build_docker_args() {
     # this host-mounted dir (see container_setup_geak). Only put it on
     # PYTHONPATH for GEAK runs so its dependency closure cannot shadow the
     # runtime image's pinned packages for existing agents.
+    # Explicit capture-runtime opt-in: v0.5.18 ships a CPU-only TVM FFI addon;
+    # disabling Torch C DLPack avoids failing ROCm addon compilation attempts.
+    if [[ -n "${TVM_FFI_DISABLE_TORCH_C_DLPACK:-}" ]]; then
+        docker_args+=(-e "TVM_FFI_DISABLE_TORCH_C_DLPACK=${TVM_FFI_DISABLE_TORCH_C_DLPACK}")
+    fi
+
     if [[ "$GEAK_V4_RUNTIME" == "1" ]]; then
         docker_args+=(-e "PYTHONPATH=${CONTAINER_WORKDIR}/.aka-pyuserbase/geak-sdk")
     fi
