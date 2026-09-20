@@ -86,6 +86,12 @@ request is required after the image has been pulled.
 
 ## Direct verification without an agent
 
+For an interrupted single-task run with an authentic, fully completed compile
+and correctness prefix, the optional [explicit prefix-resume route](native-verifier-prefix-resume.md)
+can retain that pinned evidence and run the unchanged full performance command
+in a fresh workspace. Source/runtime mismatches are rejected; reused phases are
+identified as prior execution and performance is never reused.
+
 ### Parallel native verification
 
 Use `parallel-verify` with explicit host GPU IDs to distribute one public-image

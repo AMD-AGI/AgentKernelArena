@@ -1785,7 +1785,7 @@ run_parallel_verify() {
     [[ -n "${GPU_IDS:-}" ]] || die "parallel-verify requires explicit GPU_IDS"
     for arg in "$@"; do
         case "${arg%%=*}" in
-            --shard-index|--shard-count|--taskset-sha256|--output-directory)
+            --shard-index|--shard-count|--taskset-sha256|--output-directory|--resume-prefix|--resume-prefix-sha256)
                 die "parallel-verify manages shard/output arguments; provide only the cohort config" ;;
         esac
     done

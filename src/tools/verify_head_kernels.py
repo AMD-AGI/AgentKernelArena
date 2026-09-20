@@ -117,7 +117,8 @@ def run_command(command: str, workspace: Path, stdout, stderr, timeout: float) -
             "timed_out": timed_out, "elapsed_seconds": time.monotonic() - started}
 
 
-def verify_task(source: Path, workspace: Path, repo: Path) -> dict:
+def verify_task(source: Path, workspace: Path, repo: Path, *, resume_request: dict | None = None,
+                runtime_identity: dict | None = None) -> dict:
     result = {"schema": "aka-direct-task-verification-v1", **FRAMEWORK,
               "task": source.relative_to(repo / "tasks").as_posix(),
               "workspace": workspace.relative_to(repo).as_posix(),
@@ -128,7 +129,19 @@ def verify_task(source: Path, workspace: Path, repo: Path) -> dict:
     try:
         result["source_identity"] = copy_task(source, workspace, repo)
         config = yaml.safe_load((workspace / "config.yaml").read_text())
-        for phase in PHASES:
+        phases = PHASES
+        if resume_request is not None:
+            from src.tools.native_phase_resume import retain_prefix, validate_prefix
+            validated = validate_prefix(
+                resume_request["path"], resume_request["sha256"], selector=result["task"],
+                source_identity=result["source_identity"], task_config=config,
+                workspace=workspace, runtime_identity=runtime_identity or {},
+                current_plan=resume_request["plan"])
+            result["phases"], result["resume_provenance"] = retain_prefix(validated, workspace)
+            result["executed_phases"] = ["performance"]
+            phases = ("performance",)
+            write_json(report, result)
+        for phase in phases:
             commands = config.get(phase + "_command")
             timeout = config.get(phase + "_timeout", 3600)
             if not isinstance(commands, list) or not commands or any(
@@ -138,6 +151,7 @@ def verify_task(source: Path, workspace: Path, repo: Path) -> dict:
                     or not math.isfinite(timeout) or timeout <= 0):
                 raise ValueError(f"Invalid {phase}_timeout")
             entry = {"phase": phase, "status": "running", "timeout_seconds": timeout,
+                     "executed_in_this_run": True, "executed_here": True,
                      "commands": [], "started_utc": datetime.now(timezone.utc).isoformat(),
                      "stdout": phase + ".stdout", "stderr": phase + ".stderr"}
             result["phases"].append(entry)
@@ -177,7 +191,8 @@ def verify_task(source: Path, workspace: Path, repo: Path) -> dict:
                 write_json(report, result)
                 return result
             write_json(report, result)
-        result["status"] = "all_native_phases_succeeded"
+        result["status"] = ("native_prefix_reused_performance_succeeded" if resume_request is not None
+                            else "all_native_phases_succeeded")
     except Exception as error:
         result.update(status="verification_error", error_type=type(error).__name__, error=str(error))
     write_json(report, result)
@@ -257,10 +272,23 @@ def aggregate_parallel(batch: Path, exit_codes: list[int]) -> tuple[int, Path]:
 
 
 def verify(config: Path, repo: Path = REPO_ROOT, *, shard_index: int = 0, shard_count: int = 1,
-           taskset_sha256: str | None = None, output_directory: Path | None = None) -> tuple[int, Path]:
+           taskset_sha256: str | None = None, output_directory: Path | None = None,
+           resume_prefix: Path | None = None, resume_prefix_sha256: str | None = None) -> tuple[int, Path]:
     repo = repo.resolve()
     plan = plan_run(config, repo)
     assigned = select_task_shard(plan["tasks"], shard_index, shard_count)
+    resume_request = None
+    if (resume_prefix is None) != (resume_prefix_sha256 is None):
+        raise ValueError("--resume-prefix and --resume-prefix-sha256 must be supplied together")
+    if resume_prefix is not None:
+        if len(plan["tasks"]) != 1 or shard_index != 0 or shard_count != 1:
+            raise ValueError("Native phase-prefix resume currently requires one task and an unsharded verify run")
+        evidence = (repo / resume_prefix).resolve()
+        if not evidence.is_relative_to(repo):
+            raise ValueError("Resume evidence must be explicitly staged inside the mounted repository")
+        if not re.fullmatch(r"[0-9a-f]{64}", resume_prefix_sha256):
+            raise ValueError("Resume evidence requires a complete SHA-256 pin")
+        resume_request = {"path": evidence, "sha256": resume_prefix_sha256, "plan": plan}
     digest = taskset_digest(plan["tasks"])
     if taskset_sha256 is not None and taskset_sha256 != digest:
         raise ValueError("The cohort task list changed after parallel planning")
@@ -296,6 +324,7 @@ def verify(config: Path, repo: Path = REPO_ROOT, *, shard_index: int = 0, shard_
         "AGENT_KERNEL_ARENA_HOST_GPU_ID", "AGENT_KERNEL_ARENA_HEAD_KERNEL_VALIDATION_RUNTIME",
         "AITER_JIT_DIR", "FLYDSL_RUNTIME_CACHE_DIR", "TVM_FFI_DISABLE_TORCH_C_DLPACK")}
     summary = {"schema": "aka-direct-verification-v1", **FRAMEWORK, "plan": plan,
+               "resume_prefix_requested": resume_request is not None,
                "shard": {"index": shard_index, "count": shard_count, "assigned_tasks": assigned,
                          "taskset_sha256": digest, "cohort_task_count": len(plan["tasks"]),
                          "host_gpu_id": os.environ.get("AGENT_KERNEL_ARENA_HOST_GPU_ID")},
@@ -305,10 +334,17 @@ def verify(config: Path, repo: Path = REPO_ROOT, *, shard_index: int = 0, shard_
     print(f"Direct verification evidence: {path.relative_to(repo)}", flush=True)
     for index, selector in enumerate(assigned):
         source = (repo / "tasks" / selector).resolve()
-        summary["tasks"].append(verify_task(source, run / f"{index:03d}-{source.name}", repo))
+        if resume_request is None:
+            task_result = verify_task(source, run / f"{index:03d}-{source.name}", repo)
+        else:
+            task_result = verify_task(source, run / f"{index:03d}-{source.name}", repo,
+                                      resume_request=resume_request, runtime_identity=identity)
+        summary["tasks"].append(task_result)
         write_json(path, summary)
-    succeeded = all(task["status"] == "all_native_phases_succeeded" for task in summary["tasks"])
-    summary["status"] = "all_native_phases_succeeded" if succeeded else "direct_verification_failed"
+    success_status = ("native_prefix_reused_performance_succeeded" if resume_request is not None
+                      else "all_native_phases_succeeded")
+    succeeded = all(task["status"] == success_status for task in summary["tasks"])
+    summary["status"] = success_status if succeeded else "direct_verification_failed"
     write_json(path, summary)
     return (0 if succeeded else 1), path
 
@@ -320,10 +356,13 @@ def main(argv=None) -> int:
     parser.add_argument("--shard-count", type=int, default=1)
     parser.add_argument("--taskset-sha256")
     parser.add_argument("--output-directory", type=Path)
+    parser.add_argument("--resume-prefix", type=Path)
+    parser.add_argument("--resume-prefix-sha256")
     args = parser.parse_args(argv)
     try:
         code, _ = verify(args.config_name, shard_index=args.shard_index, shard_count=args.shard_count,
-                         taskset_sha256=args.taskset_sha256, output_directory=args.output_directory)
+                         taskset_sha256=args.taskset_sha256, output_directory=args.output_directory,
+                         resume_prefix=args.resume_prefix, resume_prefix_sha256=args.resume_prefix_sha256)
         return code
     except (OSError, ValueError, yaml.YAMLError) as error:
         parser.exit(2, f"error: {error}\n")
