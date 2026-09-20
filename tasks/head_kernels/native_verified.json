@@ -304,6 +304,76 @@
           }
         ]
       }
+    },
+    {
+      "task": "head_kernels/qwen3.8-2.4t-a95b-mxfp4/isl8192_osl1024_conc64_tp8_mi355x/sglang_v0.5.18-rocm720-mi35x-profilerfix/paged_attention_decode",
+      "cohort": "sglang_v0518",
+      "native_status": "all_native_phases_succeeded",
+      "source_identity": {
+        "schema": "aka-native-materialized-files-v1",
+        "sha256": "6475b1bb56579bb2381de73b1d8d8a7d80fd0a5ea0e96f0e83d5b84599afe908",
+        "file_count": 35,
+        "materialized_perf_helpers": [
+          "scripts/_aka_benchmark.py"
+        ]
+      },
+      "evidence": {
+        "job_id": "159222",
+        "source_commit": "113a0900d917c971b9aac6090e08f241cb87741b",
+        "archive_sha256": "f31fcb152982a5fdd419dfb234d256c630f70d04aa3ac8fefddd4e7c88c980d1",
+        "direct_report": {
+          "member": "repo/workspace_parallel_verification_tRX9cm/worker-003/000-paged_attention_decode.direct.json",
+          "sha256": "ba676f94abfa50d0b4ca86823f5d8d39c9d91eae5edd2d964e4d4ab8c44a1fa1",
+          "bytes": 8365
+        },
+        "phases": [
+          {
+            "phase": "compile",
+            "status": "native_phase_succeeded",
+            "native_status": "ok",
+            "command_returncodes": [
+              0
+            ],
+            "timed_out": false,
+            "report": {
+              "member": "repo/workspace_parallel_verification_tRX9cm/worker-003/000-paged_attention_decode/direct-native-reports/compile_report.json",
+              "sha256": "eca1bd8994bf20c53c7ab4199b1f5878791fe3341bd712f5fa7ac75ba345c7c6",
+              "bytes": 128
+            }
+          },
+          {
+            "phase": "correctness",
+            "status": "native_phase_succeeded",
+            "native_status": "ok",
+            "command_returncodes": [
+              0
+            ],
+            "timed_out": false,
+            "report": {
+              "member": "repo/workspace_parallel_verification_tRX9cm/worker-003/000-paged_attention_decode/direct-native-reports/correctness_report.json",
+              "sha256": "5024b297b13df01e83ffb7497183c7c390c42ea681227807ea74d3532c17a40f",
+              "bytes": 558
+            }
+          },
+          {
+            "phase": "performance",
+            "status": "native_phase_succeeded",
+            "native_status": "ok",
+            "command_returncodes": [
+              0
+            ],
+            "timed_out": false,
+            "report": {
+              "member": "repo/workspace_parallel_verification_tRX9cm/worker-003/000-paged_attention_decode/direct-native-reports/performance_report.json",
+              "sha256": "cc9263e36ca7accc071994e77e4a1f06ccdcfca0c2da28727f7e3111f324b238",
+              "bytes": 981
+            },
+            "case_count": 1,
+            "warmup_iterations": 10,
+            "benchmark_iterations": 100
+          }
+        ]
+      }
     }
   ]
 }

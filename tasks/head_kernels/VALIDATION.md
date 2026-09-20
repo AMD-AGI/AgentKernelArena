@@ -11,6 +11,28 @@ are separate requirements. A successful microbenchmark does not establish
 full HyperLoom serving equivalence or reproduce a historical end-to-end gain.
 The [workload fidelity report](WORKLOAD_FIDELITY.md) records those distinctions.
 
+## Latest verified selection
+
+The [native-verified index](native_verified.json) now contains **five tasks**:
+both GLM GEMMs, Qwen dense GEMM, Qwen RMSNorm, and Qwen paged attention.
+Qwen paged attention completed all three native phases in job **159222** at
+source `113a0900`, including its one declared `decode_m64_live` benchmark case,
+10 warmups, 100 samples, input restoration and exact timed graph replay checks.
+Its 35 materialized task-file identities match the current source. The verified
+archive hash is `f31fcb152982a5fdd419dfb234d256c630f70d04aa3ac8fefddd4e7c88c980d1`.
+This qualifies the archived compacted case; it does not recover the original
+full-pool addressing or the other uncaptured serving signatures.
+
+Jobs 159221/159222 used fresh two-hour requests accepted by the authorized
+preemptible QoS. Both were cancelled by scheduler preemption after 20 minutes,
+not by the task phase timeouts. GLM copy, Qwen MoE and Qwen recurrent state passed
+correctness but did not finish performance; they remain outside the index.
+DeepSeek sparse attention and MiniMax sparse prefill did not complete correctness.
+The two DeepSeek MoE workers were stopped separately after verification showed
+that 73 required M1920 sequence calls have no captured inputs. These are not
+promoted by skipping the missing calls. All jobs are terminal and owned-container
+cleanup was confirmed.
+
 ## Current acceptance restrictions
 
 - MiniMax decode-score and sparse-decode workload scores are blocked: their
@@ -41,7 +63,7 @@ The [workload fidelity report](WORKLOAD_FIDELITY.md) records those distinctions.
 These restrictions fail closed. A blocked performance phase is not a zero-time
 kernel, a passing task, or a speedup.
 
-## Final GPU campaign: task-by-task status
+## Earlier campaign checkpoint (17:39 UTC): task-by-task status
 
 **Final outcome: four tasks passed complete native correctness and performance;
 one failed the independent numerical reference; thirteen did not finish full
