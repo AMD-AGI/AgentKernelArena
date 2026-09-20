@@ -50,29 +50,9 @@
     "nk3072x4096_m64_decode",
     "nk288x4096_m64_decode",
     "nk1024x128_m64_decode",
-    "nk128x4096_m8192_prefill",
     "nk8x4096_m64_decode",
     "nk4096x1024_m64_decode",
-    "nk3072x4096_m8192_prefill",
-    "nk288x4096_m8192_prefill",
-    "nk1024x128_m8192_prefill",
-    "nk8x4096_m8192_prefill",
-    "nk4096x1024_m8192_prefill",
-    "nk4096x1536_m64_decode",
-    "nk4096x1536_m8192_prefill",
-    "nk32x4096_m8192_prefill",
-    "nk4096x512_m8192_prefill",
-    "nk32x4096_m64_decode",
-    "nk4096x512_m64_decode",
-    "nk32x4096_m1_decode",
-    "nk4096x512_m1_decode",
-    "nk4096x1536_m1_decode",
-    "nk3072x4096_m1_decode",
-    "nk4096x1024_m1_decode",
-    "nk288x4096_m1_decode",
-    "nk128x4096_m1_decode",
-    "nk8x4096_m1_decode",
-    "nk1024x128_m1_decode"
+    "nk4096x1536_m64_decode"
   ],
   "cases": [
     {
@@ -80,189 +60,567 @@
       "regime": "decode",
       "m": 64,
       "n": 128,
-      "k": 4096
+      "k": 4096,
+      "scenario_evidence": {
+        "classification": "observed_profile_shape",
+        "scored": true,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+        "source_case_id": "nk128x4096_m64_decode",
+        "source_case_pointer": "/cases/0",
+        "source_count": null,
+        "source_weight_source": "trace",
+        "observed_invocation_count": null,
+        "count_scope": "per-case invocation count not recorded",
+        "interpretation": "M64 is observed in the retained profile window; tensor values remain synthetic."
+      }
     },
     {
       "sig": "nk3072x4096_m64_decode",
       "regime": "decode",
       "m": 64,
       "n": 3072,
-      "k": 4096
+      "k": 4096,
+      "scenario_evidence": {
+        "classification": "observed_profile_shape",
+        "scored": true,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+        "source_case_id": "nk3072x4096_m64_decode",
+        "source_case_pointer": "/cases/1",
+        "source_count": null,
+        "source_weight_source": "trace",
+        "observed_invocation_count": null,
+        "count_scope": "per-case invocation count not recorded",
+        "interpretation": "M64 is observed in the retained profile window; tensor values remain synthetic."
+      }
     },
     {
       "sig": "nk288x4096_m64_decode",
       "regime": "decode",
       "m": 64,
       "n": 288,
-      "k": 4096
+      "k": 4096,
+      "scenario_evidence": {
+        "classification": "observed_profile_shape",
+        "scored": true,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+        "source_case_id": "nk288x4096_m64_decode",
+        "source_case_pointer": "/cases/2",
+        "source_count": null,
+        "source_weight_source": "trace",
+        "observed_invocation_count": null,
+        "count_scope": "per-case invocation count not recorded",
+        "interpretation": "M64 is observed in the retained profile window; tensor values remain synthetic."
+      }
     },
     {
       "sig": "nk1024x128_m64_decode",
       "regime": "decode",
       "m": 64,
       "n": 1024,
-      "k": 128
+      "k": 128,
+      "scenario_evidence": {
+        "classification": "observed_profile_shape",
+        "scored": true,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+        "source_case_id": "nk1024x128_m64_decode",
+        "source_case_pointer": "/cases/3",
+        "source_count": null,
+        "source_weight_source": "trace",
+        "observed_invocation_count": null,
+        "count_scope": "per-case invocation count not recorded",
+        "interpretation": "M64 is observed in the retained profile window; tensor values remain synthetic."
+      }
     },
     {
       "sig": "nk128x4096_m8192_prefill",
       "regime": "prefill",
       "m": 8192,
       "n": 128,
-      "k": 4096
+      "k": 4096,
+      "scenario_evidence": {
+        "classification": "inferred_m_bucket",
+        "scored": false,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+        "source_case_id": "nk128x4096_m8192_prefill",
+        "source_case_pointer": "/cases/4",
+        "source_count": null,
+        "source_weight_source": "regime_floor",
+        "observed_invocation_count": null,
+        "count_scope": "not an observed invocation count for this generated case",
+        "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization."
+      }
     },
     {
       "sig": "nk8x4096_m64_decode",
       "regime": "decode",
       "m": 64,
       "n": 8,
-      "k": 4096
+      "k": 4096,
+      "scenario_evidence": {
+        "classification": "observed_profile_shape",
+        "scored": true,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+        "source_case_id": "nk8x4096_m64_decode",
+        "source_case_pointer": "/cases/5",
+        "source_count": null,
+        "source_weight_source": "trace",
+        "observed_invocation_count": null,
+        "count_scope": "per-case invocation count not recorded",
+        "interpretation": "M64 is observed in the retained profile window; tensor values remain synthetic."
+      }
     },
     {
       "sig": "nk4096x1024_m64_decode",
       "regime": "decode",
       "m": 64,
       "n": 4096,
-      "k": 1024
+      "k": 1024,
+      "scenario_evidence": {
+        "classification": "observed_profile_shape",
+        "scored": true,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+        "source_case_id": "nk4096x1024_m64_decode",
+        "source_case_pointer": "/cases/6",
+        "source_count": null,
+        "source_weight_source": "trace",
+        "observed_invocation_count": null,
+        "count_scope": "per-case invocation count not recorded",
+        "interpretation": "M64 is observed in the retained profile window; tensor values remain synthetic."
+      }
     },
     {
       "sig": "nk3072x4096_m8192_prefill",
       "regime": "prefill",
       "m": 8192,
       "n": 3072,
-      "k": 4096
+      "k": 4096,
+      "scenario_evidence": {
+        "classification": "inferred_m_bucket",
+        "scored": false,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+        "source_case_id": "nk3072x4096_m8192_prefill",
+        "source_case_pointer": "/cases/7",
+        "source_count": null,
+        "source_weight_source": "regime_floor",
+        "observed_invocation_count": null,
+        "count_scope": "not an observed invocation count for this generated case",
+        "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization."
+      }
     },
     {
       "sig": "nk288x4096_m8192_prefill",
       "regime": "prefill",
       "m": 8192,
       "n": 288,
-      "k": 4096
+      "k": 4096,
+      "scenario_evidence": {
+        "classification": "inferred_m_bucket",
+        "scored": false,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+        "source_case_id": "nk288x4096_m8192_prefill",
+        "source_case_pointer": "/cases/8",
+        "source_count": null,
+        "source_weight_source": "regime_floor",
+        "observed_invocation_count": null,
+        "count_scope": "not an observed invocation count for this generated case",
+        "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization."
+      }
     },
     {
       "sig": "nk1024x128_m8192_prefill",
       "regime": "prefill",
       "m": 8192,
       "n": 1024,
-      "k": 128
+      "k": 128,
+      "scenario_evidence": {
+        "classification": "inferred_m_bucket",
+        "scored": false,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+        "source_case_id": "nk1024x128_m8192_prefill",
+        "source_case_pointer": "/cases/9",
+        "source_count": null,
+        "source_weight_source": "regime_floor",
+        "observed_invocation_count": null,
+        "count_scope": "not an observed invocation count for this generated case",
+        "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization."
+      }
     },
     {
       "sig": "nk8x4096_m8192_prefill",
       "regime": "prefill",
       "m": 8192,
       "n": 8,
-      "k": 4096
+      "k": 4096,
+      "scenario_evidence": {
+        "classification": "inferred_m_bucket",
+        "scored": false,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+        "source_case_id": "nk8x4096_m8192_prefill",
+        "source_case_pointer": "/cases/10",
+        "source_count": null,
+        "source_weight_source": "regime_floor",
+        "observed_invocation_count": null,
+        "count_scope": "not an observed invocation count for this generated case",
+        "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization."
+      }
     },
     {
       "sig": "nk4096x1024_m8192_prefill",
       "regime": "prefill",
       "m": 8192,
       "n": 4096,
-      "k": 1024
+      "k": 1024,
+      "scenario_evidence": {
+        "classification": "inferred_m_bucket",
+        "scored": false,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+        "source_case_id": "nk4096x1024_m8192_prefill",
+        "source_case_pointer": "/cases/11",
+        "source_count": null,
+        "source_weight_source": "regime_floor",
+        "observed_invocation_count": null,
+        "count_scope": "not an observed invocation count for this generated case",
+        "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization."
+      }
     },
     {
       "sig": "nk4096x1536_m64_decode",
       "regime": "decode",
       "m": 64,
       "n": 4096,
-      "k": 1536
+      "k": 1536,
+      "scenario_evidence": {
+        "classification": "observed_profile_shape",
+        "scored": true,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+        "source_case_id": "nk4096x1536_m64_decode",
+        "source_case_pointer": "/cases/12",
+        "source_count": null,
+        "source_weight_source": "trace",
+        "observed_invocation_count": null,
+        "count_scope": "per-case invocation count not recorded",
+        "interpretation": "M64 is observed in the retained profile window; tensor values remain synthetic."
+      }
     },
     {
       "sig": "nk4096x1536_m8192_prefill",
       "regime": "prefill",
       "m": 8192,
       "n": 4096,
-      "k": 1536
+      "k": 1536,
+      "scenario_evidence": {
+        "classification": "inferred_m_bucket",
+        "scored": false,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+        "source_case_id": "nk4096x1536_m8192_prefill",
+        "source_case_pointer": "/cases/13",
+        "source_count": null,
+        "source_weight_source": "regime_floor",
+        "observed_invocation_count": null,
+        "count_scope": "not an observed invocation count for this generated case",
+        "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization."
+      }
     },
     {
       "sig": "nk32x4096_m8192_prefill",
       "regime": "prefill",
       "m": 8192,
       "n": 32,
-      "k": 4096
+      "k": 4096,
+      "scenario_evidence": {
+        "classification": "unprofiled_nk_family",
+        "scored": false,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+        "source_case_id": "nk32x4096_m8192_prefill",
+        "source_case_pointer": "/cases/14",
+        "source_count": null,
+        "source_weight_source": "regime_floor",
+        "observed_invocation_count": null,
+        "count_scope": "not an observed invocation count for this generated case",
+        "interpretation": "No profiled case exists for this NK family; retained solely for unscored robustness/generalization."
+      }
     },
     {
       "sig": "nk4096x512_m8192_prefill",
       "regime": "prefill",
       "m": 8192,
       "n": 4096,
-      "k": 512
+      "k": 512,
+      "scenario_evidence": {
+        "classification": "unprofiled_nk_family",
+        "scored": false,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+        "source_case_id": "nk4096x512_m8192_prefill",
+        "source_case_pointer": "/cases/15",
+        "source_count": null,
+        "source_weight_source": "regime_floor",
+        "observed_invocation_count": null,
+        "count_scope": "not an observed invocation count for this generated case",
+        "interpretation": "No profiled case exists for this NK family; retained solely for unscored robustness/generalization."
+      }
     },
     {
       "sig": "nk32x4096_m64_decode",
       "regime": "decode",
       "m": 64,
       "n": 32,
-      "k": 4096
+      "k": 4096,
+      "scenario_evidence": {
+        "classification": "unprofiled_nk_family",
+        "scored": false,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+        "source_case_id": "nk32x4096_m64_decode",
+        "source_case_pointer": "/cases/16",
+        "source_count": null,
+        "source_weight_source": "regime_floor",
+        "observed_invocation_count": null,
+        "count_scope": "not an observed invocation count for this generated case",
+        "interpretation": "No profiled case exists for this NK family; retained solely for unscored robustness/generalization."
+      }
     },
     {
       "sig": "nk4096x512_m64_decode",
       "regime": "decode",
       "m": 64,
       "n": 4096,
-      "k": 512
+      "k": 512,
+      "scenario_evidence": {
+        "classification": "unprofiled_nk_family",
+        "scored": false,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+        "source_case_id": "nk4096x512_m64_decode",
+        "source_case_pointer": "/cases/17",
+        "source_count": null,
+        "source_weight_source": "regime_floor",
+        "observed_invocation_count": null,
+        "count_scope": "not an observed invocation count for this generated case",
+        "interpretation": "No profiled case exists for this NK family; retained solely for unscored robustness/generalization."
+      }
     },
     {
       "sig": "nk32x4096_m1_decode",
       "regime": "decode",
       "m": 1,
       "n": 32,
-      "k": 4096
+      "k": 4096,
+      "scenario_evidence": {
+        "classification": "unprofiled_nk_family",
+        "scored": false,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+        "source_case_id": "nk32x4096_m1_decode",
+        "source_case_pointer": "/cases/18",
+        "source_count": null,
+        "source_weight_source": "regime_floor",
+        "observed_invocation_count": null,
+        "count_scope": "not an observed invocation count for this generated case",
+        "interpretation": "No profiled case exists for this NK family; retained solely for unscored robustness/generalization."
+      }
     },
     {
       "sig": "nk4096x512_m1_decode",
       "regime": "decode",
       "m": 1,
       "n": 4096,
-      "k": 512
+      "k": 512,
+      "scenario_evidence": {
+        "classification": "unprofiled_nk_family",
+        "scored": false,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+        "source_case_id": "nk4096x512_m1_decode",
+        "source_case_pointer": "/cases/19",
+        "source_count": null,
+        "source_weight_source": "regime_floor",
+        "observed_invocation_count": null,
+        "count_scope": "not an observed invocation count for this generated case",
+        "interpretation": "No profiled case exists for this NK family; retained solely for unscored robustness/generalization."
+      }
     },
     {
       "sig": "nk4096x1536_m1_decode",
       "regime": "decode",
       "m": 1,
       "n": 4096,
-      "k": 1536
+      "k": 1536,
+      "scenario_evidence": {
+        "classification": "inferred_m_bucket",
+        "scored": false,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+        "source_case_id": "nk4096x1536_m1_decode",
+        "source_case_pointer": "/cases/20",
+        "source_count": null,
+        "source_weight_source": "prior",
+        "observed_invocation_count": null,
+        "count_scope": "not an observed invocation count for this generated case",
+        "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization."
+      }
     },
     {
       "sig": "nk3072x4096_m1_decode",
       "regime": "decode",
       "m": 1,
       "n": 3072,
-      "k": 4096
+      "k": 4096,
+      "scenario_evidence": {
+        "classification": "inferred_m_bucket",
+        "scored": false,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+        "source_case_id": "nk3072x4096_m1_decode",
+        "source_case_pointer": "/cases/21",
+        "source_count": null,
+        "source_weight_source": "prior",
+        "observed_invocation_count": null,
+        "count_scope": "not an observed invocation count for this generated case",
+        "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization."
+      }
     },
     {
       "sig": "nk4096x1024_m1_decode",
       "regime": "decode",
       "m": 1,
       "n": 4096,
-      "k": 1024
+      "k": 1024,
+      "scenario_evidence": {
+        "classification": "inferred_m_bucket",
+        "scored": false,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+        "source_case_id": "nk4096x1024_m1_decode",
+        "source_case_pointer": "/cases/22",
+        "source_count": null,
+        "source_weight_source": "prior",
+        "observed_invocation_count": null,
+        "count_scope": "not an observed invocation count for this generated case",
+        "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization."
+      }
     },
     {
       "sig": "nk288x4096_m1_decode",
       "regime": "decode",
       "m": 1,
       "n": 288,
-      "k": 4096
+      "k": 4096,
+      "scenario_evidence": {
+        "classification": "inferred_m_bucket",
+        "scored": false,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+        "source_case_id": "nk288x4096_m1_decode",
+        "source_case_pointer": "/cases/23",
+        "source_count": null,
+        "source_weight_source": "prior",
+        "observed_invocation_count": null,
+        "count_scope": "not an observed invocation count for this generated case",
+        "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization."
+      }
     },
     {
       "sig": "nk128x4096_m1_decode",
       "regime": "decode",
       "m": 1,
       "n": 128,
-      "k": 4096
+      "k": 4096,
+      "scenario_evidence": {
+        "classification": "inferred_m_bucket",
+        "scored": false,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+        "source_case_id": "nk128x4096_m1_decode",
+        "source_case_pointer": "/cases/24",
+        "source_count": null,
+        "source_weight_source": "prior",
+        "observed_invocation_count": null,
+        "count_scope": "not an observed invocation count for this generated case",
+        "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization."
+      }
     },
     {
       "sig": "nk8x4096_m1_decode",
       "regime": "decode",
       "m": 1,
       "n": 8,
-      "k": 4096
+      "k": 4096,
+      "scenario_evidence": {
+        "classification": "inferred_m_bucket",
+        "scored": false,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+        "source_case_id": "nk8x4096_m1_decode",
+        "source_case_pointer": "/cases/25",
+        "source_count": null,
+        "source_weight_source": "prior",
+        "observed_invocation_count": null,
+        "count_scope": "not an observed invocation count for this generated case",
+        "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization."
+      }
     },
     {
       "sig": "nk1024x128_m1_decode",
       "regime": "decode",
       "m": 1,
       "n": 1024,
-      "k": 128
+      "k": 128,
+      "scenario_evidence": {
+        "classification": "inferred_m_bucket",
+        "scored": false,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+        "source_case_id": "nk1024x128_m1_decode",
+        "source_case_pointer": "/cases/26",
+        "source_count": null,
+        "source_weight_source": "prior",
+        "observed_invocation_count": null,
+        "count_scope": "not an observed invocation count for this generated case",
+        "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization."
+      }
     }
   ],
   "nk_families": [
@@ -307,5 +665,53 @@
     "file": "provenance/selection_validation.json",
     "status": "historical evidence; not fresh task validation"
   },
-  "reference_io_sha256": ""
+  "reference_io_sha256": "",
+  "correctness_case_ids": [
+    "nk128x4096_m64_decode",
+    "nk3072x4096_m64_decode",
+    "nk288x4096_m64_decode",
+    "nk1024x128_m64_decode",
+    "nk128x4096_m8192_prefill",
+    "nk8x4096_m64_decode",
+    "nk4096x1024_m64_decode",
+    "nk3072x4096_m8192_prefill",
+    "nk288x4096_m8192_prefill",
+    "nk1024x128_m8192_prefill",
+    "nk8x4096_m8192_prefill",
+    "nk4096x1024_m8192_prefill",
+    "nk4096x1536_m64_decode",
+    "nk4096x1536_m8192_prefill",
+    "nk32x4096_m8192_prefill",
+    "nk4096x512_m8192_prefill",
+    "nk32x4096_m64_decode",
+    "nk4096x512_m64_decode",
+    "nk32x4096_m1_decode",
+    "nk4096x512_m1_decode",
+    "nk4096x1536_m1_decode",
+    "nk3072x4096_m1_decode",
+    "nk4096x1024_m1_decode",
+    "nk288x4096_m1_decode",
+    "nk128x4096_m1_decode",
+    "nk8x4096_m1_decode",
+    "nk1024x128_m1_decode"
+  ],
+  "benchmark_case_policy": {
+    "scope": "Only profile-supported M64 geometries are scored; all declared cases remain mandatory correctness coverage.",
+    "correctness_case_count": 27,
+    "scored_case_count": 7,
+    "unscored_correctness_case_count": 20,
+    "source_file": "ut/provenance/workload.json",
+    "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+    "interpretation_evidence": "ut/provenance/workload.json#/notes",
+    "scored_case_classification": "observed_profile_shape",
+    "unscored_case_role": "robustness_generalization",
+    "uses_observed_invocation_weights": false,
+    "weighting_note": "Recorded counts/weights are provenance only; the shared Arena aggregation is unchanged.",
+    "exact_historical_runtime_equivalence_established": false,
+    "remaining_evidence_gaps": [
+      "Current per-case device kernel, launch/grid and solution identity is not established by historical selection metadata.",
+      "Historical serving was eager; the unchanged shared benchmark measures graph device timing.",
+      "Historical torch_gemm/Cijk linkage does not prove the current public runtime uses the same per-case Cijk solution."
+    ]
+  }
 }

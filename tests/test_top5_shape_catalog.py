@@ -82,12 +82,16 @@ def test_evidence_paths_move_with_tasks_and_unknowns_remain_explicit():
                 assert evidence["parser"]["mmap"] is True
 
 
-def test_full_glm_gemm_case_counts_and_physical_scale_layout():
+def test_full_glm_correctness_coverage_and_observed_scored_cases():
     found = catalogs()
     bf16 = found["glm-5.3-flash__gemm_a16w16_bf16_cijk"][1]
     fp8 = found["glm-5.3-flash__ck_gemm_a8w8_blockscale_bpreshuffle"][1]
-    assert bf16["case_inventory"]["benchmark_case_count"] == 27
-    assert fp8["case_inventory"]["benchmark_case_count"] == 21
+    assert bf16["case_inventory"]["correctness_case_count"] == 27
+    assert bf16["case_inventory"]["benchmark_case_count"] == 7
+    assert len(bf16["unscored_correctness_cases"]) == 20
+    assert fp8["case_inventory"]["correctness_case_count"] == 21
+    assert fp8["case_inventory"]["benchmark_case_count"] == 7
+    assert len(fp8["unscored_correctness_cases"]) == 14
     for record in fp8["cases"]:
         operands = {x["name"]: x for x in record["tensors"]}
         m, k = record["metadata"]["m"], record["metadata"]["k"]
@@ -124,7 +128,7 @@ def test_attention_capture_geometry_and_timing_geometry_are_distinct():
 def test_hash_verified_fixtures_close_physical_layout_unknowns():
     found = catalogs()
     assert sum(len(data["cases"]) for _, data in found.values()) == 121
-    assert sum(data["case_inventory"]["benchmark_case_count"] for _, data in found.values()) == 99
+    assert sum(data["case_inventory"]["benchmark_case_count"] for _, data in found.values()) == 65
     for _, data in found.values():
         assert data["unknown_tensor_metadata"] == []
         assert data["unknown_benchmark_tensor_overrides"] == []

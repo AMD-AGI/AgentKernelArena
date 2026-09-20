@@ -18,8 +18,8 @@ platform_support:
 prompt:
   instructions: Optimize GLM-5.3-Flash aiter:gemm_a8w8_blockscale_bpreshuffle on MI355X (gfx950). Edit
     source/kernel.py only. Preserve the complete production ABI, operand layouts, dtype, fresh output,
-    and no-input-mutation contract. The protected task evaluates all 21 upstream cases using synthetic
-    values and independent FP32 semantic references plus fresh native parity. Source is a stock AITER
+    and no-input-mutation contract. The protected task checks all 21 declared cases for correctness and scores only seven
+    observed M64 cases, using synthetic values and independent FP32 semantic references plus fresh native parity. Source is a stock AITER
     function excerpt; external device implementations remain native dependencies. Historical selection
     and profile evidence are provenance, not measurements of this run. Do not edit ut/, scripts/, config.yaml,
     or benchmark controls.

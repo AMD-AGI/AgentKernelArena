@@ -40,7 +40,7 @@
     "alias_and_mutation_notes": "C[M,N] = A[M,K] @ B[N,K]^T  (bf16 in / bf16 out, no bias, no scales) — sglang UnquantizedLinearMethod.apply -> tgemm.mm -> aiter.tuned_gemm.gemm_a16w16 -> per-shape DB lookup -> hipBLASLt Tensile Cijk_* / torch / skinny / triton solution",
     "alias_evidence": [
       "ut/meta.json#/math_contract",
-      "ut/cases.py:69"
+      "ut/cases.py:85"
     ]
   },
   "contracts": [
@@ -57,8 +57,19 @@
   "case_inventory": {
     "metadata_declared_num_cases": null,
     "shape_record_count": 27,
-    "benchmark_case_count": 27,
+    "benchmark_case_count": 7,
     "benchmark_case_ids": [
+      "nk128x4096_m64_decode",
+      "nk3072x4096_m64_decode",
+      "nk288x4096_m64_decode",
+      "nk1024x128_m64_decode",
+      "nk8x4096_m64_decode",
+      "nk4096x1024_m64_decode",
+      "nk4096x1536_m64_decode"
+    ],
+    "count_note": "Counts describe distinct scopes. Captures, boundary specs, histogram observations and benchmark buckets are not interchangeable.",
+    "correctness_case_count": 27,
+    "correctness_case_ids": [
       "nk128x4096_m64_decode",
       "nk3072x4096_m64_decode",
       "nk288x4096_m64_decode",
@@ -87,170 +98,148 @@
       "nk8x4096_m1_decode",
       "nk1024x128_m1_decode"
     ],
-    "count_note": "Counts describe distinct scopes. Captures, boundary specs, histogram observations and benchmark buckets are not interchangeable."
+    "unscored_correctness_case_count": 20
   },
   "benchmark_cases": [
     {
       "case_id": "nk128x4096_m64_decode",
       "shape_record_id": "nk128x4096_m64_decode",
       "regime": "decode",
-      "evidence": "ut/cases.py:96"
+      "evidence": "ut/cases.py#selected_cases",
+      "scenario_evidence": {
+        "classification": "observed_profile_shape",
+        "scored": true,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+        "source_case_id": "nk128x4096_m64_decode",
+        "source_case_pointer": "/cases/0",
+        "source_count": null,
+        "source_weight_source": "trace",
+        "observed_invocation_count": null,
+        "count_scope": "per-case invocation count not recorded",
+        "interpretation": "M64 is observed in the retained profile window; tensor values remain synthetic."
+      }
     },
     {
       "case_id": "nk3072x4096_m64_decode",
       "shape_record_id": "nk3072x4096_m64_decode",
       "regime": "decode",
-      "evidence": "ut/cases.py:96"
+      "evidence": "ut/cases.py#selected_cases",
+      "scenario_evidence": {
+        "classification": "observed_profile_shape",
+        "scored": true,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+        "source_case_id": "nk3072x4096_m64_decode",
+        "source_case_pointer": "/cases/1",
+        "source_count": null,
+        "source_weight_source": "trace",
+        "observed_invocation_count": null,
+        "count_scope": "per-case invocation count not recorded",
+        "interpretation": "M64 is observed in the retained profile window; tensor values remain synthetic."
+      }
     },
     {
       "case_id": "nk288x4096_m64_decode",
       "shape_record_id": "nk288x4096_m64_decode",
       "regime": "decode",
-      "evidence": "ut/cases.py:96"
+      "evidence": "ut/cases.py#selected_cases",
+      "scenario_evidence": {
+        "classification": "observed_profile_shape",
+        "scored": true,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+        "source_case_id": "nk288x4096_m64_decode",
+        "source_case_pointer": "/cases/2",
+        "source_count": null,
+        "source_weight_source": "trace",
+        "observed_invocation_count": null,
+        "count_scope": "per-case invocation count not recorded",
+        "interpretation": "M64 is observed in the retained profile window; tensor values remain synthetic."
+      }
     },
     {
       "case_id": "nk1024x128_m64_decode",
       "shape_record_id": "nk1024x128_m64_decode",
       "regime": "decode",
-      "evidence": "ut/cases.py:96"
-    },
-    {
-      "case_id": "nk128x4096_m8192_prefill",
-      "shape_record_id": "nk128x4096_m8192_prefill",
-      "regime": "prefill",
-      "evidence": "ut/cases.py:96"
+      "evidence": "ut/cases.py#selected_cases",
+      "scenario_evidence": {
+        "classification": "observed_profile_shape",
+        "scored": true,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+        "source_case_id": "nk1024x128_m64_decode",
+        "source_case_pointer": "/cases/3",
+        "source_count": null,
+        "source_weight_source": "trace",
+        "observed_invocation_count": null,
+        "count_scope": "per-case invocation count not recorded",
+        "interpretation": "M64 is observed in the retained profile window; tensor values remain synthetic."
+      }
     },
     {
       "case_id": "nk8x4096_m64_decode",
       "shape_record_id": "nk8x4096_m64_decode",
       "regime": "decode",
-      "evidence": "ut/cases.py:96"
+      "evidence": "ut/cases.py#selected_cases",
+      "scenario_evidence": {
+        "classification": "observed_profile_shape",
+        "scored": true,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+        "source_case_id": "nk8x4096_m64_decode",
+        "source_case_pointer": "/cases/5",
+        "source_count": null,
+        "source_weight_source": "trace",
+        "observed_invocation_count": null,
+        "count_scope": "per-case invocation count not recorded",
+        "interpretation": "M64 is observed in the retained profile window; tensor values remain synthetic."
+      }
     },
     {
       "case_id": "nk4096x1024_m64_decode",
       "shape_record_id": "nk4096x1024_m64_decode",
       "regime": "decode",
-      "evidence": "ut/cases.py:96"
-    },
-    {
-      "case_id": "nk3072x4096_m8192_prefill",
-      "shape_record_id": "nk3072x4096_m8192_prefill",
-      "regime": "prefill",
-      "evidence": "ut/cases.py:96"
-    },
-    {
-      "case_id": "nk288x4096_m8192_prefill",
-      "shape_record_id": "nk288x4096_m8192_prefill",
-      "regime": "prefill",
-      "evidence": "ut/cases.py:96"
-    },
-    {
-      "case_id": "nk1024x128_m8192_prefill",
-      "shape_record_id": "nk1024x128_m8192_prefill",
-      "regime": "prefill",
-      "evidence": "ut/cases.py:96"
-    },
-    {
-      "case_id": "nk8x4096_m8192_prefill",
-      "shape_record_id": "nk8x4096_m8192_prefill",
-      "regime": "prefill",
-      "evidence": "ut/cases.py:96"
-    },
-    {
-      "case_id": "nk4096x1024_m8192_prefill",
-      "shape_record_id": "nk4096x1024_m8192_prefill",
-      "regime": "prefill",
-      "evidence": "ut/cases.py:96"
+      "evidence": "ut/cases.py#selected_cases",
+      "scenario_evidence": {
+        "classification": "observed_profile_shape",
+        "scored": true,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+        "source_case_id": "nk4096x1024_m64_decode",
+        "source_case_pointer": "/cases/6",
+        "source_count": null,
+        "source_weight_source": "trace",
+        "observed_invocation_count": null,
+        "count_scope": "per-case invocation count not recorded",
+        "interpretation": "M64 is observed in the retained profile window; tensor values remain synthetic."
+      }
     },
     {
       "case_id": "nk4096x1536_m64_decode",
       "shape_record_id": "nk4096x1536_m64_decode",
       "regime": "decode",
-      "evidence": "ut/cases.py:96"
-    },
-    {
-      "case_id": "nk4096x1536_m8192_prefill",
-      "shape_record_id": "nk4096x1536_m8192_prefill",
-      "regime": "prefill",
-      "evidence": "ut/cases.py:96"
-    },
-    {
-      "case_id": "nk32x4096_m8192_prefill",
-      "shape_record_id": "nk32x4096_m8192_prefill",
-      "regime": "prefill",
-      "evidence": "ut/cases.py:96"
-    },
-    {
-      "case_id": "nk4096x512_m8192_prefill",
-      "shape_record_id": "nk4096x512_m8192_prefill",
-      "regime": "prefill",
-      "evidence": "ut/cases.py:96"
-    },
-    {
-      "case_id": "nk32x4096_m64_decode",
-      "shape_record_id": "nk32x4096_m64_decode",
-      "regime": "decode",
-      "evidence": "ut/cases.py:96"
-    },
-    {
-      "case_id": "nk4096x512_m64_decode",
-      "shape_record_id": "nk4096x512_m64_decode",
-      "regime": "decode",
-      "evidence": "ut/cases.py:96"
-    },
-    {
-      "case_id": "nk32x4096_m1_decode",
-      "shape_record_id": "nk32x4096_m1_decode",
-      "regime": "decode",
-      "evidence": "ut/cases.py:96"
-    },
-    {
-      "case_id": "nk4096x512_m1_decode",
-      "shape_record_id": "nk4096x512_m1_decode",
-      "regime": "decode",
-      "evidence": "ut/cases.py:96"
-    },
-    {
-      "case_id": "nk4096x1536_m1_decode",
-      "shape_record_id": "nk4096x1536_m1_decode",
-      "regime": "decode",
-      "evidence": "ut/cases.py:96"
-    },
-    {
-      "case_id": "nk3072x4096_m1_decode",
-      "shape_record_id": "nk3072x4096_m1_decode",
-      "regime": "decode",
-      "evidence": "ut/cases.py:96"
-    },
-    {
-      "case_id": "nk4096x1024_m1_decode",
-      "shape_record_id": "nk4096x1024_m1_decode",
-      "regime": "decode",
-      "evidence": "ut/cases.py:96"
-    },
-    {
-      "case_id": "nk288x4096_m1_decode",
-      "shape_record_id": "nk288x4096_m1_decode",
-      "regime": "decode",
-      "evidence": "ut/cases.py:96"
-    },
-    {
-      "case_id": "nk128x4096_m1_decode",
-      "shape_record_id": "nk128x4096_m1_decode",
-      "regime": "decode",
-      "evidence": "ut/cases.py:96"
-    },
-    {
-      "case_id": "nk8x4096_m1_decode",
-      "shape_record_id": "nk8x4096_m1_decode",
-      "regime": "decode",
-      "evidence": "ut/cases.py:96"
-    },
-    {
-      "case_id": "nk1024x128_m1_decode",
-      "shape_record_id": "nk1024x128_m1_decode",
-      "regime": "decode",
-      "evidence": "ut/cases.py:96"
+      "evidence": "ut/cases.py#selected_cases",
+      "scenario_evidence": {
+        "classification": "observed_profile_shape",
+        "scored": true,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+        "source_case_id": "nk4096x1536_m64_decode",
+        "source_case_pointer": "/cases/12",
+        "source_count": null,
+        "source_weight_source": "trace",
+        "observed_invocation_count": null,
+        "count_scope": "per-case invocation count not recorded",
+        "interpretation": "M64 is observed in the retained profile window; tensor values remain synthetic."
+      }
     }
   ],
   "cases": [
@@ -263,7 +252,21 @@
         "regime": "decode",
         "m": 64,
         "n": 128,
-        "k": 4096
+        "k": 4096,
+        "scenario_evidence": {
+          "classification": "observed_profile_shape",
+          "scored": true,
+          "correctness_required": true,
+          "source_file": "ut/provenance/workload.json",
+          "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+          "source_case_id": "nk128x4096_m64_decode",
+          "source_case_pointer": "/cases/0",
+          "source_count": null,
+          "source_weight_source": "trace",
+          "observed_invocation_count": null,
+          "count_scope": "per-case invocation count not recorded",
+          "interpretation": "M64 is observed in the retained profile window; tensor values remain synthetic."
+        }
       },
       "tensors": [
         {
@@ -279,7 +282,7 @@
             1
           ],
           "layout": "row-major contiguous",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         },
         {
           "name": "weights",
@@ -294,48 +297,48 @@
             1
           ],
           "layout": "row-major contiguous",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         }
       ],
       "scalars": {
         "bias": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "otype": {
           "value": "torch.bfloat16",
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "scale_a": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "scale_b": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "scale_c": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "solidx": {
           "value": 0,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "bpreshuffle": {
           "value": false,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "config": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         }
       },
@@ -359,7 +362,21 @@
       "benchmark_case_ids": [
         "nk128x4096_m64_decode"
       ],
-      "notes": []
+      "notes": [],
+      "scenario_evidence": {
+        "classification": "observed_profile_shape",
+        "scored": true,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+        "source_case_id": "nk128x4096_m64_decode",
+        "source_case_pointer": "/cases/0",
+        "source_count": null,
+        "source_weight_source": "trace",
+        "observed_invocation_count": null,
+        "count_scope": "per-case invocation count not recorded",
+        "interpretation": "M64 is observed in the retained profile window; tensor values remain synthetic."
+      }
     },
     {
       "case_id": "nk3072x4096_m64_decode",
@@ -370,7 +387,21 @@
         "regime": "decode",
         "m": 64,
         "n": 3072,
-        "k": 4096
+        "k": 4096,
+        "scenario_evidence": {
+          "classification": "observed_profile_shape",
+          "scored": true,
+          "correctness_required": true,
+          "source_file": "ut/provenance/workload.json",
+          "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+          "source_case_id": "nk3072x4096_m64_decode",
+          "source_case_pointer": "/cases/1",
+          "source_count": null,
+          "source_weight_source": "trace",
+          "observed_invocation_count": null,
+          "count_scope": "per-case invocation count not recorded",
+          "interpretation": "M64 is observed in the retained profile window; tensor values remain synthetic."
+        }
       },
       "tensors": [
         {
@@ -386,7 +417,7 @@
             1
           ],
           "layout": "row-major contiguous",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         },
         {
           "name": "weights",
@@ -401,48 +432,48 @@
             1
           ],
           "layout": "row-major contiguous",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         }
       ],
       "scalars": {
         "bias": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "otype": {
           "value": "torch.bfloat16",
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "scale_a": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "scale_b": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "scale_c": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "solidx": {
           "value": 0,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "bpreshuffle": {
           "value": false,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "config": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         }
       },
@@ -466,7 +497,21 @@
       "benchmark_case_ids": [
         "nk3072x4096_m64_decode"
       ],
-      "notes": []
+      "notes": [],
+      "scenario_evidence": {
+        "classification": "observed_profile_shape",
+        "scored": true,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+        "source_case_id": "nk3072x4096_m64_decode",
+        "source_case_pointer": "/cases/1",
+        "source_count": null,
+        "source_weight_source": "trace",
+        "observed_invocation_count": null,
+        "count_scope": "per-case invocation count not recorded",
+        "interpretation": "M64 is observed in the retained profile window; tensor values remain synthetic."
+      }
     },
     {
       "case_id": "nk288x4096_m64_decode",
@@ -477,7 +522,21 @@
         "regime": "decode",
         "m": 64,
         "n": 288,
-        "k": 4096
+        "k": 4096,
+        "scenario_evidence": {
+          "classification": "observed_profile_shape",
+          "scored": true,
+          "correctness_required": true,
+          "source_file": "ut/provenance/workload.json",
+          "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+          "source_case_id": "nk288x4096_m64_decode",
+          "source_case_pointer": "/cases/2",
+          "source_count": null,
+          "source_weight_source": "trace",
+          "observed_invocation_count": null,
+          "count_scope": "per-case invocation count not recorded",
+          "interpretation": "M64 is observed in the retained profile window; tensor values remain synthetic."
+        }
       },
       "tensors": [
         {
@@ -493,7 +552,7 @@
             1
           ],
           "layout": "row-major contiguous",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         },
         {
           "name": "weights",
@@ -508,48 +567,48 @@
             1
           ],
           "layout": "row-major contiguous",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         }
       ],
       "scalars": {
         "bias": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "otype": {
           "value": "torch.bfloat16",
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "scale_a": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "scale_b": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "scale_c": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "solidx": {
           "value": 0,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "bpreshuffle": {
           "value": false,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "config": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         }
       },
@@ -573,7 +632,21 @@
       "benchmark_case_ids": [
         "nk288x4096_m64_decode"
       ],
-      "notes": []
+      "notes": [],
+      "scenario_evidence": {
+        "classification": "observed_profile_shape",
+        "scored": true,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+        "source_case_id": "nk288x4096_m64_decode",
+        "source_case_pointer": "/cases/2",
+        "source_count": null,
+        "source_weight_source": "trace",
+        "observed_invocation_count": null,
+        "count_scope": "per-case invocation count not recorded",
+        "interpretation": "M64 is observed in the retained profile window; tensor values remain synthetic."
+      }
     },
     {
       "case_id": "nk1024x128_m64_decode",
@@ -584,7 +657,21 @@
         "regime": "decode",
         "m": 64,
         "n": 1024,
-        "k": 128
+        "k": 128,
+        "scenario_evidence": {
+          "classification": "observed_profile_shape",
+          "scored": true,
+          "correctness_required": true,
+          "source_file": "ut/provenance/workload.json",
+          "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+          "source_case_id": "nk1024x128_m64_decode",
+          "source_case_pointer": "/cases/3",
+          "source_count": null,
+          "source_weight_source": "trace",
+          "observed_invocation_count": null,
+          "count_scope": "per-case invocation count not recorded",
+          "interpretation": "M64 is observed in the retained profile window; tensor values remain synthetic."
+        }
       },
       "tensors": [
         {
@@ -600,7 +687,7 @@
             1
           ],
           "layout": "row-major contiguous",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         },
         {
           "name": "weights",
@@ -615,48 +702,48 @@
             1
           ],
           "layout": "row-major contiguous",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         }
       ],
       "scalars": {
         "bias": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "otype": {
           "value": "torch.bfloat16",
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "scale_a": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "scale_b": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "scale_c": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "solidx": {
           "value": 0,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "bpreshuffle": {
           "value": false,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "config": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         }
       },
@@ -680,7 +767,21 @@
       "benchmark_case_ids": [
         "nk1024x128_m64_decode"
       ],
-      "notes": []
+      "notes": [],
+      "scenario_evidence": {
+        "classification": "observed_profile_shape",
+        "scored": true,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+        "source_case_id": "nk1024x128_m64_decode",
+        "source_case_pointer": "/cases/3",
+        "source_count": null,
+        "source_weight_source": "trace",
+        "observed_invocation_count": null,
+        "count_scope": "per-case invocation count not recorded",
+        "interpretation": "M64 is observed in the retained profile window; tensor values remain synthetic."
+      }
     },
     {
       "case_id": "nk128x4096_m8192_prefill",
@@ -691,7 +792,21 @@
         "regime": "prefill",
         "m": 8192,
         "n": 128,
-        "k": 4096
+        "k": 4096,
+        "scenario_evidence": {
+          "classification": "inferred_m_bucket",
+          "scored": false,
+          "correctness_required": true,
+          "source_file": "ut/provenance/workload.json",
+          "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+          "source_case_id": "nk128x4096_m8192_prefill",
+          "source_case_pointer": "/cases/4",
+          "source_count": null,
+          "source_weight_source": "regime_floor",
+          "observed_invocation_count": null,
+          "count_scope": "not an observed invocation count for this generated case",
+          "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization."
+        }
       },
       "tensors": [
         {
@@ -707,7 +822,7 @@
             1
           ],
           "layout": "row-major contiguous",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         },
         {
           "name": "weights",
@@ -722,48 +837,48 @@
             1
           ],
           "layout": "row-major contiguous",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         }
       ],
       "scalars": {
         "bias": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "otype": {
           "value": "torch.bfloat16",
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "scale_a": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "scale_b": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "scale_c": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "solidx": {
           "value": 0,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "bpreshuffle": {
           "value": false,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "config": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         }
       },
@@ -784,10 +899,22 @@
           "evidence": "ut/meta.json#/math_contract"
         }
       ],
-      "benchmark_case_ids": [
-        "nk128x4096_m8192_prefill"
-      ],
-      "notes": []
+      "benchmark_case_ids": [],
+      "notes": [],
+      "scenario_evidence": {
+        "classification": "inferred_m_bucket",
+        "scored": false,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+        "source_case_id": "nk128x4096_m8192_prefill",
+        "source_case_pointer": "/cases/4",
+        "source_count": null,
+        "source_weight_source": "regime_floor",
+        "observed_invocation_count": null,
+        "count_scope": "not an observed invocation count for this generated case",
+        "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization."
+      }
     },
     {
       "case_id": "nk8x4096_m64_decode",
@@ -798,7 +925,21 @@
         "regime": "decode",
         "m": 64,
         "n": 8,
-        "k": 4096
+        "k": 4096,
+        "scenario_evidence": {
+          "classification": "observed_profile_shape",
+          "scored": true,
+          "correctness_required": true,
+          "source_file": "ut/provenance/workload.json",
+          "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+          "source_case_id": "nk8x4096_m64_decode",
+          "source_case_pointer": "/cases/5",
+          "source_count": null,
+          "source_weight_source": "trace",
+          "observed_invocation_count": null,
+          "count_scope": "per-case invocation count not recorded",
+          "interpretation": "M64 is observed in the retained profile window; tensor values remain synthetic."
+        }
       },
       "tensors": [
         {
@@ -814,7 +955,7 @@
             1
           ],
           "layout": "row-major contiguous",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         },
         {
           "name": "weights",
@@ -829,48 +970,48 @@
             1
           ],
           "layout": "row-major contiguous",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         }
       ],
       "scalars": {
         "bias": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "otype": {
           "value": "torch.bfloat16",
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "scale_a": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "scale_b": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "scale_c": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "solidx": {
           "value": 0,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "bpreshuffle": {
           "value": false,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "config": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         }
       },
@@ -894,7 +1035,21 @@
       "benchmark_case_ids": [
         "nk8x4096_m64_decode"
       ],
-      "notes": []
+      "notes": [],
+      "scenario_evidence": {
+        "classification": "observed_profile_shape",
+        "scored": true,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+        "source_case_id": "nk8x4096_m64_decode",
+        "source_case_pointer": "/cases/5",
+        "source_count": null,
+        "source_weight_source": "trace",
+        "observed_invocation_count": null,
+        "count_scope": "per-case invocation count not recorded",
+        "interpretation": "M64 is observed in the retained profile window; tensor values remain synthetic."
+      }
     },
     {
       "case_id": "nk4096x1024_m64_decode",
@@ -905,7 +1060,21 @@
         "regime": "decode",
         "m": 64,
         "n": 4096,
-        "k": 1024
+        "k": 1024,
+        "scenario_evidence": {
+          "classification": "observed_profile_shape",
+          "scored": true,
+          "correctness_required": true,
+          "source_file": "ut/provenance/workload.json",
+          "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+          "source_case_id": "nk4096x1024_m64_decode",
+          "source_case_pointer": "/cases/6",
+          "source_count": null,
+          "source_weight_source": "trace",
+          "observed_invocation_count": null,
+          "count_scope": "per-case invocation count not recorded",
+          "interpretation": "M64 is observed in the retained profile window; tensor values remain synthetic."
+        }
       },
       "tensors": [
         {
@@ -921,7 +1090,7 @@
             1
           ],
           "layout": "row-major contiguous",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         },
         {
           "name": "weights",
@@ -936,48 +1105,48 @@
             1
           ],
           "layout": "row-major contiguous",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         }
       ],
       "scalars": {
         "bias": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "otype": {
           "value": "torch.bfloat16",
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "scale_a": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "scale_b": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "scale_c": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "solidx": {
           "value": 0,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "bpreshuffle": {
           "value": false,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "config": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         }
       },
@@ -1001,7 +1170,21 @@
       "benchmark_case_ids": [
         "nk4096x1024_m64_decode"
       ],
-      "notes": []
+      "notes": [],
+      "scenario_evidence": {
+        "classification": "observed_profile_shape",
+        "scored": true,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+        "source_case_id": "nk4096x1024_m64_decode",
+        "source_case_pointer": "/cases/6",
+        "source_count": null,
+        "source_weight_source": "trace",
+        "observed_invocation_count": null,
+        "count_scope": "per-case invocation count not recorded",
+        "interpretation": "M64 is observed in the retained profile window; tensor values remain synthetic."
+      }
     },
     {
       "case_id": "nk3072x4096_m8192_prefill",
@@ -1012,7 +1195,21 @@
         "regime": "prefill",
         "m": 8192,
         "n": 3072,
-        "k": 4096
+        "k": 4096,
+        "scenario_evidence": {
+          "classification": "inferred_m_bucket",
+          "scored": false,
+          "correctness_required": true,
+          "source_file": "ut/provenance/workload.json",
+          "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+          "source_case_id": "nk3072x4096_m8192_prefill",
+          "source_case_pointer": "/cases/7",
+          "source_count": null,
+          "source_weight_source": "regime_floor",
+          "observed_invocation_count": null,
+          "count_scope": "not an observed invocation count for this generated case",
+          "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization."
+        }
       },
       "tensors": [
         {
@@ -1028,7 +1225,7 @@
             1
           ],
           "layout": "row-major contiguous",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         },
         {
           "name": "weights",
@@ -1043,48 +1240,48 @@
             1
           ],
           "layout": "row-major contiguous",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         }
       ],
       "scalars": {
         "bias": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "otype": {
           "value": "torch.bfloat16",
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "scale_a": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "scale_b": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "scale_c": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "solidx": {
           "value": 0,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "bpreshuffle": {
           "value": false,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "config": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         }
       },
@@ -1105,10 +1302,22 @@
           "evidence": "ut/meta.json#/math_contract"
         }
       ],
-      "benchmark_case_ids": [
-        "nk3072x4096_m8192_prefill"
-      ],
-      "notes": []
+      "benchmark_case_ids": [],
+      "notes": [],
+      "scenario_evidence": {
+        "classification": "inferred_m_bucket",
+        "scored": false,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+        "source_case_id": "nk3072x4096_m8192_prefill",
+        "source_case_pointer": "/cases/7",
+        "source_count": null,
+        "source_weight_source": "regime_floor",
+        "observed_invocation_count": null,
+        "count_scope": "not an observed invocation count for this generated case",
+        "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization."
+      }
     },
     {
       "case_id": "nk288x4096_m8192_prefill",
@@ -1119,7 +1328,21 @@
         "regime": "prefill",
         "m": 8192,
         "n": 288,
-        "k": 4096
+        "k": 4096,
+        "scenario_evidence": {
+          "classification": "inferred_m_bucket",
+          "scored": false,
+          "correctness_required": true,
+          "source_file": "ut/provenance/workload.json",
+          "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+          "source_case_id": "nk288x4096_m8192_prefill",
+          "source_case_pointer": "/cases/8",
+          "source_count": null,
+          "source_weight_source": "regime_floor",
+          "observed_invocation_count": null,
+          "count_scope": "not an observed invocation count for this generated case",
+          "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization."
+        }
       },
       "tensors": [
         {
@@ -1135,7 +1358,7 @@
             1
           ],
           "layout": "row-major contiguous",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         },
         {
           "name": "weights",
@@ -1150,48 +1373,48 @@
             1
           ],
           "layout": "row-major contiguous",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         }
       ],
       "scalars": {
         "bias": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "otype": {
           "value": "torch.bfloat16",
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "scale_a": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "scale_b": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "scale_c": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "solidx": {
           "value": 0,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "bpreshuffle": {
           "value": false,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "config": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         }
       },
@@ -1212,10 +1435,22 @@
           "evidence": "ut/meta.json#/math_contract"
         }
       ],
-      "benchmark_case_ids": [
-        "nk288x4096_m8192_prefill"
-      ],
-      "notes": []
+      "benchmark_case_ids": [],
+      "notes": [],
+      "scenario_evidence": {
+        "classification": "inferred_m_bucket",
+        "scored": false,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+        "source_case_id": "nk288x4096_m8192_prefill",
+        "source_case_pointer": "/cases/8",
+        "source_count": null,
+        "source_weight_source": "regime_floor",
+        "observed_invocation_count": null,
+        "count_scope": "not an observed invocation count for this generated case",
+        "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization."
+      }
     },
     {
       "case_id": "nk1024x128_m8192_prefill",
@@ -1226,7 +1461,21 @@
         "regime": "prefill",
         "m": 8192,
         "n": 1024,
-        "k": 128
+        "k": 128,
+        "scenario_evidence": {
+          "classification": "inferred_m_bucket",
+          "scored": false,
+          "correctness_required": true,
+          "source_file": "ut/provenance/workload.json",
+          "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+          "source_case_id": "nk1024x128_m8192_prefill",
+          "source_case_pointer": "/cases/9",
+          "source_count": null,
+          "source_weight_source": "regime_floor",
+          "observed_invocation_count": null,
+          "count_scope": "not an observed invocation count for this generated case",
+          "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization."
+        }
       },
       "tensors": [
         {
@@ -1242,7 +1491,7 @@
             1
           ],
           "layout": "row-major contiguous",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         },
         {
           "name": "weights",
@@ -1257,48 +1506,48 @@
             1
           ],
           "layout": "row-major contiguous",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         }
       ],
       "scalars": {
         "bias": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "otype": {
           "value": "torch.bfloat16",
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "scale_a": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "scale_b": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "scale_c": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "solidx": {
           "value": 0,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "bpreshuffle": {
           "value": false,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "config": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         }
       },
@@ -1319,10 +1568,22 @@
           "evidence": "ut/meta.json#/math_contract"
         }
       ],
-      "benchmark_case_ids": [
-        "nk1024x128_m8192_prefill"
-      ],
-      "notes": []
+      "benchmark_case_ids": [],
+      "notes": [],
+      "scenario_evidence": {
+        "classification": "inferred_m_bucket",
+        "scored": false,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+        "source_case_id": "nk1024x128_m8192_prefill",
+        "source_case_pointer": "/cases/9",
+        "source_count": null,
+        "source_weight_source": "regime_floor",
+        "observed_invocation_count": null,
+        "count_scope": "not an observed invocation count for this generated case",
+        "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization."
+      }
     },
     {
       "case_id": "nk8x4096_m8192_prefill",
@@ -1333,7 +1594,21 @@
         "regime": "prefill",
         "m": 8192,
         "n": 8,
-        "k": 4096
+        "k": 4096,
+        "scenario_evidence": {
+          "classification": "inferred_m_bucket",
+          "scored": false,
+          "correctness_required": true,
+          "source_file": "ut/provenance/workload.json",
+          "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+          "source_case_id": "nk8x4096_m8192_prefill",
+          "source_case_pointer": "/cases/10",
+          "source_count": null,
+          "source_weight_source": "regime_floor",
+          "observed_invocation_count": null,
+          "count_scope": "not an observed invocation count for this generated case",
+          "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization."
+        }
       },
       "tensors": [
         {
@@ -1349,7 +1624,7 @@
             1
           ],
           "layout": "row-major contiguous",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         },
         {
           "name": "weights",
@@ -1364,48 +1639,48 @@
             1
           ],
           "layout": "row-major contiguous",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         }
       ],
       "scalars": {
         "bias": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "otype": {
           "value": "torch.bfloat16",
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "scale_a": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "scale_b": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "scale_c": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "solidx": {
           "value": 0,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "bpreshuffle": {
           "value": false,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "config": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         }
       },
@@ -1426,10 +1701,22 @@
           "evidence": "ut/meta.json#/math_contract"
         }
       ],
-      "benchmark_case_ids": [
-        "nk8x4096_m8192_prefill"
-      ],
-      "notes": []
+      "benchmark_case_ids": [],
+      "notes": [],
+      "scenario_evidence": {
+        "classification": "inferred_m_bucket",
+        "scored": false,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+        "source_case_id": "nk8x4096_m8192_prefill",
+        "source_case_pointer": "/cases/10",
+        "source_count": null,
+        "source_weight_source": "regime_floor",
+        "observed_invocation_count": null,
+        "count_scope": "not an observed invocation count for this generated case",
+        "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization."
+      }
     },
     {
       "case_id": "nk4096x1024_m8192_prefill",
@@ -1440,7 +1727,21 @@
         "regime": "prefill",
         "m": 8192,
         "n": 4096,
-        "k": 1024
+        "k": 1024,
+        "scenario_evidence": {
+          "classification": "inferred_m_bucket",
+          "scored": false,
+          "correctness_required": true,
+          "source_file": "ut/provenance/workload.json",
+          "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+          "source_case_id": "nk4096x1024_m8192_prefill",
+          "source_case_pointer": "/cases/11",
+          "source_count": null,
+          "source_weight_source": "regime_floor",
+          "observed_invocation_count": null,
+          "count_scope": "not an observed invocation count for this generated case",
+          "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization."
+        }
       },
       "tensors": [
         {
@@ -1456,7 +1757,7 @@
             1
           ],
           "layout": "row-major contiguous",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         },
         {
           "name": "weights",
@@ -1471,48 +1772,48 @@
             1
           ],
           "layout": "row-major contiguous",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         }
       ],
       "scalars": {
         "bias": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "otype": {
           "value": "torch.bfloat16",
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "scale_a": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "scale_b": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "scale_c": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "solidx": {
           "value": 0,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "bpreshuffle": {
           "value": false,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "config": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         }
       },
@@ -1533,10 +1834,22 @@
           "evidence": "ut/meta.json#/math_contract"
         }
       ],
-      "benchmark_case_ids": [
-        "nk4096x1024_m8192_prefill"
-      ],
-      "notes": []
+      "benchmark_case_ids": [],
+      "notes": [],
+      "scenario_evidence": {
+        "classification": "inferred_m_bucket",
+        "scored": false,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+        "source_case_id": "nk4096x1024_m8192_prefill",
+        "source_case_pointer": "/cases/11",
+        "source_count": null,
+        "source_weight_source": "regime_floor",
+        "observed_invocation_count": null,
+        "count_scope": "not an observed invocation count for this generated case",
+        "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization."
+      }
     },
     {
       "case_id": "nk4096x1536_m64_decode",
@@ -1547,7 +1860,21 @@
         "regime": "decode",
         "m": 64,
         "n": 4096,
-        "k": 1536
+        "k": 1536,
+        "scenario_evidence": {
+          "classification": "observed_profile_shape",
+          "scored": true,
+          "correctness_required": true,
+          "source_file": "ut/provenance/workload.json",
+          "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+          "source_case_id": "nk4096x1536_m64_decode",
+          "source_case_pointer": "/cases/12",
+          "source_count": null,
+          "source_weight_source": "trace",
+          "observed_invocation_count": null,
+          "count_scope": "per-case invocation count not recorded",
+          "interpretation": "M64 is observed in the retained profile window; tensor values remain synthetic."
+        }
       },
       "tensors": [
         {
@@ -1563,7 +1890,7 @@
             1
           ],
           "layout": "row-major contiguous",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         },
         {
           "name": "weights",
@@ -1578,48 +1905,48 @@
             1
           ],
           "layout": "row-major contiguous",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         }
       ],
       "scalars": {
         "bias": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "otype": {
           "value": "torch.bfloat16",
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "scale_a": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "scale_b": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "scale_c": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "solidx": {
           "value": 0,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "bpreshuffle": {
           "value": false,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "config": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         }
       },
@@ -1643,7 +1970,21 @@
       "benchmark_case_ids": [
         "nk4096x1536_m64_decode"
       ],
-      "notes": []
+      "notes": [],
+      "scenario_evidence": {
+        "classification": "observed_profile_shape",
+        "scored": true,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+        "source_case_id": "nk4096x1536_m64_decode",
+        "source_case_pointer": "/cases/12",
+        "source_count": null,
+        "source_weight_source": "trace",
+        "observed_invocation_count": null,
+        "count_scope": "per-case invocation count not recorded",
+        "interpretation": "M64 is observed in the retained profile window; tensor values remain synthetic."
+      }
     },
     {
       "case_id": "nk4096x1536_m8192_prefill",
@@ -1654,7 +1995,21 @@
         "regime": "prefill",
         "m": 8192,
         "n": 4096,
-        "k": 1536
+        "k": 1536,
+        "scenario_evidence": {
+          "classification": "inferred_m_bucket",
+          "scored": false,
+          "correctness_required": true,
+          "source_file": "ut/provenance/workload.json",
+          "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+          "source_case_id": "nk4096x1536_m8192_prefill",
+          "source_case_pointer": "/cases/13",
+          "source_count": null,
+          "source_weight_source": "regime_floor",
+          "observed_invocation_count": null,
+          "count_scope": "not an observed invocation count for this generated case",
+          "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization."
+        }
       },
       "tensors": [
         {
@@ -1670,7 +2025,7 @@
             1
           ],
           "layout": "row-major contiguous",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         },
         {
           "name": "weights",
@@ -1685,48 +2040,48 @@
             1
           ],
           "layout": "row-major contiguous",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         }
       ],
       "scalars": {
         "bias": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "otype": {
           "value": "torch.bfloat16",
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "scale_a": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "scale_b": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "scale_c": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "solidx": {
           "value": 0,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "bpreshuffle": {
           "value": false,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "config": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         }
       },
@@ -1747,10 +2102,22 @@
           "evidence": "ut/meta.json#/math_contract"
         }
       ],
-      "benchmark_case_ids": [
-        "nk4096x1536_m8192_prefill"
-      ],
-      "notes": []
+      "benchmark_case_ids": [],
+      "notes": [],
+      "scenario_evidence": {
+        "classification": "inferred_m_bucket",
+        "scored": false,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+        "source_case_id": "nk4096x1536_m8192_prefill",
+        "source_case_pointer": "/cases/13",
+        "source_count": null,
+        "source_weight_source": "regime_floor",
+        "observed_invocation_count": null,
+        "count_scope": "not an observed invocation count for this generated case",
+        "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization."
+      }
     },
     {
       "case_id": "nk32x4096_m8192_prefill",
@@ -1761,7 +2128,21 @@
         "regime": "prefill",
         "m": 8192,
         "n": 32,
-        "k": 4096
+        "k": 4096,
+        "scenario_evidence": {
+          "classification": "unprofiled_nk_family",
+          "scored": false,
+          "correctness_required": true,
+          "source_file": "ut/provenance/workload.json",
+          "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+          "source_case_id": "nk32x4096_m8192_prefill",
+          "source_case_pointer": "/cases/14",
+          "source_count": null,
+          "source_weight_source": "regime_floor",
+          "observed_invocation_count": null,
+          "count_scope": "not an observed invocation count for this generated case",
+          "interpretation": "No profiled case exists for this NK family; retained solely for unscored robustness/generalization."
+        }
       },
       "tensors": [
         {
@@ -1777,7 +2158,7 @@
             1
           ],
           "layout": "row-major contiguous",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         },
         {
           "name": "weights",
@@ -1792,48 +2173,48 @@
             1
           ],
           "layout": "row-major contiguous",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         }
       ],
       "scalars": {
         "bias": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "otype": {
           "value": "torch.bfloat16",
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "scale_a": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "scale_b": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "scale_c": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "solidx": {
           "value": 0,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "bpreshuffle": {
           "value": false,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "config": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         }
       },
@@ -1854,10 +2235,22 @@
           "evidence": "ut/meta.json#/math_contract"
         }
       ],
-      "benchmark_case_ids": [
-        "nk32x4096_m8192_prefill"
-      ],
-      "notes": []
+      "benchmark_case_ids": [],
+      "notes": [],
+      "scenario_evidence": {
+        "classification": "unprofiled_nk_family",
+        "scored": false,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+        "source_case_id": "nk32x4096_m8192_prefill",
+        "source_case_pointer": "/cases/14",
+        "source_count": null,
+        "source_weight_source": "regime_floor",
+        "observed_invocation_count": null,
+        "count_scope": "not an observed invocation count for this generated case",
+        "interpretation": "No profiled case exists for this NK family; retained solely for unscored robustness/generalization."
+      }
     },
     {
       "case_id": "nk4096x512_m8192_prefill",
@@ -1868,7 +2261,21 @@
         "regime": "prefill",
         "m": 8192,
         "n": 4096,
-        "k": 512
+        "k": 512,
+        "scenario_evidence": {
+          "classification": "unprofiled_nk_family",
+          "scored": false,
+          "correctness_required": true,
+          "source_file": "ut/provenance/workload.json",
+          "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+          "source_case_id": "nk4096x512_m8192_prefill",
+          "source_case_pointer": "/cases/15",
+          "source_count": null,
+          "source_weight_source": "regime_floor",
+          "observed_invocation_count": null,
+          "count_scope": "not an observed invocation count for this generated case",
+          "interpretation": "No profiled case exists for this NK family; retained solely for unscored robustness/generalization."
+        }
       },
       "tensors": [
         {
@@ -1884,7 +2291,7 @@
             1
           ],
           "layout": "row-major contiguous",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         },
         {
           "name": "weights",
@@ -1899,48 +2306,48 @@
             1
           ],
           "layout": "row-major contiguous",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         }
       ],
       "scalars": {
         "bias": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "otype": {
           "value": "torch.bfloat16",
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "scale_a": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "scale_b": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "scale_c": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "solidx": {
           "value": 0,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "bpreshuffle": {
           "value": false,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "config": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         }
       },
@@ -1961,10 +2368,22 @@
           "evidence": "ut/meta.json#/math_contract"
         }
       ],
-      "benchmark_case_ids": [
-        "nk4096x512_m8192_prefill"
-      ],
-      "notes": []
+      "benchmark_case_ids": [],
+      "notes": [],
+      "scenario_evidence": {
+        "classification": "unprofiled_nk_family",
+        "scored": false,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+        "source_case_id": "nk4096x512_m8192_prefill",
+        "source_case_pointer": "/cases/15",
+        "source_count": null,
+        "source_weight_source": "regime_floor",
+        "observed_invocation_count": null,
+        "count_scope": "not an observed invocation count for this generated case",
+        "interpretation": "No profiled case exists for this NK family; retained solely for unscored robustness/generalization."
+      }
     },
     {
       "case_id": "nk32x4096_m64_decode",
@@ -1975,7 +2394,21 @@
         "regime": "decode",
         "m": 64,
         "n": 32,
-        "k": 4096
+        "k": 4096,
+        "scenario_evidence": {
+          "classification": "unprofiled_nk_family",
+          "scored": false,
+          "correctness_required": true,
+          "source_file": "ut/provenance/workload.json",
+          "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+          "source_case_id": "nk32x4096_m64_decode",
+          "source_case_pointer": "/cases/16",
+          "source_count": null,
+          "source_weight_source": "regime_floor",
+          "observed_invocation_count": null,
+          "count_scope": "not an observed invocation count for this generated case",
+          "interpretation": "No profiled case exists for this NK family; retained solely for unscored robustness/generalization."
+        }
       },
       "tensors": [
         {
@@ -1991,7 +2424,7 @@
             1
           ],
           "layout": "row-major contiguous",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         },
         {
           "name": "weights",
@@ -2006,48 +2439,48 @@
             1
           ],
           "layout": "row-major contiguous",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         }
       ],
       "scalars": {
         "bias": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "otype": {
           "value": "torch.bfloat16",
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "scale_a": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "scale_b": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "scale_c": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "solidx": {
           "value": 0,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "bpreshuffle": {
           "value": false,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "config": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         }
       },
@@ -2068,10 +2501,22 @@
           "evidence": "ut/meta.json#/math_contract"
         }
       ],
-      "benchmark_case_ids": [
-        "nk32x4096_m64_decode"
-      ],
-      "notes": []
+      "benchmark_case_ids": [],
+      "notes": [],
+      "scenario_evidence": {
+        "classification": "unprofiled_nk_family",
+        "scored": false,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+        "source_case_id": "nk32x4096_m64_decode",
+        "source_case_pointer": "/cases/16",
+        "source_count": null,
+        "source_weight_source": "regime_floor",
+        "observed_invocation_count": null,
+        "count_scope": "not an observed invocation count for this generated case",
+        "interpretation": "No profiled case exists for this NK family; retained solely for unscored robustness/generalization."
+      }
     },
     {
       "case_id": "nk4096x512_m64_decode",
@@ -2082,7 +2527,21 @@
         "regime": "decode",
         "m": 64,
         "n": 4096,
-        "k": 512
+        "k": 512,
+        "scenario_evidence": {
+          "classification": "unprofiled_nk_family",
+          "scored": false,
+          "correctness_required": true,
+          "source_file": "ut/provenance/workload.json",
+          "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+          "source_case_id": "nk4096x512_m64_decode",
+          "source_case_pointer": "/cases/17",
+          "source_count": null,
+          "source_weight_source": "regime_floor",
+          "observed_invocation_count": null,
+          "count_scope": "not an observed invocation count for this generated case",
+          "interpretation": "No profiled case exists for this NK family; retained solely for unscored robustness/generalization."
+        }
       },
       "tensors": [
         {
@@ -2098,7 +2557,7 @@
             1
           ],
           "layout": "row-major contiguous",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         },
         {
           "name": "weights",
@@ -2113,48 +2572,48 @@
             1
           ],
           "layout": "row-major contiguous",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         }
       ],
       "scalars": {
         "bias": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "otype": {
           "value": "torch.bfloat16",
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "scale_a": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "scale_b": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "scale_c": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "solidx": {
           "value": 0,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "bpreshuffle": {
           "value": false,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "config": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         }
       },
@@ -2175,10 +2634,22 @@
           "evidence": "ut/meta.json#/math_contract"
         }
       ],
-      "benchmark_case_ids": [
-        "nk4096x512_m64_decode"
-      ],
-      "notes": []
+      "benchmark_case_ids": [],
+      "notes": [],
+      "scenario_evidence": {
+        "classification": "unprofiled_nk_family",
+        "scored": false,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+        "source_case_id": "nk4096x512_m64_decode",
+        "source_case_pointer": "/cases/17",
+        "source_count": null,
+        "source_weight_source": "regime_floor",
+        "observed_invocation_count": null,
+        "count_scope": "not an observed invocation count for this generated case",
+        "interpretation": "No profiled case exists for this NK family; retained solely for unscored robustness/generalization."
+      }
     },
     {
       "case_id": "nk32x4096_m1_decode",
@@ -2189,7 +2660,21 @@
         "regime": "decode",
         "m": 1,
         "n": 32,
-        "k": 4096
+        "k": 4096,
+        "scenario_evidence": {
+          "classification": "unprofiled_nk_family",
+          "scored": false,
+          "correctness_required": true,
+          "source_file": "ut/provenance/workload.json",
+          "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+          "source_case_id": "nk32x4096_m1_decode",
+          "source_case_pointer": "/cases/18",
+          "source_count": null,
+          "source_weight_source": "regime_floor",
+          "observed_invocation_count": null,
+          "count_scope": "not an observed invocation count for this generated case",
+          "interpretation": "No profiled case exists for this NK family; retained solely for unscored robustness/generalization."
+        }
       },
       "tensors": [
         {
@@ -2205,7 +2690,7 @@
             1
           ],
           "layout": "row-major contiguous",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         },
         {
           "name": "weights",
@@ -2220,48 +2705,48 @@
             1
           ],
           "layout": "row-major contiguous",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         }
       ],
       "scalars": {
         "bias": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "otype": {
           "value": "torch.bfloat16",
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "scale_a": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "scale_b": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "scale_c": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "solidx": {
           "value": 0,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "bpreshuffle": {
           "value": false,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "config": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         }
       },
@@ -2282,10 +2767,22 @@
           "evidence": "ut/meta.json#/math_contract"
         }
       ],
-      "benchmark_case_ids": [
-        "nk32x4096_m1_decode"
-      ],
-      "notes": []
+      "benchmark_case_ids": [],
+      "notes": [],
+      "scenario_evidence": {
+        "classification": "unprofiled_nk_family",
+        "scored": false,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+        "source_case_id": "nk32x4096_m1_decode",
+        "source_case_pointer": "/cases/18",
+        "source_count": null,
+        "source_weight_source": "regime_floor",
+        "observed_invocation_count": null,
+        "count_scope": "not an observed invocation count for this generated case",
+        "interpretation": "No profiled case exists for this NK family; retained solely for unscored robustness/generalization."
+      }
     },
     {
       "case_id": "nk4096x512_m1_decode",
@@ -2296,7 +2793,21 @@
         "regime": "decode",
         "m": 1,
         "n": 4096,
-        "k": 512
+        "k": 512,
+        "scenario_evidence": {
+          "classification": "unprofiled_nk_family",
+          "scored": false,
+          "correctness_required": true,
+          "source_file": "ut/provenance/workload.json",
+          "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+          "source_case_id": "nk4096x512_m1_decode",
+          "source_case_pointer": "/cases/19",
+          "source_count": null,
+          "source_weight_source": "regime_floor",
+          "observed_invocation_count": null,
+          "count_scope": "not an observed invocation count for this generated case",
+          "interpretation": "No profiled case exists for this NK family; retained solely for unscored robustness/generalization."
+        }
       },
       "tensors": [
         {
@@ -2312,7 +2823,7 @@
             1
           ],
           "layout": "row-major contiguous",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         },
         {
           "name": "weights",
@@ -2327,48 +2838,48 @@
             1
           ],
           "layout": "row-major contiguous",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         }
       ],
       "scalars": {
         "bias": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "otype": {
           "value": "torch.bfloat16",
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "scale_a": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "scale_b": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "scale_c": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "solidx": {
           "value": 0,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "bpreshuffle": {
           "value": false,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "config": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         }
       },
@@ -2389,10 +2900,22 @@
           "evidence": "ut/meta.json#/math_contract"
         }
       ],
-      "benchmark_case_ids": [
-        "nk4096x512_m1_decode"
-      ],
-      "notes": []
+      "benchmark_case_ids": [],
+      "notes": [],
+      "scenario_evidence": {
+        "classification": "unprofiled_nk_family",
+        "scored": false,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+        "source_case_id": "nk4096x512_m1_decode",
+        "source_case_pointer": "/cases/19",
+        "source_count": null,
+        "source_weight_source": "regime_floor",
+        "observed_invocation_count": null,
+        "count_scope": "not an observed invocation count for this generated case",
+        "interpretation": "No profiled case exists for this NK family; retained solely for unscored robustness/generalization."
+      }
     },
     {
       "case_id": "nk4096x1536_m1_decode",
@@ -2403,7 +2926,21 @@
         "regime": "decode",
         "m": 1,
         "n": 4096,
-        "k": 1536
+        "k": 1536,
+        "scenario_evidence": {
+          "classification": "inferred_m_bucket",
+          "scored": false,
+          "correctness_required": true,
+          "source_file": "ut/provenance/workload.json",
+          "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+          "source_case_id": "nk4096x1536_m1_decode",
+          "source_case_pointer": "/cases/20",
+          "source_count": null,
+          "source_weight_source": "prior",
+          "observed_invocation_count": null,
+          "count_scope": "not an observed invocation count for this generated case",
+          "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization."
+        }
       },
       "tensors": [
         {
@@ -2419,7 +2956,7 @@
             1
           ],
           "layout": "row-major contiguous",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         },
         {
           "name": "weights",
@@ -2434,48 +2971,48 @@
             1
           ],
           "layout": "row-major contiguous",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         }
       ],
       "scalars": {
         "bias": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "otype": {
           "value": "torch.bfloat16",
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "scale_a": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "scale_b": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "scale_c": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "solidx": {
           "value": 0,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "bpreshuffle": {
           "value": false,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "config": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         }
       },
@@ -2496,10 +3033,22 @@
           "evidence": "ut/meta.json#/math_contract"
         }
       ],
-      "benchmark_case_ids": [
-        "nk4096x1536_m1_decode"
-      ],
-      "notes": []
+      "benchmark_case_ids": [],
+      "notes": [],
+      "scenario_evidence": {
+        "classification": "inferred_m_bucket",
+        "scored": false,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+        "source_case_id": "nk4096x1536_m1_decode",
+        "source_case_pointer": "/cases/20",
+        "source_count": null,
+        "source_weight_source": "prior",
+        "observed_invocation_count": null,
+        "count_scope": "not an observed invocation count for this generated case",
+        "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization."
+      }
     },
     {
       "case_id": "nk3072x4096_m1_decode",
@@ -2510,7 +3059,21 @@
         "regime": "decode",
         "m": 1,
         "n": 3072,
-        "k": 4096
+        "k": 4096,
+        "scenario_evidence": {
+          "classification": "inferred_m_bucket",
+          "scored": false,
+          "correctness_required": true,
+          "source_file": "ut/provenance/workload.json",
+          "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+          "source_case_id": "nk3072x4096_m1_decode",
+          "source_case_pointer": "/cases/21",
+          "source_count": null,
+          "source_weight_source": "prior",
+          "observed_invocation_count": null,
+          "count_scope": "not an observed invocation count for this generated case",
+          "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization."
+        }
       },
       "tensors": [
         {
@@ -2526,7 +3089,7 @@
             1
           ],
           "layout": "row-major contiguous",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         },
         {
           "name": "weights",
@@ -2541,48 +3104,48 @@
             1
           ],
           "layout": "row-major contiguous",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         }
       ],
       "scalars": {
         "bias": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "otype": {
           "value": "torch.bfloat16",
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "scale_a": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "scale_b": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "scale_c": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "solidx": {
           "value": 0,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "bpreshuffle": {
           "value": false,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "config": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         }
       },
@@ -2603,10 +3166,22 @@
           "evidence": "ut/meta.json#/math_contract"
         }
       ],
-      "benchmark_case_ids": [
-        "nk3072x4096_m1_decode"
-      ],
-      "notes": []
+      "benchmark_case_ids": [],
+      "notes": [],
+      "scenario_evidence": {
+        "classification": "inferred_m_bucket",
+        "scored": false,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+        "source_case_id": "nk3072x4096_m1_decode",
+        "source_case_pointer": "/cases/21",
+        "source_count": null,
+        "source_weight_source": "prior",
+        "observed_invocation_count": null,
+        "count_scope": "not an observed invocation count for this generated case",
+        "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization."
+      }
     },
     {
       "case_id": "nk4096x1024_m1_decode",
@@ -2617,7 +3192,21 @@
         "regime": "decode",
         "m": 1,
         "n": 4096,
-        "k": 1024
+        "k": 1024,
+        "scenario_evidence": {
+          "classification": "inferred_m_bucket",
+          "scored": false,
+          "correctness_required": true,
+          "source_file": "ut/provenance/workload.json",
+          "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+          "source_case_id": "nk4096x1024_m1_decode",
+          "source_case_pointer": "/cases/22",
+          "source_count": null,
+          "source_weight_source": "prior",
+          "observed_invocation_count": null,
+          "count_scope": "not an observed invocation count for this generated case",
+          "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization."
+        }
       },
       "tensors": [
         {
@@ -2633,7 +3222,7 @@
             1
           ],
           "layout": "row-major contiguous",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         },
         {
           "name": "weights",
@@ -2648,48 +3237,48 @@
             1
           ],
           "layout": "row-major contiguous",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         }
       ],
       "scalars": {
         "bias": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "otype": {
           "value": "torch.bfloat16",
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "scale_a": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "scale_b": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "scale_c": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "solidx": {
           "value": 0,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "bpreshuffle": {
           "value": false,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "config": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         }
       },
@@ -2710,10 +3299,22 @@
           "evidence": "ut/meta.json#/math_contract"
         }
       ],
-      "benchmark_case_ids": [
-        "nk4096x1024_m1_decode"
-      ],
-      "notes": []
+      "benchmark_case_ids": [],
+      "notes": [],
+      "scenario_evidence": {
+        "classification": "inferred_m_bucket",
+        "scored": false,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+        "source_case_id": "nk4096x1024_m1_decode",
+        "source_case_pointer": "/cases/22",
+        "source_count": null,
+        "source_weight_source": "prior",
+        "observed_invocation_count": null,
+        "count_scope": "not an observed invocation count for this generated case",
+        "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization."
+      }
     },
     {
       "case_id": "nk288x4096_m1_decode",
@@ -2724,7 +3325,21 @@
         "regime": "decode",
         "m": 1,
         "n": 288,
-        "k": 4096
+        "k": 4096,
+        "scenario_evidence": {
+          "classification": "inferred_m_bucket",
+          "scored": false,
+          "correctness_required": true,
+          "source_file": "ut/provenance/workload.json",
+          "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+          "source_case_id": "nk288x4096_m1_decode",
+          "source_case_pointer": "/cases/23",
+          "source_count": null,
+          "source_weight_source": "prior",
+          "observed_invocation_count": null,
+          "count_scope": "not an observed invocation count for this generated case",
+          "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization."
+        }
       },
       "tensors": [
         {
@@ -2740,7 +3355,7 @@
             1
           ],
           "layout": "row-major contiguous",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         },
         {
           "name": "weights",
@@ -2755,48 +3370,48 @@
             1
           ],
           "layout": "row-major contiguous",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         }
       ],
       "scalars": {
         "bias": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "otype": {
           "value": "torch.bfloat16",
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "scale_a": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "scale_b": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "scale_c": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "solidx": {
           "value": 0,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "bpreshuffle": {
           "value": false,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "config": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         }
       },
@@ -2817,10 +3432,22 @@
           "evidence": "ut/meta.json#/math_contract"
         }
       ],
-      "benchmark_case_ids": [
-        "nk288x4096_m1_decode"
-      ],
-      "notes": []
+      "benchmark_case_ids": [],
+      "notes": [],
+      "scenario_evidence": {
+        "classification": "inferred_m_bucket",
+        "scored": false,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+        "source_case_id": "nk288x4096_m1_decode",
+        "source_case_pointer": "/cases/23",
+        "source_count": null,
+        "source_weight_source": "prior",
+        "observed_invocation_count": null,
+        "count_scope": "not an observed invocation count for this generated case",
+        "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization."
+      }
     },
     {
       "case_id": "nk128x4096_m1_decode",
@@ -2831,7 +3458,21 @@
         "regime": "decode",
         "m": 1,
         "n": 128,
-        "k": 4096
+        "k": 4096,
+        "scenario_evidence": {
+          "classification": "inferred_m_bucket",
+          "scored": false,
+          "correctness_required": true,
+          "source_file": "ut/provenance/workload.json",
+          "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+          "source_case_id": "nk128x4096_m1_decode",
+          "source_case_pointer": "/cases/24",
+          "source_count": null,
+          "source_weight_source": "prior",
+          "observed_invocation_count": null,
+          "count_scope": "not an observed invocation count for this generated case",
+          "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization."
+        }
       },
       "tensors": [
         {
@@ -2847,7 +3488,7 @@
             1
           ],
           "layout": "row-major contiguous",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         },
         {
           "name": "weights",
@@ -2862,48 +3503,48 @@
             1
           ],
           "layout": "row-major contiguous",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         }
       ],
       "scalars": {
         "bias": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "otype": {
           "value": "torch.bfloat16",
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "scale_a": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "scale_b": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "scale_c": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "solidx": {
           "value": 0,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "bpreshuffle": {
           "value": false,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "config": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         }
       },
@@ -2924,10 +3565,22 @@
           "evidence": "ut/meta.json#/math_contract"
         }
       ],
-      "benchmark_case_ids": [
-        "nk128x4096_m1_decode"
-      ],
-      "notes": []
+      "benchmark_case_ids": [],
+      "notes": [],
+      "scenario_evidence": {
+        "classification": "inferred_m_bucket",
+        "scored": false,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+        "source_case_id": "nk128x4096_m1_decode",
+        "source_case_pointer": "/cases/24",
+        "source_count": null,
+        "source_weight_source": "prior",
+        "observed_invocation_count": null,
+        "count_scope": "not an observed invocation count for this generated case",
+        "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization."
+      }
     },
     {
       "case_id": "nk8x4096_m1_decode",
@@ -2938,7 +3591,21 @@
         "regime": "decode",
         "m": 1,
         "n": 8,
-        "k": 4096
+        "k": 4096,
+        "scenario_evidence": {
+          "classification": "inferred_m_bucket",
+          "scored": false,
+          "correctness_required": true,
+          "source_file": "ut/provenance/workload.json",
+          "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+          "source_case_id": "nk8x4096_m1_decode",
+          "source_case_pointer": "/cases/25",
+          "source_count": null,
+          "source_weight_source": "prior",
+          "observed_invocation_count": null,
+          "count_scope": "not an observed invocation count for this generated case",
+          "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization."
+        }
       },
       "tensors": [
         {
@@ -2954,7 +3621,7 @@
             1
           ],
           "layout": "row-major contiguous",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         },
         {
           "name": "weights",
@@ -2969,48 +3636,48 @@
             1
           ],
           "layout": "row-major contiguous",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         }
       ],
       "scalars": {
         "bias": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "otype": {
           "value": "torch.bfloat16",
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "scale_a": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "scale_b": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "scale_c": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "solidx": {
           "value": 0,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "bpreshuffle": {
           "value": false,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "config": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         }
       },
@@ -3031,10 +3698,22 @@
           "evidence": "ut/meta.json#/math_contract"
         }
       ],
-      "benchmark_case_ids": [
-        "nk8x4096_m1_decode"
-      ],
-      "notes": []
+      "benchmark_case_ids": [],
+      "notes": [],
+      "scenario_evidence": {
+        "classification": "inferred_m_bucket",
+        "scored": false,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+        "source_case_id": "nk8x4096_m1_decode",
+        "source_case_pointer": "/cases/25",
+        "source_count": null,
+        "source_weight_source": "prior",
+        "observed_invocation_count": null,
+        "count_scope": "not an observed invocation count for this generated case",
+        "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization."
+      }
     },
     {
       "case_id": "nk1024x128_m1_decode",
@@ -3045,7 +3724,21 @@
         "regime": "decode",
         "m": 1,
         "n": 1024,
-        "k": 128
+        "k": 128,
+        "scenario_evidence": {
+          "classification": "inferred_m_bucket",
+          "scored": false,
+          "correctness_required": true,
+          "source_file": "ut/provenance/workload.json",
+          "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+          "source_case_id": "nk1024x128_m1_decode",
+          "source_case_pointer": "/cases/26",
+          "source_count": null,
+          "source_weight_source": "prior",
+          "observed_invocation_count": null,
+          "count_scope": "not an observed invocation count for this generated case",
+          "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization."
+        }
       },
       "tensors": [
         {
@@ -3061,7 +3754,7 @@
             1
           ],
           "layout": "row-major contiguous",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         },
         {
           "name": "weights",
@@ -3076,48 +3769,48 @@
             1
           ],
           "layout": "row-major contiguous",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         }
       ],
       "scalars": {
         "bias": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "otype": {
           "value": "torch.bfloat16",
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "scale_a": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "scale_b": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "scale_c": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "solidx": {
           "value": 0,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "bpreshuffle": {
           "value": false,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         },
         "config": {
           "value": null,
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         }
       },
@@ -3138,10 +3831,22 @@
           "evidence": "ut/meta.json#/math_contract"
         }
       ],
-      "benchmark_case_ids": [
-        "nk1024x128_m1_decode"
-      ],
-      "notes": []
+      "benchmark_case_ids": [],
+      "notes": [],
+      "scenario_evidence": {
+        "classification": "inferred_m_bucket",
+        "scored": false,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+        "source_case_id": "nk1024x128_m1_decode",
+        "source_case_pointer": "/cases/26",
+        "source_count": null,
+        "source_weight_source": "prior",
+        "observed_invocation_count": null,
+        "count_scope": "not an observed invocation count for this generated case",
+        "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization."
+      }
     }
   ],
   "source_inventories": {
@@ -3153,191 +3858,635 @@
           "regime": "decode",
           "m": 64,
           "n": 128,
-          "k": 4096
+          "k": 4096,
+          "scenario_evidence": {
+            "classification": "observed_profile_shape",
+            "scored": true,
+            "correctness_required": true,
+            "source_file": "ut/provenance/workload.json",
+            "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+            "source_case_id": "nk128x4096_m64_decode",
+            "source_case_pointer": "/cases/0",
+            "source_count": null,
+            "source_weight_source": "trace",
+            "observed_invocation_count": null,
+            "count_scope": "per-case invocation count not recorded",
+            "interpretation": "M64 is observed in the retained profile window; tensor values remain synthetic."
+          }
         },
         {
           "sig": "nk3072x4096_m64_decode",
           "regime": "decode",
           "m": 64,
           "n": 3072,
-          "k": 4096
+          "k": 4096,
+          "scenario_evidence": {
+            "classification": "observed_profile_shape",
+            "scored": true,
+            "correctness_required": true,
+            "source_file": "ut/provenance/workload.json",
+            "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+            "source_case_id": "nk3072x4096_m64_decode",
+            "source_case_pointer": "/cases/1",
+            "source_count": null,
+            "source_weight_source": "trace",
+            "observed_invocation_count": null,
+            "count_scope": "per-case invocation count not recorded",
+            "interpretation": "M64 is observed in the retained profile window; tensor values remain synthetic."
+          }
         },
         {
           "sig": "nk288x4096_m64_decode",
           "regime": "decode",
           "m": 64,
           "n": 288,
-          "k": 4096
+          "k": 4096,
+          "scenario_evidence": {
+            "classification": "observed_profile_shape",
+            "scored": true,
+            "correctness_required": true,
+            "source_file": "ut/provenance/workload.json",
+            "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+            "source_case_id": "nk288x4096_m64_decode",
+            "source_case_pointer": "/cases/2",
+            "source_count": null,
+            "source_weight_source": "trace",
+            "observed_invocation_count": null,
+            "count_scope": "per-case invocation count not recorded",
+            "interpretation": "M64 is observed in the retained profile window; tensor values remain synthetic."
+          }
         },
         {
           "sig": "nk1024x128_m64_decode",
           "regime": "decode",
           "m": 64,
           "n": 1024,
-          "k": 128
+          "k": 128,
+          "scenario_evidence": {
+            "classification": "observed_profile_shape",
+            "scored": true,
+            "correctness_required": true,
+            "source_file": "ut/provenance/workload.json",
+            "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+            "source_case_id": "nk1024x128_m64_decode",
+            "source_case_pointer": "/cases/3",
+            "source_count": null,
+            "source_weight_source": "trace",
+            "observed_invocation_count": null,
+            "count_scope": "per-case invocation count not recorded",
+            "interpretation": "M64 is observed in the retained profile window; tensor values remain synthetic."
+          }
         },
         {
           "sig": "nk128x4096_m8192_prefill",
           "regime": "prefill",
           "m": 8192,
           "n": 128,
-          "k": 4096
+          "k": 4096,
+          "scenario_evidence": {
+            "classification": "inferred_m_bucket",
+            "scored": false,
+            "correctness_required": true,
+            "source_file": "ut/provenance/workload.json",
+            "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+            "source_case_id": "nk128x4096_m8192_prefill",
+            "source_case_pointer": "/cases/4",
+            "source_count": null,
+            "source_weight_source": "regime_floor",
+            "observed_invocation_count": null,
+            "count_scope": "not an observed invocation count for this generated case",
+            "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization."
+          }
         },
         {
           "sig": "nk8x4096_m64_decode",
           "regime": "decode",
           "m": 64,
           "n": 8,
-          "k": 4096
+          "k": 4096,
+          "scenario_evidence": {
+            "classification": "observed_profile_shape",
+            "scored": true,
+            "correctness_required": true,
+            "source_file": "ut/provenance/workload.json",
+            "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+            "source_case_id": "nk8x4096_m64_decode",
+            "source_case_pointer": "/cases/5",
+            "source_count": null,
+            "source_weight_source": "trace",
+            "observed_invocation_count": null,
+            "count_scope": "per-case invocation count not recorded",
+            "interpretation": "M64 is observed in the retained profile window; tensor values remain synthetic."
+          }
         },
         {
           "sig": "nk4096x1024_m64_decode",
           "regime": "decode",
           "m": 64,
           "n": 4096,
-          "k": 1024
+          "k": 1024,
+          "scenario_evidence": {
+            "classification": "observed_profile_shape",
+            "scored": true,
+            "correctness_required": true,
+            "source_file": "ut/provenance/workload.json",
+            "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+            "source_case_id": "nk4096x1024_m64_decode",
+            "source_case_pointer": "/cases/6",
+            "source_count": null,
+            "source_weight_source": "trace",
+            "observed_invocation_count": null,
+            "count_scope": "per-case invocation count not recorded",
+            "interpretation": "M64 is observed in the retained profile window; tensor values remain synthetic."
+          }
         },
         {
           "sig": "nk3072x4096_m8192_prefill",
           "regime": "prefill",
           "m": 8192,
           "n": 3072,
-          "k": 4096
+          "k": 4096,
+          "scenario_evidence": {
+            "classification": "inferred_m_bucket",
+            "scored": false,
+            "correctness_required": true,
+            "source_file": "ut/provenance/workload.json",
+            "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+            "source_case_id": "nk3072x4096_m8192_prefill",
+            "source_case_pointer": "/cases/7",
+            "source_count": null,
+            "source_weight_source": "regime_floor",
+            "observed_invocation_count": null,
+            "count_scope": "not an observed invocation count for this generated case",
+            "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization."
+          }
         },
         {
           "sig": "nk288x4096_m8192_prefill",
           "regime": "prefill",
           "m": 8192,
           "n": 288,
-          "k": 4096
+          "k": 4096,
+          "scenario_evidence": {
+            "classification": "inferred_m_bucket",
+            "scored": false,
+            "correctness_required": true,
+            "source_file": "ut/provenance/workload.json",
+            "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+            "source_case_id": "nk288x4096_m8192_prefill",
+            "source_case_pointer": "/cases/8",
+            "source_count": null,
+            "source_weight_source": "regime_floor",
+            "observed_invocation_count": null,
+            "count_scope": "not an observed invocation count for this generated case",
+            "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization."
+          }
         },
         {
           "sig": "nk1024x128_m8192_prefill",
           "regime": "prefill",
           "m": 8192,
           "n": 1024,
-          "k": 128
+          "k": 128,
+          "scenario_evidence": {
+            "classification": "inferred_m_bucket",
+            "scored": false,
+            "correctness_required": true,
+            "source_file": "ut/provenance/workload.json",
+            "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+            "source_case_id": "nk1024x128_m8192_prefill",
+            "source_case_pointer": "/cases/9",
+            "source_count": null,
+            "source_weight_source": "regime_floor",
+            "observed_invocation_count": null,
+            "count_scope": "not an observed invocation count for this generated case",
+            "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization."
+          }
         },
         {
           "sig": "nk8x4096_m8192_prefill",
           "regime": "prefill",
           "m": 8192,
           "n": 8,
-          "k": 4096
+          "k": 4096,
+          "scenario_evidence": {
+            "classification": "inferred_m_bucket",
+            "scored": false,
+            "correctness_required": true,
+            "source_file": "ut/provenance/workload.json",
+            "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+            "source_case_id": "nk8x4096_m8192_prefill",
+            "source_case_pointer": "/cases/10",
+            "source_count": null,
+            "source_weight_source": "regime_floor",
+            "observed_invocation_count": null,
+            "count_scope": "not an observed invocation count for this generated case",
+            "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization."
+          }
         },
         {
           "sig": "nk4096x1024_m8192_prefill",
           "regime": "prefill",
           "m": 8192,
           "n": 4096,
-          "k": 1024
+          "k": 1024,
+          "scenario_evidence": {
+            "classification": "inferred_m_bucket",
+            "scored": false,
+            "correctness_required": true,
+            "source_file": "ut/provenance/workload.json",
+            "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+            "source_case_id": "nk4096x1024_m8192_prefill",
+            "source_case_pointer": "/cases/11",
+            "source_count": null,
+            "source_weight_source": "regime_floor",
+            "observed_invocation_count": null,
+            "count_scope": "not an observed invocation count for this generated case",
+            "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization."
+          }
         },
         {
           "sig": "nk4096x1536_m64_decode",
           "regime": "decode",
           "m": 64,
           "n": 4096,
-          "k": 1536
+          "k": 1536,
+          "scenario_evidence": {
+            "classification": "observed_profile_shape",
+            "scored": true,
+            "correctness_required": true,
+            "source_file": "ut/provenance/workload.json",
+            "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+            "source_case_id": "nk4096x1536_m64_decode",
+            "source_case_pointer": "/cases/12",
+            "source_count": null,
+            "source_weight_source": "trace",
+            "observed_invocation_count": null,
+            "count_scope": "per-case invocation count not recorded",
+            "interpretation": "M64 is observed in the retained profile window; tensor values remain synthetic."
+          }
         },
         {
           "sig": "nk4096x1536_m8192_prefill",
           "regime": "prefill",
           "m": 8192,
           "n": 4096,
-          "k": 1536
+          "k": 1536,
+          "scenario_evidence": {
+            "classification": "inferred_m_bucket",
+            "scored": false,
+            "correctness_required": true,
+            "source_file": "ut/provenance/workload.json",
+            "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+            "source_case_id": "nk4096x1536_m8192_prefill",
+            "source_case_pointer": "/cases/13",
+            "source_count": null,
+            "source_weight_source": "regime_floor",
+            "observed_invocation_count": null,
+            "count_scope": "not an observed invocation count for this generated case",
+            "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization."
+          }
         },
         {
           "sig": "nk32x4096_m8192_prefill",
           "regime": "prefill",
           "m": 8192,
           "n": 32,
-          "k": 4096
+          "k": 4096,
+          "scenario_evidence": {
+            "classification": "unprofiled_nk_family",
+            "scored": false,
+            "correctness_required": true,
+            "source_file": "ut/provenance/workload.json",
+            "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+            "source_case_id": "nk32x4096_m8192_prefill",
+            "source_case_pointer": "/cases/14",
+            "source_count": null,
+            "source_weight_source": "regime_floor",
+            "observed_invocation_count": null,
+            "count_scope": "not an observed invocation count for this generated case",
+            "interpretation": "No profiled case exists for this NK family; retained solely for unscored robustness/generalization."
+          }
         },
         {
           "sig": "nk4096x512_m8192_prefill",
           "regime": "prefill",
           "m": 8192,
           "n": 4096,
-          "k": 512
+          "k": 512,
+          "scenario_evidence": {
+            "classification": "unprofiled_nk_family",
+            "scored": false,
+            "correctness_required": true,
+            "source_file": "ut/provenance/workload.json",
+            "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+            "source_case_id": "nk4096x512_m8192_prefill",
+            "source_case_pointer": "/cases/15",
+            "source_count": null,
+            "source_weight_source": "regime_floor",
+            "observed_invocation_count": null,
+            "count_scope": "not an observed invocation count for this generated case",
+            "interpretation": "No profiled case exists for this NK family; retained solely for unscored robustness/generalization."
+          }
         },
         {
           "sig": "nk32x4096_m64_decode",
           "regime": "decode",
           "m": 64,
           "n": 32,
-          "k": 4096
+          "k": 4096,
+          "scenario_evidence": {
+            "classification": "unprofiled_nk_family",
+            "scored": false,
+            "correctness_required": true,
+            "source_file": "ut/provenance/workload.json",
+            "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+            "source_case_id": "nk32x4096_m64_decode",
+            "source_case_pointer": "/cases/16",
+            "source_count": null,
+            "source_weight_source": "regime_floor",
+            "observed_invocation_count": null,
+            "count_scope": "not an observed invocation count for this generated case",
+            "interpretation": "No profiled case exists for this NK family; retained solely for unscored robustness/generalization."
+          }
         },
         {
           "sig": "nk4096x512_m64_decode",
           "regime": "decode",
           "m": 64,
           "n": 4096,
-          "k": 512
+          "k": 512,
+          "scenario_evidence": {
+            "classification": "unprofiled_nk_family",
+            "scored": false,
+            "correctness_required": true,
+            "source_file": "ut/provenance/workload.json",
+            "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+            "source_case_id": "nk4096x512_m64_decode",
+            "source_case_pointer": "/cases/17",
+            "source_count": null,
+            "source_weight_source": "regime_floor",
+            "observed_invocation_count": null,
+            "count_scope": "not an observed invocation count for this generated case",
+            "interpretation": "No profiled case exists for this NK family; retained solely for unscored robustness/generalization."
+          }
         },
         {
           "sig": "nk32x4096_m1_decode",
           "regime": "decode",
           "m": 1,
           "n": 32,
-          "k": 4096
+          "k": 4096,
+          "scenario_evidence": {
+            "classification": "unprofiled_nk_family",
+            "scored": false,
+            "correctness_required": true,
+            "source_file": "ut/provenance/workload.json",
+            "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+            "source_case_id": "nk32x4096_m1_decode",
+            "source_case_pointer": "/cases/18",
+            "source_count": null,
+            "source_weight_source": "regime_floor",
+            "observed_invocation_count": null,
+            "count_scope": "not an observed invocation count for this generated case",
+            "interpretation": "No profiled case exists for this NK family; retained solely for unscored robustness/generalization."
+          }
         },
         {
           "sig": "nk4096x512_m1_decode",
           "regime": "decode",
           "m": 1,
           "n": 4096,
-          "k": 512
+          "k": 512,
+          "scenario_evidence": {
+            "classification": "unprofiled_nk_family",
+            "scored": false,
+            "correctness_required": true,
+            "source_file": "ut/provenance/workload.json",
+            "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+            "source_case_id": "nk4096x512_m1_decode",
+            "source_case_pointer": "/cases/19",
+            "source_count": null,
+            "source_weight_source": "regime_floor",
+            "observed_invocation_count": null,
+            "count_scope": "not an observed invocation count for this generated case",
+            "interpretation": "No profiled case exists for this NK family; retained solely for unscored robustness/generalization."
+          }
         },
         {
           "sig": "nk4096x1536_m1_decode",
           "regime": "decode",
           "m": 1,
           "n": 4096,
-          "k": 1536
+          "k": 1536,
+          "scenario_evidence": {
+            "classification": "inferred_m_bucket",
+            "scored": false,
+            "correctness_required": true,
+            "source_file": "ut/provenance/workload.json",
+            "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+            "source_case_id": "nk4096x1536_m1_decode",
+            "source_case_pointer": "/cases/20",
+            "source_count": null,
+            "source_weight_source": "prior",
+            "observed_invocation_count": null,
+            "count_scope": "not an observed invocation count for this generated case",
+            "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization."
+          }
         },
         {
           "sig": "nk3072x4096_m1_decode",
           "regime": "decode",
           "m": 1,
           "n": 3072,
-          "k": 4096
+          "k": 4096,
+          "scenario_evidence": {
+            "classification": "inferred_m_bucket",
+            "scored": false,
+            "correctness_required": true,
+            "source_file": "ut/provenance/workload.json",
+            "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+            "source_case_id": "nk3072x4096_m1_decode",
+            "source_case_pointer": "/cases/21",
+            "source_count": null,
+            "source_weight_source": "prior",
+            "observed_invocation_count": null,
+            "count_scope": "not an observed invocation count for this generated case",
+            "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization."
+          }
         },
         {
           "sig": "nk4096x1024_m1_decode",
           "regime": "decode",
           "m": 1,
           "n": 4096,
-          "k": 1024
+          "k": 1024,
+          "scenario_evidence": {
+            "classification": "inferred_m_bucket",
+            "scored": false,
+            "correctness_required": true,
+            "source_file": "ut/provenance/workload.json",
+            "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+            "source_case_id": "nk4096x1024_m1_decode",
+            "source_case_pointer": "/cases/22",
+            "source_count": null,
+            "source_weight_source": "prior",
+            "observed_invocation_count": null,
+            "count_scope": "not an observed invocation count for this generated case",
+            "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization."
+          }
         },
         {
           "sig": "nk288x4096_m1_decode",
           "regime": "decode",
           "m": 1,
           "n": 288,
-          "k": 4096
+          "k": 4096,
+          "scenario_evidence": {
+            "classification": "inferred_m_bucket",
+            "scored": false,
+            "correctness_required": true,
+            "source_file": "ut/provenance/workload.json",
+            "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+            "source_case_id": "nk288x4096_m1_decode",
+            "source_case_pointer": "/cases/23",
+            "source_count": null,
+            "source_weight_source": "prior",
+            "observed_invocation_count": null,
+            "count_scope": "not an observed invocation count for this generated case",
+            "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization."
+          }
         },
         {
           "sig": "nk128x4096_m1_decode",
           "regime": "decode",
           "m": 1,
           "n": 128,
-          "k": 4096
+          "k": 4096,
+          "scenario_evidence": {
+            "classification": "inferred_m_bucket",
+            "scored": false,
+            "correctness_required": true,
+            "source_file": "ut/provenance/workload.json",
+            "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+            "source_case_id": "nk128x4096_m1_decode",
+            "source_case_pointer": "/cases/24",
+            "source_count": null,
+            "source_weight_source": "prior",
+            "observed_invocation_count": null,
+            "count_scope": "not an observed invocation count for this generated case",
+            "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization."
+          }
         },
         {
           "sig": "nk8x4096_m1_decode",
           "regime": "decode",
           "m": 1,
           "n": 8,
-          "k": 4096
+          "k": 4096,
+          "scenario_evidence": {
+            "classification": "inferred_m_bucket",
+            "scored": false,
+            "correctness_required": true,
+            "source_file": "ut/provenance/workload.json",
+            "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+            "source_case_id": "nk8x4096_m1_decode",
+            "source_case_pointer": "/cases/25",
+            "source_count": null,
+            "source_weight_source": "prior",
+            "observed_invocation_count": null,
+            "count_scope": "not an observed invocation count for this generated case",
+            "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization."
+          }
         },
         {
           "sig": "nk1024x128_m1_decode",
           "regime": "decode",
           "m": 1,
           "n": 1024,
-          "k": 128
+          "k": 128,
+          "scenario_evidence": {
+            "classification": "inferred_m_bucket",
+            "scored": false,
+            "correctness_required": true,
+            "source_file": "ut/provenance/workload.json",
+            "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+            "source_case_id": "nk1024x128_m1_decode",
+            "source_case_pointer": "/cases/26",
+            "source_count": null,
+            "source_weight_source": "prior",
+            "observed_invocation_count": null,
+            "count_scope": "not an observed invocation count for this generated case",
+            "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization."
+          }
         }
       ]
+    },
+    "ledger_ids": {
+      "evidence": "ut/meta.json#/ledger_ids",
+      "records": [
+        "nk128x4096_m64_decode",
+        "nk3072x4096_m64_decode",
+        "nk288x4096_m64_decode",
+        "nk1024x128_m64_decode",
+        "nk8x4096_m64_decode",
+        "nk4096x1024_m64_decode",
+        "nk4096x1536_m64_decode"
+      ]
+    },
+    "correctness_case_ids": {
+      "evidence": "ut/meta.json#/correctness_case_ids",
+      "records": [
+        "nk128x4096_m64_decode",
+        "nk3072x4096_m64_decode",
+        "nk288x4096_m64_decode",
+        "nk1024x128_m64_decode",
+        "nk128x4096_m8192_prefill",
+        "nk8x4096_m64_decode",
+        "nk4096x1024_m64_decode",
+        "nk3072x4096_m8192_prefill",
+        "nk288x4096_m8192_prefill",
+        "nk1024x128_m8192_prefill",
+        "nk8x4096_m8192_prefill",
+        "nk4096x1024_m8192_prefill",
+        "nk4096x1536_m64_decode",
+        "nk4096x1536_m8192_prefill",
+        "nk32x4096_m8192_prefill",
+        "nk4096x512_m8192_prefill",
+        "nk32x4096_m64_decode",
+        "nk4096x512_m64_decode",
+        "nk32x4096_m1_decode",
+        "nk4096x512_m1_decode",
+        "nk4096x1536_m1_decode",
+        "nk3072x4096_m1_decode",
+        "nk4096x1024_m1_decode",
+        "nk288x4096_m1_decode",
+        "nk128x4096_m1_decode",
+        "nk8x4096_m1_decode",
+        "nk1024x128_m1_decode"
+      ]
+    },
+    "benchmark_case_policy": {
+      "evidence": "ut/meta.json#/benchmark_case_policy",
+      "records": {
+        "scope": "Only profile-supported M64 geometries are scored; all declared cases remain mandatory correctness coverage.",
+        "correctness_case_count": 27,
+        "scored_case_count": 7,
+        "unscored_correctness_case_count": 20,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+        "interpretation_evidence": "ut/provenance/workload.json#/notes",
+        "scored_case_classification": "observed_profile_shape",
+        "unscored_case_role": "robustness_generalization",
+        "uses_observed_invocation_weights": false,
+        "weighting_note": "Recorded counts/weights are provenance only; the shared Arena aggregation is unchanged.",
+        "exact_historical_runtime_equivalence_established": false,
+        "remaining_evidence_gaps": [
+          "Current per-case device kernel, launch/grid and solution identity is not established by historical selection metadata.",
+          "Historical serving was eager; the unchanged shared benchmark measures graph device timing.",
+          "Historical torch_gemm/Cijk linkage does not prove the current public runtime uses the same per-case Cijk solution."
+        ]
+      }
     }
   },
   "observed_shape_inventories": [],
@@ -3353,15 +4502,15 @@
   "sources": [
     {
       "path": "ut/meta.json",
-      "sha256": "5bc6e6fe2c8c55ef0f6b4a9c52114c998b16f76d31c7b71085216fef8435678d"
+      "sha256": "f4c2aa10223102cdaebf39811e1ac07a1c919f6dcecff637be7b1c9588248820"
     },
     {
       "path": "ut/cases.py",
-      "sha256": "fa2782b9c5e668c0b94085f90c7693a41c3af23d0f1d6cbaf4499ab2a84321ab"
+      "sha256": "7da98db40d631b702c8ca7280f0e3061d9283d80a06eb58e739c900fe3e8c169"
     },
     {
       "path": "config.yaml",
-      "sha256": "ed96304c7619d33d2d07958ab9cf69c86b9eca874b106feac8e90ac6280de3a1"
+      "sha256": "305e4bc833d10f81a5c7817be0d98e8f55e7b037e3138f84dcc914636d12b66a"
     },
     {
       "path": "scripts/source_abi.json",
@@ -3376,5 +4525,426 @@
       "sha256": "8e0deaf915e2a0974e552c027d6a1d97274de207313181ebf4f5b37729b8039a"
     }
   ],
-  "validation": "Static metadata/AST inspection only. No task module imports, pickle deserialization, tensor loading, GPU execution, or fresh performance validation."
+  "validation": "Static scenario classification from preserved workload rows and notes. No fresh GPU correctness, performance, or historical dispatch equivalence is established.",
+  "unscored_correctness_cases": [
+    {
+      "case_id": "nk128x4096_m8192_prefill",
+      "shape_record_id": "nk128x4096_m8192_prefill",
+      "regime": "prefill",
+      "role": "robustness_generalization",
+      "scenario_evidence": {
+        "classification": "inferred_m_bucket",
+        "scored": false,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+        "source_case_id": "nk128x4096_m8192_prefill",
+        "source_case_pointer": "/cases/4",
+        "source_count": null,
+        "source_weight_source": "regime_floor",
+        "observed_invocation_count": null,
+        "count_scope": "not an observed invocation count for this generated case",
+        "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization."
+      }
+    },
+    {
+      "case_id": "nk3072x4096_m8192_prefill",
+      "shape_record_id": "nk3072x4096_m8192_prefill",
+      "regime": "prefill",
+      "role": "robustness_generalization",
+      "scenario_evidence": {
+        "classification": "inferred_m_bucket",
+        "scored": false,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+        "source_case_id": "nk3072x4096_m8192_prefill",
+        "source_case_pointer": "/cases/7",
+        "source_count": null,
+        "source_weight_source": "regime_floor",
+        "observed_invocation_count": null,
+        "count_scope": "not an observed invocation count for this generated case",
+        "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization."
+      }
+    },
+    {
+      "case_id": "nk288x4096_m8192_prefill",
+      "shape_record_id": "nk288x4096_m8192_prefill",
+      "regime": "prefill",
+      "role": "robustness_generalization",
+      "scenario_evidence": {
+        "classification": "inferred_m_bucket",
+        "scored": false,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+        "source_case_id": "nk288x4096_m8192_prefill",
+        "source_case_pointer": "/cases/8",
+        "source_count": null,
+        "source_weight_source": "regime_floor",
+        "observed_invocation_count": null,
+        "count_scope": "not an observed invocation count for this generated case",
+        "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization."
+      }
+    },
+    {
+      "case_id": "nk1024x128_m8192_prefill",
+      "shape_record_id": "nk1024x128_m8192_prefill",
+      "regime": "prefill",
+      "role": "robustness_generalization",
+      "scenario_evidence": {
+        "classification": "inferred_m_bucket",
+        "scored": false,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+        "source_case_id": "nk1024x128_m8192_prefill",
+        "source_case_pointer": "/cases/9",
+        "source_count": null,
+        "source_weight_source": "regime_floor",
+        "observed_invocation_count": null,
+        "count_scope": "not an observed invocation count for this generated case",
+        "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization."
+      }
+    },
+    {
+      "case_id": "nk8x4096_m8192_prefill",
+      "shape_record_id": "nk8x4096_m8192_prefill",
+      "regime": "prefill",
+      "role": "robustness_generalization",
+      "scenario_evidence": {
+        "classification": "inferred_m_bucket",
+        "scored": false,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+        "source_case_id": "nk8x4096_m8192_prefill",
+        "source_case_pointer": "/cases/10",
+        "source_count": null,
+        "source_weight_source": "regime_floor",
+        "observed_invocation_count": null,
+        "count_scope": "not an observed invocation count for this generated case",
+        "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization."
+      }
+    },
+    {
+      "case_id": "nk4096x1024_m8192_prefill",
+      "shape_record_id": "nk4096x1024_m8192_prefill",
+      "regime": "prefill",
+      "role": "robustness_generalization",
+      "scenario_evidence": {
+        "classification": "inferred_m_bucket",
+        "scored": false,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+        "source_case_id": "nk4096x1024_m8192_prefill",
+        "source_case_pointer": "/cases/11",
+        "source_count": null,
+        "source_weight_source": "regime_floor",
+        "observed_invocation_count": null,
+        "count_scope": "not an observed invocation count for this generated case",
+        "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization."
+      }
+    },
+    {
+      "case_id": "nk4096x1536_m8192_prefill",
+      "shape_record_id": "nk4096x1536_m8192_prefill",
+      "regime": "prefill",
+      "role": "robustness_generalization",
+      "scenario_evidence": {
+        "classification": "inferred_m_bucket",
+        "scored": false,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+        "source_case_id": "nk4096x1536_m8192_prefill",
+        "source_case_pointer": "/cases/13",
+        "source_count": null,
+        "source_weight_source": "regime_floor",
+        "observed_invocation_count": null,
+        "count_scope": "not an observed invocation count for this generated case",
+        "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization."
+      }
+    },
+    {
+      "case_id": "nk32x4096_m8192_prefill",
+      "shape_record_id": "nk32x4096_m8192_prefill",
+      "regime": "prefill",
+      "role": "robustness_generalization",
+      "scenario_evidence": {
+        "classification": "unprofiled_nk_family",
+        "scored": false,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+        "source_case_id": "nk32x4096_m8192_prefill",
+        "source_case_pointer": "/cases/14",
+        "source_count": null,
+        "source_weight_source": "regime_floor",
+        "observed_invocation_count": null,
+        "count_scope": "not an observed invocation count for this generated case",
+        "interpretation": "No profiled case exists for this NK family; retained solely for unscored robustness/generalization."
+      }
+    },
+    {
+      "case_id": "nk4096x512_m8192_prefill",
+      "shape_record_id": "nk4096x512_m8192_prefill",
+      "regime": "prefill",
+      "role": "robustness_generalization",
+      "scenario_evidence": {
+        "classification": "unprofiled_nk_family",
+        "scored": false,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+        "source_case_id": "nk4096x512_m8192_prefill",
+        "source_case_pointer": "/cases/15",
+        "source_count": null,
+        "source_weight_source": "regime_floor",
+        "observed_invocation_count": null,
+        "count_scope": "not an observed invocation count for this generated case",
+        "interpretation": "No profiled case exists for this NK family; retained solely for unscored robustness/generalization."
+      }
+    },
+    {
+      "case_id": "nk32x4096_m64_decode",
+      "shape_record_id": "nk32x4096_m64_decode",
+      "regime": "decode",
+      "role": "robustness_generalization",
+      "scenario_evidence": {
+        "classification": "unprofiled_nk_family",
+        "scored": false,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+        "source_case_id": "nk32x4096_m64_decode",
+        "source_case_pointer": "/cases/16",
+        "source_count": null,
+        "source_weight_source": "regime_floor",
+        "observed_invocation_count": null,
+        "count_scope": "not an observed invocation count for this generated case",
+        "interpretation": "No profiled case exists for this NK family; retained solely for unscored robustness/generalization."
+      }
+    },
+    {
+      "case_id": "nk4096x512_m64_decode",
+      "shape_record_id": "nk4096x512_m64_decode",
+      "regime": "decode",
+      "role": "robustness_generalization",
+      "scenario_evidence": {
+        "classification": "unprofiled_nk_family",
+        "scored": false,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+        "source_case_id": "nk4096x512_m64_decode",
+        "source_case_pointer": "/cases/17",
+        "source_count": null,
+        "source_weight_source": "regime_floor",
+        "observed_invocation_count": null,
+        "count_scope": "not an observed invocation count for this generated case",
+        "interpretation": "No profiled case exists for this NK family; retained solely for unscored robustness/generalization."
+      }
+    },
+    {
+      "case_id": "nk32x4096_m1_decode",
+      "shape_record_id": "nk32x4096_m1_decode",
+      "regime": "decode",
+      "role": "robustness_generalization",
+      "scenario_evidence": {
+        "classification": "unprofiled_nk_family",
+        "scored": false,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+        "source_case_id": "nk32x4096_m1_decode",
+        "source_case_pointer": "/cases/18",
+        "source_count": null,
+        "source_weight_source": "regime_floor",
+        "observed_invocation_count": null,
+        "count_scope": "not an observed invocation count for this generated case",
+        "interpretation": "No profiled case exists for this NK family; retained solely for unscored robustness/generalization."
+      }
+    },
+    {
+      "case_id": "nk4096x512_m1_decode",
+      "shape_record_id": "nk4096x512_m1_decode",
+      "regime": "decode",
+      "role": "robustness_generalization",
+      "scenario_evidence": {
+        "classification": "unprofiled_nk_family",
+        "scored": false,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+        "source_case_id": "nk4096x512_m1_decode",
+        "source_case_pointer": "/cases/19",
+        "source_count": null,
+        "source_weight_source": "regime_floor",
+        "observed_invocation_count": null,
+        "count_scope": "not an observed invocation count for this generated case",
+        "interpretation": "No profiled case exists for this NK family; retained solely for unscored robustness/generalization."
+      }
+    },
+    {
+      "case_id": "nk4096x1536_m1_decode",
+      "shape_record_id": "nk4096x1536_m1_decode",
+      "regime": "decode",
+      "role": "robustness_generalization",
+      "scenario_evidence": {
+        "classification": "inferred_m_bucket",
+        "scored": false,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+        "source_case_id": "nk4096x1536_m1_decode",
+        "source_case_pointer": "/cases/20",
+        "source_count": null,
+        "source_weight_source": "prior",
+        "observed_invocation_count": null,
+        "count_scope": "not an observed invocation count for this generated case",
+        "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization."
+      }
+    },
+    {
+      "case_id": "nk3072x4096_m1_decode",
+      "shape_record_id": "nk3072x4096_m1_decode",
+      "regime": "decode",
+      "role": "robustness_generalization",
+      "scenario_evidence": {
+        "classification": "inferred_m_bucket",
+        "scored": false,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+        "source_case_id": "nk3072x4096_m1_decode",
+        "source_case_pointer": "/cases/21",
+        "source_count": null,
+        "source_weight_source": "prior",
+        "observed_invocation_count": null,
+        "count_scope": "not an observed invocation count for this generated case",
+        "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization."
+      }
+    },
+    {
+      "case_id": "nk4096x1024_m1_decode",
+      "shape_record_id": "nk4096x1024_m1_decode",
+      "regime": "decode",
+      "role": "robustness_generalization",
+      "scenario_evidence": {
+        "classification": "inferred_m_bucket",
+        "scored": false,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+        "source_case_id": "nk4096x1024_m1_decode",
+        "source_case_pointer": "/cases/22",
+        "source_count": null,
+        "source_weight_source": "prior",
+        "observed_invocation_count": null,
+        "count_scope": "not an observed invocation count for this generated case",
+        "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization."
+      }
+    },
+    {
+      "case_id": "nk288x4096_m1_decode",
+      "shape_record_id": "nk288x4096_m1_decode",
+      "regime": "decode",
+      "role": "robustness_generalization",
+      "scenario_evidence": {
+        "classification": "inferred_m_bucket",
+        "scored": false,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+        "source_case_id": "nk288x4096_m1_decode",
+        "source_case_pointer": "/cases/23",
+        "source_count": null,
+        "source_weight_source": "prior",
+        "observed_invocation_count": null,
+        "count_scope": "not an observed invocation count for this generated case",
+        "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization."
+      }
+    },
+    {
+      "case_id": "nk128x4096_m1_decode",
+      "shape_record_id": "nk128x4096_m1_decode",
+      "regime": "decode",
+      "role": "robustness_generalization",
+      "scenario_evidence": {
+        "classification": "inferred_m_bucket",
+        "scored": false,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+        "source_case_id": "nk128x4096_m1_decode",
+        "source_case_pointer": "/cases/24",
+        "source_count": null,
+        "source_weight_source": "prior",
+        "observed_invocation_count": null,
+        "count_scope": "not an observed invocation count for this generated case",
+        "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization."
+      }
+    },
+    {
+      "case_id": "nk8x4096_m1_decode",
+      "shape_record_id": "nk8x4096_m1_decode",
+      "regime": "decode",
+      "role": "robustness_generalization",
+      "scenario_evidence": {
+        "classification": "inferred_m_bucket",
+        "scored": false,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+        "source_case_id": "nk8x4096_m1_decode",
+        "source_case_pointer": "/cases/25",
+        "source_count": null,
+        "source_weight_source": "prior",
+        "observed_invocation_count": null,
+        "count_scope": "not an observed invocation count for this generated case",
+        "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization."
+      }
+    },
+    {
+      "case_id": "nk1024x128_m1_decode",
+      "shape_record_id": "nk1024x128_m1_decode",
+      "regime": "decode",
+      "role": "robustness_generalization",
+      "scenario_evidence": {
+        "classification": "inferred_m_bucket",
+        "scored": false,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+        "source_case_id": "nk1024x128_m1_decode",
+        "source_case_pointer": "/cases/26",
+        "source_count": null,
+        "source_weight_source": "prior",
+        "observed_invocation_count": null,
+        "count_scope": "not an observed invocation count for this generated case",
+        "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization."
+      }
+    }
+  ],
+  "benchmark_case_policy": {
+    "scope": "Only profile-supported M64 geometries are scored; all declared cases remain mandatory correctness coverage.",
+    "correctness_case_count": 27,
+    "scored_case_count": 7,
+    "unscored_correctness_case_count": 20,
+    "source_file": "ut/provenance/workload.json",
+    "source_sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d",
+    "interpretation_evidence": "ut/provenance/workload.json#/notes",
+    "scored_case_classification": "observed_profile_shape",
+    "unscored_case_role": "robustness_generalization",
+    "uses_observed_invocation_weights": false,
+    "weighting_note": "Recorded counts/weights are provenance only; the shared Arena aggregation is unchanged.",
+    "exact_historical_runtime_equivalence_established": false,
+    "remaining_evidence_gaps": [
+      "Current per-case device kernel, launch/grid and solution identity is not established by historical selection metadata.",
+      "Historical serving was eager; the unchanged shared benchmark measures graph device timing.",
+      "Historical torch_gemm/Cijk linkage does not prove the current public runtime uses the same per-case Cijk solution."
+    ]
+  }
 }

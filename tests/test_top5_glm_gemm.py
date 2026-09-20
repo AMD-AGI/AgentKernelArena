@@ -1,5 +1,7 @@
 """CPU contract/binding regressions; these do not establish GPU correctness."""
 import ast
+import copy
+import hashlib
 import importlib.util
 import json
 from pathlib import Path
@@ -189,7 +191,8 @@ def test_cases_reject_missing_or_reordered_cases(task, monkeypatch):
     harness = load(task, "ut/harness_lib.py")
     monkeypatch.setitem(sys.modules, "harness_lib", harness)
     cases = load(task, "ut/cases.py")
-    assert len(cases.selected_cases(cases.META, cases.META["ledger_ids"])) in (21, 27)
+    assert len(cases.correctness_cases(cases.META)) in (21, 27)
+    assert len(cases.selected_cases(cases.META, cases.META["ledger_ids"])) == 7
     with pytest.raises(RuntimeError, match="complete fixed"):
         cases.selected_cases(cases.META, cases.META["ledger_ids"][:-1])
     with pytest.raises(RuntimeError, match="complete fixed"):
@@ -206,3 +209,89 @@ def test_tasks_use_common_harness_and_declare_synthetic_values(task):
     for filename in ("_bench.py", "task_runner.py", "runtime_preflight.py",
                      "runtime_integrity.py", "_trusted_worker.py"):
         assert (task / "scripts" / filename).read_bytes() == (TASKS / "_support" / filename).read_bytes()
+
+
+OBSERVED_CASES = {
+    "bf16": ["nk128x4096_m64_decode", "nk3072x4096_m64_decode",
+             "nk288x4096_m64_decode", "nk1024x128_m64_decode",
+             "nk8x4096_m64_decode", "nk4096x1024_m64_decode",
+             "nk4096x1536_m64_decode"],
+    "fp8": ["nk512x4096_m64_decode", "nk4096x256_m64_decode",
+            "nk2048x4096_m64_decode", "nk2048x1536_m64_decode",
+            "nk4096x2048_m64_decode", "nk3072x4096_m64_decode",
+            "nk4096x1536_m64_decode"],
+}
+
+
+@pytest.mark.parametrize("task", [BF16, FP8])
+def test_only_observed_rows_are_scored_and_counts_keep_their_scope(task):
+    meta = json.loads((task / "ut/meta.json").read_text())
+    original = json.loads((task / "ut/provenance/workload.json").read_text())
+    assert meta["ledger_ids"] == OBSERVED_CASES[meta["kind"]]
+    source_hash = hashlib.sha256((task / "ut/provenance/workload.json").read_bytes()).hexdigest()
+    assert meta["benchmark_case_policy"]["source_sha256"] == source_hash
+    assert meta["correctness_case_ids"] == [row["sig"] for row in meta["cases"]]
+    for case, source in zip(meta["cases"], original["cases"]):
+        evidence = case["scenario_evidence"]
+        observed = case["sig"] in meta["ledger_ids"]
+        assert evidence["scored"] is observed
+        assert evidence["correctness_required"] is True
+        assert evidence["source_case_id"] == source["name"]
+        assert evidence["source_sha256"] == source_hash
+        assert evidence["source_count"] == source["count"]
+        assert evidence["source_weight_source"] == source["weight_source"]
+        assert evidence["observed_invocation_count"] == (source["count"] if observed else None)
+        if observed:
+            assert case["m"] == 64
+            assert evidence["classification"] == "observed_profile_shape"
+        else:
+            assert evidence["classification"] in ("inferred_m_bucket", "unprofiled_nk_family")
+        if meta["kind"] == "fp8" and not observed:
+            assert source["weight_source"] == "trace"
+            assert "only M64 was observed" in evidence["source_label_caveat"]
+    counts = [row["scenario_evidence"]["observed_invocation_count"]
+              for row in meta["cases"] if row["scenario_evidence"]["scored"]]
+    assert counts == ([None] * 7 if meta["kind"] == "bf16" else
+                      [4410, 4410, 1155, 1155, 1155, 315, 315])
+    assert meta["benchmark_case_policy"]["uses_observed_invocation_weights"] is False
+    if meta["kind"] == "fp8":
+        assert any("tuning table" in gap for gap in
+                   meta["benchmark_case_policy"]["remaining_evidence_gaps"])
+
+
+@pytest.mark.parametrize("task", [BF16, FP8])
+def test_common_benchmark_adapter_gets_only_observed_cases(task, monkeypatch):
+    harness = load(task, "ut/harness_lib.py")
+    monkeypatch.setitem(sys.modules, "harness_lib", harness)
+    cases = load(task, "ut/cases.py")
+    bench = load(task, "scripts/_bench.py")
+    # Exercise the unchanged adapter and real selector without building GPU inputs.
+    monkeypatch.setattr(cases, "timing_case", lambda case: {"sig": case["sig"]})
+    rows, call = bench.selected_cases(cases, harness, cases.META, None, True)
+    assert [row["sig"] for row in rows] == OBSERVED_CASES[cases.META["kind"]]
+    assert call is cases.baseline_call
+
+
+@pytest.mark.parametrize("task", [BF16, FP8])
+def test_robustness_coverage_cannot_be_dropped_or_enter_timing(task, monkeypatch):
+    harness = load(task, "ut/harness_lib.py")
+    monkeypatch.setitem(sys.modules, "harness_lib", harness)
+    cases = load(task, "ut/cases.py")
+    all_cases = cases.correctness_cases(cases.META)
+    assert len(all_cases) == (27 if cases.META["kind"] == "bf16" else 21)
+    for case in all_cases:
+        if not case["scenario_evidence"]["scored"]:
+            with pytest.raises(RuntimeError, match="unscored robustness"):
+                cases.timing_case(case)
+    incomplete = copy.deepcopy(cases.META)
+    incomplete["cases"].pop()
+    with pytest.raises(RuntimeError, match="complete fixed GLM correctness"):
+        cases.correctness_cases(incomplete)
+    with pytest.raises(RuntimeError, match="complete fixed observed"):
+        cases.selected_cases(cases.META, cases.META["correctness_case_ids"])
+    # Correctness's executable entrypoint must retain the all-case selector.
+    tree = ast.parse((task / "ut/unittest.py").read_text())
+    main = next(node for node in tree.body if isinstance(node, ast.FunctionDef)
+                and node.name == "main")
+    assert any(isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+               and node.func.attr == "correctness_cases" for node in ast.walk(main))

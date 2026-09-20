@@ -65,7 +65,7 @@ def main():
         raise RuntimeError("GLM GEMM correctness requires a gfx950 GPU")
     torch.backends.cuda.matmul.allow_tf32 = False
     meta = cases.META
-    selected = cases.selected_cases(meta, meta["ledger_ids"])
+    selected = cases.correctness_cases(meta)
     for index, case in enumerate(selected):
         previous = None
         for draw in range(1 + int(meta["random_draws"])):

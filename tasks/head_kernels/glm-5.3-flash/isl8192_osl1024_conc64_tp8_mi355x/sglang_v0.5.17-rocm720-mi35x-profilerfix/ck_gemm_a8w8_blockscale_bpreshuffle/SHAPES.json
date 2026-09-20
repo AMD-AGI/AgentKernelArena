@@ -40,7 +40,7 @@
     "alias_and_mutation_notes": "C[M,N] = (dequant(XQ)[M,K] @ dequant(WQ)[N,K]^T) -> bf16 ; fp8 a8w8 block-scale, act per-1x128 (x_scale[M,K/128], physically column-major per materialize_bpreshuffle_fp8_scale), weight per-128x128 (w_scale[N/128,K/128]), WQ PRESHUFFLED with shuffle_weight(w,(16,16))",
     "alias_evidence": [
       "ut/meta.json#/math_contract",
-      "ut/cases.py:69"
+      "ut/cases.py:85"
     ]
   },
   "contracts": [
@@ -57,8 +57,19 @@
   "case_inventory": {
     "metadata_declared_num_cases": null,
     "shape_record_count": 21,
-    "benchmark_case_count": 21,
+    "benchmark_case_count": 7,
     "benchmark_case_ids": [
+      "nk512x4096_m64_decode",
+      "nk4096x256_m64_decode",
+      "nk2048x4096_m64_decode",
+      "nk2048x1536_m64_decode",
+      "nk4096x2048_m64_decode",
+      "nk3072x4096_m64_decode",
+      "nk4096x1536_m64_decode"
+    ],
+    "count_note": "Counts describe distinct scopes. Captures, boundary specs, histogram observations and benchmark buckets are not interchangeable.",
+    "correctness_case_count": 21,
+    "correctness_case_ids": [
       "nk512x4096_m1_decode",
       "nk512x4096_m64_decode",
       "nk512x4096_m8192_prefill",
@@ -81,134 +92,148 @@
       "nk4096x1536_m64_decode",
       "nk4096x1536_m8192_prefill"
     ],
-    "count_note": "Counts describe distinct scopes. Captures, boundary specs, histogram observations and benchmark buckets are not interchangeable."
+    "unscored_correctness_case_count": 14
   },
   "benchmark_cases": [
-    {
-      "case_id": "nk512x4096_m1_decode",
-      "shape_record_id": "nk512x4096_m1_decode",
-      "regime": "decode",
-      "evidence": "ut/cases.py:96"
-    },
     {
       "case_id": "nk512x4096_m64_decode",
       "shape_record_id": "nk512x4096_m64_decode",
       "regime": "decode",
-      "evidence": "ut/cases.py:96"
-    },
-    {
-      "case_id": "nk512x4096_m8192_prefill",
-      "shape_record_id": "nk512x4096_m8192_prefill",
-      "regime": "prefill",
-      "evidence": "ut/cases.py:96"
-    },
-    {
-      "case_id": "nk4096x256_m1_decode",
-      "shape_record_id": "nk4096x256_m1_decode",
-      "regime": "decode",
-      "evidence": "ut/cases.py:96"
+      "evidence": "ut/cases.py#selected_cases",
+      "scenario_evidence": {
+        "classification": "observed_profile_shape",
+        "scored": true,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "1fc786b9dca2776f069818e8941a5c6fcfd444614d78488dba9145e9c38f4183",
+        "source_case_id": "nk512x4096_m64_decode",
+        "source_case_pointer": "/cases/1",
+        "source_count": 4410,
+        "source_weight_source": "trace",
+        "observed_invocation_count": 4410,
+        "count_scope": "observed M64 profile count",
+        "interpretation": "M64 is observed in the retained profile window; tensor values remain synthetic."
+      }
     },
     {
       "case_id": "nk4096x256_m64_decode",
       "shape_record_id": "nk4096x256_m64_decode",
       "regime": "decode",
-      "evidence": "ut/cases.py:96"
-    },
-    {
-      "case_id": "nk4096x256_m8192_prefill",
-      "shape_record_id": "nk4096x256_m8192_prefill",
-      "regime": "prefill",
-      "evidence": "ut/cases.py:96"
-    },
-    {
-      "case_id": "nk2048x4096_m1_decode",
-      "shape_record_id": "nk2048x4096_m1_decode",
-      "regime": "decode",
-      "evidence": "ut/cases.py:96"
+      "evidence": "ut/cases.py#selected_cases",
+      "scenario_evidence": {
+        "classification": "observed_profile_shape",
+        "scored": true,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "1fc786b9dca2776f069818e8941a5c6fcfd444614d78488dba9145e9c38f4183",
+        "source_case_id": "nk4096x256_m64_decode",
+        "source_case_pointer": "/cases/4",
+        "source_count": 4410,
+        "source_weight_source": "trace",
+        "observed_invocation_count": 4410,
+        "count_scope": "observed M64 profile count",
+        "interpretation": "M64 is observed in the retained profile window; tensor values remain synthetic."
+      }
     },
     {
       "case_id": "nk2048x4096_m64_decode",
       "shape_record_id": "nk2048x4096_m64_decode",
       "regime": "decode",
-      "evidence": "ut/cases.py:96"
-    },
-    {
-      "case_id": "nk2048x4096_m8192_prefill",
-      "shape_record_id": "nk2048x4096_m8192_prefill",
-      "regime": "prefill",
-      "evidence": "ut/cases.py:96"
-    },
-    {
-      "case_id": "nk2048x1536_m1_decode",
-      "shape_record_id": "nk2048x1536_m1_decode",
-      "regime": "decode",
-      "evidence": "ut/cases.py:96"
+      "evidence": "ut/cases.py#selected_cases",
+      "scenario_evidence": {
+        "classification": "observed_profile_shape",
+        "scored": true,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "1fc786b9dca2776f069818e8941a5c6fcfd444614d78488dba9145e9c38f4183",
+        "source_case_id": "nk2048x4096_m64_decode",
+        "source_case_pointer": "/cases/7",
+        "source_count": 1155,
+        "source_weight_source": "trace",
+        "observed_invocation_count": 1155,
+        "count_scope": "observed M64 profile count",
+        "interpretation": "M64 is observed in the retained profile window; tensor values remain synthetic."
+      }
     },
     {
       "case_id": "nk2048x1536_m64_decode",
       "shape_record_id": "nk2048x1536_m64_decode",
       "regime": "decode",
-      "evidence": "ut/cases.py:96"
-    },
-    {
-      "case_id": "nk2048x1536_m8192_prefill",
-      "shape_record_id": "nk2048x1536_m8192_prefill",
-      "regime": "prefill",
-      "evidence": "ut/cases.py:96"
-    },
-    {
-      "case_id": "nk4096x2048_m1_decode",
-      "shape_record_id": "nk4096x2048_m1_decode",
-      "regime": "decode",
-      "evidence": "ut/cases.py:96"
+      "evidence": "ut/cases.py#selected_cases",
+      "scenario_evidence": {
+        "classification": "observed_profile_shape",
+        "scored": true,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "1fc786b9dca2776f069818e8941a5c6fcfd444614d78488dba9145e9c38f4183",
+        "source_case_id": "nk2048x1536_m64_decode",
+        "source_case_pointer": "/cases/10",
+        "source_count": 1155,
+        "source_weight_source": "trace",
+        "observed_invocation_count": 1155,
+        "count_scope": "observed M64 profile count",
+        "interpretation": "M64 is observed in the retained profile window; tensor values remain synthetic."
+      }
     },
     {
       "case_id": "nk4096x2048_m64_decode",
       "shape_record_id": "nk4096x2048_m64_decode",
       "regime": "decode",
-      "evidence": "ut/cases.py:96"
-    },
-    {
-      "case_id": "nk4096x2048_m8192_prefill",
-      "shape_record_id": "nk4096x2048_m8192_prefill",
-      "regime": "prefill",
-      "evidence": "ut/cases.py:96"
-    },
-    {
-      "case_id": "nk3072x4096_m1_decode",
-      "shape_record_id": "nk3072x4096_m1_decode",
-      "regime": "decode",
-      "evidence": "ut/cases.py:96"
+      "evidence": "ut/cases.py#selected_cases",
+      "scenario_evidence": {
+        "classification": "observed_profile_shape",
+        "scored": true,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "1fc786b9dca2776f069818e8941a5c6fcfd444614d78488dba9145e9c38f4183",
+        "source_case_id": "nk4096x2048_m64_decode",
+        "source_case_pointer": "/cases/13",
+        "source_count": 1155,
+        "source_weight_source": "trace",
+        "observed_invocation_count": 1155,
+        "count_scope": "observed M64 profile count",
+        "interpretation": "M64 is observed in the retained profile window; tensor values remain synthetic."
+      }
     },
     {
       "case_id": "nk3072x4096_m64_decode",
       "shape_record_id": "nk3072x4096_m64_decode",
       "regime": "decode",
-      "evidence": "ut/cases.py:96"
-    },
-    {
-      "case_id": "nk3072x4096_m8192_prefill",
-      "shape_record_id": "nk3072x4096_m8192_prefill",
-      "regime": "prefill",
-      "evidence": "ut/cases.py:96"
-    },
-    {
-      "case_id": "nk4096x1536_m1_decode",
-      "shape_record_id": "nk4096x1536_m1_decode",
-      "regime": "decode",
-      "evidence": "ut/cases.py:96"
+      "evidence": "ut/cases.py#selected_cases",
+      "scenario_evidence": {
+        "classification": "observed_profile_shape",
+        "scored": true,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "1fc786b9dca2776f069818e8941a5c6fcfd444614d78488dba9145e9c38f4183",
+        "source_case_id": "nk3072x4096_m64_decode",
+        "source_case_pointer": "/cases/16",
+        "source_count": 315,
+        "source_weight_source": "trace",
+        "observed_invocation_count": 315,
+        "count_scope": "observed M64 profile count",
+        "interpretation": "M64 is observed in the retained profile window; tensor values remain synthetic."
+      }
     },
     {
       "case_id": "nk4096x1536_m64_decode",
       "shape_record_id": "nk4096x1536_m64_decode",
       "regime": "decode",
-      "evidence": "ut/cases.py:96"
-    },
-    {
-      "case_id": "nk4096x1536_m8192_prefill",
-      "shape_record_id": "nk4096x1536_m8192_prefill",
-      "regime": "prefill",
-      "evidence": "ut/cases.py:96"
+      "evidence": "ut/cases.py#selected_cases",
+      "scenario_evidence": {
+        "classification": "observed_profile_shape",
+        "scored": true,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "1fc786b9dca2776f069818e8941a5c6fcfd444614d78488dba9145e9c38f4183",
+        "source_case_id": "nk4096x1536_m64_decode",
+        "source_case_pointer": "/cases/19",
+        "source_count": 315,
+        "source_weight_source": "trace",
+        "observed_invocation_count": 315,
+        "count_scope": "observed M64 profile count",
+        "interpretation": "M64 is observed in the retained profile window; tensor values remain synthetic."
+      }
     }
   ],
   "cases": [
@@ -221,7 +246,22 @@
         "regime": "decode",
         "m": 1,
         "n": 512,
-        "k": 4096
+        "k": 4096,
+        "scenario_evidence": {
+          "classification": "inferred_m_bucket",
+          "scored": false,
+          "correctness_required": true,
+          "source_file": "ut/provenance/workload.json",
+          "source_sha256": "1fc786b9dca2776f069818e8941a5c6fcfd444614d78488dba9145e9c38f4183",
+          "source_case_id": "nk512x4096_m1_decode",
+          "source_case_pointer": "/cases/0",
+          "source_count": 4410,
+          "source_weight_source": "trace",
+          "observed_invocation_count": null,
+          "count_scope": "not an observed invocation count for this generated case",
+          "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization.",
+          "source_label_caveat": "The original row repeats its family count and trace label; workload.notes explicitly says only M64 was observed. Those repeated labels do not establish this M bucket."
+        }
       },
       "tensors": [
         {
@@ -237,7 +277,7 @@
             1
           ],
           "layout": "row-major contiguous",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         },
         {
           "name": "WQ",
@@ -252,7 +292,7 @@
             1
           ],
           "layout": "contiguous storage; AITER (16,16) preshuffled values",
-          "evidence": "ut/cases.py:34",
+          "evidence": "ut/cases.py:50",
           "attributes": {
             "is_shuffled": true
           }
@@ -270,7 +310,7 @@
             1
           ],
           "layout": "transpose-contiguous; column-major equivalent, degenerate M=1 shares contiguous layout",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         },
         {
           "name": "w_scale",
@@ -285,13 +325,13 @@
             1
           ],
           "layout": "row-major contiguous",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         }
       ],
       "scalars": {
         "dtype": {
           "value": "torch.bfloat16",
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         }
       },
@@ -312,10 +352,23 @@
           "evidence": "ut/meta.json#/math_contract"
         }
       ],
-      "benchmark_case_ids": [
-        "nk512x4096_m1_decode"
-      ],
-      "notes": []
+      "benchmark_case_ids": [],
+      "notes": [],
+      "scenario_evidence": {
+        "classification": "inferred_m_bucket",
+        "scored": false,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "1fc786b9dca2776f069818e8941a5c6fcfd444614d78488dba9145e9c38f4183",
+        "source_case_id": "nk512x4096_m1_decode",
+        "source_case_pointer": "/cases/0",
+        "source_count": 4410,
+        "source_weight_source": "trace",
+        "observed_invocation_count": null,
+        "count_scope": "not an observed invocation count for this generated case",
+        "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization.",
+        "source_label_caveat": "The original row repeats its family count and trace label; workload.notes explicitly says only M64 was observed. Those repeated labels do not establish this M bucket."
+      }
     },
     {
       "case_id": "nk512x4096_m64_decode",
@@ -326,7 +379,21 @@
         "regime": "decode",
         "m": 64,
         "n": 512,
-        "k": 4096
+        "k": 4096,
+        "scenario_evidence": {
+          "classification": "observed_profile_shape",
+          "scored": true,
+          "correctness_required": true,
+          "source_file": "ut/provenance/workload.json",
+          "source_sha256": "1fc786b9dca2776f069818e8941a5c6fcfd444614d78488dba9145e9c38f4183",
+          "source_case_id": "nk512x4096_m64_decode",
+          "source_case_pointer": "/cases/1",
+          "source_count": 4410,
+          "source_weight_source": "trace",
+          "observed_invocation_count": 4410,
+          "count_scope": "observed M64 profile count",
+          "interpretation": "M64 is observed in the retained profile window; tensor values remain synthetic."
+        }
       },
       "tensors": [
         {
@@ -342,7 +409,7 @@
             1
           ],
           "layout": "row-major contiguous",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         },
         {
           "name": "WQ",
@@ -357,7 +424,7 @@
             1
           ],
           "layout": "contiguous storage; AITER (16,16) preshuffled values",
-          "evidence": "ut/cases.py:34",
+          "evidence": "ut/cases.py:50",
           "attributes": {
             "is_shuffled": true
           }
@@ -375,7 +442,7 @@
             64
           ],
           "layout": "transpose-contiguous; column-major equivalent, degenerate M=1 shares contiguous layout",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         },
         {
           "name": "w_scale",
@@ -390,13 +457,13 @@
             1
           ],
           "layout": "row-major contiguous",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         }
       ],
       "scalars": {
         "dtype": {
           "value": "torch.bfloat16",
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         }
       },
@@ -420,7 +487,21 @@
       "benchmark_case_ids": [
         "nk512x4096_m64_decode"
       ],
-      "notes": []
+      "notes": [],
+      "scenario_evidence": {
+        "classification": "observed_profile_shape",
+        "scored": true,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "1fc786b9dca2776f069818e8941a5c6fcfd444614d78488dba9145e9c38f4183",
+        "source_case_id": "nk512x4096_m64_decode",
+        "source_case_pointer": "/cases/1",
+        "source_count": 4410,
+        "source_weight_source": "trace",
+        "observed_invocation_count": 4410,
+        "count_scope": "observed M64 profile count",
+        "interpretation": "M64 is observed in the retained profile window; tensor values remain synthetic."
+      }
     },
     {
       "case_id": "nk512x4096_m8192_prefill",
@@ -431,7 +512,22 @@
         "regime": "prefill",
         "m": 8192,
         "n": 512,
-        "k": 4096
+        "k": 4096,
+        "scenario_evidence": {
+          "classification": "inferred_m_bucket",
+          "scored": false,
+          "correctness_required": true,
+          "source_file": "ut/provenance/workload.json",
+          "source_sha256": "1fc786b9dca2776f069818e8941a5c6fcfd444614d78488dba9145e9c38f4183",
+          "source_case_id": "nk512x4096_m8192_prefill",
+          "source_case_pointer": "/cases/2",
+          "source_count": 4410,
+          "source_weight_source": "trace",
+          "observed_invocation_count": null,
+          "count_scope": "not an observed invocation count for this generated case",
+          "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization.",
+          "source_label_caveat": "The original row repeats its family count and trace label; workload.notes explicitly says only M64 was observed. Those repeated labels do not establish this M bucket."
+        }
       },
       "tensors": [
         {
@@ -447,7 +543,7 @@
             1
           ],
           "layout": "row-major contiguous",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         },
         {
           "name": "WQ",
@@ -462,7 +558,7 @@
             1
           ],
           "layout": "contiguous storage; AITER (16,16) preshuffled values",
-          "evidence": "ut/cases.py:34",
+          "evidence": "ut/cases.py:50",
           "attributes": {
             "is_shuffled": true
           }
@@ -480,7 +576,7 @@
             8192
           ],
           "layout": "transpose-contiguous; column-major equivalent, degenerate M=1 shares contiguous layout",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         },
         {
           "name": "w_scale",
@@ -495,13 +591,13 @@
             1
           ],
           "layout": "row-major contiguous",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         }
       ],
       "scalars": {
         "dtype": {
           "value": "torch.bfloat16",
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         }
       },
@@ -522,10 +618,23 @@
           "evidence": "ut/meta.json#/math_contract"
         }
       ],
-      "benchmark_case_ids": [
-        "nk512x4096_m8192_prefill"
-      ],
-      "notes": []
+      "benchmark_case_ids": [],
+      "notes": [],
+      "scenario_evidence": {
+        "classification": "inferred_m_bucket",
+        "scored": false,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "1fc786b9dca2776f069818e8941a5c6fcfd444614d78488dba9145e9c38f4183",
+        "source_case_id": "nk512x4096_m8192_prefill",
+        "source_case_pointer": "/cases/2",
+        "source_count": 4410,
+        "source_weight_source": "trace",
+        "observed_invocation_count": null,
+        "count_scope": "not an observed invocation count for this generated case",
+        "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization.",
+        "source_label_caveat": "The original row repeats its family count and trace label; workload.notes explicitly says only M64 was observed. Those repeated labels do not establish this M bucket."
+      }
     },
     {
       "case_id": "nk4096x256_m1_decode",
@@ -536,7 +645,22 @@
         "regime": "decode",
         "m": 1,
         "n": 4096,
-        "k": 256
+        "k": 256,
+        "scenario_evidence": {
+          "classification": "inferred_m_bucket",
+          "scored": false,
+          "correctness_required": true,
+          "source_file": "ut/provenance/workload.json",
+          "source_sha256": "1fc786b9dca2776f069818e8941a5c6fcfd444614d78488dba9145e9c38f4183",
+          "source_case_id": "nk4096x256_m1_decode",
+          "source_case_pointer": "/cases/3",
+          "source_count": 4410,
+          "source_weight_source": "trace",
+          "observed_invocation_count": null,
+          "count_scope": "not an observed invocation count for this generated case",
+          "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization.",
+          "source_label_caveat": "The original row repeats its family count and trace label; workload.notes explicitly says only M64 was observed. Those repeated labels do not establish this M bucket."
+        }
       },
       "tensors": [
         {
@@ -552,7 +676,7 @@
             1
           ],
           "layout": "row-major contiguous",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         },
         {
           "name": "WQ",
@@ -567,7 +691,7 @@
             1
           ],
           "layout": "contiguous storage; AITER (16,16) preshuffled values",
-          "evidence": "ut/cases.py:34",
+          "evidence": "ut/cases.py:50",
           "attributes": {
             "is_shuffled": true
           }
@@ -585,7 +709,7 @@
             1
           ],
           "layout": "transpose-contiguous; column-major equivalent, degenerate M=1 shares contiguous layout",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         },
         {
           "name": "w_scale",
@@ -600,13 +724,13 @@
             1
           ],
           "layout": "row-major contiguous",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         }
       ],
       "scalars": {
         "dtype": {
           "value": "torch.bfloat16",
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         }
       },
@@ -627,10 +751,23 @@
           "evidence": "ut/meta.json#/math_contract"
         }
       ],
-      "benchmark_case_ids": [
-        "nk4096x256_m1_decode"
-      ],
-      "notes": []
+      "benchmark_case_ids": [],
+      "notes": [],
+      "scenario_evidence": {
+        "classification": "inferred_m_bucket",
+        "scored": false,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "1fc786b9dca2776f069818e8941a5c6fcfd444614d78488dba9145e9c38f4183",
+        "source_case_id": "nk4096x256_m1_decode",
+        "source_case_pointer": "/cases/3",
+        "source_count": 4410,
+        "source_weight_source": "trace",
+        "observed_invocation_count": null,
+        "count_scope": "not an observed invocation count for this generated case",
+        "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization.",
+        "source_label_caveat": "The original row repeats its family count and trace label; workload.notes explicitly says only M64 was observed. Those repeated labels do not establish this M bucket."
+      }
     },
     {
       "case_id": "nk4096x256_m64_decode",
@@ -641,7 +778,21 @@
         "regime": "decode",
         "m": 64,
         "n": 4096,
-        "k": 256
+        "k": 256,
+        "scenario_evidence": {
+          "classification": "observed_profile_shape",
+          "scored": true,
+          "correctness_required": true,
+          "source_file": "ut/provenance/workload.json",
+          "source_sha256": "1fc786b9dca2776f069818e8941a5c6fcfd444614d78488dba9145e9c38f4183",
+          "source_case_id": "nk4096x256_m64_decode",
+          "source_case_pointer": "/cases/4",
+          "source_count": 4410,
+          "source_weight_source": "trace",
+          "observed_invocation_count": 4410,
+          "count_scope": "observed M64 profile count",
+          "interpretation": "M64 is observed in the retained profile window; tensor values remain synthetic."
+        }
       },
       "tensors": [
         {
@@ -657,7 +808,7 @@
             1
           ],
           "layout": "row-major contiguous",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         },
         {
           "name": "WQ",
@@ -672,7 +823,7 @@
             1
           ],
           "layout": "contiguous storage; AITER (16,16) preshuffled values",
-          "evidence": "ut/cases.py:34",
+          "evidence": "ut/cases.py:50",
           "attributes": {
             "is_shuffled": true
           }
@@ -690,7 +841,7 @@
             64
           ],
           "layout": "transpose-contiguous; column-major equivalent, degenerate M=1 shares contiguous layout",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         },
         {
           "name": "w_scale",
@@ -705,13 +856,13 @@
             1
           ],
           "layout": "row-major contiguous",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         }
       ],
       "scalars": {
         "dtype": {
           "value": "torch.bfloat16",
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         }
       },
@@ -735,7 +886,21 @@
       "benchmark_case_ids": [
         "nk4096x256_m64_decode"
       ],
-      "notes": []
+      "notes": [],
+      "scenario_evidence": {
+        "classification": "observed_profile_shape",
+        "scored": true,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "1fc786b9dca2776f069818e8941a5c6fcfd444614d78488dba9145e9c38f4183",
+        "source_case_id": "nk4096x256_m64_decode",
+        "source_case_pointer": "/cases/4",
+        "source_count": 4410,
+        "source_weight_source": "trace",
+        "observed_invocation_count": 4410,
+        "count_scope": "observed M64 profile count",
+        "interpretation": "M64 is observed in the retained profile window; tensor values remain synthetic."
+      }
     },
     {
       "case_id": "nk4096x256_m8192_prefill",
@@ -746,7 +911,22 @@
         "regime": "prefill",
         "m": 8192,
         "n": 4096,
-        "k": 256
+        "k": 256,
+        "scenario_evidence": {
+          "classification": "inferred_m_bucket",
+          "scored": false,
+          "correctness_required": true,
+          "source_file": "ut/provenance/workload.json",
+          "source_sha256": "1fc786b9dca2776f069818e8941a5c6fcfd444614d78488dba9145e9c38f4183",
+          "source_case_id": "nk4096x256_m8192_prefill",
+          "source_case_pointer": "/cases/5",
+          "source_count": 4410,
+          "source_weight_source": "trace",
+          "observed_invocation_count": null,
+          "count_scope": "not an observed invocation count for this generated case",
+          "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization.",
+          "source_label_caveat": "The original row repeats its family count and trace label; workload.notes explicitly says only M64 was observed. Those repeated labels do not establish this M bucket."
+        }
       },
       "tensors": [
         {
@@ -762,7 +942,7 @@
             1
           ],
           "layout": "row-major contiguous",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         },
         {
           "name": "WQ",
@@ -777,7 +957,7 @@
             1
           ],
           "layout": "contiguous storage; AITER (16,16) preshuffled values",
-          "evidence": "ut/cases.py:34",
+          "evidence": "ut/cases.py:50",
           "attributes": {
             "is_shuffled": true
           }
@@ -795,7 +975,7 @@
             8192
           ],
           "layout": "transpose-contiguous; column-major equivalent, degenerate M=1 shares contiguous layout",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         },
         {
           "name": "w_scale",
@@ -810,13 +990,13 @@
             1
           ],
           "layout": "row-major contiguous",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         }
       ],
       "scalars": {
         "dtype": {
           "value": "torch.bfloat16",
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         }
       },
@@ -837,10 +1017,23 @@
           "evidence": "ut/meta.json#/math_contract"
         }
       ],
-      "benchmark_case_ids": [
-        "nk4096x256_m8192_prefill"
-      ],
-      "notes": []
+      "benchmark_case_ids": [],
+      "notes": [],
+      "scenario_evidence": {
+        "classification": "inferred_m_bucket",
+        "scored": false,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "1fc786b9dca2776f069818e8941a5c6fcfd444614d78488dba9145e9c38f4183",
+        "source_case_id": "nk4096x256_m8192_prefill",
+        "source_case_pointer": "/cases/5",
+        "source_count": 4410,
+        "source_weight_source": "trace",
+        "observed_invocation_count": null,
+        "count_scope": "not an observed invocation count for this generated case",
+        "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization.",
+        "source_label_caveat": "The original row repeats its family count and trace label; workload.notes explicitly says only M64 was observed. Those repeated labels do not establish this M bucket."
+      }
     },
     {
       "case_id": "nk2048x4096_m1_decode",
@@ -851,7 +1044,22 @@
         "regime": "decode",
         "m": 1,
         "n": 2048,
-        "k": 4096
+        "k": 4096,
+        "scenario_evidence": {
+          "classification": "inferred_m_bucket",
+          "scored": false,
+          "correctness_required": true,
+          "source_file": "ut/provenance/workload.json",
+          "source_sha256": "1fc786b9dca2776f069818e8941a5c6fcfd444614d78488dba9145e9c38f4183",
+          "source_case_id": "nk2048x4096_m1_decode",
+          "source_case_pointer": "/cases/6",
+          "source_count": 1155,
+          "source_weight_source": "trace",
+          "observed_invocation_count": null,
+          "count_scope": "not an observed invocation count for this generated case",
+          "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization.",
+          "source_label_caveat": "The original row repeats its family count and trace label; workload.notes explicitly says only M64 was observed. Those repeated labels do not establish this M bucket."
+        }
       },
       "tensors": [
         {
@@ -867,7 +1075,7 @@
             1
           ],
           "layout": "row-major contiguous",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         },
         {
           "name": "WQ",
@@ -882,7 +1090,7 @@
             1
           ],
           "layout": "contiguous storage; AITER (16,16) preshuffled values",
-          "evidence": "ut/cases.py:34",
+          "evidence": "ut/cases.py:50",
           "attributes": {
             "is_shuffled": true
           }
@@ -900,7 +1108,7 @@
             1
           ],
           "layout": "transpose-contiguous; column-major equivalent, degenerate M=1 shares contiguous layout",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         },
         {
           "name": "w_scale",
@@ -915,13 +1123,13 @@
             1
           ],
           "layout": "row-major contiguous",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         }
       ],
       "scalars": {
         "dtype": {
           "value": "torch.bfloat16",
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         }
       },
@@ -942,10 +1150,23 @@
           "evidence": "ut/meta.json#/math_contract"
         }
       ],
-      "benchmark_case_ids": [
-        "nk2048x4096_m1_decode"
-      ],
-      "notes": []
+      "benchmark_case_ids": [],
+      "notes": [],
+      "scenario_evidence": {
+        "classification": "inferred_m_bucket",
+        "scored": false,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "1fc786b9dca2776f069818e8941a5c6fcfd444614d78488dba9145e9c38f4183",
+        "source_case_id": "nk2048x4096_m1_decode",
+        "source_case_pointer": "/cases/6",
+        "source_count": 1155,
+        "source_weight_source": "trace",
+        "observed_invocation_count": null,
+        "count_scope": "not an observed invocation count for this generated case",
+        "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization.",
+        "source_label_caveat": "The original row repeats its family count and trace label; workload.notes explicitly says only M64 was observed. Those repeated labels do not establish this M bucket."
+      }
     },
     {
       "case_id": "nk2048x4096_m64_decode",
@@ -956,7 +1177,21 @@
         "regime": "decode",
         "m": 64,
         "n": 2048,
-        "k": 4096
+        "k": 4096,
+        "scenario_evidence": {
+          "classification": "observed_profile_shape",
+          "scored": true,
+          "correctness_required": true,
+          "source_file": "ut/provenance/workload.json",
+          "source_sha256": "1fc786b9dca2776f069818e8941a5c6fcfd444614d78488dba9145e9c38f4183",
+          "source_case_id": "nk2048x4096_m64_decode",
+          "source_case_pointer": "/cases/7",
+          "source_count": 1155,
+          "source_weight_source": "trace",
+          "observed_invocation_count": 1155,
+          "count_scope": "observed M64 profile count",
+          "interpretation": "M64 is observed in the retained profile window; tensor values remain synthetic."
+        }
       },
       "tensors": [
         {
@@ -972,7 +1207,7 @@
             1
           ],
           "layout": "row-major contiguous",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         },
         {
           "name": "WQ",
@@ -987,7 +1222,7 @@
             1
           ],
           "layout": "contiguous storage; AITER (16,16) preshuffled values",
-          "evidence": "ut/cases.py:34",
+          "evidence": "ut/cases.py:50",
           "attributes": {
             "is_shuffled": true
           }
@@ -1005,7 +1240,7 @@
             64
           ],
           "layout": "transpose-contiguous; column-major equivalent, degenerate M=1 shares contiguous layout",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         },
         {
           "name": "w_scale",
@@ -1020,13 +1255,13 @@
             1
           ],
           "layout": "row-major contiguous",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         }
       ],
       "scalars": {
         "dtype": {
           "value": "torch.bfloat16",
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         }
       },
@@ -1050,7 +1285,21 @@
       "benchmark_case_ids": [
         "nk2048x4096_m64_decode"
       ],
-      "notes": []
+      "notes": [],
+      "scenario_evidence": {
+        "classification": "observed_profile_shape",
+        "scored": true,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "1fc786b9dca2776f069818e8941a5c6fcfd444614d78488dba9145e9c38f4183",
+        "source_case_id": "nk2048x4096_m64_decode",
+        "source_case_pointer": "/cases/7",
+        "source_count": 1155,
+        "source_weight_source": "trace",
+        "observed_invocation_count": 1155,
+        "count_scope": "observed M64 profile count",
+        "interpretation": "M64 is observed in the retained profile window; tensor values remain synthetic."
+      }
     },
     {
       "case_id": "nk2048x4096_m8192_prefill",
@@ -1061,7 +1310,22 @@
         "regime": "prefill",
         "m": 8192,
         "n": 2048,
-        "k": 4096
+        "k": 4096,
+        "scenario_evidence": {
+          "classification": "inferred_m_bucket",
+          "scored": false,
+          "correctness_required": true,
+          "source_file": "ut/provenance/workload.json",
+          "source_sha256": "1fc786b9dca2776f069818e8941a5c6fcfd444614d78488dba9145e9c38f4183",
+          "source_case_id": "nk2048x4096_m8192_prefill",
+          "source_case_pointer": "/cases/8",
+          "source_count": 1155,
+          "source_weight_source": "trace",
+          "observed_invocation_count": null,
+          "count_scope": "not an observed invocation count for this generated case",
+          "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization.",
+          "source_label_caveat": "The original row repeats its family count and trace label; workload.notes explicitly says only M64 was observed. Those repeated labels do not establish this M bucket."
+        }
       },
       "tensors": [
         {
@@ -1077,7 +1341,7 @@
             1
           ],
           "layout": "row-major contiguous",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         },
         {
           "name": "WQ",
@@ -1092,7 +1356,7 @@
             1
           ],
           "layout": "contiguous storage; AITER (16,16) preshuffled values",
-          "evidence": "ut/cases.py:34",
+          "evidence": "ut/cases.py:50",
           "attributes": {
             "is_shuffled": true
           }
@@ -1110,7 +1374,7 @@
             8192
           ],
           "layout": "transpose-contiguous; column-major equivalent, degenerate M=1 shares contiguous layout",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         },
         {
           "name": "w_scale",
@@ -1125,13 +1389,13 @@
             1
           ],
           "layout": "row-major contiguous",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         }
       ],
       "scalars": {
         "dtype": {
           "value": "torch.bfloat16",
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         }
       },
@@ -1152,10 +1416,23 @@
           "evidence": "ut/meta.json#/math_contract"
         }
       ],
-      "benchmark_case_ids": [
-        "nk2048x4096_m8192_prefill"
-      ],
-      "notes": []
+      "benchmark_case_ids": [],
+      "notes": [],
+      "scenario_evidence": {
+        "classification": "inferred_m_bucket",
+        "scored": false,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "1fc786b9dca2776f069818e8941a5c6fcfd444614d78488dba9145e9c38f4183",
+        "source_case_id": "nk2048x4096_m8192_prefill",
+        "source_case_pointer": "/cases/8",
+        "source_count": 1155,
+        "source_weight_source": "trace",
+        "observed_invocation_count": null,
+        "count_scope": "not an observed invocation count for this generated case",
+        "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization.",
+        "source_label_caveat": "The original row repeats its family count and trace label; workload.notes explicitly says only M64 was observed. Those repeated labels do not establish this M bucket."
+      }
     },
     {
       "case_id": "nk2048x1536_m1_decode",
@@ -1166,7 +1443,22 @@
         "regime": "decode",
         "m": 1,
         "n": 2048,
-        "k": 1536
+        "k": 1536,
+        "scenario_evidence": {
+          "classification": "inferred_m_bucket",
+          "scored": false,
+          "correctness_required": true,
+          "source_file": "ut/provenance/workload.json",
+          "source_sha256": "1fc786b9dca2776f069818e8941a5c6fcfd444614d78488dba9145e9c38f4183",
+          "source_case_id": "nk2048x1536_m1_decode",
+          "source_case_pointer": "/cases/9",
+          "source_count": 1155,
+          "source_weight_source": "trace",
+          "observed_invocation_count": null,
+          "count_scope": "not an observed invocation count for this generated case",
+          "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization.",
+          "source_label_caveat": "The original row repeats its family count and trace label; workload.notes explicitly says only M64 was observed. Those repeated labels do not establish this M bucket."
+        }
       },
       "tensors": [
         {
@@ -1182,7 +1474,7 @@
             1
           ],
           "layout": "row-major contiguous",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         },
         {
           "name": "WQ",
@@ -1197,7 +1489,7 @@
             1
           ],
           "layout": "contiguous storage; AITER (16,16) preshuffled values",
-          "evidence": "ut/cases.py:34",
+          "evidence": "ut/cases.py:50",
           "attributes": {
             "is_shuffled": true
           }
@@ -1215,7 +1507,7 @@
             1
           ],
           "layout": "transpose-contiguous; column-major equivalent, degenerate M=1 shares contiguous layout",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         },
         {
           "name": "w_scale",
@@ -1230,13 +1522,13 @@
             1
           ],
           "layout": "row-major contiguous",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         }
       ],
       "scalars": {
         "dtype": {
           "value": "torch.bfloat16",
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         }
       },
@@ -1257,10 +1549,23 @@
           "evidence": "ut/meta.json#/math_contract"
         }
       ],
-      "benchmark_case_ids": [
-        "nk2048x1536_m1_decode"
-      ],
-      "notes": []
+      "benchmark_case_ids": [],
+      "notes": [],
+      "scenario_evidence": {
+        "classification": "inferred_m_bucket",
+        "scored": false,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "1fc786b9dca2776f069818e8941a5c6fcfd444614d78488dba9145e9c38f4183",
+        "source_case_id": "nk2048x1536_m1_decode",
+        "source_case_pointer": "/cases/9",
+        "source_count": 1155,
+        "source_weight_source": "trace",
+        "observed_invocation_count": null,
+        "count_scope": "not an observed invocation count for this generated case",
+        "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization.",
+        "source_label_caveat": "The original row repeats its family count and trace label; workload.notes explicitly says only M64 was observed. Those repeated labels do not establish this M bucket."
+      }
     },
     {
       "case_id": "nk2048x1536_m64_decode",
@@ -1271,7 +1576,21 @@
         "regime": "decode",
         "m": 64,
         "n": 2048,
-        "k": 1536
+        "k": 1536,
+        "scenario_evidence": {
+          "classification": "observed_profile_shape",
+          "scored": true,
+          "correctness_required": true,
+          "source_file": "ut/provenance/workload.json",
+          "source_sha256": "1fc786b9dca2776f069818e8941a5c6fcfd444614d78488dba9145e9c38f4183",
+          "source_case_id": "nk2048x1536_m64_decode",
+          "source_case_pointer": "/cases/10",
+          "source_count": 1155,
+          "source_weight_source": "trace",
+          "observed_invocation_count": 1155,
+          "count_scope": "observed M64 profile count",
+          "interpretation": "M64 is observed in the retained profile window; tensor values remain synthetic."
+        }
       },
       "tensors": [
         {
@@ -1287,7 +1606,7 @@
             1
           ],
           "layout": "row-major contiguous",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         },
         {
           "name": "WQ",
@@ -1302,7 +1621,7 @@
             1
           ],
           "layout": "contiguous storage; AITER (16,16) preshuffled values",
-          "evidence": "ut/cases.py:34",
+          "evidence": "ut/cases.py:50",
           "attributes": {
             "is_shuffled": true
           }
@@ -1320,7 +1639,7 @@
             64
           ],
           "layout": "transpose-contiguous; column-major equivalent, degenerate M=1 shares contiguous layout",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         },
         {
           "name": "w_scale",
@@ -1335,13 +1654,13 @@
             1
           ],
           "layout": "row-major contiguous",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         }
       ],
       "scalars": {
         "dtype": {
           "value": "torch.bfloat16",
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         }
       },
@@ -1365,7 +1684,21 @@
       "benchmark_case_ids": [
         "nk2048x1536_m64_decode"
       ],
-      "notes": []
+      "notes": [],
+      "scenario_evidence": {
+        "classification": "observed_profile_shape",
+        "scored": true,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "1fc786b9dca2776f069818e8941a5c6fcfd444614d78488dba9145e9c38f4183",
+        "source_case_id": "nk2048x1536_m64_decode",
+        "source_case_pointer": "/cases/10",
+        "source_count": 1155,
+        "source_weight_source": "trace",
+        "observed_invocation_count": 1155,
+        "count_scope": "observed M64 profile count",
+        "interpretation": "M64 is observed in the retained profile window; tensor values remain synthetic."
+      }
     },
     {
       "case_id": "nk2048x1536_m8192_prefill",
@@ -1376,7 +1709,22 @@
         "regime": "prefill",
         "m": 8192,
         "n": 2048,
-        "k": 1536
+        "k": 1536,
+        "scenario_evidence": {
+          "classification": "inferred_m_bucket",
+          "scored": false,
+          "correctness_required": true,
+          "source_file": "ut/provenance/workload.json",
+          "source_sha256": "1fc786b9dca2776f069818e8941a5c6fcfd444614d78488dba9145e9c38f4183",
+          "source_case_id": "nk2048x1536_m8192_prefill",
+          "source_case_pointer": "/cases/11",
+          "source_count": 1155,
+          "source_weight_source": "trace",
+          "observed_invocation_count": null,
+          "count_scope": "not an observed invocation count for this generated case",
+          "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization.",
+          "source_label_caveat": "The original row repeats its family count and trace label; workload.notes explicitly says only M64 was observed. Those repeated labels do not establish this M bucket."
+        }
       },
       "tensors": [
         {
@@ -1392,7 +1740,7 @@
             1
           ],
           "layout": "row-major contiguous",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         },
         {
           "name": "WQ",
@@ -1407,7 +1755,7 @@
             1
           ],
           "layout": "contiguous storage; AITER (16,16) preshuffled values",
-          "evidence": "ut/cases.py:34",
+          "evidence": "ut/cases.py:50",
           "attributes": {
             "is_shuffled": true
           }
@@ -1425,7 +1773,7 @@
             8192
           ],
           "layout": "transpose-contiguous; column-major equivalent, degenerate M=1 shares contiguous layout",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         },
         {
           "name": "w_scale",
@@ -1440,13 +1788,13 @@
             1
           ],
           "layout": "row-major contiguous",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         }
       ],
       "scalars": {
         "dtype": {
           "value": "torch.bfloat16",
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         }
       },
@@ -1467,10 +1815,23 @@
           "evidence": "ut/meta.json#/math_contract"
         }
       ],
-      "benchmark_case_ids": [
-        "nk2048x1536_m8192_prefill"
-      ],
-      "notes": []
+      "benchmark_case_ids": [],
+      "notes": [],
+      "scenario_evidence": {
+        "classification": "inferred_m_bucket",
+        "scored": false,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "1fc786b9dca2776f069818e8941a5c6fcfd444614d78488dba9145e9c38f4183",
+        "source_case_id": "nk2048x1536_m8192_prefill",
+        "source_case_pointer": "/cases/11",
+        "source_count": 1155,
+        "source_weight_source": "trace",
+        "observed_invocation_count": null,
+        "count_scope": "not an observed invocation count for this generated case",
+        "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization.",
+        "source_label_caveat": "The original row repeats its family count and trace label; workload.notes explicitly says only M64 was observed. Those repeated labels do not establish this M bucket."
+      }
     },
     {
       "case_id": "nk4096x2048_m1_decode",
@@ -1481,7 +1842,22 @@
         "regime": "decode",
         "m": 1,
         "n": 4096,
-        "k": 2048
+        "k": 2048,
+        "scenario_evidence": {
+          "classification": "inferred_m_bucket",
+          "scored": false,
+          "correctness_required": true,
+          "source_file": "ut/provenance/workload.json",
+          "source_sha256": "1fc786b9dca2776f069818e8941a5c6fcfd444614d78488dba9145e9c38f4183",
+          "source_case_id": "nk4096x2048_m1_decode",
+          "source_case_pointer": "/cases/12",
+          "source_count": 1155,
+          "source_weight_source": "trace",
+          "observed_invocation_count": null,
+          "count_scope": "not an observed invocation count for this generated case",
+          "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization.",
+          "source_label_caveat": "The original row repeats its family count and trace label; workload.notes explicitly says only M64 was observed. Those repeated labels do not establish this M bucket."
+        }
       },
       "tensors": [
         {
@@ -1497,7 +1873,7 @@
             1
           ],
           "layout": "row-major contiguous",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         },
         {
           "name": "WQ",
@@ -1512,7 +1888,7 @@
             1
           ],
           "layout": "contiguous storage; AITER (16,16) preshuffled values",
-          "evidence": "ut/cases.py:34",
+          "evidence": "ut/cases.py:50",
           "attributes": {
             "is_shuffled": true
           }
@@ -1530,7 +1906,7 @@
             1
           ],
           "layout": "transpose-contiguous; column-major equivalent, degenerate M=1 shares contiguous layout",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         },
         {
           "name": "w_scale",
@@ -1545,13 +1921,13 @@
             1
           ],
           "layout": "row-major contiguous",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         }
       ],
       "scalars": {
         "dtype": {
           "value": "torch.bfloat16",
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         }
       },
@@ -1572,10 +1948,23 @@
           "evidence": "ut/meta.json#/math_contract"
         }
       ],
-      "benchmark_case_ids": [
-        "nk4096x2048_m1_decode"
-      ],
-      "notes": []
+      "benchmark_case_ids": [],
+      "notes": [],
+      "scenario_evidence": {
+        "classification": "inferred_m_bucket",
+        "scored": false,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "1fc786b9dca2776f069818e8941a5c6fcfd444614d78488dba9145e9c38f4183",
+        "source_case_id": "nk4096x2048_m1_decode",
+        "source_case_pointer": "/cases/12",
+        "source_count": 1155,
+        "source_weight_source": "trace",
+        "observed_invocation_count": null,
+        "count_scope": "not an observed invocation count for this generated case",
+        "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization.",
+        "source_label_caveat": "The original row repeats its family count and trace label; workload.notes explicitly says only M64 was observed. Those repeated labels do not establish this M bucket."
+      }
     },
     {
       "case_id": "nk4096x2048_m64_decode",
@@ -1586,7 +1975,21 @@
         "regime": "decode",
         "m": 64,
         "n": 4096,
-        "k": 2048
+        "k": 2048,
+        "scenario_evidence": {
+          "classification": "observed_profile_shape",
+          "scored": true,
+          "correctness_required": true,
+          "source_file": "ut/provenance/workload.json",
+          "source_sha256": "1fc786b9dca2776f069818e8941a5c6fcfd444614d78488dba9145e9c38f4183",
+          "source_case_id": "nk4096x2048_m64_decode",
+          "source_case_pointer": "/cases/13",
+          "source_count": 1155,
+          "source_weight_source": "trace",
+          "observed_invocation_count": 1155,
+          "count_scope": "observed M64 profile count",
+          "interpretation": "M64 is observed in the retained profile window; tensor values remain synthetic."
+        }
       },
       "tensors": [
         {
@@ -1602,7 +2005,7 @@
             1
           ],
           "layout": "row-major contiguous",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         },
         {
           "name": "WQ",
@@ -1617,7 +2020,7 @@
             1
           ],
           "layout": "contiguous storage; AITER (16,16) preshuffled values",
-          "evidence": "ut/cases.py:34",
+          "evidence": "ut/cases.py:50",
           "attributes": {
             "is_shuffled": true
           }
@@ -1635,7 +2038,7 @@
             64
           ],
           "layout": "transpose-contiguous; column-major equivalent, degenerate M=1 shares contiguous layout",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         },
         {
           "name": "w_scale",
@@ -1650,13 +2053,13 @@
             1
           ],
           "layout": "row-major contiguous",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         }
       ],
       "scalars": {
         "dtype": {
           "value": "torch.bfloat16",
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         }
       },
@@ -1680,7 +2083,21 @@
       "benchmark_case_ids": [
         "nk4096x2048_m64_decode"
       ],
-      "notes": []
+      "notes": [],
+      "scenario_evidence": {
+        "classification": "observed_profile_shape",
+        "scored": true,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "1fc786b9dca2776f069818e8941a5c6fcfd444614d78488dba9145e9c38f4183",
+        "source_case_id": "nk4096x2048_m64_decode",
+        "source_case_pointer": "/cases/13",
+        "source_count": 1155,
+        "source_weight_source": "trace",
+        "observed_invocation_count": 1155,
+        "count_scope": "observed M64 profile count",
+        "interpretation": "M64 is observed in the retained profile window; tensor values remain synthetic."
+      }
     },
     {
       "case_id": "nk4096x2048_m8192_prefill",
@@ -1691,7 +2108,22 @@
         "regime": "prefill",
         "m": 8192,
         "n": 4096,
-        "k": 2048
+        "k": 2048,
+        "scenario_evidence": {
+          "classification": "inferred_m_bucket",
+          "scored": false,
+          "correctness_required": true,
+          "source_file": "ut/provenance/workload.json",
+          "source_sha256": "1fc786b9dca2776f069818e8941a5c6fcfd444614d78488dba9145e9c38f4183",
+          "source_case_id": "nk4096x2048_m8192_prefill",
+          "source_case_pointer": "/cases/14",
+          "source_count": 1155,
+          "source_weight_source": "trace",
+          "observed_invocation_count": null,
+          "count_scope": "not an observed invocation count for this generated case",
+          "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization.",
+          "source_label_caveat": "The original row repeats its family count and trace label; workload.notes explicitly says only M64 was observed. Those repeated labels do not establish this M bucket."
+        }
       },
       "tensors": [
         {
@@ -1707,7 +2139,7 @@
             1
           ],
           "layout": "row-major contiguous",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         },
         {
           "name": "WQ",
@@ -1722,7 +2154,7 @@
             1
           ],
           "layout": "contiguous storage; AITER (16,16) preshuffled values",
-          "evidence": "ut/cases.py:34",
+          "evidence": "ut/cases.py:50",
           "attributes": {
             "is_shuffled": true
           }
@@ -1740,7 +2172,7 @@
             8192
           ],
           "layout": "transpose-contiguous; column-major equivalent, degenerate M=1 shares contiguous layout",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         },
         {
           "name": "w_scale",
@@ -1755,13 +2187,13 @@
             1
           ],
           "layout": "row-major contiguous",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         }
       ],
       "scalars": {
         "dtype": {
           "value": "torch.bfloat16",
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         }
       },
@@ -1782,10 +2214,23 @@
           "evidence": "ut/meta.json#/math_contract"
         }
       ],
-      "benchmark_case_ids": [
-        "nk4096x2048_m8192_prefill"
-      ],
-      "notes": []
+      "benchmark_case_ids": [],
+      "notes": [],
+      "scenario_evidence": {
+        "classification": "inferred_m_bucket",
+        "scored": false,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "1fc786b9dca2776f069818e8941a5c6fcfd444614d78488dba9145e9c38f4183",
+        "source_case_id": "nk4096x2048_m8192_prefill",
+        "source_case_pointer": "/cases/14",
+        "source_count": 1155,
+        "source_weight_source": "trace",
+        "observed_invocation_count": null,
+        "count_scope": "not an observed invocation count for this generated case",
+        "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization.",
+        "source_label_caveat": "The original row repeats its family count and trace label; workload.notes explicitly says only M64 was observed. Those repeated labels do not establish this M bucket."
+      }
     },
     {
       "case_id": "nk3072x4096_m1_decode",
@@ -1796,7 +2241,22 @@
         "regime": "decode",
         "m": 1,
         "n": 3072,
-        "k": 4096
+        "k": 4096,
+        "scenario_evidence": {
+          "classification": "inferred_m_bucket",
+          "scored": false,
+          "correctness_required": true,
+          "source_file": "ut/provenance/workload.json",
+          "source_sha256": "1fc786b9dca2776f069818e8941a5c6fcfd444614d78488dba9145e9c38f4183",
+          "source_case_id": "nk3072x4096_m1_decode",
+          "source_case_pointer": "/cases/15",
+          "source_count": 315,
+          "source_weight_source": "trace",
+          "observed_invocation_count": null,
+          "count_scope": "not an observed invocation count for this generated case",
+          "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization.",
+          "source_label_caveat": "The original row repeats its family count and trace label; workload.notes explicitly says only M64 was observed. Those repeated labels do not establish this M bucket."
+        }
       },
       "tensors": [
         {
@@ -1812,7 +2272,7 @@
             1
           ],
           "layout": "row-major contiguous",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         },
         {
           "name": "WQ",
@@ -1827,7 +2287,7 @@
             1
           ],
           "layout": "contiguous storage; AITER (16,16) preshuffled values",
-          "evidence": "ut/cases.py:34",
+          "evidence": "ut/cases.py:50",
           "attributes": {
             "is_shuffled": true
           }
@@ -1845,7 +2305,7 @@
             1
           ],
           "layout": "transpose-contiguous; column-major equivalent, degenerate M=1 shares contiguous layout",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         },
         {
           "name": "w_scale",
@@ -1860,13 +2320,13 @@
             1
           ],
           "layout": "row-major contiguous",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         }
       ],
       "scalars": {
         "dtype": {
           "value": "torch.bfloat16",
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         }
       },
@@ -1887,10 +2347,23 @@
           "evidence": "ut/meta.json#/math_contract"
         }
       ],
-      "benchmark_case_ids": [
-        "nk3072x4096_m1_decode"
-      ],
-      "notes": []
+      "benchmark_case_ids": [],
+      "notes": [],
+      "scenario_evidence": {
+        "classification": "inferred_m_bucket",
+        "scored": false,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "1fc786b9dca2776f069818e8941a5c6fcfd444614d78488dba9145e9c38f4183",
+        "source_case_id": "nk3072x4096_m1_decode",
+        "source_case_pointer": "/cases/15",
+        "source_count": 315,
+        "source_weight_source": "trace",
+        "observed_invocation_count": null,
+        "count_scope": "not an observed invocation count for this generated case",
+        "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization.",
+        "source_label_caveat": "The original row repeats its family count and trace label; workload.notes explicitly says only M64 was observed. Those repeated labels do not establish this M bucket."
+      }
     },
     {
       "case_id": "nk3072x4096_m64_decode",
@@ -1901,7 +2374,21 @@
         "regime": "decode",
         "m": 64,
         "n": 3072,
-        "k": 4096
+        "k": 4096,
+        "scenario_evidence": {
+          "classification": "observed_profile_shape",
+          "scored": true,
+          "correctness_required": true,
+          "source_file": "ut/provenance/workload.json",
+          "source_sha256": "1fc786b9dca2776f069818e8941a5c6fcfd444614d78488dba9145e9c38f4183",
+          "source_case_id": "nk3072x4096_m64_decode",
+          "source_case_pointer": "/cases/16",
+          "source_count": 315,
+          "source_weight_source": "trace",
+          "observed_invocation_count": 315,
+          "count_scope": "observed M64 profile count",
+          "interpretation": "M64 is observed in the retained profile window; tensor values remain synthetic."
+        }
       },
       "tensors": [
         {
@@ -1917,7 +2404,7 @@
             1
           ],
           "layout": "row-major contiguous",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         },
         {
           "name": "WQ",
@@ -1932,7 +2419,7 @@
             1
           ],
           "layout": "contiguous storage; AITER (16,16) preshuffled values",
-          "evidence": "ut/cases.py:34",
+          "evidence": "ut/cases.py:50",
           "attributes": {
             "is_shuffled": true
           }
@@ -1950,7 +2437,7 @@
             64
           ],
           "layout": "transpose-contiguous; column-major equivalent, degenerate M=1 shares contiguous layout",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         },
         {
           "name": "w_scale",
@@ -1965,13 +2452,13 @@
             1
           ],
           "layout": "row-major contiguous",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         }
       ],
       "scalars": {
         "dtype": {
           "value": "torch.bfloat16",
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         }
       },
@@ -1995,7 +2482,21 @@
       "benchmark_case_ids": [
         "nk3072x4096_m64_decode"
       ],
-      "notes": []
+      "notes": [],
+      "scenario_evidence": {
+        "classification": "observed_profile_shape",
+        "scored": true,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "1fc786b9dca2776f069818e8941a5c6fcfd444614d78488dba9145e9c38f4183",
+        "source_case_id": "nk3072x4096_m64_decode",
+        "source_case_pointer": "/cases/16",
+        "source_count": 315,
+        "source_weight_source": "trace",
+        "observed_invocation_count": 315,
+        "count_scope": "observed M64 profile count",
+        "interpretation": "M64 is observed in the retained profile window; tensor values remain synthetic."
+      }
     },
     {
       "case_id": "nk3072x4096_m8192_prefill",
@@ -2006,7 +2507,22 @@
         "regime": "prefill",
         "m": 8192,
         "n": 3072,
-        "k": 4096
+        "k": 4096,
+        "scenario_evidence": {
+          "classification": "inferred_m_bucket",
+          "scored": false,
+          "correctness_required": true,
+          "source_file": "ut/provenance/workload.json",
+          "source_sha256": "1fc786b9dca2776f069818e8941a5c6fcfd444614d78488dba9145e9c38f4183",
+          "source_case_id": "nk3072x4096_m8192_prefill",
+          "source_case_pointer": "/cases/17",
+          "source_count": 315,
+          "source_weight_source": "trace",
+          "observed_invocation_count": null,
+          "count_scope": "not an observed invocation count for this generated case",
+          "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization.",
+          "source_label_caveat": "The original row repeats its family count and trace label; workload.notes explicitly says only M64 was observed. Those repeated labels do not establish this M bucket."
+        }
       },
       "tensors": [
         {
@@ -2022,7 +2538,7 @@
             1
           ],
           "layout": "row-major contiguous",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         },
         {
           "name": "WQ",
@@ -2037,7 +2553,7 @@
             1
           ],
           "layout": "contiguous storage; AITER (16,16) preshuffled values",
-          "evidence": "ut/cases.py:34",
+          "evidence": "ut/cases.py:50",
           "attributes": {
             "is_shuffled": true
           }
@@ -2055,7 +2571,7 @@
             8192
           ],
           "layout": "transpose-contiguous; column-major equivalent, degenerate M=1 shares contiguous layout",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         },
         {
           "name": "w_scale",
@@ -2070,13 +2586,13 @@
             1
           ],
           "layout": "row-major contiguous",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         }
       ],
       "scalars": {
         "dtype": {
           "value": "torch.bfloat16",
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         }
       },
@@ -2097,10 +2613,23 @@
           "evidence": "ut/meta.json#/math_contract"
         }
       ],
-      "benchmark_case_ids": [
-        "nk3072x4096_m8192_prefill"
-      ],
-      "notes": []
+      "benchmark_case_ids": [],
+      "notes": [],
+      "scenario_evidence": {
+        "classification": "inferred_m_bucket",
+        "scored": false,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "1fc786b9dca2776f069818e8941a5c6fcfd444614d78488dba9145e9c38f4183",
+        "source_case_id": "nk3072x4096_m8192_prefill",
+        "source_case_pointer": "/cases/17",
+        "source_count": 315,
+        "source_weight_source": "trace",
+        "observed_invocation_count": null,
+        "count_scope": "not an observed invocation count for this generated case",
+        "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization.",
+        "source_label_caveat": "The original row repeats its family count and trace label; workload.notes explicitly says only M64 was observed. Those repeated labels do not establish this M bucket."
+      }
     },
     {
       "case_id": "nk4096x1536_m1_decode",
@@ -2111,7 +2640,22 @@
         "regime": "decode",
         "m": 1,
         "n": 4096,
-        "k": 1536
+        "k": 1536,
+        "scenario_evidence": {
+          "classification": "inferred_m_bucket",
+          "scored": false,
+          "correctness_required": true,
+          "source_file": "ut/provenance/workload.json",
+          "source_sha256": "1fc786b9dca2776f069818e8941a5c6fcfd444614d78488dba9145e9c38f4183",
+          "source_case_id": "nk4096x1536_m1_decode",
+          "source_case_pointer": "/cases/18",
+          "source_count": 315,
+          "source_weight_source": "trace",
+          "observed_invocation_count": null,
+          "count_scope": "not an observed invocation count for this generated case",
+          "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization.",
+          "source_label_caveat": "The original row repeats its family count and trace label; workload.notes explicitly says only M64 was observed. Those repeated labels do not establish this M bucket."
+        }
       },
       "tensors": [
         {
@@ -2127,7 +2671,7 @@
             1
           ],
           "layout": "row-major contiguous",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         },
         {
           "name": "WQ",
@@ -2142,7 +2686,7 @@
             1
           ],
           "layout": "contiguous storage; AITER (16,16) preshuffled values",
-          "evidence": "ut/cases.py:34",
+          "evidence": "ut/cases.py:50",
           "attributes": {
             "is_shuffled": true
           }
@@ -2160,7 +2704,7 @@
             1
           ],
           "layout": "transpose-contiguous; column-major equivalent, degenerate M=1 shares contiguous layout",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         },
         {
           "name": "w_scale",
@@ -2175,13 +2719,13 @@
             1
           ],
           "layout": "row-major contiguous",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         }
       ],
       "scalars": {
         "dtype": {
           "value": "torch.bfloat16",
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         }
       },
@@ -2202,10 +2746,23 @@
           "evidence": "ut/meta.json#/math_contract"
         }
       ],
-      "benchmark_case_ids": [
-        "nk4096x1536_m1_decode"
-      ],
-      "notes": []
+      "benchmark_case_ids": [],
+      "notes": [],
+      "scenario_evidence": {
+        "classification": "inferred_m_bucket",
+        "scored": false,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "1fc786b9dca2776f069818e8941a5c6fcfd444614d78488dba9145e9c38f4183",
+        "source_case_id": "nk4096x1536_m1_decode",
+        "source_case_pointer": "/cases/18",
+        "source_count": 315,
+        "source_weight_source": "trace",
+        "observed_invocation_count": null,
+        "count_scope": "not an observed invocation count for this generated case",
+        "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization.",
+        "source_label_caveat": "The original row repeats its family count and trace label; workload.notes explicitly says only M64 was observed. Those repeated labels do not establish this M bucket."
+      }
     },
     {
       "case_id": "nk4096x1536_m64_decode",
@@ -2216,7 +2773,21 @@
         "regime": "decode",
         "m": 64,
         "n": 4096,
-        "k": 1536
+        "k": 1536,
+        "scenario_evidence": {
+          "classification": "observed_profile_shape",
+          "scored": true,
+          "correctness_required": true,
+          "source_file": "ut/provenance/workload.json",
+          "source_sha256": "1fc786b9dca2776f069818e8941a5c6fcfd444614d78488dba9145e9c38f4183",
+          "source_case_id": "nk4096x1536_m64_decode",
+          "source_case_pointer": "/cases/19",
+          "source_count": 315,
+          "source_weight_source": "trace",
+          "observed_invocation_count": 315,
+          "count_scope": "observed M64 profile count",
+          "interpretation": "M64 is observed in the retained profile window; tensor values remain synthetic."
+        }
       },
       "tensors": [
         {
@@ -2232,7 +2803,7 @@
             1
           ],
           "layout": "row-major contiguous",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         },
         {
           "name": "WQ",
@@ -2247,7 +2818,7 @@
             1
           ],
           "layout": "contiguous storage; AITER (16,16) preshuffled values",
-          "evidence": "ut/cases.py:34",
+          "evidence": "ut/cases.py:50",
           "attributes": {
             "is_shuffled": true
           }
@@ -2265,7 +2836,7 @@
             64
           ],
           "layout": "transpose-contiguous; column-major equivalent, degenerate M=1 shares contiguous layout",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         },
         {
           "name": "w_scale",
@@ -2280,13 +2851,13 @@
             1
           ],
           "layout": "row-major contiguous",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         }
       ],
       "scalars": {
         "dtype": {
           "value": "torch.bfloat16",
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         }
       },
@@ -2310,7 +2881,21 @@
       "benchmark_case_ids": [
         "nk4096x1536_m64_decode"
       ],
-      "notes": []
+      "notes": [],
+      "scenario_evidence": {
+        "classification": "observed_profile_shape",
+        "scored": true,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "1fc786b9dca2776f069818e8941a5c6fcfd444614d78488dba9145e9c38f4183",
+        "source_case_id": "nk4096x1536_m64_decode",
+        "source_case_pointer": "/cases/19",
+        "source_count": 315,
+        "source_weight_source": "trace",
+        "observed_invocation_count": 315,
+        "count_scope": "observed M64 profile count",
+        "interpretation": "M64 is observed in the retained profile window; tensor values remain synthetic."
+      }
     },
     {
       "case_id": "nk4096x1536_m8192_prefill",
@@ -2321,7 +2906,22 @@
         "regime": "prefill",
         "m": 8192,
         "n": 4096,
-        "k": 1536
+        "k": 1536,
+        "scenario_evidence": {
+          "classification": "inferred_m_bucket",
+          "scored": false,
+          "correctness_required": true,
+          "source_file": "ut/provenance/workload.json",
+          "source_sha256": "1fc786b9dca2776f069818e8941a5c6fcfd444614d78488dba9145e9c38f4183",
+          "source_case_id": "nk4096x1536_m8192_prefill",
+          "source_case_pointer": "/cases/20",
+          "source_count": 315,
+          "source_weight_source": "trace",
+          "observed_invocation_count": null,
+          "count_scope": "not an observed invocation count for this generated case",
+          "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization.",
+          "source_label_caveat": "The original row repeats its family count and trace label; workload.notes explicitly says only M64 was observed. Those repeated labels do not establish this M bucket."
+        }
       },
       "tensors": [
         {
@@ -2337,7 +2937,7 @@
             1
           ],
           "layout": "row-major contiguous",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         },
         {
           "name": "WQ",
@@ -2352,7 +2952,7 @@
             1
           ],
           "layout": "contiguous storage; AITER (16,16) preshuffled values",
-          "evidence": "ut/cases.py:34",
+          "evidence": "ut/cases.py:50",
           "attributes": {
             "is_shuffled": true
           }
@@ -2370,7 +2970,7 @@
             8192
           ],
           "layout": "transpose-contiguous; column-major equivalent, degenerate M=1 shares contiguous layout",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         },
         {
           "name": "w_scale",
@@ -2385,13 +2985,13 @@
             1
           ],
           "layout": "row-major contiguous",
-          "evidence": "ut/cases.py:34"
+          "evidence": "ut/cases.py:50"
         }
       ],
       "scalars": {
         "dtype": {
           "value": "torch.bfloat16",
-          "evidence": "ut/cases.py:69",
+          "evidence": "ut/cases.py:85",
           "scope": "call_argument"
         }
       },
@@ -2412,10 +3012,23 @@
           "evidence": "ut/meta.json#/math_contract"
         }
       ],
-      "benchmark_case_ids": [
-        "nk4096x1536_m8192_prefill"
-      ],
-      "notes": []
+      "benchmark_case_ids": [],
+      "notes": [],
+      "scenario_evidence": {
+        "classification": "inferred_m_bucket",
+        "scored": false,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "1fc786b9dca2776f069818e8941a5c6fcfd444614d78488dba9145e9c38f4183",
+        "source_case_id": "nk4096x1536_m8192_prefill",
+        "source_case_pointer": "/cases/20",
+        "source_count": 315,
+        "source_weight_source": "trace",
+        "observed_invocation_count": null,
+        "count_scope": "not an observed invocation count for this generated case",
+        "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization.",
+        "source_label_caveat": "The original row repeats its family count and trace label; workload.notes explicitly says only M64 was observed. Those repeated labels do not establish this M bucket."
+      }
     }
   ],
   "source_inventories": {
@@ -2427,149 +3040,517 @@
           "regime": "decode",
           "m": 1,
           "n": 512,
-          "k": 4096
+          "k": 4096,
+          "scenario_evidence": {
+            "classification": "inferred_m_bucket",
+            "scored": false,
+            "correctness_required": true,
+            "source_file": "ut/provenance/workload.json",
+            "source_sha256": "1fc786b9dca2776f069818e8941a5c6fcfd444614d78488dba9145e9c38f4183",
+            "source_case_id": "nk512x4096_m1_decode",
+            "source_case_pointer": "/cases/0",
+            "source_count": 4410,
+            "source_weight_source": "trace",
+            "observed_invocation_count": null,
+            "count_scope": "not an observed invocation count for this generated case",
+            "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization.",
+            "source_label_caveat": "The original row repeats its family count and trace label; workload.notes explicitly says only M64 was observed. Those repeated labels do not establish this M bucket."
+          }
         },
         {
           "sig": "nk512x4096_m64_decode",
           "regime": "decode",
           "m": 64,
           "n": 512,
-          "k": 4096
+          "k": 4096,
+          "scenario_evidence": {
+            "classification": "observed_profile_shape",
+            "scored": true,
+            "correctness_required": true,
+            "source_file": "ut/provenance/workload.json",
+            "source_sha256": "1fc786b9dca2776f069818e8941a5c6fcfd444614d78488dba9145e9c38f4183",
+            "source_case_id": "nk512x4096_m64_decode",
+            "source_case_pointer": "/cases/1",
+            "source_count": 4410,
+            "source_weight_source": "trace",
+            "observed_invocation_count": 4410,
+            "count_scope": "observed M64 profile count",
+            "interpretation": "M64 is observed in the retained profile window; tensor values remain synthetic."
+          }
         },
         {
           "sig": "nk512x4096_m8192_prefill",
           "regime": "prefill",
           "m": 8192,
           "n": 512,
-          "k": 4096
+          "k": 4096,
+          "scenario_evidence": {
+            "classification": "inferred_m_bucket",
+            "scored": false,
+            "correctness_required": true,
+            "source_file": "ut/provenance/workload.json",
+            "source_sha256": "1fc786b9dca2776f069818e8941a5c6fcfd444614d78488dba9145e9c38f4183",
+            "source_case_id": "nk512x4096_m8192_prefill",
+            "source_case_pointer": "/cases/2",
+            "source_count": 4410,
+            "source_weight_source": "trace",
+            "observed_invocation_count": null,
+            "count_scope": "not an observed invocation count for this generated case",
+            "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization.",
+            "source_label_caveat": "The original row repeats its family count and trace label; workload.notes explicitly says only M64 was observed. Those repeated labels do not establish this M bucket."
+          }
         },
         {
           "sig": "nk4096x256_m1_decode",
           "regime": "decode",
           "m": 1,
           "n": 4096,
-          "k": 256
+          "k": 256,
+          "scenario_evidence": {
+            "classification": "inferred_m_bucket",
+            "scored": false,
+            "correctness_required": true,
+            "source_file": "ut/provenance/workload.json",
+            "source_sha256": "1fc786b9dca2776f069818e8941a5c6fcfd444614d78488dba9145e9c38f4183",
+            "source_case_id": "nk4096x256_m1_decode",
+            "source_case_pointer": "/cases/3",
+            "source_count": 4410,
+            "source_weight_source": "trace",
+            "observed_invocation_count": null,
+            "count_scope": "not an observed invocation count for this generated case",
+            "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization.",
+            "source_label_caveat": "The original row repeats its family count and trace label; workload.notes explicitly says only M64 was observed. Those repeated labels do not establish this M bucket."
+          }
         },
         {
           "sig": "nk4096x256_m64_decode",
           "regime": "decode",
           "m": 64,
           "n": 4096,
-          "k": 256
+          "k": 256,
+          "scenario_evidence": {
+            "classification": "observed_profile_shape",
+            "scored": true,
+            "correctness_required": true,
+            "source_file": "ut/provenance/workload.json",
+            "source_sha256": "1fc786b9dca2776f069818e8941a5c6fcfd444614d78488dba9145e9c38f4183",
+            "source_case_id": "nk4096x256_m64_decode",
+            "source_case_pointer": "/cases/4",
+            "source_count": 4410,
+            "source_weight_source": "trace",
+            "observed_invocation_count": 4410,
+            "count_scope": "observed M64 profile count",
+            "interpretation": "M64 is observed in the retained profile window; tensor values remain synthetic."
+          }
         },
         {
           "sig": "nk4096x256_m8192_prefill",
           "regime": "prefill",
           "m": 8192,
           "n": 4096,
-          "k": 256
+          "k": 256,
+          "scenario_evidence": {
+            "classification": "inferred_m_bucket",
+            "scored": false,
+            "correctness_required": true,
+            "source_file": "ut/provenance/workload.json",
+            "source_sha256": "1fc786b9dca2776f069818e8941a5c6fcfd444614d78488dba9145e9c38f4183",
+            "source_case_id": "nk4096x256_m8192_prefill",
+            "source_case_pointer": "/cases/5",
+            "source_count": 4410,
+            "source_weight_source": "trace",
+            "observed_invocation_count": null,
+            "count_scope": "not an observed invocation count for this generated case",
+            "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization.",
+            "source_label_caveat": "The original row repeats its family count and trace label; workload.notes explicitly says only M64 was observed. Those repeated labels do not establish this M bucket."
+          }
         },
         {
           "sig": "nk2048x4096_m1_decode",
           "regime": "decode",
           "m": 1,
           "n": 2048,
-          "k": 4096
+          "k": 4096,
+          "scenario_evidence": {
+            "classification": "inferred_m_bucket",
+            "scored": false,
+            "correctness_required": true,
+            "source_file": "ut/provenance/workload.json",
+            "source_sha256": "1fc786b9dca2776f069818e8941a5c6fcfd444614d78488dba9145e9c38f4183",
+            "source_case_id": "nk2048x4096_m1_decode",
+            "source_case_pointer": "/cases/6",
+            "source_count": 1155,
+            "source_weight_source": "trace",
+            "observed_invocation_count": null,
+            "count_scope": "not an observed invocation count for this generated case",
+            "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization.",
+            "source_label_caveat": "The original row repeats its family count and trace label; workload.notes explicitly says only M64 was observed. Those repeated labels do not establish this M bucket."
+          }
         },
         {
           "sig": "nk2048x4096_m64_decode",
           "regime": "decode",
           "m": 64,
           "n": 2048,
-          "k": 4096
+          "k": 4096,
+          "scenario_evidence": {
+            "classification": "observed_profile_shape",
+            "scored": true,
+            "correctness_required": true,
+            "source_file": "ut/provenance/workload.json",
+            "source_sha256": "1fc786b9dca2776f069818e8941a5c6fcfd444614d78488dba9145e9c38f4183",
+            "source_case_id": "nk2048x4096_m64_decode",
+            "source_case_pointer": "/cases/7",
+            "source_count": 1155,
+            "source_weight_source": "trace",
+            "observed_invocation_count": 1155,
+            "count_scope": "observed M64 profile count",
+            "interpretation": "M64 is observed in the retained profile window; tensor values remain synthetic."
+          }
         },
         {
           "sig": "nk2048x4096_m8192_prefill",
           "regime": "prefill",
           "m": 8192,
           "n": 2048,
-          "k": 4096
+          "k": 4096,
+          "scenario_evidence": {
+            "classification": "inferred_m_bucket",
+            "scored": false,
+            "correctness_required": true,
+            "source_file": "ut/provenance/workload.json",
+            "source_sha256": "1fc786b9dca2776f069818e8941a5c6fcfd444614d78488dba9145e9c38f4183",
+            "source_case_id": "nk2048x4096_m8192_prefill",
+            "source_case_pointer": "/cases/8",
+            "source_count": 1155,
+            "source_weight_source": "trace",
+            "observed_invocation_count": null,
+            "count_scope": "not an observed invocation count for this generated case",
+            "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization.",
+            "source_label_caveat": "The original row repeats its family count and trace label; workload.notes explicitly says only M64 was observed. Those repeated labels do not establish this M bucket."
+          }
         },
         {
           "sig": "nk2048x1536_m1_decode",
           "regime": "decode",
           "m": 1,
           "n": 2048,
-          "k": 1536
+          "k": 1536,
+          "scenario_evidence": {
+            "classification": "inferred_m_bucket",
+            "scored": false,
+            "correctness_required": true,
+            "source_file": "ut/provenance/workload.json",
+            "source_sha256": "1fc786b9dca2776f069818e8941a5c6fcfd444614d78488dba9145e9c38f4183",
+            "source_case_id": "nk2048x1536_m1_decode",
+            "source_case_pointer": "/cases/9",
+            "source_count": 1155,
+            "source_weight_source": "trace",
+            "observed_invocation_count": null,
+            "count_scope": "not an observed invocation count for this generated case",
+            "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization.",
+            "source_label_caveat": "The original row repeats its family count and trace label; workload.notes explicitly says only M64 was observed. Those repeated labels do not establish this M bucket."
+          }
         },
         {
           "sig": "nk2048x1536_m64_decode",
           "regime": "decode",
           "m": 64,
           "n": 2048,
-          "k": 1536
+          "k": 1536,
+          "scenario_evidence": {
+            "classification": "observed_profile_shape",
+            "scored": true,
+            "correctness_required": true,
+            "source_file": "ut/provenance/workload.json",
+            "source_sha256": "1fc786b9dca2776f069818e8941a5c6fcfd444614d78488dba9145e9c38f4183",
+            "source_case_id": "nk2048x1536_m64_decode",
+            "source_case_pointer": "/cases/10",
+            "source_count": 1155,
+            "source_weight_source": "trace",
+            "observed_invocation_count": 1155,
+            "count_scope": "observed M64 profile count",
+            "interpretation": "M64 is observed in the retained profile window; tensor values remain synthetic."
+          }
         },
         {
           "sig": "nk2048x1536_m8192_prefill",
           "regime": "prefill",
           "m": 8192,
           "n": 2048,
-          "k": 1536
+          "k": 1536,
+          "scenario_evidence": {
+            "classification": "inferred_m_bucket",
+            "scored": false,
+            "correctness_required": true,
+            "source_file": "ut/provenance/workload.json",
+            "source_sha256": "1fc786b9dca2776f069818e8941a5c6fcfd444614d78488dba9145e9c38f4183",
+            "source_case_id": "nk2048x1536_m8192_prefill",
+            "source_case_pointer": "/cases/11",
+            "source_count": 1155,
+            "source_weight_source": "trace",
+            "observed_invocation_count": null,
+            "count_scope": "not an observed invocation count for this generated case",
+            "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization.",
+            "source_label_caveat": "The original row repeats its family count and trace label; workload.notes explicitly says only M64 was observed. Those repeated labels do not establish this M bucket."
+          }
         },
         {
           "sig": "nk4096x2048_m1_decode",
           "regime": "decode",
           "m": 1,
           "n": 4096,
-          "k": 2048
+          "k": 2048,
+          "scenario_evidence": {
+            "classification": "inferred_m_bucket",
+            "scored": false,
+            "correctness_required": true,
+            "source_file": "ut/provenance/workload.json",
+            "source_sha256": "1fc786b9dca2776f069818e8941a5c6fcfd444614d78488dba9145e9c38f4183",
+            "source_case_id": "nk4096x2048_m1_decode",
+            "source_case_pointer": "/cases/12",
+            "source_count": 1155,
+            "source_weight_source": "trace",
+            "observed_invocation_count": null,
+            "count_scope": "not an observed invocation count for this generated case",
+            "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization.",
+            "source_label_caveat": "The original row repeats its family count and trace label; workload.notes explicitly says only M64 was observed. Those repeated labels do not establish this M bucket."
+          }
         },
         {
           "sig": "nk4096x2048_m64_decode",
           "regime": "decode",
           "m": 64,
           "n": 4096,
-          "k": 2048
+          "k": 2048,
+          "scenario_evidence": {
+            "classification": "observed_profile_shape",
+            "scored": true,
+            "correctness_required": true,
+            "source_file": "ut/provenance/workload.json",
+            "source_sha256": "1fc786b9dca2776f069818e8941a5c6fcfd444614d78488dba9145e9c38f4183",
+            "source_case_id": "nk4096x2048_m64_decode",
+            "source_case_pointer": "/cases/13",
+            "source_count": 1155,
+            "source_weight_source": "trace",
+            "observed_invocation_count": 1155,
+            "count_scope": "observed M64 profile count",
+            "interpretation": "M64 is observed in the retained profile window; tensor values remain synthetic."
+          }
         },
         {
           "sig": "nk4096x2048_m8192_prefill",
           "regime": "prefill",
           "m": 8192,
           "n": 4096,
-          "k": 2048
+          "k": 2048,
+          "scenario_evidence": {
+            "classification": "inferred_m_bucket",
+            "scored": false,
+            "correctness_required": true,
+            "source_file": "ut/provenance/workload.json",
+            "source_sha256": "1fc786b9dca2776f069818e8941a5c6fcfd444614d78488dba9145e9c38f4183",
+            "source_case_id": "nk4096x2048_m8192_prefill",
+            "source_case_pointer": "/cases/14",
+            "source_count": 1155,
+            "source_weight_source": "trace",
+            "observed_invocation_count": null,
+            "count_scope": "not an observed invocation count for this generated case",
+            "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization.",
+            "source_label_caveat": "The original row repeats its family count and trace label; workload.notes explicitly says only M64 was observed. Those repeated labels do not establish this M bucket."
+          }
         },
         {
           "sig": "nk3072x4096_m1_decode",
           "regime": "decode",
           "m": 1,
           "n": 3072,
-          "k": 4096
+          "k": 4096,
+          "scenario_evidence": {
+            "classification": "inferred_m_bucket",
+            "scored": false,
+            "correctness_required": true,
+            "source_file": "ut/provenance/workload.json",
+            "source_sha256": "1fc786b9dca2776f069818e8941a5c6fcfd444614d78488dba9145e9c38f4183",
+            "source_case_id": "nk3072x4096_m1_decode",
+            "source_case_pointer": "/cases/15",
+            "source_count": 315,
+            "source_weight_source": "trace",
+            "observed_invocation_count": null,
+            "count_scope": "not an observed invocation count for this generated case",
+            "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization.",
+            "source_label_caveat": "The original row repeats its family count and trace label; workload.notes explicitly says only M64 was observed. Those repeated labels do not establish this M bucket."
+          }
         },
         {
           "sig": "nk3072x4096_m64_decode",
           "regime": "decode",
           "m": 64,
           "n": 3072,
-          "k": 4096
+          "k": 4096,
+          "scenario_evidence": {
+            "classification": "observed_profile_shape",
+            "scored": true,
+            "correctness_required": true,
+            "source_file": "ut/provenance/workload.json",
+            "source_sha256": "1fc786b9dca2776f069818e8941a5c6fcfd444614d78488dba9145e9c38f4183",
+            "source_case_id": "nk3072x4096_m64_decode",
+            "source_case_pointer": "/cases/16",
+            "source_count": 315,
+            "source_weight_source": "trace",
+            "observed_invocation_count": 315,
+            "count_scope": "observed M64 profile count",
+            "interpretation": "M64 is observed in the retained profile window; tensor values remain synthetic."
+          }
         },
         {
           "sig": "nk3072x4096_m8192_prefill",
           "regime": "prefill",
           "m": 8192,
           "n": 3072,
-          "k": 4096
+          "k": 4096,
+          "scenario_evidence": {
+            "classification": "inferred_m_bucket",
+            "scored": false,
+            "correctness_required": true,
+            "source_file": "ut/provenance/workload.json",
+            "source_sha256": "1fc786b9dca2776f069818e8941a5c6fcfd444614d78488dba9145e9c38f4183",
+            "source_case_id": "nk3072x4096_m8192_prefill",
+            "source_case_pointer": "/cases/17",
+            "source_count": 315,
+            "source_weight_source": "trace",
+            "observed_invocation_count": null,
+            "count_scope": "not an observed invocation count for this generated case",
+            "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization.",
+            "source_label_caveat": "The original row repeats its family count and trace label; workload.notes explicitly says only M64 was observed. Those repeated labels do not establish this M bucket."
+          }
         },
         {
           "sig": "nk4096x1536_m1_decode",
           "regime": "decode",
           "m": 1,
           "n": 4096,
-          "k": 1536
+          "k": 1536,
+          "scenario_evidence": {
+            "classification": "inferred_m_bucket",
+            "scored": false,
+            "correctness_required": true,
+            "source_file": "ut/provenance/workload.json",
+            "source_sha256": "1fc786b9dca2776f069818e8941a5c6fcfd444614d78488dba9145e9c38f4183",
+            "source_case_id": "nk4096x1536_m1_decode",
+            "source_case_pointer": "/cases/18",
+            "source_count": 315,
+            "source_weight_source": "trace",
+            "observed_invocation_count": null,
+            "count_scope": "not an observed invocation count for this generated case",
+            "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization.",
+            "source_label_caveat": "The original row repeats its family count and trace label; workload.notes explicitly says only M64 was observed. Those repeated labels do not establish this M bucket."
+          }
         },
         {
           "sig": "nk4096x1536_m64_decode",
           "regime": "decode",
           "m": 64,
           "n": 4096,
-          "k": 1536
+          "k": 1536,
+          "scenario_evidence": {
+            "classification": "observed_profile_shape",
+            "scored": true,
+            "correctness_required": true,
+            "source_file": "ut/provenance/workload.json",
+            "source_sha256": "1fc786b9dca2776f069818e8941a5c6fcfd444614d78488dba9145e9c38f4183",
+            "source_case_id": "nk4096x1536_m64_decode",
+            "source_case_pointer": "/cases/19",
+            "source_count": 315,
+            "source_weight_source": "trace",
+            "observed_invocation_count": 315,
+            "count_scope": "observed M64 profile count",
+            "interpretation": "M64 is observed in the retained profile window; tensor values remain synthetic."
+          }
         },
         {
           "sig": "nk4096x1536_m8192_prefill",
           "regime": "prefill",
           "m": 8192,
           "n": 4096,
-          "k": 1536
+          "k": 1536,
+          "scenario_evidence": {
+            "classification": "inferred_m_bucket",
+            "scored": false,
+            "correctness_required": true,
+            "source_file": "ut/provenance/workload.json",
+            "source_sha256": "1fc786b9dca2776f069818e8941a5c6fcfd444614d78488dba9145e9c38f4183",
+            "source_case_id": "nk4096x1536_m8192_prefill",
+            "source_case_pointer": "/cases/20",
+            "source_count": 315,
+            "source_weight_source": "trace",
+            "observed_invocation_count": null,
+            "count_scope": "not an observed invocation count for this generated case",
+            "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization.",
+            "source_label_caveat": "The original row repeats its family count and trace label; workload.notes explicitly says only M64 was observed. Those repeated labels do not establish this M bucket."
+          }
         }
       ]
+    },
+    "ledger_ids": {
+      "evidence": "ut/meta.json#/ledger_ids",
+      "records": [
+        "nk512x4096_m64_decode",
+        "nk4096x256_m64_decode",
+        "nk2048x4096_m64_decode",
+        "nk2048x1536_m64_decode",
+        "nk4096x2048_m64_decode",
+        "nk3072x4096_m64_decode",
+        "nk4096x1536_m64_decode"
+      ]
+    },
+    "correctness_case_ids": {
+      "evidence": "ut/meta.json#/correctness_case_ids",
+      "records": [
+        "nk512x4096_m1_decode",
+        "nk512x4096_m64_decode",
+        "nk512x4096_m8192_prefill",
+        "nk4096x256_m1_decode",
+        "nk4096x256_m64_decode",
+        "nk4096x256_m8192_prefill",
+        "nk2048x4096_m1_decode",
+        "nk2048x4096_m64_decode",
+        "nk2048x4096_m8192_prefill",
+        "nk2048x1536_m1_decode",
+        "nk2048x1536_m64_decode",
+        "nk2048x1536_m8192_prefill",
+        "nk4096x2048_m1_decode",
+        "nk4096x2048_m64_decode",
+        "nk4096x2048_m8192_prefill",
+        "nk3072x4096_m1_decode",
+        "nk3072x4096_m64_decode",
+        "nk3072x4096_m8192_prefill",
+        "nk4096x1536_m1_decode",
+        "nk4096x1536_m64_decode",
+        "nk4096x1536_m8192_prefill"
+      ]
+    },
+    "benchmark_case_policy": {
+      "evidence": "ut/meta.json#/benchmark_case_policy",
+      "records": {
+        "scope": "Only profile-supported M64 geometries are scored; all declared cases remain mandatory correctness coverage.",
+        "correctness_case_count": 21,
+        "scored_case_count": 7,
+        "unscored_correctness_case_count": 14,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "1fc786b9dca2776f069818e8941a5c6fcfd444614d78488dba9145e9c38f4183",
+        "interpretation_evidence": "ut/provenance/workload.json#/notes",
+        "scored_case_classification": "observed_profile_shape",
+        "unscored_case_role": "robustness_generalization",
+        "uses_observed_invocation_weights": false,
+        "weighting_note": "Recorded counts/weights are provenance only; the shared Arena aggregation is unchanged.",
+        "exact_historical_runtime_equivalence_established": false,
+        "remaining_evidence_gaps": [
+          "Current per-case device kernel, launch/grid and solution identity is not established by historical selection metadata.",
+          "Historical serving was eager; the unchanged shared benchmark measures graph device timing.",
+          "Original GLM model-specific FP8 tuning table and exact CK dispatch/instantiation proof are missing; the preserved stock table selects native CK defaults."
+        ]
+      }
     }
   },
   "observed_shape_inventories": [],
@@ -2585,15 +3566,15 @@
   "sources": [
     {
       "path": "ut/meta.json",
-      "sha256": "2ece6042e25a7e123a448bc25234de0497f3a5d0af1dad7785225d7a49895404"
+      "sha256": "cdbcefbe992d59f33e1ad67282ab004bceabb92585e5f0b8562086c60356f3d5"
     },
     {
       "path": "ut/cases.py",
-      "sha256": "fa2782b9c5e668c0b94085f90c7693a41c3af23d0f1d6cbaf4499ab2a84321ab"
+      "sha256": "7da98db40d631b702c8ca7280f0e3061d9283d80a06eb58e739c900fe3e8c169"
     },
     {
       "path": "config.yaml",
-      "sha256": "951311fcaa6d493dbd6ada75dde19fd74d234463862d1a6a004381e0e7336173"
+      "sha256": "c49222223c13379838b409f027726be1877594be675afc8b64a40167d446524f"
     },
     {
       "path": "scripts/source_abi.json",
@@ -2608,5 +3589,320 @@
       "sha256": "d3d639344c8bf9621d69e8b8fb3d8f64ffabcda243012c6d406720c19e1abce4"
     }
   ],
-  "validation": "Static metadata/AST inspection only. No task module imports, pickle deserialization, tensor loading, GPU execution, or fresh performance validation."
+  "validation": "Static scenario classification from preserved workload rows and notes. No fresh GPU correctness, performance, or historical dispatch equivalence is established.",
+  "unscored_correctness_cases": [
+    {
+      "case_id": "nk512x4096_m1_decode",
+      "shape_record_id": "nk512x4096_m1_decode",
+      "regime": "decode",
+      "role": "robustness_generalization",
+      "scenario_evidence": {
+        "classification": "inferred_m_bucket",
+        "scored": false,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "1fc786b9dca2776f069818e8941a5c6fcfd444614d78488dba9145e9c38f4183",
+        "source_case_id": "nk512x4096_m1_decode",
+        "source_case_pointer": "/cases/0",
+        "source_count": 4410,
+        "source_weight_source": "trace",
+        "observed_invocation_count": null,
+        "count_scope": "not an observed invocation count for this generated case",
+        "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization.",
+        "source_label_caveat": "The original row repeats its family count and trace label; workload.notes explicitly says only M64 was observed. Those repeated labels do not establish this M bucket."
+      }
+    },
+    {
+      "case_id": "nk512x4096_m8192_prefill",
+      "shape_record_id": "nk512x4096_m8192_prefill",
+      "regime": "prefill",
+      "role": "robustness_generalization",
+      "scenario_evidence": {
+        "classification": "inferred_m_bucket",
+        "scored": false,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "1fc786b9dca2776f069818e8941a5c6fcfd444614d78488dba9145e9c38f4183",
+        "source_case_id": "nk512x4096_m8192_prefill",
+        "source_case_pointer": "/cases/2",
+        "source_count": 4410,
+        "source_weight_source": "trace",
+        "observed_invocation_count": null,
+        "count_scope": "not an observed invocation count for this generated case",
+        "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization.",
+        "source_label_caveat": "The original row repeats its family count and trace label; workload.notes explicitly says only M64 was observed. Those repeated labels do not establish this M bucket."
+      }
+    },
+    {
+      "case_id": "nk4096x256_m1_decode",
+      "shape_record_id": "nk4096x256_m1_decode",
+      "regime": "decode",
+      "role": "robustness_generalization",
+      "scenario_evidence": {
+        "classification": "inferred_m_bucket",
+        "scored": false,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "1fc786b9dca2776f069818e8941a5c6fcfd444614d78488dba9145e9c38f4183",
+        "source_case_id": "nk4096x256_m1_decode",
+        "source_case_pointer": "/cases/3",
+        "source_count": 4410,
+        "source_weight_source": "trace",
+        "observed_invocation_count": null,
+        "count_scope": "not an observed invocation count for this generated case",
+        "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization.",
+        "source_label_caveat": "The original row repeats its family count and trace label; workload.notes explicitly says only M64 was observed. Those repeated labels do not establish this M bucket."
+      }
+    },
+    {
+      "case_id": "nk4096x256_m8192_prefill",
+      "shape_record_id": "nk4096x256_m8192_prefill",
+      "regime": "prefill",
+      "role": "robustness_generalization",
+      "scenario_evidence": {
+        "classification": "inferred_m_bucket",
+        "scored": false,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "1fc786b9dca2776f069818e8941a5c6fcfd444614d78488dba9145e9c38f4183",
+        "source_case_id": "nk4096x256_m8192_prefill",
+        "source_case_pointer": "/cases/5",
+        "source_count": 4410,
+        "source_weight_source": "trace",
+        "observed_invocation_count": null,
+        "count_scope": "not an observed invocation count for this generated case",
+        "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization.",
+        "source_label_caveat": "The original row repeats its family count and trace label; workload.notes explicitly says only M64 was observed. Those repeated labels do not establish this M bucket."
+      }
+    },
+    {
+      "case_id": "nk2048x4096_m1_decode",
+      "shape_record_id": "nk2048x4096_m1_decode",
+      "regime": "decode",
+      "role": "robustness_generalization",
+      "scenario_evidence": {
+        "classification": "inferred_m_bucket",
+        "scored": false,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "1fc786b9dca2776f069818e8941a5c6fcfd444614d78488dba9145e9c38f4183",
+        "source_case_id": "nk2048x4096_m1_decode",
+        "source_case_pointer": "/cases/6",
+        "source_count": 1155,
+        "source_weight_source": "trace",
+        "observed_invocation_count": null,
+        "count_scope": "not an observed invocation count for this generated case",
+        "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization.",
+        "source_label_caveat": "The original row repeats its family count and trace label; workload.notes explicitly says only M64 was observed. Those repeated labels do not establish this M bucket."
+      }
+    },
+    {
+      "case_id": "nk2048x4096_m8192_prefill",
+      "shape_record_id": "nk2048x4096_m8192_prefill",
+      "regime": "prefill",
+      "role": "robustness_generalization",
+      "scenario_evidence": {
+        "classification": "inferred_m_bucket",
+        "scored": false,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "1fc786b9dca2776f069818e8941a5c6fcfd444614d78488dba9145e9c38f4183",
+        "source_case_id": "nk2048x4096_m8192_prefill",
+        "source_case_pointer": "/cases/8",
+        "source_count": 1155,
+        "source_weight_source": "trace",
+        "observed_invocation_count": null,
+        "count_scope": "not an observed invocation count for this generated case",
+        "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization.",
+        "source_label_caveat": "The original row repeats its family count and trace label; workload.notes explicitly says only M64 was observed. Those repeated labels do not establish this M bucket."
+      }
+    },
+    {
+      "case_id": "nk2048x1536_m1_decode",
+      "shape_record_id": "nk2048x1536_m1_decode",
+      "regime": "decode",
+      "role": "robustness_generalization",
+      "scenario_evidence": {
+        "classification": "inferred_m_bucket",
+        "scored": false,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "1fc786b9dca2776f069818e8941a5c6fcfd444614d78488dba9145e9c38f4183",
+        "source_case_id": "nk2048x1536_m1_decode",
+        "source_case_pointer": "/cases/9",
+        "source_count": 1155,
+        "source_weight_source": "trace",
+        "observed_invocation_count": null,
+        "count_scope": "not an observed invocation count for this generated case",
+        "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization.",
+        "source_label_caveat": "The original row repeats its family count and trace label; workload.notes explicitly says only M64 was observed. Those repeated labels do not establish this M bucket."
+      }
+    },
+    {
+      "case_id": "nk2048x1536_m8192_prefill",
+      "shape_record_id": "nk2048x1536_m8192_prefill",
+      "regime": "prefill",
+      "role": "robustness_generalization",
+      "scenario_evidence": {
+        "classification": "inferred_m_bucket",
+        "scored": false,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "1fc786b9dca2776f069818e8941a5c6fcfd444614d78488dba9145e9c38f4183",
+        "source_case_id": "nk2048x1536_m8192_prefill",
+        "source_case_pointer": "/cases/11",
+        "source_count": 1155,
+        "source_weight_source": "trace",
+        "observed_invocation_count": null,
+        "count_scope": "not an observed invocation count for this generated case",
+        "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization.",
+        "source_label_caveat": "The original row repeats its family count and trace label; workload.notes explicitly says only M64 was observed. Those repeated labels do not establish this M bucket."
+      }
+    },
+    {
+      "case_id": "nk4096x2048_m1_decode",
+      "shape_record_id": "nk4096x2048_m1_decode",
+      "regime": "decode",
+      "role": "robustness_generalization",
+      "scenario_evidence": {
+        "classification": "inferred_m_bucket",
+        "scored": false,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "1fc786b9dca2776f069818e8941a5c6fcfd444614d78488dba9145e9c38f4183",
+        "source_case_id": "nk4096x2048_m1_decode",
+        "source_case_pointer": "/cases/12",
+        "source_count": 1155,
+        "source_weight_source": "trace",
+        "observed_invocation_count": null,
+        "count_scope": "not an observed invocation count for this generated case",
+        "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization.",
+        "source_label_caveat": "The original row repeats its family count and trace label; workload.notes explicitly says only M64 was observed. Those repeated labels do not establish this M bucket."
+      }
+    },
+    {
+      "case_id": "nk4096x2048_m8192_prefill",
+      "shape_record_id": "nk4096x2048_m8192_prefill",
+      "regime": "prefill",
+      "role": "robustness_generalization",
+      "scenario_evidence": {
+        "classification": "inferred_m_bucket",
+        "scored": false,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "1fc786b9dca2776f069818e8941a5c6fcfd444614d78488dba9145e9c38f4183",
+        "source_case_id": "nk4096x2048_m8192_prefill",
+        "source_case_pointer": "/cases/14",
+        "source_count": 1155,
+        "source_weight_source": "trace",
+        "observed_invocation_count": null,
+        "count_scope": "not an observed invocation count for this generated case",
+        "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization.",
+        "source_label_caveat": "The original row repeats its family count and trace label; workload.notes explicitly says only M64 was observed. Those repeated labels do not establish this M bucket."
+      }
+    },
+    {
+      "case_id": "nk3072x4096_m1_decode",
+      "shape_record_id": "nk3072x4096_m1_decode",
+      "regime": "decode",
+      "role": "robustness_generalization",
+      "scenario_evidence": {
+        "classification": "inferred_m_bucket",
+        "scored": false,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "1fc786b9dca2776f069818e8941a5c6fcfd444614d78488dba9145e9c38f4183",
+        "source_case_id": "nk3072x4096_m1_decode",
+        "source_case_pointer": "/cases/15",
+        "source_count": 315,
+        "source_weight_source": "trace",
+        "observed_invocation_count": null,
+        "count_scope": "not an observed invocation count for this generated case",
+        "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization.",
+        "source_label_caveat": "The original row repeats its family count and trace label; workload.notes explicitly says only M64 was observed. Those repeated labels do not establish this M bucket."
+      }
+    },
+    {
+      "case_id": "nk3072x4096_m8192_prefill",
+      "shape_record_id": "nk3072x4096_m8192_prefill",
+      "regime": "prefill",
+      "role": "robustness_generalization",
+      "scenario_evidence": {
+        "classification": "inferred_m_bucket",
+        "scored": false,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "1fc786b9dca2776f069818e8941a5c6fcfd444614d78488dba9145e9c38f4183",
+        "source_case_id": "nk3072x4096_m8192_prefill",
+        "source_case_pointer": "/cases/17",
+        "source_count": 315,
+        "source_weight_source": "trace",
+        "observed_invocation_count": null,
+        "count_scope": "not an observed invocation count for this generated case",
+        "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization.",
+        "source_label_caveat": "The original row repeats its family count and trace label; workload.notes explicitly says only M64 was observed. Those repeated labels do not establish this M bucket."
+      }
+    },
+    {
+      "case_id": "nk4096x1536_m1_decode",
+      "shape_record_id": "nk4096x1536_m1_decode",
+      "regime": "decode",
+      "role": "robustness_generalization",
+      "scenario_evidence": {
+        "classification": "inferred_m_bucket",
+        "scored": false,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "1fc786b9dca2776f069818e8941a5c6fcfd444614d78488dba9145e9c38f4183",
+        "source_case_id": "nk4096x1536_m1_decode",
+        "source_case_pointer": "/cases/18",
+        "source_count": 315,
+        "source_weight_source": "trace",
+        "observed_invocation_count": null,
+        "count_scope": "not an observed invocation count for this generated case",
+        "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization.",
+        "source_label_caveat": "The original row repeats its family count and trace label; workload.notes explicitly says only M64 was observed. Those repeated labels do not establish this M bucket."
+      }
+    },
+    {
+      "case_id": "nk4096x1536_m8192_prefill",
+      "shape_record_id": "nk4096x1536_m8192_prefill",
+      "regime": "prefill",
+      "role": "robustness_generalization",
+      "scenario_evidence": {
+        "classification": "inferred_m_bucket",
+        "scored": false,
+        "correctness_required": true,
+        "source_file": "ut/provenance/workload.json",
+        "source_sha256": "1fc786b9dca2776f069818e8941a5c6fcfd444614d78488dba9145e9c38f4183",
+        "source_case_id": "nk4096x1536_m8192_prefill",
+        "source_case_pointer": "/cases/20",
+        "source_count": 315,
+        "source_weight_source": "trace",
+        "observed_invocation_count": null,
+        "count_scope": "not an observed invocation count for this generated case",
+        "interpretation": "M1/M8192 are size/floor priors according to the original workload notes; retained solely for unscored robustness/generalization.",
+        "source_label_caveat": "The original row repeats its family count and trace label; workload.notes explicitly says only M64 was observed. Those repeated labels do not establish this M bucket."
+      }
+    }
+  ],
+  "benchmark_case_policy": {
+    "scope": "Only profile-supported M64 geometries are scored; all declared cases remain mandatory correctness coverage.",
+    "correctness_case_count": 21,
+    "scored_case_count": 7,
+    "unscored_correctness_case_count": 14,
+    "source_file": "ut/provenance/workload.json",
+    "source_sha256": "1fc786b9dca2776f069818e8941a5c6fcfd444614d78488dba9145e9c38f4183",
+    "interpretation_evidence": "ut/provenance/workload.json#/notes",
+    "scored_case_classification": "observed_profile_shape",
+    "unscored_case_role": "robustness_generalization",
+    "uses_observed_invocation_weights": false,
+    "weighting_note": "Recorded counts/weights are provenance only; the shared Arena aggregation is unchanged.",
+    "exact_historical_runtime_equivalence_established": false,
+    "remaining_evidence_gaps": [
+      "Current per-case device kernel, launch/grid and solution identity is not established by historical selection metadata.",
+      "Historical serving was eager; the unchanged shared benchmark measures graph device timing.",
+      "Original GLM model-specific FP8 tuning table and exact CK dispatch/instantiation proof are missing; the preserved stock table selects native CK defaults."
+    ]
+  }
 }

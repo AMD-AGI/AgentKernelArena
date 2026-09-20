@@ -11,13 +11,29 @@ import harness_lib as h
 META = json.loads((Path(__file__).resolve().parent / "meta.json").read_text())
 
 
+def correctness_cases(meta):
+    """Return every fixed case, including unscored robustness/generalization."""
+    cases = meta["cases"]
+    by_id = {case["sig"]: case for case in cases}
+    expected_count = 27 if meta["kind"] == "bf16" else 21
+    if (len(cases) != expected_count or len(by_id) != expected_count
+            or meta["correctness_case_ids"] != [case["sig"] for case in cases]):
+        raise RuntimeError("the complete fixed GLM correctness case set is required")
+    return cases
+
+
 def selected_cases(meta, case_ids):
-    by_id = {case["sig"]: case for case in meta["cases"]}
-    if len(by_id) != len(meta["cases"]) or list(case_ids) != meta["ledger_ids"]:
-        raise RuntimeError("the complete fixed GLM case set is required")
-    if len(by_id) != (27 if meta["kind"] == "bf16" else 21):
-        raise RuntimeError("unexpected GLM case count")
-    return [by_id[case_id] for case_id in case_ids]
+    """The unchanged Arena adapter requests only the observed scored cases."""
+    cases = correctness_cases(meta)
+    observed = [case for case in cases if case["scenario_evidence"]["scored"]]
+    expected_ids = [case["sig"] for case in observed]
+    if (len(observed) != 7 or list(case_ids) != meta["ledger_ids"]
+            or meta["ledger_ids"] != expected_ids
+            or any(case["m"] != 64
+                   or case["scenario_evidence"]["classification"] != "observed_profile_shape"
+                   for case in observed)):
+        raise RuntimeError("the complete fixed observed GLM benchmark set is required")
+    return observed
 
 
 def shuffle_weight(weight):
@@ -94,5 +110,7 @@ def candidate_call(args):
 
 
 def timing_case(case):
+    if not case["scenario_evidence"]["scored"]:
+        raise RuntimeError("unscored robustness/generalization case cannot enter timing")
     return {"sig": case["sig"], "regime": case["regime"], "m": case["m"],
             "args": make_args(case, seed=3000)}
