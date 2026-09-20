@@ -37,6 +37,16 @@ the independently checked prefix archive hash is
 `f31fcb152982a5fdd419dfb234d256c630f70d04aa3ac8fefddd4e7c88c980d1`.
 All eight indexed materialized task identities match the current source.
 
+The separate fresh full-check attempt **159315**, at source `76998a8f`, completed
+native correctness for DeepSeek `dsa_sparse_mla_attn` and MiniMax
+`gqa_share_sparse_fwd_kernel`. Both reports have status `ok`, including their
+randomized and replay checks. At **21:25 UTC**, their unchanged performance
+commands are still running; neither task is in the native-verified selection.
+The correctness-report SHA-256 values are respectively
+`00df0da69c166d8933832f71330bd6bcaaac95bd96a020e36d015545454f6070` and
+`ef29cc8f15056e558a30822689d055f852aca186b0a05be69fdcb5b0958e220a`.
+Correctness success alone does not qualify a benchmark result.
+
 Jobs 159221/159222 used fresh two-hour requests accepted by the authorized
 preemptible QoS. Both were cancelled by scheduler preemption after 20 minutes,
 not by task phase timeouts. The successful phases were preserved. DeepSeek
@@ -54,7 +64,8 @@ claimed by this native-verified selection.
   Their correctness and replay probes remain available.
 - MiniMax sparse prefill uses the observed M8192 record, including its full
   `[4097,11268]` request table, original slot `[4]` with int64 dtype, captured
-  block indices, and original full KV allocations. This needs fresh GPU checks.
+  block indices, and original full KV allocations. Native correctness passed in
+  159315; complete benchmark qualification is still pending.
 - GLM BF16 and FP8 GEMMs retain 27 and 21 mandatory correctness cases, but each
   scores only seven observed M64 cases. The other combinations are unscored
   generalization checks.
