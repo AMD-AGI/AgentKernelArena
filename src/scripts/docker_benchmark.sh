@@ -51,6 +51,7 @@ usage() {
     cat <<'EOF'
 Usage:
   src/scripts/docker_benchmark.sh run [main.py args...]
+  src/scripts/docker_benchmark.sh verify --config_name <head-kernel-config>
   src/scripts/docker_benchmark.sh parallel-run [main.py args...]
   src/scripts/docker_benchmark.sh preflight [--config_name <run-config.yaml>]
   src/scripts/docker_benchmark.sh shell
@@ -1250,7 +1251,7 @@ build_docker_args() {
         add_mount /usr/bin/time /usr/bin/time ro
     fi
 
-    if [[ -e "$HOST_HOME/.gitconfig" ]]; then
+    if [[ "${AKA_AGENT_FREE_VERIFY:-0}" != "1" && -e "$HOST_HOME/.gitconfig" ]]; then
         add_mount "$HOST_HOME/.gitconfig" "$HOST_HOME/.gitconfig" ro
     fi
 
@@ -1765,6 +1766,20 @@ run_parallel() {
 }
 
 case "${1:-}" in
+    verify)
+        shift
+        config_name="$(extract_config_name "$@")"
+        AKA_VERIFY_RUNTIME_IMAGE=1
+        select_runtime_for_config "$config_name"
+        REQUIRED_AGENTS=""
+        AGENTS_STRICT=0
+        AKA_AGENT_FREE_VERIFY=1
+        AKA_SKIP_DEV_MEM=1
+        AKA_TOP5_ISOLATED_CACHES=1
+        AKA_CONTAINER_HOME="/tmp/aka-verify-home-${HOST_UID}-${BASHPID}"
+        AGENT_HOME_ISOLATION=1
+        docker_exec 0 python3 -m src.tools.verify_head_kernels "$@"
+        ;;
     run)
         shift
         config_name="$(extract_config_name "$@")"

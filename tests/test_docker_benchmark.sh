@@ -273,6 +273,23 @@ assert_has "AGENT_KERNEL_ARENA_DOCKER_REPO_DIGESTS=[]" "${args[@]}"
 assert_has "$CAPTURE_IMAGE_ID" "${args[@]}"
 assert_not_has "$CAPTURE_IMAGE" "${args[@]}"
 
+# Direct verification starts one native utility container, without agent CLI,
+# authentication, or host git configuration mounts, even with an agent YAML.
+mapfile -t verify_args < <(
+    HOME="$TEST_HOME" AKA_DOCKER_IMAGE="$CAPTURE_IMAGE" \
+        AKA_EXPECTED_IMAGE_ID="$CAPTURE_IMAGE_ID" FAKE_SELECTED_IMAGE_ID="$CAPTURE_IMAGE_ID" \
+        bash "$RUNNER" verify --config_name example_configs/top5_validator_sglang_v0518_mi355x.yaml 2>/dev/null
+)
+assert_has src.tools.verify_head_kernels "${verify_args[@]}"
+assert_has "$CAPTURE_IMAGE_ID" "${verify_args[@]}"
+assert_not_has main.py "${verify_args[@]}"
+for value in "${verify_args[@]}"; do
+    case "$value" in
+        *:/opt/aka-agent-state/*|*:/opt/codex-node:*|*:/opt/claude-node:*|*:*/.gitconfig:*)
+            fail "direct verification mounted agent state or host configuration: $value" ;;
+    esac
+done
+
 # Top-five cache isolation is opt-in, uses different roots per worker, and
 # creates ordinary user-owned directories without copying the image cache.
 top5_cache_root_from_args() {

@@ -1,6 +1,6 @@
 # Single-task validation of the public default runtime; GPU qualification pending.
 # Local synthetic values cover all 27 GLM BF16 cases; no external tensor fixture.
-# python3 src/scripts/top5_head_kernels.py run --config example_configs/top5_validator_glm_bf16_public_mi355x.yaml
+# python3 src/scripts/top5_head_kernels.py verify --config example_configs/top5_validator_glm_bf16_public_mi355x.yaml
 agent:
   template: task_validator
 tasks:

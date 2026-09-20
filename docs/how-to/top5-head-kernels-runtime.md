@@ -40,6 +40,12 @@ image substitution, or a mixture of the v0.5.17 and v0.5.18 profiles. The origin
 v0.5.17 and Kimi cohorts share the same public runtime and may be combined in a
 custom run config.
 
+Run the native compile, correctness and performance commands without an agent:
+
+```bash
+python3 src/scripts/top5_head_kernels.py verify --config "$CONFIG_PATH"
+```
+
 With the configured validator backend installed and authenticated, run:
 
 ```bash
@@ -60,6 +66,36 @@ resolved ID. No mutable tag can substitute different bytes after inspection.
 The image must already be available locally; the launcher does not pull or
 rebuild it automatically.
 
+## Direct verification without an agent
+
+The `verify` action runs each selected task's declared compile, correctness,
+and performance commands in order through the standard Docker runner. It uses
+the full task case set, configured phase timeouts, and canonical benchmark
+helpers. A failing command, timeout, missing native report, or native report
+whose status is not `ok` makes the command exit nonzero. Later phases of that
+task are skipped. Multiple selected tasks run sequentially; `AKA_VISIBLE_GPU`
+can select one GPU using the runner's existing device visibility convention.
+
+Each invocation creates a unique `workspace_direct_verification_*` directory
+inside the repository. It contains `direct-verification.json`, per-task
+`.direct.json` evidence, copied task workspaces, command stdout/stderr, and
+snapshots of native reports in `direct-native-reports/`. Image/config identity,
+available registry digests, runtime choice, source hashes, symlink targets,
+phase return codes, and timeout status are retained. Internal source aliases
+are preserved and checked before and after copying. Captured tensor fixtures
+are hardlinked when possible, with ordinary copying as a fallback; native task
+checks still verify their captured hashes. Existing source tasks are unchanged.
+
+These are direct execution results: `framework_task_validator` is `NOT_RUN`,
+and no framework `validation_report.yaml`, `task_result.yaml`, or finalized
+`PASS` is created. The compile phase checks Python syntax and fixed ABI;
+correctness and performance supply device execution evidence. The public
+runtime remains unqualified until it successfully completes GPU checks.
+For the separate framework quality review and its PR gate, use the existing
+`run` action with a configured validator backend as described in
+[task validation](task-validator.md).
+
+
 ## Single-task GLM BF16 validation
 
 The [single-task public validator config](../../example_configs/top5_validator_glm_bf16_public_mi355x.yaml)
@@ -70,7 +106,7 @@ checkpoint:
 ```bash
 CONFIG_PATH=example_configs/top5_validator_glm_bf16_public_mi355x.yaml
 python3 src/scripts/top5_head_kernels.py plan --config "$CONFIG_PATH"
-python3 src/scripts/top5_head_kernels.py run --config "$CONFIG_PATH"
+python3 src/scripts/top5_head_kernels.py verify --config "$CONFIG_PATH"
 ```
 
 The former `headkernel_validation_runtime` option is retired. The task's public
