@@ -13,6 +13,14 @@ with the profile-only, conditional, compacted and partial-coverage limits below.
 A passing operator test does not establish the original workload's end-to-end
 throughput, original image identity, or complete invocation distribution.
 
+A subsequent archive/UT check also found incomplete mandatory sequence inputs
+in both DeepSeek MoE tasks. Their five captured benchmark shapes are retained,
+but only 183 of the 256 required sequence calls have corresponding inputs. The
+remaining 73 calls use M1920. The original UT silently skipped them; the current
+tasks explicitly fail input completeness before GPU setup. Neither task can join
+the native-verified subset until those inputs are supplied. See their task-local
+`ut/sequence_coverage_evidence.json` records; no reduced-sequence pass is allowed.
+
 The required structural inputs are committed with the tasks. No external tensor
 archive is required by the normal path. **Fixture-free does not mean capture-complete:**
 large numerical tensors are generated locally, while retained structural controls
@@ -23,8 +31,8 @@ seeded FP8/BF16/MXFP4 values do not establish original model accuracy.
 | Task | Current score eligibility | Retained observations and remaining limits |
 | --- | --- | --- |
 | [deepseek-v4-pro__dsa_sparse_mla_attn](deepseek-v4-pro/isl8192_osl1024_conc64_tp8_mi355x/sglang_v0.5.17-rocm720-mi35x-profilerfix/dsa_sparse_mla_attn/ut/meta.json) | 4 observed cases enabled; 2 derived M1 probes unscored | Captured sparse indices, pool dimensions and padded FP8 strides are retained. The compact-pool fallback is removed. Generated numbers and new runtime timing are not the original numerical sample or end-to-end replay. |
-| [deepseek-v4-pro__moe_stage1_grouped_gemm_silu_flydsl](deepseek-v4-pro/isl8192_osl1024_conc64_tp8_mi355x/sglang_v0.5.17-rocm720-mi35x-profilerfix/moe_stage1_grouped_gemm_silu_flydsl/ut/meta.json) | 5 retained cases enabled | Exact routing, packed layouts and per-case launch kwargs remain bound to the recorded cases. Defined secondary scale/output behavior is checked; unexplained scratch padding is not treated as a meaningful output. |
-| [deepseek-v4-pro__moe_stage2_down_proj_reduce_opus_a8w4](deepseek-v4-pro/isl8192_osl1024_conc64_tp8_mi355x/sglang_v0.5.17-rocm720-mi35x-profilerfix/moe_stage2_down_proj_reduce_opus_a8w4/ut/meta.json) | 5 retained cases enabled | Preserves the whole stage-two GEMM/reduction segment, captured routing, per-case atomic versus route-out choices and caller-output contract. This is a bounded operator case set. |
+| [deepseek-v4-pro__moe_stage1_grouped_gemm_silu_flydsl](deepseek-v4-pro/isl8192_osl1024_conc64_tp8_mi355x/sglang_v0.5.17-rocm720-mi35x-profilerfix/moe_stage1_grouped_gemm_silu_flydsl/ut/meta.json) | 5 retained benchmark cases; qualification blocked by missing sequence inputs | Exact routing, packed layouts and per-case launch kwargs remain bound to the recorded cases. Defined secondary scale/output behavior is checked; unexplained scratch padding is not treated as a meaningful output. |
+| [deepseek-v4-pro__moe_stage2_down_proj_reduce_opus_a8w4](deepseek-v4-pro/isl8192_osl1024_conc64_tp8_mi355x/sglang_v0.5.17-rocm720-mi35x-profilerfix/moe_stage2_down_proj_reduce_opus_a8w4/ut/meta.json) | 5 retained benchmark cases; qualification blocked by missing sequence inputs | Preserves the whole stage-two GEMM/reduction segment, captured routing, per-case atomic versus route-out choices and caller-output contract. This is a bounded operator case set. |
 | [glm-5.3-flash__gemm_a16w16_bf16_cijk](glm-5.3-flash/isl8192_osl1024_conc64_tp8_mi355x/sglang_v0.5.17-rocm720-mi35x-profilerfix/gemm_a16w16_bf16_cijk/ut/meta.json) | 7 observed M64 profile cases enabled; 20 others correctness-only | All 27 shape combinations remain available for correctness, but M1/M8192 priors and unprofiled families are excluded from scoring. Profile support is not a frozen original operand payload. |
 | [glm-5.3-flash__ck_gemm_a8w8_blockscale_bpreshuffle](glm-5.3-flash/isl8192_osl1024_conc64_tp8_mi355x/sglang_v0.5.17-rocm720-mi35x-profilerfix/ck_gemm_a8w8_blockscale_bpreshuffle/ut/meta.json) | 7 observed M64 profile cases enabled; 14 others correctness-only | Preserves FP8 block scaling, preshuffled weights and transpose-contiguous activation scales. The other Cartesian M combinations are generalization cases, not observed performance samples. |
 | [glm-5.3-flash__elementwise_copy_cluster](glm-5.3-flash/isl8192_osl1024_conc64_tp8_mi355x/sglang_v0.5.18-rocm720-mi35x-profilerfix/elementwise_copy_cluster/ut/meta.json) | 8 conditional producer-contract cases enabled | Generated scale inputs model the stated producer layout. The source seed is a prior candidate; raw initialization layouts and producer-condition branches must not be relabeled exact original timed payloads. |

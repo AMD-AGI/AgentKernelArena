@@ -53,9 +53,13 @@ cleanup was confirmed.
   stage 2 has estimated decode control weights. All semantic cases remain.
   Stage 1 additionally requires three individual launches at each of three
   shapes to pass an independent reference; a median cannot hide a bad launch.
-- DeepSeek scores four observed attention cases and five cases per MoE task.
-  Derived M1 attention slices remain mandatory, unscored robustness probes.
-  The checker also validates consumed stage-1 scales and defined LSE values.
+- DeepSeek defines four observed attention benchmark cases and five per MoE task.
+  Both MoE tasks now fail CPU input-completeness checks: their mandatory 256-call
+  sequence lacks 73 M1920 inputs. The original UT skipped those calls; the current
+  task does not. All five known benchmark cases and the complete required sequence
+  remain declared, and both tasks remain unverified. Derived M1 attention slices
+  remain mandatory, unscored robustness probes. Consumed stage-1 scales and
+  defined LSE values retain their numerical checks.
 - Qwen retains partial captured coverage. Two MoE cases do not cover all four
   telemetry shapes, and one compacted paged-attention capture does not cover
   all observed request signatures. The fidelity report bounds each claim.
