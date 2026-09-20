@@ -22,7 +22,7 @@ historical speedups and roofline estimates are not benchmark rewards.
 
 ## Run the native-verified subset
 
-The current native-verified subset contains **5 tasks**.
+The current native-verified subset contains **8 tasks**.
 
 The [native-verified index](native_verified.json) identifies tasks that completed
 all declared native compile/interface, correctness and performance phases on
@@ -37,7 +37,7 @@ The explicit configs select only indexed tasks and keep public runtimes separate
 | Public runtime | Native-verified tasks | Config |
 | --- | --- | --- |
 | SGLang v0.5.17 | 2: `glm-5.3-flash/ck_gemm_a8w8_blockscale_bpreshuffle`; `glm-5.3-flash/gemm_a16w16_bf16_cijk` | [sglang_v0517](../../example_configs/top5_native_verified_sglang_v0517_mi355x.yaml) |
-| SGLang v0.5.18 | 3: `qwen3.8-2.4t-a95b-mxfp4/dense_bf16_gemm_cluster`; `qwen3.8-2.4t-a95b-mxfp4/gemma_fused_add_rmsnorm`; `qwen3.8-2.4t-a95b-mxfp4/paged_attention_decode` | [sglang_v0518](../../example_configs/top5_native_verified_sglang_v0518_mi355x.yaml) |
+| SGLang v0.5.18 | 6: `glm-5.3-flash/elementwise_copy_cluster`; `qwen3.8-2.4t-a95b-mxfp4/dense_bf16_gemm_cluster`; `qwen3.8-2.4t-a95b-mxfp4/fused_moe_2stage_mxfp4`; `qwen3.8-2.4t-a95b-mxfp4/fused_recurrent_gated_delta_rule_decode`; `qwen3.8-2.4t-a95b-mxfp4/gemma_fused_add_rmsnorm`; `qwen3.8-2.4t-a95b-mxfp4/paged_attention_decode` | [sglang_v0518](../../example_configs/top5_native_verified_sglang_v0518_mi355x.yaml) |
 
 From the repository root, run the native checks without an agent:
 

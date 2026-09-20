@@ -166,6 +166,201 @@
       }
     },
     {
+      "task": "head_kernels/glm-5.3-flash/isl8192_osl1024_conc64_tp8_mi355x/sglang_v0.5.18-rocm720-mi35x-profilerfix/elementwise_copy_cluster",
+      "cohort": "sglang_v0518",
+      "native_status": "native_prefix_reused_performance_succeeded",
+      "source_identity": {
+        "schema": "aka-native-materialized-files-v1",
+        "sha256": "ea01d43053dbdd1d74c2f71c84ef8b422a65e392f83b6f4a31170ce5008a1407",
+        "file_count": 38,
+        "materialized_perf_helpers": [
+          "scripts/_aka_benchmark.py"
+        ]
+      },
+      "evidence": {
+        "job_id": "159295",
+        "source_commit": "76998a8fa0b46bfd2a52c45eda9908f26da99497",
+        "archive_sha256": "8502aa60fdf2eb6517b055b4a1fa6c2f74c8a3e636963792ea21dd86be87df1c",
+        "direct_report": {
+          "member": "repo/workspace_direct_verification_jom4hvnc/000-elementwise_copy_cluster.direct.json",
+          "sha256": "e22be9995128e997a2c0f7b39a2ad22b14479dfe71b70471a2c146467d201d7c",
+          "bytes": 12739
+        },
+        "phases": [
+          {
+            "phase": "compile",
+            "status": "native_phase_reused",
+            "native_status": "ok",
+            "executed_in_this_run": false,
+            "executed_here": false,
+            "command_returncodes": [],
+            "timed_out": false,
+            "report": {
+              "member": "repo/workspace_direct_verification_jom4hvnc/000-elementwise_copy_cluster/resume-evidence/repo/workspace_parallel_verification_tRX9cm/worker-000/000-elementwise_copy_cluster/direct-native-reports/compile_report.json",
+              "sha256": "2a8297650de741043a3b017b08df49b0539726a8e6f059e57ab035570d6e12a6",
+              "bytes": 131
+            },
+            "prior_execution": {
+              "job_id": "159222",
+              "source_commit": "113a0900d917c971b9aac6090e08f241cb87741b",
+              "archive_sha256": "f31fcb152982a5fdd419dfb234d256c630f70d04aa3ac8fefddd4e7c88c980d1",
+              "phase": {
+                "commands": [
+                  {
+                    "command": "python3 scripts/generated_task_runner.py compile --timeout 600",
+                    "elapsed_seconds": 0.11395561299286783,
+                    "returncode": 0,
+                    "timed_out": false
+                  }
+                ],
+                "native_report": {
+                  "bytes": 131,
+                  "original_path": "build/compile_report.json",
+                  "path": "direct-native-reports/compile_report.json",
+                  "sha256": "2a8297650de741043a3b017b08df49b0539726a8e6f059e57ab035570d6e12a6"
+                },
+                "native_status": "ok",
+                "phase": "compile",
+                "started_utc": "2026-09-20T18:32:12.403199+00:00",
+                "status": "native_phase_succeeded",
+                "stderr": "compile.stderr",
+                "stdout": "compile.stdout",
+                "timeout_seconds": 600
+              },
+              "report": {
+                "member": "repo/workspace_parallel_verification_tRX9cm/worker-000/000-elementwise_copy_cluster/direct-native-reports/compile_report.json",
+                "sha256": "2a8297650de741043a3b017b08df49b0539726a8e6f059e57ab035570d6e12a6",
+                "bytes": 131
+              }
+            }
+          },
+          {
+            "phase": "correctness",
+            "status": "native_phase_reused",
+            "native_status": "ok",
+            "executed_in_this_run": false,
+            "executed_here": false,
+            "command_returncodes": [],
+            "timed_out": false,
+            "report": {
+              "member": "repo/workspace_direct_verification_jom4hvnc/000-elementwise_copy_cluster/resume-evidence/repo/workspace_parallel_verification_tRX9cm/worker-000/000-elementwise_copy_cluster/direct-native-reports/correctness_report.json",
+              "sha256": "b7f8aff82a9aa431483b87cd2b1096cba4b6df3f747924d9f493b8e497c17006",
+              "bytes": 826
+            },
+            "prior_execution": {
+              "job_id": "159222",
+              "source_commit": "113a0900d917c971b9aac6090e08f241cb87741b",
+              "archive_sha256": "f31fcb152982a5fdd419dfb234d256c630f70d04aa3ac8fefddd4e7c88c980d1",
+              "phase": {
+                "commands": [
+                  {
+                    "command": "python3 scripts/generated_task_runner.py correctness --timeout 3600",
+                    "elapsed_seconds": 744.2723579379963,
+                    "returncode": 0,
+                    "timed_out": false
+                  }
+                ],
+                "native_report": {
+                  "bytes": 826,
+                  "original_path": "build/correctness_report.json",
+                  "path": "direct-native-reports/correctness_report.json",
+                  "sha256": "b7f8aff82a9aa431483b87cd2b1096cba4b6df3f747924d9f493b8e497c17006"
+                },
+                "native_status": "ok",
+                "phase": "correctness",
+                "started_utc": "2026-09-20T18:32:12.545480+00:00",
+                "status": "native_phase_succeeded",
+                "stderr": "correctness.stderr",
+                "stdout": "correctness.stdout",
+                "timeout_seconds": 3600
+              },
+              "report": {
+                "member": "repo/workspace_parallel_verification_tRX9cm/worker-000/000-elementwise_copy_cluster/direct-native-reports/correctness_report.json",
+                "sha256": "b7f8aff82a9aa431483b87cd2b1096cba4b6df3f747924d9f493b8e497c17006",
+                "bytes": 826
+              }
+            }
+          },
+          {
+            "phase": "performance",
+            "status": "native_phase_succeeded",
+            "native_status": "ok",
+            "command_returncodes": [
+              0
+            ],
+            "timed_out": false,
+            "report": {
+              "member": "repo/workspace_direct_verification_jom4hvnc/000-elementwise_copy_cluster/direct-native-reports/performance_report.json",
+              "sha256": "c45212fbb29859e916dba60a50fdb41e085f7a112a3d4f5399c8594b7e90ea24",
+              "bytes": 7182
+            },
+            "case_count": 8,
+            "warmup_iterations": 10,
+            "benchmark_iterations": 100,
+            "executed_here": true,
+            "executed_in_this_run": true
+          }
+        ],
+        "run_spec": {
+          "member": "tools/resume-run-spec.json",
+          "sha256": "548dffdfe0837e978a4518863208f4b0d749926c9fb8f21e2dcec4ebb0dda8c6",
+          "bytes": 2658,
+          "run_index": 0,
+          "config": "example_configs/gpu_resume_performance_000.yaml",
+          "prefix": "resume_inputs/elementwise_copy_cluster/prefix.json",
+          "prefix_sha256": "e345a99a3f9ed8ec44e173034aebbead9b4d8f61c61174f466109de27dcedcec"
+        },
+        "prefix_evidence": {
+          "schema": "aka-native-prefix-resume-v1",
+          "manifest": {
+            "member": "repo/workspace_direct_verification_jom4hvnc/000-elementwise_copy_cluster/resume-evidence/manifest.json",
+            "sha256": "e345a99a3f9ed8ec44e173034aebbead9b4d8f61c61174f466109de27dcedcec",
+            "bytes": 1266
+          },
+          "origin": {
+            "job_id": "159222",
+            "source_commit": "113a0900d917c971b9aac6090e08f241cb87741b",
+            "archive_sha256": "f31fcb152982a5fdd419dfb234d256c630f70d04aa3ac8fefddd4e7c88c980d1"
+          },
+          "snapshots": {
+            "task_report": {
+              "member": "repo/workspace_direct_verification_jom4hvnc/000-elementwise_copy_cluster/resume-evidence/repo/workspace_parallel_verification_tRX9cm/worker-000/000-elementwise_copy_cluster.direct.json",
+              "sha256": "045e65b2553042e37a48dee24b53c4b6bdb8d4cf583c6465bf0e129e45701f94",
+              "bytes": 8240,
+              "origin_member": "repo/workspace_parallel_verification_tRX9cm/worker-000/000-elementwise_copy_cluster.direct.json"
+            },
+            "run_report": {
+              "member": "repo/workspace_direct_verification_jom4hvnc/000-elementwise_copy_cluster/resume-evidence/repo/workspace_parallel_verification_tRX9cm/worker-000/direct-verification.json",
+              "sha256": "beaac2b7c22789ffb4dd44598eeb540d93c23e581d40ce83e235283405546c79",
+              "bytes": 3471,
+              "origin_member": "repo/workspace_parallel_verification_tRX9cm/worker-000/direct-verification.json"
+            },
+            "runtime_report": {
+              "member": "repo/workspace_direct_verification_jom4hvnc/000-elementwise_copy_cluster/resume-evidence/repo/workspace_parallel_verification_tRX9cm/worker-000/000-elementwise_copy_cluster/build/runtime_preflight.json",
+              "sha256": "9462a7f4ef33baed047804b7944c059c9bd63557a3a9f7467d013911beba5a90",
+              "bytes": 2792,
+              "origin_member": "repo/workspace_parallel_verification_tRX9cm/worker-000/000-elementwise_copy_cluster/build/runtime_preflight.json"
+            }
+          },
+          "origin_source": {
+            "source_archive_sha256": "5e2aaa327829af78ce76c5a3d45f60a2365ddc5e871cb89a8aad21c1e2b81e21",
+            "stage_receipt": {
+              "member": "stage-receipt.json",
+              "sha256": "f20f8d7610635f802a20f94749356cfcd26fdeced0662bbdd732d7c59f3f9e97",
+              "bytes": 4223
+            },
+            "source_inventory": {
+              "member": "tools/source-identity.json",
+              "sha256": "370e91d3ea1833aefa3015273ababcf76538190526d4ea4f0fa0f1dc80e3da6d",
+              "bytes": 713521
+            }
+          },
+          "source_identity_sha256": "ea01d43053dbdd1d74c2f71c84ef8b422a65e392f83b6f4a31170ce5008a1407",
+          "performance_reused": false
+        }
+      }
+    },
+    {
       "task": "head_kernels/qwen3.8-2.4t-a95b-mxfp4/isl8192_osl1024_conc64_tp8_mi355x/sglang_v0.5.18-rocm720-mi35x-profilerfix/dense_bf16_gemm_cluster",
       "cohort": "sglang_v0518",
       "native_status": "all_native_phases_succeeded",
@@ -233,6 +428,396 @@
             "benchmark_iterations": 100
           }
         ]
+      }
+    },
+    {
+      "task": "head_kernels/qwen3.8-2.4t-a95b-mxfp4/isl8192_osl1024_conc64_tp8_mi355x/sglang_v0.5.18-rocm720-mi35x-profilerfix/fused_moe_2stage_mxfp4",
+      "cohort": "sglang_v0518",
+      "native_status": "native_prefix_reused_performance_succeeded",
+      "source_identity": {
+        "schema": "aka-native-materialized-files-v1",
+        "sha256": "16261b229410aa565936aac3d42a912f224250ccc2539342b86bf369b702155b",
+        "file_count": 35,
+        "materialized_perf_helpers": [
+          "scripts/_aka_benchmark.py"
+        ]
+      },
+      "evidence": {
+        "job_id": "159295",
+        "source_commit": "76998a8fa0b46bfd2a52c45eda9908f26da99497",
+        "archive_sha256": "8502aa60fdf2eb6517b055b4a1fa6c2f74c8a3e636963792ea21dd86be87df1c",
+        "direct_report": {
+          "member": "repo/workspace_direct_verification_2j3k9rvr/000-fused_moe_2stage_mxfp4.direct.json",
+          "sha256": "c50f688ddb2095fb33e414cd4f12be8123adc85589216f35ca738d552d938067",
+          "bytes": 12301
+        },
+        "phases": [
+          {
+            "phase": "compile",
+            "status": "native_phase_reused",
+            "native_status": "ok",
+            "executed_in_this_run": false,
+            "executed_here": false,
+            "command_returncodes": [],
+            "timed_out": false,
+            "report": {
+              "member": "repo/workspace_direct_verification_2j3k9rvr/000-fused_moe_2stage_mxfp4/resume-evidence/repo/workspace_parallel_verification_tRX9cm/worker-001/000-fused_moe_2stage_mxfp4/direct-native-reports/compile_report.json",
+              "sha256": "677cacb9ce025433dcc833ea95ff1fb3a1b5a62b44a82fd6df7aa96159a4f2a3",
+              "bytes": 122
+            },
+            "prior_execution": {
+              "job_id": "159222",
+              "source_commit": "113a0900d917c971b9aac6090e08f241cb87741b",
+              "archive_sha256": "f31fcb152982a5fdd419dfb234d256c630f70d04aa3ac8fefddd4e7c88c980d1",
+              "phase": {
+                "commands": [
+                  {
+                    "command": "python3 scripts/generated_task_runner.py compile --timeout 600",
+                    "elapsed_seconds": 0.1141888500424102,
+                    "returncode": 0,
+                    "timed_out": false
+                  }
+                ],
+                "native_report": {
+                  "bytes": 122,
+                  "original_path": "build/compile_report.json",
+                  "path": "direct-native-reports/compile_report.json",
+                  "sha256": "677cacb9ce025433dcc833ea95ff1fb3a1b5a62b44a82fd6df7aa96159a4f2a3"
+                },
+                "native_status": "ok",
+                "phase": "compile",
+                "started_utc": "2026-09-20T18:32:12.382301+00:00",
+                "status": "native_phase_succeeded",
+                "stderr": "compile.stderr",
+                "stdout": "compile.stdout",
+                "timeout_seconds": 600
+              },
+              "report": {
+                "member": "repo/workspace_parallel_verification_tRX9cm/worker-001/000-fused_moe_2stage_mxfp4/direct-native-reports/compile_report.json",
+                "sha256": "677cacb9ce025433dcc833ea95ff1fb3a1b5a62b44a82fd6df7aa96159a4f2a3",
+                "bytes": 122
+              }
+            }
+          },
+          {
+            "phase": "correctness",
+            "status": "native_phase_reused",
+            "native_status": "ok",
+            "executed_in_this_run": false,
+            "executed_here": false,
+            "command_returncodes": [],
+            "timed_out": false,
+            "report": {
+              "member": "repo/workspace_direct_verification_2j3k9rvr/000-fused_moe_2stage_mxfp4/resume-evidence/repo/workspace_parallel_verification_tRX9cm/worker-001/000-fused_moe_2stage_mxfp4/direct-native-reports/correctness_report.json",
+              "sha256": "2d2eae40ea7895e0d0f39245b9cbf2151fe4033d605503c5025715e10678dc82",
+              "bytes": 557
+            },
+            "prior_execution": {
+              "job_id": "159222",
+              "source_commit": "113a0900d917c971b9aac6090e08f241cb87741b",
+              "archive_sha256": "f31fcb152982a5fdd419dfb234d256c630f70d04aa3ac8fefddd4e7c88c980d1",
+              "phase": {
+                "commands": [
+                  {
+                    "command": "python3 scripts/generated_task_runner.py correctness --timeout 3600",
+                    "elapsed_seconds": 628.9230852420442,
+                    "returncode": 0,
+                    "timed_out": false
+                  }
+                ],
+                "native_report": {
+                  "bytes": 557,
+                  "original_path": "build/correctness_report.json",
+                  "path": "direct-native-reports/correctness_report.json",
+                  "sha256": "2d2eae40ea7895e0d0f39245b9cbf2151fe4033d605503c5025715e10678dc82"
+                },
+                "native_status": "ok",
+                "phase": "correctness",
+                "started_utc": "2026-09-20T18:32:12.529498+00:00",
+                "status": "native_phase_succeeded",
+                "stderr": "correctness.stderr",
+                "stdout": "correctness.stdout",
+                "timeout_seconds": 3600
+              },
+              "report": {
+                "member": "repo/workspace_parallel_verification_tRX9cm/worker-001/000-fused_moe_2stage_mxfp4/direct-native-reports/correctness_report.json",
+                "sha256": "2d2eae40ea7895e0d0f39245b9cbf2151fe4033d605503c5025715e10678dc82",
+                "bytes": 557
+              }
+            }
+          },
+          {
+            "phase": "performance",
+            "status": "native_phase_succeeded",
+            "native_status": "ok",
+            "command_returncodes": [
+              0
+            ],
+            "timed_out": false,
+            "report": {
+              "member": "repo/workspace_direct_verification_2j3k9rvr/000-fused_moe_2stage_mxfp4/direct-native-reports/performance_report.json",
+              "sha256": "88c5501107ddb65e6faaa7dbf2208ef3e072a65c8da48ef15b4ee3f7e9289158",
+              "bytes": 1845
+            },
+            "case_count": 2,
+            "warmup_iterations": 10,
+            "benchmark_iterations": 100,
+            "executed_here": true,
+            "executed_in_this_run": true
+          }
+        ],
+        "run_spec": {
+          "member": "tools/resume-run-spec.json",
+          "sha256": "548dffdfe0837e978a4518863208f4b0d749926c9fb8f21e2dcec4ebb0dda8c6",
+          "bytes": 2658,
+          "run_index": 1,
+          "config": "example_configs/gpu_resume_performance_001.yaml",
+          "prefix": "resume_inputs/fused_moe_2stage_mxfp4/prefix.json",
+          "prefix_sha256": "86e17f9805a2d161a574e4a89d59113fbc2c997075e219401de0cf804e794c06"
+        },
+        "prefix_evidence": {
+          "schema": "aka-native-prefix-resume-v1",
+          "manifest": {
+            "member": "repo/workspace_direct_verification_2j3k9rvr/000-fused_moe_2stage_mxfp4/resume-evidence/manifest.json",
+            "sha256": "86e17f9805a2d161a574e4a89d59113fbc2c997075e219401de0cf804e794c06",
+            "bytes": 1268
+          },
+          "origin": {
+            "job_id": "159222",
+            "source_commit": "113a0900d917c971b9aac6090e08f241cb87741b",
+            "archive_sha256": "f31fcb152982a5fdd419dfb234d256c630f70d04aa3ac8fefddd4e7c88c980d1"
+          },
+          "snapshots": {
+            "task_report": {
+              "member": "repo/workspace_direct_verification_2j3k9rvr/000-fused_moe_2stage_mxfp4/resume-evidence/repo/workspace_parallel_verification_tRX9cm/worker-001/000-fused_moe_2stage_mxfp4.direct.json",
+              "sha256": "5c25ee13459cb32e3e63bb20fc56f94cf2f38714f397a1c82eb14173eebd94c8",
+              "bytes": 7798,
+              "origin_member": "repo/workspace_parallel_verification_tRX9cm/worker-001/000-fused_moe_2stage_mxfp4.direct.json"
+            },
+            "run_report": {
+              "member": "repo/workspace_direct_verification_2j3k9rvr/000-fused_moe_2stage_mxfp4/resume-evidence/repo/workspace_parallel_verification_tRX9cm/worker-001/direct-verification.json",
+              "sha256": "4fad7eb152f858360c3cdc128937785860d899f79210f849d577ecef78403f67",
+              "bytes": 3479,
+              "origin_member": "repo/workspace_parallel_verification_tRX9cm/worker-001/direct-verification.json"
+            },
+            "runtime_report": {
+              "member": "repo/workspace_direct_verification_2j3k9rvr/000-fused_moe_2stage_mxfp4/resume-evidence/repo/workspace_parallel_verification_tRX9cm/worker-001/000-fused_moe_2stage_mxfp4/build/runtime_preflight.json",
+              "sha256": "a27d18100ad8b861b6f9ab1b4aef431dd7e59e55c84189d431664d43f6898eb5",
+              "bytes": 2743,
+              "origin_member": "repo/workspace_parallel_verification_tRX9cm/worker-001/000-fused_moe_2stage_mxfp4/build/runtime_preflight.json"
+            }
+          },
+          "origin_source": {
+            "source_archive_sha256": "5e2aaa327829af78ce76c5a3d45f60a2365ddc5e871cb89a8aad21c1e2b81e21",
+            "stage_receipt": {
+              "member": "stage-receipt.json",
+              "sha256": "f20f8d7610635f802a20f94749356cfcd26fdeced0662bbdd732d7c59f3f9e97",
+              "bytes": 4223
+            },
+            "source_inventory": {
+              "member": "tools/source-identity.json",
+              "sha256": "370e91d3ea1833aefa3015273ababcf76538190526d4ea4f0fa0f1dc80e3da6d",
+              "bytes": 713521
+            }
+          },
+          "source_identity_sha256": "16261b229410aa565936aac3d42a912f224250ccc2539342b86bf369b702155b",
+          "performance_reused": false
+        }
+      }
+    },
+    {
+      "task": "head_kernels/qwen3.8-2.4t-a95b-mxfp4/isl8192_osl1024_conc64_tp8_mi355x/sglang_v0.5.18-rocm720-mi35x-profilerfix/fused_recurrent_gated_delta_rule_decode",
+      "cohort": "sglang_v0518",
+      "native_status": "native_prefix_reused_performance_succeeded",
+      "source_identity": {
+        "schema": "aka-native-materialized-files-v1",
+        "sha256": "d40004fbe5c5a66907fd2e295584967422172933dbee2f65ca01b40265e065e5",
+        "file_count": 36,
+        "materialized_perf_helpers": [
+          "scripts/_aka_benchmark.py"
+        ]
+      },
+      "evidence": {
+        "job_id": "159295",
+        "source_commit": "76998a8fa0b46bfd2a52c45eda9908f26da99497",
+        "archive_sha256": "8502aa60fdf2eb6517b055b4a1fa6c2f74c8a3e636963792ea21dd86be87df1c",
+        "direct_report": {
+          "member": "repo/workspace_direct_verification_8t2lx3z0/000-fused_recurrent_gated_delta_rule_decode.direct.json",
+          "sha256": "2a604e2b037d5ac65af92e1576402e6e385f889c6e2f9800fce0efd2723b0d7b",
+          "bytes": 12556
+        },
+        "phases": [
+          {
+            "phase": "compile",
+            "status": "native_phase_reused",
+            "native_status": "ok",
+            "executed_in_this_run": false,
+            "executed_here": false,
+            "command_returncodes": [],
+            "timed_out": false,
+            "report": {
+              "member": "repo/workspace_direct_verification_8t2lx3z0/000-fused_recurrent_gated_delta_rule_decode/resume-evidence/repo/workspace_parallel_verification_tRX9cm/worker-002/000-fused_recurrent_gated_delta_rule_decode/direct-native-reports/compile_report.json",
+              "sha256": "2a680aa6864682666756503d557d7efed1f0273e7767c50c2e3976ae269c157a",
+              "bytes": 124
+            },
+            "prior_execution": {
+              "job_id": "159222",
+              "source_commit": "113a0900d917c971b9aac6090e08f241cb87741b",
+              "archive_sha256": "f31fcb152982a5fdd419dfb234d256c630f70d04aa3ac8fefddd4e7c88c980d1",
+              "phase": {
+                "commands": [
+                  {
+                    "command": "python3 scripts/generated_task_runner.py compile --timeout 600",
+                    "elapsed_seconds": 0.11404052097350359,
+                    "returncode": 0,
+                    "timed_out": false
+                  }
+                ],
+                "native_report": {
+                  "bytes": 124,
+                  "original_path": "build/compile_report.json",
+                  "path": "direct-native-reports/compile_report.json",
+                  "sha256": "2a680aa6864682666756503d557d7efed1f0273e7767c50c2e3976ae269c157a"
+                },
+                "native_status": "ok",
+                "phase": "compile",
+                "started_utc": "2026-09-20T18:32:12.389804+00:00",
+                "status": "native_phase_succeeded",
+                "stderr": "compile.stderr",
+                "stdout": "compile.stdout",
+                "timeout_seconds": 600
+              },
+              "report": {
+                "member": "repo/workspace_parallel_verification_tRX9cm/worker-002/000-fused_recurrent_gated_delta_rule_decode/direct-native-reports/compile_report.json",
+                "sha256": "2a680aa6864682666756503d557d7efed1f0273e7767c50c2e3976ae269c157a",
+                "bytes": 124
+              }
+            }
+          },
+          {
+            "phase": "correctness",
+            "status": "native_phase_reused",
+            "native_status": "ok",
+            "executed_in_this_run": false,
+            "executed_here": false,
+            "command_returncodes": [],
+            "timed_out": false,
+            "report": {
+              "member": "repo/workspace_direct_verification_8t2lx3z0/000-fused_recurrent_gated_delta_rule_decode/resume-evidence/repo/workspace_parallel_verification_tRX9cm/worker-002/000-fused_recurrent_gated_delta_rule_decode/direct-native-reports/correctness_report.json",
+              "sha256": "a55e992fe7c3b9be25cacd05780e0554533c6636a67f5b366da40cda22bd4019",
+              "bytes": 659
+            },
+            "prior_execution": {
+              "job_id": "159222",
+              "source_commit": "113a0900d917c971b9aac6090e08f241cb87741b",
+              "archive_sha256": "f31fcb152982a5fdd419dfb234d256c630f70d04aa3ac8fefddd4e7c88c980d1",
+              "phase": {
+                "commands": [
+                  {
+                    "command": "python3 scripts/generated_task_runner.py correctness --timeout 3600",
+                    "elapsed_seconds": 502.91168507991824,
+                    "returncode": 0,
+                    "timed_out": false
+                  }
+                ],
+                "native_report": {
+                  "bytes": 659,
+                  "original_path": "build/correctness_report.json",
+                  "path": "direct-native-reports/correctness_report.json",
+                  "sha256": "a55e992fe7c3b9be25cacd05780e0554533c6636a67f5b366da40cda22bd4019"
+                },
+                "native_status": "ok",
+                "phase": "correctness",
+                "started_utc": "2026-09-20T18:32:12.532723+00:00",
+                "status": "native_phase_succeeded",
+                "stderr": "correctness.stderr",
+                "stdout": "correctness.stdout",
+                "timeout_seconds": 3600
+              },
+              "report": {
+                "member": "repo/workspace_parallel_verification_tRX9cm/worker-002/000-fused_recurrent_gated_delta_rule_decode/direct-native-reports/correctness_report.json",
+                "sha256": "a55e992fe7c3b9be25cacd05780e0554533c6636a67f5b366da40cda22bd4019",
+                "bytes": 659
+              }
+            }
+          },
+          {
+            "phase": "performance",
+            "status": "native_phase_succeeded",
+            "native_status": "ok",
+            "command_returncodes": [
+              0
+            ],
+            "timed_out": false,
+            "report": {
+              "member": "repo/workspace_direct_verification_8t2lx3z0/000-fused_recurrent_gated_delta_rule_decode/direct-native-reports/performance_report.json",
+              "sha256": "0a65dde897b3ccc56873d53c35dff8533c45f41e2402d1210d3cb03886280381",
+              "bytes": 1837
+            },
+            "case_count": 2,
+            "warmup_iterations": 10,
+            "benchmark_iterations": 100,
+            "executed_here": true,
+            "executed_in_this_run": true
+          }
+        ],
+        "run_spec": {
+          "member": "tools/resume-run-spec.json",
+          "sha256": "548dffdfe0837e978a4518863208f4b0d749926c9fb8f21e2dcec4ebb0dda8c6",
+          "bytes": 2658,
+          "run_index": 2,
+          "config": "example_configs/gpu_resume_performance_002.yaml",
+          "prefix": "resume_inputs/fused_recurrent_gated_delta_rule_decode/prefix.json",
+          "prefix_sha256": "aa3a21f528a69a75c0fb2402ee286a612b68435cd3574cfff80c895ca8cc0a04"
+        },
+        "prefix_evidence": {
+          "schema": "aka-native-prefix-resume-v1",
+          "manifest": {
+            "member": "repo/workspace_direct_verification_8t2lx3z0/000-fused_recurrent_gated_delta_rule_decode/resume-evidence/manifest.json",
+            "sha256": "aa3a21f528a69a75c0fb2402ee286a612b68435cd3574cfff80c895ca8cc0a04",
+            "bytes": 1336
+          },
+          "origin": {
+            "job_id": "159222",
+            "source_commit": "113a0900d917c971b9aac6090e08f241cb87741b",
+            "archive_sha256": "f31fcb152982a5fdd419dfb234d256c630f70d04aa3ac8fefddd4e7c88c980d1"
+          },
+          "snapshots": {
+            "task_report": {
+              "member": "repo/workspace_direct_verification_8t2lx3z0/000-fused_recurrent_gated_delta_rule_decode/resume-evidence/repo/workspace_parallel_verification_tRX9cm/worker-002/000-fused_recurrent_gated_delta_rule_decode.direct.json",
+              "sha256": "19343ab5cb34411c184b4c6be06281c5378d54f88a7146430ee675012e468b00",
+              "bytes": 8002,
+              "origin_member": "repo/workspace_parallel_verification_tRX9cm/worker-002/000-fused_recurrent_gated_delta_rule_decode.direct.json"
+            },
+            "run_report": {
+              "member": "repo/workspace_direct_verification_8t2lx3z0/000-fused_recurrent_gated_delta_rule_decode/resume-evidence/repo/workspace_parallel_verification_tRX9cm/worker-002/direct-verification.json",
+              "sha256": "1622b4087c66d365373f03ed2fd5fdeab52c0aeb00232796586ba9511e514355",
+              "bytes": 3496,
+              "origin_member": "repo/workspace_parallel_verification_tRX9cm/worker-002/direct-verification.json"
+            },
+            "runtime_report": {
+              "member": "repo/workspace_direct_verification_8t2lx3z0/000-fused_recurrent_gated_delta_rule_decode/resume-evidence/repo/workspace_parallel_verification_tRX9cm/worker-002/000-fused_recurrent_gated_delta_rule_decode/build/runtime_preflight.json",
+              "sha256": "7d8524dd5d751e2da9df983a7c48c941d80c58d2a734afe21aa0fef834c1dc91",
+              "bytes": 2877,
+              "origin_member": "repo/workspace_parallel_verification_tRX9cm/worker-002/000-fused_recurrent_gated_delta_rule_decode/build/runtime_preflight.json"
+            }
+          },
+          "origin_source": {
+            "source_archive_sha256": "5e2aaa327829af78ce76c5a3d45f60a2365ddc5e871cb89a8aad21c1e2b81e21",
+            "stage_receipt": {
+              "member": "stage-receipt.json",
+              "sha256": "f20f8d7610635f802a20f94749356cfcd26fdeced0662bbdd732d7c59f3f9e97",
+              "bytes": 4223
+            },
+            "source_inventory": {
+              "member": "tools/source-identity.json",
+              "sha256": "370e91d3ea1833aefa3015273ababcf76538190526d4ea4f0fa0f1dc80e3da6d",
+              "bytes": 713521
+            }
+          },
+          "source_identity_sha256": "d40004fbe5c5a66907fd2e295584967422172933dbee2f65ca01b40265e065e5",
+          "performance_reused": false
+        }
       }
     },
     {

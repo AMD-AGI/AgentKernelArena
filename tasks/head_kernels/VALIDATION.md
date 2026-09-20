@@ -13,25 +13,39 @@ The [workload fidelity report](WORKLOAD_FIDELITY.md) records those distinctions.
 
 ## Latest verified selection
 
-The [native-verified index](native_verified.json) now contains **five tasks**:
-both GLM GEMMs, Qwen dense GEMM, Qwen RMSNorm, and Qwen paged attention.
+The [native-verified index](native_verified.json) now contains **eight tasks**:
+three GLM tasks (BF16 GEMM, FP8 GEMM, elementwise copy) and all five implemented
+Qwen tasks (dense GEMM, fused MoE, recurrent gated delta, RMSNorm, paged attention).
+The explicit native-verified configs select only those entries.
+
 Qwen paged attention completed all three native phases in job **159222** at
 source `113a0900`, including its one declared `decode_m64_live` benchmark case,
 10 warmups, 100 samples, input restoration and exact timed graph replay checks.
-Its 35 materialized task-file identities match the current source. The verified
-archive hash is `f31fcb152982a5fdd419dfb234d256c630f70d04aa3ac8fefddd4e7c88c980d1`.
 This qualifies the archived compacted case; it does not recover the original
 full-pool addressing or the other uncaptured serving signatures.
 
+GLM copy, Qwen MoE and Qwen recurrent state completed fresh performance in job
+**159295** at source `76998a8f`, with **8, 2 and 2 benchmark cases** respectively.
+Their already completed compile/correctness phases from **159222** were reused
+only after their source, commands, native reports and runtime identities matched
+exactly. Each unchanged performance command also reran its full internal
+correctness checks. The reports label the reused phases explicitly; they are not
+presented as commands executed again in 159295. All samples and warmups remain
+at 100 and 10. The new archive hash is
+`8502aa60fdf2eb6517b055b4a1fa6c2f74c8a3e636963792ea21dd86be87df1c`;
+the independently checked prefix archive hash is
+`f31fcb152982a5fdd419dfb234d256c630f70d04aa3ac8fefddd4e7c88c980d1`.
+All eight indexed materialized task identities match the current source.
+
 Jobs 159221/159222 used fresh two-hour requests accepted by the authorized
 preemptible QoS. Both were cancelled by scheduler preemption after 20 minutes,
-not by the task phase timeouts. GLM copy, Qwen MoE and Qwen recurrent state passed
-correctness but did not finish performance; they remain outside the index.
-DeepSeek sparse attention and MiniMax sparse prefill did not complete correctness.
-The two DeepSeek MoE workers were stopped separately after verification showed
-that 73 required M1920 sequence calls have no captured inputs. These are not
-promoted by skipping the missing calls. All jobs are terminal and owned-container
-cleanup was confirmed.
+not by task phase timeouts. The successful phases were preserved. DeepSeek
+sparse attention and MiniMax sparse prefill had not completed correctness;
+their further full-check attempt is separate from the verified index. The two
+DeepSeek MoE workers were stopped after verification showed that 73 mandatory
+M1920 sequence calls have no captured inputs. Neither is promoted by skipping
+those calls. No framework task-validator PASS or exact serving equivalence is
+claimed by this native-verified selection.
 
 ## Current acceptance restrictions
 
