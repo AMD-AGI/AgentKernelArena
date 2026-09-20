@@ -64,9 +64,13 @@ untuned stock implementation.
 ## Prepare the exact inputs
 
 The suite uses captured shapes, dtypes, physical strides, tensor attributes,
-and reference contracts. Persistent tensor oracles are too large to commit.
-They must be provisioned explicitly and verified before a task is copied into
-an evaluation workspace:
+and reference contracts. **This revision is not yet fully fixture-free:** four
+tasks generate inputs and references from code, while 14 tasks require captured
+input/output fixtures totaling 33.14 GB across the whole suite. These files are
+test data, not model checkpoints. They must be provisioned explicitly and
+verified before a dependent task is copied into an evaluation workspace; use
+`--task` to install only the selected tasks' files. See
+[why this revision needs captures](../../docs/how-to/prepare-head-kernel-artifacts.md#why-this-revision-needs-captured-tensors).
 
 ```bash
 python3 src/tools/prepare_head_kernel_artifacts.py --list

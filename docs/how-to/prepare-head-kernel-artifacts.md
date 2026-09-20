@@ -16,9 +16,10 @@ contains 17 fixtures totaling **33,139,788,731 bytes** (about 30.86 GiB):
 | MiniMax `ut/timing_geometry.pt` | 3 | 1,634,639 |
 
 Every required persistent fixture has a declared SHA-256 in its task's
-`ut/meta.json`. Sizes come from the captured source inventory. Fixture bodies
-were not fetched or rehashed during this import; the preparation utility checks
-the supplied bytes against both declarations when installing them. All three
+`ut/meta.json`. Sizes come from the captured source inventory. All 17 bodies
+were subsequently copied into an owned mirror and fully SHA-256 verified on
+2026-09-20. The preparation utility also checks the supplied bytes against both
+declarations when installing them. All three
 MiniMax timing geometry files exist in the captured inventory. Earlier source
 summaries that reported those files as missing are superseded by that inventory.
 
@@ -33,7 +34,59 @@ also lists one 41,953-byte MiniMax `_baseline_random.pt` with no declared hash:
 18 tensor files totaling 33,139,830,684 bytes when that generated cache is
 included. The manifest records it explicitly as excluded.
 
+## Why this revision needs captured tensors
+
+The 33.14 GB is serialized test input and reference-output data, not a model
+checkpoint or an additional runtime dependency. Four tasks already generate
+their inputs and reference outputs from code; the other 14 currently replay
+the imported capture package's `reference_io.pt` files. MiniMax's three input
+and output captures account for approximately 21.03 GB of the total. Its three
+separate timing-geometry files together require only 1.63 MB.
+
+Large captures are not inherently required for kernel correctness. A portable
+task can generate valid tensors at its declared shapes, dtypes, strides and
+layouts, then compare the candidate against an independent mathematical
+reference or a protected original implementation. That is the approach used
+by the older `head_kernels` tasks and the four fixture-free tasks here.
+
+Converting the remaining tasks requires more than randomizing each tensor by
+shape: sparse indices, ragged lengths, expert routing and padding, packed
+quantization scales, dispatch attributes and mutable state must remain valid
+and representative. Any generated-input contract must be checked against the
+captured runtime before claiming equivalent workload coverage. This revision
+does not yet implement that conversion. The captured files are still required
+for its 14 capture-dependent tasks; missing files must not silently select a
+different workload or skip correctness checks.
+
+The captures provide replay evidence, not protection against benchmark
+tampering. Input generation, reference computation, timing and comparison must
+remain evaluator-controlled in either design.
+
 ## Select a local source
+
+For the branch owner's runs on Crusoe, the fully verified mirror is available
+at this shared-NFS location:
+
+```text
+/shared_nfs/sapmajum/aka-top5-artifacts-20260920-2824de3e65244ec68722b0915cb72b0b/tasks/head_kernels
+```
+
+Access was checked on `crsuse2-slog-003` on 2026-09-20 as `sapmajum`
+(UID 50090896): all 17 files opened read-only and matched their declared sizes.
+The namespace is private to that UID. Another node must mount the same NFS and
+run as that user to access this mirror. This is an existing local source, not
+a public download service; no OCI, HTTP or S3 endpoint has been published.
+
+From a checkout on a node with that access, provision the required files with:
+
+```bash
+python3 src/tools/prepare_head_kernel_artifacts.py \
+  --mirror /shared_nfs/sapmajum/aka-top5-artifacts-20260920-2824de3e65244ec68722b0915cb72b0b/tasks/head_kernels
+```
+
+Add the repeated `--task` selections described below to avoid copying fixtures
+for unselected tasks. Other users need their own authorized mirror or cache;
+the tool cannot fetch missing payloads from GitHub.
 
 A mirror preserves the original flat operation IDs, independently of the
 suite's model/workload/image/kernel directories:

@@ -6,7 +6,7 @@
     "inventory_observed_utc": "2026-09-20",
     "size_source": "OMITTED-TENSOR-FIXTURES.json, captured from the source package inventory",
     "sha256_source": "Each task ut/meta.json; cross-checked against OMITTED-TENSOR-FIXTURES.json",
-    "fixture_body_verification": "Bodies were not retrieved or rehashed during import. The provisioner verifies every supplied body before installation.",
+    "fixture_body_verification": "All 17 bodies were independently copied and fully SHA-256 verified on 2026-09-20; the provisioner verifies every supplied body before installation.",
     "timing_geometry_status": "All three MiniMax timing_geometry.pt files are present in the captured inventory and have declared SHA-256 hashes."
   },
   "artifact_count": 17,
