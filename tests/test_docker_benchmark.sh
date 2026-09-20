@@ -330,10 +330,25 @@ cache_root_0="$(top5_cache_root_from_args "${cache_args[@]}")"
 [[ "$cache_root_0" == /tmp/aka-top5-cache-*worker_0 ]] || fail "unexpected top-five cache root"
 assert_has "AITER_JIT_DIR=$cache_root_0/aiter-jit" "${cache_args[@]}"
 assert_has "FLYDSL_RUNTIME_CACHE_DIR=$cache_root_0/flydsl" "${cache_args[@]}"
+assert_has "/tmp/aiter_configs:rw,uid=$(id -u),gid=$(id -g),mode=1777" "${cache_args[@]}"
+for value in "${cache_args[@]}"; do
+    case "$value" in
+        AITER_CONFIG_*=*) fail "top-five scratch isolation changed a native tuning selector: $value" ;;
+    esac
+done
 mapfile -t cache_args < <(run_shell_args AKA_GPU_ARCH=gfx950 AKA_DOCKER_IMAGE="$CAPTURE_IMAGE" \
     AKA_TOP5_ISOLATED_CACHES=1 AKA_CACHE_SUFFIX=worker_1)
 cache_root_1="$(top5_cache_root_from_args "${cache_args[@]}")"
 [[ "$cache_root_0" != "$cache_root_1" ]] || fail "top-five workers share runtime caches"
+# Combining the old runtime defaults with the top-five opt-in must not add
+# duplicate mounts at the same target, which Docker rejects before launch.
+mapfile -t combined_cache_args < <(run_shell_args AKA_GPU_ARCH=gfx950 \
+    AKA_DOCKER_IMAGE="$PINNED_GFX950_IMAGE" AKA_TOP5_ISOLATED_CACHES=1)
+scratch_mount_count=0
+for value in "${combined_cache_args[@]}"; do
+    [[ "$value" != /tmp/aiter_configs:* ]] || scratch_mount_count=$((scratch_mount_count + 1))
+done
+[[ "$scratch_mount_count" -eq 1 ]] || fail "runtime added duplicate AITER config scratch mounts"
 fixture_cache_root="$TEST_HOME/top5-runtime-cache"
 AGENT_KERNEL_ARENA_RUNTIME_CACHE_ROOT="$fixture_cache_root" \
     AITER_JIT_DIR="$fixture_cache_root/aiter-jit" \

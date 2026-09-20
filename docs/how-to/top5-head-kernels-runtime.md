@@ -151,6 +151,22 @@ ordinary user-owned temporary directories through `AITER_JIT_DIR` and
 Installed caches and their permissions are untouched. First use may require
 cold JIT compilation.
 
+The same opt-in provides a separate container-owned tmpfs at
+`/tmp/aiter_configs`, with the ordinary container user's UID/GID. AITER's native
+configuration merger reads its default CSV and model-specific CSV inputs, then
+writes the merged output and its lock at this hard-coded path. A fresh writable
+output mount preserves that selection and merge behavior; the runner does not
+set `AITER_CONFIG_*` tuning selectors or modify host/image permissions. This
+also preserves the existing v0.5.14 runtime scratch behavior without duplicate
+mounts when both settings apply.
+
+Public v0.5.17 attempt 158739 verified the manifest/config identity chain and
+built AITER's core JIT extension, then stopped before any correctness case on
+`bf16_tuned_gemm.csv.lock` permissions. The tmpfs addresses that scratch-output
+failure. That attempt observed Torch `2.9.1+rocm7.2.0.git7e1940d4`, HIP
+`7.2.26015-fc0010cf6a`, Triton `3.6.0`, and SGLang `0.5.17`; it did not establish
+kernel correctness or benchmark qualification.
+
 The v0.5.18 capture attempt in job 158486 confirmed that AITER's fallback tried
 to copy an inaccessible installed FlyDSL cache into the isolated home. At the
 public images' AITER revision `d9e5ef7ce08ee7045d583aed768cff41aa9210fe`,

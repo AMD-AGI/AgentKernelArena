@@ -1072,7 +1072,6 @@ build_docker_args() {
         docker_args+=(
             -e "AITER_JIT_DIR=/tmp/aiter-jit${cache_postfix}"
             -e "FLYDSL_RUNTIME_CACHE_DIR=/tmp/flydsl-runtime-cache${cache_postfix}"
-            --tmpfs "/tmp/aiter_configs:rw,uid=${HOST_UID},gid=${HOST_GID},mode=1777"
         )
     fi
 
@@ -1092,6 +1091,14 @@ build_docker_args() {
             -e "AITER_JIT_DIR=${top5_cache_root}/aiter-jit"
             -e "FLYDSL_RUNTIME_CACHE_DIR=${top5_cache_root}/flydsl"
         )
+    fi
+
+    # AITER merges its unchanged default/model CSV inputs into this hard-coded
+    # scratch directory and locks the generated file here. The image directory
+    # may be root-owned; give each container its own writable output mount.
+    # Do not override AITER_CONFIG_* selectors or touch host/image permissions.
+    if uses_gfx950_v0514_runtime || [[ "${AKA_TOP5_ISOLATED_CACHES:-0}" == "1" ]]; then
+        docker_args+=(--tmpfs "/tmp/aiter_configs:rw,uid=${HOST_UID},gid=${HOST_GID},mode=1777")
     fi
 
     if [[ -n "${AKA_VISIBLE_GPU:-}" ]]; then
