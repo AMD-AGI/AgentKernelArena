@@ -48,6 +48,8 @@ task can generate valid tensors at its declared shapes, dtypes, strides and
 layouts, then compare the candidate against an independent mathematical
 reference or a protected original implementation. That is the approach used
 by the older `head_kernels` tasks and the four fixture-free tasks here.
+The [older suite's correctness review](../reference/legacy-head-kernel-correctness.md)
+links concrete generators, references and benchmark limitations.
 
 Converting the remaining tasks requires more than randomizing each tensor by
 shape: sparse indices, ragged lengths, expert routing and padding, packed
