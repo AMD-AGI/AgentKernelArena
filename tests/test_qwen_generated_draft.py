@@ -528,6 +528,12 @@ def test_generated_source_abi_timing_and_rmsnorm_contract_are_unchanged():
                 if relative == "config.yaml":
                     current_config = yaml.safe_load(path.read_text())
                     original_config = yaml.safe_load(original)
+                    assert current_config["headkernel"].pop("trusted_worker_modules") == {
+                        "fused_add_rmsnorm_cases": "ut/cases.py",
+                        "_headkernel_cases": "ut/cases.py",
+                        "_legacy_correctness": "ut/unittest.py",
+                        "_bench": "scripts/_bench.py",
+                    }
                     for record in (current_config, original_config):
                         for key in ("docker", "runtime", "capture_runtime"):
                             record["headkernel"].pop(key, None)
