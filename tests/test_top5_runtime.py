@@ -105,6 +105,7 @@ class CohortTests(unittest.TestCase):
         self.assertEqual(command[-2:], ["--run-suffix", "fixture"])
         self.assertEqual(kwargs["env"]["AKA_DOCKER_IMAGE"], launcher.plan_run(config)["image"])
         self.assertEqual(kwargs["env"]["AKA_VERIFY_RUNTIME_IMAGE"], "1")
+        self.assertEqual(kwargs["env"]["AKA_TOP5_ISOLATED_CACHES"], "1")
         self.assertEqual(kwargs["env"]["TVM_FFI_DISABLE_TORCH_C_DLPACK"], "1")
         self.assertEqual(kwargs["env"]["AKA_EXPECTED_IMAGE_ID"],
                          "sha256:760dd38b9b6f2bd11c13011d470eb8e377c3f0d71284a090a710d64a23bd789f")
@@ -155,6 +156,11 @@ class CohortTests(unittest.TestCase):
         self.assertEqual(requirements["source_commits"]["aiter"],
                          "d9e5ef7ce08ee7045d583aed768cff41aa9210fe")
 
+    def test_every_cohort_enables_separate_runtime_caches(self):
+        for config in (ROOT / "example_configs").glob("top5_validator_*_mi355x.yaml"):
+            environment = launcher.runtime_environment(launcher.plan_run(config), {})
+            self.assertEqual(environment["AKA_TOP5_ISOLATED_CACHES"], "1")
+
 
 class RuntimeTests(unittest.TestCase):
     def setUp(self):
@@ -175,6 +181,8 @@ class RuntimeTests(unittest.TestCase):
             "AGENT_KERNEL_ARENA_DOCKER": "1", "AGENT_KERNEL_ARENA_DOCKER_IMAGE": image,
             "AGENT_KERNEL_ARENA_DOCKER_IMAGE_ID": "sha256:" + "a" * 64,
             "TVM_FFI_DISABLE_TORCH_C_DLPACK": "1",
+            "AITER_JIT_DIR": str(self.task_dir / "aiter-jit"),
+            "FLYDSL_RUNTIME_CACHE_DIR": str(self.task_dir / "flydsl"),
             "AGENT_KERNEL_ARENA_DOCKER_REPO_DIGESTS": "[]"}))
         self.enterContext(mock.patch.object(runtime.importlib, "import_module", side_effect=lambda name: self.modules[name]))
 
@@ -194,6 +202,8 @@ class RuntimeTests(unittest.TestCase):
         self.assertEqual(report["versions"]["hip"], "7.2.26015")
         self.assertEqual(report["selected_image_id"], "sha256:" + "a" * 64)
         self.assertEqual(report["registry_repo_digests"], [])
+        self.assertEqual(report["environment"]["AITER_JIT_DIR"], str(self.task_dir / "aiter-jit"))
+        self.assertEqual(report["environment"]["FLYDSL_RUNTIME_CACHE_DIR"], str(self.task_dir / "flydsl"))
 
     def test_preflight_image_mismatch_precedes_imports(self):
         with mock.patch.dict(os.environ, {"AGENT_KERNEL_ARENA_DOCKER_IMAGE": "default:v0.5.14"}), \
@@ -240,6 +250,12 @@ class RuntimeTests(unittest.TestCase):
     def test_v0518_requires_documented_tvm_ffi_workaround(self):
         with mock.patch.dict(os.environ, {"TVM_FFI_DISABLE_TORCH_C_DLPACK": "0"}):
             self.assert_runtime_rejected("TVM_FFI_DISABLE_TORCH_C_DLPACK=1")
+
+    def test_preflight_rejects_missing_cache_override_before_import(self):
+        for name in ("AITER_JIT_DIR", "FLYDSL_RUNTIME_CACHE_DIR"):
+            with self.subTest(name=name), mock.patch.dict(os.environ, {name: ""}), \
+                    mock.patch.object(runtime.importlib, "import_module", side_effect=AssertionError("unexpected import")):
+                self.assert_runtime_rejected(name + " worker cache path")
 
     def test_tvm_ffi_workaround_is_scoped_to_v0518(self):
         config = {"headkernel": {"docker": "registry/sglang:v0.5.17-rocm720-mi35x-profilerfix"}}

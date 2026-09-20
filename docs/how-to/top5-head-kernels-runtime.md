@@ -118,6 +118,27 @@ the explicit value, and task preflight requires and records it. Other runtimes
 receive no new default. This is CPU FFI setup and does not change kernel work
 or timing iteration counts.
 
+All three top-five cohorts enable `AKA_TOP5_ISOLATED_CACHES=1`. The Docker
+runner assigns each worker a distinct temporary cache root and sets
+`AITER_JIT_DIR=<worker cache>/aiter-jit` and
+`FLYDSL_RUNTIME_CACHE_DIR=<worker cache>/flydsl`. It creates both directories
+as the ordinary container user before Python starts. Preflight requires these
+explicit paths and records them in its runtime report. Installed cache files
+and their permissions are untouched; caches are populated through normal JIT
+compilation, so the first use can take longer.
+
+The v0.5.18 GPU attempt in job 158486 confirmed that AITER's fallback copied
+the installed `jit` tree into the isolated home and failed on inaccessible
+bundled FlyDSL cache files. At captured AITER commit
+`d9e5ef7ce08ee7045d583aed768cff41aa9210fe`,
+[`get_user_jit_dir`](https://github.com/ROCm/aiter/blob/d9e5ef7ce08ee7045d583aed768cff41aa9210fe/aiter/jit/core.py#L438)
+uses `AITER_JIT_DIR` directly, and
+[`aiter.__init__`](https://github.com/ROCm/aiter/blob/d9e5ef7ce08ee7045d583aed768cff41aa9210fe/aiter/__init__.py#L68)
+honors `FLYDSL_RUNTIME_CACHE_DIR` instead of selecting the bundled cache.
+The same isolation policy is configured for the v0.5.17 and Kimi cohorts;
+the reported failure was observed on v0.5.18. Other custom-runtime defaults
+remain unchanged unless this cache opt-in is explicitly enabled.
+
 The GLM MoE capture documents PyTorch `2.9.1+rocm7.2.0`, SGLang `0.5.18`, and HIP
 `7.2.26015`. Its original model-serving bootstrap required `glm5_next`
 architecture enablement. The isolated MoE task now publishes the captured

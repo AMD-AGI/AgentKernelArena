@@ -73,6 +73,9 @@ Environment overrides:
                            Set to 1 to inspect the local image once and launch every
                            container in this run by its immutable Docker image ID.
   AKA_EXPECTED_IMAGE_ID  Optional captured Docker image ID assertion (sha256:...).
+  AKA_TOP5_ISOLATED_CACHES
+                           Set to 1 for separate user-owned AITER and FlyDSL
+                           temporary caches in each top-five worker container.
   AKA_GPU_ARCH            GPU arch override for shell/smoke, or run configs without target_gpu_model.
   AKA_DOCKER_IMAGE_<ARCH> Per-arch image override, e.g. AKA_DOCKER_IMAGE_GFX950=...
   AKA_DOCKER_IMAGE_GFX942 Default image for gfx942.
@@ -1042,16 +1045,15 @@ build_docker_args() {
         -w "$CONTAINER_WORKDIR"
     )
 
-    # geak_v4's claude-agent-sdk is installed with `pip install --target` into
-    # this host-mounted dir (see container_setup_geak). Only put it on
-    # PYTHONPATH for GEAK runs so its dependency closure cannot shadow the
-    # runtime image's pinned packages for existing agents.
     # Explicit capture-runtime opt-in: v0.5.18 ships a CPU-only TVM FFI addon;
     # disabling Torch C DLPack avoids failing ROCm addon compilation attempts.
     if [[ -n "${TVM_FFI_DISABLE_TORCH_C_DLPACK:-}" ]]; then
         docker_args+=(-e "TVM_FFI_DISABLE_TORCH_C_DLPACK=${TVM_FFI_DISABLE_TORCH_C_DLPACK}")
     fi
 
+    # geak_v4's claude-agent-sdk is installed with `pip install --target` into
+    # this host-mounted dir. Limit PYTHONPATH to GEAK runs so the SDK cannot
+    # shadow pinned runtime packages for other agents.
     if [[ "$GEAK_V4_RUNTIME" == "1" ]]; then
         docker_args+=(-e "PYTHONPATH=${CONTAINER_WORKDIR}/.aka-pyuserbase/geak-sdk")
     fi
@@ -1074,6 +1076,15 @@ build_docker_args() {
         docker_args+=(
             -e "AITER_ROOT_DIR=/tmp/aiter-root${cache_postfix}"
             -e "AITER_JIT_DIR=/tmp/aiter-jit${cache_postfix}"
+        )
+    fi
+
+    if [[ "${AKA_TOP5_ISOLATED_CACHES:-0}" == "1" ]]; then
+        local top5_cache_root="/tmp/aka-top5-cache-${HOST_UID}-${BASHPID}${cache_postfix}"
+        docker_args+=(
+            -e "AGENT_KERNEL_ARENA_RUNTIME_CACHE_ROOT=${top5_cache_root}"
+            -e "AITER_JIT_DIR=${top5_cache_root}/aiter-jit"
+            -e "FLYDSL_RUNTIME_CACHE_DIR=${top5_cache_root}/flydsl"
         )
     fi
 
@@ -1249,7 +1260,17 @@ docker_exec() {
     local interactive="${1:-0}"
     shift
     build_docker_args "$interactive"
-    docker "${docker_args[@]}" -lc 'cd "$AGENT_KERNEL_ARENA_WORKDIR" && if [[ "${AGENT_KERNEL_ARENA_ISOLATED_HOME:-0}" == "1" ]]; then bash src/scripts/docker_benchmark.sh _container_prepare_worker_home; fi && exec "$@"' _ "$@"
+    docker "${docker_args[@]}" -lc 'cd "$AGENT_KERNEL_ARENA_WORKDIR" && if [[ "${AGENT_KERNEL_ARENA_ISOLATED_HOME:-0}" == "1" ]]; then bash src/scripts/docker_benchmark.sh _container_prepare_worker_home; fi && if [[ -n "${AGENT_KERNEL_ARENA_RUNTIME_CACHE_ROOT:-}" ]]; then bash src/scripts/docker_benchmark.sh _container_prepare_runtime_caches; fi && exec "$@"' _ "$@"
+}
+
+container_prepare_runtime_caches() {
+    local cache_root="${AGENT_KERNEL_ARENA_RUNTIME_CACHE_ROOT:?runtime cache root is required}"
+    [[ "${AITER_JIT_DIR:-}" == "$cache_root/aiter-jit" \
+        && "${FLYDSL_RUNTIME_CACHE_DIR:-}" == "$cache_root/flydsl" ]] \
+        || die "runtime cache paths must match the worker cache root"
+    # Executed as the ordinary container user. No installed cache is inspected,
+    # copied, or chmodded; both upstream libraries support explicit cache paths.
+    mkdir -p -- "$AITER_JIT_DIR" "$FLYDSL_RUNTIME_CACHE_DIR"
 }
 
 extract_config_name() {
@@ -1896,6 +1917,9 @@ case "${1:-}" in
         ;;
     _container_prepare_worker_home)
         container_prepare_worker_home
+        ;;
+    _container_prepare_runtime_caches)
+        container_prepare_runtime_caches
         ;;
     _print_eval_tool_docker_args)
         shift

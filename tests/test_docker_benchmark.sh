@@ -270,6 +270,40 @@ assert_has "AGENT_KERNEL_ARENA_DOCKER_IMAGE_ID=$CAPTURE_IMAGE_ID" "${args[@]}"
 assert_has "AGENT_KERNEL_ARENA_DOCKER_REPO_DIGESTS=[]" "${args[@]}"
 assert_has "$CAPTURE_IMAGE_ID" "${args[@]}"
 assert_not_has "$CAPTURE_IMAGE" "${args[@]}"
+
+# Top-five cache isolation is opt-in, uses different roots per worker, and
+# creates ordinary user-owned directories without copying the image cache.
+top5_cache_root_from_args() {
+    local value
+    for value in "$@"; do
+        case "$value" in
+            AGENT_KERNEL_ARENA_RUNTIME_CACHE_ROOT=*) printf '%s\n' "${value#*=}"; return ;;
+        esac
+    done
+    return 1
+}
+if top5_cache_root_from_args "${args[@]}" >/dev/null; then
+    fail "capture image received top-five caches without opt-in"
+fi
+mapfile -t cache_args < <(run_shell_args AKA_GPU_ARCH=gfx950 AKA_DOCKER_IMAGE="$CAPTURE_IMAGE" \
+    AKA_TOP5_ISOLATED_CACHES=1 AKA_CACHE_SUFFIX=worker_0)
+cache_root_0="$(top5_cache_root_from_args "${cache_args[@]}")"
+[[ "$cache_root_0" == /tmp/aka-top5-cache-*worker_0 ]] || fail "unexpected top-five cache root"
+assert_has "AITER_JIT_DIR=$cache_root_0/aiter-jit" "${cache_args[@]}"
+assert_has "FLYDSL_RUNTIME_CACHE_DIR=$cache_root_0/flydsl" "${cache_args[@]}"
+mapfile -t cache_args < <(run_shell_args AKA_GPU_ARCH=gfx950 AKA_DOCKER_IMAGE="$CAPTURE_IMAGE" \
+    AKA_TOP5_ISOLATED_CACHES=1 AKA_CACHE_SUFFIX=worker_1)
+cache_root_1="$(top5_cache_root_from_args "${cache_args[@]}")"
+[[ "$cache_root_0" != "$cache_root_1" ]] || fail "top-five workers share runtime caches"
+fixture_cache_root="$TEST_HOME/top5-runtime-cache"
+AGENT_KERNEL_ARENA_RUNTIME_CACHE_ROOT="$fixture_cache_root" \
+    AITER_JIT_DIR="$fixture_cache_root/aiter-jit" \
+    FLYDSL_RUNTIME_CACHE_DIR="$fixture_cache_root/flydsl" \
+    bash "$RUNNER" _container_prepare_runtime_caches
+for cache_directory in "$fixture_cache_root/aiter-jit" "$fixture_cache_root/flydsl"; do
+    [[ -d "$cache_directory" && "$(stat -c %u "$cache_directory")" == "$(id -u)" ]] \
+        || fail "runtime cache was not created for the ordinary user"
+done
 for identity_failure in \
     "AKA_EXPECTED_IMAGE_ID=sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" \
     "FAKE_IMAGE_INSPECT_FAILURE=1" \

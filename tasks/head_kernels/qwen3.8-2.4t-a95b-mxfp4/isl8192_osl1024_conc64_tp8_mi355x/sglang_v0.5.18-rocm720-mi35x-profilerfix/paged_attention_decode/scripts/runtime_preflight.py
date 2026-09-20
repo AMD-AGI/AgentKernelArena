@@ -76,6 +76,7 @@ def runtime_requirements(config: dict, task_dir: Path | None = None) -> dict:
         "package_versions": versions,
         "environment": ({"TVM_FFI_DISABLE_TORCH_C_DLPACK": "1"}
                         if sglang_version == "0.5.18" else {}),
+        "cache_environment": ["AITER_JIT_DIR", "FLYDSL_RUNTIME_CACHE_DIR"],
         "required_model_types": list(runtime.get("required_model_types") or []),
     }
 
@@ -116,13 +117,19 @@ def preflight(config: dict, task_dir: Path | None = None) -> dict:
         "required_arch": "gfx950",
         "architecture": None,
         "versions": {},
-        "environment": {name: os.environ.get(name) for name in requirements["environment"]},
+        "environment": {name: os.environ.get(name) for name in
+                        [*requirements["environment"], *requirements["cache_environment"]]},
         "errors": [],
     }
     errors = report["errors"]
     for name, expected in requirements["environment"].items():
         if os.environ.get(name) != expected:
             errors.append(f"Capture runtime requires {name}={expected}; use the cohort launcher")
+    for name in requirements["cache_environment"]:
+        value = os.environ.get(name)
+        if not value or not Path(value).is_absolute():
+            errors.append(f"Capture runtime requires an explicit absolute {name} worker cache path; "
+                          "use the cohort launcher")
     if not isinstance(expected_image, str) or not expected_image:
         errors.append("Task config does not declare headkernel.docker")
     if os.environ.get("AGENT_KERNEL_ARENA_DOCKER") != "1":

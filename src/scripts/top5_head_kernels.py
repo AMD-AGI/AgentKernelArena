@@ -58,6 +58,8 @@ def environment_matrix(repo_root: Path = REPO_ROOT) -> str:
                              for name in requirements["required_modules"])
         model_types = ", ".join(requirements["required_model_types"]) or "—"
         environment = "; ".join(f"`{name}={value}`" for name, value in requirements["environment"].items()) or "—"
+        caches = "; ".join(f"`{name}`: isolated worker cache" for name in requirements["cache_environment"])
+        environment = caches if environment == "—" else environment + "; " + caches
         image_id = f"`{requirements['expected_image_id']}`" if requirements["expected_image_id"] else "Not recorded"
         commits = "; ".join(f"{repo}: `{commit}`" for repo, commit in requirements["source_commits"].items()) or "Not recorded"
         relative_path = path.relative_to(repo_root).as_posix()
@@ -150,6 +152,7 @@ def runtime_environment(plan: dict, environment: dict[str, str]) -> dict[str, st
     result = dict(environment)
     result["AKA_DOCKER_IMAGE"] = plan["image"]
     result["AKA_VERIFY_RUNTIME_IMAGE"] = "1"
+    result["AKA_TOP5_ISOLATED_CACHES"] = "1"
     result.update(plan.get("required_environment", {}))
     expected_id = plan.get("expected_image_id")
     if expected_id:
@@ -185,7 +188,7 @@ def main(argv: list[str] | None = None) -> int:
         command = ["bash", "src/scripts/docker_benchmark.sh", action,
                    "--config_name", plan["config"], *runner_args]
         if args.action == "plan":
-            identity_environment = {"AKA_VERIFY_RUNTIME_IMAGE": "1"}
+            identity_environment = {"AKA_VERIFY_RUNTIME_IMAGE": "1", "AKA_TOP5_ISOLATED_CACHES": "1"}
             if environment.get("AKA_EXPECTED_IMAGE_ID"):
                 identity_environment["AKA_EXPECTED_IMAGE_ID"] = environment["AKA_EXPECTED_IMAGE_ID"]
             print(json.dumps({**plan, "command": command,
