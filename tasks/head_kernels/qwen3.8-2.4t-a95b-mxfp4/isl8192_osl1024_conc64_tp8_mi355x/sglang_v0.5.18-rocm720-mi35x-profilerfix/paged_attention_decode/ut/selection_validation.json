@@ -1,0 +1,18 @@
+{
+  "correct": true,
+  "deepest_verified": true,
+  "device_event_count": 2,
+  "ledger_id": "hk09",
+  "matched": {
+    "paged_attention_ll4mi_QKV_mfma16_kernel": [
+      "void paged_attention_ll4mi_QKV_mfma16_kernel<0, __hip_bfloat16, __hip_bfloat16, (vllm::Fp8KVCacheDataType)0, 1, 256, 256, false, 8, 1, ck_tile::ComposedAttention<0u, false> >(__hip_bfloat16 const*, __hip_bfloat16 const*, __hip_bfloat16 const*, float, int const*, int const*, int const*, float const*, int, int, int, int, float*, float*, __hip_bfloat16*, float, float, float const*, float const*, float const*, ck_tile::ComposedAttention<0u, false> const*)"
+    ]
+  },
+  "required_kernels": [
+    "paged_attention_ll4mi_QKV_mfma16_kernel"
+  ],
+  "schema_version": 1,
+  "status": "PASS",
+  "target_callable": "aiter.ops.attention:paged_attention_ragged",
+  "task_id": "paged_attention_decode_task"
+}

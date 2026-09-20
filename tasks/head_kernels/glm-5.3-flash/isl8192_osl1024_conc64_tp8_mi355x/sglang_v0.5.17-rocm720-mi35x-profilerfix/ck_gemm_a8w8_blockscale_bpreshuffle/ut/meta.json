@@ -1,0 +1,262 @@
+{
+  "schema_version": 1,
+  "kind": "fp8",
+  "task_id": "glm-5.3-flash__ck_gemm_a8w8_blockscale_bpreshuffle",
+  "target_callable": "aiter:gemm_a8w8_blockscale_bpreshuffle",
+  "baseline_callable": "aiter:gemm_a8w8_blockscale_bpreshuffle",
+  "candidate_bind": {
+    "file": "../source/kernel.py",
+    "kind": "protected_direct_binding",
+    "impl_attr": "gemm_a8w8_blockscale_bpreshuffle"
+  },
+  "source_module": "aiter.ops.gemm_op_a8w8",
+  "source_sha256": "dcc7f9c1fc9d3dcaa41ac5da229ce938e4a231a26dfcd5eca9e2d1f52eef5353",
+  "source_revision": "d9e5ef7ce08ee7045d583aed768cff41aa9210fe",
+  "source_path": "aiter/ops/gemm_op_a8w8.py",
+  "source_excerpt_lines": [
+    896,
+    1056
+  ],
+  "symbol": "gemm_a8w8_blockscale_bpreshuffle",
+  "tol": 0.05,
+  "random_draws": 3,
+  "oracle": "synthesized_dequant_fp32",
+  "synthesized": true,
+  "value_provenance": "deterministic synthetic values; same quantized operands used for independent FP32 reference",
+  "geometry_provenance": "upstream op package: profile-derived families and serving M buckets; not frozen captured tensor values",
+  "math_contract": "C[M,N] = (dequant(XQ)[M,K] @ dequant(WQ)[N,K]^T) -> bf16 ; fp8 a8w8 block-scale, act per-1x128 (x_scale[M,K/128], physically column-major per materialize_bpreshuffle_fp8_scale), weight per-128x128 (w_scale[N/128,K/128]), WQ PRESHUFFLED with shuffle_weight(w,(16,16))",
+  "regime": {
+    "backend": "sglang",
+    "quant": {
+      "method": "fp8_blockscale",
+      "weight_dtype": "fp8_e4m3",
+      "act_dtype": "fp8",
+      "block_size": [
+        128,
+        128
+      ],
+      "source": "model_config"
+    },
+    "kv_cache_dtype": "bfloat16",
+    "compile": "eager",
+    "enforce_eager": true,
+    "cuda_graph": false,
+    "attention_backend": "",
+    "prefill_chunk": null,
+    "notes": "enforce-eager/disable-cuda-graph set: the deployment runs eagerly (no graph replay), so eager IS the faithful baseline for this regime \u2014 NOT a strawman."
+  },
+  "ledger_ids": [
+    "nk512x4096_m1_decode",
+    "nk512x4096_m64_decode",
+    "nk512x4096_m8192_prefill",
+    "nk4096x256_m1_decode",
+    "nk4096x256_m64_decode",
+    "nk4096x256_m8192_prefill",
+    "nk2048x4096_m1_decode",
+    "nk2048x4096_m64_decode",
+    "nk2048x4096_m8192_prefill",
+    "nk2048x1536_m1_decode",
+    "nk2048x1536_m64_decode",
+    "nk2048x1536_m8192_prefill",
+    "nk4096x2048_m1_decode",
+    "nk4096x2048_m64_decode",
+    "nk4096x2048_m8192_prefill",
+    "nk3072x4096_m1_decode",
+    "nk3072x4096_m64_decode",
+    "nk3072x4096_m8192_prefill",
+    "nk4096x1536_m1_decode",
+    "nk4096x1536_m64_decode",
+    "nk4096x1536_m8192_prefill"
+  ],
+  "cases": [
+    {
+      "sig": "nk512x4096_m1_decode",
+      "regime": "decode",
+      "m": 1,
+      "n": 512,
+      "k": 4096
+    },
+    {
+      "sig": "nk512x4096_m64_decode",
+      "regime": "decode",
+      "m": 64,
+      "n": 512,
+      "k": 4096
+    },
+    {
+      "sig": "nk512x4096_m8192_prefill",
+      "regime": "prefill",
+      "m": 8192,
+      "n": 512,
+      "k": 4096
+    },
+    {
+      "sig": "nk4096x256_m1_decode",
+      "regime": "decode",
+      "m": 1,
+      "n": 4096,
+      "k": 256
+    },
+    {
+      "sig": "nk4096x256_m64_decode",
+      "regime": "decode",
+      "m": 64,
+      "n": 4096,
+      "k": 256
+    },
+    {
+      "sig": "nk4096x256_m8192_prefill",
+      "regime": "prefill",
+      "m": 8192,
+      "n": 4096,
+      "k": 256
+    },
+    {
+      "sig": "nk2048x4096_m1_decode",
+      "regime": "decode",
+      "m": 1,
+      "n": 2048,
+      "k": 4096
+    },
+    {
+      "sig": "nk2048x4096_m64_decode",
+      "regime": "decode",
+      "m": 64,
+      "n": 2048,
+      "k": 4096
+    },
+    {
+      "sig": "nk2048x4096_m8192_prefill",
+      "regime": "prefill",
+      "m": 8192,
+      "n": 2048,
+      "k": 4096
+    },
+    {
+      "sig": "nk2048x1536_m1_decode",
+      "regime": "decode",
+      "m": 1,
+      "n": 2048,
+      "k": 1536
+    },
+    {
+      "sig": "nk2048x1536_m64_decode",
+      "regime": "decode",
+      "m": 64,
+      "n": 2048,
+      "k": 1536
+    },
+    {
+      "sig": "nk2048x1536_m8192_prefill",
+      "regime": "prefill",
+      "m": 8192,
+      "n": 2048,
+      "k": 1536
+    },
+    {
+      "sig": "nk4096x2048_m1_decode",
+      "regime": "decode",
+      "m": 1,
+      "n": 4096,
+      "k": 2048
+    },
+    {
+      "sig": "nk4096x2048_m64_decode",
+      "regime": "decode",
+      "m": 64,
+      "n": 4096,
+      "k": 2048
+    },
+    {
+      "sig": "nk4096x2048_m8192_prefill",
+      "regime": "prefill",
+      "m": 8192,
+      "n": 4096,
+      "k": 2048
+    },
+    {
+      "sig": "nk3072x4096_m1_decode",
+      "regime": "decode",
+      "m": 1,
+      "n": 3072,
+      "k": 4096
+    },
+    {
+      "sig": "nk3072x4096_m64_decode",
+      "regime": "decode",
+      "m": 64,
+      "n": 3072,
+      "k": 4096
+    },
+    {
+      "sig": "nk3072x4096_m8192_prefill",
+      "regime": "prefill",
+      "m": 8192,
+      "n": 3072,
+      "k": 4096
+    },
+    {
+      "sig": "nk4096x1536_m1_decode",
+      "regime": "decode",
+      "m": 1,
+      "n": 4096,
+      "k": 1536
+    },
+    {
+      "sig": "nk4096x1536_m64_decode",
+      "regime": "decode",
+      "m": 64,
+      "n": 4096,
+      "k": 1536
+    },
+    {
+      "sig": "nk4096x1536_m8192_prefill",
+      "regime": "prefill",
+      "m": 8192,
+      "n": 4096,
+      "k": 1536
+    }
+  ],
+  "nk_families": [
+    [
+      2048,
+      1536
+    ],
+    [
+      4096,
+      1536
+    ],
+    [
+      3072,
+      4096
+    ],
+    [
+      512,
+      4096
+    ],
+    [
+      4096,
+      2048
+    ],
+    [
+      4096,
+      256
+    ],
+    [
+      2048,
+      4096
+    ]
+  ],
+  "historical_selection": {
+    "file": "provenance/selection_validation.json",
+    "status": "historical evidence; not fresh task validation"
+  },
+  "reference_io_sha256": "",
+  "dispatch_file": "dispatch.csv",
+  "dispatch_sha256": "13732042e821d1e9c3db1295b8142b322cf48979fdca50216eb0435ea3f6c9bd",
+  "dispatch_provenance": "stock AITER table at source_revision; no matching GLM family rows, so source falls through to native CK default; historical model table not included upstream",
+  "weight_block_size": [
+    128,
+    128
+  ]
+}

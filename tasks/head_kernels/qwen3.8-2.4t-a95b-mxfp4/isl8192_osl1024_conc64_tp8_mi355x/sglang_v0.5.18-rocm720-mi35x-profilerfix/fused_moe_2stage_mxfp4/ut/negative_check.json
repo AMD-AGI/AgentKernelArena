@@ -1,0 +1,43 @@
+{
+  "cases": {
+    "hk01": {
+      "contract": "negative_control",
+      "output_corruption_rejected": true,
+      "report": [
+        {
+          "case": "decode_m64_live",
+          "correct": false,
+          "max_rel_err": 147979968.0
+        }
+      ],
+      "status": "PASS"
+    },
+    "hk02": {
+      "contract": "negative_control",
+      "output_corruption_rejected": true,
+      "report": [
+        {
+          "case": "decode_m64_live",
+          "correct": false,
+          "max_rel_err": 147979968.0
+        }
+      ],
+      "status": "PASS"
+    },
+    "hk03": {
+      "contract": "negative_control",
+      "output_corruption_rejected": true,
+      "report": [
+        {
+          "case": "prefill_m8192_live",
+          "correct": false,
+          "max_rel_err": 15550781.0
+        }
+      ],
+      "status": "PASS"
+    }
+  },
+  "schema_version": 1,
+  "status": "PASS",
+  "task_id": "fused_moe_mxfp4_task"
+}

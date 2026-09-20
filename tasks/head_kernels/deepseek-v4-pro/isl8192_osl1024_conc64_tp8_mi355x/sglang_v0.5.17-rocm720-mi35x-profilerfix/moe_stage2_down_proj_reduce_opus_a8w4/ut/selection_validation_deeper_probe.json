@@ -1,0 +1,123 @@
+{
+  "contract": "kernel_selection_deeper_probe",
+  "question": "Is there a single deeper Python callable that owns BOTH profiled stage-2 device kernels?",
+  "probes": [
+    {
+      "target_callable": "aiter.ops.opus.moe_stage2_a8w4_fused_adapter:opus_a8w4_stage2_wrapper",
+      "device_kernel": "opus_moe_stage2_a8w4_decode_kernel_gfx950",
+      "ok": false,
+      "deepest_verified": false,
+      "target_marker_calls": 16,
+      "matched_kernel_calls": 16,
+      "matched_kernel_names": [
+        "void opus_moe_stage2_a8w4_decode_kernel_gfx950<OpusMoeStage2A8W4DecodeShape<opus_moe::OpusMoeStage2A8W4DecodeContract<384>, 64, 256, 64, false, false, 0, 0, 0, 0> >(opus_moe_stage2_a8w4_kargs)"
+      ],
+      "live_candidate_targets": [
+        "aiter.ops.opus.moe_stage2_a8w4:opus_moe_stage2_a8w4_decode_fwd",
+        "aiter.ops.opus.moe_stage2_a8w4_fused_adapter:opus_a8w4_stage2_wrapper"
+      ],
+      "deeper_live_candidates": [
+        "aiter.ops.opus.moe_stage2_a8w4:opus_moe_stage2_a8w4_decode_fwd"
+      ],
+      "failed": [
+        "deeper_live_candidate_exists"
+      ]
+    },
+    {
+      "target_callable": "aiter.ops.opus.moe_stage2_a8w4:opus_moe_stage2_a8w4_decode_fwd",
+      "device_kernel": "opus_moe_stage2_a8w4_decode_kernel_gfx950",
+      "ok": false,
+      "deepest_verified": true,
+      "target_marker_calls": 16,
+      "matched_kernel_calls": 16,
+      "matched_kernel_names": [
+        "void opus_moe_stage2_a8w4_decode_kernel_gfx950<OpusMoeStage2A8W4DecodeShape<opus_moe::OpusMoeStage2A8W4DecodeContract<384>, 64, 256, 64, false, false, 0, 0, 0, 0> >(opus_moe_stage2_a8w4_kargs)"
+      ],
+      "live_candidate_targets": [
+        "aiter.ops.opus.moe_stage2_a8w4:opus_moe_stage2_a8w4_decode_fwd",
+        "aiter.ops.opus.moe_stage2_a8w4_fused_adapter:opus_a8w4_stage2_wrapper"
+      ],
+      "deeper_live_candidates": [],
+      "failed": [
+        "capture_target_mismatch"
+      ]
+    },
+    {
+      "target_callable": "aiter.ops.opus.moe_stage2_a8w4:opus_moe_stage2_reduce_token_slot_route_output_fwd",
+      "device_kernel": "opus_moe_stage2_a8w4_decode_kernel_gfx950",
+      "ok": false,
+      "deepest_verified": false,
+      "target_marker_calls": 16,
+      "matched_kernel_calls": 0,
+      "matched_kernel_names": [],
+      "live_candidate_targets": [
+        "aiter.ops.opus.moe_stage2_a8w4:opus_moe_stage2_a8w4_decode_fwd",
+        "aiter.ops.opus.moe_stage2_a8w4_fused_adapter:opus_a8w4_stage2_wrapper"
+      ],
+      "deeper_live_candidates": [],
+      "failed": [
+        "capture_target_mismatch",
+        "device_kernel_not_under_target"
+      ]
+    },
+    {
+      "target_callable": "aiter.ops.opus.moe_stage2_a8w4_fused_adapter:opus_a8w4_stage2_wrapper",
+      "device_kernel": "opus_moe_stage2_reduce_token_slot_route_output_kernel_gfx950",
+      "ok": false,
+      "deepest_verified": false,
+      "target_marker_calls": 16,
+      "matched_kernel_calls": 16,
+      "matched_kernel_names": [
+        "void opus_moe_stage2_reduce_token_slot_route_output_kernel_gfx950<3072, 384, 6, true>(opus_moe_stage2_route_reduce_kargs)"
+      ],
+      "live_candidate_targets": [
+        "aiter.ops.opus.moe_stage2_a8w4:opus_moe_stage2_reduce_token_slot_route_output_fwd",
+        "aiter.ops.opus.moe_stage2_a8w4_fused_adapter:opus_a8w4_stage2_wrapper"
+      ],
+      "deeper_live_candidates": [
+        "aiter.ops.opus.moe_stage2_a8w4:opus_moe_stage2_reduce_token_slot_route_output_fwd"
+      ],
+      "failed": [
+        "deeper_live_candidate_exists"
+      ]
+    },
+    {
+      "target_callable": "aiter.ops.opus.moe_stage2_a8w4:opus_moe_stage2_a8w4_decode_fwd",
+      "device_kernel": "opus_moe_stage2_reduce_token_slot_route_output_kernel_gfx950",
+      "ok": false,
+      "deepest_verified": false,
+      "target_marker_calls": 16,
+      "matched_kernel_calls": 0,
+      "matched_kernel_names": [],
+      "live_candidate_targets": [
+        "aiter.ops.opus.moe_stage2_a8w4:opus_moe_stage2_reduce_token_slot_route_output_fwd",
+        "aiter.ops.opus.moe_stage2_a8w4_fused_adapter:opus_a8w4_stage2_wrapper"
+      ],
+      "deeper_live_candidates": [],
+      "failed": [
+        "capture_target_mismatch",
+        "device_kernel_not_under_target"
+      ]
+    },
+    {
+      "target_callable": "aiter.ops.opus.moe_stage2_a8w4:opus_moe_stage2_reduce_token_slot_route_output_fwd",
+      "device_kernel": "opus_moe_stage2_reduce_token_slot_route_output_kernel_gfx950",
+      "ok": false,
+      "deepest_verified": true,
+      "target_marker_calls": 16,
+      "matched_kernel_calls": 16,
+      "matched_kernel_names": [
+        "void opus_moe_stage2_reduce_token_slot_route_output_kernel_gfx950<3072, 384, 6, true>(opus_moe_stage2_route_reduce_kargs)"
+      ],
+      "live_candidate_targets": [
+        "aiter.ops.opus.moe_stage2_a8w4:opus_moe_stage2_reduce_token_slot_route_output_fwd",
+        "aiter.ops.opus.moe_stage2_a8w4_fused_adapter:opus_a8w4_stage2_wrapper"
+      ],
+      "deeper_live_candidates": [],
+      "failed": [
+        "capture_target_mismatch"
+      ]
+    }
+  ],
+  "conclusion": "Neither deeper callable spans the segment: opus_moe_stage2_a8w4_decode_fwd owns only the down-GEMM kernel and opus_moe_stage2_reduce_token_slot_route_output_fwd owns only the reduce kernel (each reports device_kernel_not_under_target for the other). opus_a8w4_stage2_wrapper is the deepest single Python callable under which BOTH profiled kernels launch, so it is the correct stage-2 SEGMENT seam."
+}

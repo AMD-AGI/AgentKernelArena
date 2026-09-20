@@ -1,0 +1,389 @@
+{
+  "a_shape": [
+    "M",
+    4096
+  ],
+  "b_shape": [
+    512,
+    4096
+  ],
+  "backend": "sglang",
+  "baseline_callable": "sglang.srt.layers.moe.moe_runner.triton_utils.fused_moe:fused_experts_impl",
+  "baseline_frozen": true,
+  "baseline_overlay": "baseline_overlay",
+  "bias": false,
+  "block_quant_shape": [
+    128,
+    128
+  ],
+  "build": false,
+  "candidate_backends": [
+    "triton",
+    "hip",
+    "ck"
+  ],
+  "candidate_bind": {
+    "file": "kernel_src/fused_moe.py",
+    "kind": "module",
+    "module": "sglang.srt.layers.moe.moe_runner.triton_utils.fused_moe"
+  },
+  "capture_meta_path": "provenance://shared-nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/fused_moe_kernel_task/capture_meta.json",
+  "cases": [
+    {
+      "m": 19,
+      "regime": "decode",
+      "sig": "oracle_m19_decode"
+    },
+    {
+      "m": 1,
+      "regime": "decode",
+      "sig": "oracle_m1_decode"
+    },
+    {
+      "m": 8192,
+      "regime": "prefill",
+      "sig": "oracle_m8192_prefill"
+    }
+  ],
+  "compute_dtype": "bf16",
+  "decode_m_buckets": [
+    1,
+    64
+  ],
+  "device_kernel": "fused_moe_kernel",
+  "dtype": "fp8_e4m3",
+  "editable": true,
+  "file_sha256": {
+    "baseline_overlay/sitecustomize.py": "d8b5c55e926eea158154d30ee1a796144058e50a102c4c762cbd7c0f7203fd5b",
+    "build_oracle.py": "1fa9f65d4376eacec582eac3ad2d0c60085c6012a3d09860199468552b8842e1",
+    "cases.py": "b9fed1ccaa6f4eab9651e36b4927029cf68a0153de8e78628441045756c9c113",
+    "harness_lib.py": "fe8e18f4cba1313cc5033ae47950fb6154f6680e050d77436f7c5bb4095fd7f2",
+    "kernel_src/fused_moe.py": "4ad1d5a4faad153021c7c765939ef26117e7ba755b555e16e107c11b1b5da2da",
+    "leg_runner.py": "a35dde641f8072d042f71dfb52bd16adc2c462f17ee994cb10bbb4e42c73a465",
+    "overlay_setup.py": "7cbf3d70eb2c2921c9f128c2c072706c3f009de818f9e5c53cbaf8bcfeec71fa",
+    "sglang_bootstrap.py": "d3895d82bed71271b53d439bb75788f657882bc152331a8caef4b3152c269246",
+    "unittest.py": "6b5e5baa762a0b14359611502dc32ffda7c56d3f3e897fa94c3d001a8e228355"
+  },
+  "hidden_size": 4096,
+  "intermediate_size_per_tp": 256,
+  "m_buckets": [
+    1,
+    64,
+    8192
+  ],
+  "math_contract": "grouped per-expert GEMM + routing (GEMM1 w1 -> swiglu -> GEMM2 w2 -> top-k weighted reduce, one dispatcher call)",
+  "notes": "Fused MoE op (op_kind=moe), extracted at the whole-operation dispatcher seam fused_experts_impl per the op_kind=moe rule (extract the FUSED op, never its constituent dense GEMMs). synthesized=false: every operand is real production data captured from the live TP=8 sglang server (fp8_e4m3 block-scale [128,128] expert weights w1[288,512,4096]/w2[288,4096,256] + scales, real bf16 activations, REAL router topk_ids/topk_weights). Routing is never synthesized uniformly; timing/random cases at online-aligned M buckets bootstrap real routing rows WITH REPLACEMENT from the captured pool, preserving expert skew. ORACLE RECOMPUTE: capture_shapes snapshots args AFTER the call and the live path runs inplace=True (out aliases hidden_states), so the raw recorded activation is the post-call buffer; build_oracle.py therefore forces inplace=False and recomputes the golden on the FROZEN baseline stack (baseline_overlay) -- input!=output by construction. Strings are repr-summarized by capture_shapes; build_oracle literal_evals them back (activation=\"silu\"). STANDALONE BOOTSTRAP: sglang_bootstrap.py publishes the deployment ServerArgs (RuntimeContext config bags fail closed outside a server: \"config namespace exec not published\") and a world-size-1 TP group (get_tp_group() is asserted by _fused_moe_kernel_sequence); the captured tensors are already this rank TP=8 shard, so world-size-1 is shard-local replay, not a different problem size -- the deployment MoE all-reduce lives OUTSIDE this seam. SEAM DEPTH: the 6-candidate probe (selection_validation_full_probe.json) shows two deeper live inner launchers, _fused_moe_kernel_sequence and fused_moe_triton_kernels:invoke_fused_moe_kernel, nested inside the op seam; they launch the same fused_moe_kernel but are per-GEMM launchers of the fused op constituents, so they are deliberately NOT in the op-seam ladder. selection_validation.json validates fused_experts_impl against the whole-op ladder (fused_experts / inplace_fused_experts / outplace_fused_experts / fused_experts_impl) -> ok=true, deepest_verified=true across all 8 capture PIDs, 48 fused_moe_kernel launches correlated under the target marker; outplace_fused_experts installed but never live (deployment uses the inplace branch). REGIME: --disable-cuda-graph/enforce-eager, so eager IS the faithful baseline (no graph-replay bundle, no compile-parity leg). ATTRIBUTION: profiler pct_gpu_time=3.97 vs the architect/TraceLens prior of 23.32 for fused_moe_kernel -- both carried here; treat the Amdahl headroom band as [3.97, 23.32]%. CAPTURE COST NOTE: GEAK_SELECTION_TRACE forces capture_shapes flush_every=1, which rewrote a 123KB meta.json per call over NFS and slowed the capture server ~5x (134 vs 716 tok/s); harmless for a capture run, but do not use that combination for any throughput measurement. The capture overlay sitecustomize was made LAZY (a sys.meta_path finder installs the hooks when the owning sglang module executes) because the stock EAGER shim imported sglang in every interpreter on PYTHONPATH -- including the rocm_agent_enumerator helper sglang itself spawns -- which recursed, made TP worker startup ~40x slower, and blew the 601s dist-store rendezvous (2/8 clients joined).\n\nEXTRACTION FIXES APPLIED (both were silent failures, both are in task-local files only):\n1) overlay sitecustomize was EAGER. Section (a) exec'd the patched module at interpreter start, before sglang was importable, so the patched module's own `from ...fused_moe import fused_experts` re-entered its half-built sys.modules entry and the whole injection was skipped -- the candidate leg then resolved to the pristine install and assert_legs_differ failed. Rewrote the SITECUSTOMIZE template in task-local overlay_setup.py (and baseline_overlay/sitecustomize.py, whose manifest is empty so behaviour is unchanged there) to serve BOTH patched modules and capture/marker hooks from a single sys.meta_path finder at real import time. Same lazy pattern already proven in _capture_overlay/sitecustomize.py, where the eager version had force-imported sglang in every python process on PYTHONPATH and blown the torch.distributed rendezvous during capture. Old files kept as *.eager_bak.\n2) sglang_bootstrap used os.environ.setdefault for MASTER_PORT. unittest.py bootstraps in the PARENT (correctness is in-process) and measure_legs' timing subprocesses INHERIT its environ, so every child reused the parent's port, collided with the TCPStore the parent still owns, raised inside cases.call, and time_op swallowed it into ms=None -- every bucket reported baseline_ms=optimized_ms=null with no error anywhere. Now always binds a fresh ephemeral port (override with GEAK_MASTER_PORT).",
+  "num_cases": 3,
+  "num_experts": 288,
+  "op_kind": "moe",
+  "pct_gpu_time": 3.97,
+  "pct_gpu_time_tracelens_prior": 23.32,
+  "prefill_m_buckets": [
+    8192
+  ],
+  "random_draws": 3,
+  "reference_io_sha256": "59040b163efbc9dbd3592a28dee01bcc2801bb669de170197524dfe335c5feee",
+  "regime": {
+    "attention_backend": "",
+    "backend": "sglang",
+    "compile": "eager",
+    "cuda_graph": false,
+    "enforce_eager": true,
+    "kv_cache_dtype": "bfloat16",
+    "notes": "enforce-eager/disable-cuda-graph set: the deployment runs eagerly (no graph replay), so eager IS the faithful baseline for this regime — NOT a strawman.",
+    "prefill_chunk": null,
+    "quant": {
+      "act_dtype": "fp8",
+      "block_size": [
+        128,
+        128
+      ],
+      "method": "fp8_blockscale",
+      "source": "model_config",
+      "weight_dtype": "fp8_e4m3"
+    }
+  },
+  "regimes_captured": [
+    "prefill",
+    "decode"
+  ],
+  "seam_candidates": [
+    {
+      "depth": 0,
+      "live": true,
+      "role": "outer_wrapper",
+      "selected": false,
+      "target": "sglang.srt.layers.moe.moe_runner.runner:MoeRunner.run",
+      "why": "backend-dispatch shell; also covers non-triton runners, too broad to bind"
+    },
+    {
+      "depth": 1,
+      "live": true,
+      "role": "dispatcher",
+      "selected": false,
+      "target": "sglang.srt.layers.moe.moe_runner.triton_utils.fused_moe:fused_experts",
+      "why": "thin inplace/outplace switch, no device work of its own"
+    },
+    {
+      "depth": 2,
+      "live": true,
+      "role": "dispatcher",
+      "selected": false,
+      "target": "sglang.srt.layers.moe.moe_runner.triton_utils.fused_moe:inplace_fused_experts",
+      "why": "live in deployment (inplace=True) but just forwards to fused_experts_impl"
+    },
+    {
+      "depth": 2,
+      "live": false,
+      "role": "dispatcher",
+      "selected": false,
+      "target": "sglang.srt.layers.moe.moe_runner.triton_utils.fused_moe:outplace_fused_experts",
+      "why": "installed but never live in this deployment"
+    },
+    {
+      "depth": 3,
+      "live": true,
+      "role": "op_seam",
+      "selected": true,
+      "target": "sglang.srt.layers.moe.moe_runner.triton_utils.fused_moe:fused_experts_impl",
+      "why": "whole fused-MoE op: owns workspace alloc, per-expert alignment, both grouped GEMMs and the activation; deepest whole-operation seam that still bounds all 48 fused_moe_kernel launches (24 marker calls) and is bindable as one module"
+    },
+    {
+      "depth": 4,
+      "live": true,
+      "role": "inner_launcher",
+      "selected": false,
+      "target": "sglang.srt.layers.moe.moe_runner.triton_utils.fused_moe:_fused_moe_kernel_sequence",
+      "why": "nests inside the op seam, but is HALF the fused op (no workspace/alignment); binding it would fence off the very restructuring an op-level MoE optimizer needs"
+    },
+    {
+      "depth": 5,
+      "live": true,
+      "role": "inner_launcher",
+      "selected": false,
+      "target": "sglang.kernels.ops.moe.fused_moe_triton_kernels:invoke_fused_moe_kernel",
+      "why": "single-GEMM launch wrapper; role rule for op_kind=moe forbids decomposing the fused op"
+    },
+    {
+      "depth": 6,
+      "live": true,
+      "role": "kernel_entry",
+      "selected": false,
+      "target": "sglang.kernels.ops.moe.fused_moe_triton_kernels:fused_moe_kernel",
+      "why": "the @triton.jit device kernel itself"
+    }
+  ],
+  "selection_validation_path": "provenance://shared-nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/fused_moe_kernel_task/selection_validation.json",
+  "served_regimes": [
+    "prefill",
+    "decode"
+  ],
+  "short_name": "fused_moe_kernel",
+  "smoke": "PASS",
+  "smoke_detail": {
+    "eager_oracle_cases": 3,
+    "exit": 0,
+    "identity_speedup_geomean": 0.9858679798354716,
+    "identity_speedup_weighted": 0.9502153577654703,
+    "max_rel_err": 0.0,
+    "note": "legs provably differ by FILE (baseline -> provenance://runtime-image/sglang/.../fused_moe.py, candidate -> _cand_overlay/_patched/...). kernel_src is a byte-identical copy, so ~1.0x is the expected identity reading; the 0.9365x on moe_m64_decode is single-pair fresh-process noise (measure_legs stopped at reps=1 because that ratio fell outside the undecided band).",
+    "per_case": [
+      {
+        "baseline_ms": 0.23892299830913544,
+        "optimized_ms": 0.25512298941612244,
+        "reps": 1,
+        "sig": "moe_m64_decode",
+        "speedup": 0.9365012492834829
+      },
+      {
+        "baseline_ms": 1.1302939653396606,
+        "optimized_ms": 1.1308549642562866,
+        "reps": 3,
+        "sig": "moe_m8192_prefill",
+        "speedup": 0.999503916121556
+      },
+      {
+        "baseline_ms": 0.21612200140953064,
+        "optimized_ms": 0.2111230045557022,
+        "reps": 3,
+        "sig": "moe_m1_decode",
+        "speedup": 1.0236781248180347
+      }
+    ],
+    "random_parity_draws": 12
+  },
+  "source_path_in_sglang": "provenance://runtime-image/sglang/python/sglang/srt/layers/moe/moe_runner/triton_utils/fused_moe.py",
+  "synthesized": false,
+  "target_callable": "sglang.srt.layers.moe.moe_runner.triton_utils.fused_moe:fused_experts_impl",
+  "tol": 0.02,
+  "top_k": 8,
+  "transpose_b": true,
+  "workload": {
+    "cases": [
+      {
+        "count": null,
+        "dims": [
+          [
+            64,
+            4096
+          ],
+          [
+            512,
+            4096
+          ]
+        ],
+        "dtypes": [
+          "fp8_e4m3",
+          "fp8_e4m3"
+        ],
+        "m": 64,
+        "name": "decode_M64",
+        "quant": {
+          "act_dtype": "fp8",
+          "kv_cache_dtype": "bfloat16",
+          "out_dtype": "",
+          "scale_dtype": "float32",
+          "scheme": "fp8_blockscale",
+          "weight_block_size": [
+            128,
+            128
+          ],
+          "weight_dtype": "fp8_e4m3"
+        },
+        "regime": "decode",
+        "weight": 297226.6066,
+        "weight_norm": 0.7,
+        "weight_source": "trace"
+      },
+      {
+        "count": null,
+        "dims": [
+          [
+            8192,
+            4096
+          ],
+          [
+            512,
+            4096
+          ]
+        ],
+        "dtypes": [
+          "fp8_e4m3",
+          "fp8_e4m3"
+        ],
+        "m": 8192,
+        "name": "prefill_M8192",
+        "quant": {
+          "act_dtype": "fp8",
+          "kv_cache_dtype": "bfloat16",
+          "out_dtype": "",
+          "scale_dtype": "float32",
+          "scheme": "fp8_blockscale",
+          "weight_block_size": [
+            128,
+            128
+          ],
+          "weight_dtype": "fp8_e4m3"
+        },
+        "regime": "prefill",
+        "weight": 127382.8314,
+        "weight_norm": 0.3,
+        "weight_source": "regime_floor"
+      },
+      {
+        "count": null,
+        "dims": [
+          [
+            1,
+            4096
+          ],
+          [
+            512,
+            4096
+          ]
+        ],
+        "dtypes": [
+          "fp8_e4m3",
+          "fp8_e4m3"
+        ],
+        "m": 1,
+        "name": "decode_M1",
+        "quant": {
+          "act_dtype": "fp8",
+          "kv_cache_dtype": "bfloat16",
+          "out_dtype": "",
+          "scale_dtype": "float32",
+          "scheme": "fp8_blockscale",
+          "weight_block_size": [
+            128,
+            128
+          ],
+          "weight_dtype": "fp8_e4m3"
+        },
+        "regime": "decode",
+        "weight": 0.0,
+        "weight_norm": 0.0,
+        "weight_source": "prior"
+      }
+    ],
+    "kernel": "fused_moe_kernel",
+    "live_pct_gpu": 3.97,
+    "name_match": "fused_moe_kernel",
+    "notes": "op_kind=moe: per-expert token counts are routing-dependent; effective-M buckets from meta drive a GEMM-style regime split. Treat weights as lower-confidence. WARNING: regime 'decode' has meta buckets [1] but ZERO profiled time — likely a prefill/decode-biased profiling window. Decode-critical serving should set --min-regime-share to avoid ignoring it. WARNING: regime 'prefill' has meta buckets [8192] but ZERO profiled time — likely a prefill/decode-biased profiling window. Decode-critical serving should set --min-regime-share to avoid ignoring it. applied --min-regime-share 0.3: floored regimes ['prefill'].",
+    "num_cases": 3,
+    "op_kind": "moe",
+    "quant": {
+      "act_dtype": "fp8",
+      "kv_cache_dtype": "bfloat16",
+      "out_dtype": "",
+      "scale_dtype": "float32",
+      "scheme": "fp8_blockscale",
+      "weight_block_size": [
+        128,
+        128
+      ],
+      "weight_dtype": "fp8_e4m3"
+    },
+    "regime": {
+      "attention_backend": "",
+      "backend": "sglang",
+      "compile": "eager",
+      "cuda_graph": false,
+      "enforce_eager": true,
+      "kv_cache_dtype": "bfloat16",
+      "notes": "enforce-eager/disable-cuda-graph set: the deployment runs eagerly (no graph replay), so eager IS the faithful baseline for this regime — NOT a strawman.",
+      "prefill_chunk": null,
+      "quant": {
+        "act_dtype": "fp8",
+        "block_size": [
+          128,
+          128
+        ],
+        "method": "fp8_blockscale",
+        "source": "model_config",
+        "weight_dtype": "fp8_e4m3"
+      }
+    },
+    "regime_warning": "",
+    "schema": "workload-v1",
+    "served_regimes": [
+      "decode",
+      "prefill"
+    ],
+    "serving_weight_model": {
+      "analytic_calls": {
+        "decode": 1024,
+        "prefill": 64
+      },
+      "conc": 64,
+      "isl": 8192,
+      "osl": 1024,
+      "prefill_chunk": null,
+      "tpot_ms": 83.599,
+      "ttft_ms": 6011.206
+    },
+    "weights_provenance": "mixed(prior+regime_floor+trace)"
+  },
+  "workload_path": "workload.json",
+  "workload_provenance": "provenance://shared-nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/fused_moe_kernel_task/workload.json"
+}

@@ -1,0 +1,99 @@
+{
+  "schema_version": 1,
+  "model": "Kimi-K3",
+  "model_slug": "kimi-k3",
+  "workload_slug": "isl8192_osl1024_conc64_tp8_mi355x",
+  "serving_capture": {
+    "input_sequence_length": 8192,
+    "output_sequence_length": 1024,
+    "concurrency": 64,
+    "tensor_parallel_world_size": 8
+  },
+  "device": {
+    "model": "MI355X",
+    "architecture": "gfx950"
+  },
+  "execution_scope": "One rank's isolated operator replay; not an eight-GPU model-serving run.",
+  "image_slug": "sglang-rocm-k3_rocm720-mi35x-k3-20260727-tl312-08011830",
+  "docker": "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang-rocm-k3:rocm720-mi35x-k3-20260727-tl312-08011830",
+  "kernel_count": 3,
+  "kernels": [
+    {
+      "operation_id": "kimi-k3__fwd_grouped_kernel_stage1",
+      "kernel_slug": "fwd_grouped_kernel_stage1",
+      "selector": "head_kernels/kimi-k3/isl8192_osl1024_conc64_tp8_mi355x/sglang-rocm-k3_rocm720-mi35x-k3-20260727-tl312-08011830/fwd_grouped_kernel_stage1",
+      "config": "fwd_grouped_kernel_stage1/config.yaml",
+      "shapes": "fwd_grouped_kernel_stage1/SHAPES.json",
+      "shape_guide": "fwd_grouped_kernel_stage1/SHAPES.md",
+      "backend": "triton (attention)",
+      "runtime": {
+        "image": "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang-rocm-k3:rocm720-mi35x-k3-20260727-tl312-08011830",
+        "expected_image_id": null,
+        "source_commits": {},
+        "gpu_arch": "gfx950",
+        "hip_version": "7.2.x",
+        "required_modules": [
+          "aiter",
+          "sglang",
+          "torch",
+          "triton"
+        ],
+        "package_versions": {},
+        "required_model_types": []
+      },
+      "capture_contract": "Task-local callable, case, oracle and source contracts are authoritative."
+    },
+    {
+      "operation_id": "kimi-k3__moe_gemm1_stage1",
+      "kernel_slug": "moe_gemm1_stage1",
+      "selector": "head_kernels/kimi-k3/isl8192_osl1024_conc64_tp8_mi355x/sglang-rocm-k3_rocm720-mi35x-k3-20260727-tl312-08011830/moe_gemm1_stage1",
+      "config": "moe_gemm1_stage1/config.yaml",
+      "shapes": "moe_gemm1_stage1/SHAPES.json",
+      "shape_guide": "moe_gemm1_stage1/SHAPES.md",
+      "backend": "aiter asm (AOT) - fused_moe_2stages stage-1 gate+up - mxfp4 w + bf16 act",
+      "runtime": {
+        "image": "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang-rocm-k3:rocm720-mi35x-k3-20260727-tl312-08011830",
+        "expected_image_id": null,
+        "source_commits": {},
+        "gpu_arch": "gfx950",
+        "hip_version": "7.2.x",
+        "required_modules": [
+          "aiter",
+          "flydsl",
+          "sglang",
+          "torch",
+          "triton"
+        ],
+        "package_versions": {},
+        "required_model_types": []
+      },
+      "capture_contract": "Task-local callable, case, oracle and source contracts are authoritative."
+    },
+    {
+      "operation_id": "kimi-k3__moe_gemm2_stage2",
+      "kernel_slug": "moe_gemm2_stage2",
+      "selector": "head_kernels/kimi-k3/isl8192_osl1024_conc64_tp8_mi355x/sglang-rocm-k3_rocm720-mi35x-k3-20260727-tl312-08011830/moe_gemm2_stage2",
+      "config": "moe_gemm2_stage2/config.yaml",
+      "shapes": "moe_gemm2_stage2/SHAPES.json",
+      "shape_guide": "moe_gemm2_stage2/SHAPES.md",
+      "backend": "aiter asm (AOT) / flydsl opus - fused_moe_2stages stage-2 down - mxfp4 + bf16",
+      "runtime": {
+        "image": "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang-rocm-k3:rocm720-mi35x-k3-20260727-tl312-08011830",
+        "expected_image_id": null,
+        "source_commits": {},
+        "gpu_arch": "gfx950",
+        "hip_version": "7.2.x",
+        "required_modules": [
+          "aiter",
+          "flydsl",
+          "sglang",
+          "torch",
+          "triton"
+        ],
+        "package_versions": {},
+        "required_model_types": []
+      },
+      "capture_contract": "Task-local callable, case, oracle and source contracts are authoritative."
+    }
+  ]
+}

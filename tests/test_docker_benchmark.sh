@@ -64,6 +64,14 @@ docker() {
         esac
     fi
     if [[ "${1:-}" == "image" && "${2:-}" == "inspect" ]]; then
+        [[ "${FAKE_IMAGE_INSPECT_FAILURE:-0}" == "0" ]] || return 1
+        if [[ -n "${FAKE_IMAGE_INSPECT_LOG:-}" ]]; then
+            printf '%s\n' "${!#}" >> "$FAKE_IMAGE_INSPECT_LOG"
+        fi
+        if [[ "${4:-}" == '{{json .RepoDigests}}' ]]; then
+            printf '%s\n' "${FAKE_IMAGE_REPO_DIGESTS:-[]}"
+            return 0
+        fi
         local reference="${!#}"
         if [[ "$reference" == "$PINNED_GFX950_IMMUTABLE_IMAGE" ]]; then
             printf '%s\n' "${FAKE_PINNED_IMAGE_ID:-sha256:pinned-image-id}"
@@ -243,8 +251,33 @@ forwarded_agents="$(PATH="$FAKE_BIN:$PATH" bash "$RUNNER" _container_check_agent
 # The gfx950 default resolves to the pinned image and enables writable caches.
 mapfile -t args < <(run_shell_args AKA_GPU_ARCH=gfx950)
 assert_has "$PINNED_GFX950_IMAGE" "${args[@]}"
+assert_has "AGENT_KERNEL_ARENA_DOCKER_IMAGE=$PINNED_GFX950_IMAGE" "${args[@]}"
 assert_cache_args_present "" "${args[@]}"
 assert_not_has "AITER_ROOT_DIR=/tmp/aiter-root" "${args[@]}"
+
+# Opt-in capture runs inspect the selected tag before launching and use the
+# resolved local image ID for execution. RepoDigests is separate evidence.
+CAPTURE_IMAGE_ID="sha256:760dd38b9b6f2bd11c13011d470eb8e377c3f0d71284a090a710d64a23bd789f"
+CAPTURE_IMAGE="example.invalid/sglang:v0.5.18"
+mapfile -t args < <(run_shell_args AKA_GPU_ARCH=gfx950 AKA_DOCKER_IMAGE="$CAPTURE_IMAGE" \
+    AKA_VERIFY_RUNTIME_IMAGE=1 AKA_EXPECTED_IMAGE_ID="$CAPTURE_IMAGE_ID" \
+    FAKE_SELECTED_IMAGE_ID="$CAPTURE_IMAGE_ID")
+assert_has "AGENT_KERNEL_ARENA_DOCKER_IMAGE=$CAPTURE_IMAGE" "${args[@]}"
+assert_has "AGENT_KERNEL_ARENA_DOCKER_IMAGE_ID=$CAPTURE_IMAGE_ID" "${args[@]}"
+assert_has "AGENT_KERNEL_ARENA_DOCKER_REPO_DIGESTS=[]" "${args[@]}"
+assert_has "$CAPTURE_IMAGE_ID" "${args[@]}"
+assert_not_has "$CAPTURE_IMAGE" "${args[@]}"
+for identity_failure in \
+    "AKA_EXPECTED_IMAGE_ID=sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" \
+    "FAKE_IMAGE_INSPECT_FAILURE=1" \
+    "FAKE_SELECTED_IMAGE_ID=sha256:invalid"; do
+    if run_shell_args AKA_GPU_ARCH=gfx950 AKA_DOCKER_IMAGE="$CAPTURE_IMAGE" \
+        AKA_VERIFY_RUNTIME_IMAGE=1 FAKE_SELECTED_IMAGE_ID="$CAPTURE_IMAGE_ID" \
+        "$identity_failure" > "$TEST_HOME/identity-failure-output"; then
+        fail "runtime identity failure did not stop Docker execution: $identity_failure"
+    fi
+    [[ ! -s "$TEST_HOME/identity-failure-output" ]] || fail "identity failure launched Docker"
+done
 
 # A worker suffix must isolate both runtime cache directories.
 mapfile -t args < <(run_shell_args AKA_GPU_ARCH=gfx950 AKA_CACHE_SUFFIX=worker/3)
@@ -256,6 +289,7 @@ assert_cache_args_present "" "${args[@]}"
 
 # Old and custom gfx950 images retain their existing Docker arguments.
 mapfile -t args < <(run_shell_args AKA_GPU_ARCH=gfx950 AKA_DOCKER_IMAGE="$OLD_GFX950_IMAGE")
+assert_has "AGENT_KERNEL_ARENA_DOCKER_IMAGE=$OLD_GFX950_IMAGE" "${args[@]}"
 assert_cache_args_absent "${args[@]}"
 mapfile -t args < <(run_shell_args AKA_GPU_ARCH=gfx950 AKA_DOCKER_IMAGE_GFX950=example.invalid/custom:latest)
 assert_cache_args_absent "${args[@]}"
@@ -612,6 +646,24 @@ for runtime_mode in shell smoke check-agents preflight run parallel-run; do
     assert_not_has build "${events[@]}"
     assert_not_has info "${events[@]}"
 done
+
+# A parallel capture run resolves the selected tag only once in the host
+# parent. All five containers execute the frozen ID inherited by the workers.
+IDENTITY_INSPECT_LOG="$TEST_HOME/capture-image-inspections"
+env HOME="$CLAUDE_HOME" AKA_NODE_PREFIX="$CLAUDE_PREFIX" \
+    GPU_IDS=0,1 AKA_DOCKER_IMAGE="$CAPTURE_IMAGE" AKA_VERIFY_RUNTIME_IMAGE=1 \
+    AKA_EVAL_TOOLS= FAKE_SELECTED_IMAGE_ID="$CAPTURE_IMAGE_ID" \
+    FAKE_IMAGE_INSPECT_LOG="$IDENTITY_INSPECT_LOG" \
+    bash "$RUNNER" parallel-run \
+    --config_name example_configs/top5_validator_sglang_v0518_mi355x.yaml \
+    > "$TEST_HOME/capture-parallel-argv" 2> "$TEST_HOME/capture-parallel-stderr" \
+    || fail "parallel capture identity run failed"
+mapfile -t inspected < "$IDENTITY_INSPECT_LOG"
+[[ "${#inspected[@]}" -eq 2 && "${inspected[0]}" == "$CAPTURE_IMAGE" \
+    && "${inspected[1]}" == "$CAPTURE_IMAGE_ID" ]] \
+    || fail "parallel workers independently re-resolved the mutable capture tag"
+[[ "$(awk -v id="$CAPTURE_IMAGE_ID" '$0 == id {n++} END {print n+0}' "$TEST_HOME/capture-parallel-argv")" == 5 ]] \
+    || fail "parallel containers did not all execute the verified image ID"
 
 # Build/daemon failures must propagate instead of launching a container.
 for failure in FAKE_DOCKER_BUILD_STATUS=42 FAKE_DOCKER_INFO_STATUS=1; do

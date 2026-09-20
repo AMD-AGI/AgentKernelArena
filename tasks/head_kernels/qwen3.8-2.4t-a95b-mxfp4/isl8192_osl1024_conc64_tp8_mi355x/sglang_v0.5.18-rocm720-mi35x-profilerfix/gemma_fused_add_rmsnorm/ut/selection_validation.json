@@ -1,0 +1,151 @@
+{
+  "contract": "kernel_selection",
+  "ok": true,
+  "target_callable": "sglang.srt.layers.layernorm:rocm_triton_gemma_fused_add_rmsnorm",
+  "device_kernel": "_gemma_fused_add_rmsnorm_kernel",
+  "capture_target": "sglang.srt.layers.layernorm:rocm_triton_gemma_fused_add_rmsnorm",
+  "total_calls_observed": 8,
+  "target_marker": "GEAK_TARGET::sglang.srt.layers.layernorm:rocm_triton_gemma_fused_add_rmsnorm",
+  "target_marker_calls": 8,
+  "matched_kernel_calls": 8,
+  "matched_kernel_names": [
+    "_gemma_fused_add_rmsnorm_kernel"
+  ],
+  "correlated_external_ids": 96,
+  "correlated_launch_correlations": 120,
+  "candidate_targets_tested": [
+    "sglang.kernels.ops.layernorm.minimax_m3_rmsnorm:gemma_fused_add_rmsnorm",
+    "sglang.srt.layers.layernorm:rocm_triton_gemma_fused_add_rmsnorm"
+  ],
+  "live_candidate_targets": [
+    "sglang.srt.layers.layernorm:rocm_triton_gemma_fused_add_rmsnorm"
+  ],
+  "deeper_live_candidates": [],
+  "missing_candidate_markers": [],
+  "installed_but_never_live_candidates": [
+    "sglang.kernels.ops.layernorm.minimax_m3_rmsnorm:gemma_fused_add_rmsnorm"
+  ],
+  "deepest_verified": true,
+  "evidence": "installed+live_nested_candidate_markers+torch_profiler_external_id_or_launch_correlation",
+  "failed": [],
+  "process_verdicts": [
+    {
+      "capture_meta_file": "tasks/fused_add_rmsnorm_task/selection_evidence/capture.pid-390307.rank-unknown/meta.json",
+      "trace_files": [
+        "tasks/fused_add_rmsnorm_task/selection_evidence/selection_trace.pid-390307.rank-unknown.call-1.json"
+      ],
+      "ok": true,
+      "failed": [],
+      "live_candidate_targets": [
+        "sglang.srt.layers.layernorm:rocm_triton_gemma_fused_add_rmsnorm"
+      ],
+      "deeper_live_candidates": []
+    },
+    {
+      "capture_meta_file": "tasks/fused_add_rmsnorm_task/selection_evidence/capture.pid-390308.rank-unknown/meta.json",
+      "trace_files": [
+        "tasks/fused_add_rmsnorm_task/selection_evidence/selection_trace.pid-390308.rank-unknown.call-1.json"
+      ],
+      "ok": true,
+      "failed": [],
+      "live_candidate_targets": [
+        "sglang.srt.layers.layernorm:rocm_triton_gemma_fused_add_rmsnorm"
+      ],
+      "deeper_live_candidates": []
+    },
+    {
+      "capture_meta_file": "tasks/fused_add_rmsnorm_task/selection_evidence/capture.pid-390309.rank-unknown/meta.json",
+      "trace_files": [
+        "tasks/fused_add_rmsnorm_task/selection_evidence/selection_trace.pid-390309.rank-unknown.call-1.json"
+      ],
+      "ok": true,
+      "failed": [],
+      "live_candidate_targets": [
+        "sglang.srt.layers.layernorm:rocm_triton_gemma_fused_add_rmsnorm"
+      ],
+      "deeper_live_candidates": []
+    },
+    {
+      "capture_meta_file": "tasks/fused_add_rmsnorm_task/selection_evidence/capture.pid-390310.rank-unknown/meta.json",
+      "trace_files": [
+        "tasks/fused_add_rmsnorm_task/selection_evidence/selection_trace.pid-390310.rank-unknown.call-1.json"
+      ],
+      "ok": true,
+      "failed": [],
+      "live_candidate_targets": [
+        "sglang.srt.layers.layernorm:rocm_triton_gemma_fused_add_rmsnorm"
+      ],
+      "deeper_live_candidates": []
+    },
+    {
+      "capture_meta_file": "tasks/fused_add_rmsnorm_task/selection_evidence/capture.pid-390311.rank-unknown/meta.json",
+      "trace_files": [
+        "tasks/fused_add_rmsnorm_task/selection_evidence/selection_trace.pid-390311.rank-unknown.call-1.json"
+      ],
+      "ok": true,
+      "failed": [],
+      "live_candidate_targets": [
+        "sglang.srt.layers.layernorm:rocm_triton_gemma_fused_add_rmsnorm"
+      ],
+      "deeper_live_candidates": []
+    },
+    {
+      "capture_meta_file": "tasks/fused_add_rmsnorm_task/selection_evidence/capture.pid-390312.rank-unknown/meta.json",
+      "trace_files": [
+        "tasks/fused_add_rmsnorm_task/selection_evidence/selection_trace.pid-390312.rank-unknown.call-1.json"
+      ],
+      "ok": true,
+      "failed": [],
+      "live_candidate_targets": [
+        "sglang.srt.layers.layernorm:rocm_triton_gemma_fused_add_rmsnorm"
+      ],
+      "deeper_live_candidates": []
+    },
+    {
+      "capture_meta_file": "tasks/fused_add_rmsnorm_task/selection_evidence/capture.pid-390313.rank-unknown/meta.json",
+      "trace_files": [
+        "tasks/fused_add_rmsnorm_task/selection_evidence/selection_trace.pid-390313.rank-unknown.call-1.json"
+      ],
+      "ok": true,
+      "failed": [],
+      "live_candidate_targets": [
+        "sglang.srt.layers.layernorm:rocm_triton_gemma_fused_add_rmsnorm"
+      ],
+      "deeper_live_candidates": []
+    },
+    {
+      "capture_meta_file": "tasks/fused_add_rmsnorm_task/selection_evidence/capture.pid-390314.rank-unknown/meta.json",
+      "trace_files": [
+        "tasks/fused_add_rmsnorm_task/selection_evidence/selection_trace.pid-390314.rank-unknown.call-1.json"
+      ],
+      "ok": true,
+      "failed": [],
+      "live_candidate_targets": [
+        "sglang.srt.layers.layernorm:rocm_triton_gemma_fused_add_rmsnorm"
+      ],
+      "deeper_live_candidates": []
+    }
+  ],
+  "best_process_meta_file": "tasks/fused_add_rmsnorm_task/selection_evidence/capture.pid-390307.rank-unknown/meta.json",
+  "trace_file": "",
+  "trace_files": [
+    "tasks/fused_add_rmsnorm_task/selection_evidence/selection_trace.pid-390307.rank-unknown.call-1.json",
+    "tasks/fused_add_rmsnorm_task/selection_evidence/selection_trace.pid-390308.rank-unknown.call-1.json",
+    "tasks/fused_add_rmsnorm_task/selection_evidence/selection_trace.pid-390309.rank-unknown.call-1.json",
+    "tasks/fused_add_rmsnorm_task/selection_evidence/selection_trace.pid-390310.rank-unknown.call-1.json",
+    "tasks/fused_add_rmsnorm_task/selection_evidence/selection_trace.pid-390311.rank-unknown.call-1.json",
+    "tasks/fused_add_rmsnorm_task/selection_evidence/selection_trace.pid-390312.rank-unknown.call-1.json",
+    "tasks/fused_add_rmsnorm_task/selection_evidence/selection_trace.pid-390313.rank-unknown.call-1.json",
+    "tasks/fused_add_rmsnorm_task/selection_evidence/selection_trace.pid-390314.rank-unknown.call-1.json"
+  ],
+  "trace_files_considered": [
+    "tasks/fused_add_rmsnorm_task/selection_evidence/selection_trace.pid-390307.rank-unknown.call-1.json",
+    "tasks/fused_add_rmsnorm_task/selection_evidence/selection_trace.pid-390308.rank-unknown.call-1.json",
+    "tasks/fused_add_rmsnorm_task/selection_evidence/selection_trace.pid-390309.rank-unknown.call-1.json",
+    "tasks/fused_add_rmsnorm_task/selection_evidence/selection_trace.pid-390310.rank-unknown.call-1.json",
+    "tasks/fused_add_rmsnorm_task/selection_evidence/selection_trace.pid-390311.rank-unknown.call-1.json",
+    "tasks/fused_add_rmsnorm_task/selection_evidence/selection_trace.pid-390312.rank-unknown.call-1.json",
+    "tasks/fused_add_rmsnorm_task/selection_evidence/selection_trace.pid-390313.rank-unknown.call-1.json",
+    "tasks/fused_add_rmsnorm_task/selection_evidence/selection_trace.pid-390314.rank-unknown.call-1.json"
+  ]
+}

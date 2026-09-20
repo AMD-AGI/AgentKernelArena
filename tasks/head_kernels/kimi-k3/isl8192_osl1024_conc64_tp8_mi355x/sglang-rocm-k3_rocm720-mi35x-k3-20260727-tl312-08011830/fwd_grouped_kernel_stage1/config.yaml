@@ -1,0 +1,47 @@
+source_file_path:
+- source/geak_mla_stage1.py
+target_kernel_functions:
+- _fwd_grouped_kernel_stage1_tm
+- make_launcher
+compile_command:
+- python3 scripts/task_runner.py compile --timeout 600
+correctness_command:
+- python3 scripts/task_runner.py correctness --timeout 3600
+performance_command:
+- python3 scripts/task_runner.py performance --timeout 3600
+task_type: triton2triton
+task_result_template: null
+prompt:
+  source_code: null
+  instructions: "Optimize the Kimi-K3 _fwd_grouped_kernel_stage1 kernel on MI355X (gfx950).\nBackend: triton (attention). Serving capture: ISL 8192 / OSL 1024 / CONC 64 / TP 8.\n\nEdit only the declared source files and target functions:\n  source/geak_mla_stage1.py\n  _fwd_grouped_kernel_stage1_tm\n  make_launcher\n\nKeep the production callable signature and the captured shape, dtype, stride,\ntensor-attribute, routing, state-update and output-alias contracts unchanged.\nProduction seam: sglang.kernels.ops.attention.decode_attention:_decode_grouped_att_m_fwd.\nUse the task's frozen correctness references and complete benchmark case set.\nThe starting-source provenance is prior-candidate; archival profile\nand speedup figures in the provenance files are not measurements of this run.\nThe Arena evaluator measures the committed starting implementation and candidate\nunder the same benchmark contract. Do not edit ut/, scripts/, or config.yaml.\n"
+  cheatsheet: null
+headkernel:
+  operation_id: kimi-k3__fwd_grouped_kernel_stage1
+  model: Kimi-K3
+  owner: Hongtao
+  docker: harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang-rocm-k3:rocm720-mi35x-k3-20260727-tl312-08011830
+  serving: ISL 8192 / OSL 1024 / CONC 64 / TP 8
+  backend: triton (attention)
+  regime: decode
+  device_symbol: _fwd_grouped_kernel_stage1
+  target_callable: sglang.kernels.ops.attention.decode_attention:_decode_grouped_att_m_fwd
+  tol: 0.02
+  oracle: frozen live-capture ut/reference_io.pt
+  source_package: Z/Kimi-K3_fwd_grouped_kernel_stage1
+  source_seed: prior-candidate
+  info_rows:
+  - row: K3-1
+    info_kernel: _fwd_grouped_kernel_stage1
+    gpu_pct: 9.95
+    empirical_roofline: 0.297
+    optimized_roofline: 0.409
+    e2e_uplift: +2.439%
+  symbol_locations:
+    _fwd_grouped_kernel_stage1_tm: source/geak_mla_stage1.py
+    make_launcher: source/geak_mla_stage1.py
+compile_timeout: 600
+correctness_timeout: 3600
+performance_timeout: 3600
+platform_support:
+  required_arch: gfx950
+  status: active

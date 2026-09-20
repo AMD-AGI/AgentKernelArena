@@ -1,0 +1,11 @@
+{
+  "modules": [
+    {
+      "module": "sglang.kernels.ops.attention.minimax_sparse.prefill.topk_sparse",
+      "file": "_patched/sglang.kernels.ops.attention.minimax_sparse.prefill.topk_sparse.py"
+    }
+  ],
+  "rebinds": [],
+  "markers": [],
+  "captures": []
+}

@@ -1,0 +1,3380 @@
+{
+  "schema_version": 1,
+  "task_id": "glm-5.3-flash__gemm_a16w16_bf16_cijk",
+  "task_path": ".",
+  "path_base": "task directory",
+  "scope": "Single-GPU callable/operator unit benchmark on MI355X (gfx950). Serving capture context does not define kernel tensor shapes.",
+  "serving_capture_context": {
+    "isl": 8192,
+    "osl": 1024,
+    "concurrency": 64,
+    "tensor_parallel_world_size": 8
+  },
+  "environment_evidence": "config.yaml",
+  "interface": {
+    "target_callable": "aiter.tuned_gemm:torch_gemm",
+    "baseline_callable_recorded": "aiter.tuned_gemm:torch_gemm",
+    "candidate_bind_recorded": {
+      "file": "../source/kernel.py",
+      "kind": "protected_direct_binding",
+      "impl_attr": "torch_gemm"
+    },
+    "candidate_signatures": [
+      {
+        "callable": "torch_gemm",
+        "signature": "torch_gemm(inp: Tensor, weights: Tensor, solidx: int, bias: Tensor | None=None, otype: torch.dtype | None=None, scale_a: Tensor | None=None, scale_b: Tensor | None=None, scale_c: Tensor | None=None, bpreshuffle=False, config: dict | None=None)",
+        "evidence": "source/kernel.py:26"
+      }
+    ],
+    "benchmark_adapter": "scripts/_bench.py#selected_cases",
+    "scope": "selected callable seam; kernel launch count is not asserted by this catalog",
+    "profiled_kernel_rows": [
+      {
+        "id": "G53-2",
+        "profiled_kernel": "Cijk_..._MT16x16x1024_",
+        "device_symbol": "Cijk_..._MT16x16x1024_MI / Cijk_..._MT32x32x512_MI1",
+        "regime": "decode"
+      }
+    ],
+    "frozen_baseline_signatures": [],
+    "alias_and_mutation_notes": "C[M,N] = A[M,K] @ B[N,K]^T  (bf16 in / bf16 out, no bias, no scales) — sglang UnquantizedLinearMethod.apply -> tgemm.mm -> aiter.tuned_gemm.gemm_a16w16 -> per-shape DB lookup -> hipBLASLt Tensile Cijk_* / torch / skinny / triton solution",
+    "alias_evidence": [
+      "ut/meta.json#/math_contract",
+      "ut/cases.py:69"
+    ]
+  },
+  "contracts": [
+    {
+      "value": "C[M,N] = A[M,K] @ B[N,K]^T  (bf16 in / bf16 out, no bias, no scales) — sglang UnquantizedLinearMethod.apply -> tgemm.mm -> aiter.tuned_gemm.gemm_a16w16 -> per-shape DB lookup -> hipBLASLt Tensile Cijk_* / torch / skinny / triton solution",
+      "evidence": "ut/meta.json#/math_contract"
+    },
+    {
+      "value": "upstream op package: profile-derived families and serving M buckets; not frozen captured tensor values",
+      "evidence": "ut/meta.json#/geometry_provenance"
+    }
+  ],
+  "metadata_dimensions": {},
+  "case_inventory": {
+    "metadata_declared_num_cases": null,
+    "shape_record_count": 27,
+    "benchmark_case_count": 27,
+    "benchmark_case_ids": [
+      "nk128x4096_m64_decode",
+      "nk3072x4096_m64_decode",
+      "nk288x4096_m64_decode",
+      "nk1024x128_m64_decode",
+      "nk128x4096_m8192_prefill",
+      "nk8x4096_m64_decode",
+      "nk4096x1024_m64_decode",
+      "nk3072x4096_m8192_prefill",
+      "nk288x4096_m8192_prefill",
+      "nk1024x128_m8192_prefill",
+      "nk8x4096_m8192_prefill",
+      "nk4096x1024_m8192_prefill",
+      "nk4096x1536_m64_decode",
+      "nk4096x1536_m8192_prefill",
+      "nk32x4096_m8192_prefill",
+      "nk4096x512_m8192_prefill",
+      "nk32x4096_m64_decode",
+      "nk4096x512_m64_decode",
+      "nk32x4096_m1_decode",
+      "nk4096x512_m1_decode",
+      "nk4096x1536_m1_decode",
+      "nk3072x4096_m1_decode",
+      "nk4096x1024_m1_decode",
+      "nk288x4096_m1_decode",
+      "nk128x4096_m1_decode",
+      "nk8x4096_m1_decode",
+      "nk1024x128_m1_decode"
+    ],
+    "count_note": "Counts describe distinct scopes. Captures, boundary specs, histogram observations and benchmark buckets are not interchangeable."
+  },
+  "benchmark_cases": [
+    {
+      "case_id": "nk128x4096_m64_decode",
+      "shape_record_id": "nk128x4096_m64_decode",
+      "regime": "decode",
+      "evidence": "ut/cases.py:96"
+    },
+    {
+      "case_id": "nk3072x4096_m64_decode",
+      "shape_record_id": "nk3072x4096_m64_decode",
+      "regime": "decode",
+      "evidence": "ut/cases.py:96"
+    },
+    {
+      "case_id": "nk288x4096_m64_decode",
+      "shape_record_id": "nk288x4096_m64_decode",
+      "regime": "decode",
+      "evidence": "ut/cases.py:96"
+    },
+    {
+      "case_id": "nk1024x128_m64_decode",
+      "shape_record_id": "nk1024x128_m64_decode",
+      "regime": "decode",
+      "evidence": "ut/cases.py:96"
+    },
+    {
+      "case_id": "nk128x4096_m8192_prefill",
+      "shape_record_id": "nk128x4096_m8192_prefill",
+      "regime": "prefill",
+      "evidence": "ut/cases.py:96"
+    },
+    {
+      "case_id": "nk8x4096_m64_decode",
+      "shape_record_id": "nk8x4096_m64_decode",
+      "regime": "decode",
+      "evidence": "ut/cases.py:96"
+    },
+    {
+      "case_id": "nk4096x1024_m64_decode",
+      "shape_record_id": "nk4096x1024_m64_decode",
+      "regime": "decode",
+      "evidence": "ut/cases.py:96"
+    },
+    {
+      "case_id": "nk3072x4096_m8192_prefill",
+      "shape_record_id": "nk3072x4096_m8192_prefill",
+      "regime": "prefill",
+      "evidence": "ut/cases.py:96"
+    },
+    {
+      "case_id": "nk288x4096_m8192_prefill",
+      "shape_record_id": "nk288x4096_m8192_prefill",
+      "regime": "prefill",
+      "evidence": "ut/cases.py:96"
+    },
+    {
+      "case_id": "nk1024x128_m8192_prefill",
+      "shape_record_id": "nk1024x128_m8192_prefill",
+      "regime": "prefill",
+      "evidence": "ut/cases.py:96"
+    },
+    {
+      "case_id": "nk8x4096_m8192_prefill",
+      "shape_record_id": "nk8x4096_m8192_prefill",
+      "regime": "prefill",
+      "evidence": "ut/cases.py:96"
+    },
+    {
+      "case_id": "nk4096x1024_m8192_prefill",
+      "shape_record_id": "nk4096x1024_m8192_prefill",
+      "regime": "prefill",
+      "evidence": "ut/cases.py:96"
+    },
+    {
+      "case_id": "nk4096x1536_m64_decode",
+      "shape_record_id": "nk4096x1536_m64_decode",
+      "regime": "decode",
+      "evidence": "ut/cases.py:96"
+    },
+    {
+      "case_id": "nk4096x1536_m8192_prefill",
+      "shape_record_id": "nk4096x1536_m8192_prefill",
+      "regime": "prefill",
+      "evidence": "ut/cases.py:96"
+    },
+    {
+      "case_id": "nk32x4096_m8192_prefill",
+      "shape_record_id": "nk32x4096_m8192_prefill",
+      "regime": "prefill",
+      "evidence": "ut/cases.py:96"
+    },
+    {
+      "case_id": "nk4096x512_m8192_prefill",
+      "shape_record_id": "nk4096x512_m8192_prefill",
+      "regime": "prefill",
+      "evidence": "ut/cases.py:96"
+    },
+    {
+      "case_id": "nk32x4096_m64_decode",
+      "shape_record_id": "nk32x4096_m64_decode",
+      "regime": "decode",
+      "evidence": "ut/cases.py:96"
+    },
+    {
+      "case_id": "nk4096x512_m64_decode",
+      "shape_record_id": "nk4096x512_m64_decode",
+      "regime": "decode",
+      "evidence": "ut/cases.py:96"
+    },
+    {
+      "case_id": "nk32x4096_m1_decode",
+      "shape_record_id": "nk32x4096_m1_decode",
+      "regime": "decode",
+      "evidence": "ut/cases.py:96"
+    },
+    {
+      "case_id": "nk4096x512_m1_decode",
+      "shape_record_id": "nk4096x512_m1_decode",
+      "regime": "decode",
+      "evidence": "ut/cases.py:96"
+    },
+    {
+      "case_id": "nk4096x1536_m1_decode",
+      "shape_record_id": "nk4096x1536_m1_decode",
+      "regime": "decode",
+      "evidence": "ut/cases.py:96"
+    },
+    {
+      "case_id": "nk3072x4096_m1_decode",
+      "shape_record_id": "nk3072x4096_m1_decode",
+      "regime": "decode",
+      "evidence": "ut/cases.py:96"
+    },
+    {
+      "case_id": "nk4096x1024_m1_decode",
+      "shape_record_id": "nk4096x1024_m1_decode",
+      "regime": "decode",
+      "evidence": "ut/cases.py:96"
+    },
+    {
+      "case_id": "nk288x4096_m1_decode",
+      "shape_record_id": "nk288x4096_m1_decode",
+      "regime": "decode",
+      "evidence": "ut/cases.py:96"
+    },
+    {
+      "case_id": "nk128x4096_m1_decode",
+      "shape_record_id": "nk128x4096_m1_decode",
+      "regime": "decode",
+      "evidence": "ut/cases.py:96"
+    },
+    {
+      "case_id": "nk8x4096_m1_decode",
+      "shape_record_id": "nk8x4096_m1_decode",
+      "regime": "decode",
+      "evidence": "ut/cases.py:96"
+    },
+    {
+      "case_id": "nk1024x128_m1_decode",
+      "shape_record_id": "nk1024x128_m1_decode",
+      "regime": "decode",
+      "evidence": "ut/cases.py:96"
+    }
+  ],
+  "cases": [
+    {
+      "case_id": "nk128x4096_m64_decode",
+      "regime": "decode",
+      "evidence": "ut/meta.json#/cases/0",
+      "metadata": {
+        "sig": "nk128x4096_m64_decode",
+        "regime": "decode",
+        "m": 64,
+        "n": 128,
+        "k": 4096
+      },
+      "tensors": [
+        {
+          "name": "inp",
+          "role": "input",
+          "shape": [
+            64,
+            4096
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            4096,
+            1
+          ],
+          "layout": "row-major contiguous",
+          "evidence": "ut/cases.py:34"
+        },
+        {
+          "name": "weights",
+          "role": "input",
+          "shape": [
+            128,
+            4096
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            4096,
+            1
+          ],
+          "layout": "row-major contiguous",
+          "evidence": "ut/cases.py:34"
+        }
+      ],
+      "scalars": {
+        "bias": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "otype": {
+          "value": "torch.bfloat16",
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "scale_a": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "scale_b": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "scale_c": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "solidx": {
+          "value": 0,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "bpreshuffle": {
+          "value": false,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "config": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        }
+      },
+      "outputs": [
+        {
+          "name": "return",
+          "role": "output",
+          "shape": [
+            64,
+            128
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            128,
+            1
+          ],
+          "layout": "fresh contiguous result",
+          "evidence": "ut/meta.json#/math_contract"
+        }
+      ],
+      "benchmark_case_ids": [
+        "nk128x4096_m64_decode"
+      ],
+      "notes": []
+    },
+    {
+      "case_id": "nk3072x4096_m64_decode",
+      "regime": "decode",
+      "evidence": "ut/meta.json#/cases/1",
+      "metadata": {
+        "sig": "nk3072x4096_m64_decode",
+        "regime": "decode",
+        "m": 64,
+        "n": 3072,
+        "k": 4096
+      },
+      "tensors": [
+        {
+          "name": "inp",
+          "role": "input",
+          "shape": [
+            64,
+            4096
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            4096,
+            1
+          ],
+          "layout": "row-major contiguous",
+          "evidence": "ut/cases.py:34"
+        },
+        {
+          "name": "weights",
+          "role": "input",
+          "shape": [
+            3072,
+            4096
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            4096,
+            1
+          ],
+          "layout": "row-major contiguous",
+          "evidence": "ut/cases.py:34"
+        }
+      ],
+      "scalars": {
+        "bias": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "otype": {
+          "value": "torch.bfloat16",
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "scale_a": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "scale_b": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "scale_c": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "solidx": {
+          "value": 0,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "bpreshuffle": {
+          "value": false,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "config": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        }
+      },
+      "outputs": [
+        {
+          "name": "return",
+          "role": "output",
+          "shape": [
+            64,
+            3072
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            3072,
+            1
+          ],
+          "layout": "fresh contiguous result",
+          "evidence": "ut/meta.json#/math_contract"
+        }
+      ],
+      "benchmark_case_ids": [
+        "nk3072x4096_m64_decode"
+      ],
+      "notes": []
+    },
+    {
+      "case_id": "nk288x4096_m64_decode",
+      "regime": "decode",
+      "evidence": "ut/meta.json#/cases/2",
+      "metadata": {
+        "sig": "nk288x4096_m64_decode",
+        "regime": "decode",
+        "m": 64,
+        "n": 288,
+        "k": 4096
+      },
+      "tensors": [
+        {
+          "name": "inp",
+          "role": "input",
+          "shape": [
+            64,
+            4096
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            4096,
+            1
+          ],
+          "layout": "row-major contiguous",
+          "evidence": "ut/cases.py:34"
+        },
+        {
+          "name": "weights",
+          "role": "input",
+          "shape": [
+            288,
+            4096
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            4096,
+            1
+          ],
+          "layout": "row-major contiguous",
+          "evidence": "ut/cases.py:34"
+        }
+      ],
+      "scalars": {
+        "bias": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "otype": {
+          "value": "torch.bfloat16",
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "scale_a": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "scale_b": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "scale_c": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "solidx": {
+          "value": 0,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "bpreshuffle": {
+          "value": false,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "config": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        }
+      },
+      "outputs": [
+        {
+          "name": "return",
+          "role": "output",
+          "shape": [
+            64,
+            288
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            288,
+            1
+          ],
+          "layout": "fresh contiguous result",
+          "evidence": "ut/meta.json#/math_contract"
+        }
+      ],
+      "benchmark_case_ids": [
+        "nk288x4096_m64_decode"
+      ],
+      "notes": []
+    },
+    {
+      "case_id": "nk1024x128_m64_decode",
+      "regime": "decode",
+      "evidence": "ut/meta.json#/cases/3",
+      "metadata": {
+        "sig": "nk1024x128_m64_decode",
+        "regime": "decode",
+        "m": 64,
+        "n": 1024,
+        "k": 128
+      },
+      "tensors": [
+        {
+          "name": "inp",
+          "role": "input",
+          "shape": [
+            64,
+            128
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            128,
+            1
+          ],
+          "layout": "row-major contiguous",
+          "evidence": "ut/cases.py:34"
+        },
+        {
+          "name": "weights",
+          "role": "input",
+          "shape": [
+            1024,
+            128
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            128,
+            1
+          ],
+          "layout": "row-major contiguous",
+          "evidence": "ut/cases.py:34"
+        }
+      ],
+      "scalars": {
+        "bias": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "otype": {
+          "value": "torch.bfloat16",
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "scale_a": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "scale_b": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "scale_c": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "solidx": {
+          "value": 0,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "bpreshuffle": {
+          "value": false,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "config": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        }
+      },
+      "outputs": [
+        {
+          "name": "return",
+          "role": "output",
+          "shape": [
+            64,
+            1024
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            1024,
+            1
+          ],
+          "layout": "fresh contiguous result",
+          "evidence": "ut/meta.json#/math_contract"
+        }
+      ],
+      "benchmark_case_ids": [
+        "nk1024x128_m64_decode"
+      ],
+      "notes": []
+    },
+    {
+      "case_id": "nk128x4096_m8192_prefill",
+      "regime": "prefill",
+      "evidence": "ut/meta.json#/cases/4",
+      "metadata": {
+        "sig": "nk128x4096_m8192_prefill",
+        "regime": "prefill",
+        "m": 8192,
+        "n": 128,
+        "k": 4096
+      },
+      "tensors": [
+        {
+          "name": "inp",
+          "role": "input",
+          "shape": [
+            8192,
+            4096
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            4096,
+            1
+          ],
+          "layout": "row-major contiguous",
+          "evidence": "ut/cases.py:34"
+        },
+        {
+          "name": "weights",
+          "role": "input",
+          "shape": [
+            128,
+            4096
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            4096,
+            1
+          ],
+          "layout": "row-major contiguous",
+          "evidence": "ut/cases.py:34"
+        }
+      ],
+      "scalars": {
+        "bias": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "otype": {
+          "value": "torch.bfloat16",
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "scale_a": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "scale_b": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "scale_c": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "solidx": {
+          "value": 0,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "bpreshuffle": {
+          "value": false,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "config": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        }
+      },
+      "outputs": [
+        {
+          "name": "return",
+          "role": "output",
+          "shape": [
+            8192,
+            128
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            128,
+            1
+          ],
+          "layout": "fresh contiguous result",
+          "evidence": "ut/meta.json#/math_contract"
+        }
+      ],
+      "benchmark_case_ids": [
+        "nk128x4096_m8192_prefill"
+      ],
+      "notes": []
+    },
+    {
+      "case_id": "nk8x4096_m64_decode",
+      "regime": "decode",
+      "evidence": "ut/meta.json#/cases/5",
+      "metadata": {
+        "sig": "nk8x4096_m64_decode",
+        "regime": "decode",
+        "m": 64,
+        "n": 8,
+        "k": 4096
+      },
+      "tensors": [
+        {
+          "name": "inp",
+          "role": "input",
+          "shape": [
+            64,
+            4096
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            4096,
+            1
+          ],
+          "layout": "row-major contiguous",
+          "evidence": "ut/cases.py:34"
+        },
+        {
+          "name": "weights",
+          "role": "input",
+          "shape": [
+            8,
+            4096
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            4096,
+            1
+          ],
+          "layout": "row-major contiguous",
+          "evidence": "ut/cases.py:34"
+        }
+      ],
+      "scalars": {
+        "bias": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "otype": {
+          "value": "torch.bfloat16",
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "scale_a": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "scale_b": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "scale_c": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "solidx": {
+          "value": 0,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "bpreshuffle": {
+          "value": false,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "config": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        }
+      },
+      "outputs": [
+        {
+          "name": "return",
+          "role": "output",
+          "shape": [
+            64,
+            8
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            8,
+            1
+          ],
+          "layout": "fresh contiguous result",
+          "evidence": "ut/meta.json#/math_contract"
+        }
+      ],
+      "benchmark_case_ids": [
+        "nk8x4096_m64_decode"
+      ],
+      "notes": []
+    },
+    {
+      "case_id": "nk4096x1024_m64_decode",
+      "regime": "decode",
+      "evidence": "ut/meta.json#/cases/6",
+      "metadata": {
+        "sig": "nk4096x1024_m64_decode",
+        "regime": "decode",
+        "m": 64,
+        "n": 4096,
+        "k": 1024
+      },
+      "tensors": [
+        {
+          "name": "inp",
+          "role": "input",
+          "shape": [
+            64,
+            1024
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            1024,
+            1
+          ],
+          "layout": "row-major contiguous",
+          "evidence": "ut/cases.py:34"
+        },
+        {
+          "name": "weights",
+          "role": "input",
+          "shape": [
+            4096,
+            1024
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            1024,
+            1
+          ],
+          "layout": "row-major contiguous",
+          "evidence": "ut/cases.py:34"
+        }
+      ],
+      "scalars": {
+        "bias": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "otype": {
+          "value": "torch.bfloat16",
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "scale_a": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "scale_b": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "scale_c": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "solidx": {
+          "value": 0,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "bpreshuffle": {
+          "value": false,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "config": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        }
+      },
+      "outputs": [
+        {
+          "name": "return",
+          "role": "output",
+          "shape": [
+            64,
+            4096
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            4096,
+            1
+          ],
+          "layout": "fresh contiguous result",
+          "evidence": "ut/meta.json#/math_contract"
+        }
+      ],
+      "benchmark_case_ids": [
+        "nk4096x1024_m64_decode"
+      ],
+      "notes": []
+    },
+    {
+      "case_id": "nk3072x4096_m8192_prefill",
+      "regime": "prefill",
+      "evidence": "ut/meta.json#/cases/7",
+      "metadata": {
+        "sig": "nk3072x4096_m8192_prefill",
+        "regime": "prefill",
+        "m": 8192,
+        "n": 3072,
+        "k": 4096
+      },
+      "tensors": [
+        {
+          "name": "inp",
+          "role": "input",
+          "shape": [
+            8192,
+            4096
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            4096,
+            1
+          ],
+          "layout": "row-major contiguous",
+          "evidence": "ut/cases.py:34"
+        },
+        {
+          "name": "weights",
+          "role": "input",
+          "shape": [
+            3072,
+            4096
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            4096,
+            1
+          ],
+          "layout": "row-major contiguous",
+          "evidence": "ut/cases.py:34"
+        }
+      ],
+      "scalars": {
+        "bias": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "otype": {
+          "value": "torch.bfloat16",
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "scale_a": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "scale_b": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "scale_c": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "solidx": {
+          "value": 0,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "bpreshuffle": {
+          "value": false,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "config": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        }
+      },
+      "outputs": [
+        {
+          "name": "return",
+          "role": "output",
+          "shape": [
+            8192,
+            3072
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            3072,
+            1
+          ],
+          "layout": "fresh contiguous result",
+          "evidence": "ut/meta.json#/math_contract"
+        }
+      ],
+      "benchmark_case_ids": [
+        "nk3072x4096_m8192_prefill"
+      ],
+      "notes": []
+    },
+    {
+      "case_id": "nk288x4096_m8192_prefill",
+      "regime": "prefill",
+      "evidence": "ut/meta.json#/cases/8",
+      "metadata": {
+        "sig": "nk288x4096_m8192_prefill",
+        "regime": "prefill",
+        "m": 8192,
+        "n": 288,
+        "k": 4096
+      },
+      "tensors": [
+        {
+          "name": "inp",
+          "role": "input",
+          "shape": [
+            8192,
+            4096
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            4096,
+            1
+          ],
+          "layout": "row-major contiguous",
+          "evidence": "ut/cases.py:34"
+        },
+        {
+          "name": "weights",
+          "role": "input",
+          "shape": [
+            288,
+            4096
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            4096,
+            1
+          ],
+          "layout": "row-major contiguous",
+          "evidence": "ut/cases.py:34"
+        }
+      ],
+      "scalars": {
+        "bias": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "otype": {
+          "value": "torch.bfloat16",
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "scale_a": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "scale_b": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "scale_c": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "solidx": {
+          "value": 0,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "bpreshuffle": {
+          "value": false,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "config": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        }
+      },
+      "outputs": [
+        {
+          "name": "return",
+          "role": "output",
+          "shape": [
+            8192,
+            288
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            288,
+            1
+          ],
+          "layout": "fresh contiguous result",
+          "evidence": "ut/meta.json#/math_contract"
+        }
+      ],
+      "benchmark_case_ids": [
+        "nk288x4096_m8192_prefill"
+      ],
+      "notes": []
+    },
+    {
+      "case_id": "nk1024x128_m8192_prefill",
+      "regime": "prefill",
+      "evidence": "ut/meta.json#/cases/9",
+      "metadata": {
+        "sig": "nk1024x128_m8192_prefill",
+        "regime": "prefill",
+        "m": 8192,
+        "n": 1024,
+        "k": 128
+      },
+      "tensors": [
+        {
+          "name": "inp",
+          "role": "input",
+          "shape": [
+            8192,
+            128
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            128,
+            1
+          ],
+          "layout": "row-major contiguous",
+          "evidence": "ut/cases.py:34"
+        },
+        {
+          "name": "weights",
+          "role": "input",
+          "shape": [
+            1024,
+            128
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            128,
+            1
+          ],
+          "layout": "row-major contiguous",
+          "evidence": "ut/cases.py:34"
+        }
+      ],
+      "scalars": {
+        "bias": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "otype": {
+          "value": "torch.bfloat16",
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "scale_a": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "scale_b": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "scale_c": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "solidx": {
+          "value": 0,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "bpreshuffle": {
+          "value": false,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "config": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        }
+      },
+      "outputs": [
+        {
+          "name": "return",
+          "role": "output",
+          "shape": [
+            8192,
+            1024
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            1024,
+            1
+          ],
+          "layout": "fresh contiguous result",
+          "evidence": "ut/meta.json#/math_contract"
+        }
+      ],
+      "benchmark_case_ids": [
+        "nk1024x128_m8192_prefill"
+      ],
+      "notes": []
+    },
+    {
+      "case_id": "nk8x4096_m8192_prefill",
+      "regime": "prefill",
+      "evidence": "ut/meta.json#/cases/10",
+      "metadata": {
+        "sig": "nk8x4096_m8192_prefill",
+        "regime": "prefill",
+        "m": 8192,
+        "n": 8,
+        "k": 4096
+      },
+      "tensors": [
+        {
+          "name": "inp",
+          "role": "input",
+          "shape": [
+            8192,
+            4096
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            4096,
+            1
+          ],
+          "layout": "row-major contiguous",
+          "evidence": "ut/cases.py:34"
+        },
+        {
+          "name": "weights",
+          "role": "input",
+          "shape": [
+            8,
+            4096
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            4096,
+            1
+          ],
+          "layout": "row-major contiguous",
+          "evidence": "ut/cases.py:34"
+        }
+      ],
+      "scalars": {
+        "bias": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "otype": {
+          "value": "torch.bfloat16",
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "scale_a": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "scale_b": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "scale_c": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "solidx": {
+          "value": 0,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "bpreshuffle": {
+          "value": false,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "config": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        }
+      },
+      "outputs": [
+        {
+          "name": "return",
+          "role": "output",
+          "shape": [
+            8192,
+            8
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            8,
+            1
+          ],
+          "layout": "fresh contiguous result",
+          "evidence": "ut/meta.json#/math_contract"
+        }
+      ],
+      "benchmark_case_ids": [
+        "nk8x4096_m8192_prefill"
+      ],
+      "notes": []
+    },
+    {
+      "case_id": "nk4096x1024_m8192_prefill",
+      "regime": "prefill",
+      "evidence": "ut/meta.json#/cases/11",
+      "metadata": {
+        "sig": "nk4096x1024_m8192_prefill",
+        "regime": "prefill",
+        "m": 8192,
+        "n": 4096,
+        "k": 1024
+      },
+      "tensors": [
+        {
+          "name": "inp",
+          "role": "input",
+          "shape": [
+            8192,
+            1024
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            1024,
+            1
+          ],
+          "layout": "row-major contiguous",
+          "evidence": "ut/cases.py:34"
+        },
+        {
+          "name": "weights",
+          "role": "input",
+          "shape": [
+            4096,
+            1024
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            1024,
+            1
+          ],
+          "layout": "row-major contiguous",
+          "evidence": "ut/cases.py:34"
+        }
+      ],
+      "scalars": {
+        "bias": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "otype": {
+          "value": "torch.bfloat16",
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "scale_a": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "scale_b": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "scale_c": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "solidx": {
+          "value": 0,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "bpreshuffle": {
+          "value": false,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "config": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        }
+      },
+      "outputs": [
+        {
+          "name": "return",
+          "role": "output",
+          "shape": [
+            8192,
+            4096
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            4096,
+            1
+          ],
+          "layout": "fresh contiguous result",
+          "evidence": "ut/meta.json#/math_contract"
+        }
+      ],
+      "benchmark_case_ids": [
+        "nk4096x1024_m8192_prefill"
+      ],
+      "notes": []
+    },
+    {
+      "case_id": "nk4096x1536_m64_decode",
+      "regime": "decode",
+      "evidence": "ut/meta.json#/cases/12",
+      "metadata": {
+        "sig": "nk4096x1536_m64_decode",
+        "regime": "decode",
+        "m": 64,
+        "n": 4096,
+        "k": 1536
+      },
+      "tensors": [
+        {
+          "name": "inp",
+          "role": "input",
+          "shape": [
+            64,
+            1536
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            1536,
+            1
+          ],
+          "layout": "row-major contiguous",
+          "evidence": "ut/cases.py:34"
+        },
+        {
+          "name": "weights",
+          "role": "input",
+          "shape": [
+            4096,
+            1536
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            1536,
+            1
+          ],
+          "layout": "row-major contiguous",
+          "evidence": "ut/cases.py:34"
+        }
+      ],
+      "scalars": {
+        "bias": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "otype": {
+          "value": "torch.bfloat16",
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "scale_a": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "scale_b": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "scale_c": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "solidx": {
+          "value": 0,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "bpreshuffle": {
+          "value": false,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "config": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        }
+      },
+      "outputs": [
+        {
+          "name": "return",
+          "role": "output",
+          "shape": [
+            64,
+            4096
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            4096,
+            1
+          ],
+          "layout": "fresh contiguous result",
+          "evidence": "ut/meta.json#/math_contract"
+        }
+      ],
+      "benchmark_case_ids": [
+        "nk4096x1536_m64_decode"
+      ],
+      "notes": []
+    },
+    {
+      "case_id": "nk4096x1536_m8192_prefill",
+      "regime": "prefill",
+      "evidence": "ut/meta.json#/cases/13",
+      "metadata": {
+        "sig": "nk4096x1536_m8192_prefill",
+        "regime": "prefill",
+        "m": 8192,
+        "n": 4096,
+        "k": 1536
+      },
+      "tensors": [
+        {
+          "name": "inp",
+          "role": "input",
+          "shape": [
+            8192,
+            1536
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            1536,
+            1
+          ],
+          "layout": "row-major contiguous",
+          "evidence": "ut/cases.py:34"
+        },
+        {
+          "name": "weights",
+          "role": "input",
+          "shape": [
+            4096,
+            1536
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            1536,
+            1
+          ],
+          "layout": "row-major contiguous",
+          "evidence": "ut/cases.py:34"
+        }
+      ],
+      "scalars": {
+        "bias": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "otype": {
+          "value": "torch.bfloat16",
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "scale_a": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "scale_b": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "scale_c": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "solidx": {
+          "value": 0,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "bpreshuffle": {
+          "value": false,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "config": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        }
+      },
+      "outputs": [
+        {
+          "name": "return",
+          "role": "output",
+          "shape": [
+            8192,
+            4096
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            4096,
+            1
+          ],
+          "layout": "fresh contiguous result",
+          "evidence": "ut/meta.json#/math_contract"
+        }
+      ],
+      "benchmark_case_ids": [
+        "nk4096x1536_m8192_prefill"
+      ],
+      "notes": []
+    },
+    {
+      "case_id": "nk32x4096_m8192_prefill",
+      "regime": "prefill",
+      "evidence": "ut/meta.json#/cases/14",
+      "metadata": {
+        "sig": "nk32x4096_m8192_prefill",
+        "regime": "prefill",
+        "m": 8192,
+        "n": 32,
+        "k": 4096
+      },
+      "tensors": [
+        {
+          "name": "inp",
+          "role": "input",
+          "shape": [
+            8192,
+            4096
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            4096,
+            1
+          ],
+          "layout": "row-major contiguous",
+          "evidence": "ut/cases.py:34"
+        },
+        {
+          "name": "weights",
+          "role": "input",
+          "shape": [
+            32,
+            4096
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            4096,
+            1
+          ],
+          "layout": "row-major contiguous",
+          "evidence": "ut/cases.py:34"
+        }
+      ],
+      "scalars": {
+        "bias": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "otype": {
+          "value": "torch.bfloat16",
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "scale_a": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "scale_b": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "scale_c": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "solidx": {
+          "value": 0,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "bpreshuffle": {
+          "value": false,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "config": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        }
+      },
+      "outputs": [
+        {
+          "name": "return",
+          "role": "output",
+          "shape": [
+            8192,
+            32
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            32,
+            1
+          ],
+          "layout": "fresh contiguous result",
+          "evidence": "ut/meta.json#/math_contract"
+        }
+      ],
+      "benchmark_case_ids": [
+        "nk32x4096_m8192_prefill"
+      ],
+      "notes": []
+    },
+    {
+      "case_id": "nk4096x512_m8192_prefill",
+      "regime": "prefill",
+      "evidence": "ut/meta.json#/cases/15",
+      "metadata": {
+        "sig": "nk4096x512_m8192_prefill",
+        "regime": "prefill",
+        "m": 8192,
+        "n": 4096,
+        "k": 512
+      },
+      "tensors": [
+        {
+          "name": "inp",
+          "role": "input",
+          "shape": [
+            8192,
+            512
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            512,
+            1
+          ],
+          "layout": "row-major contiguous",
+          "evidence": "ut/cases.py:34"
+        },
+        {
+          "name": "weights",
+          "role": "input",
+          "shape": [
+            4096,
+            512
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            512,
+            1
+          ],
+          "layout": "row-major contiguous",
+          "evidence": "ut/cases.py:34"
+        }
+      ],
+      "scalars": {
+        "bias": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "otype": {
+          "value": "torch.bfloat16",
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "scale_a": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "scale_b": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "scale_c": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "solidx": {
+          "value": 0,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "bpreshuffle": {
+          "value": false,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "config": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        }
+      },
+      "outputs": [
+        {
+          "name": "return",
+          "role": "output",
+          "shape": [
+            8192,
+            4096
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            4096,
+            1
+          ],
+          "layout": "fresh contiguous result",
+          "evidence": "ut/meta.json#/math_contract"
+        }
+      ],
+      "benchmark_case_ids": [
+        "nk4096x512_m8192_prefill"
+      ],
+      "notes": []
+    },
+    {
+      "case_id": "nk32x4096_m64_decode",
+      "regime": "decode",
+      "evidence": "ut/meta.json#/cases/16",
+      "metadata": {
+        "sig": "nk32x4096_m64_decode",
+        "regime": "decode",
+        "m": 64,
+        "n": 32,
+        "k": 4096
+      },
+      "tensors": [
+        {
+          "name": "inp",
+          "role": "input",
+          "shape": [
+            64,
+            4096
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            4096,
+            1
+          ],
+          "layout": "row-major contiguous",
+          "evidence": "ut/cases.py:34"
+        },
+        {
+          "name": "weights",
+          "role": "input",
+          "shape": [
+            32,
+            4096
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            4096,
+            1
+          ],
+          "layout": "row-major contiguous",
+          "evidence": "ut/cases.py:34"
+        }
+      ],
+      "scalars": {
+        "bias": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "otype": {
+          "value": "torch.bfloat16",
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "scale_a": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "scale_b": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "scale_c": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "solidx": {
+          "value": 0,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "bpreshuffle": {
+          "value": false,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "config": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        }
+      },
+      "outputs": [
+        {
+          "name": "return",
+          "role": "output",
+          "shape": [
+            64,
+            32
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            32,
+            1
+          ],
+          "layout": "fresh contiguous result",
+          "evidence": "ut/meta.json#/math_contract"
+        }
+      ],
+      "benchmark_case_ids": [
+        "nk32x4096_m64_decode"
+      ],
+      "notes": []
+    },
+    {
+      "case_id": "nk4096x512_m64_decode",
+      "regime": "decode",
+      "evidence": "ut/meta.json#/cases/17",
+      "metadata": {
+        "sig": "nk4096x512_m64_decode",
+        "regime": "decode",
+        "m": 64,
+        "n": 4096,
+        "k": 512
+      },
+      "tensors": [
+        {
+          "name": "inp",
+          "role": "input",
+          "shape": [
+            64,
+            512
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            512,
+            1
+          ],
+          "layout": "row-major contiguous",
+          "evidence": "ut/cases.py:34"
+        },
+        {
+          "name": "weights",
+          "role": "input",
+          "shape": [
+            4096,
+            512
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            512,
+            1
+          ],
+          "layout": "row-major contiguous",
+          "evidence": "ut/cases.py:34"
+        }
+      ],
+      "scalars": {
+        "bias": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "otype": {
+          "value": "torch.bfloat16",
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "scale_a": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "scale_b": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "scale_c": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "solidx": {
+          "value": 0,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "bpreshuffle": {
+          "value": false,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "config": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        }
+      },
+      "outputs": [
+        {
+          "name": "return",
+          "role": "output",
+          "shape": [
+            64,
+            4096
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            4096,
+            1
+          ],
+          "layout": "fresh contiguous result",
+          "evidence": "ut/meta.json#/math_contract"
+        }
+      ],
+      "benchmark_case_ids": [
+        "nk4096x512_m64_decode"
+      ],
+      "notes": []
+    },
+    {
+      "case_id": "nk32x4096_m1_decode",
+      "regime": "decode",
+      "evidence": "ut/meta.json#/cases/18",
+      "metadata": {
+        "sig": "nk32x4096_m1_decode",
+        "regime": "decode",
+        "m": 1,
+        "n": 32,
+        "k": 4096
+      },
+      "tensors": [
+        {
+          "name": "inp",
+          "role": "input",
+          "shape": [
+            1,
+            4096
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            4096,
+            1
+          ],
+          "layout": "row-major contiguous",
+          "evidence": "ut/cases.py:34"
+        },
+        {
+          "name": "weights",
+          "role": "input",
+          "shape": [
+            32,
+            4096
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            4096,
+            1
+          ],
+          "layout": "row-major contiguous",
+          "evidence": "ut/cases.py:34"
+        }
+      ],
+      "scalars": {
+        "bias": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "otype": {
+          "value": "torch.bfloat16",
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "scale_a": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "scale_b": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "scale_c": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "solidx": {
+          "value": 0,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "bpreshuffle": {
+          "value": false,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "config": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        }
+      },
+      "outputs": [
+        {
+          "name": "return",
+          "role": "output",
+          "shape": [
+            1,
+            32
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            32,
+            1
+          ],
+          "layout": "fresh contiguous result",
+          "evidence": "ut/meta.json#/math_contract"
+        }
+      ],
+      "benchmark_case_ids": [
+        "nk32x4096_m1_decode"
+      ],
+      "notes": []
+    },
+    {
+      "case_id": "nk4096x512_m1_decode",
+      "regime": "decode",
+      "evidence": "ut/meta.json#/cases/19",
+      "metadata": {
+        "sig": "nk4096x512_m1_decode",
+        "regime": "decode",
+        "m": 1,
+        "n": 4096,
+        "k": 512
+      },
+      "tensors": [
+        {
+          "name": "inp",
+          "role": "input",
+          "shape": [
+            1,
+            512
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            512,
+            1
+          ],
+          "layout": "row-major contiguous",
+          "evidence": "ut/cases.py:34"
+        },
+        {
+          "name": "weights",
+          "role": "input",
+          "shape": [
+            4096,
+            512
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            512,
+            1
+          ],
+          "layout": "row-major contiguous",
+          "evidence": "ut/cases.py:34"
+        }
+      ],
+      "scalars": {
+        "bias": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "otype": {
+          "value": "torch.bfloat16",
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "scale_a": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "scale_b": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "scale_c": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "solidx": {
+          "value": 0,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "bpreshuffle": {
+          "value": false,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "config": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        }
+      },
+      "outputs": [
+        {
+          "name": "return",
+          "role": "output",
+          "shape": [
+            1,
+            4096
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            4096,
+            1
+          ],
+          "layout": "fresh contiguous result",
+          "evidence": "ut/meta.json#/math_contract"
+        }
+      ],
+      "benchmark_case_ids": [
+        "nk4096x512_m1_decode"
+      ],
+      "notes": []
+    },
+    {
+      "case_id": "nk4096x1536_m1_decode",
+      "regime": "decode",
+      "evidence": "ut/meta.json#/cases/20",
+      "metadata": {
+        "sig": "nk4096x1536_m1_decode",
+        "regime": "decode",
+        "m": 1,
+        "n": 4096,
+        "k": 1536
+      },
+      "tensors": [
+        {
+          "name": "inp",
+          "role": "input",
+          "shape": [
+            1,
+            1536
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            1536,
+            1
+          ],
+          "layout": "row-major contiguous",
+          "evidence": "ut/cases.py:34"
+        },
+        {
+          "name": "weights",
+          "role": "input",
+          "shape": [
+            4096,
+            1536
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            1536,
+            1
+          ],
+          "layout": "row-major contiguous",
+          "evidence": "ut/cases.py:34"
+        }
+      ],
+      "scalars": {
+        "bias": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "otype": {
+          "value": "torch.bfloat16",
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "scale_a": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "scale_b": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "scale_c": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "solidx": {
+          "value": 0,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "bpreshuffle": {
+          "value": false,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "config": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        }
+      },
+      "outputs": [
+        {
+          "name": "return",
+          "role": "output",
+          "shape": [
+            1,
+            4096
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            4096,
+            1
+          ],
+          "layout": "fresh contiguous result",
+          "evidence": "ut/meta.json#/math_contract"
+        }
+      ],
+      "benchmark_case_ids": [
+        "nk4096x1536_m1_decode"
+      ],
+      "notes": []
+    },
+    {
+      "case_id": "nk3072x4096_m1_decode",
+      "regime": "decode",
+      "evidence": "ut/meta.json#/cases/21",
+      "metadata": {
+        "sig": "nk3072x4096_m1_decode",
+        "regime": "decode",
+        "m": 1,
+        "n": 3072,
+        "k": 4096
+      },
+      "tensors": [
+        {
+          "name": "inp",
+          "role": "input",
+          "shape": [
+            1,
+            4096
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            4096,
+            1
+          ],
+          "layout": "row-major contiguous",
+          "evidence": "ut/cases.py:34"
+        },
+        {
+          "name": "weights",
+          "role": "input",
+          "shape": [
+            3072,
+            4096
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            4096,
+            1
+          ],
+          "layout": "row-major contiguous",
+          "evidence": "ut/cases.py:34"
+        }
+      ],
+      "scalars": {
+        "bias": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "otype": {
+          "value": "torch.bfloat16",
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "scale_a": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "scale_b": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "scale_c": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "solidx": {
+          "value": 0,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "bpreshuffle": {
+          "value": false,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "config": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        }
+      },
+      "outputs": [
+        {
+          "name": "return",
+          "role": "output",
+          "shape": [
+            1,
+            3072
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            3072,
+            1
+          ],
+          "layout": "fresh contiguous result",
+          "evidence": "ut/meta.json#/math_contract"
+        }
+      ],
+      "benchmark_case_ids": [
+        "nk3072x4096_m1_decode"
+      ],
+      "notes": []
+    },
+    {
+      "case_id": "nk4096x1024_m1_decode",
+      "regime": "decode",
+      "evidence": "ut/meta.json#/cases/22",
+      "metadata": {
+        "sig": "nk4096x1024_m1_decode",
+        "regime": "decode",
+        "m": 1,
+        "n": 4096,
+        "k": 1024
+      },
+      "tensors": [
+        {
+          "name": "inp",
+          "role": "input",
+          "shape": [
+            1,
+            1024
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            1024,
+            1
+          ],
+          "layout": "row-major contiguous",
+          "evidence": "ut/cases.py:34"
+        },
+        {
+          "name": "weights",
+          "role": "input",
+          "shape": [
+            4096,
+            1024
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            1024,
+            1
+          ],
+          "layout": "row-major contiguous",
+          "evidence": "ut/cases.py:34"
+        }
+      ],
+      "scalars": {
+        "bias": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "otype": {
+          "value": "torch.bfloat16",
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "scale_a": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "scale_b": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "scale_c": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "solidx": {
+          "value": 0,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "bpreshuffle": {
+          "value": false,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "config": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        }
+      },
+      "outputs": [
+        {
+          "name": "return",
+          "role": "output",
+          "shape": [
+            1,
+            4096
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            4096,
+            1
+          ],
+          "layout": "fresh contiguous result",
+          "evidence": "ut/meta.json#/math_contract"
+        }
+      ],
+      "benchmark_case_ids": [
+        "nk4096x1024_m1_decode"
+      ],
+      "notes": []
+    },
+    {
+      "case_id": "nk288x4096_m1_decode",
+      "regime": "decode",
+      "evidence": "ut/meta.json#/cases/23",
+      "metadata": {
+        "sig": "nk288x4096_m1_decode",
+        "regime": "decode",
+        "m": 1,
+        "n": 288,
+        "k": 4096
+      },
+      "tensors": [
+        {
+          "name": "inp",
+          "role": "input",
+          "shape": [
+            1,
+            4096
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            4096,
+            1
+          ],
+          "layout": "row-major contiguous",
+          "evidence": "ut/cases.py:34"
+        },
+        {
+          "name": "weights",
+          "role": "input",
+          "shape": [
+            288,
+            4096
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            4096,
+            1
+          ],
+          "layout": "row-major contiguous",
+          "evidence": "ut/cases.py:34"
+        }
+      ],
+      "scalars": {
+        "bias": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "otype": {
+          "value": "torch.bfloat16",
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "scale_a": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "scale_b": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "scale_c": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "solidx": {
+          "value": 0,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "bpreshuffle": {
+          "value": false,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "config": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        }
+      },
+      "outputs": [
+        {
+          "name": "return",
+          "role": "output",
+          "shape": [
+            1,
+            288
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            288,
+            1
+          ],
+          "layout": "fresh contiguous result",
+          "evidence": "ut/meta.json#/math_contract"
+        }
+      ],
+      "benchmark_case_ids": [
+        "nk288x4096_m1_decode"
+      ],
+      "notes": []
+    },
+    {
+      "case_id": "nk128x4096_m1_decode",
+      "regime": "decode",
+      "evidence": "ut/meta.json#/cases/24",
+      "metadata": {
+        "sig": "nk128x4096_m1_decode",
+        "regime": "decode",
+        "m": 1,
+        "n": 128,
+        "k": 4096
+      },
+      "tensors": [
+        {
+          "name": "inp",
+          "role": "input",
+          "shape": [
+            1,
+            4096
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            4096,
+            1
+          ],
+          "layout": "row-major contiguous",
+          "evidence": "ut/cases.py:34"
+        },
+        {
+          "name": "weights",
+          "role": "input",
+          "shape": [
+            128,
+            4096
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            4096,
+            1
+          ],
+          "layout": "row-major contiguous",
+          "evidence": "ut/cases.py:34"
+        }
+      ],
+      "scalars": {
+        "bias": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "otype": {
+          "value": "torch.bfloat16",
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "scale_a": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "scale_b": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "scale_c": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "solidx": {
+          "value": 0,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "bpreshuffle": {
+          "value": false,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "config": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        }
+      },
+      "outputs": [
+        {
+          "name": "return",
+          "role": "output",
+          "shape": [
+            1,
+            128
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            128,
+            1
+          ],
+          "layout": "fresh contiguous result",
+          "evidence": "ut/meta.json#/math_contract"
+        }
+      ],
+      "benchmark_case_ids": [
+        "nk128x4096_m1_decode"
+      ],
+      "notes": []
+    },
+    {
+      "case_id": "nk8x4096_m1_decode",
+      "regime": "decode",
+      "evidence": "ut/meta.json#/cases/25",
+      "metadata": {
+        "sig": "nk8x4096_m1_decode",
+        "regime": "decode",
+        "m": 1,
+        "n": 8,
+        "k": 4096
+      },
+      "tensors": [
+        {
+          "name": "inp",
+          "role": "input",
+          "shape": [
+            1,
+            4096
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            4096,
+            1
+          ],
+          "layout": "row-major contiguous",
+          "evidence": "ut/cases.py:34"
+        },
+        {
+          "name": "weights",
+          "role": "input",
+          "shape": [
+            8,
+            4096
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            4096,
+            1
+          ],
+          "layout": "row-major contiguous",
+          "evidence": "ut/cases.py:34"
+        }
+      ],
+      "scalars": {
+        "bias": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "otype": {
+          "value": "torch.bfloat16",
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "scale_a": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "scale_b": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "scale_c": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "solidx": {
+          "value": 0,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "bpreshuffle": {
+          "value": false,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "config": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        }
+      },
+      "outputs": [
+        {
+          "name": "return",
+          "role": "output",
+          "shape": [
+            1,
+            8
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            8,
+            1
+          ],
+          "layout": "fresh contiguous result",
+          "evidence": "ut/meta.json#/math_contract"
+        }
+      ],
+      "benchmark_case_ids": [
+        "nk8x4096_m1_decode"
+      ],
+      "notes": []
+    },
+    {
+      "case_id": "nk1024x128_m1_decode",
+      "regime": "decode",
+      "evidence": "ut/meta.json#/cases/26",
+      "metadata": {
+        "sig": "nk1024x128_m1_decode",
+        "regime": "decode",
+        "m": 1,
+        "n": 1024,
+        "k": 128
+      },
+      "tensors": [
+        {
+          "name": "inp",
+          "role": "input",
+          "shape": [
+            1,
+            128
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            128,
+            1
+          ],
+          "layout": "row-major contiguous",
+          "evidence": "ut/cases.py:34"
+        },
+        {
+          "name": "weights",
+          "role": "input",
+          "shape": [
+            1024,
+            128
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            128,
+            1
+          ],
+          "layout": "row-major contiguous",
+          "evidence": "ut/cases.py:34"
+        }
+      ],
+      "scalars": {
+        "bias": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "otype": {
+          "value": "torch.bfloat16",
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "scale_a": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "scale_b": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "scale_c": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "solidx": {
+          "value": 0,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "bpreshuffle": {
+          "value": false,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        },
+        "config": {
+          "value": null,
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        }
+      },
+      "outputs": [
+        {
+          "name": "return",
+          "role": "output",
+          "shape": [
+            1,
+            1024
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            1024,
+            1
+          ],
+          "layout": "fresh contiguous result",
+          "evidence": "ut/meta.json#/math_contract"
+        }
+      ],
+      "benchmark_case_ids": [
+        "nk1024x128_m1_decode"
+      ],
+      "notes": []
+    }
+  ],
+  "source_inventories": {
+    "cases": {
+      "evidence": "ut/meta.json#/cases",
+      "records": [
+        {
+          "sig": "nk128x4096_m64_decode",
+          "regime": "decode",
+          "m": 64,
+          "n": 128,
+          "k": 4096
+        },
+        {
+          "sig": "nk3072x4096_m64_decode",
+          "regime": "decode",
+          "m": 64,
+          "n": 3072,
+          "k": 4096
+        },
+        {
+          "sig": "nk288x4096_m64_decode",
+          "regime": "decode",
+          "m": 64,
+          "n": 288,
+          "k": 4096
+        },
+        {
+          "sig": "nk1024x128_m64_decode",
+          "regime": "decode",
+          "m": 64,
+          "n": 1024,
+          "k": 128
+        },
+        {
+          "sig": "nk128x4096_m8192_prefill",
+          "regime": "prefill",
+          "m": 8192,
+          "n": 128,
+          "k": 4096
+        },
+        {
+          "sig": "nk8x4096_m64_decode",
+          "regime": "decode",
+          "m": 64,
+          "n": 8,
+          "k": 4096
+        },
+        {
+          "sig": "nk4096x1024_m64_decode",
+          "regime": "decode",
+          "m": 64,
+          "n": 4096,
+          "k": 1024
+        },
+        {
+          "sig": "nk3072x4096_m8192_prefill",
+          "regime": "prefill",
+          "m": 8192,
+          "n": 3072,
+          "k": 4096
+        },
+        {
+          "sig": "nk288x4096_m8192_prefill",
+          "regime": "prefill",
+          "m": 8192,
+          "n": 288,
+          "k": 4096
+        },
+        {
+          "sig": "nk1024x128_m8192_prefill",
+          "regime": "prefill",
+          "m": 8192,
+          "n": 1024,
+          "k": 128
+        },
+        {
+          "sig": "nk8x4096_m8192_prefill",
+          "regime": "prefill",
+          "m": 8192,
+          "n": 8,
+          "k": 4096
+        },
+        {
+          "sig": "nk4096x1024_m8192_prefill",
+          "regime": "prefill",
+          "m": 8192,
+          "n": 4096,
+          "k": 1024
+        },
+        {
+          "sig": "nk4096x1536_m64_decode",
+          "regime": "decode",
+          "m": 64,
+          "n": 4096,
+          "k": 1536
+        },
+        {
+          "sig": "nk4096x1536_m8192_prefill",
+          "regime": "prefill",
+          "m": 8192,
+          "n": 4096,
+          "k": 1536
+        },
+        {
+          "sig": "nk32x4096_m8192_prefill",
+          "regime": "prefill",
+          "m": 8192,
+          "n": 32,
+          "k": 4096
+        },
+        {
+          "sig": "nk4096x512_m8192_prefill",
+          "regime": "prefill",
+          "m": 8192,
+          "n": 4096,
+          "k": 512
+        },
+        {
+          "sig": "nk32x4096_m64_decode",
+          "regime": "decode",
+          "m": 64,
+          "n": 32,
+          "k": 4096
+        },
+        {
+          "sig": "nk4096x512_m64_decode",
+          "regime": "decode",
+          "m": 64,
+          "n": 4096,
+          "k": 512
+        },
+        {
+          "sig": "nk32x4096_m1_decode",
+          "regime": "decode",
+          "m": 1,
+          "n": 32,
+          "k": 4096
+        },
+        {
+          "sig": "nk4096x512_m1_decode",
+          "regime": "decode",
+          "m": 1,
+          "n": 4096,
+          "k": 512
+        },
+        {
+          "sig": "nk4096x1536_m1_decode",
+          "regime": "decode",
+          "m": 1,
+          "n": 4096,
+          "k": 1536
+        },
+        {
+          "sig": "nk3072x4096_m1_decode",
+          "regime": "decode",
+          "m": 1,
+          "n": 3072,
+          "k": 4096
+        },
+        {
+          "sig": "nk4096x1024_m1_decode",
+          "regime": "decode",
+          "m": 1,
+          "n": 4096,
+          "k": 1024
+        },
+        {
+          "sig": "nk288x4096_m1_decode",
+          "regime": "decode",
+          "m": 1,
+          "n": 288,
+          "k": 4096
+        },
+        {
+          "sig": "nk128x4096_m1_decode",
+          "regime": "decode",
+          "m": 1,
+          "n": 128,
+          "k": 4096
+        },
+        {
+          "sig": "nk8x4096_m1_decode",
+          "regime": "decode",
+          "m": 1,
+          "n": 8,
+          "k": 4096
+        },
+        {
+          "sig": "nk1024x128_m1_decode",
+          "regime": "decode",
+          "m": 1,
+          "n": 1024,
+          "k": 128
+        }
+      ]
+    }
+  },
+  "observed_shape_inventories": [],
+  "dynamic_dimensions": {
+    "evidence": "ut/cases.py",
+    "policy": "Only dimensions explicitly instantiated by the protected builders are catalogued. Random value draws do not create additional shapes. Routing lengths, live split counts, sparse indices, and physical oracle strides remain runtime data where not recorded.",
+    "builder_entrypoints": {},
+    "case_id_and_shape_recipes": []
+  },
+  "unknown_tensor_metadata": [],
+  "unknown_benchmark_tensor_overrides": [],
+  "opaque_artifacts": [],
+  "sources": [
+    {
+      "path": "ut/meta.json",
+      "sha256": "5bc6e6fe2c8c55ef0f6b4a9c52114c998b16f76d31c7b71085216fef8435678d"
+    },
+    {
+      "path": "ut/cases.py",
+      "sha256": "fa2782b9c5e668c0b94085f90c7693a41c3af23d0f1d6cbaf4499ab2a84321ab"
+    },
+    {
+      "path": "config.yaml",
+      "sha256": "ed96304c7619d33d2d07958ab9cf69c86b9eca874b106feac8e90ac6280de3a1"
+    },
+    {
+      "path": "scripts/source_abi.json",
+      "sha256": "20324e41eb1f493fca2068cac196de7483fc19004613dfc0a7b3aebc0a4192ae"
+    },
+    {
+      "path": "ut/provenance/workload.json",
+      "sha256": "c1ae420398e34dd543463c48c26d75fae69a2a3e2a73c00b813718f751f16c6d"
+    },
+    {
+      "path": "ut/provenance/selection_validation.json",
+      "sha256": "8e0deaf915e2a0974e552c027d6a1d97274de207313181ebf4f5b37729b8039a"
+    }
+  ],
+  "validation": "Static metadata/AST inspection only. No task module imports, pickle deserialization, tensor loading, GPU execution, or fresh performance validation."
+}

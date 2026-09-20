@@ -1,0 +1,20 @@
+{
+  "backend": "sglang",
+  "quant": {
+    "method": "fp8_blockscale",
+    "weight_dtype": "fp8_e4m3",
+    "act_dtype": "fp8",
+    "block_size": [
+      128,
+      128
+    ],
+    "source": "model_config"
+  },
+  "kv_cache_dtype": "fp8_e4m3",
+  "compile": "eager",
+  "enforce_eager": false,
+  "cuda_graph": true,
+  "attention_backend": "dsv4",
+  "prefill_chunk": 65536,
+  "notes": ""
+}

@@ -1,0 +1,47 @@
+source_file_path:
+- source/topk_sparse.py
+target_kernel_functions:
+- _gqa_share_sparse_decode_kernel
+- flash_decode_with_gqa_share_sparse
+compile_command:
+- python3 scripts/task_runner.py compile --timeout 600
+correctness_command:
+- python3 scripts/task_runner.py correctness --timeout 3600
+performance_command:
+- python3 scripts/task_runner.py performance --timeout 3600
+task_type: triton2triton
+task_result_template: null
+prompt:
+  source_code: null
+  instructions: "Optimize the MiniMax-M3-MXFP4 _gqa_share_sparse_decode_kernel kernel on MI355X (gfx950).\nBackend: Triton. Serving capture: ISL 8192 / OSL 1024 / CONC 64 / TP 8.\n\nEdit only the declared source files and target functions:\n  source/topk_sparse.py\n  _gqa_share_sparse_decode_kernel\n  flash_decode_with_gqa_share_sparse\n\nKeep the production callable signature and the captured shape, dtype, stride,\ntensor-attribute, routing, state-update and output-alias contracts unchanged.\nProduction seam: sglang.srt.layers.attention.minimax_sparse_ops.minimax_sparse:flash_decode_with_gqa_share_sparse.\nUse the task's frozen correctness references and complete benchmark case set.\nThe starting-source provenance is stock; archival profile\nand speedup figures in the provenance files are not measurements of this run.\nThe Arena evaluator measures the committed starting implementation and candidate\nunder the same benchmark contract. Do not edit ut/, scripts/, or config.yaml.\n"
+  cheatsheet: null
+headkernel:
+  operation_id: minimax-m3__gqa_share_sparse_decode_kernel
+  model: MiniMax-M3-MXFP4
+  owner: chaox
+  docker: harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.17-rocm720-mi35x-profilerfix
+  serving: ISL 8192 / OSL 1024 / CONC 64 / TP 8
+  backend: Triton
+  regime: decode
+  device_symbol: _gqa_share_sparse_decode_kernel
+  target_callable: sglang.srt.layers.attention.minimax_sparse_ops.minimax_sparse:flash_decode_with_gqa_share_sparse
+  tol: 0.02
+  oracle: frozen live-capture ut/reference_io.pt
+  source_package: Z/MiniMax-M3-MXFP4_gqa_share_sparse_decode_kernel
+  source_seed: stock
+  info_rows:
+  - row: MM-3
+    info_kernel: gqa_share_sparse_decode_kernel
+    gpu_pct: 7.63
+    empirical_roofline: 78%
+    optimized_roofline: 86%
+    e2e_uplift: +2.69%
+  symbol_locations:
+    _gqa_share_sparse_decode_kernel: source/topk_sparse.py
+    flash_decode_with_gqa_share_sparse: source/topk_sparse.py
+compile_timeout: 600
+correctness_timeout: 3600
+performance_timeout: 3600
+platform_support:
+  required_arch: gfx950
+  status: active

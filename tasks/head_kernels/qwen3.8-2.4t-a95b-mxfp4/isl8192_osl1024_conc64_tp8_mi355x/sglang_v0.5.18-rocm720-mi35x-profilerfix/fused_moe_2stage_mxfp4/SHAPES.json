@@ -1,0 +1,1043 @@
+{
+  "schema_version": 1,
+  "task_id": "qwen3.8-2.4t__fused_moe_2stage_mxfp4",
+  "task_path": ".",
+  "path_base": "task directory",
+  "scope": "Single-GPU callable/operator unit benchmark on MI355X (gfx950). Serving capture context does not define kernel tensor shapes.",
+  "serving_capture_context": {
+    "isl": 8192,
+    "osl": 1024,
+    "concurrency": 64,
+    "tensor_parallel_world_size": 8
+  },
+  "environment_evidence": "config.yaml",
+  "interface": {
+    "target_callable": "aiter.fused_moe:fused_moe",
+    "baseline_callable_recorded": null,
+    "candidate_bind_recorded": {
+      "file": "kernel_src/moe_candidate.py",
+      "impl_attr": "fused_moe",
+      "impl_module": "moe_candidate",
+      "kind": "rebind",
+      "target": "aiter.fused_moe:fused_moe"
+    },
+    "candidate_signatures": [
+      {
+        "callable": "fused_moe",
+        "signature": "fused_moe(hidden_states, w1, w2, topk_weight, topk_ids, expert_mask: torch.Tensor | None=None, activation=ActivationType.Silu, quant_type=QuantType.No, doweight_stage1=False, w1_scale: torch.Tensor | None=None, w2_scale: torch.Tensor | None=None, a1_scale: torch.Tensor | None=None, a2_scale: torch.Tensor | None=None, block_size_M=None, num_local_tokens: torch.Tensor | None=None, moe_sorting_dispatch_policy=0, dtype=None, hidden_pad=0, intermediate_pad=0, bias1=None, bias2=None, splitk=0, swiglu_limit=None, beta=None, linear_beta=None, gate_mode: str | None=GateMode.SEPARATED.value)",
+        "evidence": "source/moe_candidate.py:451"
+      }
+    ],
+    "benchmark_adapter": "scripts/_bench.py#selected_cases",
+    "scope": "composite operator: a complete call may launch multiple physical kernels",
+    "profiled_kernel_rows": [
+      {
+        "id": "Q38-1",
+        "profiled_kernel": "mfma_moe1_silu_mul_afp4_wfp4_bf16_t32x128x256_pm1_async_v32 -> t32x32x256",
+        "device_symbol": "mfma_moe1_silu_mul_afp4_wfp4_bf16_t32x128x256_pm1_async_v32",
+        "regime": "decode"
+      },
+      {
+        "id": "Q38-2",
+        "profiled_kernel": "mfma_moe2_afp4_wfp4_bf16_cshuffle_t32x128x256 [atomic_bnt2 -> atomic]",
+        "device_symbol": "mfma_moe2_afp4_wfp4_bf16_cshuffle_t32x128x256_vscale_fix3_fp4opt_v1_persist_cu256 (ledger hk02 observed kernel)",
+        "regime": "decode"
+      },
+      {
+        "id": "Q38-3",
+        "profiled_kernel": "FMoE 2-stage - S1 t64x128 + S2 atomic -> S1 t128x64 + S2 atomic_persist",
+        "device_symbol": null,
+        "regime": "prefill"
+      }
+    ],
+    "frozen_baseline_signatures": [
+      {
+        "signature": "fused_moe(hidden_states, w1, w2, topk_weight, topk_ids, expert_mask: torch.Tensor | None=None, activation=ActivationType.Silu, quant_type=QuantType.No, doweight_stage1=False, w1_scale: torch.Tensor | None=None, w2_scale: torch.Tensor | None=None, a1_scale: torch.Tensor | None=None, a2_scale: torch.Tensor | None=None, block_size_M=None, num_local_tokens: torch.Tensor | None=None, moe_sorting_dispatch_policy=0, dtype=None, hidden_pad=0, intermediate_pad=0, bias1=None, bias2=None, splitk=0, swiglu_limit=None, beta=None, linear_beta=None, gate_mode: str | None=GateMode.SEPARATED.value)",
+        "evidence": "ut/baseline_ref/fused_moe.py.orig:441"
+      }
+    ],
+    "alias_and_mutation_notes": "Returns a fresh BF16 result; input hidden_states, routing, packed weights, scales and expert mask remain unchanged. One call includes both MoE stages.",
+    "alias_evidence": [
+      "ut/meta.json#/math_contract",
+      "ut/cases.py:156"
+    ]
+  },
+  "contracts": [
+    {
+      "value": "Full fused MoE dispatch: real top-k routing over compact MXFP4 expert weights, SiLU/mul stage 1, expert projection stage 2, and weighted reduction to a fresh BF16 output.",
+      "evidence": "ut/meta.json#/math_contract"
+    },
+    {
+      "value": "Persistent live capture with real packed MXFP4 weights, uint8 scales, expert mask, top-k ids/weights, and full BF16 outputs. Random parity changes hidden values only and preserves live routing and expert state.",
+      "evidence": "ut/meta.json#/oracle_policy"
+    },
+    {
+      "value": "Live prefill authority is M=8192. The earlier M=16384 assumption is rejected by capture evidence.",
+      "evidence": "ut/meta.json#/notes"
+    }
+  ],
+  "metadata_dimensions": {
+    "geometry": {
+      "value": {
+        "expert_mask_size": 512,
+        "hidden_size": 8192,
+        "local_experts": 64,
+        "topk": 10,
+        "w1_scale_shape": [
+          64,
+          4096,
+          256
+        ],
+        "w1_shape": [
+          64,
+          4096,
+          4096
+        ],
+        "w2_scale_shape": [
+          64,
+          8192,
+          64
+        ],
+        "w2_shape": [
+          64,
+          8192,
+          1024
+        ],
+        "weight_attributes": {
+          "is_shuffled": true
+        }
+      },
+      "evidence": "ut/meta.json#/geometry"
+    },
+    "case_entrypoints": {
+      "value": {
+        "hk01": "decode_m64_stage1",
+        "hk02": "decode_m64_stage2",
+        "hk03": "prefill_m8192_full_dispatch"
+      },
+      "evidence": "ut/meta.json#/case_entrypoints"
+    },
+    "case_contracts": {
+      "value": {
+        "hk01": {
+          "m": 64,
+          "regime": "decode",
+          "required_device_stages": [
+            "moe1"
+          ]
+        },
+        "hk02": {
+          "m": 64,
+          "regime": "decode",
+          "required_device_stages": [
+            "moe2"
+          ]
+        },
+        "hk03": {
+          "m": 8192,
+          "regime": "prefill",
+          "required_device_stages": [
+            "moe1",
+            "moe2"
+          ]
+        }
+      },
+      "evidence": "ut/meta.json#/case_contracts"
+    }
+  },
+  "case_inventory": {
+    "metadata_declared_num_cases": 2,
+    "shape_record_count": 2,
+    "benchmark_case_count": 2,
+    "benchmark_case_ids": [
+      "decode_m64_live",
+      "prefill_m8192_live"
+    ],
+    "count_note": "Counts describe distinct scopes. Captures, boundary specs, histogram observations and benchmark buckets are not interchangeable."
+  },
+  "benchmark_cases": [
+    {
+      "case_id": "decode_m64_live",
+      "shape_record_id": "decode_m64_live",
+      "regime": "decode",
+      "evidence": "ut/cases.py:105"
+    },
+    {
+      "case_id": "prefill_m8192_live",
+      "shape_record_id": "prefill_m8192_live",
+      "regime": "prefill",
+      "evidence": "ut/cases.py:105"
+    }
+  ],
+  "cases": [
+    {
+      "case_id": "decode_m64_live",
+      "regime": "decode",
+      "evidence": "ut/meta.json#/workload/cases/0",
+      "metadata": {
+        "hidden_shape": [
+          64,
+          8192
+        ],
+        "hidden_stride": [
+          8192,
+          1
+        ],
+        "live_count": 94208,
+        "m": 64,
+        "regime": "decode",
+        "sig": "decode_m64_live"
+      },
+      "tensors": [
+        {
+          "name": "expert_mask",
+          "role": "input",
+          "shape": [
+            512
+          ],
+          "dtype": "torch.int32",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/capture_meta.json#/cases/1"
+        },
+        {
+          "name": "hidden_states",
+          "role": "input",
+          "shape": [
+            64,
+            8192
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            8192,
+            1
+          ],
+          "layout": "recorded row-major",
+          "evidence": "ut/meta.json#/workload/cases/0"
+        },
+        {
+          "name": "topk_ids",
+          "role": "input",
+          "shape": [
+            64,
+            10
+          ],
+          "dtype": "torch.int32",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/capture_meta.json#/cases/1"
+        },
+        {
+          "name": "topk_weight",
+          "role": "input",
+          "shape": [
+            64,
+            10
+          ],
+          "dtype": "torch.float32",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/capture_meta.json#/cases/1"
+        },
+        {
+          "name": "w1",
+          "role": "input",
+          "shape": [
+            64,
+            4096,
+            4096
+          ],
+          "dtype": "torch.float4_e2m1fn_x2",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/capture_meta.json#/cases/1",
+          "attributes": {
+            "is_shuffled": true
+          }
+        },
+        {
+          "name": "w1_scale",
+          "role": "input",
+          "shape": [
+            64,
+            4096,
+            256
+          ],
+          "dtype": "torch.uint8",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/capture_meta.json#/cases/1"
+        },
+        {
+          "name": "w2",
+          "role": "input",
+          "shape": [
+            64,
+            8192,
+            1024
+          ],
+          "dtype": "torch.float4_e2m1fn_x2",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/capture_meta.json#/cases/1",
+          "attributes": {
+            "is_shuffled": true
+          }
+        },
+        {
+          "name": "w2_scale",
+          "role": "input",
+          "shape": [
+            64,
+            8192,
+            64
+          ],
+          "dtype": "torch.uint8",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/capture_meta.json#/cases/1"
+        }
+      ],
+      "scalars": {
+        "a1_scale": {
+          "value": null,
+          "evidence": "ut/capture_meta.json#/cases/1",
+          "scope": "call_argument"
+        },
+        "a2_scale": {
+          "value": null,
+          "evidence": "ut/capture_meta.json#/cases/1",
+          "scope": "call_argument"
+        },
+        "activation": {
+          "value": null,
+          "recorded_type_or_repr": "ActivationType",
+          "status": "value not recorded in signature",
+          "evidence": "ut/capture_meta.json#/cases/1",
+          "scope": "call_argument"
+        },
+        "bias1": {
+          "value": null,
+          "evidence": "ut/capture_meta.json#/cases/1",
+          "scope": "call_argument"
+        },
+        "bias2": {
+          "value": null,
+          "evidence": "ut/capture_meta.json#/cases/1",
+          "scope": "call_argument"
+        },
+        "doweight_stage1": {
+          "value": false,
+          "evidence": "ut/capture_meta.json#/cases/1",
+          "scope": "call_argument"
+        },
+        "hidden_pad": {
+          "value": 0,
+          "evidence": "ut/capture_meta.json#/cases/1",
+          "scope": "call_argument"
+        },
+        "intermediate_pad": {
+          "value": 0,
+          "evidence": "ut/capture_meta.json#/cases/1",
+          "scope": "call_argument"
+        },
+        "quant_type": {
+          "value": null,
+          "recorded_type_or_repr": "QuantType",
+          "status": "value not recorded in signature",
+          "evidence": "ut/capture_meta.json#/cases/1",
+          "scope": "call_argument"
+        }
+      },
+      "outputs": [
+        {
+          "name": "return",
+          "role": "output",
+          "shape": [
+            64,
+            8192
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": null,
+          "layout": "fresh BF16 output; capture strides require tensor oracle",
+          "evidence": "ut/meta.json#/math_contract"
+        }
+      ],
+      "benchmark_case_ids": [
+        "decode_m64_live"
+      ],
+      "notes": []
+    },
+    {
+      "case_id": "prefill_m8192_live",
+      "regime": "prefill",
+      "evidence": "ut/meta.json#/workload/cases/1",
+      "metadata": {
+        "hidden_shape": [
+          8192,
+          8192
+        ],
+        "hidden_stride": [
+          8192,
+          1
+        ],
+        "live_count": 92,
+        "m": 8192,
+        "regime": "prefill",
+        "sig": "prefill_m8192_live"
+      },
+      "tensors": [
+        {
+          "name": "expert_mask",
+          "role": "input",
+          "shape": [
+            512
+          ],
+          "dtype": "torch.int32",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/capture_meta.json#/cases/0"
+        },
+        {
+          "name": "hidden_states",
+          "role": "input",
+          "shape": [
+            8192,
+            8192
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            8192,
+            1
+          ],
+          "layout": "recorded row-major",
+          "evidence": "ut/meta.json#/workload/cases/1"
+        },
+        {
+          "name": "topk_ids",
+          "role": "input",
+          "shape": [
+            8192,
+            10
+          ],
+          "dtype": "torch.int32",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/capture_meta.json#/cases/0"
+        },
+        {
+          "name": "topk_weight",
+          "role": "input",
+          "shape": [
+            8192,
+            10
+          ],
+          "dtype": "torch.float32",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/capture_meta.json#/cases/0"
+        },
+        {
+          "name": "w1",
+          "role": "input",
+          "shape": [
+            64,
+            4096,
+            4096
+          ],
+          "dtype": "torch.float4_e2m1fn_x2",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/capture_meta.json#/cases/0",
+          "attributes": {
+            "is_shuffled": true
+          }
+        },
+        {
+          "name": "w1_scale",
+          "role": "input",
+          "shape": [
+            64,
+            4096,
+            256
+          ],
+          "dtype": "torch.uint8",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/capture_meta.json#/cases/0"
+        },
+        {
+          "name": "w2",
+          "role": "input",
+          "shape": [
+            64,
+            8192,
+            1024
+          ],
+          "dtype": "torch.float4_e2m1fn_x2",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/capture_meta.json#/cases/0",
+          "attributes": {
+            "is_shuffled": true
+          }
+        },
+        {
+          "name": "w2_scale",
+          "role": "input",
+          "shape": [
+            64,
+            8192,
+            64
+          ],
+          "dtype": "torch.uint8",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/capture_meta.json#/cases/0"
+        }
+      ],
+      "scalars": {
+        "a1_scale": {
+          "value": null,
+          "evidence": "ut/capture_meta.json#/cases/0",
+          "scope": "call_argument"
+        },
+        "a2_scale": {
+          "value": null,
+          "evidence": "ut/capture_meta.json#/cases/0",
+          "scope": "call_argument"
+        },
+        "activation": {
+          "value": null,
+          "recorded_type_or_repr": "ActivationType",
+          "status": "value not recorded in signature",
+          "evidence": "ut/capture_meta.json#/cases/0",
+          "scope": "call_argument"
+        },
+        "bias1": {
+          "value": null,
+          "evidence": "ut/capture_meta.json#/cases/0",
+          "scope": "call_argument"
+        },
+        "bias2": {
+          "value": null,
+          "evidence": "ut/capture_meta.json#/cases/0",
+          "scope": "call_argument"
+        },
+        "doweight_stage1": {
+          "value": false,
+          "evidence": "ut/capture_meta.json#/cases/0",
+          "scope": "call_argument"
+        },
+        "hidden_pad": {
+          "value": 0,
+          "evidence": "ut/capture_meta.json#/cases/0",
+          "scope": "call_argument"
+        },
+        "intermediate_pad": {
+          "value": 0,
+          "evidence": "ut/capture_meta.json#/cases/0",
+          "scope": "call_argument"
+        },
+        "quant_type": {
+          "value": null,
+          "recorded_type_or_repr": "QuantType",
+          "status": "value not recorded in signature",
+          "evidence": "ut/capture_meta.json#/cases/0",
+          "scope": "call_argument"
+        }
+      },
+      "outputs": [
+        {
+          "name": "return",
+          "role": "output",
+          "shape": [
+            8192,
+            8192
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": null,
+          "layout": "fresh BF16 output; capture strides require tensor oracle",
+          "evidence": "ut/meta.json#/math_contract"
+        }
+      ],
+      "benchmark_case_ids": [
+        "prefill_m8192_live"
+      ],
+      "notes": []
+    }
+  ],
+  "source_inventories": {
+    "workload/cases": {
+      "evidence": "ut/meta.json#/workload/cases",
+      "records": [
+        {
+          "hidden_shape": [
+            64,
+            8192
+          ],
+          "hidden_stride": [
+            8192,
+            1
+          ],
+          "live_count": 94208,
+          "m": 64,
+          "regime": "decode",
+          "sig": "decode_m64_live"
+        },
+        {
+          "hidden_shape": [
+            8192,
+            8192
+          ],
+          "hidden_stride": [
+            8192,
+            1
+          ],
+          "live_count": 92,
+          "m": 8192,
+          "regime": "prefill",
+          "sig": "prefill_m8192_live"
+        }
+      ]
+    },
+    "case_entrypoints": {
+      "evidence": "ut/meta.json#/case_entrypoints",
+      "records": {
+        "hk01": "decode_m64_stage1",
+        "hk02": "decode_m64_stage2",
+        "hk03": "prefill_m8192_full_dispatch"
+      }
+    },
+    "case_contracts": {
+      "evidence": "ut/meta.json#/case_contracts",
+      "records": {
+        "hk01": {
+          "m": 64,
+          "regime": "decode",
+          "required_device_stages": [
+            "moe1"
+          ]
+        },
+        "hk02": {
+          "m": 64,
+          "regime": "decode",
+          "required_device_stages": [
+            "moe2"
+          ]
+        },
+        "hk03": {
+          "m": 8192,
+          "regime": "prefill",
+          "required_device_stages": [
+            "moe1",
+            "moe2"
+          ]
+        }
+      }
+    }
+  },
+  "observed_shape_inventories": [
+    {
+      "evidence": "ut/capture_meta.json#/shape_counts",
+      "scope": "observed signature histogram; these entries are not additional benchmark cases",
+      "declared_num_distinct_shapes": 4,
+      "entries": [
+        {
+          "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(64, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(64, 10):torch.int32|topk_weight=T(64, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+          "count": 94208,
+          "input_shapes": [
+            [
+              64,
+              8192
+            ],
+            [
+              64,
+              4096,
+              4096
+            ],
+            [
+              64,
+              8192,
+              1024
+            ],
+            [
+              64,
+              10
+            ],
+            [
+              64,
+              10
+            ],
+            [
+              64,
+              4096,
+              256
+            ],
+            [
+              64,
+              8192,
+              64
+            ],
+            [
+              512
+            ]
+          ],
+          "input_dtypes": [
+            "torch.bfloat16",
+            "torch.float32",
+            "torch.float4_e2m1fn_x2",
+            "torch.int32",
+            "torch.uint8"
+          ]
+        },
+        {
+          "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+          "count": 2852,
+          "input_shapes": [
+            [
+              16384,
+              8192
+            ],
+            [
+              64,
+              4096,
+              4096
+            ],
+            [
+              64,
+              8192,
+              1024
+            ],
+            [
+              16384,
+              10
+            ],
+            [
+              16384,
+              10
+            ],
+            [
+              64,
+              4096,
+              256
+            ],
+            [
+              64,
+              8192,
+              64
+            ],
+            [
+              512
+            ]
+          ],
+          "input_dtypes": [
+            "torch.bfloat16",
+            "torch.float32",
+            "torch.float4_e2m1fn_x2",
+            "torch.int32",
+            "torch.uint8"
+          ]
+        },
+        {
+          "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(8192, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(8192, 10):torch.int32|topk_weight=T(8192, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+          "count": 92,
+          "input_shapes": [
+            [
+              8192,
+              8192
+            ],
+            [
+              64,
+              4096,
+              4096
+            ],
+            [
+              64,
+              8192,
+              1024
+            ],
+            [
+              8192,
+              10
+            ],
+            [
+              8192,
+              10
+            ],
+            [
+              64,
+              4096,
+              256
+            ],
+            [
+              64,
+              8192,
+              64
+            ],
+            [
+              512
+            ]
+          ],
+          "input_dtypes": [
+            "torch.bfloat16",
+            "torch.float32",
+            "torch.float4_e2m1fn_x2",
+            "torch.int32",
+            "torch.uint8"
+          ]
+        },
+        {
+          "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(5191, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(5191, 10):torch.int32|topk_weight=T(5191, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+          "count": 92,
+          "input_shapes": [
+            [
+              5191,
+              8192
+            ],
+            [
+              64,
+              4096,
+              4096
+            ],
+            [
+              64,
+              8192,
+              1024
+            ],
+            [
+              5191,
+              10
+            ],
+            [
+              5191,
+              10
+            ],
+            [
+              64,
+              4096,
+              256
+            ],
+            [
+              64,
+              8192,
+              64
+            ],
+            [
+              512
+            ]
+          ],
+          "input_dtypes": [
+            "torch.bfloat16",
+            "torch.float32",
+            "torch.float4_e2m1fn_x2",
+            "torch.int32",
+            "torch.uint8"
+          ]
+        }
+      ]
+    }
+  ],
+  "dynamic_dimensions": {
+    "evidence": "ut/cases.py",
+    "policy": "Only dimensions explicitly instantiated by the protected builders are catalogued. Random value draws do not create additional shapes. Routing lengths, live split counts, sparse indices, and physical oracle strides remain runtime data where not recorded.",
+    "builder_entrypoints": {
+      "random_shapes": "ut/cases.py:172",
+      "graph_replay_bundle": "ut/cases.py:197"
+    },
+    "case_id_and_shape_recipes": [
+      {
+        "function": "random_shapes",
+        "evidence": "ut/cases.py:172",
+        "docstring": null,
+        "expressions": [
+          {
+            "field": "sig",
+            "expression": "sig"
+          }
+        ]
+      },
+      {
+        "function": "graph_replay_bundle",
+        "evidence": "ut/cases.py:197",
+        "docstring": null,
+        "expressions": [
+          {
+            "literal_assignment": "replay_cases = []"
+          },
+          {
+            "field": "sig",
+            "expression": "f'{case['sig']}_value{index}'"
+          }
+        ]
+      }
+    ]
+  },
+  "unknown_tensor_metadata": [
+    {
+      "case_id": "decode_m64_live",
+      "tensor": "expert_mask",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/capture_meta.json#/cases/1"
+    },
+    {
+      "case_id": "decode_m64_live",
+      "tensor": "topk_ids",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/capture_meta.json#/cases/1"
+    },
+    {
+      "case_id": "decode_m64_live",
+      "tensor": "topk_weight",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/capture_meta.json#/cases/1"
+    },
+    {
+      "case_id": "decode_m64_live",
+      "tensor": "w1",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/capture_meta.json#/cases/1"
+    },
+    {
+      "case_id": "decode_m64_live",
+      "tensor": "w1_scale",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/capture_meta.json#/cases/1"
+    },
+    {
+      "case_id": "decode_m64_live",
+      "tensor": "w2",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/capture_meta.json#/cases/1"
+    },
+    {
+      "case_id": "decode_m64_live",
+      "tensor": "w2_scale",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/capture_meta.json#/cases/1"
+    },
+    {
+      "case_id": "decode_m64_live",
+      "tensor": "return",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/math_contract"
+    },
+    {
+      "case_id": "prefill_m8192_live",
+      "tensor": "expert_mask",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/capture_meta.json#/cases/0"
+    },
+    {
+      "case_id": "prefill_m8192_live",
+      "tensor": "topk_ids",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/capture_meta.json#/cases/0"
+    },
+    {
+      "case_id": "prefill_m8192_live",
+      "tensor": "topk_weight",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/capture_meta.json#/cases/0"
+    },
+    {
+      "case_id": "prefill_m8192_live",
+      "tensor": "w1",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/capture_meta.json#/cases/0"
+    },
+    {
+      "case_id": "prefill_m8192_live",
+      "tensor": "w1_scale",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/capture_meta.json#/cases/0"
+    },
+    {
+      "case_id": "prefill_m8192_live",
+      "tensor": "w2",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/capture_meta.json#/cases/0"
+    },
+    {
+      "case_id": "prefill_m8192_live",
+      "tensor": "w2_scale",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/capture_meta.json#/cases/0"
+    },
+    {
+      "case_id": "prefill_m8192_live",
+      "tensor": "return",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/math_contract"
+    }
+  ],
+  "unknown_benchmark_tensor_overrides": [],
+  "opaque_artifacts": [
+    {
+      "path": "ut/reference_io.pt",
+      "sha256": "09a71daa55bdd3683be45016f0e5139e2fd63b7c614ae5ba565f74cbd2c7e434",
+      "metadata_evidence": "ut/meta.json#/reference_io_sha256",
+      "inspected": false,
+      "status": "opaque tensor artifact; no pickle deserialization during catalog generation"
+    }
+  ],
+  "sources": [
+    {
+      "path": "ut/meta.json",
+      "sha256": "5f9f8b933e4e12d5a3cc2e42e532033c9d301a8eee6753a582f4afdf7f2acd1c"
+    },
+    {
+      "path": "ut/cases.py",
+      "sha256": "39a30573a3c31e3f3e1c93000e0d5655183bf7e2e2e8dda11a62fda85477fe6d"
+    },
+    {
+      "path": "config.yaml",
+      "sha256": "afedd4adad84f6ccefc8177b3bef56350b64bd1328162238d4710c3f0da1fc6a"
+    },
+    {
+      "path": "scripts/source_abi.json",
+      "sha256": "4e5a051c882d3219b5fe311865c250e46f6b783ffacdb222d70d9eaef6c556d5"
+    },
+    {
+      "path": "ut/selection_validation.json",
+      "sha256": "2cd0caa34f44a694a4435b84c4162f3520d171d795f613f243872d295302458e"
+    },
+    {
+      "path": "ut/capture_meta.json",
+      "sha256": "8663251f74eaef2fcd31552db45c1fdd7d55068d8f7bca6d1e5557712ce33a36"
+    }
+  ],
+  "validation": "Static metadata/AST inspection only. No task module imports, pickle deserialization, tensor loading, GPU execution, or fresh performance validation."
+}

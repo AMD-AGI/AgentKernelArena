@@ -1,0 +1,13 @@
+{
+  "contract": "negative_control",
+  "output_corruption_rejected": true,
+  "report": [
+    {
+      "case": "decode_m64_live",
+      "correct": false,
+      "max_rel_err": 4108.22461
+    }
+  ],
+  "schema_version": 1,
+  "status": "PASS"
+}

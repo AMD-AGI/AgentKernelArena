@@ -1,0 +1,47 @@
+source_file_path:
+- source/minimax_m3_rmsnorm.py
+target_kernel_functions:
+- gemma_fused_add_rmsnorm
+- _gemma_fused_add_rmsnorm_kernel
+compile_command:
+- python3 scripts/task_runner.py compile --timeout 600
+correctness_command:
+- python3 scripts/task_runner.py correctness --timeout 3600
+performance_command:
+- python3 scripts/task_runner.py performance --timeout 3600
+task_type: triton2triton
+task_result_template: null
+prompt:
+  source_code: null
+  instructions: "Optimize the Qwen3.8-2.4T-A95B-MXFP4 _gemma_fused_add_rmsnorm_kernel kernel on MI355X (gfx950).\nBackend: Triton. Serving capture: ISL 8192 / OSL 1024 / CONC 64 / TP 8.\n\nEdit only the declared source files and target functions:\n  source/minimax_m3_rmsnorm.py\n  gemma_fused_add_rmsnorm\n  _gemma_fused_add_rmsnorm_kernel\n\nKeep the production callable signature and the captured shape, dtype, stride,\ntensor-attribute, routing, state-update and output-alias contracts unchanged.\nProduction seam: sglang.srt.layers.layernorm:rocm_triton_gemma_fused_add_rmsnorm.\nUse the task's frozen correctness references and complete benchmark case set.\nThe starting-source provenance is stock; archival profile\nand speedup figures in the provenance files are not measurements of this run.\nThe Arena evaluator measures the committed starting implementation and candidate\nunder the same benchmark contract. Do not edit ut/, scripts/, or config.yaml.\n"
+  cheatsheet: null
+headkernel:
+  operation_id: qwen3.8-2.4t__gemma_fused_add_rmsnorm
+  model: Qwen3.8-2.4T-A95B-MXFP4
+  owner: Li, Zeping <zepingl@amd.com>
+  docker: harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.18-rocm720-mi35x-profilerfix
+  serving: ISL 8192 / OSL 1024 / CONC 64 / TP 8
+  backend: Triton
+  regime: prefill+decode
+  device_symbol: _gemma_fused_add_rmsnorm_kernel
+  target_callable: sglang.srt.layers.layernorm:rocm_triton_gemma_fused_add_rmsnorm
+  tol: 0.02
+  oracle: runtime frozen baseline at verified live shapes (no persistent reference_io.pt)
+  source_package: P/fused_add_rmsnorm_task
+  source_seed: stock
+  info_rows:
+  - row: Q38-11
+    info_kernel: _gemma_fused_add_rmsnorm_kernel
+    gpu_pct: 5.06
+    empirical_roofline: 77.9% memory-bound
+    optimized_roofline: null
+    e2e_uplift: planning scenario ~+0.24% (NOT measured)
+  symbol_locations:
+    gemma_fused_add_rmsnorm: source/minimax_m3_rmsnorm.py
+    _gemma_fused_add_rmsnorm_kernel: source/minimax_m3_rmsnorm.py
+compile_timeout: 600
+correctness_timeout: 3600
+performance_timeout: 3600
+platform_support:
+  required_arch: gfx950
+  status: active

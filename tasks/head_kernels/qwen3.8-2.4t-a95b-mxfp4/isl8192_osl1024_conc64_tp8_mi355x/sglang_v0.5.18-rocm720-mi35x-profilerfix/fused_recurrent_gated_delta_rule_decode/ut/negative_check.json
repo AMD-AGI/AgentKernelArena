@@ -1,0 +1,19 @@
+{
+  "contract": "negative_control",
+  "output_corruption_rejected": true,
+  "output_report": [
+    {
+      "case": "decode_b64_live",
+      "correct": false,
+      "max_rel_err": 148436.35938
+    }
+  ],
+  "state_corruption_rejected": true,
+  "state_report": [
+    {
+      "case": "decode_b64_live",
+      "correct": false,
+      "max_rel_err": 115115.0625
+    }
+  ]
+}

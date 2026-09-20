@@ -1,0 +1,19 @@
+{
+  "contract": "negative_control",
+  "normed_corruption_rejected": true,
+  "normed_report": [
+    {
+      "case": "decode_m64_live_shape",
+      "correct": false,
+      "max_rel_err": 1086.14526
+    }
+  ],
+  "pre_norm_sum_corruption_rejected": true,
+  "pre_norm_sum_report": [
+    {
+      "case": "decode_m64_live_shape",
+      "correct": false,
+      "max_rel_err": 2001.27747
+    }
+  ]
+}

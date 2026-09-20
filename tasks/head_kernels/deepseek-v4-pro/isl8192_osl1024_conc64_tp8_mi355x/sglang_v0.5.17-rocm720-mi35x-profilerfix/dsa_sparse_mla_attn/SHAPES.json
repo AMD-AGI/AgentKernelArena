@@ -1,0 +1,2435 @@
+{
+  "schema_version": 1,
+  "task_id": "deepseek-v4-pro__dsa_sparse_mla_attn",
+  "task_path": ".",
+  "path_base": "task directory",
+  "scope": "Single-GPU callable/operator unit benchmark on MI355X (gfx950). Serving capture context does not define kernel tensor shapes.",
+  "serving_capture_context": {
+    "isl": 8192,
+    "osl": 1024,
+    "concurrency": 64,
+    "tensor_parallel_world_size": 8
+  },
+  "environment_evidence": "config.yaml",
+  "interface": {
+    "target_callable": "sglang.kernels.ops.attention.dsa.tilelang_kernel:dpsk_v4_fp8_attention_fwd",
+    "baseline_callable_recorded": "",
+    "candidate_bind_recorded": {
+      "kind": "module",
+      "module": "sglang.kernels.ops.attention.dsa.tilelang_kernel",
+      "file": "kernel_src/tilelang_kernel.py"
+    },
+    "candidate_signatures": [
+      {
+        "callable": "dpsk_v4_fp8_attention_fwd",
+        "signature": "dpsk_v4_fp8_attention_fwd(q: torch.Tensor, k_cache: torch.Tensor, block_table: Optional[torch.Tensor], cache_seqlens: Optional[torch.Tensor], head_dim_v: int, tile_scheduler_metadata: Any, num_splits: None=None, softmax_scale: Optional[float]=None, causal: bool=False, is_fp8_kvcache: bool=False, indices: Optional[torch.Tensor]=None, attn_sink: Optional[torch.Tensor]=None, extra_k_cache: Optional[torch.Tensor]=None, extra_indices_in_kvcache: Optional[torch.Tensor]=None, topk_length: Optional[torch.Tensor]=None, extra_topk_length: Optional[torch.Tensor]=None)",
+        "evidence": "source/tilelang_kernel.py:2461"
+      }
+    ],
+    "benchmark_adapter": "scripts/_bench.py#selected_cases",
+    "scope": "composite operator: a complete call may launch multiple physical kernels",
+    "profiled_kernel_rows": [
+      {
+        "id": "DS-1",
+        "profiled_kernel": "MLA",
+        "device_symbol": "main_kernel",
+        "regime": "decode"
+      }
+    ],
+    "frozen_baseline_signatures": [
+      {
+        "signature": "dpsk_v4_fp8_attention_fwd(q: torch.Tensor, k_cache: torch.Tensor, block_table: Optional[torch.Tensor], cache_seqlens: Optional[torch.Tensor], head_dim_v: int, tile_scheduler_metadata: Any, num_splits: None=None, softmax_scale: Optional[float]=None, causal: bool=False, is_fp8_kvcache: bool=False, indices: Optional[torch.Tensor]=None, attn_sink: Optional[torch.Tensor]=None, extra_k_cache: Optional[torch.Tensor]=None, extra_indices_in_kvcache: Optional[torch.Tensor]=None, topk_length: Optional[torch.Tensor]=None, extra_topk_length: Optional[torch.Tensor]=None)",
+        "evidence": "ut/baseline_ref/tilelang_kernel.py.orig:2461"
+      }
+    ],
+    "alias_and_mutation_notes": "Callable returns (out, lse); protected call exposes out and applies the oracle-derived undefined mask only where prescribed. Both partial and combine kernels remain in the call.",
+    "alias_evidence": [
+      "ut/meta.json#/math_contract",
+      "ut/cases.py:62"
+    ]
+  },
+  "contracts": [
+    {
+      "value": "sparse paged MLA: for each query row, gather topk_length[i] fp8 KV blocks named by indices[i] (and extra_indices_in_kvcache[i] from the second/compressed pool), compute softmax(Q.K^T * softmax_scale) . V over the gathered set with a per-head attention sink, split-K over the KV axis (dpsk_v4_fp8_partial_kernel) then LSE-combine the splits (dpsk_v4_combine_kernel); returns (out[T,1,H,head_dim_v] bf16, lse[T,1,H] fp32). Both device kernels are emitted as `main_kernel`.",
+      "evidence": "ut/meta.json#/math_contract"
+    },
+    {
+      "value": "Selection re-probed (run #4) with markers PROVABLY INSTALLED on all 14 candidates in all 8 TP ranks: _sel4_overlay/geak_lazy_markers.py force-imports the candidate modules the live path never imports (dsa_backend, dsa.triton_sparse_mla, nsa_triton_decode) at a late trigger (first import of deepseek_v4_backend_hip_radix -- past init_process_group, before the first attention forward), which converts them from 'missing_candidate_markers' (probe omitted) into 'installed_but_never_live' (proven dead). kernel_selection.py: ok=true, deepest_verified=true, failed=[], missing_candidate_markers=[], deeper_live_candidates=[].",
+      "evidence": "ut/meta.json#/notes"
+    }
+  ],
+  "metadata_dimensions": {
+    "geometry": {
+      "value": {
+        "num_heads": 64,
+        "head_dim_qk": 576,
+        "head_dim_v": 512,
+        "kv_lora_rank": 512,
+        "page_size_main": 256,
+        "page_size_extra": 2,
+        "kv_row_bytes": 584,
+        "topk_main": 128,
+        "topk_extra_prefill": 64,
+        "topk_extra_decode": 128,
+        "softmax_scale": 0.04419417382415922,
+        "k_cache_shape": [
+          4013,
+          256,
+          1,
+          584
+        ],
+        "extra_k_cache_shape": [
+          40128,
+          2,
+          1,
+          584
+        ],
+        "kv_dtype": "float8_e4m3fn",
+        "q_dtype": "bfloat16",
+        "num_heads_per_rank": 64,
+        "sliding_window": 128,
+        "index_topk": 1024,
+        "families": [
+          64,
+          128,
+          1024
+        ],
+        "num_layers": 61
+      },
+      "evidence": "ut/meta.json#/geometry"
+    },
+    "shapes": {
+      "value": {
+        "q": [
+          8192,
+          1,
+          64,
+          512
+        ],
+        "q_decode": [
+          64,
+          1,
+          64,
+          512
+        ],
+        "k_cache": [
+          4013,
+          256,
+          1,
+          584
+        ],
+        "extra_k_cache": [
+          40128,
+          2,
+          1,
+          584
+        ],
+        "indices": [
+          8192,
+          1,
+          128
+        ],
+        "extra_indices_in_kvcache": [
+          8192,
+          1,
+          64
+        ]
+      },
+      "evidence": "ut/meta.json#/shapes"
+    },
+    "m_buckets": {
+      "value": [
+        1,
+        64,
+        8192
+      ],
+      "evidence": "ut/meta.json#/m_buckets"
+    },
+    "decode_m_buckets": {
+      "value": [
+        1,
+        64
+      ],
+      "evidence": "ut/meta.json#/decode_m_buckets"
+    },
+    "undefined_positions": {
+      "value": {
+        "policy": "cases.call()/cases._golden() zero the positions where the FROZEN ORACLE output is NaN",
+        "sources": [
+          "decode_*_x1024 rows 56..63: the server pads the decode batch and the padding slots' q is uninitialised (the oracle's own q is NaN there)",
+          "prefill_m8192_x1024 rows ~1792..6047: all 1024 extra_indices_in_kvcache entries are -1 (empty extra context) so the live op's softmax denominator is empty and it returns NaN"
+        ],
+        "note": "the mask is derived from the ORACLE only and applied identically to both legs, so a candidate that invents a NaN at any DEFINED position still fails"
+      },
+      "evidence": "ut/meta.json#/undefined_positions"
+    }
+  },
+  "case_inventory": {
+    "metadata_declared_num_cases": 4,
+    "shape_record_count": 6,
+    "benchmark_case_count": 4,
+    "benchmark_case_ids": [
+      "prefill_m8192_x64",
+      "prefill_m8192_x1024",
+      "decode_m64_x128",
+      "decode_m64_x1024"
+    ],
+    "count_note": "Counts describe distinct scopes. Captures, boundary specs, histogram observations and benchmark buckets are not interchangeable."
+  },
+  "benchmark_cases": [
+    {
+      "case_id": "prefill_m8192_x64",
+      "shape_record_id": "prefill_m8192_x64",
+      "regime": "prefill_x64",
+      "evidence": "ut/cases.py:329"
+    },
+    {
+      "case_id": "prefill_m8192_x1024",
+      "shape_record_id": "prefill_m8192_x1024",
+      "regime": "prefill_x1024",
+      "evidence": "ut/cases.py:329"
+    },
+    {
+      "case_id": "decode_m64_x128",
+      "shape_record_id": "decode_m64_x128",
+      "regime": "decode_x128",
+      "evidence": "ut/cases.py:329"
+    },
+    {
+      "case_id": "decode_m64_x1024",
+      "shape_record_id": "decode_m64_x1024",
+      "regime": "decode_x1024",
+      "evidence": "ut/cases.py:329"
+    }
+  ],
+  "cases": [
+    {
+      "case_id": "prefill_m8192_x64",
+      "regime": "prefill_x64",
+      "evidence": "ut/meta.json#/case_specs/0",
+      "metadata": {
+        "name": "prefill_m8192_x64",
+        "source_sig": "attn_sink=T(64,):torch.float32|block_table=None|cache_seqlens=None|extra_indices_in_kvcache=T(8192, 1, 64):torch.int32|extra_k_cache=T(40128, 2, 1, 584):torch.float8_e4m3fn|extra_topk_length=T(8192,):torch.int32|head_dim_v=512|indices=T(8192, 1, 128):torch.int32|is_fp8_kvcache=True|k_cache=T(4013, 256, 1, 584):torch.float8_e4m3fn|q=T(8192, 1, 64, 512):torch.bfloat16|softmax_scale=0.04419417382415922|tile_scheduler_metadata=None|topk_length=T(8192,):torch.int32",
+        "m": 8192,
+        "regime": "prefill_x64",
+        "family_topk": 64,
+        "phase": "prefill",
+        "rand_m": 1024
+      },
+      "tensors": [
+        {
+          "name": "attn_sink",
+          "role": "input",
+          "shape": [
+            64
+          ],
+          "dtype": "torch.float32",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/case_specs/0"
+        },
+        {
+          "name": "extra_indices_in_kvcache",
+          "role": "input",
+          "shape": [
+            8192,
+            1,
+            64
+          ],
+          "dtype": "torch.int32",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/case_specs/0",
+          "source_shape": [
+            8192,
+            1,
+            64
+          ]
+        },
+        {
+          "name": "extra_k_cache",
+          "role": "input",
+          "shape": [
+            40128,
+            2,
+            1,
+            584
+          ],
+          "dtype": "torch.float8_e4m3fn",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/case_specs/0"
+        },
+        {
+          "name": "extra_topk_length",
+          "role": "input",
+          "shape": [
+            8192
+          ],
+          "dtype": "torch.int32",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/case_specs/0",
+          "source_shape": [
+            8192
+          ]
+        },
+        {
+          "name": "indices",
+          "role": "input",
+          "shape": [
+            8192,
+            1,
+            128
+          ],
+          "dtype": "torch.int32",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/case_specs/0",
+          "source_shape": [
+            8192,
+            1,
+            128
+          ]
+        },
+        {
+          "name": "k_cache",
+          "role": "input",
+          "shape": [
+            4013,
+            256,
+            1,
+            584
+          ],
+          "dtype": "torch.float8_e4m3fn",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/case_specs/0"
+        },
+        {
+          "name": "q",
+          "role": "input",
+          "shape": [
+            8192,
+            1,
+            64,
+            512
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/case_specs/0",
+          "source_shape": [
+            8192,
+            1,
+            64,
+            512
+          ]
+        },
+        {
+          "name": "topk_length",
+          "role": "input",
+          "shape": [
+            8192
+          ],
+          "dtype": "torch.int32",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/case_specs/0",
+          "source_shape": [
+            8192
+          ]
+        }
+      ],
+      "scalars": {
+        "block_table": {
+          "value": null,
+          "evidence": "ut/meta.json#/case_specs/0",
+          "scope": "call_argument"
+        },
+        "cache_seqlens": {
+          "value": null,
+          "evidence": "ut/meta.json#/case_specs/0",
+          "scope": "call_argument"
+        },
+        "head_dim_v": {
+          "value": 512,
+          "evidence": "ut/meta.json#/case_specs/0",
+          "scope": "call_argument"
+        },
+        "is_fp8_kvcache": {
+          "value": true,
+          "evidence": "ut/meta.json#/case_specs/0",
+          "scope": "call_argument"
+        },
+        "softmax_scale": {
+          "value": 0.04419417382415922,
+          "evidence": "ut/meta.json#/case_specs/0",
+          "scope": "call_argument"
+        },
+        "tile_scheduler_metadata": {
+          "value": null,
+          "evidence": "ut/meta.json#/case_specs/0",
+          "scope": "call_argument"
+        }
+      },
+      "outputs": [
+        {
+          "name": "return[0]",
+          "role": "output",
+          "shape": [
+            8192,
+            1,
+            64,
+            512
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/math_contract"
+        },
+        {
+          "name": "return[1]",
+          "role": "output",
+          "shape": [
+            8192,
+            1,
+            64
+          ],
+          "dtype": "torch.float32",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/math_contract"
+        }
+      ],
+      "benchmark_case_ids": [
+        "prefill_m8192_x64"
+      ],
+      "notes": [
+        "FP8 KV has physical 584-byte rows. The x1024 family uses an extra cache page width of 64; x64/x128 use width 2. Actual strides and packed scales remain in the tensor oracle."
+      ]
+    },
+    {
+      "case_id": "prefill_m8192_x1024",
+      "regime": "prefill_x1024",
+      "evidence": "ut/meta.json#/case_specs/1",
+      "metadata": {
+        "name": "prefill_m8192_x1024",
+        "source_sig": "attn_sink=T(64,):torch.float32|block_table=None|cache_seqlens=None|extra_indices_in_kvcache=T(8192, 1, 1024):torch.int32|extra_k_cache=T(40128, 64, 1, 584):torch.float8_e4m3fn|extra_topk_length=T(8192,):torch.int32|head_dim_v=512|indices=T(8192, 1, 128):torch.int32|is_fp8_kvcache=True|k_cache=T(4013, 256, 1, 584):torch.float8_e4m3fn|q=T(8192, 1, 64, 512):torch.bfloat16|softmax_scale=0.04419417382415922|tile_scheduler_metadata=None|topk_length=T(8192,):torch.int32",
+        "m": 8192,
+        "regime": "prefill_x1024",
+        "family_topk": 1024,
+        "phase": "prefill",
+        "rand_m": 1024
+      },
+      "tensors": [
+        {
+          "name": "attn_sink",
+          "role": "input",
+          "shape": [
+            64
+          ],
+          "dtype": "torch.float32",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/case_specs/1"
+        },
+        {
+          "name": "extra_indices_in_kvcache",
+          "role": "input",
+          "shape": [
+            8192,
+            1,
+            1024
+          ],
+          "dtype": "torch.int32",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/case_specs/1",
+          "source_shape": [
+            8192,
+            1,
+            1024
+          ]
+        },
+        {
+          "name": "extra_k_cache",
+          "role": "input",
+          "shape": [
+            40128,
+            64,
+            1,
+            584
+          ],
+          "dtype": "torch.float8_e4m3fn",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/case_specs/1"
+        },
+        {
+          "name": "extra_topk_length",
+          "role": "input",
+          "shape": [
+            8192
+          ],
+          "dtype": "torch.int32",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/case_specs/1",
+          "source_shape": [
+            8192
+          ]
+        },
+        {
+          "name": "indices",
+          "role": "input",
+          "shape": [
+            8192,
+            1,
+            128
+          ],
+          "dtype": "torch.int32",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/case_specs/1",
+          "source_shape": [
+            8192,
+            1,
+            128
+          ]
+        },
+        {
+          "name": "k_cache",
+          "role": "input",
+          "shape": [
+            4013,
+            256,
+            1,
+            584
+          ],
+          "dtype": "torch.float8_e4m3fn",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/case_specs/1"
+        },
+        {
+          "name": "q",
+          "role": "input",
+          "shape": [
+            8192,
+            1,
+            64,
+            512
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/case_specs/1",
+          "source_shape": [
+            8192,
+            1,
+            64,
+            512
+          ]
+        },
+        {
+          "name": "topk_length",
+          "role": "input",
+          "shape": [
+            8192
+          ],
+          "dtype": "torch.int32",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/case_specs/1",
+          "source_shape": [
+            8192
+          ]
+        }
+      ],
+      "scalars": {
+        "block_table": {
+          "value": null,
+          "evidence": "ut/meta.json#/case_specs/1",
+          "scope": "call_argument"
+        },
+        "cache_seqlens": {
+          "value": null,
+          "evidence": "ut/meta.json#/case_specs/1",
+          "scope": "call_argument"
+        },
+        "head_dim_v": {
+          "value": 512,
+          "evidence": "ut/meta.json#/case_specs/1",
+          "scope": "call_argument"
+        },
+        "is_fp8_kvcache": {
+          "value": true,
+          "evidence": "ut/meta.json#/case_specs/1",
+          "scope": "call_argument"
+        },
+        "softmax_scale": {
+          "value": 0.04419417382415922,
+          "evidence": "ut/meta.json#/case_specs/1",
+          "scope": "call_argument"
+        },
+        "tile_scheduler_metadata": {
+          "value": null,
+          "evidence": "ut/meta.json#/case_specs/1",
+          "scope": "call_argument"
+        }
+      },
+      "outputs": [
+        {
+          "name": "return[0]",
+          "role": "output",
+          "shape": [
+            8192,
+            1,
+            64,
+            512
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/math_contract"
+        },
+        {
+          "name": "return[1]",
+          "role": "output",
+          "shape": [
+            8192,
+            1,
+            64
+          ],
+          "dtype": "torch.float32",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/math_contract"
+        }
+      ],
+      "benchmark_case_ids": [
+        "prefill_m8192_x1024"
+      ],
+      "notes": [
+        "FP8 KV has physical 584-byte rows. The x1024 family uses an extra cache page width of 64; x64/x128 use width 2. Actual strides and packed scales remain in the tensor oracle."
+      ]
+    },
+    {
+      "case_id": "decode_m64_x128",
+      "regime": "decode_x128",
+      "evidence": "ut/meta.json#/case_specs/2",
+      "metadata": {
+        "name": "decode_m64_x128",
+        "source_sig": "attn_sink=T(64,):torch.float32|block_table=None|cache_seqlens=None|extra_indices_in_kvcache=T(64, 1, 128):torch.int32|extra_k_cache=T(40128, 2, 1, 584):torch.float8_e4m3fn|extra_topk_length=T(64,):torch.int32|head_dim_v=512|indices=T(64, 1, 128):torch.int32|is_fp8_kvcache=True|k_cache=T(4013, 256, 1, 584):torch.float8_e4m3fn|q=T(64, 1, 64, 512):torch.bfloat16|softmax_scale=0.04419417382415922|tile_scheduler_metadata=None|topk_length=T(64,):torch.int32",
+        "m": 64,
+        "regime": "decode_x128",
+        "family_topk": 128,
+        "phase": "decode",
+        "rand_m": 64
+      },
+      "tensors": [
+        {
+          "name": "attn_sink",
+          "role": "input",
+          "shape": [
+            64
+          ],
+          "dtype": "torch.float32",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/case_specs/2"
+        },
+        {
+          "name": "extra_indices_in_kvcache",
+          "role": "input",
+          "shape": [
+            64,
+            1,
+            128
+          ],
+          "dtype": "torch.int32",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/case_specs/2",
+          "source_shape": [
+            64,
+            1,
+            128
+          ]
+        },
+        {
+          "name": "extra_k_cache",
+          "role": "input",
+          "shape": [
+            40128,
+            2,
+            1,
+            584
+          ],
+          "dtype": "torch.float8_e4m3fn",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/case_specs/2"
+        },
+        {
+          "name": "extra_topk_length",
+          "role": "input",
+          "shape": [
+            64
+          ],
+          "dtype": "torch.int32",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/case_specs/2",
+          "source_shape": [
+            64
+          ]
+        },
+        {
+          "name": "indices",
+          "role": "input",
+          "shape": [
+            64,
+            1,
+            128
+          ],
+          "dtype": "torch.int32",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/case_specs/2",
+          "source_shape": [
+            64,
+            1,
+            128
+          ]
+        },
+        {
+          "name": "k_cache",
+          "role": "input",
+          "shape": [
+            4013,
+            256,
+            1,
+            584
+          ],
+          "dtype": "torch.float8_e4m3fn",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/case_specs/2"
+        },
+        {
+          "name": "q",
+          "role": "input",
+          "shape": [
+            64,
+            1,
+            64,
+            512
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/case_specs/2",
+          "source_shape": [
+            64,
+            1,
+            64,
+            512
+          ]
+        },
+        {
+          "name": "topk_length",
+          "role": "input",
+          "shape": [
+            64
+          ],
+          "dtype": "torch.int32",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/case_specs/2",
+          "source_shape": [
+            64
+          ]
+        }
+      ],
+      "scalars": {
+        "block_table": {
+          "value": null,
+          "evidence": "ut/meta.json#/case_specs/2",
+          "scope": "call_argument"
+        },
+        "cache_seqlens": {
+          "value": null,
+          "evidence": "ut/meta.json#/case_specs/2",
+          "scope": "call_argument"
+        },
+        "head_dim_v": {
+          "value": 512,
+          "evidence": "ut/meta.json#/case_specs/2",
+          "scope": "call_argument"
+        },
+        "is_fp8_kvcache": {
+          "value": true,
+          "evidence": "ut/meta.json#/case_specs/2",
+          "scope": "call_argument"
+        },
+        "softmax_scale": {
+          "value": 0.04419417382415922,
+          "evidence": "ut/meta.json#/case_specs/2",
+          "scope": "call_argument"
+        },
+        "tile_scheduler_metadata": {
+          "value": null,
+          "evidence": "ut/meta.json#/case_specs/2",
+          "scope": "call_argument"
+        }
+      },
+      "outputs": [
+        {
+          "name": "return[0]",
+          "role": "output",
+          "shape": [
+            64,
+            1,
+            64,
+            512
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/math_contract"
+        },
+        {
+          "name": "return[1]",
+          "role": "output",
+          "shape": [
+            64,
+            1,
+            64
+          ],
+          "dtype": "torch.float32",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/math_contract"
+        }
+      ],
+      "benchmark_case_ids": [
+        "decode_m64_x128"
+      ],
+      "notes": [
+        "FP8 KV has physical 584-byte rows. The x1024 family uses an extra cache page width of 64; x64/x128 use width 2. Actual strides and packed scales remain in the tensor oracle."
+      ]
+    },
+    {
+      "case_id": "decode_m64_x1024",
+      "regime": "decode_x1024",
+      "evidence": "ut/meta.json#/case_specs/3",
+      "metadata": {
+        "name": "decode_m64_x1024",
+        "source_sig": "attn_sink=T(64,):torch.float32|block_table=None|cache_seqlens=None|extra_indices_in_kvcache=T(64, 1, 1024):torch.int32|extra_k_cache=T(40128, 64, 1, 584):torch.float8_e4m3fn|extra_topk_length=T(64,):torch.int32|head_dim_v=512|indices=T(64, 1, 128):torch.int32|is_fp8_kvcache=True|k_cache=T(4013, 256, 1, 584):torch.float8_e4m3fn|q=T(64, 1, 64, 512):torch.bfloat16|softmax_scale=0.04419417382415922|tile_scheduler_metadata=None|topk_length=T(64,):torch.int32",
+        "m": 64,
+        "regime": "decode_x1024",
+        "family_topk": 1024,
+        "phase": "decode",
+        "rand_m": 64,
+        "replay": true
+      },
+      "tensors": [
+        {
+          "name": "attn_sink",
+          "role": "input",
+          "shape": [
+            64
+          ],
+          "dtype": "torch.float32",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/case_specs/3"
+        },
+        {
+          "name": "extra_indices_in_kvcache",
+          "role": "input",
+          "shape": [
+            64,
+            1,
+            1024
+          ],
+          "dtype": "torch.int32",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/case_specs/3",
+          "source_shape": [
+            64,
+            1,
+            1024
+          ]
+        },
+        {
+          "name": "extra_k_cache",
+          "role": "input",
+          "shape": [
+            40128,
+            64,
+            1,
+            584
+          ],
+          "dtype": "torch.float8_e4m3fn",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/case_specs/3"
+        },
+        {
+          "name": "extra_topk_length",
+          "role": "input",
+          "shape": [
+            64
+          ],
+          "dtype": "torch.int32",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/case_specs/3",
+          "source_shape": [
+            64
+          ]
+        },
+        {
+          "name": "indices",
+          "role": "input",
+          "shape": [
+            64,
+            1,
+            128
+          ],
+          "dtype": "torch.int32",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/case_specs/3",
+          "source_shape": [
+            64,
+            1,
+            128
+          ]
+        },
+        {
+          "name": "k_cache",
+          "role": "input",
+          "shape": [
+            4013,
+            256,
+            1,
+            584
+          ],
+          "dtype": "torch.float8_e4m3fn",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/case_specs/3"
+        },
+        {
+          "name": "q",
+          "role": "input",
+          "shape": [
+            64,
+            1,
+            64,
+            512
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/case_specs/3",
+          "source_shape": [
+            64,
+            1,
+            64,
+            512
+          ]
+        },
+        {
+          "name": "topk_length",
+          "role": "input",
+          "shape": [
+            64
+          ],
+          "dtype": "torch.int32",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/case_specs/3",
+          "source_shape": [
+            64
+          ]
+        }
+      ],
+      "scalars": {
+        "block_table": {
+          "value": null,
+          "evidence": "ut/meta.json#/case_specs/3",
+          "scope": "call_argument"
+        },
+        "cache_seqlens": {
+          "value": null,
+          "evidence": "ut/meta.json#/case_specs/3",
+          "scope": "call_argument"
+        },
+        "head_dim_v": {
+          "value": 512,
+          "evidence": "ut/meta.json#/case_specs/3",
+          "scope": "call_argument"
+        },
+        "is_fp8_kvcache": {
+          "value": true,
+          "evidence": "ut/meta.json#/case_specs/3",
+          "scope": "call_argument"
+        },
+        "softmax_scale": {
+          "value": 0.04419417382415922,
+          "evidence": "ut/meta.json#/case_specs/3",
+          "scope": "call_argument"
+        },
+        "tile_scheduler_metadata": {
+          "value": null,
+          "evidence": "ut/meta.json#/case_specs/3",
+          "scope": "call_argument"
+        }
+      },
+      "outputs": [
+        {
+          "name": "return[0]",
+          "role": "output",
+          "shape": [
+            64,
+            1,
+            64,
+            512
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/math_contract"
+        },
+        {
+          "name": "return[1]",
+          "role": "output",
+          "shape": [
+            64,
+            1,
+            64
+          ],
+          "dtype": "torch.float32",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/math_contract"
+        }
+      ],
+      "benchmark_case_ids": [
+        "decode_m64_x1024"
+      ],
+      "notes": [
+        "FP8 KV has physical 584-byte rows. The x1024 family uses an extra cache page width of 64; x64/x128 use width 2. Actual strides and packed scales remain in the tensor oracle."
+      ]
+    },
+    {
+      "case_id": "decode_m1_x128",
+      "regime": "decode_x128",
+      "evidence": "ut/meta.json#/case_specs/4",
+      "metadata": {
+        "name": "decode_m1_x128",
+        "source_sig": "attn_sink=T(64,):torch.float32|block_table=None|cache_seqlens=None|extra_indices_in_kvcache=T(64, 1, 128):torch.int32|extra_k_cache=T(40128, 2, 1, 584):torch.float8_e4m3fn|extra_topk_length=T(64,):torch.int32|head_dim_v=512|indices=T(64, 1, 128):torch.int32|is_fp8_kvcache=True|k_cache=T(4013, 256, 1, 584):torch.float8_e4m3fn|q=T(64, 1, 64, 512):torch.bfloat16|softmax_scale=0.04419417382415922|tile_scheduler_metadata=None|topk_length=T(64,):torch.int32",
+        "m": 1,
+        "regime": "decode_x128",
+        "family_topk": 128,
+        "phase": "decode",
+        "rand_m": 1,
+        "derived_from": "decode_m64_x128"
+      },
+      "tensors": [
+        {
+          "name": "attn_sink",
+          "role": "input",
+          "shape": [
+            64
+          ],
+          "dtype": "torch.float32",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/case_specs/4"
+        },
+        {
+          "name": "extra_indices_in_kvcache",
+          "role": "input",
+          "shape": [
+            1,
+            1,
+            128
+          ],
+          "dtype": "torch.int32",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/case_specs/4",
+          "source_shape": [
+            64,
+            1,
+            128
+          ]
+        },
+        {
+          "name": "extra_k_cache",
+          "role": "input",
+          "shape": [
+            40128,
+            2,
+            1,
+            584
+          ],
+          "dtype": "torch.float8_e4m3fn",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/case_specs/4"
+        },
+        {
+          "name": "extra_topk_length",
+          "role": "input",
+          "shape": [
+            1
+          ],
+          "dtype": "torch.int32",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/case_specs/4",
+          "source_shape": [
+            64
+          ]
+        },
+        {
+          "name": "indices",
+          "role": "input",
+          "shape": [
+            1,
+            1,
+            128
+          ],
+          "dtype": "torch.int32",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/case_specs/4",
+          "source_shape": [
+            64,
+            1,
+            128
+          ]
+        },
+        {
+          "name": "k_cache",
+          "role": "input",
+          "shape": [
+            4013,
+            256,
+            1,
+            584
+          ],
+          "dtype": "torch.float8_e4m3fn",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/case_specs/4"
+        },
+        {
+          "name": "q",
+          "role": "input",
+          "shape": [
+            1,
+            1,
+            64,
+            512
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/case_specs/4",
+          "source_shape": [
+            64,
+            1,
+            64,
+            512
+          ]
+        },
+        {
+          "name": "topk_length",
+          "role": "input",
+          "shape": [
+            1
+          ],
+          "dtype": "torch.int32",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/case_specs/4",
+          "source_shape": [
+            64
+          ]
+        }
+      ],
+      "scalars": {
+        "block_table": {
+          "value": null,
+          "evidence": "ut/meta.json#/case_specs/4",
+          "scope": "call_argument"
+        },
+        "cache_seqlens": {
+          "value": null,
+          "evidence": "ut/meta.json#/case_specs/4",
+          "scope": "call_argument"
+        },
+        "head_dim_v": {
+          "value": 512,
+          "evidence": "ut/meta.json#/case_specs/4",
+          "scope": "call_argument"
+        },
+        "is_fp8_kvcache": {
+          "value": true,
+          "evidence": "ut/meta.json#/case_specs/4",
+          "scope": "call_argument"
+        },
+        "softmax_scale": {
+          "value": 0.04419417382415922,
+          "evidence": "ut/meta.json#/case_specs/4",
+          "scope": "call_argument"
+        },
+        "tile_scheduler_metadata": {
+          "value": null,
+          "evidence": "ut/meta.json#/case_specs/4",
+          "scope": "call_argument"
+        }
+      },
+      "outputs": [
+        {
+          "name": "return[0]",
+          "role": "output",
+          "shape": [
+            1,
+            1,
+            64,
+            512
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/math_contract"
+        },
+        {
+          "name": "return[1]",
+          "role": "output",
+          "shape": [
+            1,
+            1,
+            64
+          ],
+          "dtype": "torch.float32",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/math_contract"
+        }
+      ],
+      "benchmark_case_ids": [],
+      "notes": [
+        "FP8 KV has physical 584-byte rows. The x1024 family uses an extra cache page width of 64; x64/x128 use width 2. Actual strides and packed scales remain in the tensor oracle."
+      ]
+    },
+    {
+      "case_id": "decode_m1_x1024",
+      "regime": "decode_x1024",
+      "evidence": "ut/meta.json#/case_specs/5",
+      "metadata": {
+        "name": "decode_m1_x1024",
+        "source_sig": "attn_sink=T(64,):torch.float32|block_table=None|cache_seqlens=None|extra_indices_in_kvcache=T(64, 1, 1024):torch.int32|extra_k_cache=T(40128, 64, 1, 584):torch.float8_e4m3fn|extra_topk_length=T(64,):torch.int32|head_dim_v=512|indices=T(64, 1, 128):torch.int32|is_fp8_kvcache=True|k_cache=T(4013, 256, 1, 584):torch.float8_e4m3fn|q=T(64, 1, 64, 512):torch.bfloat16|softmax_scale=0.04419417382415922|tile_scheduler_metadata=None|topk_length=T(64,):torch.int32",
+        "m": 1,
+        "regime": "decode_x1024",
+        "family_topk": 1024,
+        "phase": "decode",
+        "rand_m": 1,
+        "derived_from": "decode_m64_x1024"
+      },
+      "tensors": [
+        {
+          "name": "attn_sink",
+          "role": "input",
+          "shape": [
+            64
+          ],
+          "dtype": "torch.float32",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/case_specs/5"
+        },
+        {
+          "name": "extra_indices_in_kvcache",
+          "role": "input",
+          "shape": [
+            1,
+            1,
+            1024
+          ],
+          "dtype": "torch.int32",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/case_specs/5",
+          "source_shape": [
+            64,
+            1,
+            1024
+          ]
+        },
+        {
+          "name": "extra_k_cache",
+          "role": "input",
+          "shape": [
+            40128,
+            64,
+            1,
+            584
+          ],
+          "dtype": "torch.float8_e4m3fn",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/case_specs/5"
+        },
+        {
+          "name": "extra_topk_length",
+          "role": "input",
+          "shape": [
+            1
+          ],
+          "dtype": "torch.int32",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/case_specs/5",
+          "source_shape": [
+            64
+          ]
+        },
+        {
+          "name": "indices",
+          "role": "input",
+          "shape": [
+            1,
+            1,
+            128
+          ],
+          "dtype": "torch.int32",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/case_specs/5",
+          "source_shape": [
+            64,
+            1,
+            128
+          ]
+        },
+        {
+          "name": "k_cache",
+          "role": "input",
+          "shape": [
+            4013,
+            256,
+            1,
+            584
+          ],
+          "dtype": "torch.float8_e4m3fn",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/case_specs/5"
+        },
+        {
+          "name": "q",
+          "role": "input",
+          "shape": [
+            1,
+            1,
+            64,
+            512
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/case_specs/5",
+          "source_shape": [
+            64,
+            1,
+            64,
+            512
+          ]
+        },
+        {
+          "name": "topk_length",
+          "role": "input",
+          "shape": [
+            1
+          ],
+          "dtype": "torch.int32",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/case_specs/5",
+          "source_shape": [
+            64
+          ]
+        }
+      ],
+      "scalars": {
+        "block_table": {
+          "value": null,
+          "evidence": "ut/meta.json#/case_specs/5",
+          "scope": "call_argument"
+        },
+        "cache_seqlens": {
+          "value": null,
+          "evidence": "ut/meta.json#/case_specs/5",
+          "scope": "call_argument"
+        },
+        "head_dim_v": {
+          "value": 512,
+          "evidence": "ut/meta.json#/case_specs/5",
+          "scope": "call_argument"
+        },
+        "is_fp8_kvcache": {
+          "value": true,
+          "evidence": "ut/meta.json#/case_specs/5",
+          "scope": "call_argument"
+        },
+        "softmax_scale": {
+          "value": 0.04419417382415922,
+          "evidence": "ut/meta.json#/case_specs/5",
+          "scope": "call_argument"
+        },
+        "tile_scheduler_metadata": {
+          "value": null,
+          "evidence": "ut/meta.json#/case_specs/5",
+          "scope": "call_argument"
+        }
+      },
+      "outputs": [
+        {
+          "name": "return[0]",
+          "role": "output",
+          "shape": [
+            1,
+            1,
+            64,
+            512
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/math_contract"
+        },
+        {
+          "name": "return[1]",
+          "role": "output",
+          "shape": [
+            1,
+            1,
+            64
+          ],
+          "dtype": "torch.float32",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/math_contract"
+        }
+      ],
+      "benchmark_case_ids": [],
+      "notes": [
+        "FP8 KV has physical 584-byte rows. The x1024 family uses an extra cache page width of 64; x64/x128 use width 2. Actual strides and packed scales remain in the tensor oracle."
+      ]
+    }
+  ],
+  "source_inventories": {
+    "cases": {
+      "evidence": "ut/meta.json#/cases",
+      "records": [
+        {
+          "name": "prefill_m8192_x64",
+          "regime": "prefill",
+          "count": 124,
+          "input_shapes": [
+            [
+              8192,
+              1,
+              64,
+              512
+            ],
+            [
+              8192,
+              1,
+              128
+            ],
+            [
+              8192
+            ],
+            [
+              64
+            ],
+            [
+              8192,
+              1,
+              64
+            ],
+            [
+              8192
+            ]
+          ],
+          "input_dtypes": [
+            "torch.bfloat16",
+            "torch.float32",
+            "torch.int32"
+          ]
+        },
+        {
+          "name": "prefill_m8192_x1024",
+          "regime": "prefill",
+          "count": 120,
+          "input_shapes": [
+            [
+              8192,
+              1,
+              64,
+              512
+            ],
+            [
+              8192,
+              1,
+              128
+            ],
+            [
+              8192
+            ],
+            [
+              64
+            ],
+            [
+              8192,
+              1,
+              1024
+            ],
+            [
+              8192
+            ]
+          ],
+          "input_dtypes": [
+            "torch.bfloat16",
+            "torch.float32",
+            "torch.int32"
+          ]
+        },
+        {
+          "name": "decode_m64_x128",
+          "regime": "decode",
+          "count": 63479,
+          "input_shapes": [
+            [
+              64,
+              1,
+              64,
+              512
+            ],
+            [
+              64,
+              1,
+              128
+            ],
+            [
+              64
+            ],
+            [
+              64
+            ],
+            [
+              64,
+              1,
+              128
+            ],
+            [
+              64
+            ]
+          ],
+          "input_dtypes": [
+            "torch.bfloat16",
+            "torch.float32",
+            "torch.int32"
+          ]
+        },
+        {
+          "name": "decode_m64_x1024",
+          "regime": "decode",
+          "count": 61430,
+          "input_shapes": [
+            [
+              64,
+              1,
+              64,
+              512
+            ],
+            [
+              64,
+              1,
+              128
+            ],
+            [
+              64
+            ],
+            [
+              64
+            ],
+            [
+              64,
+              1,
+              1024
+            ],
+            [
+              64
+            ]
+          ],
+          "input_dtypes": [
+            "torch.bfloat16",
+            "torch.float32",
+            "torch.int32"
+          ]
+        }
+      ]
+    },
+    "case_specs": {
+      "evidence": "ut/meta.json#/case_specs",
+      "records": [
+        {
+          "name": "prefill_m8192_x64",
+          "source_sig": "attn_sink=T(64,):torch.float32|block_table=None|cache_seqlens=None|extra_indices_in_kvcache=T(8192, 1, 64):torch.int32|extra_k_cache=T(40128, 2, 1, 584):torch.float8_e4m3fn|extra_topk_length=T(8192,):torch.int32|head_dim_v=512|indices=T(8192, 1, 128):torch.int32|is_fp8_kvcache=True|k_cache=T(4013, 256, 1, 584):torch.float8_e4m3fn|q=T(8192, 1, 64, 512):torch.bfloat16|softmax_scale=0.04419417382415922|tile_scheduler_metadata=None|topk_length=T(8192,):torch.int32",
+          "m": 8192,
+          "regime": "prefill_x64",
+          "family_topk": 64,
+          "phase": "prefill",
+          "rand_m": 1024
+        },
+        {
+          "name": "prefill_m8192_x1024",
+          "source_sig": "attn_sink=T(64,):torch.float32|block_table=None|cache_seqlens=None|extra_indices_in_kvcache=T(8192, 1, 1024):torch.int32|extra_k_cache=T(40128, 64, 1, 584):torch.float8_e4m3fn|extra_topk_length=T(8192,):torch.int32|head_dim_v=512|indices=T(8192, 1, 128):torch.int32|is_fp8_kvcache=True|k_cache=T(4013, 256, 1, 584):torch.float8_e4m3fn|q=T(8192, 1, 64, 512):torch.bfloat16|softmax_scale=0.04419417382415922|tile_scheduler_metadata=None|topk_length=T(8192,):torch.int32",
+          "m": 8192,
+          "regime": "prefill_x1024",
+          "family_topk": 1024,
+          "phase": "prefill",
+          "rand_m": 1024
+        },
+        {
+          "name": "decode_m64_x128",
+          "source_sig": "attn_sink=T(64,):torch.float32|block_table=None|cache_seqlens=None|extra_indices_in_kvcache=T(64, 1, 128):torch.int32|extra_k_cache=T(40128, 2, 1, 584):torch.float8_e4m3fn|extra_topk_length=T(64,):torch.int32|head_dim_v=512|indices=T(64, 1, 128):torch.int32|is_fp8_kvcache=True|k_cache=T(4013, 256, 1, 584):torch.float8_e4m3fn|q=T(64, 1, 64, 512):torch.bfloat16|softmax_scale=0.04419417382415922|tile_scheduler_metadata=None|topk_length=T(64,):torch.int32",
+          "m": 64,
+          "regime": "decode_x128",
+          "family_topk": 128,
+          "phase": "decode",
+          "rand_m": 64
+        },
+        {
+          "name": "decode_m64_x1024",
+          "source_sig": "attn_sink=T(64,):torch.float32|block_table=None|cache_seqlens=None|extra_indices_in_kvcache=T(64, 1, 1024):torch.int32|extra_k_cache=T(40128, 64, 1, 584):torch.float8_e4m3fn|extra_topk_length=T(64,):torch.int32|head_dim_v=512|indices=T(64, 1, 128):torch.int32|is_fp8_kvcache=True|k_cache=T(4013, 256, 1, 584):torch.float8_e4m3fn|q=T(64, 1, 64, 512):torch.bfloat16|softmax_scale=0.04419417382415922|tile_scheduler_metadata=None|topk_length=T(64,):torch.int32",
+          "m": 64,
+          "regime": "decode_x1024",
+          "family_topk": 1024,
+          "phase": "decode",
+          "rand_m": 64,
+          "replay": true
+        },
+        {
+          "name": "decode_m1_x128",
+          "source_sig": "attn_sink=T(64,):torch.float32|block_table=None|cache_seqlens=None|extra_indices_in_kvcache=T(64, 1, 128):torch.int32|extra_k_cache=T(40128, 2, 1, 584):torch.float8_e4m3fn|extra_topk_length=T(64,):torch.int32|head_dim_v=512|indices=T(64, 1, 128):torch.int32|is_fp8_kvcache=True|k_cache=T(4013, 256, 1, 584):torch.float8_e4m3fn|q=T(64, 1, 64, 512):torch.bfloat16|softmax_scale=0.04419417382415922|tile_scheduler_metadata=None|topk_length=T(64,):torch.int32",
+          "m": 1,
+          "regime": "decode_x128",
+          "family_topk": 128,
+          "phase": "decode",
+          "rand_m": 1,
+          "derived_from": "decode_m64_x128"
+        },
+        {
+          "name": "decode_m1_x1024",
+          "source_sig": "attn_sink=T(64,):torch.float32|block_table=None|cache_seqlens=None|extra_indices_in_kvcache=T(64, 1, 1024):torch.int32|extra_k_cache=T(40128, 64, 1, 584):torch.float8_e4m3fn|extra_topk_length=T(64,):torch.int32|head_dim_v=512|indices=T(64, 1, 128):torch.int32|is_fp8_kvcache=True|k_cache=T(4013, 256, 1, 584):torch.float8_e4m3fn|q=T(64, 1, 64, 512):torch.bfloat16|softmax_scale=0.04419417382415922|tile_scheduler_metadata=None|topk_length=T(64,):torch.int32",
+          "m": 1,
+          "regime": "decode_x1024",
+          "family_topk": 1024,
+          "phase": "decode",
+          "rand_m": 1,
+          "derived_from": "decode_m64_x1024"
+        }
+      ]
+    },
+    "workload/cases": {
+      "evidence": "ut/meta.json#/workload/cases",
+      "records": [
+        {
+          "name": "prefill_m8192_x64",
+          "dims": [
+            [
+              8192,
+              1,
+              64,
+              512
+            ],
+            [
+              8192,
+              1,
+              128
+            ],
+            [
+              8192
+            ],
+            [
+              64
+            ],
+            [
+              8192,
+              1,
+              64
+            ],
+            [
+              8192
+            ]
+          ],
+          "dtypes": [
+            "torch.bfloat16",
+            "torch.float32",
+            "torch.int32"
+          ],
+          "count": 124,
+          "weight": 157.06529999999995,
+          "weight_source": "regime",
+          "regime": "prefill",
+          "weight_norm": 0.35,
+          "quant": {
+            "scheme": "fp8_blockscale",
+            "weight_dtype": "bf16",
+            "act_dtype": "fp8",
+            "out_dtype": "",
+            "weight_block_size": [
+              128,
+              128
+            ],
+            "scale_dtype": "float32",
+            "kv_cache_dtype": "fp8_e4m3"
+          }
+        },
+        {
+          "name": "prefill_m8192_x1024",
+          "dims": [
+            [
+              8192,
+              1,
+              64,
+              512
+            ],
+            [
+              8192,
+              1,
+              128
+            ],
+            [
+              8192
+            ],
+            [
+              64
+            ],
+            [
+              8192,
+              1,
+              1024
+            ],
+            [
+              8192
+            ]
+          ],
+          "dtypes": [
+            "torch.bfloat16",
+            "torch.float32",
+            "torch.int32"
+          ],
+          "count": 120,
+          "weight": 157.06529999999995,
+          "weight_source": "regime",
+          "regime": "prefill",
+          "weight_norm": 0.35,
+          "quant": {
+            "scheme": "fp8_blockscale",
+            "weight_dtype": "bf16",
+            "act_dtype": "fp8",
+            "out_dtype": "",
+            "weight_block_size": [
+              128,
+              128
+            ],
+            "scale_dtype": "float32",
+            "kv_cache_dtype": "fp8_e4m3"
+          }
+        },
+        {
+          "name": "decode_m64_x128",
+          "dims": [
+            [
+              64,
+              1,
+              64,
+              512
+            ],
+            [
+              64,
+              1,
+              128
+            ],
+            [
+              64
+            ],
+            [
+              64
+            ],
+            [
+              64,
+              1,
+              128
+            ],
+            [
+              64
+            ]
+          ],
+          "dtypes": [
+            "torch.bfloat16",
+            "torch.float32",
+            "torch.int32"
+          ],
+          "count": 63479,
+          "weight": 67.31369999999998,
+          "weight_source": "regime",
+          "regime": "decode",
+          "weight_norm": 0.15,
+          "quant": {
+            "scheme": "fp8_blockscale",
+            "weight_dtype": "bf16",
+            "act_dtype": "fp8",
+            "out_dtype": "",
+            "weight_block_size": [
+              128,
+              128
+            ],
+            "scale_dtype": "float32",
+            "kv_cache_dtype": "fp8_e4m3"
+          }
+        },
+        {
+          "name": "decode_m64_x1024",
+          "dims": [
+            [
+              64,
+              1,
+              64,
+              512
+            ],
+            [
+              64,
+              1,
+              128
+            ],
+            [
+              64
+            ],
+            [
+              64
+            ],
+            [
+              64,
+              1,
+              1024
+            ],
+            [
+              64
+            ]
+          ],
+          "dtypes": [
+            "torch.bfloat16",
+            "torch.float32",
+            "torch.int32"
+          ],
+          "count": 61430,
+          "weight": 67.31369999999998,
+          "weight_source": "regime",
+          "regime": "decode",
+          "weight_norm": 0.15,
+          "quant": {
+            "scheme": "fp8_blockscale",
+            "weight_dtype": "bf16",
+            "act_dtype": "fp8",
+            "out_dtype": "",
+            "weight_block_size": [
+              128,
+              128
+            ],
+            "scale_dtype": "float32",
+            "kv_cache_dtype": "fp8_e4m3"
+          }
+        }
+      ]
+    }
+  },
+  "observed_shape_inventories": [],
+  "dynamic_dimensions": {
+    "evidence": "ut/cases.py",
+    "policy": "Only dimensions explicitly instantiated by the protected builders are catalogued. Random value draws do not create additional shapes. Routing lengths, live split counts, sparse indices, and physical oracle strides remain runtime data where not recorded.",
+    "builder_entrypoints": {
+      "_build_args": "ut/cases.py:205",
+      "timing_cases": "ut/cases.py:329",
+      "random_shapes": "ut/cases.py:345"
+    },
+    "case_id_and_shape_recipes": [
+      {
+        "function": "random_shapes",
+        "evidence": "ut/cases.py:345",
+        "docstring": "FRESH in-regime VALUE draws at the FIXED online dims (dims never randomized).\n\nThe trailing deterministic entries are the graph-replay boundary inputs: they ignore `rng`, so the\nBASELINE leg's recorded output for them is the golden the replay leg compares against.",
+        "expressions": [
+          {
+            "literal_assignment": "shapes = []"
+          },
+          {
+            "field": "sig",
+            "expression": "s['name']"
+          },
+          {
+            "field": "sig",
+            "expression": "'replay_shortctx:' + s['name']"
+          }
+        ]
+      },
+      {
+        "function": "eager_cases",
+        "evidence": "ut/cases.py:378",
+        "docstring": null,
+        "expressions": [
+          {
+            "literal_assignment": "out = []"
+          },
+          {
+            "field": "sig",
+            "expression": "s['name']"
+          }
+        ]
+      }
+    ]
+  },
+  "unknown_tensor_metadata": [
+    {
+      "case_id": "prefill_m8192_x64",
+      "tensor": "attn_sink",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/case_specs/0"
+    },
+    {
+      "case_id": "prefill_m8192_x64",
+      "tensor": "extra_indices_in_kvcache",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/case_specs/0"
+    },
+    {
+      "case_id": "prefill_m8192_x64",
+      "tensor": "extra_k_cache",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/case_specs/0"
+    },
+    {
+      "case_id": "prefill_m8192_x64",
+      "tensor": "extra_topk_length",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/case_specs/0"
+    },
+    {
+      "case_id": "prefill_m8192_x64",
+      "tensor": "indices",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/case_specs/0"
+    },
+    {
+      "case_id": "prefill_m8192_x64",
+      "tensor": "k_cache",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/case_specs/0"
+    },
+    {
+      "case_id": "prefill_m8192_x64",
+      "tensor": "q",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/case_specs/0"
+    },
+    {
+      "case_id": "prefill_m8192_x64",
+      "tensor": "topk_length",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/case_specs/0"
+    },
+    {
+      "case_id": "prefill_m8192_x64",
+      "tensor": "return[0]",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/math_contract"
+    },
+    {
+      "case_id": "prefill_m8192_x64",
+      "tensor": "return[1]",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/math_contract"
+    },
+    {
+      "case_id": "prefill_m8192_x1024",
+      "tensor": "attn_sink",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/case_specs/1"
+    },
+    {
+      "case_id": "prefill_m8192_x1024",
+      "tensor": "extra_indices_in_kvcache",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/case_specs/1"
+    },
+    {
+      "case_id": "prefill_m8192_x1024",
+      "tensor": "extra_k_cache",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/case_specs/1"
+    },
+    {
+      "case_id": "prefill_m8192_x1024",
+      "tensor": "extra_topk_length",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/case_specs/1"
+    },
+    {
+      "case_id": "prefill_m8192_x1024",
+      "tensor": "indices",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/case_specs/1"
+    },
+    {
+      "case_id": "prefill_m8192_x1024",
+      "tensor": "k_cache",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/case_specs/1"
+    },
+    {
+      "case_id": "prefill_m8192_x1024",
+      "tensor": "q",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/case_specs/1"
+    },
+    {
+      "case_id": "prefill_m8192_x1024",
+      "tensor": "topk_length",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/case_specs/1"
+    },
+    {
+      "case_id": "prefill_m8192_x1024",
+      "tensor": "return[0]",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/math_contract"
+    },
+    {
+      "case_id": "prefill_m8192_x1024",
+      "tensor": "return[1]",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/math_contract"
+    },
+    {
+      "case_id": "decode_m64_x128",
+      "tensor": "attn_sink",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/case_specs/2"
+    },
+    {
+      "case_id": "decode_m64_x128",
+      "tensor": "extra_indices_in_kvcache",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/case_specs/2"
+    },
+    {
+      "case_id": "decode_m64_x128",
+      "tensor": "extra_k_cache",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/case_specs/2"
+    },
+    {
+      "case_id": "decode_m64_x128",
+      "tensor": "extra_topk_length",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/case_specs/2"
+    },
+    {
+      "case_id": "decode_m64_x128",
+      "tensor": "indices",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/case_specs/2"
+    },
+    {
+      "case_id": "decode_m64_x128",
+      "tensor": "k_cache",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/case_specs/2"
+    },
+    {
+      "case_id": "decode_m64_x128",
+      "tensor": "q",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/case_specs/2"
+    },
+    {
+      "case_id": "decode_m64_x128",
+      "tensor": "topk_length",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/case_specs/2"
+    },
+    {
+      "case_id": "decode_m64_x128",
+      "tensor": "return[0]",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/math_contract"
+    },
+    {
+      "case_id": "decode_m64_x128",
+      "tensor": "return[1]",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/math_contract"
+    },
+    {
+      "case_id": "decode_m64_x1024",
+      "tensor": "attn_sink",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/case_specs/3"
+    },
+    {
+      "case_id": "decode_m64_x1024",
+      "tensor": "extra_indices_in_kvcache",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/case_specs/3"
+    },
+    {
+      "case_id": "decode_m64_x1024",
+      "tensor": "extra_k_cache",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/case_specs/3"
+    },
+    {
+      "case_id": "decode_m64_x1024",
+      "tensor": "extra_topk_length",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/case_specs/3"
+    },
+    {
+      "case_id": "decode_m64_x1024",
+      "tensor": "indices",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/case_specs/3"
+    },
+    {
+      "case_id": "decode_m64_x1024",
+      "tensor": "k_cache",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/case_specs/3"
+    },
+    {
+      "case_id": "decode_m64_x1024",
+      "tensor": "q",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/case_specs/3"
+    },
+    {
+      "case_id": "decode_m64_x1024",
+      "tensor": "topk_length",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/case_specs/3"
+    },
+    {
+      "case_id": "decode_m64_x1024",
+      "tensor": "return[0]",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/math_contract"
+    },
+    {
+      "case_id": "decode_m64_x1024",
+      "tensor": "return[1]",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/math_contract"
+    },
+    {
+      "case_id": "decode_m1_x128",
+      "tensor": "attn_sink",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/case_specs/4"
+    },
+    {
+      "case_id": "decode_m1_x128",
+      "tensor": "extra_indices_in_kvcache",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/case_specs/4"
+    },
+    {
+      "case_id": "decode_m1_x128",
+      "tensor": "extra_k_cache",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/case_specs/4"
+    },
+    {
+      "case_id": "decode_m1_x128",
+      "tensor": "extra_topk_length",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/case_specs/4"
+    },
+    {
+      "case_id": "decode_m1_x128",
+      "tensor": "indices",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/case_specs/4"
+    },
+    {
+      "case_id": "decode_m1_x128",
+      "tensor": "k_cache",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/case_specs/4"
+    },
+    {
+      "case_id": "decode_m1_x128",
+      "tensor": "q",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/case_specs/4"
+    },
+    {
+      "case_id": "decode_m1_x128",
+      "tensor": "topk_length",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/case_specs/4"
+    },
+    {
+      "case_id": "decode_m1_x128",
+      "tensor": "return[0]",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/math_contract"
+    },
+    {
+      "case_id": "decode_m1_x128",
+      "tensor": "return[1]",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/math_contract"
+    },
+    {
+      "case_id": "decode_m1_x1024",
+      "tensor": "attn_sink",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/case_specs/5"
+    },
+    {
+      "case_id": "decode_m1_x1024",
+      "tensor": "extra_indices_in_kvcache",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/case_specs/5"
+    },
+    {
+      "case_id": "decode_m1_x1024",
+      "tensor": "extra_k_cache",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/case_specs/5"
+    },
+    {
+      "case_id": "decode_m1_x1024",
+      "tensor": "extra_topk_length",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/case_specs/5"
+    },
+    {
+      "case_id": "decode_m1_x1024",
+      "tensor": "indices",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/case_specs/5"
+    },
+    {
+      "case_id": "decode_m1_x1024",
+      "tensor": "k_cache",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/case_specs/5"
+    },
+    {
+      "case_id": "decode_m1_x1024",
+      "tensor": "q",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/case_specs/5"
+    },
+    {
+      "case_id": "decode_m1_x1024",
+      "tensor": "topk_length",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/case_specs/5"
+    },
+    {
+      "case_id": "decode_m1_x1024",
+      "tensor": "return[0]",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/math_contract"
+    },
+    {
+      "case_id": "decode_m1_x1024",
+      "tensor": "return[1]",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/math_contract"
+    }
+  ],
+  "unknown_benchmark_tensor_overrides": [],
+  "opaque_artifacts": [
+    {
+      "path": "ut/reference_io.pt",
+      "sha256": "981eb9be0909a11f831800c31e6399cffb0970d31f1393469d4e7e3a91e35f5a",
+      "metadata_evidence": "ut/meta.json#/reference_io_sha256",
+      "inspected": false,
+      "status": "opaque tensor artifact; no pickle deserialization during catalog generation"
+    }
+  ],
+  "sources": [
+    {
+      "path": "ut/meta.json",
+      "sha256": "ad63843808b2684552ad19be9be45ff935941233e52145fa339e8d1ca77a0df4"
+    },
+    {
+      "path": "ut/cases.py",
+      "sha256": "0969cc1e6d8bcb1c542a07c512175ea31b358e04a3b56a4f465b7fa902b703df"
+    },
+    {
+      "path": "config.yaml",
+      "sha256": "b69cda796f886012e142c41500cc8de34580dfd67c452aeeb22835b40268783e"
+    },
+    {
+      "path": "scripts/source_abi.json",
+      "sha256": "0f9ccc47d4df4b1db9126f77e99f7582584aef01149db5e16d6a831af8294fe2"
+    },
+    {
+      "path": "ut/selection_validation.json",
+      "sha256": "fae61c89ec46fd98840f8314d35741356be1a498c680962ef1236cb1828641a0"
+    },
+    {
+      "path": "ut/workload.json",
+      "sha256": "f3bb90bd4a15d3d995eaadd45dd71e95467edcdac94e04004b8a6c797f57f2f7"
+    }
+  ],
+  "validation": "Static metadata/AST inspection only. No task module imports, pickle deserialization, tensor loading, GPU execution, or fresh performance validation."
+}

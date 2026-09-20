@@ -1,0 +1,523 @@
+{
+  "schema_version": 1,
+  "task_id": "qwen3.8-2.4t__gemma_fused_add_rmsnorm",
+  "task_path": ".",
+  "path_base": "task directory",
+  "scope": "Single-GPU callable/operator unit benchmark on MI355X (gfx950). Serving capture context does not define kernel tensor shapes.",
+  "serving_capture_context": {
+    "isl": 8192,
+    "osl": 1024,
+    "concurrency": 64,
+    "tensor_parallel_world_size": 8
+  },
+  "environment_evidence": "config.yaml",
+  "interface": {
+    "target_callable": "sglang.srt.layers.layernorm:rocm_triton_gemma_fused_add_rmsnorm",
+    "baseline_callable_recorded": null,
+    "candidate_bind_recorded": {
+      "file": "kernel_src/minimax_m3_rmsnorm.py",
+      "impl_attr": "gemma_fused_add_rmsnorm",
+      "impl_module": "minimax_m3_rmsnorm",
+      "kind": "rebind",
+      "target": "sglang.srt.layers.layernorm:rocm_triton_gemma_fused_add_rmsnorm"
+    },
+    "candidate_signatures": [
+      {
+        "callable": "gemma_fused_add_rmsnorm",
+        "signature": "gemma_fused_add_rmsnorm(x: torch.Tensor, residual: torch.Tensor, weight: torch.Tensor, eps: float)",
+        "evidence": "source/minimax_m3_rmsnorm.py:118"
+      }
+    ],
+    "benchmark_adapter": "scripts/_bench.py#selected_cases",
+    "scope": "selected callable seam; kernel launch count is not asserted by this catalog",
+    "profiled_kernel_rows": [
+      {
+        "id": "Q38-11",
+        "profiled_kernel": "_gemma_fused_add_rmsnorm_kernel",
+        "device_symbol": "_gemma_fused_add_rmsnorm_kernel",
+        "regime": "prefill+decode"
+      }
+    ],
+    "frozen_baseline_signatures": [
+      {
+        "signature": "gemma_fused_add_rmsnorm(x: torch.Tensor, residual: torch.Tensor, weight: torch.Tensor, eps: float)",
+        "evidence": "ut/baseline_ref/minimax_m3_rmsnorm.py.orig:118"
+      }
+    ],
+    "alias_and_mutation_notes": "Returns two fresh outputs that alias neither each other nor any input. Output shape/dtype/stride equal x. Inputs x, residual and weight remain unchanged.",
+    "alias_evidence": [
+      "ut/meta.json#/math_contract",
+      "ut/cases.py:69"
+    ]
+  },
+  "contracts": [
+    {
+      "value": "pre_norm_sum = bf16(x + residual); normed = bf16(float(pre_norm_sum) * rsqrt(mean(float(pre_norm_sum)^2) + eps) * (1 + float(weight))); return (normed, pre_norm_sum) as two fresh non-aliasing tensors without mutating x, residual, or weight.",
+      "evidence": "ut/meta.json#/math_contract"
+    },
+    {
+      "value": "Deterministic nonzero inputs are generated at the two live shapes. Golden full-tuple outputs are produced at unittest runtime by the frozen baseline overlay in a separate process.",
+      "evidence": "ut/meta.json#/oracle_policy"
+    },
+    {
+      "value": "The task freezes the real callable boundary and live-derived M buckets, then removes serving startup from all correctness and smoke iterations. No reference_io.pt is stored because the mathematical contract is pure and value-independent; reference_io_sha256 is empty by design.",
+      "evidence": "ut/meta.json#/notes"
+    }
+  ],
+  "metadata_dimensions": {
+    "geometry": {
+      "value": {
+        "activation_stride": [
+          8192,
+          1
+        ],
+        "dtype": "torch.bfloat16",
+        "eps": 1e-06,
+        "hidden_size": 8192,
+        "weight_stride": [
+          1
+        ]
+      },
+      "evidence": "ut/meta.json#/geometry"
+    },
+    "case_entrypoints": {
+      "value": {
+        "hk11": "live_prefill_m8192_and_decode_m64"
+      },
+      "evidence": "ut/meta.json#/case_entrypoints"
+    }
+  },
+  "case_inventory": {
+    "metadata_declared_num_cases": 2,
+    "shape_record_count": 2,
+    "benchmark_case_count": 2,
+    "benchmark_case_ids": [
+      "prefill_m8192_live_shape",
+      "decode_m64_live_shape"
+    ],
+    "count_note": "Counts describe distinct scopes. Captures, boundary specs, histogram observations and benchmark buckets are not interchangeable."
+  },
+  "benchmark_cases": [
+    {
+      "case_id": "prefill_m8192_live_shape",
+      "shape_record_id": "prefill_m8192_live_shape",
+      "regime": "prefill",
+      "evidence": "ut/cases.py:150"
+    },
+    {
+      "case_id": "decode_m64_live_shape",
+      "shape_record_id": "decode_m64_live_shape",
+      "regime": "decode",
+      "evidence": "ut/cases.py:150"
+    }
+  ],
+  "cases": [
+    {
+      "case_id": "prefill_m8192_live_shape",
+      "regime": "prefill",
+      "evidence": "ut/meta.json#/workload/cases/0",
+      "metadata": {
+        "dtype": "torch.bfloat16",
+        "eps": 1e-06,
+        "live_count": 368,
+        "m": 8192,
+        "n": 8192,
+        "name": "prefill_m8192_live_shape",
+        "regime": "prefill",
+        "residual_shape": [
+          8192,
+          8192
+        ],
+        "residual_stride": [
+          8192,
+          1
+        ],
+        "sig": "prefill_m8192_live_shape",
+        "weight_shape": [
+          8192
+        ],
+        "weight_stride": [
+          1
+        ],
+        "x_shape": [
+          8192,
+          8192
+        ],
+        "x_stride": [
+          8192,
+          1
+        ]
+      },
+      "tensors": [
+        {
+          "name": "x",
+          "role": "input",
+          "shape": [
+            8192,
+            8192
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            8192,
+            1
+          ],
+          "layout": "explicit physical stride",
+          "evidence": "ut/meta.json#/workload/cases/0"
+        },
+        {
+          "name": "residual",
+          "role": "input",
+          "shape": [
+            8192,
+            8192
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            8192,
+            1
+          ],
+          "layout": "explicit physical stride",
+          "evidence": "ut/meta.json#/workload/cases/0"
+        },
+        {
+          "name": "weight",
+          "role": "input",
+          "shape": [
+            8192
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            1
+          ],
+          "layout": "explicit physical stride",
+          "evidence": "ut/meta.json#/workload/cases/0"
+        }
+      ],
+      "scalars": {
+        "eps": {
+          "value": 1e-06,
+          "evidence": "ut/meta.json#/workload/cases/0",
+          "scope": "call_argument"
+        }
+      },
+      "outputs": [
+        {
+          "name": "normed",
+          "role": "output",
+          "shape": [
+            8192,
+            8192
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            8192,
+            1
+          ],
+          "layout": "fresh; output strides equal x strides",
+          "evidence": "ut/cases.py:49"
+        },
+        {
+          "name": "pre_norm_sum",
+          "role": "output",
+          "shape": [
+            8192,
+            8192
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            8192,
+            1
+          ],
+          "layout": "fresh; output strides equal x strides",
+          "evidence": "ut/cases.py:49"
+        }
+      ],
+      "benchmark_case_ids": [
+        "prefill_m8192_live_shape"
+      ],
+      "notes": []
+    },
+    {
+      "case_id": "decode_m64_live_shape",
+      "regime": "decode",
+      "evidence": "ut/meta.json#/workload/cases/1",
+      "metadata": {
+        "dtype": "torch.bfloat16",
+        "eps": 1e-06,
+        "live_count": 552,
+        "m": 64,
+        "n": 8192,
+        "name": "decode_m64_live_shape",
+        "regime": "decode",
+        "residual_shape": [
+          64,
+          8192
+        ],
+        "residual_stride": [
+          8192,
+          1
+        ],
+        "sig": "decode_m64_live_shape",
+        "weight_shape": [
+          8192
+        ],
+        "weight_stride": [
+          1
+        ],
+        "x_shape": [
+          64,
+          8192
+        ],
+        "x_stride": [
+          8192,
+          1
+        ]
+      },
+      "tensors": [
+        {
+          "name": "x",
+          "role": "input",
+          "shape": [
+            64,
+            8192
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            8192,
+            1
+          ],
+          "layout": "explicit physical stride",
+          "evidence": "ut/meta.json#/workload/cases/1"
+        },
+        {
+          "name": "residual",
+          "role": "input",
+          "shape": [
+            64,
+            8192
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            8192,
+            1
+          ],
+          "layout": "explicit physical stride",
+          "evidence": "ut/meta.json#/workload/cases/1"
+        },
+        {
+          "name": "weight",
+          "role": "input",
+          "shape": [
+            8192
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            1
+          ],
+          "layout": "explicit physical stride",
+          "evidence": "ut/meta.json#/workload/cases/1"
+        }
+      ],
+      "scalars": {
+        "eps": {
+          "value": 1e-06,
+          "evidence": "ut/meta.json#/workload/cases/1",
+          "scope": "call_argument"
+        }
+      },
+      "outputs": [
+        {
+          "name": "normed",
+          "role": "output",
+          "shape": [
+            64,
+            8192
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            8192,
+            1
+          ],
+          "layout": "fresh; output strides equal x strides",
+          "evidence": "ut/cases.py:49"
+        },
+        {
+          "name": "pre_norm_sum",
+          "role": "output",
+          "shape": [
+            64,
+            8192
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            8192,
+            1
+          ],
+          "layout": "fresh; output strides equal x strides",
+          "evidence": "ut/cases.py:49"
+        }
+      ],
+      "benchmark_case_ids": [
+        "decode_m64_live_shape"
+      ],
+      "notes": []
+    }
+  ],
+  "source_inventories": {
+    "workload/cases": {
+      "evidence": "ut/meta.json#/workload/cases",
+      "records": [
+        {
+          "dtype": "torch.bfloat16",
+          "eps": 1e-06,
+          "live_count": 368,
+          "m": 8192,
+          "n": 8192,
+          "name": "prefill_m8192_live_shape",
+          "regime": "prefill",
+          "residual_shape": [
+            8192,
+            8192
+          ],
+          "residual_stride": [
+            8192,
+            1
+          ],
+          "sig": "prefill_m8192_live_shape",
+          "weight_shape": [
+            8192
+          ],
+          "weight_stride": [
+            1
+          ],
+          "x_shape": [
+            8192,
+            8192
+          ],
+          "x_stride": [
+            8192,
+            1
+          ]
+        },
+        {
+          "dtype": "torch.bfloat16",
+          "eps": 1e-06,
+          "live_count": 552,
+          "m": 64,
+          "n": 8192,
+          "name": "decode_m64_live_shape",
+          "regime": "decode",
+          "residual_shape": [
+            64,
+            8192
+          ],
+          "residual_stride": [
+            8192,
+            1
+          ],
+          "sig": "decode_m64_live_shape",
+          "weight_shape": [
+            8192
+          ],
+          "weight_stride": [
+            1
+          ],
+          "x_shape": [
+            64,
+            8192
+          ],
+          "x_stride": [
+            8192,
+            1
+          ]
+        }
+      ]
+    },
+    "case_entrypoints": {
+      "evidence": "ut/meta.json#/case_entrypoints",
+      "records": {
+        "hk11": "live_prefill_m8192_and_decode_m64"
+      }
+    }
+  },
+  "observed_shape_inventories": [],
+  "dynamic_dimensions": {
+    "evidence": "ut/cases.py",
+    "policy": "Only dimensions explicitly instantiated by the protected builders are catalogued. Random value draws do not create additional shapes. Routing lengths, live split counts, sparse indices, and physical oracle strides remain runtime data where not recorded.",
+    "builder_entrypoints": {
+      "timing_cases": "ut/cases.py:150",
+      "random_shapes": "ut/cases.py:164",
+      "graph_replay_bundle": "ut/cases.py:185"
+    },
+    "case_id_and_shape_recipes": [
+      {
+        "function": "eager_cases",
+        "evidence": "ut/cases.py:131",
+        "docstring": null,
+        "expressions": [
+          {
+            "literal_assignment": "result = []"
+          },
+          {
+            "field": "sig",
+            "expression": "spec['sig']"
+          },
+          {
+            "field": "regime",
+            "expression": "spec['regime']"
+          },
+          {
+            "field": "m",
+            "expression": "int(spec['m'])"
+          }
+        ]
+      },
+      {
+        "function": "random_shapes",
+        "evidence": "ut/cases.py:164",
+        "docstring": null,
+        "expressions": [
+          {
+            "literal_assignment": "result = []"
+          },
+          {
+            "field": "sig",
+            "expression": "frozen['sig']"
+          }
+        ]
+      },
+      {
+        "function": "graph_replay_bundle",
+        "evidence": "ut/cases.py:185",
+        "docstring": "Capture at M=8192 and replay both M=8192 and an M=64 prefix.",
+        "expressions": []
+      }
+    ]
+  },
+  "unknown_tensor_metadata": [],
+  "unknown_benchmark_tensor_overrides": [],
+  "opaque_artifacts": [],
+  "sources": [
+    {
+      "path": "ut/meta.json",
+      "sha256": "4e1a126af20d0ae67b71ffb0d78cd408f46d1e6cf106340c2f3a47e25ea68380"
+    },
+    {
+      "path": "ut/cases.py",
+      "sha256": "3f438bd0b04c8f18ec4fe351317d8deacef8ba850be9f901f748f78a79c577ba"
+    },
+    {
+      "path": "config.yaml",
+      "sha256": "8dbe7d87fc7f5b103ec3b8aca1cc23eb60dd56bdb65e0ed4e69b5754c58ca23b"
+    },
+    {
+      "path": "scripts/source_abi.json",
+      "sha256": "ffff0ccee134380385ac73a1e9a1d9fbc8ae4792bbfb65b7c96b93e6918d953b"
+    },
+    {
+      "path": "ut/selection_validation.json",
+      "sha256": "51f9c70e31f3420e2572a510339f353c08c29cc6dc361d7660f408894c8a1759"
+    }
+  ],
+  "validation": "Static metadata/AST inspection only. No task module imports, pickle deserialization, tensor loading, GPU execution, or fresh performance validation."
+}

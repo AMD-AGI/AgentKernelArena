@@ -12,6 +12,30 @@ from typing import Any, Optional
 from src.perf_helper_materialization import materialize_perf_helpers_in_workspace
 
 
+def _validate_task_symlinks(task_root: Path, skip_names: set[str]) -> None:
+    """Require task-owned aliases to remain valid after workspace relocation.
+
+    Dereferencing an alias can disconnect an editable kernel from the harness
+    that imports it. Preserve relative aliases, but reject dangling links and
+    links that would escape the task. Repository caches retain their existing
+    copy behavior and are not part of the isolated task contract.
+    """
+    root = task_root.resolve()
+    for path in task_root.rglob("*"):
+        if path.relative_to(task_root).parts[0] in skip_names or not path.is_symlink():
+            continue
+        target = path.readlink()
+        try:
+            resolved = path.resolve(strict=True)
+        except (OSError, RuntimeError) as exc:
+            raise ValueError(f"Invalid task symlink {path.relative_to(task_root)}: {exc}") from exc
+        if target.is_absolute() or not resolved.is_relative_to(root):
+            raise ValueError(
+                f"Task symlink must be relative and stay inside the task: "
+                f"{path.relative_to(task_root)} -> {target}"
+            )
+
+
 def _resolve_gfx_arch(target_gpu_model: str) -> str | None:
     """
     Look up the gfx architecture token (e.g. 'gfx942') for a given GPU model
@@ -534,12 +558,20 @@ def setup_workspace(task_config_dir: str, run_directory: Path, timestamp: str, l
     #    directly in step 4, so skip its subdir here — this also avoids copying any
     #    stale per-task cache left by an older version of this code.
     skip_names = {repo_subdir} if (image_repo_path and repo_subdir) else set()
+    preserve_aliases = not (repo_url or image_repo_path)
+    if preserve_aliases:
+        _validate_task_symlinks(task_folder, skip_names)
     for item in task_folder.iterdir():
         if item.name in skip_names:
             continue
         dst = workspace_path / item.name
-        if item.is_dir():
-            shutil.copytree(item, dst, dirs_exist_ok=True)
+        if item.is_symlink() and preserve_aliases:
+            shutil.copy2(item, dst, follow_symlinks=False)
+        elif item.is_dir():
+            shutil.copytree(
+                item, dst, dirs_exist_ok=True,
+                symlinks=preserve_aliases,
+            )
         else:
             shutil.copy2(item, dst)
     logger.info(f"Copied task folder content from {task_folder} to {workspace_path}")

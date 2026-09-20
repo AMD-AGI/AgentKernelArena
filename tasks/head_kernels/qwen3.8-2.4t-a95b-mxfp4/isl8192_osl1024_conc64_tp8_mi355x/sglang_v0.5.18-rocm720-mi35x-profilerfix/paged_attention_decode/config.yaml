@@ -1,0 +1,49 @@
+source_file_path:
+- source/attention_candidate.py
+target_kernel_functions:
+- paged_attention_ragged
+compile_command:
+- python3 scripts/task_runner.py compile --timeout 600
+correctness_command:
+- python3 scripts/task_runner.py correctness --timeout 3600
+performance_command:
+- python3 scripts/task_runner.py performance --timeout 3600
+task_type: triton2triton
+task_result_template: null
+prompt:
+  source_code: null
+  instructions: "Optimize the Qwen3.8-2.4T-A95B-MXFP4 paged_attention_ll4mi_QKV_mfma16_kernel kernel on MI355X (gfx950).\nBackend: AITER / CK asm. Serving capture: ISL 8192 / OSL 1024 / CONC 64 / TP 8.\n\nEdit only the declared source files and target functions:\n  source/attention_candidate.py\n  paged_attention_ragged\n\nKeep the production callable signature and the captured shape, dtype, stride,\ntensor-attribute, routing, state-update and output-alias contracts unchanged.\nProduction seam: aiter.ops.attention:paged_attention_ragged.\nUse the task's frozen correctness references and complete benchmark case set.\nThe starting-source provenance is stock+harness-shim; archival profile\nand speedup figures in the provenance files are not measurements of this run.\nThe Arena evaluator measures the committed starting implementation and candidate\nunder the same benchmark contract. Do not edit ut/, scripts/, or config.yaml.\n"
+  cheatsheet: null
+headkernel:
+  operation_id: qwen3.8-2.4t__paged_attention_decode
+  model: Qwen3.8-2.4T-A95B-MXFP4
+  owner: Li, Zeping <zepingl@amd.com>
+  docker: harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.18-rocm720-mi35x-profilerfix
+  serving: ISL 8192 / OSL 1024 / CONC 64 / TP 8
+  backend: AITER / CK asm
+  regime: decode
+  device_symbol: paged_attention_ll4mi_QKV_mfma16_kernel
+  target_callable: aiter.ops.attention:paged_attention_ragged
+  tol: 0.02
+  oracle: frozen live-capture ut/reference_io.pt
+  source_package: P/paged_attention_decode_task
+  source_seed: stock+harness-shim
+  preserve_symbols:
+  - baseline_callable
+  - _BASELINE
+  - direct_register_custom_op
+  info_rows:
+  - row: Q38-9
+    info_kernel: paged_attention_ll4mi_QKV_mfma16_kernel
+    gpu_pct: 6.84
+    empirical_roofline: 48.2% memory-bound
+    optimized_roofline: null
+    e2e_uplift: Stage-A scenario +0.25% (NOT measured)
+  symbol_locations:
+    paged_attention_ragged: source/attention_candidate.py
+compile_timeout: 600
+correctness_timeout: 3600
+performance_timeout: 3600
+platform_support:
+  required_arch: gfx950
+  status: active

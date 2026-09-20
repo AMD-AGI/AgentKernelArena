@@ -1,0 +1,21 @@
+{
+  "backend": "sglang",
+  "quant": {
+    "method": "fp8_blockscale",
+    "weight_dtype": "fp8_e4m3",
+    "act_dtype": "fp8",
+    "block_size": [
+      128,
+      128
+    ],
+    "source": "model_config"
+  },
+  "kv_cache_dtype": "fp8_e4m3",
+  "compile": "eager",
+  "enforce_eager": false,
+  "cuda_graph": true,
+  "attention_backend": "dsv4",
+  "prefill_chunk": 16384,
+  "notes": "resolved from the LIVE baseline server_args (profile/round_0/server.log): kv_cache_dtype='fp8_e4m3' (set by the magpie sglang_mi355x.sh launcher, not by EXTRA_SGLANG_ARGS), attention_backend='dsv4' -> DeepseekV4HipRadixBackend on HIP, chunked_prefill_size=16384, page_size=256, disable_cuda_graph=False (decode graph backend='full') -> deployment_graph_mode=True. parse_regime.py alone reported kv_cache_dtype='auto'/prefill_chunk=null because those flags live in the launcher script, not in CURRENT_FLAGS.",
+  "page_size": 256
+}

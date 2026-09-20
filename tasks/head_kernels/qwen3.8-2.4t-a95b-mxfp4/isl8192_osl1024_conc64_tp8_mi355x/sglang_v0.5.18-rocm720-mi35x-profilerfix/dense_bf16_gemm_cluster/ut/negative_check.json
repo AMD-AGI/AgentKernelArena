@@ -1,0 +1,72 @@
+{
+  "cases": {
+    "hk04": {
+      "contract": "negative_control",
+      "ledger_id": "hk04",
+      "output_corruption_rejected": true,
+      "report": [
+        {
+          "case": "prefill_m16384_n4608_k8192:fixed[0]",
+          "correct": false,
+          "max_rel_err": 5577.72217
+        }
+      ],
+      "status": "PASS"
+    },
+    "hk05": {
+      "contract": "negative_control",
+      "ledger_id": "hk05",
+      "output_corruption_rejected": true,
+      "report": [
+        {
+          "case": "decode_m64_n32_k8192:fixed[0]",
+          "correct": false,
+          "max_rel_err": 1538.67114
+        }
+      ],
+      "status": "PASS"
+    },
+    "hk06": {
+      "contract": "negative_control",
+      "ledger_id": "hk06",
+      "output_corruption_rejected": true,
+      "report": [
+        {
+          "case": "decode_m64_n512_k8192:fixed[0]",
+          "correct": false,
+          "max_rel_err": 1506.63269
+        }
+      ],
+      "status": "PASS"
+    },
+    "hk07": {
+      "contract": "negative_control",
+      "ledger_id": "hk07",
+      "output_corruption_rejected": true,
+      "report": [
+        {
+          "case": "decode_m64_n4608_k8192:fixed[0]",
+          "correct": false,
+          "max_rel_err": 1539.1073
+        }
+      ],
+      "status": "PASS"
+    },
+    "hk08": {
+      "contract": "negative_control",
+      "ledger_id": "hk08",
+      "output_corruption_rejected": true,
+      "report": [
+        {
+          "case": "decode_m64_n8192_k256:fixed[0]",
+          "correct": false,
+          "max_rel_err": 3840.63818
+        }
+      ],
+      "status": "PASS"
+    }
+  },
+  "schema_version": 1,
+  "status": "PASS",
+  "task_id": "dense_bf16_gemm_task"
+}

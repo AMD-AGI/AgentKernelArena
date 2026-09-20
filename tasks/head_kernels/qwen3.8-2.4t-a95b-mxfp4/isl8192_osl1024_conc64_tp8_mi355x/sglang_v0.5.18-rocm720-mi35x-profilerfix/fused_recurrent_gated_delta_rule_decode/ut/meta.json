@@ -1,0 +1,1457 @@
+{
+  "attr": "fused_recurrent_gated_delta_rule_packed_decode",
+  "baseline_frozen": true,
+  "baseline_overlay": "baseline_overlay",
+  "budget_exceeded": false,
+  "budget_skip_count": 0,
+  "build": false,
+  "byte_budget": 8589934592,
+  "call_sequence": [
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "in_graph": false,
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    }
+  ],
+  "candidate_backends": [
+    "triton"
+  ],
+  "candidate_bind": {
+    "file": "kernel_src/fused_recurrent.py",
+    "impl_attr": "fused_recurrent_gated_delta_rule_packed_decode",
+    "impl_module": "fused_recurrent",
+    "kind": "rebind",
+    "target": "sglang.srt.layers.attention.linear.kernels.gdn_triton:fused_recurrent_gated_delta_rule_packed_decode"
+  },
+  "capture_validation": {
+    "batches": [
+      1,
+      64
+    ],
+    "changed_state_matches_nonnegative_indices": true,
+    "non_vacuous": true,
+    "outputs_nonzero": true,
+    "state_indices_unique": [
+      1,
+      64
+    ]
+  },
+  "case_byte_limit": 4294967296,
+  "case_entrypoints": {
+    "hk10": "live_decode_recurrent"
+  },
+  "cases": [
+    {
+      "count": 2829,
+      "input_dtypes": [
+        "torch.bfloat16",
+        "torch.float32",
+        "torch.int32"
+      ],
+      "input_shapes": [
+        [
+          1,
+          2560
+        ],
+        [
+          1,
+          16
+        ],
+        [
+          1,
+          16
+        ],
+        [
+          16
+        ],
+        [
+          16
+        ],
+        [
+          1,
+          1,
+          16,
+          128
+        ],
+        [
+          1
+        ]
+      ],
+      "regime": "decode",
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "count": 70656,
+      "input_dtypes": [
+        "torch.bfloat16",
+        "torch.float32",
+        "torch.int32"
+      ],
+      "input_shapes": [
+        [
+          64,
+          2560
+        ],
+        [
+          64,
+          16
+        ],
+        [
+          64,
+          16
+        ],
+        [
+          16
+        ],
+        [
+          16
+        ],
+        [
+          64,
+          1,
+          16,
+          128
+        ],
+        [
+          64
+        ]
+      ],
+      "regime": "decode",
+      "sig": "A_log=T(16,):torch.float32|a=T(64, 16):torch.bfloat16|b=T(64, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(64, 2560):torch.bfloat16|out=T(64, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(64,):torch.int32|use_qk_l2norm_in_kernel=True"
+    }
+  ],
+  "device_kernel": "fused_recurrent_gated_delta_rule_packed_decode_kernel",
+  "geak_commit": "267a7594d847f3a6f55955202fe4ec3178deb38c",
+  "geometry": {
+    "H": 2,
+    "HV": 16,
+    "K": 128,
+    "V": 128,
+    "qkv_dim": 2560,
+    "scale": 0.08838834764831845,
+    "state_pool_slots": 199,
+    "use_qk_l2norm_in_kernel": true
+  },
+  "graph_replayed": false,
+  "in_graph_calls": 0,
+  "ledger_ids": [
+    "hk10"
+  ],
+  "math_contract": "One packed decode gated-delta step writes out in place and updates initial_state at ssm_state_indices in place, returning the same two buffers as (out, initial_state).",
+  "module": "sglang.srt.layers.attention.linear.kernels.gdn_triton",
+  "negative_check": "negative_check.json",
+  "note": "Oracle captured from baseline. Do NOT edit unittest.py or reference_io.pt during opt.",
+  "notes": "The first graph-construction capture was rejected as vacuous. This promoted oracle was recaptured from the same workload with CUDA graph disabled solely so the Python seam observed real request buffers: B=64 carries 64 distinct state slots and B=1 carries slot 2. The UT restores each pre-call state/output buffer and separately reenables fixed-buffer CUDA-graph replay across B=64 and B=1.",
+  "num_cases": 2,
+  "num_distinct_shapes": 2,
+  "op_kind": "stateful_recurrence",
+  "oracle_bytes_est": 626869764,
+  "oracle_complete": true,
+  "oracle_policy": "Live eager capture from the production callable is authoritative for values, routing, layout, output, and recurrent-state transition; deployment CUDA-graph behavior is checked separately by capture-once/replay-many in unittest.py.",
+  "oracle_save_count": 2,
+  "persist_policy": "share_large",
+  "pre_arg_indices": [],
+  "pre_kw_keys": [
+    "initial_state",
+    "out"
+  ],
+  "process_id": 26800,
+  "random_draws": 3,
+  "rank": "unknown",
+  "reference_io": "reference_io.pt",
+  "reference_io_sha256": "38a624a5f502279a13a09c012fababbe232cadedacd560056d8411640a04aaf1",
+  "regime": {
+    "backend": "sglang",
+    "capture_mode": "eager_to_observe_request_state",
+    "compile": "eager",
+    "cuda_graph": true,
+    "enforce_eager": false,
+    "framework_version": "0.5.18",
+    "kv_cache_dtype": "auto",
+    "quant": {
+      "act_dtype": "bf16",
+      "method": "quark_mxfp4",
+      "source": "model_config",
+      "weight_dtype": "mxfp4"
+    }
+  },
+  "regimes_captured": [
+    "decode"
+  ],
+  "regimes_covered": [
+    "decode"
+  ],
+  "result_path": "reports/ledger/hk10.json",
+  "schema_version": 1,
+  "seam_candidates": [
+    {
+      "depth": 1,
+      "device_kernels": [
+        "fused_recurrent_gated_delta_rule_packed_decode_kernel"
+      ],
+      "role": "live_imported_alias",
+      "target_callable": "sglang.srt.layers.attention.linear.kernels.gdn_triton:fused_recurrent_gated_delta_rule_packed_decode"
+    },
+    {
+      "depth": 1,
+      "device_kernels": [
+        "fused_recurrent_gated_delta_rule_packed_decode_kernel"
+      ],
+      "role": "source_definition_imported_by_value",
+      "target_callable": "sglang.kernels.ops.attention.fla.fused_recurrent:fused_recurrent_gated_delta_rule_packed_decode"
+    }
+  ],
+  "selection_validation": {
+    "contract": "kernel_selection",
+    "deepest_verified": true,
+    "matched_kernel_calls": 16,
+    "ok": true,
+    "path": "selection_validation.json",
+    "processes_passed": 8,
+    "target_marker_calls": 16
+  },
+  "served_regimes": [
+    "decode"
+  ],
+  "shape_counts": [
+    {
+      "count": 70656,
+      "input_dtypes": [
+        "torch.bfloat16",
+        "torch.float32",
+        "torch.int32"
+      ],
+      "input_shapes": [
+        [
+          64,
+          2560
+        ],
+        [
+          64,
+          16
+        ],
+        [
+          64,
+          16
+        ],
+        [
+          16
+        ],
+        [
+          16
+        ],
+        [
+          199,
+          16,
+          128,
+          128
+        ],
+        [
+          64,
+          1,
+          16,
+          128
+        ],
+        [
+          64
+        ]
+      ],
+      "sig": "A_log=T(16,):torch.float32|a=T(64, 16):torch.bfloat16|b=T(64, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(64, 2560):torch.bfloat16|out=T(64, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(64,):torch.int32|use_qk_l2norm_in_kernel=True"
+    },
+    {
+      "count": 2829,
+      "input_dtypes": [
+        "torch.bfloat16",
+        "torch.float32",
+        "torch.int32"
+      ],
+      "input_shapes": [
+        [
+          1,
+          2560
+        ],
+        [
+          1,
+          16
+        ],
+        [
+          1,
+          16
+        ],
+        [
+          16
+        ],
+        [
+          16
+        ],
+        [
+          199,
+          16,
+          128,
+          128
+        ],
+        [
+          1,
+          1,
+          16,
+          128
+        ],
+        [
+          1
+        ]
+      ],
+      "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+    }
+  ],
+  "shared_tensor_keys": [
+    "initial_state"
+  ],
+  "short_name": "fused_recurrent_gated_delta_rule_packed_decode_kernel",
+  "source_path_in_sglang": "provenance://runtime-image/sglang/python/sglang/kernels/ops/attention/fla/fused_recurrent.py",
+  "source_provenance": {
+    "baseline_ref": "baseline_ref/fused_recurrent.py.orig",
+    "candidate_adaptations": [],
+    "candidate_source": "kernel_src/fused_recurrent.py",
+    "kernel_source_complete": true,
+    "original_path": "provenance://runtime-image/sglang/python/sglang/kernels/ops/attention/fla/fused_recurrent.py",
+    "repo": "sglang",
+    "repo_commit": "71de97b264b04dcd514cf904003028aefe9775c8",
+    "runtime_image": "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.18-rocm720-mi35x-profilerfix",
+    "runtime_image_id": "sha256:760dd38b9b6f2bd11c13011d470eb8e377c3f0d71284a090a710d64a23bd789f"
+  },
+  "target": "sglang.srt.layers.attention.linear.kernels.gdn_triton:fused_recurrent_gated_delta_rule_packed_decode",
+  "target_callable": "sglang.srt.layers.attention.linear.kernels.gdn_triton:fused_recurrent_gated_delta_rule_packed_decode",
+  "task_id": "gated_delta_decode_task",
+  "tol": 0.02,
+  "total_calls_observed": 73485,
+  "unittest_smoke": "pass",
+  "ut_validation": {
+    "case_id": "hk10",
+    "distinct_baseline_candidate_legs": "PASS",
+    "eager_oracle": "PASS",
+    "graph_replay": "B64 and B1 PASS",
+    "negative_output_corruption": "REJECTED",
+    "negative_state_corruption": "REJECTED",
+    "ordered_sequence": "B1 -> B64 -> B1 PASS",
+    "random_value_parity": "6/6 PASS",
+    "smoke": "PASS"
+  },
+  "workload": {
+    "cases": [
+      {
+        "B": 64,
+        "count": 70656,
+        "m": 64,
+        "name": "decode_b64_live",
+        "regime": "decode",
+        "sig": "decode_b64_live",
+        "state_indices": [
+          8,
+          29,
+          30,
+          92,
+          93,
+          153,
+          154,
+          15,
+          16,
+          74,
+          75,
+          76,
+          131,
+          132,
+          185,
+          186,
+          42,
+          43,
+          95,
+          96,
+          143,
+          144,
+          191,
+          192,
+          40,
+          41,
+          85,
+          86,
+          127,
+          128,
+          169,
+          170,
+          10,
+          11,
+          50,
+          51,
+          83,
+          84,
+          117,
+          118,
+          149,
+          150,
+          177,
+          178,
+          5,
+          6,
+          32,
+          33,
+          56,
+          57,
+          72,
+          73,
+          97,
+          98,
+          109,
+          110,
+          121,
+          122,
+          133,
+          134,
+          139,
+          140,
+          145,
+          146
+        ]
+      },
+      {
+        "B": 1,
+        "count": 2829,
+        "m": 1,
+        "name": "decode_b1_live",
+        "regime": "decode",
+        "sig": "decode_b1_live",
+        "state_indices": [
+          2
+        ]
+      }
+    ],
+    "serving_weight_model": {
+      "analytic_calls": {
+        "decode": 1024,
+        "prefill": 0
+      },
+      "conc": 64,
+      "isl": 8192,
+      "osl": 1024,
+      "prefill_chunk": 16384
+    }
+  }
+}

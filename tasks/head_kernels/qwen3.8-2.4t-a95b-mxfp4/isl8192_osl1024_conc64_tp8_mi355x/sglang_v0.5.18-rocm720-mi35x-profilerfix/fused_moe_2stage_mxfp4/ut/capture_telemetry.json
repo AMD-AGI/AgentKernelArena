@@ -1,0 +1,12 @@
+{
+  "attempts_preserved": true,
+  "authoritative_oracle_bytes": 2083145699,
+  "checksum_verified_once_after_promotion": true,
+  "direct_capture_dirs_remaining": [],
+  "promoted_meta": true,
+  "promoted_oracle": true,
+  "reference_io_sha256": "09a71daa55bdd3683be45016f0e5139e2fd63b7c614ae5ba565f74cbd2c7e434",
+  "schema_version": 1,
+  "selected_process_id": 2463881,
+  "task_id": "fused_moe_mxfp4_task"
+}

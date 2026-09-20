@@ -1,0 +1,45 @@
+source_file_path:
+- source/geak_opus_moe_stage2_adapter.py
+target_kernel_functions:
+- opus_a8w4_stage2_wrapper
+compile_command:
+- python3 scripts/task_runner.py compile --timeout 600
+correctness_command:
+- python3 scripts/task_runner.py correctness --timeout 3600
+performance_command:
+- python3 scripts/task_runner.py performance --timeout 3600
+task_type: triton2triton
+task_result_template: null
+prompt:
+  source_code: null
+  instructions: "Optimize the DeepSeek-V4-Pro opus_moe_stage2_a8w4_decode_kernel_gfx950 kernel on MI355X (gfx950).\nBackend: aiter. Serving capture: ISL 8192 / OSL 1024 / CONC 64 / TP 8.\n\nEdit only the declared source files and target functions:\n  source/geak_opus_moe_stage2_adapter.py\n  opus_a8w4_stage2_wrapper\n\nKeep the production callable signature and the captured shape, dtype, stride,\ntensor-attribute, routing, state-update and output-alias contracts unchanged.\nProduction seam: aiter.ops.opus.moe_stage2_a8w4_fused_adapter:opus_a8w4_stage2_wrapper.\nUse the task's frozen correctness references and complete benchmark case set.\nThe starting-source provenance is stock; archival profile\nand speedup figures in the provenance files are not measurements of this run.\nThe Arena evaluator measures the committed starting implementation and candidate\nunder the same benchmark contract. Do not edit ut/, scripts/, or config.yaml.\n"
+  cheatsheet: null
+headkernel:
+  operation_id: deepseek-v4-pro__moe_stage2_down_proj_reduce_opus_a8w4
+  model: DeepSeek-V4-Pro
+  owner: zihao
+  docker: harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.17-rocm720-mi35x-profilerfix
+  serving: ISL 8192 / OSL 1024 / CONC 64 / TP 8
+  backend: aiter
+  regime: decode+prefill
+  device_symbol: opus_moe_stage2_a8w4_decode_kernel_gfx950
+  target_callable: aiter.ops.opus.moe_stage2_a8w4_fused_adapter:opus_a8w4_stage2_wrapper
+  tol: 0.05
+  oracle: frozen live-capture ut/reference_io.pt
+  source_package: Z/DeepSeek-V4-Pro_moe_stage2_down_proj_reduce_opus_a8w4
+  source_seed: stock
+  info_rows:
+  - row: DS-3
+    info_kernel: MoE stage-2 opus_moe_stage2_a8w4_decode_kernel_gfx950
+    gpu_pct: 3.7
+    empirical_roofline: ~98% HBM (raw 144%, byte model over-counts)
+    optimized_roofline: null
+    e2e_uplift: null
+  symbol_locations:
+    opus_a8w4_stage2_wrapper: source/geak_opus_moe_stage2_adapter.py
+compile_timeout: 600
+correctness_timeout: 3600
+performance_timeout: 3600
+platform_support:
+  required_arch: gfx950
+  status: active

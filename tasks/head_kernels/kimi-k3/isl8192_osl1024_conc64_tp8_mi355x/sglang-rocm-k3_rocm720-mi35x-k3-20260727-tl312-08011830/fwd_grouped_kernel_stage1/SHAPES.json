@@ -1,0 +1,1767 @@
+{
+  "schema_version": 1,
+  "task_id": "kimi-k3__fwd_grouped_kernel_stage1",
+  "task_path": ".",
+  "path_base": "task directory",
+  "scope": "Single-GPU callable/operator unit benchmark on MI355X (gfx950). Serving capture context does not define kernel tensor shapes.",
+  "serving_capture_context": {
+    "isl": 8192,
+    "osl": 1024,
+    "concurrency": 64,
+    "tensor_parallel_world_size": 8
+  },
+  "environment_evidence": "config.yaml",
+  "interface": {
+    "target_callable": "sglang.kernels.ops.attention.decode_attention:_decode_grouped_att_m_fwd",
+    "baseline_callable_recorded": "sglang.kernels.ops.attention.decode_attention:_decode_grouped_att_m_fwd",
+    "candidate_bind_recorded": null,
+    "candidate_signatures": [
+      {
+        "callable": "_decode_grouped_att_m_fwd",
+        "signature": "_decode_grouped_att_m_fwd(q, k_buffer, v_buffer, att_out, att_lse, kv_indptr, kv_indices, num_kv_splits, max_kv_splits, sm_scale_withk, logit_cap, xai_temperature_len=-1, has_mla=False, use_pdl=False, page_size: int=1, score_mod=None, aux_tensors=None)",
+        "evidence": "source/geak_mla_stage1.py:827"
+      }
+    ],
+    "benchmark_adapter": "scripts/_bench.py#selected_cases",
+    "scope": "selected callable seam; kernel launch count is not asserted by this catalog",
+    "profiled_kernel_rows": [
+      {
+        "id": "K3-1",
+        "profiled_kernel": "_fwd_grouped_kernel_stage1",
+        "device_symbol": "_fwd_grouped_kernel_stage1",
+        "regime": "decode"
+      }
+    ],
+    "frozen_baseline_signatures": [
+      {
+        "signature": "_decode_grouped_att_m_fwd(q, k_buffer, v_buffer, att_out, att_lse, kv_indptr, kv_indices, num_kv_splits, max_kv_splits, sm_scale_withk, logit_cap, xai_temperature_len=-1, has_mla=False, use_pdl=False, page_size: int=1, score_mod=None, aux_tensors=None)",
+        "evidence": "ut/baseline_ref/decode_attention.pristine.py.orig:611"
+      },
+      {
+        "signature": "_decode_grouped_att_m_fwd(q, k_buffer, v_buffer, att_out, att_lse, kv_indptr, kv_indices, num_kv_splits, max_kv_splits, sm_scale_withk, logit_cap, xai_temperature_len=-1, has_mla=False, use_pdl=False, page_size: int=1, score_mod=None, aux_tensors=None)",
+        "evidence": "ut/baseline_ref/decode_attention.py.orig:667"
+      }
+    ],
+    "alias_and_mutation_notes": "Native callable writes att_out and att_lse. The harness exposes these output buffers as a tuple; inactive split slots stay at their initial zero. Timing v_buffer is a view of k_buffer.",
+    "alias_evidence": [
+      "ut/meta.json#/math_contract",
+      "ut/unittest.py:61"
+    ]
+  },
+  "contracts": [
+    {
+      "value": "MLA absorbed decode, split-KV stage 1: for each (batch b, q-head h, kv split s) over the paged latent KV named by kv_indices[kv_indptr[b]:kv_indptr[b+1]] (page_size=1), qk = Q[b,h,:576] . K[idx,0,:576] * sm_scale ; att_out[b,h,s,:512] = softmax_partial(qk) @ K[idx,0,:512]  (HAS_MLA: V is the leading 512 lanes of the same latent row, v = trans(k)) ; att_lse[b,h,s] = max(qk) + log(sum exp(qk-max)). Slots s >= num_kv_splits[b] are not written by the kernel and are compared as zero on both sides.",
+      "evidence": "ut/meta.json#/math_contract"
+    }
+  ],
+  "metadata_dimensions": {
+    "geometry": {
+      "value": {
+        "num_q_heads": 12,
+        "head_dim_k": 576,
+        "v_head_dim": 512,
+        "kv_head_num": 1,
+        "splits_num_kv_head": 12,
+        "max_kv_splits": 256,
+        "sm_scale": 0.07216878364870322,
+        "logit_cap": 0.0,
+        "xai_temperature_len": -1,
+        "has_mla": true,
+        "page_size": 1,
+        "block_size": 1,
+        "partition_size": null,
+        "ctx_online": 8704
+      },
+      "evidence": "ut/meta.json#/geometry"
+    },
+    "m_buckets": {
+      "value": [
+        1,
+        64
+      ],
+      "evidence": "ut/meta.json#/m_buckets"
+    }
+  },
+  "case_inventory": {
+    "metadata_declared_num_cases": null,
+    "shape_record_count": 4,
+    "benchmark_case_count": 2,
+    "benchmark_case_ids": [
+      "decode_bs1_ctx8704",
+      "decode_bs64_ctx8704"
+    ],
+    "count_note": "Counts describe distinct scopes. Captures, boundary specs, histogram observations and benchmark buckets are not interchangeable."
+  },
+  "benchmark_cases": [
+    {
+      "case_id": "decode_bs1_ctx8704",
+      "shape_record_id": "decode_bs1_ctx8704",
+      "regime": "decode",
+      "evidence": "ut/unittest.py:178"
+    },
+    {
+      "case_id": "decode_bs64_ctx8704",
+      "shape_record_id": "decode_bs64_ctx8704",
+      "regime": "decode",
+      "evidence": "ut/unittest.py:178"
+    }
+  ],
+  "cases": [
+    {
+      "case_id": "oracle_bs1_ctx395",
+      "regime": "decode",
+      "evidence": "ut/meta.json#/cases/0",
+      "metadata": {
+        "sig": "oracle_bs1_ctx395",
+        "regime": "decode",
+        "bs": 1,
+        "num_q_heads": 12,
+        "head_dim_k": 576,
+        "v_head_dim": 512,
+        "total_kv": 395,
+        "ctx_per_seq": 395,
+        "max_kv_splits": 256,
+        "pool_rows_original": 833385,
+        "pool_rows_compact": 395,
+        "slots_written": [
+          13
+        ],
+        "num_kv_splits": [
+          50
+        ],
+        "seq_lens": [
+          395
+        ],
+        "input_shapes": [
+          [
+            1,
+            12,
+            576
+          ],
+          [
+            395,
+            1,
+            576
+          ],
+          [
+            395
+          ]
+        ],
+        "input_dtypes": [
+          "torch.bfloat16"
+        ],
+        "source": "live_capture",
+        "timing": false,
+        "name": "oracle_bs1_ctx395"
+      },
+      "tensors": [
+        {
+          "name": "q",
+          "role": "input",
+          "shape": [
+            1,
+            12,
+            576
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/cases/0"
+        },
+        {
+          "name": "k_buffer",
+          "role": "input",
+          "shape": [
+            395,
+            1,
+            576
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/cases/0"
+        },
+        {
+          "name": "v_buffer",
+          "role": "input",
+          "shape": [
+            395,
+            1,
+            512
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": null,
+          "layout": "view of k_buffer[..., :512]",
+          "evidence": "ut/meta.json#/cases/0",
+          "aliases": "capture alias is stored in tensor oracle"
+        },
+        {
+          "name": "kv_indptr",
+          "role": "input",
+          "shape": [
+            2
+          ],
+          "dtype": "torch.int32",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/cases/0"
+        },
+        {
+          "name": "kv_indices",
+          "role": "input",
+          "shape": [
+            395
+          ],
+          "dtype": "torch.int64",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/cases/0"
+        },
+        {
+          "name": "num_kv_splits",
+          "role": "input",
+          "shape": [
+            1
+          ],
+          "dtype": "torch.int32",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/cases/0"
+        },
+        {
+          "name": "att_out",
+          "role": "output_buffer",
+          "shape": [
+            1,
+            12,
+            256,
+            512
+          ],
+          "dtype": "torch.float32",
+          "strides": null,
+          "layout": "caller-owned output; only live splits written",
+          "evidence": "ut/meta.json#/cases/0"
+        },
+        {
+          "name": "att_lse",
+          "role": "output_buffer",
+          "shape": [
+            1,
+            12,
+            256
+          ],
+          "dtype": "torch.float32",
+          "strides": null,
+          "layout": "caller-owned output; only live splits written",
+          "evidence": "ut/meta.json#/cases/0"
+        }
+      ],
+      "scalars": {
+        "max_kv_splits": {
+          "value": 256,
+          "evidence": "ut/meta.json#/geometry/max_kv_splits",
+          "scope": "call_argument"
+        },
+        "sm_scale_withk": {
+          "value": 0.07216878364870322,
+          "evidence": "ut/meta.json#/geometry/sm_scale",
+          "scope": "call_argument"
+        },
+        "logit_cap": {
+          "value": 0.0,
+          "evidence": "ut/meta.json#/geometry/logit_cap",
+          "scope": "call_argument"
+        },
+        "xai_temperature_len": {
+          "value": -1,
+          "evidence": "ut/meta.json#/geometry/xai_temperature_len",
+          "scope": "call_argument"
+        },
+        "has_mla": {
+          "value": true,
+          "evidence": "ut/meta.json#/geometry/has_mla",
+          "scope": "call_argument"
+        },
+        "page_size": {
+          "value": 1,
+          "evidence": "ut/meta.json#/geometry/page_size",
+          "scope": "call_argument"
+        }
+      },
+      "outputs": [
+        {
+          "name": "att_out",
+          "role": "output",
+          "shape": [
+            1,
+            12,
+            256,
+            512
+          ],
+          "dtype": "torch.float32",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/unittest.py:59",
+          "alias_of": "att_out"
+        },
+        {
+          "name": "att_lse",
+          "role": "output",
+          "shape": [
+            1,
+            12,
+            256
+          ],
+          "dtype": "torch.float32",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/unittest.py:59",
+          "alias_of": "att_lse"
+        }
+      ],
+      "benchmark_case_ids": [],
+      "notes": [
+        "Timing KV pool has 64 padding rows beyond total_kv. num_kv_splits is produced by the production GPU scheduler; max_kv_splits=256 is allocation capacity, not work per sequence."
+      ]
+    },
+    {
+      "case_id": "oracle_bs64_ctx8193",
+      "regime": "decode",
+      "evidence": "ut/meta.json#/cases/1",
+      "metadata": {
+        "sig": "oracle_bs64_ctx8193",
+        "regime": "decode",
+        "bs": 64,
+        "num_q_heads": 12,
+        "head_dim_k": 576,
+        "v_head_dim": 512,
+        "total_kv": 524352,
+        "ctx_per_seq": 8193,
+        "max_kv_splits": 256,
+        "pool_rows_original": 833385,
+        "pool_rows_compact": 524352,
+        "slots_written": [
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3
+        ],
+        "num_kv_splits": [
+          3,
+          3,
+          3,
+          3
+        ],
+        "seq_lens": [
+          8193,
+          8193,
+          8193,
+          8193
+        ],
+        "input_shapes": [
+          [
+            64,
+            12,
+            576
+          ],
+          [
+            524352,
+            1,
+            576
+          ],
+          [
+            524352
+          ]
+        ],
+        "input_dtypes": [
+          "torch.bfloat16"
+        ],
+        "source": "live_capture",
+        "timing": false,
+        "name": "oracle_bs64_ctx8193"
+      },
+      "tensors": [
+        {
+          "name": "q",
+          "role": "input",
+          "shape": [
+            64,
+            12,
+            576
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/cases/1"
+        },
+        {
+          "name": "k_buffer",
+          "role": "input",
+          "shape": [
+            524352,
+            1,
+            576
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/cases/1"
+        },
+        {
+          "name": "v_buffer",
+          "role": "input",
+          "shape": [
+            524352,
+            1,
+            512
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": null,
+          "layout": "view of k_buffer[..., :512]",
+          "evidence": "ut/meta.json#/cases/1",
+          "aliases": "capture alias is stored in tensor oracle"
+        },
+        {
+          "name": "kv_indptr",
+          "role": "input",
+          "shape": [
+            65
+          ],
+          "dtype": "torch.int32",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/cases/1"
+        },
+        {
+          "name": "kv_indices",
+          "role": "input",
+          "shape": [
+            524352
+          ],
+          "dtype": "torch.int64",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/cases/1"
+        },
+        {
+          "name": "num_kv_splits",
+          "role": "input",
+          "shape": [
+            64
+          ],
+          "dtype": "torch.int32",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/cases/1"
+        },
+        {
+          "name": "att_out",
+          "role": "output_buffer",
+          "shape": [
+            64,
+            12,
+            256,
+            512
+          ],
+          "dtype": "torch.float32",
+          "strides": null,
+          "layout": "caller-owned output; only live splits written",
+          "evidence": "ut/meta.json#/cases/1"
+        },
+        {
+          "name": "att_lse",
+          "role": "output_buffer",
+          "shape": [
+            64,
+            12,
+            256
+          ],
+          "dtype": "torch.float32",
+          "strides": null,
+          "layout": "caller-owned output; only live splits written",
+          "evidence": "ut/meta.json#/cases/1"
+        }
+      ],
+      "scalars": {
+        "max_kv_splits": {
+          "value": 256,
+          "evidence": "ut/meta.json#/geometry/max_kv_splits",
+          "scope": "call_argument"
+        },
+        "sm_scale_withk": {
+          "value": 0.07216878364870322,
+          "evidence": "ut/meta.json#/geometry/sm_scale",
+          "scope": "call_argument"
+        },
+        "logit_cap": {
+          "value": 0.0,
+          "evidence": "ut/meta.json#/geometry/logit_cap",
+          "scope": "call_argument"
+        },
+        "xai_temperature_len": {
+          "value": -1,
+          "evidence": "ut/meta.json#/geometry/xai_temperature_len",
+          "scope": "call_argument"
+        },
+        "has_mla": {
+          "value": true,
+          "evidence": "ut/meta.json#/geometry/has_mla",
+          "scope": "call_argument"
+        },
+        "page_size": {
+          "value": 1,
+          "evidence": "ut/meta.json#/geometry/page_size",
+          "scope": "call_argument"
+        }
+      },
+      "outputs": [
+        {
+          "name": "att_out",
+          "role": "output",
+          "shape": [
+            64,
+            12,
+            256,
+            512
+          ],
+          "dtype": "torch.float32",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/unittest.py:59",
+          "alias_of": "att_out"
+        },
+        {
+          "name": "att_lse",
+          "role": "output",
+          "shape": [
+            64,
+            12,
+            256
+          ],
+          "dtype": "torch.float32",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/unittest.py:59",
+          "alias_of": "att_lse"
+        }
+      ],
+      "benchmark_case_ids": [],
+      "notes": [
+        "Timing KV pool has 64 padding rows beyond total_kv. num_kv_splits is produced by the production GPU scheduler; max_kv_splits=256 is allocation capacity, not work per sequence."
+      ]
+    },
+    {
+      "case_id": "decode_bs1_ctx8704",
+      "regime": "decode",
+      "evidence": "ut/meta.json#/cases/2",
+      "metadata": {
+        "sig": "decode_bs1_ctx8704",
+        "name": "decode_bs1_ctx8704",
+        "regime": "decode",
+        "timing": true,
+        "bs": 1,
+        "ctx_per_seq": 8704,
+        "num_q_heads": 12,
+        "head_dim_k": 576,
+        "v_head_dim": 512,
+        "max_kv_splits": 256,
+        "total_kv": 8704,
+        "input_shapes": [
+          [
+            1,
+            12,
+            576
+          ],
+          [
+            8704,
+            1,
+            576
+          ],
+          [
+            8704
+          ]
+        ],
+        "input_dtypes": [
+          "torch.bfloat16"
+        ],
+        "source": "online_m_bucket"
+      },
+      "tensors": [
+        {
+          "name": "q",
+          "role": "input",
+          "shape": [
+            1,
+            12,
+            576
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            6912,
+            576,
+            1
+          ],
+          "layout": "contiguous generated tensor",
+          "evidence": "ut/unittest.py:147"
+        },
+        {
+          "name": "k_buffer",
+          "role": "input",
+          "shape": [
+            8768,
+            1,
+            576
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            576,
+            576,
+            1
+          ],
+          "layout": "contiguous generated tensor",
+          "evidence": "ut/unittest.py:147"
+        },
+        {
+          "name": "v_buffer",
+          "role": "input",
+          "shape": [
+            8768,
+            1,
+            512
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            576,
+            576,
+            1
+          ],
+          "layout": "view of k_buffer[..., :512]",
+          "evidence": "ut/unittest.py:147",
+          "aliases": "k_buffer"
+        },
+        {
+          "name": "kv_indptr",
+          "role": "input",
+          "shape": [
+            2
+          ],
+          "dtype": "torch.int32",
+          "strides": [
+            1
+          ],
+          "layout": "contiguous generated tensor",
+          "evidence": "ut/unittest.py:147"
+        },
+        {
+          "name": "kv_indices",
+          "role": "input",
+          "shape": [
+            8704
+          ],
+          "dtype": "torch.int64",
+          "strides": [
+            1
+          ],
+          "layout": "contiguous generated tensor",
+          "evidence": "ut/unittest.py:147"
+        },
+        {
+          "name": "num_kv_splits",
+          "role": "input",
+          "shape": [
+            1
+          ],
+          "dtype": "torch.int32",
+          "strides": [
+            1
+          ],
+          "layout": "contiguous generated tensor",
+          "evidence": "ut/unittest.py:147"
+        },
+        {
+          "name": "att_out",
+          "role": "output_buffer",
+          "shape": [
+            1,
+            12,
+            256,
+            512
+          ],
+          "dtype": "torch.float32",
+          "strides": [
+            1572864,
+            131072,
+            512,
+            1
+          ],
+          "layout": "caller-owned output; only live splits written",
+          "evidence": "ut/unittest.py:147"
+        },
+        {
+          "name": "att_lse",
+          "role": "output_buffer",
+          "shape": [
+            1,
+            12,
+            256
+          ],
+          "dtype": "torch.float32",
+          "strides": [
+            3072,
+            256,
+            1
+          ],
+          "layout": "caller-owned output; only live splits written",
+          "evidence": "ut/unittest.py:147"
+        }
+      ],
+      "scalars": {
+        "max_kv_splits": {
+          "value": 256,
+          "evidence": "ut/meta.json#/geometry/max_kv_splits",
+          "scope": "call_argument"
+        },
+        "sm_scale_withk": {
+          "value": 0.07216878364870322,
+          "evidence": "ut/meta.json#/geometry/sm_scale",
+          "scope": "call_argument"
+        },
+        "logit_cap": {
+          "value": 0.0,
+          "evidence": "ut/meta.json#/geometry/logit_cap",
+          "scope": "call_argument"
+        },
+        "xai_temperature_len": {
+          "value": -1,
+          "evidence": "ut/meta.json#/geometry/xai_temperature_len",
+          "scope": "call_argument"
+        },
+        "has_mla": {
+          "value": true,
+          "evidence": "ut/meta.json#/geometry/has_mla",
+          "scope": "call_argument"
+        },
+        "page_size": {
+          "value": 1,
+          "evidence": "ut/meta.json#/geometry/page_size",
+          "scope": "call_argument"
+        },
+        "use_pdl": {
+          "value": false,
+          "evidence": "ut/unittest.py:147",
+          "scope": "call_argument"
+        },
+        "score_mod": {
+          "value": null,
+          "evidence": "ut/unittest.py:147",
+          "scope": "call_argument"
+        },
+        "aux_tensors": {
+          "value": null,
+          "evidence": "ut/unittest.py:147",
+          "scope": "call_argument"
+        }
+      },
+      "outputs": [
+        {
+          "name": "att_out",
+          "role": "output",
+          "shape": [
+            1,
+            12,
+            256,
+            512
+          ],
+          "dtype": "torch.float32",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/unittest.py:59",
+          "alias_of": "att_out"
+        },
+        {
+          "name": "att_lse",
+          "role": "output",
+          "shape": [
+            1,
+            12,
+            256
+          ],
+          "dtype": "torch.float32",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/unittest.py:59",
+          "alias_of": "att_lse"
+        }
+      ],
+      "benchmark_case_ids": [
+        "decode_bs1_ctx8704"
+      ],
+      "notes": [
+        "Timing KV pool has 64 padding rows beyond total_kv. num_kv_splits is produced by the production GPU scheduler; max_kv_splits=256 is allocation capacity, not work per sequence."
+      ]
+    },
+    {
+      "case_id": "decode_bs64_ctx8704",
+      "regime": "decode",
+      "evidence": "ut/meta.json#/cases/3",
+      "metadata": {
+        "sig": "decode_bs64_ctx8704",
+        "name": "decode_bs64_ctx8704",
+        "regime": "decode",
+        "timing": true,
+        "bs": 64,
+        "ctx_per_seq": 8704,
+        "num_q_heads": 12,
+        "head_dim_k": 576,
+        "v_head_dim": 512,
+        "max_kv_splits": 256,
+        "total_kv": 557056,
+        "input_shapes": [
+          [
+            64,
+            12,
+            576
+          ],
+          [
+            557056,
+            1,
+            576
+          ],
+          [
+            557056
+          ]
+        ],
+        "input_dtypes": [
+          "torch.bfloat16"
+        ],
+        "source": "online_m_bucket"
+      },
+      "tensors": [
+        {
+          "name": "q",
+          "role": "input",
+          "shape": [
+            64,
+            12,
+            576
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            6912,
+            576,
+            1
+          ],
+          "layout": "contiguous generated tensor",
+          "evidence": "ut/unittest.py:147"
+        },
+        {
+          "name": "k_buffer",
+          "role": "input",
+          "shape": [
+            557120,
+            1,
+            576
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            576,
+            576,
+            1
+          ],
+          "layout": "contiguous generated tensor",
+          "evidence": "ut/unittest.py:147"
+        },
+        {
+          "name": "v_buffer",
+          "role": "input",
+          "shape": [
+            557120,
+            1,
+            512
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            576,
+            576,
+            1
+          ],
+          "layout": "view of k_buffer[..., :512]",
+          "evidence": "ut/unittest.py:147",
+          "aliases": "k_buffer"
+        },
+        {
+          "name": "kv_indptr",
+          "role": "input",
+          "shape": [
+            65
+          ],
+          "dtype": "torch.int32",
+          "strides": [
+            1
+          ],
+          "layout": "contiguous generated tensor",
+          "evidence": "ut/unittest.py:147"
+        },
+        {
+          "name": "kv_indices",
+          "role": "input",
+          "shape": [
+            557056
+          ],
+          "dtype": "torch.int64",
+          "strides": [
+            1
+          ],
+          "layout": "contiguous generated tensor",
+          "evidence": "ut/unittest.py:147"
+        },
+        {
+          "name": "num_kv_splits",
+          "role": "input",
+          "shape": [
+            64
+          ],
+          "dtype": "torch.int32",
+          "strides": [
+            1
+          ],
+          "layout": "contiguous generated tensor",
+          "evidence": "ut/unittest.py:147"
+        },
+        {
+          "name": "att_out",
+          "role": "output_buffer",
+          "shape": [
+            64,
+            12,
+            256,
+            512
+          ],
+          "dtype": "torch.float32",
+          "strides": [
+            1572864,
+            131072,
+            512,
+            1
+          ],
+          "layout": "caller-owned output; only live splits written",
+          "evidence": "ut/unittest.py:147"
+        },
+        {
+          "name": "att_lse",
+          "role": "output_buffer",
+          "shape": [
+            64,
+            12,
+            256
+          ],
+          "dtype": "torch.float32",
+          "strides": [
+            3072,
+            256,
+            1
+          ],
+          "layout": "caller-owned output; only live splits written",
+          "evidence": "ut/unittest.py:147"
+        }
+      ],
+      "scalars": {
+        "max_kv_splits": {
+          "value": 256,
+          "evidence": "ut/meta.json#/geometry/max_kv_splits",
+          "scope": "call_argument"
+        },
+        "sm_scale_withk": {
+          "value": 0.07216878364870322,
+          "evidence": "ut/meta.json#/geometry/sm_scale",
+          "scope": "call_argument"
+        },
+        "logit_cap": {
+          "value": 0.0,
+          "evidence": "ut/meta.json#/geometry/logit_cap",
+          "scope": "call_argument"
+        },
+        "xai_temperature_len": {
+          "value": -1,
+          "evidence": "ut/meta.json#/geometry/xai_temperature_len",
+          "scope": "call_argument"
+        },
+        "has_mla": {
+          "value": true,
+          "evidence": "ut/meta.json#/geometry/has_mla",
+          "scope": "call_argument"
+        },
+        "page_size": {
+          "value": 1,
+          "evidence": "ut/meta.json#/geometry/page_size",
+          "scope": "call_argument"
+        },
+        "use_pdl": {
+          "value": false,
+          "evidence": "ut/unittest.py:147",
+          "scope": "call_argument"
+        },
+        "score_mod": {
+          "value": null,
+          "evidence": "ut/unittest.py:147",
+          "scope": "call_argument"
+        },
+        "aux_tensors": {
+          "value": null,
+          "evidence": "ut/unittest.py:147",
+          "scope": "call_argument"
+        }
+      },
+      "outputs": [
+        {
+          "name": "att_out",
+          "role": "output",
+          "shape": [
+            64,
+            12,
+            256,
+            512
+          ],
+          "dtype": "torch.float32",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/unittest.py:59",
+          "alias_of": "att_out"
+        },
+        {
+          "name": "att_lse",
+          "role": "output",
+          "shape": [
+            64,
+            12,
+            256
+          ],
+          "dtype": "torch.float32",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/unittest.py:59",
+          "alias_of": "att_lse"
+        }
+      ],
+      "benchmark_case_ids": [
+        "decode_bs64_ctx8704"
+      ],
+      "notes": [
+        "Timing KV pool has 64 padding rows beyond total_kv. num_kv_splits is produced by the production GPU scheduler; max_kv_splits=256 is allocation capacity, not work per sequence."
+      ]
+    }
+  ],
+  "source_inventories": {
+    "cases": {
+      "evidence": "ut/meta.json#/cases",
+      "records": [
+        {
+          "sig": "oracle_bs1_ctx395",
+          "regime": "decode",
+          "bs": 1,
+          "num_q_heads": 12,
+          "head_dim_k": 576,
+          "v_head_dim": 512,
+          "total_kv": 395,
+          "ctx_per_seq": 395,
+          "max_kv_splits": 256,
+          "pool_rows_original": 833385,
+          "pool_rows_compact": 395,
+          "slots_written": [
+            13
+          ],
+          "num_kv_splits": [
+            50
+          ],
+          "seq_lens": [
+            395
+          ],
+          "input_shapes": [
+            [
+              1,
+              12,
+              576
+            ],
+            [
+              395,
+              1,
+              576
+            ],
+            [
+              395
+            ]
+          ],
+          "input_dtypes": [
+            "torch.bfloat16"
+          ],
+          "source": "live_capture",
+          "timing": false,
+          "name": "oracle_bs1_ctx395"
+        },
+        {
+          "sig": "oracle_bs64_ctx8193",
+          "regime": "decode",
+          "bs": 64,
+          "num_q_heads": 12,
+          "head_dim_k": 576,
+          "v_head_dim": 512,
+          "total_kv": 524352,
+          "ctx_per_seq": 8193,
+          "max_kv_splits": 256,
+          "pool_rows_original": 833385,
+          "pool_rows_compact": 524352,
+          "slots_written": [
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3,
+            3
+          ],
+          "num_kv_splits": [
+            3,
+            3,
+            3,
+            3
+          ],
+          "seq_lens": [
+            8193,
+            8193,
+            8193,
+            8193
+          ],
+          "input_shapes": [
+            [
+              64,
+              12,
+              576
+            ],
+            [
+              524352,
+              1,
+              576
+            ],
+            [
+              524352
+            ]
+          ],
+          "input_dtypes": [
+            "torch.bfloat16"
+          ],
+          "source": "live_capture",
+          "timing": false,
+          "name": "oracle_bs64_ctx8193"
+        },
+        {
+          "sig": "decode_bs1_ctx8704",
+          "name": "decode_bs1_ctx8704",
+          "regime": "decode",
+          "timing": true,
+          "bs": 1,
+          "ctx_per_seq": 8704,
+          "num_q_heads": 12,
+          "head_dim_k": 576,
+          "v_head_dim": 512,
+          "max_kv_splits": 256,
+          "total_kv": 8704,
+          "input_shapes": [
+            [
+              1,
+              12,
+              576
+            ],
+            [
+              8704,
+              1,
+              576
+            ],
+            [
+              8704
+            ]
+          ],
+          "input_dtypes": [
+            "torch.bfloat16"
+          ],
+          "source": "online_m_bucket"
+        },
+        {
+          "sig": "decode_bs64_ctx8704",
+          "name": "decode_bs64_ctx8704",
+          "regime": "decode",
+          "timing": true,
+          "bs": 64,
+          "ctx_per_seq": 8704,
+          "num_q_heads": 12,
+          "head_dim_k": 576,
+          "v_head_dim": 512,
+          "max_kv_splits": 256,
+          "total_kv": 557056,
+          "input_shapes": [
+            [
+              64,
+              12,
+              576
+            ],
+            [
+              557056,
+              1,
+              576
+            ],
+            [
+              557056
+            ]
+          ],
+          "input_dtypes": [
+            "torch.bfloat16"
+          ],
+          "source": "online_m_bucket"
+        }
+      ]
+    },
+    "workload/cases": {
+      "evidence": "ut/meta.json#/workload/cases",
+      "records": [
+        {
+          "name": "oracle_bs1_ctx395",
+          "dims": [
+            [
+              1,
+              12,
+              576
+            ],
+            [
+              395,
+              1,
+              576
+            ],
+            [
+              395
+            ]
+          ],
+          "dtypes": [
+            "torch.bfloat16"
+          ],
+          "count": null,
+          "weight": 0.0,
+          "weight_source": "prior",
+          "regime": "decode",
+          "weight_norm": 0.0,
+          "quant": {
+            "scheme": "none",
+            "weight_dtype": "bf16",
+            "act_dtype": "bf16",
+            "out_dtype": "",
+            "weight_block_size": null,
+            "scale_dtype": "float32",
+            "kv_cache_dtype": "auto"
+          }
+        },
+        {
+          "name": "oracle_bs64_ctx8193",
+          "dims": [
+            [
+              64,
+              12,
+              576
+            ],
+            [
+              524352,
+              1,
+              576
+            ],
+            [
+              524352
+            ]
+          ],
+          "dtypes": [
+            "torch.bfloat16"
+          ],
+          "count": null,
+          "weight": 0.0,
+          "weight_source": "prior",
+          "regime": "decode",
+          "weight_norm": 0.0,
+          "quant": {
+            "scheme": "none",
+            "weight_dtype": "bf16",
+            "act_dtype": "bf16",
+            "out_dtype": "",
+            "weight_block_size": null,
+            "scale_dtype": "float32",
+            "kv_cache_dtype": "auto"
+          }
+        },
+        {
+          "name": "decode_bs1_ctx8704",
+          "dims": [
+            [
+              1,
+              12,
+              576
+            ],
+            [
+              8704,
+              1,
+              576
+            ],
+            [
+              8704
+            ]
+          ],
+          "dtypes": [
+            "torch.bfloat16"
+          ],
+          "count": null,
+          "weight": 0.0,
+          "weight_source": "prior",
+          "regime": "decode",
+          "weight_norm": 0.0,
+          "quant": {
+            "scheme": "none",
+            "weight_dtype": "bf16",
+            "act_dtype": "bf16",
+            "out_dtype": "",
+            "weight_block_size": null,
+            "scale_dtype": "float32",
+            "kv_cache_dtype": "auto"
+          }
+        },
+        {
+          "name": "decode_bs64_ctx8704",
+          "dims": [
+            [
+              64,
+              12,
+              576
+            ],
+            [
+              557056,
+              1,
+              576
+            ],
+            [
+              557056
+            ]
+          ],
+          "dtypes": [
+            "torch.bfloat16"
+          ],
+          "count": null,
+          "weight": 0.0,
+          "weight_source": "prior",
+          "regime": "decode",
+          "weight_norm": 0.0,
+          "quant": {
+            "scheme": "none",
+            "weight_dtype": "bf16",
+            "act_dtype": "bf16",
+            "out_dtype": "",
+            "weight_block_size": null,
+            "scale_dtype": "float32",
+            "kv_cache_dtype": "auto"
+          }
+        }
+      ]
+    }
+  },
+  "observed_shape_inventories": [],
+  "dynamic_dimensions": {
+    "evidence": "ut/unittest.py",
+    "policy": "Only dimensions explicitly instantiated by the protected builders are catalogued. Random value draws do not create additional shapes. Routing lengths, live split counts, sparse indices, and physical oracle strides remain runtime data where not recorded.",
+    "builder_entrypoints": {
+      "_synth": "ut/unittest.py:147",
+      "_online_buckets": "ut/unittest.py:178",
+      "random_shapes": "ut/unittest.py:204"
+    },
+    "case_id_and_shape_recipes": [
+      {
+        "function": "eager_cases",
+        "evidence": "ut/unittest.py:116",
+        "docstring": null,
+        "expressions": [
+          {
+            "literal_assignment": "out = []"
+          },
+          {
+            "field": "sig",
+            "expression": "f'oracle:{blob['sig'][:60]}'"
+          },
+          {
+            "field": "regime",
+            "expression": "blob.get('regime', 'decode')"
+          }
+        ]
+      },
+      {
+        "function": "_online_buckets",
+        "evidence": "ut/unittest.py:178",
+        "docstring": "(sig, bs, ctx, regime) per ONLINE M-bucket. Dims always come from meta.cases (the shape\ncontract); meta.workload only decides WHICH cases are timed + tags their regime.",
+        "expressions": [
+          {
+            "literal_assignment": "out, seen = ([], set())"
+          }
+        ]
+      },
+      {
+        "function": "random_shapes",
+        "evidence": "ut/unittest.py:204",
+        "docstring": null,
+        "expressions": [
+          {
+            "field": "sig",
+            "expression": "sig"
+          }
+        ]
+      }
+    ]
+  },
+  "unknown_tensor_metadata": [
+    {
+      "case_id": "oracle_bs1_ctx395",
+      "tensor": "q",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/cases/0"
+    },
+    {
+      "case_id": "oracle_bs1_ctx395",
+      "tensor": "k_buffer",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/cases/0"
+    },
+    {
+      "case_id": "oracle_bs1_ctx395",
+      "tensor": "v_buffer",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/cases/0"
+    },
+    {
+      "case_id": "oracle_bs1_ctx395",
+      "tensor": "kv_indptr",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/cases/0"
+    },
+    {
+      "case_id": "oracle_bs1_ctx395",
+      "tensor": "kv_indices",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/cases/0"
+    },
+    {
+      "case_id": "oracle_bs1_ctx395",
+      "tensor": "num_kv_splits",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/cases/0"
+    },
+    {
+      "case_id": "oracle_bs1_ctx395",
+      "tensor": "att_out",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/cases/0"
+    },
+    {
+      "case_id": "oracle_bs1_ctx395",
+      "tensor": "att_lse",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/cases/0"
+    },
+    {
+      "case_id": "oracle_bs1_ctx395",
+      "tensor": "att_out",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/unittest.py:59"
+    },
+    {
+      "case_id": "oracle_bs1_ctx395",
+      "tensor": "att_lse",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/unittest.py:59"
+    },
+    {
+      "case_id": "oracle_bs64_ctx8193",
+      "tensor": "q",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/cases/1"
+    },
+    {
+      "case_id": "oracle_bs64_ctx8193",
+      "tensor": "k_buffer",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/cases/1"
+    },
+    {
+      "case_id": "oracle_bs64_ctx8193",
+      "tensor": "v_buffer",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/cases/1"
+    },
+    {
+      "case_id": "oracle_bs64_ctx8193",
+      "tensor": "kv_indptr",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/cases/1"
+    },
+    {
+      "case_id": "oracle_bs64_ctx8193",
+      "tensor": "kv_indices",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/cases/1"
+    },
+    {
+      "case_id": "oracle_bs64_ctx8193",
+      "tensor": "num_kv_splits",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/cases/1"
+    },
+    {
+      "case_id": "oracle_bs64_ctx8193",
+      "tensor": "att_out",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/cases/1"
+    },
+    {
+      "case_id": "oracle_bs64_ctx8193",
+      "tensor": "att_lse",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/cases/1"
+    },
+    {
+      "case_id": "oracle_bs64_ctx8193",
+      "tensor": "att_out",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/unittest.py:59"
+    },
+    {
+      "case_id": "oracle_bs64_ctx8193",
+      "tensor": "att_lse",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/unittest.py:59"
+    },
+    {
+      "case_id": "decode_bs1_ctx8704",
+      "tensor": "att_out",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/unittest.py:59"
+    },
+    {
+      "case_id": "decode_bs1_ctx8704",
+      "tensor": "att_lse",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/unittest.py:59"
+    },
+    {
+      "case_id": "decode_bs64_ctx8704",
+      "tensor": "att_out",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/unittest.py:59"
+    },
+    {
+      "case_id": "decode_bs64_ctx8704",
+      "tensor": "att_lse",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/unittest.py:59"
+    }
+  ],
+  "unknown_benchmark_tensor_overrides": [],
+  "opaque_artifacts": [
+    {
+      "path": "ut/reference_io.pt",
+      "sha256": "017f8ede884504695283291955fa8750be3e5d2779dd67b3914f13ab7ae85b98",
+      "metadata_evidence": "ut/meta.json#/reference_io_sha256",
+      "inspected": false,
+      "status": "opaque tensor artifact; no pickle deserialization during catalog generation"
+    }
+  ],
+  "sources": [
+    {
+      "path": "ut/meta.json",
+      "sha256": "10611088e2a5e659c57799fb7e52b04d5257259b5b98193901606c5e842c5d19"
+    },
+    {
+      "path": "ut/unittest.py",
+      "sha256": "348b87d8dcb1d2aaceee8d4fcdc0a61509b57b79dfc6a66bd496afffcbc9ad33"
+    },
+    {
+      "path": "config.yaml",
+      "sha256": "c90e308ffb8ba6034f205c8dcf83118f157dedba0461c711c4b93c97786ebf7a"
+    },
+    {
+      "path": "scripts/source_abi.json",
+      "sha256": "849585bbca348676447ca4bc50eaefbe66a7cc727704d8730f139516c852776d"
+    },
+    {
+      "path": "ut/selection_validation.json",
+      "sha256": "41164e72c466d3473393582e1f322278ada178bce5ac3a93146a341562d4c439"
+    },
+    {
+      "path": "ut/workload.json",
+      "sha256": "99cc27b298cf41abef541491020e6859507d753f895a613f9f1e30fb734d42a2"
+    }
+  ],
+  "validation": "Static metadata/AST inspection only. No task module imports, pickle deserialization, tensor loading, GPU execution, or fresh performance validation."
+}

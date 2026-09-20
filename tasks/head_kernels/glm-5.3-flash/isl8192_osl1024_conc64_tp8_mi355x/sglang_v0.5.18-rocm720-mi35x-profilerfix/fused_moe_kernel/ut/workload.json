@@ -1,0 +1,166 @@
+{
+  "schema": "workload-v1",
+  "op_kind": "moe",
+  "kernel": "fused_moe_kernel",
+  "name_match": "fused_moe_kernel",
+  "regime": {
+    "backend": "sglang",
+    "quant": {
+      "method": "fp8_blockscale",
+      "weight_dtype": "fp8_e4m3",
+      "act_dtype": "fp8",
+      "block_size": [
+        128,
+        128
+      ],
+      "source": "model_config"
+    },
+    "kv_cache_dtype": "bfloat16",
+    "compile": "eager",
+    "enforce_eager": true,
+    "cuda_graph": false,
+    "attention_backend": "",
+    "prefill_chunk": null,
+    "notes": "enforce-eager/disable-cuda-graph set: the deployment runs eagerly (no graph replay), so eager IS the faithful baseline for this regime \u2014 NOT a strawman."
+  },
+  "served_regimes": [
+    "decode",
+    "prefill"
+  ],
+  "quant": {
+    "scheme": "fp8_blockscale",
+    "weight_dtype": "fp8_e4m3",
+    "act_dtype": "fp8",
+    "out_dtype": "",
+    "weight_block_size": [
+      128,
+      128
+    ],
+    "scale_dtype": "float32",
+    "kv_cache_dtype": "bfloat16"
+  },
+  "live_pct_gpu": 3.97,
+  "regime_warning": "",
+  "serving_weight_model": {
+    "isl": 8192,
+    "osl": 1024,
+    "conc": 64,
+    "prefill_chunk": null,
+    "analytic_calls": {
+      "prefill": 64,
+      "decode": 1024
+    },
+    "ttft_ms": 6011.206,
+    "tpot_ms": 83.599
+  },
+  "num_cases": 3,
+  "weights_provenance": "mixed(prior+regime_floor+trace)",
+  "cases": [
+    {
+      "name": "decode_M64",
+      "dims": [
+        [
+          64,
+          4096
+        ],
+        [
+          512,
+          4096
+        ]
+      ],
+      "dtypes": [
+        "fp8_e4m3",
+        "fp8_e4m3"
+      ],
+      "count": null,
+      "weight": 297226.6066,
+      "weight_source": "trace",
+      "regime": "decode",
+      "m": 64,
+      "weight_norm": 0.7,
+      "quant": {
+        "scheme": "fp8_blockscale",
+        "weight_dtype": "fp8_e4m3",
+        "act_dtype": "fp8",
+        "out_dtype": "",
+        "weight_block_size": [
+          128,
+          128
+        ],
+        "scale_dtype": "float32",
+        "kv_cache_dtype": "bfloat16"
+      }
+    },
+    {
+      "name": "prefill_M8192",
+      "dims": [
+        [
+          8192,
+          4096
+        ],
+        [
+          512,
+          4096
+        ]
+      ],
+      "dtypes": [
+        "fp8_e4m3",
+        "fp8_e4m3"
+      ],
+      "count": null,
+      "weight": 127382.8314,
+      "weight_source": "regime_floor",
+      "regime": "prefill",
+      "m": 8192,
+      "weight_norm": 0.3,
+      "quant": {
+        "scheme": "fp8_blockscale",
+        "weight_dtype": "fp8_e4m3",
+        "act_dtype": "fp8",
+        "out_dtype": "",
+        "weight_block_size": [
+          128,
+          128
+        ],
+        "scale_dtype": "float32",
+        "kv_cache_dtype": "bfloat16"
+      }
+    },
+    {
+      "name": "decode_M1",
+      "dims": [
+        [
+          1,
+          4096
+        ],
+        [
+          512,
+          4096
+        ]
+      ],
+      "dtypes": [
+        "fp8_e4m3",
+        "fp8_e4m3"
+      ],
+      "count": null,
+      "weight": 0.0,
+      "weight_source": "prior",
+      "regime": "decode",
+      "m": 1,
+      "weight_norm": 0.0,
+      "quant": {
+        "scheme": "fp8_blockscale",
+        "weight_dtype": "fp8_e4m3",
+        "act_dtype": "fp8",
+        "out_dtype": "",
+        "weight_block_size": [
+          128,
+          128
+        ],
+        "scale_dtype": "float32",
+        "kv_cache_dtype": "bfloat16"
+      }
+    }
+  ],
+  "notes": "op_kind=moe: per-expert token counts are routing-dependent; effective-M buckets from meta drive a GEMM-style regime split. Treat weights as lower-confidence. WARNING: regime 'decode' has meta buckets [1] but ZERO profiled time \u2014 likely a prefill/decode-biased profiling window. Decode-critical serving should set --min-regime-share to avoid ignoring it. WARNING: regime 'prefill' has meta buckets [8192] but ZERO profiled time \u2014 likely a prefill/decode-biased profiling window. Decode-critical serving should set --min-regime-share to avoid ignoring it. applied --min-regime-share 0.3: floored regimes ['prefill']."
+}

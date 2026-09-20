@@ -1,0 +1,1505 @@
+{
+  "schema_version": 1,
+  "task_id": "glm-5.3-flash__fused_moe_kernel",
+  "task_path": ".",
+  "path_base": "task directory",
+  "scope": "Single-GPU callable/operator unit benchmark on MI355X (gfx950). Serving capture context does not define kernel tensor shapes.",
+  "serving_capture_context": {
+    "isl": 8192,
+    "osl": 1024,
+    "concurrency": 64,
+    "tensor_parallel_world_size": 8
+  },
+  "environment_evidence": "config.yaml",
+  "interface": {
+    "target_callable": "sglang.srt.layers.moe.moe_runner.triton_utils.fused_moe:fused_experts_impl",
+    "baseline_callable_recorded": "sglang.srt.layers.moe.moe_runner.triton_utils.fused_moe:fused_experts_impl",
+    "candidate_bind_recorded": {
+      "file": "kernel_src/fused_moe.py",
+      "kind": "module",
+      "module": "sglang.srt.layers.moe.moe_runner.triton_utils.fused_moe"
+    },
+    "candidate_signatures": [
+      {
+        "callable": "fused_experts_impl",
+        "signature": "fused_experts_impl(hidden_states: torch.Tensor, w1: torch.Tensor, w2: torch.Tensor, topk_weights: torch.Tensor, topk_ids: torch.Tensor, b1: Optional[torch.Tensor]=None, b2: Optional[torch.Tensor]=None, inplace: bool=False, activation: str='silu', is_gated: bool=True, apply_router_weight_on_input: bool=False, use_fp8_w8a8: bool=False, use_int8_w8a8: bool=False, use_int8_w8a16: bool=False, use_int4_w4a16: bool=False, per_channel_quant: bool=False, w1_scale: Optional[torch.Tensor]=None, w2_scale: Optional[torch.Tensor]=None, w1_zp: Optional[torch.Tensor]=None, w2_zp: Optional[torch.Tensor]=None, a1_scale: Optional[torch.Tensor]=None, a2_scale: Optional[torch.Tensor]=None, block_shape: Optional[List[int]]=None, no_combine: bool=False, routed_scaling_factor: Optional[float]=None, gemm1_alpha: Optional[float]=None, gemm1_limit: Optional[float]=None, filter_expert: bool=True, swiglu_limit: Optional[float]=None, gate_up_interleaved: bool=True, a1_q: Optional[torch.Tensor]=None, fuse_swiglu_interleaved: bool=False)",
+        "evidence": "source/fused_moe.py:941"
+      }
+    ],
+    "benchmark_adapter": "scripts/_bench.py#selected_cases",
+    "scope": "composite operator: a complete call may launch multiple physical kernels",
+    "profiled_kernel_rows": [
+      {
+        "id": "G53-1",
+        "profiled_kernel": "fused_moe_kernel",
+        "device_symbol": "fused_moe_kernel",
+        "regime": "decode"
+      }
+    ],
+    "frozen_baseline_signatures": [
+      {
+        "signature": "fused_experts_impl(hidden_states: torch.Tensor, w1: torch.Tensor, w2: torch.Tensor, topk_weights: torch.Tensor, topk_ids: torch.Tensor, b1: Optional[torch.Tensor]=None, b2: Optional[torch.Tensor]=None, inplace: bool=False, activation: str='silu', is_gated: bool=True, apply_router_weight_on_input: bool=False, use_fp8_w8a8: bool=False, use_int8_w8a8: bool=False, use_int8_w8a16: bool=False, use_int4_w4a16: bool=False, per_channel_quant: bool=False, w1_scale: Optional[torch.Tensor]=None, w2_scale: Optional[torch.Tensor]=None, w1_zp: Optional[torch.Tensor]=None, w2_zp: Optional[torch.Tensor]=None, a1_scale: Optional[torch.Tensor]=None, a2_scale: Optional[torch.Tensor]=None, block_shape: Optional[List[int]]=None, no_combine: bool=False, routed_scaling_factor: Optional[float]=None, gemm1_alpha: Optional[float]=None, gemm1_limit: Optional[float]=None, filter_expert: bool=True, swiglu_limit: Optional[float]=None, gate_up_interleaved: bool=True, a1_q: Optional[torch.Tensor]=None, fuse_swiglu_interleaved: bool=False)",
+        "evidence": "ut/baseline_ref/fused_moe.py.orig:941"
+      }
+    ],
+    "alias_and_mutation_notes": "Protected unit cases force inplace=False and recompute the golden. The original production capture used inplace=True and therefore captured a post-call hidden_states buffer; this scope difference is documented in meta.notes.",
+    "alias_evidence": [
+      "ut/meta.json#/math_contract",
+      "ut/cases.py:106",
+      "ut/meta.json#/notes"
+    ]
+  },
+  "contracts": [
+    {
+      "value": "grouped per-expert GEMM + routing (GEMM1 w1 -> swiglu -> GEMM2 w2 -> top-k weighted reduce, one dispatcher call)",
+      "evidence": "ut/meta.json#/math_contract"
+    },
+    {
+      "value": "Fused MoE op (op_kind=moe), extracted at the whole-operation dispatcher seam fused_experts_impl per the op_kind=moe rule (extract the FUSED op, never its constituent dense GEMMs). synthesized=false: every operand is real production data captured from the live TP=8 sglang server (fp8_e4m3 block-scale [128,128] expert weights w1[288,512,4096]/w2[288,4096,256] + scales, real bf16 activations, REAL router topk_ids/topk_weights). Routing is never synthesized uniformly; timing/random cases at online-aligned M buckets bootstrap real routing rows WITH REPLACEMENT from the captured pool, preserving expert skew. ORACLE RECOMPUTE: capture_shapes snapshots args AFTER the call and the live path runs inplace=True (out aliases hidden_states), so the raw recorded activation is the post-call buffer; build_oracle.py therefore forces inplace=False and recomputes the golden on the FROZEN baseline stack (baseline_overlay) -- input!=output by construction. Strings are repr-summarized by capture_shapes; build_oracle literal_evals them back (activation=\"silu\"). STANDALONE BOOTSTRAP: sglang_bootstrap.py publishes the deployment ServerArgs (RuntimeContext config bags fail closed outside a server: \"config namespace exec not published\") and a world-size-1 TP group (get_tp_group() is asserted by _fused_moe_kernel_sequence); the captured tensors are already this rank TP=8 shard, so world-size-1 is shard-local replay, not a different problem size -- the deployment MoE all-reduce lives OUTSIDE this seam. SEAM DEPTH: the 6-candidate probe (selection_validation_full_probe.json) shows two deeper live inner launchers, _fused_moe_kernel_sequence and fused_moe_triton_kernels:invoke_fused_moe_kernel, nested inside the op seam; they launch the same fused_moe_kernel but are per-GEMM launchers of the fused op constituents, so they are deliberately NOT in the op-seam ladder. selection_validation.json validates fused_experts_impl against the whole-op ladder (fused_experts / inplace_fused_experts / outplace_fused_experts / fused_experts_impl) -> ok=true, deepest_verified=true across all 8 capture PIDs, 48 fused_moe_kernel launches correlated under the target marker; outplace_fused_experts installed but never live (deployment uses the inplace branch). REGIME: --disable-cuda-graph/enforce-eager, so eager IS the faithful baseline (no graph-replay bundle, no compile-parity leg). ATTRIBUTION: profiler pct_gpu_time=3.97 vs the architect/TraceLens prior of 23.32 for fused_moe_kernel -- both carried here; treat the Amdahl headroom band as [3.97, 23.32]%. CAPTURE COST NOTE: GEAK_SELECTION_TRACE forces capture_shapes flush_every=1, which rewrote a 123KB meta.json per call over NFS and slowed the capture server ~5x (134 vs 716 tok/s); harmless for a capture run, but do not use that combination for any throughput measurement. The capture overlay sitecustomize was made LAZY (a sys.meta_path finder installs the hooks when the owning sglang module executes) because the stock EAGER shim imported sglang in every interpreter on PYTHONPATH -- including the rocm_agent_enumerator helper sglang itself spawns -- which recursed, made TP worker startup ~40x slower, and blew the 601s dist-store rendezvous (2/8 clients joined).\n\nEXTRACTION FIXES APPLIED (both were silent failures, both are in task-local files only):\n1) overlay sitecustomize was EAGER. Section (a) exec'd the patched module at interpreter start, before sglang was importable, so the patched module's own `from ...fused_moe import fused_experts` re-entered its half-built sys.modules entry and the whole injection was skipped -- the candidate leg then resolved to the pristine install and assert_legs_differ failed. Rewrote the SITECUSTOMIZE template in task-local overlay_setup.py (and baseline_overlay/sitecustomize.py, whose manifest is empty so behaviour is unchanged there) to serve BOTH patched modules and capture/marker hooks from a single sys.meta_path finder at real import time. Same lazy pattern already proven in _capture_overlay/sitecustomize.py, where the eager version had force-imported sglang in every python process on PYTHONPATH and blown the torch.distributed rendezvous during capture. Old files kept as *.eager_bak.\n2) sglang_bootstrap used os.environ.setdefault for MASTER_PORT. unittest.py bootstraps in the PARENT (correctness is in-process) and measure_legs' timing subprocesses INHERIT its environ, so every child reused the parent's port, collided with the TCPStore the parent still owns, raised inside cases.call, and time_op swallowed it into ms=None -- every bucket reported baseline_ms=optimized_ms=null with no error anywhere. Now always binds a fresh ephemeral port (override with GEAK_MASTER_PORT).",
+      "evidence": "ut/meta.json#/notes"
+    }
+  ],
+  "metadata_dimensions": {
+    "a_shape": {
+      "value": [
+        "M",
+        4096
+      ],
+      "evidence": "ut/meta.json#/a_shape"
+    },
+    "b_shape": {
+      "value": [
+        512,
+        4096
+      ],
+      "evidence": "ut/meta.json#/b_shape"
+    },
+    "m_buckets": {
+      "value": [
+        1,
+        64,
+        8192
+      ],
+      "evidence": "ut/meta.json#/m_buckets"
+    },
+    "decode_m_buckets": {
+      "value": [
+        1,
+        64
+      ],
+      "evidence": "ut/meta.json#/decode_m_buckets"
+    },
+    "prefill_m_buckets": {
+      "value": [
+        8192
+      ],
+      "evidence": "ut/meta.json#/prefill_m_buckets"
+    },
+    "num_experts": {
+      "value": 288,
+      "evidence": "ut/meta.json#/num_experts"
+    },
+    "top_k": {
+      "value": 8,
+      "evidence": "ut/meta.json#/top_k"
+    },
+    "hidden_size": {
+      "value": 4096,
+      "evidence": "ut/meta.json#/hidden_size"
+    },
+    "intermediate_size_per_tp": {
+      "value": 256,
+      "evidence": "ut/meta.json#/intermediate_size_per_tp"
+    },
+    "compute_dtype": {
+      "value": "bf16",
+      "evidence": "ut/meta.json#/compute_dtype"
+    },
+    "block_quant_shape": {
+      "value": [
+        128,
+        128
+      ],
+      "evidence": "ut/meta.json#/block_quant_shape"
+    }
+  },
+  "case_inventory": {
+    "metadata_declared_num_cases": 3,
+    "shape_record_count": 4,
+    "benchmark_case_count": 3,
+    "benchmark_case_ids": [
+      "moe_m64_decode",
+      "moe_m8192_prefill",
+      "moe_m1_decode"
+    ],
+    "count_note": "Counts describe distinct scopes. Captures, boundary specs, histogram observations and benchmark buckets are not interchangeable."
+  },
+  "benchmark_cases": [
+    {
+      "case_id": "moe_m64_decode",
+      "shape_record_id": "decode_M64",
+      "regime": "decode",
+      "evidence": "ut/cases.py:195",
+      "notes": "Generated activation values; real routing rows resampled from the captured pool."
+    },
+    {
+      "case_id": "moe_m8192_prefill",
+      "shape_record_id": "oracle_m8192_prefill",
+      "regime": "prefill",
+      "evidence": "ut/cases.py:195",
+      "notes": "Generated activation values; real routing rows resampled from the captured pool."
+    },
+    {
+      "case_id": "moe_m1_decode",
+      "shape_record_id": "oracle_m1_decode",
+      "regime": "decode",
+      "evidence": "ut/cases.py:195",
+      "notes": "Generated activation values; real routing rows resampled from the captured pool."
+    }
+  ],
+  "cases": [
+    {
+      "case_id": "oracle_m19_decode",
+      "regime": "decode",
+      "evidence": "ut/meta.json#/cases/0",
+      "metadata": {
+        "m": 19,
+        "regime": "decode",
+        "sig": "oracle_m19_decode"
+      },
+      "tensors": [
+        {
+          "name": "hidden_states",
+          "role": "input",
+          "shape": [
+            19,
+            4096
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": null,
+          "layout": "captured activation; generated timing inputs are contiguous",
+          "evidence": "ut/meta.json#/hidden_size"
+        },
+        {
+          "name": "w1",
+          "role": "input",
+          "shape": [
+            288,
+            512,
+            4096
+          ],
+          "dtype": "fp8_e4m3",
+          "strides": null,
+          "layout": "weight shapes recorded in meta.notes; scales require tensor oracle",
+          "evidence": "ut/meta.json#/notes",
+          "logical_shape_from_geometry": [
+            288,
+            512,
+            4096
+          ]
+        },
+        {
+          "name": "w2",
+          "role": "input",
+          "shape": [
+            288,
+            4096,
+            256
+          ],
+          "dtype": "fp8_e4m3",
+          "strides": null,
+          "layout": "weight shapes recorded in meta.notes; scales require tensor oracle",
+          "evidence": "ut/meta.json#/notes",
+          "logical_shape_from_geometry": [
+            288,
+            4096,
+            256
+          ]
+        },
+        {
+          "name": "w1_scale",
+          "role": "input",
+          "shape": null,
+          "dtype": "torch.float32",
+          "strides": null,
+          "layout": "weight shapes recorded in meta.notes; scales require tensor oracle",
+          "evidence": "ut/meta.json#/reference_io_sha256",
+          "logical_shape_from_geometry": [
+            288,
+            4,
+            32
+          ]
+        },
+        {
+          "name": "w2_scale",
+          "role": "input",
+          "shape": null,
+          "dtype": "torch.float32",
+          "strides": null,
+          "layout": "weight shapes recorded in meta.notes; scales require tensor oracle",
+          "evidence": "ut/meta.json#/reference_io_sha256",
+          "logical_shape_from_geometry": [
+            288,
+            32,
+            2
+          ]
+        },
+        {
+          "name": "topk_ids",
+          "role": "input",
+          "shape": [
+            19,
+            8
+          ],
+          "dtype": null,
+          "strides": null,
+          "layout": "real captured routing; timing bootstraps rows with replacement",
+          "evidence": "ut/cases.py:137"
+        },
+        {
+          "name": "topk_weights",
+          "role": "input",
+          "shape": [
+            19,
+            8
+          ],
+          "dtype": null,
+          "strides": null,
+          "layout": "real captured routing; timing bootstraps rows with replacement",
+          "evidence": "ut/cases.py:137"
+        }
+      ],
+      "scalars": {
+        "inplace": {
+          "value": false,
+          "evidence": "ut/cases.py:117",
+          "scope": "call_argument"
+        },
+        "use_fp8_w8a8": {
+          "value": true,
+          "evidence": "ut/cases.py:117",
+          "scope": "call_argument"
+        },
+        "block_shape": {
+          "value": [
+            128,
+            128
+          ],
+          "evidence": "ut/cases.py:117",
+          "scope": "call_argument"
+        }
+      },
+      "outputs": [
+        {
+          "name": "return",
+          "role": "output",
+          "shape": [
+            19,
+            4096
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": null,
+          "layout": "fresh full dispatcher output",
+          "evidence": "ut/meta.json#/math_contract"
+        }
+      ],
+      "benchmark_case_ids": [],
+      "notes": []
+    },
+    {
+      "case_id": "oracle_m1_decode",
+      "regime": "decode",
+      "evidence": "ut/meta.json#/cases/1",
+      "metadata": {
+        "m": 1,
+        "regime": "decode",
+        "sig": "oracle_m1_decode"
+      },
+      "tensors": [
+        {
+          "name": "hidden_states",
+          "role": "input",
+          "shape": [
+            1,
+            4096
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": null,
+          "layout": "captured activation; generated timing inputs are contiguous",
+          "evidence": "ut/meta.json#/hidden_size"
+        },
+        {
+          "name": "w1",
+          "role": "input",
+          "shape": [
+            288,
+            512,
+            4096
+          ],
+          "dtype": "fp8_e4m3",
+          "strides": null,
+          "layout": "weight shapes recorded in meta.notes; scales require tensor oracle",
+          "evidence": "ut/meta.json#/notes",
+          "logical_shape_from_geometry": [
+            288,
+            512,
+            4096
+          ]
+        },
+        {
+          "name": "w2",
+          "role": "input",
+          "shape": [
+            288,
+            4096,
+            256
+          ],
+          "dtype": "fp8_e4m3",
+          "strides": null,
+          "layout": "weight shapes recorded in meta.notes; scales require tensor oracle",
+          "evidence": "ut/meta.json#/notes",
+          "logical_shape_from_geometry": [
+            288,
+            4096,
+            256
+          ]
+        },
+        {
+          "name": "w1_scale",
+          "role": "input",
+          "shape": null,
+          "dtype": "torch.float32",
+          "strides": null,
+          "layout": "weight shapes recorded in meta.notes; scales require tensor oracle",
+          "evidence": "ut/meta.json#/reference_io_sha256",
+          "logical_shape_from_geometry": [
+            288,
+            4,
+            32
+          ]
+        },
+        {
+          "name": "w2_scale",
+          "role": "input",
+          "shape": null,
+          "dtype": "torch.float32",
+          "strides": null,
+          "layout": "weight shapes recorded in meta.notes; scales require tensor oracle",
+          "evidence": "ut/meta.json#/reference_io_sha256",
+          "logical_shape_from_geometry": [
+            288,
+            32,
+            2
+          ]
+        },
+        {
+          "name": "topk_ids",
+          "role": "input",
+          "shape": [
+            1,
+            8
+          ],
+          "dtype": null,
+          "strides": null,
+          "layout": "real captured routing; timing bootstraps rows with replacement",
+          "evidence": "ut/cases.py:137"
+        },
+        {
+          "name": "topk_weights",
+          "role": "input",
+          "shape": [
+            1,
+            8
+          ],
+          "dtype": null,
+          "strides": null,
+          "layout": "real captured routing; timing bootstraps rows with replacement",
+          "evidence": "ut/cases.py:137"
+        }
+      ],
+      "scalars": {
+        "inplace": {
+          "value": false,
+          "evidence": "ut/cases.py:117",
+          "scope": "call_argument"
+        },
+        "use_fp8_w8a8": {
+          "value": true,
+          "evidence": "ut/cases.py:117",
+          "scope": "call_argument"
+        },
+        "block_shape": {
+          "value": [
+            128,
+            128
+          ],
+          "evidence": "ut/cases.py:117",
+          "scope": "call_argument"
+        }
+      },
+      "outputs": [
+        {
+          "name": "return",
+          "role": "output",
+          "shape": [
+            1,
+            4096
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": null,
+          "layout": "fresh full dispatcher output",
+          "evidence": "ut/meta.json#/math_contract"
+        }
+      ],
+      "benchmark_case_ids": [
+        "moe_m1_decode"
+      ],
+      "notes": []
+    },
+    {
+      "case_id": "oracle_m8192_prefill",
+      "regime": "prefill",
+      "evidence": "ut/meta.json#/cases/2",
+      "metadata": {
+        "m": 8192,
+        "regime": "prefill",
+        "sig": "oracle_m8192_prefill"
+      },
+      "tensors": [
+        {
+          "name": "hidden_states",
+          "role": "input",
+          "shape": [
+            8192,
+            4096
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": null,
+          "layout": "captured activation; generated timing inputs are contiguous",
+          "evidence": "ut/meta.json#/hidden_size"
+        },
+        {
+          "name": "w1",
+          "role": "input",
+          "shape": [
+            288,
+            512,
+            4096
+          ],
+          "dtype": "fp8_e4m3",
+          "strides": null,
+          "layout": "weight shapes recorded in meta.notes; scales require tensor oracle",
+          "evidence": "ut/meta.json#/notes",
+          "logical_shape_from_geometry": [
+            288,
+            512,
+            4096
+          ]
+        },
+        {
+          "name": "w2",
+          "role": "input",
+          "shape": [
+            288,
+            4096,
+            256
+          ],
+          "dtype": "fp8_e4m3",
+          "strides": null,
+          "layout": "weight shapes recorded in meta.notes; scales require tensor oracle",
+          "evidence": "ut/meta.json#/notes",
+          "logical_shape_from_geometry": [
+            288,
+            4096,
+            256
+          ]
+        },
+        {
+          "name": "w1_scale",
+          "role": "input",
+          "shape": null,
+          "dtype": "torch.float32",
+          "strides": null,
+          "layout": "weight shapes recorded in meta.notes; scales require tensor oracle",
+          "evidence": "ut/meta.json#/reference_io_sha256",
+          "logical_shape_from_geometry": [
+            288,
+            4,
+            32
+          ]
+        },
+        {
+          "name": "w2_scale",
+          "role": "input",
+          "shape": null,
+          "dtype": "torch.float32",
+          "strides": null,
+          "layout": "weight shapes recorded in meta.notes; scales require tensor oracle",
+          "evidence": "ut/meta.json#/reference_io_sha256",
+          "logical_shape_from_geometry": [
+            288,
+            32,
+            2
+          ]
+        },
+        {
+          "name": "topk_ids",
+          "role": "input",
+          "shape": [
+            8192,
+            8
+          ],
+          "dtype": null,
+          "strides": null,
+          "layout": "real captured routing; timing bootstraps rows with replacement",
+          "evidence": "ut/cases.py:137"
+        },
+        {
+          "name": "topk_weights",
+          "role": "input",
+          "shape": [
+            8192,
+            8
+          ],
+          "dtype": null,
+          "strides": null,
+          "layout": "real captured routing; timing bootstraps rows with replacement",
+          "evidence": "ut/cases.py:137"
+        }
+      ],
+      "scalars": {
+        "inplace": {
+          "value": false,
+          "evidence": "ut/cases.py:117",
+          "scope": "call_argument"
+        },
+        "use_fp8_w8a8": {
+          "value": true,
+          "evidence": "ut/cases.py:117",
+          "scope": "call_argument"
+        },
+        "block_shape": {
+          "value": [
+            128,
+            128
+          ],
+          "evidence": "ut/cases.py:117",
+          "scope": "call_argument"
+        }
+      },
+      "outputs": [
+        {
+          "name": "return",
+          "role": "output",
+          "shape": [
+            8192,
+            4096
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": null,
+          "layout": "fresh full dispatcher output",
+          "evidence": "ut/meta.json#/math_contract"
+        }
+      ],
+      "benchmark_case_ids": [
+        "moe_m8192_prefill"
+      ],
+      "notes": []
+    },
+    {
+      "case_id": "decode_M64",
+      "regime": "decode",
+      "evidence": "ut/meta.json#/workload/cases/0",
+      "metadata": {
+        "count": null,
+        "dims": [
+          [
+            64,
+            4096
+          ],
+          [
+            512,
+            4096
+          ]
+        ],
+        "dtypes": [
+          "fp8_e4m3",
+          "fp8_e4m3"
+        ],
+        "m": 64,
+        "name": "decode_M64",
+        "quant": {
+          "act_dtype": "fp8",
+          "kv_cache_dtype": "bfloat16",
+          "out_dtype": "",
+          "scale_dtype": "float32",
+          "scheme": "fp8_blockscale",
+          "weight_block_size": [
+            128,
+            128
+          ],
+          "weight_dtype": "fp8_e4m3"
+        },
+        "regime": "decode",
+        "weight": 297226.6066,
+        "weight_norm": 0.7,
+        "weight_source": "trace"
+      },
+      "tensors": [
+        {
+          "name": "hidden_states",
+          "role": "input",
+          "shape": [
+            64,
+            4096
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": null,
+          "layout": "captured activation; generated timing inputs are contiguous",
+          "evidence": "ut/meta.json#/hidden_size"
+        },
+        {
+          "name": "w1",
+          "role": "input",
+          "shape": [
+            288,
+            512,
+            4096
+          ],
+          "dtype": "fp8_e4m3",
+          "strides": null,
+          "layout": "weight shapes recorded in meta.notes; scales require tensor oracle",
+          "evidence": "ut/meta.json#/notes",
+          "logical_shape_from_geometry": [
+            288,
+            512,
+            4096
+          ]
+        },
+        {
+          "name": "w2",
+          "role": "input",
+          "shape": [
+            288,
+            4096,
+            256
+          ],
+          "dtype": "fp8_e4m3",
+          "strides": null,
+          "layout": "weight shapes recorded in meta.notes; scales require tensor oracle",
+          "evidence": "ut/meta.json#/notes",
+          "logical_shape_from_geometry": [
+            288,
+            4096,
+            256
+          ]
+        },
+        {
+          "name": "w1_scale",
+          "role": "input",
+          "shape": null,
+          "dtype": "torch.float32",
+          "strides": null,
+          "layout": "weight shapes recorded in meta.notes; scales require tensor oracle",
+          "evidence": "ut/meta.json#/reference_io_sha256",
+          "logical_shape_from_geometry": [
+            288,
+            4,
+            32
+          ]
+        },
+        {
+          "name": "w2_scale",
+          "role": "input",
+          "shape": null,
+          "dtype": "torch.float32",
+          "strides": null,
+          "layout": "weight shapes recorded in meta.notes; scales require tensor oracle",
+          "evidence": "ut/meta.json#/reference_io_sha256",
+          "logical_shape_from_geometry": [
+            288,
+            32,
+            2
+          ]
+        },
+        {
+          "name": "topk_ids",
+          "role": "input",
+          "shape": [
+            64,
+            8
+          ],
+          "dtype": null,
+          "strides": null,
+          "layout": "real captured routing; timing bootstraps rows with replacement",
+          "evidence": "ut/cases.py:137"
+        },
+        {
+          "name": "topk_weights",
+          "role": "input",
+          "shape": [
+            64,
+            8
+          ],
+          "dtype": null,
+          "strides": null,
+          "layout": "real captured routing; timing bootstraps rows with replacement",
+          "evidence": "ut/cases.py:137"
+        }
+      ],
+      "scalars": {
+        "inplace": {
+          "value": false,
+          "evidence": "ut/cases.py:117",
+          "scope": "call_argument"
+        },
+        "use_fp8_w8a8": {
+          "value": true,
+          "evidence": "ut/cases.py:117",
+          "scope": "call_argument"
+        },
+        "block_shape": {
+          "value": [
+            128,
+            128
+          ],
+          "evidence": "ut/cases.py:117",
+          "scope": "call_argument"
+        }
+      },
+      "outputs": [
+        {
+          "name": "return",
+          "role": "output",
+          "shape": [
+            64,
+            4096
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": null,
+          "layout": "fresh full dispatcher output",
+          "evidence": "ut/meta.json#/math_contract"
+        }
+      ],
+      "benchmark_case_ids": [
+        "moe_m64_decode"
+      ],
+      "notes": []
+    }
+  ],
+  "source_inventories": {
+    "cases": {
+      "evidence": "ut/meta.json#/cases",
+      "records": [
+        {
+          "m": 19,
+          "regime": "decode",
+          "sig": "oracle_m19_decode"
+        },
+        {
+          "m": 1,
+          "regime": "decode",
+          "sig": "oracle_m1_decode"
+        },
+        {
+          "m": 8192,
+          "regime": "prefill",
+          "sig": "oracle_m8192_prefill"
+        }
+      ]
+    },
+    "workload/cases": {
+      "evidence": "ut/meta.json#/workload/cases",
+      "records": [
+        {
+          "count": null,
+          "dims": [
+            [
+              64,
+              4096
+            ],
+            [
+              512,
+              4096
+            ]
+          ],
+          "dtypes": [
+            "fp8_e4m3",
+            "fp8_e4m3"
+          ],
+          "m": 64,
+          "name": "decode_M64",
+          "quant": {
+            "act_dtype": "fp8",
+            "kv_cache_dtype": "bfloat16",
+            "out_dtype": "",
+            "scale_dtype": "float32",
+            "scheme": "fp8_blockscale",
+            "weight_block_size": [
+              128,
+              128
+            ],
+            "weight_dtype": "fp8_e4m3"
+          },
+          "regime": "decode",
+          "weight": 297226.6066,
+          "weight_norm": 0.7,
+          "weight_source": "trace"
+        },
+        {
+          "count": null,
+          "dims": [
+            [
+              8192,
+              4096
+            ],
+            [
+              512,
+              4096
+            ]
+          ],
+          "dtypes": [
+            "fp8_e4m3",
+            "fp8_e4m3"
+          ],
+          "m": 8192,
+          "name": "prefill_M8192",
+          "quant": {
+            "act_dtype": "fp8",
+            "kv_cache_dtype": "bfloat16",
+            "out_dtype": "",
+            "scale_dtype": "float32",
+            "scheme": "fp8_blockscale",
+            "weight_block_size": [
+              128,
+              128
+            ],
+            "weight_dtype": "fp8_e4m3"
+          },
+          "regime": "prefill",
+          "weight": 127382.8314,
+          "weight_norm": 0.3,
+          "weight_source": "regime_floor"
+        },
+        {
+          "count": null,
+          "dims": [
+            [
+              1,
+              4096
+            ],
+            [
+              512,
+              4096
+            ]
+          ],
+          "dtypes": [
+            "fp8_e4m3",
+            "fp8_e4m3"
+          ],
+          "m": 1,
+          "name": "decode_M1",
+          "quant": {
+            "act_dtype": "fp8",
+            "kv_cache_dtype": "bfloat16",
+            "out_dtype": "",
+            "scale_dtype": "float32",
+            "scheme": "fp8_blockscale",
+            "weight_block_size": [
+              128,
+              128
+            ],
+            "weight_dtype": "fp8_e4m3"
+          },
+          "regime": "decode",
+          "weight": 0.0,
+          "weight_norm": 0.0,
+          "weight_source": "prior"
+        }
+      ]
+    }
+  },
+  "observed_shape_inventories": [
+    {
+      "evidence": "ut/capture_meta.json#/shape_counts",
+      "scope": "observed signature histogram; these entries are not additional benchmark cases",
+      "declared_num_distinct_shapes": 5,
+      "entries": [
+        {
+          "sig": "T(64, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(64, 8):torch.float32|T(64, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+          "count": 129024,
+          "input_shapes": [
+            [
+              64,
+              4096
+            ],
+            [
+              288,
+              512,
+              4096
+            ],
+            [
+              288,
+              4096,
+              256
+            ],
+            [
+              64,
+              8
+            ],
+            [
+              64,
+              8
+            ],
+            [
+              288,
+              4,
+              32
+            ],
+            [
+              288,
+              32,
+              2
+            ]
+          ],
+          "input_dtypes": [
+            "torch.bfloat16",
+            "torch.float32",
+            "torch.float8_e4m3fn",
+            "torch.int32"
+          ]
+        },
+        {
+          "sig": "T(16384, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(16384, 8):torch.float32|T(16384, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+          "count": 3906,
+          "input_shapes": [
+            [
+              16384,
+              4096
+            ],
+            [
+              288,
+              512,
+              4096
+            ],
+            [
+              288,
+              4096,
+              256
+            ],
+            [
+              16384,
+              8
+            ],
+            [
+              16384,
+              8
+            ],
+            [
+              288,
+              4,
+              32
+            ],
+            [
+              288,
+              32,
+              2
+            ]
+          ],
+          "input_dtypes": [
+            "torch.bfloat16",
+            "torch.float32",
+            "torch.float8_e4m3fn",
+            "torch.int32"
+          ]
+        },
+        {
+          "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+          "count": 504,
+          "input_shapes": [
+            [
+              1,
+              4096
+            ],
+            [
+              288,
+              512,
+              4096
+            ],
+            [
+              288,
+              4096,
+              256
+            ],
+            [
+              1,
+              8
+            ],
+            [
+              1,
+              8
+            ],
+            [
+              288,
+              4,
+              32
+            ],
+            [
+              288,
+              32,
+              2
+            ]
+          ],
+          "input_dtypes": [
+            "torch.bfloat16",
+            "torch.float32",
+            "torch.float8_e4m3fn",
+            "torch.int32"
+          ]
+        },
+        {
+          "sig": "T(8192, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(8192, 8):torch.float32|T(8192, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+          "count": 252,
+          "input_shapes": [
+            [
+              8192,
+              4096
+            ],
+            [
+              288,
+              512,
+              4096
+            ],
+            [
+              288,
+              4096,
+              256
+            ],
+            [
+              8192,
+              8
+            ],
+            [
+              8192,
+              8
+            ],
+            [
+              288,
+              4,
+              32
+            ],
+            [
+              288,
+              32,
+              2
+            ]
+          ],
+          "input_dtypes": [
+            "torch.bfloat16",
+            "torch.float32",
+            "torch.float8_e4m3fn",
+            "torch.int32"
+          ]
+        },
+        {
+          "sig": "T(19, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(19, 8):torch.float32|T(19, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+          "count": 42,
+          "input_shapes": [
+            [
+              19,
+              4096
+            ],
+            [
+              288,
+              512,
+              4096
+            ],
+            [
+              288,
+              4096,
+              256
+            ],
+            [
+              19,
+              8
+            ],
+            [
+              19,
+              8
+            ],
+            [
+              288,
+              4,
+              32
+            ],
+            [
+              288,
+              32,
+              2
+            ]
+          ],
+          "input_dtypes": [
+            "torch.bfloat16",
+            "torch.float32",
+            "torch.float8_e4m3fn",
+            "torch.int32"
+          ]
+        }
+      ]
+    }
+  ],
+  "dynamic_dimensions": {
+    "evidence": "ut/cases.py",
+    "policy": "Only dimensions explicitly instantiated by the protected builders are catalogued. Random value draws do not create additional shapes. Routing lengths, live split counts, sparse indices, and physical oracle strides remain runtime data where not recorded.",
+    "builder_entrypoints": {
+      "_build_args": "ut/cases.py:117",
+      "timing_cases": "ut/cases.py:195",
+      "random_shapes": "ut/cases.py:218"
+    },
+    "case_id_and_shape_recipes": [
+      {
+        "function": "eager_cases",
+        "evidence": "ut/cases.py:176",
+        "docstring": null,
+        "expressions": [
+          {
+            "literal_assignment": "out = []"
+          },
+          {
+            "field": "sig",
+            "expression": "f'oracle_m{c['m']}_{r or 'na'}'"
+          }
+        ]
+      },
+      {
+        "function": "random_shapes",
+        "evidence": "ut/cases.py:218",
+        "docstring": "FIXED online dims, FRESH values per draw (activation values + a fresh real-routing bootstrap).",
+        "expressions": [
+          {
+            "literal_assignment": "out, seen = ([], set())"
+          },
+          {
+            "field": "sig",
+            "expression": "sig"
+          }
+        ]
+      }
+    ]
+  },
+  "unknown_tensor_metadata": [
+    {
+      "case_id": "oracle_m19_decode",
+      "tensor": "hidden_states",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/hidden_size"
+    },
+    {
+      "case_id": "oracle_m19_decode",
+      "tensor": "w1",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/notes"
+    },
+    {
+      "case_id": "oracle_m19_decode",
+      "tensor": "w2",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/notes"
+    },
+    {
+      "case_id": "oracle_m19_decode",
+      "tensor": "w1_scale",
+      "unknown_fields": [
+        "shape",
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/reference_io_sha256"
+    },
+    {
+      "case_id": "oracle_m19_decode",
+      "tensor": "w2_scale",
+      "unknown_fields": [
+        "shape",
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/reference_io_sha256"
+    },
+    {
+      "case_id": "oracle_m19_decode",
+      "tensor": "topk_ids",
+      "unknown_fields": [
+        "dtype",
+        "strides"
+      ],
+      "evidence": "ut/cases.py:137"
+    },
+    {
+      "case_id": "oracle_m19_decode",
+      "tensor": "topk_weights",
+      "unknown_fields": [
+        "dtype",
+        "strides"
+      ],
+      "evidence": "ut/cases.py:137"
+    },
+    {
+      "case_id": "oracle_m19_decode",
+      "tensor": "return",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/math_contract"
+    },
+    {
+      "case_id": "oracle_m1_decode",
+      "tensor": "hidden_states",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/hidden_size"
+    },
+    {
+      "case_id": "oracle_m1_decode",
+      "tensor": "w1",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/notes"
+    },
+    {
+      "case_id": "oracle_m1_decode",
+      "tensor": "w2",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/notes"
+    },
+    {
+      "case_id": "oracle_m1_decode",
+      "tensor": "w1_scale",
+      "unknown_fields": [
+        "shape",
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/reference_io_sha256"
+    },
+    {
+      "case_id": "oracle_m1_decode",
+      "tensor": "w2_scale",
+      "unknown_fields": [
+        "shape",
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/reference_io_sha256"
+    },
+    {
+      "case_id": "oracle_m1_decode",
+      "tensor": "topk_ids",
+      "unknown_fields": [
+        "dtype",
+        "strides"
+      ],
+      "evidence": "ut/cases.py:137"
+    },
+    {
+      "case_id": "oracle_m1_decode",
+      "tensor": "topk_weights",
+      "unknown_fields": [
+        "dtype",
+        "strides"
+      ],
+      "evidence": "ut/cases.py:137"
+    },
+    {
+      "case_id": "oracle_m1_decode",
+      "tensor": "return",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/math_contract"
+    },
+    {
+      "case_id": "oracle_m8192_prefill",
+      "tensor": "hidden_states",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/hidden_size"
+    },
+    {
+      "case_id": "oracle_m8192_prefill",
+      "tensor": "w1",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/notes"
+    },
+    {
+      "case_id": "oracle_m8192_prefill",
+      "tensor": "w2",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/notes"
+    },
+    {
+      "case_id": "oracle_m8192_prefill",
+      "tensor": "w1_scale",
+      "unknown_fields": [
+        "shape",
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/reference_io_sha256"
+    },
+    {
+      "case_id": "oracle_m8192_prefill",
+      "tensor": "w2_scale",
+      "unknown_fields": [
+        "shape",
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/reference_io_sha256"
+    },
+    {
+      "case_id": "oracle_m8192_prefill",
+      "tensor": "topk_ids",
+      "unknown_fields": [
+        "dtype",
+        "strides"
+      ],
+      "evidence": "ut/cases.py:137"
+    },
+    {
+      "case_id": "oracle_m8192_prefill",
+      "tensor": "topk_weights",
+      "unknown_fields": [
+        "dtype",
+        "strides"
+      ],
+      "evidence": "ut/cases.py:137"
+    },
+    {
+      "case_id": "oracle_m8192_prefill",
+      "tensor": "return",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/math_contract"
+    },
+    {
+      "case_id": "decode_M64",
+      "tensor": "hidden_states",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/hidden_size"
+    },
+    {
+      "case_id": "decode_M64",
+      "tensor": "w1",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/notes"
+    },
+    {
+      "case_id": "decode_M64",
+      "tensor": "w2",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/notes"
+    },
+    {
+      "case_id": "decode_M64",
+      "tensor": "w1_scale",
+      "unknown_fields": [
+        "shape",
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/reference_io_sha256"
+    },
+    {
+      "case_id": "decode_M64",
+      "tensor": "w2_scale",
+      "unknown_fields": [
+        "shape",
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/reference_io_sha256"
+    },
+    {
+      "case_id": "decode_M64",
+      "tensor": "topk_ids",
+      "unknown_fields": [
+        "dtype",
+        "strides"
+      ],
+      "evidence": "ut/cases.py:137"
+    },
+    {
+      "case_id": "decode_M64",
+      "tensor": "topk_weights",
+      "unknown_fields": [
+        "dtype",
+        "strides"
+      ],
+      "evidence": "ut/cases.py:137"
+    },
+    {
+      "case_id": "decode_M64",
+      "tensor": "return",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/math_contract"
+    }
+  ],
+  "unknown_benchmark_tensor_overrides": [],
+  "opaque_artifacts": [
+    {
+      "path": "ut/reference_io.pt",
+      "sha256": "59040b163efbc9dbd3592a28dee01bcc2801bb669de170197524dfe335c5feee",
+      "metadata_evidence": "ut/meta.json#/reference_io_sha256",
+      "inspected": false,
+      "status": "opaque tensor artifact; no pickle deserialization during catalog generation"
+    }
+  ],
+  "sources": [
+    {
+      "path": "ut/meta.json",
+      "sha256": "d0e5725ff0d739382aafc6f2dccebe024f3d0ae6cc7a6f3db0a0e0b0e6e757b7"
+    },
+    {
+      "path": "ut/cases.py",
+      "sha256": "b7e00193c38e436adc48c40871cdd4dbc8dbfda200e415e32ce6cc4a096847eb"
+    },
+    {
+      "path": "config.yaml",
+      "sha256": "309993e9a620f58249f6ee432f862a94cdc1ba89084ccc83acec59f263deba17"
+    },
+    {
+      "path": "scripts/source_abi.json",
+      "sha256": "4b5390f944b70d660a8bd14e5ccbf06bedfcc47a2498e8d53563a7742089733b"
+    },
+    {
+      "path": "ut/selection_validation.json",
+      "sha256": "51c87a649ffda957cf923a44dcc411df808a34be146f2bc6581c0cf296b702b8"
+    },
+    {
+      "path": "ut/workload.json",
+      "sha256": "9f5beb4e30d9fcda8b174c9663f326700349af2540277fe17d6471a0fab039d3"
+    },
+    {
+      "path": "ut/capture_meta.json",
+      "sha256": "662f8d217f7922d0cf7747c633950802a620c67a040a03b8ce5849aeea6e0131"
+    }
+  ],
+  "validation": "Static metadata/AST inspection only. No task module imports, pickle deserialization, tensor loading, GPU execution, or fresh performance validation."
+}

@@ -1,0 +1,219 @@
+{
+  "contract": "kernel_selection",
+  "ok": true,
+  "target_callable": "sglang.srt.layers.moe.moe_runner.triton_utils.fused_moe:fused_experts_impl",
+  "device_kernel": "fused_moe_kernel",
+  "capture_target": "sglang.srt.layers.moe.moe_runner.triton_utils.fused_moe:fused_experts_impl",
+  "total_calls_observed": 568146,
+  "target_marker": "GEAK_TARGET::sglang.srt.layers.moe.moe_runner.triton_utils.fused_moe:fused_experts_impl",
+  "target_marker_calls": 24,
+  "matched_kernel_calls": 48,
+  "matched_kernel_names": [
+    "fused_moe_kernel"
+  ],
+  "correlated_external_ids": 1368,
+  "correlated_launch_correlations": 1128,
+  "candidate_targets_tested": [
+    "sglang.srt.layers.moe.moe_runner.triton_utils.fused_moe:fused_experts",
+    "sglang.srt.layers.moe.moe_runner.triton_utils.fused_moe:fused_experts_impl",
+    "sglang.srt.layers.moe.moe_runner.triton_utils.fused_moe:inplace_fused_experts",
+    "sglang.srt.layers.moe.moe_runner.triton_utils.fused_moe:outplace_fused_experts"
+  ],
+  "live_candidate_targets": [
+    "sglang.srt.layers.moe.moe_runner.triton_utils.fused_moe:fused_experts",
+    "sglang.srt.layers.moe.moe_runner.triton_utils.fused_moe:fused_experts_impl",
+    "sglang.srt.layers.moe.moe_runner.triton_utils.fused_moe:inplace_fused_experts"
+  ],
+  "deeper_live_candidates": [],
+  "missing_candidate_markers": [],
+  "installed_but_never_live_candidates": [
+    "sglang.srt.layers.moe.moe_runner.triton_utils.fused_moe:outplace_fused_experts"
+  ],
+  "deepest_verified": true,
+  "evidence": "installed+live_nested_candidate_markers+torch_profiler_external_id_or_launch_correlation",
+  "failed": [],
+  "process_verdicts": [
+    {
+      "capture_meta_file": "provenance://shared-nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/fused_moe_kernel_task/capture.pid-276452.rank-unknown/meta.json",
+      "trace_files": [
+        "provenance://shared-nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/fused_moe_kernel_task/selection_trace.pid-276452.rank-unknown.call-1.json",
+        "provenance://shared-nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/fused_moe_kernel_task/selection_trace.pid-276452.rank-unknown.call-2.json",
+        "provenance://shared-nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/fused_moe_kernel_task/selection_trace.pid-276452.rank-unknown.call-3.json"
+      ],
+      "ok": true,
+      "failed": [],
+      "live_candidate_targets": [
+        "sglang.srt.layers.moe.moe_runner.triton_utils.fused_moe:fused_experts",
+        "sglang.srt.layers.moe.moe_runner.triton_utils.fused_moe:fused_experts_impl",
+        "sglang.srt.layers.moe.moe_runner.triton_utils.fused_moe:inplace_fused_experts"
+      ],
+      "deeper_live_candidates": []
+    },
+    {
+      "capture_meta_file": "provenance://shared-nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/fused_moe_kernel_task/capture.pid-276600.rank-unknown/meta.json",
+      "trace_files": [
+        "provenance://shared-nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/fused_moe_kernel_task/selection_trace.pid-276600.rank-unknown.call-1.json",
+        "provenance://shared-nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/fused_moe_kernel_task/selection_trace.pid-276600.rank-unknown.call-2.json",
+        "provenance://shared-nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/fused_moe_kernel_task/selection_trace.pid-276600.rank-unknown.call-3.json"
+      ],
+      "ok": true,
+      "failed": [],
+      "live_candidate_targets": [
+        "sglang.srt.layers.moe.moe_runner.triton_utils.fused_moe:fused_experts",
+        "sglang.srt.layers.moe.moe_runner.triton_utils.fused_moe:fused_experts_impl",
+        "sglang.srt.layers.moe.moe_runner.triton_utils.fused_moe:inplace_fused_experts"
+      ],
+      "deeper_live_candidates": []
+    },
+    {
+      "capture_meta_file": "provenance://shared-nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/fused_moe_kernel_task/capture.pid-276760.rank-unknown/meta.json",
+      "trace_files": [
+        "provenance://shared-nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/fused_moe_kernel_task/selection_trace.pid-276760.rank-unknown.call-1.json",
+        "provenance://shared-nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/fused_moe_kernel_task/selection_trace.pid-276760.rank-unknown.call-2.json",
+        "provenance://shared-nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/fused_moe_kernel_task/selection_trace.pid-276760.rank-unknown.call-3.json"
+      ],
+      "ok": true,
+      "failed": [],
+      "live_candidate_targets": [
+        "sglang.srt.layers.moe.moe_runner.triton_utils.fused_moe:fused_experts",
+        "sglang.srt.layers.moe.moe_runner.triton_utils.fused_moe:fused_experts_impl",
+        "sglang.srt.layers.moe.moe_runner.triton_utils.fused_moe:inplace_fused_experts"
+      ],
+      "deeper_live_candidates": []
+    },
+    {
+      "capture_meta_file": "provenance://shared-nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/fused_moe_kernel_task/capture.pid-276929.rank-unknown/meta.json",
+      "trace_files": [
+        "provenance://shared-nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/fused_moe_kernel_task/selection_trace.pid-276929.rank-unknown.call-1.json",
+        "provenance://shared-nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/fused_moe_kernel_task/selection_trace.pid-276929.rank-unknown.call-2.json",
+        "provenance://shared-nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/fused_moe_kernel_task/selection_trace.pid-276929.rank-unknown.call-3.json"
+      ],
+      "ok": true,
+      "failed": [],
+      "live_candidate_targets": [
+        "sglang.srt.layers.moe.moe_runner.triton_utils.fused_moe:fused_experts",
+        "sglang.srt.layers.moe.moe_runner.triton_utils.fused_moe:fused_experts_impl",
+        "sglang.srt.layers.moe.moe_runner.triton_utils.fused_moe:inplace_fused_experts"
+      ],
+      "deeper_live_candidates": []
+    },
+    {
+      "capture_meta_file": "provenance://shared-nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/fused_moe_kernel_task/capture.pid-277118.rank-unknown/meta.json",
+      "trace_files": [
+        "provenance://shared-nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/fused_moe_kernel_task/selection_trace.pid-277118.rank-unknown.call-1.json",
+        "provenance://shared-nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/fused_moe_kernel_task/selection_trace.pid-277118.rank-unknown.call-2.json",
+        "provenance://shared-nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/fused_moe_kernel_task/selection_trace.pid-277118.rank-unknown.call-3.json"
+      ],
+      "ok": true,
+      "failed": [],
+      "live_candidate_targets": [
+        "sglang.srt.layers.moe.moe_runner.triton_utils.fused_moe:fused_experts",
+        "sglang.srt.layers.moe.moe_runner.triton_utils.fused_moe:fused_experts_impl",
+        "sglang.srt.layers.moe.moe_runner.triton_utils.fused_moe:inplace_fused_experts"
+      ],
+      "deeper_live_candidates": []
+    },
+    {
+      "capture_meta_file": "provenance://shared-nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/fused_moe_kernel_task/capture.pid-277314.rank-unknown/meta.json",
+      "trace_files": [
+        "provenance://shared-nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/fused_moe_kernel_task/selection_trace.pid-277314.rank-unknown.call-1.json",
+        "provenance://shared-nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/fused_moe_kernel_task/selection_trace.pid-277314.rank-unknown.call-2.json",
+        "provenance://shared-nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/fused_moe_kernel_task/selection_trace.pid-277314.rank-unknown.call-3.json"
+      ],
+      "ok": true,
+      "failed": [],
+      "live_candidate_targets": [
+        "sglang.srt.layers.moe.moe_runner.triton_utils.fused_moe:fused_experts",
+        "sglang.srt.layers.moe.moe_runner.triton_utils.fused_moe:fused_experts_impl",
+        "sglang.srt.layers.moe.moe_runner.triton_utils.fused_moe:inplace_fused_experts"
+      ],
+      "deeper_live_candidates": []
+    },
+    {
+      "capture_meta_file": "provenance://shared-nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/fused_moe_kernel_task/capture.pid-277511.rank-unknown/meta.json",
+      "trace_files": [
+        "provenance://shared-nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/fused_moe_kernel_task/selection_trace.pid-277511.rank-unknown.call-1.json",
+        "provenance://shared-nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/fused_moe_kernel_task/selection_trace.pid-277511.rank-unknown.call-2.json",
+        "provenance://shared-nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/fused_moe_kernel_task/selection_trace.pid-277511.rank-unknown.call-3.json"
+      ],
+      "ok": true,
+      "failed": [],
+      "live_candidate_targets": [
+        "sglang.srt.layers.moe.moe_runner.triton_utils.fused_moe:fused_experts",
+        "sglang.srt.layers.moe.moe_runner.triton_utils.fused_moe:fused_experts_impl",
+        "sglang.srt.layers.moe.moe_runner.triton_utils.fused_moe:inplace_fused_experts"
+      ],
+      "deeper_live_candidates": []
+    },
+    {
+      "capture_meta_file": "provenance://shared-nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/fused_moe_kernel_task/capture.pid-277706.rank-unknown/meta.json",
+      "trace_files": [
+        "provenance://shared-nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/fused_moe_kernel_task/selection_trace.pid-277706.rank-unknown.call-1.json",
+        "provenance://shared-nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/fused_moe_kernel_task/selection_trace.pid-277706.rank-unknown.call-2.json",
+        "provenance://shared-nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/fused_moe_kernel_task/selection_trace.pid-277706.rank-unknown.call-3.json"
+      ],
+      "ok": true,
+      "failed": [],
+      "live_candidate_targets": [
+        "sglang.srt.layers.moe.moe_runner.triton_utils.fused_moe:fused_experts",
+        "sglang.srt.layers.moe.moe_runner.triton_utils.fused_moe:fused_experts_impl",
+        "sglang.srt.layers.moe.moe_runner.triton_utils.fused_moe:inplace_fused_experts"
+      ],
+      "deeper_live_candidates": []
+    }
+  ],
+  "best_process_meta_file": "provenance://shared-nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/fused_moe_kernel_task/capture.pid-276452.rank-unknown/meta.json",
+  "trace_file": "",
+  "trace_files": [
+    "provenance://shared-nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/fused_moe_kernel_task/selection_trace.pid-276452.rank-unknown.call-1.json",
+    "provenance://shared-nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/fused_moe_kernel_task/selection_trace.pid-276452.rank-unknown.call-2.json",
+    "provenance://shared-nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/fused_moe_kernel_task/selection_trace.pid-276452.rank-unknown.call-3.json",
+    "provenance://shared-nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/fused_moe_kernel_task/selection_trace.pid-276600.rank-unknown.call-1.json",
+    "provenance://shared-nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/fused_moe_kernel_task/selection_trace.pid-276600.rank-unknown.call-2.json",
+    "provenance://shared-nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/fused_moe_kernel_task/selection_trace.pid-276600.rank-unknown.call-3.json",
+    "provenance://shared-nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/fused_moe_kernel_task/selection_trace.pid-276760.rank-unknown.call-1.json",
+    "provenance://shared-nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/fused_moe_kernel_task/selection_trace.pid-276760.rank-unknown.call-2.json",
+    "provenance://shared-nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/fused_moe_kernel_task/selection_trace.pid-276760.rank-unknown.call-3.json",
+    "provenance://shared-nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/fused_moe_kernel_task/selection_trace.pid-276929.rank-unknown.call-1.json",
+    "provenance://shared-nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/fused_moe_kernel_task/selection_trace.pid-276929.rank-unknown.call-2.json",
+    "provenance://shared-nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/fused_moe_kernel_task/selection_trace.pid-276929.rank-unknown.call-3.json",
+    "provenance://shared-nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/fused_moe_kernel_task/selection_trace.pid-277118.rank-unknown.call-1.json",
+    "provenance://shared-nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/fused_moe_kernel_task/selection_trace.pid-277118.rank-unknown.call-2.json",
+    "provenance://shared-nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/fused_moe_kernel_task/selection_trace.pid-277118.rank-unknown.call-3.json",
+    "provenance://shared-nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/fused_moe_kernel_task/selection_trace.pid-277314.rank-unknown.call-1.json",
+    "provenance://shared-nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/fused_moe_kernel_task/selection_trace.pid-277314.rank-unknown.call-2.json",
+    "provenance://shared-nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/fused_moe_kernel_task/selection_trace.pid-277314.rank-unknown.call-3.json",
+    "provenance://shared-nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/fused_moe_kernel_task/selection_trace.pid-277511.rank-unknown.call-1.json",
+    "provenance://shared-nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/fused_moe_kernel_task/selection_trace.pid-277511.rank-unknown.call-2.json",
+    "provenance://shared-nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/fused_moe_kernel_task/selection_trace.pid-277511.rank-unknown.call-3.json",
+    "provenance://shared-nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/fused_moe_kernel_task/selection_trace.pid-277706.rank-unknown.call-1.json",
+    "provenance://shared-nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/fused_moe_kernel_task/selection_trace.pid-277706.rank-unknown.call-2.json",
+    "provenance://shared-nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/fused_moe_kernel_task/selection_trace.pid-277706.rank-unknown.call-3.json"
+  ],
+  "trace_files_considered": [
+    "provenance://shared-nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/fused_moe_kernel_task/selection_trace.pid-276452.rank-unknown.call-1.json",
+    "provenance://shared-nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/fused_moe_kernel_task/selection_trace.pid-276452.rank-unknown.call-2.json",
+    "provenance://shared-nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/fused_moe_kernel_task/selection_trace.pid-276452.rank-unknown.call-3.json",
+    "provenance://shared-nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/fused_moe_kernel_task/selection_trace.pid-276600.rank-unknown.call-1.json",
+    "provenance://shared-nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/fused_moe_kernel_task/selection_trace.pid-276600.rank-unknown.call-2.json",
+    "provenance://shared-nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/fused_moe_kernel_task/selection_trace.pid-276600.rank-unknown.call-3.json",
+    "provenance://shared-nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/fused_moe_kernel_task/selection_trace.pid-276760.rank-unknown.call-1.json",
+    "provenance://shared-nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/fused_moe_kernel_task/selection_trace.pid-276760.rank-unknown.call-2.json",
+    "provenance://shared-nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/fused_moe_kernel_task/selection_trace.pid-276760.rank-unknown.call-3.json",
+    "provenance://shared-nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/fused_moe_kernel_task/selection_trace.pid-276929.rank-unknown.call-1.json",
+    "provenance://shared-nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/fused_moe_kernel_task/selection_trace.pid-276929.rank-unknown.call-2.json",
+    "provenance://shared-nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/fused_moe_kernel_task/selection_trace.pid-276929.rank-unknown.call-3.json",
+    "provenance://shared-nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/fused_moe_kernel_task/selection_trace.pid-277118.rank-unknown.call-1.json",
+    "provenance://shared-nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/fused_moe_kernel_task/selection_trace.pid-277118.rank-unknown.call-2.json",
+    "provenance://shared-nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/fused_moe_kernel_task/selection_trace.pid-277118.rank-unknown.call-3.json",
+    "provenance://shared-nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/fused_moe_kernel_task/selection_trace.pid-277314.rank-unknown.call-1.json",
+    "provenance://shared-nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/fused_moe_kernel_task/selection_trace.pid-277314.rank-unknown.call-2.json",
+    "provenance://shared-nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/fused_moe_kernel_task/selection_trace.pid-277314.rank-unknown.call-3.json",
+    "provenance://shared-nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/fused_moe_kernel_task/selection_trace.pid-277511.rank-unknown.call-1.json",
+    "provenance://shared-nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/fused_moe_kernel_task/selection_trace.pid-277511.rank-unknown.call-2.json",
+    "provenance://shared-nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/fused_moe_kernel_task/selection_trace.pid-277511.rank-unknown.call-3.json",
+    "provenance://shared-nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/fused_moe_kernel_task/selection_trace.pid-277706.rank-unknown.call-1.json",
+    "provenance://shared-nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/fused_moe_kernel_task/selection_trace.pid-277706.rank-unknown.call-2.json",
+    "provenance://shared-nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/fused_moe_kernel_task/selection_trace.pid-277706.rank-unknown.call-3.json"
+  ]
+}

@@ -1,0 +1,106 @@
+{
+  "schema_version": 1,
+  "model": "DeepSeek-V4-Pro",
+  "model_slug": "deepseek-v4-pro",
+  "workload_slug": "isl8192_osl1024_conc64_tp8_mi355x",
+  "serving_capture": {
+    "input_sequence_length": 8192,
+    "output_sequence_length": 1024,
+    "concurrency": 64,
+    "tensor_parallel_world_size": 8
+  },
+  "device": {
+    "model": "MI355X",
+    "architecture": "gfx950"
+  },
+  "execution_scope": "One rank's isolated operator replay; not an eight-GPU model-serving run.",
+  "image_slug": "sglang_v0.5.17-rocm720-mi35x-profilerfix",
+  "docker": "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.17-rocm720-mi35x-profilerfix",
+  "kernel_count": 3,
+  "kernels": [
+    {
+      "operation_id": "deepseek-v4-pro__dsa_sparse_mla_attn",
+      "kernel_slug": "dsa_sparse_mla_attn",
+      "selector": "head_kernels/deepseek-v4-pro/isl8192_osl1024_conc64_tp8_mi355x/sglang_v0.5.17-rocm720-mi35x-profilerfix/dsa_sparse_mla_attn",
+      "config": "dsa_sparse_mla_attn/config.yaml",
+      "shapes": "dsa_sparse_mla_attn/SHAPES.json",
+      "shape_guide": "dsa_sparse_mla_attn/SHAPES.md",
+      "backend": "tilelang",
+      "runtime": {
+        "image": "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.17-rocm720-mi35x-profilerfix",
+        "expected_image_id": null,
+        "source_commits": {},
+        "gpu_arch": "gfx950",
+        "hip_version": "7.2.x",
+        "required_modules": [
+          "aiter",
+          "sglang",
+          "tilelang",
+          "torch",
+          "triton"
+        ],
+        "package_versions": {
+          "sglang": "0.5.17"
+        },
+        "required_model_types": []
+      },
+      "capture_contract": "Task-local callable, case, oracle and source contracts are authoritative."
+    },
+    {
+      "operation_id": "deepseek-v4-pro__moe_stage1_grouped_gemm_silu_flydsl",
+      "kernel_slug": "moe_stage1_grouped_gemm_silu_flydsl",
+      "selector": "head_kernels/deepseek-v4-pro/isl8192_osl1024_conc64_tp8_mi355x/sglang_v0.5.17-rocm720-mi35x-profilerfix/moe_stage1_grouped_gemm_silu_flydsl",
+      "config": "moe_stage1_grouped_gemm_silu_flydsl/config.yaml",
+      "shapes": "moe_stage1_grouped_gemm_silu_flydsl/SHAPES.json",
+      "shape_guide": "moe_stage1_grouped_gemm_silu_flydsl/SHAPES.md",
+      "backend": "flydsl / aiter_asm",
+      "runtime": {
+        "image": "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.17-rocm720-mi35x-profilerfix",
+        "expected_image_id": null,
+        "source_commits": {},
+        "gpu_arch": "gfx950",
+        "hip_version": "7.2.x",
+        "required_modules": [
+          "aiter",
+          "flydsl",
+          "sglang",
+          "torch",
+          "triton"
+        ],
+        "package_versions": {
+          "sglang": "0.5.17"
+        },
+        "required_model_types": []
+      },
+      "capture_contract": "Task-local callable, case, oracle and source contracts are authoritative."
+    },
+    {
+      "operation_id": "deepseek-v4-pro__moe_stage2_down_proj_reduce_opus_a8w4",
+      "kernel_slug": "moe_stage2_down_proj_reduce_opus_a8w4",
+      "selector": "head_kernels/deepseek-v4-pro/isl8192_osl1024_conc64_tp8_mi355x/sglang_v0.5.17-rocm720-mi35x-profilerfix/moe_stage2_down_proj_reduce_opus_a8w4",
+      "config": "moe_stage2_down_proj_reduce_opus_a8w4/config.yaml",
+      "shapes": "moe_stage2_down_proj_reduce_opus_a8w4/SHAPES.json",
+      "shape_guide": "moe_stage2_down_proj_reduce_opus_a8w4/SHAPES.md",
+      "backend": "aiter",
+      "runtime": {
+        "image": "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.17-rocm720-mi35x-profilerfix",
+        "expected_image_id": null,
+        "source_commits": {},
+        "gpu_arch": "gfx950",
+        "hip_version": "7.2.x",
+        "required_modules": [
+          "aiter",
+          "flydsl",
+          "sglang",
+          "torch",
+          "triton"
+        ],
+        "package_versions": {
+          "sglang": "0.5.17"
+        },
+        "required_model_types": []
+      },
+      "capture_contract": "Task-local callable, case, oracle and source contracts are authoritative."
+    }
+  ]
+}

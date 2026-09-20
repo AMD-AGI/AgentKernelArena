@@ -1,0 +1,8 @@
+{
+  "materialize_bpreshuffle_fp8_scale": [
+    {
+      "arguments": "arguments(posonlyargs=[], args=[arg(arg='scale', annotation=Attribute(value=Name(id='torch', ctx=Load()), attr='Tensor', ctx=Load()))], kwonlyargs=[], kw_defaults=[], defaults=[])",
+      "source": "source/bpreshuffle_scale_impl.py"
+    }
+  ]
+}

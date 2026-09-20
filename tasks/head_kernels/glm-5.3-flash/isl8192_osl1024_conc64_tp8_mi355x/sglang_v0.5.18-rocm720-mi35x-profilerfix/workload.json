@@ -1,0 +1,78 @@
+{
+  "schema_version": 1,
+  "model": "GLM-5.3-Flash",
+  "model_slug": "glm-5.3-flash",
+  "workload_slug": "isl8192_osl1024_conc64_tp8_mi355x",
+  "serving_capture": {
+    "input_sequence_length": 8192,
+    "output_sequence_length": 1024,
+    "concurrency": 64,
+    "tensor_parallel_world_size": 8
+  },
+  "device": {
+    "model": "MI355X",
+    "architecture": "gfx950"
+  },
+  "execution_scope": "One rank's isolated operator replay; not an eight-GPU model-serving run.",
+  "image_slug": "sglang_v0.5.18-rocm720-mi35x-profilerfix",
+  "docker": "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.18-rocm720-mi35x-profilerfix",
+  "kernel_count": 2,
+  "kernels": [
+    {
+      "operation_id": "glm-5.3-flash__elementwise_copy_cluster",
+      "kernel_slug": "elementwise_copy_cluster",
+      "selector": "head_kernels/glm-5.3-flash/isl8192_osl1024_conc64_tp8_mi355x/sglang_v0.5.18-rocm720-mi35x-profilerfix/elementwise_copy_cluster",
+      "config": "elementwise_copy_cluster/config.yaml",
+      "shapes": "elementwise_copy_cluster/SHAPES.json",
+      "shape_guide": "elementwise_copy_cluster/SHAPES.md",
+      "backend": "ATen direct_copy_kernel_cuda",
+      "runtime": {
+        "image": "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.18-rocm720-mi35x-profilerfix",
+        "expected_image_id": null,
+        "source_commits": {
+          "https://github.com/sgl-project/sglang": "71de97b264b04dcd514cf904003028aefe9775c8"
+        },
+        "gpu_arch": "gfx950",
+        "hip_version": "7.2.x",
+        "required_modules": [
+          "aiter",
+          "sglang",
+          "torch",
+          "triton"
+        ],
+        "package_versions": {
+          "sglang": "0.5.18"
+        },
+        "required_model_types": []
+      },
+      "capture_contract": "Task-local callable, case, oracle and source contracts are authoritative."
+    },
+    {
+      "operation_id": "glm-5.3-flash__fused_moe_kernel",
+      "kernel_slug": "fused_moe_kernel",
+      "selector": "head_kernels/glm-5.3-flash/isl8192_osl1024_conc64_tp8_mi355x/sglang_v0.5.18-rocm720-mi35x-profilerfix/fused_moe_kernel",
+      "config": "fused_moe_kernel/config.yaml",
+      "shapes": "fused_moe_kernel/SHAPES.json",
+      "shape_guide": "fused_moe_kernel/SHAPES.md",
+      "backend": "Triton device kernel inside the protected fused-MoE operator",
+      "runtime": {
+        "image": "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.18-rocm720-mi35x-profilerfix",
+        "expected_image_id": null,
+        "source_commits": {},
+        "gpu_arch": "gfx950",
+        "hip_version": "7.2.x",
+        "required_modules": [
+          "aiter",
+          "sglang",
+          "torch",
+          "triton"
+        ],
+        "package_versions": {
+          "sglang": "0.5.18"
+        },
+        "required_model_types": []
+      },
+      "capture_contract": "Task-local callable, case, oracle and source contracts are authoritative."
+    }
+  ]
+}

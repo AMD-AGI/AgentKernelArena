@@ -1,0 +1,18 @@
+# Capture-runtime cohort: sglang_v0518; 7 isolated operator tasks.
+# Select and verify its image through the supported Docker runner with:
+# python3 src/scripts/top5_head_kernels.py run --config example_configs/top5_validator_sglang_v0518_mi355x.yaml
+# Inspect the selected image/tasks without Docker by replacing run with plan.
+# Serving TP=8 is provenance; each task benchmarks one local operator shard.
+agent:
+  template: task_validator
+tasks:
+- head_kernels/glm-5.3-flash/isl8192_osl1024_conc64_tp8_mi355x/sglang_v0.5.18-rocm720-mi35x-profilerfix/elementwise_copy_cluster
+- head_kernels/glm-5.3-flash/isl8192_osl1024_conc64_tp8_mi355x/sglang_v0.5.18-rocm720-mi35x-profilerfix/fused_moe_kernel
+- head_kernels/qwen3.8-2.4t-a95b-mxfp4/isl8192_osl1024_conc64_tp8_mi355x/sglang_v0.5.18-rocm720-mi35x-profilerfix/dense_bf16_gemm_cluster
+- head_kernels/qwen3.8-2.4t-a95b-mxfp4/isl8192_osl1024_conc64_tp8_mi355x/sglang_v0.5.18-rocm720-mi35x-profilerfix/fused_moe_2stage_mxfp4
+- head_kernels/qwen3.8-2.4t-a95b-mxfp4/isl8192_osl1024_conc64_tp8_mi355x/sglang_v0.5.18-rocm720-mi35x-profilerfix/fused_recurrent_gated_delta_rule_decode
+- head_kernels/qwen3.8-2.4t-a95b-mxfp4/isl8192_osl1024_conc64_tp8_mi355x/sglang_v0.5.18-rocm720-mi35x-profilerfix/gemma_fused_add_rmsnorm
+- head_kernels/qwen3.8-2.4t-a95b-mxfp4/isl8192_osl1024_conc64_tp8_mi355x/sglang_v0.5.18-rocm720-mi35x-profilerfix/paged_attention_decode
+target_gpu_model: MI355X
+log_directory: logs
+workspace_directory_prefix: workspace

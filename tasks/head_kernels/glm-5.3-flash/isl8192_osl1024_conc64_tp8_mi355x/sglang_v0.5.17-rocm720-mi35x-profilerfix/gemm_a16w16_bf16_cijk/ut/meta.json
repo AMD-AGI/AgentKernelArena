@@ -1,0 +1,311 @@
+{
+  "schema_version": 1,
+  "kind": "bf16",
+  "task_id": "glm-5.3-flash__gemm_a16w16_bf16_cijk",
+  "target_callable": "aiter.tuned_gemm:torch_gemm",
+  "baseline_callable": "aiter.tuned_gemm:torch_gemm",
+  "candidate_bind": {
+    "file": "../source/kernel.py",
+    "kind": "protected_direct_binding",
+    "impl_attr": "torch_gemm"
+  },
+  "source_module": "aiter.tuned_gemm",
+  "source_sha256": "81b7289f77e02adcd8472ba8bde0f20bb534be46009d2c01e78361d4297ae2ef",
+  "source_revision": "d9e5ef7ce08ee7045d583aed768cff41aa9210fe",
+  "source_path": "aiter/tuned_gemm.py",
+  "source_excerpt_lines": [
+    479,
+    515
+  ],
+  "symbol": "torch_gemm",
+  "tol": 0.02,
+  "random_draws": 3,
+  "oracle": "synthesized_fp32_matmul",
+  "synthesized": true,
+  "value_provenance": "deterministic synthetic values; same quantized operands used for independent FP32 reference",
+  "geometry_provenance": "upstream op package: profile-derived families and serving M buckets; not frozen captured tensor values",
+  "math_contract": "C[M,N] = A[M,K] @ B[N,K]^T  (bf16 in / bf16 out, no bias, no scales) \u2014 sglang UnquantizedLinearMethod.apply -> tgemm.mm -> aiter.tuned_gemm.gemm_a16w16 -> per-shape DB lookup -> hipBLASLt Tensile Cijk_* / torch / skinny / triton solution",
+  "regime": {
+    "backend": "sglang",
+    "quant": {
+      "method": "fp8_blockscale",
+      "weight_dtype": "fp8_e4m3",
+      "act_dtype": "fp8",
+      "block_size": [
+        128,
+        128
+      ],
+      "source": "model_config"
+    },
+    "kv_cache_dtype": "bfloat16",
+    "compile": "eager",
+    "enforce_eager": true,
+    "cuda_graph": false,
+    "attention_backend": "",
+    "prefill_chunk": null,
+    "notes": "enforce-eager/disable-cuda-graph set: the deployment runs eagerly (no graph replay), so eager IS the faithful baseline for this regime \u2014 NOT a strawman."
+  },
+  "ledger_ids": [
+    "nk128x4096_m64_decode",
+    "nk3072x4096_m64_decode",
+    "nk288x4096_m64_decode",
+    "nk1024x128_m64_decode",
+    "nk128x4096_m8192_prefill",
+    "nk8x4096_m64_decode",
+    "nk4096x1024_m64_decode",
+    "nk3072x4096_m8192_prefill",
+    "nk288x4096_m8192_prefill",
+    "nk1024x128_m8192_prefill",
+    "nk8x4096_m8192_prefill",
+    "nk4096x1024_m8192_prefill",
+    "nk4096x1536_m64_decode",
+    "nk4096x1536_m8192_prefill",
+    "nk32x4096_m8192_prefill",
+    "nk4096x512_m8192_prefill",
+    "nk32x4096_m64_decode",
+    "nk4096x512_m64_decode",
+    "nk32x4096_m1_decode",
+    "nk4096x512_m1_decode",
+    "nk4096x1536_m1_decode",
+    "nk3072x4096_m1_decode",
+    "nk4096x1024_m1_decode",
+    "nk288x4096_m1_decode",
+    "nk128x4096_m1_decode",
+    "nk8x4096_m1_decode",
+    "nk1024x128_m1_decode"
+  ],
+  "cases": [
+    {
+      "sig": "nk128x4096_m64_decode",
+      "regime": "decode",
+      "m": 64,
+      "n": 128,
+      "k": 4096
+    },
+    {
+      "sig": "nk3072x4096_m64_decode",
+      "regime": "decode",
+      "m": 64,
+      "n": 3072,
+      "k": 4096
+    },
+    {
+      "sig": "nk288x4096_m64_decode",
+      "regime": "decode",
+      "m": 64,
+      "n": 288,
+      "k": 4096
+    },
+    {
+      "sig": "nk1024x128_m64_decode",
+      "regime": "decode",
+      "m": 64,
+      "n": 1024,
+      "k": 128
+    },
+    {
+      "sig": "nk128x4096_m8192_prefill",
+      "regime": "prefill",
+      "m": 8192,
+      "n": 128,
+      "k": 4096
+    },
+    {
+      "sig": "nk8x4096_m64_decode",
+      "regime": "decode",
+      "m": 64,
+      "n": 8,
+      "k": 4096
+    },
+    {
+      "sig": "nk4096x1024_m64_decode",
+      "regime": "decode",
+      "m": 64,
+      "n": 4096,
+      "k": 1024
+    },
+    {
+      "sig": "nk3072x4096_m8192_prefill",
+      "regime": "prefill",
+      "m": 8192,
+      "n": 3072,
+      "k": 4096
+    },
+    {
+      "sig": "nk288x4096_m8192_prefill",
+      "regime": "prefill",
+      "m": 8192,
+      "n": 288,
+      "k": 4096
+    },
+    {
+      "sig": "nk1024x128_m8192_prefill",
+      "regime": "prefill",
+      "m": 8192,
+      "n": 1024,
+      "k": 128
+    },
+    {
+      "sig": "nk8x4096_m8192_prefill",
+      "regime": "prefill",
+      "m": 8192,
+      "n": 8,
+      "k": 4096
+    },
+    {
+      "sig": "nk4096x1024_m8192_prefill",
+      "regime": "prefill",
+      "m": 8192,
+      "n": 4096,
+      "k": 1024
+    },
+    {
+      "sig": "nk4096x1536_m64_decode",
+      "regime": "decode",
+      "m": 64,
+      "n": 4096,
+      "k": 1536
+    },
+    {
+      "sig": "nk4096x1536_m8192_prefill",
+      "regime": "prefill",
+      "m": 8192,
+      "n": 4096,
+      "k": 1536
+    },
+    {
+      "sig": "nk32x4096_m8192_prefill",
+      "regime": "prefill",
+      "m": 8192,
+      "n": 32,
+      "k": 4096
+    },
+    {
+      "sig": "nk4096x512_m8192_prefill",
+      "regime": "prefill",
+      "m": 8192,
+      "n": 4096,
+      "k": 512
+    },
+    {
+      "sig": "nk32x4096_m64_decode",
+      "regime": "decode",
+      "m": 64,
+      "n": 32,
+      "k": 4096
+    },
+    {
+      "sig": "nk4096x512_m64_decode",
+      "regime": "decode",
+      "m": 64,
+      "n": 4096,
+      "k": 512
+    },
+    {
+      "sig": "nk32x4096_m1_decode",
+      "regime": "decode",
+      "m": 1,
+      "n": 32,
+      "k": 4096
+    },
+    {
+      "sig": "nk4096x512_m1_decode",
+      "regime": "decode",
+      "m": 1,
+      "n": 4096,
+      "k": 512
+    },
+    {
+      "sig": "nk4096x1536_m1_decode",
+      "regime": "decode",
+      "m": 1,
+      "n": 4096,
+      "k": 1536
+    },
+    {
+      "sig": "nk3072x4096_m1_decode",
+      "regime": "decode",
+      "m": 1,
+      "n": 3072,
+      "k": 4096
+    },
+    {
+      "sig": "nk4096x1024_m1_decode",
+      "regime": "decode",
+      "m": 1,
+      "n": 4096,
+      "k": 1024
+    },
+    {
+      "sig": "nk288x4096_m1_decode",
+      "regime": "decode",
+      "m": 1,
+      "n": 288,
+      "k": 4096
+    },
+    {
+      "sig": "nk128x4096_m1_decode",
+      "regime": "decode",
+      "m": 1,
+      "n": 128,
+      "k": 4096
+    },
+    {
+      "sig": "nk8x4096_m1_decode",
+      "regime": "decode",
+      "m": 1,
+      "n": 8,
+      "k": 4096
+    },
+    {
+      "sig": "nk1024x128_m1_decode",
+      "regime": "decode",
+      "m": 1,
+      "n": 1024,
+      "k": 128
+    }
+  ],
+  "nk_families": [
+    [
+      4096,
+      1536
+    ],
+    [
+      3072,
+      4096
+    ],
+    [
+      4096,
+      1024
+    ],
+    [
+      288,
+      4096
+    ],
+    [
+      128,
+      4096
+    ],
+    [
+      32,
+      4096
+    ],
+    [
+      8,
+      4096
+    ],
+    [
+      1024,
+      128
+    ],
+    [
+      4096,
+      512
+    ]
+  ],
+  "historical_selection": {
+    "file": "provenance/selection_validation.json",
+    "status": "historical evidence; not fresh task validation"
+  },
+  "reference_io_sha256": ""
+}

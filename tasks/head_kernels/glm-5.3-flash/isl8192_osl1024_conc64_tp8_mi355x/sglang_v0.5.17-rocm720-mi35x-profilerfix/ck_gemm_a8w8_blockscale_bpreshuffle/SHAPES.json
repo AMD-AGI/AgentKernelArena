@@ -1,0 +1,2612 @@
+{
+  "schema_version": 1,
+  "task_id": "glm-5.3-flash__ck_gemm_a8w8_blockscale_bpreshuffle",
+  "task_path": ".",
+  "path_base": "task directory",
+  "scope": "Single-GPU callable/operator unit benchmark on MI355X (gfx950). Serving capture context does not define kernel tensor shapes.",
+  "serving_capture_context": {
+    "isl": 8192,
+    "osl": 1024,
+    "concurrency": 64,
+    "tensor_parallel_world_size": 8
+  },
+  "environment_evidence": "config.yaml",
+  "interface": {
+    "target_callable": "aiter:gemm_a8w8_blockscale_bpreshuffle",
+    "baseline_callable_recorded": "aiter:gemm_a8w8_blockscale_bpreshuffle",
+    "candidate_bind_recorded": {
+      "file": "../source/kernel.py",
+      "kind": "protected_direct_binding",
+      "impl_attr": "gemm_a8w8_blockscale_bpreshuffle"
+    },
+    "candidate_signatures": [
+      {
+        "callable": "gemm_a8w8_blockscale_bpreshuffle",
+        "signature": "gemm_a8w8_blockscale_bpreshuffle(XQ: Tensor, WQ: Tensor, x_scale: Tensor, w_scale: Tensor, dtype: torch.dtype=dtypes.bf16)",
+        "evidence": "source/kernel.py:18"
+      }
+    ],
+    "benchmark_adapter": "scripts/_bench.py#selected_cases",
+    "scope": "selected callable seam; kernel launch count is not asserted by this catalog",
+    "profiled_kernel_rows": [
+      {
+        "id": "G53-3",
+        "profiled_kernel": "ck_gemm_..._blockscale_b_",
+        "device_symbol": "ck_gemm_a8w8_blockscale_bpreshuffle",
+        "regime": "decode"
+      }
+    ],
+    "frozen_baseline_signatures": [],
+    "alias_and_mutation_notes": "C[M,N] = (dequant(XQ)[M,K] @ dequant(WQ)[N,K]^T) -> bf16 ; fp8 a8w8 block-scale, act per-1x128 (x_scale[M,K/128], physically column-major per materialize_bpreshuffle_fp8_scale), weight per-128x128 (w_scale[N/128,K/128]), WQ PRESHUFFLED with shuffle_weight(w,(16,16))",
+    "alias_evidence": [
+      "ut/meta.json#/math_contract",
+      "ut/cases.py:69"
+    ]
+  },
+  "contracts": [
+    {
+      "value": "C[M,N] = (dequant(XQ)[M,K] @ dequant(WQ)[N,K]^T) -> bf16 ; fp8 a8w8 block-scale, act per-1x128 (x_scale[M,K/128], physically column-major per materialize_bpreshuffle_fp8_scale), weight per-128x128 (w_scale[N/128,K/128]), WQ PRESHUFFLED with shuffle_weight(w,(16,16))",
+      "evidence": "ut/meta.json#/math_contract"
+    },
+    {
+      "value": "upstream op package: profile-derived families and serving M buckets; not frozen captured tensor values",
+      "evidence": "ut/meta.json#/geometry_provenance"
+    }
+  ],
+  "metadata_dimensions": {},
+  "case_inventory": {
+    "metadata_declared_num_cases": null,
+    "shape_record_count": 21,
+    "benchmark_case_count": 21,
+    "benchmark_case_ids": [
+      "nk512x4096_m1_decode",
+      "nk512x4096_m64_decode",
+      "nk512x4096_m8192_prefill",
+      "nk4096x256_m1_decode",
+      "nk4096x256_m64_decode",
+      "nk4096x256_m8192_prefill",
+      "nk2048x4096_m1_decode",
+      "nk2048x4096_m64_decode",
+      "nk2048x4096_m8192_prefill",
+      "nk2048x1536_m1_decode",
+      "nk2048x1536_m64_decode",
+      "nk2048x1536_m8192_prefill",
+      "nk4096x2048_m1_decode",
+      "nk4096x2048_m64_decode",
+      "nk4096x2048_m8192_prefill",
+      "nk3072x4096_m1_decode",
+      "nk3072x4096_m64_decode",
+      "nk3072x4096_m8192_prefill",
+      "nk4096x1536_m1_decode",
+      "nk4096x1536_m64_decode",
+      "nk4096x1536_m8192_prefill"
+    ],
+    "count_note": "Counts describe distinct scopes. Captures, boundary specs, histogram observations and benchmark buckets are not interchangeable."
+  },
+  "benchmark_cases": [
+    {
+      "case_id": "nk512x4096_m1_decode",
+      "shape_record_id": "nk512x4096_m1_decode",
+      "regime": "decode",
+      "evidence": "ut/cases.py:96"
+    },
+    {
+      "case_id": "nk512x4096_m64_decode",
+      "shape_record_id": "nk512x4096_m64_decode",
+      "regime": "decode",
+      "evidence": "ut/cases.py:96"
+    },
+    {
+      "case_id": "nk512x4096_m8192_prefill",
+      "shape_record_id": "nk512x4096_m8192_prefill",
+      "regime": "prefill",
+      "evidence": "ut/cases.py:96"
+    },
+    {
+      "case_id": "nk4096x256_m1_decode",
+      "shape_record_id": "nk4096x256_m1_decode",
+      "regime": "decode",
+      "evidence": "ut/cases.py:96"
+    },
+    {
+      "case_id": "nk4096x256_m64_decode",
+      "shape_record_id": "nk4096x256_m64_decode",
+      "regime": "decode",
+      "evidence": "ut/cases.py:96"
+    },
+    {
+      "case_id": "nk4096x256_m8192_prefill",
+      "shape_record_id": "nk4096x256_m8192_prefill",
+      "regime": "prefill",
+      "evidence": "ut/cases.py:96"
+    },
+    {
+      "case_id": "nk2048x4096_m1_decode",
+      "shape_record_id": "nk2048x4096_m1_decode",
+      "regime": "decode",
+      "evidence": "ut/cases.py:96"
+    },
+    {
+      "case_id": "nk2048x4096_m64_decode",
+      "shape_record_id": "nk2048x4096_m64_decode",
+      "regime": "decode",
+      "evidence": "ut/cases.py:96"
+    },
+    {
+      "case_id": "nk2048x4096_m8192_prefill",
+      "shape_record_id": "nk2048x4096_m8192_prefill",
+      "regime": "prefill",
+      "evidence": "ut/cases.py:96"
+    },
+    {
+      "case_id": "nk2048x1536_m1_decode",
+      "shape_record_id": "nk2048x1536_m1_decode",
+      "regime": "decode",
+      "evidence": "ut/cases.py:96"
+    },
+    {
+      "case_id": "nk2048x1536_m64_decode",
+      "shape_record_id": "nk2048x1536_m64_decode",
+      "regime": "decode",
+      "evidence": "ut/cases.py:96"
+    },
+    {
+      "case_id": "nk2048x1536_m8192_prefill",
+      "shape_record_id": "nk2048x1536_m8192_prefill",
+      "regime": "prefill",
+      "evidence": "ut/cases.py:96"
+    },
+    {
+      "case_id": "nk4096x2048_m1_decode",
+      "shape_record_id": "nk4096x2048_m1_decode",
+      "regime": "decode",
+      "evidence": "ut/cases.py:96"
+    },
+    {
+      "case_id": "nk4096x2048_m64_decode",
+      "shape_record_id": "nk4096x2048_m64_decode",
+      "regime": "decode",
+      "evidence": "ut/cases.py:96"
+    },
+    {
+      "case_id": "nk4096x2048_m8192_prefill",
+      "shape_record_id": "nk4096x2048_m8192_prefill",
+      "regime": "prefill",
+      "evidence": "ut/cases.py:96"
+    },
+    {
+      "case_id": "nk3072x4096_m1_decode",
+      "shape_record_id": "nk3072x4096_m1_decode",
+      "regime": "decode",
+      "evidence": "ut/cases.py:96"
+    },
+    {
+      "case_id": "nk3072x4096_m64_decode",
+      "shape_record_id": "nk3072x4096_m64_decode",
+      "regime": "decode",
+      "evidence": "ut/cases.py:96"
+    },
+    {
+      "case_id": "nk3072x4096_m8192_prefill",
+      "shape_record_id": "nk3072x4096_m8192_prefill",
+      "regime": "prefill",
+      "evidence": "ut/cases.py:96"
+    },
+    {
+      "case_id": "nk4096x1536_m1_decode",
+      "shape_record_id": "nk4096x1536_m1_decode",
+      "regime": "decode",
+      "evidence": "ut/cases.py:96"
+    },
+    {
+      "case_id": "nk4096x1536_m64_decode",
+      "shape_record_id": "nk4096x1536_m64_decode",
+      "regime": "decode",
+      "evidence": "ut/cases.py:96"
+    },
+    {
+      "case_id": "nk4096x1536_m8192_prefill",
+      "shape_record_id": "nk4096x1536_m8192_prefill",
+      "regime": "prefill",
+      "evidence": "ut/cases.py:96"
+    }
+  ],
+  "cases": [
+    {
+      "case_id": "nk512x4096_m1_decode",
+      "regime": "decode",
+      "evidence": "ut/meta.json#/cases/0",
+      "metadata": {
+        "sig": "nk512x4096_m1_decode",
+        "regime": "decode",
+        "m": 1,
+        "n": 512,
+        "k": 4096
+      },
+      "tensors": [
+        {
+          "name": "XQ",
+          "role": "input",
+          "shape": [
+            1,
+            4096
+          ],
+          "dtype": "torch.float8_e4m3fn",
+          "strides": [
+            4096,
+            1
+          ],
+          "layout": "row-major contiguous",
+          "evidence": "ut/cases.py:34"
+        },
+        {
+          "name": "WQ",
+          "role": "input",
+          "shape": [
+            512,
+            4096
+          ],
+          "dtype": "torch.float8_e4m3fn",
+          "strides": [
+            4096,
+            1
+          ],
+          "layout": "contiguous storage; AITER (16,16) preshuffled values",
+          "evidence": "ut/cases.py:34",
+          "attributes": {
+            "is_shuffled": true
+          }
+        },
+        {
+          "name": "x_scale",
+          "role": "input",
+          "shape": [
+            1,
+            32
+          ],
+          "dtype": "torch.float32",
+          "strides": [
+            32,
+            1
+          ],
+          "layout": "transpose-contiguous; column-major equivalent, degenerate M=1 shares contiguous layout",
+          "evidence": "ut/cases.py:34"
+        },
+        {
+          "name": "w_scale",
+          "role": "input",
+          "shape": [
+            4,
+            32
+          ],
+          "dtype": "torch.float32",
+          "strides": [
+            32,
+            1
+          ],
+          "layout": "row-major contiguous",
+          "evidence": "ut/cases.py:34"
+        }
+      ],
+      "scalars": {
+        "dtype": {
+          "value": "torch.bfloat16",
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        }
+      },
+      "outputs": [
+        {
+          "name": "return",
+          "role": "output",
+          "shape": [
+            1,
+            512
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            512,
+            1
+          ],
+          "layout": "fresh contiguous result",
+          "evidence": "ut/meta.json#/math_contract"
+        }
+      ],
+      "benchmark_case_ids": [
+        "nk512x4096_m1_decode"
+      ],
+      "notes": []
+    },
+    {
+      "case_id": "nk512x4096_m64_decode",
+      "regime": "decode",
+      "evidence": "ut/meta.json#/cases/1",
+      "metadata": {
+        "sig": "nk512x4096_m64_decode",
+        "regime": "decode",
+        "m": 64,
+        "n": 512,
+        "k": 4096
+      },
+      "tensors": [
+        {
+          "name": "XQ",
+          "role": "input",
+          "shape": [
+            64,
+            4096
+          ],
+          "dtype": "torch.float8_e4m3fn",
+          "strides": [
+            4096,
+            1
+          ],
+          "layout": "row-major contiguous",
+          "evidence": "ut/cases.py:34"
+        },
+        {
+          "name": "WQ",
+          "role": "input",
+          "shape": [
+            512,
+            4096
+          ],
+          "dtype": "torch.float8_e4m3fn",
+          "strides": [
+            4096,
+            1
+          ],
+          "layout": "contiguous storage; AITER (16,16) preshuffled values",
+          "evidence": "ut/cases.py:34",
+          "attributes": {
+            "is_shuffled": true
+          }
+        },
+        {
+          "name": "x_scale",
+          "role": "input",
+          "shape": [
+            64,
+            32
+          ],
+          "dtype": "torch.float32",
+          "strides": [
+            1,
+            64
+          ],
+          "layout": "transpose-contiguous; column-major equivalent, degenerate M=1 shares contiguous layout",
+          "evidence": "ut/cases.py:34"
+        },
+        {
+          "name": "w_scale",
+          "role": "input",
+          "shape": [
+            4,
+            32
+          ],
+          "dtype": "torch.float32",
+          "strides": [
+            32,
+            1
+          ],
+          "layout": "row-major contiguous",
+          "evidence": "ut/cases.py:34"
+        }
+      ],
+      "scalars": {
+        "dtype": {
+          "value": "torch.bfloat16",
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        }
+      },
+      "outputs": [
+        {
+          "name": "return",
+          "role": "output",
+          "shape": [
+            64,
+            512
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            512,
+            1
+          ],
+          "layout": "fresh contiguous result",
+          "evidence": "ut/meta.json#/math_contract"
+        }
+      ],
+      "benchmark_case_ids": [
+        "nk512x4096_m64_decode"
+      ],
+      "notes": []
+    },
+    {
+      "case_id": "nk512x4096_m8192_prefill",
+      "regime": "prefill",
+      "evidence": "ut/meta.json#/cases/2",
+      "metadata": {
+        "sig": "nk512x4096_m8192_prefill",
+        "regime": "prefill",
+        "m": 8192,
+        "n": 512,
+        "k": 4096
+      },
+      "tensors": [
+        {
+          "name": "XQ",
+          "role": "input",
+          "shape": [
+            8192,
+            4096
+          ],
+          "dtype": "torch.float8_e4m3fn",
+          "strides": [
+            4096,
+            1
+          ],
+          "layout": "row-major contiguous",
+          "evidence": "ut/cases.py:34"
+        },
+        {
+          "name": "WQ",
+          "role": "input",
+          "shape": [
+            512,
+            4096
+          ],
+          "dtype": "torch.float8_e4m3fn",
+          "strides": [
+            4096,
+            1
+          ],
+          "layout": "contiguous storage; AITER (16,16) preshuffled values",
+          "evidence": "ut/cases.py:34",
+          "attributes": {
+            "is_shuffled": true
+          }
+        },
+        {
+          "name": "x_scale",
+          "role": "input",
+          "shape": [
+            8192,
+            32
+          ],
+          "dtype": "torch.float32",
+          "strides": [
+            1,
+            8192
+          ],
+          "layout": "transpose-contiguous; column-major equivalent, degenerate M=1 shares contiguous layout",
+          "evidence": "ut/cases.py:34"
+        },
+        {
+          "name": "w_scale",
+          "role": "input",
+          "shape": [
+            4,
+            32
+          ],
+          "dtype": "torch.float32",
+          "strides": [
+            32,
+            1
+          ],
+          "layout": "row-major contiguous",
+          "evidence": "ut/cases.py:34"
+        }
+      ],
+      "scalars": {
+        "dtype": {
+          "value": "torch.bfloat16",
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        }
+      },
+      "outputs": [
+        {
+          "name": "return",
+          "role": "output",
+          "shape": [
+            8192,
+            512
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            512,
+            1
+          ],
+          "layout": "fresh contiguous result",
+          "evidence": "ut/meta.json#/math_contract"
+        }
+      ],
+      "benchmark_case_ids": [
+        "nk512x4096_m8192_prefill"
+      ],
+      "notes": []
+    },
+    {
+      "case_id": "nk4096x256_m1_decode",
+      "regime": "decode",
+      "evidence": "ut/meta.json#/cases/3",
+      "metadata": {
+        "sig": "nk4096x256_m1_decode",
+        "regime": "decode",
+        "m": 1,
+        "n": 4096,
+        "k": 256
+      },
+      "tensors": [
+        {
+          "name": "XQ",
+          "role": "input",
+          "shape": [
+            1,
+            256
+          ],
+          "dtype": "torch.float8_e4m3fn",
+          "strides": [
+            256,
+            1
+          ],
+          "layout": "row-major contiguous",
+          "evidence": "ut/cases.py:34"
+        },
+        {
+          "name": "WQ",
+          "role": "input",
+          "shape": [
+            4096,
+            256
+          ],
+          "dtype": "torch.float8_e4m3fn",
+          "strides": [
+            256,
+            1
+          ],
+          "layout": "contiguous storage; AITER (16,16) preshuffled values",
+          "evidence": "ut/cases.py:34",
+          "attributes": {
+            "is_shuffled": true
+          }
+        },
+        {
+          "name": "x_scale",
+          "role": "input",
+          "shape": [
+            1,
+            2
+          ],
+          "dtype": "torch.float32",
+          "strides": [
+            2,
+            1
+          ],
+          "layout": "transpose-contiguous; column-major equivalent, degenerate M=1 shares contiguous layout",
+          "evidence": "ut/cases.py:34"
+        },
+        {
+          "name": "w_scale",
+          "role": "input",
+          "shape": [
+            32,
+            2
+          ],
+          "dtype": "torch.float32",
+          "strides": [
+            2,
+            1
+          ],
+          "layout": "row-major contiguous",
+          "evidence": "ut/cases.py:34"
+        }
+      ],
+      "scalars": {
+        "dtype": {
+          "value": "torch.bfloat16",
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        }
+      },
+      "outputs": [
+        {
+          "name": "return",
+          "role": "output",
+          "shape": [
+            1,
+            4096
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            4096,
+            1
+          ],
+          "layout": "fresh contiguous result",
+          "evidence": "ut/meta.json#/math_contract"
+        }
+      ],
+      "benchmark_case_ids": [
+        "nk4096x256_m1_decode"
+      ],
+      "notes": []
+    },
+    {
+      "case_id": "nk4096x256_m64_decode",
+      "regime": "decode",
+      "evidence": "ut/meta.json#/cases/4",
+      "metadata": {
+        "sig": "nk4096x256_m64_decode",
+        "regime": "decode",
+        "m": 64,
+        "n": 4096,
+        "k": 256
+      },
+      "tensors": [
+        {
+          "name": "XQ",
+          "role": "input",
+          "shape": [
+            64,
+            256
+          ],
+          "dtype": "torch.float8_e4m3fn",
+          "strides": [
+            256,
+            1
+          ],
+          "layout": "row-major contiguous",
+          "evidence": "ut/cases.py:34"
+        },
+        {
+          "name": "WQ",
+          "role": "input",
+          "shape": [
+            4096,
+            256
+          ],
+          "dtype": "torch.float8_e4m3fn",
+          "strides": [
+            256,
+            1
+          ],
+          "layout": "contiguous storage; AITER (16,16) preshuffled values",
+          "evidence": "ut/cases.py:34",
+          "attributes": {
+            "is_shuffled": true
+          }
+        },
+        {
+          "name": "x_scale",
+          "role": "input",
+          "shape": [
+            64,
+            2
+          ],
+          "dtype": "torch.float32",
+          "strides": [
+            1,
+            64
+          ],
+          "layout": "transpose-contiguous; column-major equivalent, degenerate M=1 shares contiguous layout",
+          "evidence": "ut/cases.py:34"
+        },
+        {
+          "name": "w_scale",
+          "role": "input",
+          "shape": [
+            32,
+            2
+          ],
+          "dtype": "torch.float32",
+          "strides": [
+            2,
+            1
+          ],
+          "layout": "row-major contiguous",
+          "evidence": "ut/cases.py:34"
+        }
+      ],
+      "scalars": {
+        "dtype": {
+          "value": "torch.bfloat16",
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        }
+      },
+      "outputs": [
+        {
+          "name": "return",
+          "role": "output",
+          "shape": [
+            64,
+            4096
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            4096,
+            1
+          ],
+          "layout": "fresh contiguous result",
+          "evidence": "ut/meta.json#/math_contract"
+        }
+      ],
+      "benchmark_case_ids": [
+        "nk4096x256_m64_decode"
+      ],
+      "notes": []
+    },
+    {
+      "case_id": "nk4096x256_m8192_prefill",
+      "regime": "prefill",
+      "evidence": "ut/meta.json#/cases/5",
+      "metadata": {
+        "sig": "nk4096x256_m8192_prefill",
+        "regime": "prefill",
+        "m": 8192,
+        "n": 4096,
+        "k": 256
+      },
+      "tensors": [
+        {
+          "name": "XQ",
+          "role": "input",
+          "shape": [
+            8192,
+            256
+          ],
+          "dtype": "torch.float8_e4m3fn",
+          "strides": [
+            256,
+            1
+          ],
+          "layout": "row-major contiguous",
+          "evidence": "ut/cases.py:34"
+        },
+        {
+          "name": "WQ",
+          "role": "input",
+          "shape": [
+            4096,
+            256
+          ],
+          "dtype": "torch.float8_e4m3fn",
+          "strides": [
+            256,
+            1
+          ],
+          "layout": "contiguous storage; AITER (16,16) preshuffled values",
+          "evidence": "ut/cases.py:34",
+          "attributes": {
+            "is_shuffled": true
+          }
+        },
+        {
+          "name": "x_scale",
+          "role": "input",
+          "shape": [
+            8192,
+            2
+          ],
+          "dtype": "torch.float32",
+          "strides": [
+            1,
+            8192
+          ],
+          "layout": "transpose-contiguous; column-major equivalent, degenerate M=1 shares contiguous layout",
+          "evidence": "ut/cases.py:34"
+        },
+        {
+          "name": "w_scale",
+          "role": "input",
+          "shape": [
+            32,
+            2
+          ],
+          "dtype": "torch.float32",
+          "strides": [
+            2,
+            1
+          ],
+          "layout": "row-major contiguous",
+          "evidence": "ut/cases.py:34"
+        }
+      ],
+      "scalars": {
+        "dtype": {
+          "value": "torch.bfloat16",
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        }
+      },
+      "outputs": [
+        {
+          "name": "return",
+          "role": "output",
+          "shape": [
+            8192,
+            4096
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            4096,
+            1
+          ],
+          "layout": "fresh contiguous result",
+          "evidence": "ut/meta.json#/math_contract"
+        }
+      ],
+      "benchmark_case_ids": [
+        "nk4096x256_m8192_prefill"
+      ],
+      "notes": []
+    },
+    {
+      "case_id": "nk2048x4096_m1_decode",
+      "regime": "decode",
+      "evidence": "ut/meta.json#/cases/6",
+      "metadata": {
+        "sig": "nk2048x4096_m1_decode",
+        "regime": "decode",
+        "m": 1,
+        "n": 2048,
+        "k": 4096
+      },
+      "tensors": [
+        {
+          "name": "XQ",
+          "role": "input",
+          "shape": [
+            1,
+            4096
+          ],
+          "dtype": "torch.float8_e4m3fn",
+          "strides": [
+            4096,
+            1
+          ],
+          "layout": "row-major contiguous",
+          "evidence": "ut/cases.py:34"
+        },
+        {
+          "name": "WQ",
+          "role": "input",
+          "shape": [
+            2048,
+            4096
+          ],
+          "dtype": "torch.float8_e4m3fn",
+          "strides": [
+            4096,
+            1
+          ],
+          "layout": "contiguous storage; AITER (16,16) preshuffled values",
+          "evidence": "ut/cases.py:34",
+          "attributes": {
+            "is_shuffled": true
+          }
+        },
+        {
+          "name": "x_scale",
+          "role": "input",
+          "shape": [
+            1,
+            32
+          ],
+          "dtype": "torch.float32",
+          "strides": [
+            32,
+            1
+          ],
+          "layout": "transpose-contiguous; column-major equivalent, degenerate M=1 shares contiguous layout",
+          "evidence": "ut/cases.py:34"
+        },
+        {
+          "name": "w_scale",
+          "role": "input",
+          "shape": [
+            16,
+            32
+          ],
+          "dtype": "torch.float32",
+          "strides": [
+            32,
+            1
+          ],
+          "layout": "row-major contiguous",
+          "evidence": "ut/cases.py:34"
+        }
+      ],
+      "scalars": {
+        "dtype": {
+          "value": "torch.bfloat16",
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        }
+      },
+      "outputs": [
+        {
+          "name": "return",
+          "role": "output",
+          "shape": [
+            1,
+            2048
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            2048,
+            1
+          ],
+          "layout": "fresh contiguous result",
+          "evidence": "ut/meta.json#/math_contract"
+        }
+      ],
+      "benchmark_case_ids": [
+        "nk2048x4096_m1_decode"
+      ],
+      "notes": []
+    },
+    {
+      "case_id": "nk2048x4096_m64_decode",
+      "regime": "decode",
+      "evidence": "ut/meta.json#/cases/7",
+      "metadata": {
+        "sig": "nk2048x4096_m64_decode",
+        "regime": "decode",
+        "m": 64,
+        "n": 2048,
+        "k": 4096
+      },
+      "tensors": [
+        {
+          "name": "XQ",
+          "role": "input",
+          "shape": [
+            64,
+            4096
+          ],
+          "dtype": "torch.float8_e4m3fn",
+          "strides": [
+            4096,
+            1
+          ],
+          "layout": "row-major contiguous",
+          "evidence": "ut/cases.py:34"
+        },
+        {
+          "name": "WQ",
+          "role": "input",
+          "shape": [
+            2048,
+            4096
+          ],
+          "dtype": "torch.float8_e4m3fn",
+          "strides": [
+            4096,
+            1
+          ],
+          "layout": "contiguous storage; AITER (16,16) preshuffled values",
+          "evidence": "ut/cases.py:34",
+          "attributes": {
+            "is_shuffled": true
+          }
+        },
+        {
+          "name": "x_scale",
+          "role": "input",
+          "shape": [
+            64,
+            32
+          ],
+          "dtype": "torch.float32",
+          "strides": [
+            1,
+            64
+          ],
+          "layout": "transpose-contiguous; column-major equivalent, degenerate M=1 shares contiguous layout",
+          "evidence": "ut/cases.py:34"
+        },
+        {
+          "name": "w_scale",
+          "role": "input",
+          "shape": [
+            16,
+            32
+          ],
+          "dtype": "torch.float32",
+          "strides": [
+            32,
+            1
+          ],
+          "layout": "row-major contiguous",
+          "evidence": "ut/cases.py:34"
+        }
+      ],
+      "scalars": {
+        "dtype": {
+          "value": "torch.bfloat16",
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        }
+      },
+      "outputs": [
+        {
+          "name": "return",
+          "role": "output",
+          "shape": [
+            64,
+            2048
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            2048,
+            1
+          ],
+          "layout": "fresh contiguous result",
+          "evidence": "ut/meta.json#/math_contract"
+        }
+      ],
+      "benchmark_case_ids": [
+        "nk2048x4096_m64_decode"
+      ],
+      "notes": []
+    },
+    {
+      "case_id": "nk2048x4096_m8192_prefill",
+      "regime": "prefill",
+      "evidence": "ut/meta.json#/cases/8",
+      "metadata": {
+        "sig": "nk2048x4096_m8192_prefill",
+        "regime": "prefill",
+        "m": 8192,
+        "n": 2048,
+        "k": 4096
+      },
+      "tensors": [
+        {
+          "name": "XQ",
+          "role": "input",
+          "shape": [
+            8192,
+            4096
+          ],
+          "dtype": "torch.float8_e4m3fn",
+          "strides": [
+            4096,
+            1
+          ],
+          "layout": "row-major contiguous",
+          "evidence": "ut/cases.py:34"
+        },
+        {
+          "name": "WQ",
+          "role": "input",
+          "shape": [
+            2048,
+            4096
+          ],
+          "dtype": "torch.float8_e4m3fn",
+          "strides": [
+            4096,
+            1
+          ],
+          "layout": "contiguous storage; AITER (16,16) preshuffled values",
+          "evidence": "ut/cases.py:34",
+          "attributes": {
+            "is_shuffled": true
+          }
+        },
+        {
+          "name": "x_scale",
+          "role": "input",
+          "shape": [
+            8192,
+            32
+          ],
+          "dtype": "torch.float32",
+          "strides": [
+            1,
+            8192
+          ],
+          "layout": "transpose-contiguous; column-major equivalent, degenerate M=1 shares contiguous layout",
+          "evidence": "ut/cases.py:34"
+        },
+        {
+          "name": "w_scale",
+          "role": "input",
+          "shape": [
+            16,
+            32
+          ],
+          "dtype": "torch.float32",
+          "strides": [
+            32,
+            1
+          ],
+          "layout": "row-major contiguous",
+          "evidence": "ut/cases.py:34"
+        }
+      ],
+      "scalars": {
+        "dtype": {
+          "value": "torch.bfloat16",
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        }
+      },
+      "outputs": [
+        {
+          "name": "return",
+          "role": "output",
+          "shape": [
+            8192,
+            2048
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            2048,
+            1
+          ],
+          "layout": "fresh contiguous result",
+          "evidence": "ut/meta.json#/math_contract"
+        }
+      ],
+      "benchmark_case_ids": [
+        "nk2048x4096_m8192_prefill"
+      ],
+      "notes": []
+    },
+    {
+      "case_id": "nk2048x1536_m1_decode",
+      "regime": "decode",
+      "evidence": "ut/meta.json#/cases/9",
+      "metadata": {
+        "sig": "nk2048x1536_m1_decode",
+        "regime": "decode",
+        "m": 1,
+        "n": 2048,
+        "k": 1536
+      },
+      "tensors": [
+        {
+          "name": "XQ",
+          "role": "input",
+          "shape": [
+            1,
+            1536
+          ],
+          "dtype": "torch.float8_e4m3fn",
+          "strides": [
+            1536,
+            1
+          ],
+          "layout": "row-major contiguous",
+          "evidence": "ut/cases.py:34"
+        },
+        {
+          "name": "WQ",
+          "role": "input",
+          "shape": [
+            2048,
+            1536
+          ],
+          "dtype": "torch.float8_e4m3fn",
+          "strides": [
+            1536,
+            1
+          ],
+          "layout": "contiguous storage; AITER (16,16) preshuffled values",
+          "evidence": "ut/cases.py:34",
+          "attributes": {
+            "is_shuffled": true
+          }
+        },
+        {
+          "name": "x_scale",
+          "role": "input",
+          "shape": [
+            1,
+            12
+          ],
+          "dtype": "torch.float32",
+          "strides": [
+            12,
+            1
+          ],
+          "layout": "transpose-contiguous; column-major equivalent, degenerate M=1 shares contiguous layout",
+          "evidence": "ut/cases.py:34"
+        },
+        {
+          "name": "w_scale",
+          "role": "input",
+          "shape": [
+            16,
+            12
+          ],
+          "dtype": "torch.float32",
+          "strides": [
+            12,
+            1
+          ],
+          "layout": "row-major contiguous",
+          "evidence": "ut/cases.py:34"
+        }
+      ],
+      "scalars": {
+        "dtype": {
+          "value": "torch.bfloat16",
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        }
+      },
+      "outputs": [
+        {
+          "name": "return",
+          "role": "output",
+          "shape": [
+            1,
+            2048
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            2048,
+            1
+          ],
+          "layout": "fresh contiguous result",
+          "evidence": "ut/meta.json#/math_contract"
+        }
+      ],
+      "benchmark_case_ids": [
+        "nk2048x1536_m1_decode"
+      ],
+      "notes": []
+    },
+    {
+      "case_id": "nk2048x1536_m64_decode",
+      "regime": "decode",
+      "evidence": "ut/meta.json#/cases/10",
+      "metadata": {
+        "sig": "nk2048x1536_m64_decode",
+        "regime": "decode",
+        "m": 64,
+        "n": 2048,
+        "k": 1536
+      },
+      "tensors": [
+        {
+          "name": "XQ",
+          "role": "input",
+          "shape": [
+            64,
+            1536
+          ],
+          "dtype": "torch.float8_e4m3fn",
+          "strides": [
+            1536,
+            1
+          ],
+          "layout": "row-major contiguous",
+          "evidence": "ut/cases.py:34"
+        },
+        {
+          "name": "WQ",
+          "role": "input",
+          "shape": [
+            2048,
+            1536
+          ],
+          "dtype": "torch.float8_e4m3fn",
+          "strides": [
+            1536,
+            1
+          ],
+          "layout": "contiguous storage; AITER (16,16) preshuffled values",
+          "evidence": "ut/cases.py:34",
+          "attributes": {
+            "is_shuffled": true
+          }
+        },
+        {
+          "name": "x_scale",
+          "role": "input",
+          "shape": [
+            64,
+            12
+          ],
+          "dtype": "torch.float32",
+          "strides": [
+            1,
+            64
+          ],
+          "layout": "transpose-contiguous; column-major equivalent, degenerate M=1 shares contiguous layout",
+          "evidence": "ut/cases.py:34"
+        },
+        {
+          "name": "w_scale",
+          "role": "input",
+          "shape": [
+            16,
+            12
+          ],
+          "dtype": "torch.float32",
+          "strides": [
+            12,
+            1
+          ],
+          "layout": "row-major contiguous",
+          "evidence": "ut/cases.py:34"
+        }
+      ],
+      "scalars": {
+        "dtype": {
+          "value": "torch.bfloat16",
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        }
+      },
+      "outputs": [
+        {
+          "name": "return",
+          "role": "output",
+          "shape": [
+            64,
+            2048
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            2048,
+            1
+          ],
+          "layout": "fresh contiguous result",
+          "evidence": "ut/meta.json#/math_contract"
+        }
+      ],
+      "benchmark_case_ids": [
+        "nk2048x1536_m64_decode"
+      ],
+      "notes": []
+    },
+    {
+      "case_id": "nk2048x1536_m8192_prefill",
+      "regime": "prefill",
+      "evidence": "ut/meta.json#/cases/11",
+      "metadata": {
+        "sig": "nk2048x1536_m8192_prefill",
+        "regime": "prefill",
+        "m": 8192,
+        "n": 2048,
+        "k": 1536
+      },
+      "tensors": [
+        {
+          "name": "XQ",
+          "role": "input",
+          "shape": [
+            8192,
+            1536
+          ],
+          "dtype": "torch.float8_e4m3fn",
+          "strides": [
+            1536,
+            1
+          ],
+          "layout": "row-major contiguous",
+          "evidence": "ut/cases.py:34"
+        },
+        {
+          "name": "WQ",
+          "role": "input",
+          "shape": [
+            2048,
+            1536
+          ],
+          "dtype": "torch.float8_e4m3fn",
+          "strides": [
+            1536,
+            1
+          ],
+          "layout": "contiguous storage; AITER (16,16) preshuffled values",
+          "evidence": "ut/cases.py:34",
+          "attributes": {
+            "is_shuffled": true
+          }
+        },
+        {
+          "name": "x_scale",
+          "role": "input",
+          "shape": [
+            8192,
+            12
+          ],
+          "dtype": "torch.float32",
+          "strides": [
+            1,
+            8192
+          ],
+          "layout": "transpose-contiguous; column-major equivalent, degenerate M=1 shares contiguous layout",
+          "evidence": "ut/cases.py:34"
+        },
+        {
+          "name": "w_scale",
+          "role": "input",
+          "shape": [
+            16,
+            12
+          ],
+          "dtype": "torch.float32",
+          "strides": [
+            12,
+            1
+          ],
+          "layout": "row-major contiguous",
+          "evidence": "ut/cases.py:34"
+        }
+      ],
+      "scalars": {
+        "dtype": {
+          "value": "torch.bfloat16",
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        }
+      },
+      "outputs": [
+        {
+          "name": "return",
+          "role": "output",
+          "shape": [
+            8192,
+            2048
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            2048,
+            1
+          ],
+          "layout": "fresh contiguous result",
+          "evidence": "ut/meta.json#/math_contract"
+        }
+      ],
+      "benchmark_case_ids": [
+        "nk2048x1536_m8192_prefill"
+      ],
+      "notes": []
+    },
+    {
+      "case_id": "nk4096x2048_m1_decode",
+      "regime": "decode",
+      "evidence": "ut/meta.json#/cases/12",
+      "metadata": {
+        "sig": "nk4096x2048_m1_decode",
+        "regime": "decode",
+        "m": 1,
+        "n": 4096,
+        "k": 2048
+      },
+      "tensors": [
+        {
+          "name": "XQ",
+          "role": "input",
+          "shape": [
+            1,
+            2048
+          ],
+          "dtype": "torch.float8_e4m3fn",
+          "strides": [
+            2048,
+            1
+          ],
+          "layout": "row-major contiguous",
+          "evidence": "ut/cases.py:34"
+        },
+        {
+          "name": "WQ",
+          "role": "input",
+          "shape": [
+            4096,
+            2048
+          ],
+          "dtype": "torch.float8_e4m3fn",
+          "strides": [
+            2048,
+            1
+          ],
+          "layout": "contiguous storage; AITER (16,16) preshuffled values",
+          "evidence": "ut/cases.py:34",
+          "attributes": {
+            "is_shuffled": true
+          }
+        },
+        {
+          "name": "x_scale",
+          "role": "input",
+          "shape": [
+            1,
+            16
+          ],
+          "dtype": "torch.float32",
+          "strides": [
+            16,
+            1
+          ],
+          "layout": "transpose-contiguous; column-major equivalent, degenerate M=1 shares contiguous layout",
+          "evidence": "ut/cases.py:34"
+        },
+        {
+          "name": "w_scale",
+          "role": "input",
+          "shape": [
+            32,
+            16
+          ],
+          "dtype": "torch.float32",
+          "strides": [
+            16,
+            1
+          ],
+          "layout": "row-major contiguous",
+          "evidence": "ut/cases.py:34"
+        }
+      ],
+      "scalars": {
+        "dtype": {
+          "value": "torch.bfloat16",
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        }
+      },
+      "outputs": [
+        {
+          "name": "return",
+          "role": "output",
+          "shape": [
+            1,
+            4096
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            4096,
+            1
+          ],
+          "layout": "fresh contiguous result",
+          "evidence": "ut/meta.json#/math_contract"
+        }
+      ],
+      "benchmark_case_ids": [
+        "nk4096x2048_m1_decode"
+      ],
+      "notes": []
+    },
+    {
+      "case_id": "nk4096x2048_m64_decode",
+      "regime": "decode",
+      "evidence": "ut/meta.json#/cases/13",
+      "metadata": {
+        "sig": "nk4096x2048_m64_decode",
+        "regime": "decode",
+        "m": 64,
+        "n": 4096,
+        "k": 2048
+      },
+      "tensors": [
+        {
+          "name": "XQ",
+          "role": "input",
+          "shape": [
+            64,
+            2048
+          ],
+          "dtype": "torch.float8_e4m3fn",
+          "strides": [
+            2048,
+            1
+          ],
+          "layout": "row-major contiguous",
+          "evidence": "ut/cases.py:34"
+        },
+        {
+          "name": "WQ",
+          "role": "input",
+          "shape": [
+            4096,
+            2048
+          ],
+          "dtype": "torch.float8_e4m3fn",
+          "strides": [
+            2048,
+            1
+          ],
+          "layout": "contiguous storage; AITER (16,16) preshuffled values",
+          "evidence": "ut/cases.py:34",
+          "attributes": {
+            "is_shuffled": true
+          }
+        },
+        {
+          "name": "x_scale",
+          "role": "input",
+          "shape": [
+            64,
+            16
+          ],
+          "dtype": "torch.float32",
+          "strides": [
+            1,
+            64
+          ],
+          "layout": "transpose-contiguous; column-major equivalent, degenerate M=1 shares contiguous layout",
+          "evidence": "ut/cases.py:34"
+        },
+        {
+          "name": "w_scale",
+          "role": "input",
+          "shape": [
+            32,
+            16
+          ],
+          "dtype": "torch.float32",
+          "strides": [
+            16,
+            1
+          ],
+          "layout": "row-major contiguous",
+          "evidence": "ut/cases.py:34"
+        }
+      ],
+      "scalars": {
+        "dtype": {
+          "value": "torch.bfloat16",
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        }
+      },
+      "outputs": [
+        {
+          "name": "return",
+          "role": "output",
+          "shape": [
+            64,
+            4096
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            4096,
+            1
+          ],
+          "layout": "fresh contiguous result",
+          "evidence": "ut/meta.json#/math_contract"
+        }
+      ],
+      "benchmark_case_ids": [
+        "nk4096x2048_m64_decode"
+      ],
+      "notes": []
+    },
+    {
+      "case_id": "nk4096x2048_m8192_prefill",
+      "regime": "prefill",
+      "evidence": "ut/meta.json#/cases/14",
+      "metadata": {
+        "sig": "nk4096x2048_m8192_prefill",
+        "regime": "prefill",
+        "m": 8192,
+        "n": 4096,
+        "k": 2048
+      },
+      "tensors": [
+        {
+          "name": "XQ",
+          "role": "input",
+          "shape": [
+            8192,
+            2048
+          ],
+          "dtype": "torch.float8_e4m3fn",
+          "strides": [
+            2048,
+            1
+          ],
+          "layout": "row-major contiguous",
+          "evidence": "ut/cases.py:34"
+        },
+        {
+          "name": "WQ",
+          "role": "input",
+          "shape": [
+            4096,
+            2048
+          ],
+          "dtype": "torch.float8_e4m3fn",
+          "strides": [
+            2048,
+            1
+          ],
+          "layout": "contiguous storage; AITER (16,16) preshuffled values",
+          "evidence": "ut/cases.py:34",
+          "attributes": {
+            "is_shuffled": true
+          }
+        },
+        {
+          "name": "x_scale",
+          "role": "input",
+          "shape": [
+            8192,
+            16
+          ],
+          "dtype": "torch.float32",
+          "strides": [
+            1,
+            8192
+          ],
+          "layout": "transpose-contiguous; column-major equivalent, degenerate M=1 shares contiguous layout",
+          "evidence": "ut/cases.py:34"
+        },
+        {
+          "name": "w_scale",
+          "role": "input",
+          "shape": [
+            32,
+            16
+          ],
+          "dtype": "torch.float32",
+          "strides": [
+            16,
+            1
+          ],
+          "layout": "row-major contiguous",
+          "evidence": "ut/cases.py:34"
+        }
+      ],
+      "scalars": {
+        "dtype": {
+          "value": "torch.bfloat16",
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        }
+      },
+      "outputs": [
+        {
+          "name": "return",
+          "role": "output",
+          "shape": [
+            8192,
+            4096
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            4096,
+            1
+          ],
+          "layout": "fresh contiguous result",
+          "evidence": "ut/meta.json#/math_contract"
+        }
+      ],
+      "benchmark_case_ids": [
+        "nk4096x2048_m8192_prefill"
+      ],
+      "notes": []
+    },
+    {
+      "case_id": "nk3072x4096_m1_decode",
+      "regime": "decode",
+      "evidence": "ut/meta.json#/cases/15",
+      "metadata": {
+        "sig": "nk3072x4096_m1_decode",
+        "regime": "decode",
+        "m": 1,
+        "n": 3072,
+        "k": 4096
+      },
+      "tensors": [
+        {
+          "name": "XQ",
+          "role": "input",
+          "shape": [
+            1,
+            4096
+          ],
+          "dtype": "torch.float8_e4m3fn",
+          "strides": [
+            4096,
+            1
+          ],
+          "layout": "row-major contiguous",
+          "evidence": "ut/cases.py:34"
+        },
+        {
+          "name": "WQ",
+          "role": "input",
+          "shape": [
+            3072,
+            4096
+          ],
+          "dtype": "torch.float8_e4m3fn",
+          "strides": [
+            4096,
+            1
+          ],
+          "layout": "contiguous storage; AITER (16,16) preshuffled values",
+          "evidence": "ut/cases.py:34",
+          "attributes": {
+            "is_shuffled": true
+          }
+        },
+        {
+          "name": "x_scale",
+          "role": "input",
+          "shape": [
+            1,
+            32
+          ],
+          "dtype": "torch.float32",
+          "strides": [
+            32,
+            1
+          ],
+          "layout": "transpose-contiguous; column-major equivalent, degenerate M=1 shares contiguous layout",
+          "evidence": "ut/cases.py:34"
+        },
+        {
+          "name": "w_scale",
+          "role": "input",
+          "shape": [
+            24,
+            32
+          ],
+          "dtype": "torch.float32",
+          "strides": [
+            32,
+            1
+          ],
+          "layout": "row-major contiguous",
+          "evidence": "ut/cases.py:34"
+        }
+      ],
+      "scalars": {
+        "dtype": {
+          "value": "torch.bfloat16",
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        }
+      },
+      "outputs": [
+        {
+          "name": "return",
+          "role": "output",
+          "shape": [
+            1,
+            3072
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            3072,
+            1
+          ],
+          "layout": "fresh contiguous result",
+          "evidence": "ut/meta.json#/math_contract"
+        }
+      ],
+      "benchmark_case_ids": [
+        "nk3072x4096_m1_decode"
+      ],
+      "notes": []
+    },
+    {
+      "case_id": "nk3072x4096_m64_decode",
+      "regime": "decode",
+      "evidence": "ut/meta.json#/cases/16",
+      "metadata": {
+        "sig": "nk3072x4096_m64_decode",
+        "regime": "decode",
+        "m": 64,
+        "n": 3072,
+        "k": 4096
+      },
+      "tensors": [
+        {
+          "name": "XQ",
+          "role": "input",
+          "shape": [
+            64,
+            4096
+          ],
+          "dtype": "torch.float8_e4m3fn",
+          "strides": [
+            4096,
+            1
+          ],
+          "layout": "row-major contiguous",
+          "evidence": "ut/cases.py:34"
+        },
+        {
+          "name": "WQ",
+          "role": "input",
+          "shape": [
+            3072,
+            4096
+          ],
+          "dtype": "torch.float8_e4m3fn",
+          "strides": [
+            4096,
+            1
+          ],
+          "layout": "contiguous storage; AITER (16,16) preshuffled values",
+          "evidence": "ut/cases.py:34",
+          "attributes": {
+            "is_shuffled": true
+          }
+        },
+        {
+          "name": "x_scale",
+          "role": "input",
+          "shape": [
+            64,
+            32
+          ],
+          "dtype": "torch.float32",
+          "strides": [
+            1,
+            64
+          ],
+          "layout": "transpose-contiguous; column-major equivalent, degenerate M=1 shares contiguous layout",
+          "evidence": "ut/cases.py:34"
+        },
+        {
+          "name": "w_scale",
+          "role": "input",
+          "shape": [
+            24,
+            32
+          ],
+          "dtype": "torch.float32",
+          "strides": [
+            32,
+            1
+          ],
+          "layout": "row-major contiguous",
+          "evidence": "ut/cases.py:34"
+        }
+      ],
+      "scalars": {
+        "dtype": {
+          "value": "torch.bfloat16",
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        }
+      },
+      "outputs": [
+        {
+          "name": "return",
+          "role": "output",
+          "shape": [
+            64,
+            3072
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            3072,
+            1
+          ],
+          "layout": "fresh contiguous result",
+          "evidence": "ut/meta.json#/math_contract"
+        }
+      ],
+      "benchmark_case_ids": [
+        "nk3072x4096_m64_decode"
+      ],
+      "notes": []
+    },
+    {
+      "case_id": "nk3072x4096_m8192_prefill",
+      "regime": "prefill",
+      "evidence": "ut/meta.json#/cases/17",
+      "metadata": {
+        "sig": "nk3072x4096_m8192_prefill",
+        "regime": "prefill",
+        "m": 8192,
+        "n": 3072,
+        "k": 4096
+      },
+      "tensors": [
+        {
+          "name": "XQ",
+          "role": "input",
+          "shape": [
+            8192,
+            4096
+          ],
+          "dtype": "torch.float8_e4m3fn",
+          "strides": [
+            4096,
+            1
+          ],
+          "layout": "row-major contiguous",
+          "evidence": "ut/cases.py:34"
+        },
+        {
+          "name": "WQ",
+          "role": "input",
+          "shape": [
+            3072,
+            4096
+          ],
+          "dtype": "torch.float8_e4m3fn",
+          "strides": [
+            4096,
+            1
+          ],
+          "layout": "contiguous storage; AITER (16,16) preshuffled values",
+          "evidence": "ut/cases.py:34",
+          "attributes": {
+            "is_shuffled": true
+          }
+        },
+        {
+          "name": "x_scale",
+          "role": "input",
+          "shape": [
+            8192,
+            32
+          ],
+          "dtype": "torch.float32",
+          "strides": [
+            1,
+            8192
+          ],
+          "layout": "transpose-contiguous; column-major equivalent, degenerate M=1 shares contiguous layout",
+          "evidence": "ut/cases.py:34"
+        },
+        {
+          "name": "w_scale",
+          "role": "input",
+          "shape": [
+            24,
+            32
+          ],
+          "dtype": "torch.float32",
+          "strides": [
+            32,
+            1
+          ],
+          "layout": "row-major contiguous",
+          "evidence": "ut/cases.py:34"
+        }
+      ],
+      "scalars": {
+        "dtype": {
+          "value": "torch.bfloat16",
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        }
+      },
+      "outputs": [
+        {
+          "name": "return",
+          "role": "output",
+          "shape": [
+            8192,
+            3072
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            3072,
+            1
+          ],
+          "layout": "fresh contiguous result",
+          "evidence": "ut/meta.json#/math_contract"
+        }
+      ],
+      "benchmark_case_ids": [
+        "nk3072x4096_m8192_prefill"
+      ],
+      "notes": []
+    },
+    {
+      "case_id": "nk4096x1536_m1_decode",
+      "regime": "decode",
+      "evidence": "ut/meta.json#/cases/18",
+      "metadata": {
+        "sig": "nk4096x1536_m1_decode",
+        "regime": "decode",
+        "m": 1,
+        "n": 4096,
+        "k": 1536
+      },
+      "tensors": [
+        {
+          "name": "XQ",
+          "role": "input",
+          "shape": [
+            1,
+            1536
+          ],
+          "dtype": "torch.float8_e4m3fn",
+          "strides": [
+            1536,
+            1
+          ],
+          "layout": "row-major contiguous",
+          "evidence": "ut/cases.py:34"
+        },
+        {
+          "name": "WQ",
+          "role": "input",
+          "shape": [
+            4096,
+            1536
+          ],
+          "dtype": "torch.float8_e4m3fn",
+          "strides": [
+            1536,
+            1
+          ],
+          "layout": "contiguous storage; AITER (16,16) preshuffled values",
+          "evidence": "ut/cases.py:34",
+          "attributes": {
+            "is_shuffled": true
+          }
+        },
+        {
+          "name": "x_scale",
+          "role": "input",
+          "shape": [
+            1,
+            12
+          ],
+          "dtype": "torch.float32",
+          "strides": [
+            12,
+            1
+          ],
+          "layout": "transpose-contiguous; column-major equivalent, degenerate M=1 shares contiguous layout",
+          "evidence": "ut/cases.py:34"
+        },
+        {
+          "name": "w_scale",
+          "role": "input",
+          "shape": [
+            32,
+            12
+          ],
+          "dtype": "torch.float32",
+          "strides": [
+            12,
+            1
+          ],
+          "layout": "row-major contiguous",
+          "evidence": "ut/cases.py:34"
+        }
+      ],
+      "scalars": {
+        "dtype": {
+          "value": "torch.bfloat16",
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        }
+      },
+      "outputs": [
+        {
+          "name": "return",
+          "role": "output",
+          "shape": [
+            1,
+            4096
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            4096,
+            1
+          ],
+          "layout": "fresh contiguous result",
+          "evidence": "ut/meta.json#/math_contract"
+        }
+      ],
+      "benchmark_case_ids": [
+        "nk4096x1536_m1_decode"
+      ],
+      "notes": []
+    },
+    {
+      "case_id": "nk4096x1536_m64_decode",
+      "regime": "decode",
+      "evidence": "ut/meta.json#/cases/19",
+      "metadata": {
+        "sig": "nk4096x1536_m64_decode",
+        "regime": "decode",
+        "m": 64,
+        "n": 4096,
+        "k": 1536
+      },
+      "tensors": [
+        {
+          "name": "XQ",
+          "role": "input",
+          "shape": [
+            64,
+            1536
+          ],
+          "dtype": "torch.float8_e4m3fn",
+          "strides": [
+            1536,
+            1
+          ],
+          "layout": "row-major contiguous",
+          "evidence": "ut/cases.py:34"
+        },
+        {
+          "name": "WQ",
+          "role": "input",
+          "shape": [
+            4096,
+            1536
+          ],
+          "dtype": "torch.float8_e4m3fn",
+          "strides": [
+            1536,
+            1
+          ],
+          "layout": "contiguous storage; AITER (16,16) preshuffled values",
+          "evidence": "ut/cases.py:34",
+          "attributes": {
+            "is_shuffled": true
+          }
+        },
+        {
+          "name": "x_scale",
+          "role": "input",
+          "shape": [
+            64,
+            12
+          ],
+          "dtype": "torch.float32",
+          "strides": [
+            1,
+            64
+          ],
+          "layout": "transpose-contiguous; column-major equivalent, degenerate M=1 shares contiguous layout",
+          "evidence": "ut/cases.py:34"
+        },
+        {
+          "name": "w_scale",
+          "role": "input",
+          "shape": [
+            32,
+            12
+          ],
+          "dtype": "torch.float32",
+          "strides": [
+            12,
+            1
+          ],
+          "layout": "row-major contiguous",
+          "evidence": "ut/cases.py:34"
+        }
+      ],
+      "scalars": {
+        "dtype": {
+          "value": "torch.bfloat16",
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        }
+      },
+      "outputs": [
+        {
+          "name": "return",
+          "role": "output",
+          "shape": [
+            64,
+            4096
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            4096,
+            1
+          ],
+          "layout": "fresh contiguous result",
+          "evidence": "ut/meta.json#/math_contract"
+        }
+      ],
+      "benchmark_case_ids": [
+        "nk4096x1536_m64_decode"
+      ],
+      "notes": []
+    },
+    {
+      "case_id": "nk4096x1536_m8192_prefill",
+      "regime": "prefill",
+      "evidence": "ut/meta.json#/cases/20",
+      "metadata": {
+        "sig": "nk4096x1536_m8192_prefill",
+        "regime": "prefill",
+        "m": 8192,
+        "n": 4096,
+        "k": 1536
+      },
+      "tensors": [
+        {
+          "name": "XQ",
+          "role": "input",
+          "shape": [
+            8192,
+            1536
+          ],
+          "dtype": "torch.float8_e4m3fn",
+          "strides": [
+            1536,
+            1
+          ],
+          "layout": "row-major contiguous",
+          "evidence": "ut/cases.py:34"
+        },
+        {
+          "name": "WQ",
+          "role": "input",
+          "shape": [
+            4096,
+            1536
+          ],
+          "dtype": "torch.float8_e4m3fn",
+          "strides": [
+            1536,
+            1
+          ],
+          "layout": "contiguous storage; AITER (16,16) preshuffled values",
+          "evidence": "ut/cases.py:34",
+          "attributes": {
+            "is_shuffled": true
+          }
+        },
+        {
+          "name": "x_scale",
+          "role": "input",
+          "shape": [
+            8192,
+            12
+          ],
+          "dtype": "torch.float32",
+          "strides": [
+            1,
+            8192
+          ],
+          "layout": "transpose-contiguous; column-major equivalent, degenerate M=1 shares contiguous layout",
+          "evidence": "ut/cases.py:34"
+        },
+        {
+          "name": "w_scale",
+          "role": "input",
+          "shape": [
+            32,
+            12
+          ],
+          "dtype": "torch.float32",
+          "strides": [
+            12,
+            1
+          ],
+          "layout": "row-major contiguous",
+          "evidence": "ut/cases.py:34"
+        }
+      ],
+      "scalars": {
+        "dtype": {
+          "value": "torch.bfloat16",
+          "evidence": "ut/cases.py:69",
+          "scope": "call_argument"
+        }
+      },
+      "outputs": [
+        {
+          "name": "return",
+          "role": "output",
+          "shape": [
+            8192,
+            4096
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            4096,
+            1
+          ],
+          "layout": "fresh contiguous result",
+          "evidence": "ut/meta.json#/math_contract"
+        }
+      ],
+      "benchmark_case_ids": [
+        "nk4096x1536_m8192_prefill"
+      ],
+      "notes": []
+    }
+  ],
+  "source_inventories": {
+    "cases": {
+      "evidence": "ut/meta.json#/cases",
+      "records": [
+        {
+          "sig": "nk512x4096_m1_decode",
+          "regime": "decode",
+          "m": 1,
+          "n": 512,
+          "k": 4096
+        },
+        {
+          "sig": "nk512x4096_m64_decode",
+          "regime": "decode",
+          "m": 64,
+          "n": 512,
+          "k": 4096
+        },
+        {
+          "sig": "nk512x4096_m8192_prefill",
+          "regime": "prefill",
+          "m": 8192,
+          "n": 512,
+          "k": 4096
+        },
+        {
+          "sig": "nk4096x256_m1_decode",
+          "regime": "decode",
+          "m": 1,
+          "n": 4096,
+          "k": 256
+        },
+        {
+          "sig": "nk4096x256_m64_decode",
+          "regime": "decode",
+          "m": 64,
+          "n": 4096,
+          "k": 256
+        },
+        {
+          "sig": "nk4096x256_m8192_prefill",
+          "regime": "prefill",
+          "m": 8192,
+          "n": 4096,
+          "k": 256
+        },
+        {
+          "sig": "nk2048x4096_m1_decode",
+          "regime": "decode",
+          "m": 1,
+          "n": 2048,
+          "k": 4096
+        },
+        {
+          "sig": "nk2048x4096_m64_decode",
+          "regime": "decode",
+          "m": 64,
+          "n": 2048,
+          "k": 4096
+        },
+        {
+          "sig": "nk2048x4096_m8192_prefill",
+          "regime": "prefill",
+          "m": 8192,
+          "n": 2048,
+          "k": 4096
+        },
+        {
+          "sig": "nk2048x1536_m1_decode",
+          "regime": "decode",
+          "m": 1,
+          "n": 2048,
+          "k": 1536
+        },
+        {
+          "sig": "nk2048x1536_m64_decode",
+          "regime": "decode",
+          "m": 64,
+          "n": 2048,
+          "k": 1536
+        },
+        {
+          "sig": "nk2048x1536_m8192_prefill",
+          "regime": "prefill",
+          "m": 8192,
+          "n": 2048,
+          "k": 1536
+        },
+        {
+          "sig": "nk4096x2048_m1_decode",
+          "regime": "decode",
+          "m": 1,
+          "n": 4096,
+          "k": 2048
+        },
+        {
+          "sig": "nk4096x2048_m64_decode",
+          "regime": "decode",
+          "m": 64,
+          "n": 4096,
+          "k": 2048
+        },
+        {
+          "sig": "nk4096x2048_m8192_prefill",
+          "regime": "prefill",
+          "m": 8192,
+          "n": 4096,
+          "k": 2048
+        },
+        {
+          "sig": "nk3072x4096_m1_decode",
+          "regime": "decode",
+          "m": 1,
+          "n": 3072,
+          "k": 4096
+        },
+        {
+          "sig": "nk3072x4096_m64_decode",
+          "regime": "decode",
+          "m": 64,
+          "n": 3072,
+          "k": 4096
+        },
+        {
+          "sig": "nk3072x4096_m8192_prefill",
+          "regime": "prefill",
+          "m": 8192,
+          "n": 3072,
+          "k": 4096
+        },
+        {
+          "sig": "nk4096x1536_m1_decode",
+          "regime": "decode",
+          "m": 1,
+          "n": 4096,
+          "k": 1536
+        },
+        {
+          "sig": "nk4096x1536_m64_decode",
+          "regime": "decode",
+          "m": 64,
+          "n": 4096,
+          "k": 1536
+        },
+        {
+          "sig": "nk4096x1536_m8192_prefill",
+          "regime": "prefill",
+          "m": 8192,
+          "n": 4096,
+          "k": 1536
+        }
+      ]
+    }
+  },
+  "observed_shape_inventories": [],
+  "dynamic_dimensions": {
+    "evidence": "ut/cases.py",
+    "policy": "Only dimensions explicitly instantiated by the protected builders are catalogued. Random value draws do not create additional shapes. Routing lengths, live split counts, sparse indices, and physical oracle strides remain runtime data where not recorded.",
+    "builder_entrypoints": {},
+    "case_id_and_shape_recipes": []
+  },
+  "unknown_tensor_metadata": [],
+  "unknown_benchmark_tensor_overrides": [],
+  "opaque_artifacts": [],
+  "sources": [
+    {
+      "path": "ut/meta.json",
+      "sha256": "2ece6042e25a7e123a448bc25234de0497f3a5d0af1dad7785225d7a49895404"
+    },
+    {
+      "path": "ut/cases.py",
+      "sha256": "fa2782b9c5e668c0b94085f90c7693a41c3af23d0f1d6cbaf4499ab2a84321ab"
+    },
+    {
+      "path": "config.yaml",
+      "sha256": "951311fcaa6d493dbd6ada75dde19fd74d234463862d1a6a004381e0e7336173"
+    },
+    {
+      "path": "scripts/source_abi.json",
+      "sha256": "6bf7d424acca1feeca2c12f3d37c2e625fba15ad250d62dfa43e3a23f73a31f9"
+    },
+    {
+      "path": "ut/provenance/workload.json",
+      "sha256": "1fc786b9dca2776f069818e8941a5c6fcfd444614d78488dba9145e9c38f4183"
+    },
+    {
+      "path": "ut/provenance/selection_validation.json",
+      "sha256": "d3d639344c8bf9621d69e8b8fb3d8f64ffabcda243012c6d406720c19e1abce4"
+    }
+  ],
+  "validation": "Static metadata/AST inspection only. No task module imports, pickle deserialization, tensor loading, GPU execution, or fresh performance validation."
+}

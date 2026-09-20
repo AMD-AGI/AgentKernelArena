@@ -1,0 +1,169 @@
+{
+  "schema_version": 1,
+  "model": "Qwen3.8-2.4T-A95B-MXFP4",
+  "model_slug": "qwen3.8-2.4t-a95b-mxfp4",
+  "workload_slug": "isl8192_osl1024_conc64_tp8_mi355x",
+  "serving_capture": {
+    "input_sequence_length": 8192,
+    "output_sequence_length": 1024,
+    "concurrency": 64,
+    "tensor_parallel_world_size": 8
+  },
+  "device": {
+    "model": "MI355X",
+    "architecture": "gfx950"
+  },
+  "execution_scope": "One rank's isolated operator replay; not an eight-GPU model-serving run.",
+  "image_slug": "sglang_v0.5.18-rocm720-mi35x-profilerfix",
+  "docker": "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.18-rocm720-mi35x-profilerfix",
+  "kernel_count": 5,
+  "kernels": [
+    {
+      "operation_id": "qwen3.8-2.4t__dense_bf16_gemm_cluster",
+      "kernel_slug": "dense_bf16_gemm_cluster",
+      "selector": "head_kernels/qwen3.8-2.4t-a95b-mxfp4/isl8192_osl1024_conc64_tp8_mi355x/sglang_v0.5.18-rocm720-mi35x-profilerfix/dense_bf16_gemm_cluster",
+      "config": "dense_bf16_gemm_cluster/config.yaml",
+      "shapes": "dense_bf16_gemm_cluster/SHAPES.json",
+      "shape_guide": "dense_bf16_gemm_cluster/SHAPES.md",
+      "backend": "hipBLASLt / Tensile",
+      "runtime": {
+        "image": "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.18-rocm720-mi35x-profilerfix",
+        "expected_image_id": "sha256:760dd38b9b6f2bd11c13011d470eb8e377c3f0d71284a090a710d64a23bd789f",
+        "source_commits": {
+          "aiter": "d9e5ef7ce08ee7045d583aed768cff41aa9210fe"
+        },
+        "gpu_arch": "gfx950",
+        "hip_version": "7.2.x",
+        "required_modules": [
+          "aiter",
+          "flydsl",
+          "sglang",
+          "torch",
+          "triton"
+        ],
+        "package_versions": {
+          "sglang": "0.5.18"
+        },
+        "required_model_types": []
+      },
+      "capture_contract": "Task-local callable, case, oracle and source contracts are authoritative."
+    },
+    {
+      "operation_id": "qwen3.8-2.4t__fused_moe_2stage_mxfp4",
+      "kernel_slug": "fused_moe_2stage_mxfp4",
+      "selector": "head_kernels/qwen3.8-2.4t-a95b-mxfp4/isl8192_osl1024_conc64_tp8_mi355x/sglang_v0.5.18-rocm720-mi35x-profilerfix/fused_moe_2stage_mxfp4",
+      "config": "fused_moe_2stage_mxfp4/config.yaml",
+      "shapes": "fused_moe_2stage_mxfp4/SHAPES.json",
+      "shape_guide": "fused_moe_2stage_mxfp4/SHAPES.md",
+      "backend": "AITER / FlyDSL",
+      "runtime": {
+        "image": "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.18-rocm720-mi35x-profilerfix",
+        "expected_image_id": "sha256:760dd38b9b6f2bd11c13011d470eb8e377c3f0d71284a090a710d64a23bd789f",
+        "source_commits": {
+          "aiter": "d9e5ef7ce08ee7045d583aed768cff41aa9210fe"
+        },
+        "gpu_arch": "gfx950",
+        "hip_version": "7.2.x",
+        "required_modules": [
+          "aiter",
+          "flydsl",
+          "sglang",
+          "torch",
+          "triton"
+        ],
+        "package_versions": {
+          "sglang": "0.5.18"
+        },
+        "required_model_types": []
+      },
+      "capture_contract": "One captured composite MoE stage-1 + stage-2 seam; no independent stage oracles."
+    },
+    {
+      "operation_id": "qwen3.8-2.4t__fused_recurrent_gated_delta_rule_decode",
+      "kernel_slug": "fused_recurrent_gated_delta_rule_decode",
+      "selector": "head_kernels/qwen3.8-2.4t-a95b-mxfp4/isl8192_osl1024_conc64_tp8_mi355x/sglang_v0.5.18-rocm720-mi35x-profilerfix/fused_recurrent_gated_delta_rule_decode",
+      "config": "fused_recurrent_gated_delta_rule_decode/config.yaml",
+      "shapes": "fused_recurrent_gated_delta_rule_decode/SHAPES.json",
+      "shape_guide": "fused_recurrent_gated_delta_rule_decode/SHAPES.md",
+      "backend": "Triton",
+      "runtime": {
+        "image": "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.18-rocm720-mi35x-profilerfix",
+        "expected_image_id": "sha256:760dd38b9b6f2bd11c13011d470eb8e377c3f0d71284a090a710d64a23bd789f",
+        "source_commits": {
+          "sglang": "71de97b264b04dcd514cf904003028aefe9775c8"
+        },
+        "gpu_arch": "gfx950",
+        "hip_version": "7.2.x",
+        "required_modules": [
+          "aiter",
+          "sglang",
+          "torch",
+          "triton"
+        ],
+        "package_versions": {
+          "sglang": "0.5.18"
+        },
+        "required_model_types": []
+      },
+      "capture_contract": "Task-local callable, case, oracle and source contracts are authoritative."
+    },
+    {
+      "operation_id": "qwen3.8-2.4t__gemma_fused_add_rmsnorm",
+      "kernel_slug": "gemma_fused_add_rmsnorm",
+      "selector": "head_kernels/qwen3.8-2.4t-a95b-mxfp4/isl8192_osl1024_conc64_tp8_mi355x/sglang_v0.5.18-rocm720-mi35x-profilerfix/gemma_fused_add_rmsnorm",
+      "config": "gemma_fused_add_rmsnorm/config.yaml",
+      "shapes": "gemma_fused_add_rmsnorm/SHAPES.json",
+      "shape_guide": "gemma_fused_add_rmsnorm/SHAPES.md",
+      "backend": "Triton",
+      "runtime": {
+        "image": "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.18-rocm720-mi35x-profilerfix",
+        "expected_image_id": "sha256:760dd38b9b6f2bd11c13011d470eb8e377c3f0d71284a090a710d64a23bd789f",
+        "source_commits": {
+          "sglang": "71de97b264b04dcd514cf904003028aefe9775c8"
+        },
+        "gpu_arch": "gfx950",
+        "hip_version": "7.2.x",
+        "required_modules": [
+          "aiter",
+          "sglang",
+          "torch",
+          "triton"
+        ],
+        "package_versions": {
+          "sglang": "0.5.18"
+        },
+        "required_model_types": []
+      },
+      "capture_contract": "Task-local callable, case, oracle and source contracts are authoritative."
+    },
+    {
+      "operation_id": "qwen3.8-2.4t__paged_attention_decode",
+      "kernel_slug": "paged_attention_decode",
+      "selector": "head_kernels/qwen3.8-2.4t-a95b-mxfp4/isl8192_osl1024_conc64_tp8_mi355x/sglang_v0.5.18-rocm720-mi35x-profilerfix/paged_attention_decode",
+      "config": "paged_attention_decode/config.yaml",
+      "shapes": "paged_attention_decode/SHAPES.json",
+      "shape_guide": "paged_attention_decode/SHAPES.md",
+      "backend": "AITER / CK asm",
+      "runtime": {
+        "image": "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.18-rocm720-mi35x-profilerfix",
+        "expected_image_id": "sha256:760dd38b9b6f2bd11c13011d470eb8e377c3f0d71284a090a710d64a23bd789f",
+        "source_commits": {
+          "aiter": "d9e5ef7ce08ee7045d583aed768cff41aa9210fe"
+        },
+        "gpu_arch": "gfx950",
+        "hip_version": "7.2.x",
+        "required_modules": [
+          "aiter",
+          "sglang",
+          "torch",
+          "triton"
+        ],
+        "package_versions": {
+          "sglang": "0.5.18"
+        },
+        "required_model_types": []
+      },
+      "capture_contract": "Task-local callable, case, oracle and source contracts are authoritative."
+    }
+  ]
+}

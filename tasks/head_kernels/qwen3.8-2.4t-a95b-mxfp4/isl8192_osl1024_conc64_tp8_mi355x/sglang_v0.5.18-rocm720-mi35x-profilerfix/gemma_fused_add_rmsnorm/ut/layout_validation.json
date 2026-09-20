@@ -1,0 +1,16 @@
+{
+  "contract": "live_layout_evidence",
+  "target_callable": "sglang.srt.layers.layernorm:rocm_triton_gemma_fused_add_rmsnorm",
+  "processes_observed": 8,
+  "per_process": [
+    {"pid": 390307, "reshape": 4, "view": 4, "clone": 0, "copy_": 0, "contiguous": 0},
+    {"pid": 390308, "reshape": 4, "view": 4, "clone": 0, "copy_": 0, "contiguous": 0},
+    {"pid": 390309, "reshape": 4, "view": 4, "clone": 0, "copy_": 0, "contiguous": 0},
+    {"pid": 390310, "reshape": 4, "view": 4, "clone": 0, "copy_": 0, "contiguous": 0},
+    {"pid": 390311, "reshape": 4, "view": 4, "clone": 0, "copy_": 0, "contiguous": 0},
+    {"pid": 390312, "reshape": 4, "view": 4, "clone": 0, "copy_": 0, "contiguous": 0},
+    {"pid": 390313, "reshape": 4, "view": 4, "clone": 0, "copy_": 0, "contiguous": 0},
+    {"pid": 390314, "reshape": 4, "view": 4, "clone": 0, "copy_": 0, "contiguous": 0}
+  ],
+  "conclusion": "Both activation reshapes reached aten::view in every selected live process, with no clone, copy_, or contiguous operation inside the callable. The capture format did not persist numeric strides, so the UT freezes the minimum row-major layout consistent with this evidence: activation stride (8192, 1) and weight stride (1,)."
+}

@@ -1,0 +1,8 @@
+{
+  "gemm_a8w8_blockscale_bpreshuffle": [
+    {
+      "source": "source/kernel.py",
+      "arguments": "arguments(posonlyargs=[], args=[arg(arg='XQ', annotation=Name(id='Tensor', ctx=Load())), arg(arg='WQ', annotation=Name(id='Tensor', ctx=Load())), arg(arg='x_scale', annotation=Name(id='Tensor', ctx=Load())), arg(arg='w_scale', annotation=Name(id='Tensor', ctx=Load())), arg(arg='dtype', annotation=Attribute(value=Name(id='torch', ctx=Load()), attr='dtype', ctx=Load()))], kwonlyargs=[], kw_defaults=[], defaults=[Attribute(value=Name(id='dtypes', ctx=Load()), attr='bf16', ctx=Load())])"
+    }
+  ]
+}

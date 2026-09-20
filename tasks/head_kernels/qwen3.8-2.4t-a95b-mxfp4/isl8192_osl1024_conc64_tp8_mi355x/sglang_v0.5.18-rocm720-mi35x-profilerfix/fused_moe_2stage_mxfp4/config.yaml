@@ -1,0 +1,60 @@
+source_file_path:
+- source/moe_candidate.py
+target_kernel_functions:
+- fused_moe
+compile_command:
+- python3 scripts/task_runner.py compile --timeout 600
+correctness_command:
+- python3 scripts/task_runner.py correctness --timeout 3600
+performance_command:
+- python3 scripts/task_runner.py performance --timeout 3600
+task_type: triton2triton
+task_result_template: null
+prompt:
+  source_code: null
+  instructions: "Optimize the Qwen3.8-2.4T-A95B-MXFP4 mfma_moe1_silu_mul_afp4_wfp4_bf16_t32x128x256_pm1_async_v32 kernel on MI355X (gfx950).\nBackend: AITER / FlyDSL. Serving capture: ISL 8192 / OSL 1024 / CONC 64 / TP 8.\n\nEdit only the declared source files and target functions:\n  source/moe_candidate.py\n  fused_moe\n\nKeep the production callable signature and the captured shape, dtype, stride,\ntensor-attribute, routing, state-update and output-alias contracts unchanged.\nProduction seam: aiter.fused_moe:fused_moe.\nUse the task's frozen correctness references and complete benchmark case set.\nThe starting-source provenance is stock+harness-shim; archival profile\nand speedup figures in the provenance files are not measurements of this run.\nThe Arena evaluator measures the committed starting implementation and candidate\nunder the same benchmark contract. Do not edit ut/, scripts/, or config.yaml.\n"
+  cheatsheet: null
+headkernel:
+  operation_id: qwen3.8-2.4t__fused_moe_2stage_mxfp4
+  model: Qwen3.8-2.4T-A95B-MXFP4
+  owner: Li, Zeping <zepingl@amd.com>
+  docker: harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.18-rocm720-mi35x-profilerfix
+  serving: ISL 8192 / OSL 1024 / CONC 64 / TP 8
+  backend: AITER / FlyDSL
+  regime: decode
+  device_symbol: mfma_moe1_silu_mul_afp4_wfp4_bf16_t32x128x256_pm1_async_v32
+  target_callable: aiter.fused_moe:fused_moe
+  tol: 0.02
+  oracle: frozen live-capture ut/reference_io.pt
+  source_package: P/fused_moe_mxfp4_task
+  source_seed: stock+harness-shim
+  preserve_symbols:
+  - baseline_callable
+  - _BASELINE
+  info_rows:
+  - row: Q38-1
+    info_kernel: mfma_moe1_silu_mul_afp4_wfp4_bf16_t32x128x256_pm1_async_v32 -> t32x32x256
+    gpu_pct: 21.06
+    empirical_roofline: 73.05% memory-bound
+    optimized_roofline: 82.37% memory-bound
+    e2e_uplift: E1 FMoE 6-row +1.025%; E3 E1+E2 native stack +3.922%
+  - row: Q38-2
+    info_kernel: mfma_moe2_afp4_wfp4_bf16_cshuffle_t32x128x256 [atomic_bnt2 -> atomic]
+    gpu_pct: 11.58
+    empirical_roofline: 75.47% memory-bound
+    optimized_roofline: 71.65% memory-bound
+    e2e_uplift: E1 FMoE 6-row +1.025%; E3 E1+E2 native stack +3.922%
+  - row: Q38-3
+    info_kernel: FMoE 2-stage - S1 t64x128 + S2 atomic -> S1 t128x64 + S2 atomic_persist
+    gpu_pct: 15.73
+    empirical_roofline: 22.6% memory-bound
+    optimized_roofline: 23.7% memory-bound
+    e2e_uplift: E1 FMoE 6-row +1.025%; E3 E1+E2 native stack +3.922%
+  symbol_locations:
+    fused_moe: source/moe_candidate.py
+compile_timeout: 600
+correctness_timeout: 3600
+performance_timeout: 3600
+platform_support:
+  required_arch: gfx950
+  status: active

@@ -1,0 +1,12 @@
+{
+  "attempts_preserved": true,
+  "authoritative_oracle_bytes": 536480065,
+  "checksum_verified_once_after_promotion": true,
+  "direct_capture_dirs_remaining": [],
+  "promoted_meta": true,
+  "promoted_oracle": true,
+  "reference_io_sha256": "9c40d52c145027f8affca9e41bbf1100189fde724d42d085ac6296d57020ac56",
+  "schema_version": 1,
+  "selected_process_id": 2463881,
+  "task_id": "paged_attention_decode_task"
+}

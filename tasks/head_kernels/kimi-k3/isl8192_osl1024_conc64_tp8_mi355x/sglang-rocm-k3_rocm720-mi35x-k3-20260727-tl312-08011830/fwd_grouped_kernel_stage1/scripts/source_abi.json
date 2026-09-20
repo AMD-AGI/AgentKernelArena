@@ -1,0 +1,14 @@
+{
+  "_fwd_grouped_kernel_stage1_tm": [
+    {
+      "arguments": "arguments(posonlyargs=[], args=[arg(arg='Q'), arg(arg='K_Buffer'), arg(arg='sm_scale_withk'), arg(arg='kv_indptr'), arg(arg='kv_indices'), arg(arg='Att_Out'), arg(arg='Att_Lse'), arg(arg='num_kv_splits'), arg(arg='stride_qbs'), arg(arg='stride_qh'), arg(arg='stride_buf_kbs'), arg(arg='stride_buf_kh'), arg(arg='stride_mid_ob'), arg(arg='stride_mid_oh'), arg(arg='stride_mid_os'), arg(arg='kv_group_num', annotation=Attribute(value=Name(id='tl', ctx=Load()), attr='constexpr', ctx=Load())), arg(arg='q_head_num', annotation=Attribute(value=Name(id='tl', ctx=Load()), attr='constexpr', ctx=Load())), arg(arg='BLOCK_DMODEL', annotation=Attribute(value=Name(id='tl', ctx=Load()), attr='constexpr', ctx=Load())), arg(arg='BLOCK_DPE', annotation=Attribute(value=Name(id='tl', ctx=Load()), attr='constexpr', ctx=Load())), arg(arg='BLOCK_DV', annotation=Attribute(value=Name(id='tl', ctx=Load()), attr='constexpr', ctx=Load())), arg(arg='BLOCK_N', annotation=Attribute(value=Name(id='tl', ctx=Load()), attr='constexpr', ctx=Load())), arg(arg='BLOCK_H', annotation=Attribute(value=Name(id='tl', ctx=Load()), attr='constexpr', ctx=Load())), arg(arg='MIN_BLOCK_KV', annotation=Attribute(value=Name(id='tl', ctx=Load()), attr='constexpr', ctx=Load())), arg(arg='logit_cap', annotation=Attribute(value=Name(id='tl', ctx=Load()), attr='constexpr', ctx=Load())), arg(arg='Lk', annotation=Attribute(value=Name(id='tl', ctx=Load()), attr='constexpr', ctx=Load())), arg(arg='Lv', annotation=Attribute(value=Name(id='tl', ctx=Load()), attr='constexpr', ctx=Load())), arg(arg='KV_CM', annotation=Attribute(value=Name(id='tl', ctx=Load()), attr='constexpr', ctx=Load())), arg(arg='IDX_CM', annotation=Attribute(value=Name(id='tl', ctx=Load()), attr='constexpr', ctx=Load())), arg(arg='I32', annotation=Attribute(value=Name(id='tl', ctx=Load()), attr='constexpr', ctx=Load())), arg(arg='DSPLIT', annotation=Attribute(value=Name(id='tl', ctx=Load()), attr='constexpr', ctx=Load())), arg(arg='NOMASK', annotation=Attribute(value=Name(id='tl', ctx=Load()), attr='constexpr', ctx=Load())), arg(arg='OUT_CM', annotation=Attribute(value=Name(id='tl', ctx=Load()), attr='constexpr', ctx=Load())), arg(arg='BOTH_FIRST', annotation=Attribute(value=Name(id='tl', ctx=Load()), attr='constexpr', ctx=Load()))], kwonlyargs=[], kw_defaults=[], defaults=[])",
+      "source": "source/geak_mla_stage1.py"
+    }
+  ],
+  "make_launcher": [
+    {
+      "arguments": "arguments(posonlyargs=[], args=[arg(arg='base')], kwonlyargs=[], kw_defaults=[], defaults=[])",
+      "source": "source/geak_mla_stage1.py"
+    }
+  ]
+}

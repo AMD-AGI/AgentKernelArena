@@ -1,0 +1,183 @@
+{
+  "schema": "workload-v1",
+  "op_kind": "moe",
+  "kernel": "flydsl_moe_stage2_downproj_plus_reduction",
+  "name_match": "moe2",
+  "regime": {
+    "backend": "sglang",
+    "quant": {
+      "method": "mxfp4-pack-quantized",
+      "weight_dtype": "float4_e2m1fn_x2 (mx group_size 32, e8m0 scales)",
+      "act_dtype": "float8_e4m3fn (dynamic per-pair mx quant, e8m0 scales)",
+      "block_size": 32,
+      "source": "config.text_config.quantization_config (compressed-tensors Mxfp4MoEMethod); parse_regime.py reported method=none because the quantization_config is nested under text_config"
+    },
+    "kv_cache_dtype": "auto",
+    "compile": "eager",
+    "enforce_eager": false,
+    "cuda_graph": true,
+    "attention_backend": "triton",
+    "prefill_chunk": 16384,
+    "notes": "prefill_chunk from the live server log (chunked_prefill_size=16384); decode runs under HIP graph replay (cuda_graph=true), prefill runs eager."
+  },
+  "served_regimes": [
+    "decode",
+    "prefill"
+  ],
+  "quant": {
+    "scheme": "mxfp4-pack-quantized",
+    "weight_dtype": "float4_e2m1fn_x2 (mx group_size 32, e8m0 scales)",
+    "act_dtype": "float8_e4m3fn (dynamic per-pair mx quant, e8m0 scales)",
+    "out_dtype": "",
+    "weight_block_size": 32,
+    "scale_dtype": "float32",
+    "kv_cache_dtype": "auto"
+  },
+  "live_pct_gpu": 7.13,
+  "regime_warning": "",
+  "serving_weight_model": {
+    "isl": 8192,
+    "osl": 1024,
+    "conc": 64,
+    "prefill_chunk": 16384,
+    "analytic_calls": {
+      "prefill": 64,
+      "decode": 1024
+    },
+    "ttft_ms": null,
+    "tpot_ms": null
+  },
+  "num_cases": 4,
+  "weights_provenance": "mixed(regime_floor+trace)",
+  "cases": [
+    {
+      "name": "prefill_M16384",
+      "dims": [
+        [
+          16384,
+          null
+        ],
+        [
+          null,
+          null
+        ]
+      ],
+      "dtypes": [
+        "",
+        ""
+      ],
+      "count": null,
+      "weight": 159541.83209999997,
+      "weight_source": "trace",
+      "regime": "prefill",
+      "m": 16384,
+      "weight_norm": 0.509553,
+      "quant": {
+        "scheme": "mxfp4-pack-quantized",
+        "weight_dtype": "float4_e2m1fn_x2 (mx group_size 32, e8m0 scales)",
+        "act_dtype": "float8_e4m3fn (dynamic per-pair mx quant, e8m0 scales)",
+        "out_dtype": "",
+        "weight_block_size": 32,
+        "scale_dtype": "float32",
+        "kv_cache_dtype": "auto"
+      }
+    },
+    {
+      "name": "decode_M64",
+      "dims": [
+        [
+          64,
+          null
+        ],
+        [
+          null,
+          null
+        ]
+      ],
+      "dtypes": [
+        "",
+        ""
+      ],
+      "count": null,
+      "weight": 75144.35496,
+      "weight_source": "regime_floor",
+      "regime": "decode",
+      "m": 64,
+      "weight_norm": 0.24,
+      "quant": {
+        "scheme": "mxfp4-pack-quantized",
+        "weight_dtype": "float4_e2m1fn_x2 (mx group_size 32, e8m0 scales)",
+        "act_dtype": "float8_e4m3fn (dynamic per-pair mx quant, e8m0 scales)",
+        "out_dtype": "",
+        "weight_block_size": 32,
+        "scale_dtype": "float32",
+        "kv_cache_dtype": "auto"
+      }
+    },
+    {
+      "name": "prefill_M8192",
+      "dims": [
+        [
+          8192,
+          null
+        ],
+        [
+          null,
+          null
+        ]
+      ],
+      "dtypes": [
+        "",
+        ""
+      ],
+      "count": null,
+      "weight": 59629.203199999996,
+      "weight_source": "trace",
+      "regime": "prefill",
+      "m": 8192,
+      "weight_norm": 0.190447,
+      "quant": {
+        "scheme": "mxfp4-pack-quantized",
+        "weight_dtype": "float4_e2m1fn_x2 (mx group_size 32, e8m0 scales)",
+        "act_dtype": "float8_e4m3fn (dynamic per-pair mx quant, e8m0 scales)",
+        "out_dtype": "",
+        "weight_block_size": 32,
+        "scale_dtype": "float32",
+        "kv_cache_dtype": "auto"
+      }
+    },
+    {
+      "name": "decode_M1",
+      "dims": [
+        [
+          1,
+          null
+        ],
+        [
+          null,
+          null
+        ]
+      ],
+      "dtypes": [
+        "",
+        ""
+      ],
+      "count": null,
+      "weight": 18786.08874,
+      "weight_source": "regime_floor",
+      "regime": "decode",
+      "m": 1,
+      "weight_norm": 0.06,
+      "quant": {
+        "scheme": "mxfp4-pack-quantized",
+        "weight_dtype": "float4_e2m1fn_x2 (mx group_size 32, e8m0 scales)",
+        "act_dtype": "float8_e4m3fn (dynamic per-pair mx quant, e8m0 scales)",
+        "out_dtype": "",
+        "weight_block_size": 32,
+        "scale_dtype": "float32",
+        "kv_cache_dtype": "auto"
+      }
+    }
+  ],
+  "notes": "op_kind=moe: per-expert token counts are routing-dependent; effective-M buckets from meta drive a GEMM-style regime split. Treat weights as lower-confidence. WARNING: regime 'decode' has meta buckets [1, 64] but ZERO profiled time \u2014 likely a prefill/decode-biased profiling window. Decode-critical serving should set --min-regime-share to avoid ignoring it. auto decode-floor: analytic serving model has decode=1024 calls but profiled decode share=0.00 < 0.30 (graph-hidden / under-captured decode) -> flooring decode to 0.30; authoritative split remains the unittest self-weight (measured ms x analytic_calls). applied --min-regime-share 0.3: floored regimes ['decode']."
+}

@@ -1,0 +1,1409 @@
+{
+  "target": "sglang.srt.layers.quantization.fp8_utils:materialize_bpreshuffle_fp8_scale",
+  "process_id": 1671140,
+  "rank": "unknown",
+  "module": "sglang.srt.layers.quantization.fp8_utils",
+  "attr": "materialize_bpreshuffle_fp8_scale",
+  "num_cases": 7,
+  "total_calls_observed": 341405,
+  "regimes_covered": [
+    "decode",
+    "prefill"
+  ],
+  "cases": [
+    {
+      "sig": "T(19, 32):torch.float32",
+      "regime": "decode",
+      "input_shapes": [
+        [
+          19,
+          32
+        ]
+      ],
+      "input_dtypes": [
+        "torch.float32"
+      ],
+      "count": 56
+    },
+    {
+      "sig": "T(19, 12):torch.float32",
+      "regime": "decode",
+      "input_shapes": [
+        [
+          19,
+          12
+        ]
+      ],
+      "input_dtypes": [
+        "torch.float32"
+      ],
+      "count": 17
+    },
+    {
+      "sig": "T(19, 16):torch.float32",
+      "regime": "decode",
+      "input_shapes": [
+        [
+          19,
+          16
+        ]
+      ],
+      "input_dtypes": [
+        "torch.float32"
+      ],
+      "count": 11
+    },
+    {
+      "sig": "T(19, 2):torch.float32",
+      "regime": "decode",
+      "input_shapes": [
+        [
+          19,
+          2
+        ]
+      ],
+      "input_dtypes": [
+        "torch.float32"
+      ],
+      "count": 84
+    },
+    {
+      "sig": "T(1, 32):torch.float32",
+      "regime": "decode",
+      "input_shapes": [
+        [
+          1,
+          32
+        ]
+      ],
+      "input_dtypes": [
+        "torch.float32"
+      ],
+      "count": 672
+    },
+    {
+      "sig": "T(1, 12):torch.float32",
+      "regime": "decode",
+      "input_shapes": [
+        [
+          1,
+          12
+        ]
+      ],
+      "input_dtypes": [
+        "torch.float32"
+      ],
+      "count": 204
+    },
+    {
+      "sig": "T(8192, 32):torch.float32",
+      "regime": "prefill",
+      "input_shapes": [
+        [
+          8192,
+          32
+        ]
+      ],
+      "input_dtypes": [
+        "torch.float32"
+      ],
+      "count": 224
+    }
+  ],
+  "shape_counts": [
+    {
+      "sig": "T(64, 2):torch.float32",
+      "count": 164061,
+      "input_shapes": [
+        [
+          64,
+          2
+        ]
+      ],
+      "input_dtypes": [
+        "torch.float32"
+      ]
+    },
+    {
+      "sig": "T(64, 32):torch.float32",
+      "count": 109378,
+      "input_shapes": [
+        [
+          64,
+          32
+        ]
+      ],
+      "input_dtypes": [
+        "torch.float32"
+      ]
+    },
+    {
+      "sig": "T(64, 12):torch.float32",
+      "count": 33209,
+      "input_shapes": [
+        [
+          64,
+          12
+        ]
+      ],
+      "input_dtypes": [
+        "torch.float32"
+      ]
+    },
+    {
+      "sig": "T(64, 16):torch.float32",
+      "count": 21485,
+      "input_shapes": [
+        [
+          64,
+          16
+        ]
+      ],
+      "input_dtypes": [
+        "torch.float32"
+      ]
+    },
+    {
+      "sig": "T(16384, 2):torch.float32",
+      "count": 5208,
+      "input_shapes": [
+        [
+          16384,
+          2
+        ]
+      ],
+      "input_dtypes": [
+        "torch.float32"
+      ]
+    },
+    {
+      "sig": "T(16384, 32):torch.float32",
+      "count": 3472,
+      "input_shapes": [
+        [
+          16384,
+          32
+        ]
+      ],
+      "input_dtypes": [
+        "torch.float32"
+      ]
+    },
+    {
+      "sig": "T(16384, 12):torch.float32",
+      "count": 1054,
+      "input_shapes": [
+        [
+          16384,
+          12
+        ]
+      ],
+      "input_dtypes": [
+        "torch.float32"
+      ]
+    },
+    {
+      "sig": "T(1, 2):torch.float32",
+      "count": 1008,
+      "input_shapes": [
+        [
+          1,
+          2
+        ]
+      ],
+      "input_dtypes": [
+        "torch.float32"
+      ]
+    },
+    {
+      "sig": "T(16384, 16):torch.float32",
+      "count": 682,
+      "input_shapes": [
+        [
+          16384,
+          16
+        ]
+      ],
+      "input_dtypes": [
+        "torch.float32"
+      ]
+    },
+    {
+      "sig": "T(1, 32):torch.float32",
+      "count": 672,
+      "input_shapes": [
+        [
+          1,
+          32
+        ]
+      ],
+      "input_dtypes": [
+        "torch.float32"
+      ]
+    },
+    {
+      "sig": "T(8192, 2):torch.float32",
+      "count": 336,
+      "input_shapes": [
+        [
+          8192,
+          2
+        ]
+      ],
+      "input_dtypes": [
+        "torch.float32"
+      ]
+    },
+    {
+      "sig": "T(8192, 32):torch.float32",
+      "count": 224,
+      "input_shapes": [
+        [
+          8192,
+          32
+        ]
+      ],
+      "input_dtypes": [
+        "torch.float32"
+      ]
+    },
+    {
+      "sig": "T(1, 12):torch.float32",
+      "count": 204,
+      "input_shapes": [
+        [
+          1,
+          12
+        ]
+      ],
+      "input_dtypes": [
+        "torch.float32"
+      ]
+    },
+    {
+      "sig": "T(1, 16):torch.float32",
+      "count": 132,
+      "input_shapes": [
+        [
+          1,
+          16
+        ]
+      ],
+      "input_dtypes": [
+        "torch.float32"
+      ]
+    },
+    {
+      "sig": "T(19, 2):torch.float32",
+      "count": 84,
+      "input_shapes": [
+        [
+          19,
+          2
+        ]
+      ],
+      "input_dtypes": [
+        "torch.float32"
+      ]
+    },
+    {
+      "sig": "T(8192, 12):torch.float32",
+      "count": 68,
+      "input_shapes": [
+        [
+          8192,
+          12
+        ]
+      ],
+      "input_dtypes": [
+        "torch.float32"
+      ]
+    },
+    {
+      "sig": "T(19, 32):torch.float32",
+      "count": 56,
+      "input_shapes": [
+        [
+          19,
+          32
+        ]
+      ],
+      "input_dtypes": [
+        "torch.float32"
+      ]
+    },
+    {
+      "sig": "T(8192, 16):torch.float32",
+      "count": 44,
+      "input_shapes": [
+        [
+          8192,
+          16
+        ]
+      ],
+      "input_dtypes": [
+        "torch.float32"
+      ]
+    },
+    {
+      "sig": "T(19, 12):torch.float32",
+      "count": 17,
+      "input_shapes": [
+        [
+          19,
+          12
+        ]
+      ],
+      "input_dtypes": [
+        "torch.float32"
+      ]
+    },
+    {
+      "sig": "T(19, 16):torch.float32",
+      "count": 11,
+      "input_shapes": [
+        [
+          19,
+          16
+        ]
+      ],
+      "input_dtypes": [
+        "torch.float32"
+      ]
+    }
+  ],
+  "num_distinct_shapes": 20,
+  "call_sequence": [
+    {
+      "sig": "T(19, 32):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 12):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 12):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 32):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 12):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 12):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 32):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 12):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 12):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 32):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 12):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 16):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 32):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 32):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 32):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 32):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 32):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 12):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 16):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 32):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 32):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 32):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 32):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 32):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 12):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 16):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 32):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 32):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 32):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 32):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 32):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 12):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 16):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 32):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 32):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 32):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 32):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 32):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 12):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 16):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 32):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 32):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 32):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 32):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 32):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 12):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 16):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 32):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 32):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 32):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 32):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 32):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 12):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 16):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 32):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 32):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 32):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 32):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 32):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 12):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 16):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 32):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 32):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 32):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 32):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 32):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 12):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 16):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 32):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 32):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 32):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 32):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 32):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 12):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 16):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 32):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 32):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 32):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 32):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 32):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 12):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 16):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 32):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 32):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 32):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 12):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 12):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 32):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 12):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 12):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 32):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 12):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 12):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 32):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 12):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 16):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 32):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 32):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 32):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 32):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 32):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 12):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 16):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 32):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 32):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 32):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 32):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 32):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 12):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 16):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 32):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 32):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 32):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 32):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 32):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 12):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 16):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 32):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 32):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 32):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 32):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 32):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 12):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 16):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 32):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 32):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 32):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 32):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 2):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 32):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 12):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 16):torch.float32",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 32):torch.float32",
+      "in_graph": false
+    }
+  ],
+  "graph_replayed": false,
+  "in_graph_calls": 0,
+  "reference_io": "reference_io.pt",
+  "reference_io_sha256": "14e589b7296c667b170b39a5f962344152206ff954a84b4e16de4346567d12af",
+  "oracle_complete": true,
+  "build": false,
+  "note": "Oracle captured from baseline. Do NOT edit unittest.py or reference_io.pt during opt."
+}

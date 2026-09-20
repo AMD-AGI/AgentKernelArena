@@ -1,0 +1,15 @@
+{
+  "modules": [
+    {
+      "module": "sglang.kernels.ops.moe.fused_moe_triton_kernels",
+      "file": "_patched/sglang.kernels.ops.moe.fused_moe_triton_kernels.py"
+    },
+    {
+      "module": "sglang.srt.layers.moe.moe_runner.triton_utils.fused_moe",
+      "file": "_patched/sglang.srt.layers.moe.moe_runner.triton_utils.fused_moe.py"
+    }
+  ],
+  "rebinds": [],
+  "markers": [],
+  "captures": []
+}

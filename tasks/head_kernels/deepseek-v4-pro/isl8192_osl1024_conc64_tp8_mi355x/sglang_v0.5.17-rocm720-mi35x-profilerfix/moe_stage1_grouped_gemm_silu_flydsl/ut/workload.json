@@ -1,0 +1,236 @@
+{
+  "schema": "workload-v1",
+  "op_kind": "moe",
+  "kernel": "moe_stage1_grouped_gemm_silu_flydsl",
+  "name_match": "mfma_moe1_silu_mul_afp8_wfp4",
+  "regime": {
+    "backend": "sglang",
+    "quant": {
+      "method": "fp8_blockscale",
+      "weight_dtype": "fp8_e4m3",
+      "act_dtype": "fp8",
+      "block_size": [
+        128,
+        128
+      ],
+      "source": "model_config"
+    },
+    "kv_cache_dtype": "fp8_e4m3",
+    "compile": "eager",
+    "enforce_eager": false,
+    "cuda_graph": true,
+    "attention_backend": "dsv4",
+    "prefill_chunk": 65536,
+    "notes": ""
+  },
+  "served_regimes": [
+    "decode",
+    "prefill"
+  ],
+  "quant": {
+    "scheme": "fp8_blockscale",
+    "weight_dtype": "fp8_e4m3(act, per_1x32 mxfp8) x fp4_e2m1_x2(weights, mxfp4) -> fp8_e4m3 + e8m0 scales",
+    "act_dtype": "fp8",
+    "out_dtype": "",
+    "weight_block_size": [
+      128,
+      128
+    ],
+    "scale_dtype": "float32",
+    "kv_cache_dtype": "fp8_e4m3"
+  },
+  "live_pct_gpu": 8.56,
+  "regime_warning": "",
+  "serving_weight_model": {
+    "isl": 8192,
+    "osl": 1024,
+    "conc": 64,
+    "prefill_chunk": 65536,
+    "analytic_calls": {
+      "prefill": 64,
+      "decode": 1024
+    },
+    "ttft_ms": null,
+    "tpot_ms": null
+  },
+  "num_cases": 5,
+  "weights_provenance": "mixed(prior+trace)",
+  "cases": [
+    {
+      "name": "prefill_M32768",
+      "dims": [
+        [
+          32768,
+          7168
+        ],
+        [
+          768,
+          7168
+        ]
+      ],
+      "dtypes": [
+        "fp8_e4m3(act, per_1x32 mxfp8) x fp4_e2m1_x2(weights, mxfp4) -> fp8_e4m3 + e8m0 scales",
+        "fp8_e4m3(act, per_1x32 mxfp8) x fp4_e2m1_x2(weights, mxfp4) -> fp8_e4m3 + e8m0 scales"
+      ],
+      "count": null,
+      "weight": 222962.825,
+      "weight_source": "trace",
+      "regime": "prefill",
+      "m": 32768,
+      "weight_norm": 0.575007,
+      "quant": {
+        "scheme": "fp8_blockscale",
+        "weight_dtype": "fp8_e4m3(act, per_1x32 mxfp8) x fp4_e2m1_x2(weights, mxfp4) -> fp8_e4m3 + e8m0 scales",
+        "act_dtype": "fp8",
+        "out_dtype": "",
+        "weight_block_size": [
+          128,
+          128
+        ],
+        "scale_dtype": "float32",
+        "kv_cache_dtype": "fp8_e4m3"
+      }
+    },
+    {
+      "name": "decode_M1",
+      "dims": [
+        [
+          1,
+          7168
+        ],
+        [
+          768,
+          7168
+        ]
+      ],
+      "dtypes": [
+        "fp8_e4m3(act, per_1x32 mxfp8) x fp4_e2m1_x2(weights, mxfp4) -> fp8_e4m3 + e8m0 scales",
+        "fp8_e4m3(act, per_1x32 mxfp8) x fp4_e2m1_x2(weights, mxfp4) -> fp8_e4m3 + e8m0 scales"
+      ],
+      "count": null,
+      "weight": 164793.981,
+      "weight_source": "trace",
+      "regime": "decode",
+      "m": 1,
+      "weight_norm": 0.424993,
+      "quant": {
+        "scheme": "fp8_blockscale",
+        "weight_dtype": "fp8_e4m3(act, per_1x32 mxfp8) x fp4_e2m1_x2(weights, mxfp4) -> fp8_e4m3 + e8m0 scales",
+        "act_dtype": "fp8",
+        "out_dtype": "",
+        "weight_block_size": [
+          128,
+          128
+        ],
+        "scale_dtype": "float32",
+        "kv_cache_dtype": "fp8_e4m3"
+      }
+    },
+    {
+      "name": "decode_M64",
+      "dims": [
+        [
+          64,
+          7168
+        ],
+        [
+          768,
+          7168
+        ]
+      ],
+      "dtypes": [
+        "fp8_e4m3(act, per_1x32 mxfp8) x fp4_e2m1_x2(weights, mxfp4) -> fp8_e4m3 + e8m0 scales",
+        "fp8_e4m3(act, per_1x32 mxfp8) x fp4_e2m1_x2(weights, mxfp4) -> fp8_e4m3 + e8m0 scales"
+      ],
+      "count": null,
+      "weight": 0.0,
+      "weight_source": "prior",
+      "regime": "decode",
+      "m": 64,
+      "weight_norm": 0.0,
+      "quant": {
+        "scheme": "fp8_blockscale",
+        "weight_dtype": "fp8_e4m3(act, per_1x32 mxfp8) x fp4_e2m1_x2(weights, mxfp4) -> fp8_e4m3 + e8m0 scales",
+        "act_dtype": "fp8",
+        "out_dtype": "",
+        "weight_block_size": [
+          128,
+          128
+        ],
+        "scale_dtype": "float32",
+        "kv_cache_dtype": "fp8_e4m3"
+      }
+    },
+    {
+      "name": "decode_M256",
+      "dims": [
+        [
+          256,
+          7168
+        ],
+        [
+          768,
+          7168
+        ]
+      ],
+      "dtypes": [
+        "fp8_e4m3(act, per_1x32 mxfp8) x fp4_e2m1_x2(weights, mxfp4) -> fp8_e4m3 + e8m0 scales",
+        "fp8_e4m3(act, per_1x32 mxfp8) x fp4_e2m1_x2(weights, mxfp4) -> fp8_e4m3 + e8m0 scales"
+      ],
+      "count": null,
+      "weight": 0.0,
+      "weight_source": "prior",
+      "regime": "decode",
+      "m": 256,
+      "weight_norm": 0.0,
+      "quant": {
+        "scheme": "fp8_blockscale",
+        "weight_dtype": "fp8_e4m3(act, per_1x32 mxfp8) x fp4_e2m1_x2(weights, mxfp4) -> fp8_e4m3 + e8m0 scales",
+        "act_dtype": "fp8",
+        "out_dtype": "",
+        "weight_block_size": [
+          128,
+          128
+        ],
+        "scale_dtype": "float32",
+        "kv_cache_dtype": "fp8_e4m3"
+      }
+    },
+    {
+      "name": "prefill_M2048",
+      "dims": [
+        [
+          2048,
+          7168
+        ],
+        [
+          768,
+          7168
+        ]
+      ],
+      "dtypes": [
+        "fp8_e4m3(act, per_1x32 mxfp8) x fp4_e2m1_x2(weights, mxfp4) -> fp8_e4m3 + e8m0 scales",
+        "fp8_e4m3(act, per_1x32 mxfp8) x fp4_e2m1_x2(weights, mxfp4) -> fp8_e4m3 + e8m0 scales"
+      ],
+      "count": null,
+      "weight": 0.0,
+      "weight_source": "prior",
+      "regime": "prefill",
+      "m": 2048,
+      "weight_norm": 0.0,
+      "quant": {
+        "scheme": "fp8_blockscale",
+        "weight_dtype": "fp8_e4m3(act, per_1x32 mxfp8) x fp4_e2m1_x2(weights, mxfp4) -> fp8_e4m3 + e8m0 scales",
+        "act_dtype": "fp8",
+        "out_dtype": "",
+        "weight_block_size": [
+          128,
+          128
+        ],
+        "scale_dtype": "float32",
+        "kv_cache_dtype": "fp8_e4m3"
+      }
+    }
+  ],
+  "notes": "op_kind=moe: per-expert token counts are routing-dependent; effective-M buckets from meta drive a GEMM-style regime split. Treat weights as lower-confidence. WARNING: regime 'decode' has meta buckets [64, 256] but ZERO profiled time \u2014 likely a prefill/decode-biased profiling window. Decode-critical serving should set --min-regime-share to avoid ignoring it. WARNING: regime 'prefill' has meta buckets [2048] but ZERO profiled time \u2014 likely a prefill/decode-biased profiling window. Decode-critical serving should set --min-regime-share to avoid ignoring it."
+}

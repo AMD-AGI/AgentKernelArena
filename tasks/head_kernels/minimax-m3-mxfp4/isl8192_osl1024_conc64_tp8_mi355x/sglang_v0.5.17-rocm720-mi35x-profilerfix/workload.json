@@ -1,0 +1,103 @@
+{
+  "schema_version": 1,
+  "model": "MiniMax-M3-MXFP4",
+  "model_slug": "minimax-m3-mxfp4",
+  "workload_slug": "isl8192_osl1024_conc64_tp8_mi355x",
+  "serving_capture": {
+    "input_sequence_length": 8192,
+    "output_sequence_length": 1024,
+    "concurrency": 64,
+    "tensor_parallel_world_size": 8
+  },
+  "device": {
+    "model": "MI355X",
+    "architecture": "gfx950"
+  },
+  "execution_scope": "One rank's isolated operator replay; not an eight-GPU model-serving run.",
+  "image_slug": "sglang_v0.5.17-rocm720-mi35x-profilerfix",
+  "docker": "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.17-rocm720-mi35x-profilerfix",
+  "kernel_count": 3,
+  "kernels": [
+    {
+      "operation_id": "minimax-m3__decode_score_kernel",
+      "kernel_slug": "decode_score_kernel",
+      "selector": "head_kernels/minimax-m3-mxfp4/isl8192_osl1024_conc64_tp8_mi355x/sglang_v0.5.17-rocm720-mi35x-profilerfix/decode_score_kernel",
+      "config": "decode_score_kernel/config.yaml",
+      "shapes": "decode_score_kernel/SHAPES.json",
+      "shape_guide": "decode_score_kernel/SHAPES.md",
+      "backend": "Triton / attention",
+      "runtime": {
+        "image": "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.17-rocm720-mi35x-profilerfix",
+        "expected_image_id": null,
+        "source_commits": {},
+        "gpu_arch": "gfx950",
+        "hip_version": "7.2.x",
+        "required_modules": [
+          "aiter",
+          "sglang",
+          "torch",
+          "triton"
+        ],
+        "package_versions": {
+          "sglang": "0.5.17"
+        },
+        "required_model_types": []
+      },
+      "capture_contract": "Task-local callable, case, oracle and source contracts are authoritative."
+    },
+    {
+      "operation_id": "minimax-m3__gqa_share_sparse_decode_kernel",
+      "kernel_slug": "gqa_share_sparse_decode_kernel",
+      "selector": "head_kernels/minimax-m3-mxfp4/isl8192_osl1024_conc64_tp8_mi355x/sglang_v0.5.17-rocm720-mi35x-profilerfix/gqa_share_sparse_decode_kernel",
+      "config": "gqa_share_sparse_decode_kernel/config.yaml",
+      "shapes": "gqa_share_sparse_decode_kernel/SHAPES.json",
+      "shape_guide": "gqa_share_sparse_decode_kernel/SHAPES.md",
+      "backend": "Triton",
+      "runtime": {
+        "image": "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.17-rocm720-mi35x-profilerfix",
+        "expected_image_id": null,
+        "source_commits": {},
+        "gpu_arch": "gfx950",
+        "hip_version": "7.2.x",
+        "required_modules": [
+          "aiter",
+          "sglang",
+          "torch",
+          "triton"
+        ],
+        "package_versions": {
+          "sglang": "0.5.17"
+        },
+        "required_model_types": []
+      },
+      "capture_contract": "Task-local callable, case, oracle and source contracts are authoritative."
+    },
+    {
+      "operation_id": "minimax-m3__gqa_share_sparse_fwd_kernel",
+      "kernel_slug": "gqa_share_sparse_fwd_kernel",
+      "selector": "head_kernels/minimax-m3-mxfp4/isl8192_osl1024_conc64_tp8_mi355x/sglang_v0.5.17-rocm720-mi35x-profilerfix/gqa_share_sparse_fwd_kernel",
+      "config": "gqa_share_sparse_fwd_kernel/config.yaml",
+      "shapes": "gqa_share_sparse_fwd_kernel/SHAPES.json",
+      "shape_guide": "gqa_share_sparse_fwd_kernel/SHAPES.md",
+      "backend": "triton / attention",
+      "runtime": {
+        "image": "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.17-rocm720-mi35x-profilerfix",
+        "expected_image_id": null,
+        "source_commits": {},
+        "gpu_arch": "gfx950",
+        "hip_version": "7.2.x",
+        "required_modules": [
+          "aiter",
+          "sglang",
+          "torch",
+          "triton"
+        ],
+        "package_versions": {
+          "sglang": "0.5.17"
+        },
+        "required_model_types": []
+      },
+      "capture_contract": "Task-local callable, case, oracle and source contracts are authoritative."
+    }
+  ]
+}

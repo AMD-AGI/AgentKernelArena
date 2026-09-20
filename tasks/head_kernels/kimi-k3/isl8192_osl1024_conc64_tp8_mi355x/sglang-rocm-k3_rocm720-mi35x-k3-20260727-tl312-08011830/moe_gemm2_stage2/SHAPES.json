@@ -1,0 +1,2022 @@
+{
+  "schema_version": 1,
+  "task_id": "kimi-k3__moe_gemm2_stage2",
+  "task_path": ".",
+  "path_base": "task directory",
+  "scope": "Single-GPU callable/operator unit benchmark on MI355X (gfx950). Serving capture context does not define kernel tensor shapes.",
+  "serving_capture_context": {
+    "isl": 8192,
+    "osl": 1024,
+    "concurrency": 64,
+    "tensor_parallel_world_size": 8
+  },
+  "environment_evidence": "config.yaml",
+  "interface": {
+    "target_callable": "aiter.ops.flydsl.moe_kernels:flydsl_moe_stage2",
+    "baseline_callable_recorded": "baseline_src/flydsl/moe_kernels.py:flydsl_moe_stage2",
+    "candidate_bind_recorded": null,
+    "candidate_signatures": [
+      {
+        "callable": "flydsl_moe_stage2",
+        "signature": "flydsl_moe_stage2(inter_states: torch.Tensor, w2: torch.Tensor, sorted_token_ids: torch.Tensor, sorted_expert_ids: torch.Tensor, num_valid_ids: torch.Tensor, out: Optional[torch.Tensor]=None, topk: int=1, *, tile_m: int=32, tile_n: int=128, tile_k: int=256, a_dtype: str='fp8', b_dtype: str='fp4', out_dtype: str='bf16', mode: str='atomic', w2_scale: Optional[torch.Tensor]=None, a2_scale: Optional[torch.Tensor]=None, sorted_weights: Optional[torch.Tensor]=None, sort_block_m: int=0, persist: Optional[bool]=None, waves_per_eu: Optional[int]=None, use_async_copy: bool=False, cu_num_mul: int=1, b_nt: int=0, model_dim_pad: int=0, inter_dim_pad: int=0, xcd_swizzle: int=0, bias: Optional[torch.Tensor]=None, return_per_slot: bool=False, expert_mask: Optional[torch.Tensor]=None, topk_ids: Optional[torch.Tensor]=None)",
+        "evidence": "source/flydsl/moe_kernels.py:1646"
+      }
+    ],
+    "benchmark_adapter": "scripts/_bench.py#selected_cases",
+    "scope": "composite operator: a complete call may launch multiple physical kernels",
+    "profiled_kernel_rows": [
+      {
+        "id": "K3-5",
+        "profiled_kernel": "moe_gemm2_0",
+        "device_symbol": "moe_gemm2_0",
+        "regime": "prefill"
+      }
+    ],
+    "frozen_baseline_signatures": [
+      {
+        "signature": "flydsl_moe_stage2(inter_states: torch.Tensor, w2: torch.Tensor, sorted_token_ids: torch.Tensor, sorted_expert_ids: torch.Tensor, num_valid_ids: torch.Tensor, out: Optional[torch.Tensor]=None, topk: int=1, *, tile_m: int=32, tile_n: int=128, tile_k: int=256, a_dtype: str='fp8', b_dtype: str='fp4', out_dtype: str='bf16', mode: str='atomic', w2_scale: Optional[torch.Tensor]=None, a2_scale: Optional[torch.Tensor]=None, sorted_weights: Optional[torch.Tensor]=None, sort_block_m: int=0, persist: Optional[bool]=None, waves_per_eu: Optional[int]=None, use_async_copy: bool=False, cu_num_mul: int=1, b_nt: int=0, model_dim_pad: int=0, inter_dim_pad: int=0, xcd_swizzle: int=0, bias: Optional[torch.Tensor]=None, return_per_slot: bool=False, expert_mask: Optional[torch.Tensor]=None, topk_ids: Optional[torch.Tensor]=None)",
+        "evidence": "ut/baseline_src/flydsl/moe_kernels.py:1646"
+      }
+    ],
+    "alias_and_mutation_notes": "Caller supplies out[M,3584], which is written and returned. Atomic mode requires zero initialization; reduce mode writes per-slot intermediates then reduces.",
+    "alias_evidence": [
+      "ut/meta.json#/math_contract",
+      "ut/unittest.py:172"
+    ]
+  },
+  "contracts": [
+    {
+      "value": "grouped per-expert GEMM + routing",
+      "evidence": "ut/meta.json#/math_contract"
+    },
+    {
+      "value": "aiter FlyDSL fused MoE stage-2: per-expert down-projection GEMM (afp8 act x mxfp4 w2 -> bf16) over the sorted (token,slot) pairs, plus the top-16 expert combine. Both hot kernels (mfma_moe2_..._cshuffle_t64x256x128_..._acc0 and moe_reduction_kernel_plain_bf16_topk16_md3584) execute inside this ONE call, which is why the call is the timed unit and the byte-reduction lever (fusing the combine into the cshuffle epilogue) is expressible without touching the seam.",
+      "evidence": "ut/meta.json#/description"
+    }
+  ],
+  "metadata_dimensions": {
+    "geometry": {
+      "value": {
+        "num_experts": 896,
+        "topk": 16,
+        "model_dim": 3584,
+        "inter_dim": 384,
+        "decode_sort_block_m": {
+          "1": 32,
+          "64": 32
+        },
+        "prefill_sort_block_m": 64
+      },
+      "evidence": "ut/meta.json#/geometry"
+    },
+    "decode_m_buckets": {
+      "value": [
+        1,
+        64
+      ],
+      "evidence": "ut/meta.json#/decode_m_buckets"
+    },
+    "prefill_m_buckets": {
+      "value": [
+        16384,
+        8192
+      ],
+      "evidence": "ut/meta.json#/prefill_m_buckets"
+    }
+  },
+  "case_inventory": {
+    "metadata_declared_num_cases": null,
+    "shape_record_count": 4,
+    "benchmark_case_count": 4,
+    "benchmark_case_ids": [
+      "prefill_M16384",
+      "prefill_M8192",
+      "decode_M1",
+      "decode_M64"
+    ],
+    "count_note": "Counts describe distinct scopes. Captures, boundary specs, histogram observations and benchmark buckets are not interchangeable."
+  },
+  "benchmark_cases": [
+    {
+      "case_id": "prefill_M16384",
+      "shape_record_id": "prefill_M16384",
+      "regime": "prefill",
+      "evidence": "ut/unittest.py:265"
+    },
+    {
+      "case_id": "prefill_M8192",
+      "shape_record_id": "prefill_M8192",
+      "regime": "prefill",
+      "evidence": "ut/unittest.py:265"
+    },
+    {
+      "case_id": "decode_M1",
+      "shape_record_id": "decode_M1",
+      "regime": "decode",
+      "evidence": "ut/unittest.py:265"
+    },
+    {
+      "case_id": "decode_M64",
+      "shape_record_id": "decode_M64",
+      "regime": "decode",
+      "evidence": "ut/unittest.py:265"
+    }
+  ],
+  "cases": [
+    {
+      "case_id": "prefill_M16384",
+      "regime": "prefill",
+      "evidence": "ut/meta.json#/case_specs/0",
+      "metadata": {
+        "sig": "prefill_M16384",
+        "token_num": 16384,
+        "seed": 1000,
+        "regime": "prefill",
+        "a_shape": [
+          16384,
+          16,
+          384
+        ],
+        "a_dtype_t": "torch.float8_e4m3fn",
+        "w2_shape": [
+          896,
+          3584,
+          192
+        ],
+        "w2_bytes_shape": [
+          896,
+          3584,
+          192
+        ],
+        "w2_dtype_t": "torch.float4_e2m1fn_x2",
+        "w2_scale_shape": [
+          3211264,
+          16
+        ],
+        "a2_scale_shape": [
+          319488,
+          16
+        ],
+        "scale_dtype_t": "torch.float8_e8m0fnu",
+        "kwargs": {
+          "tile_m": 64,
+          "tile_n": 256,
+          "tile_k": 128,
+          "a_dtype": "fp8",
+          "b_dtype": "fp4",
+          "out_dtype": "bf16",
+          "mode": "reduce",
+          "sort_block_m": 0,
+          "persist": null,
+          "use_async_copy": false,
+          "cu_num_mul": 1,
+          "b_nt": 0,
+          "model_dim_pad": 0,
+          "inter_dim_pad": 0,
+          "xcd_swizzle": 0
+        },
+        "caller_allocates_out": true
+      },
+      "tensors": [
+        {
+          "name": "inter_states",
+          "role": "input",
+          "shape": [
+            16384,
+            16,
+            384
+          ],
+          "dtype": "torch.float8_e4m3fn",
+          "strides": [
+            6144,
+            384,
+            1
+          ],
+          "layout": "contiguous generated operand at frozen case shape",
+          "evidence": "ut/unittest.py:102"
+        },
+        {
+          "name": "w2",
+          "role": "input",
+          "shape": [
+            896,
+            3584,
+            192
+          ],
+          "dtype": "torch.float4_e2m1fn_x2",
+          "strides": [
+            688128,
+            192,
+            1
+          ],
+          "layout": "contiguous generated operand at frozen case shape",
+          "evidence": "ut/unittest.py:102"
+        },
+        {
+          "name": "w2_scale",
+          "role": "input",
+          "shape": [
+            3211264,
+            16
+          ],
+          "dtype": "torch.float8_e8m0fnu",
+          "strides": [
+            16,
+            1
+          ],
+          "layout": "contiguous generated operand at frozen case shape",
+          "evidence": "ut/unittest.py:102"
+        },
+        {
+          "name": "a2_scale",
+          "role": "input",
+          "shape": [
+            319488,
+            16
+          ],
+          "dtype": "torch.float8_e8m0fnu",
+          "strides": [
+            16,
+            1
+          ],
+          "layout": "contiguous generated operand at frozen case shape",
+          "evidence": "ut/unittest.py:102"
+        },
+        {
+          "name": "sorted_token_ids",
+          "role": "input",
+          "shape": null,
+          "dtype": "torch.int32",
+          "strides": null,
+          "layout": "frozen real routing; exact shape/stride only in tensor oracle",
+          "evidence": "ut/meta.json#/reference_io_sha256"
+        },
+        {
+          "name": "sorted_expert_ids",
+          "role": "input",
+          "shape": null,
+          "dtype": "torch.int32",
+          "strides": null,
+          "layout": "frozen real routing; exact shape/stride only in tensor oracle",
+          "evidence": "ut/meta.json#/reference_io_sha256"
+        },
+        {
+          "name": "num_valid_ids",
+          "role": "input",
+          "shape": null,
+          "dtype": "torch.int32",
+          "strides": null,
+          "layout": "frozen real routing; exact shape/stride only in tensor oracle",
+          "evidence": "ut/meta.json#/reference_io_sha256"
+        },
+        {
+          "name": "sorted_weights",
+          "role": "input",
+          "shape": null,
+          "dtype": null,
+          "strides": null,
+          "layout": "optional frozen routing operand; presence/shape/stride only in tensor oracle",
+          "evidence": "ut/unittest.py:148"
+        },
+        {
+          "name": "expert_mask",
+          "role": "input",
+          "shape": null,
+          "dtype": null,
+          "strides": null,
+          "layout": "optional frozen routing operand; presence/shape/stride only in tensor oracle",
+          "evidence": "ut/unittest.py:148"
+        },
+        {
+          "name": "topk_ids",
+          "role": "input",
+          "shape": null,
+          "dtype": null,
+          "strides": null,
+          "layout": "optional frozen routing operand; presence/shape/stride only in tensor oracle",
+          "evidence": "ut/unittest.py:148"
+        },
+        {
+          "name": "out",
+          "role": "input_output",
+          "shape": [
+            16384,
+            3584
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            3584,
+            1
+          ],
+          "layout": "caller-owned contiguous; written in place",
+          "evidence": "ut/unittest.py:148"
+        }
+      ],
+      "scalars": {
+        "tile_m": {
+          "value": 64,
+          "evidence": "ut/meta.json#/case_specs/0/kwargs/tile_m",
+          "scope": "call_argument"
+        },
+        "tile_n": {
+          "value": 256,
+          "evidence": "ut/meta.json#/case_specs/0/kwargs/tile_n",
+          "scope": "call_argument"
+        },
+        "tile_k": {
+          "value": 128,
+          "evidence": "ut/meta.json#/case_specs/0/kwargs/tile_k",
+          "scope": "call_argument"
+        },
+        "a_dtype": {
+          "value": "fp8",
+          "evidence": "ut/meta.json#/case_specs/0/kwargs/a_dtype",
+          "scope": "call_argument"
+        },
+        "b_dtype": {
+          "value": "fp4",
+          "evidence": "ut/meta.json#/case_specs/0/kwargs/b_dtype",
+          "scope": "call_argument"
+        },
+        "out_dtype": {
+          "value": "bf16",
+          "evidence": "ut/meta.json#/case_specs/0/kwargs/out_dtype",
+          "scope": "call_argument"
+        },
+        "mode": {
+          "value": "reduce",
+          "evidence": "ut/meta.json#/case_specs/0/kwargs/mode",
+          "scope": "call_argument"
+        },
+        "sort_block_m": {
+          "value": 0,
+          "evidence": "ut/meta.json#/case_specs/0/kwargs/sort_block_m",
+          "scope": "call_argument"
+        },
+        "persist": {
+          "value": null,
+          "evidence": "ut/meta.json#/case_specs/0/kwargs/persist",
+          "scope": "call_argument"
+        },
+        "use_async_copy": {
+          "value": false,
+          "evidence": "ut/meta.json#/case_specs/0/kwargs/use_async_copy",
+          "scope": "call_argument"
+        },
+        "cu_num_mul": {
+          "value": 1,
+          "evidence": "ut/meta.json#/case_specs/0/kwargs/cu_num_mul",
+          "scope": "call_argument"
+        },
+        "b_nt": {
+          "value": 0,
+          "evidence": "ut/meta.json#/case_specs/0/kwargs/b_nt",
+          "scope": "call_argument"
+        },
+        "model_dim_pad": {
+          "value": 0,
+          "evidence": "ut/meta.json#/case_specs/0/kwargs/model_dim_pad",
+          "scope": "call_argument"
+        },
+        "inter_dim_pad": {
+          "value": 0,
+          "evidence": "ut/meta.json#/case_specs/0/kwargs/inter_dim_pad",
+          "scope": "call_argument"
+        },
+        "xcd_swizzle": {
+          "value": 0,
+          "evidence": "ut/meta.json#/case_specs/0/kwargs/xcd_swizzle",
+          "scope": "call_argument"
+        },
+        "topk": {
+          "value": 16,
+          "evidence": "ut/meta.json#/geometry/topk",
+          "scope": "call_argument"
+        }
+      },
+      "outputs": [
+        {
+          "name": "return",
+          "role": "output",
+          "shape": [
+            16384,
+            3584
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            3584,
+            1
+          ],
+          "layout": "aliases supplied output",
+          "evidence": "ut/unittest.py:148",
+          "alias_of": "out"
+        }
+      ],
+      "benchmark_case_ids": [
+        "prefill_M16384"
+      ],
+      "notes": []
+    },
+    {
+      "case_id": "prefill_M8192",
+      "regime": "prefill",
+      "evidence": "ut/meta.json#/case_specs/1",
+      "metadata": {
+        "sig": "prefill_M8192",
+        "token_num": 8192,
+        "seed": 1001,
+        "regime": "prefill",
+        "a_shape": [
+          8192,
+          16,
+          384
+        ],
+        "a_dtype_t": "torch.float8_e4m3fn",
+        "w2_shape": [
+          896,
+          3584,
+          192
+        ],
+        "w2_bytes_shape": [
+          896,
+          3584,
+          192
+        ],
+        "w2_dtype_t": "torch.float4_e2m1fn_x2",
+        "w2_scale_shape": [
+          3211264,
+          16
+        ],
+        "a2_scale_shape": [
+          188416,
+          16
+        ],
+        "scale_dtype_t": "torch.float8_e8m0fnu",
+        "kwargs": {
+          "tile_m": 64,
+          "tile_n": 256,
+          "tile_k": 128,
+          "a_dtype": "fp8",
+          "b_dtype": "fp4",
+          "out_dtype": "bf16",
+          "mode": "reduce",
+          "sort_block_m": 0,
+          "persist": null,
+          "use_async_copy": false,
+          "cu_num_mul": 1,
+          "b_nt": 0,
+          "model_dim_pad": 0,
+          "inter_dim_pad": 0,
+          "xcd_swizzle": 0
+        },
+        "caller_allocates_out": true
+      },
+      "tensors": [
+        {
+          "name": "inter_states",
+          "role": "input",
+          "shape": [
+            8192,
+            16,
+            384
+          ],
+          "dtype": "torch.float8_e4m3fn",
+          "strides": [
+            6144,
+            384,
+            1
+          ],
+          "layout": "contiguous generated operand at frozen case shape",
+          "evidence": "ut/unittest.py:102"
+        },
+        {
+          "name": "w2",
+          "role": "input",
+          "shape": [
+            896,
+            3584,
+            192
+          ],
+          "dtype": "torch.float4_e2m1fn_x2",
+          "strides": [
+            688128,
+            192,
+            1
+          ],
+          "layout": "contiguous generated operand at frozen case shape",
+          "evidence": "ut/unittest.py:102"
+        },
+        {
+          "name": "w2_scale",
+          "role": "input",
+          "shape": [
+            3211264,
+            16
+          ],
+          "dtype": "torch.float8_e8m0fnu",
+          "strides": [
+            16,
+            1
+          ],
+          "layout": "contiguous generated operand at frozen case shape",
+          "evidence": "ut/unittest.py:102"
+        },
+        {
+          "name": "a2_scale",
+          "role": "input",
+          "shape": [
+            188416,
+            16
+          ],
+          "dtype": "torch.float8_e8m0fnu",
+          "strides": [
+            16,
+            1
+          ],
+          "layout": "contiguous generated operand at frozen case shape",
+          "evidence": "ut/unittest.py:102"
+        },
+        {
+          "name": "sorted_token_ids",
+          "role": "input",
+          "shape": null,
+          "dtype": "torch.int32",
+          "strides": null,
+          "layout": "frozen real routing; exact shape/stride only in tensor oracle",
+          "evidence": "ut/meta.json#/reference_io_sha256"
+        },
+        {
+          "name": "sorted_expert_ids",
+          "role": "input",
+          "shape": null,
+          "dtype": "torch.int32",
+          "strides": null,
+          "layout": "frozen real routing; exact shape/stride only in tensor oracle",
+          "evidence": "ut/meta.json#/reference_io_sha256"
+        },
+        {
+          "name": "num_valid_ids",
+          "role": "input",
+          "shape": null,
+          "dtype": "torch.int32",
+          "strides": null,
+          "layout": "frozen real routing; exact shape/stride only in tensor oracle",
+          "evidence": "ut/meta.json#/reference_io_sha256"
+        },
+        {
+          "name": "sorted_weights",
+          "role": "input",
+          "shape": null,
+          "dtype": null,
+          "strides": null,
+          "layout": "optional frozen routing operand; presence/shape/stride only in tensor oracle",
+          "evidence": "ut/unittest.py:148"
+        },
+        {
+          "name": "expert_mask",
+          "role": "input",
+          "shape": null,
+          "dtype": null,
+          "strides": null,
+          "layout": "optional frozen routing operand; presence/shape/stride only in tensor oracle",
+          "evidence": "ut/unittest.py:148"
+        },
+        {
+          "name": "topk_ids",
+          "role": "input",
+          "shape": null,
+          "dtype": null,
+          "strides": null,
+          "layout": "optional frozen routing operand; presence/shape/stride only in tensor oracle",
+          "evidence": "ut/unittest.py:148"
+        },
+        {
+          "name": "out",
+          "role": "input_output",
+          "shape": [
+            8192,
+            3584
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            3584,
+            1
+          ],
+          "layout": "caller-owned contiguous; written in place",
+          "evidence": "ut/unittest.py:148"
+        }
+      ],
+      "scalars": {
+        "tile_m": {
+          "value": 64,
+          "evidence": "ut/meta.json#/case_specs/1/kwargs/tile_m",
+          "scope": "call_argument"
+        },
+        "tile_n": {
+          "value": 256,
+          "evidence": "ut/meta.json#/case_specs/1/kwargs/tile_n",
+          "scope": "call_argument"
+        },
+        "tile_k": {
+          "value": 128,
+          "evidence": "ut/meta.json#/case_specs/1/kwargs/tile_k",
+          "scope": "call_argument"
+        },
+        "a_dtype": {
+          "value": "fp8",
+          "evidence": "ut/meta.json#/case_specs/1/kwargs/a_dtype",
+          "scope": "call_argument"
+        },
+        "b_dtype": {
+          "value": "fp4",
+          "evidence": "ut/meta.json#/case_specs/1/kwargs/b_dtype",
+          "scope": "call_argument"
+        },
+        "out_dtype": {
+          "value": "bf16",
+          "evidence": "ut/meta.json#/case_specs/1/kwargs/out_dtype",
+          "scope": "call_argument"
+        },
+        "mode": {
+          "value": "reduce",
+          "evidence": "ut/meta.json#/case_specs/1/kwargs/mode",
+          "scope": "call_argument"
+        },
+        "sort_block_m": {
+          "value": 0,
+          "evidence": "ut/meta.json#/case_specs/1/kwargs/sort_block_m",
+          "scope": "call_argument"
+        },
+        "persist": {
+          "value": null,
+          "evidence": "ut/meta.json#/case_specs/1/kwargs/persist",
+          "scope": "call_argument"
+        },
+        "use_async_copy": {
+          "value": false,
+          "evidence": "ut/meta.json#/case_specs/1/kwargs/use_async_copy",
+          "scope": "call_argument"
+        },
+        "cu_num_mul": {
+          "value": 1,
+          "evidence": "ut/meta.json#/case_specs/1/kwargs/cu_num_mul",
+          "scope": "call_argument"
+        },
+        "b_nt": {
+          "value": 0,
+          "evidence": "ut/meta.json#/case_specs/1/kwargs/b_nt",
+          "scope": "call_argument"
+        },
+        "model_dim_pad": {
+          "value": 0,
+          "evidence": "ut/meta.json#/case_specs/1/kwargs/model_dim_pad",
+          "scope": "call_argument"
+        },
+        "inter_dim_pad": {
+          "value": 0,
+          "evidence": "ut/meta.json#/case_specs/1/kwargs/inter_dim_pad",
+          "scope": "call_argument"
+        },
+        "xcd_swizzle": {
+          "value": 0,
+          "evidence": "ut/meta.json#/case_specs/1/kwargs/xcd_swizzle",
+          "scope": "call_argument"
+        },
+        "topk": {
+          "value": 16,
+          "evidence": "ut/meta.json#/geometry/topk",
+          "scope": "call_argument"
+        }
+      },
+      "outputs": [
+        {
+          "name": "return",
+          "role": "output",
+          "shape": [
+            8192,
+            3584
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            3584,
+            1
+          ],
+          "layout": "aliases supplied output",
+          "evidence": "ut/unittest.py:148",
+          "alias_of": "out"
+        }
+      ],
+      "benchmark_case_ids": [
+        "prefill_M8192"
+      ],
+      "notes": []
+    },
+    {
+      "case_id": "decode_M1",
+      "regime": "decode",
+      "evidence": "ut/meta.json#/case_specs/2",
+      "metadata": {
+        "sig": "decode_M1",
+        "token_num": 1,
+        "seed": 2000,
+        "regime": "decode",
+        "a_shape": [
+          1,
+          16,
+          384
+        ],
+        "a_dtype_t": "torch.float8_e4m3fn",
+        "w2_shape": [
+          896,
+          3584,
+          192
+        ],
+        "w2_bytes_shape": [
+          896,
+          3584,
+          192
+        ],
+        "w2_dtype_t": "torch.float4_e2m1fn_x2",
+        "w2_scale_shape": [
+          3211264,
+          16
+        ],
+        "a2_scale_shape": [
+          28672,
+          16
+        ],
+        "scale_dtype_t": "torch.float8_e8m0fnu",
+        "kwargs": {
+          "tile_m": 32,
+          "tile_n": 256,
+          "tile_k": 256,
+          "a_dtype": "fp8",
+          "b_dtype": "fp4",
+          "out_dtype": "bf16",
+          "mode": "reduce",
+          "sort_block_m": 0,
+          "persist": null,
+          "use_async_copy": false,
+          "cu_num_mul": 1,
+          "b_nt": 2,
+          "model_dim_pad": 0,
+          "inter_dim_pad": 0,
+          "xcd_swizzle": 0
+        },
+        "caller_allocates_out": true
+      },
+      "tensors": [
+        {
+          "name": "inter_states",
+          "role": "input",
+          "shape": [
+            1,
+            16,
+            384
+          ],
+          "dtype": "torch.float8_e4m3fn",
+          "strides": [
+            6144,
+            384,
+            1
+          ],
+          "layout": "contiguous generated operand at frozen case shape",
+          "evidence": "ut/unittest.py:102"
+        },
+        {
+          "name": "w2",
+          "role": "input",
+          "shape": [
+            896,
+            3584,
+            192
+          ],
+          "dtype": "torch.float4_e2m1fn_x2",
+          "strides": [
+            688128,
+            192,
+            1
+          ],
+          "layout": "contiguous generated operand at frozen case shape",
+          "evidence": "ut/unittest.py:102"
+        },
+        {
+          "name": "w2_scale",
+          "role": "input",
+          "shape": [
+            3211264,
+            16
+          ],
+          "dtype": "torch.float8_e8m0fnu",
+          "strides": [
+            16,
+            1
+          ],
+          "layout": "contiguous generated operand at frozen case shape",
+          "evidence": "ut/unittest.py:102"
+        },
+        {
+          "name": "a2_scale",
+          "role": "input",
+          "shape": [
+            28672,
+            16
+          ],
+          "dtype": "torch.float8_e8m0fnu",
+          "strides": [
+            16,
+            1
+          ],
+          "layout": "contiguous generated operand at frozen case shape",
+          "evidence": "ut/unittest.py:102"
+        },
+        {
+          "name": "sorted_token_ids",
+          "role": "input",
+          "shape": null,
+          "dtype": "torch.int32",
+          "strides": null,
+          "layout": "frozen real routing; exact shape/stride only in tensor oracle",
+          "evidence": "ut/meta.json#/reference_io_sha256"
+        },
+        {
+          "name": "sorted_expert_ids",
+          "role": "input",
+          "shape": null,
+          "dtype": "torch.int32",
+          "strides": null,
+          "layout": "frozen real routing; exact shape/stride only in tensor oracle",
+          "evidence": "ut/meta.json#/reference_io_sha256"
+        },
+        {
+          "name": "num_valid_ids",
+          "role": "input",
+          "shape": null,
+          "dtype": "torch.int32",
+          "strides": null,
+          "layout": "frozen real routing; exact shape/stride only in tensor oracle",
+          "evidence": "ut/meta.json#/reference_io_sha256"
+        },
+        {
+          "name": "sorted_weights",
+          "role": "input",
+          "shape": null,
+          "dtype": null,
+          "strides": null,
+          "layout": "optional frozen routing operand; presence/shape/stride only in tensor oracle",
+          "evidence": "ut/unittest.py:148"
+        },
+        {
+          "name": "expert_mask",
+          "role": "input",
+          "shape": null,
+          "dtype": null,
+          "strides": null,
+          "layout": "optional frozen routing operand; presence/shape/stride only in tensor oracle",
+          "evidence": "ut/unittest.py:148"
+        },
+        {
+          "name": "topk_ids",
+          "role": "input",
+          "shape": null,
+          "dtype": null,
+          "strides": null,
+          "layout": "optional frozen routing operand; presence/shape/stride only in tensor oracle",
+          "evidence": "ut/unittest.py:148"
+        },
+        {
+          "name": "out",
+          "role": "input_output",
+          "shape": [
+            1,
+            3584
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            3584,
+            1
+          ],
+          "layout": "caller-owned contiguous; written in place",
+          "evidence": "ut/unittest.py:148"
+        }
+      ],
+      "scalars": {
+        "tile_m": {
+          "value": 32,
+          "evidence": "ut/meta.json#/case_specs/2/kwargs/tile_m",
+          "scope": "call_argument"
+        },
+        "tile_n": {
+          "value": 256,
+          "evidence": "ut/meta.json#/case_specs/2/kwargs/tile_n",
+          "scope": "call_argument"
+        },
+        "tile_k": {
+          "value": 256,
+          "evidence": "ut/meta.json#/case_specs/2/kwargs/tile_k",
+          "scope": "call_argument"
+        },
+        "a_dtype": {
+          "value": "fp8",
+          "evidence": "ut/meta.json#/case_specs/2/kwargs/a_dtype",
+          "scope": "call_argument"
+        },
+        "b_dtype": {
+          "value": "fp4",
+          "evidence": "ut/meta.json#/case_specs/2/kwargs/b_dtype",
+          "scope": "call_argument"
+        },
+        "out_dtype": {
+          "value": "bf16",
+          "evidence": "ut/meta.json#/case_specs/2/kwargs/out_dtype",
+          "scope": "call_argument"
+        },
+        "mode": {
+          "value": "reduce",
+          "evidence": "ut/meta.json#/case_specs/2/kwargs/mode",
+          "scope": "call_argument"
+        },
+        "sort_block_m": {
+          "value": 0,
+          "evidence": "ut/meta.json#/case_specs/2/kwargs/sort_block_m",
+          "scope": "call_argument"
+        },
+        "persist": {
+          "value": null,
+          "evidence": "ut/meta.json#/case_specs/2/kwargs/persist",
+          "scope": "call_argument"
+        },
+        "use_async_copy": {
+          "value": false,
+          "evidence": "ut/meta.json#/case_specs/2/kwargs/use_async_copy",
+          "scope": "call_argument"
+        },
+        "cu_num_mul": {
+          "value": 1,
+          "evidence": "ut/meta.json#/case_specs/2/kwargs/cu_num_mul",
+          "scope": "call_argument"
+        },
+        "b_nt": {
+          "value": 2,
+          "evidence": "ut/meta.json#/case_specs/2/kwargs/b_nt",
+          "scope": "call_argument"
+        },
+        "model_dim_pad": {
+          "value": 0,
+          "evidence": "ut/meta.json#/case_specs/2/kwargs/model_dim_pad",
+          "scope": "call_argument"
+        },
+        "inter_dim_pad": {
+          "value": 0,
+          "evidence": "ut/meta.json#/case_specs/2/kwargs/inter_dim_pad",
+          "scope": "call_argument"
+        },
+        "xcd_swizzle": {
+          "value": 0,
+          "evidence": "ut/meta.json#/case_specs/2/kwargs/xcd_swizzle",
+          "scope": "call_argument"
+        },
+        "topk": {
+          "value": 16,
+          "evidence": "ut/meta.json#/geometry/topk",
+          "scope": "call_argument"
+        }
+      },
+      "outputs": [
+        {
+          "name": "return",
+          "role": "output",
+          "shape": [
+            1,
+            3584
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            3584,
+            1
+          ],
+          "layout": "aliases supplied output",
+          "evidence": "ut/unittest.py:148",
+          "alias_of": "out"
+        }
+      ],
+      "benchmark_case_ids": [
+        "decode_M1"
+      ],
+      "notes": []
+    },
+    {
+      "case_id": "decode_M64",
+      "regime": "decode",
+      "evidence": "ut/meta.json#/case_specs/3",
+      "metadata": {
+        "sig": "decode_M64",
+        "token_num": 64,
+        "seed": 2001,
+        "regime": "decode",
+        "a_shape": [
+          64,
+          16,
+          384
+        ],
+        "a_dtype_t": "torch.float8_e4m3fn",
+        "w2_shape": [
+          896,
+          3584,
+          192
+        ],
+        "w2_bytes_shape": [
+          896,
+          3584,
+          192
+        ],
+        "w2_dtype_t": "torch.float4_e2m1fn_x2",
+        "w2_scale_shape": [
+          3211264,
+          16
+        ],
+        "a2_scale_shape": [
+          29696,
+          16
+        ],
+        "scale_dtype_t": "torch.float8_e8m0fnu",
+        "kwargs": {
+          "tile_m": 32,
+          "tile_n": 256,
+          "tile_k": 128,
+          "a_dtype": "fp8",
+          "b_dtype": "fp4",
+          "out_dtype": "bf16",
+          "mode": "atomic",
+          "sort_block_m": 0,
+          "persist": true,
+          "use_async_copy": false,
+          "cu_num_mul": 1,
+          "b_nt": 0,
+          "model_dim_pad": 0,
+          "inter_dim_pad": 0,
+          "xcd_swizzle": 0
+        },
+        "caller_allocates_out": true
+      },
+      "tensors": [
+        {
+          "name": "inter_states",
+          "role": "input",
+          "shape": [
+            64,
+            16,
+            384
+          ],
+          "dtype": "torch.float8_e4m3fn",
+          "strides": [
+            6144,
+            384,
+            1
+          ],
+          "layout": "contiguous generated operand at frozen case shape",
+          "evidence": "ut/unittest.py:102"
+        },
+        {
+          "name": "w2",
+          "role": "input",
+          "shape": [
+            896,
+            3584,
+            192
+          ],
+          "dtype": "torch.float4_e2m1fn_x2",
+          "strides": [
+            688128,
+            192,
+            1
+          ],
+          "layout": "contiguous generated operand at frozen case shape",
+          "evidence": "ut/unittest.py:102"
+        },
+        {
+          "name": "w2_scale",
+          "role": "input",
+          "shape": [
+            3211264,
+            16
+          ],
+          "dtype": "torch.float8_e8m0fnu",
+          "strides": [
+            16,
+            1
+          ],
+          "layout": "contiguous generated operand at frozen case shape",
+          "evidence": "ut/unittest.py:102"
+        },
+        {
+          "name": "a2_scale",
+          "role": "input",
+          "shape": [
+            29696,
+            16
+          ],
+          "dtype": "torch.float8_e8m0fnu",
+          "strides": [
+            16,
+            1
+          ],
+          "layout": "contiguous generated operand at frozen case shape",
+          "evidence": "ut/unittest.py:102"
+        },
+        {
+          "name": "sorted_token_ids",
+          "role": "input",
+          "shape": null,
+          "dtype": "torch.int32",
+          "strides": null,
+          "layout": "frozen real routing; exact shape/stride only in tensor oracle",
+          "evidence": "ut/meta.json#/reference_io_sha256"
+        },
+        {
+          "name": "sorted_expert_ids",
+          "role": "input",
+          "shape": null,
+          "dtype": "torch.int32",
+          "strides": null,
+          "layout": "frozen real routing; exact shape/stride only in tensor oracle",
+          "evidence": "ut/meta.json#/reference_io_sha256"
+        },
+        {
+          "name": "num_valid_ids",
+          "role": "input",
+          "shape": null,
+          "dtype": "torch.int32",
+          "strides": null,
+          "layout": "frozen real routing; exact shape/stride only in tensor oracle",
+          "evidence": "ut/meta.json#/reference_io_sha256"
+        },
+        {
+          "name": "sorted_weights",
+          "role": "input",
+          "shape": null,
+          "dtype": null,
+          "strides": null,
+          "layout": "optional frozen routing operand; presence/shape/stride only in tensor oracle",
+          "evidence": "ut/unittest.py:148"
+        },
+        {
+          "name": "expert_mask",
+          "role": "input",
+          "shape": null,
+          "dtype": null,
+          "strides": null,
+          "layout": "optional frozen routing operand; presence/shape/stride only in tensor oracle",
+          "evidence": "ut/unittest.py:148"
+        },
+        {
+          "name": "topk_ids",
+          "role": "input",
+          "shape": null,
+          "dtype": null,
+          "strides": null,
+          "layout": "optional frozen routing operand; presence/shape/stride only in tensor oracle",
+          "evidence": "ut/unittest.py:148"
+        },
+        {
+          "name": "out",
+          "role": "input_output",
+          "shape": [
+            64,
+            3584
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            3584,
+            1
+          ],
+          "layout": "caller-owned contiguous; written in place",
+          "evidence": "ut/unittest.py:148"
+        }
+      ],
+      "scalars": {
+        "tile_m": {
+          "value": 32,
+          "evidence": "ut/meta.json#/case_specs/3/kwargs/tile_m",
+          "scope": "call_argument"
+        },
+        "tile_n": {
+          "value": 256,
+          "evidence": "ut/meta.json#/case_specs/3/kwargs/tile_n",
+          "scope": "call_argument"
+        },
+        "tile_k": {
+          "value": 128,
+          "evidence": "ut/meta.json#/case_specs/3/kwargs/tile_k",
+          "scope": "call_argument"
+        },
+        "a_dtype": {
+          "value": "fp8",
+          "evidence": "ut/meta.json#/case_specs/3/kwargs/a_dtype",
+          "scope": "call_argument"
+        },
+        "b_dtype": {
+          "value": "fp4",
+          "evidence": "ut/meta.json#/case_specs/3/kwargs/b_dtype",
+          "scope": "call_argument"
+        },
+        "out_dtype": {
+          "value": "bf16",
+          "evidence": "ut/meta.json#/case_specs/3/kwargs/out_dtype",
+          "scope": "call_argument"
+        },
+        "mode": {
+          "value": "atomic",
+          "evidence": "ut/meta.json#/case_specs/3/kwargs/mode",
+          "scope": "call_argument"
+        },
+        "sort_block_m": {
+          "value": 0,
+          "evidence": "ut/meta.json#/case_specs/3/kwargs/sort_block_m",
+          "scope": "call_argument"
+        },
+        "persist": {
+          "value": true,
+          "evidence": "ut/meta.json#/case_specs/3/kwargs/persist",
+          "scope": "call_argument"
+        },
+        "use_async_copy": {
+          "value": false,
+          "evidence": "ut/meta.json#/case_specs/3/kwargs/use_async_copy",
+          "scope": "call_argument"
+        },
+        "cu_num_mul": {
+          "value": 1,
+          "evidence": "ut/meta.json#/case_specs/3/kwargs/cu_num_mul",
+          "scope": "call_argument"
+        },
+        "b_nt": {
+          "value": 0,
+          "evidence": "ut/meta.json#/case_specs/3/kwargs/b_nt",
+          "scope": "call_argument"
+        },
+        "model_dim_pad": {
+          "value": 0,
+          "evidence": "ut/meta.json#/case_specs/3/kwargs/model_dim_pad",
+          "scope": "call_argument"
+        },
+        "inter_dim_pad": {
+          "value": 0,
+          "evidence": "ut/meta.json#/case_specs/3/kwargs/inter_dim_pad",
+          "scope": "call_argument"
+        },
+        "xcd_swizzle": {
+          "value": 0,
+          "evidence": "ut/meta.json#/case_specs/3/kwargs/xcd_swizzle",
+          "scope": "call_argument"
+        },
+        "topk": {
+          "value": 16,
+          "evidence": "ut/meta.json#/geometry/topk",
+          "scope": "call_argument"
+        }
+      },
+      "outputs": [
+        {
+          "name": "return",
+          "role": "output",
+          "shape": [
+            64,
+            3584
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            3584,
+            1
+          ],
+          "layout": "aliases supplied output",
+          "evidence": "ut/unittest.py:148",
+          "alias_of": "out"
+        }
+      ],
+      "benchmark_case_ids": [
+        "decode_M64"
+      ],
+      "notes": []
+    }
+  ],
+  "source_inventories": {
+    "cases": {
+      "evidence": "ut/meta.json#/cases",
+      "records": [
+        {
+          "name": "prefill_M16384",
+          "dims": [
+            [
+              16384,
+              3584
+            ],
+            [
+              896,
+              768,
+              1792
+            ],
+            [
+              896,
+              3584,
+              192
+            ]
+          ],
+          "dtypes": [
+            "c10::BFloat16",
+            "c10::Float4_e2m1fn_x2",
+            "c10::Float4_e2m1fn_x2"
+          ],
+          "regime": "prefill"
+        },
+        {
+          "name": "prefill_M8192",
+          "dims": [
+            [
+              8192,
+              3584
+            ],
+            [
+              896,
+              768,
+              1792
+            ],
+            [
+              896,
+              3584,
+              192
+            ]
+          ],
+          "dtypes": [
+            "c10::BFloat16",
+            "c10::Float4_e2m1fn_x2",
+            "c10::Float4_e2m1fn_x2"
+          ],
+          "regime": "prefill"
+        },
+        {
+          "name": "decode_M1",
+          "dims": [
+            [
+              1,
+              3584
+            ],
+            [
+              896,
+              768,
+              1792
+            ],
+            [
+              896,
+              3584,
+              192
+            ]
+          ],
+          "dtypes": [
+            "c10::BFloat16",
+            "c10::Float4_e2m1fn_x2",
+            "c10::Float4_e2m1fn_x2"
+          ],
+          "regime": "decode"
+        },
+        {
+          "name": "decode_M64",
+          "dims": [
+            [
+              64,
+              3584
+            ],
+            [
+              896,
+              768,
+              1792
+            ],
+            [
+              896,
+              3584,
+              192
+            ]
+          ],
+          "dtypes": [
+            "c10::BFloat16",
+            "c10::Float4_e2m1fn_x2",
+            "c10::Float4_e2m1fn_x2"
+          ],
+          "regime": "decode"
+        }
+      ]
+    },
+    "case_specs": {
+      "evidence": "ut/meta.json#/case_specs",
+      "records": [
+        {
+          "sig": "prefill_M16384",
+          "token_num": 16384,
+          "seed": 1000,
+          "regime": "prefill",
+          "a_shape": [
+            16384,
+            16,
+            384
+          ],
+          "a_dtype_t": "torch.float8_e4m3fn",
+          "w2_shape": [
+            896,
+            3584,
+            192
+          ],
+          "w2_bytes_shape": [
+            896,
+            3584,
+            192
+          ],
+          "w2_dtype_t": "torch.float4_e2m1fn_x2",
+          "w2_scale_shape": [
+            3211264,
+            16
+          ],
+          "a2_scale_shape": [
+            319488,
+            16
+          ],
+          "scale_dtype_t": "torch.float8_e8m0fnu",
+          "kwargs": {
+            "tile_m": 64,
+            "tile_n": 256,
+            "tile_k": 128,
+            "a_dtype": "fp8",
+            "b_dtype": "fp4",
+            "out_dtype": "bf16",
+            "mode": "reduce",
+            "sort_block_m": 0,
+            "persist": null,
+            "use_async_copy": false,
+            "cu_num_mul": 1,
+            "b_nt": 0,
+            "model_dim_pad": 0,
+            "inter_dim_pad": 0,
+            "xcd_swizzle": 0
+          },
+          "caller_allocates_out": true
+        },
+        {
+          "sig": "prefill_M8192",
+          "token_num": 8192,
+          "seed": 1001,
+          "regime": "prefill",
+          "a_shape": [
+            8192,
+            16,
+            384
+          ],
+          "a_dtype_t": "torch.float8_e4m3fn",
+          "w2_shape": [
+            896,
+            3584,
+            192
+          ],
+          "w2_bytes_shape": [
+            896,
+            3584,
+            192
+          ],
+          "w2_dtype_t": "torch.float4_e2m1fn_x2",
+          "w2_scale_shape": [
+            3211264,
+            16
+          ],
+          "a2_scale_shape": [
+            188416,
+            16
+          ],
+          "scale_dtype_t": "torch.float8_e8m0fnu",
+          "kwargs": {
+            "tile_m": 64,
+            "tile_n": 256,
+            "tile_k": 128,
+            "a_dtype": "fp8",
+            "b_dtype": "fp4",
+            "out_dtype": "bf16",
+            "mode": "reduce",
+            "sort_block_m": 0,
+            "persist": null,
+            "use_async_copy": false,
+            "cu_num_mul": 1,
+            "b_nt": 0,
+            "model_dim_pad": 0,
+            "inter_dim_pad": 0,
+            "xcd_swizzle": 0
+          },
+          "caller_allocates_out": true
+        },
+        {
+          "sig": "decode_M1",
+          "token_num": 1,
+          "seed": 2000,
+          "regime": "decode",
+          "a_shape": [
+            1,
+            16,
+            384
+          ],
+          "a_dtype_t": "torch.float8_e4m3fn",
+          "w2_shape": [
+            896,
+            3584,
+            192
+          ],
+          "w2_bytes_shape": [
+            896,
+            3584,
+            192
+          ],
+          "w2_dtype_t": "torch.float4_e2m1fn_x2",
+          "w2_scale_shape": [
+            3211264,
+            16
+          ],
+          "a2_scale_shape": [
+            28672,
+            16
+          ],
+          "scale_dtype_t": "torch.float8_e8m0fnu",
+          "kwargs": {
+            "tile_m": 32,
+            "tile_n": 256,
+            "tile_k": 256,
+            "a_dtype": "fp8",
+            "b_dtype": "fp4",
+            "out_dtype": "bf16",
+            "mode": "reduce",
+            "sort_block_m": 0,
+            "persist": null,
+            "use_async_copy": false,
+            "cu_num_mul": 1,
+            "b_nt": 2,
+            "model_dim_pad": 0,
+            "inter_dim_pad": 0,
+            "xcd_swizzle": 0
+          },
+          "caller_allocates_out": true
+        },
+        {
+          "sig": "decode_M64",
+          "token_num": 64,
+          "seed": 2001,
+          "regime": "decode",
+          "a_shape": [
+            64,
+            16,
+            384
+          ],
+          "a_dtype_t": "torch.float8_e4m3fn",
+          "w2_shape": [
+            896,
+            3584,
+            192
+          ],
+          "w2_bytes_shape": [
+            896,
+            3584,
+            192
+          ],
+          "w2_dtype_t": "torch.float4_e2m1fn_x2",
+          "w2_scale_shape": [
+            3211264,
+            16
+          ],
+          "a2_scale_shape": [
+            29696,
+            16
+          ],
+          "scale_dtype_t": "torch.float8_e8m0fnu",
+          "kwargs": {
+            "tile_m": 32,
+            "tile_n": 256,
+            "tile_k": 128,
+            "a_dtype": "fp8",
+            "b_dtype": "fp4",
+            "out_dtype": "bf16",
+            "mode": "atomic",
+            "sort_block_m": 0,
+            "persist": true,
+            "use_async_copy": false,
+            "cu_num_mul": 1,
+            "b_nt": 0,
+            "model_dim_pad": 0,
+            "inter_dim_pad": 0,
+            "xcd_swizzle": 0
+          },
+          "caller_allocates_out": true
+        }
+      ]
+    },
+    "workload/cases": {
+      "evidence": "ut/meta.json#/workload/cases",
+      "records": [
+        {
+          "name": "prefill_M16384",
+          "dims": [
+            [
+              16384,
+              null
+            ],
+            [
+              null,
+              null
+            ]
+          ],
+          "dtypes": [
+            "",
+            ""
+          ],
+          "count": null,
+          "weight": 159541.83209999997,
+          "weight_source": "trace",
+          "regime": "prefill",
+          "m": 16384,
+          "weight_norm": 0.509553,
+          "quant": {
+            "scheme": "mxfp4-pack-quantized",
+            "weight_dtype": "float4_e2m1fn_x2 (mx group_size 32, e8m0 scales)",
+            "act_dtype": "float8_e4m3fn (dynamic per-pair mx quant, e8m0 scales)",
+            "out_dtype": "",
+            "weight_block_size": 32,
+            "scale_dtype": "float32",
+            "kv_cache_dtype": "auto"
+          }
+        },
+        {
+          "name": "decode_M64",
+          "dims": [
+            [
+              64,
+              null
+            ],
+            [
+              null,
+              null
+            ]
+          ],
+          "dtypes": [
+            "",
+            ""
+          ],
+          "count": null,
+          "weight": 75144.35496,
+          "weight_source": "regime_floor",
+          "regime": "decode",
+          "m": 64,
+          "weight_norm": 0.24,
+          "quant": {
+            "scheme": "mxfp4-pack-quantized",
+            "weight_dtype": "float4_e2m1fn_x2 (mx group_size 32, e8m0 scales)",
+            "act_dtype": "float8_e4m3fn (dynamic per-pair mx quant, e8m0 scales)",
+            "out_dtype": "",
+            "weight_block_size": 32,
+            "scale_dtype": "float32",
+            "kv_cache_dtype": "auto"
+          }
+        },
+        {
+          "name": "prefill_M8192",
+          "dims": [
+            [
+              8192,
+              null
+            ],
+            [
+              null,
+              null
+            ]
+          ],
+          "dtypes": [
+            "",
+            ""
+          ],
+          "count": null,
+          "weight": 59629.203199999996,
+          "weight_source": "trace",
+          "regime": "prefill",
+          "m": 8192,
+          "weight_norm": 0.190447,
+          "quant": {
+            "scheme": "mxfp4-pack-quantized",
+            "weight_dtype": "float4_e2m1fn_x2 (mx group_size 32, e8m0 scales)",
+            "act_dtype": "float8_e4m3fn (dynamic per-pair mx quant, e8m0 scales)",
+            "out_dtype": "",
+            "weight_block_size": 32,
+            "scale_dtype": "float32",
+            "kv_cache_dtype": "auto"
+          }
+        },
+        {
+          "name": "decode_M1",
+          "dims": [
+            [
+              1,
+              null
+            ],
+            [
+              null,
+              null
+            ]
+          ],
+          "dtypes": [
+            "",
+            ""
+          ],
+          "count": null,
+          "weight": 18786.08874,
+          "weight_source": "regime_floor",
+          "regime": "decode",
+          "m": 1,
+          "weight_norm": 0.06,
+          "quant": {
+            "scheme": "mxfp4-pack-quantized",
+            "weight_dtype": "float4_e2m1fn_x2 (mx group_size 32, e8m0 scales)",
+            "act_dtype": "float8_e4m3fn (dynamic per-pair mx quant, e8m0 scales)",
+            "out_dtype": "",
+            "weight_block_size": 32,
+            "scale_dtype": "float32",
+            "kv_cache_dtype": "auto"
+          }
+        }
+      ]
+    }
+  },
+  "observed_shape_inventories": [],
+  "dynamic_dimensions": {
+    "evidence": "ut/unittest.py",
+    "policy": "Only dimensions explicitly instantiated by the protected builders are catalogued. Random value draws do not create additional shapes. Routing lengths, live split counts, sparse indices, and physical oracle strides remain runtime data where not recorded.",
+    "builder_entrypoints": {
+      "build_inputs": "ut/unittest.py:102",
+      "build_replay": "ut/unittest.py:182",
+      "timing_cases": "ut/unittest.py:265"
+    },
+    "case_id_and_shape_recipes": []
+  },
+  "unknown_tensor_metadata": [
+    {
+      "case_id": "prefill_M16384",
+      "tensor": "sorted_token_ids",
+      "unknown_fields": [
+        "shape",
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/reference_io_sha256"
+    },
+    {
+      "case_id": "prefill_M16384",
+      "tensor": "sorted_expert_ids",
+      "unknown_fields": [
+        "shape",
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/reference_io_sha256"
+    },
+    {
+      "case_id": "prefill_M16384",
+      "tensor": "num_valid_ids",
+      "unknown_fields": [
+        "shape",
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/reference_io_sha256"
+    },
+    {
+      "case_id": "prefill_M16384",
+      "tensor": "sorted_weights",
+      "unknown_fields": [
+        "shape",
+        "dtype",
+        "strides"
+      ],
+      "evidence": "ut/unittest.py:148"
+    },
+    {
+      "case_id": "prefill_M16384",
+      "tensor": "expert_mask",
+      "unknown_fields": [
+        "shape",
+        "dtype",
+        "strides"
+      ],
+      "evidence": "ut/unittest.py:148"
+    },
+    {
+      "case_id": "prefill_M16384",
+      "tensor": "topk_ids",
+      "unknown_fields": [
+        "shape",
+        "dtype",
+        "strides"
+      ],
+      "evidence": "ut/unittest.py:148"
+    },
+    {
+      "case_id": "prefill_M8192",
+      "tensor": "sorted_token_ids",
+      "unknown_fields": [
+        "shape",
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/reference_io_sha256"
+    },
+    {
+      "case_id": "prefill_M8192",
+      "tensor": "sorted_expert_ids",
+      "unknown_fields": [
+        "shape",
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/reference_io_sha256"
+    },
+    {
+      "case_id": "prefill_M8192",
+      "tensor": "num_valid_ids",
+      "unknown_fields": [
+        "shape",
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/reference_io_sha256"
+    },
+    {
+      "case_id": "prefill_M8192",
+      "tensor": "sorted_weights",
+      "unknown_fields": [
+        "shape",
+        "dtype",
+        "strides"
+      ],
+      "evidence": "ut/unittest.py:148"
+    },
+    {
+      "case_id": "prefill_M8192",
+      "tensor": "expert_mask",
+      "unknown_fields": [
+        "shape",
+        "dtype",
+        "strides"
+      ],
+      "evidence": "ut/unittest.py:148"
+    },
+    {
+      "case_id": "prefill_M8192",
+      "tensor": "topk_ids",
+      "unknown_fields": [
+        "shape",
+        "dtype",
+        "strides"
+      ],
+      "evidence": "ut/unittest.py:148"
+    },
+    {
+      "case_id": "decode_M1",
+      "tensor": "sorted_token_ids",
+      "unknown_fields": [
+        "shape",
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/reference_io_sha256"
+    },
+    {
+      "case_id": "decode_M1",
+      "tensor": "sorted_expert_ids",
+      "unknown_fields": [
+        "shape",
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/reference_io_sha256"
+    },
+    {
+      "case_id": "decode_M1",
+      "tensor": "num_valid_ids",
+      "unknown_fields": [
+        "shape",
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/reference_io_sha256"
+    },
+    {
+      "case_id": "decode_M1",
+      "tensor": "sorted_weights",
+      "unknown_fields": [
+        "shape",
+        "dtype",
+        "strides"
+      ],
+      "evidence": "ut/unittest.py:148"
+    },
+    {
+      "case_id": "decode_M1",
+      "tensor": "expert_mask",
+      "unknown_fields": [
+        "shape",
+        "dtype",
+        "strides"
+      ],
+      "evidence": "ut/unittest.py:148"
+    },
+    {
+      "case_id": "decode_M1",
+      "tensor": "topk_ids",
+      "unknown_fields": [
+        "shape",
+        "dtype",
+        "strides"
+      ],
+      "evidence": "ut/unittest.py:148"
+    },
+    {
+      "case_id": "decode_M64",
+      "tensor": "sorted_token_ids",
+      "unknown_fields": [
+        "shape",
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/reference_io_sha256"
+    },
+    {
+      "case_id": "decode_M64",
+      "tensor": "sorted_expert_ids",
+      "unknown_fields": [
+        "shape",
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/reference_io_sha256"
+    },
+    {
+      "case_id": "decode_M64",
+      "tensor": "num_valid_ids",
+      "unknown_fields": [
+        "shape",
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/reference_io_sha256"
+    },
+    {
+      "case_id": "decode_M64",
+      "tensor": "sorted_weights",
+      "unknown_fields": [
+        "shape",
+        "dtype",
+        "strides"
+      ],
+      "evidence": "ut/unittest.py:148"
+    },
+    {
+      "case_id": "decode_M64",
+      "tensor": "expert_mask",
+      "unknown_fields": [
+        "shape",
+        "dtype",
+        "strides"
+      ],
+      "evidence": "ut/unittest.py:148"
+    },
+    {
+      "case_id": "decode_M64",
+      "tensor": "topk_ids",
+      "unknown_fields": [
+        "shape",
+        "dtype",
+        "strides"
+      ],
+      "evidence": "ut/unittest.py:148"
+    }
+  ],
+  "unknown_benchmark_tensor_overrides": [],
+  "opaque_artifacts": [
+    {
+      "path": "ut/reference_io.pt",
+      "sha256": "5a3fefb2af1c8a2981980d68e4f90085985fd5f0301b69814d85de5c1d801a53",
+      "metadata_evidence": "ut/meta.json#/reference_io_sha256",
+      "inspected": false,
+      "status": "opaque tensor artifact; no pickle deserialization during catalog generation"
+    }
+  ],
+  "sources": [
+    {
+      "path": "ut/meta.json",
+      "sha256": "3aeac3dc5d188c16e169b99755559322f163fdbd80d517c6bbaba06fd6473b78"
+    },
+    {
+      "path": "ut/unittest.py",
+      "sha256": "44d938fff8fe025b6cbc51b2140c8a64d640dbb624ef592021b58a19de9ac50f"
+    },
+    {
+      "path": "config.yaml",
+      "sha256": "cd572e8e1d38221093a60514e416ddb0cf3088681baadae313c59351dfe87484"
+    },
+    {
+      "path": "scripts/source_abi.json",
+      "sha256": "24e310b6c9e605e2d606aeea7146ca8072b0185fd1229995b7c9f6594511d968"
+    },
+    {
+      "path": "ut/workload.json",
+      "sha256": "7d82bf5131e881c02491e25d3f7c788164ee307701e71ef23ac68298612e1fe7"
+    }
+  ],
+  "validation": "Static metadata/AST inspection only. No task module imports, pickle deserialization, tensor loading, GPU execution, or fresh performance validation."
+}

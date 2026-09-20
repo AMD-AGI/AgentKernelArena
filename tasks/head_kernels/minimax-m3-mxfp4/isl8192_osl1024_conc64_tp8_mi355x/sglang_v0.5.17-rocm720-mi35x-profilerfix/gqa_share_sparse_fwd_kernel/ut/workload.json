@@ -1,0 +1,111 @@
+{
+  "schema": "workload-v1",
+  "op_kind": "attn",
+  "kernel": "_gqa_share_sparse_fwd_kernel",
+  "name_match": "_gqa_share_sparse_fwd_kernel",
+  "regime": {
+    "backend": "sglang",
+    "quant": {
+      "method": "quark",
+      "weight_dtype": "quark",
+      "act_dtype": "bf16",
+      "block_size": null,
+      "source": "model_config"
+    },
+    "kv_cache_dtype": "auto",
+    "compile": "eager",
+    "enforce_eager": false,
+    "cuda_graph": true,
+    "attention_backend": "",
+    "prefill_chunk": null,
+    "notes": "kv-cache-dtype=auto -> follows model compute dtype (usually bf16); confirm if fp8 desired."
+  },
+  "served_regimes": [
+    "prefill"
+  ],
+  "quant": {
+    "scheme": "quark",
+    "weight_dtype": "bf16",
+    "act_dtype": "bf16",
+    "out_dtype": "",
+    "weight_block_size": null,
+    "scale_dtype": "float32",
+    "kv_cache_dtype": "auto"
+  },
+  "live_pct_gpu": 21.98,
+  "regime_warning": "",
+  "serving_weight_model": {
+    "isl": 8192,
+    "osl": 1024,
+    "conc": 64,
+    "prefill_chunk": null,
+    "analytic_calls": {
+      "prefill": 64,
+      "decode": 0
+    },
+    "ttft_ms": null,
+    "tpot_ms": null
+  },
+  "num_cases": 3,
+  "weights_provenance": "prior",
+  "cases": [
+    {
+      "name": "block_size_k=128|block_size_q=1|cu_seqblocks_q=T(2,):torch.int32|cu_seqlens=T(2,):torch.int32|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|max_seqblock_q=186|max_seqlen_q=186|prefix_lens=T(1,):torch.int32|q=T(186, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(1,):torch.int32|sink=None|slot_ids=T(1,):torch.int64|sm_scale=None|topk_idx=T(1, 186, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
+      "dims": [],
+      "dtypes": [],
+      "count": null,
+      "weight": 0.0,
+      "weight_source": "prior",
+      "regime": "prefill",
+      "weight_norm": 0.0,
+      "quant": {
+        "scheme": "quark",
+        "weight_dtype": "bf16",
+        "act_dtype": "bf16",
+        "out_dtype": "",
+        "weight_block_size": null,
+        "scale_dtype": "float32",
+        "kv_cache_dtype": "auto"
+      }
+    },
+    {
+      "name": "block_size_k=128|block_size_q=1|cu_seqblocks_q=T(2,):torch.int32|cu_seqlens=T(2,):torch.int32|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|max_seqblock_q=1|max_seqlen_q=1|prefix_lens=T(1,):torch.int32|q=T(1, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(1,):torch.int32|sink=None|slot_ids=T(1,):torch.int64|sm_scale=None|topk_idx=T(1, 1, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
+      "dims": [],
+      "dtypes": [],
+      "count": null,
+      "weight": 0.0,
+      "weight_source": "prior",
+      "regime": "prefill",
+      "weight_norm": 0.0,
+      "quant": {
+        "scheme": "quark",
+        "weight_dtype": "bf16",
+        "act_dtype": "bf16",
+        "out_dtype": "",
+        "weight_block_size": null,
+        "scale_dtype": "float32",
+        "kv_cache_dtype": "auto"
+      }
+    },
+    {
+      "name": "block_size_k=128|block_size_q=1|cu_seqblocks_q=T(2,):torch.int32|cu_seqlens=T(2,):torch.int32|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|max_seqblock_q=8192|max_seqlen_q=8192|prefix_lens=T(1,):torch.int32|q=T(8192, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(1,):torch.int32|sink=None|slot_ids=T(1,):torch.int64|sm_scale=None|topk_idx=T(1, 8192, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
+      "dims": [],
+      "dtypes": [],
+      "count": null,
+      "weight": 0.0,
+      "weight_source": "prior",
+      "regime": "prefill",
+      "weight_norm": 0.0,
+      "quant": {
+        "scheme": "quark",
+        "weight_dtype": "bf16",
+        "act_dtype": "bf16",
+        "out_dtype": "",
+        "weight_block_size": null,
+        "scale_dtype": "float32",
+        "kv_cache_dtype": "auto"
+      }
+    }
+  ],
+  "notes": "WARNING: regime 'prefill' present in meta but ZERO profiled time \u2014 likely a capture-biased window; set --min-regime-share to keep it."
+}

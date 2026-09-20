@@ -1,0 +1,15 @@
+{
+  "modules": [
+    {
+      "module": "sglang.srt.models.kimi_k3",
+      "file": "_patched/sglang.srt.models.kimi_k3.py"
+    },
+    {
+      "module": "sglang.kernels.ops.attention.decode_attention",
+      "file": "_patched/sglang.kernels.ops.attention.decode_attention.py"
+    }
+  ],
+  "rebinds": [],
+  "markers": [],
+  "captures": []
+}

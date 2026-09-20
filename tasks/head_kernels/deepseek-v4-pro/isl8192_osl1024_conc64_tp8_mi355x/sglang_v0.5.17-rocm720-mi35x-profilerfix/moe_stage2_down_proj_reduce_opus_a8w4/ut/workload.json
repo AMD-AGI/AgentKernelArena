@@ -1,0 +1,236 @@
+{
+  "schema": "workload-v1",
+  "op_kind": "moe",
+  "kernel": "moe_stage2_down_proj_reduce_opus_a8w4",
+  "name_match": "opus_moe_stage2",
+  "regime": {
+    "backend": "sglang",
+    "quant": {
+      "method": "fp8_blockscale",
+      "weight_dtype": "fp8_e4m3",
+      "act_dtype": "fp8",
+      "block_size": [
+        128,
+        128
+      ],
+      "source": "model_config"
+    },
+    "kv_cache_dtype": "fp8_e4m3",
+    "compile": "eager",
+    "enforce_eager": false,
+    "cuda_graph": true,
+    "attention_backend": "dsv4",
+    "prefill_chunk": 65536,
+    "notes": ""
+  },
+  "served_regimes": [
+    "decode",
+    "prefill"
+  ],
+  "quant": {
+    "scheme": "fp8_blockscale",
+    "weight_dtype": "fp8_e4m3(inter_states, per_1x32 mxfp8) x fp4_e2m1_x2(w2, mxfp4) + e8m0 block scales -> bf16",
+    "act_dtype": "fp8",
+    "out_dtype": "",
+    "weight_block_size": [
+      128,
+      128
+    ],
+    "scale_dtype": "float32",
+    "kv_cache_dtype": "fp8_e4m3"
+  },
+  "live_pct_gpu": 5.91,
+  "regime_warning": "",
+  "serving_weight_model": {
+    "isl": 8192,
+    "osl": 1024,
+    "conc": 64,
+    "prefill_chunk": 65536,
+    "analytic_calls": {
+      "prefill": 64,
+      "decode": 1024
+    },
+    "ttft_ms": null,
+    "tpot_ms": null
+  },
+  "num_cases": 5,
+  "weights_provenance": "mixed(prior+regime_floor+trace)",
+  "cases": [
+    {
+      "name": "decode_M1",
+      "dims": [
+        [
+          1,
+          6
+        ],
+        [
+          384,
+          6
+        ]
+      ],
+      "dtypes": [
+        "fp8_e4m3(inter_states, per_1x32 mxfp8) x fp4_e2m1_x2(w2, mxfp4) + e8m0 block scales -> bf16",
+        "fp8_e4m3(inter_states, per_1x32 mxfp8) x fp4_e2m1_x2(w2, mxfp4) + e8m0 block scales -> bf16"
+      ],
+      "count": null,
+      "weight": 187272.27189999996,
+      "weight_source": "trace",
+      "regime": "decode",
+      "m": 1,
+      "weight_norm": 0.7,
+      "quant": {
+        "scheme": "fp8_blockscale",
+        "weight_dtype": "fp8_e4m3(inter_states, per_1x32 mxfp8) x fp4_e2m1_x2(w2, mxfp4) + e8m0 block scales -> bf16",
+        "act_dtype": "fp8",
+        "out_dtype": "",
+        "weight_block_size": [
+          128,
+          128
+        ],
+        "scale_dtype": "float32",
+        "kv_cache_dtype": "fp8_e4m3"
+      }
+    },
+    {
+      "name": "prefill_M32768",
+      "dims": [
+        [
+          32768,
+          6
+        ],
+        [
+          384,
+          6
+        ]
+      ],
+      "dtypes": [
+        "fp8_e4m3(inter_states, per_1x32 mxfp8) x fp4_e2m1_x2(w2, mxfp4) + e8m0 block scales -> bf16",
+        "fp8_e4m3(inter_states, per_1x32 mxfp8) x fp4_e2m1_x2(w2, mxfp4) + e8m0 block scales -> bf16"
+      ],
+      "count": null,
+      "weight": 75538.39538823528,
+      "weight_source": "regime_floor",
+      "regime": "prefill",
+      "m": 32768,
+      "weight_norm": 0.282353,
+      "quant": {
+        "scheme": "fp8_blockscale",
+        "weight_dtype": "fp8_e4m3(inter_states, per_1x32 mxfp8) x fp4_e2m1_x2(w2, mxfp4) + e8m0 block scales -> bf16",
+        "act_dtype": "fp8",
+        "out_dtype": "",
+        "weight_block_size": [
+          128,
+          128
+        ],
+        "scale_dtype": "float32",
+        "kv_cache_dtype": "fp8_e4m3"
+      }
+    },
+    {
+      "name": "prefill_M2048",
+      "dims": [
+        [
+          2048,
+          6
+        ],
+        [
+          384,
+          6
+        ]
+      ],
+      "dtypes": [
+        "fp8_e4m3(inter_states, per_1x32 mxfp8) x fp4_e2m1_x2(w2, mxfp4) + e8m0 block scales -> bf16",
+        "fp8_e4m3(inter_states, per_1x32 mxfp8) x fp4_e2m1_x2(w2, mxfp4) + e8m0 block scales -> bf16"
+      ],
+      "count": null,
+      "weight": 4721.149711764705,
+      "weight_source": "regime_floor",
+      "regime": "prefill",
+      "m": 2048,
+      "weight_norm": 0.017647,
+      "quant": {
+        "scheme": "fp8_blockscale",
+        "weight_dtype": "fp8_e4m3(inter_states, per_1x32 mxfp8) x fp4_e2m1_x2(w2, mxfp4) + e8m0 block scales -> bf16",
+        "act_dtype": "fp8",
+        "out_dtype": "",
+        "weight_block_size": [
+          128,
+          128
+        ],
+        "scale_dtype": "float32",
+        "kv_cache_dtype": "fp8_e4m3"
+      }
+    },
+    {
+      "name": "decode_M64",
+      "dims": [
+        [
+          64,
+          6
+        ],
+        [
+          384,
+          6
+        ]
+      ],
+      "dtypes": [
+        "fp8_e4m3(inter_states, per_1x32 mxfp8) x fp4_e2m1_x2(w2, mxfp4) + e8m0 block scales -> bf16",
+        "fp8_e4m3(inter_states, per_1x32 mxfp8) x fp4_e2m1_x2(w2, mxfp4) + e8m0 block scales -> bf16"
+      ],
+      "count": null,
+      "weight": 0.0,
+      "weight_source": "prior",
+      "regime": "decode",
+      "m": 64,
+      "weight_norm": 0.0,
+      "quant": {
+        "scheme": "fp8_blockscale",
+        "weight_dtype": "fp8_e4m3(inter_states, per_1x32 mxfp8) x fp4_e2m1_x2(w2, mxfp4) + e8m0 block scales -> bf16",
+        "act_dtype": "fp8",
+        "out_dtype": "",
+        "weight_block_size": [
+          128,
+          128
+        ],
+        "scale_dtype": "float32",
+        "kv_cache_dtype": "fp8_e4m3"
+      }
+    },
+    {
+      "name": "decode_M256",
+      "dims": [
+        [
+          256,
+          6
+        ],
+        [
+          384,
+          6
+        ]
+      ],
+      "dtypes": [
+        "fp8_e4m3(inter_states, per_1x32 mxfp8) x fp4_e2m1_x2(w2, mxfp4) + e8m0 block scales -> bf16",
+        "fp8_e4m3(inter_states, per_1x32 mxfp8) x fp4_e2m1_x2(w2, mxfp4) + e8m0 block scales -> bf16"
+      ],
+      "count": null,
+      "weight": 0.0,
+      "weight_source": "prior",
+      "regime": "decode",
+      "m": 256,
+      "weight_norm": 0.0,
+      "quant": {
+        "scheme": "fp8_blockscale",
+        "weight_dtype": "fp8_e4m3(inter_states, per_1x32 mxfp8) x fp4_e2m1_x2(w2, mxfp4) + e8m0 block scales -> bf16",
+        "act_dtype": "fp8",
+        "out_dtype": "",
+        "weight_block_size": [
+          128,
+          128
+        ],
+        "scale_dtype": "float32",
+        "kv_cache_dtype": "fp8_e4m3"
+      }
+    }
+  ],
+  "notes": "op_kind=moe: per-expert token counts are routing-dependent; effective-M buckets from meta drive a GEMM-style regime split. Treat weights as lower-confidence. WARNING: regime 'decode' has meta buckets [64, 256] but ZERO profiled time \u2014 likely a prefill/decode-biased profiling window. Decode-critical serving should set --min-regime-share to avoid ignoring it. WARNING: regime 'prefill' has meta buckets [2048, 32768] but ZERO profiled time \u2014 likely a prefill/decode-biased profiling window. Decode-critical serving should set --min-regime-share to avoid ignoring it. applied --min-regime-share 0.3: floored regimes ['prefill']."
+}

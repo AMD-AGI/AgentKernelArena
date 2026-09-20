@@ -1,0 +1,3 @@
+# Provisioned tensors and generated baseline caches stay local.
+*/ut/*.pt
+*/ut/.*.partial

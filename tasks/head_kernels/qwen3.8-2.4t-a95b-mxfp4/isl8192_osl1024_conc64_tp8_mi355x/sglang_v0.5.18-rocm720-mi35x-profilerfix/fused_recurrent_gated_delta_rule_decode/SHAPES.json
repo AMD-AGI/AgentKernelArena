@@ -1,0 +1,1334 @@
+{
+  "schema_version": 1,
+  "task_id": "qwen3.8-2.4t__fused_recurrent_gated_delta_rule_decode",
+  "task_path": ".",
+  "path_base": "task directory",
+  "scope": "Single-GPU callable/operator unit benchmark on MI355X (gfx950). Serving capture context does not define kernel tensor shapes.",
+  "serving_capture_context": {
+    "isl": 8192,
+    "osl": 1024,
+    "concurrency": 64,
+    "tensor_parallel_world_size": 8
+  },
+  "environment_evidence": "config.yaml",
+  "interface": {
+    "target_callable": "sglang.srt.layers.attention.linear.kernels.gdn_triton:fused_recurrent_gated_delta_rule_packed_decode",
+    "baseline_callable_recorded": null,
+    "candidate_bind_recorded": {
+      "file": "kernel_src/fused_recurrent.py",
+      "impl_attr": "fused_recurrent_gated_delta_rule_packed_decode",
+      "impl_module": "fused_recurrent",
+      "kind": "rebind",
+      "target": "sglang.srt.layers.attention.linear.kernels.gdn_triton:fused_recurrent_gated_delta_rule_packed_decode"
+    },
+    "candidate_signatures": [
+      {
+        "callable": "fused_recurrent_gated_delta_rule_packed_decode",
+        "signature": "fused_recurrent_gated_delta_rule_packed_decode(mixed_qkv: torch.Tensor, a: torch.Tensor, b: torch.Tensor, A_log: torch.Tensor, dt_bias: torch.Tensor, scale: float, initial_state: torch.Tensor, out: torch.Tensor, ssm_state_indices: torch.Tensor, use_qk_l2norm_in_kernel: bool=False)",
+        "evidence": "source/fused_recurrent.py:268"
+      }
+    ],
+    "benchmark_adapter": "scripts/_bench.py#selected_cases",
+    "scope": "selected callable seam; kernel launch count is not asserted by this catalog",
+    "profiled_kernel_rows": [
+      {
+        "id": "Q38-10",
+        "profiled_kernel": "fused_recurrent_gated_delta_rule_packed_decode_kernel",
+        "device_symbol": "fused_recurrent_gated_delta_rule_packed_decode_kernel",
+        "regime": "decode"
+      }
+    ],
+    "frozen_baseline_signatures": [
+      {
+        "signature": "fused_recurrent_gated_delta_rule_packed_decode(mixed_qkv: torch.Tensor, a: torch.Tensor, b: torch.Tensor, A_log: torch.Tensor, dt_bias: torch.Tensor, scale: float, initial_state: torch.Tensor, out: torch.Tensor, ssm_state_indices: torch.Tensor, use_qk_l2norm_in_kernel: bool=False)",
+        "evidence": "ut/baseline_ref/fused_recurrent.py.orig:268"
+      }
+    ],
+    "alias_and_mutation_notes": "Returns the same (out, initial_state) buffers. Both mutate in place; initial_state updates only ssm_state_indices. Other inputs are immutable.",
+    "alias_evidence": [
+      "ut/meta.json#/math_contract",
+      "ut/cases.py:37"
+    ]
+  },
+  "contracts": [
+    {
+      "value": "One packed decode gated-delta step writes out in place and updates initial_state at ssm_state_indices in place, returning the same two buffers as (out, initial_state).",
+      "evidence": "ut/meta.json#/math_contract"
+    },
+    {
+      "value": "Live eager capture from the production callable is authoritative for values, routing, layout, output, and recurrent-state transition; deployment CUDA-graph behavior is checked separately by capture-once/replay-many in unittest.py.",
+      "evidence": "ut/meta.json#/oracle_policy"
+    },
+    {
+      "value": "The first graph-construction capture was rejected as vacuous. This promoted oracle was recaptured from the same workload with CUDA graph disabled solely so the Python seam observed real request buffers: B=64 carries 64 distinct state slots and B=1 carries slot 2. The UT restores each pre-call state/output buffer and separately reenables fixed-buffer CUDA-graph replay across B=64 and B=1.",
+      "evidence": "ut/meta.json#/notes"
+    }
+  ],
+  "metadata_dimensions": {
+    "geometry": {
+      "value": {
+        "H": 2,
+        "HV": 16,
+        "K": 128,
+        "V": 128,
+        "qkv_dim": 2560,
+        "scale": 0.08838834764831845,
+        "state_pool_slots": 199,
+        "use_qk_l2norm_in_kernel": true
+      },
+      "evidence": "ut/meta.json#/geometry"
+    },
+    "case_entrypoints": {
+      "value": {
+        "hk10": "live_decode_recurrent"
+      },
+      "evidence": "ut/meta.json#/case_entrypoints"
+    }
+  },
+  "case_inventory": {
+    "metadata_declared_num_cases": 2,
+    "shape_record_count": 2,
+    "benchmark_case_count": 2,
+    "benchmark_case_ids": [
+      "decode_b64_live",
+      "decode_b1_live"
+    ],
+    "count_note": "Counts describe distinct scopes. Captures, boundary specs, histogram observations and benchmark buckets are not interchangeable."
+  },
+  "benchmark_cases": [
+    {
+      "case_id": "decode_b64_live",
+      "shape_record_id": "A_log=T(16,):torch.float32|a=T(64, 16):torch.bfloat16|b=T(64, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(64, 2560):torch.bfloat16|out=T(64, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(64,):torch.int32|use_qk_l2norm_in_kernel=True",
+      "regime": "decode",
+      "evidence": "ut/cases.py:127",
+      "notes": "Fresh contiguous timing tensors use geometry and exact state_indices in meta.workload.cases; capture strides are not reused.",
+      "tensor_overrides": [
+        {
+          "name": "A_log",
+          "shape": [
+            16
+          ],
+          "dtype": "torch.float32",
+          "strides": [
+            1
+          ],
+          "layout": "contiguous generated timing tensor",
+          "evidence": "ut/cases.py:97"
+        },
+        {
+          "name": "a",
+          "shape": [
+            64,
+            16
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            16,
+            1
+          ],
+          "layout": "contiguous generated timing tensor",
+          "evidence": "ut/cases.py:97"
+        },
+        {
+          "name": "b",
+          "shape": [
+            64,
+            16
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            16,
+            1
+          ],
+          "layout": "contiguous generated timing tensor",
+          "evidence": "ut/cases.py:97"
+        },
+        {
+          "name": "dt_bias",
+          "shape": [
+            16
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            1
+          ],
+          "layout": "contiguous generated timing tensor",
+          "evidence": "ut/cases.py:97"
+        },
+        {
+          "name": "initial_state",
+          "shape": [
+            199,
+            16,
+            128,
+            128
+          ],
+          "dtype": "torch.float32",
+          "strides": [
+            262144,
+            16384,
+            128,
+            1
+          ],
+          "layout": "contiguous generated timing tensor",
+          "evidence": "ut/cases.py:97"
+        },
+        {
+          "name": "mixed_qkv",
+          "shape": [
+            64,
+            2560
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            2560,
+            1
+          ],
+          "layout": "contiguous generated timing tensor",
+          "evidence": "ut/cases.py:97"
+        },
+        {
+          "name": "out",
+          "shape": [
+            64,
+            1,
+            16,
+            128
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            2048,
+            2048,
+            128,
+            1
+          ],
+          "layout": "contiguous generated timing tensor",
+          "evidence": "ut/cases.py:97"
+        },
+        {
+          "name": "ssm_state_indices",
+          "shape": [
+            64
+          ],
+          "dtype": "torch.int32",
+          "strides": [
+            1
+          ],
+          "layout": "contiguous generated timing tensor",
+          "evidence": "ut/cases.py:97"
+        }
+      ],
+      "prescribed_tensor_values": {
+        "ssm_state_indices": [
+          8,
+          29,
+          30,
+          92,
+          93,
+          153,
+          154,
+          15,
+          16,
+          74,
+          75,
+          76,
+          131,
+          132,
+          185,
+          186,
+          42,
+          43,
+          95,
+          96,
+          143,
+          144,
+          191,
+          192,
+          40,
+          41,
+          85,
+          86,
+          127,
+          128,
+          169,
+          170,
+          10,
+          11,
+          50,
+          51,
+          83,
+          84,
+          117,
+          118,
+          149,
+          150,
+          177,
+          178,
+          5,
+          6,
+          32,
+          33,
+          56,
+          57,
+          72,
+          73,
+          97,
+          98,
+          109,
+          110,
+          121,
+          122,
+          133,
+          134,
+          139,
+          140,
+          145,
+          146
+        ]
+      }
+    },
+    {
+      "case_id": "decode_b1_live",
+      "shape_record_id": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True",
+      "regime": "decode",
+      "evidence": "ut/cases.py:127",
+      "notes": "Fresh contiguous timing tensors use geometry and exact state_indices in meta.workload.cases; capture strides are not reused.",
+      "tensor_overrides": [
+        {
+          "name": "A_log",
+          "shape": [
+            16
+          ],
+          "dtype": "torch.float32",
+          "strides": [
+            1
+          ],
+          "layout": "contiguous generated timing tensor",
+          "evidence": "ut/cases.py:97"
+        },
+        {
+          "name": "a",
+          "shape": [
+            1,
+            16
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            16,
+            1
+          ],
+          "layout": "contiguous generated timing tensor",
+          "evidence": "ut/cases.py:97"
+        },
+        {
+          "name": "b",
+          "shape": [
+            1,
+            16
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            16,
+            1
+          ],
+          "layout": "contiguous generated timing tensor",
+          "evidence": "ut/cases.py:97"
+        },
+        {
+          "name": "dt_bias",
+          "shape": [
+            16
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            1
+          ],
+          "layout": "contiguous generated timing tensor",
+          "evidence": "ut/cases.py:97"
+        },
+        {
+          "name": "initial_state",
+          "shape": [
+            199,
+            16,
+            128,
+            128
+          ],
+          "dtype": "torch.float32",
+          "strides": [
+            262144,
+            16384,
+            128,
+            1
+          ],
+          "layout": "contiguous generated timing tensor",
+          "evidence": "ut/cases.py:97"
+        },
+        {
+          "name": "mixed_qkv",
+          "shape": [
+            1,
+            2560
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            2560,
+            1
+          ],
+          "layout": "contiguous generated timing tensor",
+          "evidence": "ut/cases.py:97"
+        },
+        {
+          "name": "out",
+          "shape": [
+            1,
+            1,
+            16,
+            128
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            2048,
+            2048,
+            128,
+            1
+          ],
+          "layout": "contiguous generated timing tensor",
+          "evidence": "ut/cases.py:97"
+        },
+        {
+          "name": "ssm_state_indices",
+          "shape": [
+            1
+          ],
+          "dtype": "torch.int32",
+          "strides": [
+            1
+          ],
+          "layout": "contiguous generated timing tensor",
+          "evidence": "ut/cases.py:97"
+        }
+      ],
+      "prescribed_tensor_values": {
+        "ssm_state_indices": [
+          2
+        ]
+      }
+    }
+  ],
+  "cases": [
+    {
+      "case_id": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True",
+      "regime": "decode",
+      "evidence": "ut/meta.json#/cases/0",
+      "metadata": {
+        "count": 2829,
+        "input_dtypes": [
+          "torch.bfloat16",
+          "torch.float32",
+          "torch.int32"
+        ],
+        "input_shapes": [
+          [
+            1,
+            2560
+          ],
+          [
+            1,
+            16
+          ],
+          [
+            1,
+            16
+          ],
+          [
+            16
+          ],
+          [
+            16
+          ],
+          [
+            1,
+            1,
+            16,
+            128
+          ],
+          [
+            1
+          ]
+        ],
+        "regime": "decode",
+        "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+      },
+      "tensors": [
+        {
+          "name": "A_log",
+          "role": "input",
+          "shape": [
+            16
+          ],
+          "dtype": "torch.float32",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/cases/0"
+        },
+        {
+          "name": "a",
+          "role": "input",
+          "shape": [
+            1,
+            16
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/cases/0"
+        },
+        {
+          "name": "b",
+          "role": "input",
+          "shape": [
+            1,
+            16
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/cases/0"
+        },
+        {
+          "name": "dt_bias",
+          "role": "input",
+          "shape": [
+            16
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/cases/0"
+        },
+        {
+          "name": "initial_state",
+          "role": "input_output",
+          "shape": [
+            199,
+            16,
+            128,
+            128
+          ],
+          "dtype": "torch.float32",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/cases/0"
+        },
+        {
+          "name": "mixed_qkv",
+          "role": "input",
+          "shape": [
+            1,
+            2560
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/cases/0"
+        },
+        {
+          "name": "out",
+          "role": "input_output",
+          "shape": [
+            1,
+            1,
+            16,
+            128
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/cases/0"
+        },
+        {
+          "name": "ssm_state_indices",
+          "role": "input",
+          "shape": [
+            1
+          ],
+          "dtype": "torch.int32",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/cases/0"
+        }
+      ],
+      "scalars": {
+        "scale": {
+          "value": 0.08838834764831845,
+          "evidence": "ut/meta.json#/cases/0",
+          "scope": "call_argument"
+        },
+        "use_qk_l2norm_in_kernel": {
+          "value": true,
+          "evidence": "ut/meta.json#/cases/0",
+          "scope": "call_argument"
+        }
+      },
+      "outputs": [
+        {
+          "name": "return[0]",
+          "role": "output",
+          "shape": [
+            1,
+            1,
+            16,
+            128
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/math_contract",
+          "alias_of": "out"
+        },
+        {
+          "name": "return[1]",
+          "role": "output",
+          "shape": [
+            199,
+            16,
+            128,
+            128
+          ],
+          "dtype": "torch.float32",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/math_contract",
+          "alias_of": "initial_state"
+        }
+      ],
+      "benchmark_case_ids": [
+        "decode_b1_live"
+      ],
+      "notes": []
+    },
+    {
+      "case_id": "A_log=T(16,):torch.float32|a=T(64, 16):torch.bfloat16|b=T(64, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(64, 2560):torch.bfloat16|out=T(64, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(64,):torch.int32|use_qk_l2norm_in_kernel=True",
+      "regime": "decode",
+      "evidence": "ut/meta.json#/cases/1",
+      "metadata": {
+        "count": 70656,
+        "input_dtypes": [
+          "torch.bfloat16",
+          "torch.float32",
+          "torch.int32"
+        ],
+        "input_shapes": [
+          [
+            64,
+            2560
+          ],
+          [
+            64,
+            16
+          ],
+          [
+            64,
+            16
+          ],
+          [
+            16
+          ],
+          [
+            16
+          ],
+          [
+            64,
+            1,
+            16,
+            128
+          ],
+          [
+            64
+          ]
+        ],
+        "regime": "decode",
+        "sig": "A_log=T(16,):torch.float32|a=T(64, 16):torch.bfloat16|b=T(64, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(64, 2560):torch.bfloat16|out=T(64, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(64,):torch.int32|use_qk_l2norm_in_kernel=True"
+      },
+      "tensors": [
+        {
+          "name": "A_log",
+          "role": "input",
+          "shape": [
+            16
+          ],
+          "dtype": "torch.float32",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/cases/1"
+        },
+        {
+          "name": "a",
+          "role": "input",
+          "shape": [
+            64,
+            16
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/cases/1"
+        },
+        {
+          "name": "b",
+          "role": "input",
+          "shape": [
+            64,
+            16
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/cases/1"
+        },
+        {
+          "name": "dt_bias",
+          "role": "input",
+          "shape": [
+            16
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/cases/1"
+        },
+        {
+          "name": "initial_state",
+          "role": "input_output",
+          "shape": [
+            199,
+            16,
+            128,
+            128
+          ],
+          "dtype": "torch.float32",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/cases/1"
+        },
+        {
+          "name": "mixed_qkv",
+          "role": "input",
+          "shape": [
+            64,
+            2560
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/cases/1"
+        },
+        {
+          "name": "out",
+          "role": "input_output",
+          "shape": [
+            64,
+            1,
+            16,
+            128
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/cases/1"
+        },
+        {
+          "name": "ssm_state_indices",
+          "role": "input",
+          "shape": [
+            64
+          ],
+          "dtype": "torch.int32",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/cases/1"
+        }
+      ],
+      "scalars": {
+        "scale": {
+          "value": 0.08838834764831845,
+          "evidence": "ut/meta.json#/cases/1",
+          "scope": "call_argument"
+        },
+        "use_qk_l2norm_in_kernel": {
+          "value": true,
+          "evidence": "ut/meta.json#/cases/1",
+          "scope": "call_argument"
+        }
+      },
+      "outputs": [
+        {
+          "name": "return[0]",
+          "role": "output",
+          "shape": [
+            64,
+            1,
+            16,
+            128
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/math_contract",
+          "alias_of": "out"
+        },
+        {
+          "name": "return[1]",
+          "role": "output",
+          "shape": [
+            199,
+            16,
+            128,
+            128
+          ],
+          "dtype": "torch.float32",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/math_contract",
+          "alias_of": "initial_state"
+        }
+      ],
+      "benchmark_case_ids": [
+        "decode_b64_live"
+      ],
+      "notes": []
+    }
+  ],
+  "source_inventories": {
+    "cases": {
+      "evidence": "ut/meta.json#/cases",
+      "records": [
+        {
+          "count": 2829,
+          "input_dtypes": [
+            "torch.bfloat16",
+            "torch.float32",
+            "torch.int32"
+          ],
+          "input_shapes": [
+            [
+              1,
+              2560
+            ],
+            [
+              1,
+              16
+            ],
+            [
+              1,
+              16
+            ],
+            [
+              16
+            ],
+            [
+              16
+            ],
+            [
+              1,
+              1,
+              16,
+              128
+            ],
+            [
+              1
+            ]
+          ],
+          "regime": "decode",
+          "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+        },
+        {
+          "count": 70656,
+          "input_dtypes": [
+            "torch.bfloat16",
+            "torch.float32",
+            "torch.int32"
+          ],
+          "input_shapes": [
+            [
+              64,
+              2560
+            ],
+            [
+              64,
+              16
+            ],
+            [
+              64,
+              16
+            ],
+            [
+              16
+            ],
+            [
+              16
+            ],
+            [
+              64,
+              1,
+              16,
+              128
+            ],
+            [
+              64
+            ]
+          ],
+          "regime": "decode",
+          "sig": "A_log=T(16,):torch.float32|a=T(64, 16):torch.bfloat16|b=T(64, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(64, 2560):torch.bfloat16|out=T(64, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(64,):torch.int32|use_qk_l2norm_in_kernel=True"
+        }
+      ]
+    },
+    "workload/cases": {
+      "evidence": "ut/meta.json#/workload/cases",
+      "records": [
+        {
+          "B": 64,
+          "count": 70656,
+          "m": 64,
+          "name": "decode_b64_live",
+          "regime": "decode",
+          "sig": "decode_b64_live",
+          "state_indices": [
+            8,
+            29,
+            30,
+            92,
+            93,
+            153,
+            154,
+            15,
+            16,
+            74,
+            75,
+            76,
+            131,
+            132,
+            185,
+            186,
+            42,
+            43,
+            95,
+            96,
+            143,
+            144,
+            191,
+            192,
+            40,
+            41,
+            85,
+            86,
+            127,
+            128,
+            169,
+            170,
+            10,
+            11,
+            50,
+            51,
+            83,
+            84,
+            117,
+            118,
+            149,
+            150,
+            177,
+            178,
+            5,
+            6,
+            32,
+            33,
+            56,
+            57,
+            72,
+            73,
+            97,
+            98,
+            109,
+            110,
+            121,
+            122,
+            133,
+            134,
+            139,
+            140,
+            145,
+            146
+          ]
+        },
+        {
+          "B": 1,
+          "count": 2829,
+          "m": 1,
+          "name": "decode_b1_live",
+          "regime": "decode",
+          "sig": "decode_b1_live",
+          "state_indices": [
+            2
+          ]
+        }
+      ]
+    },
+    "case_entrypoints": {
+      "evidence": "ut/meta.json#/case_entrypoints",
+      "records": {
+        "hk10": "live_decode_recurrent"
+      }
+    }
+  },
+  "observed_shape_inventories": [
+    {
+      "evidence": "ut/meta.json#/shape_counts",
+      "scope": "observed signature histogram; these entries are not additional benchmark cases",
+      "declared_num_distinct_shapes": 2,
+      "entries": [
+        {
+          "count": 70656,
+          "input_dtypes": [
+            "torch.bfloat16",
+            "torch.float32",
+            "torch.int32"
+          ],
+          "input_shapes": [
+            [
+              64,
+              2560
+            ],
+            [
+              64,
+              16
+            ],
+            [
+              64,
+              16
+            ],
+            [
+              16
+            ],
+            [
+              16
+            ],
+            [
+              199,
+              16,
+              128,
+              128
+            ],
+            [
+              64,
+              1,
+              16,
+              128
+            ],
+            [
+              64
+            ]
+          ],
+          "sig": "A_log=T(16,):torch.float32|a=T(64, 16):torch.bfloat16|b=T(64, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(64, 2560):torch.bfloat16|out=T(64, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(64,):torch.int32|use_qk_l2norm_in_kernel=True"
+        },
+        {
+          "count": 2829,
+          "input_dtypes": [
+            "torch.bfloat16",
+            "torch.float32",
+            "torch.int32"
+          ],
+          "input_shapes": [
+            [
+              1,
+              2560
+            ],
+            [
+              1,
+              16
+            ],
+            [
+              1,
+              16
+            ],
+            [
+              16
+            ],
+            [
+              16
+            ],
+            [
+              199,
+              16,
+              128,
+              128
+            ],
+            [
+              1,
+              1,
+              16,
+              128
+            ],
+            [
+              1
+            ]
+          ],
+          "sig": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True"
+        }
+      ]
+    }
+  ],
+  "dynamic_dimensions": {
+    "evidence": "ut/cases.py",
+    "policy": "Only dimensions explicitly instantiated by the protected builders are catalogued. Random value draws do not create additional shapes. Routing lengths, live split counts, sparse indices, and physical oracle strides remain runtime data where not recorded.",
+    "builder_entrypoints": {
+      "_synthetic_kwargs": "ut/cases.py:97",
+      "timing_cases": "ut/cases.py:127",
+      "random_shapes": "ut/cases.py:141",
+      "graph_replay_bundle": "ut/cases.py:165"
+    },
+    "case_id_and_shape_recipes": [
+      {
+        "function": "eager_cases",
+        "evidence": "ut/cases.py:64",
+        "docstring": null,
+        "expressions": [
+          {
+            "literal_assignment": "result = []"
+          },
+          {
+            "field": "sig",
+            "expression": "f'decode_b{batch}_live'"
+          },
+          {
+            "field": "regime",
+            "expression": "'decode'"
+          },
+          {
+            "field": "m",
+            "expression": "batch"
+          }
+        ]
+      },
+      {
+        "function": "random_shapes",
+        "evidence": "ut/cases.py:141",
+        "docstring": null,
+        "expressions": [
+          {
+            "literal_assignment": "result = []"
+          },
+          {
+            "field": "sig",
+            "expression": "frozen['sig']"
+          }
+        ]
+      },
+      {
+        "function": "graph_replay_bundle",
+        "evidence": "ut/cases.py:165",
+        "docstring": "Capture at B=max and replay the real B=max/B=min cases in one static buffer.",
+        "expressions": []
+      }
+    ]
+  },
+  "unknown_tensor_metadata": [
+    {
+      "case_id": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True",
+      "tensor": "A_log",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/cases/0"
+    },
+    {
+      "case_id": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True",
+      "tensor": "a",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/cases/0"
+    },
+    {
+      "case_id": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True",
+      "tensor": "b",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/cases/0"
+    },
+    {
+      "case_id": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True",
+      "tensor": "dt_bias",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/cases/0"
+    },
+    {
+      "case_id": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True",
+      "tensor": "initial_state",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/cases/0"
+    },
+    {
+      "case_id": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True",
+      "tensor": "mixed_qkv",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/cases/0"
+    },
+    {
+      "case_id": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True",
+      "tensor": "out",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/cases/0"
+    },
+    {
+      "case_id": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True",
+      "tensor": "ssm_state_indices",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/cases/0"
+    },
+    {
+      "case_id": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True",
+      "tensor": "return[0]",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/math_contract"
+    },
+    {
+      "case_id": "A_log=T(16,):torch.float32|a=T(1, 16):torch.bfloat16|b=T(1, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(1, 2560):torch.bfloat16|out=T(1, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(1,):torch.int32|use_qk_l2norm_in_kernel=True",
+      "tensor": "return[1]",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/math_contract"
+    },
+    {
+      "case_id": "A_log=T(16,):torch.float32|a=T(64, 16):torch.bfloat16|b=T(64, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(64, 2560):torch.bfloat16|out=T(64, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(64,):torch.int32|use_qk_l2norm_in_kernel=True",
+      "tensor": "A_log",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/cases/1"
+    },
+    {
+      "case_id": "A_log=T(16,):torch.float32|a=T(64, 16):torch.bfloat16|b=T(64, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(64, 2560):torch.bfloat16|out=T(64, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(64,):torch.int32|use_qk_l2norm_in_kernel=True",
+      "tensor": "a",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/cases/1"
+    },
+    {
+      "case_id": "A_log=T(16,):torch.float32|a=T(64, 16):torch.bfloat16|b=T(64, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(64, 2560):torch.bfloat16|out=T(64, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(64,):torch.int32|use_qk_l2norm_in_kernel=True",
+      "tensor": "b",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/cases/1"
+    },
+    {
+      "case_id": "A_log=T(16,):torch.float32|a=T(64, 16):torch.bfloat16|b=T(64, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(64, 2560):torch.bfloat16|out=T(64, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(64,):torch.int32|use_qk_l2norm_in_kernel=True",
+      "tensor": "dt_bias",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/cases/1"
+    },
+    {
+      "case_id": "A_log=T(16,):torch.float32|a=T(64, 16):torch.bfloat16|b=T(64, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(64, 2560):torch.bfloat16|out=T(64, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(64,):torch.int32|use_qk_l2norm_in_kernel=True",
+      "tensor": "initial_state",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/cases/1"
+    },
+    {
+      "case_id": "A_log=T(16,):torch.float32|a=T(64, 16):torch.bfloat16|b=T(64, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(64, 2560):torch.bfloat16|out=T(64, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(64,):torch.int32|use_qk_l2norm_in_kernel=True",
+      "tensor": "mixed_qkv",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/cases/1"
+    },
+    {
+      "case_id": "A_log=T(16,):torch.float32|a=T(64, 16):torch.bfloat16|b=T(64, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(64, 2560):torch.bfloat16|out=T(64, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(64,):torch.int32|use_qk_l2norm_in_kernel=True",
+      "tensor": "out",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/cases/1"
+    },
+    {
+      "case_id": "A_log=T(16,):torch.float32|a=T(64, 16):torch.bfloat16|b=T(64, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(64, 2560):torch.bfloat16|out=T(64, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(64,):torch.int32|use_qk_l2norm_in_kernel=True",
+      "tensor": "ssm_state_indices",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/cases/1"
+    },
+    {
+      "case_id": "A_log=T(16,):torch.float32|a=T(64, 16):torch.bfloat16|b=T(64, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(64, 2560):torch.bfloat16|out=T(64, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(64,):torch.int32|use_qk_l2norm_in_kernel=True",
+      "tensor": "return[0]",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/math_contract"
+    },
+    {
+      "case_id": "A_log=T(16,):torch.float32|a=T(64, 16):torch.bfloat16|b=T(64, 16):torch.bfloat16|dt_bias=T(16,):torch.bfloat16|initial_state=T(199, 16, 128, 128):torch.float32|mixed_qkv=T(64, 2560):torch.bfloat16|out=T(64, 1, 16, 128):torch.bfloat16|scale=0.08838834764831845|ssm_state_indices=T(64,):torch.int32|use_qk_l2norm_in_kernel=True",
+      "tensor": "return[1]",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/math_contract"
+    }
+  ],
+  "unknown_benchmark_tensor_overrides": [],
+  "opaque_artifacts": [
+    {
+      "path": "ut/reference_io.pt",
+      "sha256": "38a624a5f502279a13a09c012fababbe232cadedacd560056d8411640a04aaf1",
+      "metadata_evidence": "ut/meta.json#/reference_io_sha256",
+      "inspected": false,
+      "status": "opaque tensor artifact; no pickle deserialization during catalog generation"
+    }
+  ],
+  "sources": [
+    {
+      "path": "ut/meta.json",
+      "sha256": "52c0ab82859be6819d9210084b1cc987314d25cda7a9d1e161176449d2c579a4"
+    },
+    {
+      "path": "ut/cases.py",
+      "sha256": "00bfb915aa61d9b791c06346e482d1786d978f058477e3a34e57bf6fde241b7e"
+    },
+    {
+      "path": "config.yaml",
+      "sha256": "8215ac604cb39619852ffeb91b7e7a98a1085dabc3ba2fa2c464224a168e64c3"
+    },
+    {
+      "path": "scripts/source_abi.json",
+      "sha256": "2b7a5e1fd6e80e787099696e99f2091b087ef556d1aeb8fda2e4f2e468fdc7f3"
+    },
+    {
+      "path": "ut/selection_validation.json",
+      "sha256": "fd64254c3d35f1ca425a44581e5ce13cce4c95bf3f9984b6acbc079017025a7b"
+    },
+    {
+      "path": "ut/selection_validation.probe.json",
+      "sha256": "f326cf6b689af2cbe8624584fbf9f549f3c5be816f37e09b68c2661ad199f0a5"
+    }
+  ],
+  "validation": "Static metadata/AST inspection only. No task module imports, pickle deserialization, tensor loading, GPU execution, or fresh performance validation."
+}

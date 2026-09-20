@@ -1,0 +1,1754 @@
+{
+  "schema_version": 1,
+  "task_id": "glm-5.3-flash__elementwise_copy_cluster",
+  "task_path": ".",
+  "path_base": "task directory",
+  "scope": "Single-GPU callable/operator unit benchmark on MI355X (gfx950). Serving capture context does not define kernel tensor shapes.",
+  "serving_capture_context": {
+    "isl": 8192,
+    "osl": 1024,
+    "concurrency": 64,
+    "tensor_parallel_world_size": 8
+  },
+  "environment_evidence": "config.yaml",
+  "interface": {
+    "target_callable": "sglang.srt.layers.quantization.fp8_utils:materialize_bpreshuffle_fp8_scale",
+    "baseline_callable_recorded": null,
+    "candidate_bind_recorded": {
+      "kind": "rebind",
+      "target": "sglang.srt.layers.quantization.fp8_utils:materialize_bpreshuffle_fp8_scale",
+      "impl_module": "bpreshuffle_scale_impl",
+      "impl_attr": "materialize_bpreshuffle_fp8_scale",
+      "file": "kernel_src/bpreshuffle_scale_impl.py"
+    },
+    "candidate_signatures": [
+      {
+        "callable": "materialize_bpreshuffle_fp8_scale",
+        "signature": "materialize_bpreshuffle_fp8_scale(scale: torch.Tensor)",
+        "evidence": "source/bpreshuffle_scale_impl.py:29"
+      }
+    ],
+    "benchmark_adapter": "scripts/_bench.py#selected_cases",
+    "scope": "selected callable seam; kernel launch count is not asserted by this catalog",
+    "profiled_kernel_rows": [
+      {
+        "id": "G53-5",
+        "profiled_kernel": "elementwise_kernel_manual_unroll",
+        "device_symbol": "elementwise_kernel_manual_unroll<128,4,...direct_copy_kernel_cuda...>",
+        "regime": "decode"
+      }
+    ],
+    "frozen_baseline_signatures": [
+      {
+        "signature": "materialize_bpreshuffle_fp8_scale(scale: torch.Tensor)",
+        "evidence": "ut/baseline_ref/fp8_utils.py.orig:112"
+      }
+    ],
+    "alias_and_mutation_notes": "2-D scale keeps logical values/shape while changing physical layout to transpose-contiguous. Non-2-D input passes through unchanged. An already compatible degenerate layout may alias.",
+    "alias_evidence": [
+      "ut/meta.json#/math_contract",
+      "ut/cases.py:88"
+    ]
+  },
+  "contracts": [
+    {
+      "value": "out = scale for a [M,G] fp32 per-1x128 activation scale, but materialized with TRANSPOSED-CONTIGUOUS storage: same logical [M,G] shape and values, stride == (1, M). Non-2-D input passes through unchanged.",
+      "evidence": "ut/meta.json#/math_contract"
+    }
+  ],
+  "metadata_dimensions": {
+    "m_buckets": {
+      "value": [
+        64,
+        16384
+      ],
+      "evidence": "ut/meta.json#/m_buckets"
+    }
+  },
+  "case_inventory": {
+    "metadata_declared_num_cases": 7,
+    "shape_record_count": 8,
+    "benchmark_case_count": 8,
+    "benchmark_case_ids": [
+      "scale_m64x32_decode",
+      "scale_m64x2_decode",
+      "scale_m64x12_decode",
+      "scale_m16384x2_prefill",
+      "scale_m16384x12_prefill",
+      "scale_m16384x16_prefill",
+      "scale_m16384x32_prefill",
+      "scale_m64x16_decode"
+    ],
+    "count_note": "Counts describe distinct scopes. Captures, boundary specs, histogram observations and benchmark buckets are not interchangeable."
+  },
+  "benchmark_cases": [
+    {
+      "case_id": "scale_m64x32_decode",
+      "shape_record_id": "m64x32",
+      "regime": "decode",
+      "evidence": "ut/cases.py:206"
+    },
+    {
+      "case_id": "scale_m64x2_decode",
+      "shape_record_id": "m64x2",
+      "regime": "decode",
+      "evidence": "ut/cases.py:206"
+    },
+    {
+      "case_id": "scale_m64x12_decode",
+      "shape_record_id": "m64x12",
+      "regime": "decode",
+      "evidence": "ut/cases.py:206"
+    },
+    {
+      "case_id": "scale_m16384x2_prefill",
+      "shape_record_id": "m16384x2",
+      "regime": "prefill",
+      "evidence": "ut/cases.py:206"
+    },
+    {
+      "case_id": "scale_m16384x12_prefill",
+      "shape_record_id": "m16384x12",
+      "regime": "prefill",
+      "evidence": "ut/cases.py:206"
+    },
+    {
+      "case_id": "scale_m16384x16_prefill",
+      "shape_record_id": "m16384x16",
+      "regime": "prefill",
+      "evidence": "ut/cases.py:206"
+    },
+    {
+      "case_id": "scale_m16384x32_prefill",
+      "shape_record_id": "m16384x32",
+      "regime": "prefill",
+      "evidence": "ut/cases.py:206"
+    },
+    {
+      "case_id": "scale_m64x16_decode",
+      "shape_record_id": "m64x16",
+      "regime": "decode",
+      "evidence": "ut/cases.py:206"
+    }
+  ],
+  "cases": [
+    {
+      "case_id": "m64x2",
+      "regime": "decode",
+      "evidence": "ut/meta.json#/cases/0",
+      "metadata": {
+        "sig": "m64x2",
+        "regime": "decode",
+        "m": 64,
+        "g": 2,
+        "dims": [
+          [
+            64,
+            2
+          ],
+          [
+            64,
+            2
+          ]
+        ],
+        "profile_dims": [
+          [
+            2,
+            64
+          ],
+          [
+            2,
+            64
+          ]
+        ],
+        "dtype": "float32",
+        "dtypes": [
+          "float",
+          "float",
+          "Scalar"
+        ],
+        "count": 164061
+      },
+      "tensors": [
+        {
+          "name": "scale",
+          "role": "input",
+          "shape": [
+            64,
+            2
+          ],
+          "dtype": "torch.float32",
+          "strides": [
+            2,
+            1
+          ],
+          "layout": "row-major generated timing input; captured oracle input stride is separate",
+          "evidence": "ut/cases.py:175"
+        }
+      ],
+      "scalars": {},
+      "outputs": [
+        {
+          "name": "return",
+          "role": "output",
+          "shape": [
+            64,
+            2
+          ],
+          "dtype": "torch.float32",
+          "strides": [
+            1,
+            64
+          ],
+          "layout": "transpose-contiguous; logical values unchanged",
+          "evidence": "ut/cases.py:88"
+        }
+      ],
+      "benchmark_case_ids": [
+        "scale_m64x2_decode"
+      ],
+      "notes": []
+    },
+    {
+      "case_id": "m64x12",
+      "regime": "decode",
+      "evidence": "ut/meta.json#/cases/1",
+      "metadata": {
+        "sig": "m64x12",
+        "regime": "decode",
+        "m": 64,
+        "g": 12,
+        "dims": [
+          [
+            64,
+            12
+          ],
+          [
+            64,
+            12
+          ]
+        ],
+        "profile_dims": [
+          [
+            12,
+            64
+          ],
+          [
+            12,
+            64
+          ]
+        ],
+        "dtype": "float32",
+        "dtypes": [
+          "float",
+          "float",
+          "Scalar"
+        ],
+        "count": 33209
+      },
+      "tensors": [
+        {
+          "name": "scale",
+          "role": "input",
+          "shape": [
+            64,
+            12
+          ],
+          "dtype": "torch.float32",
+          "strides": [
+            12,
+            1
+          ],
+          "layout": "row-major generated timing input; captured oracle input stride is separate",
+          "evidence": "ut/cases.py:175"
+        }
+      ],
+      "scalars": {},
+      "outputs": [
+        {
+          "name": "return",
+          "role": "output",
+          "shape": [
+            64,
+            12
+          ],
+          "dtype": "torch.float32",
+          "strides": [
+            1,
+            64
+          ],
+          "layout": "transpose-contiguous; logical values unchanged",
+          "evidence": "ut/cases.py:88"
+        }
+      ],
+      "benchmark_case_ids": [
+        "scale_m64x12_decode"
+      ],
+      "notes": []
+    },
+    {
+      "case_id": "m64x16",
+      "regime": "decode",
+      "evidence": "ut/meta.json#/cases/2",
+      "metadata": {
+        "sig": "m64x16",
+        "regime": "decode",
+        "m": 64,
+        "g": 16,
+        "dims": [
+          [
+            64,
+            16
+          ],
+          [
+            64,
+            16
+          ]
+        ],
+        "profile_dims": [
+          [
+            16,
+            64
+          ],
+          [
+            16,
+            64
+          ]
+        ],
+        "dtype": "float32",
+        "dtypes": [
+          "float",
+          "float",
+          "Scalar"
+        ],
+        "count": 21485
+      },
+      "tensors": [
+        {
+          "name": "scale",
+          "role": "input",
+          "shape": [
+            64,
+            16
+          ],
+          "dtype": "torch.float32",
+          "strides": [
+            16,
+            1
+          ],
+          "layout": "row-major generated timing input; captured oracle input stride is separate",
+          "evidence": "ut/cases.py:175"
+        }
+      ],
+      "scalars": {},
+      "outputs": [
+        {
+          "name": "return",
+          "role": "output",
+          "shape": [
+            64,
+            16
+          ],
+          "dtype": "torch.float32",
+          "strides": [
+            1,
+            64
+          ],
+          "layout": "transpose-contiguous; logical values unchanged",
+          "evidence": "ut/cases.py:88"
+        }
+      ],
+      "benchmark_case_ids": [
+        "scale_m64x16_decode"
+      ],
+      "notes": []
+    },
+    {
+      "case_id": "m64x32",
+      "regime": "decode",
+      "evidence": "ut/meta.json#/cases/3",
+      "metadata": {
+        "sig": "m64x32",
+        "regime": "decode",
+        "m": 64,
+        "g": 32,
+        "dims": [
+          [
+            64,
+            32
+          ],
+          [
+            64,
+            32
+          ]
+        ],
+        "profile_dims": [
+          [
+            32,
+            64
+          ],
+          [
+            32,
+            64
+          ]
+        ],
+        "dtype": "float32",
+        "dtypes": [
+          "float",
+          "float",
+          "Scalar"
+        ],
+        "count": 109378
+      },
+      "tensors": [
+        {
+          "name": "scale",
+          "role": "input",
+          "shape": [
+            64,
+            32
+          ],
+          "dtype": "torch.float32",
+          "strides": [
+            32,
+            1
+          ],
+          "layout": "row-major generated timing input; captured oracle input stride is separate",
+          "evidence": "ut/cases.py:175"
+        }
+      ],
+      "scalars": {},
+      "outputs": [
+        {
+          "name": "return",
+          "role": "output",
+          "shape": [
+            64,
+            32
+          ],
+          "dtype": "torch.float32",
+          "strides": [
+            1,
+            64
+          ],
+          "layout": "transpose-contiguous; logical values unchanged",
+          "evidence": "ut/cases.py:88"
+        }
+      ],
+      "benchmark_case_ids": [
+        "scale_m64x32_decode"
+      ],
+      "notes": []
+    },
+    {
+      "case_id": "m16384x2",
+      "regime": "prefill",
+      "evidence": "ut/meta.json#/cases/4",
+      "metadata": {
+        "sig": "m16384x2",
+        "regime": "prefill",
+        "m": 16384,
+        "g": 2,
+        "dims": [
+          [
+            16384,
+            2
+          ],
+          [
+            16384,
+            2
+          ]
+        ],
+        "profile_dims": [
+          [
+            2,
+            16384
+          ],
+          [
+            2,
+            16384
+          ]
+        ],
+        "dtype": "float32",
+        "dtypes": [
+          "float",
+          "float",
+          "Scalar"
+        ],
+        "count": 5208
+      },
+      "tensors": [
+        {
+          "name": "scale",
+          "role": "input",
+          "shape": [
+            16384,
+            2
+          ],
+          "dtype": "torch.float32",
+          "strides": [
+            2,
+            1
+          ],
+          "layout": "row-major generated timing input; captured oracle input stride is separate",
+          "evidence": "ut/cases.py:175"
+        }
+      ],
+      "scalars": {},
+      "outputs": [
+        {
+          "name": "return",
+          "role": "output",
+          "shape": [
+            16384,
+            2
+          ],
+          "dtype": "torch.float32",
+          "strides": [
+            1,
+            16384
+          ],
+          "layout": "transpose-contiguous; logical values unchanged",
+          "evidence": "ut/cases.py:88"
+        }
+      ],
+      "benchmark_case_ids": [
+        "scale_m16384x2_prefill"
+      ],
+      "notes": []
+    },
+    {
+      "case_id": "m16384x12",
+      "regime": "prefill",
+      "evidence": "ut/meta.json#/cases/5",
+      "metadata": {
+        "sig": "m16384x12",
+        "regime": "prefill",
+        "m": 16384,
+        "g": 12,
+        "dims": [
+          [
+            16384,
+            12
+          ],
+          [
+            16384,
+            12
+          ]
+        ],
+        "profile_dims": [
+          [
+            12,
+            16384
+          ],
+          [
+            12,
+            16384
+          ]
+        ],
+        "dtype": "float32",
+        "dtypes": [
+          "float",
+          "float",
+          "Scalar"
+        ],
+        "count": 1054
+      },
+      "tensors": [
+        {
+          "name": "scale",
+          "role": "input",
+          "shape": [
+            16384,
+            12
+          ],
+          "dtype": "torch.float32",
+          "strides": [
+            12,
+            1
+          ],
+          "layout": "row-major generated timing input; captured oracle input stride is separate",
+          "evidence": "ut/cases.py:175"
+        }
+      ],
+      "scalars": {},
+      "outputs": [
+        {
+          "name": "return",
+          "role": "output",
+          "shape": [
+            16384,
+            12
+          ],
+          "dtype": "torch.float32",
+          "strides": [
+            1,
+            16384
+          ],
+          "layout": "transpose-contiguous; logical values unchanged",
+          "evidence": "ut/cases.py:88"
+        }
+      ],
+      "benchmark_case_ids": [
+        "scale_m16384x12_prefill"
+      ],
+      "notes": []
+    },
+    {
+      "case_id": "m16384x16",
+      "regime": "prefill",
+      "evidence": "ut/meta.json#/cases/6",
+      "metadata": {
+        "sig": "m16384x16",
+        "regime": "prefill",
+        "m": 16384,
+        "g": 16,
+        "dims": [
+          [
+            16384,
+            16
+          ],
+          [
+            16384,
+            16
+          ]
+        ],
+        "profile_dims": [
+          [
+            16,
+            16384
+          ],
+          [
+            16,
+            16384
+          ]
+        ],
+        "dtype": "float32",
+        "dtypes": [
+          "float",
+          "float",
+          "Scalar"
+        ],
+        "count": 682
+      },
+      "tensors": [
+        {
+          "name": "scale",
+          "role": "input",
+          "shape": [
+            16384,
+            16
+          ],
+          "dtype": "torch.float32",
+          "strides": [
+            16,
+            1
+          ],
+          "layout": "row-major generated timing input; captured oracle input stride is separate",
+          "evidence": "ut/cases.py:175"
+        }
+      ],
+      "scalars": {},
+      "outputs": [
+        {
+          "name": "return",
+          "role": "output",
+          "shape": [
+            16384,
+            16
+          ],
+          "dtype": "torch.float32",
+          "strides": [
+            1,
+            16384
+          ],
+          "layout": "transpose-contiguous; logical values unchanged",
+          "evidence": "ut/cases.py:88"
+        }
+      ],
+      "benchmark_case_ids": [
+        "scale_m16384x16_prefill"
+      ],
+      "notes": []
+    },
+    {
+      "case_id": "m16384x32",
+      "regime": "prefill",
+      "evidence": "ut/meta.json#/cases/7",
+      "metadata": {
+        "sig": "m16384x32",
+        "regime": "prefill",
+        "m": 16384,
+        "g": 32,
+        "dims": [
+          [
+            16384,
+            32
+          ],
+          [
+            16384,
+            32
+          ]
+        ],
+        "profile_dims": [
+          [
+            32,
+            16384
+          ],
+          [
+            32,
+            16384
+          ]
+        ],
+        "dtype": "float32",
+        "dtypes": [
+          "float",
+          "float",
+          "Scalar"
+        ],
+        "count": 3472
+      },
+      "tensors": [
+        {
+          "name": "scale",
+          "role": "input",
+          "shape": [
+            16384,
+            32
+          ],
+          "dtype": "torch.float32",
+          "strides": [
+            32,
+            1
+          ],
+          "layout": "row-major generated timing input; captured oracle input stride is separate",
+          "evidence": "ut/cases.py:175"
+        }
+      ],
+      "scalars": {},
+      "outputs": [
+        {
+          "name": "return",
+          "role": "output",
+          "shape": [
+            16384,
+            32
+          ],
+          "dtype": "torch.float32",
+          "strides": [
+            1,
+            16384
+          ],
+          "layout": "transpose-contiguous; logical values unchanged",
+          "evidence": "ut/cases.py:88"
+        }
+      ],
+      "benchmark_case_ids": [
+        "scale_m16384x32_prefill"
+      ],
+      "notes": []
+    }
+  ],
+  "source_inventories": {
+    "cases": {
+      "evidence": "ut/meta.json#/cases",
+      "records": [
+        {
+          "sig": "m64x2",
+          "regime": "decode",
+          "m": 64,
+          "g": 2,
+          "dims": [
+            [
+              64,
+              2
+            ],
+            [
+              64,
+              2
+            ]
+          ],
+          "profile_dims": [
+            [
+              2,
+              64
+            ],
+            [
+              2,
+              64
+            ]
+          ],
+          "dtype": "float32",
+          "dtypes": [
+            "float",
+            "float",
+            "Scalar"
+          ],
+          "count": 164061
+        },
+        {
+          "sig": "m64x12",
+          "regime": "decode",
+          "m": 64,
+          "g": 12,
+          "dims": [
+            [
+              64,
+              12
+            ],
+            [
+              64,
+              12
+            ]
+          ],
+          "profile_dims": [
+            [
+              12,
+              64
+            ],
+            [
+              12,
+              64
+            ]
+          ],
+          "dtype": "float32",
+          "dtypes": [
+            "float",
+            "float",
+            "Scalar"
+          ],
+          "count": 33209
+        },
+        {
+          "sig": "m64x16",
+          "regime": "decode",
+          "m": 64,
+          "g": 16,
+          "dims": [
+            [
+              64,
+              16
+            ],
+            [
+              64,
+              16
+            ]
+          ],
+          "profile_dims": [
+            [
+              16,
+              64
+            ],
+            [
+              16,
+              64
+            ]
+          ],
+          "dtype": "float32",
+          "dtypes": [
+            "float",
+            "float",
+            "Scalar"
+          ],
+          "count": 21485
+        },
+        {
+          "sig": "m64x32",
+          "regime": "decode",
+          "m": 64,
+          "g": 32,
+          "dims": [
+            [
+              64,
+              32
+            ],
+            [
+              64,
+              32
+            ]
+          ],
+          "profile_dims": [
+            [
+              32,
+              64
+            ],
+            [
+              32,
+              64
+            ]
+          ],
+          "dtype": "float32",
+          "dtypes": [
+            "float",
+            "float",
+            "Scalar"
+          ],
+          "count": 109378
+        },
+        {
+          "sig": "m16384x2",
+          "regime": "prefill",
+          "m": 16384,
+          "g": 2,
+          "dims": [
+            [
+              16384,
+              2
+            ],
+            [
+              16384,
+              2
+            ]
+          ],
+          "profile_dims": [
+            [
+              2,
+              16384
+            ],
+            [
+              2,
+              16384
+            ]
+          ],
+          "dtype": "float32",
+          "dtypes": [
+            "float",
+            "float",
+            "Scalar"
+          ],
+          "count": 5208
+        },
+        {
+          "sig": "m16384x12",
+          "regime": "prefill",
+          "m": 16384,
+          "g": 12,
+          "dims": [
+            [
+              16384,
+              12
+            ],
+            [
+              16384,
+              12
+            ]
+          ],
+          "profile_dims": [
+            [
+              12,
+              16384
+            ],
+            [
+              12,
+              16384
+            ]
+          ],
+          "dtype": "float32",
+          "dtypes": [
+            "float",
+            "float",
+            "Scalar"
+          ],
+          "count": 1054
+        },
+        {
+          "sig": "m16384x16",
+          "regime": "prefill",
+          "m": 16384,
+          "g": 16,
+          "dims": [
+            [
+              16384,
+              16
+            ],
+            [
+              16384,
+              16
+            ]
+          ],
+          "profile_dims": [
+            [
+              16,
+              16384
+            ],
+            [
+              16,
+              16384
+            ]
+          ],
+          "dtype": "float32",
+          "dtypes": [
+            "float",
+            "float",
+            "Scalar"
+          ],
+          "count": 682
+        },
+        {
+          "sig": "m16384x32",
+          "regime": "prefill",
+          "m": 16384,
+          "g": 32,
+          "dims": [
+            [
+              16384,
+              32
+            ],
+            [
+              16384,
+              32
+            ]
+          ],
+          "profile_dims": [
+            [
+              32,
+              16384
+            ],
+            [
+              32,
+              16384
+            ]
+          ],
+          "dtype": "float32",
+          "dtypes": [
+            "float",
+            "float",
+            "Scalar"
+          ],
+          "count": 3472
+        }
+      ]
+    },
+    "workload/cases": {
+      "evidence": "ut/meta.json#/workload/cases",
+      "records": [
+        {
+          "name": "m64x32",
+          "dims": [
+            [
+              64,
+              32
+            ],
+            [
+              64,
+              32
+            ]
+          ],
+          "dtypes": [
+            "float",
+            "float",
+            "Scalar"
+          ],
+          "count": 5880,
+          "weight": 17522.1431,
+          "weight_source": "trace",
+          "regime": "decode",
+          "weight_norm": 0.337549,
+          "quant": {
+            "scheme": "fp8_blockscale",
+            "weight_dtype": "float32",
+            "act_dtype": "fp8",
+            "out_dtype": "float32",
+            "weight_block_size": [
+              128,
+              128
+            ],
+            "scale_dtype": "float32",
+            "kv_cache_dtype": "bfloat16"
+          },
+          "profile_dims": [
+            [
+              32,
+              64
+            ],
+            [
+              32,
+              64
+            ]
+          ],
+          "m": 64,
+          "g": 32
+        },
+        {
+          "name": "m64x2",
+          "dims": [
+            [
+              64,
+              2
+            ],
+            [
+              64,
+              2
+            ]
+          ],
+          "dtypes": [
+            "float",
+            "float",
+            "Scalar"
+          ],
+          "count": 4410,
+          "weight": 11533.7866,
+          "weight_source": "trace",
+          "regime": "decode",
+          "weight_norm": 0.222188,
+          "quant": {
+            "scheme": "fp8_blockscale",
+            "weight_dtype": "float32",
+            "act_dtype": "fp8",
+            "out_dtype": "float32",
+            "weight_block_size": [
+              128,
+              128
+            ],
+            "scale_dtype": "float32",
+            "kv_cache_dtype": "bfloat16"
+          },
+          "profile_dims": [
+            [
+              2,
+              64
+            ],
+            [
+              2,
+              64
+            ]
+          ],
+          "m": 64,
+          "g": 2
+        },
+        {
+          "name": "m64x12",
+          "dims": [
+            [
+              64,
+              12
+            ],
+            [
+              64,
+              12
+            ]
+          ],
+          "dtypes": [
+            "float",
+            "float",
+            "Scalar"
+          ],
+          "count": 1470,
+          "weight": 3967.7358,
+          "weight_source": "trace",
+          "regime": "decode",
+          "weight_norm": 0.076435,
+          "quant": {
+            "scheme": "fp8_blockscale",
+            "weight_dtype": "float32",
+            "act_dtype": "fp8",
+            "out_dtype": "float32",
+            "weight_block_size": [
+              128,
+              128
+            ],
+            "scale_dtype": "float32",
+            "kv_cache_dtype": "bfloat16"
+          },
+          "profile_dims": [
+            [
+              12,
+              64
+            ],
+            [
+              12,
+              64
+            ]
+          ],
+          "m": 64,
+          "g": 12
+        },
+        {
+          "name": "m16384x2",
+          "dims": [
+            [
+              16384,
+              2
+            ],
+            [
+              16384,
+              2
+            ]
+          ],
+          "dtypes": [
+            "float",
+            "float",
+            "Scalar"
+          ],
+          "count": 5208,
+          "weight": 3893.2479,
+          "weight_source": "regime_prior",
+          "regime": "prefill",
+          "weight_norm": 0.075,
+          "quant": {
+            "scheme": "fp8_blockscale",
+            "weight_dtype": "float32",
+            "act_dtype": "fp8",
+            "out_dtype": "float32",
+            "weight_block_size": [
+              128,
+              128
+            ],
+            "scale_dtype": "float32",
+            "kv_cache_dtype": "bfloat16"
+          },
+          "profile_dims": [
+            [
+              2,
+              16384
+            ],
+            [
+              2,
+              16384
+            ]
+          ],
+          "m": 16384,
+          "g": 2
+        },
+        {
+          "name": "m16384x12",
+          "dims": [
+            [
+              16384,
+              12
+            ],
+            [
+              16384,
+              12
+            ]
+          ],
+          "dtypes": [
+            "float",
+            "float",
+            "Scalar"
+          ],
+          "count": 1054,
+          "weight": 3893.2479,
+          "weight_source": "regime_prior",
+          "regime": "prefill",
+          "weight_norm": 0.075,
+          "quant": {
+            "scheme": "fp8_blockscale",
+            "weight_dtype": "float32",
+            "act_dtype": "fp8",
+            "out_dtype": "float32",
+            "weight_block_size": [
+              128,
+              128
+            ],
+            "scale_dtype": "float32",
+            "kv_cache_dtype": "bfloat16"
+          },
+          "profile_dims": [
+            [
+              12,
+              16384
+            ],
+            [
+              12,
+              16384
+            ]
+          ],
+          "m": 16384,
+          "g": 12
+        },
+        {
+          "name": "m16384x16",
+          "dims": [
+            [
+              16384,
+              16
+            ],
+            [
+              16384,
+              16
+            ]
+          ],
+          "dtypes": [
+            "float",
+            "float",
+            "Scalar"
+          ],
+          "count": 682,
+          "weight": 3893.2479,
+          "weight_source": "regime_prior",
+          "regime": "prefill",
+          "weight_norm": 0.075,
+          "quant": {
+            "scheme": "fp8_blockscale",
+            "weight_dtype": "float32",
+            "act_dtype": "fp8",
+            "out_dtype": "float32",
+            "weight_block_size": [
+              128,
+              128
+            ],
+            "scale_dtype": "float32",
+            "kv_cache_dtype": "bfloat16"
+          },
+          "profile_dims": [
+            [
+              16,
+              16384
+            ],
+            [
+              16,
+              16384
+            ]
+          ],
+          "m": 16384,
+          "g": 16
+        },
+        {
+          "name": "m16384x32",
+          "dims": [
+            [
+              16384,
+              32
+            ],
+            [
+              16384,
+              32
+            ]
+          ],
+          "dtypes": [
+            "float",
+            "float",
+            "Scalar"
+          ],
+          "count": 3472,
+          "weight": 3893.2479,
+          "weight_source": "regime_prior",
+          "regime": "prefill",
+          "weight_norm": 0.075,
+          "quant": {
+            "scheme": "fp8_blockscale",
+            "weight_dtype": "float32",
+            "act_dtype": "fp8",
+            "out_dtype": "float32",
+            "weight_block_size": [
+              128,
+              128
+            ],
+            "scale_dtype": "float32",
+            "kv_cache_dtype": "bfloat16"
+          },
+          "profile_dims": [
+            [
+              32,
+              16384
+            ],
+            [
+              32,
+              16384
+            ]
+          ],
+          "m": 16384,
+          "g": 32
+        },
+        {
+          "name": "m64x16",
+          "dims": [
+            [
+              64,
+              16
+            ],
+            [
+              64,
+              16
+            ]
+          ],
+          "dtypes": [
+            "float",
+            "float",
+            "Scalar"
+          ],
+          "count": 1155,
+          "weight": 3313.3149,
+          "weight_source": "trace",
+          "regime": "decode",
+          "weight_norm": 0.063828,
+          "quant": {
+            "scheme": "fp8_blockscale",
+            "weight_dtype": "float32",
+            "act_dtype": "fp8",
+            "out_dtype": "float32",
+            "weight_block_size": [
+              128,
+              128
+            ],
+            "scale_dtype": "float32",
+            "kv_cache_dtype": "bfloat16"
+          },
+          "profile_dims": [
+            [
+              16,
+              64
+            ],
+            [
+              16,
+              64
+            ]
+          ],
+          "m": 64,
+          "g": 16
+        }
+      ]
+    }
+  },
+  "observed_shape_inventories": [
+    {
+      "evidence": "ut/capture_meta.json#/shape_counts",
+      "scope": "observed signature histogram; these entries are not additional benchmark cases",
+      "declared_num_distinct_shapes": 20,
+      "entries": [
+        {
+          "sig": "T(64, 2):torch.float32",
+          "count": 164061,
+          "input_shapes": [
+            [
+              64,
+              2
+            ]
+          ],
+          "input_dtypes": [
+            "torch.float32"
+          ]
+        },
+        {
+          "sig": "T(64, 32):torch.float32",
+          "count": 109378,
+          "input_shapes": [
+            [
+              64,
+              32
+            ]
+          ],
+          "input_dtypes": [
+            "torch.float32"
+          ]
+        },
+        {
+          "sig": "T(64, 12):torch.float32",
+          "count": 33209,
+          "input_shapes": [
+            [
+              64,
+              12
+            ]
+          ],
+          "input_dtypes": [
+            "torch.float32"
+          ]
+        },
+        {
+          "sig": "T(64, 16):torch.float32",
+          "count": 21485,
+          "input_shapes": [
+            [
+              64,
+              16
+            ]
+          ],
+          "input_dtypes": [
+            "torch.float32"
+          ]
+        },
+        {
+          "sig": "T(16384, 2):torch.float32",
+          "count": 5208,
+          "input_shapes": [
+            [
+              16384,
+              2
+            ]
+          ],
+          "input_dtypes": [
+            "torch.float32"
+          ]
+        },
+        {
+          "sig": "T(16384, 32):torch.float32",
+          "count": 3472,
+          "input_shapes": [
+            [
+              16384,
+              32
+            ]
+          ],
+          "input_dtypes": [
+            "torch.float32"
+          ]
+        },
+        {
+          "sig": "T(16384, 12):torch.float32",
+          "count": 1054,
+          "input_shapes": [
+            [
+              16384,
+              12
+            ]
+          ],
+          "input_dtypes": [
+            "torch.float32"
+          ]
+        },
+        {
+          "sig": "T(1, 2):torch.float32",
+          "count": 1008,
+          "input_shapes": [
+            [
+              1,
+              2
+            ]
+          ],
+          "input_dtypes": [
+            "torch.float32"
+          ]
+        },
+        {
+          "sig": "T(16384, 16):torch.float32",
+          "count": 682,
+          "input_shapes": [
+            [
+              16384,
+              16
+            ]
+          ],
+          "input_dtypes": [
+            "torch.float32"
+          ]
+        },
+        {
+          "sig": "T(1, 32):torch.float32",
+          "count": 672,
+          "input_shapes": [
+            [
+              1,
+              32
+            ]
+          ],
+          "input_dtypes": [
+            "torch.float32"
+          ]
+        },
+        {
+          "sig": "T(8192, 2):torch.float32",
+          "count": 336,
+          "input_shapes": [
+            [
+              8192,
+              2
+            ]
+          ],
+          "input_dtypes": [
+            "torch.float32"
+          ]
+        },
+        {
+          "sig": "T(8192, 32):torch.float32",
+          "count": 224,
+          "input_shapes": [
+            [
+              8192,
+              32
+            ]
+          ],
+          "input_dtypes": [
+            "torch.float32"
+          ]
+        },
+        {
+          "sig": "T(1, 12):torch.float32",
+          "count": 204,
+          "input_shapes": [
+            [
+              1,
+              12
+            ]
+          ],
+          "input_dtypes": [
+            "torch.float32"
+          ]
+        },
+        {
+          "sig": "T(1, 16):torch.float32",
+          "count": 132,
+          "input_shapes": [
+            [
+              1,
+              16
+            ]
+          ],
+          "input_dtypes": [
+            "torch.float32"
+          ]
+        },
+        {
+          "sig": "T(19, 2):torch.float32",
+          "count": 84,
+          "input_shapes": [
+            [
+              19,
+              2
+            ]
+          ],
+          "input_dtypes": [
+            "torch.float32"
+          ]
+        },
+        {
+          "sig": "T(8192, 12):torch.float32",
+          "count": 68,
+          "input_shapes": [
+            [
+              8192,
+              12
+            ]
+          ],
+          "input_dtypes": [
+            "torch.float32"
+          ]
+        },
+        {
+          "sig": "T(19, 32):torch.float32",
+          "count": 56,
+          "input_shapes": [
+            [
+              19,
+              32
+            ]
+          ],
+          "input_dtypes": [
+            "torch.float32"
+          ]
+        },
+        {
+          "sig": "T(8192, 16):torch.float32",
+          "count": 44,
+          "input_shapes": [
+            [
+              8192,
+              16
+            ]
+          ],
+          "input_dtypes": [
+            "torch.float32"
+          ]
+        },
+        {
+          "sig": "T(19, 12):torch.float32",
+          "count": 17,
+          "input_shapes": [
+            [
+              19,
+              12
+            ]
+          ],
+          "input_dtypes": [
+            "torch.float32"
+          ]
+        },
+        {
+          "sig": "T(19, 16):torch.float32",
+          "count": 11,
+          "input_shapes": [
+            [
+              19,
+              16
+            ]
+          ],
+          "input_dtypes": [
+            "torch.float32"
+          ]
+        }
+      ]
+    }
+  ],
+  "dynamic_dimensions": {
+    "evidence": "ut/cases.py",
+    "policy": "Only dimensions explicitly instantiated by the protected builders are catalogued. Random value draws do not create additional shapes. Routing lengths, live split counts, sparse indices, and physical oracle strides remain runtime data where not recorded.",
+    "builder_entrypoints": {
+      "_synth": "ut/cases.py:175",
+      "timing_cases": "ut/cases.py:206",
+      "random_shapes": "ut/cases.py:218"
+    },
+    "case_id_and_shape_recipes": [
+      {
+        "function": "eager_cases",
+        "evidence": "ut/cases.py:188",
+        "docstring": null,
+        "expressions": [
+          {
+            "literal_assignment": "out = []"
+          },
+          {
+            "field": "sig",
+            "expression": "f'oracle{i}_m{int(scale.shape[0])}_{reg or 'na'}'"
+          }
+        ]
+      },
+      {
+        "function": "random_shapes",
+        "evidence": "ut/cases.py:218",
+        "docstring": "FIXED online dims, FRESH values per draw.",
+        "expressions": [
+          {
+            "literal_assignment": "out = []"
+          },
+          {
+            "field": "sig",
+            "expression": "f'rand_m{m}x{g}_{reg or 'na'}'"
+          }
+        ]
+      }
+    ]
+  },
+  "unknown_tensor_metadata": [],
+  "unknown_benchmark_tensor_overrides": [],
+  "opaque_artifacts": [
+    {
+      "path": "ut/reference_io.pt",
+      "sha256": "14e589b7296c667b170b39a5f962344152206ff954a84b4e16de4346567d12af",
+      "metadata_evidence": "ut/meta.json#/reference_io_sha256",
+      "inspected": false,
+      "status": "opaque tensor artifact; no pickle deserialization during catalog generation"
+    }
+  ],
+  "sources": [
+    {
+      "path": "ut/meta.json",
+      "sha256": "c581d869114eb87dbccb2ae5481c5559b4653dc58dbcf15314ecb8e85b767a87"
+    },
+    {
+      "path": "ut/cases.py",
+      "sha256": "c2556151ed8a8d5798b635cd979610846c5e081fdda5e34fde74d5e97b4f3b7c"
+    },
+    {
+      "path": "config.yaml",
+      "sha256": "1ee49dda51b9eb7612a8bae2f4cea113846c164c7b5f131f5338bfff44be3f1a"
+    },
+    {
+      "path": "scripts/source_abi.json",
+      "sha256": "86da639cbc8f4f93466ba3065bff155fafe8d9c8996a3b8c3d72066f01524dbd"
+    },
+    {
+      "path": "ut/selection_validation.json",
+      "sha256": "c05ddb2f5f7fe2792d3e93ab6311b4deb5d1c0dae713aa60427214d7e7d66aeb"
+    },
+    {
+      "path": "ut/workload.json",
+      "sha256": "94cc4fe1f2b547664169e7a98db782b09c00b3fa0ab6e576dc018ac6f749bfa6"
+    },
+    {
+      "path": "ut/capture_meta.json",
+      "sha256": "3e77165961bb8ca3f3e485a51a22c5daf8bedf694e1093d3aeb688235e1c40e6"
+    }
+  ],
+  "validation": "Static metadata/AST inspection only. No task module imports, pickle deserialization, tensor loading, GPU execution, or fresh performance validation."
+}

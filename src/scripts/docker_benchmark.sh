@@ -15,6 +15,8 @@ HOST_UID="$(id -u)"
 HOST_GID="$(id -g)"
 SELECTED_GPU_ARCH=""
 SELECTED_IMAGE=""
+SELECTED_IMAGE_ID=""
+SELECTED_IMAGE_REPO_DIGESTS="[]"
 AGENT_STATE_MOUNT_ROOT="${AKA_AGENT_STATE_MOUNT_ROOT:-/opt/aka-agent-state}"
 DEFAULT_RUN_CONFIG="example_configs/quickstart_claude_mi300.yaml"
 # Set by host-side commands after reading the selected run config. Keep this
@@ -67,6 +69,10 @@ Environment overrides:
   GPU_IDS                 Comma/space separated GPU indices for parallel-run.
   AKA_LOGICAL_GPU         Logical GPU index inside a masked worker container (default: 0).
   AKA_DOCKER_IMAGE        Absolute Docker image override.
+  AKA_VERIFY_RUNTIME_IMAGE
+                           Set to 1 to inspect the local image once and launch every
+                           container in this run by its immutable Docker image ID.
+  AKA_EXPECTED_IMAGE_ID  Optional captured Docker image ID assertion (sha256:...).
   AKA_GPU_ARCH            GPU arch override for shell/smoke, or run configs without target_gpu_model.
   AKA_DOCKER_IMAGE_<ARCH> Per-arch image override, e.g. AKA_DOCKER_IMAGE_GFX950=...
   AKA_DOCKER_IMAGE_GFX942 Default image for gfx942.
@@ -225,6 +231,36 @@ select_runtime() {
         SELECTED_IMAGE="$(docker_image_for_arch "$SELECTED_GPU_ARCH")"
     fi
     echo "Docker runtime: arch=${SELECTED_GPU_ARCH} image=${SELECTED_IMAGE}" >&2
+    SELECTED_IMAGE_ID=""
+    SELECTED_IMAGE_REPO_DIGESTS="[]"
+    if [[ "${AKA_VERIFY_RUNTIME_IMAGE:-0}" == "1" || -n "${AKA_EXPECTED_IMAGE_ID:-}" ]]; then
+        verify_runtime_image_identity
+    fi
+}
+
+verify_runtime_image_identity() {
+    local image_id repo_digests
+    # Inspect on the host, before any worker is forked, and use the resulting
+    # ID for every launch. A later retag cannot change the selected image bytes.
+    image_id="$(docker image inspect --format '{{.Id}}' "$SELECTED_IMAGE" 2>/dev/null)" \
+        || die "Runtime image is unavailable locally: $SELECTED_IMAGE. Provision this exact capture image before running."
+    [[ "$image_id" =~ ^sha256:[0-9a-f]{64}$ ]] \
+        || die "Docker returned an invalid image ID for $SELECTED_IMAGE: $image_id"
+    if [[ -n "${AKA_EXPECTED_IMAGE_ID:-}" ]]; then
+        [[ "$AKA_EXPECTED_IMAGE_ID" =~ ^sha256:[0-9a-f]{64}$ ]] \
+            || die "AKA_EXPECTED_IMAGE_ID must be a complete Docker image ID"
+        [[ "$image_id" == "$AKA_EXPECTED_IMAGE_ID" ]] \
+            || die "Capture image ID mismatch: $SELECTED_IMAGE resolves to $image_id; expected $AKA_EXPECTED_IMAGE_ID"
+    fi
+    # RepoDigests contains registry manifest identities when Docker has them;
+    # these are separate from the local image/config ID and may be absent.
+    repo_digests="$(docker image inspect --format '{{json .RepoDigests}}' "$image_id" 2>/dev/null)" \
+        || die "Could not inspect registry digest metadata for runtime image $image_id"
+    repo_digests="$(python3 -c 'import json,sys; v=json.loads(sys.argv[1]); v=[] if v is None else v; assert isinstance(v,list) and all(isinstance(x,str) for x in v); print(json.dumps(v,separators=(",",":")))' "$repo_digests")" \
+        || die "Docker returned invalid RepoDigests metadata for $image_id"
+    SELECTED_IMAGE_ID="$image_id"
+    SELECTED_IMAGE_REPO_DIGESTS="$repo_digests"
+    echo "Docker runtime identity: image_id=$SELECTED_IMAGE_ID repo_digests=$SELECTED_IMAGE_REPO_DIGESTS" >&2
 }
 
 select_runtime_for_config() {
@@ -995,6 +1031,9 @@ build_docker_args() {
         -e "MIOPEN_CACHE_DIR=/tmp/miopen-cache${cache_postfix}"
         -e "MIOPEN_CUSTOM_CACHE_DIR=/tmp/miopen-cache${cache_postfix}"
         -e "AGENT_KERNEL_ARENA_DOCKER=1"
+        -e "AGENT_KERNEL_ARENA_DOCKER_IMAGE=${SELECTED_IMAGE}"
+        -e "AGENT_KERNEL_ARENA_DOCKER_IMAGE_ID=${SELECTED_IMAGE_ID}"
+        -e "AGENT_KERNEL_ARENA_DOCKER_REPO_DIGESTS=${SELECTED_IMAGE_REPO_DIGESTS}"
         -e "AGENT_KERNEL_ARENA_WORKDIR=${CONTAINER_WORKDIR}"
         -e "AGENT_KERNEL_ARENA_GPU_ARCH=${SELECTED_GPU_ARCH}"
         -e "PYTORCH_ROCM_ARCH=${SELECTED_GPU_ARCH}"
@@ -1197,7 +1236,7 @@ build_docker_args() {
         add_mount "$HOST_HOME/.gitconfig" "$HOST_HOME/.gitconfig" ro
     fi
 
-    docker_args+=("$SELECTED_IMAGE")
+    docker_args+=("${SELECTED_IMAGE_ID:-$SELECTED_IMAGE}")
 }
 
 docker_exec() {

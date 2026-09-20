@@ -1,0 +1,42 @@
+source_file_path:
+- source/kernel.py
+target_kernel_functions:
+- gemm_a8w8_blockscale_bpreshuffle
+compile_command:
+- python3 scripts/task_runner.py compile --timeout 600
+correctness_command:
+- python3 scripts/task_runner.py correctness --timeout 3600
+performance_command:
+- python3 scripts/task_runner.py performance --timeout 3600
+task_type: triton2triton
+compile_timeout: 600
+correctness_timeout: 3600
+performance_timeout: 3600
+platform_support:
+  required_arch: gfx950
+  status: active
+prompt:
+  instructions: Optimize GLM-5.3-Flash aiter:gemm_a8w8_blockscale_bpreshuffle on MI355X (gfx950). Edit
+    source/kernel.py only. Preserve the complete production ABI, operand layouts, dtype, fresh output,
+    and no-input-mutation contract. The protected task evaluates all 21 upstream cases using synthetic
+    values and independent FP32 semantic references plus fresh native parity. Source is a stock AITER
+    function excerpt; external device implementations remain native dependencies. Historical selection
+    and profile evidence are provenance, not measurements of this run. Do not edit ut/, scripts/, config.yaml,
+    or benchmark controls.
+headkernel:
+  operation_id: glm-5.3-flash__ck_gemm_a8w8_blockscale_bpreshuffle
+  model: GLM-5.3-Flash
+  docker: harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.17-rocm720-mi35x-profilerfix
+  serving: ISL 8192 / OSL 1024 / CONC 64 / TP 8
+  backend: CK / CKTile via AITER
+  target_callable: aiter:gemm_a8w8_blockscale_bpreshuffle
+  tol: 0.05
+  oracle: synthesized_dequant_fp32
+  source_package: H/GLM-5.3-Flash_ck_gemm_a8w8_blockscale_bpreshuffle_0913
+  source_seed: stock_function_excerpt
+  synthetic_values: true
+  captured_tensor_oracle: false
+  benchmark_scope: single-rank operator; graph device timing of the eager operator; not serving end-to-end
+    performance
+  runtime:
+    sglang_version: 0.5.17

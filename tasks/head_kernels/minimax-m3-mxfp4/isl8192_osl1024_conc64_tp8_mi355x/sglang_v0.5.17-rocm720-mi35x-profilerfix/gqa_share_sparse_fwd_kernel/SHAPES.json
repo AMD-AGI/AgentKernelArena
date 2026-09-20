@@ -1,0 +1,3278 @@
+{
+  "schema_version": 1,
+  "task_id": "minimax-m3__gqa_share_sparse_fwd_kernel",
+  "task_path": ".",
+  "path_base": "task directory",
+  "scope": "Single-GPU callable/operator unit benchmark on MI355X (gfx950). Serving capture context does not define kernel tensor shapes.",
+  "serving_capture_context": {
+    "isl": 8192,
+    "osl": 1024,
+    "concurrency": 64,
+    "tensor_parallel_world_size": 8
+  },
+  "environment_evidence": "config.yaml",
+  "interface": {
+    "target_callable": "sglang.kernels.ops.attention.minimax_sparse.prefill.topk_sparse:flash_prefill_with_gqa_share_sparse",
+    "baseline_callable_recorded": "sglang.kernels.ops.attention.minimax_sparse.prefill.topk_sparse:flash_prefill_with_gqa_share_sparse",
+    "candidate_bind_recorded": {
+      "kind": "module",
+      "module": "sglang.kernels.ops.attention.minimax_sparse.prefill.topk_sparse",
+      "file": "kernel_src/topk_sparse.py"
+    },
+    "candidate_signatures": [
+      {
+        "callable": "flash_prefill_with_gqa_share_sparse",
+        "signature": "flash_prefill_with_gqa_share_sparse(q: torch.Tensor, k_cache: torch.Tensor, v_cache: torch.Tensor, sink: Optional[torch.Tensor], req_to_token: torch.Tensor, slot_ids: torch.Tensor, topk_idx: torch.Tensor, block_size_q: int, block_size_k: int, cu_seqlens: torch.Tensor, seq_lens: torch.Tensor, prefix_lens: torch.Tensor, max_seqlen_q: int, sm_scale: Optional[float]=None, use_tma: bool=True, cu_seqblocks_q: Optional[torch.Tensor]=None, max_seqblock_q: Optional[int]=None, q_scale: Optional[float]=None, k_scale: Optional[float]=None, v_scale: Optional[float]=None)",
+        "evidence": "source/topk_sparse.py:271"
+      }
+    ],
+    "benchmark_adapter": "scripts/_bench.py#selected_cases",
+    "scope": "selected callable seam; kernel launch count is not asserted by this catalog",
+    "profiled_kernel_rows": [
+      {
+        "id": "MM-5",
+        "profiled_kernel": "gqa_share_sparse_fwd_kernel",
+        "device_symbol": "_gqa_share_sparse_fwd_kernel",
+        "regime": "prefill"
+      }
+    ],
+    "frozen_baseline_signatures": [
+      {
+        "signature": "flash_prefill_with_gqa_share_sparse(q: torch.Tensor, k_cache: torch.Tensor, v_cache: torch.Tensor, sink: Optional[torch.Tensor], req_to_token: torch.Tensor, slot_ids: torch.Tensor, topk_idx: torch.Tensor, block_size_q: int, block_size_k: int, cu_seqlens: torch.Tensor, seq_lens: torch.Tensor, prefix_lens: torch.Tensor, max_seqlen_q: int, sm_scale: Optional[float]=None, use_tma: bool=True, cu_seqblocks_q: Optional[torch.Tensor]=None, max_seqblock_q: Optional[int]=None, q_scale: Optional[float]=None, k_scale: Optional[float]=None, v_scale: Optional[float]=None)",
+        "evidence": "ut/baseline_ref/topk_sparse.py.orig:271"
+      }
+    ],
+    "alias_and_mutation_notes": "block-sparse GQA prefill: for each query, softmax over the topk selected KV blocks of (Q·Kᵀ)·sm_scale (+ causal mask, + optional attn sink) · V, paged K/V gathered through req_to_token",
+    "alias_evidence": [
+      "ut/meta.json#/math_contract",
+      "ut/cases.py:62"
+    ]
+  },
+  "contracts": [
+    {
+      "value": "block-sparse GQA prefill: for each query, softmax over the topk selected KV blocks of (Q·Kᵀ)·sm_scale (+ causal mask, + optional attn sink) · V, paged K/V gathered through req_to_token",
+      "evidence": "ut/meta.json#/math_contract"
+    }
+  ],
+  "metadata_dimensions": {
+    "m_buckets": {
+      "value": [
+        1,
+        186,
+        8192
+      ],
+      "evidence": "ut/meta.json#/m_buckets"
+    }
+  },
+  "case_inventory": {
+    "metadata_declared_num_cases": 3,
+    "shape_record_count": 3,
+    "benchmark_case_count": 1,
+    "benchmark_case_ids": [
+      "prefill_m8192_s1"
+    ],
+    "count_note": "Counts describe distinct scopes. Captures, boundary specs, histogram observations and benchmark buckets are not interchangeable."
+  },
+  "benchmark_cases": [
+    {
+      "case_id": "prefill_m8192_s1",
+      "shape_record_id": "block_size_k=128|block_size_q=1|cu_seqblocks_q=T(2,):torch.int32|cu_seqlens=T(2,):torch.int32|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|max_seqblock_q=8192|max_seqlen_q=8192|prefix_lens=T(1,):torch.int32|q=T(8192, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(1,):torch.int32|sink=None|slot_ids=T(1,):torch.int64|sm_scale=None|topk_idx=T(1, 8192, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
+      "regime": "prefill",
+      "evidence": "ut/cases.py:143",
+      "notes": "Full captured request table is replaced by selected/remapped rows by _build_args; timing_geometry.pt holds the exact rows.",
+      "tensor_overrides": [
+        {
+          "name": "req_to_token",
+          "shape": [
+            1,
+            null
+          ],
+          "dtype": "torch.int32",
+          "strides": null,
+          "layout": "real selected request rows; column count and physical stride require timing_geometry.pt",
+          "evidence": "ut/cases.py:73"
+        },
+        {
+          "name": "slot_ids",
+          "shape": [
+            1
+          ],
+          "dtype": "torch.int32",
+          "strides": [
+            1
+          ],
+          "values": [
+            0
+          ],
+          "evidence": "ut/cases.py:73"
+        },
+        {
+          "name": "k_cache",
+          "shape": [
+            4358330,
+            1,
+            128
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            128,
+            128,
+            1
+          ],
+          "layout": "contiguous generated timing tensor",
+          "evidence": "ut/cases.py:73"
+        },
+        {
+          "name": "q",
+          "shape": [
+            8192,
+            8,
+            128
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            1024,
+            128,
+            1
+          ],
+          "layout": "contiguous generated timing tensor",
+          "evidence": "ut/cases.py:73"
+        },
+        {
+          "name": "v_cache",
+          "shape": [
+            4358330,
+            1,
+            128
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": [
+            128,
+            128,
+            1
+          ],
+          "layout": "contiguous generated timing tensor",
+          "evidence": "ut/cases.py:73"
+        }
+      ]
+    }
+  ],
+  "cases": [
+    {
+      "case_id": "block_size_k=128|block_size_q=1|cu_seqblocks_q=T(2,):torch.int32|cu_seqlens=T(2,):torch.int32|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|max_seqblock_q=186|max_seqlen_q=186|prefix_lens=T(1,):torch.int32|q=T(186, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(1,):torch.int32|sink=None|slot_ids=T(1,):torch.int64|sm_scale=None|topk_idx=T(1, 186, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
+      "regime": "prefill",
+      "evidence": "ut/meta.json#/cases/0",
+      "metadata": {
+        "sig": "block_size_k=128|block_size_q=1|cu_seqblocks_q=T(2,):torch.int32|cu_seqlens=T(2,):torch.int32|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|max_seqblock_q=186|max_seqlen_q=186|prefix_lens=T(1,):torch.int32|q=T(186, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(1,):torch.int32|sink=None|slot_ids=T(1,):torch.int64|sm_scale=None|topk_idx=T(1, 186, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
+        "regime": "prefill",
+        "total_q": 186,
+        "num_q_heads": 8,
+        "qk_head_dim": 128,
+        "num_kv_heads": 1,
+        "v_head_dim": 128,
+        "max_slots": 4358330,
+        "num_seqs": 1,
+        "block_size_q": 1,
+        "block_size_k": 128,
+        "topk": 16,
+        "max_seqlen_q": 186,
+        "max_seqblock_q": 186,
+        "sm_scale": null,
+        "q_scale": null,
+        "k_scale": 1.0,
+        "v_scale": 1.0,
+        "has_sink": false,
+        "req_to_token_shape": [
+          4097,
+          11268
+        ],
+        "cu_seqlens": [
+          0,
+          186
+        ],
+        "cu_seqblocks_q": [
+          0,
+          186
+        ],
+        "seq_lens": [
+          186
+        ],
+        "prefix_lens": [
+          0
+        ],
+        "slot_ids": [
+          1
+        ],
+        "q_dtype": "torch.bfloat16",
+        "kv_dtype": "torch.bfloat16"
+      },
+      "tensors": [
+        {
+          "name": "cu_seqblocks_q",
+          "role": "input",
+          "shape": [
+            2
+          ],
+          "dtype": "torch.int32",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/cases/0"
+        },
+        {
+          "name": "cu_seqlens",
+          "role": "input",
+          "shape": [
+            2
+          ],
+          "dtype": "torch.int32",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/cases/0"
+        },
+        {
+          "name": "k_cache",
+          "role": "input",
+          "shape": [
+            4358330,
+            1,
+            128
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/cases/0"
+        },
+        {
+          "name": "prefix_lens",
+          "role": "input",
+          "shape": [
+            1
+          ],
+          "dtype": "torch.int32",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/cases/0"
+        },
+        {
+          "name": "q",
+          "role": "input",
+          "shape": [
+            186,
+            8,
+            128
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/cases/0"
+        },
+        {
+          "name": "req_to_token",
+          "role": "input",
+          "shape": [
+            4097,
+            11268
+          ],
+          "dtype": "torch.int32",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/cases/0"
+        },
+        {
+          "name": "seq_lens",
+          "role": "input",
+          "shape": [
+            1
+          ],
+          "dtype": "torch.int32",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/cases/0"
+        },
+        {
+          "name": "slot_ids",
+          "role": "input",
+          "shape": [
+            1
+          ],
+          "dtype": "torch.int64",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/cases/0"
+        },
+        {
+          "name": "topk_idx",
+          "role": "input",
+          "shape": [
+            1,
+            186,
+            16
+          ],
+          "dtype": "torch.int32",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/cases/0"
+        },
+        {
+          "name": "v_cache",
+          "role": "input",
+          "shape": [
+            4358330,
+            1,
+            128
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/cases/0"
+        }
+      ],
+      "scalars": {
+        "block_size_k": {
+          "value": 128,
+          "evidence": "ut/meta.json#/cases/0",
+          "scope": "call_argument"
+        },
+        "block_size_q": {
+          "value": 1,
+          "evidence": "ut/meta.json#/cases/0",
+          "scope": "call_argument"
+        },
+        "k_scale": {
+          "value": 1.0,
+          "evidence": "ut/meta.json#/cases/0",
+          "scope": "call_argument"
+        },
+        "max_seqblock_q": {
+          "value": 186,
+          "evidence": "ut/meta.json#/cases/0",
+          "scope": "call_argument"
+        },
+        "max_seqlen_q": {
+          "value": 186,
+          "evidence": "ut/meta.json#/cases/0",
+          "scope": "call_argument"
+        },
+        "q_scale": {
+          "value": null,
+          "evidence": "ut/meta.json#/cases/0",
+          "scope": "call_argument"
+        },
+        "sink": {
+          "value": null,
+          "evidence": "ut/meta.json#/cases/0",
+          "scope": "call_argument"
+        },
+        "sm_scale": {
+          "value": null,
+          "evidence": "ut/meta.json#/cases/0",
+          "scope": "call_argument"
+        },
+        "v_scale": {
+          "value": 1.0,
+          "evidence": "ut/meta.json#/cases/0",
+          "scope": "call_argument"
+        },
+        "topk": {
+          "value": 16,
+          "evidence": "ut/meta.json#/cases/0",
+          "scope": "case_geometry"
+        }
+      },
+      "outputs": [
+        {
+          "name": "return",
+          "role": "output",
+          "shape": [
+            186,
+            8,
+            128
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": null,
+          "layout": "merged attention output",
+          "evidence": "ut/meta.json#/math_contract"
+        }
+      ],
+      "benchmark_case_ids": [],
+      "notes": [
+        "Captured req_to_token has full server pool shape; the timing builder uses only selected request rows and remaps slot_ids. Physical timing row details are in timing_geometry.pt."
+      ]
+    },
+    {
+      "case_id": "block_size_k=128|block_size_q=1|cu_seqblocks_q=T(2,):torch.int32|cu_seqlens=T(2,):torch.int32|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|max_seqblock_q=1|max_seqlen_q=1|prefix_lens=T(1,):torch.int32|q=T(1, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(1,):torch.int32|sink=None|slot_ids=T(1,):torch.int64|sm_scale=None|topk_idx=T(1, 1, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
+      "regime": "prefill",
+      "evidence": "ut/meta.json#/cases/1",
+      "metadata": {
+        "sig": "block_size_k=128|block_size_q=1|cu_seqblocks_q=T(2,):torch.int32|cu_seqlens=T(2,):torch.int32|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|max_seqblock_q=1|max_seqlen_q=1|prefix_lens=T(1,):torch.int32|q=T(1, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(1,):torch.int32|sink=None|slot_ids=T(1,):torch.int64|sm_scale=None|topk_idx=T(1, 1, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
+        "regime": "prefill",
+        "total_q": 1,
+        "num_q_heads": 8,
+        "qk_head_dim": 128,
+        "num_kv_heads": 1,
+        "v_head_dim": 128,
+        "max_slots": 4358330,
+        "num_seqs": 1,
+        "block_size_q": 1,
+        "block_size_k": 128,
+        "topk": 16,
+        "max_seqlen_q": 1,
+        "max_seqblock_q": 1,
+        "sm_scale": null,
+        "q_scale": null,
+        "k_scale": 1.0,
+        "v_scale": 1.0,
+        "has_sink": false,
+        "req_to_token_shape": [
+          4097,
+          11268
+        ],
+        "cu_seqlens": [
+          0,
+          1
+        ],
+        "cu_seqblocks_q": [
+          0,
+          1
+        ],
+        "seq_lens": [
+          1
+        ],
+        "prefix_lens": [
+          0
+        ],
+        "slot_ids": [
+          2
+        ],
+        "q_dtype": "torch.bfloat16",
+        "kv_dtype": "torch.bfloat16"
+      },
+      "tensors": [
+        {
+          "name": "cu_seqblocks_q",
+          "role": "input",
+          "shape": [
+            2
+          ],
+          "dtype": "torch.int32",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/cases/1"
+        },
+        {
+          "name": "cu_seqlens",
+          "role": "input",
+          "shape": [
+            2
+          ],
+          "dtype": "torch.int32",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/cases/1"
+        },
+        {
+          "name": "k_cache",
+          "role": "input",
+          "shape": [
+            4358330,
+            1,
+            128
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/cases/1"
+        },
+        {
+          "name": "prefix_lens",
+          "role": "input",
+          "shape": [
+            1
+          ],
+          "dtype": "torch.int32",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/cases/1"
+        },
+        {
+          "name": "q",
+          "role": "input",
+          "shape": [
+            1,
+            8,
+            128
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/cases/1"
+        },
+        {
+          "name": "req_to_token",
+          "role": "input",
+          "shape": [
+            4097,
+            11268
+          ],
+          "dtype": "torch.int32",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/cases/1"
+        },
+        {
+          "name": "seq_lens",
+          "role": "input",
+          "shape": [
+            1
+          ],
+          "dtype": "torch.int32",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/cases/1"
+        },
+        {
+          "name": "slot_ids",
+          "role": "input",
+          "shape": [
+            1
+          ],
+          "dtype": "torch.int64",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/cases/1"
+        },
+        {
+          "name": "topk_idx",
+          "role": "input",
+          "shape": [
+            1,
+            1,
+            16
+          ],
+          "dtype": "torch.int32",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/cases/1"
+        },
+        {
+          "name": "v_cache",
+          "role": "input",
+          "shape": [
+            4358330,
+            1,
+            128
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/cases/1"
+        }
+      ],
+      "scalars": {
+        "block_size_k": {
+          "value": 128,
+          "evidence": "ut/meta.json#/cases/1",
+          "scope": "call_argument"
+        },
+        "block_size_q": {
+          "value": 1,
+          "evidence": "ut/meta.json#/cases/1",
+          "scope": "call_argument"
+        },
+        "k_scale": {
+          "value": 1.0,
+          "evidence": "ut/meta.json#/cases/1",
+          "scope": "call_argument"
+        },
+        "max_seqblock_q": {
+          "value": 1,
+          "evidence": "ut/meta.json#/cases/1",
+          "scope": "call_argument"
+        },
+        "max_seqlen_q": {
+          "value": 1,
+          "evidence": "ut/meta.json#/cases/1",
+          "scope": "call_argument"
+        },
+        "q_scale": {
+          "value": null,
+          "evidence": "ut/meta.json#/cases/1",
+          "scope": "call_argument"
+        },
+        "sink": {
+          "value": null,
+          "evidence": "ut/meta.json#/cases/1",
+          "scope": "call_argument"
+        },
+        "sm_scale": {
+          "value": null,
+          "evidence": "ut/meta.json#/cases/1",
+          "scope": "call_argument"
+        },
+        "v_scale": {
+          "value": 1.0,
+          "evidence": "ut/meta.json#/cases/1",
+          "scope": "call_argument"
+        },
+        "topk": {
+          "value": 16,
+          "evidence": "ut/meta.json#/cases/1",
+          "scope": "case_geometry"
+        }
+      },
+      "outputs": [
+        {
+          "name": "return",
+          "role": "output",
+          "shape": [
+            1,
+            8,
+            128
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": null,
+          "layout": "merged attention output",
+          "evidence": "ut/meta.json#/math_contract"
+        }
+      ],
+      "benchmark_case_ids": [],
+      "notes": [
+        "Captured req_to_token has full server pool shape; the timing builder uses only selected request rows and remaps slot_ids. Physical timing row details are in timing_geometry.pt."
+      ]
+    },
+    {
+      "case_id": "block_size_k=128|block_size_q=1|cu_seqblocks_q=T(2,):torch.int32|cu_seqlens=T(2,):torch.int32|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|max_seqblock_q=8192|max_seqlen_q=8192|prefix_lens=T(1,):torch.int32|q=T(8192, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(1,):torch.int32|sink=None|slot_ids=T(1,):torch.int64|sm_scale=None|topk_idx=T(1, 8192, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
+      "regime": "prefill",
+      "evidence": "ut/meta.json#/cases/2",
+      "metadata": {
+        "sig": "block_size_k=128|block_size_q=1|cu_seqblocks_q=T(2,):torch.int32|cu_seqlens=T(2,):torch.int32|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|max_seqblock_q=8192|max_seqlen_q=8192|prefix_lens=T(1,):torch.int32|q=T(8192, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(1,):torch.int32|sink=None|slot_ids=T(1,):torch.int64|sm_scale=None|topk_idx=T(1, 8192, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
+        "regime": "prefill",
+        "total_q": 8192,
+        "num_q_heads": 8,
+        "qk_head_dim": 128,
+        "num_kv_heads": 1,
+        "v_head_dim": 128,
+        "max_slots": 4358330,
+        "num_seqs": 1,
+        "block_size_q": 1,
+        "block_size_k": 128,
+        "topk": 16,
+        "max_seqlen_q": 8192,
+        "max_seqblock_q": 8192,
+        "sm_scale": null,
+        "q_scale": null,
+        "k_scale": 1.0,
+        "v_scale": 1.0,
+        "has_sink": false,
+        "req_to_token_shape": [
+          4097,
+          11268
+        ],
+        "cu_seqlens": [
+          0,
+          8192
+        ],
+        "cu_seqblocks_q": [
+          0,
+          8192
+        ],
+        "seq_lens": [
+          8192
+        ],
+        "prefix_lens": [
+          0
+        ],
+        "slot_ids": [
+          4
+        ],
+        "q_dtype": "torch.bfloat16",
+        "kv_dtype": "torch.bfloat16"
+      },
+      "tensors": [
+        {
+          "name": "cu_seqblocks_q",
+          "role": "input",
+          "shape": [
+            2
+          ],
+          "dtype": "torch.int32",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/cases/2"
+        },
+        {
+          "name": "cu_seqlens",
+          "role": "input",
+          "shape": [
+            2
+          ],
+          "dtype": "torch.int32",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/cases/2"
+        },
+        {
+          "name": "k_cache",
+          "role": "input",
+          "shape": [
+            4358330,
+            1,
+            128
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/cases/2"
+        },
+        {
+          "name": "prefix_lens",
+          "role": "input",
+          "shape": [
+            1
+          ],
+          "dtype": "torch.int32",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/cases/2"
+        },
+        {
+          "name": "q",
+          "role": "input",
+          "shape": [
+            8192,
+            8,
+            128
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/cases/2"
+        },
+        {
+          "name": "req_to_token",
+          "role": "input",
+          "shape": [
+            4097,
+            11268
+          ],
+          "dtype": "torch.int32",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/cases/2"
+        },
+        {
+          "name": "seq_lens",
+          "role": "input",
+          "shape": [
+            1
+          ],
+          "dtype": "torch.int32",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/cases/2"
+        },
+        {
+          "name": "slot_ids",
+          "role": "input",
+          "shape": [
+            1
+          ],
+          "dtype": "torch.int64",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/cases/2"
+        },
+        {
+          "name": "topk_idx",
+          "role": "input",
+          "shape": [
+            1,
+            8192,
+            16
+          ],
+          "dtype": "torch.int32",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/cases/2"
+        },
+        {
+          "name": "v_cache",
+          "role": "input",
+          "shape": [
+            4358330,
+            1,
+            128
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": null,
+          "layout": "unknown: physical strides are not recorded in this metadata",
+          "evidence": "ut/meta.json#/cases/2"
+        }
+      ],
+      "scalars": {
+        "block_size_k": {
+          "value": 128,
+          "evidence": "ut/meta.json#/cases/2",
+          "scope": "call_argument"
+        },
+        "block_size_q": {
+          "value": 1,
+          "evidence": "ut/meta.json#/cases/2",
+          "scope": "call_argument"
+        },
+        "k_scale": {
+          "value": 1.0,
+          "evidence": "ut/meta.json#/cases/2",
+          "scope": "call_argument"
+        },
+        "max_seqblock_q": {
+          "value": 8192,
+          "evidence": "ut/meta.json#/cases/2",
+          "scope": "call_argument"
+        },
+        "max_seqlen_q": {
+          "value": 8192,
+          "evidence": "ut/meta.json#/cases/2",
+          "scope": "call_argument"
+        },
+        "q_scale": {
+          "value": null,
+          "evidence": "ut/meta.json#/cases/2",
+          "scope": "call_argument"
+        },
+        "sink": {
+          "value": null,
+          "evidence": "ut/meta.json#/cases/2",
+          "scope": "call_argument"
+        },
+        "sm_scale": {
+          "value": null,
+          "evidence": "ut/meta.json#/cases/2",
+          "scope": "call_argument"
+        },
+        "v_scale": {
+          "value": 1.0,
+          "evidence": "ut/meta.json#/cases/2",
+          "scope": "call_argument"
+        },
+        "topk": {
+          "value": 16,
+          "evidence": "ut/meta.json#/cases/2",
+          "scope": "case_geometry"
+        }
+      },
+      "outputs": [
+        {
+          "name": "return",
+          "role": "output",
+          "shape": [
+            8192,
+            8,
+            128
+          ],
+          "dtype": "torch.bfloat16",
+          "strides": null,
+          "layout": "merged attention output",
+          "evidence": "ut/meta.json#/math_contract"
+        }
+      ],
+      "benchmark_case_ids": [
+        "prefill_m8192_s1"
+      ],
+      "notes": [
+        "Captured req_to_token has full server pool shape; the timing builder uses only selected request rows and remaps slot_ids. Physical timing row details are in timing_geometry.pt."
+      ]
+    }
+  ],
+  "source_inventories": {
+    "cases": {
+      "evidence": "ut/meta.json#/cases",
+      "records": [
+        {
+          "sig": "block_size_k=128|block_size_q=1|cu_seqblocks_q=T(2,):torch.int32|cu_seqlens=T(2,):torch.int32|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|max_seqblock_q=186|max_seqlen_q=186|prefix_lens=T(1,):torch.int32|q=T(186, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(1,):torch.int32|sink=None|slot_ids=T(1,):torch.int64|sm_scale=None|topk_idx=T(1, 186, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
+          "regime": "prefill",
+          "total_q": 186,
+          "num_q_heads": 8,
+          "qk_head_dim": 128,
+          "num_kv_heads": 1,
+          "v_head_dim": 128,
+          "max_slots": 4358330,
+          "num_seqs": 1,
+          "block_size_q": 1,
+          "block_size_k": 128,
+          "topk": 16,
+          "max_seqlen_q": 186,
+          "max_seqblock_q": 186,
+          "sm_scale": null,
+          "q_scale": null,
+          "k_scale": 1.0,
+          "v_scale": 1.0,
+          "has_sink": false,
+          "req_to_token_shape": [
+            4097,
+            11268
+          ],
+          "cu_seqlens": [
+            0,
+            186
+          ],
+          "cu_seqblocks_q": [
+            0,
+            186
+          ],
+          "seq_lens": [
+            186
+          ],
+          "prefix_lens": [
+            0
+          ],
+          "slot_ids": [
+            1
+          ],
+          "q_dtype": "torch.bfloat16",
+          "kv_dtype": "torch.bfloat16"
+        },
+        {
+          "sig": "block_size_k=128|block_size_q=1|cu_seqblocks_q=T(2,):torch.int32|cu_seqlens=T(2,):torch.int32|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|max_seqblock_q=1|max_seqlen_q=1|prefix_lens=T(1,):torch.int32|q=T(1, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(1,):torch.int32|sink=None|slot_ids=T(1,):torch.int64|sm_scale=None|topk_idx=T(1, 1, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
+          "regime": "prefill",
+          "total_q": 1,
+          "num_q_heads": 8,
+          "qk_head_dim": 128,
+          "num_kv_heads": 1,
+          "v_head_dim": 128,
+          "max_slots": 4358330,
+          "num_seqs": 1,
+          "block_size_q": 1,
+          "block_size_k": 128,
+          "topk": 16,
+          "max_seqlen_q": 1,
+          "max_seqblock_q": 1,
+          "sm_scale": null,
+          "q_scale": null,
+          "k_scale": 1.0,
+          "v_scale": 1.0,
+          "has_sink": false,
+          "req_to_token_shape": [
+            4097,
+            11268
+          ],
+          "cu_seqlens": [
+            0,
+            1
+          ],
+          "cu_seqblocks_q": [
+            0,
+            1
+          ],
+          "seq_lens": [
+            1
+          ],
+          "prefix_lens": [
+            0
+          ],
+          "slot_ids": [
+            2
+          ],
+          "q_dtype": "torch.bfloat16",
+          "kv_dtype": "torch.bfloat16"
+        },
+        {
+          "sig": "block_size_k=128|block_size_q=1|cu_seqblocks_q=T(2,):torch.int32|cu_seqlens=T(2,):torch.int32|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|max_seqblock_q=8192|max_seqlen_q=8192|prefix_lens=T(1,):torch.int32|q=T(8192, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(1,):torch.int32|sink=None|slot_ids=T(1,):torch.int64|sm_scale=None|topk_idx=T(1, 8192, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
+          "regime": "prefill",
+          "total_q": 8192,
+          "num_q_heads": 8,
+          "qk_head_dim": 128,
+          "num_kv_heads": 1,
+          "v_head_dim": 128,
+          "max_slots": 4358330,
+          "num_seqs": 1,
+          "block_size_q": 1,
+          "block_size_k": 128,
+          "topk": 16,
+          "max_seqlen_q": 8192,
+          "max_seqblock_q": 8192,
+          "sm_scale": null,
+          "q_scale": null,
+          "k_scale": 1.0,
+          "v_scale": 1.0,
+          "has_sink": false,
+          "req_to_token_shape": [
+            4097,
+            11268
+          ],
+          "cu_seqlens": [
+            0,
+            8192
+          ],
+          "cu_seqblocks_q": [
+            0,
+            8192
+          ],
+          "seq_lens": [
+            8192
+          ],
+          "prefix_lens": [
+            0
+          ],
+          "slot_ids": [
+            4
+          ],
+          "q_dtype": "torch.bfloat16",
+          "kv_dtype": "torch.bfloat16"
+        }
+      ]
+    },
+    "workload/cases": {
+      "evidence": "ut/meta.json#/workload/cases",
+      "records": [
+        {
+          "name": "block_size_k=128|block_size_q=1|cu_seqblocks_q=T(2,):torch.int32|cu_seqlens=T(2,):torch.int32|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|max_seqblock_q=186|max_seqlen_q=186|prefix_lens=T(1,):torch.int32|q=T(186, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(1,):torch.int32|sink=None|slot_ids=T(1,):torch.int64|sm_scale=None|topk_idx=T(1, 186, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
+          "dims": [],
+          "dtypes": [],
+          "count": null,
+          "weight": 0.0,
+          "weight_source": "prior",
+          "regime": "prefill",
+          "weight_norm": 0.0,
+          "quant": {
+            "scheme": "quark",
+            "weight_dtype": "bf16",
+            "act_dtype": "bf16",
+            "out_dtype": "",
+            "weight_block_size": null,
+            "scale_dtype": "float32",
+            "kv_cache_dtype": "auto"
+          }
+        },
+        {
+          "name": "block_size_k=128|block_size_q=1|cu_seqblocks_q=T(2,):torch.int32|cu_seqlens=T(2,):torch.int32|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|max_seqblock_q=1|max_seqlen_q=1|prefix_lens=T(1,):torch.int32|q=T(1, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(1,):torch.int32|sink=None|slot_ids=T(1,):torch.int64|sm_scale=None|topk_idx=T(1, 1, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
+          "dims": [],
+          "dtypes": [],
+          "count": null,
+          "weight": 0.0,
+          "weight_source": "prior",
+          "regime": "prefill",
+          "weight_norm": 0.0,
+          "quant": {
+            "scheme": "quark",
+            "weight_dtype": "bf16",
+            "act_dtype": "bf16",
+            "out_dtype": "",
+            "weight_block_size": null,
+            "scale_dtype": "float32",
+            "kv_cache_dtype": "auto"
+          }
+        },
+        {
+          "name": "block_size_k=128|block_size_q=1|cu_seqblocks_q=T(2,):torch.int32|cu_seqlens=T(2,):torch.int32|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|max_seqblock_q=8192|max_seqlen_q=8192|prefix_lens=T(1,):torch.int32|q=T(8192, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(1,):torch.int32|sink=None|slot_ids=T(1,):torch.int64|sm_scale=None|topk_idx=T(1, 8192, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
+          "dims": [],
+          "dtypes": [],
+          "count": null,
+          "weight": 0.0,
+          "weight_source": "prior",
+          "regime": "prefill",
+          "weight_norm": 0.0,
+          "quant": {
+            "scheme": "quark",
+            "weight_dtype": "bf16",
+            "act_dtype": "bf16",
+            "out_dtype": "",
+            "weight_block_size": null,
+            "scale_dtype": "float32",
+            "kv_cache_dtype": "auto"
+          }
+        }
+      ]
+    }
+  },
+  "observed_shape_inventories": [
+    {
+      "evidence": "ut/meta.json#/shape_counts",
+      "scope": "observed signature histogram; these entries are not additional benchmark cases",
+      "declared_num_distinct_shapes": 36,
+      "entries": [
+        {
+          "sig": "block_size_k=128|block_size_q=1|cu_seqblocks_q=T(2,):torch.int32|cu_seqlens=T(2,):torch.int32|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|max_seqblock_q=1|max_seqlen_q=1|prefix_lens=T(1,):torch.int32|q=T(1, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(1,):torch.int32|sink=None|slot_ids=T(1,):torch.int64|sm_scale=None|topk_idx=T(1, 1, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
+          "count": 114,
+          "input_shapes": [
+            [
+              1,
+              8,
+              128
+            ],
+            [
+              4358330,
+              1,
+              128
+            ],
+            [
+              4358330,
+              1,
+              128
+            ],
+            [
+              4097,
+              11268
+            ],
+            [
+              1
+            ],
+            [
+              1,
+              1,
+              16
+            ],
+            [
+              2
+            ],
+            [
+              1
+            ],
+            [
+              1
+            ],
+            [
+              2
+            ]
+          ],
+          "input_dtypes": [
+            "torch.bfloat16",
+            "torch.int32",
+            "torch.int64"
+          ]
+        },
+        {
+          "sig": "block_size_k=128|block_size_q=1|cu_seqblocks_q=T(2,):torch.int32|cu_seqlens=T(2,):torch.int32|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|max_seqblock_q=8192|max_seqlen_q=8192|prefix_lens=T(1,):torch.int32|q=T(8192, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(1,):torch.int32|sink=None|slot_ids=T(1,):torch.int64|sm_scale=None|topk_idx=T(1, 8192, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
+          "count": 114,
+          "input_shapes": [
+            [
+              8192,
+              8,
+              128
+            ],
+            [
+              4358330,
+              1,
+              128
+            ],
+            [
+              4358330,
+              1,
+              128
+            ],
+            [
+              4097,
+              11268
+            ],
+            [
+              1
+            ],
+            [
+              1,
+              8192,
+              16
+            ],
+            [
+              2
+            ],
+            [
+              1
+            ],
+            [
+              1
+            ],
+            [
+              2
+            ]
+          ],
+          "input_dtypes": [
+            "torch.bfloat16",
+            "torch.int32",
+            "torch.int64"
+          ]
+        },
+        {
+          "sig": "block_size_k=128|block_size_q=1|cu_seqblocks_q=T(4,):torch.int32|cu_seqlens=T(4,):torch.int32|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|max_seqblock_q=8192|max_seqlen_q=8192|prefix_lens=T(3,):torch.int32|q=T(16384, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(3,):torch.int32|sink=None|slot_ids=T(3,):torch.int64|sm_scale=None|topk_idx=T(1, 16384, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
+          "count": 114,
+          "input_shapes": [
+            [
+              16384,
+              8,
+              128
+            ],
+            [
+              4358330,
+              1,
+              128
+            ],
+            [
+              4358330,
+              1,
+              128
+            ],
+            [
+              4097,
+              11268
+            ],
+            [
+              3
+            ],
+            [
+              1,
+              16384,
+              16
+            ],
+            [
+              4
+            ],
+            [
+              3
+            ],
+            [
+              3
+            ],
+            [
+              4
+            ]
+          ],
+          "input_dtypes": [
+            "torch.bfloat16",
+            "torch.int32",
+            "torch.int64"
+          ]
+        },
+        {
+          "sig": "block_size_k=128|block_size_q=1|cu_seqblocks_q=T(6,):torch.int32|cu_seqlens=T(6,):torch.int32|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|max_seqblock_q=8192|max_seqlen_q=8192|prefix_lens=T(5,):torch.int32|q=T(16384, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(5,):torch.int32|sink=None|slot_ids=T(5,):torch.int64|sm_scale=None|topk_idx=T(1, 16384, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
+          "count": 114,
+          "input_shapes": [
+            [
+              16384,
+              8,
+              128
+            ],
+            [
+              4358330,
+              1,
+              128
+            ],
+            [
+              4358330,
+              1,
+              128
+            ],
+            [
+              4097,
+              11268
+            ],
+            [
+              5
+            ],
+            [
+              1,
+              16384,
+              16
+            ],
+            [
+              6
+            ],
+            [
+              5
+            ],
+            [
+              5
+            ],
+            [
+              6
+            ]
+          ],
+          "input_dtypes": [
+            "torch.bfloat16",
+            "torch.int32",
+            "torch.int64"
+          ]
+        },
+        {
+          "sig": "block_size_k=128|block_size_q=1|cu_seqblocks_q=T(8,):torch.int32|cu_seqlens=T(8,):torch.int32|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|max_seqblock_q=8192|max_seqlen_q=8192|prefix_lens=T(7,):torch.int32|q=T(16384, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(7,):torch.int32|sink=None|slot_ids=T(7,):torch.int64|sm_scale=None|topk_idx=T(1, 16384, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
+          "count": 114,
+          "input_shapes": [
+            [
+              16384,
+              8,
+              128
+            ],
+            [
+              4358330,
+              1,
+              128
+            ],
+            [
+              4358330,
+              1,
+              128
+            ],
+            [
+              4097,
+              11268
+            ],
+            [
+              7
+            ],
+            [
+              1,
+              16384,
+              16
+            ],
+            [
+              8
+            ],
+            [
+              7
+            ],
+            [
+              7
+            ],
+            [
+              8
+            ]
+          ],
+          "input_dtypes": [
+            "torch.bfloat16",
+            "torch.int32",
+            "torch.int64"
+          ]
+        },
+        {
+          "sig": "block_size_k=128|block_size_q=1|cu_seqblocks_q=T(2,):torch.int32|cu_seqlens=T(2,):torch.int32|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|max_seqblock_q=186|max_seqlen_q=186|prefix_lens=T(1,):torch.int32|q=T(186, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(1,):torch.int32|sink=None|slot_ids=T(1,):torch.int64|sm_scale=None|topk_idx=T(1, 186, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
+          "count": 57,
+          "input_shapes": [
+            [
+              186,
+              8,
+              128
+            ],
+            [
+              4358330,
+              1,
+              128
+            ],
+            [
+              4358330,
+              1,
+              128
+            ],
+            [
+              4097,
+              11268
+            ],
+            [
+              1
+            ],
+            [
+              1,
+              186,
+              16
+            ],
+            [
+              2
+            ],
+            [
+              1
+            ],
+            [
+              1
+            ],
+            [
+              2
+            ]
+          ],
+          "input_dtypes": [
+            "torch.bfloat16",
+            "torch.int32",
+            "torch.int64"
+          ]
+        },
+        {
+          "sig": "block_size_k=128|block_size_q=1|cu_seqblocks_q=T(9,):torch.int32|cu_seqlens=T(9,):torch.int32|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|max_seqblock_q=8192|max_seqlen_q=8192|prefix_lens=T(8,):torch.int32|q=T(8205, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(8,):torch.int32|sink=None|slot_ids=T(8,):torch.int64|sm_scale=None|topk_idx=T(1, 8205, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
+          "count": 57,
+          "input_shapes": [
+            [
+              8205,
+              8,
+              128
+            ],
+            [
+              4358330,
+              1,
+              128
+            ],
+            [
+              4358330,
+              1,
+              128
+            ],
+            [
+              4097,
+              11268
+            ],
+            [
+              8
+            ],
+            [
+              1,
+              8205,
+              16
+            ],
+            [
+              9
+            ],
+            [
+              8
+            ],
+            [
+              8
+            ],
+            [
+              9
+            ]
+          ],
+          "input_dtypes": [
+            "torch.bfloat16",
+            "torch.int32",
+            "torch.int64"
+          ]
+        },
+        {
+          "sig": "block_size_k=128|block_size_q=1|cu_seqblocks_q=T(10,):torch.int32|cu_seqlens=T(10,):torch.int32|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|max_seqblock_q=8192|max_seqlen_q=8192|prefix_lens=T(9,):torch.int32|q=T(16384, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(9,):torch.int32|sink=None|slot_ids=T(9,):torch.int64|sm_scale=None|topk_idx=T(1, 16384, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
+          "count": 57,
+          "input_shapes": [
+            [
+              16384,
+              8,
+              128
+            ],
+            [
+              4358330,
+              1,
+              128
+            ],
+            [
+              4358330,
+              1,
+              128
+            ],
+            [
+              4097,
+              11268
+            ],
+            [
+              9
+            ],
+            [
+              1,
+              16384,
+              16
+            ],
+            [
+              10
+            ],
+            [
+              9
+            ],
+            [
+              9
+            ],
+            [
+              10
+            ]
+          ],
+          "input_dtypes": [
+            "torch.bfloat16",
+            "torch.int32",
+            "torch.int64"
+          ]
+        },
+        {
+          "sig": "block_size_k=128|block_size_q=1|cu_seqblocks_q=T(12,):torch.int32|cu_seqlens=T(12,):torch.int32|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|max_seqblock_q=8192|max_seqlen_q=8192|prefix_lens=T(11,):torch.int32|q=T(16384, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(11,):torch.int32|sink=None|slot_ids=T(11,):torch.int64|sm_scale=None|topk_idx=T(1, 16384, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
+          "count": 57,
+          "input_shapes": [
+            [
+              16384,
+              8,
+              128
+            ],
+            [
+              4358330,
+              1,
+              128
+            ],
+            [
+              4358330,
+              1,
+              128
+            ],
+            [
+              4097,
+              11268
+            ],
+            [
+              11
+            ],
+            [
+              1,
+              16384,
+              16
+            ],
+            [
+              12
+            ],
+            [
+              11
+            ],
+            [
+              11
+            ],
+            [
+              12
+            ]
+          ],
+          "input_dtypes": [
+            "torch.bfloat16",
+            "torch.int32",
+            "torch.int64"
+          ]
+        },
+        {
+          "sig": "block_size_k=128|block_size_q=1|cu_seqblocks_q=T(14,):torch.int32|cu_seqlens=T(14,):torch.int32|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|max_seqblock_q=8192|max_seqlen_q=8192|prefix_lens=T(13,):torch.int32|q=T(16384, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(13,):torch.int32|sink=None|slot_ids=T(13,):torch.int64|sm_scale=None|topk_idx=T(1, 16384, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
+          "count": 57,
+          "input_shapes": [
+            [
+              16384,
+              8,
+              128
+            ],
+            [
+              4358330,
+              1,
+              128
+            ],
+            [
+              4358330,
+              1,
+              128
+            ],
+            [
+              4097,
+              11268
+            ],
+            [
+              13
+            ],
+            [
+              1,
+              16384,
+              16
+            ],
+            [
+              14
+            ],
+            [
+              13
+            ],
+            [
+              13
+            ],
+            [
+              14
+            ]
+          ],
+          "input_dtypes": [
+            "torch.bfloat16",
+            "torch.int32",
+            "torch.int64"
+          ]
+        },
+        {
+          "sig": "block_size_k=128|block_size_q=1|cu_seqblocks_q=T(16,):torch.int32|cu_seqlens=T(16,):torch.int32|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|max_seqblock_q=8192|max_seqlen_q=8192|prefix_lens=T(15,):torch.int32|q=T(16384, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(15,):torch.int32|sink=None|slot_ids=T(15,):torch.int64|sm_scale=None|topk_idx=T(1, 16384, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
+          "count": 57,
+          "input_shapes": [
+            [
+              16384,
+              8,
+              128
+            ],
+            [
+              4358330,
+              1,
+              128
+            ],
+            [
+              4358330,
+              1,
+              128
+            ],
+            [
+              4097,
+              11268
+            ],
+            [
+              15
+            ],
+            [
+              1,
+              16384,
+              16
+            ],
+            [
+              16
+            ],
+            [
+              15
+            ],
+            [
+              15
+            ],
+            [
+              16
+            ]
+          ],
+          "input_dtypes": [
+            "torch.bfloat16",
+            "torch.int32",
+            "torch.int64"
+          ]
+        },
+        {
+          "sig": "block_size_k=128|block_size_q=1|cu_seqblocks_q=T(18,):torch.int32|cu_seqlens=T(18,):torch.int32|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|max_seqblock_q=8192|max_seqlen_q=8192|prefix_lens=T(17,):torch.int32|q=T(16384, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(17,):torch.int32|sink=None|slot_ids=T(17,):torch.int64|sm_scale=None|topk_idx=T(1, 16384, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
+          "count": 57,
+          "input_shapes": [
+            [
+              16384,
+              8,
+              128
+            ],
+            [
+              4358330,
+              1,
+              128
+            ],
+            [
+              4358330,
+              1,
+              128
+            ],
+            [
+              4097,
+              11268
+            ],
+            [
+              17
+            ],
+            [
+              1,
+              16384,
+              16
+            ],
+            [
+              18
+            ],
+            [
+              17
+            ],
+            [
+              17
+            ],
+            [
+              18
+            ]
+          ],
+          "input_dtypes": [
+            "torch.bfloat16",
+            "torch.int32",
+            "torch.int64"
+          ]
+        },
+        {
+          "sig": "block_size_k=128|block_size_q=1|cu_seqblocks_q=T(20,):torch.int32|cu_seqlens=T(20,):torch.int32|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|max_seqblock_q=8192|max_seqlen_q=8192|prefix_lens=T(19,):torch.int32|q=T(16384, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(19,):torch.int32|sink=None|slot_ids=T(19,):torch.int64|sm_scale=None|topk_idx=T(1, 16384, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
+          "count": 57,
+          "input_shapes": [
+            [
+              16384,
+              8,
+              128
+            ],
+            [
+              4358330,
+              1,
+              128
+            ],
+            [
+              4358330,
+              1,
+              128
+            ],
+            [
+              4097,
+              11268
+            ],
+            [
+              19
+            ],
+            [
+              1,
+              16384,
+              16
+            ],
+            [
+              20
+            ],
+            [
+              19
+            ],
+            [
+              19
+            ],
+            [
+              20
+            ]
+          ],
+          "input_dtypes": [
+            "torch.bfloat16",
+            "torch.int32",
+            "torch.int64"
+          ]
+        },
+        {
+          "sig": "block_size_k=128|block_size_q=1|cu_seqblocks_q=T(22,):torch.int32|cu_seqlens=T(22,):torch.int32|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|max_seqblock_q=8192|max_seqlen_q=8192|prefix_lens=T(21,):torch.int32|q=T(16384, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(21,):torch.int32|sink=None|slot_ids=T(21,):torch.int64|sm_scale=None|topk_idx=T(1, 16384, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
+          "count": 57,
+          "input_shapes": [
+            [
+              16384,
+              8,
+              128
+            ],
+            [
+              4358330,
+              1,
+              128
+            ],
+            [
+              4358330,
+              1,
+              128
+            ],
+            [
+              4097,
+              11268
+            ],
+            [
+              21
+            ],
+            [
+              1,
+              16384,
+              16
+            ],
+            [
+              22
+            ],
+            [
+              21
+            ],
+            [
+              21
+            ],
+            [
+              22
+            ]
+          ],
+          "input_dtypes": [
+            "torch.bfloat16",
+            "torch.int32",
+            "torch.int64"
+          ]
+        },
+        {
+          "sig": "block_size_k=128|block_size_q=1|cu_seqblocks_q=T(24,):torch.int32|cu_seqlens=T(24,):torch.int32|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|max_seqblock_q=8192|max_seqlen_q=8192|prefix_lens=T(23,):torch.int32|q=T(16384, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(23,):torch.int32|sink=None|slot_ids=T(23,):torch.int64|sm_scale=None|topk_idx=T(1, 16384, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
+          "count": 57,
+          "input_shapes": [
+            [
+              16384,
+              8,
+              128
+            ],
+            [
+              4358330,
+              1,
+              128
+            ],
+            [
+              4358330,
+              1,
+              128
+            ],
+            [
+              4097,
+              11268
+            ],
+            [
+              23
+            ],
+            [
+              1,
+              16384,
+              16
+            ],
+            [
+              24
+            ],
+            [
+              23
+            ],
+            [
+              23
+            ],
+            [
+              24
+            ]
+          ],
+          "input_dtypes": [
+            "torch.bfloat16",
+            "torch.int32",
+            "torch.int64"
+          ]
+        },
+        {
+          "sig": "block_size_k=128|block_size_q=1|cu_seqblocks_q=T(26,):torch.int32|cu_seqlens=T(26,):torch.int32|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|max_seqblock_q=8192|max_seqlen_q=8192|prefix_lens=T(25,):torch.int32|q=T(16384, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(25,):torch.int32|sink=None|slot_ids=T(25,):torch.int64|sm_scale=None|topk_idx=T(1, 16384, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
+          "count": 57,
+          "input_shapes": [
+            [
+              16384,
+              8,
+              128
+            ],
+            [
+              4358330,
+              1,
+              128
+            ],
+            [
+              4358330,
+              1,
+              128
+            ],
+            [
+              4097,
+              11268
+            ],
+            [
+              25
+            ],
+            [
+              1,
+              16384,
+              16
+            ],
+            [
+              26
+            ],
+            [
+              25
+            ],
+            [
+              25
+            ],
+            [
+              26
+            ]
+          ],
+          "input_dtypes": [
+            "torch.bfloat16",
+            "torch.int32",
+            "torch.int64"
+          ]
+        },
+        {
+          "sig": "block_size_k=128|block_size_q=1|cu_seqblocks_q=T(28,):torch.int32|cu_seqlens=T(28,):torch.int32|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|max_seqblock_q=8192|max_seqlen_q=8192|prefix_lens=T(27,):torch.int32|q=T(16384, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(27,):torch.int32|sink=None|slot_ids=T(27,):torch.int64|sm_scale=None|topk_idx=T(1, 16384, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
+          "count": 57,
+          "input_shapes": [
+            [
+              16384,
+              8,
+              128
+            ],
+            [
+              4358330,
+              1,
+              128
+            ],
+            [
+              4358330,
+              1,
+              128
+            ],
+            [
+              4097,
+              11268
+            ],
+            [
+              27
+            ],
+            [
+              1,
+              16384,
+              16
+            ],
+            [
+              28
+            ],
+            [
+              27
+            ],
+            [
+              27
+            ],
+            [
+              28
+            ]
+          ],
+          "input_dtypes": [
+            "torch.bfloat16",
+            "torch.int32",
+            "torch.int64"
+          ]
+        },
+        {
+          "sig": "block_size_k=128|block_size_q=1|cu_seqblocks_q=T(30,):torch.int32|cu_seqlens=T(30,):torch.int32|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|max_seqblock_q=8192|max_seqlen_q=8192|prefix_lens=T(29,):torch.int32|q=T(16384, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(29,):torch.int32|sink=None|slot_ids=T(29,):torch.int64|sm_scale=None|topk_idx=T(1, 16384, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
+          "count": 57,
+          "input_shapes": [
+            [
+              16384,
+              8,
+              128
+            ],
+            [
+              4358330,
+              1,
+              128
+            ],
+            [
+              4358330,
+              1,
+              128
+            ],
+            [
+              4097,
+              11268
+            ],
+            [
+              29
+            ],
+            [
+              1,
+              16384,
+              16
+            ],
+            [
+              30
+            ],
+            [
+              29
+            ],
+            [
+              29
+            ],
+            [
+              30
+            ]
+          ],
+          "input_dtypes": [
+            "torch.bfloat16",
+            "torch.int32",
+            "torch.int64"
+          ]
+        },
+        {
+          "sig": "block_size_k=128|block_size_q=1|cu_seqblocks_q=T(32,):torch.int32|cu_seqlens=T(32,):torch.int32|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|max_seqblock_q=8192|max_seqlen_q=8192|prefix_lens=T(31,):torch.int32|q=T(16384, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(31,):torch.int32|sink=None|slot_ids=T(31,):torch.int64|sm_scale=None|topk_idx=T(1, 16384, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
+          "count": 57,
+          "input_shapes": [
+            [
+              16384,
+              8,
+              128
+            ],
+            [
+              4358330,
+              1,
+              128
+            ],
+            [
+              4358330,
+              1,
+              128
+            ],
+            [
+              4097,
+              11268
+            ],
+            [
+              31
+            ],
+            [
+              1,
+              16384,
+              16
+            ],
+            [
+              32
+            ],
+            [
+              31
+            ],
+            [
+              31
+            ],
+            [
+              32
+            ]
+          ],
+          "input_dtypes": [
+            "torch.bfloat16",
+            "torch.int32",
+            "torch.int64"
+          ]
+        },
+        {
+          "sig": "block_size_k=128|block_size_q=1|cu_seqblocks_q=T(34,):torch.int32|cu_seqlens=T(34,):torch.int32|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|max_seqblock_q=8192|max_seqlen_q=8192|prefix_lens=T(33,):torch.int32|q=T(16384, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(33,):torch.int32|sink=None|slot_ids=T(33,):torch.int64|sm_scale=None|topk_idx=T(1, 16384, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
+          "count": 57,
+          "input_shapes": [
+            [
+              16384,
+              8,
+              128
+            ],
+            [
+              4358330,
+              1,
+              128
+            ],
+            [
+              4358330,
+              1,
+              128
+            ],
+            [
+              4097,
+              11268
+            ],
+            [
+              33
+            ],
+            [
+              1,
+              16384,
+              16
+            ],
+            [
+              34
+            ],
+            [
+              33
+            ],
+            [
+              33
+            ],
+            [
+              34
+            ]
+          ],
+          "input_dtypes": [
+            "torch.bfloat16",
+            "torch.int32",
+            "torch.int64"
+          ]
+        },
+        {
+          "sig": "block_size_k=128|block_size_q=1|cu_seqblocks_q=T(36,):torch.int32|cu_seqlens=T(36,):torch.int32|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|max_seqblock_q=8192|max_seqlen_q=8192|prefix_lens=T(35,):torch.int32|q=T(16384, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(35,):torch.int32|sink=None|slot_ids=T(35,):torch.int64|sm_scale=None|topk_idx=T(1, 16384, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
+          "count": 57,
+          "input_shapes": [
+            [
+              16384,
+              8,
+              128
+            ],
+            [
+              4358330,
+              1,
+              128
+            ],
+            [
+              4358330,
+              1,
+              128
+            ],
+            [
+              4097,
+              11268
+            ],
+            [
+              35
+            ],
+            [
+              1,
+              16384,
+              16
+            ],
+            [
+              36
+            ],
+            [
+              35
+            ],
+            [
+              35
+            ],
+            [
+              36
+            ]
+          ],
+          "input_dtypes": [
+            "torch.bfloat16",
+            "torch.int32",
+            "torch.int64"
+          ]
+        },
+        {
+          "sig": "block_size_k=128|block_size_q=1|cu_seqblocks_q=T(38,):torch.int32|cu_seqlens=T(38,):torch.int32|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|max_seqblock_q=8192|max_seqlen_q=8192|prefix_lens=T(37,):torch.int32|q=T(16384, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(37,):torch.int32|sink=None|slot_ids=T(37,):torch.int64|sm_scale=None|topk_idx=T(1, 16384, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
+          "count": 57,
+          "input_shapes": [
+            [
+              16384,
+              8,
+              128
+            ],
+            [
+              4358330,
+              1,
+              128
+            ],
+            [
+              4358330,
+              1,
+              128
+            ],
+            [
+              4097,
+              11268
+            ],
+            [
+              37
+            ],
+            [
+              1,
+              16384,
+              16
+            ],
+            [
+              38
+            ],
+            [
+              37
+            ],
+            [
+              37
+            ],
+            [
+              38
+            ]
+          ],
+          "input_dtypes": [
+            "torch.bfloat16",
+            "torch.int32",
+            "torch.int64"
+          ]
+        },
+        {
+          "sig": "block_size_k=128|block_size_q=1|cu_seqblocks_q=T(40,):torch.int32|cu_seqlens=T(40,):torch.int32|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|max_seqblock_q=8192|max_seqlen_q=8192|prefix_lens=T(39,):torch.int32|q=T(16384, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(39,):torch.int32|sink=None|slot_ids=T(39,):torch.int64|sm_scale=None|topk_idx=T(1, 16384, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
+          "count": 57,
+          "input_shapes": [
+            [
+              16384,
+              8,
+              128
+            ],
+            [
+              4358330,
+              1,
+              128
+            ],
+            [
+              4358330,
+              1,
+              128
+            ],
+            [
+              4097,
+              11268
+            ],
+            [
+              39
+            ],
+            [
+              1,
+              16384,
+              16
+            ],
+            [
+              40
+            ],
+            [
+              39
+            ],
+            [
+              39
+            ],
+            [
+              40
+            ]
+          ],
+          "input_dtypes": [
+            "torch.bfloat16",
+            "torch.int32",
+            "torch.int64"
+          ]
+        },
+        {
+          "sig": "block_size_k=128|block_size_q=1|cu_seqblocks_q=T(42,):torch.int32|cu_seqlens=T(42,):torch.int32|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|max_seqblock_q=8192|max_seqlen_q=8192|prefix_lens=T(41,):torch.int32|q=T(16384, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(41,):torch.int32|sink=None|slot_ids=T(41,):torch.int64|sm_scale=None|topk_idx=T(1, 16384, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
+          "count": 57,
+          "input_shapes": [
+            [
+              16384,
+              8,
+              128
+            ],
+            [
+              4358330,
+              1,
+              128
+            ],
+            [
+              4358330,
+              1,
+              128
+            ],
+            [
+              4097,
+              11268
+            ],
+            [
+              41
+            ],
+            [
+              1,
+              16384,
+              16
+            ],
+            [
+              42
+            ],
+            [
+              41
+            ],
+            [
+              41
+            ],
+            [
+              42
+            ]
+          ],
+          "input_dtypes": [
+            "torch.bfloat16",
+            "torch.int32",
+            "torch.int64"
+          ]
+        },
+        {
+          "sig": "block_size_k=128|block_size_q=1|cu_seqblocks_q=T(44,):torch.int32|cu_seqlens=T(44,):torch.int32|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|max_seqblock_q=8192|max_seqlen_q=8192|prefix_lens=T(43,):torch.int32|q=T(16384, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(43,):torch.int32|sink=None|slot_ids=T(43,):torch.int64|sm_scale=None|topk_idx=T(1, 16384, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
+          "count": 57,
+          "input_shapes": [
+            [
+              16384,
+              8,
+              128
+            ],
+            [
+              4358330,
+              1,
+              128
+            ],
+            [
+              4358330,
+              1,
+              128
+            ],
+            [
+              4097,
+              11268
+            ],
+            [
+              43
+            ],
+            [
+              1,
+              16384,
+              16
+            ],
+            [
+              44
+            ],
+            [
+              43
+            ],
+            [
+              43
+            ],
+            [
+              44
+            ]
+          ],
+          "input_dtypes": [
+            "torch.bfloat16",
+            "torch.int32",
+            "torch.int64"
+          ]
+        },
+        {
+          "sig": "block_size_k=128|block_size_q=1|cu_seqblocks_q=T(46,):torch.int32|cu_seqlens=T(46,):torch.int32|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|max_seqblock_q=8192|max_seqlen_q=8192|prefix_lens=T(45,):torch.int32|q=T(16384, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(45,):torch.int32|sink=None|slot_ids=T(45,):torch.int64|sm_scale=None|topk_idx=T(1, 16384, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
+          "count": 57,
+          "input_shapes": [
+            [
+              16384,
+              8,
+              128
+            ],
+            [
+              4358330,
+              1,
+              128
+            ],
+            [
+              4358330,
+              1,
+              128
+            ],
+            [
+              4097,
+              11268
+            ],
+            [
+              45
+            ],
+            [
+              1,
+              16384,
+              16
+            ],
+            [
+              46
+            ],
+            [
+              45
+            ],
+            [
+              45
+            ],
+            [
+              46
+            ]
+          ],
+          "input_dtypes": [
+            "torch.bfloat16",
+            "torch.int32",
+            "torch.int64"
+          ]
+        },
+        {
+          "sig": "block_size_k=128|block_size_q=1|cu_seqblocks_q=T(48,):torch.int32|cu_seqlens=T(48,):torch.int32|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|max_seqblock_q=8192|max_seqlen_q=8192|prefix_lens=T(47,):torch.int32|q=T(16384, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(47,):torch.int32|sink=None|slot_ids=T(47,):torch.int64|sm_scale=None|topk_idx=T(1, 16384, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
+          "count": 57,
+          "input_shapes": [
+            [
+              16384,
+              8,
+              128
+            ],
+            [
+              4358330,
+              1,
+              128
+            ],
+            [
+              4358330,
+              1,
+              128
+            ],
+            [
+              4097,
+              11268
+            ],
+            [
+              47
+            ],
+            [
+              1,
+              16384,
+              16
+            ],
+            [
+              48
+            ],
+            [
+              47
+            ],
+            [
+              47
+            ],
+            [
+              48
+            ]
+          ],
+          "input_dtypes": [
+            "torch.bfloat16",
+            "torch.int32",
+            "torch.int64"
+          ]
+        },
+        {
+          "sig": "block_size_k=128|block_size_q=1|cu_seqblocks_q=T(50,):torch.int32|cu_seqlens=T(50,):torch.int32|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|max_seqblock_q=8192|max_seqlen_q=8192|prefix_lens=T(49,):torch.int32|q=T(16384, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(49,):torch.int32|sink=None|slot_ids=T(49,):torch.int64|sm_scale=None|topk_idx=T(1, 16384, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
+          "count": 57,
+          "input_shapes": [
+            [
+              16384,
+              8,
+              128
+            ],
+            [
+              4358330,
+              1,
+              128
+            ],
+            [
+              4358330,
+              1,
+              128
+            ],
+            [
+              4097,
+              11268
+            ],
+            [
+              49
+            ],
+            [
+              1,
+              16384,
+              16
+            ],
+            [
+              50
+            ],
+            [
+              49
+            ],
+            [
+              49
+            ],
+            [
+              50
+            ]
+          ],
+          "input_dtypes": [
+            "torch.bfloat16",
+            "torch.int32",
+            "torch.int64"
+          ]
+        },
+        {
+          "sig": "block_size_k=128|block_size_q=1|cu_seqblocks_q=T(52,):torch.int32|cu_seqlens=T(52,):torch.int32|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|max_seqblock_q=8192|max_seqlen_q=8192|prefix_lens=T(51,):torch.int32|q=T(16384, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(51,):torch.int32|sink=None|slot_ids=T(51,):torch.int64|sm_scale=None|topk_idx=T(1, 16384, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
+          "count": 57,
+          "input_shapes": [
+            [
+              16384,
+              8,
+              128
+            ],
+            [
+              4358330,
+              1,
+              128
+            ],
+            [
+              4358330,
+              1,
+              128
+            ],
+            [
+              4097,
+              11268
+            ],
+            [
+              51
+            ],
+            [
+              1,
+              16384,
+              16
+            ],
+            [
+              52
+            ],
+            [
+              51
+            ],
+            [
+              51
+            ],
+            [
+              52
+            ]
+          ],
+          "input_dtypes": [
+            "torch.bfloat16",
+            "torch.int32",
+            "torch.int64"
+          ]
+        },
+        {
+          "sig": "block_size_k=128|block_size_q=1|cu_seqblocks_q=T(54,):torch.int32|cu_seqlens=T(54,):torch.int32|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|max_seqblock_q=8192|max_seqlen_q=8192|prefix_lens=T(53,):torch.int32|q=T(16384, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(53,):torch.int32|sink=None|slot_ids=T(53,):torch.int64|sm_scale=None|topk_idx=T(1, 16384, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
+          "count": 57,
+          "input_shapes": [
+            [
+              16384,
+              8,
+              128
+            ],
+            [
+              4358330,
+              1,
+              128
+            ],
+            [
+              4358330,
+              1,
+              128
+            ],
+            [
+              4097,
+              11268
+            ],
+            [
+              53
+            ],
+            [
+              1,
+              16384,
+              16
+            ],
+            [
+              54
+            ],
+            [
+              53
+            ],
+            [
+              53
+            ],
+            [
+              54
+            ]
+          ],
+          "input_dtypes": [
+            "torch.bfloat16",
+            "torch.int32",
+            "torch.int64"
+          ]
+        },
+        {
+          "sig": "block_size_k=128|block_size_q=1|cu_seqblocks_q=T(56,):torch.int32|cu_seqlens=T(56,):torch.int32|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|max_seqblock_q=8192|max_seqlen_q=8192|prefix_lens=T(55,):torch.int32|q=T(16384, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(55,):torch.int32|sink=None|slot_ids=T(55,):torch.int64|sm_scale=None|topk_idx=T(1, 16384, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
+          "count": 57,
+          "input_shapes": [
+            [
+              16384,
+              8,
+              128
+            ],
+            [
+              4358330,
+              1,
+              128
+            ],
+            [
+              4358330,
+              1,
+              128
+            ],
+            [
+              4097,
+              11268
+            ],
+            [
+              55
+            ],
+            [
+              1,
+              16384,
+              16
+            ],
+            [
+              56
+            ],
+            [
+              55
+            ],
+            [
+              55
+            ],
+            [
+              56
+            ]
+          ],
+          "input_dtypes": [
+            "torch.bfloat16",
+            "torch.int32",
+            "torch.int64"
+          ]
+        },
+        {
+          "sig": "block_size_k=128|block_size_q=1|cu_seqblocks_q=T(58,):torch.int32|cu_seqlens=T(58,):torch.int32|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|max_seqblock_q=8192|max_seqlen_q=8192|prefix_lens=T(57,):torch.int32|q=T(16384, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(57,):torch.int32|sink=None|slot_ids=T(57,):torch.int64|sm_scale=None|topk_idx=T(1, 16384, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
+          "count": 57,
+          "input_shapes": [
+            [
+              16384,
+              8,
+              128
+            ],
+            [
+              4358330,
+              1,
+              128
+            ],
+            [
+              4358330,
+              1,
+              128
+            ],
+            [
+              4097,
+              11268
+            ],
+            [
+              57
+            ],
+            [
+              1,
+              16384,
+              16
+            ],
+            [
+              58
+            ],
+            [
+              57
+            ],
+            [
+              57
+            ],
+            [
+              58
+            ]
+          ],
+          "input_dtypes": [
+            "torch.bfloat16",
+            "torch.int32",
+            "torch.int64"
+          ]
+        },
+        {
+          "sig": "block_size_k=128|block_size_q=1|cu_seqblocks_q=T(60,):torch.int32|cu_seqlens=T(60,):torch.int32|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|max_seqblock_q=8192|max_seqlen_q=8192|prefix_lens=T(59,):torch.int32|q=T(16384, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(59,):torch.int32|sink=None|slot_ids=T(59,):torch.int64|sm_scale=None|topk_idx=T(1, 16384, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
+          "count": 57,
+          "input_shapes": [
+            [
+              16384,
+              8,
+              128
+            ],
+            [
+              4358330,
+              1,
+              128
+            ],
+            [
+              4358330,
+              1,
+              128
+            ],
+            [
+              4097,
+              11268
+            ],
+            [
+              59
+            ],
+            [
+              1,
+              16384,
+              16
+            ],
+            [
+              60
+            ],
+            [
+              59
+            ],
+            [
+              59
+            ],
+            [
+              60
+            ]
+          ],
+          "input_dtypes": [
+            "torch.bfloat16",
+            "torch.int32",
+            "torch.int64"
+          ]
+        },
+        {
+          "sig": "block_size_k=128|block_size_q=1|cu_seqblocks_q=T(62,):torch.int32|cu_seqlens=T(62,):torch.int32|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|max_seqblock_q=8192|max_seqlen_q=8192|prefix_lens=T(61,):torch.int32|q=T(16384, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(61,):torch.int32|sink=None|slot_ids=T(61,):torch.int64|sm_scale=None|topk_idx=T(1, 16384, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
+          "count": 57,
+          "input_shapes": [
+            [
+              16384,
+              8,
+              128
+            ],
+            [
+              4358330,
+              1,
+              128
+            ],
+            [
+              4358330,
+              1,
+              128
+            ],
+            [
+              4097,
+              11268
+            ],
+            [
+              61
+            ],
+            [
+              1,
+              16384,
+              16
+            ],
+            [
+              62
+            ],
+            [
+              61
+            ],
+            [
+              61
+            ],
+            [
+              62
+            ]
+          ],
+          "input_dtypes": [
+            "torch.bfloat16",
+            "torch.int32",
+            "torch.int64"
+          ]
+        },
+        {
+          "sig": "block_size_k=128|block_size_q=1|cu_seqblocks_q=T(64,):torch.int32|cu_seqlens=T(64,):torch.int32|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|max_seqblock_q=8192|max_seqlen_q=8192|prefix_lens=T(63,):torch.int32|q=T(16384, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(63,):torch.int32|sink=None|slot_ids=T(63,):torch.int64|sm_scale=None|topk_idx=T(1, 16384, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
+          "count": 57,
+          "input_shapes": [
+            [
+              16384,
+              8,
+              128
+            ],
+            [
+              4358330,
+              1,
+              128
+            ],
+            [
+              4358330,
+              1,
+              128
+            ],
+            [
+              4097,
+              11268
+            ],
+            [
+              63
+            ],
+            [
+              1,
+              16384,
+              16
+            ],
+            [
+              64
+            ],
+            [
+              63
+            ],
+            [
+              63
+            ],
+            [
+              64
+            ]
+          ],
+          "input_dtypes": [
+            "torch.bfloat16",
+            "torch.int32",
+            "torch.int64"
+          ]
+        },
+        {
+          "sig": "block_size_k=128|block_size_q=1|cu_seqblocks_q=T(65,):torch.int32|cu_seqlens=T(65,):torch.int32|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|max_seqblock_q=8192|max_seqlen_q=8192|prefix_lens=T(64,):torch.int32|q=T(9185, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(64,):torch.int32|sink=None|slot_ids=T(64,):torch.int64|sm_scale=None|topk_idx=T(1, 9185, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
+          "count": 57,
+          "input_shapes": [
+            [
+              9185,
+              8,
+              128
+            ],
+            [
+              4358330,
+              1,
+              128
+            ],
+            [
+              4358330,
+              1,
+              128
+            ],
+            [
+              4097,
+              11268
+            ],
+            [
+              64
+            ],
+            [
+              1,
+              9185,
+              16
+            ],
+            [
+              65
+            ],
+            [
+              64
+            ],
+            [
+              64
+            ],
+            [
+              65
+            ]
+          ],
+          "input_dtypes": [
+            "torch.bfloat16",
+            "torch.int32",
+            "torch.int64"
+          ]
+        }
+      ]
+    }
+  ],
+  "dynamic_dimensions": {
+    "evidence": "ut/cases.py",
+    "policy": "Only dimensions explicitly instantiated by the protected builders are catalogued. Random value draws do not create additional shapes. Routing lengths, live split counts, sparse indices, and physical oracle strides remain runtime data where not recorded.",
+    "builder_entrypoints": {
+      "_build_args": "ut/cases.py:73",
+      "timing_buckets": "ut/cases.py:130",
+      "timing_cases": "ut/cases.py:143",
+      "replay_shapes": "ut/cases.py:208",
+      "random_shapes": "ut/cases.py:225"
+    },
+    "case_id_and_shape_recipes": [
+      {
+        "function": "_ragged_variant",
+        "evidence": "ut/cases.py:155",
+        "docstring": "A copy of geometry `g` with the SAME buffer shapes but a DIFFERENT ragged split.\n\nBuffer shapes (total_q, num_seqs, max_slots, req_to_token width) and the host ints that set the\nlaunch grid (max_seqlen_q / max_seqblock_q) are held fixed, so both variants can be driven through\nONE set of static buffers and ONE captured graph — which is the whole point of the replay check.\nWhat changes is exactly what the kernel branches on: per-sequence q_len, prefix_len and seq_len,\nincluding a split whose seq_lens are NOT multiples of block_size_k (the ragged tail path).",
+        "expressions": [
+          {
+            "literal_assignment": "seq_lens, prefix_lens = ([], [])"
+          },
+          {
+            "literal_assignment": "cu = [0]"
+          }
+        ]
+      },
+      {
+        "function": "replay_shapes",
+        "evidence": "ut/cases.py:208",
+        "docstring": ">=2 boundary cases sharing one buffer set, for the CUDA-graph replay gate (regime.cuda_graph).",
+        "expressions": [
+          {
+            "field": "sig",
+            "expression": "f'replay_{name}_m{g['total_q']}_s{g['num_seqs']}'"
+          },
+          {
+            "field": "geo",
+            "expression": "g"
+          }
+        ]
+      },
+      {
+        "function": "random_shapes",
+        "evidence": "ut/cases.py:225",
+        "docstring": "Fixed online dims, fresh random VALUES per draw — the value-parity leg.\n\nThe replay boundary cases are included here on purpose: the baseline leg then records their\noutputs in its OWN process (h.baseline_random_outputs), which gives the graph-replay bundle a\ngolden reference produced by the frozen live kernel rather than by the candidate itself.",
+        "expressions": [
+          {
+            "literal_assignment": "out = []"
+          },
+          {
+            "field": "sig",
+            "expression": "f'prefill_m{g['total_q']}_s{g['num_seqs']}'"
+          },
+          {
+            "field": "sig",
+            "expression": "s['sig']"
+          }
+        ]
+      },
+      {
+        "function": "eager_cases",
+        "evidence": "ut/cases.py:242",
+        "docstring": "Stream the RECORDED inputs+golden outputs one at a time. Each record of this op is ~2.4 GiB\n(the paged KV pool is an input), so materializing them all would OOM — hence the lazy iterator\nplus h.check_correct_multi_lazy.",
+        "expressions": []
+      }
+    ]
+  },
+  "unknown_tensor_metadata": [
+    {
+      "case_id": "block_size_k=128|block_size_q=1|cu_seqblocks_q=T(2,):torch.int32|cu_seqlens=T(2,):torch.int32|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|max_seqblock_q=186|max_seqlen_q=186|prefix_lens=T(1,):torch.int32|q=T(186, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(1,):torch.int32|sink=None|slot_ids=T(1,):torch.int64|sm_scale=None|topk_idx=T(1, 186, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
+      "tensor": "cu_seqblocks_q",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/cases/0"
+    },
+    {
+      "case_id": "block_size_k=128|block_size_q=1|cu_seqblocks_q=T(2,):torch.int32|cu_seqlens=T(2,):torch.int32|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|max_seqblock_q=186|max_seqlen_q=186|prefix_lens=T(1,):torch.int32|q=T(186, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(1,):torch.int32|sink=None|slot_ids=T(1,):torch.int64|sm_scale=None|topk_idx=T(1, 186, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
+      "tensor": "cu_seqlens",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/cases/0"
+    },
+    {
+      "case_id": "block_size_k=128|block_size_q=1|cu_seqblocks_q=T(2,):torch.int32|cu_seqlens=T(2,):torch.int32|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|max_seqblock_q=186|max_seqlen_q=186|prefix_lens=T(1,):torch.int32|q=T(186, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(1,):torch.int32|sink=None|slot_ids=T(1,):torch.int64|sm_scale=None|topk_idx=T(1, 186, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
+      "tensor": "k_cache",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/cases/0"
+    },
+    {
+      "case_id": "block_size_k=128|block_size_q=1|cu_seqblocks_q=T(2,):torch.int32|cu_seqlens=T(2,):torch.int32|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|max_seqblock_q=186|max_seqlen_q=186|prefix_lens=T(1,):torch.int32|q=T(186, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(1,):torch.int32|sink=None|slot_ids=T(1,):torch.int64|sm_scale=None|topk_idx=T(1, 186, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
+      "tensor": "prefix_lens",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/cases/0"
+    },
+    {
+      "case_id": "block_size_k=128|block_size_q=1|cu_seqblocks_q=T(2,):torch.int32|cu_seqlens=T(2,):torch.int32|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|max_seqblock_q=186|max_seqlen_q=186|prefix_lens=T(1,):torch.int32|q=T(186, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(1,):torch.int32|sink=None|slot_ids=T(1,):torch.int64|sm_scale=None|topk_idx=T(1, 186, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
+      "tensor": "q",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/cases/0"
+    },
+    {
+      "case_id": "block_size_k=128|block_size_q=1|cu_seqblocks_q=T(2,):torch.int32|cu_seqlens=T(2,):torch.int32|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|max_seqblock_q=186|max_seqlen_q=186|prefix_lens=T(1,):torch.int32|q=T(186, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(1,):torch.int32|sink=None|slot_ids=T(1,):torch.int64|sm_scale=None|topk_idx=T(1, 186, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
+      "tensor": "req_to_token",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/cases/0"
+    },
+    {
+      "case_id": "block_size_k=128|block_size_q=1|cu_seqblocks_q=T(2,):torch.int32|cu_seqlens=T(2,):torch.int32|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|max_seqblock_q=186|max_seqlen_q=186|prefix_lens=T(1,):torch.int32|q=T(186, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(1,):torch.int32|sink=None|slot_ids=T(1,):torch.int64|sm_scale=None|topk_idx=T(1, 186, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
+      "tensor": "seq_lens",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/cases/0"
+    },
+    {
+      "case_id": "block_size_k=128|block_size_q=1|cu_seqblocks_q=T(2,):torch.int32|cu_seqlens=T(2,):torch.int32|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|max_seqblock_q=186|max_seqlen_q=186|prefix_lens=T(1,):torch.int32|q=T(186, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(1,):torch.int32|sink=None|slot_ids=T(1,):torch.int64|sm_scale=None|topk_idx=T(1, 186, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
+      "tensor": "slot_ids",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/cases/0"
+    },
+    {
+      "case_id": "block_size_k=128|block_size_q=1|cu_seqblocks_q=T(2,):torch.int32|cu_seqlens=T(2,):torch.int32|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|max_seqblock_q=186|max_seqlen_q=186|prefix_lens=T(1,):torch.int32|q=T(186, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(1,):torch.int32|sink=None|slot_ids=T(1,):torch.int64|sm_scale=None|topk_idx=T(1, 186, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
+      "tensor": "topk_idx",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/cases/0"
+    },
+    {
+      "case_id": "block_size_k=128|block_size_q=1|cu_seqblocks_q=T(2,):torch.int32|cu_seqlens=T(2,):torch.int32|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|max_seqblock_q=186|max_seqlen_q=186|prefix_lens=T(1,):torch.int32|q=T(186, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(1,):torch.int32|sink=None|slot_ids=T(1,):torch.int64|sm_scale=None|topk_idx=T(1, 186, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
+      "tensor": "v_cache",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/cases/0"
+    },
+    {
+      "case_id": "block_size_k=128|block_size_q=1|cu_seqblocks_q=T(2,):torch.int32|cu_seqlens=T(2,):torch.int32|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|max_seqblock_q=186|max_seqlen_q=186|prefix_lens=T(1,):torch.int32|q=T(186, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(1,):torch.int32|sink=None|slot_ids=T(1,):torch.int64|sm_scale=None|topk_idx=T(1, 186, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
+      "tensor": "return",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/math_contract"
+    },
+    {
+      "case_id": "block_size_k=128|block_size_q=1|cu_seqblocks_q=T(2,):torch.int32|cu_seqlens=T(2,):torch.int32|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|max_seqblock_q=1|max_seqlen_q=1|prefix_lens=T(1,):torch.int32|q=T(1, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(1,):torch.int32|sink=None|slot_ids=T(1,):torch.int64|sm_scale=None|topk_idx=T(1, 1, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
+      "tensor": "cu_seqblocks_q",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/cases/1"
+    },
+    {
+      "case_id": "block_size_k=128|block_size_q=1|cu_seqblocks_q=T(2,):torch.int32|cu_seqlens=T(2,):torch.int32|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|max_seqblock_q=1|max_seqlen_q=1|prefix_lens=T(1,):torch.int32|q=T(1, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(1,):torch.int32|sink=None|slot_ids=T(1,):torch.int64|sm_scale=None|topk_idx=T(1, 1, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
+      "tensor": "cu_seqlens",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/cases/1"
+    },
+    {
+      "case_id": "block_size_k=128|block_size_q=1|cu_seqblocks_q=T(2,):torch.int32|cu_seqlens=T(2,):torch.int32|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|max_seqblock_q=1|max_seqlen_q=1|prefix_lens=T(1,):torch.int32|q=T(1, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(1,):torch.int32|sink=None|slot_ids=T(1,):torch.int64|sm_scale=None|topk_idx=T(1, 1, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
+      "tensor": "k_cache",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/cases/1"
+    },
+    {
+      "case_id": "block_size_k=128|block_size_q=1|cu_seqblocks_q=T(2,):torch.int32|cu_seqlens=T(2,):torch.int32|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|max_seqblock_q=1|max_seqlen_q=1|prefix_lens=T(1,):torch.int32|q=T(1, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(1,):torch.int32|sink=None|slot_ids=T(1,):torch.int64|sm_scale=None|topk_idx=T(1, 1, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
+      "tensor": "prefix_lens",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/cases/1"
+    },
+    {
+      "case_id": "block_size_k=128|block_size_q=1|cu_seqblocks_q=T(2,):torch.int32|cu_seqlens=T(2,):torch.int32|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|max_seqblock_q=1|max_seqlen_q=1|prefix_lens=T(1,):torch.int32|q=T(1, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(1,):torch.int32|sink=None|slot_ids=T(1,):torch.int64|sm_scale=None|topk_idx=T(1, 1, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
+      "tensor": "q",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/cases/1"
+    },
+    {
+      "case_id": "block_size_k=128|block_size_q=1|cu_seqblocks_q=T(2,):torch.int32|cu_seqlens=T(2,):torch.int32|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|max_seqblock_q=1|max_seqlen_q=1|prefix_lens=T(1,):torch.int32|q=T(1, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(1,):torch.int32|sink=None|slot_ids=T(1,):torch.int64|sm_scale=None|topk_idx=T(1, 1, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
+      "tensor": "req_to_token",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/cases/1"
+    },
+    {
+      "case_id": "block_size_k=128|block_size_q=1|cu_seqblocks_q=T(2,):torch.int32|cu_seqlens=T(2,):torch.int32|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|max_seqblock_q=1|max_seqlen_q=1|prefix_lens=T(1,):torch.int32|q=T(1, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(1,):torch.int32|sink=None|slot_ids=T(1,):torch.int64|sm_scale=None|topk_idx=T(1, 1, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
+      "tensor": "seq_lens",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/cases/1"
+    },
+    {
+      "case_id": "block_size_k=128|block_size_q=1|cu_seqblocks_q=T(2,):torch.int32|cu_seqlens=T(2,):torch.int32|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|max_seqblock_q=1|max_seqlen_q=1|prefix_lens=T(1,):torch.int32|q=T(1, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(1,):torch.int32|sink=None|slot_ids=T(1,):torch.int64|sm_scale=None|topk_idx=T(1, 1, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
+      "tensor": "slot_ids",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/cases/1"
+    },
+    {
+      "case_id": "block_size_k=128|block_size_q=1|cu_seqblocks_q=T(2,):torch.int32|cu_seqlens=T(2,):torch.int32|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|max_seqblock_q=1|max_seqlen_q=1|prefix_lens=T(1,):torch.int32|q=T(1, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(1,):torch.int32|sink=None|slot_ids=T(1,):torch.int64|sm_scale=None|topk_idx=T(1, 1, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
+      "tensor": "topk_idx",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/cases/1"
+    },
+    {
+      "case_id": "block_size_k=128|block_size_q=1|cu_seqblocks_q=T(2,):torch.int32|cu_seqlens=T(2,):torch.int32|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|max_seqblock_q=1|max_seqlen_q=1|prefix_lens=T(1,):torch.int32|q=T(1, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(1,):torch.int32|sink=None|slot_ids=T(1,):torch.int64|sm_scale=None|topk_idx=T(1, 1, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
+      "tensor": "v_cache",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/cases/1"
+    },
+    {
+      "case_id": "block_size_k=128|block_size_q=1|cu_seqblocks_q=T(2,):torch.int32|cu_seqlens=T(2,):torch.int32|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|max_seqblock_q=1|max_seqlen_q=1|prefix_lens=T(1,):torch.int32|q=T(1, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(1,):torch.int32|sink=None|slot_ids=T(1,):torch.int64|sm_scale=None|topk_idx=T(1, 1, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
+      "tensor": "return",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/math_contract"
+    },
+    {
+      "case_id": "block_size_k=128|block_size_q=1|cu_seqblocks_q=T(2,):torch.int32|cu_seqlens=T(2,):torch.int32|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|max_seqblock_q=8192|max_seqlen_q=8192|prefix_lens=T(1,):torch.int32|q=T(8192, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(1,):torch.int32|sink=None|slot_ids=T(1,):torch.int64|sm_scale=None|topk_idx=T(1, 8192, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
+      "tensor": "cu_seqblocks_q",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/cases/2"
+    },
+    {
+      "case_id": "block_size_k=128|block_size_q=1|cu_seqblocks_q=T(2,):torch.int32|cu_seqlens=T(2,):torch.int32|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|max_seqblock_q=8192|max_seqlen_q=8192|prefix_lens=T(1,):torch.int32|q=T(8192, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(1,):torch.int32|sink=None|slot_ids=T(1,):torch.int64|sm_scale=None|topk_idx=T(1, 8192, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
+      "tensor": "cu_seqlens",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/cases/2"
+    },
+    {
+      "case_id": "block_size_k=128|block_size_q=1|cu_seqblocks_q=T(2,):torch.int32|cu_seqlens=T(2,):torch.int32|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|max_seqblock_q=8192|max_seqlen_q=8192|prefix_lens=T(1,):torch.int32|q=T(8192, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(1,):torch.int32|sink=None|slot_ids=T(1,):torch.int64|sm_scale=None|topk_idx=T(1, 8192, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
+      "tensor": "k_cache",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/cases/2"
+    },
+    {
+      "case_id": "block_size_k=128|block_size_q=1|cu_seqblocks_q=T(2,):torch.int32|cu_seqlens=T(2,):torch.int32|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|max_seqblock_q=8192|max_seqlen_q=8192|prefix_lens=T(1,):torch.int32|q=T(8192, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(1,):torch.int32|sink=None|slot_ids=T(1,):torch.int64|sm_scale=None|topk_idx=T(1, 8192, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
+      "tensor": "prefix_lens",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/cases/2"
+    },
+    {
+      "case_id": "block_size_k=128|block_size_q=1|cu_seqblocks_q=T(2,):torch.int32|cu_seqlens=T(2,):torch.int32|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|max_seqblock_q=8192|max_seqlen_q=8192|prefix_lens=T(1,):torch.int32|q=T(8192, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(1,):torch.int32|sink=None|slot_ids=T(1,):torch.int64|sm_scale=None|topk_idx=T(1, 8192, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
+      "tensor": "q",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/cases/2"
+    },
+    {
+      "case_id": "block_size_k=128|block_size_q=1|cu_seqblocks_q=T(2,):torch.int32|cu_seqlens=T(2,):torch.int32|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|max_seqblock_q=8192|max_seqlen_q=8192|prefix_lens=T(1,):torch.int32|q=T(8192, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(1,):torch.int32|sink=None|slot_ids=T(1,):torch.int64|sm_scale=None|topk_idx=T(1, 8192, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
+      "tensor": "req_to_token",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/cases/2"
+    },
+    {
+      "case_id": "block_size_k=128|block_size_q=1|cu_seqblocks_q=T(2,):torch.int32|cu_seqlens=T(2,):torch.int32|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|max_seqblock_q=8192|max_seqlen_q=8192|prefix_lens=T(1,):torch.int32|q=T(8192, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(1,):torch.int32|sink=None|slot_ids=T(1,):torch.int64|sm_scale=None|topk_idx=T(1, 8192, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
+      "tensor": "seq_lens",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/cases/2"
+    },
+    {
+      "case_id": "block_size_k=128|block_size_q=1|cu_seqblocks_q=T(2,):torch.int32|cu_seqlens=T(2,):torch.int32|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|max_seqblock_q=8192|max_seqlen_q=8192|prefix_lens=T(1,):torch.int32|q=T(8192, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(1,):torch.int32|sink=None|slot_ids=T(1,):torch.int64|sm_scale=None|topk_idx=T(1, 8192, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
+      "tensor": "slot_ids",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/cases/2"
+    },
+    {
+      "case_id": "block_size_k=128|block_size_q=1|cu_seqblocks_q=T(2,):torch.int32|cu_seqlens=T(2,):torch.int32|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|max_seqblock_q=8192|max_seqlen_q=8192|prefix_lens=T(1,):torch.int32|q=T(8192, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(1,):torch.int32|sink=None|slot_ids=T(1,):torch.int64|sm_scale=None|topk_idx=T(1, 8192, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
+      "tensor": "topk_idx",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/cases/2"
+    },
+    {
+      "case_id": "block_size_k=128|block_size_q=1|cu_seqblocks_q=T(2,):torch.int32|cu_seqlens=T(2,):torch.int32|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|max_seqblock_q=8192|max_seqlen_q=8192|prefix_lens=T(1,):torch.int32|q=T(8192, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(1,):torch.int32|sink=None|slot_ids=T(1,):torch.int64|sm_scale=None|topk_idx=T(1, 8192, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
+      "tensor": "v_cache",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/cases/2"
+    },
+    {
+      "case_id": "block_size_k=128|block_size_q=1|cu_seqblocks_q=T(2,):torch.int32|cu_seqlens=T(2,):torch.int32|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|max_seqblock_q=8192|max_seqlen_q=8192|prefix_lens=T(1,):torch.int32|q=T(8192, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(1,):torch.int32|sink=None|slot_ids=T(1,):torch.int64|sm_scale=None|topk_idx=T(1, 8192, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
+      "tensor": "return",
+      "unknown_fields": [
+        "strides"
+      ],
+      "evidence": "ut/meta.json#/math_contract"
+    }
+  ],
+  "unknown_benchmark_tensor_overrides": [
+    {
+      "case_id": "prefill_m8192_s1",
+      "tensor": "req_to_token",
+      "evidence": "ut/cases.py:73"
+    }
+  ],
+  "opaque_artifacts": [
+    {
+      "path": "ut/reference_io.pt",
+      "sha256": "55f55d92b743c71e0362c4c4e0e47d7a0120c9c19bdc03fac7d1972ac80be6ba",
+      "metadata_evidence": "ut/meta.json#/reference_io_sha256",
+      "inspected": false,
+      "status": "opaque tensor artifact; no pickle deserialization during catalog generation"
+    },
+    {
+      "path": "ut/timing_geometry.pt",
+      "sha256": "d1ad8a11fd31d42d04a92aa7d9854db6dce4ba5ba0aa43168185b731f4471462",
+      "metadata_evidence": "ut/meta.json#/timing_geometry_sha256",
+      "inspected": false,
+      "status": "opaque tensor artifact; no pickle deserialization during catalog generation"
+    }
+  ],
+  "sources": [
+    {
+      "path": "ut/meta.json",
+      "sha256": "d06a33ceef361dc7cb9bdb69eab54a15d728cc195e22a7dc95a4d88256a6c72f"
+    },
+    {
+      "path": "ut/cases.py",
+      "sha256": "2a356294e6e84821ee35e27f3e2a4a656cca87737aba7c39d3cfd67ecc489193"
+    },
+    {
+      "path": "config.yaml",
+      "sha256": "2e077fe51838af750fd0b1097c6cbb125d2609a6707b9a8649a617ff5bb85972"
+    },
+    {
+      "path": "scripts/source_abi.json",
+      "sha256": "ec69c823b1cc27d7d2a0e5bd717f6eacdc1a1aa48f6503a423e1fe475f7c6bcf"
+    },
+    {
+      "path": "ut/selection_validation.json",
+      "sha256": "dbf538ee5679c23e2509195aa72f7246dd4873cff2bfac3a82b2a2ddd28598b4"
+    },
+    {
+      "path": "ut/workload.json",
+      "sha256": "51d1f540391d9ae95560c51e731da1317e80089f588629bea0ca2d0fc2ab3b20"
+    }
+  ],
+  "validation": "Static metadata/AST inspection only. No task module imports, pickle deserialization, tensor loading, GPU execution, or fresh performance validation."
+}

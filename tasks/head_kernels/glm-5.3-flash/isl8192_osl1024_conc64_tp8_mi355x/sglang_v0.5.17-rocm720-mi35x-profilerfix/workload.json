@@ -1,0 +1,76 @@
+{
+  "schema_version": 1,
+  "model": "GLM-5.3-Flash",
+  "model_slug": "glm-5.3-flash",
+  "workload_slug": "isl8192_osl1024_conc64_tp8_mi355x",
+  "serving_capture": {
+    "input_sequence_length": 8192,
+    "output_sequence_length": 1024,
+    "concurrency": 64,
+    "tensor_parallel_world_size": 8
+  },
+  "device": {
+    "model": "MI355X",
+    "architecture": "gfx950"
+  },
+  "execution_scope": "One rank's isolated operator replay; not an eight-GPU model-serving run.",
+  "image_slug": "sglang_v0.5.17-rocm720-mi35x-profilerfix",
+  "docker": "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.17-rocm720-mi35x-profilerfix",
+  "kernel_count": 2,
+  "kernels": [
+    {
+      "operation_id": "glm-5.3-flash__ck_gemm_a8w8_blockscale_bpreshuffle",
+      "kernel_slug": "ck_gemm_a8w8_blockscale_bpreshuffle",
+      "selector": "head_kernels/glm-5.3-flash/isl8192_osl1024_conc64_tp8_mi355x/sglang_v0.5.17-rocm720-mi35x-profilerfix/ck_gemm_a8w8_blockscale_bpreshuffle",
+      "config": "ck_gemm_a8w8_blockscale_bpreshuffle/config.yaml",
+      "shapes": "ck_gemm_a8w8_blockscale_bpreshuffle/SHAPES.json",
+      "shape_guide": "ck_gemm_a8w8_blockscale_bpreshuffle/SHAPES.md",
+      "backend": "CK / CKTile via AITER",
+      "runtime": {
+        "image": "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.17-rocm720-mi35x-profilerfix",
+        "expected_image_id": null,
+        "source_commits": {},
+        "gpu_arch": "gfx950",
+        "hip_version": "7.2.x",
+        "required_modules": [
+          "aiter",
+          "sglang",
+          "torch",
+          "triton"
+        ],
+        "package_versions": {
+          "sglang": "0.5.17"
+        },
+        "required_model_types": []
+      },
+      "capture_contract": "Task-local callable, case, oracle and source contracts are authoritative."
+    },
+    {
+      "operation_id": "glm-5.3-flash__gemm_a16w16_bf16_cijk",
+      "kernel_slug": "gemm_a16w16_bf16_cijk",
+      "selector": "head_kernels/glm-5.3-flash/isl8192_osl1024_conc64_tp8_mi355x/sglang_v0.5.17-rocm720-mi35x-profilerfix/gemm_a16w16_bf16_cijk",
+      "config": "gemm_a16w16_bf16_cijk/config.yaml",
+      "shapes": "gemm_a16w16_bf16_cijk/SHAPES.json",
+      "shape_guide": "gemm_a16w16_bf16_cijk/SHAPES.md",
+      "backend": "hipBLASLt / Tensile via PyTorch",
+      "runtime": {
+        "image": "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.17-rocm720-mi35x-profilerfix",
+        "expected_image_id": null,
+        "source_commits": {},
+        "gpu_arch": "gfx950",
+        "hip_version": "7.2.x",
+        "required_modules": [
+          "aiter",
+          "sglang",
+          "torch",
+          "triton"
+        ],
+        "package_versions": {
+          "sglang": "0.5.17"
+        },
+        "required_model_types": []
+      },
+      "capture_contract": "Task-local callable, case, oracle and source contracts are authoritative."
+    }
+  ]
+}

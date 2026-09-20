@@ -1,0 +1,14 @@
+# Capture-runtime cohort: kimi_k3; 3 isolated operator tasks.
+# Select and verify its image through the supported Docker runner with:
+# python3 src/scripts/top5_head_kernels.py run --config example_configs/top5_claude_kimi_k3_mi355x.yaml
+# Inspect the selected image/tasks without Docker by replacing run with plan.
+# Serving TP=8 is provenance; each task benchmarks one local operator shard.
+agent:
+  template: claude_code
+tasks:
+- head_kernels/kimi-k3/isl8192_osl1024_conc64_tp8_mi355x/sglang-rocm-k3_rocm720-mi35x-k3-20260727-tl312-08011830/fwd_grouped_kernel_stage1
+- head_kernels/kimi-k3/isl8192_osl1024_conc64_tp8_mi355x/sglang-rocm-k3_rocm720-mi35x-k3-20260727-tl312-08011830/moe_gemm1_stage1
+- head_kernels/kimi-k3/isl8192_osl1024_conc64_tp8_mi355x/sglang-rocm-k3_rocm720-mi35x-k3-20260727-tl312-08011830/moe_gemm2_stage2
+target_gpu_model: MI355X
+log_directory: logs
+workspace_directory_prefix: workspace

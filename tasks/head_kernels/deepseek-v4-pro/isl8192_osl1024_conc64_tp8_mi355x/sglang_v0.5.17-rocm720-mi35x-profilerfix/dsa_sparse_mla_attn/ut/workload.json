@@ -1,0 +1,279 @@
+{
+  "schema": "workload-v1",
+  "op_kind": "attn",
+  "kernel": "main_kernel",
+  "name_match": "main_kernel",
+  "regime": {
+    "backend": "sglang",
+    "quant": {
+      "method": "fp8_blockscale",
+      "weight_dtype": "fp8_e4m3",
+      "act_dtype": "fp8",
+      "block_size": [
+        128,
+        128
+      ],
+      "source": "model_config"
+    },
+    "kv_cache_dtype": "fp8_e4m3",
+    "compile": "eager",
+    "enforce_eager": false,
+    "cuda_graph": true,
+    "attention_backend": "dsv4",
+    "prefill_chunk": 16384,
+    "notes": "resolved from the LIVE baseline server_args (profile/round_0/server.log): kv_cache_dtype='fp8_e4m3' (set by the magpie sglang_mi355x.sh launcher, not by EXTRA_SGLANG_ARGS), attention_backend='dsv4' -> DeepseekV4HipRadixBackend on HIP, chunked_prefill_size=16384, page_size=256, disable_cuda_graph=False (decode graph backend='full') -> deployment_graph_mode=True. parse_regime.py alone reported kv_cache_dtype='auto'/prefill_chunk=null because those flags live in the launcher script, not in CURRENT_FLAGS.",
+    "page_size": 256
+  },
+  "served_regimes": [
+    "decode_x1024",
+    "decode_x128",
+    "prefill_x1024",
+    "prefill_x64"
+  ],
+  "quant": {
+    "scheme": "fp8_blockscale",
+    "weight_dtype": "bf16",
+    "act_dtype": "fp8",
+    "out_dtype": "",
+    "weight_block_size": [
+      128,
+      128
+    ],
+    "scale_dtype": "float32",
+    "kv_cache_dtype": "fp8_e4m3"
+  },
+  "live_pct_gpu": 44.876,
+  "regime_warning": "online kv-cache-dtype=fp8: the attention oracle + kernel MUST use the fp8 KV layout/stride, else a bf16-stride read over fp8 bytes faults. Verify the captured KV dtype matches.",
+  "serving_weight_model": {
+    "isl": 8192,
+    "osl": 1024,
+    "conc": 64,
+    "prefill_chunk": 16384,
+    "analytic_calls": {
+      "prefill_x64": 1984,
+      "prefill_x1024": 1920,
+      "decode_x128": 31744,
+      "decode_x1024": 30720
+    },
+    "ttft_ms": null,
+    "tpot_ms": null,
+    "analytic_calls_phase": {
+      "prefill": 64,
+      "decode": 1024
+    },
+    "note": "analytic_calls is keyed by the UNITTEST's regime = <phase>_x<family topk>, and counts passes-per-request x that family's share of the 61 layers (measured from the live call histogram). meta.cases keeps the plain phase regimes that attribute_weights understands; analytic_calls_phase is its unsplit model."
+  },
+  "num_cases": 4,
+  "weights_provenance": "regime",
+  "cases": [
+    {
+      "name": "prefill_m8192_x64",
+      "dims": [
+        [
+          8192,
+          1,
+          64,
+          512
+        ],
+        [
+          8192,
+          1,
+          128
+        ],
+        [
+          8192
+        ],
+        [
+          64
+        ],
+        [
+          8192,
+          1,
+          64
+        ],
+        [
+          8192
+        ]
+      ],
+      "dtypes": [
+        "torch.bfloat16",
+        "torch.float32",
+        "torch.int32"
+      ],
+      "count": 124,
+      "weight": 157.06529999999995,
+      "weight_source": "regime",
+      "regime": "prefill",
+      "weight_norm": 0.35,
+      "quant": {
+        "scheme": "fp8_blockscale",
+        "weight_dtype": "bf16",
+        "act_dtype": "fp8",
+        "out_dtype": "",
+        "weight_block_size": [
+          128,
+          128
+        ],
+        "scale_dtype": "float32",
+        "kv_cache_dtype": "fp8_e4m3"
+      }
+    },
+    {
+      "name": "prefill_m8192_x1024",
+      "dims": [
+        [
+          8192,
+          1,
+          64,
+          512
+        ],
+        [
+          8192,
+          1,
+          128
+        ],
+        [
+          8192
+        ],
+        [
+          64
+        ],
+        [
+          8192,
+          1,
+          1024
+        ],
+        [
+          8192
+        ]
+      ],
+      "dtypes": [
+        "torch.bfloat16",
+        "torch.float32",
+        "torch.int32"
+      ],
+      "count": 120,
+      "weight": 157.06529999999995,
+      "weight_source": "regime",
+      "regime": "prefill",
+      "weight_norm": 0.35,
+      "quant": {
+        "scheme": "fp8_blockscale",
+        "weight_dtype": "bf16",
+        "act_dtype": "fp8",
+        "out_dtype": "",
+        "weight_block_size": [
+          128,
+          128
+        ],
+        "scale_dtype": "float32",
+        "kv_cache_dtype": "fp8_e4m3"
+      }
+    },
+    {
+      "name": "decode_m64_x128",
+      "dims": [
+        [
+          64,
+          1,
+          64,
+          512
+        ],
+        [
+          64,
+          1,
+          128
+        ],
+        [
+          64
+        ],
+        [
+          64
+        ],
+        [
+          64,
+          1,
+          128
+        ],
+        [
+          64
+        ]
+      ],
+      "dtypes": [
+        "torch.bfloat16",
+        "torch.float32",
+        "torch.int32"
+      ],
+      "count": 63479,
+      "weight": 67.31369999999998,
+      "weight_source": "regime",
+      "regime": "decode",
+      "weight_norm": 0.15,
+      "quant": {
+        "scheme": "fp8_blockscale",
+        "weight_dtype": "bf16",
+        "act_dtype": "fp8",
+        "out_dtype": "",
+        "weight_block_size": [
+          128,
+          128
+        ],
+        "scale_dtype": "float32",
+        "kv_cache_dtype": "fp8_e4m3"
+      }
+    },
+    {
+      "name": "decode_m64_x1024",
+      "dims": [
+        [
+          64,
+          1,
+          64,
+          512
+        ],
+        [
+          64,
+          1,
+          128
+        ],
+        [
+          64
+        ],
+        [
+          64
+        ],
+        [
+          64,
+          1,
+          1024
+        ],
+        [
+          64
+        ]
+      ],
+      "dtypes": [
+        "torch.bfloat16",
+        "torch.float32",
+        "torch.int32"
+      ],
+      "count": 61430,
+      "weight": 67.31369999999998,
+      "weight_source": "regime",
+      "regime": "decode",
+      "weight_norm": 0.15,
+      "quant": {
+        "scheme": "fp8_blockscale",
+        "weight_dtype": "bf16",
+        "act_dtype": "fp8",
+        "out_dtype": "",
+        "weight_block_size": [
+          128,
+          128
+        ],
+        "scale_dtype": "float32",
+        "kv_cache_dtype": "fp8_e4m3"
+      }
+    }
+  ],
+  "notes": "attn: 449us of unnamed launches spread across meta regimes by size. CROSS-CHECK regime 'decode': 100% of capture CALLS vs 1% of profiled TIME (count\u2260time; large gap \u21d2 biased capture window or mis-attributed profile \u2014 weight uses TIME). CROSS-CHECK regime 'prefill': 0% of capture CALLS vs 99% of profiled TIME (count\u2260time; large gap \u21d2 biased capture window or mis-attributed profile \u2014 weight uses TIME). auto decode-floor: analytic serving model has decode=1024 calls but profiled decode share=0.01 < 0.30 (graph-hidden / under-captured decode) -> flooring decode to 0.30; authoritative split remains the unittest self-weight (measured ms x analytic_calls). applied --min-regime-share 0.3: floored regimes ['decode']. online kv-cache-dtype=fp8: the attention oracle + kernel MUST use the fp8 KV layout/stride, else a bf16-stride read over fp8 bytes faults. Verify the captured KV dtype matches."
+}

@@ -1,0 +1,1406 @@
+{
+  "target": "sglang.srt.layers.moe.moe_runner.triton_utils.fused_moe:fused_experts_impl",
+  "process_id": 276452,
+  "rank": "unknown",
+  "module": "sglang.srt.layers.moe.moe_runner.triton_utils.fused_moe",
+  "attr": "fused_experts_impl",
+  "num_cases": 3,
+  "total_calls_observed": 133728,
+  "regimes_covered": [
+    "decode",
+    "prefill"
+  ],
+  "cases": [
+    {
+      "sig": "T(19, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(19, 8):torch.float32|T(19, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "regime": "decode",
+      "input_shapes": [
+        [
+          19,
+          4096
+        ],
+        [
+          288,
+          512,
+          4096
+        ],
+        [
+          288,
+          4096,
+          256
+        ],
+        [
+          19,
+          8
+        ],
+        [
+          19,
+          8
+        ],
+        [
+          288,
+          4,
+          32
+        ],
+        [
+          288,
+          32,
+          2
+        ]
+      ],
+      "input_dtypes": [
+        "torch.bfloat16",
+        "torch.float32",
+        "torch.float8_e4m3fn",
+        "torch.int32"
+      ],
+      "count": 42
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "regime": "decode",
+      "input_shapes": [
+        [
+          1,
+          4096
+        ],
+        [
+          288,
+          512,
+          4096
+        ],
+        [
+          288,
+          4096,
+          256
+        ],
+        [
+          1,
+          8
+        ],
+        [
+          1,
+          8
+        ],
+        [
+          288,
+          4,
+          32
+        ],
+        [
+          288,
+          32,
+          2
+        ]
+      ],
+      "input_dtypes": [
+        "torch.bfloat16",
+        "torch.float32",
+        "torch.float8_e4m3fn",
+        "torch.int32"
+      ],
+      "count": 504
+    },
+    {
+      "sig": "T(8192, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(8192, 8):torch.float32|T(8192, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "regime": "prefill",
+      "input_shapes": [
+        [
+          8192,
+          4096
+        ],
+        [
+          288,
+          512,
+          4096
+        ],
+        [
+          288,
+          4096,
+          256
+        ],
+        [
+          8192,
+          8
+        ],
+        [
+          8192,
+          8
+        ],
+        [
+          288,
+          4,
+          32
+        ],
+        [
+          288,
+          32,
+          2
+        ]
+      ],
+      "input_dtypes": [
+        "torch.bfloat16",
+        "torch.float32",
+        "torch.float8_e4m3fn",
+        "torch.int32"
+      ],
+      "count": 252
+    }
+  ],
+  "shape_counts": [
+    {
+      "sig": "T(64, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(64, 8):torch.float32|T(64, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "count": 129024,
+      "input_shapes": [
+        [
+          64,
+          4096
+        ],
+        [
+          288,
+          512,
+          4096
+        ],
+        [
+          288,
+          4096,
+          256
+        ],
+        [
+          64,
+          8
+        ],
+        [
+          64,
+          8
+        ],
+        [
+          288,
+          4,
+          32
+        ],
+        [
+          288,
+          32,
+          2
+        ]
+      ],
+      "input_dtypes": [
+        "torch.bfloat16",
+        "torch.float32",
+        "torch.float8_e4m3fn",
+        "torch.int32"
+      ]
+    },
+    {
+      "sig": "T(16384, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(16384, 8):torch.float32|T(16384, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "count": 3906,
+      "input_shapes": [
+        [
+          16384,
+          4096
+        ],
+        [
+          288,
+          512,
+          4096
+        ],
+        [
+          288,
+          4096,
+          256
+        ],
+        [
+          16384,
+          8
+        ],
+        [
+          16384,
+          8
+        ],
+        [
+          288,
+          4,
+          32
+        ],
+        [
+          288,
+          32,
+          2
+        ]
+      ],
+      "input_dtypes": [
+        "torch.bfloat16",
+        "torch.float32",
+        "torch.float8_e4m3fn",
+        "torch.int32"
+      ]
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "count": 504,
+      "input_shapes": [
+        [
+          1,
+          4096
+        ],
+        [
+          288,
+          512,
+          4096
+        ],
+        [
+          288,
+          4096,
+          256
+        ],
+        [
+          1,
+          8
+        ],
+        [
+          1,
+          8
+        ],
+        [
+          288,
+          4,
+          32
+        ],
+        [
+          288,
+          32,
+          2
+        ]
+      ],
+      "input_dtypes": [
+        "torch.bfloat16",
+        "torch.float32",
+        "torch.float8_e4m3fn",
+        "torch.int32"
+      ]
+    },
+    {
+      "sig": "T(8192, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(8192, 8):torch.float32|T(8192, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "count": 252,
+      "input_shapes": [
+        [
+          8192,
+          4096
+        ],
+        [
+          288,
+          512,
+          4096
+        ],
+        [
+          288,
+          4096,
+          256
+        ],
+        [
+          8192,
+          8
+        ],
+        [
+          8192,
+          8
+        ],
+        [
+          288,
+          4,
+          32
+        ],
+        [
+          288,
+          32,
+          2
+        ]
+      ],
+      "input_dtypes": [
+        "torch.bfloat16",
+        "torch.float32",
+        "torch.float8_e4m3fn",
+        "torch.int32"
+      ]
+    },
+    {
+      "sig": "T(19, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(19, 8):torch.float32|T(19, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "count": 42,
+      "input_shapes": [
+        [
+          19,
+          4096
+        ],
+        [
+          288,
+          512,
+          4096
+        ],
+        [
+          288,
+          4096,
+          256
+        ],
+        [
+          19,
+          8
+        ],
+        [
+          19,
+          8
+        ],
+        [
+          288,
+          4,
+          32
+        ],
+        [
+          288,
+          32,
+          2
+        ]
+      ],
+      "input_dtypes": [
+        "torch.bfloat16",
+        "torch.float32",
+        "torch.float8_e4m3fn",
+        "torch.int32"
+      ]
+    }
+  ],
+  "num_distinct_shapes": 5,
+  "call_sequence": [
+    {
+      "sig": "T(19, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(19, 8):torch.float32|T(19, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(19, 8):torch.float32|T(19, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(19, 8):torch.float32|T(19, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(19, 8):torch.float32|T(19, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(19, 8):torch.float32|T(19, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(19, 8):torch.float32|T(19, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(19, 8):torch.float32|T(19, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(19, 8):torch.float32|T(19, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(19, 8):torch.float32|T(19, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(19, 8):torch.float32|T(19, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(19, 8):torch.float32|T(19, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(19, 8):torch.float32|T(19, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(19, 8):torch.float32|T(19, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(19, 8):torch.float32|T(19, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(19, 8):torch.float32|T(19, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(19, 8):torch.float32|T(19, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(19, 8):torch.float32|T(19, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(19, 8):torch.float32|T(19, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(19, 8):torch.float32|T(19, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(19, 8):torch.float32|T(19, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(19, 8):torch.float32|T(19, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(19, 8):torch.float32|T(19, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(19, 8):torch.float32|T(19, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(19, 8):torch.float32|T(19, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(19, 8):torch.float32|T(19, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(19, 8):torch.float32|T(19, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(19, 8):torch.float32|T(19, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(19, 8):torch.float32|T(19, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(19, 8):torch.float32|T(19, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(19, 8):torch.float32|T(19, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(19, 8):torch.float32|T(19, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(19, 8):torch.float32|T(19, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(19, 8):torch.float32|T(19, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(19, 8):torch.float32|T(19, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(19, 8):torch.float32|T(19, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(19, 8):torch.float32|T(19, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(19, 8):torch.float32|T(19, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(19, 8):torch.float32|T(19, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(19, 8):torch.float32|T(19, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(19, 8):torch.float32|T(19, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(19, 8):torch.float32|T(19, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(19, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(19, 8):torch.float32|T(19, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    },
+    {
+      "sig": "T(1, 4096):torch.bfloat16|T(288, 512, 4096):torch.float8_e4m3fn|T(288, 4096, 256):torch.float8_e4m3fn|T(1, 8):torch.float32|T(1, 8):torch.int32|None|None|True|str|True|False|True|False|False|False|False|T(288, 4, 32):torch.float32|T(288, 32, 2):torch.float32|None|None|None|None|list|False|2.5|None|None|False|a1_q=None|fuse_swiglu_interleaved=False|gate_up_interleaved=True|swiglu_limit=10.0",
+      "in_graph": false
+    }
+  ],
+  "graph_replayed": false,
+  "in_graph_calls": 0,
+  "reference_io": "reference_io.pt",
+  "reference_io_sha256": "6d2cab62a4820fd84704ae87db0de9b8d44afad1f654e93e376ef193dad432e5",
+  "oracle_complete": true,
+  "build": false,
+  "note": "Oracle captured from baseline. Do NOT edit unittest.py or reference_io.pt during opt."
+}

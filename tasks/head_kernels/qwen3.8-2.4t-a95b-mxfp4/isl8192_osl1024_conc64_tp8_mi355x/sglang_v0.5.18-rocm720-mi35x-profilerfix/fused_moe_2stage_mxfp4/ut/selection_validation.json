@@ -1,0 +1,86 @@
+{
+  "cases": {
+    "hk01": {
+      "correct": true,
+      "device_event_count": 9,
+      "ledger_id": "hk01",
+      "m": 64,
+      "matched": {
+        "moe1": [
+          "mfma_moe1_silu_mul_afp4_wfp4_bf16_t32x128x256_pm1_async_v32"
+        ]
+      },
+      "regime": "decode",
+      "required_fragments": [
+        "moe1"
+      ],
+      "status": "PASS",
+      "target_callable": "aiter.fused_moe:fused_moe"
+    },
+    "hk02": {
+      "correct": true,
+      "device_event_count": 9,
+      "ledger_id": "hk02",
+      "m": 64,
+      "matched": {
+        "moe2": [
+          "mfma_moe2_afp4_wfp4_bf16_cshuffle_t32x128x256_vscale_fix3_fp4opt_v1_persist_cu256"
+        ]
+      },
+      "regime": "decode",
+      "required_fragments": [
+        "moe2"
+      ],
+      "status": "PASS",
+      "target_callable": "aiter.fused_moe:fused_moe"
+    },
+    "hk03": {
+      "correct": true,
+      "device_event_count": 13,
+      "ledger_id": "hk03",
+      "m": 8192,
+      "matched": {
+        "moe1": [
+          "mfma_moe1_silu_mul_afp4_wfp4_bf16_t128x128x256_pm1_async_v32"
+        ],
+        "moe2": [
+          "mfma_moe2_afp4_wfp4_bf16_cshuffle_t128x128x256_vscale_fix3_fp4opt_v1_persist_cu256"
+        ]
+      },
+      "regime": "prefill",
+      "required_fragments": [
+        "moe1",
+        "moe2"
+      ],
+      "status": "PASS",
+      "target_callable": "aiter.fused_moe:fused_moe"
+    }
+  },
+  "contract": "standalone_device_profiler_engagement",
+  "deepest_verified": true,
+  "device_kernels": {
+    "hk01": {
+      "moe1": [
+        "mfma_moe1_silu_mul_afp4_wfp4_bf16_t32x128x256_pm1_async_v32"
+      ]
+    },
+    "hk02": {
+      "moe2": [
+        "mfma_moe2_afp4_wfp4_bf16_cshuffle_t32x128x256_vscale_fix3_fp4opt_v1_persist_cu256"
+      ]
+    },
+    "hk03": {
+      "moe1": [
+        "mfma_moe1_silu_mul_afp4_wfp4_bf16_t128x128x256_pm1_async_v32"
+      ],
+      "moe2": [
+        "mfma_moe2_afp4_wfp4_bf16_cshuffle_t128x128x256_vscale_fix3_fp4opt_v1_persist_cu256"
+      ]
+    }
+  },
+  "ok": true,
+  "schema_version": 1,
+  "status": "PASS",
+  "target_callable": "aiter.fused_moe:fused_moe",
+  "task_id": "fused_moe_mxfp4_task"
+}

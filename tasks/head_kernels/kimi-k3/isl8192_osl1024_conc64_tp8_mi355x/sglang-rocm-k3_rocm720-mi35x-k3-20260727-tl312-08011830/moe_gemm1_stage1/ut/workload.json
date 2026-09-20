@@ -1,0 +1,128 @@
+{
+  "schema": "workload-v1",
+  "op_kind": "moe",
+  "kernel": "flydsl_moe_stage1_gate_up_situv2",
+  "name_match": "moe1",
+  "regime": {
+    "backend": "sglang",
+    "quant": {
+      "method": "mxfp4-pack-quantized",
+      "weight_dtype": "float4_e2m1fn_x2 (mx group_size 32, e8m0 scales)",
+      "act_dtype": "bfloat16 (UNQUANTIZED hidden states: untuned_fmoe_live.csv q_dtype_a=torch.bfloat16, so a1_scale is None and the kernel takes the a16w4 path)",
+      "block_size": 32,
+      "source": "config.text_config.quantization_config (compressed-tensors Mxfp4MoEMethod); parse_regime.py reports method=none because the quantization_config is nested under text_config"
+    },
+    "kv_cache_dtype": "auto",
+    "compile": "eager",
+    "enforce_eager": false,
+    "cuda_graph": true,
+    "attention_backend": "triton",
+    "prefill_chunk": 8192,
+    "notes": "0828 cycle1 baseline flags: --chunked-prefill-size 8192, --cuda-graph-max-bs 64, --moe-runner-backend aiter, --trust-remote-code. Decode replays under a HIP graph; prefill runs eager."
+  },
+  "served_regimes": [
+    "prefill",
+    "decode"
+  ],
+  "quant": {
+    "scheme": "mxfp4-pack-quantized",
+    "weight_dtype": "float4_e2m1fn_x2 (mx group_size 32, e8m0 scales)",
+    "act_dtype": "bfloat16",
+    "out_dtype": "bfloat16",
+    "weight_block_size": 32,
+    "scale_dtype": "float8_e8m0fnu",
+    "kv_cache_dtype": "auto"
+  },
+  "live_pct_gpu": 13.53,
+  "regime_warning": "",
+  "serving_weight_model": {
+    "isl": 8192,
+    "osl": 1024,
+    "conc": 64,
+    "prefill_chunk": 8192,
+    "analytic_calls": {
+      "prefill": 64,
+      "decode": 1024
+    },
+    "ttft_ms": null,
+    "tpot_ms": null
+  },
+  "num_cases": 3,
+  "weights_provenance": "trace(0828 cycle1 profile phase split)",
+  "weight_note": "The `weight` fields are INFORMATIONAL provenance only. harness_lib.serving_weighted_speedup ignores them and recomputes the primary metric from baseline_ms x analytic calls, giving each regime's whole call count to its largest-M bucket (prefill_M8192, decode_M64) and calls=1 to the rest.",
+  "cases": [
+    {
+      "name": "prefill_M8192",
+      "dims": [[8192, 3584], [896, 768, 1792]],
+      "dtypes": ["torch.bfloat16", "torch.float4_e2m1fn_x2"],
+      "count": null,
+      "weight": 4753.041,
+      "weight_source": "trace",
+      "regime": "prefill",
+      "m": 8192,
+      "weight_norm": 0.4474,
+      "quant": {
+        "scheme": "mxfp4-pack-quantized",
+        "weight_dtype": "float4_e2m1fn_x2 (mx group_size 32, e8m0 scales)",
+        "act_dtype": "bfloat16",
+        "out_dtype": "bfloat16",
+        "weight_block_size": 32,
+        "scale_dtype": "float8_e8m0fnu",
+        "kv_cache_dtype": "auto"
+      }
+    },
+    {
+      "name": "decode_M64",
+      "dims": [[64, 3584], [896, 768, 1792]],
+      "dtypes": ["torch.bfloat16", "torch.float4_e2m1fn_x2"],
+      "count": null,
+      "weight": 5871.718,
+      "weight_source": "trace",
+      "regime": "decode",
+      "m": 64,
+      "weight_norm": 0.5526,
+      "quant": {
+        "scheme": "mxfp4-pack-quantized",
+        "weight_dtype": "float4_e2m1fn_x2 (mx group_size 32, e8m0 scales)",
+        "act_dtype": "bfloat16",
+        "out_dtype": "bfloat16",
+        "weight_block_size": 32,
+        "scale_dtype": "float8_e8m0fnu",
+        "kv_cache_dtype": "auto"
+      }
+    },
+    {
+      "name": "decode_M1",
+      "dims": [[1, 3584], [896, 768, 1792]],
+      "dtypes": ["torch.bfloat16", "torch.float4_e2m1fn_x2"],
+      "count": null,
+      "weight": 0.0,
+      "weight_source": "boundary",
+      "regime": "decode",
+      "m": 1,
+      "weight_norm": 0.0,
+      "case_note": "Boundary/graph-replay bucket, not a served steady state: it exists so a candidate that sizes a workspace to the capture shape or ignores num_valid_ids faults. serving_weighted_speedup gives it calls=1.",
+      "quant": {
+        "scheme": "mxfp4-pack-quantized",
+        "weight_dtype": "float4_e2m1fn_x2 (mx group_size 32, e8m0 scales)",
+        "act_dtype": "bfloat16",
+        "out_dtype": "bfloat16",
+        "weight_block_size": 32,
+        "scale_dtype": "float8_e8m0fnu",
+        "kv_cache_dtype": "auto"
+      }
+    }
+  ],
+  "profile_provenance": {
+    "run": "hl_matrix_0828_kbtune/exp/Kimi-K3/Kimi-K3/20260828T135708Z-451fa49c",
+    "op": "moe_gemm1_0",
+    "calls": 99176,
+    "total_ms": 10624.76,
+    "prefill_ms": 4753.041,
+    "decode_e2e_ms": 5871.718,
+    "prefill_us_per_call": 956.731,
+    "decode_us_per_call": 62.3,
+    "pct_gpu_time": 13.53,
+    "roofline": "profile/round_0/profile_roofline.md: decode AI=6.3 FLOP/byte vs a 312 ridge -> memory side, but hbm_util=1.792 (>1) means the uniform-routing byte model is refuted by the measurement; roofline_pct is clamped to 1.000* and headroom is 'unknown'. Prefill was not modelled there: at 956.7 us/call it runs ~754 TFLOP/s, i.e. ~30% of the 2.5 PFLOP/s bf16 roof, so the prefill half is the compute-leaning one."
+  }
+}
