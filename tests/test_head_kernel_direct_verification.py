@@ -68,6 +68,17 @@ class DirectVerificationTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             verifier.copy_task(self.source, self.workspace, self.repo)
 
+    def test_tensor_copy_has_independent_inode_and_preserves_source(self):
+        self.task()
+        fixture = self.source / 'reference.pt'
+        fixture.write_bytes(b'original captured tensor fixture')
+        verifier.copy_task(self.source, self.workspace, self.repo)
+        copied = self.workspace / fixture.name
+        self.assertNotEqual((fixture.stat().st_dev, fixture.stat().st_ino),
+                            (copied.stat().st_dev, copied.stat().st_ino))
+        copied.write_bytes(b'workspace-local modification')
+        self.assertEqual(fixture.read_bytes(), b'original captured tensor fixture')
+
     def test_command_failure_preserves_exit_and_skips_performance(self):
         self.task(failure='correctness')
         result = verifier.verify_task(self.source, self.workspace, self.repo)
@@ -191,6 +202,21 @@ class DirectVerificationTests(unittest.TestCase):
         with mock.patch.dict(os.environ, {'AGENT_KERNEL_ARENA_DOCKER': ''}):
             with self.assertRaisesRegex(ValueError, 'Docker runner'):
                 verifier.verify(config)
+
+    def test_plan_without_validation_runtime_key_is_supported(self):
+        self.task()
+        plan = {'image': 'example.invalid/runtime:v1', 'expected_image_id': None,
+                'tasks': ['head_kernels/test'], 'profiles': {},
+                'runtime_role': 'public_default', 'qualification_status': 'unqualified'}
+        environment = {'AGENT_KERNEL_ARENA_DOCKER': '1',
+                       'AGENT_KERNEL_ARENA_DOCKER_IMAGE': plan['image'],
+                       'AGENT_KERNEL_ARENA_DOCKER_IMAGE_ID': 'sha256:' + 'a' * 64,
+                       'AGENT_KERNEL_ARENA_HEAD_KERNEL_VALIDATION_RUNTIME': ''}
+        with mock.patch.object(verifier, 'plan_run', return_value=plan), \
+                mock.patch.dict(os.environ, environment):
+            code, path = verifier.verify(self.repo / 'run.yaml', self.repo)
+        self.assertEqual(code, 0)
+        self.assertEqual(json.loads(path.read_text())['plan'], plan)
 
     def test_verify_launcher_preserves_public_runtime_and_exit_status(self):
         config = ROOT / 'example_configs/top5_validator_glm_bf16_public_mi355x.yaml'

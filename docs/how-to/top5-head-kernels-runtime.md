@@ -82,9 +82,10 @@ inside the repository. It contains `direct-verification.json`, per-task
 snapshots of native reports in `direct-native-reports/`. Image/config identity,
 available registry digests, runtime choice, source hashes, symlink targets,
 phase return codes, and timeout status are retained. Internal source aliases
-are preserved and checked before and after copying. Captured tensor fixtures
-are hardlinked when possible, with ordinary copying as a fallback; native task
-checks still verify their captured hashes. Existing source tasks are unchanged.
+are preserved and checked before and after copying. Every ordinary file,
+including any archived tensor fixtures, is copied independently so task
+workspaces do not share mutable file inodes with their source. Existing source
+tasks are unchanged.
 
 These are direct execution results: `framework_task_validator` is `NOT_RUN`,
 and no framework `validation_report.yaml`, `task_result.yaml`, or finalized

@@ -48,17 +48,6 @@ def copy_task(source: Path, destination: Path, repo: Path) -> dict:
     """Keep editable source aliases bound to the copied source, including on NFS."""
     _validate_task_symlinks(source, set())
 
-    def copy_file(src, dst):
-        # Captured tensors are immutable inputs; the native runner verifies hashes.
-        # Hardlinks avoid copying the fixture corpus when both paths share a disk.
-        if Path(src).suffix == ".pt":
-            try:
-                os.link(src, dst)
-                return dst
-            except OSError:
-                pass
-        return shutil.copy2(src, dst)
-
     def ignore(directory, names):
         excluded = {name for name in names if name == "__pycache__" or name.endswith(".pyc")}
         if Path(directory) == source:
@@ -69,7 +58,7 @@ def copy_task(source: Path, destination: Path, repo: Path) -> dict:
                                          *(phase + ".stderr" for phase in PHASES)})
         return excluded
 
-    shutil.copytree(source, destination, symlinks=True, copy_function=copy_file, ignore=ignore)
+    shutil.copytree(source, destination, symlinks=True, copy_function=shutil.copy2, ignore=ignore)
     _validate_task_symlinks(destination, set())
     helpers = materialize_perf_helpers_in_workspace(destination, root=repo)
     identities = {}
@@ -204,7 +193,7 @@ def verify(config: Path, repo: Path = REPO_ROOT) -> tuple[int, Path]:
             or not re.fullmatch(r"sha256:[0-9a-f]{64}", image_id)
             or (plan["expected_image_id"] and plan["expected_image_id"] != image_id)
             or os.environ.get("AGENT_KERNEL_ARENA_HEAD_KERNEL_VALIDATION_RUNTIME", "")
-            != (plan["validation_runtime"] or "")):
+            != (plan.get("validation_runtime") or "")):
         raise ValueError("Selected Docker identity does not match the task runtime plan")
     run = Path(tempfile.mkdtemp(prefix="workspace_direct_verification_", dir=repo))
     identity = {name: os.environ.get(name) for name in (
