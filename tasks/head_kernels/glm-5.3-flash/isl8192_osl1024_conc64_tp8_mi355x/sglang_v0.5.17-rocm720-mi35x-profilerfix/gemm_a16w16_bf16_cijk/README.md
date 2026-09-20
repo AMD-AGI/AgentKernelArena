@@ -65,3 +65,8 @@ seam provenance; it is not a fresh GPU result for this task. Fresh native device
 identity, negative binding control, correctness, performance, and a framework
 finalized `validation_report.yaml` with `overall_status: PASS` remain release
 requirements. No GPU validation result is included here.
+
+The shared worker preloads and attests the correctness entrypoint, case helpers,
+and benchmark module before candidate binding. Correctness and timing reuse
+those exact helper objects through their declared aliases. Native imports remain
+deferred until the protected runtime preflight/overlay sequence completes.

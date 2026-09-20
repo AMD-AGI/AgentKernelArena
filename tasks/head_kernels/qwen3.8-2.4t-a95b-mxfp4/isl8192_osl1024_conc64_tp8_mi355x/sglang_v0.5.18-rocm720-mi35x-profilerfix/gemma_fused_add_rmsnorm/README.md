@@ -36,3 +36,8 @@ validated on a compatible GPU. A clean task-validator report is required before 
 The editable symbols include Python launchers or operator dispatch where declared in the config.
 Those edits must preserve the complete callable workload, launch dimensions, ABI and output/state
 contract. A device-kernel speedup cannot be claimed by deleting operator work or changing tested shapes.
+
+The shared worker preloads and attests the correctness entrypoint, case helpers,
+and benchmark module before candidate binding. Correctness and timing reuse
+those exact helper objects through their declared aliases. Native imports remain
+deferred until the protected runtime preflight/overlay sequence completes.

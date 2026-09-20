@@ -11,6 +11,11 @@ sys.path[:] = [entry for entry in sys.path if Path(entry or ".").resolve() != HE
 
 
 def load(name, path):
+    existing = sys.modules.get(name)
+    if existing is not None:
+        if Path(getattr(existing, "__file__", "")).resolve() != Path(path).resolve():
+            raise RuntimeError(f"protected module alias already names a different file: {name}")
+        return existing
     spec = importlib.util.spec_from_file_location(name, path)
     module = importlib.util.module_from_spec(spec)
     sys.modules[name] = module

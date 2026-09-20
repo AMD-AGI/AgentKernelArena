@@ -25,6 +25,11 @@ prompt:
     \ same benchmark contract. Do not edit ut/, scripts/, or config.yaml.\n"
   cheatsheet: null
 headkernel:
+  trusted_worker_modules:
+    fused_add_rmsnorm_cases: ut/cases.py
+    _headkernel_cases: ut/cases.py
+    _legacy_correctness: ut/unittest.py
+    _bench: scripts/_bench.py
   operation_id: qwen3.8-2.4t__gemma_fused_add_rmsnorm
   model: Qwen3.8-2.4T-A95B-MXFP4
   owner: Li, Zeping <zepingl@amd.com>

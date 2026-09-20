@@ -24,6 +24,11 @@ prompt:
     device implementations remain native dependencies. Historical selection and profile evidence are provenance,
     not measurements of this run. Do not edit ut/, scripts/, config.yaml, or benchmark controls.
 headkernel:
+  trusted_worker_modules:
+    _glm_cases: ut/cases.py
+    _headkernel_cases: ut/cases.py
+    _legacy_correctness: ut/unittest.py
+    _bench: scripts/_bench.py
   operation_id: glm-5.3-flash__gemm_a16w16_bf16_cijk
   model: GLM-5.3-Flash
   docker: docker.io/rocm/hyperloom@sha256:1f5464829559b086eb66f9b803cb9c7a817438c43edff2d5ef59b46a186745f6
