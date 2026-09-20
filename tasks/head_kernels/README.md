@@ -100,6 +100,9 @@ one image compatible with every task.
 
 Use the [per-kernel environment matrix](../../docs/reference/top5-head-kernel-environments.md)
 and the [runtime guide](../../docs/how-to/top5-head-kernels-runtime.md).
+For nodes outside Crusoe, the [public image catalog](../../docs/reference/top5-public-images.md)
+records reachable Docker Hub images and the explicitly pinned GLM BF16
+validation candidate, which needs no external tensor fixtures.
 For example, from the repository root:
 
 ```bash

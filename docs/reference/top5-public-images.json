@@ -1,0 +1,82 @@
+{
+  "schema_version": 1,
+  "description": "Public registry observations; version/source-pin evidence does not establish GPU qualification or equality to the private capture image.",
+  "images": [
+    {
+      "image": "docker.io/rocm/hyperloom:sglang-v0.5.17-rocm7.2.0-mi350x",
+      "manifest_digest": "sha256:1f5464829559b086eb66f9b803cb9c7a817438c43edff2d5ef59b46a186745f6",
+      "config_digest": "sha256:ffe4af630e49b05c812db4a468bfb411c3dbb0e93124801f28349bfa31352dea",
+      "architecture": "amd64",
+      "os": "linux",
+      "compressed_layer_bytes": 28479323239,
+      "created": "2026-08-18T06:13:11.933469989Z",
+      "observed_utc": "2026-09-20T13:57:51.953597+00:00",
+      "build_aiter_commit": "d9e5ef7ce08ee7045d583aed768cff41aa9210fe",
+      "build_gpu_arch_list": "gfx950",
+      "tag_api": "https://hub.docker.com/v2/repositories/rocm/hyperloom/tags/sglang-v0.5.17-rocm7.2.0-mi350x",
+      "anonymous_manifest_and_config_get_status": 200,
+      "manifest_and_config_hashes_verified": true,
+      "gpu_validation": "not_run",
+      "exact_harbor_mirror": "not_established"
+    },
+    {
+      "image": "docker.io/rocm/hyperloom:sglang-v0.5.18-rocm7.2.0-mi350x",
+      "manifest_digest": "sha256:da36f56f24cb2897a56be52dd43774c1a75b1500308ed7db3ba32fb8db4d259c",
+      "config_digest": "sha256:af24798ab4d57196fa1e928e4c81202bafb06cdeb663158f4d4f038fdb18f1a3",
+      "architecture": "amd64",
+      "os": "linux",
+      "compressed_layer_bytes": 23161974193,
+      "created": "2026-08-25T02:55:59.306863871Z",
+      "observed_utc": "2026-09-20T13:57:51.954212+00:00",
+      "build_aiter_commit": "d9e5ef7ce08ee7045d583aed768cff41aa9210fe",
+      "build_gpu_arch_list": "gfx950",
+      "tag_api": "https://hub.docker.com/v2/repositories/rocm/hyperloom/tags/sglang-v0.5.18-rocm7.2.0-mi350x",
+      "anonymous_manifest_and_config_get_status": 200,
+      "manifest_and_config_hashes_verified": true,
+      "gpu_validation": "not_run",
+      "exact_harbor_mirror": "not_established"
+    },
+    {
+      "image": "docker.io/rocm/hyperloom:sglang-v0.5.18-main20260825-rocm7.2.0-mi350x",
+      "manifest_digest": "sha256:ea4e704470cd49dec1a8abf349f71f947be9c759f4cda31e1d6c750920543b35",
+      "config_digest": "sha256:6065064473b509546c15e8d5942d995ce408f97fcde4418b9c2217990bce19f5",
+      "architecture": "amd64",
+      "os": "linux",
+      "compressed_layer_bytes": 23811240855,
+      "created": "2026-09-03T07:06:13.599230211Z",
+      "observed_utc": "2026-09-20T13:57:51.954695+00:00",
+      "build_aiter_commit": "d9e5ef7ce08ee7045d583aed768cff41aa9210fe",
+      "build_gpu_arch_list": "gfx950",
+      "tag_api": "https://hub.docker.com/v2/repositories/rocm/hyperloom/tags/sglang-v0.5.18-main20260825-rocm7.2.0-mi350x",
+      "anonymous_manifest_and_config_get_status": 200,
+      "manifest_and_config_hashes_verified": true,
+      "gpu_validation": "not_run",
+      "exact_harbor_mirror": "not_established"
+    },
+    {
+      "image": "docker.io/rocm/hyperloom:sglang-v0.5.19-rocm7.2.0-mi350x",
+      "manifest_digest": "sha256:0f4cf08a2ce28713eb427ffba66c85962d77edc99289f02754b0b75582059b16",
+      "config_digest": "sha256:cab753498faa8257a852b6578f6ebe54c8a1c77d6ea015f89dbba93a7f4e4169",
+      "architecture": "amd64",
+      "os": "linux",
+      "compressed_layer_bytes": 23308604376,
+      "created": "2026-09-07T03:32:12.255350793Z",
+      "observed_utc": "2026-09-20T13:57:51.955064+00:00",
+      "build_aiter_commit": "c16d44b93a528b2a4bfd6d8d3409116d465872a9",
+      "build_gpu_arch_list": "gfx950",
+      "tag_api": "https://hub.docker.com/v2/repositories/rocm/hyperloom/tags/sglang-v0.5.19-rocm7.2.0-mi350x",
+      "anonymous_manifest_and_config_get_status": 200,
+      "manifest_and_config_hashes_verified": true,
+      "gpu_validation": "not_run",
+      "exact_harbor_mirror": "not_established"
+    }
+  ],
+  "glm_bf16_public_validation": {
+    "task_operation_id": "glm-5.3-flash__gemm_a16w16_bf16_cijk",
+    "case_count": 27,
+    "required_external_tensors": 0,
+    "aiter_tuned_gemm_py_sha256": "81b7289f77e02adcd8472ba8bde0f20bb534be46009d2c01e78361d4297ae2ef",
+    "source_url": "https://raw.githubusercontent.com/ROCm/aiter/d9e5ef7ce08ee7045d583aed768cff41aa9210fe/aiter/tuned_gemm.py",
+    "qualification": "pending"
+  }
+}
