@@ -34,14 +34,53 @@ scheduler reported a GPU/resource allocation mismatch.
 
 | Cohort | Registered tasks | Latest completed evidence |
 | --- | ---: | --- |
-| SGLang v0.5.17 | 8 | CPU checks; GPU qualification not run |
+| SGLang v0.5.17 | 8 | GLM BF16 native positive and negative controls completed at `97555eb2`; other tasks and later contract changes remain pending |
 | SGLang v0.5.18 | 7 | All seven stopped at the AITER import failure; cache fix requires GPU retest |
 | Kimi K3 capture image | 3 | CPU checks; GPU qualification not run |
 
-There are currently **no successful native GPU correctness/performance reports
-and no framework-finalized task-validator PASS reports** for this release.
+There are currently **no framework-finalized task-validator PASS reports** for
+this release. Native execution evidence is recorded separately below.
 The separate MiniMax generated-input draft is not part of this branch; the
 14 capture-dependent tasks still require their declared fixtures.
+
+## GLM BF16 native GPU verification
+
+At commit `97555eb20ffc7683ff151b9695b6f025b0386b34`, job `158785` completed on
+an MI355X with the pinned public v0.5.17 image. All **27 correctness cases and
+27 performance cases passed**, with the expected complete unique case set,
+10 warmups and 100 samples per case. All device times were positive and finite,
+and actual timed-graph replay, changed-input probing and state restoration
+checks succeeded. This was direct verification, not the LLM task-validator
+review or a serving end-to-end experiment.
+
+The run observed SGLang `0.5.17`, PyTorch
+`2.9.1+rocm7.2.0.git7e1940d4`, HIP `7.2.26015-fc0010cf6a`, Triton `3.6.0`,
+and `gfx950`. It verified manifest
+`sha256:1f5464829559b086eb66f9b803cb9c7a817438c43edff2d5ef59b46a186745f6`
+and config digest
+`sha256:ffe4af630e49b05c812db4a468bfb411c3dbb0e93124801f28349bfa31352dea`.
+The engine exposed the manifest digest as its image ID; the complete
+manifest-to-config binding was verified. Native correctness/performance report
+SHA-256 values are respectively
+`d715d6cd57264ddb65cc2216e8fc8bc0e6ce8fe48dee12f229bbf99903109048` and
+`f3ba78f36f27cb6b43c876705c0107a2ec8f80ea1ee7721d8cae4f43d51dc6c6`.
+
+Job `158821` then tested a deliberately incorrect implementation in a separate
+copy: only the editable `torch_gemm` body was changed to zero its normal output.
+Compilation and runtime checks passed; candidate-versus-FP32-reference
+comparison rejected it with error `0.9948567748069763`, and performance was
+skipped. This demonstrates actual editable-source binding and numerical
+rejection for the tested path. Both attempts completed ownership-scoped
+container cleanup.
+
+The scenario-fidelity audit subsequently classified only **seven** of the
+27 BF16 combinations as supported by the retained workload trace. The other
+20 remain mandatory correctness/generalization tests. Commit `9ac67071`
+restricts scoring to the seven supported cases; the earlier GPU result does
+not certify the later scoring contract or full HyperLoom workload fidelity.
+The analogous FP8 task retains 21 correctness cases and scores seven observed
+cases. Source kernel bodies and numerical tolerances were not changed by that
+classification correction.
 
 Native qualification remains required for every registered task:
 
