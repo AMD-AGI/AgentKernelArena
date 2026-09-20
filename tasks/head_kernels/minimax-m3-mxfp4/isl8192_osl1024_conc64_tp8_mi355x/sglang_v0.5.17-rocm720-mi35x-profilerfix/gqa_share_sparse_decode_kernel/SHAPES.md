@@ -1,8 +1,8 @@
-# Shape and benchmark catalog: minimax-m3__gqa_share_sparse_decode_kernel
+# Shape and benchmark catalog: gqa_share_sparse_decode_kernel
 
 This is a single-GPU MI355X (gfx950) callable benchmark. The serving capture used ISL 8192, OSL 1024, concurrency 64 and TP=8; those settings are context, not a substitute for the tensor shapes below.
 
-The complete case IDs, argument inventories, original metadata, scalars, tensor attributes and source hashes are in [SHAPES.json](SHAPES.json). The task environment and benchmark commands are in [config.yaml](config.yaml).
+The complete case IDs, argument inventories, original metadata, scalars, tensor attributes, extracted fixture layouts and source hashes are in [SHAPES.json](SHAPES.json). The task environment and benchmark commands are in [config.yaml](config.yaml).
 
 The inventory has **5 shape records** and **2 benchmark cases**. The protected metadata's `num_cases` field is `3`; that field can count a different capture scope. Histogram observations and random value draws are not added to the benchmark count.
 
@@ -21,22 +21,20 @@ Benchmark IDs above follow the protected timing builder and common adapter. All 
 
 | Argument / output | Recorded geometry and layout |
 | --- | --- |
-| `k_cache` (input) | [4358330, 1, 128]; bfloat16; strides [128, 128, 1], unknown. contiguous generated timing input; unknown: physical strides are not recorded in this metadata. |
-| `q` (input) | [1, 8, 128], [64, 8, 128], [7, 8, 128], [8, 8, 128]; bfloat16; strides [1024, 128, 1], unknown. contiguous generated timing input; unknown: physical strides are not recorded in this metadata. |
-| `req_to_token` (input) | [1, 11268], [4097, 11268], [64, 11268]; int32; strides [11268, 1], unknown. contiguous generated timing input; unknown: physical strides are not recorded in this metadata. |
-| `seq_lens` (input) | [1], [64], [7], [8]; int64; strides [1], unknown. contiguous generated timing input; unknown: physical strides are not recorded in this metadata. |
-| `slot_ids` (input) | [1], [64], [7], [8]; int64; strides [1], unknown. contiguous generated timing input; unknown: physical strides are not recorded in this metadata. |
-| `topk_idx` (input) | [1, 1, 16], [1, 64, 16], [1, 7, 16], [1, 8, 16]; int32; strides [1024, 16, 1], [16, 16, 1], unknown. generated selected blocks; unknown: physical strides are not recorded in this metadata. |
-| `v_cache` (input) | [4358330, 1, 128]; bfloat16; strides [128, 128, 1], unknown. contiguous generated cache; unknown: physical strides are not recorded in this metadata. |
-| `return` (output) | [1, 8, 128], [64, 8, 128], [7, 8, 128], [8, 8, 128]; bfloat16; strides unknown. merged attention output. |
+| `k_cache` (input) | [4358330, 1, 128]; bfloat16; strides [128, 128, 1]. contiguous generated timing input; preserved captured descriptor layout. |
+| `q` (input) | [1, 8, 128], [64, 8, 128], [7, 8, 128], [8, 8, 128]; bfloat16; strides [1024, 128, 1]. contiguous generated timing input; preserved captured descriptor layout. |
+| `req_to_token` (input) | [1, 11268], [4097, 11268], [64, 11268]; int32; strides [11268, 1]. contiguous generated timing input; preserved captured descriptor layout. |
+| `seq_lens` (input) | [1], [64], [7], [8]; int64; strides [1]. contiguous generated timing input; preserved captured descriptor layout. |
+| `slot_ids` (input) | [1], [64], [7], [8]; int64; strides [1]. contiguous generated timing input; preserved captured descriptor layout. |
+| `topk_idx` (input) | [1, 1, 16], [1, 64, 16], [1, 7, 16], [1, 8, 16]; int32; strides per-case values in JSON. generated selected blocks; preserved captured descriptor layout. |
+| `v_cache` (input) | [4358330, 1, 128]; bfloat16; strides [128, 128, 1]. contiguous generated cache; preserved captured descriptor layout. |
+| `return` (output) | [1, 8, 128], [64, 8, 128], [7, 8, 128], [8, 8, 128]; bfloat16; strides [1024, 128, 1]. contiguous output allocation prescribed by selected callable; preserved captured descriptor layout. |
 
 Each JSON tensor record cites the metadata field or protected builder that establishes its geometry. A `null` shape, dtype or stride means it is not established by readable metadata; it is not a wildcard or permission to replace the fixture. Packed weights, sparse paging maps and routing-dependent lengths must retain the protected artifact representation.
-
-**Evidence limit:** 26 tensor records have at least one unknown physical field. The machine catalog enumerates each field and its source. Exact opaque-fixture details require the hash-pinned tensor artifacts; this static catalog does not claim that they were inspected.
 
 | Protected tensor artifact | Expected SHA-256 |
 | --- | --- |
 | `ut/reference_io.pt` | `835db1b0e1791b3be723288068630d702f78affc44334ee1a453651bd46c28e8` |
 | `ut/timing_geometry.pt` | `53f447bdd43f30cdc8f7789c5a1a4693390b13272a1e53376d0207ea2eb530cd` |
 
-Source pointers in the JSON are relative to this task directory. Tensor artifacts were not deserialized, and no task code or GPU benchmark was run to produce this catalog. Fresh validation remains governed by the task contract.
+Source pointers in the JSON are relative to this task directory. Every declared artifact was SHA-256 verified and its tensor metadata extracted using PyTorch 2.9.1+cpu, `weights_only=True`, CPU mapping, mmap and FakeTensorMode. Tensor values were not read, and no GPU work was performed. The JSON preserves the parser, fixture hashes, descriptor layouts and serialized alias identities. Fresh GPU validation remains governed by the task contract.

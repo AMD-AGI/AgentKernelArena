@@ -71,8 +71,15 @@ def test_evidence_paths_move_with_tasks_and_unknowns_remain_explicit():
                     })
         assert data["unknown_tensor_metadata"] == actual_unknowns
         for artifact in data["opaque_artifacts"]:
-            assert artifact["inspected"] is False
             assert len(artifact["sha256"]) == 64
+            if artifact["inspected"]:
+                evidence = next(x for x in data["fixture_metadata"] if x["artifact_path"] == artifact["path"])
+                assert evidence["sha256"] == artifact["sha256"]
+                assert evidence["metadata_only"] is True
+                assert evidence["tensor_values_read"] is False
+                assert evidence["parser"]["weights_only"] is True
+                assert evidence["parser"]["map_location"] == "cpu"
+                assert evidence["parser"]["mmap"] is True
 
 
 def test_full_glm_gemm_case_counts_and_physical_scale_layout():
@@ -112,3 +119,20 @@ def test_attention_capture_geometry_and_timing_geometry_are_distinct():
         operands = {x["name"]: x for x in record["tensors"]}
         width = 64 if record["metadata"]["family_topk"] == 1024 else 2
         assert operands["extra_k_cache"]["shape"] == [40128, width, 1, 584]
+
+
+def test_hash_verified_fixtures_close_physical_layout_unknowns():
+    found = catalogs()
+    assert sum(len(data["cases"]) for _, data in found.values()) == 121
+    assert sum(data["case_inventory"]["benchmark_case_count"] for _, data in found.values()) == 99
+    for _, data in found.values():
+        assert data["unknown_tensor_metadata"] == []
+        assert data["unknown_benchmark_tensor_overrides"] == []
+    copy = found["glm-5.3-flash__elementwise_copy_cluster"][1]
+    captures = [r for r in copy["cases"] if r["metadata"].get("source") == "hash_verified_capture"]
+    assert len(captures) == 7
+    assert all(r["benchmark_case_ids"] == [] for r in captures)
+    dsa = found["deepseek-v4-pro__dsa_sparse_mla_attn"][1]
+    for record in dsa["cases"]:
+        cache = next(t for t in record["tensors"] if t["name"] == "k_cache")
+        assert cache["strides"] == [149760, 584, 584, 1]

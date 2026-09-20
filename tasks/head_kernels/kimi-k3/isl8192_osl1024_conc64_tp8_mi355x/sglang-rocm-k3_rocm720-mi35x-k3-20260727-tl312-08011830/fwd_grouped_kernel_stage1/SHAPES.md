@@ -1,8 +1,8 @@
-# Shape and benchmark catalog: kimi-k3__fwd_grouped_kernel_stage1
+# Shape and benchmark catalog: fwd_grouped_kernel_stage1
 
 This is a single-GPU MI355X (gfx950) callable benchmark. The serving capture used ISL 8192, OSL 1024, concurrency 64 and TP=8; those settings are context, not a substitute for the tensor shapes below.
 
-The complete case IDs, argument inventories, original metadata, scalars, tensor attributes and source hashes are in [SHAPES.json](SHAPES.json). The task environment and benchmark commands are in [config.yaml](config.yaml).
+The complete case IDs, argument inventories, original metadata, scalars, tensor attributes, extracted fixture layouts and source hashes are in [SHAPES.json](SHAPES.json). The task environment and benchmark commands are in [config.yaml](config.yaml).
 
 The inventory has **4 shape records** and **2 benchmark cases**. The protected metadata's `num_cases` field is `not declared`; that field can count a different capture scope. Histogram observations and random value draws are not added to the benchmark count.
 
@@ -21,21 +21,19 @@ Benchmark IDs above follow the protected timing builder and common adapter. All 
 
 | Argument / output | Recorded geometry and layout |
 | --- | --- |
-| `q` (input) | [1, 12, 576], [64, 12, 576]; bfloat16; strides [6912, 576, 1], unknown. contiguous generated tensor; unknown: physical strides are not recorded in this metadata. |
-| `k_buffer` (input) | [395, 1, 576], [524352, 1, 576], [557120, 1, 576], [8768, 1, 576]; bfloat16; strides [576, 576, 1], unknown. contiguous generated tensor; unknown: physical strides are not recorded in this metadata. |
-| `v_buffer` (input) | [395, 1, 512], [524352, 1, 512], [557120, 1, 512], [8768, 1, 512]; bfloat16; strides [576, 576, 1], unknown. view of k_buffer[..., :512]. |
-| `kv_indptr` (input) | [2], [65]; int32; strides [1], unknown. contiguous generated tensor; unknown: physical strides are not recorded in this metadata. |
-| `kv_indices` (input) | [395], [524352], [557056], [8704]; int64; strides [1], unknown. contiguous generated tensor; unknown: physical strides are not recorded in this metadata. |
-| `num_kv_splits` (input) | [1], [64]; int32; strides [1], unknown. contiguous generated tensor; unknown: physical strides are not recorded in this metadata. |
-| `att_out` (output/output_buffer) | [1, 12, 256, 512], [64, 12, 256, 512]; float32; strides [1572864, 131072, 512, 1], unknown. caller-owned output; only live splits written; unknown: physical strides are not recorded in this metadata. |
-| `att_lse` (output/output_buffer) | [1, 12, 256], [64, 12, 256]; float32; strides [3072, 256, 1], unknown. caller-owned output; only live splits written; unknown: physical strides are not recorded in this metadata. |
+| `q` (input) | [1, 12, 576], [64, 12, 576]; bfloat16; strides [6912, 576, 1]. contiguous generated tensor; preserved captured descriptor layout. |
+| `k_buffer` (input) | [395, 1, 576], [524352, 1, 576], [557120, 1, 576], [8768, 1, 576]; bfloat16; strides [576, 576, 1]. contiguous generated tensor; serialized oracle tensor layout; reconstructed as prescribed by the protected builder. |
+| `v_buffer` (input) | [395, 1, 512], [524352, 1, 512], [557120, 1, 512], [8768, 1, 512]; bfloat16; strides [576, 576, 1]. view k_buffer[:, :, :512] prescribed by _hydrate; view of k_buffer[..., :512]. |
+| `kv_indptr` (input) | [2], [65]; int32; strides [1]. contiguous generated tensor; preserved captured descriptor layout. |
+| `kv_indices` (input) | [395], [524352], [557056], [8704]; int64; strides [1]. contiguous generated tensor; serialized oracle tensor layout; reconstructed as prescribed by the protected builder. |
+| `num_kv_splits` (input) | [1], [64]; int32; strides [1]. contiguous generated tensor; preserved captured descriptor layout. |
+| `att_out` (output/output_buffer) | [1, 12, 256, 512], [64, 12, 256, 512]; float32; strides [1572864, 131072, 512, 1]. caller-owned output; only live splits written; fresh contiguous zero-filled caller buffer allocated by _make_call; same physical layout as supplied att_out; serialized oracle tensor layout; reconstructed as prescribed by the protected builder. |
+| `att_lse` (output/output_buffer) | [1, 12, 256], [64, 12, 256]; float32; strides [3072, 256, 1]. caller-owned output; only live splits written; fresh contiguous zero-filled caller buffer allocated by _make_call; same physical layout as supplied att_lse; serialized oracle tensor layout; reconstructed as prescribed by the protected builder. |
 
 Each JSON tensor record cites the metadata field or protected builder that establishes its geometry. A `null` shape, dtype or stride means it is not established by readable metadata; it is not a wildcard or permission to replace the fixture. Packed weights, sparse paging maps and routing-dependent lengths must retain the protected artifact representation.
-
-**Evidence limit:** 24 tensor records have at least one unknown physical field. The machine catalog enumerates each field and its source. Exact opaque-fixture details require the hash-pinned tensor artifacts; this static catalog does not claim that they were inspected.
 
 | Protected tensor artifact | Expected SHA-256 |
 | --- | --- |
 | `ut/reference_io.pt` | `017f8ede884504695283291955fa8750be3e5d2779dd67b3914f13ab7ae85b98` |
 
-Source pointers in the JSON are relative to this task directory. Tensor artifacts were not deserialized, and no task code or GPU benchmark was run to produce this catalog. Fresh validation remains governed by the task contract.
+Source pointers in the JSON are relative to this task directory. Every declared artifact was SHA-256 verified and its tensor metadata extracted using PyTorch 2.9.1+cpu, `weights_only=True`, CPU mapping, mmap and FakeTensorMode. Tensor values were not read, and no GPU work was performed. The JSON preserves the parser, fixture hashes, descriptor layouts and serialized alias identities. Fresh GPU validation remains governed by the task contract.

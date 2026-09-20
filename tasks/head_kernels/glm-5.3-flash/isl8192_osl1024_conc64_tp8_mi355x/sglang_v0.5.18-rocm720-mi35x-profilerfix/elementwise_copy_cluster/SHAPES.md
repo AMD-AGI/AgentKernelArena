@@ -1,10 +1,10 @@
-# Shape and benchmark catalog: glm-5.3-flash__elementwise_copy_cluster
+# Shape and benchmark catalog: elementwise_copy_cluster
 
 This is a single-GPU MI355X (gfx950) callable benchmark. The serving capture used ISL 8192, OSL 1024, concurrency 64 and TP=8; those settings are context, not a substitute for the tensor shapes below.
 
-The complete case IDs, argument inventories, original metadata, scalars, tensor attributes and source hashes are in [SHAPES.json](SHAPES.json). The task environment and benchmark commands are in [config.yaml](config.yaml).
+The complete case IDs, argument inventories, original metadata, scalars, tensor attributes, extracted fixture layouts and source hashes are in [SHAPES.json](SHAPES.json). The task environment and benchmark commands are in [config.yaml](config.yaml).
 
-The inventory has **8 shape records** and **8 benchmark cases**. The protected metadata's `num_cases` field is `7`; that field can count a different capture scope. Histogram observations and random value draws are not added to the benchmark count.
+The inventory has **15 shape records** and **8 benchmark cases**. The protected metadata's `num_cases` field is `7`; that field can count a different capture scope. Histogram observations and random value draws are not added to the benchmark count.
 
 Callable: `sglang.srt.layers.quantization.fp8_utils:materialize_bpreshuffle_fp8_scale`. Baseline recorded in metadata: `same production seam, selected through frozen baseline binding`. Selected callable seam; kernel launch count is not asserted by this catalog.
 
@@ -27,8 +27,8 @@ Benchmark IDs above follow the protected timing builder and common adapter. All 
 
 | Argument / output | Recorded geometry and layout |
 | --- | --- |
-| `scale` (input) | 8 exact variants in JSON; float32; strides per-case values in JSON. row-major generated timing input; captured oracle input stride is separate. |
-| `return` (output) | 8 exact variants in JSON; float32; strides [1, 16384], [1, 64]. transpose-contiguous; logical values unchanged. |
+| `scale` (input) | 15 exact variants in JSON; float32; strides per-case values in JSON. preserved captured descriptor layout; row-major generated timing input; captured oracle input stride is separate. |
+| `return` (output) | 15 exact variants in JSON; float32; strides per-case values in JSON. preserved captured descriptor layout; transpose-contiguous; logical values unchanged. |
 
 Each JSON tensor record cites the metadata field or protected builder that establishes its geometry. A `null` shape, dtype or stride means it is not established by readable metadata; it is not a wildcard or permission to replace the fixture. Packed weights, sparse paging maps and routing-dependent lengths must retain the protected artifact representation.
 
@@ -36,4 +36,4 @@ Each JSON tensor record cites the metadata field or protected builder that estab
 | --- | --- |
 | `ut/reference_io.pt` | `14e589b7296c667b170b39a5f962344152206ff954a84b4e16de4346567d12af` |
 
-Source pointers in the JSON are relative to this task directory. Tensor artifacts were not deserialized, and no task code or GPU benchmark was run to produce this catalog. Fresh validation remains governed by the task contract.
+Source pointers in the JSON are relative to this task directory. Every declared artifact was SHA-256 verified and its tensor metadata extracted using PyTorch 2.9.1+cpu, `weights_only=True`, CPU mapping, mmap and FakeTensorMode. Tensor values were not read, and no GPU work was performed. The JSON preserves the parser, fixture hashes, descriptor layouts and serialized alias identities. Fresh GPU validation remains governed by the task contract.

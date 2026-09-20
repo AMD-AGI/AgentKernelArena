@@ -1,8 +1,8 @@
-# Shape and benchmark catalog: glm-5.3-flash__fused_moe_kernel
+# Shape and benchmark catalog: fused_moe_kernel
 
 This is a single-GPU MI355X (gfx950) callable benchmark. The serving capture used ISL 8192, OSL 1024, concurrency 64 and TP=8; those settings are context, not a substitute for the tensor shapes below.
 
-The complete case IDs, argument inventories, original metadata, scalars, tensor attributes and source hashes are in [SHAPES.json](SHAPES.json). The task environment and benchmark commands are in [config.yaml](config.yaml).
+The complete case IDs, argument inventories, original metadata, scalars, tensor attributes, extracted fixture layouts and source hashes are in [SHAPES.json](SHAPES.json). The task environment and benchmark commands are in [config.yaml](config.yaml).
 
 The inventory has **4 shape records** and **3 benchmark cases**. The protected metadata's `num_cases` field is `3`; that field can count a different capture scope. Histogram observations and random value draws are not added to the benchmark count.
 
@@ -22,21 +22,19 @@ Benchmark IDs above follow the protected timing builder and common adapter. All 
 
 | Argument / output | Recorded geometry and layout |
 | --- | --- |
-| `hidden_states` (input) | [1, 4096], [19, 4096], [64, 4096], [8192, 4096]; bfloat16; strides unknown. captured activation; generated timing inputs are contiguous. |
-| `w1` (input) | [288, 512, 4096]; fp8_e4m3; strides unknown. weight shapes recorded in meta.notes; scales require tensor oracle. |
-| `w2` (input) | [288, 4096, 256]; fp8_e4m3; strides unknown. weight shapes recorded in meta.notes; scales require tensor oracle. |
-| `w1_scale` (input) | unknown; float32; strides unknown. weight shapes recorded in meta.notes; scales require tensor oracle. |
-| `w2_scale` (input) | unknown; float32; strides unknown. weight shapes recorded in meta.notes; scales require tensor oracle. |
-| `topk_ids` (input) | [1, 8], [19, 8], [64, 8], [8192, 8]; None; strides unknown. real captured routing; timing bootstraps rows with replacement. |
-| `topk_weights` (input) | [1, 8], [19, 8], [64, 8], [8192, 8]; None; strides unknown. real captured routing; timing bootstraps rows with replacement. |
-| `return` (output) | [1, 4096], [19, 4096], [64, 4096], [8192, 4096]; bfloat16; strides unknown. fresh full dispatcher output. |
+| `hidden_states` (input) | [1, 4096], [19, 4096], [64, 4096], [8192, 4096]; bfloat16; strides [4096, 1]. contiguous timing tensor generated with captured activation/routing dtype; serialized oracle tensor layout; reconstructed as prescribed by the protected builder. |
+| `w1` (input) | [288, 512, 4096]; float8_e4m3fn; strides [2097152, 4096, 1]. serialized oracle tensor layout; reconstructed as prescribed by the protected builder. |
+| `w2` (input) | [288, 4096, 256]; float8_e4m3fn; strides [1048576, 256, 1]. serialized oracle tensor layout; reconstructed as prescribed by the protected builder. |
+| `w1_scale` (input) | [288, 4, 32]; float32; strides [128, 32, 1]. serialized oracle tensor layout; reconstructed as prescribed by the protected builder. |
+| `w2_scale` (input) | [288, 32, 2]; float32; strides [64, 2, 1]. serialized oracle tensor layout; reconstructed as prescribed by the protected builder. |
+| `topk_ids` (input) | [1, 8], [19, 8], [64, 8], [8192, 8]; int32; strides [8, 1]. contiguous timing tensor generated with captured activation/routing dtype; serialized oracle tensor layout; reconstructed as prescribed by the protected builder. |
+| `topk_weights` (input) | [1, 8], [19, 8], [64, 8], [8192, 8]; float32; strides [8, 1]. contiguous timing tensor generated with captured activation/routing dtype; serialized oracle tensor layout; reconstructed as prescribed by the protected builder. |
+| `return` (output) | [1, 4096], [19, 4096], [64, 4096], [8192, 4096]; bfloat16; strides [4096, 1]. fresh contiguous dispatcher output; serialized oracle tensor layout; reconstructed as prescribed by the protected builder. |
 
 Each JSON tensor record cites the metadata field or protected builder that establishes its geometry. A `null` shape, dtype or stride means it is not established by readable metadata; it is not a wildcard or permission to replace the fixture. Packed weights, sparse paging maps and routing-dependent lengths must retain the protected artifact representation.
-
-**Evidence limit:** 32 tensor records have at least one unknown physical field. The machine catalog enumerates each field and its source. Exact opaque-fixture details require the hash-pinned tensor artifacts; this static catalog does not claim that they were inspected.
 
 | Protected tensor artifact | Expected SHA-256 |
 | --- | --- |
 | `ut/reference_io.pt` | `59040b163efbc9dbd3592a28dee01bcc2801bb669de170197524dfe335c5feee` |
 
-Source pointers in the JSON are relative to this task directory. Tensor artifacts were not deserialized, and no task code or GPU benchmark was run to produce this catalog. Fresh validation remains governed by the task contract.
+Source pointers in the JSON are relative to this task directory. Every declared artifact was SHA-256 verified and its tensor metadata extracted using PyTorch 2.9.1+cpu, `weights_only=True`, CPU mapping, mmap and FakeTensorMode. Tensor values were not read, and no GPU work was performed. The JSON preserves the parser, fixture hashes, descriptor layouts and serialized alias identities. Fresh GPU validation remains governed by the task contract.

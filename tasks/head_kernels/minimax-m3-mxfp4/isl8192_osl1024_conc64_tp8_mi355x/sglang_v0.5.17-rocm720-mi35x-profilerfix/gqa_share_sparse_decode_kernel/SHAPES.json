@@ -140,9 +140,20 @@
             128
           ],
           "dtype": "torch.bfloat16",
-          "strides": null,
-          "layout": "unknown: physical strides are not recorded in this metadata",
-          "evidence": "ut/meta.json#/cases/0"
+          "strides": [
+            128,
+            128,
+            1
+          ],
+          "layout": "preserved captured descriptor layout",
+          "evidence": "ut/reference_io.pt#/records/0/kwargs/k_cache",
+          "artifact_sha256": "835db1b0e1791b3be723288068630d702f78affc44334ee1a453651bd46c28e8",
+          "serialized_storage": {
+            "storage_id": "storage_000001",
+            "tensor_id": "tensor_000001",
+            "storage_offset_elements": 0,
+            "checkpoint_storage_offset_bytes": 7616
+          }
         },
         {
           "name": "q",
@@ -153,9 +164,20 @@
             128
           ],
           "dtype": "torch.bfloat16",
-          "strides": null,
-          "layout": "unknown: physical strides are not recorded in this metadata",
-          "evidence": "ut/meta.json#/cases/0"
+          "strides": [
+            1024,
+            128,
+            1
+          ],
+          "layout": "preserved captured descriptor layout",
+          "evidence": "ut/reference_io.pt#/records/0/kwargs/q",
+          "artifact_sha256": "835db1b0e1791b3be723288068630d702f78affc44334ee1a453651bd46c28e8",
+          "serialized_storage": {
+            "storage_id": "storage_000000",
+            "tensor_id": "tensor_000000",
+            "storage_offset_elements": 0,
+            "checkpoint_storage_offset_bytes": 5440
+          }
         },
         {
           "name": "req_to_token",
@@ -165,9 +187,19 @@
             11268
           ],
           "dtype": "torch.int32",
-          "strides": null,
-          "layout": "unknown: physical strides are not recorded in this metadata",
-          "evidence": "ut/meta.json#/cases/0"
+          "strides": [
+            11268,
+            1
+          ],
+          "layout": "preserved captured descriptor layout",
+          "evidence": "ut/reference_io.pt#/records/0/kwargs/req_to_token",
+          "artifact_sha256": "835db1b0e1791b3be723288068630d702f78affc44334ee1a453651bd46c28e8",
+          "serialized_storage": {
+            "storage_id": "storage_000003",
+            "tensor_id": "tensor_000003",
+            "storage_offset_elements": 0,
+            "checkpoint_storage_offset_bytes": 2231472832
+          }
         },
         {
           "name": "seq_lens",
@@ -176,9 +208,18 @@
             1
           ],
           "dtype": "torch.int64",
-          "strides": null,
-          "layout": "unknown: physical strides are not recorded in this metadata",
-          "evidence": "ut/meta.json#/cases/0"
+          "strides": [
+            1
+          ],
+          "layout": "preserved captured descriptor layout",
+          "evidence": "ut/reference_io.pt#/records/0/kwargs/seq_lens",
+          "artifact_sha256": "835db1b0e1791b3be723288068630d702f78affc44334ee1a453651bd46c28e8",
+          "serialized_storage": {
+            "storage_id": "storage_000004",
+            "tensor_id": "tensor_000004",
+            "storage_offset_elements": 0,
+            "checkpoint_storage_offset_bytes": 2416132928
+          }
         },
         {
           "name": "slot_ids",
@@ -187,9 +228,18 @@
             1
           ],
           "dtype": "torch.int64",
-          "strides": null,
-          "layout": "unknown: physical strides are not recorded in this metadata",
-          "evidence": "ut/meta.json#/cases/0"
+          "strides": [
+            1
+          ],
+          "layout": "preserved captured descriptor layout",
+          "evidence": "ut/reference_io.pt#/records/0/kwargs/slot_ids",
+          "artifact_sha256": "835db1b0e1791b3be723288068630d702f78affc44334ee1a453651bd46c28e8",
+          "serialized_storage": {
+            "storage_id": "storage_000005",
+            "tensor_id": "tensor_000005",
+            "storage_offset_elements": 0,
+            "checkpoint_storage_offset_bytes": 2416133056
+          }
         },
         {
           "name": "topk_idx",
@@ -200,9 +250,20 @@
             16
           ],
           "dtype": "torch.int32",
-          "strides": null,
-          "layout": "unknown: physical strides are not recorded in this metadata",
-          "evidence": "ut/meta.json#/cases/0"
+          "strides": [
+            16,
+            16,
+            1
+          ],
+          "layout": "preserved captured descriptor layout",
+          "evidence": "ut/reference_io.pt#/records/0/kwargs/topk_idx",
+          "artifact_sha256": "835db1b0e1791b3be723288068630d702f78affc44334ee1a453651bd46c28e8",
+          "serialized_storage": {
+            "storage_id": "storage_000006",
+            "tensor_id": "tensor_000006",
+            "storage_offset_elements": 0,
+            "checkpoint_storage_offset_bytes": 2416133184
+          }
         },
         {
           "name": "v_cache",
@@ -213,9 +274,20 @@
             128
           ],
           "dtype": "torch.bfloat16",
-          "strides": null,
-          "layout": "unknown: physical strides are not recorded in this metadata",
-          "evidence": "ut/meta.json#/cases/0"
+          "strides": [
+            128,
+            128,
+            1
+          ],
+          "layout": "preserved captured descriptor layout",
+          "evidence": "ut/reference_io.pt#/records/0/kwargs/v_cache",
+          "artifact_sha256": "835db1b0e1791b3be723288068630d702f78affc44334ee1a453651bd46c28e8",
+          "serialized_storage": {
+            "storage_id": "storage_000002",
+            "tensor_id": "tensor_000002",
+            "storage_offset_elements": 0,
+            "checkpoint_storage_offset_bytes": 1115740224
+          }
         }
       ],
       "scalars": {
@@ -265,9 +337,20 @@
             128
           ],
           "dtype": "torch.bfloat16",
-          "strides": null,
-          "layout": "merged attention output",
-          "evidence": "ut/meta.json#/math_contract"
+          "strides": [
+            1024,
+            128,
+            1
+          ],
+          "layout": "preserved captured descriptor layout",
+          "evidence": "ut/reference_io.pt#/records/0/output",
+          "artifact_sha256": "835db1b0e1791b3be723288068630d702f78affc44334ee1a453651bd46c28e8",
+          "serialized_storage": {
+            "storage_id": "storage_000007",
+            "tensor_id": "tensor_000007",
+            "storage_offset_elements": 0,
+            "checkpoint_storage_offset_bytes": 2416133376
+          }
         }
       ],
       "benchmark_case_ids": [],
@@ -332,9 +415,20 @@
             128
           ],
           "dtype": "torch.bfloat16",
-          "strides": null,
-          "layout": "unknown: physical strides are not recorded in this metadata",
-          "evidence": "ut/meta.json#/cases/1"
+          "strides": [
+            128,
+            128,
+            1
+          ],
+          "layout": "preserved captured descriptor layout",
+          "evidence": "ut/reference_io.pt#/records/1/kwargs/k_cache",
+          "artifact_sha256": "835db1b0e1791b3be723288068630d702f78affc44334ee1a453651bd46c28e8",
+          "serialized_storage": {
+            "storage_id": "storage_000009",
+            "tensor_id": "tensor_000009",
+            "storage_offset_elements": 0,
+            "checkpoint_storage_offset_bytes": 2416152064
+          }
         },
         {
           "name": "q",
@@ -345,9 +439,20 @@
             128
           ],
           "dtype": "torch.bfloat16",
-          "strides": null,
-          "layout": "unknown: physical strides are not recorded in this metadata",
-          "evidence": "ut/meta.json#/cases/1"
+          "strides": [
+            1024,
+            128,
+            1
+          ],
+          "layout": "preserved captured descriptor layout",
+          "evidence": "ut/reference_io.pt#/records/1/kwargs/q",
+          "artifact_sha256": "835db1b0e1791b3be723288068630d702f78affc44334ee1a453651bd46c28e8",
+          "serialized_storage": {
+            "storage_id": "storage_000008",
+            "tensor_id": "tensor_000008",
+            "storage_offset_elements": 0,
+            "checkpoint_storage_offset_bytes": 2416135552
+          }
         },
         {
           "name": "req_to_token",
@@ -357,9 +462,19 @@
             11268
           ],
           "dtype": "torch.int32",
-          "strides": null,
-          "layout": "unknown: physical strides are not recorded in this metadata",
-          "evidence": "ut/meta.json#/cases/1"
+          "strides": [
+            11268,
+            1
+          ],
+          "layout": "preserved captured descriptor layout",
+          "evidence": "ut/reference_io.pt#/records/1/kwargs/req_to_token",
+          "artifact_sha256": "835db1b0e1791b3be723288068630d702f78affc44334ee1a453651bd46c28e8",
+          "serialized_storage": {
+            "storage_id": "storage_000011",
+            "tensor_id": "tensor_000011",
+            "storage_offset_elements": 0,
+            "checkpoint_storage_offset_bytes": 4647617280
+          }
         },
         {
           "name": "seq_lens",
@@ -368,9 +483,18 @@
             8
           ],
           "dtype": "torch.int64",
-          "strides": null,
-          "layout": "unknown: physical strides are not recorded in this metadata",
-          "evidence": "ut/meta.json#/cases/1"
+          "strides": [
+            1
+          ],
+          "layout": "preserved captured descriptor layout",
+          "evidence": "ut/reference_io.pt#/records/1/kwargs/seq_lens",
+          "artifact_sha256": "835db1b0e1791b3be723288068630d702f78affc44334ee1a453651bd46c28e8",
+          "serialized_storage": {
+            "storage_id": "storage_000012",
+            "tensor_id": "tensor_000012",
+            "storage_offset_elements": 0,
+            "checkpoint_storage_offset_bytes": 4832277376
+          }
         },
         {
           "name": "slot_ids",
@@ -379,9 +503,18 @@
             8
           ],
           "dtype": "torch.int64",
-          "strides": null,
-          "layout": "unknown: physical strides are not recorded in this metadata",
-          "evidence": "ut/meta.json#/cases/1"
+          "strides": [
+            1
+          ],
+          "layout": "preserved captured descriptor layout",
+          "evidence": "ut/reference_io.pt#/records/1/kwargs/slot_ids",
+          "artifact_sha256": "835db1b0e1791b3be723288068630d702f78affc44334ee1a453651bd46c28e8",
+          "serialized_storage": {
+            "storage_id": "storage_000013",
+            "tensor_id": "tensor_000013",
+            "storage_offset_elements": 0,
+            "checkpoint_storage_offset_bytes": 4832277568
+          }
         },
         {
           "name": "topk_idx",
@@ -392,9 +525,20 @@
             16
           ],
           "dtype": "torch.int32",
-          "strides": null,
-          "layout": "unknown: physical strides are not recorded in this metadata",
-          "evidence": "ut/meta.json#/cases/1"
+          "strides": [
+            128,
+            16,
+            1
+          ],
+          "layout": "preserved captured descriptor layout",
+          "evidence": "ut/reference_io.pt#/records/1/kwargs/topk_idx",
+          "artifact_sha256": "835db1b0e1791b3be723288068630d702f78affc44334ee1a453651bd46c28e8",
+          "serialized_storage": {
+            "storage_id": "storage_000014",
+            "tensor_id": "tensor_000014",
+            "storage_offset_elements": 0,
+            "checkpoint_storage_offset_bytes": 4832277760
+          }
         },
         {
           "name": "v_cache",
@@ -405,9 +549,20 @@
             128
           ],
           "dtype": "torch.bfloat16",
-          "strides": null,
-          "layout": "unknown: physical strides are not recorded in this metadata",
-          "evidence": "ut/meta.json#/cases/1"
+          "strides": [
+            128,
+            128,
+            1
+          ],
+          "layout": "preserved captured descriptor layout",
+          "evidence": "ut/reference_io.pt#/records/1/kwargs/v_cache",
+          "artifact_sha256": "835db1b0e1791b3be723288068630d702f78affc44334ee1a453651bd46c28e8",
+          "serialized_storage": {
+            "storage_id": "storage_000010",
+            "tensor_id": "tensor_000010",
+            "storage_offset_elements": 0,
+            "checkpoint_storage_offset_bytes": 3531884672
+          }
         }
       ],
       "scalars": {
@@ -457,9 +612,20 @@
             128
           ],
           "dtype": "torch.bfloat16",
-          "strides": null,
-          "layout": "merged attention output",
-          "evidence": "ut/meta.json#/math_contract"
+          "strides": [
+            1024,
+            128,
+            1
+          ],
+          "layout": "preserved captured descriptor layout",
+          "evidence": "ut/reference_io.pt#/records/1/output",
+          "artifact_sha256": "835db1b0e1791b3be723288068630d702f78affc44334ee1a453651bd46c28e8",
+          "serialized_storage": {
+            "storage_id": "storage_000015",
+            "tensor_id": "tensor_000015",
+            "storage_offset_elements": 0,
+            "checkpoint_storage_offset_bytes": 4832278400
+          }
         }
       ],
       "benchmark_case_ids": [],
@@ -522,9 +688,20 @@
             128
           ],
           "dtype": "torch.bfloat16",
-          "strides": null,
-          "layout": "unknown: physical strides are not recorded in this metadata",
-          "evidence": "ut/meta.json#/cases/2"
+          "strides": [
+            128,
+            128,
+            1
+          ],
+          "layout": "preserved captured descriptor layout",
+          "evidence": "ut/reference_io.pt#/records/2/kwargs/k_cache",
+          "artifact_sha256": "835db1b0e1791b3be723288068630d702f78affc44334ee1a453651bd46c28e8",
+          "serialized_storage": {
+            "storage_id": "storage_000017",
+            "tensor_id": "tensor_000017",
+            "storage_offset_elements": 0,
+            "checkpoint_storage_offset_bytes": 4832309376
+          }
         },
         {
           "name": "q",
@@ -535,9 +712,20 @@
             128
           ],
           "dtype": "torch.bfloat16",
-          "strides": null,
-          "layout": "unknown: physical strides are not recorded in this metadata",
-          "evidence": "ut/meta.json#/cases/2"
+          "strides": [
+            1024,
+            128,
+            1
+          ],
+          "layout": "preserved captured descriptor layout",
+          "evidence": "ut/reference_io.pt#/records/2/kwargs/q",
+          "artifact_sha256": "835db1b0e1791b3be723288068630d702f78affc44334ee1a453651bd46c28e8",
+          "serialized_storage": {
+            "storage_id": "storage_000016",
+            "tensor_id": "tensor_000016",
+            "storage_offset_elements": 0,
+            "checkpoint_storage_offset_bytes": 4832294912
+          }
         },
         {
           "name": "req_to_token",
@@ -547,9 +735,19 @@
             11268
           ],
           "dtype": "torch.int32",
-          "strides": null,
-          "layout": "unknown: physical strides are not recorded in this metadata",
-          "evidence": "ut/meta.json#/cases/2"
+          "strides": [
+            11268,
+            1
+          ],
+          "layout": "preserved captured descriptor layout",
+          "evidence": "ut/reference_io.pt#/records/2/kwargs/req_to_token",
+          "artifact_sha256": "835db1b0e1791b3be723288068630d702f78affc44334ee1a453651bd46c28e8",
+          "serialized_storage": {
+            "storage_id": "storage_000019",
+            "tensor_id": "tensor_000019",
+            "storage_offset_elements": 0,
+            "checkpoint_storage_offset_bytes": 7063774592
+          }
         },
         {
           "name": "seq_lens",
@@ -558,9 +756,18 @@
             7
           ],
           "dtype": "torch.int64",
-          "strides": null,
-          "layout": "unknown: physical strides are not recorded in this metadata",
-          "evidence": "ut/meta.json#/cases/2"
+          "strides": [
+            1
+          ],
+          "layout": "preserved captured descriptor layout",
+          "evidence": "ut/reference_io.pt#/records/2/kwargs/seq_lens",
+          "artifact_sha256": "835db1b0e1791b3be723288068630d702f78affc44334ee1a453651bd46c28e8",
+          "serialized_storage": {
+            "storage_id": "storage_000020",
+            "tensor_id": "tensor_000020",
+            "storage_offset_elements": 0,
+            "checkpoint_storage_offset_bytes": 7248434688
+          }
         },
         {
           "name": "slot_ids",
@@ -569,9 +776,18 @@
             7
           ],
           "dtype": "torch.int64",
-          "strides": null,
-          "layout": "unknown: physical strides are not recorded in this metadata",
-          "evidence": "ut/meta.json#/cases/2"
+          "strides": [
+            1
+          ],
+          "layout": "preserved captured descriptor layout",
+          "evidence": "ut/reference_io.pt#/records/2/kwargs/slot_ids",
+          "artifact_sha256": "835db1b0e1791b3be723288068630d702f78affc44334ee1a453651bd46c28e8",
+          "serialized_storage": {
+            "storage_id": "storage_000021",
+            "tensor_id": "tensor_000021",
+            "storage_offset_elements": 0,
+            "checkpoint_storage_offset_bytes": 7248434880
+          }
         },
         {
           "name": "topk_idx",
@@ -582,9 +798,20 @@
             16
           ],
           "dtype": "torch.int32",
-          "strides": null,
-          "layout": "unknown: physical strides are not recorded in this metadata",
-          "evidence": "ut/meta.json#/cases/2"
+          "strides": [
+            112,
+            16,
+            1
+          ],
+          "layout": "preserved captured descriptor layout",
+          "evidence": "ut/reference_io.pt#/records/2/kwargs/topk_idx",
+          "artifact_sha256": "835db1b0e1791b3be723288068630d702f78affc44334ee1a453651bd46c28e8",
+          "serialized_storage": {
+            "storage_id": "storage_000022",
+            "tensor_id": "tensor_000022",
+            "storage_offset_elements": 0,
+            "checkpoint_storage_offset_bytes": 7248435072
+          }
         },
         {
           "name": "v_cache",
@@ -595,9 +822,20 @@
             128
           ],
           "dtype": "torch.bfloat16",
-          "strides": null,
-          "layout": "unknown: physical strides are not recorded in this metadata",
-          "evidence": "ut/meta.json#/cases/2"
+          "strides": [
+            128,
+            128,
+            1
+          ],
+          "layout": "preserved captured descriptor layout",
+          "evidence": "ut/reference_io.pt#/records/2/kwargs/v_cache",
+          "artifact_sha256": "835db1b0e1791b3be723288068630d702f78affc44334ee1a453651bd46c28e8",
+          "serialized_storage": {
+            "storage_id": "storage_000018",
+            "tensor_id": "tensor_000018",
+            "storage_offset_elements": 0,
+            "checkpoint_storage_offset_bytes": 5948041984
+          }
         }
       ],
       "scalars": {
@@ -647,9 +885,20 @@
             128
           ],
           "dtype": "torch.bfloat16",
-          "strides": null,
-          "layout": "merged attention output",
-          "evidence": "ut/meta.json#/math_contract"
+          "strides": [
+            1024,
+            128,
+            1
+          ],
+          "layout": "preserved captured descriptor layout",
+          "evidence": "ut/reference_io.pt#/records/2/output",
+          "artifact_sha256": "835db1b0e1791b3be723288068630d702f78affc44334ee1a453651bd46c28e8",
+          "serialized_storage": {
+            "storage_id": "storage_000023",
+            "tensor_id": "tensor_000023",
+            "storage_offset_elements": 0,
+            "checkpoint_storage_offset_bytes": 7248435648
+          }
         }
       ],
       "benchmark_case_ids": [],
@@ -881,9 +1130,13 @@
             128
           ],
           "dtype": "torch.bfloat16",
-          "strides": null,
-          "layout": "merged attention output",
-          "evidence": "ut/meta.json#/math_contract"
+          "strides": [
+            1024,
+            128,
+            1
+          ],
+          "layout": "contiguous output allocation prescribed by selected callable",
+          "evidence": "source/topk_sparse.py:439"
         }
       ],
       "benchmark_case_ids": [
@@ -1243,9 +1496,13 @@
             128
           ],
           "dtype": "torch.bfloat16",
-          "strides": null,
-          "layout": "merged attention output",
-          "evidence": "ut/meta.json#/math_contract"
+          "strides": [
+            1024,
+            128,
+            1
+          ],
+          "layout": "contiguous output allocation prescribed by selected callable",
+          "evidence": "source/topk_sparse.py:439"
         }
       ],
       "benchmark_case_ids": [
@@ -3243,231 +3500,22 @@
       }
     ]
   },
-  "unknown_tensor_metadata": [
-    {
-      "case_id": "block_size=128|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|q=T(1, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(1,):torch.int64|sink=None|slot_ids=T(1,):torch.int64|sm_scale=None|topk_idx=T(1, 1, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
-      "tensor": "k_cache",
-      "unknown_fields": [
-        "strides"
-      ],
-      "evidence": "ut/meta.json#/cases/0"
-    },
-    {
-      "case_id": "block_size=128|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|q=T(1, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(1,):torch.int64|sink=None|slot_ids=T(1,):torch.int64|sm_scale=None|topk_idx=T(1, 1, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
-      "tensor": "q",
-      "unknown_fields": [
-        "strides"
-      ],
-      "evidence": "ut/meta.json#/cases/0"
-    },
-    {
-      "case_id": "block_size=128|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|q=T(1, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(1,):torch.int64|sink=None|slot_ids=T(1,):torch.int64|sm_scale=None|topk_idx=T(1, 1, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
-      "tensor": "req_to_token",
-      "unknown_fields": [
-        "strides"
-      ],
-      "evidence": "ut/meta.json#/cases/0"
-    },
-    {
-      "case_id": "block_size=128|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|q=T(1, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(1,):torch.int64|sink=None|slot_ids=T(1,):torch.int64|sm_scale=None|topk_idx=T(1, 1, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
-      "tensor": "seq_lens",
-      "unknown_fields": [
-        "strides"
-      ],
-      "evidence": "ut/meta.json#/cases/0"
-    },
-    {
-      "case_id": "block_size=128|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|q=T(1, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(1,):torch.int64|sink=None|slot_ids=T(1,):torch.int64|sm_scale=None|topk_idx=T(1, 1, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
-      "tensor": "slot_ids",
-      "unknown_fields": [
-        "strides"
-      ],
-      "evidence": "ut/meta.json#/cases/0"
-    },
-    {
-      "case_id": "block_size=128|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|q=T(1, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(1,):torch.int64|sink=None|slot_ids=T(1,):torch.int64|sm_scale=None|topk_idx=T(1, 1, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
-      "tensor": "topk_idx",
-      "unknown_fields": [
-        "strides"
-      ],
-      "evidence": "ut/meta.json#/cases/0"
-    },
-    {
-      "case_id": "block_size=128|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|q=T(1, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(1,):torch.int64|sink=None|slot_ids=T(1,):torch.int64|sm_scale=None|topk_idx=T(1, 1, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
-      "tensor": "v_cache",
-      "unknown_fields": [
-        "strides"
-      ],
-      "evidence": "ut/meta.json#/cases/0"
-    },
-    {
-      "case_id": "block_size=128|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|q=T(1, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(1,):torch.int64|sink=None|slot_ids=T(1,):torch.int64|sm_scale=None|topk_idx=T(1, 1, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
-      "tensor": "return",
-      "unknown_fields": [
-        "strides"
-      ],
-      "evidence": "ut/meta.json#/math_contract"
-    },
-    {
-      "case_id": "block_size=128|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|q=T(8, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(8,):torch.int64|sink=None|slot_ids=T(8,):torch.int64|sm_scale=None|topk_idx=T(1, 8, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
-      "tensor": "k_cache",
-      "unknown_fields": [
-        "strides"
-      ],
-      "evidence": "ut/meta.json#/cases/1"
-    },
-    {
-      "case_id": "block_size=128|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|q=T(8, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(8,):torch.int64|sink=None|slot_ids=T(8,):torch.int64|sm_scale=None|topk_idx=T(1, 8, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
-      "tensor": "q",
-      "unknown_fields": [
-        "strides"
-      ],
-      "evidence": "ut/meta.json#/cases/1"
-    },
-    {
-      "case_id": "block_size=128|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|q=T(8, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(8,):torch.int64|sink=None|slot_ids=T(8,):torch.int64|sm_scale=None|topk_idx=T(1, 8, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
-      "tensor": "req_to_token",
-      "unknown_fields": [
-        "strides"
-      ],
-      "evidence": "ut/meta.json#/cases/1"
-    },
-    {
-      "case_id": "block_size=128|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|q=T(8, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(8,):torch.int64|sink=None|slot_ids=T(8,):torch.int64|sm_scale=None|topk_idx=T(1, 8, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
-      "tensor": "seq_lens",
-      "unknown_fields": [
-        "strides"
-      ],
-      "evidence": "ut/meta.json#/cases/1"
-    },
-    {
-      "case_id": "block_size=128|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|q=T(8, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(8,):torch.int64|sink=None|slot_ids=T(8,):torch.int64|sm_scale=None|topk_idx=T(1, 8, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
-      "tensor": "slot_ids",
-      "unknown_fields": [
-        "strides"
-      ],
-      "evidence": "ut/meta.json#/cases/1"
-    },
-    {
-      "case_id": "block_size=128|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|q=T(8, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(8,):torch.int64|sink=None|slot_ids=T(8,):torch.int64|sm_scale=None|topk_idx=T(1, 8, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
-      "tensor": "topk_idx",
-      "unknown_fields": [
-        "strides"
-      ],
-      "evidence": "ut/meta.json#/cases/1"
-    },
-    {
-      "case_id": "block_size=128|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|q=T(8, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(8,):torch.int64|sink=None|slot_ids=T(8,):torch.int64|sm_scale=None|topk_idx=T(1, 8, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
-      "tensor": "v_cache",
-      "unknown_fields": [
-        "strides"
-      ],
-      "evidence": "ut/meta.json#/cases/1"
-    },
-    {
-      "case_id": "block_size=128|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|q=T(8, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(8,):torch.int64|sink=None|slot_ids=T(8,):torch.int64|sm_scale=None|topk_idx=T(1, 8, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
-      "tensor": "return",
-      "unknown_fields": [
-        "strides"
-      ],
-      "evidence": "ut/meta.json#/math_contract"
-    },
-    {
-      "case_id": "block_size=128|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|q=T(7, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(7,):torch.int64|sink=None|slot_ids=T(7,):torch.int64|sm_scale=None|topk_idx=T(1, 7, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
-      "tensor": "k_cache",
-      "unknown_fields": [
-        "strides"
-      ],
-      "evidence": "ut/meta.json#/cases/2"
-    },
-    {
-      "case_id": "block_size=128|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|q=T(7, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(7,):torch.int64|sink=None|slot_ids=T(7,):torch.int64|sm_scale=None|topk_idx=T(1, 7, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
-      "tensor": "q",
-      "unknown_fields": [
-        "strides"
-      ],
-      "evidence": "ut/meta.json#/cases/2"
-    },
-    {
-      "case_id": "block_size=128|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|q=T(7, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(7,):torch.int64|sink=None|slot_ids=T(7,):torch.int64|sm_scale=None|topk_idx=T(1, 7, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
-      "tensor": "req_to_token",
-      "unknown_fields": [
-        "strides"
-      ],
-      "evidence": "ut/meta.json#/cases/2"
-    },
-    {
-      "case_id": "block_size=128|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|q=T(7, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(7,):torch.int64|sink=None|slot_ids=T(7,):torch.int64|sm_scale=None|topk_idx=T(1, 7, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
-      "tensor": "seq_lens",
-      "unknown_fields": [
-        "strides"
-      ],
-      "evidence": "ut/meta.json#/cases/2"
-    },
-    {
-      "case_id": "block_size=128|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|q=T(7, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(7,):torch.int64|sink=None|slot_ids=T(7,):torch.int64|sm_scale=None|topk_idx=T(1, 7, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
-      "tensor": "slot_ids",
-      "unknown_fields": [
-        "strides"
-      ],
-      "evidence": "ut/meta.json#/cases/2"
-    },
-    {
-      "case_id": "block_size=128|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|q=T(7, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(7,):torch.int64|sink=None|slot_ids=T(7,):torch.int64|sm_scale=None|topk_idx=T(1, 7, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
-      "tensor": "topk_idx",
-      "unknown_fields": [
-        "strides"
-      ],
-      "evidence": "ut/meta.json#/cases/2"
-    },
-    {
-      "case_id": "block_size=128|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|q=T(7, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(7,):torch.int64|sink=None|slot_ids=T(7,):torch.int64|sm_scale=None|topk_idx=T(1, 7, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
-      "tensor": "v_cache",
-      "unknown_fields": [
-        "strides"
-      ],
-      "evidence": "ut/meta.json#/cases/2"
-    },
-    {
-      "case_id": "block_size=128|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|q=T(7, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(7,):torch.int64|sink=None|slot_ids=T(7,):torch.int64|sm_scale=None|topk_idx=T(1, 7, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
-      "tensor": "return",
-      "unknown_fields": [
-        "strides"
-      ],
-      "evidence": "ut/meta.json#/math_contract"
-    },
-    {
-      "case_id": "decode_m1_ctx8704",
-      "tensor": "return",
-      "unknown_fields": [
-        "strides"
-      ],
-      "evidence": "ut/meta.json#/math_contract"
-    },
-    {
-      "case_id": "decode_m64_ctx8704",
-      "tensor": "return",
-      "unknown_fields": [
-        "strides"
-      ],
-      "evidence": "ut/meta.json#/math_contract"
-    }
-  ],
+  "unknown_tensor_metadata": [],
   "unknown_benchmark_tensor_overrides": [],
   "opaque_artifacts": [
     {
       "path": "ut/reference_io.pt",
       "sha256": "835db1b0e1791b3be723288068630d702f78affc44334ee1a453651bd46c28e8",
       "metadata_evidence": "ut/meta.json#/reference_io_sha256",
-      "inspected": false,
-      "status": "opaque tensor artifact; no pickle deserialization during catalog generation"
+      "inspected": true,
+      "status": "hash verified; metadata extracted with restricted weights_only=True CPU mmap/FakeTensorMode; tensor values not read"
     },
     {
       "path": "ut/timing_geometry.pt",
       "sha256": "53f447bdd43f30cdc8f7789c5a1a4693390b13272a1e53376d0207ea2eb530cd",
       "metadata_evidence": "ut/meta.json#/timing_geometry_sha256",
-      "inspected": false,
-      "status": "opaque tensor artifact; no pickle deserialization during catalog generation"
+      "inspected": true,
+      "status": "hash verified; metadata extracted with restricted weights_only=True CPU mmap/FakeTensorMode; tensor values not read"
     }
   ],
   "sources": [
@@ -3496,5 +3544,1354 @@
       "sha256": "2ccda98b33042c796c88ca24f31acf2d9395d4070929d9103e366c4834c29a93"
     }
   ],
-  "validation": "Static metadata/AST inspection only. No task module imports, pickle deserialization, tensor loading, GPU execution, or fresh performance validation."
+  "validation": "Hash-verified restricted CPU tensor metadata extraction plus static builder inspection. No tensor values read and no GPU correctness/performance validation.",
+  "fixture_metadata": [
+    {
+      "artifact_path": "ut/reference_io.pt",
+      "sha256": "835db1b0e1791b3be723288068630d702f78affc44334ee1a453651bd46c28e8",
+      "size_bytes": 7248452679,
+      "parser": {
+        "torch_version": "2.9.1+cpu",
+        "python_version": "3.12.3",
+        "loader": "fake",
+        "weights_only": true,
+        "map_location": "cpu",
+        "mmap": true,
+        "custom_globals_allowed": false,
+        "removed_ambient_safe_globals": [
+          "torch.nested._internal.nested_tensor._rebuild_njt",
+          "torch.nested._internal.nested_tensor.NestedTensor"
+        ],
+        "tensor_values_read": false,
+        "gpu_work": false
+      },
+      "metadata_only": true,
+      "tensor_values_read": false,
+      "record_mappings": [
+        {
+          "record_path": "/records/0",
+          "recorded_identity": {
+            "sig": "block_size=128|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|q=T(1, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(1,):torch.int64|sink=None|slot_ids=T(1,):torch.int64|sm_scale=None|topk_idx=T(1, 1, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
+            "regime": "decode",
+            "m": 1
+          },
+          "status": "matched",
+          "matches": [
+            {
+              "shape_record_id": "block_size=128|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|q=T(1, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(1,):torch.int64|sink=None|slot_ids=T(1,):torch.int64|sm_scale=None|topk_idx=T(1, 1, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
+              "basis": "exact_identity_or_recorded_source_signature",
+              "application": "captured_record",
+              "benchmark_case_ids": []
+            }
+          ]
+        },
+        {
+          "record_path": "/records/1",
+          "recorded_identity": {
+            "sig": "block_size=128|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|q=T(8, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(8,):torch.int64|sink=None|slot_ids=T(8,):torch.int64|sm_scale=None|topk_idx=T(1, 8, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
+            "regime": "decode",
+            "m": 8
+          },
+          "status": "matched",
+          "matches": [
+            {
+              "shape_record_id": "block_size=128|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|q=T(8, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(8,):torch.int64|sink=None|slot_ids=T(8,):torch.int64|sm_scale=None|topk_idx=T(1, 8, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
+              "basis": "exact_identity_or_recorded_source_signature",
+              "application": "captured_record",
+              "benchmark_case_ids": []
+            }
+          ]
+        },
+        {
+          "record_path": "/records/2",
+          "recorded_identity": {
+            "sig": "block_size=128|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|q=T(7, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(7,):torch.int64|sink=None|slot_ids=T(7,):torch.int64|sm_scale=None|topk_idx=T(1, 7, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
+            "regime": "decode",
+            "m": 7
+          },
+          "status": "matched",
+          "matches": [
+            {
+              "shape_record_id": "block_size=128|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|q=T(7, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(7,):torch.int64|sink=None|slot_ids=T(7,):torch.int64|sm_scale=None|topk_idx=T(1, 7, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
+              "basis": "exact_identity_or_recorded_source_signature",
+              "application": "captured_record",
+              "benchmark_case_ids": []
+            }
+          ]
+        }
+      ],
+      "tensors": [
+        {
+          "path": "/records/0/kwargs/q/data",
+          "tensor_id": "tensor_000000",
+          "storage_id": "storage_000000",
+          "storage_identity_basis": "checkpoint_offset",
+          "checkpoint_storage_offset_bytes": 5440,
+          "shape": [
+            1,
+            8,
+            128
+          ],
+          "dtype": "torch.bfloat16",
+          "layout": "torch.strided",
+          "stride": [
+            1024,
+            128,
+            1
+          ],
+          "storage_offset_elements": 0,
+          "storage_nbytes": 4096,
+          "element_size_bytes": 2,
+          "device_in_parser": "cpu",
+          "requires_grad": false,
+          "scope": "serialized tensor metadata; not automatically the runtime reconstructed view",
+          "record_path": "/records/0",
+          "argument_name": "q",
+          "role": "input_or_caller_buffer"
+        },
+        {
+          "path": "/records/0/kwargs/k_cache/data",
+          "tensor_id": "tensor_000001",
+          "storage_id": "storage_000001",
+          "storage_identity_basis": "checkpoint_offset",
+          "checkpoint_storage_offset_bytes": 7616,
+          "shape": [
+            4358330,
+            1,
+            128
+          ],
+          "dtype": "torch.bfloat16",
+          "layout": "torch.strided",
+          "stride": [
+            128,
+            128,
+            1
+          ],
+          "storage_offset_elements": 0,
+          "storage_nbytes": 2231464960,
+          "element_size_bytes": 2,
+          "device_in_parser": "cpu",
+          "requires_grad": false,
+          "scope": "serialized tensor metadata; not automatically the runtime reconstructed view",
+          "record_path": "/records/0",
+          "argument_name": "k_cache",
+          "role": "input_or_caller_buffer"
+        },
+        {
+          "path": "/records/0/kwargs/v_cache/data",
+          "tensor_id": "tensor_000002",
+          "storage_id": "storage_000002",
+          "storage_identity_basis": "checkpoint_offset",
+          "checkpoint_storage_offset_bytes": 1115740224,
+          "shape": [
+            4358330,
+            1,
+            128
+          ],
+          "dtype": "torch.bfloat16",
+          "layout": "torch.strided",
+          "stride": [
+            128,
+            128,
+            1
+          ],
+          "storage_offset_elements": 0,
+          "storage_nbytes": 2231464960,
+          "element_size_bytes": 2,
+          "device_in_parser": "cpu",
+          "requires_grad": false,
+          "scope": "serialized tensor metadata; not automatically the runtime reconstructed view",
+          "record_path": "/records/0",
+          "argument_name": "v_cache",
+          "role": "input_or_caller_buffer"
+        },
+        {
+          "path": "/records/0/kwargs/req_to_token/data",
+          "tensor_id": "tensor_000003",
+          "storage_id": "storage_000003",
+          "storage_identity_basis": "checkpoint_offset",
+          "checkpoint_storage_offset_bytes": 2231472832,
+          "shape": [
+            4097,
+            11268
+          ],
+          "dtype": "torch.int32",
+          "layout": "torch.strided",
+          "stride": [
+            11268,
+            1
+          ],
+          "storage_offset_elements": 0,
+          "storage_nbytes": 738639936,
+          "element_size_bytes": 4,
+          "device_in_parser": "cpu",
+          "requires_grad": false,
+          "scope": "serialized tensor metadata; not automatically the runtime reconstructed view",
+          "record_path": "/records/0",
+          "argument_name": "req_to_token",
+          "role": "input_or_caller_buffer"
+        },
+        {
+          "path": "/records/0/kwargs/seq_lens/data",
+          "tensor_id": "tensor_000004",
+          "storage_id": "storage_000004",
+          "storage_identity_basis": "checkpoint_offset",
+          "checkpoint_storage_offset_bytes": 2416132928,
+          "shape": [
+            1
+          ],
+          "dtype": "torch.int64",
+          "layout": "torch.strided",
+          "stride": [
+            1
+          ],
+          "storage_offset_elements": 0,
+          "storage_nbytes": 64,
+          "element_size_bytes": 8,
+          "device_in_parser": "cpu",
+          "requires_grad": false,
+          "scope": "serialized tensor metadata; not automatically the runtime reconstructed view",
+          "record_path": "/records/0",
+          "argument_name": "seq_lens",
+          "role": "input_or_caller_buffer"
+        },
+        {
+          "path": "/records/0/kwargs/slot_ids/data",
+          "tensor_id": "tensor_000005",
+          "storage_id": "storage_000005",
+          "storage_identity_basis": "checkpoint_offset",
+          "checkpoint_storage_offset_bytes": 2416133056,
+          "shape": [
+            1
+          ],
+          "dtype": "torch.int64",
+          "layout": "torch.strided",
+          "stride": [
+            1
+          ],
+          "storage_offset_elements": 0,
+          "storage_nbytes": 64,
+          "element_size_bytes": 8,
+          "device_in_parser": "cpu",
+          "requires_grad": false,
+          "scope": "serialized tensor metadata; not automatically the runtime reconstructed view",
+          "record_path": "/records/0",
+          "argument_name": "slot_ids",
+          "role": "input_or_caller_buffer"
+        },
+        {
+          "path": "/records/0/kwargs/topk_idx/data",
+          "tensor_id": "tensor_000006",
+          "storage_id": "storage_000006",
+          "storage_identity_basis": "checkpoint_offset",
+          "checkpoint_storage_offset_bytes": 2416133184,
+          "shape": [
+            1,
+            1,
+            16
+          ],
+          "dtype": "torch.int32",
+          "layout": "torch.strided",
+          "stride": [
+            16,
+            16,
+            1
+          ],
+          "storage_offset_elements": 0,
+          "storage_nbytes": 256,
+          "element_size_bytes": 4,
+          "device_in_parser": "cpu",
+          "requires_grad": false,
+          "scope": "serialized tensor metadata; not automatically the runtime reconstructed view",
+          "record_path": "/records/0",
+          "argument_name": "topk_idx",
+          "role": "input_or_caller_buffer"
+        },
+        {
+          "path": "/records/0/output/data",
+          "tensor_id": "tensor_000007",
+          "storage_id": "storage_000007",
+          "storage_identity_basis": "checkpoint_offset",
+          "checkpoint_storage_offset_bytes": 2416133376,
+          "shape": [
+            1,
+            8,
+            128
+          ],
+          "dtype": "torch.bfloat16",
+          "layout": "torch.strided",
+          "stride": [
+            1024,
+            128,
+            1
+          ],
+          "storage_offset_elements": 0,
+          "storage_nbytes": 4096,
+          "element_size_bytes": 2,
+          "device_in_parser": "cpu",
+          "requires_grad": false,
+          "scope": "serialized tensor metadata; not automatically the runtime reconstructed view",
+          "record_path": "/records/0",
+          "role": "serialized_oracle_output",
+          "component": null
+        },
+        {
+          "path": "/records/1/kwargs/q/data",
+          "tensor_id": "tensor_000008",
+          "storage_id": "storage_000008",
+          "storage_identity_basis": "checkpoint_offset",
+          "checkpoint_storage_offset_bytes": 2416135552,
+          "shape": [
+            8,
+            8,
+            128
+          ],
+          "dtype": "torch.bfloat16",
+          "layout": "torch.strided",
+          "stride": [
+            1024,
+            128,
+            1
+          ],
+          "storage_offset_elements": 0,
+          "storage_nbytes": 32768,
+          "element_size_bytes": 2,
+          "device_in_parser": "cpu",
+          "requires_grad": false,
+          "scope": "serialized tensor metadata; not automatically the runtime reconstructed view",
+          "record_path": "/records/1",
+          "argument_name": "q",
+          "role": "input_or_caller_buffer"
+        },
+        {
+          "path": "/records/1/kwargs/k_cache/data",
+          "tensor_id": "tensor_000009",
+          "storage_id": "storage_000009",
+          "storage_identity_basis": "checkpoint_offset",
+          "checkpoint_storage_offset_bytes": 2416152064,
+          "shape": [
+            4358330,
+            1,
+            128
+          ],
+          "dtype": "torch.bfloat16",
+          "layout": "torch.strided",
+          "stride": [
+            128,
+            128,
+            1
+          ],
+          "storage_offset_elements": 0,
+          "storage_nbytes": 2231464960,
+          "element_size_bytes": 2,
+          "device_in_parser": "cpu",
+          "requires_grad": false,
+          "scope": "serialized tensor metadata; not automatically the runtime reconstructed view",
+          "record_path": "/records/1",
+          "argument_name": "k_cache",
+          "role": "input_or_caller_buffer"
+        },
+        {
+          "path": "/records/1/kwargs/v_cache/data",
+          "tensor_id": "tensor_000010",
+          "storage_id": "storage_000010",
+          "storage_identity_basis": "checkpoint_offset",
+          "checkpoint_storage_offset_bytes": 3531884672,
+          "shape": [
+            4358330,
+            1,
+            128
+          ],
+          "dtype": "torch.bfloat16",
+          "layout": "torch.strided",
+          "stride": [
+            128,
+            128,
+            1
+          ],
+          "storage_offset_elements": 0,
+          "storage_nbytes": 2231464960,
+          "element_size_bytes": 2,
+          "device_in_parser": "cpu",
+          "requires_grad": false,
+          "scope": "serialized tensor metadata; not automatically the runtime reconstructed view",
+          "record_path": "/records/1",
+          "argument_name": "v_cache",
+          "role": "input_or_caller_buffer"
+        },
+        {
+          "path": "/records/1/kwargs/req_to_token/data",
+          "tensor_id": "tensor_000011",
+          "storage_id": "storage_000011",
+          "storage_identity_basis": "checkpoint_offset",
+          "checkpoint_storage_offset_bytes": 4647617280,
+          "shape": [
+            4097,
+            11268
+          ],
+          "dtype": "torch.int32",
+          "layout": "torch.strided",
+          "stride": [
+            11268,
+            1
+          ],
+          "storage_offset_elements": 0,
+          "storage_nbytes": 738639936,
+          "element_size_bytes": 4,
+          "device_in_parser": "cpu",
+          "requires_grad": false,
+          "scope": "serialized tensor metadata; not automatically the runtime reconstructed view",
+          "record_path": "/records/1",
+          "argument_name": "req_to_token",
+          "role": "input_or_caller_buffer"
+        },
+        {
+          "path": "/records/1/kwargs/seq_lens/data",
+          "tensor_id": "tensor_000012",
+          "storage_id": "storage_000012",
+          "storage_identity_basis": "checkpoint_offset",
+          "checkpoint_storage_offset_bytes": 4832277376,
+          "shape": [
+            8
+          ],
+          "dtype": "torch.int64",
+          "layout": "torch.strided",
+          "stride": [
+            1
+          ],
+          "storage_offset_elements": 0,
+          "storage_nbytes": 512,
+          "element_size_bytes": 8,
+          "device_in_parser": "cpu",
+          "requires_grad": false,
+          "scope": "serialized tensor metadata; not automatically the runtime reconstructed view",
+          "record_path": "/records/1",
+          "argument_name": "seq_lens",
+          "role": "input_or_caller_buffer"
+        },
+        {
+          "path": "/records/1/kwargs/slot_ids/data",
+          "tensor_id": "tensor_000013",
+          "storage_id": "storage_000013",
+          "storage_identity_basis": "checkpoint_offset",
+          "checkpoint_storage_offset_bytes": 4832277568,
+          "shape": [
+            8
+          ],
+          "dtype": "torch.int64",
+          "layout": "torch.strided",
+          "stride": [
+            1
+          ],
+          "storage_offset_elements": 0,
+          "storage_nbytes": 512,
+          "element_size_bytes": 8,
+          "device_in_parser": "cpu",
+          "requires_grad": false,
+          "scope": "serialized tensor metadata; not automatically the runtime reconstructed view",
+          "record_path": "/records/1",
+          "argument_name": "slot_ids",
+          "role": "input_or_caller_buffer"
+        },
+        {
+          "path": "/records/1/kwargs/topk_idx/data",
+          "tensor_id": "tensor_000014",
+          "storage_id": "storage_000014",
+          "storage_identity_basis": "checkpoint_offset",
+          "checkpoint_storage_offset_bytes": 4832277760,
+          "shape": [
+            1,
+            8,
+            16
+          ],
+          "dtype": "torch.int32",
+          "layout": "torch.strided",
+          "stride": [
+            128,
+            16,
+            1
+          ],
+          "storage_offset_elements": 0,
+          "storage_nbytes": 2048,
+          "element_size_bytes": 4,
+          "device_in_parser": "cpu",
+          "requires_grad": false,
+          "scope": "serialized tensor metadata; not automatically the runtime reconstructed view",
+          "record_path": "/records/1",
+          "argument_name": "topk_idx",
+          "role": "input_or_caller_buffer"
+        },
+        {
+          "path": "/records/1/output/data",
+          "tensor_id": "tensor_000015",
+          "storage_id": "storage_000015",
+          "storage_identity_basis": "checkpoint_offset",
+          "checkpoint_storage_offset_bytes": 4832278400,
+          "shape": [
+            8,
+            8,
+            128
+          ],
+          "dtype": "torch.bfloat16",
+          "layout": "torch.strided",
+          "stride": [
+            1024,
+            128,
+            1
+          ],
+          "storage_offset_elements": 0,
+          "storage_nbytes": 32768,
+          "element_size_bytes": 2,
+          "device_in_parser": "cpu",
+          "requires_grad": false,
+          "scope": "serialized tensor metadata; not automatically the runtime reconstructed view",
+          "record_path": "/records/1",
+          "role": "serialized_oracle_output",
+          "component": null
+        },
+        {
+          "path": "/records/2/kwargs/q/data",
+          "tensor_id": "tensor_000016",
+          "storage_id": "storage_000016",
+          "storage_identity_basis": "checkpoint_offset",
+          "checkpoint_storage_offset_bytes": 4832294912,
+          "shape": [
+            7,
+            8,
+            128
+          ],
+          "dtype": "torch.bfloat16",
+          "layout": "torch.strided",
+          "stride": [
+            1024,
+            128,
+            1
+          ],
+          "storage_offset_elements": 0,
+          "storage_nbytes": 28672,
+          "element_size_bytes": 2,
+          "device_in_parser": "cpu",
+          "requires_grad": false,
+          "scope": "serialized tensor metadata; not automatically the runtime reconstructed view",
+          "record_path": "/records/2",
+          "argument_name": "q",
+          "role": "input_or_caller_buffer"
+        },
+        {
+          "path": "/records/2/kwargs/k_cache/data",
+          "tensor_id": "tensor_000017",
+          "storage_id": "storage_000017",
+          "storage_identity_basis": "checkpoint_offset",
+          "checkpoint_storage_offset_bytes": 4832309376,
+          "shape": [
+            4358330,
+            1,
+            128
+          ],
+          "dtype": "torch.bfloat16",
+          "layout": "torch.strided",
+          "stride": [
+            128,
+            128,
+            1
+          ],
+          "storage_offset_elements": 0,
+          "storage_nbytes": 2231464960,
+          "element_size_bytes": 2,
+          "device_in_parser": "cpu",
+          "requires_grad": false,
+          "scope": "serialized tensor metadata; not automatically the runtime reconstructed view",
+          "record_path": "/records/2",
+          "argument_name": "k_cache",
+          "role": "input_or_caller_buffer"
+        },
+        {
+          "path": "/records/2/kwargs/v_cache/data",
+          "tensor_id": "tensor_000018",
+          "storage_id": "storage_000018",
+          "storage_identity_basis": "checkpoint_offset",
+          "checkpoint_storage_offset_bytes": 5948041984,
+          "shape": [
+            4358330,
+            1,
+            128
+          ],
+          "dtype": "torch.bfloat16",
+          "layout": "torch.strided",
+          "stride": [
+            128,
+            128,
+            1
+          ],
+          "storage_offset_elements": 0,
+          "storage_nbytes": 2231464960,
+          "element_size_bytes": 2,
+          "device_in_parser": "cpu",
+          "requires_grad": false,
+          "scope": "serialized tensor metadata; not automatically the runtime reconstructed view",
+          "record_path": "/records/2",
+          "argument_name": "v_cache",
+          "role": "input_or_caller_buffer"
+        },
+        {
+          "path": "/records/2/kwargs/req_to_token/data",
+          "tensor_id": "tensor_000019",
+          "storage_id": "storage_000019",
+          "storage_identity_basis": "checkpoint_offset",
+          "checkpoint_storage_offset_bytes": 7063774592,
+          "shape": [
+            4097,
+            11268
+          ],
+          "dtype": "torch.int32",
+          "layout": "torch.strided",
+          "stride": [
+            11268,
+            1
+          ],
+          "storage_offset_elements": 0,
+          "storage_nbytes": 738639936,
+          "element_size_bytes": 4,
+          "device_in_parser": "cpu",
+          "requires_grad": false,
+          "scope": "serialized tensor metadata; not automatically the runtime reconstructed view",
+          "record_path": "/records/2",
+          "argument_name": "req_to_token",
+          "role": "input_or_caller_buffer"
+        },
+        {
+          "path": "/records/2/kwargs/seq_lens/data",
+          "tensor_id": "tensor_000020",
+          "storage_id": "storage_000020",
+          "storage_identity_basis": "checkpoint_offset",
+          "checkpoint_storage_offset_bytes": 7248434688,
+          "shape": [
+            7
+          ],
+          "dtype": "torch.int64",
+          "layout": "torch.strided",
+          "stride": [
+            1
+          ],
+          "storage_offset_elements": 0,
+          "storage_nbytes": 448,
+          "element_size_bytes": 8,
+          "device_in_parser": "cpu",
+          "requires_grad": false,
+          "scope": "serialized tensor metadata; not automatically the runtime reconstructed view",
+          "record_path": "/records/2",
+          "argument_name": "seq_lens",
+          "role": "input_or_caller_buffer"
+        },
+        {
+          "path": "/records/2/kwargs/slot_ids/data",
+          "tensor_id": "tensor_000021",
+          "storage_id": "storage_000021",
+          "storage_identity_basis": "checkpoint_offset",
+          "checkpoint_storage_offset_bytes": 7248434880,
+          "shape": [
+            7
+          ],
+          "dtype": "torch.int64",
+          "layout": "torch.strided",
+          "stride": [
+            1
+          ],
+          "storage_offset_elements": 0,
+          "storage_nbytes": 448,
+          "element_size_bytes": 8,
+          "device_in_parser": "cpu",
+          "requires_grad": false,
+          "scope": "serialized tensor metadata; not automatically the runtime reconstructed view",
+          "record_path": "/records/2",
+          "argument_name": "slot_ids",
+          "role": "input_or_caller_buffer"
+        },
+        {
+          "path": "/records/2/kwargs/topk_idx/data",
+          "tensor_id": "tensor_000022",
+          "storage_id": "storage_000022",
+          "storage_identity_basis": "checkpoint_offset",
+          "checkpoint_storage_offset_bytes": 7248435072,
+          "shape": [
+            1,
+            7,
+            16
+          ],
+          "dtype": "torch.int32",
+          "layout": "torch.strided",
+          "stride": [
+            112,
+            16,
+            1
+          ],
+          "storage_offset_elements": 0,
+          "storage_nbytes": 1792,
+          "element_size_bytes": 4,
+          "device_in_parser": "cpu",
+          "requires_grad": false,
+          "scope": "serialized tensor metadata; not automatically the runtime reconstructed view",
+          "record_path": "/records/2",
+          "argument_name": "topk_idx",
+          "role": "input_or_caller_buffer"
+        },
+        {
+          "path": "/records/2/output/data",
+          "tensor_id": "tensor_000023",
+          "storage_id": "storage_000023",
+          "storage_identity_basis": "checkpoint_offset",
+          "checkpoint_storage_offset_bytes": 7248435648,
+          "shape": [
+            7,
+            8,
+            128
+          ],
+          "dtype": "torch.bfloat16",
+          "layout": "torch.strided",
+          "stride": [
+            1024,
+            128,
+            1
+          ],
+          "storage_offset_elements": 0,
+          "storage_nbytes": 28672,
+          "element_size_bytes": 2,
+          "device_in_parser": "cpu",
+          "requires_grad": false,
+          "scope": "serialized tensor metadata; not automatically the runtime reconstructed view",
+          "record_path": "/records/2",
+          "role": "serialized_oracle_output",
+          "component": null
+        }
+      ],
+      "tensor_descriptors": [
+        {
+          "path": "/records/0/kwargs/q",
+          "kind": "captured_tensor_descriptor",
+          "declared_metadata": {
+            "dtype": "torch.bfloat16",
+            "device": "cuda:6",
+            "shape": [
+              1,
+              8,
+              128
+            ]
+          },
+          "scope": "descriptor fields are preserved separately from the payload Tensor layout",
+          "record_path": "/records/0",
+          "argument_name": "q",
+          "role": "input_or_caller_buffer"
+        },
+        {
+          "path": "/records/0/kwargs/k_cache",
+          "kind": "captured_tensor_descriptor",
+          "declared_metadata": {
+            "dtype": "torch.bfloat16",
+            "device": "cuda:6",
+            "shape": [
+              4358330,
+              1,
+              128
+            ]
+          },
+          "scope": "descriptor fields are preserved separately from the payload Tensor layout",
+          "record_path": "/records/0",
+          "argument_name": "k_cache",
+          "role": "input_or_caller_buffer"
+        },
+        {
+          "path": "/records/0/kwargs/v_cache",
+          "kind": "captured_tensor_descriptor",
+          "declared_metadata": {
+            "dtype": "torch.bfloat16",
+            "device": "cuda:6",
+            "shape": [
+              4358330,
+              1,
+              128
+            ]
+          },
+          "scope": "descriptor fields are preserved separately from the payload Tensor layout",
+          "record_path": "/records/0",
+          "argument_name": "v_cache",
+          "role": "input_or_caller_buffer"
+        },
+        {
+          "path": "/records/0/kwargs/req_to_token",
+          "kind": "captured_tensor_descriptor",
+          "declared_metadata": {
+            "dtype": "torch.int32",
+            "device": "cuda:6",
+            "shape": [
+              4097,
+              11268
+            ]
+          },
+          "scope": "descriptor fields are preserved separately from the payload Tensor layout",
+          "record_path": "/records/0",
+          "argument_name": "req_to_token",
+          "role": "input_or_caller_buffer"
+        },
+        {
+          "path": "/records/0/kwargs/seq_lens",
+          "kind": "captured_tensor_descriptor",
+          "declared_metadata": {
+            "dtype": "torch.int64",
+            "device": "cuda:6",
+            "shape": [
+              1
+            ]
+          },
+          "scope": "descriptor fields are preserved separately from the payload Tensor layout",
+          "record_path": "/records/0",
+          "argument_name": "seq_lens",
+          "role": "input_or_caller_buffer"
+        },
+        {
+          "path": "/records/0/kwargs/slot_ids",
+          "kind": "captured_tensor_descriptor",
+          "declared_metadata": {
+            "dtype": "torch.int64",
+            "device": "cuda:6",
+            "shape": [
+              1
+            ]
+          },
+          "scope": "descriptor fields are preserved separately from the payload Tensor layout",
+          "record_path": "/records/0",
+          "argument_name": "slot_ids",
+          "role": "input_or_caller_buffer"
+        },
+        {
+          "path": "/records/0/kwargs/topk_idx",
+          "kind": "captured_tensor_descriptor",
+          "declared_metadata": {
+            "dtype": "torch.int32",
+            "device": "cuda:6",
+            "shape": [
+              1,
+              1,
+              16
+            ]
+          },
+          "scope": "descriptor fields are preserved separately from the payload Tensor layout",
+          "record_path": "/records/0",
+          "argument_name": "topk_idx",
+          "role": "input_or_caller_buffer"
+        },
+        {
+          "path": "/records/0/output",
+          "kind": "captured_tensor_descriptor",
+          "declared_metadata": {
+            "dtype": "torch.bfloat16",
+            "device": "cuda:6",
+            "shape": [
+              1,
+              8,
+              128
+            ]
+          },
+          "scope": "descriptor fields are preserved separately from the payload Tensor layout",
+          "record_path": "/records/0",
+          "role": "serialized_oracle_output",
+          "component": null
+        },
+        {
+          "path": "/records/1/kwargs/q",
+          "kind": "captured_tensor_descriptor",
+          "declared_metadata": {
+            "dtype": "torch.bfloat16",
+            "device": "cuda:6",
+            "shape": [
+              8,
+              8,
+              128
+            ]
+          },
+          "scope": "descriptor fields are preserved separately from the payload Tensor layout",
+          "record_path": "/records/1",
+          "argument_name": "q",
+          "role": "input_or_caller_buffer"
+        },
+        {
+          "path": "/records/1/kwargs/k_cache",
+          "kind": "captured_tensor_descriptor",
+          "declared_metadata": {
+            "dtype": "torch.bfloat16",
+            "device": "cuda:6",
+            "shape": [
+              4358330,
+              1,
+              128
+            ]
+          },
+          "scope": "descriptor fields are preserved separately from the payload Tensor layout",
+          "record_path": "/records/1",
+          "argument_name": "k_cache",
+          "role": "input_or_caller_buffer"
+        },
+        {
+          "path": "/records/1/kwargs/v_cache",
+          "kind": "captured_tensor_descriptor",
+          "declared_metadata": {
+            "dtype": "torch.bfloat16",
+            "device": "cuda:6",
+            "shape": [
+              4358330,
+              1,
+              128
+            ]
+          },
+          "scope": "descriptor fields are preserved separately from the payload Tensor layout",
+          "record_path": "/records/1",
+          "argument_name": "v_cache",
+          "role": "input_or_caller_buffer"
+        },
+        {
+          "path": "/records/1/kwargs/req_to_token",
+          "kind": "captured_tensor_descriptor",
+          "declared_metadata": {
+            "dtype": "torch.int32",
+            "device": "cuda:6",
+            "shape": [
+              4097,
+              11268
+            ]
+          },
+          "scope": "descriptor fields are preserved separately from the payload Tensor layout",
+          "record_path": "/records/1",
+          "argument_name": "req_to_token",
+          "role": "input_or_caller_buffer"
+        },
+        {
+          "path": "/records/1/kwargs/seq_lens",
+          "kind": "captured_tensor_descriptor",
+          "declared_metadata": {
+            "dtype": "torch.int64",
+            "device": "cuda:6",
+            "shape": [
+              8
+            ]
+          },
+          "scope": "descriptor fields are preserved separately from the payload Tensor layout",
+          "record_path": "/records/1",
+          "argument_name": "seq_lens",
+          "role": "input_or_caller_buffer"
+        },
+        {
+          "path": "/records/1/kwargs/slot_ids",
+          "kind": "captured_tensor_descriptor",
+          "declared_metadata": {
+            "dtype": "torch.int64",
+            "device": "cuda:6",
+            "shape": [
+              8
+            ]
+          },
+          "scope": "descriptor fields are preserved separately from the payload Tensor layout",
+          "record_path": "/records/1",
+          "argument_name": "slot_ids",
+          "role": "input_or_caller_buffer"
+        },
+        {
+          "path": "/records/1/kwargs/topk_idx",
+          "kind": "captured_tensor_descriptor",
+          "declared_metadata": {
+            "dtype": "torch.int32",
+            "device": "cuda:6",
+            "shape": [
+              1,
+              8,
+              16
+            ]
+          },
+          "scope": "descriptor fields are preserved separately from the payload Tensor layout",
+          "record_path": "/records/1",
+          "argument_name": "topk_idx",
+          "role": "input_or_caller_buffer"
+        },
+        {
+          "path": "/records/1/output",
+          "kind": "captured_tensor_descriptor",
+          "declared_metadata": {
+            "dtype": "torch.bfloat16",
+            "device": "cuda:6",
+            "shape": [
+              8,
+              8,
+              128
+            ]
+          },
+          "scope": "descriptor fields are preserved separately from the payload Tensor layout",
+          "record_path": "/records/1",
+          "role": "serialized_oracle_output",
+          "component": null
+        },
+        {
+          "path": "/records/2/kwargs/q",
+          "kind": "captured_tensor_descriptor",
+          "declared_metadata": {
+            "dtype": "torch.bfloat16",
+            "device": "cuda:6",
+            "shape": [
+              7,
+              8,
+              128
+            ]
+          },
+          "scope": "descriptor fields are preserved separately from the payload Tensor layout",
+          "record_path": "/records/2",
+          "argument_name": "q",
+          "role": "input_or_caller_buffer"
+        },
+        {
+          "path": "/records/2/kwargs/k_cache",
+          "kind": "captured_tensor_descriptor",
+          "declared_metadata": {
+            "dtype": "torch.bfloat16",
+            "device": "cuda:6",
+            "shape": [
+              4358330,
+              1,
+              128
+            ]
+          },
+          "scope": "descriptor fields are preserved separately from the payload Tensor layout",
+          "record_path": "/records/2",
+          "argument_name": "k_cache",
+          "role": "input_or_caller_buffer"
+        },
+        {
+          "path": "/records/2/kwargs/v_cache",
+          "kind": "captured_tensor_descriptor",
+          "declared_metadata": {
+            "dtype": "torch.bfloat16",
+            "device": "cuda:6",
+            "shape": [
+              4358330,
+              1,
+              128
+            ]
+          },
+          "scope": "descriptor fields are preserved separately from the payload Tensor layout",
+          "record_path": "/records/2",
+          "argument_name": "v_cache",
+          "role": "input_or_caller_buffer"
+        },
+        {
+          "path": "/records/2/kwargs/req_to_token",
+          "kind": "captured_tensor_descriptor",
+          "declared_metadata": {
+            "dtype": "torch.int32",
+            "device": "cuda:6",
+            "shape": [
+              4097,
+              11268
+            ]
+          },
+          "scope": "descriptor fields are preserved separately from the payload Tensor layout",
+          "record_path": "/records/2",
+          "argument_name": "req_to_token",
+          "role": "input_or_caller_buffer"
+        },
+        {
+          "path": "/records/2/kwargs/seq_lens",
+          "kind": "captured_tensor_descriptor",
+          "declared_metadata": {
+            "dtype": "torch.int64",
+            "device": "cuda:6",
+            "shape": [
+              7
+            ]
+          },
+          "scope": "descriptor fields are preserved separately from the payload Tensor layout",
+          "record_path": "/records/2",
+          "argument_name": "seq_lens",
+          "role": "input_or_caller_buffer"
+        },
+        {
+          "path": "/records/2/kwargs/slot_ids",
+          "kind": "captured_tensor_descriptor",
+          "declared_metadata": {
+            "dtype": "torch.int64",
+            "device": "cuda:6",
+            "shape": [
+              7
+            ]
+          },
+          "scope": "descriptor fields are preserved separately from the payload Tensor layout",
+          "record_path": "/records/2",
+          "argument_name": "slot_ids",
+          "role": "input_or_caller_buffer"
+        },
+        {
+          "path": "/records/2/kwargs/topk_idx",
+          "kind": "captured_tensor_descriptor",
+          "declared_metadata": {
+            "dtype": "torch.int32",
+            "device": "cuda:6",
+            "shape": [
+              1,
+              7,
+              16
+            ]
+          },
+          "scope": "descriptor fields are preserved separately from the payload Tensor layout",
+          "record_path": "/records/2",
+          "argument_name": "topk_idx",
+          "role": "input_or_caller_buffer"
+        },
+        {
+          "path": "/records/2/output",
+          "kind": "captured_tensor_descriptor",
+          "declared_metadata": {
+            "dtype": "torch.bfloat16",
+            "device": "cuda:6",
+            "shape": [
+              7,
+              8,
+              128
+            ]
+          },
+          "scope": "descriptor fields are preserved separately from the payload Tensor layout",
+          "record_path": "/records/2",
+          "role": "serialized_oracle_output",
+          "component": null
+        }
+      ],
+      "shared_references": [
+        {
+          "path": "/records/1/args",
+          "target_path": "/records/0/args",
+          "kind": "same_container_object"
+        },
+        {
+          "path": "/records/2/args",
+          "target_path": "/records/0/args",
+          "kind": "same_container_object"
+        }
+      ],
+      "container_fields": [],
+      "null_fields": []
+    },
+    {
+      "artifact_path": "ut/timing_geometry.pt",
+      "sha256": "53f447bdd43f30cdc8f7789c5a1a4693390b13272a1e53376d0207ea2eb530cd",
+      "size_bytes": 725993,
+      "parser": {
+        "torch_version": "2.9.1+cpu",
+        "python_version": "3.12.3",
+        "loader": "fake",
+        "weights_only": true,
+        "map_location": "cpu",
+        "mmap": true,
+        "custom_globals_allowed": false,
+        "removed_ambient_safe_globals": [
+          "torch.nested._internal.nested_tensor._rebuild_njt",
+          "torch.nested._internal.nested_tensor.NestedTensor"
+        ],
+        "tensor_values_read": false,
+        "gpu_work": false
+      },
+      "metadata_only": true,
+      "tensor_values_read": false,
+      "record_mappings": [
+        {
+          "record_path": "/0",
+          "recorded_identity": {
+            "sig": "block_size=128|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|q=T(1, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(1,):torch.int64|sink=None|slot_ids=T(1,):torch.int64|sm_scale=None|topk_idx=T(1, 1, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
+            "regime": "decode",
+            "m": 1
+          },
+          "status": "matched",
+          "matches": [
+            {
+              "shape_record_id": "block_size=128|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|q=T(1, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(1,):torch.int64|sink=None|slot_ids=T(1,):torch.int64|sm_scale=None|topk_idx=T(1, 1, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
+              "basis": "exact_identity_or_recorded_source_signature",
+              "application": "captured_record",
+              "benchmark_case_ids": []
+            }
+          ]
+        },
+        {
+          "record_path": "/1",
+          "recorded_identity": {
+            "sig": "block_size=128|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|q=T(8, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(8,):torch.int64|sink=None|slot_ids=T(8,):torch.int64|sm_scale=None|topk_idx=T(1, 8, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
+            "regime": "decode",
+            "m": 8
+          },
+          "status": "matched",
+          "matches": [
+            {
+              "shape_record_id": "block_size=128|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|q=T(8, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(8,):torch.int64|sink=None|slot_ids=T(8,):torch.int64|sm_scale=None|topk_idx=T(1, 8, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
+              "basis": "exact_identity_or_recorded_source_signature",
+              "application": "captured_record",
+              "benchmark_case_ids": []
+            }
+          ]
+        },
+        {
+          "record_path": "/2",
+          "recorded_identity": {
+            "sig": "block_size=128|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|q=T(7, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(7,):torch.int64|sink=None|slot_ids=T(7,):torch.int64|sm_scale=None|topk_idx=T(1, 7, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
+            "regime": "decode",
+            "m": 7
+          },
+          "status": "matched",
+          "matches": [
+            {
+              "shape_record_id": "block_size=128|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|q=T(7, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(7,):torch.int64|sink=None|slot_ids=T(7,):torch.int64|sm_scale=None|topk_idx=T(1, 7, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
+              "basis": "exact_identity_or_recorded_source_signature",
+              "application": "captured_record",
+              "benchmark_case_ids": []
+            }
+          ]
+        },
+        {
+          "record_path": "/3",
+          "recorded_identity": {
+            "sig": "decode_m1_ctx8704",
+            "regime": "decode",
+            "m": 1
+          },
+          "status": "matched",
+          "matches": [
+            {
+              "shape_record_id": "decode_m1_ctx8704",
+              "basis": "exact_identity_or_recorded_source_signature",
+              "application": "captured_record",
+              "benchmark_case_ids": [
+                "decode_m1_ctx8704"
+              ]
+            }
+          ]
+        },
+        {
+          "record_path": "/4",
+          "recorded_identity": {
+            "sig": "decode_m64_ctx8704",
+            "regime": "decode",
+            "m": 64
+          },
+          "status": "matched",
+          "matches": [
+            {
+              "shape_record_id": "decode_m64_ctx8704",
+              "basis": "exact_identity_or_recorded_source_signature",
+              "application": "captured_record",
+              "benchmark_case_ids": [
+                "decode_m64_ctx8704"
+              ]
+            }
+          ]
+        }
+      ],
+      "tensors": [
+        {
+          "path": "/0/req_rows",
+          "tensor_id": "tensor_000000",
+          "storage_id": "storage_000000",
+          "storage_identity_basis": "checkpoint_offset",
+          "checkpoint_storage_offset_bytes": 3584,
+          "shape": [
+            1,
+            11268
+          ],
+          "dtype": "torch.int32",
+          "layout": "torch.strided",
+          "stride": [
+            11268,
+            1
+          ],
+          "storage_offset_elements": 0,
+          "storage_nbytes": 180288,
+          "element_size_bytes": 4,
+          "device_in_parser": "cpu",
+          "requires_grad": false,
+          "scope": "serialized tensor metadata; not automatically the runtime reconstructed view",
+          "record_path": "/0",
+          "argument_name": "req_rows",
+          "role": "record_member"
+        },
+        {
+          "path": "/1/req_rows",
+          "tensor_id": "tensor_000001",
+          "storage_id": "storage_000001",
+          "storage_identity_basis": "checkpoint_offset",
+          "checkpoint_storage_offset_bytes": 48768,
+          "shape": [
+            8,
+            11268
+          ],
+          "dtype": "torch.int32",
+          "layout": "torch.strided",
+          "stride": [
+            11268,
+            1
+          ],
+          "storage_offset_elements": 0,
+          "storage_nbytes": 1442304,
+          "element_size_bytes": 4,
+          "device_in_parser": "cpu",
+          "requires_grad": false,
+          "scope": "serialized tensor metadata; not automatically the runtime reconstructed view",
+          "record_path": "/1",
+          "argument_name": "req_rows",
+          "role": "record_member"
+        },
+        {
+          "path": "/2/req_rows",
+          "tensor_id": "tensor_000002",
+          "storage_id": "storage_000002",
+          "storage_identity_basis": "checkpoint_offset",
+          "checkpoint_storage_offset_bytes": 409472,
+          "shape": [
+            7,
+            11268
+          ],
+          "dtype": "torch.int32",
+          "layout": "torch.strided",
+          "stride": [
+            11268,
+            1
+          ],
+          "storage_offset_elements": 0,
+          "storage_nbytes": 1262016,
+          "element_size_bytes": 4,
+          "device_in_parser": "cpu",
+          "requires_grad": false,
+          "scope": "serialized tensor metadata; not automatically the runtime reconstructed view",
+          "record_path": "/2",
+          "argument_name": "req_rows",
+          "role": "record_member"
+        }
+      ],
+      "tensor_descriptors": [],
+      "shared_references": [],
+      "container_fields": [],
+      "null_fields": []
+    }
+  ],
+  "extraction_provenance": {
+    "parser": {
+      "torch_version": "2.9.1+cpu",
+      "python_version": "3.12.3",
+      "loader": "fake",
+      "weights_only": true,
+      "map_location": "cpu",
+      "mmap": true,
+      "custom_globals_allowed": false,
+      "removed_ambient_safe_globals": [
+        "torch.nested._internal.nested_tensor._rebuild_njt",
+        "torch.nested._internal.nested_tensor.NestedTensor"
+      ],
+      "tensor_values_read": false,
+      "gpu_work": false
+    },
+    "pinned_manifest_sha256": "54b07fb5621f9b996dc4de248a5c9decb34ed78207c37fd6933b9b214cd02820",
+    "extractor_sha256": "86a761bc8e7eca70fed6b9690ec738ef4614e4badc4ece948b6ca63876cf7d17",
+    "cpu_wheel_report_sha256": "aa6b4b5c0cf62a4e2502d9a653355d4ece850167e135556fac8e9855442a43ad",
+    "all_artifacts_report_sha256": "0a48b0f19bbf1469b41dbb2a13dbda229ed1c3c790e2f5e9b3f3ed3181751925",
+    "supplement_report_sha256": "fae60fce8d55bdafd867606b30e052eaa8690fe4907d3fa156a667773f4d12d4"
+  }
 }
