@@ -3924,6 +3924,14 @@
       "a=T(32768, 7168):torch.float8_e4m3fn|a1_scale=T(221184, 224):torch.float8_e8m0fnu|a_dtype=str|a_scale_one=False|act=str|b_dtype=str|b_nt=0|bias=None|gate_mode=str|inter_dim_pad=0|k_batch=1|k_wave=1|model_dim_pad=0|num_valid_ids=T(2,):torch.int32|out=None|out_dtype=str|situ_beta=1.0|situ_linear_beta=1.0|sorted_expert_ids=T(3456,):torch.int32|sorted_token_ids=T(221178,):torch.int32|sorted_weights=None|swiglu_limit=10.0|tile_k=256|tile_m=64|tile_n=256|topk=6|topk_ids=T(32768, 6):torch.int32|use_async_copy=True|w1=T(384, 768, 3584):torch.float4_e2m1fn_x2|w1_scale=T(294912, 224):torch.float8_e8m0fnu|waves_per_eu=2|xcd_swizzle=4"
     ],
     "unscored_probe_ids": [],
-    "secondary_output_evidence": "secondary_output_evidence.json"
+    "secondary_output_evidence": "secondary_output_evidence.json",
+    "qualification_status": "blocked_missing_sequence_inputs"
+  },
+  "sequence_requirement": {
+    "policy": "all_declared_calls_required",
+    "required_calls": 256,
+    "call_sequence_sha256": "479d2a1e652bc91142b9c23d50aa30fe80f793e2dac3237096c0406c1c8bc84a",
+    "coverage_evidence": "sequence_coverage_evidence.json",
+    "coverage_evidence_sha256": "360416fb26fa3ede6ccf2037ef343be69d1c74889dad3b562c8272f4d7598b02"
   }
 }

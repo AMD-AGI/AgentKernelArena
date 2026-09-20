@@ -4362,6 +4362,14 @@
       "T(32768, 6, 384):torch.float8_e4m3fn|T(384, 768, 3584):torch.float4_e2m1fn_x2|T(384, 7168, 192):torch.float4_e2m1fn_x2|T(221178,):torch.int32|T(3456,):torch.int32|T(2,):torch.int32|T(32768, 7168):torch.bfloat16|6|a2_scale=T(221184, 16):torch.float8_e8m0fnu|block_m=64|inter_dim_pad=0|kernelName=str|kernel_id=2003|model_dim_pad=0|route_out=True|sorted_weights=T(221178,):torch.float32|stage2_block_m=64|stage2_reduce_block_n=3072|w2_scale=T(2752512, 16):torch.float8_e8m0fnu"
     ],
     "unscored_probe_ids": [],
-    "secondary_output_evidence": "secondary_output_evidence.json"
+    "secondary_output_evidence": "secondary_output_evidence.json",
+    "qualification_status": "blocked_missing_sequence_inputs"
+  },
+  "sequence_requirement": {
+    "policy": "all_declared_calls_required",
+    "required_calls": 256,
+    "call_sequence_sha256": "6281831ff9c45f3e083465ccfa306de89e4ed43b7d96909e506643ff3614ab3a",
+    "coverage_evidence": "sequence_coverage_evidence.json",
+    "coverage_evidence_sha256": "12f9508dcfadb0d74be829d86be03187c8f479ed355c747b5bb7419f43aa5bcc"
   }
 }

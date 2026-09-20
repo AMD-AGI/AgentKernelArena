@@ -1,5 +1,26 @@
 # Shape and benchmark catalog: moe_stage2_down_proj_reduce_opus_a8w4
 
+**Qualification is blocked: inputs cover only 183/256 mandatory sequence calls.**
+The unchanged 256-entry ledger requires 73 M=1920 calls at zero-based positions
+183–255, but the original and mirrored archives contain only five records:
+M2048, M256, M64, M1 and M32768. The original UT filtered unresolved signatures,
+so its sequence check covered only the first 183 M2048 calls. That partial check
+cannot establish full sequence correctness.
+
+Correctness and performance now fail during CPU contract verification, before
+runtime preflight or GPU workers. The failure report and
+`build/sequence_coverage_report.json` identify every unresolved signature and
+position. All 256 calls remain mandatory; no subset can produce a qualification
+PASS. Authentic M1920 routing and tensor-layout inputs must be recovered before
+promotion. The five benchmark cases, three random draws, M256-capture/M64-replay
+boundary, tolerance, 10 warmups and 100 timing samples remain unchanged.
+
+[ut/sequence_coverage_evidence.json](ut/sequence_coverage_evidence.json) records
+the exact missing signature and positions, ledger hash, original UT hash,
+archive hashes and recovery receipt hashes. The recovery was limited to the
+scoped original and mirrored archives; it does not rule out unrelated captures
+elsewhere. A shape descriptor alone is not a usable input record.
+
 This is a single-GPU MI355X (gfx950) callable benchmark. The serving capture used ISL 8192, OSL 1024, concurrency 64 and TP=8; those settings are context, not a substitute for the tensor shapes below.
 
 The complete case IDs, argument inventories, original metadata, scalars, tensor attributes, extracted fixture layouts and source hashes are in [SHAPES.json](SHAPES.json). The task environment and benchmark commands are in [config.yaml](config.yaml).

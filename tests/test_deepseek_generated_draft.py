@@ -34,7 +34,7 @@ controller = load("_deepseek_controller_test", generated_helper("deepseek", "gen
 
 
 @pytest.mark.parametrize("task", TASKS, ids=lambda path: path.name)
-def test_complete_committed_contract_without_tensor_archives(task):
+def test_committed_record_contract_without_tensor_archives(task):
     meta = json.loads((task / "ut/meta.json").read_text())
     contract = helper.load_contract(task / "ut")
     assert len(contract["records"]) == meta["num_cases"]

@@ -44,6 +44,17 @@ def load_contract(ut):
         expected
     ):
         raise RuntimeError("missing, reordered or duplicate generated case")
+    requirement = meta.get("sequence_requirement")
+    if requirement:
+        evidence_path = ut / requirement["coverage_evidence"]
+        if digest(evidence_path) != requirement["coverage_evidence_sha256"]:
+            raise RuntimeError("sequence coverage evidence hash mismatch")
+        evidence = json.loads(evidence_path.read_text())
+        if (
+            requirement["required_calls"] != evidence["required_sequence_calls"]
+            or requirement["call_sequence_sha256"] != evidence["call_sequence_sha256"]
+        ):
+            raise RuntimeError("mandatory call-sequence requirement changed")
     return data
 
 
@@ -321,6 +332,48 @@ def profiles(meta):
         "random": random,
         "sequence": sequence,
         "replay": replay + replay[:1],
+    }
+
+
+def profile_coverage(meta, data):
+    """Audit every mandatory MoE input without loading Torch or filtering IDs."""
+    if data["task_kind"] == "dsa":
+        return None
+    requirement = meta.get("sequence_requirement", {})
+    ledger = meta.get("call_sequence", [])
+    ledger_hash = hashlib.sha256(
+        json.dumps(ledger, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+    if (
+        requirement.get("policy") != "all_declared_calls_required"
+        or requirement.get("required_calls") != len(ledger)
+        or requirement.get("call_sequence_sha256") != ledger_hash
+        or not ledger
+    ):
+        raise RuntimeError("mandatory call-sequence ledger count or hash changed")
+    catalog = profiles(meta)
+    available = {row["sig"] for row in data["records"]}
+    missing = {}
+    for profile, identifiers in catalog.items():
+        by_sig = {}
+        for position, sig in enumerate(identifiers):
+            if sig not in available:
+                by_sig.setdefault(sig, []).append(position)
+        if by_sig:
+            missing[profile] = [
+                {"sig": sig, "positions_0based": positions, "count": len(positions)}
+                for sig, positions in by_sig.items()
+            ]
+    required = len(catalog["sequence"])
+    absent = sum(row["count"] for row in missing.get("sequence", []))
+    return {
+        "status": "incomplete" if missing else "complete",
+        "scope": "input_availability_only_not_gpu_validation",
+        "required_sequence_calls": required,
+        "available_sequence_calls": required - absent,
+        "missing_sequence_calls": absent,
+        "call_sequence_sha256": ledger_hash,
+        "missing_inputs": missing,
     }
 
 

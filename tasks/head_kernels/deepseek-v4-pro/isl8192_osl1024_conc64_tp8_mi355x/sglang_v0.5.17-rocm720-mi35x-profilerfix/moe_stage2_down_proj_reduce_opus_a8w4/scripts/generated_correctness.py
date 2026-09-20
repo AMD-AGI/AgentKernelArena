@@ -26,8 +26,21 @@ def load(name, path):
 
 def verify_required(runner):
     helper = load("generated_contract", runner.UT_DIR / "generated_contract.py")
-    helper.load_contract(runner.UT_DIR)
-    meta = json.loads((runner.UT_DIR / "meta.json").read_text())["generated_inputs"]
+    data = helper.load_contract(runner.UT_DIR)
+    metadata = json.loads((runner.UT_DIR / "meta.json").read_text())
+    coverage = helper.profile_coverage(metadata, data)
+    if coverage is not None:
+        runner.write_report("sequence_coverage_report.json", coverage)
+        if coverage["status"] != "complete":
+            raise RuntimeError(
+                "incomplete generated input contract: "
+                f"{coverage['available_sequence_calls']}/"
+                f"{coverage['required_sequence_calls']} mandatory sequence calls "
+                f"have inputs; {coverage['missing_sequence_calls']} are missing; "
+                "full correctness and performance qualification are blocked; "
+                + json.dumps(coverage["missing_inputs"], sort_keys=True)
+            )
+    meta = metadata["generated_inputs"]
     if (
         helper.digest(runner.UT_DIR / meta["baseline_source"])
         != meta["baseline_sha256"]
@@ -76,11 +89,11 @@ def run_correctness(runner, cfg, timeout):
         "profiles": [],
     }
     try:
-        import torch
-
         helper = load("generated_contract", runner.UT_DIR / "generated_contract.py")
         meta = json.loads((runner.UT_DIR / "meta.json").read_text())
         verify_required(runner)
+        import torch
+
         catalog = helper.profiles(meta)
         for profile in ("eager", "random", "sequence", "replay"):
             draws = int(meta["random_draws"]) if profile == "random" else 1

@@ -4887,7 +4887,7 @@
   "sources": [
     {
       "path": "ut/meta.json",
-      "sha256": "586f2e04a2d971b5397ef32c211cc2a1ba154e2690095bbb9adbf9fd7f50d13b"
+      "sha256": "25ffcd5f8ea0f62b14a4e5b8d701b7137c578a2cee0f1d552f3af50d61ddcfe5"
     },
     {
       "path": "ut/cases.py",
@@ -4895,7 +4895,7 @@
     },
     {
       "path": "config.yaml",
-      "sha256": "4e45e5f16894386151f8fd687b0e6bb9668d561f9ca471eb30a912ad4b0083e6"
+      "sha256": "8628f879b9745d840dea3eeafd31f86199b2a89401b0531f60d879e191817840"
     },
     {
       "path": "scripts/source_abi.json",
@@ -4923,7 +4923,7 @@
     },
     {
       "path": "ut/generated_contract.py",
-      "sha256": "2f441082fe4b03a0d46dbe00a1b281a68acecdcffce0b7b75a445d0a7def08be"
+      "sha256": "ca3a4c21aa035043bb0b1d8aee20a003d2cc080a099d3eeb9cf0803efe5715eb"
     },
     {
       "path": "scripts/generated_worker.py",
@@ -4931,7 +4931,7 @@
     },
     {
       "path": "scripts/generated_correctness.py",
-      "sha256": "4f103b6ed6e982a202fc1c3363ebec8ea3535f7b870a851f47578955ae38dbb0"
+      "sha256": "9008b5660004a38d75390cc8d8f678d885dfc8e3d8af594f45cd50e8c8c10df7"
     },
     {
       "path": "scripts/generated_task_runner.py",
@@ -4940,6 +4940,10 @@
     {
       "path": "ut/secondary_output_evidence.json",
       "sha256": "7e6fce679c8017eb376853813042e3fc9cc4bf76d72d38854ea449612ed4a717"
+    },
+    {
+      "path": "ut/sequence_coverage_evidence.json",
+      "sha256": "360416fb26fa3ede6ccf2037ef343be69d1c74889dad3b562c8272f4d7598b02"
     }
   ],
   "validation": "Compact structural extraction verified against the original archive SHA-256 using CPU weights_only mmap. Generated values and frozen-source references require fresh GPU qualification.",
@@ -7219,6 +7223,98 @@
       "a=T(32768, 7168):torch.float8_e4m3fn|a1_scale=T(221184, 224):torch.float8_e8m0fnu|a_dtype=str|a_scale_one=False|act=str|b_dtype=str|b_nt=0|bias=None|gate_mode=str|inter_dim_pad=0|k_batch=1|k_wave=1|model_dim_pad=0|num_valid_ids=T(2,):torch.int32|out=None|out_dtype=str|situ_beta=1.0|situ_linear_beta=1.0|sorted_expert_ids=T(3456,):torch.int32|sorted_token_ids=T(221178,):torch.int32|sorted_weights=None|swiglu_limit=10.0|tile_k=256|tile_m=64|tile_n=256|topk=6|topk_ids=T(32768, 6):torch.int32|use_async_copy=True|w1=T(384, 768, 3584):torch.float4_e2m1fn_x2|w1_scale=T(294912, 224):torch.float8_e8m0fnu|waves_per_eu=2|xcd_swizzle=4"
     ],
     "unscored_probe_ids": [],
-    "secondary_output_validation": "defined numeric returns, routed dequantization, and exact LSE masks/sentinels"
+    "secondary_output_validation": "defined numeric returns, routed dequantization, and exact LSE masks/sentinels",
+    "sequence_coverage": {
+      "status": "incomplete",
+      "scope": "input_availability_only_not_gpu_validation",
+      "required_sequence_calls": 256,
+      "available_sequence_calls": 183,
+      "missing_sequence_calls": 73,
+      "call_sequence_sha256": "479d2a1e652bc91142b9c23d50aa30fe80f793e2dac3237096c0406c1c8bc84a",
+      "missing_inputs": {
+        "sequence": [
+          {
+            "sig": "a=T(1920, 7168):torch.float8_e4m3fn|a1_scale=T(36096, 224):torch.float8_e8m0fnu|a_dtype=str|a_scale_one=False|act=str|b_dtype=str|b_nt=2|bias=None|gate_mode=str|inter_dim_pad=0|k_batch=1|k_wave=1|model_dim_pad=0|num_valid_ids=T(2,):torch.int32|out=None|out_dtype=str|situ_beta=1.0|situ_linear_beta=1.0|sorted_expert_ids=T(564,):torch.int32|sorted_token_ids=T(36090,):torch.int32|sorted_weights=None|swiglu_limit=10.0|tile_k=256|tile_m=64|tile_n=256|topk=6|topk_ids=T(1920, 6):torch.int32|use_async_copy=True|w1=T(384, 768, 3584):torch.float4_e2m1fn_x2|w1_scale=T(294912, 224):torch.float8_e8m0fnu|waves_per_eu=1|xcd_swizzle=0",
+            "positions_0based": [
+              183,
+              184,
+              185,
+              186,
+              187,
+              188,
+              189,
+              190,
+              191,
+              192,
+              193,
+              194,
+              195,
+              196,
+              197,
+              198,
+              199,
+              200,
+              201,
+              202,
+              203,
+              204,
+              205,
+              206,
+              207,
+              208,
+              209,
+              210,
+              211,
+              212,
+              213,
+              214,
+              215,
+              216,
+              217,
+              218,
+              219,
+              220,
+              221,
+              222,
+              223,
+              224,
+              225,
+              226,
+              227,
+              228,
+              229,
+              230,
+              231,
+              232,
+              233,
+              234,
+              235,
+              236,
+              237,
+              238,
+              239,
+              240,
+              241,
+              242,
+              243,
+              244,
+              245,
+              246,
+              247,
+              248,
+              249,
+              250,
+              251,
+              252,
+              253,
+              254,
+              255
+            ],
+            "count": 73
+          }
+        ]
+      }
+    },
+    "qualification_status": "blocked_missing_sequence_inputs"
   }
 }

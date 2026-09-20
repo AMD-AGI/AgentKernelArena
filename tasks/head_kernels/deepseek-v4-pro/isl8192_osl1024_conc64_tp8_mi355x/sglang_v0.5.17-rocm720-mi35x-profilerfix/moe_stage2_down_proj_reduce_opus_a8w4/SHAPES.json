@@ -5078,7 +5078,7 @@
   "sources": [
     {
       "path": "ut/meta.json",
-      "sha256": "f31edc4bda2caca24cbf30c9cda517371e67f61ef45db7aa8397a1ae09976dc4"
+      "sha256": "f5e4206ad74c18ee183cfca3f3ecb0569548c1920b2ccccff4b6b1f6751e886d"
     },
     {
       "path": "ut/cases.py",
@@ -5086,7 +5086,7 @@
     },
     {
       "path": "config.yaml",
-      "sha256": "515d6617005ea3e10032f3aa3896db1d81678e880dcaeab7d2e992806d2efd84"
+      "sha256": "6e9efc3b8d31da2932510ef28ae8030107dadcac35fdbb7529a17d2c5ffb226c"
     },
     {
       "path": "scripts/source_abi.json",
@@ -5110,7 +5110,7 @@
     },
     {
       "path": "ut/generated_contract.py",
-      "sha256": "2f441082fe4b03a0d46dbe00a1b281a68acecdcffce0b7b75a445d0a7def08be"
+      "sha256": "ca3a4c21aa035043bb0b1d8aee20a003d2cc080a099d3eeb9cf0803efe5715eb"
     },
     {
       "path": "scripts/generated_worker.py",
@@ -5118,7 +5118,7 @@
     },
     {
       "path": "scripts/generated_correctness.py",
-      "sha256": "4f103b6ed6e982a202fc1c3363ebec8ea3535f7b870a851f47578955ae38dbb0"
+      "sha256": "9008b5660004a38d75390cc8d8f678d885dfc8e3d8af594f45cd50e8c8c10df7"
     },
     {
       "path": "scripts/generated_task_runner.py",
@@ -5127,6 +5127,10 @@
     {
       "path": "ut/secondary_output_evidence.json",
       "sha256": "7e6fce679c8017eb376853813042e3fc9cc4bf76d72d38854ea449612ed4a717"
+    },
+    {
+      "path": "ut/sequence_coverage_evidence.json",
+      "sha256": "12f9508dcfadb0d74be829d86be03187c8f479ed355c747b5bb7419f43aa5bcc"
     }
   ],
   "validation": "Compact structural extraction verified against the original archive SHA-256 using CPU weights_only mmap. Generated values and frozen-source references require fresh GPU qualification.",
@@ -7665,6 +7669,98 @@
       "T(32768, 6, 384):torch.float8_e4m3fn|T(384, 768, 3584):torch.float4_e2m1fn_x2|T(384, 7168, 192):torch.float4_e2m1fn_x2|T(221178,):torch.int32|T(3456,):torch.int32|T(2,):torch.int32|T(32768, 7168):torch.bfloat16|6|a2_scale=T(221184, 16):torch.float8_e8m0fnu|block_m=64|inter_dim_pad=0|kernelName=str|kernel_id=2003|model_dim_pad=0|route_out=True|sorted_weights=T(221178,):torch.float32|stage2_block_m=64|stage2_reduce_block_n=3072|w2_scale=T(2752512, 16):torch.float8_e8m0fnu"
     ],
     "unscored_probe_ids": [],
-    "secondary_output_validation": "defined numeric returns, routed dequantization, and exact LSE masks/sentinels"
+    "secondary_output_validation": "defined numeric returns, routed dequantization, and exact LSE masks/sentinels",
+    "sequence_coverage": {
+      "status": "incomplete",
+      "scope": "input_availability_only_not_gpu_validation",
+      "required_sequence_calls": 256,
+      "available_sequence_calls": 183,
+      "missing_sequence_calls": 73,
+      "call_sequence_sha256": "6281831ff9c45f3e083465ccfa306de89e4ed43b7d96909e506643ff3614ab3a",
+      "missing_inputs": {
+        "sequence": [
+          {
+            "sig": "T(1920, 6, 384):torch.float8_e4m3fn|T(384, 768, 3584):torch.float4_e2m1fn_x2|T(384, 7168, 192):torch.float4_e2m1fn_x2|T(36090,):torch.int32|T(564,):torch.int32|T(2,):torch.int32|T(1920, 7168):torch.bfloat16|6|a2_scale=T(36096, 16):torch.float8_e8m0fnu|block_m=64|inter_dim_pad=0|kernelName=str|kernel_id=2003|model_dim_pad=0|route_out=True|sorted_weights=T(36090,):torch.float32|stage2_block_m=64|stage2_reduce_block_n=3072|w2_scale=T(2752512, 16):torch.float8_e8m0fnu",
+            "positions_0based": [
+              183,
+              184,
+              185,
+              186,
+              187,
+              188,
+              189,
+              190,
+              191,
+              192,
+              193,
+              194,
+              195,
+              196,
+              197,
+              198,
+              199,
+              200,
+              201,
+              202,
+              203,
+              204,
+              205,
+              206,
+              207,
+              208,
+              209,
+              210,
+              211,
+              212,
+              213,
+              214,
+              215,
+              216,
+              217,
+              218,
+              219,
+              220,
+              221,
+              222,
+              223,
+              224,
+              225,
+              226,
+              227,
+              228,
+              229,
+              230,
+              231,
+              232,
+              233,
+              234,
+              235,
+              236,
+              237,
+              238,
+              239,
+              240,
+              241,
+              242,
+              243,
+              244,
+              245,
+              246,
+              247,
+              248,
+              249,
+              250,
+              251,
+              252,
+              253,
+              254,
+              255
+            ],
+            "count": 73
+          }
+        ]
+      }
+    },
+    "qualification_status": "blocked_missing_sequence_inputs"
   }
 }
