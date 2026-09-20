@@ -125,6 +125,8 @@ def preflight(config: dict, task_dir: Path | None = None) -> dict:
     expected_image = requirements["image"]
     selected_image = os.environ.get("AGENT_KERNEL_ARENA_DOCKER_IMAGE")
     selected_image_id = os.environ.get("AGENT_KERNEL_ARENA_DOCKER_IMAGE_ID")
+    config_digest = os.environ.get("AGENT_KERNEL_ARENA_DOCKER_CONFIG_DIGEST")
+    engine_id_role = os.environ.get("AGENT_KERNEL_ARENA_DOCKER_IMAGE_ID_ROLE")
     report = {
         "status": "fail",
         "expected_image": expected_image,
@@ -136,6 +138,8 @@ def preflight(config: dict, task_dir: Path | None = None) -> dict:
         "selected_image": selected_image,
         "expected_image_id": requirements["expected_image_id"],
         "selected_image_id": selected_image_id,
+        "verified_config_digest": config_digest,
+        "engine_image_id_role": engine_id_role,
         "registry_repo_digests": [],
         "captured_source_commits": requirements["source_commits"],
         "required_arch": "gfx950",
@@ -165,9 +169,29 @@ def preflight(config: dict, task_dir: Path | None = None) -> dict:
                       f"runner selected {selected_image!r}; use the cohort launcher")
     if not selected_image_id or re.fullmatch(r"sha256:[0-9a-f]{64}", selected_image_id) is None:
         errors.append("The Docker runner did not supply a verified image ID; use the cohort launcher")
-    elif requirements["expected_image_id"] and selected_image_id != requirements["expected_image_id"]:
-        errors.append(f"Runtime image ID mismatch: expected {requirements['expected_image_id']}, "
-                      f"runner launched {selected_image_id}")
+    if not config_digest or re.fullmatch(r"sha256:[0-9a-f]{64}", config_digest) is None:
+        errors.append("The Docker runner did not supply a verified config digest")
+    elif requirements["expected_image_id"] and config_digest != requirements["expected_image_id"]:
+        errors.append(f"Runtime image ID mismatch: expected config {requirements['expected_image_id']}, "
+                      f"runner verified {config_digest}")
+    if engine_id_role == "config_digest":
+        if selected_image_id != config_digest:
+            errors.append("Runtime image ID mismatch: config-digest engine ID differs from verified config")
+    elif engine_id_role == "manifest_digest":
+        try:
+            identity = json.loads(os.environ.get("AGENT_KERNEL_ARENA_DOCKER_IDENTITY", "{}"))
+            manifest_digest = expected_image.rsplit("@", 1)[1]
+            if (selected_image_id != manifest_digest or identity.get("engine_image_id") != selected_image_id
+                    or identity.get("verified_config_digest") != config_digest
+                    or identity.get("manifest_digest") != manifest_digest
+                    or identity.get("engine_id_role") != "manifest_digest"
+                    or identity.get("manifest_config_binding_verified") is not True):
+                raise ValueError("manifest/config binding does not match the task pins")
+            report["manifest_config_binding"] = identity
+        except (ValueError, TypeError, IndexError) as exc:
+            errors.append(f"Invalid host manifest identity attestation: {exc}")
+    else:
+        errors.append("The Docker runner did not classify the verified engine image ID")
     try:
         digests = json.loads(os.environ.get("AGENT_KERNEL_ARENA_DOCKER_REPO_DIGESTS", "[]"))
         if not isinstance(digests, list) or any(not isinstance(value, str) for value in digests):

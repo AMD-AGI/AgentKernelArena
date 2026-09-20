@@ -187,6 +187,8 @@ class DirectVerificationTests(unittest.TestCase):
         environment = {'AGENT_KERNEL_ARENA_DOCKER': '1',
                        'AGENT_KERNEL_ARENA_DOCKER_IMAGE': 'example.invalid/runtime:v1',
                        'AGENT_KERNEL_ARENA_DOCKER_IMAGE_ID': 'sha256:' + 'a' * 64,
+                       'AGENT_KERNEL_ARENA_DOCKER_CONFIG_DIGEST': 'sha256:' + 'a' * 64,
+                       'AGENT_KERNEL_ARENA_DOCKER_IMAGE_ID_ROLE': 'config_digest',
                        'AGENT_KERNEL_ARENA_HEAD_KERNEL_VALIDATION_RUNTIME': ''}
         with mock.patch.dict(os.environ, environment):
             code, first = verifier.verify(config, self.repo)
@@ -211,12 +213,40 @@ class DirectVerificationTests(unittest.TestCase):
         environment = {'AGENT_KERNEL_ARENA_DOCKER': '1',
                        'AGENT_KERNEL_ARENA_DOCKER_IMAGE': plan['image'],
                        'AGENT_KERNEL_ARENA_DOCKER_IMAGE_ID': 'sha256:' + 'a' * 64,
+                       'AGENT_KERNEL_ARENA_DOCKER_CONFIG_DIGEST': 'sha256:' + 'a' * 64,
+                       'AGENT_KERNEL_ARENA_DOCKER_IMAGE_ID_ROLE': 'config_digest',
                        'AGENT_KERNEL_ARENA_HEAD_KERNEL_VALIDATION_RUNTIME': ''}
         with mock.patch.object(verifier, 'plan_run', return_value=plan), \
                 mock.patch.dict(os.environ, environment):
             code, path = verifier.verify(self.repo / 'run.yaml', self.repo)
         self.assertEqual(code, 0)
         self.assertEqual(json.loads(path.read_text())['plan'], plan)
+
+    def test_manifest_engine_identity_is_verified_before_direct_task(self):
+        from src.tools.runtime_image_identity import MANIFEST_ROOT, verify_identity
+        self.task()
+        manifest = 'sha256:1f5464829559b086eb66f9b803cb9c7a817438c43edff2d5ef59b46a186745f6'
+        config_digest = 'sha256:ffe4af630e49b05c812db4a468bfb411c3dbb0e93124801f28349bfa31352dea'
+        image = 'docker.io/rocm/hyperloom@' + manifest
+        raw = (MANIFEST_ROOT / (manifest.removeprefix('sha256:') + '.json')).read_bytes()
+        inspection = {'Id': manifest, 'RepoDigests': [image], 'Descriptor': {
+            'digest': manifest, 'mediaType': json.loads(raw)['mediaType'], 'size': len(raw)}}
+        identity = verify_identity(image, config_digest, inspection)
+        plan = {'image': image, 'expected_image_id': config_digest, 'tasks': ['head_kernels/test']}
+        environment = {'AGENT_KERNEL_ARENA_DOCKER': '1',
+                       'AGENT_KERNEL_ARENA_DOCKER_IMAGE': image,
+                       'AGENT_KERNEL_ARENA_DOCKER_IMAGE_ID': manifest,
+                       'AGENT_KERNEL_ARENA_DOCKER_CONFIG_DIGEST': config_digest,
+                       'AGENT_KERNEL_ARENA_DOCKER_IMAGE_ID_ROLE': 'manifest_digest',
+                       'AGENT_KERNEL_ARENA_DOCKER_REPO_DIGESTS': json.dumps([image]),
+                       'AGENT_KERNEL_ARENA_DOCKER_IDENTITY': json.dumps(identity),
+                       'AGENT_KERNEL_ARENA_HEAD_KERNEL_VALIDATION_RUNTIME': ''}
+        with mock.patch.object(verifier, 'plan_run', return_value=plan), mock.patch.dict(os.environ, environment):
+            code, path = verifier.verify(self.repo / 'run.yaml', self.repo)
+        self.assertEqual(code, 0)
+        report = json.loads(path.read_text())
+        self.assertEqual(report['runtime_identity']['AGENT_KERNEL_ARENA_DOCKER_IMAGE_ID'], manifest)
+        self.assertEqual(report['runtime_identity']['AGENT_KERNEL_ARENA_DOCKER_CONFIG_DIGEST'], config_digest)
 
     def test_verify_launcher_preserves_public_runtime_and_exit_status(self):
         config = ROOT / 'example_configs/top5_validator_glm_bf16_public_mi355x.yaml'

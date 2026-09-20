@@ -183,6 +183,8 @@ class RuntimeTests(unittest.TestCase):
         self.enterContext(mock.patch.dict(os.environ, {
             "AGENT_KERNEL_ARENA_DOCKER": "1", "AGENT_KERNEL_ARENA_DOCKER_IMAGE": image,
             "AGENT_KERNEL_ARENA_DOCKER_IMAGE_ID": "sha256:" + "a" * 64,
+            "AGENT_KERNEL_ARENA_DOCKER_CONFIG_DIGEST": "sha256:" + "a" * 64,
+            "AGENT_KERNEL_ARENA_DOCKER_IMAGE_ID_ROLE": "config_digest",
             "AGENT_KERNEL_ARENA_HEAD_KERNEL_VALIDATION_RUNTIME": "",
             "TVM_FFI_DISABLE_TORCH_C_DLPACK": "1",
             "AITER_JIT_DIR": str(self.task_dir / "aiter-jit"),
@@ -337,7 +339,8 @@ class PublicDefaultTests(unittest.TestCase):
     def test_current_public_identity_passes_and_records_historical_capture(self):
         self.modules["sglang.srt.layers.layernorm"] = SimpleNamespace(rocm_triton_gemma_fused_add_rmsnorm=lambda: None)
         environment = {"AGENT_KERNEL_ARENA_DOCKER_IMAGE": self.V18_IMAGE,
-                       "AGENT_KERNEL_ARENA_DOCKER_IMAGE_ID": self.V18_ID}
+                       "AGENT_KERNEL_ARENA_DOCKER_IMAGE_ID": self.V18_ID,
+                       "AGENT_KERNEL_ARENA_DOCKER_CONFIG_DIGEST": self.V18_ID}
         with mock.patch.dict(os.environ, environment):
             report = runtime.preflight(self.public_config, self.public_task)
         self.assertEqual(report["status"], "ok", report)
@@ -353,6 +356,29 @@ class PublicDefaultTests(unittest.TestCase):
             report = runtime.preflight(self.public_config, self.public_task)
         self.assertEqual(report["status"], "fail")
         self.assertTrue(any("image ID mismatch" in error for error in report["errors"]))
+
+    def test_manifest_engine_identity_requires_explicit_binding_attestation(self):
+        from src.tools.runtime_image_identity import verify_identity, MANIFEST_ROOT
+        manifest_digest = self.V18_IMAGE.rsplit("@", 1)[1]
+        raw = (MANIFEST_ROOT / (manifest_digest.removeprefix("sha256:") + ".json")).read_bytes()
+        descriptor = {"digest": manifest_digest, "mediaType": json.loads(raw)["mediaType"], "size": len(raw)}
+        identity = verify_identity(self.V18_IMAGE, self.V18_ID, {
+            "Id": manifest_digest, "RepoDigests": [self.V18_IMAGE], "Descriptor": descriptor})
+        self.modules["sglang.srt.layers.layernorm"] = SimpleNamespace(rocm_triton_gemma_fused_add_rmsnorm=lambda: None)
+        environment = {"AGENT_KERNEL_ARENA_DOCKER_IMAGE": self.V18_IMAGE,
+                       "AGENT_KERNEL_ARENA_DOCKER_IMAGE_ID": manifest_digest,
+                       "AGENT_KERNEL_ARENA_DOCKER_CONFIG_DIGEST": self.V18_ID,
+                       "AGENT_KERNEL_ARENA_DOCKER_IMAGE_ID_ROLE": "manifest_digest",
+                       "AGENT_KERNEL_ARENA_DOCKER_IDENTITY": json.dumps(identity)}
+        with mock.patch.dict(os.environ, environment):
+            report = runtime.preflight(self.public_config, self.public_task)
+        self.assertEqual(report["status"], "ok", report)
+        self.assertEqual(report["selected_image_id"], manifest_digest)
+        self.assertEqual(report["verified_config_digest"], self.V18_ID)
+        environment["AGENT_KERNEL_ARENA_DOCKER_IDENTITY"] = "{}"
+        with mock.patch.dict(os.environ, environment):
+            report = runtime.preflight(self.public_config, self.public_task)
+        self.assertEqual(report["status"], "fail")
 
     def test_missing_public_identity_never_falls_back_to_capture_id(self):
         self.public_config["headkernel"]["runtime"].pop("expected_image_id")

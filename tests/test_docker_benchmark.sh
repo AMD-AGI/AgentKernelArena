@@ -72,6 +72,11 @@ docker() {
             printf '%s\n' "${FAKE_IMAGE_REPO_DIGESTS:-[]}"
             return 0
         fi
+        if [[ "${4:-}" == '{{json .}}' ]]; then
+            "$REAL_PYTHON3" -c 'import json,sys; print(json.dumps({"Id":sys.argv[1], "RepoDigests":json.loads(sys.argv[2]), "Descriptor":json.loads(sys.argv[3])}))' \
+                "${FAKE_SELECTED_IMAGE_ID:-sha256:pinned-image-id}" "${FAKE_IMAGE_REPO_DIGESTS:-[]}" "${FAKE_IMAGE_DESCRIPTOR:-null}"
+            return 0
+        fi
         local reference="${!#}"
         if [[ "$reference" == "$PINNED_GFX950_IMMUTABLE_IMAGE" ]]; then
             printf '%s\n' "${FAKE_PINNED_IMAGE_ID:-sha256:pinned-image-id}"
@@ -272,6 +277,21 @@ assert_has "AGENT_KERNEL_ARENA_DOCKER_IMAGE_ID=$CAPTURE_IMAGE_ID" "${args[@]}"
 assert_has "AGENT_KERNEL_ARENA_DOCKER_REPO_DIGESTS=[]" "${args[@]}"
 assert_has "$CAPTURE_IMAGE_ID" "${args[@]}"
 assert_not_has "$CAPTURE_IMAGE" "${args[@]}"
+
+# Docker's containerd store can expose the pinned manifest as its engine ID.
+# Keep the config pin separate and require the real committed manifest binding.
+PUBLIC_MANIFEST="sha256:1f5464829559b086eb66f9b803cb9c7a817438c43edff2d5ef59b46a186745f6"
+PUBLIC_CONFIG="sha256:ffe4af630e49b05c812db4a468bfb411c3dbb0e93124801f28349bfa31352dea"
+PUBLIC_IMAGE="docker.io/rocm/hyperloom@$PUBLIC_MANIFEST"
+PUBLIC_DESCRIPTOR="$("$REAL_PYTHON3" -c 'import json,pathlib,sys; p=pathlib.Path(sys.argv[1]); raw=p.read_bytes(); print(json.dumps({"digest":"sha256:"+p.stem,"mediaType":json.loads(raw)["mediaType"],"size":len(raw)}))' "$ROOT/docker/head-kernels/manifests/${PUBLIC_MANIFEST#sha256:}.json")"
+mapfile -t manifest_args < <(run_shell_args AKA_GPU_ARCH=gfx950 AKA_DOCKER_IMAGE="$PUBLIC_IMAGE" \
+    AKA_VERIFY_RUNTIME_IMAGE=1 AKA_EXPECTED_IMAGE_ID="$PUBLIC_CONFIG" \
+    FAKE_SELECTED_IMAGE_ID="$PUBLIC_MANIFEST" FAKE_IMAGE_DESCRIPTOR="$PUBLIC_DESCRIPTOR" \
+    FAKE_IMAGE_REPO_DIGESTS="[\"rocm/hyperloom@$PUBLIC_MANIFEST\"]")
+assert_has "AGENT_KERNEL_ARENA_DOCKER_IMAGE_ID=$PUBLIC_MANIFEST" "${manifest_args[@]}"
+assert_has "AGENT_KERNEL_ARENA_DOCKER_CONFIG_DIGEST=$PUBLIC_CONFIG" "${manifest_args[@]}"
+assert_has "AGENT_KERNEL_ARENA_DOCKER_IMAGE_ID_ROLE=manifest_digest" "${manifest_args[@]}"
+assert_has "$PUBLIC_MANIFEST" "${manifest_args[@]}"
 
 # Direct verification starts one native utility container, without agent CLI,
 # authentication, or host git configuration mounts, even with an agent YAML.
@@ -715,8 +735,7 @@ env HOME="$CLAUDE_HOME" AKA_NODE_PREFIX="$CLAUDE_PREFIX" \
     > "$TEST_HOME/capture-parallel-argv" 2> "$TEST_HOME/capture-parallel-stderr" \
     || fail "parallel capture identity run failed"
 mapfile -t inspected < "$IDENTITY_INSPECT_LOG"
-[[ "${#inspected[@]}" -eq 2 && "${inspected[0]}" == "$CAPTURE_IMAGE" \
-    && "${inspected[1]}" == "$CAPTURE_IMAGE_ID" ]] \
+[[ "${#inspected[@]}" -eq 1 && "${inspected[0]}" == "$CAPTURE_IMAGE" ]] \
     || fail "parallel workers independently re-resolved the mutable capture tag"
 [[ "$(awk -v id="$CAPTURE_IMAGE_ID" '$0 == id {n++} END {print n+0}' "$TEST_HOME/capture-parallel-argv")" == 5 ]] \
     || fail "parallel containers did not all execute the verified image ID"

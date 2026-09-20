@@ -5,15 +5,16 @@ Generated from task configs and protected capture metadata by
 Regenerate this table after changing a task's runtime metadata.
 
 All tasks require an MI355X (`gfx950`) and select pinned public HyperLoom
-manifests. Every current Docker image/config ID is enforced by the host
+manifests. Every current config digest is enforced by the host
 runner and task preflight. GPU qualification remains pending. Historical
 capture images and IDs are recorded separately below; they do not identify
-the current public images or establish image equivalence. Docker image IDs
-are distinct from registry manifest digests. An unlisted
+the current public images or establish image equivalence. Engine image IDs
+may identify configs or manifests depending on Docker's image store; the
+runner verifies that role and the pinned config separately. An unlisted
 package version means the capture image supplies it; it is not permission
 to install a floating upgrade. This table is not a validation report.
 
-| Task | Current public image | Enforced Docker image ID | ROCm/HIP | Package requirements | Captured source commits | Architecture registration | Required environment | Qualification |
+| Task | Current public image | Pinned config digest | ROCm/HIP | Package requirements | Captured source commits | Architecture registration | Required environment | Qualification |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | [head_kernels/deepseek-v4-pro/isl8192_osl1024_conc64_tp8_mi355x/sglang_v0.5.17-rocm720-mi35x-profilerfix/dsa_sparse_mla_attn](../../tasks/head_kernels/deepseek-v4-pro/isl8192_osl1024_conc64_tp8_mi355x/sglang_v0.5.17-rocm720-mi35x-profilerfix/dsa_sparse_mla_attn/config.yaml) | `docker.io/rocm/hyperloom@sha256:1f5464829559b086eb66f9b803cb9c7a817438c43edff2d5ef59b46a186745f6` | `sha256:ffe4af630e49b05c812db4a468bfb411c3dbb0e93124801f28349bfa31352dea` | 7.2.x | aiter (image version); sglang==0.5.17; tilelang (image version); torch (image version); triton (image version) | Not recorded | — | `AITER_JIT_DIR`: isolated worker cache; `FLYDSL_RUNTIME_CACHE_DIR`: isolated worker cache | pending |
 | [head_kernels/deepseek-v4-pro/isl8192_osl1024_conc64_tp8_mi355x/sglang_v0.5.17-rocm720-mi35x-profilerfix/moe_stage1_grouped_gemm_silu_flydsl](../../tasks/head_kernels/deepseek-v4-pro/isl8192_osl1024_conc64_tp8_mi355x/sglang_v0.5.17-rocm720-mi35x-profilerfix/moe_stage1_grouped_gemm_silu_flydsl/config.yaml) | `docker.io/rocm/hyperloom@sha256:1f5464829559b086eb66f9b803cb9c7a817438c43edff2d5ef59b46a186745f6` | `sha256:ffe4af630e49b05c812db4a468bfb411c3dbb0e93124801f28349bfa31352dea` | 7.2.x | aiter (image version); flydsl (image version); sglang==0.5.17; torch (image version); triton (image version) | Not recorded | — | `AITER_JIT_DIR`: isolated worker cache; `FLYDSL_RUNTIME_CACHE_DIR`: isolated worker cache | pending |

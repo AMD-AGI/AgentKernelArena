@@ -25,6 +25,7 @@ import yaml
 from src.perf_helper_materialization import materialize_perf_helpers_in_workspace
 from src.preprocessing import _validate_task_symlinks
 from src.scripts.top5_head_kernels import REPO_ROOT, plan_run
+from src.tools.runtime_image_identity import verify_identity
 
 PHASES = ("compile", "correctness", "performance")
 FRAMEWORK = {"framework_task_validator": "NOT_RUN", "framework_PASS_claimed": False}
@@ -189,15 +190,25 @@ def verify(config: Path, repo: Path = REPO_ROOT) -> tuple[int, Path]:
     if os.environ.get("AGENT_KERNEL_ARENA_DOCKER") != "1":
         raise ValueError("Use top5_head_kernels.py verify through the standard Docker runner")
     image_id = os.environ.get("AGENT_KERNEL_ARENA_DOCKER_IMAGE_ID", "")
+    config_digest = os.environ.get("AGENT_KERNEL_ARENA_DOCKER_CONFIG_DIGEST", "")
+    attestation = json.loads(os.environ.get("AGENT_KERNEL_ARENA_DOCKER_IDENTITY", "{}"))
+    inspected_identity = verify_identity(plan["image"], plan["expected_image_id"], {
+        "Id": image_id,
+        "RepoDigests": json.loads(os.environ.get("AGENT_KERNEL_ARENA_DOCKER_REPO_DIGESTS", "[]")),
+        "Descriptor": attestation.get("descriptor"),
+    })
     if (os.environ.get("AGENT_KERNEL_ARENA_DOCKER_IMAGE") != plan["image"]
             or not re.fullmatch(r"sha256:[0-9a-f]{64}", image_id)
-            or (plan["expected_image_id"] and plan["expected_image_id"] != image_id)
+            or (plan["expected_image_id"] and plan["expected_image_id"] != config_digest)
+            or (plan["expected_image_id"] and inspected_identity["verified_config_digest"] != config_digest)
             or os.environ.get("AGENT_KERNEL_ARENA_HEAD_KERNEL_VALIDATION_RUNTIME", "")
             != (plan.get("validation_runtime") or "")):
         raise ValueError("Selected Docker identity does not match the task runtime plan")
     run = Path(tempfile.mkdtemp(prefix="workspace_direct_verification_", dir=repo))
     identity = {name: os.environ.get(name) for name in (
         "AGENT_KERNEL_ARENA_DOCKER_IMAGE", "AGENT_KERNEL_ARENA_DOCKER_IMAGE_ID",
+        "AGENT_KERNEL_ARENA_DOCKER_CONFIG_DIGEST", "AGENT_KERNEL_ARENA_DOCKER_IMAGE_ID_ROLE",
+        "AGENT_KERNEL_ARENA_DOCKER_IDENTITY",
         "AGENT_KERNEL_ARENA_DOCKER_REPO_DIGESTS", "AGENT_KERNEL_ARENA_GPU_ARCH",
         "AGENT_KERNEL_ARENA_HOST_GPU_ID", "AGENT_KERNEL_ARENA_HEAD_KERNEL_VALIDATION_RUNTIME",
         "AITER_JIT_DIR", "FLYDSL_RUNTIME_CACHE_DIR", "TVM_FFI_DISABLE_TORCH_C_DLPACK")}

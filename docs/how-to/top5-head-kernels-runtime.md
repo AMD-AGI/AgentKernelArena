@@ -60,11 +60,28 @@ individual task documentation for its case/input construction and availability.
 
 The standard Docker runner consumes `AKA_DOCKER_IMAGE`; it does not read task
 metadata. The cohort launcher passes the declared public manifest to that runner.
-The host resolves the local image once, compares its image/config ID with the
-current public pin, then launches preflight, workers, and aggregation by that
-resolved ID. No mutable tag can substitute different bytes after inspection.
+The host resolves the local image once, verifies its manifest/config identity
+against the public pins, then launches preflight, workers, and aggregation by
+the resolved engine ID. No mutable tag can substitute different bytes after inspection.
 The image must already be available locally; the launcher does not pull or
 rebuild it automatically.
+
+Docker engine image IDs and OCI config digests are recorded separately. The
+`expected_image_id` task field pins the OCI config digest. With Docker's classic
+store, `.Id` equals that digest. Docker's containerd store can instead report the
+manifest digest, as observed with Docker 29.8.0. That form is accepted only when
+`.Id` equals the selected pinned manifest, `RepoDigests` identifies the same
+repository/manifest, `Descriptor` agrees on its digest/type/size, and the exact
+committed manifest bytes hash to that pin and reference the expected config.
+There is no arbitrary alternate-ID fallback and neither pin is changed.
+
+The runner launches by the raw engine ID and exports it as
+`AGENT_KERNEL_ARENA_DOCKER_IMAGE_ID`. It separately exports
+`AGENT_KERNEL_ARENA_DOCKER_CONFIG_DIGEST`, `AGENT_KERNEL_ARENA_DOCKER_IMAGE_ID_ROLE`,
+and the checked `AGENT_KERNEL_ARENA_DOCKER_IDENTITY` evidence. Both task preflight
+and direct verification enforce the verified config pin. These checks use local
+Docker inspection and committed public manifest metadata; no extra registry
+request is required after the image has been pulled.
 
 ## Direct verification without an agent
 

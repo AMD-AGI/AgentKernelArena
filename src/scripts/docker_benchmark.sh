@@ -17,6 +17,9 @@ SELECTED_GPU_ARCH=""
 SELECTED_IMAGE=""
 SELECTED_IMAGE_ID=""
 SELECTED_IMAGE_REPO_DIGESTS="[]"
+SELECTED_IMAGE_CONFIG_DIGEST=""
+SELECTED_IMAGE_ID_ROLE=""
+SELECTED_IMAGE_IDENTITY="{}"
 AGENT_STATE_MOUNT_ROOT="${AKA_AGENT_STATE_MOUNT_ROOT:-/opt/aka-agent-state}"
 DEFAULT_RUN_CONFIG="example_configs/quickstart_claude_mi300.yaml"
 # Set by host-side commands after reading the selected run config. Keep this
@@ -237,34 +240,32 @@ select_runtime() {
     echo "Docker runtime: arch=${SELECTED_GPU_ARCH} image=${SELECTED_IMAGE}" >&2
     SELECTED_IMAGE_ID=""
     SELECTED_IMAGE_REPO_DIGESTS="[]"
+    SELECTED_IMAGE_CONFIG_DIGEST=""
+    SELECTED_IMAGE_ID_ROLE=""
+    SELECTED_IMAGE_IDENTITY="{}"
     if [[ "${AKA_VERIFY_RUNTIME_IMAGE:-0}" == "1" || -n "${AKA_EXPECTED_IMAGE_ID:-}" ]]; then
         verify_runtime_image_identity
     fi
 }
 
 verify_runtime_image_identity() {
-    local image_id repo_digests
+    local inspection identity
+    local -a identity_fields=()
     # Inspect on the host, before any worker is forked, and use the resulting
     # ID for every launch. A later retag cannot change the selected image bytes.
-    image_id="$(docker image inspect --format '{{.Id}}' "$SELECTED_IMAGE" 2>/dev/null)" \
+    inspection="$(docker image inspect --format '{{json .}}' "$SELECTED_IMAGE" 2>/dev/null)" \
         || die "Runtime image is unavailable locally: $SELECTED_IMAGE. Provision this exact capture image before running."
-    [[ "$image_id" =~ ^sha256:[0-9a-f]{64}$ ]] \
-        || die "Docker returned an invalid image ID for $SELECTED_IMAGE: $image_id"
-    if [[ -n "${AKA_EXPECTED_IMAGE_ID:-}" ]]; then
-        [[ "$AKA_EXPECTED_IMAGE_ID" =~ ^sha256:[0-9a-f]{64}$ ]] \
-            || die "AKA_EXPECTED_IMAGE_ID must be a complete Docker image ID"
-        [[ "$image_id" == "$AKA_EXPECTED_IMAGE_ID" ]] \
-            || die "Capture image ID mismatch: $SELECTED_IMAGE resolves to $image_id; expected $AKA_EXPECTED_IMAGE_ID"
-    fi
-    # RepoDigests contains registry manifest identities when Docker has them;
-    # these are separate from the local image/config ID and may be absent.
-    repo_digests="$(docker image inspect --format '{{json .RepoDigests}}' "$image_id" 2>/dev/null)" \
-        || die "Could not inspect registry digest metadata for runtime image $image_id"
-    repo_digests="$(python3 -c 'import json,sys; v=json.loads(sys.argv[1]); v=[] if v is None else v; assert isinstance(v,list) and all(isinstance(x,str) for x in v); print(json.dumps(v,separators=(",",":")))' "$repo_digests")" \
-        || die "Docker returned invalid RepoDigests metadata for $image_id"
-    SELECTED_IMAGE_ID="$image_id"
-    SELECTED_IMAGE_REPO_DIGESTS="$repo_digests"
-    echo "Docker runtime identity: image_id=$SELECTED_IMAGE_ID repo_digests=$SELECTED_IMAGE_REPO_DIGESTS" >&2
+    identity="$(printf '%s' "$inspection" | python3 "$HOST_ROOT/src/tools/runtime_image_identity.py" \
+        --image "$SELECTED_IMAGE" --expected-config "${AKA_EXPECTED_IMAGE_ID:-}")" \
+        || die "Runtime image identity verification failed for $SELECTED_IMAGE"
+    mapfile -t identity_fields < <(python3 -c 'import json,sys; x=json.loads(sys.argv[1]); print(x["engine_image_id"]); print(x["verified_config_digest"] or ""); print(x["engine_id_role"]); print(json.dumps(x["repo_digests"],separators=(",",":")))' "$identity")
+    [[ "${#identity_fields[@]}" -eq 4 ]] || die "Invalid runtime identity verifier response"
+    SELECTED_IMAGE_ID="${identity_fields[0]}"
+    SELECTED_IMAGE_CONFIG_DIGEST="${identity_fields[1]}"
+    SELECTED_IMAGE_ID_ROLE="${identity_fields[2]}"
+    SELECTED_IMAGE_REPO_DIGESTS="${identity_fields[3]}"
+    SELECTED_IMAGE_IDENTITY="$identity"
+    echo "Docker runtime identity: engine_id=$SELECTED_IMAGE_ID role=$SELECTED_IMAGE_ID_ROLE config_digest=$SELECTED_IMAGE_CONFIG_DIGEST repo_digests=$SELECTED_IMAGE_REPO_DIGESTS" >&2
 }
 
 select_runtime_for_config() {
@@ -1037,6 +1038,9 @@ build_docker_args() {
         -e "AGENT_KERNEL_ARENA_DOCKER=1"
         -e "AGENT_KERNEL_ARENA_DOCKER_IMAGE=${SELECTED_IMAGE}"
         -e "AGENT_KERNEL_ARENA_DOCKER_IMAGE_ID=${SELECTED_IMAGE_ID}"
+        -e "AGENT_KERNEL_ARENA_DOCKER_CONFIG_DIGEST=${SELECTED_IMAGE_CONFIG_DIGEST}"
+        -e "AGENT_KERNEL_ARENA_DOCKER_IMAGE_ID_ROLE=${SELECTED_IMAGE_ID_ROLE}"
+        -e "AGENT_KERNEL_ARENA_DOCKER_IDENTITY=${SELECTED_IMAGE_IDENTITY}"
         -e "AGENT_KERNEL_ARENA_HEAD_KERNEL_VALIDATION_RUNTIME=${AKA_HEAD_KERNEL_VALIDATION_RUNTIME:-}"
         -e "AGENT_KERNEL_ARENA_DOCKER_REPO_DIGESTS=${SELECTED_IMAGE_REPO_DIGESTS}"
         -e "AGENT_KERNEL_ARENA_WORKDIR=${CONTAINER_WORKDIR}"
