@@ -32,6 +32,14 @@ report hash. These results do not claim a framework `task_validator` PASS or
 complete original serving equivalence; see [validation status](VALIDATION.md)
 and [workload fidelity](WORKLOAD_FIDELITY.md) for those separate limits.
 
+Some task-local READMEs retain earlier statements that only CPU checks have run
+or fresh GPU qualification is pending; their bytes are part of the recorded
+source snapshots. For sources and runtimes matching an entry in the
+[native-verified index](native_verified.json), that entry and the
+[validation status](VALIDATION.md) supersede those earlier statements about
+native results. This does not clear gaps in framework validation or workload
+fidelity, or qualify unindexed or changed task sources.
+
 The explicit configs select only indexed tasks and keep public runtimes separate:
 
 | Public runtime | Native-verified tasks | Config |

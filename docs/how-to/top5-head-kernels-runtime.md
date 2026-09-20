@@ -10,6 +10,15 @@ The [validation status](../../tasks/head_kernels/VALIDATION.md) tracks current
 results, incomplete checks, and acceptance restrictions. The public profiles are
 not asserted to be identical to the historical capture images.
 
+Task-local READMEs in recorded source snapshots may retain earlier statements
+that only CPU checks have run or fresh GPU qualification is pending. For sources
+and runtimes matching an entry in the
+[native-verified index](../../tasks/head_kernels/native_verified.json), that entry
+and the [validation status](../../tasks/head_kernels/VALIDATION.md) supersede those
+earlier statements about native compile/interface, correctness, and performance.
+Gaps in framework validation and workload fidelity remain separate; this does not
+qualify unindexed or changed task sources.
+
 The [suite index](../../tasks/head_kernels/README.md) lists 18 operator tasks from
 five serving workloads. ISL 8192 / OSL 1024 / concurrency 64 / TP 8 describes the
 serving workload. Each task runs a local operator or one tensor-parallel shard
