@@ -14,11 +14,13 @@ from pathlib import Path
 import re
 
 
-def runtime_requirements(config: dict, task_dir: Path | None = None) -> dict:
+def runtime_requirements(config: dict, task_dir: Path | None = None,
+                         validation_runtime: str | None = None) -> dict:
     """Describe the contract from task metadata without importing GPU packages."""
     metadata = config.get("headkernel") or {}
     runtime = metadata.get("runtime") or {}
     image = metadata.get("docker")
+    capture_image = image
     expected_ids = set()
     if runtime.get("expected_image_id"):
         expected_ids.add(str(runtime["expected_image_id"]))
@@ -51,6 +53,20 @@ def runtime_requirements(config: dict, task_dir: Path | None = None) -> dict:
     expected_image_id = next(iter(expected_ids), None)
     if expected_image_id and re.fullmatch(r"sha256:[0-9a-f]{64}", expected_image_id) is None:
         raise ValueError("Captured Docker image ID must be a complete sha256 image/config ID")
+    if validation_runtime:
+        alternatives = metadata.get("validation_runtimes") or {}
+        if not isinstance(validation_runtime, str) or validation_runtime not in alternatives:
+            raise ValueError(f"Validation runtime {validation_runtime!r} is not declared for this task")
+        alternative = alternatives[validation_runtime]
+        image = alternative.get("image")
+        expected_image_id = alternative.get("image_id")
+        if not isinstance(image, str) or re.fullmatch(r"[^\s@]+@sha256:[0-9a-f]{64}", image) is None:
+            raise ValueError("A validation runtime must pin a registry manifest reference")
+        if not isinstance(expected_image_id, str) or re.fullmatch(r"sha256:[0-9a-f]{64}", expected_image_id) is None:
+            raise ValueError("A validation runtime must pin its Docker image/config ID")
+        if not isinstance(alternative.get("sglang_version"), str):
+            raise ValueError("A validation runtime must declare its SGLang version")
+        runtime = {**runtime, "sglang_version": alternative["sglang_version"]}
     required_modules = {"torch", "sglang", "triton", "aiter"}
     required_modules.update(capture_backend_modules)
     backend = str(metadata.get("backend", "")).lower()
@@ -68,6 +84,9 @@ def runtime_requirements(config: dict, task_dir: Path | None = None) -> dict:
     required_modules.update(versions)
     return {
         "image": image,
+        "capture_image": capture_image,
+        "validation_runtime": validation_runtime,
+        "runtime_role": "validation_alternative" if validation_runtime else "capture",
         "expected_image_id": expected_image_id,
         "source_commits": source_commits,
         "gpu_arch": "gfx950",
@@ -102,13 +121,17 @@ def preflight(config: dict, task_dir: Path | None = None) -> dict:
     """
     metadata = config.get("headkernel") or {}
     runtime = metadata.get("runtime") or {}
-    requirements = runtime_requirements(config, task_dir)
-    expected_image = metadata.get("docker")
+    validation_runtime = os.environ.get("AGENT_KERNEL_ARENA_HEAD_KERNEL_VALIDATION_RUNTIME") or None
+    requirements = runtime_requirements(config, task_dir, validation_runtime)
+    expected_image = requirements["image"]
     selected_image = os.environ.get("AGENT_KERNEL_ARENA_DOCKER_IMAGE")
     selected_image_id = os.environ.get("AGENT_KERNEL_ARENA_DOCKER_IMAGE_ID")
     report = {
         "status": "fail",
         "expected_image": expected_image,
+        "capture_image": requirements["capture_image"],
+        "validation_runtime": requirements["validation_runtime"],
+        "runtime_role": requirements["runtime_role"],
         "selected_image": selected_image,
         "expected_image_id": requirements["expected_image_id"],
         "selected_image_id": selected_image_id,
@@ -135,7 +158,7 @@ def preflight(config: dict, task_dir: Path | None = None) -> dict:
     if os.environ.get("AGENT_KERNEL_ARENA_DOCKER") != "1":
         errors.append("Run this task through the Docker runner")
     if selected_image != expected_image:
-        errors.append(f"Capture image mismatch: expected {expected_image!r}, "
+        errors.append(f"{'Validation' if validation_runtime else 'Capture'} image mismatch: expected {expected_image!r}, "
                       f"runner selected {selected_image!r}; use the cohort launcher")
     if not selected_image_id or re.fullmatch(r"sha256:[0-9a-f]{64}", selected_image_id) is None:
         errors.append("The Docker runner did not supply a verified image ID; use the cohort launcher")

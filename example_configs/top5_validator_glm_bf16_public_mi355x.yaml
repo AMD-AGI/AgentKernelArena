@@ -1,0 +1,15 @@
+# Public validation candidate for the 27-case GLM BF16 task only.
+# The task declares the pinned manifest and Docker image/config ID.
+# This is not a qualified runtime or an exact mirror of the capture image.
+# python3 src/scripts/top5_head_kernels.py run --config example_configs/top5_validator_glm_bf16_public_mi355x.yaml
+agent:
+  template: task_validator
+
+headkernel_validation_runtime: public_hyperloom_rocm720
+
+tasks:
+  - head_kernels/glm-5.3-flash/isl8192_osl1024_conc64_tp8_mi355x/sglang_v0.5.17-rocm720-mi35x-profilerfix/gemm_a16w16_bf16_cijk
+
+target_gpu_model: MI355X
+log_directory: logs
+workspace_directory_prefix: workspace

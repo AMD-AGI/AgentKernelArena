@@ -22,6 +22,45 @@ The tasks span three capture runtimes. Use one cohort per run:
 | SGLang v0.5.18 | [Validator](../../example_configs/top5_validator_sglang_v0518_mi355x.yaml) | [Claude Code](../../example_configs/top5_claude_sglang_v0518_mi355x.yaml) |
 | Kimi K3 capture build | [Validator](../../example_configs/top5_validator_kimi_k3_mi355x.yaml) | [Claude Code](../../example_configs/top5_claude_kimi_k3_mi355x.yaml) |
 
+## Public validation of the GLM BF16 task
+
+The [single-task public validator config](../../example_configs/top5_validator_glm_bf16_public_mi355x.yaml)
+runs the 27-case GLM BF16 task using a declared public runtime alternative.
+This task generates its tensor values locally and needs no external tensor
+fixture, model checkpoint, private registry, or shared NFS. Pull the pinned
+public image on the GPU node, then use the normal launcher:
+
+```bash
+docker pull docker.io/rocm/hyperloom@sha256:1f5464829559b086eb66f9b803cb9c7a817438c43edff2d5ef59b46a186745f6
+CONFIG_PATH=example_configs/top5_validator_glm_bf16_public_mi355x.yaml
+python3 src/scripts/top5_head_kernels.py plan --config "$CONFIG_PATH"
+python3 src/scripts/top5_head_kernels.py preflight --config "$CONFIG_PATH"
+python3 src/scripts/top5_head_kernels.py run --config "$CONFIG_PATH"
+```
+
+The pull is approximately 28.5 GB compressed. Validation still requires an
+MI355X (`gfx950`), working ROCm device access, and the configured validator
+backend. The config selects `headkernel_validation_runtime: public_hyperloom_rocm720`.
+Only this task declares that alternative under `headkernel.validation_runtimes`.
+The launcher permits it only for a single-task `task_validator` run and rejects
+unknown choices, unsupported tasks, and conflicting image overrides.
+
+The declaration pins both the registry manifest above and Docker image/config
+ID `sha256:ffe4af630e49b05c812db4a468bfb411c3dbb0e93124801f28349bfa31352dea`.
+The host verifies that identity before launch. Task preflight checks the declared
+runtime, SGLang 0.5.17, ROCm 7.2, and `gfx950`; the existing UT still checks the
+native AITER source SHA-256. All 27 cases, references, source files, correctness
+checks, and benchmark controls are unchanged.
+
+This public runtime is an **unqualified validation alternative**. It is not an
+attested mirror of the Harbor capture image, and no GPU PASS is implied by its
+declaration or the CPU checks. Reports identify `runtime_role: validation_alternative`
+and retain the original capture image. Omitting the explicit selection preserves
+the original capture runtime. See the [public-image catalog](../reference/top5-public-images.md)
+for discovery evidence and dependency differences.
+
+## Capture cohorts
+
 The image references live in each task's `headkernel.docker` field. The Kimi
 build has a dated, specialized tag; its tag does not establish an SGLang release
 number. Do not relabel it as v0.5.18 or replace it with a generic SGLang image.

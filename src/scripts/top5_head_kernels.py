@@ -89,6 +89,12 @@ def plan_run(config_path: Path, repo_root: Path = REPO_ROOT) -> dict:
     config = load_mapping(config_path)
     if config.get("target_gpu_model") != "MI355X":
         raise ValueError("Top-five head kernels require target_gpu_model: MI355X")
+    validation_runtime = config.get("headkernel_validation_runtime")
+    if validation_runtime is not None:
+        if not isinstance(validation_runtime, str) or not validation_runtime:
+            raise ValueError("headkernel_validation_runtime must be a declared runtime name")
+        if (config.get("agent") or {}).get("template") != "task_validator":
+            raise ValueError("An alternative validation runtime requires agent.template: task_validator")
     selectors = config.get("tasks")
     if not isinstance(selectors, list) or not selectors:
         raise ValueError("The run config must select at least one head-kernel task")
@@ -112,8 +118,8 @@ def plan_run(config_path: Path, repo_root: Path = REPO_ROOT) -> dict:
             if not task_path.resolve().is_relative_to(suite_root):
                 raise ValueError(f"Task config escapes the suite: {selector}")
             task = load_mapping(task_path)
-            metadata = task.get("headkernel")
-            image = metadata.get("docker") if isinstance(metadata, dict) else None
+            requirements = runtime.runtime_requirements(task, task_path.parent, validation_runtime)
+            image = requirements["image"]
             if not isinstance(image, str) or not image.strip() or image != image.strip():
                 raise ValueError(f"Missing headkernel.docker in {task_path}")
             reference = image.rsplit("/", 1)[-1]
@@ -121,7 +127,6 @@ def plan_run(config_path: Path, repo_root: Path = REPO_ROOT) -> dict:
                     or any(char.isspace() for char in image)):
                 raise ValueError(f"A versioned image reference is required: {image!r}")
             selected[task_path.parent.relative_to(tasks_root).as_posix()] = image
-            requirements = runtime.runtime_requirements(task, task_path.parent)
             required_environment.update(requirements["environment"])
             if requirements["expected_image_id"]:
                 expected_image_ids.add(requirements["expected_image_id"])
@@ -133,9 +138,13 @@ def plan_run(config_path: Path, repo_root: Path = REPO_ROOT) -> dict:
         raise ValueError(f"Mixed capture runtimes; use one cohort per run ({detail})")
     if len(expected_image_ids) > 1:
         raise ValueError("Selected tasks require conflicting captured Docker image IDs")
+    if validation_runtime and len(selected) != 1:
+        raise ValueError("An alternative validation runtime must select exactly one task")
     return {
         "config": config_path.relative_to(repo_root).as_posix(),
         "image": images[0],
+        "validation_runtime": validation_runtime,
+        "runtime_role": "validation_alternative" if validation_runtime else "capture",
         "expected_image_id": next(iter(expected_image_ids), None),
         "required_environment": required_environment,
         "target_gpu_model": "MI355X",
@@ -148,11 +157,16 @@ def runtime_environment(plan: dict, environment: dict[str, str]) -> dict[str, st
     override = environment.get("AKA_DOCKER_IMAGE")
     if override and override != plan["image"]:
         raise ValueError("AKA_DOCKER_IMAGE conflicts with the selected tasks' "
-                         f"capture image: expected {plan['image']}, got {override}")
+                         f"runtime image: expected {plan['image']}, got {override}")
+    validation_runtime = plan.get("validation_runtime") or ""
+    inherited = environment.get("AKA_HEAD_KERNEL_VALIDATION_RUNTIME") or ""
+    if inherited and inherited != validation_runtime:
+        raise ValueError("AKA_HEAD_KERNEL_VALIDATION_RUNTIME must match the explicit run config selection")
     result = dict(environment)
     result["AKA_DOCKER_IMAGE"] = plan["image"]
     result["AKA_VERIFY_RUNTIME_IMAGE"] = "1"
     result["AKA_TOP5_ISOLATED_CACHES"] = "1"
+    result["AKA_HEAD_KERNEL_VALIDATION_RUNTIME"] = validation_runtime
     result.update(plan.get("required_environment", {}))
     expected_id = plan.get("expected_image_id")
     if expected_id:
@@ -189,6 +203,8 @@ def main(argv: list[str] | None = None) -> int:
                    "--config_name", plan["config"], *runner_args]
         if args.action == "plan":
             identity_environment = {"AKA_VERIFY_RUNTIME_IMAGE": "1", "AKA_TOP5_ISOLATED_CACHES": "1"}
+            if plan["validation_runtime"]:
+                identity_environment["AKA_HEAD_KERNEL_VALIDATION_RUNTIME"] = plan["validation_runtime"]
             if environment.get("AKA_EXPECTED_IMAGE_ID"):
                 identity_environment["AKA_EXPECTED_IMAGE_ID"] = environment["AKA_EXPECTED_IMAGE_ID"]
             print(json.dumps({**plan, "command": command,

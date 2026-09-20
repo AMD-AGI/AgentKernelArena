@@ -56,7 +56,8 @@ class CohortTests(unittest.TestCase):
                                   for path in (ROOT / "tasks/head_kernels").rglob("config.yaml"))
         for agent in ("validator", "claude"):
             plans = [launcher.plan_run(path) for path in
-                     sorted((ROOT / "example_configs").glob(f"top5_{agent}_*_mi355x.yaml"))]
+                     sorted((ROOT / "example_configs").glob(f"top5_{agent}_*_mi355x.yaml"))
+                     if not yaml.safe_load(path.read_text()).get("headkernel_validation_runtime")]
             self.assertEqual(len(plans), 3)
             selected = [task for plan in plans for task in plan["tasks"]]
             self.assertEqual(len(selected), len(set(selected)))
@@ -180,6 +181,7 @@ class RuntimeTests(unittest.TestCase):
         self.enterContext(mock.patch.dict(os.environ, {
             "AGENT_KERNEL_ARENA_DOCKER": "1", "AGENT_KERNEL_ARENA_DOCKER_IMAGE": image,
             "AGENT_KERNEL_ARENA_DOCKER_IMAGE_ID": "sha256:" + "a" * 64,
+            "AGENT_KERNEL_ARENA_HEAD_KERNEL_VALIDATION_RUNTIME": "",
             "TVM_FFI_DISABLE_TORCH_C_DLPACK": "1",
             "AITER_JIT_DIR": str(self.task_dir / "aiter-jit"),
             "FLYDSL_RUNTIME_CACHE_DIR": str(self.task_dir / "flydsl"),
@@ -279,6 +281,87 @@ class RuntimeTests(unittest.TestCase):
         self.assertEqual(report, persisted)
         self.assertEqual(persisted["status"], "ok")
         self.assertEqual(persisted["selected_image_id"], "sha256:" + "a" * 64)
+
+
+class PublicValidationTests(unittest.TestCase):
+    def setUp(self):
+        RuntimeTests.setUp(self)
+        self.public_task = task_directory("glm-5.3-flash__gemm_a16w16_bf16_cijk")
+        self.public_config = yaml.safe_load((self.public_task / "config.yaml").read_text())
+        self.public_name = "public_hyperloom_rocm720"
+        self.public_spec = self.public_config["headkernel"]["validation_runtimes"][self.public_name]
+
+    def test_public_plan_is_explicit_and_preserves_capture_default(self):
+        config = ROOT / "example_configs/top5_validator_glm_bf16_public_mi355x.yaml"
+        plan = launcher.plan_run(config)
+        self.assertEqual(plan["task_count"], 1)
+        self.assertEqual(plan["image"], self.public_spec["image"])
+        self.assertEqual(plan["expected_image_id"], self.public_spec["image_id"])
+        self.assertEqual(plan["runtime_role"], "validation_alternative")
+        environment = launcher.runtime_environment(plan, {})
+        self.assertEqual(environment["AKA_HEAD_KERNEL_VALIDATION_RUNTIME"], self.public_name)
+        capture = runtime.runtime_requirements(self.public_config, self.public_task)
+        self.assertEqual(capture["image"], self.public_config["headkernel"]["docker"])
+        self.assertEqual(capture["runtime_role"], "capture")
+
+    def test_public_runtime_is_declared_only_for_glm_bf16(self):
+        supported = [path.parent for path in (ROOT / "tasks/head_kernels").rglob("config.yaml")
+                     if yaml.safe_load(path.read_text())["headkernel"].get("validation_runtimes")]
+        self.assertEqual(supported, [self.public_task])
+
+    def test_unknown_runtime_and_unsupported_task_are_rejected(self):
+        for config, name in ((self.public_config, "unknown"), (self.config, self.public_name)):
+            with self.subTest(name=name), self.assertRaisesRegex(ValueError, "not declared"):
+                runtime.runtime_requirements(config, self.task_dir, name)
+
+    def test_public_override_cannot_be_selected_only_by_host_environment(self):
+        capture_plan = {"image": self.public_config["headkernel"]["docker"]}
+        with self.assertRaisesRegex(ValueError, "explicit run config"):
+            launcher.runtime_environment(capture_plan, {"AKA_HEAD_KERNEL_VALIDATION_RUNTIME": self.public_name})
+
+    def test_unknown_image_override_is_rejected(self):
+        plan = launcher.plan_run(ROOT / "example_configs/top5_validator_glm_bf16_public_mi355x.yaml")
+        with self.assertRaisesRegex(ValueError, "conflicts"):
+            launcher.runtime_environment(plan, {"AKA_DOCKER_IMAGE": "docker.io/rocm/hyperloom:latest"})
+
+    def test_matching_public_identity_passes_environment_checks(self):
+        self.modules["sglang"].__version__ = "0.5.17"
+        self.modules["aiter.tuned_gemm"] = SimpleNamespace(torch_gemm=lambda: None)
+        environment = {
+            "AGENT_KERNEL_ARENA_HEAD_KERNEL_VALIDATION_RUNTIME": self.public_name,
+            "AGENT_KERNEL_ARENA_DOCKER_IMAGE": self.public_spec["image"],
+            "AGENT_KERNEL_ARENA_DOCKER_IMAGE_ID": self.public_spec["image_id"],
+        }
+        with mock.patch.dict(os.environ, environment):
+            report = runtime.preflight(self.public_config, self.public_task)
+        self.assertEqual(report["status"], "ok", report)
+        self.assertEqual(report["runtime_role"], "validation_alternative")
+        self.assertEqual(report["capture_image"], self.public_config["headkernel"]["docker"])
+
+    def test_wrong_public_image_id_fails_before_import(self):
+        environment = {
+            "AGENT_KERNEL_ARENA_HEAD_KERNEL_VALIDATION_RUNTIME": self.public_name,
+            "AGENT_KERNEL_ARENA_DOCKER_IMAGE": self.public_spec["image"],
+            "AGENT_KERNEL_ARENA_DOCKER_IMAGE_ID": "sha256:" + "0" * 64,
+        }
+        with mock.patch.dict(os.environ, environment), \
+                mock.patch.object(runtime.importlib, "import_module", side_effect=AssertionError("unexpected import")):
+            report = runtime.preflight(self.public_config, self.public_task)
+        self.assertEqual(report["status"], "fail")
+        self.assertTrue(any("image ID mismatch" in error for error in report["errors"]))
+
+    def test_unpinned_public_image_is_rejected(self):
+        self.public_spec["image"] = "docker.io/rocm/hyperloom:latest"
+        with self.assertRaisesRegex(ValueError, "pin a registry manifest"):
+            runtime.runtime_requirements(self.public_config, self.public_task, self.public_name)
+
+    def test_public_runtime_cannot_be_used_for_optimization_run(self):
+        path = fixture_config(self.task_dir, [self.public_config["headkernel"]["docker"]])
+        config = yaml.safe_load(path.read_text())
+        config.update(agent={"template": "claude_code"}, headkernel_validation_runtime=self.public_name)
+        path.write_text(yaml.safe_dump(config))
+        with self.assertRaisesRegex(ValueError, "task_validator"):
+            launcher.plan_run(path, self.task_dir)
 
 
 if __name__ == "__main__":
