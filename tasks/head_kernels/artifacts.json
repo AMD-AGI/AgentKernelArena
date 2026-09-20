@@ -1,6 +1,6 @@
 {
   "schema_version": 2,
-  "description": "Persistent fixtures required by the top five model head-kernel suite. path and task are relative to tasks/head_kernels; mirror_path names the unchanged reviewed flat artifact mirror namespace.",
+  "description": "Default persistent fixture requirements. Generated tasks use local code and compact metadata; original captures listed under archival_artifacts are optional provenance/replay data.",
   "provenance": {
     "source_package": "headkernel_ut_0914_full",
     "inventory_observed_utc": "2026-09-20",
@@ -9,9 +9,110 @@
     "fixture_body_verification": "All 17 bodies were independently copied and fully SHA-256 verified on 2026-09-20; the provisioner verifies every supplied body before installation.",
     "timing_geometry_status": "All three MiniMax timing_geometry.pt files are present in the captured inventory and have declared SHA-256 hashes."
   },
-  "artifact_count": 17,
-  "total_size_bytes": 33139788731,
-  "artifacts": [
+  "artifact_count": 0,
+  "total_size_bytes": 0,
+  "artifacts": [],
+  "tasks_without_persistent_fixtures": [
+    {
+      "operation_id": "deepseek-v4-pro__dsa_sparse_mla_attn",
+      "reason": "Task-local generated numerical inputs and committed compact structural metadata; archival captures are optional and are not required by the default entrypoints.",
+      "task": "deepseek-v4-pro/isl8192_osl1024_conc64_tp8_mi355x/sglang_v0.5.17-rocm720-mi35x-profilerfix/dsa_sparse_mla_attn"
+    },
+    {
+      "operation_id": "deepseek-v4-pro__moe_stage1_grouped_gemm_silu_flydsl",
+      "reason": "Task-local generated numerical inputs and committed compact structural metadata; archival captures are optional and are not required by the default entrypoints.",
+      "task": "deepseek-v4-pro/isl8192_osl1024_conc64_tp8_mi355x/sglang_v0.5.17-rocm720-mi35x-profilerfix/moe_stage1_grouped_gemm_silu_flydsl"
+    },
+    {
+      "operation_id": "deepseek-v4-pro__moe_stage2_down_proj_reduce_opus_a8w4",
+      "reason": "Task-local generated numerical inputs and committed compact structural metadata; archival captures are optional and are not required by the default entrypoints.",
+      "task": "deepseek-v4-pro/isl8192_osl1024_conc64_tp8_mi355x/sglang_v0.5.17-rocm720-mi35x-profilerfix/moe_stage2_down_proj_reduce_opus_a8w4"
+    },
+    {
+      "task": "glm-5.3-flash/isl8192_osl1024_conc64_tp8_mi355x/sglang_v0.5.17-rocm720-mi35x-profilerfix/ck_gemm_a8w8_blockscale_bpreshuffle",
+      "reason": "Deterministic synthetic quantized operands at the declared profile-derived shapes; an independent dequantized FP32 reference is generated at runtime, as declared in ut/meta.json.",
+      "operation_id": "glm-5.3-flash__ck_gemm_a8w8_blockscale_bpreshuffle"
+    },
+    {
+      "task": "glm-5.3-flash/isl8192_osl1024_conc64_tp8_mi355x/sglang_v0.5.17-rocm720-mi35x-profilerfix/gemm_a16w16_bf16_cijk",
+      "reason": "Deterministic synthetic BF16 operands at the declared profile-derived shapes; an independent FP32 matrix-multiplication reference is generated at runtime, as declared in ut/meta.json.",
+      "operation_id": "glm-5.3-flash__gemm_a16w16_bf16_cijk"
+    },
+    {
+      "operation_id": "glm-5.3-flash__elementwise_copy_cluster",
+      "reason": "Task-local generated numerical inputs and committed compact structural metadata; archival captures are optional and are not required by the default entrypoints.",
+      "task": "glm-5.3-flash/isl8192_osl1024_conc64_tp8_mi355x/sglang_v0.5.18-rocm720-mi35x-profilerfix/elementwise_copy_cluster"
+    },
+    {
+      "operation_id": "glm-5.3-flash__fused_moe_kernel",
+      "reason": "Task-local generated numerical inputs and committed compact structural metadata; archival captures are optional and are not required by the default entrypoints.",
+      "task": "glm-5.3-flash/isl8192_osl1024_conc64_tp8_mi355x/sglang_v0.5.18-rocm720-mi35x-profilerfix/fused_moe_kernel"
+    },
+    {
+      "operation_id": "minimax-m3__decode_score_kernel",
+      "reason": "Task-local generated numerical inputs and committed compact structural metadata; archival captures are optional and are not required by the default entrypoints.",
+      "task": "minimax-m3-mxfp4/isl8192_osl1024_conc64_tp8_mi355x/sglang_v0.5.17-rocm720-mi35x-profilerfix/decode_score_kernel"
+    },
+    {
+      "operation_id": "minimax-m3__gqa_share_sparse_decode_kernel",
+      "reason": "Task-local generated numerical inputs and committed compact structural metadata; archival captures are optional and are not required by the default entrypoints.",
+      "task": "minimax-m3-mxfp4/isl8192_osl1024_conc64_tp8_mi355x/sglang_v0.5.17-rocm720-mi35x-profilerfix/gqa_share_sparse_decode_kernel"
+    },
+    {
+      "operation_id": "minimax-m3__gqa_share_sparse_fwd_kernel",
+      "reason": "Task-local generated numerical inputs and committed compact structural metadata; archival captures are optional and are not required by the default entrypoints.",
+      "task": "minimax-m3-mxfp4/isl8192_osl1024_conc64_tp8_mi355x/sglang_v0.5.17-rocm720-mi35x-profilerfix/gqa_share_sparse_fwd_kernel"
+    },
+    {
+      "task": "qwen3.8-2.4t-a95b-mxfp4/isl8192_osl1024_conc64_tp8_mi355x/sglang_v0.5.18-rocm720-mi35x-profilerfix/dense_bf16_gemm_cluster",
+      "reason": "Deterministic nonzero inputs at live dispatch shapes; the frozen torch.nn.functional.linear baseline produces full outputs at runtime, as declared in ut/meta.json.",
+      "operation_id": "qwen3.8-2.4t__dense_bf16_gemm_cluster"
+    },
+    {
+      "operation_id": "qwen3.8-2.4t__fused_moe_2stage_mxfp4",
+      "reason": "Task-local generated numerical inputs and committed compact structural metadata; archival captures are optional and are not required by the default entrypoints.",
+      "task": "qwen3.8-2.4t-a95b-mxfp4/isl8192_osl1024_conc64_tp8_mi355x/sglang_v0.5.18-rocm720-mi35x-profilerfix/fused_moe_2stage_mxfp4"
+    },
+    {
+      "operation_id": "qwen3.8-2.4t__fused_recurrent_gated_delta_rule_decode",
+      "reason": "Task-local generated numerical inputs and committed compact structural metadata; archival captures are optional and are not required by the default entrypoints.",
+      "task": "qwen3.8-2.4t-a95b-mxfp4/isl8192_osl1024_conc64_tp8_mi355x/sglang_v0.5.18-rocm720-mi35x-profilerfix/fused_recurrent_gated_delta_rule_decode"
+    },
+    {
+      "task": "qwen3.8-2.4t-a95b-mxfp4/isl8192_osl1024_conc64_tp8_mi355x/sglang_v0.5.18-rocm720-mi35x-profilerfix/gemma_fused_add_rmsnorm",
+      "reason": "Deterministic nonzero inputs at the live shapes; a separate frozen baseline process produces full-tuple outputs at runtime, as declared in ut/meta.json.",
+      "operation_id": "qwen3.8-2.4t__gemma_fused_add_rmsnorm"
+    },
+    {
+      "operation_id": "qwen3.8-2.4t__paged_attention_decode",
+      "reason": "Task-local generated numerical inputs and committed compact structural metadata; archival captures are optional and are not required by the default entrypoints.",
+      "task": "qwen3.8-2.4t-a95b-mxfp4/isl8192_osl1024_conc64_tp8_mi355x/sglang_v0.5.18-rocm720-mi35x-profilerfix/paged_attention_decode"
+    },
+    {
+      "task": "kimi-k3/isl8192_osl1024_conc64_tp8_mi355x/sglang-rocm-k3_rocm720-mi35x-k3-20260727-tl312-08011830/fwd_grouped_kernel_stage1",
+      "operation_id": "kimi-k3__fwd_grouped_kernel_stage1",
+      "reason": "Committed captured structural JSON with generated numeric values and fresh independent baseline/parent validation; no required external tensor archive."
+    },
+    {
+      "task": "kimi-k3/isl8192_osl1024_conc64_tp8_mi355x/sglang-rocm-k3_rocm720-mi35x-k3-20260727-tl312-08011830/moe_gemm1_stage1",
+      "operation_id": "kimi-k3__moe_gemm1_stage1",
+      "reason": "Committed captured structural JSON with generated numeric values and fresh independent baseline/parent validation; no required external tensor archive."
+    },
+    {
+      "task": "kimi-k3/isl8192_osl1024_conc64_tp8_mi355x/sglang-rocm-k3_rocm720-mi35x-k3-20260727-tl312-08011830/moe_gemm2_stage2",
+      "operation_id": "kimi-k3__moe_gemm2_stage2",
+      "reason": "Committed captured structural JSON with generated numeric values and fresh independent baseline/parent validation; no required external tensor archive."
+    }
+  ],
+  "excluded_generated_files": [
+    {
+      "path": "minimax-m3__decode_score_kernel/ut/_baseline_random.pt",
+      "size_bytes": 41953,
+      "sha256": null,
+      "reason": "Generated baseline cache; no declared SHA-256, not an authoritative persistent fixture, and not provisioned."
+    }
+  ],
+  "archival_artifacts": [
     {
       "task": "deepseek-v4-pro/isl8192_osl1024_conc64_tp8_mi355x/sglang_v0.5.17-rocm720-mi35x-profilerfix/dsa_sparse_mla_attn",
       "path": "deepseek-v4-pro/isl8192_osl1024_conc64_tp8_mi355x/sglang_v0.5.17-rocm720-mi35x-profilerfix/dsa_sparse_mla_attn/ut/reference_io.pt",
@@ -56,33 +157,6 @@
       "source_task_path": "tasks/headkernel/glm-5.3-flash__fused_moe_kernel/ut/reference_io.pt",
       "operation_id": "glm-5.3-flash__fused_moe_kernel",
       "mirror_path": "glm-5.3-flash__fused_moe_kernel/ut/reference_io.pt"
-    },
-    {
-      "task": "kimi-k3/isl8192_osl1024_conc64_tp8_mi355x/sglang-rocm-k3_rocm720-mi35x-k3-20260727-tl312-08011830/fwd_grouped_kernel_stage1",
-      "path": "kimi-k3/isl8192_osl1024_conc64_tp8_mi355x/sglang-rocm-k3_rocm720-mi35x-k3-20260727-tl312-08011830/fwd_grouped_kernel_stage1/ut/reference_io.pt",
-      "size_bytes": 1019355421,
-      "sha256": "017f8ede884504695283291955fa8750be3e5d2779dd67b3914f13ab7ae85b98",
-      "source_task_path": "tasks/headkernel/kimi-k3__fwd_grouped_kernel_stage1/ut/reference_io.pt",
-      "operation_id": "kimi-k3__fwd_grouped_kernel_stage1",
-      "mirror_path": "kimi-k3__fwd_grouped_kernel_stage1/ut/reference_io.pt"
-    },
-    {
-      "task": "kimi-k3/isl8192_osl1024_conc64_tp8_mi355x/sglang-rocm-k3_rocm720-mi35x-k3-20260727-tl312-08011830/moe_gemm1_stage1",
-      "path": "kimi-k3/isl8192_osl1024_conc64_tp8_mi355x/sglang-rocm-k3_rocm720-mi35x-k3-20260727-tl312-08011830/moe_gemm1_stage1/ut/reference_io.pt",
-      "size_bytes": 103241119,
-      "sha256": "3d175ea5803d3523001cac000aa5d6c7d54b4a06dfa97999cd8eb22c081b3e31",
-      "source_task_path": "tasks/headkernel/kimi-k3__moe_gemm1_stage1/ut/reference_io.pt",
-      "operation_id": "kimi-k3__moe_gemm1_stage1",
-      "mirror_path": "kimi-k3__moe_gemm1_stage1/ut/reference_io.pt"
-    },
-    {
-      "task": "kimi-k3/isl8192_osl1024_conc64_tp8_mi355x/sglang-rocm-k3_rocm720-mi35x-k3-20260727-tl312-08011830/moe_gemm2_stage2",
-      "path": "kimi-k3/isl8192_osl1024_conc64_tp8_mi355x/sglang-rocm-k3_rocm720-mi35x-k3-20260727-tl312-08011830/moe_gemm2_stage2/ut/reference_io.pt",
-      "size_bytes": 181204137,
-      "sha256": "5a3fefb2af1c8a2981980d68e4f90085985fd5f0301b69814d85de5c1d801a53",
-      "source_task_path": "tasks/headkernel/kimi-k3__moe_gemm2_stage2/ut/reference_io.pt",
-      "operation_id": "kimi-k3__moe_gemm2_stage2",
-      "mirror_path": "kimi-k3__moe_gemm2_stage2/ut/reference_io.pt"
     },
     {
       "task": "minimax-m3-mxfp4/isl8192_osl1024_conc64_tp8_mi355x/sglang_v0.5.17-rocm720-mi35x-profilerfix/decode_score_kernel",
@@ -166,34 +240,33 @@
       "mirror_path": "qwen3.8-2.4t__paged_attention_decode/ut/reference_io.pt"
     }
   ],
-  "tasks_without_persistent_fixtures": [
+  "optional_archival_artifacts": [
     {
-      "task": "glm-5.3-flash/isl8192_osl1024_conc64_tp8_mi355x/sglang_v0.5.17-rocm720-mi35x-profilerfix/ck_gemm_a8w8_blockscale_bpreshuffle",
-      "reason": "Deterministic synthetic quantized operands at the declared profile-derived shapes; an independent dequantized FP32 reference is generated at runtime, as declared in ut/meta.json.",
-      "operation_id": "glm-5.3-flash__ck_gemm_a8w8_blockscale_bpreshuffle"
+      "task": "kimi-k3/isl8192_osl1024_conc64_tp8_mi355x/sglang-rocm-k3_rocm720-mi35x-k3-20260727-tl312-08011830/fwd_grouped_kernel_stage1",
+      "path": "kimi-k3/isl8192_osl1024_conc64_tp8_mi355x/sglang-rocm-k3_rocm720-mi35x-k3-20260727-tl312-08011830/fwd_grouped_kernel_stage1/ut/reference_io.pt",
+      "size_bytes": 1019355421,
+      "sha256": "017f8ede884504695283291955fa8750be3e5d2779dd67b3914f13ab7ae85b98",
+      "source_task_path": "tasks/headkernel/kimi-k3__fwd_grouped_kernel_stage1/ut/reference_io.pt",
+      "operation_id": "kimi-k3__fwd_grouped_kernel_stage1",
+      "mirror_path": "kimi-k3__fwd_grouped_kernel_stage1/ut/reference_io.pt"
     },
     {
-      "task": "glm-5.3-flash/isl8192_osl1024_conc64_tp8_mi355x/sglang_v0.5.17-rocm720-mi35x-profilerfix/gemm_a16w16_bf16_cijk",
-      "reason": "Deterministic synthetic BF16 operands at the declared profile-derived shapes; an independent FP32 matrix-multiplication reference is generated at runtime, as declared in ut/meta.json.",
-      "operation_id": "glm-5.3-flash__gemm_a16w16_bf16_cijk"
+      "task": "kimi-k3/isl8192_osl1024_conc64_tp8_mi355x/sglang-rocm-k3_rocm720-mi35x-k3-20260727-tl312-08011830/moe_gemm1_stage1",
+      "path": "kimi-k3/isl8192_osl1024_conc64_tp8_mi355x/sglang-rocm-k3_rocm720-mi35x-k3-20260727-tl312-08011830/moe_gemm1_stage1/ut/reference_io.pt",
+      "size_bytes": 103241119,
+      "sha256": "3d175ea5803d3523001cac000aa5d6c7d54b4a06dfa97999cd8eb22c081b3e31",
+      "source_task_path": "tasks/headkernel/kimi-k3__moe_gemm1_stage1/ut/reference_io.pt",
+      "operation_id": "kimi-k3__moe_gemm1_stage1",
+      "mirror_path": "kimi-k3__moe_gemm1_stage1/ut/reference_io.pt"
     },
     {
-      "task": "qwen3.8-2.4t-a95b-mxfp4/isl8192_osl1024_conc64_tp8_mi355x/sglang_v0.5.18-rocm720-mi35x-profilerfix/dense_bf16_gemm_cluster",
-      "reason": "Deterministic nonzero inputs at live dispatch shapes; the frozen torch.nn.functional.linear baseline produces full outputs at runtime, as declared in ut/meta.json.",
-      "operation_id": "qwen3.8-2.4t__dense_bf16_gemm_cluster"
-    },
-    {
-      "task": "qwen3.8-2.4t-a95b-mxfp4/isl8192_osl1024_conc64_tp8_mi355x/sglang_v0.5.18-rocm720-mi35x-profilerfix/gemma_fused_add_rmsnorm",
-      "reason": "Deterministic nonzero inputs at the live shapes; a separate frozen baseline process produces full-tuple outputs at runtime, as declared in ut/meta.json.",
-      "operation_id": "qwen3.8-2.4t__gemma_fused_add_rmsnorm"
-    }
-  ],
-  "excluded_generated_files": [
-    {
-      "path": "minimax-m3__decode_score_kernel/ut/_baseline_random.pt",
-      "size_bytes": 41953,
-      "sha256": null,
-      "reason": "Generated baseline cache; no declared SHA-256, not an authoritative persistent fixture, and not provisioned."
+      "task": "kimi-k3/isl8192_osl1024_conc64_tp8_mi355x/sglang-rocm-k3_rocm720-mi35x-k3-20260727-tl312-08011830/moe_gemm2_stage2",
+      "path": "kimi-k3/isl8192_osl1024_conc64_tp8_mi355x/sglang-rocm-k3_rocm720-mi35x-k3-20260727-tl312-08011830/moe_gemm2_stage2/ut/reference_io.pt",
+      "size_bytes": 181204137,
+      "sha256": "5a3fefb2af1c8a2981980d68e4f90085985fd5f0301b69814d85de5c1d801a53",
+      "source_task_path": "tasks/headkernel/kimi-k3__moe_gemm2_stage2/ut/reference_io.pt",
+      "operation_id": "kimi-k3__moe_gemm2_stage2",
+      "mirror_path": "kimi-k3__moe_gemm2_stage2/ut/reference_io.pt"
     }
   ]
 }

@@ -18,7 +18,7 @@ import yaml
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-ACTIONS = ("matrix", "plan", "preflight", "check-agents", "verify", "run", "parallel-run")
+ACTIONS = ("matrix", "plan", "preflight", "check-agents", "verify", "parallel-verify", "trace", "run", "parallel-run")
 
 
 def runtime_contract_reader():

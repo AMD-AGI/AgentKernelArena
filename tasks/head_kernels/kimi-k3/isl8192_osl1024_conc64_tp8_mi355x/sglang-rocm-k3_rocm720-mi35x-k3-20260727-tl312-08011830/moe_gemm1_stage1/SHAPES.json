@@ -3,12 +3,23 @@
   "task_id": "kimi-k3__moe_gemm1_stage1",
   "task_path": ".",
   "path_base": "task directory",
-  "scope": "Single-GPU callable/operator unit benchmark on MI355X (gfx950). Serving capture context does not define kernel tensor shapes.",
+  "scope": "Single-GPU callable/operator semantic and diagnostic inventory on MI355X (gfx950). No enabled scored benchmark cases. Serving context does not define kernel tensor shapes or one shared historical scenario.",
   "serving_capture_context": {
     "isl": 8192,
     "osl": 1024,
     "concurrency": 64,
-    "tensor_parallel_world_size": 8
+    "tensor_parallel_world_size": 8,
+    "historical_scenario": {
+      "scenario": "0828 cycle1 stage-1 launch and profile context",
+      "regime_prefill_chunk": 8192,
+      "analytic_weight_prefill_chunk": 8192,
+      "note": "Stage-1 ut/workload.json records the 0828 cycle1 --chunked-prefill-size 8192 flags. Its routing is second-hand from the separate 0817 stage-2 capture, and its decode launch variant is assumed rather than observed.",
+      "evidence": [
+        "ut/workload.json#/regime",
+        "ut/workload.json#/serving_weight_model"
+      ],
+      "shared_context_note": "ISL 8192 is input sequence length, not a shared prefill chunk or proof that all leaves came from one serving run."
+    }
   },
   "environment_evidence": "config.yaml",
   "interface": {
@@ -124,34 +135,17 @@
   "case_inventory": {
     "metadata_declared_num_cases": null,
     "shape_record_count": 3,
-    "benchmark_case_count": 3,
-    "benchmark_case_ids": [
+    "benchmark_case_count": 0,
+    "benchmark_case_ids": [],
+    "count_note": "benchmark_case_count counts enabled scored cases and is zero because ut/meta.json workload_scoring.enabled is false. Former timing cases remain unscored diagnostics. Every capture, boundary and diagnostic shape record is preserved.",
+    "diagnostic_case_count": 3,
+    "diagnostic_case_ids": [
       "prefill_M8192",
       "decode_M1",
       "decode_M64"
-    ],
-    "count_note": "Counts describe distinct scopes. Captures, boundary specs, histogram observations and benchmark buckets are not interchangeable."
+    ]
   },
-  "benchmark_cases": [
-    {
-      "case_id": "prefill_M8192",
-      "shape_record_id": "prefill_M8192",
-      "regime": "prefill",
-      "evidence": "ut/unittest.py:330"
-    },
-    {
-      "case_id": "decode_M1",
-      "shape_record_id": "decode_M1",
-      "regime": "decode",
-      "evidence": "ut/unittest.py:330"
-    },
-    {
-      "case_id": "decode_M64",
-      "shape_record_id": "decode_M64",
-      "regime": "decode",
-      "evidence": "ut/unittest.py:330"
-    }
-  ],
+  "benchmark_cases": [],
   "cases": [
     {
       "case_id": "prefill_M8192",
@@ -486,10 +480,11 @@
           }
         }
       ],
-      "benchmark_case_ids": [
+      "benchmark_case_ids": [],
+      "notes": [],
+      "diagnostic_case_ids": [
         "prefill_M8192"
-      ],
-      "notes": []
+      ]
     },
     {
       "case_id": "decode_M1",
@@ -824,10 +819,11 @@
           }
         }
       ],
-      "benchmark_case_ids": [
+      "benchmark_case_ids": [],
+      "notes": [],
+      "diagnostic_case_ids": [
         "decode_M1"
-      ],
-      "notes": []
+      ]
     },
     {
       "case_id": "decode_M64",
@@ -1162,10 +1158,11 @@
           }
         }
       ],
-      "benchmark_case_ids": [
+      "benchmark_case_ids": [],
+      "notes": [],
+      "diagnostic_case_ids": [
         "decode_M64"
-      ],
-      "notes": []
+      ]
     }
   ],
   "source_inventories": {
@@ -1425,6 +1422,75 @@
           }
         }
       ]
+    },
+    "workload_scoring": {
+      "evidence": "ut/meta.json#/workload_scoring",
+      "records": {
+        "enabled": false,
+        "reason": "decode launch variant assumed, not observed; stage-1 routing is second-hand, not an observed stage-1 capture; zero-weight or boundary-only semantic case",
+        "cases": [
+          {
+            "case": "prefill_M8192",
+            "eligible": false,
+            "reasons": [
+              "stage-1 routing is second-hand, not an observed stage-1 capture"
+            ]
+          },
+          {
+            "case": "decode_M64",
+            "eligible": false,
+            "reasons": [
+              "stage-1 routing is second-hand, not an observed stage-1 capture",
+              "decode launch variant assumed, not observed"
+            ]
+          },
+          {
+            "case": "decode_M1",
+            "eligible": false,
+            "reasons": [
+              "stage-1 routing is second-hand, not an observed stage-1 capture",
+              "decode launch variant assumed, not observed",
+              "zero-weight or boundary-only semantic case"
+            ]
+          }
+        ],
+        "semantic_coverage": "all semantic cases retained; aggregate scoring fails closed"
+      }
+    },
+    "workload/regime": {
+      "evidence": "ut/meta.json#/workload/regime",
+      "records": {
+        "backend": "sglang",
+        "quant": {
+          "method": "mxfp4-pack-quantized",
+          "weight_dtype": "float4_e2m1fn_x2 (mx group_size 32, e8m0 scales)",
+          "act_dtype": "bfloat16 (UNQUANTIZED hidden states: untuned_fmoe_live.csv q_dtype_a=torch.bfloat16, so a1_scale is None and the kernel takes the a16w4 path)",
+          "block_size": 32,
+          "source": "config.text_config.quantization_config (compressed-tensors Mxfp4MoEMethod); parse_regime.py reports method=none because the quantization_config is nested under text_config"
+        },
+        "kv_cache_dtype": "auto",
+        "compile": "eager",
+        "enforce_eager": false,
+        "cuda_graph": true,
+        "attention_backend": "triton",
+        "prefill_chunk": 8192,
+        "notes": "0828 cycle1 baseline flags: --chunked-prefill-size 8192, --cuda-graph-max-bs 64, --moe-runner-backend aiter, --trust-remote-code. Decode replays under a HIP graph; prefill runs eager."
+      }
+    },
+    "workload/serving_weight_model": {
+      "evidence": "ut/meta.json#/workload/serving_weight_model",
+      "records": {
+        "isl": 8192,
+        "osl": 1024,
+        "conc": 64,
+        "prefill_chunk": 8192,
+        "analytic_calls": {
+          "prefill": 64,
+          "decode": 1024
+        },
+        "ttft_ms": null,
+        "tpot_ms": null
+      }
     }
   },
   "observed_shape_inventories": [],
@@ -1444,15 +1510,16 @@
     {
       "path": "ut/reference_io.pt",
       "sha256": "3d175ea5803d3523001cac000aa5d6c7d54b4a06dfa97999cd8eb22c081b3e31",
-      "metadata_evidence": "ut/meta.json#/reference_io_sha256",
+      "metadata_evidence": "ut/meta.json#/archival_capture/reference_io_sha256",
       "inspected": true,
-      "status": "hash verified; metadata extracted with restricted weights_only=True CPU mmap/FakeTensorMode; tensor values not read"
+      "status": "hash verified; metadata extracted with restricted weights_only=True CPU mmap/FakeTensorMode; tensor values not read",
+      "runtime_requirement": "optional archival evidence; default inputs use committed structural JSON and code generation"
     }
   ],
   "sources": [
     {
       "path": "ut/meta.json",
-      "sha256": "ef98df287264bc85a5979b4cf5e80999f898486444123f21e367b932db96756b"
+      "sha256": "3301cf5f4f47b51e1b8c672d327850d64aa2e795764b87baf71d137e0c438b0a"
     },
     {
       "path": "ut/unittest.py",
@@ -1460,7 +1527,7 @@
     },
     {
       "path": "config.yaml",
-      "sha256": "522ecb6000ab103ab5398c063dd0beb4ac7442a0f9636d460e85e22c377c6ce5"
+      "sha256": "f03e22f8635bded642d1421a0df47fadaa98ce94f1059eb3b9e855a4fc7c5797"
     },
     {
       "path": "scripts/source_abi.json",
@@ -1469,9 +1536,41 @@
     {
       "path": "ut/workload.json",
       "sha256": "993a167ecc5794d3ebb585828fc560bf0c0b7b11268356a7c21f6ca42ce03bca"
+    },
+    {
+      "path": "ut/generated_cases.json",
+      "sha256": "721ec8956374c2d536946df2e1e1e2a7d79e42d593bf75c31c14a09fb4e556ad"
+    },
+    {
+      "path": "ut/generated_contract.py",
+      "sha256": "aa756dce5dcd8ffe36d754ffd3c93b5ae11882b99bbceea5da5b91677c8e477e"
+    },
+    {
+      "path": "scripts/generated_task_runner.py",
+      "sha256": "586ab55373e6d400f2f7b0732eb01cbe1f9164ade152310201aa44010e5eb85a"
+    },
+    {
+      "path": "scripts/generated_controller.py",
+      "sha256": "830483414887b5135ad2347b4482e06a69e2d7c4657f69693cbf2a4fdfd9b94f"
+    },
+    {
+      "path": "scripts/generated_worker.py",
+      "sha256": "ec733139b2a49987c4259903126878f7c2eedb4901639420658f10f561a5fe8a"
+    },
+    {
+      "path": "scripts/archival_artifacts.json",
+      "sha256": "90754b6ed96e6fc5f5b04731e5f4cc3309436055d94b6c00d7279eed2c4cbb63"
+    },
+    {
+      "path": "ut/_l2_reference.py",
+      "sha256": "37c1e718a0051d1e61a244bd3a387c8c33a81360c26ec260697d0778b4369a73"
+    },
+    {
+      "path": "ut/generated_single_launch.py",
+      "sha256": "0cc15e7fff91d202eb45e77da2a133b12a2b6f93db69e7cd2fd34c88a891c908"
     }
   ],
-  "validation": "Hash-verified restricted CPU tensor metadata extraction plus static builder inspection. No tensor values read and no GPU correctness/performance validation.",
+  "validation": "Hash-verified restricted CPU tensor metadata extraction plus static builder inspection. That extraction read no tensor values and performed no GPU work. Subsequent public-runtime native correctness failed as recorded in native_validation_observation; no framework task-validator PASS or performance qualification. Workload scoring remains disabled by ut/meta.json.",
   "fixture_metadata": [
     {
       "artifact_path": "ut/reference_io.pt",
@@ -1954,5 +2053,96 @@
     "cpu_wheel_report_sha256": "aa6b4b5c0cf62a4e2502d9a653355d4ece850167e135556fac8e9855442a43ad",
     "all_artifacts_report_sha256": "0a48b0f19bbf1469b41dbb2a13dbda229ed1c3c790e2f5e9b3f3ed3181751925",
     "supplement_report_sha256": "fae60fce8d55bdafd867606b30e052eaa8690fe4907d3fa156a667773f4d12d4"
+  },
+  "generated_input_draft": {
+    "correctness_cases": 3,
+    "contract_file": "ut/generated_cases.json",
+    "contract_sha256": "721ec8956374c2d536946df2e1e1e2a7d79e42d593bf75c31c14a09fb4e556ad",
+    "gpu_validated": false,
+    "numerical_oracle_transported_to_candidate": false,
+    "actual_hyperloom_scenario_verified": false,
+    "single_launch_correctness_established": false,
+    "workload_scoring_enabled": false
+  },
+  "unscored_diagnostic_cases": [
+    {
+      "case_id": "prefill_M8192",
+      "shape_record_id": "prefill_M8192",
+      "regime": "prefill",
+      "evidence": "ut/unittest.py:330",
+      "scoring_enabled": false,
+      "scoring_reason": "decode launch variant assumed, not observed; stage-1 routing is second-hand, not an observed stage-1 capture; zero-weight or boundary-only semantic case",
+      "scoring_evidence": "ut/meta.json#/workload_scoring",
+      "role": "Former timing case retained for semantic and diagnostic coverage; aggregate workload scoring is disabled."
+    },
+    {
+      "case_id": "decode_M1",
+      "shape_record_id": "decode_M1",
+      "regime": "decode",
+      "evidence": "ut/unittest.py:330",
+      "scoring_enabled": false,
+      "scoring_reason": "decode launch variant assumed, not observed; stage-1 routing is second-hand, not an observed stage-1 capture; zero-weight or boundary-only semantic case",
+      "scoring_evidence": "ut/meta.json#/workload_scoring",
+      "role": "Former timing case retained for semantic and diagnostic coverage; aggregate workload scoring is disabled."
+    },
+    {
+      "case_id": "decode_M64",
+      "shape_record_id": "decode_M64",
+      "regime": "decode",
+      "evidence": "ut/unittest.py:330",
+      "scoring_enabled": false,
+      "scoring_reason": "decode launch variant assumed, not observed; stage-1 routing is second-hand, not an observed stage-1 capture; zero-weight or boundary-only semantic case",
+      "scoring_evidence": "ut/meta.json#/workload_scoring",
+      "role": "Former timing case retained for semantic and diagnostic coverage; aggregate workload scoring is disabled."
+    }
+  ],
+  "workload_scoring": {
+    "enabled": false,
+    "reason": "decode launch variant assumed, not observed; stage-1 routing is second-hand, not an observed stage-1 capture; zero-weight or boundary-only semantic case",
+    "cases": [
+      {
+        "case": "prefill_M8192",
+        "eligible": false,
+        "reasons": [
+          "stage-1 routing is second-hand, not an observed stage-1 capture"
+        ]
+      },
+      {
+        "case": "decode_M64",
+        "eligible": false,
+        "reasons": [
+          "stage-1 routing is second-hand, not an observed stage-1 capture",
+          "decode launch variant assumed, not observed"
+        ]
+      },
+      {
+        "case": "decode_M1",
+        "eligible": false,
+        "reasons": [
+          "stage-1 routing is second-hand, not an observed stage-1 capture",
+          "decode launch variant assumed, not observed",
+          "zero-weight or boundary-only semantic case"
+        ]
+      }
+    ],
+    "semantic_coverage": "all semantic cases retained; aggregate scoring fails closed"
+  },
+  "native_validation_observation": {
+    "observed_utc": "2026-09-20T16:44:22.766253Z",
+    "campaign": "parallel-waves-20260920T163446Z-e34e2370/v0517",
+    "artifact_name": "parallel-observation-20260920T164422.766253Z.json",
+    "artifact_sha256": "a3d626e4d0407c4493790e8b3cf438ef63977b49a61f5fb9a4501449e6aad2cf",
+    "artifact_scope": "External campaign observation; historical evidence, not a task runtime dependency.",
+    "architecture": "gfx950",
+    "runtime_profile": "public_hyperloom_sglang_v0517",
+    "runtime_preflight_status": "ok",
+    "correctness_status": "fail",
+    "error": "independent generated reference mismatch: prefill_M8192:single:0",
+    "native_duration_seconds": 133.14079218823463,
+    "qualification_issue": "upstream individual-launch errors remain unresolved",
+    "single_launch_correctness_established": false,
+    "framework_task_validator": "NOT_RUN",
+    "framework_PASS_claimed": false,
+    "correctness_report_sha256": "53e5533e7b302e04cd9ab7fcf62d1e4fbf1ae2d87e046cc6a4241be4a16091b6"
   }
 }

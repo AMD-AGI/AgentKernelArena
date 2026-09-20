@@ -1,3 +1,5 @@
+> Historical capture documentation. The active generated-input draft uses `generated_cases.json` and `generated_contract.py`, with fresh separate frozen-source references. No external tensor archive is required; see the task README for current commands.
+
 # DeepSeek-V4-Pro — MoE stage-1 `moe_stage1_grouped_gemm_silu_flydsl`
 
 | Model | ISL | OSL | CONC | Docker / Image | Kernel | GPU Time Share (%) | Current Roofline | HL Run Directory |

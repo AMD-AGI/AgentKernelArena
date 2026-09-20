@@ -17,6 +17,11 @@ import sys
 
 
 def load_module(name, path):
+    existing = sys.modules.get(name)
+    if existing is not None:
+        if Path(getattr(existing, "__file__", "")).resolve() != Path(path).resolve():
+            raise RuntimeError(f"benchmark module alias already names a different file: {name}")
+        return existing
     spec = importlib.util.spec_from_file_location(name, path)
     module = importlib.util.module_from_spec(spec)
     sys.modules[name] = module
@@ -200,6 +205,14 @@ def selected_cases(module, h, meta, torch, reference):
 
 
 def output_transform(module, meta, row, torch):
+    # Protected task adapters may compare compound/packed outputs outside the
+    # timed device interval. The declared module is attested by the bootstrap.
+    if hasattr(module, "comparison_output"):
+        integrity = getattr(sys.modules.get("runtime_integrity"), "ACTIVE_GUARD", None)
+        if integrity is None:
+            raise RuntimeError("compound output adapter requires the trusted bootstrap")
+        integrity.check_module(module)
+        return lambda output: module.comparison_output(output, row["args"])
     # DSA has oracle-derived don't-care masks. Apply the package's exact mask
     # only during comparison, outside the measured op, as its eager UT does.
     if hasattr(module, "_undef_mask") and hasattr(module, "_spec_by_name"):

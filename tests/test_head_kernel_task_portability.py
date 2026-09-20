@@ -219,26 +219,25 @@ def test_frozen_capture_digest_is_checked_before_each_deserialization(tmp_path, 
     "deepseek-v4-pro__moe_stage2_down_proj_reduce_opus_a8w4",
 ])
 def test_deepseek_rejects_persistent_output_object_and_missing_timing_case(task_name, monkeypatch):
-    cases = load_file(task_directory(task_name) / "ut" / "cases.py", "deepseek_cases_test")
-
-    class Output:
-        def untyped_storage(self):
-            return self
-
-        def data_ptr(self):
-            return 42
-
-    output = Output()
-    monkeypatch.setattr(cases, "_torch", lambda: types.SimpleNamespace(
-        is_tensor=lambda obj: isinstance(obj, Output)))
-    monkeypatch.setattr(cases, "_invoke", lambda _: output)
-    assert cases.call({}) is output
-    with pytest.raises(RuntimeError, match="shared_output_buffer"):
-        cases.call({})
+    torch = pytest.importorskip("torch")
+    task = task_directory(task_name)
+    generator = load_file(task / "ut/generated_contract.py", "deepseek_generator_test")
+    monkeypatch.setitem(sys.modules, "generated_contract", generator)
+    cases = load_file(task / "ut/cases.py", "deepseek_cases_test")
+    worker = load_file(task / "scripts/generated_worker.py", "deepseek_worker_test")
+    output = torch.zeros(2)
+    args = {"input": torch.ones(2)}
+    monkeypatch.setattr(cases, "call_full", lambda _: output)
+    monkeypatch.setattr(cases, "comparison_output", lambda result, _: result)
+    guard = types.SimpleNamespace(check=lambda: None)
+    previous = []
+    assert worker.invoke(cases, args, generator, torch, guard, previous)
+    with pytest.raises(RuntimeError, match="reused an earlier output component"):
+        worker.invoke(cases, args, generator, torch, guard, previous)
     monkeypatch.setattr(cases, "_oracle", lambda: [{"sig": "present"}])
-    monkeypatch.setattr(cases, "_bucket_sigs", lambda: ["present", "missing"])
-    with pytest.raises(RuntimeError, match="benchmark cases missing"):
-        cases.timing_cases(None, {})
+    with pytest.raises(RuntimeError, match="MoE timing case set changed"):
+        cases.timing_cases(None, {"workload": {"cases": [
+            {"sig": "present"}, {"sig": "missing"}]}})
 
 
 def test_tensor_attribute_restoration_cannot_silently_fail(contract):

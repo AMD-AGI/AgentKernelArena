@@ -5,25 +5,24 @@ target_kernel_functions:
 - sparse_mla_fwd_decode_partial
 - sparse_mla_fwd_decode_combine
 compile_command:
-- python3 scripts/task_runner.py compile --timeout 600
+- python3 scripts/generated_task_runner.py compile --timeout 600
 correctness_command:
-- python3 scripts/task_runner.py correctness --timeout 3600
+- python3 scripts/generated_task_runner.py correctness --timeout 3600
 performance_command:
-- python3 scripts/task_runner.py performance --timeout 3600
+- python3 scripts/generated_task_runner.py performance --timeout 3600
 task_type: triton2triton
 task_result_template: null
 prompt:
   source_code: null
-  instructions: "Optimize the DeepSeek-V4-Pro main_kernel kernel on MI355X (gfx950).\nBackend: tilelang.\
-    \ Serving capture: ISL 8192 / OSL 1024 / CONC 64 / TP 8.\n\nEdit only the declared source files and\
-    \ target functions:\n  source/tilelang_kernel.py\n  dpsk_v4_fp8_attention_fwd\n  sparse_mla_fwd_decode_partial\n\
-    \  sparse_mla_fwd_decode_combine\n\nKeep the production callable signature and the captured shape,\
-    \ dtype, stride,\ntensor-attribute, routing, state-update and output-alias contracts unchanged.\n\
-    Production seam: sglang.kernels.ops.attention.dsa.tilelang_kernel:dpsk_v4_fp8_attention_fwd.\nUse\
-    \ the task's frozen correctness references and complete benchmark case set.\nThe starting-source provenance\
-    \ is stock; archival profile\nand speedup figures in the provenance files are not measurements of\
-    \ this run.\nThe Arena evaluator measures the committed starting implementation and candidate\nunder\
-    \ the same benchmark contract. Do not edit ut/, scripts/, or config.yaml.\n"
+  instructions: "Optimize the DeepSeek-V4-Pro main_kernel kernel on MI355X (gfx950).\nBackend: tilelang. Serving capture:\
+    \ ISL 8192 / OSL 1024 / CONC 64 / TP 8.\n\nEdit only the declared source files and target functions:\n  source/tilelang_kernel.py\n\
+    \  dpsk_v4_fp8_attention_fwd\n  sparse_mla_fwd_decode_partial\n  sparse_mla_fwd_decode_combine\n\nKeep the production\
+    \ callable signature and the captured shape, dtype, stride,\ntensor-attribute, routing, state-update and output-alias\
+    \ contracts unchanged.\nProduction seam: sglang.kernels.ops.attention.dsa.tilelang_kernel:dpsk_v4_fp8_attention_fwd.\n\
+    Use the task's frozen correctness references and complete benchmark case set.\nThe starting-source provenance is stock;\
+    \ archival profile\nand speedup figures in the provenance files are not measurements of this run.\nThe Arena evaluator\
+    \ measures the committed starting implementation and candidate\nunder the same benchmark contract. Do not edit ut/, scripts/,\
+    \ or config.yaml.\n"
   cheatsheet: null
 headkernel:
   operation_id: deepseek-v4-pro__dsa_sparse_mla_attn
@@ -36,7 +35,7 @@ headkernel:
   device_symbol: main_kernel
   target_callable: sglang.kernels.ops.attention.dsa.tilelang_kernel:dpsk_v4_fp8_attention_fwd
   tol: 0.02
-  oracle: frozen live-capture ut/reference_io.pt
+  oracle: local finite generated numerical inputs at captured routing/layout; separate frozen-source reference worker
   source_package: Z/DeepSeek-V4-Pro_dsa_sparse_mla_attn
   source_seed: stock
   info_rows:
@@ -50,20 +49,28 @@ headkernel:
     dpsk_v4_fp8_attention_fwd: source/tilelang_kernel.py
     sparse_mla_fwd_decode_partial: source/tilelang_kernel.py
     sparse_mla_fwd_decode_combine: source/tilelang_kernel.py
-  capture_runtime:
-    image: harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.17-rocm720-mi35x-profilerfix
-    image_id: null
-    scope: Historical serving capture; not the current public runtime
-    sglang_version: 0.5.17
+  generated_input_revision: deepseek-generated-v2-draft
+  trusted_worker_modules:
+    generated_contract: ut/generated_contract.py
+    generated_worker: scripts/generated_worker.py
+    _deepseek_generated_cases: ut/cases.py
+    _headkernel_cases: ut/cases.py
+    _bench: scripts/_bench.py
   runtime:
     profile: public_hyperloom_sglang_v0517
     expected_image_id: sha256:ffe4af630e49b05c812db4a468bfb411c3dbb0e93124801f28349bfa31352dea
     sglang_version: 0.5.17
     qualification_status: pending
     public_tag: docker.io/rocm/hyperloom:sglang-v0.5.17-rocm7.2.0-mi350x
+  capture_runtime:
+    image: harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.17-rocm720-mi35x-profilerfix
+    image_id: null
+    scope: Historical serving capture; not the current public runtime
+    sglang_version: 0.5.17
 compile_timeout: 600
 correctness_timeout: 3600
 performance_timeout: 3600
 platform_support:
   required_arch: gfx950
   status: active
+harness_path: scripts/_bench.py

@@ -21,6 +21,24 @@ def _resolve(target):
     return obj
 
 
+def _generated_blob(device="cuda", seed=0):
+    """Generate numeric values while retaining the frozen structural contract."""
+    import importlib.util
+    from pathlib import Path
+    import sys
+    torch = importlib.import_module("torch")
+    path = Path(HERE) / "generated_contract.py"
+    module = sys.modules.get("generated_contract")
+    if module is None:
+        spec = importlib.util.spec_from_file_location("generated_contract", path)
+        module = importlib.util.module_from_spec(spec)
+        sys.modules["generated_contract"] = module
+        spec.loader.exec_module(module)
+    elif Path(module.__file__).resolve() != path.resolve():
+        raise RuntimeError("generated contract alias resolves outside this task")
+    return module.build_blob(module.load_contract(HERE), seed, torch, device)
+
+
 def _current_fn():
     global _RESOLVED
     if _RESOLVED is None:
@@ -61,8 +79,8 @@ def _restore(h, obj, shared, device):
     return h.reconstruct_captured(h.resolve_oracle_shared(obj, shared), device=device)
 
 
-def eager_cases(h, meta, device="cuda"):
-    blob = h.load_reference_io(os.path.join(HERE, meta["reference_io"]), map_location="cpu")
+def eager_cases(h, meta, device="cuda", seed=0):
+    blob = _generated_blob(device, seed)
     shared = blob.get("shared") or {}
     result = []
     for record in blob.get("records") or []:

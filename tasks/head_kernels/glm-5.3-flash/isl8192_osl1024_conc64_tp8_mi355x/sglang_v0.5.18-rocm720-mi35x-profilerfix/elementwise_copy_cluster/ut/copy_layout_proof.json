@@ -1,0 +1,96 @@
+{
+  "schema_version": 1,
+  "source": "ut/baseline_ref/fp8_utils.py.orig",
+  "source_sha256": "401aaf6a34f76781651dccc339899815e0b32989fc55880091f2136b712b43af",
+  "source_commit": "71de97b264b04dcd514cf904003028aefe9775c8",
+  "materializer": {
+    "line": 112,
+    "body": "scale.t().contiguous().t() if scale.dim() == 2 else scale"
+  },
+  "standard_quant_producer": {
+    "lines": [
+      1168,
+      1169,
+      1172,
+      1174,
+      1175
+    ],
+    "quantizer": "aiter_per1x128_quant",
+    "transpose_scale": false,
+    "shape_preserved": "[M, input_features/128]",
+    "recorded_input_strides": "All seven retained input records are row-major [G,1]."
+  },
+  "row_major_case_proof": {
+    "precondition": "2-D row-major [M,G], M>1 and G>1",
+    "transpose_stride": [
+      1,
+      "G"
+    ],
+    "contiguous_transpose_stride": [
+      "M",
+      1
+    ],
+    "output_stride": [
+      1,
+      "M"
+    ],
+    "output_aliases_input": false,
+    "reason": "The first transpose is non-contiguous, forcing a new allocation; transposing back preserves values and shape."
+  },
+  "singleton_proof": {
+    "precondition": "M=1 or G=1",
+    "behavior": "The transpose may already be contiguous; no forced allocation, and the output can alias input. Captured M1 cases prove this branch."
+  },
+  "timed_shapes": [
+    [
+      64,
+      2
+    ],
+    [
+      64,
+      12
+    ],
+    [
+      64,
+      16
+    ],
+    [
+      64,
+      32
+    ],
+    [
+      16384,
+      2
+    ],
+    [
+      16384,
+      12
+    ],
+    [
+      16384,
+      16
+    ],
+    [
+      16384,
+      32
+    ]
+  ],
+  "timed_shape_counter_evidence": "ut/meta.json#/capture_shape_counts",
+  "timer_input_constructor": "ut/cases.py:_synth uses contiguous FP32 [M,G]",
+  "unproven_branches": [
+    {
+      "source_lines": [
+        1158,
+        1160,
+        1162
+      ],
+      "branch": "input_scale is supplied by caller",
+      "gap": "This branch passes external scale layout to the materializer; source alone does not prove row-major input or a copy for every call."
+    },
+    {
+      "branch": "AITER quantizer allocation at the precise captured commit",
+      "gap": "The frozen SGLang call proves transpose_scale=False, but the complete matching AITER allocation body and per-timed-call branch association are not retained here. Local newer AITER source is not substituted as version proof."
+    }
+  ],
+  "qualification": "Exact stride/alias proof is conditional on the recorded row-major producer contract; complete served-branch association remains unproven."
+}

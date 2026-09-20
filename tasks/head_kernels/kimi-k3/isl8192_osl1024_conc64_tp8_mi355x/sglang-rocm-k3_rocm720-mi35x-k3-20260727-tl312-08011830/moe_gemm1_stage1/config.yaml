@@ -11,28 +11,17 @@ source_file_path:
 target_kernel_functions:
 - flydsl_moe_stage1
 compile_command:
-- python3 scripts/task_runner.py compile --timeout 600
+- python3 scripts/generated_task_runner.py compile --timeout 600
 correctness_command:
-- python3 scripts/task_runner.py correctness --timeout 3600
+- python3 scripts/generated_task_runner.py correctness --timeout 3600
 performance_command:
-- python3 scripts/task_runner.py performance --timeout 3600
+- python3 scripts/generated_task_runner.py performance --timeout 3600
 task_type: flydsl2flydsl
 task_result_template: null
 prompt:
   source_code: null
-  instructions: "Optimize the Kimi-K3 moe_gemm1_0 kernel on MI355X (gfx950).\nBackend: aiter asm (AOT)\
-    \ - fused_moe_2stages stage-1 gate+up - mxfp4 w + bf16 act. Serving capture: ISL 8192 / OSL 1024 /\
-    \ CONC 64 / TP 8.\n\nEdit only the declared source files and target functions:\n  source/flydsl/moe_kernels.py\n\
-    \  source/flydsl/kernels/mixed_moe_gemm_2stage.py\n  source/flydsl/kernels/gemm_mxscale_gfx1250.py\n\
-    \  source/flydsl/kernels/moe_gemm_2stage.py\n  source/flydsl/kernels/fmha_gfx1250/fmha_kernel.py\n\
-    \  source/flydsl/kernels/gemm_fp8fp4_gfx1250.py\n  source/flydsl/kernels/fused_compress_attn.py\n\
-    \  source/flydsl/kernels/fused_compress_attn_gfx1250.py\n  source/flydsl/kernels/fmha_gfx1250/fmha_core_loop.py\n\
-    \  flydsl_moe_stage1\n\nKeep the production callable signature and the captured shape, dtype, stride,\n\
-    tensor-attribute, routing, state-update and output-alias contracts unchanged.\nProduction seam: aiter.ops.flydsl.moe_kernels:flydsl_moe_stage1.\n\
-    Use the task's frozen correctness references and complete benchmark case set.\nThe starting-source\
-    \ provenance is stock; archival profile\nand speedup figures in the provenance files are not measurements\
-    \ of this run.\nThe Arena evaluator measures the committed starting implementation and candidate\n\
-    under the same benchmark contract. Do not edit ut/, scripts/, or config.yaml.\n"
+  instructions: "Optimize the Kimi-K3 moe_gemm1_0 kernel on MI355X (gfx950).\nBackend: aiter asm (AOT) - fused_moe_2stages stage-1 gate+up - mxfp4 w + bf16 act. Serving capture: ISL 8192 / OSL 1024 / CONC 64 / TP 8.\n\nEdit only the declared source files and target functions:\n  source/flydsl/moe_kernels.py\n  source/flydsl/kernels/mixed_moe_gemm_2stage.py\n  source/flydsl/kernels/gemm_mxscale_gfx1250.py\n  source/flydsl/kernels/moe_gemm_2stage.py\n  source/flydsl/kernels/fmha_gfx1250/fmha_kernel.py\n  source/flydsl/kernels/gemm_fp8fp4_gfx1250.py\n  source/flydsl/kernels/fused_compress_attn.py\n  source/flydsl/kernels/fused_compress_attn_gfx1250.py\n  source/flydsl/kernels/fmha_gfx1250/fmha_core_loop.py\n  flydsl_moe_stage1\n\nKeep the production callable signature and the captured shape, dtype, stride,\ntensor-attribute, routing, state-update and output-alias contracts unchanged.\nProduction seam: aiter.ops.flydsl.moe_kernels:flydsl_moe_stage1.\nUse the task's frozen correctness references\
+    \ and complete benchmark case set.\nThe starting-source provenance is stock; archival profile\nand speedup figures in the provenance files are not measurements of this run.\nThe Arena evaluator measures the committed starting implementation and candidate\nunder the same benchmark contract. Do not edit ut/, scripts/, or config.yaml.\n"
   cheatsheet: null
 headkernel:
   operation_id: kimi-k3__moe_gemm1_stage1
@@ -45,7 +34,7 @@ headkernel:
   device_symbol: moe_gemm1_0
   target_callable: aiter.ops.flydsl.moe_kernels:flydsl_moe_stage1
   tol: 0.02
-  oracle: frozen live-capture ut/reference_io.pt
+  oracle: generated numeric values at captured structures; fresh independent baseline workers and parent comparison
   source_package: Z/Kimi-K3_moe_gemm1_0
   source_seed: stock
   info_rows:
@@ -67,9 +56,21 @@ headkernel:
     sglang_version: 0.5.17
     qualification_status: pending
     public_tag: docker.io/rocm/hyperloom:sglang-v0.5.17-rocm7.2.0-mi350x
+  generated_input_revision: kimi-generated-v1-draft
+  actual_hyperloom_scenario_verified: false
+  qualification_issue: Existing median-of-21 policy does not establish single-launch correctness; upstream individual-launch errors remain unresolved.
+  trusted_worker_modules:
+    generated_contract: ut/generated_contract.py
+    generated_worker: scripts/generated_worker.py
+    _kimi_timing_helpers: scripts/_bench.py
+    _kimi_generated_package: ut/flydsl_package.py
+    kimi_l2_reference: ut/_l2_reference.py
+    kimi_single_launch: ut/generated_single_launch.py
+  workload_scoring_enabled: false
 compile_timeout: 600
 correctness_timeout: 3600
 performance_timeout: 3600
 platform_support:
   required_arch: gfx950
   status: active
+harness_path: scripts/generated_worker.py

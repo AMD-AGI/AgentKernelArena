@@ -45,11 +45,10 @@ def _bootstrap():
     that shadows stdlib ), so load it by absolute file path. See sglang_bootstrap.py."""
     if _C.get("boot"):
         return
-    spec = importlib.util.spec_from_file_location(
-        "sglang_bootstrap", os.path.join(HERE, "sglang_bootstrap.py"))
-    mod = importlib.util.module_from_spec(spec)
-    sys.modules["sglang_bootstrap"] = mod
-    spec.loader.exec_module(mod)
+    path = os.path.join(HERE, "sglang_bootstrap.py")
+    mod = sys.modules.get("sglang_bootstrap")
+    if mod is None or os.path.realpath(getattr(mod, "__file__", "")) != os.path.realpath(path):
+        raise RuntimeError("sglang_bootstrap must be the preloaded trusted task module")
     mod.ensure()
     _C["boot"] = True
 
@@ -66,8 +65,7 @@ def _device():
 
 def _blob():
     if "blob" not in _C:
-        _C["blob"] = _load_frozen_capture(_torch(), os.path.join(HERE, "reference_io.pt"),
-                                   map_location="cpu", weights_only=False)
+        raise RuntimeError("generated GLM inputs must be initialized by the protected generated worker")
     return _C["blob"]
 
 
@@ -192,7 +190,7 @@ def eager_cases(h, meta):
 
 
 # --------------------------------------------------------------------------- (2) weighted timing set
-def timing_cases(h, meta):
+def robustness_timing_cases(h, meta):
     served = _served(h, meta)
     specs = []
     for c in ((meta.get("workload") or {}).get("cases") or []):
@@ -212,6 +210,14 @@ def timing_cases(h, meta):
         hs, tw, ti = _synth_inputs(m, r, seed=1000 + m)
         out.append({"sig": sig, "regime": r, "m": m, "args": _build_args(hs, tw, ti)})
     return out
+
+
+def timing_cases(h, meta):
+    """Exact scored routing comes only from retained call rows, never resampling."""
+    helper = sys.modules.get("generated_contract")
+    if helper is None:
+        raise RuntimeError("generated_contract must be preloaded by the common trusted worker")
+    return helper.scored_moe_timing_cases(_blob(), _build_args, meta)
 
 
 # --------------------------------------------------------------------------- (3) random value parity

@@ -88,6 +88,7 @@ def verified_torch_load(torch, path, **kwargs):
     path = task_path(task_ut, relative)
     with (task_ut / "meta.json").open() as stream:
         meta = json.load(stream)
+    meta = {**meta.get("archival_capture", {}), **meta}
     names = {
         meta.get("reference_io", "reference_io.pt"): "reference_io_sha256",
         meta.get("geometry_file", "timing_geometry.pt"): "timing_geometry_sha256",
@@ -104,4 +105,6 @@ def verified_torch_load(torch, path, **kwargs):
     if actual != expected:
         raise RuntimeError(f"captured input SHA-256 mismatch for {relative}: "
                            f"expected {expected}, got {actual}")
+    torch.serialization.clear_safe_globals()
+    kwargs["weights_only"] = True
     return torch.load(str(path), **kwargs)

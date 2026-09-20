@@ -1386,7 +1386,6 @@
   "rank": "unknown",
   "reference_io": "reference_io.pt",
   "reference_io_note": "storage-deduped copy of the capture blob (9.24GB -> 2.22GB); values identical.",
-  "reference_io_sha256": "3232c6110462fa4a7cb9d057f9c9f36ebda27e7a19cbf379194198e2cb509337",
   "regime": {
     "attention_backend": "dsv4",
     "backend": "sglang",
@@ -4076,7 +4075,7 @@
   "short_name": "moe_stage2_down_proj_reduce_opus_a8w4",
   "source_hint": "provenance://runtime-image/aiter/csrc/opus_moe/",
   "source_path_in_sglang": "provenance://runtime-image/aiter/aiter/ops/opus/moe_stage2_a8w4_fused_adapter.py",
-  "synthesized": false,
+  "synthesized": true,
   "target": "aiter.ops.opus.moe_stage2_a8w4_fused_adapter:opus_a8w4_stage2_wrapper",
   "target_callable": "aiter.ops.opus.moe_stage2_a8w4_fused_adapter:opus_a8w4_stage2_wrapper",
   "tensor_attrs": {},
@@ -4273,7 +4272,7 @@
     "kernel": "moe_stage2_down_proj_reduce_opus_a8w4",
     "live_pct_gpu": 5.91,
     "name_match": "opus_moe_stage2",
-    "notes": "op_kind=moe: per-expert token counts are routing-dependent; effective-M buckets from meta drive a GEMM-style regime split. Treat weights as lower-confidence. WARNING: regime 'decode' has meta buckets [64, 256] but ZERO profiled time — likely a prefill/decode-biased profiling window. Decode-critical serving should set --min-regime-share to avoid ignoring it. WARNING: regime 'prefill' has meta buckets [2048, 32768] but ZERO profiled time — likely a prefill/decode-biased profiling window. Decode-critical serving should set --min-regime-share to avoid ignoring it. applied --min-regime-share 0.3: floored regimes ['prefill'].",
+    "notes": "op_kind=moe: per-expert token counts are routing-dependent; effective-M buckets from meta drive a GEMM-style regime split. Treat weights as lower-confidence. WARNING: regime 'decode' has meta buckets [64, 256] but ZERO profiled time \u2014 likely a prefill/decode-biased profiling window. Decode-critical serving should set --min-regime-share to avoid ignoring it. WARNING: regime 'prefill' has meta buckets [2048, 32768] but ZERO profiled time \u2014 likely a prefill/decode-biased profiling window. Decode-critical serving should set --min-regime-share to avoid ignoring it. applied --min-regime-share 0.3: floored regimes ['prefill'].",
     "num_cases": 5,
     "op_kind": "moe",
     "quant": {
@@ -4329,5 +4328,40 @@
     "weights_provenance": "mixed(prior+regime_floor+trace)"
   },
   "workload_path": "workload.json",
-  "workload_provenance": "provenance://shared-nfs/zihao/arena/exp/DeepSeek-V4-Pro-bigmoe/DeepSeek-V4-Pro/20260828T074807Z-9f06d44e/geak/e2e_cycle0/kernels/moe_stage2_down_proj_reduce_opus_a8w4_task/workload.json"
+  "workload_provenance": "provenance://shared-nfs/zihao/arena/exp/DeepSeek-V4-Pro-bigmoe/DeepSeek-V4-Pro/20260828T074807Z-9f06d44e/geak/e2e_cycle0/kernels/moe_stage2_down_proj_reduce_opus_a8w4_task/workload.json",
+  "archival_capture": {
+    "reference_io_sha256": "3232c6110462fa4a7cb9d057f9c9f36ebda27e7a19cbf379194198e2cb509337",
+    "synthesized": false,
+    "required": false
+  },
+  "generated_inputs": {
+    "schema_version": 1,
+    "contract_file": "generated_cases.json",
+    "contract_sha256": "c8a5c7c10518fc6f5ac349341c6b4b0708cd52af22d1a1f85d83823d10d0a917",
+    "record_signatures": [
+      "T(2048, 6, 384):torch.float8_e4m3fn|T(384, 768, 3584):torch.float4_e2m1fn_x2|T(384, 7168, 192):torch.float4_e2m1fn_x2|T(36858,):torch.int32|T(576,):torch.int32|T(2,):torch.int32|T(2048, 7168):torch.bfloat16|6|a2_scale=T(36864, 16):torch.float8_e8m0fnu|block_m=64|inter_dim_pad=0|kernelName=str|kernel_id=2003|model_dim_pad=0|route_out=True|sorted_weights=T(36858,):torch.float32|stage2_block_m=64|stage2_reduce_block_n=3072|w2_scale=T(2752512, 16):torch.float8_e8m0fnu",
+      "T(256, 6, 384):torch.float8_e4m3fn|T(384, 768, 3584):torch.float4_e2m1fn_x2|T(384, 7168, 192):torch.float4_e2m1fn_x2|T(13818,):torch.int32|T(432,):torch.int32|T(2,):torch.int32|T(256, 7168):torch.bfloat16|6|a2_scale=T(13824, 16):torch.float8_e8m0fnu|block_m=32|inter_dim_pad=0|kernelName=str|kernel_id=2005|model_dim_pad=0|route_out=False|sorted_weights=T(13818,):torch.float32|stage2_block_m=32|stage2_reduce_block_n=None|w2_scale=T(2752512, 16):torch.float8_e8m0fnu",
+      "T(64, 6, 384):torch.float8_e4m3fn|T(384, 768, 3584):torch.float4_e2m1fn_x2|T(384, 7168, 192):torch.float4_e2m1fn_x2|T(12666,):torch.int32|T(396,):torch.int32|T(2,):torch.int32|T(64, 7168):torch.bfloat16|6|a2_scale=T(12800, 16):torch.float8_e8m0fnu|block_m=32|inter_dim_pad=0|kernelName=str|kernel_id=2005|model_dim_pad=0|route_out=False|sorted_weights=T(12666,):torch.float32|stage2_block_m=32|stage2_reduce_block_n=None|w2_scale=T(2752512, 16):torch.float8_e8m0fnu",
+      "T(1, 6, 384):torch.float8_e4m3fn|T(384, 768, 3584):torch.float4_e2m1fn_x2|T(384, 7168, 192):torch.float4_e2m1fn_x2|T(12288,):torch.int32|T(384,):torch.int32|T(2,):torch.int32|T(1, 7168):torch.bfloat16|6|a2_scale=T(12288, 16):torch.float8_e8m0fnu|block_m=32|inter_dim_pad=0|kernelName=str|kernel_id=2005|model_dim_pad=0|route_out=False|sorted_weights=T(12288,):torch.float32|stage2_block_m=32|stage2_reduce_block_n=None|w2_scale=T(2752512, 16):torch.float8_e8m0fnu",
+      "T(32768, 6, 384):torch.float8_e4m3fn|T(384, 768, 3584):torch.float4_e2m1fn_x2|T(384, 7168, 192):torch.float4_e2m1fn_x2|T(221178,):torch.int32|T(3456,):torch.int32|T(2,):torch.int32|T(32768, 7168):torch.bfloat16|6|a2_scale=T(221184, 16):torch.float8_e8m0fnu|block_m=64|inter_dim_pad=0|kernelName=str|kernel_id=2003|model_dim_pad=0|route_out=True|sorted_weights=T(221178,):torch.float32|stage2_block_m=64|stage2_reduce_block_n=3072|w2_scale=T(2752512, 16):torch.float8_e8m0fnu"
+    ],
+    "baseline_source": "baseline_ref/geak_opus_moe_stage2_adapter.py.orig",
+    "baseline_sha256": "35233bb1e6ac0c7cdce75c4f864393703c02c00364b47bee959612eb73a6ddf7",
+    "candidate_source": "source/geak_opus_moe_stage2_adapter.py",
+    "source_package": "aiter.ops.opus",
+    "oracle": "fresh frozen-source worker, compared only in trusted parent",
+    "activation_scale_policy": "finite uniform E8M0 exponent 123, coherent across repeated routing slots",
+    "weight_scale_policy": "finite E8M0 exponents 121..124 in the exact physical layout",
+    "gpu_validated": false,
+    "secondary_output_policy": "all defined numerical results; stage1 joint FP8/E8M0 dequantization and DSA LSE with capture-proven NaN masks",
+    "scored_case_ids": [
+      "T(2048, 6, 384):torch.float8_e4m3fn|T(384, 768, 3584):torch.float4_e2m1fn_x2|T(384, 7168, 192):torch.float4_e2m1fn_x2|T(36858,):torch.int32|T(576,):torch.int32|T(2,):torch.int32|T(2048, 7168):torch.bfloat16|6|a2_scale=T(36864, 16):torch.float8_e8m0fnu|block_m=64|inter_dim_pad=0|kernelName=str|kernel_id=2003|model_dim_pad=0|route_out=True|sorted_weights=T(36858,):torch.float32|stage2_block_m=64|stage2_reduce_block_n=3072|w2_scale=T(2752512, 16):torch.float8_e8m0fnu",
+      "T(256, 6, 384):torch.float8_e4m3fn|T(384, 768, 3584):torch.float4_e2m1fn_x2|T(384, 7168, 192):torch.float4_e2m1fn_x2|T(13818,):torch.int32|T(432,):torch.int32|T(2,):torch.int32|T(256, 7168):torch.bfloat16|6|a2_scale=T(13824, 16):torch.float8_e8m0fnu|block_m=32|inter_dim_pad=0|kernelName=str|kernel_id=2005|model_dim_pad=0|route_out=False|sorted_weights=T(13818,):torch.float32|stage2_block_m=32|stage2_reduce_block_n=None|w2_scale=T(2752512, 16):torch.float8_e8m0fnu",
+      "T(64, 6, 384):torch.float8_e4m3fn|T(384, 768, 3584):torch.float4_e2m1fn_x2|T(384, 7168, 192):torch.float4_e2m1fn_x2|T(12666,):torch.int32|T(396,):torch.int32|T(2,):torch.int32|T(64, 7168):torch.bfloat16|6|a2_scale=T(12800, 16):torch.float8_e8m0fnu|block_m=32|inter_dim_pad=0|kernelName=str|kernel_id=2005|model_dim_pad=0|route_out=False|sorted_weights=T(12666,):torch.float32|stage2_block_m=32|stage2_reduce_block_n=None|w2_scale=T(2752512, 16):torch.float8_e8m0fnu",
+      "T(1, 6, 384):torch.float8_e4m3fn|T(384, 768, 3584):torch.float4_e2m1fn_x2|T(384, 7168, 192):torch.float4_e2m1fn_x2|T(12288,):torch.int32|T(384,):torch.int32|T(2,):torch.int32|T(1, 7168):torch.bfloat16|6|a2_scale=T(12288, 16):torch.float8_e8m0fnu|block_m=32|inter_dim_pad=0|kernelName=str|kernel_id=2005|model_dim_pad=0|route_out=False|sorted_weights=T(12288,):torch.float32|stage2_block_m=32|stage2_reduce_block_n=None|w2_scale=T(2752512, 16):torch.float8_e8m0fnu",
+      "T(32768, 6, 384):torch.float8_e4m3fn|T(384, 768, 3584):torch.float4_e2m1fn_x2|T(384, 7168, 192):torch.float4_e2m1fn_x2|T(221178,):torch.int32|T(3456,):torch.int32|T(2,):torch.int32|T(32768, 7168):torch.bfloat16|6|a2_scale=T(221184, 16):torch.float8_e8m0fnu|block_m=64|inter_dim_pad=0|kernelName=str|kernel_id=2003|model_dim_pad=0|route_out=True|sorted_weights=T(221178,):torch.float32|stage2_block_m=64|stage2_reduce_block_n=3072|w2_scale=T(2752512, 16):torch.float8_e8m0fnu"
+    ],
+    "unscored_probe_ids": [],
+    "secondary_output_evidence": "secondary_output_evidence.json"
+  }
 }

@@ -3,12 +3,23 @@
   "task_id": "kimi-k3__fwd_grouped_kernel_stage1",
   "task_path": ".",
   "path_base": "task directory",
-  "scope": "Single-GPU callable/operator unit benchmark on MI355X (gfx950). Serving capture context does not define kernel tensor shapes.",
+  "scope": "Single-GPU callable/operator semantic and diagnostic inventory on MI355X (gfx950). No enabled scored benchmark cases. Serving context does not define kernel tensor shapes or one shared historical scenario.",
   "serving_capture_context": {
     "isl": 8192,
     "osl": 1024,
     "concurrency": 64,
-    "tensor_parallel_world_size": 8
+    "tensor_parallel_world_size": 8,
+    "historical_scenario": {
+      "scenario": "decode-only attention historical workload",
+      "regime_prefill_chunk": null,
+      "analytic_weight_prefill_chunk": 16384,
+      "note": "The attention regime does not declare a prefill chunk. Its historical analytic weight model uses 16384 but has zero prefill calls; this is not an observed attention prefill scenario.",
+      "evidence": [
+        "ut/workload.json#/regime",
+        "ut/workload.json#/serving_weight_model"
+      ],
+      "shared_context_note": "ISL 8192 is input sequence length, not a shared prefill chunk or proof that all leaves came from one serving run."
+    }
   },
   "environment_evidence": "config.yaml",
   "interface": {
@@ -85,27 +96,16 @@
   "case_inventory": {
     "metadata_declared_num_cases": null,
     "shape_record_count": 4,
-    "benchmark_case_count": 2,
-    "benchmark_case_ids": [
+    "benchmark_case_count": 0,
+    "benchmark_case_ids": [],
+    "count_note": "benchmark_case_count counts enabled scored cases and is zero because ut/meta.json workload_scoring.enabled is false. Former timing cases remain unscored diagnostics. Every capture, boundary and diagnostic shape record is preserved.",
+    "diagnostic_case_count": 2,
+    "diagnostic_case_ids": [
       "decode_bs1_ctx8704",
       "decode_bs64_ctx8704"
-    ],
-    "count_note": "Counts describe distinct scopes. Captures, boundary specs, histogram observations and benchmark buckets are not interchangeable."
+    ]
   },
-  "benchmark_cases": [
-    {
-      "case_id": "decode_bs1_ctx8704",
-      "shape_record_id": "decode_bs1_ctx8704",
-      "regime": "decode",
-      "evidence": "ut/unittest.py:178"
-    },
-    {
-      "case_id": "decode_bs64_ctx8704",
-      "shape_record_id": "decode_bs64_ctx8704",
-      "regime": "decode",
-      "evidence": "ut/unittest.py:178"
-    }
-  ],
+  "benchmark_cases": [],
   "cases": [
     {
       "case_id": "oracle_bs1_ctx395",
@@ -408,7 +408,8 @@
       "benchmark_case_ids": [],
       "notes": [
         "Timing KV pool has 64 padding rows beyond total_kv. num_kv_splits is produced by the production GPU scheduler; max_kv_splits=256 is allocation capacity, not work per sequence."
-      ]
+      ],
+      "diagnostic_case_ids": []
     },
     {
       "case_id": "oracle_bs64_ctx8193",
@@ -780,7 +781,8 @@
       "benchmark_case_ids": [],
       "notes": [
         "Timing KV pool has 64 padding rows beyond total_kv. num_kv_splits is produced by the production GPU scheduler; max_kv_splits=256 is allocation capacity, not work per sequence."
-      ]
+      ],
+      "diagnostic_case_ids": []
     },
     {
       "case_id": "decode_bs1_ctx8704",
@@ -1034,11 +1036,12 @@
           "alias_of": "att_lse"
         }
       ],
-      "benchmark_case_ids": [
-        "decode_bs1_ctx8704"
-      ],
+      "benchmark_case_ids": [],
       "notes": [
         "Timing KV pool has 64 padding rows beyond total_kv. num_kv_splits is produced by the production GPU scheduler; max_kv_splits=256 is allocation capacity, not work per sequence."
+      ],
+      "diagnostic_case_ids": [
+        "decode_bs1_ctx8704"
       ]
     },
     {
@@ -1293,11 +1296,12 @@
           "alias_of": "att_lse"
         }
       ],
-      "benchmark_case_ids": [
-        "decode_bs64_ctx8704"
-      ],
+      "benchmark_case_ids": [],
       "notes": [
         "Timing KV pool has 64 padding rows beyond total_kv. num_kv_splits is produced by the production GPU scheduler; max_kv_splits=256 is allocation capacity, not work per sequence."
+      ],
+      "diagnostic_case_ids": [
+        "decode_bs64_ctx8704"
       ]
     }
   ],
@@ -1670,6 +1674,83 @@
           }
         }
       ]
+    },
+    "workload_scoring": {
+      "evidence": "ut/meta.json#/workload_scoring",
+      "records": {
+        "enabled": false,
+        "reason": "proxy context/pool; exact original control mapping unavailable; zero-weight or boundary-only semantic case",
+        "cases": [
+          {
+            "case": "oracle_bs1_ctx395",
+            "eligible": false,
+            "reasons": [
+              "proxy context/pool; exact original control mapping unavailable",
+              "zero-weight or boundary-only semantic case"
+            ]
+          },
+          {
+            "case": "oracle_bs64_ctx8193",
+            "eligible": false,
+            "reasons": [
+              "proxy context/pool; exact original control mapping unavailable",
+              "zero-weight or boundary-only semantic case"
+            ]
+          },
+          {
+            "case": "decode_bs1_ctx8704",
+            "eligible": false,
+            "reasons": [
+              "proxy context/pool; exact original control mapping unavailable",
+              "zero-weight or boundary-only semantic case"
+            ]
+          },
+          {
+            "case": "decode_bs64_ctx8704",
+            "eligible": false,
+            "reasons": [
+              "proxy context/pool; exact original control mapping unavailable",
+              "zero-weight or boundary-only semantic case"
+            ]
+          }
+        ],
+        "semantic_coverage": "all semantic cases retained; aggregate scoring fails closed"
+      }
+    },
+    "workload/regime": {
+      "evidence": "ut/meta.json#/workload/regime",
+      "records": {
+        "backend": "sglang",
+        "quant": {
+          "method": "none",
+          "weight_dtype": "",
+          "act_dtype": "",
+          "block_size": null,
+          "source": "none"
+        },
+        "kv_cache_dtype": "auto",
+        "compile": "eager",
+        "enforce_eager": false,
+        "cuda_graph": true,
+        "attention_backend": "",
+        "prefill_chunk": null,
+        "notes": "kv-cache-dtype=auto -> follows model compute dtype (usually bf16); confirm if fp8 desired."
+      }
+    },
+    "workload/serving_weight_model": {
+      "evidence": "ut/meta.json#/workload/serving_weight_model",
+      "records": {
+        "isl": 8192,
+        "osl": 1024,
+        "conc": 64,
+        "prefill_chunk": 16384,
+        "analytic_calls": {
+          "prefill": 0,
+          "decode": 1024
+        },
+        "ttft_ms": null,
+        "tpot_ms": null
+      }
     }
   },
   "observed_shape_inventories": [],
@@ -1729,15 +1810,16 @@
     {
       "path": "ut/reference_io.pt",
       "sha256": "017f8ede884504695283291955fa8750be3e5d2779dd67b3914f13ab7ae85b98",
-      "metadata_evidence": "ut/meta.json#/reference_io_sha256",
+      "metadata_evidence": "ut/meta.json#/archival_capture/reference_io_sha256",
       "inspected": true,
-      "status": "hash verified; metadata extracted with restricted weights_only=True CPU mmap/FakeTensorMode; tensor values not read"
+      "status": "hash verified; metadata extracted with restricted weights_only=True CPU mmap/FakeTensorMode; tensor values not read",
+      "runtime_requirement": "optional archival evidence; default inputs use committed structural JSON and code generation"
     }
   ],
   "sources": [
     {
       "path": "ut/meta.json",
-      "sha256": "10611088e2a5e659c57799fb7e52b04d5257259b5b98193901606c5e842c5d19"
+      "sha256": "f7371f164af503c015fa6d44279c2e47138cdf8df8b922fd6e99df6ec4e2667b"
     },
     {
       "path": "ut/unittest.py",
@@ -1745,7 +1827,7 @@
     },
     {
       "path": "config.yaml",
-      "sha256": "c90e308ffb8ba6034f205c8dcf83118f157dedba0461c711c4b93c97786ebf7a"
+      "sha256": "567130d485f05a2496a9e6ac30975e5cb7b7646cf8b539cc7f054f768110751b"
     },
     {
       "path": "scripts/source_abi.json",
@@ -1758,9 +1840,33 @@
     {
       "path": "ut/workload.json",
       "sha256": "99cc27b298cf41abef541491020e6859507d753f895a613f9f1e30fb734d42a2"
+    },
+    {
+      "path": "ut/generated_cases.json",
+      "sha256": "15ac8ffc7c9ac66d40a09301faade6568c7b43d85d80bd49230f275c54b2c30c"
+    },
+    {
+      "path": "ut/generated_contract.py",
+      "sha256": "aa756dce5dcd8ffe36d754ffd3c93b5ae11882b99bbceea5da5b91677c8e477e"
+    },
+    {
+      "path": "scripts/generated_task_runner.py",
+      "sha256": "586ab55373e6d400f2f7b0732eb01cbe1f9164ade152310201aa44010e5eb85a"
+    },
+    {
+      "path": "scripts/generated_controller.py",
+      "sha256": "830483414887b5135ad2347b4482e06a69e2d7c4657f69693cbf2a4fdfd9b94f"
+    },
+    {
+      "path": "scripts/generated_worker.py",
+      "sha256": "ec733139b2a49987c4259903126878f7c2eedb4901639420658f10f561a5fe8a"
+    },
+    {
+      "path": "scripts/archival_artifacts.json",
+      "sha256": "e164701730d5dade073793e3c88aa442c8970ce92e4ccf275fb41e064e31bb28"
     }
   ],
-  "validation": "Hash-verified restricted CPU tensor metadata extraction plus static builder inspection. No tensor values read and no GPU correctness/performance validation.",
+  "validation": "Hash-verified restricted CPU tensor metadata extraction plus static builder inspection. No tensor values read and no GPU correctness/performance validation. Workload scoring is disabled by ut/meta.json; diagnostic timing membership does not establish workload fidelity or native correctness.",
   "fixture_metadata": [
     {
       "artifact_path": "ut/reference_io.pt",
@@ -2495,5 +2601,75 @@
     "cpu_wheel_report_sha256": "aa6b4b5c0cf62a4e2502d9a653355d4ece850167e135556fac8e9855442a43ad",
     "all_artifacts_report_sha256": "0a48b0f19bbf1469b41dbb2a13dbda229ed1c3c790e2f5e9b3f3ed3181751925",
     "supplement_report_sha256": "fae60fce8d55bdafd867606b30e052eaa8690fe4907d3fa156a667773f4d12d4"
+  },
+  "generated_input_draft": {
+    "correctness_cases": 2,
+    "contract_file": "ut/generated_cases.json",
+    "contract_sha256": "15ac8ffc7c9ac66d40a09301faade6568c7b43d85d80bd49230f275c54b2c30c",
+    "gpu_validated": false,
+    "numerical_oracle_transported_to_candidate": false,
+    "actual_hyperloom_scenario_verified": false,
+    "workload_scoring_enabled": false
+  },
+  "unscored_diagnostic_cases": [
+    {
+      "case_id": "decode_bs1_ctx8704",
+      "shape_record_id": "decode_bs1_ctx8704",
+      "regime": "decode",
+      "evidence": "ut/unittest.py:178",
+      "scoring_enabled": false,
+      "scoring_reason": "proxy context/pool; exact original control mapping unavailable; zero-weight or boundary-only semantic case",
+      "scoring_evidence": "ut/meta.json#/workload_scoring",
+      "role": "Former timing case retained for semantic and diagnostic coverage; aggregate workload scoring is disabled."
+    },
+    {
+      "case_id": "decode_bs64_ctx8704",
+      "shape_record_id": "decode_bs64_ctx8704",
+      "regime": "decode",
+      "evidence": "ut/unittest.py:178",
+      "scoring_enabled": false,
+      "scoring_reason": "proxy context/pool; exact original control mapping unavailable; zero-weight or boundary-only semantic case",
+      "scoring_evidence": "ut/meta.json#/workload_scoring",
+      "role": "Former timing case retained for semantic and diagnostic coverage; aggregate workload scoring is disabled."
+    }
+  ],
+  "workload_scoring": {
+    "enabled": false,
+    "reason": "proxy context/pool; exact original control mapping unavailable; zero-weight or boundary-only semantic case",
+    "cases": [
+      {
+        "case": "oracle_bs1_ctx395",
+        "eligible": false,
+        "reasons": [
+          "proxy context/pool; exact original control mapping unavailable",
+          "zero-weight or boundary-only semantic case"
+        ]
+      },
+      {
+        "case": "oracle_bs64_ctx8193",
+        "eligible": false,
+        "reasons": [
+          "proxy context/pool; exact original control mapping unavailable",
+          "zero-weight or boundary-only semantic case"
+        ]
+      },
+      {
+        "case": "decode_bs1_ctx8704",
+        "eligible": false,
+        "reasons": [
+          "proxy context/pool; exact original control mapping unavailable",
+          "zero-weight or boundary-only semantic case"
+        ]
+      },
+      {
+        "case": "decode_bs64_ctx8704",
+        "eligible": false,
+        "reasons": [
+          "proxy context/pool; exact original control mapping unavailable",
+          "zero-weight or boundary-only semantic case"
+        ]
+      }
+    ],
+    "semantic_coverage": "all semantic cases retained; aggregate scoring fails closed"
   }
 }

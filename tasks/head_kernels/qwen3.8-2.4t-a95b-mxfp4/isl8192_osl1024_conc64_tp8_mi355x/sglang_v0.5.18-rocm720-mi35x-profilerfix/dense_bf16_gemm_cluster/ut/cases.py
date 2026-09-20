@@ -41,14 +41,25 @@ def make_args(case, *, seed=None, rng=None, m=None, weight=None):
     return {"A": a, "B": b}
 
 
-def baseline_call(args):
+def reference_call(args):
     torch = _torch()
     return torch.nn.functional.linear(args["A"], args["B"], bias=None)
 
 
+def native_baseline_call(args):
+    dispatch = importlib.import_module("dense_dispatch_contract")
+    return dispatch.baseline_callable()(args["A"], args["B"], bias=None, otype=_torch().bfloat16)
+
+
+def baseline_call(args):
+    # Scored baseline is the retained configured native operator; reference_call
+    # remains the independent PyTorch mathematical oracle for correctness.
+    return native_baseline_call(args)
+
+
 def candidate_call(args):
-    tuned_gemm = importlib.import_module("aiter.tuned_gemm")
-    return tuned_gemm.gemm_a16w16(
+    dispatch = importlib.import_module("dense_dispatch_contract")
+    return dispatch.call_candidate(
         args["A"], args["B"], bias=None, otype=_torch().bfloat16
     )
 
@@ -60,7 +71,7 @@ def eager_cases(case):
         rows.append(
             {
                 "args": args,
-                "ref": baseline_call(args).detach().clone(),
+                "ref": reference_call(args).detach().clone(),
                 "sig": f"{case['sig']}:fixed[{draw}]",
                 "regime": case["regime"],
             }
@@ -84,7 +95,7 @@ def baseline_random_outputs(case, draws, seed=0):
     for draw in range(max(1, int(draws))):
         rng = torch.Generator(device=device).manual_seed(int(seed) + draw)
         args = make_args(case, rng=rng)
-        outputs[f"{case['sig']}|{draw}"] = baseline_call(args).detach().cpu()
+        outputs[f"{case['sig']}|{draw}"] = reference_call(args).detach().cpu()
         del args
     return outputs
 
@@ -117,7 +128,7 @@ def graph_replay_bundle(case):
     replay_cases = []
     for index in range(2):
         args = make_args(case, seed=2100 + index, m=m_full, weight=weight)
-        ref = baseline_call(args).detach().clone()
+        ref = reference_call(args).detach().clone()
         replay_cases.append(
             {
                 "args": args,

@@ -39,9 +39,10 @@ match the declared public validation runtime. A first-layer anonymous HEAD
 also returned HTTP 200; the complete image was not downloaded during this
 registry check.
 
-The GLM BF16 task generates all **27 cases** locally, so it needs **no tensor
-mirror and no `/shared_nfs` mount**. The image's AITER build pin matches the
-task's required source revision, and the public `aiter/tuned_gemm.py` at that
+All **18 task input contracts are self-contained**, with zero required tensor
+archives and no shared cluster filesystem dependency. The GLM BF16 task, for
+example, generates all **27 cases** locally. The image's AITER build pin matches
+that task's required source revision, and the public `aiter/tuned_gemm.py` at that
 revision has the task's exact required SHA-256. The task retains its installed
 source hash check: a declared build argument is not a substitute for checking
 the installed file and executing the GPU tests.
@@ -71,6 +72,6 @@ The `rocm10` SGLang variants change the ROCm stack. The `rocm/vllm` images
 also change the serving framework. None is an automatically admitted runtime
 for these captured SGLang tasks.
 
-Public image access does not itself resolve tensor-fixture dependencies or
-outstanding correctness/benchmark audit findings. Those
-remain separate requirements in [the validation status](../../tasks/head_kernels/VALIDATION.md).
+Public image access and self-contained inputs do not resolve outstanding
+correctness, workload-fidelity or benchmark qualification findings. Those remain
+separate requirements in [the validation status](../../tasks/head_kernels/VALIDATION.md).

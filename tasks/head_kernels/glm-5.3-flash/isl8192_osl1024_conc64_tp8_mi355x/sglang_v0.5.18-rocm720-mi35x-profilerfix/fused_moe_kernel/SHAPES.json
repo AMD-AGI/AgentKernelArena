@@ -126,37 +126,14 @@
   "case_inventory": {
     "metadata_declared_num_cases": 3,
     "shape_record_count": 4,
-    "benchmark_case_count": 3,
-    "benchmark_case_ids": [
-      "moe_m64_decode",
-      "moe_m8192_prefill",
-      "moe_m1_decode"
-    ],
-    "count_note": "Counts describe distinct scopes. Captures, boundary specs, histogram observations and benchmark buckets are not interchangeable."
+    "benchmark_case_count": 0,
+    "benchmark_case_ids": [],
+    "count_note": "Counts describe distinct scopes. Captures, boundary specs, histogram observations and benchmark buckets are not interchangeable.",
+    "materializable_benchmark_case_count": 0,
+    "complete_scored_timing_available": false,
+    "semantic_retained_case_count": 3
   },
-  "benchmark_cases": [
-    {
-      "case_id": "moe_m64_decode",
-      "shape_record_id": "decode_M64",
-      "regime": "decode",
-      "evidence": "ut/cases.py:195",
-      "notes": "Generated activation values; real routing rows resampled from the captured pool."
-    },
-    {
-      "case_id": "moe_m8192_prefill",
-      "shape_record_id": "oracle_m8192_prefill",
-      "regime": "prefill",
-      "evidence": "ut/cases.py:195",
-      "notes": "Generated activation values; real routing rows resampled from the captured pool."
-    },
-    {
-      "case_id": "moe_m1_decode",
-      "shape_record_id": "oracle_m1_decode",
-      "regime": "decode",
-      "evidence": "ut/cases.py:195",
-      "notes": "Generated activation values; real routing rows resampled from the captured pool."
-    }
-  ],
+  "benchmark_cases": [],
   "cases": [
     {
       "case_id": "oracle_m19_decode",
@@ -396,7 +373,10 @@
         }
       ],
       "benchmark_case_ids": [],
-      "notes": []
+      "notes": [
+        "Unscored: no retained payload qualifies as the authentic served pre-call workload."
+      ],
+      "case_role": "non_scored_initialization_semantics"
     },
     {
       "case_id": "oracle_m1_decode",
@@ -635,10 +615,11 @@
           }
         }
       ],
-      "benchmark_case_ids": [
-        "moe_m1_decode"
+      "benchmark_case_ids": [],
+      "notes": [
+        "Unscored: no retained payload qualifies as the authentic served pre-call workload."
       ],
-      "notes": []
+      "case_role": "non_scored_initialization_semantics"
     },
     {
       "case_id": "oracle_m8192_prefill",
@@ -877,10 +858,11 @@
           }
         }
       ],
-      "benchmark_case_ids": [
-        "moe_m8192_prefill"
+      "benchmark_case_ids": [],
+      "notes": [
+        "Unscored: no retained payload qualifies as the authentic served pre-call workload."
       ],
-      "notes": []
+      "case_role": "non_scored_initialization_semantics"
     },
     {
       "case_id": "decode_M64",
@@ -1124,10 +1106,12 @@
           "evidence": "source/fused_moe.py#fused_experts_impl"
         }
       ],
-      "benchmark_case_ids": [
-        "moe_m64_decode"
+      "benchmark_case_ids": [],
+      "notes": [
+        "Non-scored robustness only: raw routing record absent despite observed call shape.",
+        "Unscored: no retained payload qualifies as the authentic served pre-call workload."
       ],
-      "notes": []
+      "case_role": "non_scored_synthetic_routing_probe"
     }
   ],
   "source_inventories": {
@@ -1536,23 +1520,24 @@
     {
       "path": "ut/reference_io.pt",
       "sha256": "59040b163efbc9dbd3592a28dee01bcc2801bb669de170197524dfe335c5feee",
-      "metadata_evidence": "ut/meta.json#/reference_io_sha256",
+      "metadata_evidence": "ut/meta.json#/archival_capture/reference_io_sha256",
       "inspected": true,
-      "status": "hash verified; metadata extracted with restricted weights_only=True CPU mmap/FakeTensorMode; tensor values not read"
+      "status": "hash verified; metadata extracted with restricted weights_only=True CPU mmap/FakeTensorMode; tensor values not read",
+      "runtime_requirement": "archival provenance only; not required by generated task entrypoints"
     }
   ],
   "sources": [
     {
       "path": "ut/meta.json",
-      "sha256": "d0e5725ff0d739382aafc6f2dccebe024f3d0ae6cc7a6f3db0a0e0b0e6e757b7"
+      "sha256": "9c30e0d6d75be81d81cfff3221d9135970c017ffc0af8236f343f6933b4f7c77"
     },
     {
       "path": "ut/cases.py",
-      "sha256": "b7e00193c38e436adc48c40871cdd4dbc8dbfda200e415e32ce6cc4a096847eb"
+      "sha256": "e5b9cab94b3461f96b58fdfbe5c4242cc7150cc6deb161ad30fa59798dd986cd"
     },
     {
       "path": "config.yaml",
-      "sha256": "309993e9a620f58249f6ee432f862a94cdc1ba89084ccc83acec59f263deba17"
+      "sha256": "b7ecc5519fced0a982b90ec29c3e13d39d64d9bd0318161c19c920b5d16ac02f"
     },
     {
       "path": "scripts/source_abi.json",
@@ -1569,6 +1554,30 @@
     {
       "path": "ut/capture_meta.json",
       "sha256": "662f8d217f7922d0cf7747c633950802a620c67a040a03b8ce5849aeea6e0131"
+    },
+    {
+      "path": "ut/generated_cases.json",
+      "sha256": "19847a2ec2159ed93224c4556fc6d33cefdc6bf8efa80b44e1dbb6abd459f02d"
+    },
+    {
+      "path": "ut/generated_contract.py",
+      "sha256": "81737cdbbc547d8934ddb1df118d61a62f3db1b08ac1a0c61a989ee7d97060d3"
+    },
+    {
+      "path": "scripts/generated_worker.py",
+      "sha256": "cabb82de6e6bedca99016aff78038c50d5afb0a103eb704b5cec7d864bc6c242"
+    },
+    {
+      "path": "scripts/generated_correctness.py",
+      "sha256": "15ae7e5323ec02554efb9a13b0472f7f4fedf60db4c1983bc48fdd129b5f33bc"
+    },
+    {
+      "path": "scripts/generated_task_runner.py",
+      "sha256": "66f8449eee331ee46ff4b49cc230e0c7548387eac47ad31527eddb1c813a2c0e"
+    },
+    {
+      "path": "ut/workload_fidelity.json",
+      "sha256": "4643b6d7cd17067e62ef1b9ec00adbda4226551ab07d57cd452f83cb80eb806b"
     }
   ],
   "validation": "Hash-verified restricted CPU tensor metadata extraction plus static builder inspection. No tensor values read and no GPU correctness/performance validation.",
@@ -2237,5 +2246,45 @@
     "cpu_wheel_report_sha256": "aa6b4b5c0cf62a4e2502d9a653355d4ece850167e135556fac8e9855442a43ad",
     "all_artifacts_report_sha256": "0a48b0f19bbf1469b41dbb2a13dbda229ed1c3c790e2f5e9b3f3ed3181751925",
     "supplement_report_sha256": "fae60fce8d55bdafd867606b30e052eaa8690fe4907d3fa156a667773f4d12d4"
-  }
+  },
+  "generated_input_draft": {
+    "correctness_case_ids": [
+      "oracle_m19_decode",
+      "oracle_m1_decode",
+      "oracle_m8192_prefill"
+    ],
+    "random_case_ids": [
+      "rand_m19_decode",
+      "rand_m1_decode",
+      "rand_m8192_prefill",
+      "rand_m64_decode"
+    ],
+    "timed_case_ids": [],
+    "contract_file": "ut/generated_cases.json",
+    "contract_sha256": "19847a2ec2159ed93224c4556fc6d33cefdc6bf8efa80b44e1dbb6abd459f02d",
+    "gpu_validated": false
+  },
+  "archival_benchmark_cases": [
+    {
+      "case_id": "moe_m64_decode",
+      "shape_record_id": "decode_M64",
+      "regime": "decode",
+      "evidence": "ut/cases.py:195",
+      "notes": "Generated activation values; real routing rows resampled from the captured pool."
+    },
+    {
+      "case_id": "moe_m8192_prefill",
+      "shape_record_id": "oracle_m8192_prefill",
+      "regime": "prefill",
+      "evidence": "ut/cases.py:195",
+      "notes": "Generated activation values; real routing rows resampled from the captured pool."
+    },
+    {
+      "case_id": "moe_m1_decode",
+      "shape_record_id": "oracle_m1_decode",
+      "regime": "decode",
+      "evidence": "ut/cases.py:195",
+      "notes": "Generated activation values; real routing rows resampled from the captured pool."
+    }
+  ]
 }

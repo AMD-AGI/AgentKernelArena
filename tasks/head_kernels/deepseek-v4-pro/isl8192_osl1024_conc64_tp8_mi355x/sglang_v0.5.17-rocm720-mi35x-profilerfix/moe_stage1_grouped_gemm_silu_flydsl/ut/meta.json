@@ -1318,7 +1318,6 @@
   "primary_input_key": "a",
   "random_draws": 3,
   "reference_io": "reference_io.pt",
-  "reference_io_sha256": "722c170ae8e3c12d91c047d6acfd852ffc16beefecfd6b943fef51c6959159f4",
   "regime": {
     "attention_backend": "dsv4",
     "backend": "sglang",
@@ -3649,7 +3648,7 @@
   ],
   "short_name": "moe_stage1_grouped_gemm_silu_flydsl",
   "source_path_in_sglang": "provenance://runtime-image/aiter/aiter/ops/flydsl/moe_kernels.py",
-  "synthesized": false,
+  "synthesized": true,
   "target_callable": "aiter.ops.flydsl:flydsl_moe_stage1",
   "tensor_attrs": {},
   "tol": 0.15,
@@ -3835,7 +3834,7 @@
     "kernel": "moe_stage1_grouped_gemm_silu_flydsl",
     "live_pct_gpu": 8.56,
     "name_match": "mfma_moe1_silu_mul_afp8_wfp4",
-    "notes": "op_kind=moe: per-expert token counts are routing-dependent; effective-M buckets from meta drive a GEMM-style regime split. Treat weights as lower-confidence. WARNING: regime 'decode' has meta buckets [64, 256] but ZERO profiled time — likely a prefill/decode-biased profiling window. Decode-critical serving should set --min-regime-share to avoid ignoring it. WARNING: regime 'prefill' has meta buckets [2048] but ZERO profiled time — likely a prefill/decode-biased profiling window. Decode-critical serving should set --min-regime-share to avoid ignoring it.",
+    "notes": "op_kind=moe: per-expert token counts are routing-dependent; effective-M buckets from meta drive a GEMM-style regime split. Treat weights as lower-confidence. WARNING: regime 'decode' has meta buckets [64, 256] but ZERO profiled time \u2014 likely a prefill/decode-biased profiling window. Decode-critical serving should set --min-regime-share to avoid ignoring it. WARNING: regime 'prefill' has meta buckets [2048] but ZERO profiled time \u2014 likely a prefill/decode-biased profiling window. Decode-critical serving should set --min-regime-share to avoid ignoring it.",
     "num_cases": 5,
     "op_kind": "moe",
     "quant": {
@@ -3891,5 +3890,40 @@
     "weights_provenance": "mixed(prior+trace)"
   },
   "workload_path": "workload.json",
-  "workload_provenance": "provenance://shared-nfs/zihao/arena/exp/DeepSeek-V4-Pro-bigmoe/DeepSeek-V4-Pro/20260828T074807Z-9f06d44e/geak/e2e_cycle0/kernels/moe_stage1_grouped_gemm_silu_flydsl_task/workload.json"
+  "workload_provenance": "provenance://shared-nfs/zihao/arena/exp/DeepSeek-V4-Pro-bigmoe/DeepSeek-V4-Pro/20260828T074807Z-9f06d44e/geak/e2e_cycle0/kernels/moe_stage1_grouped_gemm_silu_flydsl_task/workload.json",
+  "archival_capture": {
+    "reference_io_sha256": "722c170ae8e3c12d91c047d6acfd852ffc16beefecfd6b943fef51c6959159f4",
+    "synthesized": false,
+    "required": false
+  },
+  "generated_inputs": {
+    "schema_version": 1,
+    "contract_file": "generated_cases.json",
+    "contract_sha256": "553174ed046129782d3d91dddb30714a94e02f4e991302c7126881d6650ca023",
+    "record_signatures": [
+      "a=T(2048, 7168):torch.float8_e4m3fn|a1_scale=T(36864, 224):torch.float8_e8m0fnu|a_dtype=str|a_scale_one=False|act=str|b_dtype=str|b_nt=2|bias=None|gate_mode=str|inter_dim_pad=0|k_batch=1|k_wave=1|model_dim_pad=0|num_valid_ids=T(2,):torch.int32|out=None|out_dtype=str|situ_beta=1.0|situ_linear_beta=1.0|sorted_expert_ids=T(576,):torch.int32|sorted_token_ids=T(36858,):torch.int32|sorted_weights=None|swiglu_limit=10.0|tile_k=256|tile_m=64|tile_n=256|topk=6|topk_ids=T(2048, 6):torch.int32|use_async_copy=True|w1=T(384, 768, 3584):torch.float4_e2m1fn_x2|w1_scale=T(294912, 224):torch.float8_e8m0fnu|waves_per_eu=1|xcd_swizzle=0",
+      "a=T(256, 7168):torch.float8_e4m3fn|a1_scale=T(13824, 224):torch.float8_e8m0fnu|a_dtype=str|a_scale_one=False|act=str|b_dtype=str|b_nt=2|bias=None|gate_mode=str|inter_dim_pad=0|k_batch=1|k_wave=1|model_dim_pad=0|num_valid_ids=T(2,):torch.int32|out=None|out_dtype=str|situ_beta=1.0|situ_linear_beta=1.0|sorted_expert_ids=T(432,):torch.int32|sorted_token_ids=T(13818,):torch.int32|sorted_weights=None|swiglu_limit=10.0|tile_k=256|tile_m=32|tile_n=128|topk=6|topk_ids=T(256, 6):torch.int32|use_async_copy=True|w1=T(384, 768, 3584):torch.float4_e2m1fn_x2|w1_scale=T(294912, 224):torch.float8_e8m0fnu|waves_per_eu=3|xcd_swizzle=0",
+      "a=T(64, 7168):torch.float8_e4m3fn|a1_scale=T(12672, 224):torch.float8_e8m0fnu|a_dtype=str|a_scale_one=False|act=str|b_dtype=str|b_nt=2|bias=None|gate_mode=str|inter_dim_pad=0|k_batch=1|k_wave=1|model_dim_pad=0|num_valid_ids=T(2,):torch.int32|out=None|out_dtype=str|situ_beta=1.0|situ_linear_beta=1.0|sorted_expert_ids=T(396,):torch.int32|sorted_token_ids=T(12666,):torch.int32|sorted_weights=None|swiglu_limit=10.0|tile_k=256|tile_m=32|tile_n=128|topk=6|topk_ids=T(64, 6):torch.int32|use_async_copy=True|w1=T(384, 768, 3584):torch.float4_e2m1fn_x2|w1_scale=T(294912, 224):torch.float8_e8m0fnu|waves_per_eu=2|xcd_swizzle=0",
+      "a=T(1, 7168):torch.float8_e4m3fn|a1_scale=T(12288, 224):torch.float8_e8m0fnu|a_dtype=str|a_scale_one=False|act=str|b_dtype=str|b_nt=2|bias=None|gate_mode=str|inter_dim_pad=0|k_batch=1|k_wave=4|model_dim_pad=0|num_valid_ids=T(2,):torch.int32|out=None|out_dtype=str|situ_beta=1.0|situ_linear_beta=1.0|sorted_expert_ids=T(384,):torch.int32|sorted_token_ids=T(12288,):torch.int32|sorted_weights=None|swiglu_limit=10.0|tile_k=256|tile_m=32|tile_n=64|topk=6|topk_ids=T(1, 6):torch.int32|use_async_copy=True|w1=T(384, 768, 3584):torch.float4_e2m1fn_x2|w1_scale=T(294912, 224):torch.float8_e8m0fnu|waves_per_eu=4|xcd_swizzle=0",
+      "a=T(32768, 7168):torch.float8_e4m3fn|a1_scale=T(221184, 224):torch.float8_e8m0fnu|a_dtype=str|a_scale_one=False|act=str|b_dtype=str|b_nt=0|bias=None|gate_mode=str|inter_dim_pad=0|k_batch=1|k_wave=1|model_dim_pad=0|num_valid_ids=T(2,):torch.int32|out=None|out_dtype=str|situ_beta=1.0|situ_linear_beta=1.0|sorted_expert_ids=T(3456,):torch.int32|sorted_token_ids=T(221178,):torch.int32|sorted_weights=None|swiglu_limit=10.0|tile_k=256|tile_m=64|tile_n=256|topk=6|topk_ids=T(32768, 6):torch.int32|use_async_copy=True|w1=T(384, 768, 3584):torch.float4_e2m1fn_x2|w1_scale=T(294912, 224):torch.float8_e8m0fnu|waves_per_eu=2|xcd_swizzle=4"
+    ],
+    "baseline_source": "baseline_ref/geak_flydsl_moe_kernels.py.orig",
+    "baseline_sha256": "72e9d4d0d5269ab99d87bbee53f6b5cf1d1287f82a01fe06877337a4a73fe727",
+    "candidate_source": "source/geak_flydsl_moe_kernels.py",
+    "source_package": "aiter.ops.flydsl",
+    "oracle": "fresh frozen-source worker, compared only in trusted parent",
+    "activation_scale_policy": "finite uniform E8M0 exponent 123, coherent across repeated routing slots",
+    "weight_scale_policy": "finite E8M0 exponents 121..124 in the exact physical layout",
+    "gpu_validated": false,
+    "secondary_output_policy": "all defined numerical results; stage1 joint FP8/E8M0 dequantization and DSA LSE with capture-proven NaN masks",
+    "scored_case_ids": [
+      "a=T(2048, 7168):torch.float8_e4m3fn|a1_scale=T(36864, 224):torch.float8_e8m0fnu|a_dtype=str|a_scale_one=False|act=str|b_dtype=str|b_nt=2|bias=None|gate_mode=str|inter_dim_pad=0|k_batch=1|k_wave=1|model_dim_pad=0|num_valid_ids=T(2,):torch.int32|out=None|out_dtype=str|situ_beta=1.0|situ_linear_beta=1.0|sorted_expert_ids=T(576,):torch.int32|sorted_token_ids=T(36858,):torch.int32|sorted_weights=None|swiglu_limit=10.0|tile_k=256|tile_m=64|tile_n=256|topk=6|topk_ids=T(2048, 6):torch.int32|use_async_copy=True|w1=T(384, 768, 3584):torch.float4_e2m1fn_x2|w1_scale=T(294912, 224):torch.float8_e8m0fnu|waves_per_eu=1|xcd_swizzle=0",
+      "a=T(256, 7168):torch.float8_e4m3fn|a1_scale=T(13824, 224):torch.float8_e8m0fnu|a_dtype=str|a_scale_one=False|act=str|b_dtype=str|b_nt=2|bias=None|gate_mode=str|inter_dim_pad=0|k_batch=1|k_wave=1|model_dim_pad=0|num_valid_ids=T(2,):torch.int32|out=None|out_dtype=str|situ_beta=1.0|situ_linear_beta=1.0|sorted_expert_ids=T(432,):torch.int32|sorted_token_ids=T(13818,):torch.int32|sorted_weights=None|swiglu_limit=10.0|tile_k=256|tile_m=32|tile_n=128|topk=6|topk_ids=T(256, 6):torch.int32|use_async_copy=True|w1=T(384, 768, 3584):torch.float4_e2m1fn_x2|w1_scale=T(294912, 224):torch.float8_e8m0fnu|waves_per_eu=3|xcd_swizzle=0",
+      "a=T(64, 7168):torch.float8_e4m3fn|a1_scale=T(12672, 224):torch.float8_e8m0fnu|a_dtype=str|a_scale_one=False|act=str|b_dtype=str|b_nt=2|bias=None|gate_mode=str|inter_dim_pad=0|k_batch=1|k_wave=1|model_dim_pad=0|num_valid_ids=T(2,):torch.int32|out=None|out_dtype=str|situ_beta=1.0|situ_linear_beta=1.0|sorted_expert_ids=T(396,):torch.int32|sorted_token_ids=T(12666,):torch.int32|sorted_weights=None|swiglu_limit=10.0|tile_k=256|tile_m=32|tile_n=128|topk=6|topk_ids=T(64, 6):torch.int32|use_async_copy=True|w1=T(384, 768, 3584):torch.float4_e2m1fn_x2|w1_scale=T(294912, 224):torch.float8_e8m0fnu|waves_per_eu=2|xcd_swizzle=0",
+      "a=T(1, 7168):torch.float8_e4m3fn|a1_scale=T(12288, 224):torch.float8_e8m0fnu|a_dtype=str|a_scale_one=False|act=str|b_dtype=str|b_nt=2|bias=None|gate_mode=str|inter_dim_pad=0|k_batch=1|k_wave=4|model_dim_pad=0|num_valid_ids=T(2,):torch.int32|out=None|out_dtype=str|situ_beta=1.0|situ_linear_beta=1.0|sorted_expert_ids=T(384,):torch.int32|sorted_token_ids=T(12288,):torch.int32|sorted_weights=None|swiglu_limit=10.0|tile_k=256|tile_m=32|tile_n=64|topk=6|topk_ids=T(1, 6):torch.int32|use_async_copy=True|w1=T(384, 768, 3584):torch.float4_e2m1fn_x2|w1_scale=T(294912, 224):torch.float8_e8m0fnu|waves_per_eu=4|xcd_swizzle=0",
+      "a=T(32768, 7168):torch.float8_e4m3fn|a1_scale=T(221184, 224):torch.float8_e8m0fnu|a_dtype=str|a_scale_one=False|act=str|b_dtype=str|b_nt=0|bias=None|gate_mode=str|inter_dim_pad=0|k_batch=1|k_wave=1|model_dim_pad=0|num_valid_ids=T(2,):torch.int32|out=None|out_dtype=str|situ_beta=1.0|situ_linear_beta=1.0|sorted_expert_ids=T(3456,):torch.int32|sorted_token_ids=T(221178,):torch.int32|sorted_weights=None|swiglu_limit=10.0|tile_k=256|tile_m=64|tile_n=256|topk=6|topk_ids=T(32768, 6):torch.int32|use_async_copy=True|w1=T(384, 768, 3584):torch.float4_e2m1fn_x2|w1_scale=T(294912, 224):torch.float8_e8m0fnu|waves_per_eu=2|xcd_swizzle=4"
+    ],
+    "unscored_probe_ids": [],
+    "secondary_output_evidence": "secondary_output_evidence.json"
+  }
 }

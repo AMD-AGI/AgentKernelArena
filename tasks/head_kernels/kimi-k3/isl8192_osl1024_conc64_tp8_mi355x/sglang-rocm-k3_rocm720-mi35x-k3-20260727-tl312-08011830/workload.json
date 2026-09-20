@@ -7,7 +7,8 @@
     "input_sequence_length": 8192,
     "output_sequence_length": 1024,
     "concurrency": 64,
-    "tensor_parallel_world_size": 8
+    "tensor_parallel_world_size": 8,
+    "scope_note": "Shared workload context only. input_sequence_length=8192 is ISL, not a universal prefill chunk. The task-local sources below represent distinct historical scenarios, not one observed common run."
   },
   "device": {
     "model": "MI355X",
@@ -53,7 +54,13 @@
         ],
         "required_model_types": []
       },
-      "capture_contract": "Task-local callable, case, oracle and source contracts are authoritative."
+      "capture_contract": "Task-local callable, case, oracle and source contracts are authoritative.",
+      "workload_scoring": {
+        "enabled": false,
+        "benchmark_case_count": 0,
+        "unscored_diagnostic_case_count": 2,
+        "evidence": "fwd_grouped_kernel_stage1/ut/meta.json#/workload_scoring"
+      }
     },
     {
       "operation_id": "kimi-k3__moe_gemm1_stage1",
@@ -91,7 +98,13 @@
         ],
         "required_model_types": []
       },
-      "capture_contract": "Task-local callable, case, oracle and source contracts are authoritative."
+      "capture_contract": "Task-local callable, case, oracle and source contracts are authoritative.",
+      "workload_scoring": {
+        "enabled": false,
+        "benchmark_case_count": 0,
+        "unscored_diagnostic_case_count": 3,
+        "evidence": "moe_gemm1_stage1/ut/meta.json#/workload_scoring"
+      }
     },
     {
       "operation_id": "kimi-k3__moe_gemm2_stage2",
@@ -129,7 +142,13 @@
         ],
         "required_model_types": []
       },
-      "capture_contract": "Task-local callable, case, oracle and source contracts are authoritative."
+      "capture_contract": "Task-local callable, case, oracle and source contracts are authoritative.",
+      "workload_scoring": {
+        "enabled": false,
+        "benchmark_case_count": 0,
+        "unscored_diagnostic_case_count": 4,
+        "evidence": "moe_gemm2_stage2/ut/meta.json#/workload_scoring"
+      }
     }
   ],
   "runtime_profile": "public_hyperloom_sglang_v0517",
@@ -138,5 +157,37 @@
     "image_id": null,
     "scope": "Historical serving capture; not the current public runtime"
   },
-  "image_group_role": "historical_serving_capture"
+  "image_group_role": "historical_serving_capture",
+  "historical_scenarios": {
+    "fwd_grouped_kernel_stage1": {
+      "scenario": "decode-only attention historical workload",
+      "regime_prefill_chunk": null,
+      "analytic_weight_prefill_chunk": 16384,
+      "note": "The attention regime does not declare a prefill chunk. Its historical analytic weight model uses 16384 but has zero prefill calls; this is not an observed attention prefill scenario.",
+      "evidence": [
+        "fwd_grouped_kernel_stage1/ut/workload.json#/regime",
+        "fwd_grouped_kernel_stage1/ut/workload.json#/serving_weight_model"
+      ]
+    },
+    "moe_gemm1_stage1": {
+      "scenario": "0828 cycle1 stage-1 launch and profile context",
+      "regime_prefill_chunk": 8192,
+      "analytic_weight_prefill_chunk": 8192,
+      "note": "Stage-1 ut/workload.json records the 0828 cycle1 --chunked-prefill-size 8192 flags. Its routing is second-hand from the separate 0817 stage-2 capture, and its decode launch variant is assumed rather than observed.",
+      "evidence": [
+        "moe_gemm1_stage1/ut/workload.json#/regime",
+        "moe_gemm1_stage1/ut/workload.json#/serving_weight_model"
+      ]
+    },
+    "moe_gemm2_stage2": {
+      "scenario": "original stage-2 live-server capture context",
+      "regime_prefill_chunk": 16384,
+      "analytic_weight_prefill_chunk": 16384,
+      "note": "Stage-2 ut/workload.json records chunked_prefill_size=16384 from the original live server log. Both M=16384 and M=8192 shapes are retained. This is a distinct historical scenario from the 0828 stage-1 chunk of 8192; a case M value alone does not identify the configured chunk.",
+      "evidence": [
+        "moe_gemm2_stage2/ut/workload.json#/regime",
+        "moe_gemm2_stage2/ut/workload.json#/serving_weight_model"
+      ]
+    }
+  }
 }

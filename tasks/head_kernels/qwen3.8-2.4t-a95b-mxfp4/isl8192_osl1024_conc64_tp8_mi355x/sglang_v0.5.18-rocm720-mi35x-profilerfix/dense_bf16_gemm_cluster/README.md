@@ -18,9 +18,9 @@ errors and must not be replaced by generated routing, placeholder geometry or re
 Inside the declared GPU runtime, run from this task directory:
 
 ```bash
-python3 scripts/task_runner.py compile --timeout 600
-python3 scripts/task_runner.py correctness --timeout 3600
-python3 scripts/task_runner.py performance --timeout 3600
+python3 scripts/dense_task_runner.py compile --timeout 600
+python3 scripts/dense_task_runner.py correctness --timeout 3600
+python3 scripts/dense_task_runner.py performance --timeout 3600
 ```
 
 Compilation is a CPU syntax and symbol check. Correctness uses the immutable task-specific oracle
@@ -36,3 +36,35 @@ validated on a compatible GPU. A clean task-validator report is required before 
 The editable symbols include Python launchers or operator dispatch where declared in the config.
 Those edits must preserve the complete callable workload, launch dimensions, ABI and output/state
 contract. A device-kernel speedup cannot be claimed by deleting operator work or changing tested shapes.
+
+## Frozen dispatch setup
+
+The task retains exactly five authoritative rows in `ut/live_dispatch_rows.csv`.
+Its recorded SHA-256 is checked before runtime imports. The task entrypoint sets
+`AITER_CONFIG_GEMM_BF16` first, so runtime preflight cannot cache an unrelated
+merged/default table. The protected setup also clears AITER's public cached
+configuration lookup and verifies the resolved table path before using it.
+
+Only protected configuration getters share the warmed native cache; candidate
+backend functions and the callable ABI remain unchanged. The task observes the
+actual candidate `solMap` and runs fresh backend/device-kernel selection checks.
+Missing kernel catalog support or any backend/solution/split-K/kernel mismatch
+still fails. In particular, `torch/0` without the retained `kernelName=native`
+field is not an exact match for hk05.
+
+This repair is CPU-tested only; it needs a fresh matching-image GPU run.
+
+## Source binding and optimization freedom
+
+AITER's `torch_compile_guard` reuses an existing globally registered operator
+when a copied candidate defines the same name. The trusted overlay therefore
+loads `gemm_a16w16` without that duplicate registration decorator; its body,
+argument defaults, source file, and all backend functions remain unchanged.
+The source body is called directly under the shared integrity monitor.
+
+Recorded configuration and device-symbol checks apply to the retained native
+baseline. The candidate must prove source execution and device work and pass
+all existing mathematical, mutation, output-layout and graph-replay checks.
+A valid candidate may use another backend or kernel symbol. Scored baseline
+timing uses the retained configured native operator; the independent numerical
+oracle remains `torch.nn.functional.linear`.

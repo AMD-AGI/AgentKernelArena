@@ -6,7 +6,11 @@ Python security sandbox. Install it before importing any editable candidate.
 from __future__ import annotations
 
 import builtins
+import base64
+import binascii
 import hashlib
+import importlib
+import importlib.metadata
 import io
 import json
 import math
@@ -15,6 +19,7 @@ import os
 from pathlib import Path
 import sys
 import types
+import zlib
 
 _GETFRAME = sys._getframe
 _HASH = hashlib.sha256
@@ -39,11 +44,12 @@ class _FixedIntegrityType(type):
 
 class _GuardAccess(metaclass=_FixedIntegrityType):
     """Expose comparison/check operations without exposing mutable guard state."""
-    __slots__ = ("__compare", "__check")
+    __slots__ = ("__compare", "__check", "__check_module")
 
-    def __init__(self, compare, check):
+    def __init__(self, compare, check, check_module):
         object.__setattr__(self, "_GuardAccess__compare", compare)
         object.__setattr__(self, "_GuardAccess__check", check)
+        object.__setattr__(self, "_GuardAccess__check_module", check_module)
 
     def __setattr__(self, name, value):
         raise IntegrityError("candidate changed the protected integrity-monitor interface")
@@ -53,6 +59,9 @@ class _GuardAccess(metaclass=_FixedIntegrityType):
 
     def check(self):
         return self.__check()
+
+    def check_module(self, module):
+        return self.__check_module(module)
 
 
 def _fingerprint(value):
@@ -74,11 +83,12 @@ class RuntimeIntegrity(metaclass=_FixedIntegrityType):
             raise IntegrityError(f"candidate changed protected integrity-monitor state: {name}")
         object.__setattr__(self, name, value)
 
-    def __init__(self, task_root, torch, benchmark, harness, overlay=None):
+    def __init__(self, task_root, torch, benchmark, harness, overlay=None, trusted_modules=None):
         self.root = Path(task_root).resolve()
         self.overlay = Path(overlay).resolve() if overlay else None
         self.modules = {"torch": torch, "_aka_benchmark": benchmark}
         self.bindings = []
+        self.class_bindings = []
         self.harness_fingerprints = {}
         self.paths = {}
         self._candidate_codes = {}
@@ -115,12 +125,26 @@ class RuntimeIntegrity(metaclass=_FixedIntegrityType):
             (torch.cuda.Event, ("elapsed_time", "record", "synchronize")),
             (torch.cuda.Stream, ("wait_stream", "synchronize")),
             (torch.cuda.CUDAGraph, ("capture_begin", "capture_end", "replay")),
-            (torch, ("isfinite", "isnan", "allclose", "isclose", "equal", "all", "any", "load", "save")),
-            (torch.Tensor, ("float", "pow", "mean", "sqrt", "clamp_min", "abs", "div", "max",
+            (torch, ("isfinite", "isnan", "isposinf", "isneginf", "arange", "allclose", "isclose", "equal", "all", "any", "load", "save",
+                     "is_tensor", "frombuffer", "empty", "empty_strided", "tensor", "Generator", "randn",
+                     "Tensor", "UntypedStorage", "dtype", "device", "float32", "bfloat16", "int32", "int64",
+                     "uint8", "bool", "float8_e4m3fn", "float8_e8m0fnu")),
+            (torch.Tensor, ("shape", "dtype", "device", "layout", "is_cuda", "requires_grad", "float", "pow", "mean", "sqrt", "clamp_min", "abs", "div", "max",
                             "item", "all", "equal", "__sub__", "__le__", "__add__", "__mul__",
-                            "__truediv__", "__bool__")),
+                            "__truediv__", "__bool__", "clone", "copy_", "as_strided", "view",
+                            "reshape", "stride", "storage_offset", "data_ptr", "untyped_storage",
+                            "cpu", "detach", "contiguous", "is_floating_point", "element_size",
+                            "set_", "normal_", "random_", "numpy", "tolist", "exp2", "clamp_max",
+                            "masked_fill", "index_select", "numel", "to", "any", "__getitem__",
+                            "__and__", "__or__", "__rshift__", "__floordiv__", "__lt__", "__ge__", "__eq__")),
+            (getattr(torch, "UntypedStorage", None), ("data_ptr", "nbytes")),
             (torch.testing, ("assert_close",)),
-            (builtins, ("open",)),
+            (base64, ("b64encode", "b64decode")),
+            (binascii, ("b2a_base64", "a2b_base64")),
+            (zlib, ("compressobj", "decompressobj", "compress", "decompress")),
+            (builtins, ("open", "bytes", "bytearray", "memoryview")),
+            (importlib, ("import_module", "metadata")),
+            (importlib.metadata, ("version",)),
             (io, ("open",)),
             (os, ("open",)),
             (math, ("isfinite",)),
@@ -129,6 +153,12 @@ class RuntimeIntegrity(metaclass=_FixedIntegrityType):
             (benchmark, ("torch",)),
         ):
             for name in names:
+                # A class without an instance operator may expose type.__or__
+                # as a fresh bound union method on every lookup. It is not a
+                # tensor primitive. Real Tensor operators are in its MRO.
+                if (isinstance(owner, type) and name.startswith("__")
+                        and not any(name in vars(base) for base in owner.__mro__)):
+                    continue
                 if hasattr(owner, name):
                     value = getattr(owner, name)
                     self.bindings.append((owner, name, value, _fingerprint(value)))
@@ -149,13 +179,48 @@ class RuntimeIntegrity(metaclass=_FixedIntegrityType):
             for name in ("RuntimeIntegrity", "IntegrityError", "_GuardAccess", "_fingerprint"):
                 value = getattr(monitor_module, name)
                 self.bindings.append((monitor_module, name, value, _fingerprint(value)))
+        # These are the actual preloaded objects used by the worker, not pristine
+        # copies of files that the worker later executes under unmonitored aliases.
+        # Cache/data globals may initialize normally; functions, imported modules,
+        # classes, and immutable public constants cannot be rebound by a candidate.
+        attested_ids = set()
+        for alias, module in (trusted_modules or {}).items():
+            if sys.modules.get(alias) is not module:
+                raise IntegrityError(f"trusted module alias is not installed: {alias}")
+            prior = self.modules.get(alias)
+            if prior is not None and prior is not module:
+                raise IntegrityError(f"conflicting trusted module alias: {alias}")
+            self.modules[alias] = module
+            if id(module) in attested_ids:
+                continue
+            attested_ids.add(id(module))
+            for name, value in vars(module).copy().items():
+                if (isinstance(value, (types.FunctionType, types.ModuleType, type))
+                        or (name.isupper() and not name.startswith("_")
+                            and isinstance(value, (str, bytes, int, float, bool, tuple, frozenset)))):
+                    self.bindings.append((module, name, value, _fingerprint(value)))
+                if isinstance(value, type) and value.__module__ == module.__name__:
+                    for member_name, descriptor in vars(value).copy().items():
+                        function = (descriptor.__func__ if isinstance(descriptor, (staticmethod, classmethod))
+                                    else descriptor)
+                        if isinstance(function, types.FunctionType):
+                            self.class_bindings.append((value, member_name, descriptor,
+                                                        _fingerprint(function)))
         self._protected_functions = frozenset(
             id(value) for _, _, value, _ in self.bindings if hasattr(value, "__code__")) | {
-                id(self._reference_correct)}
+                id(self._reference_correct)} | {
+                    id(value.__func__ if isinstance(value, (staticmethod, classmethod)) else value)
+                    for _, _, value, _ in self.class_bindings}
         object.__setattr__(self, "bindings", tuple(self.bindings))
+        object.__setattr__(self, "class_bindings", tuple(self.class_bindings))
         object.__setattr__(self, "modules", types.MappingProxyType(self.modules))
         object.__setattr__(self, "harness_fingerprints", types.MappingProxyType(self.harness_fingerprints))
-        self._access = _GuardAccess(self.compare, self.check)
+        self._access = _GuardAccess(self.compare, self.check, self.check_module)
+
+    def check_module(self, module):
+        self.check()
+        if not any(value is module for value in self.modules.values()):
+            raise IntegrityError("output adapter module was not preloaded and attested")
 
     def _candidate_filename(self, filename):
         if filename in self.paths:
@@ -199,6 +264,11 @@ class RuntimeIntegrity(metaclass=_FixedIntegrityType):
             value = getattr(owner, name, None)
             if value is not original or _fingerprint(value) != fingerprint:
                 raise IntegrityError(f"candidate changed trusted timing/comparison primitive: {name}")
+        for owner, name, original, fingerprint in self.class_bindings:
+            value = vars(owner).get(name)
+            function = value.__func__ if isinstance(value, (staticmethod, classmethod)) else value
+            if value is not original or _fingerprint(function) != fingerprint:
+                raise IntegrityError(f"candidate changed trusted worker method: {owner.__name__}.{name}")
         # Several UTs legitimately reload this same protected file under the
         # same name. Require its exact code/defaults and module globals, rather
         # than accepting replacement comparators or rejecting equivalent loads.
@@ -256,7 +326,7 @@ class RuntimeIntegrity(metaclass=_FixedIntegrityType):
         # stale ones. Include atomic-write siblings of every score/report path.
         protected_reports = ("_benchmark_reference", "_bench_raw", "performance_report",
                              "baseline_perf", "optimized_perf", "task_result",
-                             "validation_report", "compile_report", "correctness_report")
+                             "validation_report", "compile_report", "correctness_report", "runtime_preflight", "runtime_preflight_environment")
         return relative.name.startswith("_worker_completion_") or any(
                    relative.name == name or relative.name.startswith(name + ".")
                    for name in protected_reports)

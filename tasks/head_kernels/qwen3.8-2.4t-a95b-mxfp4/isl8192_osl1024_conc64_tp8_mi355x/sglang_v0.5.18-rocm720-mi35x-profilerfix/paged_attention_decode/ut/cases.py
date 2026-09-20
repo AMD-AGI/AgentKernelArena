@@ -15,6 +15,24 @@ _LIVE_CASE = None
 
 
 
+def _generated_blob(device="cuda", seed=0):
+    """Generate numeric values while retaining the frozen structural contract."""
+    import importlib.util
+    from pathlib import Path
+    import sys
+    torch = importlib.import_module("torch")
+    path = Path(HERE) / "generated_contract.py"
+    module = sys.modules.get("generated_contract")
+    if module is None:
+        spec = importlib.util.spec_from_file_location("generated_contract", path)
+        module = importlib.util.module_from_spec(spec)
+        sys.modules["generated_contract"] = module
+        spec.loader.exec_module(module)
+    elif Path(module.__file__).resolve() != path.resolve():
+        raise RuntimeError("generated contract alias resolves outside this task")
+    return module.build_blob(module.load_contract(HERE), seed, torch, device)
+
+
 def _load_frozen_capture(torch, path, **kwargs):
     import importlib.util
     from pathlib import Path
@@ -99,16 +117,13 @@ def _empty_like_strided(torch, tensor):
     )
 
 
-def load_live_case(device="cuda"):
-    global _LIVE_CASE
-    if _LIVE_CASE is not None:
+def load_live_case(device="cuda", seed=0):
+    global _LIVE_CASE, _GENERATED_KEY
+    if _LIVE_CASE is not None and _GENERATED_KEY == (str(device), int(seed)):
         return _LIVE_CASE
     torch = importlib.import_module("torch")
-    blob = _load_frozen_capture(torch,
-        os.path.join(HERE, META["reference_io"]),
-        map_location="cpu",
-        weights_only=False,
-    )
+    blob = _generated_blob(device, seed)
+    _GENERATED_KEY = (str(device), int(seed))
     records = blob.get("records") or []
     if len(records) != 1:
         raise RuntimeError(f"expected one live attention record, found {len(records)}")

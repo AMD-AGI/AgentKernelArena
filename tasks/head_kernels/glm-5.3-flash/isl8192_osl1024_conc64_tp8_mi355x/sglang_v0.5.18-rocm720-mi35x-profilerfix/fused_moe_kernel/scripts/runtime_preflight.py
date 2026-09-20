@@ -110,7 +110,7 @@ def _version(module, distribution: str) -> str | None:
         return None
 
 
-def preflight(config: dict, task_dir: Path | None = None) -> dict:
+def preflight(config: dict, task_dir: Path | None = None, *, phase: str = "complete") -> dict:
     """Return a serializable report; mismatches never produce a passing report.
 
     Optional headkernel.runtime fields tighten the capture contract when its
@@ -119,6 +119,8 @@ def preflight(config: dict, task_dir: Path | None = None) -> dict:
     required_model_types. The host runner resolves the selected tag and launches
     by Docker's local image/config ID. That ID is not a registry manifest digest.
     """
+    if phase not in {"environment", "complete"}:
+        raise ValueError("runtime preflight phase must be environment or complete")
     metadata = config.get("headkernel") or {}
     runtime = metadata.get("runtime") or {}
     requirements = runtime_requirements(config, task_dir)
@@ -129,6 +131,8 @@ def preflight(config: dict, task_dir: Path | None = None) -> dict:
     engine_id_role = os.environ.get("AGENT_KERNEL_ARENA_DOCKER_IMAGE_ID_ROLE")
     report = {
         "status": "fail",
+        "phase": phase,
+        "native_resolution_complete": False,
         "expected_image": expected_image,
         "capture_image": requirements["capture_image"],
         "capture_image_id": requirements["capture_image_id"],
@@ -202,10 +206,15 @@ def preflight(config: dict, task_dir: Path | None = None) -> dict:
     if errors:
         return report
 
-    # Fail before importing source overlays or executing a benchmark. Import
-    # paths and versions are recorded even when a required dependency fails.
+    # The worker's environment phase must not import native packages: their
+    # __init__ code may cache a target before the protected overlay is installed.
+    # PyTorch is the trusted numerical runtime needed to construct the guard.
     modules = {}
+    report["deferred_modules"] = []
     for name in requirements["required_modules"]:
+        if phase == "environment" and name != "torch":
+            report["deferred_modules"].append(name)
+            continue
         try:
             module = importlib.import_module(name)
             modules[name] = module
@@ -215,6 +224,8 @@ def preflight(config: dict, task_dir: Path | None = None) -> dict:
                           f"{type(exc).__name__}: {exc}")
 
     for name, expected in requirements["package_versions"].items():
+        if phase == "environment" and name != "torch":
+            continue
         actual = report["versions"].get(name)
         # SGLang local/build metadata is allowed when only a release is pinned.
         observed = actual.split("+", 1)[0] if name == "sglang" and actual and "+" not in expected else actual
@@ -245,19 +256,29 @@ def preflight(config: dict, task_dir: Path | None = None) -> dict:
     target = metadata.get("target_callable")
     if not isinstance(target, str) or ":" not in target:
         errors.append("Task config does not declare a module:callable target")
-    else:
+    elif phase == "complete":
         module_name, symbol = target.split(":", 1)
         try:
-            value = importlib.import_module(module_name)
+            owner = importlib.import_module(module_name)
+            value = owner
             for part in symbol.split("."):
                 value = getattr(value, part)
             if not callable(value):
                 errors.append(f"The captured target is not callable: {target}")
+            else:
+                report["target_resolution"] = {
+                    "target": target,
+                    "module_file": getattr(owner, "__file__", None),
+                    "callable_module": getattr(value, "__module__", None),
+                }
         except Exception as exc:
             errors.append(f"Captured runtime target {target!r} is unavailable: "
                           f"{type(exc).__name__}: {exc}")
 
-    for model_type in runtime.get("required_model_types") or []:
+    if phase == "environment":
+        report["target_resolution"] = "deferred_until_protected_overlay"
+    model_types = (runtime.get("required_model_types") or []) if phase == "complete" else []
+    for model_type in model_types:
         try:
             module = importlib.import_module("transformers.models.auto.configuration_auto")
             module.CONFIG_MAPPING[model_type]
@@ -266,14 +287,16 @@ def preflight(config: dict, task_dir: Path | None = None) -> dict:
                           f"install the documented architecture patch in the runtime "
                           f"({type(exc).__name__}: {exc})")
     report["status"] = "fail" if errors else "ok"
+    report["native_resolution_complete"] = phase == "complete" and not errors
     return report
 
 
-def require_runtime(config: dict, task_dir: Path | None = None) -> dict:
+def require_runtime(config: dict, task_dir: Path | None = None, *, phase: str = "complete") -> dict:
     """Persist the host identity and observed runtime, then reject mismatches."""
     task_dir = task_dir or Path(__file__).resolve().parents[1]
-    report = preflight(config, task_dir)
-    report_path = task_dir / "build/runtime_preflight.json"
+    report = preflight(config, task_dir, phase=phase)
+    filename = "runtime_preflight_environment.json" if phase == "environment" else "runtime_preflight.json"
+    report_path = task_dir / "build" / filename
     report_path.parent.mkdir(parents=True, exist_ok=True)
     report_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     if report["status"] != "ok":

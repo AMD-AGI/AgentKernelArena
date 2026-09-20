@@ -21,6 +21,11 @@ RUN_ROOT = os.path.dirname(HERE)
 
 
 def _load(name, path):
+    existing = sys.modules.get(name)
+    if existing is not None:
+        if os.path.realpath(getattr(existing, "__file__", "")) != os.path.realpath(path):
+            raise RuntimeError(f"trusted alias names another file: {name}")
+        return existing
     spec = importlib.util.spec_from_file_location(name, path)
     module = importlib.util.module_from_spec(spec)
     sys.modules[name] = module
@@ -59,13 +64,13 @@ with open(os.path.join(HERE, "meta.json")) as fh:
 if META.get("reference_io_sha256") != "":
     raise RuntimeError("runtime baseline GEMM oracle must not claim reference_io_sha256")
 
-os.environ["AITER_CONFIG_GEMM_BF16"] = os.path.join(
-    HERE, META["dispatch_config"]
-)
+dispatch = _load("dense_dispatch_contract", os.path.join(HERE, "dispatch_contract.py"))
+dispatch.prepare_environment()
 h = _load("harness_lib", os.path.join(HERE, "harness_lib.py"))
 sys.path[:] = [p for p in sys.path if os.path.abspath(p or ".") != HERE]
 sys.modules.pop("unittest", None)
 cases = _load("dense_bf16_gemm_cases", os.path.join(HERE, "cases.py"))
+selection_validator = _load("dense_bf16_selection", os.path.join(HERE, "validate_selection.py"))
 
 
 def _enter_candidate_overlay():
@@ -133,18 +138,6 @@ def _config_matches(config, case):
         and int(config.get("splitK", 0) or 0) == int(case["expected_split_k"])
         and str(config.get("kernelName", "") or "") == case["expected_kernel"]
     )
-
-
-def _install_backend_observer(tuned_gemm, backend):
-    original = tuned_gemm.solMap[backend]
-    state = {"calls": 0}
-
-    def observed(*args, **kwargs):
-        state["calls"] += 1
-        return original(*args, **kwargs)
-
-    tuned_gemm.solMap[backend] = observed
-    return original, state
 
 
 def _input_contract(torch, case):
@@ -237,11 +230,19 @@ def _run_case(case_id):
     torch = importlib.import_module("torch")
     if not torch.cuda.is_available():
         raise RuntimeError("dense GEMM UT requires a ROCm/CUDA device")
-    tuned_gemm = importlib.import_module("aiter.tuned_gemm")
+    tuned_gemm = dispatch.prepare_runtime()
     config = _runtime_config(torch, tuned_gemm, case)
     config_ok = _config_matches(config, case)
     if not config_ok:
         raise RuntimeError(f"live dispatcher config drift for {case_id}: {config}")
+
+    live_selection = selection_validator.validate_one(case)
+    if not live_selection.get("ok"):
+        raise RuntimeError(f"live backend/kernel selection drift for {case_id}: {live_selection}")
+
+    candidate_selection = selection_validator.validate_candidate(case)
+    if not candidate_selection.get("ok"):
+        raise RuntimeError(f"candidate source execution failed for {case_id}: {candidate_selection}")
 
     baseline_identity = _callable_identity(torch.nn.functional.linear)
     candidate_identity = _callable_identity(tuned_gemm.gemm_a16w16)
@@ -249,45 +250,41 @@ def _run_case(case_id):
     if not identity_ok:
         raise RuntimeError("baseline and candidate resolved to the same callable identity")
 
-    original_backend, engagement = _install_backend_observer(
-        tuned_gemm, case["expected_backend"]
-    )
+    initial_source_calls = dispatch.candidate_call_count()
     tol = float(case.get("tol", META["tol"]))
     eager = []
     replay = None
     baseline_outputs = {}
-    try:
-        baseline_outputs = cases.baseline_random_outputs(
-            case, int(META["random_draws"]), seed=0
-        )
-        eager = cases.eager_cases(case)
-        replay = cases.graph_replay_bundle(case)
-        ok, correctness = h.run_correctness(
-            META["regime"],
-            eager_cases=eager,
-            current_call=cases.candidate_call,
-            random_shapes=cases.random_shapes(case),
-            tol=tol,
-            baseline_outputs=baseline_outputs,
-            draws=int(META["random_draws"]),
-            replay=replay,
-        )
-        graph_rows = correctness.get("graph_replay") or []
-        graph_executed = bool(graph_rows) and all(
-            "skipped:" not in str(row.get("note", "")) for row in graph_rows
-        )
-        ok = ok and graph_executed
+    baseline_outputs = cases.baseline_random_outputs(
+        case, int(META["random_draws"]), seed=0
+    )
+    eager = cases.eager_cases(case)
+    replay = cases.graph_replay_bundle(case)
+    ok, correctness = h.run_correctness(
+        META["regime"],
+        eager_cases=eager,
+        current_call=cases.candidate_call,
+        random_shapes=cases.random_shapes(case),
+        tol=tol,
+        baseline_outputs=baseline_outputs,
+        draws=int(META["random_draws"]),
+        replay=replay,
+    )
+    graph_rows = correctness.get("graph_replay") or []
+    graph_executed = bool(graph_rows) and all(
+        "skipped:" not in str(row.get("note", "")) for row in graph_rows
+    )
+    ok = ok and graph_executed
 
-        contract_ok, contract = _input_contract(torch, case)
-        ok = ok and contract_ok
-        negative_ok, negative = _negative_check(case, eager, tol)
-        ok = ok and negative_ok
-        timing_ok, timing = _timing_smoke(case)
-        ok = ok and timing_ok
-        engagement_ok = engagement["calls"] > 0
-        ok = ok and engagement_ok and identity_ok and config_ok
-    finally:
-        tuned_gemm.solMap[case["expected_backend"]] = original_backend
+    contract_ok, contract = _input_contract(torch, case)
+    ok = ok and contract_ok
+    negative_ok, negative = _negative_check(case, eager, tol)
+    ok = ok and negative_ok
+    timing_ok, timing = _timing_smoke(case)
+    ok = ok and timing_ok
+    source_calls = dispatch.candidate_call_count() - initial_source_calls
+    engagement_ok = source_calls > 0
+    ok = ok and engagement_ok and identity_ok and config_ok
 
     result = {
         "schema_version": 1,
@@ -312,8 +309,11 @@ def _run_case(case_id):
                 key: (value.item() if hasattr(value, "item") else value)
                 for key, value in config.items()
             },
-            "backend_hook_calls": engagement["calls"],
-            "device_selection_evidence": selection,
+            "baseline_backend_hook_calls": live_selection["backend_hook_calls"],
+            "candidate_source_calls": source_calls,
+            "candidate_execution_evidence": candidate_selection,
+            "device_selection_evidence": live_selection,
+            "capture_selection_evidence": selection,
         },
         "oracle": {
             "policy": "runtime_frozen_torch_linear",
@@ -326,7 +326,8 @@ def _run_case(case_id):
         "gates": {
             "selection": bool(selection.get("ok")),
             "runtime_config_exact": config_ok,
-            "backend_engaged": engagement_ok,
+            "native_baseline_engaged": bool(live_selection.get("ok")),
+            "candidate_source_engaged": engagement_ok and bool(candidate_selection.get("ok")),
             "fixed_shape_baseline_parity": all(
                 row.get("correct") for row in correctness.get("eager", [])
             ),

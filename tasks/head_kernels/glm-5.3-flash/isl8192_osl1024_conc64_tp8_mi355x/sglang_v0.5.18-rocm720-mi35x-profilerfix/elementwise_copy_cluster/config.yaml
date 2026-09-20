@@ -3,25 +3,16 @@ source_file_path:
 target_kernel_functions:
 - materialize_bpreshuffle_fp8_scale
 compile_command:
-- python3 scripts/task_runner.py compile --timeout 600
+- python3 scripts/generated_task_runner.py compile --timeout 600
 correctness_command:
-- python3 scripts/task_runner.py correctness --timeout 3600
+- python3 scripts/generated_task_runner.py correctness --timeout 3600
 performance_command:
-- python3 scripts/task_runner.py performance --timeout 3600
+- python3 scripts/generated_task_runner.py performance --timeout 3600
 task_type: triton2triton
 task_result_template: null
 prompt:
   source_code: null
-  instructions: "Optimize the GLM-5.3-Flash elementwise_kernel_manual_unroll<128,4,...direct_copy_kernel_cuda...>\
-    \ kernel on MI355X (gfx950).\nBackend: ATen direct_copy_kernel_cuda. Serving capture: ISL 8192 / OSL\
-    \ 1024 / CONC 64 / TP 8.\n\nEdit only the declared source files and target functions:\n  source/bpreshuffle_scale_impl.py\n\
-    \  materialize_bpreshuffle_fp8_scale\n\nKeep the production callable signature and the captured shape,\
-    \ dtype, stride,\ntensor-attribute, routing, state-update and output-alias contracts unchanged.\n\
-    Production seam: sglang.srt.layers.quantization.fp8_utils:materialize_bpreshuffle_fp8_scale.\nUse\
-    \ the task's frozen correctness references and complete benchmark case set.\nThe starting-source provenance\
-    \ is prior-candidate; archival profile\nand speedup figures in the provenance files are not measurements\
-    \ of this run.\nThe Arena evaluator measures the committed starting implementation and candidate\n\
-    under the same benchmark contract. Do not edit ut/, scripts/, or config.yaml.\n"
+  instructions: "Optimize the GLM-5.3-Flash elementwise_kernel_manual_unroll<128,4,...direct_copy_kernel_cuda...> kernel on MI355X (gfx950).\nBackend: ATen direct_copy_kernel_cuda. Serving capture: ISL 8192 / OSL 1024 / CONC 64 / TP 8.\n\nEdit only the declared source files and target functions:\n  source/bpreshuffle_scale_impl.py\n  materialize_bpreshuffle_fp8_scale\n\nKeep the production callable signature and the captured shape, dtype, stride,\ntensor-attribute, routing, state-update and output-alias contracts unchanged.\nProduction seam: sglang.srt.layers.quantization.fp8_utils:materialize_bpreshuffle_fp8_scale.\nUse the task's frozen correctness references and complete benchmark case set.\nThe starting-source provenance is prior-candidate; archival profile\nand speedup figures in the provenance files are not measurements of this run.\nThe Arena evaluator measures the committed starting implementation and candidate\nunder the same benchmark contract. Do not edit ut/, scripts/, or config.yaml.\n"
   cheatsheet: null
 headkernel:
   operation_id: glm-5.3-flash__elementwise_copy_cluster
@@ -34,7 +25,7 @@ headkernel:
   device_symbol: elementwise_kernel_manual_unroll<128,4,...direct_copy_kernel_cuda...>
   target_callable: sglang.srt.layers.quantization.fp8_utils:materialize_bpreshuffle_fp8_scale
   tol: 1e-06
-  oracle: frozen live-capture ut/reference_io.pt
+  oracle: deterministic generated inputs at exact captured structure; protected independent parent references
   source_package: H/GLM-5.3-Flash_elementwise_copy_cluster_0913
   source_seed: prior-candidate
   info_rows:
@@ -63,9 +54,19 @@ headkernel:
     sglang_version: 0.5.18
     qualification_status: pending
     public_tag: docker.io/rocm/hyperloom:sglang-v0.5.18-rocm7.2.0-mi350x
+  generated_input_revision: glm-generated-v1-draft
+  trusted_worker_modules:
+    generated_contract: ut/generated_contract.py
+    generated_worker: scripts/generated_worker.py
+    _glm_generated_cases: ut/cases.py
+    _headkernel_cases: ut/cases.py
+    _bench: scripts/_bench.py
+  common_boundary_revision: a7bf289b
+  layout_proof: ut/copy_layout_proof.json
 compile_timeout: 600
 correctness_timeout: 3600
 performance_timeout: 3600
 platform_support:
   required_arch: gfx950
   status: active
+harness_path: scripts/generated_worker.py

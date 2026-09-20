@@ -56,8 +56,7 @@ def _meta():
 
 def _blob():
     if "blob" not in _C:
-        _C["blob"] = _load_frozen_capture(_torch(), os.path.join(HERE, "reference_io.pt"),
-                                   map_location="cpu", weights_only=False)
+        raise RuntimeError("generated GLM inputs must be initialized by the protected generated worker")
     return _C["blob"]
 
 

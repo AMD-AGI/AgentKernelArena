@@ -113,7 +113,9 @@
       "regime": "prefill_x64",
       "family_topk": 64,
       "phase": "prefill",
-      "rand_m": 1024
+      "rand_m": 1024,
+      "scored": true,
+      "case_role": "captured_workload"
     },
     {
       "name": "prefill_m8192_x1024",
@@ -122,7 +124,9 @@
       "regime": "prefill_x1024",
       "family_topk": 1024,
       "phase": "prefill",
-      "rand_m": 1024
+      "rand_m": 1024,
+      "scored": true,
+      "case_role": "captured_workload"
     },
     {
       "name": "decode_m64_x128",
@@ -131,7 +135,9 @@
       "regime": "decode_x128",
       "family_topk": 128,
       "phase": "decode",
-      "rand_m": 64
+      "rand_m": 64,
+      "scored": true,
+      "case_role": "captured_workload"
     },
     {
       "name": "decode_m64_x1024",
@@ -141,7 +147,9 @@
       "family_topk": 1024,
       "phase": "decode",
       "rand_m": 64,
-      "replay": true
+      "replay": true,
+      "scored": true,
+      "case_role": "captured_workload"
     },
     {
       "name": "decode_m1_x128",
@@ -151,7 +159,9 @@
       "family_topk": 128,
       "phase": "decode",
       "rand_m": 1,
-      "derived_from": "decode_m64_x128"
+      "derived_from": "decode_m64_x128",
+      "scored": false,
+      "case_role": "unscored_correctness_robustness"
     },
     {
       "name": "decode_m1_x1024",
@@ -161,7 +171,9 @@
       "family_topk": 1024,
       "phase": "decode",
       "rand_m": 1,
-      "derived_from": "decode_m64_x1024"
+      "derived_from": "decode_m64_x1024",
+      "scored": false,
+      "case_role": "unscored_correctness_robustness"
     }
   ],
   "call_sequence": [
@@ -208,7 +220,7 @@
       64
     ]
   },
-  "synthesized": false,
+  "synthesized": true,
   "cases": [
     {
       "name": "prefill_m8192_x64",
@@ -636,9 +648,8 @@
         }
       }
     ],
-    "notes": "attn: 449us of unnamed launches spread across meta regimes by size. CROSS-CHECK regime 'decode': 100% of capture CALLS vs 1% of profiled TIME (count≠time; large gap ⇒ biased capture window or mis-attributed profile — weight uses TIME). CROSS-CHECK regime 'prefill': 0% of capture CALLS vs 99% of profiled TIME (count≠time; large gap ⇒ biased capture window or mis-attributed profile — weight uses TIME). auto decode-floor: analytic serving model has decode=1024 calls but profiled decode share=0.01 < 0.30 (graph-hidden / under-captured decode) -> flooring decode to 0.30; authoritative split remains the unittest self-weight (measured ms x analytic_calls). applied --min-regime-share 0.3: floored regimes ['decode']. online kv-cache-dtype=fp8: the attention oracle + kernel MUST use the fp8 KV layout/stride, else a bf16-stride read over fp8 bytes faults. Verify the captured KV dtype matches."
+    "notes": "attn: 449us of unnamed launches spread across meta regimes by size. CROSS-CHECK regime 'decode': 100% of capture CALLS vs 1% of profiled TIME (count\u2260time; large gap \u21d2 biased capture window or mis-attributed profile \u2014 weight uses TIME). CROSS-CHECK regime 'prefill': 0% of capture CALLS vs 99% of profiled TIME (count\u2260time; large gap \u21d2 biased capture window or mis-attributed profile \u2014 weight uses TIME). auto decode-floor: analytic serving model has decode=1024 calls but profiled decode share=0.01 < 0.30 (graph-hidden / under-captured decode) -> flooring decode to 0.30; authoritative split remains the unittest self-weight (measured ms x analytic_calls). applied --min-regime-share 0.3: floored regimes ['decode']. online kv-cache-dtype=fp8: the attention oracle + kernel MUST use the fp8 KV layout/stride, else a bf16-stride read over fp8 bytes faults. Verify the captured KV dtype matches."
   },
-  "reference_io_sha256": "981eb9be0909a11f831800c31e6399cffb0970d31f1393469d4e7e3a91e35f5a",
   "capture_source": "oracle2/capture.pid-727130.rank-unknown",
   "graph_replayed_in_capture": false,
   "candidate_backends": [
@@ -1400,5 +1411,41 @@
     "decode"
   ],
   "num_cases": 4,
-  "notes": "Selection re-probed (run #4) with markers PROVABLY INSTALLED on all 14 candidates in all 8 TP ranks: _sel4_overlay/geak_lazy_markers.py force-imports the candidate modules the live path never imports (dsa_backend, dsa.triton_sparse_mla, nsa_triton_decode) at a late trigger (first import of deepseek_v4_backend_hip_radix -- past init_process_group, before the first attention forward), which converts them from 'missing_candidate_markers' (probe omitted) into 'installed_but_never_live' (proven dead). kernel_selection.py: ok=true, deepest_verified=true, failed=[], missing_candidate_markers=[], deeper_live_candidates=[]."
+  "notes": "Selection re-probed (run #4) with markers PROVABLY INSTALLED on all 14 candidates in all 8 TP ranks: _sel4_overlay/geak_lazy_markers.py force-imports the candidate modules the live path never imports (dsa_backend, dsa.triton_sparse_mla, nsa_triton_decode) at a late trigger (first import of deepseek_v4_backend_hip_radix -- past init_process_group, before the first attention forward), which converts them from 'missing_candidate_markers' (probe omitted) into 'installed_but_never_live' (proven dead). kernel_selection.py: ok=true, deepest_verified=true, failed=[], missing_candidate_markers=[], deeper_live_candidates=[].",
+  "archival_capture": {
+    "reference_io_sha256": "981eb9be0909a11f831800c31e6399cffb0970d31f1393469d4e7e3a91e35f5a",
+    "synthesized": false,
+    "required": false
+  },
+  "generated_inputs": {
+    "schema_version": 1,
+    "contract_file": "generated_cases.json",
+    "contract_sha256": "d7553763661671cb403bcd525dc1ee87e0cc2011cb0c1774877502cfc00b22e9",
+    "record_signatures": [
+      "attn_sink=T(64,):torch.float32|block_table=None|cache_seqlens=None|extra_indices_in_kvcache=T(8192, 1, 64):torch.int32|extra_k_cache=T(40128, 2, 1, 584):torch.float8_e4m3fn|extra_topk_length=T(8192,):torch.int32|head_dim_v=512|indices=T(8192, 1, 128):torch.int32|is_fp8_kvcache=True|k_cache=T(4013, 256, 1, 584):torch.float8_e4m3fn|q=T(8192, 1, 64, 512):torch.bfloat16|softmax_scale=0.04419417382415922|tile_scheduler_metadata=None|topk_length=T(8192,):torch.int32",
+      "attn_sink=T(64,):torch.float32|block_table=None|cache_seqlens=None|extra_indices_in_kvcache=T(8192, 1, 1024):torch.int32|extra_k_cache=T(40128, 64, 1, 584):torch.float8_e4m3fn|extra_topk_length=T(8192,):torch.int32|head_dim_v=512|indices=T(8192, 1, 128):torch.int32|is_fp8_kvcache=True|k_cache=T(4013, 256, 1, 584):torch.float8_e4m3fn|q=T(8192, 1, 64, 512):torch.bfloat16|softmax_scale=0.04419417382415922|tile_scheduler_metadata=None|topk_length=T(8192,):torch.int32",
+      "attn_sink=T(64,):torch.float32|block_table=None|cache_seqlens=None|extra_indices_in_kvcache=T(64, 1, 128):torch.int32|extra_k_cache=T(40128, 2, 1, 584):torch.float8_e4m3fn|extra_topk_length=T(64,):torch.int32|head_dim_v=512|indices=T(64, 1, 128):torch.int32|is_fp8_kvcache=True|k_cache=T(4013, 256, 1, 584):torch.float8_e4m3fn|q=T(64, 1, 64, 512):torch.bfloat16|softmax_scale=0.04419417382415922|tile_scheduler_metadata=None|topk_length=T(64,):torch.int32",
+      "attn_sink=T(64,):torch.float32|block_table=None|cache_seqlens=None|extra_indices_in_kvcache=T(64, 1, 1024):torch.int32|extra_k_cache=T(40128, 64, 1, 584):torch.float8_e4m3fn|extra_topk_length=T(64,):torch.int32|head_dim_v=512|indices=T(64, 1, 128):torch.int32|is_fp8_kvcache=True|k_cache=T(4013, 256, 1, 584):torch.float8_e4m3fn|q=T(64, 1, 64, 512):torch.bfloat16|softmax_scale=0.04419417382415922|tile_scheduler_metadata=None|topk_length=T(64,):torch.int32"
+    ],
+    "baseline_source": "baseline_ref/tilelang_kernel.py.orig",
+    "baseline_sha256": "29ab236ef60c67b6e20d7d89afc972e40e31336251195b6221cc529c44ab004d",
+    "candidate_source": "source/tilelang_kernel.py",
+    "source_package": "sglang.kernels.ops.attention.dsa",
+    "oracle": "fresh frozen-source worker, compared only in trusted parent",
+    "activation_scale_policy": "finite uniform E8M0 exponent 123, coherent across repeated routing slots",
+    "weight_scale_policy": "finite E8M0 exponents 121..124 in the exact physical layout",
+    "gpu_validated": false,
+    "scored_case_ids": [
+      "prefill_m8192_x64",
+      "prefill_m8192_x1024",
+      "decode_m64_x128",
+      "decode_m64_x1024"
+    ],
+    "unscored_probe_ids": [
+      "decode_m1_x128",
+      "decode_m1_x1024"
+    ],
+    "secondary_output_policy": "all defined numerical results; stage1 joint FP8/E8M0 dequantization and DSA LSE with capture-proven NaN masks",
+    "secondary_output_evidence": "secondary_output_evidence.json"
+  }
 }

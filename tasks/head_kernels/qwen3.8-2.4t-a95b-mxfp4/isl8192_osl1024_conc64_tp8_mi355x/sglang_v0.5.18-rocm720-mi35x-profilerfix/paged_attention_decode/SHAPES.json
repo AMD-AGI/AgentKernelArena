@@ -53831,21 +53831,22 @@
       "sha256": "9c40d52c145027f8affca9e41bbf1100189fde724d42d085ac6296d57020ac56",
       "metadata_evidence": "ut/meta.json#/reference_io_sha256",
       "inspected": true,
-      "status": "hash verified; metadata extracted with restricted weights_only=True CPU mmap/FakeTensorMode; tensor values not read"
+      "status": "optional archival numerical sample; structure extracted with restricted CPU loader",
+      "required_for_default_execution": false
     }
   ],
   "sources": [
     {
       "path": "ut/meta.json",
-      "sha256": "c84b4e6aadf67932134e0a443a645ab9ab77a239ffd0c9c22dfe140646c5b06d"
+      "sha256": "c91a188ba7c7483bd7f13d194212ef7d259dd92cb54de08759be1487a82a85cf"
     },
     {
       "path": "ut/cases.py",
-      "sha256": "818b7f653196fa1a4bf440165cb92db3e822d226073e85e1c1ffeecb37c05e15"
+      "sha256": "6f8ac87669f3116dff05a7d4e171bd77f89b8b3f06349cc75c93f3a6c02d17a1"
     },
     {
       "path": "config.yaml",
-      "sha256": "d38c5fdfdc1317c032558041eb1fecf0a972a2a0b238c17646e43c52a9008a3e"
+      "sha256": "a3d98382732bc9ea2dda956b758bb5d96bbed70aa9ce46d87aeb9f11d6f125a2"
     },
     {
       "path": "scripts/source_abi.json",
@@ -54623,5 +54624,16 @@
     "cpu_wheel_report_sha256": "aa6b4b5c0cf62a4e2502d9a653355d4ece850167e135556fac8e9855442a43ad",
     "all_artifacts_report_sha256": "0a48b0f19bbf1469b41dbb2a13dbda229ed1c3c790e2f5e9b3f3ed3181751925",
     "supplement_report_sha256": "fae60fce8d55bdafd867606b30e052eaa8690fe4907d3fa156a667773f4d12d4"
+  },
+  "generated_inputs": {
+    "kernel": "paged_attention_decode",
+    "contract_file": "generated_cases.json",
+    "contract_sha256": "bc911ca4ff8dab6f33e46822ec78da7b47d8d42a8d61be39885bce79a1561b89",
+    "case_ids": [
+      "decode_m64_live"
+    ],
+    "numeric_values": "seeded locally; not the original captured numerical sample",
+    "structural_values": "exact hash-verified archive routing, slot and page values in compact JSON",
+    "reference": "independent protected baseline process; full output comparison in the trusted parent"
   }
 }

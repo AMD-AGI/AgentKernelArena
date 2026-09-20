@@ -34,10 +34,12 @@ Benchmark IDs above follow the protected timing builder and common adapter. All 
 | `return[0]` (output) | [1, 1, 64, 512], [64, 1, 64, 512], [8192, 1, 64, 512]; bfloat16; strides [32768, 32768, 512, 1]. preserved captured descriptor layout. |
 | `return[1]` (output) | [1, 1, 64], [64, 1, 64], [8192, 1, 64]; float32; strides [64, 64, 1]. preserved captured descriptor layout. |
 
-Each JSON tensor record cites the metadata field or protected builder that establishes its geometry. A `null` shape, dtype or stride means it is not established by readable metadata; it is not a wildcard or permission to replace the fixture. Packed weights, sparse paging maps and routing-dependent lengths must retain the protected artifact representation.
+Each JSON tensor record cites the metadata field or protected builder that establishes its geometry. A `null` shape, dtype or stride means it is not established by readable metadata; it is not a wildcard or permission to replace the fixture. The generated-input draft retains sparse paging maps, routing-dependent lengths, dtype/stride/alias contracts and packed formats in `ut/generated_cases.json`; large numerical buffers are generated locally.
 
-| Protected tensor artifact | Expected SHA-256 |
+| Historical tensor artifact (not required by the generated draft) | Original SHA-256 |
 | --- | --- |
 | `ut/reference_io.pt` | `981eb9be0909a11f831800c31e6399cffb0970d31f1393469d4e7e3a91e35f5a` |
 
 Source pointers in the JSON are relative to this task directory. Every declared artifact was SHA-256 verified and its tensor metadata extracted using PyTorch 2.9.1+cpu, `weights_only=True`, CPU mapping, mmap and FakeTensorMode. Tensor values were not read, and no GPU work was performed. The JSON preserves the parser, fixture hashes, descriptor layouts and serialized alias identities. Fresh GPU validation remains governed by the task contract.
+
+The current draft requires no external tensor archive. `ut/generated_cases.json` is the SHA-256-checked compact structural contract; `ut/generated_contract.py` supplies finite numerical values. The original archive hash remains provenance under `ut/meta.json:archival_capture`. Fresh GPU qualification is still required.

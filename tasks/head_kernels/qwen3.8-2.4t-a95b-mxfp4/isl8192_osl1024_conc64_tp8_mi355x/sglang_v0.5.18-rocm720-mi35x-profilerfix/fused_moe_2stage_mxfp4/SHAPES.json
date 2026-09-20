@@ -1061,21 +1061,22 @@
       "sha256": "09a71daa55bdd3683be45016f0e5139e2fd63b7c614ae5ba565f74cbd2c7e434",
       "metadata_evidence": "ut/meta.json#/reference_io_sha256",
       "inspected": true,
-      "status": "hash verified; metadata extracted with restricted weights_only=True CPU mmap/FakeTensorMode; tensor values not read"
+      "status": "optional archival numerical sample; structure extracted with restricted CPU loader",
+      "required_for_default_execution": false
     }
   ],
   "sources": [
     {
       "path": "ut/meta.json",
-      "sha256": "5f9f8b933e4e12d5a3cc2e42e532033c9d301a8eee6753a582f4afdf7f2acd1c"
+      "sha256": "034d5e3d712e98ea45cefc54b66d0e90ebf3af4ada0da3c68d5eecf73a34acd7"
     },
     {
       "path": "ut/cases.py",
-      "sha256": "39a30573a3c31e3f3e1c93000e0d5655183bf7e2e2e8dda11a62fda85477fe6d"
+      "sha256": "14b6c4e916cf524bd9793276b563b7a44b394bcf16c62991a8fe8098c18f8f04"
     },
     {
       "path": "config.yaml",
-      "sha256": "afedd4adad84f6ccefc8177b3bef56350b64bd1328162238d4710c3f0da1fc6a"
+      "sha256": "84bfb0a2d39ce006cd6fbfde85e94cced1ade821f6208405476b363f7968b0cd"
     },
     {
       "path": "scripts/source_abi.json",
@@ -1951,5 +1952,17 @@
     "cpu_wheel_report_sha256": "aa6b4b5c0cf62a4e2502d9a653355d4ece850167e135556fac8e9855442a43ad",
     "all_artifacts_report_sha256": "0a48b0f19bbf1469b41dbb2a13dbda229ed1c3c790e2f5e9b3f3ed3181751925",
     "supplement_report_sha256": "fae60fce8d55bdafd867606b30e052eaa8690fe4907d3fa156a667773f4d12d4"
+  },
+  "generated_inputs": {
+    "kernel": "fused_moe_2stage_mxfp4",
+    "contract_file": "generated_cases.json",
+    "contract_sha256": "6c701f1b2b73ed6b95e46173da8271e62ad090cc45ebcda739dca32878145923",
+    "case_ids": [
+      "prefill_m8192_live",
+      "decode_m64_live"
+    ],
+    "numeric_values": "seeded locally; not the original captured numerical sample",
+    "structural_values": "exact hash-verified archive routing, slot and page values in compact JSON",
+    "reference": "independent protected baseline process; full output comparison in the trusted parent"
   }
 }

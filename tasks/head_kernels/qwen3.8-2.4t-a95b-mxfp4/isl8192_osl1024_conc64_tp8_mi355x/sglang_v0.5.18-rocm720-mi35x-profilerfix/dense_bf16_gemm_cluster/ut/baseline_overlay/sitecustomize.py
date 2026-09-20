@@ -36,11 +36,20 @@ for _e in _m.get("rebinds", []):
     try:
         _modname, _attr = _e["target"].split(":")
         _t = importlib.import_module(_modname)
-        _impl = importlib.import_module(_e["impl_module"])
+        _dispatch = sys.modules.get("dense_dispatch_contract")
+        if _dispatch is None:
+            _path = os.path.join(os.path.dirname(_HERE), "dispatch_contract.py")
+            _spec = importlib.util.spec_from_file_location("dense_dispatch_contract", _path)
+            _dispatch = importlib.util.module_from_spec(_spec)
+            sys.modules["dense_dispatch_contract"] = _dispatch
+            _spec.loader.exec_module(_dispatch)
+        _impl = _dispatch.load_candidate_module(
+            _e["impl_module"], os.path.join(_HERE, _e["impl_module"] + ".py"), _t)
         setattr(_t, _attr, getattr(_impl, _e["impl_attr"]))
         sys.stderr.write("[overlay] rebound %s -> %s.%s\n" % (_e["target"], _e["impl_module"], _e["impl_attr"]))
     except Exception as _ex:
         sys.stderr.write("[overlay] rebind FAILED %r: %r\n" % (_e, _ex))
+        raise
 
 # (c) capture hooks (shape/IO oracle recording) go on FIRST, so the capture wrapper is the innermost
 # stand-in and is already bound before any marker install imports a module that does

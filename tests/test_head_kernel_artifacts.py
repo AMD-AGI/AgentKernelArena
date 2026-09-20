@@ -325,32 +325,30 @@ class ManifestTests(unittest.TestCase):
     def test_committed_inventory_matches_all_task_metadata(self):
         root = ROOT / "tasks/head_kernels"
         manifest = provision.load_manifest(root / "artifacts.json")
-        self.assertEqual(len(manifest.artifacts), 17)
-        self.assertEqual(len(manifest.tasks), 18)
-        self.assertEqual(sum(a.size_bytes for a in manifest.artifacts), 33139788731)
-        self.assertEqual(manifest.tasks, {p.parent.relative_to(root).as_posix() for p in root.rglob("config.yaml")})
-        references = [a for a in manifest.artifacts if a.path.endswith("reference_io.pt")]
-        geometry = [a for a in manifest.artifacts if a.path.endswith("timing_geometry.pt")]
-        self.assertEqual(len(references), 14)
-        self.assertEqual(len(geometry), 3)
-        self.assertEqual(sum(a.size_bytes for a in geometry), 1634639)
-        for artifact in manifest.artifacts:
-            metadata = json.loads((root / artifact.task / "ut/meta.json").read_text())
-            self.assertEqual(metadata[provision.HASH_KEYS[Path(artifact.path).name]], artifact.sha256)
+        metadata_by_task = {
+            path.parent.relative_to(root).as_posix(): json.loads((path.parent / "ut/meta.json").read_text())
+            for path in root.rglob("config.yaml")
+        }
+        required = {
+            (task, filename): metadata[key]
+            for task, metadata in metadata_by_task.items()
+            for filename, key in provision.HASH_KEYS.items()
+            if metadata.get(key)
+        }
+        self.assertEqual(manifest.tasks, set(metadata_by_task))
+        self.assertEqual({(row.task, Path(row.path).name): row.sha256 for row in manifest.artifacts}, required)
+        declared = json.loads((root / "artifacts.json").read_text())
+        self.assertEqual(declared["artifact_count"], len(manifest.artifacts))
+        self.assertEqual(declared["total_size_bytes"], sum(row.size_bytes for row in manifest.artifacts))
+        fixture_tasks = {task for task, _ in required}
+        self.assertEqual(set(manifest.tasks_without_persistent_fixtures), set(metadata_by_task) - fixture_tasks)
         for task in manifest.tasks_without_persistent_fixtures:
-            metadata = json.loads((root / task / "ut/meta.json").read_text())
+            metadata = metadata_by_task[task]
             self.assertTrue(metadata["synthesized"])
             self.assertFalse(metadata.get("reference_io_sha256"))
             self.assertFalse(metadata.get("timing_geometry_sha256"))
-            self.assertFalse(any(a.task == task for a in manifest.artifacts))
-        self.assertEqual(set(manifest.tasks_without_persistent_fixtures), {
-            task_directory(operation).relative_to(root).as_posix() for operation in (
-                "glm-5.3-flash__ck_gemm_a8w8_blockscale_bpreshuffle",
-                "glm-5.3-flash__gemm_a16w16_bf16_cijk",
-                "qwen3.8-2.4t__dense_bf16_gemm_cluster",
-                "qwen3.8-2.4t__gemma_fused_add_rmsnorm",
-            )
-        })
+            if metadata.get("generated_inputs"):
+                self.assertTrue((root / task / "ut" / metadata["generated_inputs"]["contract_file"]).is_file())
 
     def test_rejects_paths_that_escape_or_replace_other_task_inputs(self):
         invalid = [

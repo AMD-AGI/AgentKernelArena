@@ -518,8 +518,12 @@ def correct(out, ref, tol):
 def _correct_one(out, ref, tol):
     torch = _torch()
     try:
-        if tuple(out.shape) != tuple(ref.shape):
+        if type(out) is not torch.Tensor or type(ref) is not torch.Tensor:
             return False, float("inf")
+        if tuple(out.shape) != tuple(ref.shape) or out.dtype != ref.dtype:
+            return False, float("inf")
+        if not out.is_floating_point():
+            return bool(torch.equal(out, ref)), 0.0 if torch.equal(out, ref) else float("inf")
         out = out.float()
         ref = ref.float()
         atol = tol * ref.pow(2).mean().sqrt().clamp_min(1e-6)   # noise floor = tol * RMS(ref)

@@ -42,7 +42,7 @@
         "evidence": "ut/baseline_ref/topk_sparse.py.orig:271"
       }
     ],
-    "alias_and_mutation_notes": "block-sparse GQA prefill: for each query, softmax over the topk selected KV blocks of (Q·Kᵀ)·sm_scale (+ causal mask, + optional attn sink) · V, paged K/V gathered through req_to_token",
+    "alias_and_mutation_notes": "block-sparse GQA prefill: for each query, softmax over the topk selected KV blocks of (Q\u00b7K\u1d40)\u00b7sm_scale (+ causal mask, + optional attn sink) \u00b7 V, paged K/V gathered through req_to_token",
     "alias_evidence": [
       "ut/meta.json#/math_contract",
       "ut/cases.py:62"
@@ -50,7 +50,7 @@
   },
   "contracts": [
     {
-      "value": "block-sparse GQA prefill: for each query, softmax over the topk selected KV blocks of (Q·Kᵀ)·sm_scale (+ causal mask, + optional attn sink) · V, paged K/V gathered through req_to_token",
+      "value": "block-sparse GQA prefill: for each query, softmax over the topk selected KV blocks of (Q\u00b7K\u1d40)\u00b7sm_scale (+ causal mask, + optional attn sink) \u00b7 V, paged K/V gathered through req_to_token",
       "evidence": "ut/meta.json#/math_contract"
     }
   ],
@@ -78,118 +78,10 @@
       "case_id": "prefill_m8192_s1",
       "shape_record_id": "block_size_k=128|block_size_q=1|cu_seqblocks_q=T(2,):torch.int32|cu_seqlens=T(2,):torch.int32|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|max_seqblock_q=8192|max_seqlen_q=8192|prefix_lens=T(1,):torch.int32|q=T(8192, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(1,):torch.int32|sink=None|slot_ids=T(1,):torch.int64|sm_scale=None|topk_idx=T(1, 8192, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
       "regime": "prefill",
-      "evidence": "ut/cases.py:143",
-      "notes": "Full captured request table is replaced by selected/remapped rows by _build_args; timing_geometry.pt holds the exact rows.",
-      "tensor_overrides": [
-        {
-          "name": "req_to_token",
-          "shape": [
-            1,
-            11268
-          ],
-          "dtype": "torch.int32",
-          "strides": [
-            11268,
-            1
-          ],
-          "layout": "serialized oracle tensor layout; reconstructed as prescribed by the protected builder",
-          "evidence": "ut/timing_geometry.pt#/2/req_rows",
-          "artifact_sha256": "d1ad8a11fd31d42d04a92aa7d9854db6dce4ba5ba0aa43168185b731f4471462",
-          "serialized_storage": {
-            "storage_id": "storage_000004",
-            "tensor_id": "tensor_000004",
-            "storage_offset_elements": 0,
-            "checkpoint_storage_offset_bytes": 106048
-          },
-          "runtime_transform": "req_rows passed as req_to_token; values preserved"
-        },
-        {
-          "name": "slot_ids",
-          "shape": [
-            1
-          ],
-          "dtype": "torch.int32",
-          "strides": [
-            1
-          ],
-          "values": [
-            0
-          ],
-          "evidence": "ut/cases.py:73"
-        },
-        {
-          "name": "k_cache",
-          "shape": [
-            4358330,
-            1,
-            128
-          ],
-          "dtype": "torch.bfloat16",
-          "strides": [
-            128,
-            128,
-            1
-          ],
-          "layout": "contiguous generated timing tensor",
-          "evidence": "ut/cases.py:73"
-        },
-        {
-          "name": "q",
-          "shape": [
-            8192,
-            8,
-            128
-          ],
-          "dtype": "torch.bfloat16",
-          "strides": [
-            1024,
-            128,
-            1
-          ],
-          "layout": "contiguous generated timing tensor",
-          "evidence": "ut/cases.py:73"
-        },
-        {
-          "name": "v_cache",
-          "shape": [
-            4358330,
-            1,
-            128
-          ],
-          "dtype": "torch.bfloat16",
-          "strides": [
-            128,
-            128,
-            1
-          ],
-          "layout": "contiguous generated timing tensor",
-          "evidence": "ut/cases.py:73"
-        },
-        {
-          "name": "topk_idx",
-          "shape": [
-            1,
-            8192,
-            16
-          ],
-          "dtype": "torch.int32",
-          "strides": [
-            131072,
-            16,
-            1
-          ],
-          "layout": "serialized oracle tensor layout; reconstructed as prescribed by the protected builder",
-          "evidence": "ut/timing_geometry.pt#/2/topk_idx",
-          "artifact_sha256": "d1ad8a11fd31d42d04a92aa7d9854db6dce4ba5ba0aa43168185b731f4471462",
-          "serialized_storage": {
-            "storage_id": "storage_000005",
-            "tensor_id": "tensor_000005",
-            "storage_offset_elements": 0,
-            "checkpoint_storage_offset_bytes": 151232
-          },
-          "runtime_transform": "stored topk_idx passed unchanged"
-        }
-      ]
+      "evidence": "ut/generated_cases.json#/records/2",
+      "notes": "Full original call structure reconstructed from the captured JSON; no request-row or slot-ID remapping.",
+      "tensor_overrides": [],
+      "control_record_sha256": "de02c3abeb2a90ba1b2d5b19e66fad82976bffe1e1a7eee25d35a70a51d7e28f"
     }
   ],
   "cases": [
@@ -3273,7 +3165,7 @@
       {
         "function": "_ragged_variant",
         "evidence": "ut/cases.py:155",
-        "docstring": "A copy of geometry `g` with the SAME buffer shapes but a DIFFERENT ragged split.\n\nBuffer shapes (total_q, num_seqs, max_slots, req_to_token width) and the host ints that set the\nlaunch grid (max_seqlen_q / max_seqblock_q) are held fixed, so both variants can be driven through\nONE set of static buffers and ONE captured graph — which is the whole point of the replay check.\nWhat changes is exactly what the kernel branches on: per-sequence q_len, prefix_len and seq_len,\nincluding a split whose seq_lens are NOT multiples of block_size_k (the ragged tail path).",
+        "docstring": "A copy of geometry `g` with the SAME buffer shapes but a DIFFERENT ragged split.\n\nBuffer shapes (total_q, num_seqs, max_slots, req_to_token width) and the host ints that set the\nlaunch grid (max_seqlen_q / max_seqblock_q) are held fixed, so both variants can be driven through\nONE set of static buffers and ONE captured graph \u2014 which is the whole point of the replay check.\nWhat changes is exactly what the kernel branches on: per-sequence q_len, prefix_len and seq_len,\nincluding a split whose seq_lens are NOT multiples of block_size_k (the ragged tail path).",
         "expressions": [
           {
             "literal_assignment": "seq_lens, prefix_lens = ([], [])"
@@ -3301,7 +3193,7 @@
       {
         "function": "random_shapes",
         "evidence": "ut/cases.py:225",
-        "docstring": "Fixed online dims, fresh random VALUES per draw — the value-parity leg.\n\nThe replay boundary cases are included here on purpose: the baseline leg then records their\noutputs in its OWN process (h.baseline_random_outputs), which gives the graph-replay bundle a\ngolden reference produced by the frozen live kernel rather than by the candidate itself.",
+        "docstring": "Fixed online dims, fresh random VALUES per draw \u2014 the value-parity leg.\n\nThe replay boundary cases are included here on purpose: the baseline leg then records their\noutputs in its OWN process (h.baseline_random_outputs), which gives the graph-replay bundle a\ngolden reference produced by the frozen live kernel rather than by the candidate itself.",
         "expressions": [
           {
             "literal_assignment": "out = []"
@@ -3319,7 +3211,7 @@
       {
         "function": "eager_cases",
         "evidence": "ut/cases.py:242",
-        "docstring": "Stream the RECORDED inputs+golden outputs one at a time. Each record of this op is ~2.4 GiB\n(the paged KV pool is an input), so materializing them all would OOM — hence the lazy iterator\nplus h.check_correct_multi_lazy.",
+        "docstring": "Stream the RECORDED inputs+golden outputs one at a time. Each record of this op is ~2.4 GiB\n(the paged KV pool is an input), so materializing them all would OOM \u2014 hence the lazy iterator\nplus h.check_correct_multi_lazy.",
         "expressions": []
       }
     ]
@@ -3330,30 +3222,32 @@
     {
       "path": "ut/reference_io.pt",
       "sha256": "55f55d92b743c71e0362c4c4e0e47d7a0120c9c19bdc03fac7d1972ac80be6ba",
-      "metadata_evidence": "ut/meta.json#/reference_io_sha256",
+      "metadata_evidence": "ut/meta.json#/archival_capture/reference_io_sha256",
       "inspected": true,
-      "status": "hash verified; metadata extracted with restricted weights_only=True CPU mmap/FakeTensorMode; tensor values not read"
+      "status": "hash verified; metadata extracted with restricted weights_only=True CPU mmap/FakeTensorMode; tensor values not read",
+      "runtime_requirement": "optional archival evidence; replaced by committed compact generated contract"
     },
     {
       "path": "ut/timing_geometry.pt",
       "sha256": "d1ad8a11fd31d42d04a92aa7d9854db6dce4ba5ba0aa43168185b731f4471462",
-      "metadata_evidence": "ut/meta.json#/timing_geometry_sha256",
+      "metadata_evidence": "ut/meta.json#/archival_capture/timing_geometry_sha256",
       "inspected": true,
-      "status": "hash verified; metadata extracted with restricted weights_only=True CPU mmap/FakeTensorMode; tensor values not read"
+      "status": "hash verified; metadata extracted with restricted weights_only=True CPU mmap/FakeTensorMode; tensor values not read",
+      "runtime_requirement": "optional archival evidence; replaced by committed compact generated contract"
     }
   ],
   "sources": [
     {
       "path": "ut/meta.json",
-      "sha256": "d06a33ceef361dc7cb9bdb69eab54a15d728cc195e22a7dc95a4d88256a6c72f"
+      "sha256": "88ee9ed00c8967ee19461053a3ee0023905919edddb01ade99ed8d45337331dd"
     },
     {
       "path": "ut/cases.py",
-      "sha256": "2a356294e6e84821ee35e27f3e2a4a656cca87737aba7c39d3cfd67ecc489193"
+      "sha256": "bee302cde215754ea6df764bb71d5acd0729be2917d813cbb3fab4aa8a661901"
     },
     {
       "path": "config.yaml",
-      "sha256": "2e077fe51838af750fd0b1097c6cbb125d2609a6707b9a8649a617ff5bb85972"
+      "sha256": "5ebc8e9ee4b3ed3d8f7c3b856b8f80efeb38f2d41eea58797b05c759ecd1446c"
     },
     {
       "path": "scripts/source_abi.json",
@@ -3366,9 +3260,33 @@
     {
       "path": "ut/workload.json",
       "sha256": "51d1f540391d9ae95560c51e731da1317e80089f588629bea0ca2d0fc2ab3b20"
+    },
+    {
+      "path": "ut/generated_cases.json",
+      "sha256": "de02c3abeb2a90ba1b2d5b19e66fad82976bffe1e1a7eee25d35a70a51d7e28f"
+    },
+    {
+      "path": "ut/timing_geometry.json",
+      "sha256": "4db9e8aa05958908773beb1fd39f1a900835530812e2916d0bd259c3738dee41"
+    },
+    {
+      "path": "ut/generated_contract.py",
+      "sha256": "8bf77cae56d0d61dd0e1a408353b516cdb0f947f264cd0d21dabf8f7d52622a4"
+    },
+    {
+      "path": "scripts/generated_worker.py",
+      "sha256": "6536fb6722e1835fba847a16e2d12b6ba820291e633fa891f123f46e8b7e28da"
+    },
+    {
+      "path": "scripts/generated_correctness.py",
+      "sha256": "7b1872dd1eb41caa4149ef117cc52f38a2a1415dc3d67da9794074a1b1171bcb"
+    },
+    {
+      "path": "scripts/generated_task_runner.py",
+      "sha256": "62418a3eb6d6c847d7a0740376e372e60fa40f4ce0087b9bf92e80429e952a64"
     }
   ],
-  "validation": "Hash-verified restricted CPU tensor metadata extraction plus static builder inspection. No tensor values read and no GPU correctness/performance validation.",
+  "validation": "Original restricted metadata extraction plus this revision: captured integer routing/page values extracted with weights_only=True CPU mmap; floating input/output values not copied. CPU checks only; no GPU qualification.",
   "fixture_metadata": [
     {
       "artifact_path": "ut/reference_io.pt",
@@ -5118,5 +5036,38 @@
     "cpu_wheel_report_sha256": "aa6b4b5c0cf62a4e2502d9a653355d4ece850167e135556fac8e9855442a43ad",
     "all_artifacts_report_sha256": "0a48b0f19bbf1469b41dbb2a13dbda229ed1c3c790e2f5e9b3f3ed3181751925",
     "supplement_report_sha256": "fae60fce8d55bdafd867606b30e052eaa8690fe4907d3fa156a667773f4d12d4"
+  },
+  "generated_input_draft": {
+    "correctness_cases": 3,
+    "contract_file": "ut/generated_cases.json",
+    "contract_sha256": "de02c3abeb2a90ba1b2d5b19e66fad82976bffe1e1a7eee25d35a70a51d7e28f",
+    "geometry_file": "ut/timing_geometry.json",
+    "geometry_sha256": "4db9e8aa05958908773beb1fd39f1a900835530812e2916d0bd259c3738dee41",
+    "gpu_validated": false
+  },
+  "performance_contract": {
+    "status": "ready",
+    "scope": "observed_prefill_call_structure",
+    "values": "generated",
+    "case_ids": [
+      "prefill_m8192_s1"
+    ],
+    "source_signatures": [
+      "block_size_k=128|block_size_q=1|cu_seqblocks_q=T(2,):torch.int32|cu_seqlens=T(2,):torch.int32|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|max_seqblock_q=8192|max_seqlen_q=8192|prefix_lens=T(1,):torch.int32|q=T(8192, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(1,):torch.int32|sink=None|slot_ids=T(1,):torch.int64|sm_scale=None|topk_idx=T(1, 8192, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0"
+    ],
+    "evidence": "ut/generated_cases.json#/records/2",
+    "request_table_shape": [
+      4097,
+      11268
+    ],
+    "slot_ids_dtype": "torch.int64",
+    "slot_ids": [
+      4
+    ],
+    "excluded_warmup_m": [
+      1,
+      186
+    ],
+    "fallback_allowed": false
   }
 }

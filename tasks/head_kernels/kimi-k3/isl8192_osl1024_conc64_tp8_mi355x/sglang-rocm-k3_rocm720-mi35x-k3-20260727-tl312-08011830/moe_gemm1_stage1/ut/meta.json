@@ -9,7 +9,7 @@
   "kernel_src": "kernel_src/flydsl",
   "baseline_src": "baseline_src/flydsl",
   "editable": true,
-  "synthesized": false,
+  "synthesized": true,
   "build": false,
   "candidate_backends": [
     "flydsl",
@@ -674,7 +674,6 @@
     "note": "REAL served topk distribution, captured at the stage-2 seam of the 0817 session and re-sorted by the production aiter moe_sorting at stage-1's block size. NOT captured at the stage-1 seam -- see _capture_overlay1/ for the first-hand hook."
   },
   "reference_io_bytes": 103241119,
-  "reference_io_sha256": "3d175ea5803d3523001cac000aa5d6c7d54b4a06dfa97999cd8eb22c081b3e31",
   "median_self_bitwise": {
     "prefill_M8192": true,
     "decode_M1": true,
@@ -811,5 +810,66 @@
       }
     }
   },
-  "standalone_binding": "flydsl_package.py:load_moe_package"
+  "standalone_binding": "flydsl_package.py:load_moe_package",
+  "archival_capture": {
+    "synthesized": false,
+    "reference_io_sha256": "3d175ea5803d3523001cac000aa5d6c7d54b4a06dfa97999cd8eb22c081b3e31"
+  },
+  "generated_inputs": {
+    "schema_version": 1,
+    "contract_file": "generated_cases.json",
+    "contract_sha256": "721ec8956374c2d536946df2e1e1e2a7d79e42d593bf75c31c14a09fb4e556ad",
+    "numeric_policy": "existing calibrated recipes; captured integer routing/paging; generated routing-weight values with exact zero mask",
+    "reference_policy": "fresh frozen-baseline worker; outputs compared only in the parent; no candidate golden input",
+    "archive_optional": true,
+    "gpu_qualified": false,
+    "actual_hyperloom_scenario_verified": false,
+    "coverage_policy": "experimental operator benchmark; exclude from claimed validated HyperLoom coverage until native scenario and numerical qualification",
+    "qualification_issue": "Existing median-of-21 policy does not establish single-launch correctness; upstream individual-launch errors remain unresolved.",
+    "scenario_fidelity": {
+      "routing": "second-hand stage-2 0817 routing, re-sorted from block_m=64 to stage-1 block_m=32; not captured at stage-1 seam",
+      "decode_launch": "assumed identical to prefill rather than observed",
+      "status": "retain unresolved source provenance; generator conversion is not new observation"
+    }
+  },
+  "single_launch_reference": {
+    "required": true,
+    "source": "ut/_l2_reference.py",
+    "source_sha256": "37c1e718a0051d1e61a244bd3a387c8c33a81360c26ec260697d0778b4369a73",
+    "reference": "aiter.fused_moe.torch_moe_stage1",
+    "policy": "every individual launch at the original tolerance, never a median",
+    "launches_per_case": 3,
+    "scope": "retained unshuffled diagnostic recipe; scored pre-shuffled bytes are not asserted identical"
+  },
+  "workload_scoring": {
+    "enabled": false,
+    "reason": "decode launch variant assumed, not observed; stage-1 routing is second-hand, not an observed stage-1 capture; zero-weight or boundary-only semantic case",
+    "cases": [
+      {
+        "case": "prefill_M8192",
+        "eligible": false,
+        "reasons": [
+          "stage-1 routing is second-hand, not an observed stage-1 capture"
+        ]
+      },
+      {
+        "case": "decode_M64",
+        "eligible": false,
+        "reasons": [
+          "stage-1 routing is second-hand, not an observed stage-1 capture",
+          "decode launch variant assumed, not observed"
+        ]
+      },
+      {
+        "case": "decode_M1",
+        "eligible": false,
+        "reasons": [
+          "stage-1 routing is second-hand, not an observed stage-1 capture",
+          "decode launch variant assumed, not observed",
+          "zero-weight or boundary-only semantic case"
+        ]
+      }
+    ],
+    "semantic_coverage": "all semantic cases retained; aggregate scoring fails closed"
+  }
 }

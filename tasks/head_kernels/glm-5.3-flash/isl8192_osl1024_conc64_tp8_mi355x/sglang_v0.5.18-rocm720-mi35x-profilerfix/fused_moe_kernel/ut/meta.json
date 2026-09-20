@@ -82,7 +82,6 @@
     8192
   ],
   "random_draws": 3,
-  "reference_io_sha256": "59040b163efbc9dbd3592a28dee01bcc2801bb669de170197524dfe335c5feee",
   "regime": {
     "attention_backend": "",
     "backend": "sglang",
@@ -90,7 +89,7 @@
     "cuda_graph": false,
     "enforce_eager": true,
     "kv_cache_dtype": "bfloat16",
-    "notes": "enforce-eager/disable-cuda-graph set: the deployment runs eagerly (no graph replay), so eager IS the faithful baseline for this regime — NOT a strawman.",
+    "notes": "enforce-eager/disable-cuda-graph set: the deployment runs eagerly (no graph replay), so eager IS the faithful baseline for this regime \u2014 NOT a strawman.",
     "prefill_chunk": null,
     "quant": {
       "act_dtype": "fp8",
@@ -213,7 +212,6 @@
     "random_parity_draws": 12
   },
   "source_path_in_sglang": "provenance://runtime-image/sglang/python/sglang/srt/layers/moe/moe_runner/triton_utils/fused_moe.py",
-  "synthesized": false,
   "target_callable": "sglang.srt.layers.moe.moe_runner.triton_utils.fused_moe:fused_experts_impl",
   "tol": 0.02,
   "top_k": 8,
@@ -329,7 +327,7 @@
     "kernel": "fused_moe_kernel",
     "live_pct_gpu": 3.97,
     "name_match": "fused_moe_kernel",
-    "notes": "op_kind=moe: per-expert token counts are routing-dependent; effective-M buckets from meta drive a GEMM-style regime split. Treat weights as lower-confidence. WARNING: regime 'decode' has meta buckets [1] but ZERO profiled time — likely a prefill/decode-biased profiling window. Decode-critical serving should set --min-regime-share to avoid ignoring it. WARNING: regime 'prefill' has meta buckets [8192] but ZERO profiled time — likely a prefill/decode-biased profiling window. Decode-critical serving should set --min-regime-share to avoid ignoring it. applied --min-regime-share 0.3: floored regimes ['prefill'].",
+    "notes": "op_kind=moe: per-expert token counts are routing-dependent; effective-M buckets from meta drive a GEMM-style regime split. Treat weights as lower-confidence. WARNING: regime 'decode' has meta buckets [1] but ZERO profiled time \u2014 likely a prefill/decode-biased profiling window. Decode-critical serving should set --min-regime-share to avoid ignoring it. WARNING: regime 'prefill' has meta buckets [8192] but ZERO profiled time \u2014 likely a prefill/decode-biased profiling window. Decode-critical serving should set --min-regime-share to avoid ignoring it. applied --min-regime-share 0.3: floored regimes ['prefill'].",
     "num_cases": 3,
     "op_kind": "moe",
     "quant": {
@@ -351,7 +349,7 @@
       "cuda_graph": false,
       "enforce_eager": true,
       "kv_cache_dtype": "bfloat16",
-      "notes": "enforce-eager/disable-cuda-graph set: the deployment runs eagerly (no graph replay), so eager IS the faithful baseline for this regime — NOT a strawman.",
+      "notes": "enforce-eager/disable-cuda-graph set: the deployment runs eagerly (no graph replay), so eager IS the faithful baseline for this regime \u2014 NOT a strawman.",
       "prefill_chunk": null,
       "quant": {
         "act_dtype": "fp8",
@@ -385,5 +383,141 @@
     "weights_provenance": "mixed(prior+regime_floor+trace)"
   },
   "workload_path": "workload.json",
-  "workload_provenance": "provenance://shared-nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/fused_moe_kernel_task/workload.json"
+  "workload_provenance": "provenance://shared-nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/fused_moe_kernel_task/workload.json",
+  "archival_capture": {
+    "reference_io_sha256": "59040b163efbc9dbd3592a28dee01bcc2801bb669de170197524dfe335c5feee",
+    "synthesized": false
+  },
+  "generated_inputs": {
+    "schema_version": 1,
+    "contract_file": "generated_cases.json",
+    "contract_sha256": "19847a2ec2159ed93224c4556fc6d33cefdc6bf8efa80b44e1dbb6abd459f02d",
+    "captured_case_ids": [
+      "oracle_m19_decode",
+      "oracle_m1_decode",
+      "oracle_m8192_prefill"
+    ],
+    "profiles": {
+      "recorded": [
+        "oracle_m19_decode",
+        "oracle_m1_decode",
+        "oracle_m8192_prefill"
+      ],
+      "random": [
+        "rand_m19_decode",
+        "rand_m1_decode",
+        "rand_m8192_prefill",
+        "rand_m64_decode"
+      ],
+      "timed": [],
+      "semantic_call": [
+        "semantic_m19_decode",
+        "semantic_m1_decode",
+        "semantic_m8192_prefill"
+      ]
+    },
+    "oracle": "fresh protected reference workers; all expected outputs compared only in parent memory",
+    "numeric_policy": "finite generated FP8 expert values, positive FP32 block scales, seeded activation values; exact captured routing bytes",
+    "gpu_qualified": false,
+    "semantic_call_probes": [
+      {
+        "case_id": "semantic_m19_decode",
+        "source_case_id": "oracle_m19_decode",
+        "m": 19,
+        "regime": "decode",
+        "record_index": 0,
+        "status": "retained_initialization_postcall_structure",
+        "scored": false,
+        "inplace": true,
+        "routing_resampled": false
+      },
+      {
+        "case_id": "semantic_m1_decode",
+        "source_case_id": "oracle_m1_decode",
+        "m": 1,
+        "regime": "decode",
+        "record_index": 1,
+        "status": "retained_initialization_postcall_structure",
+        "scored": false,
+        "inplace": true,
+        "routing_resampled": false
+      },
+      {
+        "case_id": "semantic_m8192_prefill",
+        "source_case_id": "oracle_m8192_prefill",
+        "m": 8192,
+        "regime": "prefill",
+        "record_index": 2,
+        "status": "retained_initialization_postcall_structure",
+        "scored": false,
+        "inplace": true,
+        "routing_resampled": false
+      }
+    ],
+    "observed_counter_shapes": [
+      {
+        "m": 64,
+        "count": 129024,
+        "payload_retained": false,
+        "served_precall_qualified": false
+      },
+      {
+        "m": 16384,
+        "count": 3906,
+        "payload_retained": false,
+        "served_precall_qualified": false
+      },
+      {
+        "m": 1,
+        "count": 504,
+        "payload_retained": true,
+        "served_precall_qualified": false
+      },
+      {
+        "m": 8192,
+        "count": 252,
+        "payload_retained": true,
+        "served_precall_qualified": false
+      },
+      {
+        "m": 19,
+        "count": 42,
+        "payload_retained": true,
+        "served_precall_qualified": false
+      }
+    ],
+    "non_scored_robustness": [
+      {
+        "case_id": "rand_m64_decode",
+        "m": 64,
+        "shape_observed": true,
+        "observed_calls": 129024,
+        "reason": "exact raw per-call routing absent; inherited with-replacement samples remain correctness-only"
+      }
+    ],
+    "workload_scoring": {
+      "enabled": false,
+      "status": "blocked_missing_authentic_precall_workload_capture",
+      "reason": "GLM served-workload scoring requires a new authentic pre-call capture: retained M19/M1/M8192 payloads are initialization/post-call snapshots; M64/M16384 exist only in counters.",
+      "enabled_scored_case_ids": [],
+      "retained_payload_m": [
+        19,
+        1,
+        8192
+      ],
+      "missing_payload_m": [
+        64,
+        16384
+      ],
+      "capture_max": 2,
+      "repeats": 0,
+      "profile": 0,
+      "graph_replayed": false,
+      "archive_precedes_outer_warmup_seconds": 1004.7,
+      "evidence": "ut/workload_fidelity.json"
+    },
+    "recorded_profile_scope": "Unscored semantic probes at retained initialization/post-call shapes with new numerical inputs; not original pre-call workload replay.",
+    "complete_scored_timing_available": false
+  },
+  "synthesized": true
 }

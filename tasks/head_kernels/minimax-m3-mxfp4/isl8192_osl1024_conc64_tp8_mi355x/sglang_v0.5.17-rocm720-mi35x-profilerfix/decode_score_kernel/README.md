@@ -1,38 +1,52 @@
-# minimax-m3__decode_score_kernel
+> **Exact-workload scoring follow-up:** Exact serving-workload performance is blocked. M=1/M=64 histogram/analytic buckets remain random/replay robustness cases only. They have no captured per-call paging/block controls and cannot be reported as exact HyperLoom performance. The observed oracle cases remain correctness inputs; they are not silently substituted for the declared serving buckets.
 
-This task optimizes the **MiniMax-M3-MXFP4** `_decode_score_kernel` callable on MI355X (`gfx950`).
-The serving contract is ISL 8192 / OSL 1024 / CONC 64 / TP 8; its captured execution regime is `decode`.
+# decode_score_kernel: generated-input draft
 
-Runtime image: `harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.17-rocm720-mi35x-profilerfix`.
-Backend: `Triton / attention`; execute in that image's captured SGLang/AITER/PyTorch environment.
+This MiniMax-M3 task retains all **5 recorded correctness cases**, every
+scored serving case, the original callable ABI, tensor shapes/strides/offsets,
+selected page rows, block IDs, scalar arguments, and the original floating
+`tol=0.02` comparison. Integer and boolean outputs use exact equality. Numerical Q/K/V values are generated from fresh evaluator-selected
+seeds. Source kernel bodies are unchanged.
 
-The runtime image, source package, editable files, required symbols, timeouts and architecture gate
-are declared in [config.yaml](config.yaml). Starting-source provenance: **stock**.
-The source snapshot is preserved as imported; inspect [ut/meta.json](ut/meta.json) for the captured
-cases for upstream measurement caveats and live capture provenance.
+The default task requires **no external tensor archives**. Its two committed JSON
+inputs total **245,505 bytes**:
 
-Provision the task's external artifacts using the suite's declared artifact manifest before running.
-Captured oracle and timing files must keep their recorded checksums. Missing inputs are environment
-errors and must not be replaced by generated routing, placeholder geometry or reduced case sets.
+- [ut/generated_cases.json](ut/generated_cases.json) contains the exact recorded
+  correctness contracts and captured structural values, without large numerical
+  buffers or golden outputs.
+- [ut/timing_geometry.json](ut/timing_geometry.json) is a lossless conversion of
+  the original small timing-geometry file. Existing scored input recipes and the
+  common 10-warmup/100-sample benchmark are unchanged.
 
-Inside the declared GPU runtime, run from this task directory:
+Run inside the image declared in [config.yaml](config.yaml), on gfx950:
 
 ```bash
-python3 scripts/task_runner.py compile --timeout 600
-python3 scripts/task_runner.py correctness --timeout 3600
-python3 scripts/task_runner.py performance --timeout 3600
+python3 scripts/generated_task_runner.py compile
+python3 scripts/generated_task_runner.py correctness
+python3 scripts/generated_task_runner.py performance
 ```
 
-Compilation is a CPU syntax and symbol check. Correctness uses the immutable task-specific oracle
-and baseline contract with the original tolerances and supplemental replay/value checks.
-Performance must cover every declared case using equivalent work and state for both Arena legs.
-The Arena baseline is the committed starting implementation; historical GEAK speedups are archival
-provenance and do not supply this run's score. Reports are written below the task directory.
+The generated correctness controller runs protected reference and candidate
+workers separately. It passes only profile/seed inputs; reference outputs remain
+in parent memory and are never given to the candidate worker or reused as cached
+goldens. It compares all tuple components and layout, rejects input mutation and
+persistent outputs, and requires graph replay across all original boundary
+variants followed by restoration of the first variant. The common performance
+worker's existing protected per-run comparison remains unchanged.
 
-Archival source package: `Z/MiniMax-M3-MXFP4_decode_score_kernel`. Capture-machine locations in metadata are
-recorded as `provenance://` identifiers; they are not runtime paths. This import has not been
-validated on a compatible GPU. A clean task-validator report is required before PR submission.
+Original archives remain optional for historical replay. With the unchanged
+`reference_io.pt` placed in `ut/`, run:
 
-The editable symbols include Python launchers or operator dispatch where declared in the config.
-Those edits must preserve the complete callable workload, launch dimensions, ABI and output/state
-contract. A device-kernel speedup cannot be claimed by deleting operator work or changing tested shapes.
+```bash
+python3 scripts/generated_task_runner.py archival --timeout 3600
+```
+
+Its original checksum is recorded under `ut/meta.json:archival_capture` and is
+verified before restricted tensor loading. The optional archive was never
+modified by this task revision. The [task metadata](ut/meta.json) records the
+original captured-value contract and archived checksum.
+
+This draft has CPU regression coverage and syntax/ABI compile checks. **It has
+not passed fresh GPU correctness/performance/task-validator qualification.**
+The original archive hashes and compact input contract are retained in `ut/meta.json`
+and the task-local JSON files; isolated execution depends only on this task directory.

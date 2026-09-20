@@ -1,63 +1,46 @@
-# glm-5.3-flash__fused_moe_kernel
+# GLM fused-MoE portable semantic task
 
-This task optimizes the **GLM-5.3-Flash** `fused_moe_kernel` callable on MI355X (`gfx950`).
-The serving contract is ISL 8192 / OSL 1024 / CONC 64 / TP 8; its captured execution regime is `decode`.
+**Workload scoring is disabled.** The original nine archives retain M19/M1/M8192
+initialization/post-call payloads only. M64 and M16384 are counter observations,
+not retained routing records. The source capture used CAPTURE_MAX=2, REPEATS=0,
+PROFILE=0, disabled CUDA graphs, and saved tensors after the in-place operation.
+The archives predate the outer 64-prompt warmup by about 1004.7 seconds.
 
-Runtime image: `harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.18-rocm720-mi35x-profilerfix`.
-Backend: `Triton - sglang srt/layers/moe/moe_runner/triton_utils.fused_moe`; execute in that image's captured SGLang/AITER/PyTorch environment.
+The [fidelity disposition](ut/workload_fidelity.json) requires a new authentic
+served pre-call capture before workload scoring can be enabled. The performance
+entrypoint exits nonzero before runtime initialization and never emits a proxy or
+partial aggregate. The prior score IDs `moe_m64_decode`, `moe_m8192_prefill` and
+`moe_m1_decode` are removed from the enabled score set; enabled count is **zero**.
 
-The runtime image, source package, editable files, required symbols, timeouts and architecture gate
-are declared in [config.yaml](config.yaml). Starting-source provenance: **stock**.
-The editable source is the actual Triton `fused_moe_kernel` body. The protected dispatcher still
-executes the complete fused-MoE operation against the captured oracle. Inspect
-[ut/meta.json](ut/meta.json) for capture metadata and [ut/README.md](ut/README.md) for historical caveats.
+The portable semantic checks remain useful: all three prior oracle-shape cases
+and four random/robustness cases are retained, with the original `tol=0.02`.
+M64 pool resampling is explicitly correctness-only. Three additional in-place
+semantic probes use the retained routing arrays verbatim and permit only the
+recorded hidden-state write/alias behavior. They are not served-workload replay.
 
-Provision the task's external artifacts using the suite's declared artifact manifest before running.
-Captured oracle and timing files must keep their recorded checksums. Missing inputs are environment
-errors and must not be replaced by generated routing, placeholder geometry or reduced case sets.
+The committed [compact contract](ut/generated_cases.json) is 867,430 bytes. It
+retains exact routing, shapes, strides, offsets and scalar metadata; numerical
+activations and expert values are generated from recorded seeds with finite FP8
+values and positive block scales. No external tensor archive is required. The
+original archive hashes remain provenance under `ut/meta.json:archival_capture`.
 
-Inside the declared GPU runtime, run from this task directory:
-
-```bash
-python3 scripts/task_runner.py compile --timeout 600
-python3 scripts/task_runner.py correctness --timeout 3600
-python3 scripts/task_runner.py performance --timeout 3600
-```
-
-Compilation is a CPU syntax and symbol check. Correctness uses the immutable task-specific oracle
-and baseline contract with the original tolerances and supplemental replay/value checks.
-Performance must cover every declared case using equivalent work and state for both Arena legs.
-The Arena baseline is the committed starting implementation; historical GEAK speedups are archival
-provenance and do not supply this run's score. Reports are written below the task directory.
-
-Archival source package: `H/GLM-5.3-Flash_fused_moe_kernel`. Capture-machine locations in metadata are
-recorded as `provenance://` identifiers; they are not runtime paths. This import has not been
-validated on a compatible GPU. A clean task-validator report is required before PR submission.
-
-The device module comes from public SGLang v0.5.18, commit
-`71de97b264b04dcd514cf904003028aefe9775c8`, with SHA256
+The editable target remains `fused_moe_kernel` in
+[source/fused_moe_triton_kernels.py](source/fused_moe_triton_kernels.py), pinned to
+SGLang v0.5.18 commit `71de97b264b04dcd514cf904003028aefe9775c8` and SHA256
 `9c3342d3147e7d60a78a2c934111f0fc1becbb8df1d2d32aafc82e6c8a0b2e70`.
-The captured dispatcher exactly matches commit `aa8c950a3df62b6642c4ea60a93a5e3eb1a1450e`.
-Its device module and the v0.5.18 module have an identical 44,623-byte prefix containing the
-target kernel, launchers, activation and reduction helpers. Full source provenance and frozen hashes
-are in [ut/device_source_contract.json](ut/device_source_contract.json). This source correspondence
-does not establish the complete custom runtime image's Git revision.
+The full dispatcher and source boundary remain protected; source/ABI bytes are
+unchanged. Model-free configuration and one-rank TP initialization remain required.
 
-Only `fused_moe_kernel`'s function body is editable. The task rejects changes to imports, decorators,
-signatures, host launchers and other module code before importing a candidate. Both process overlays
-bind a frozen full-operation dispatcher; the candidate overlay replaces its device module before the
-dispatcher imports it. Worker identities verify the two independent source paths and hashes.
-The archival `source/fused_moe.py` and all files under `ut/` remain protected.
+The configured entrypoint is `scripts/generated_task_runner.py`. Reference
+outputs remain in the parent process and are never sent to candidate workers.
+The shared worker protocol introduced by `a7bf289b` loads the declared aliases
+before candidate access and executes the same attested module objects. The branch includes the shared two-phase preflight hook: native target resolution
+follows helper attestation and overlay installation. No private worker/guard
+remains. Native source/ABI checks stay enabled.
 
-[ut/sglang_bootstrap.py](ut/sglang_bootstrap.py) uses SGLang's official
-`get_context().override_server_args(...).install()` API to publish the recorded non-model settings
-through its supported dummy-model boundary. It checks deterministic inference is disabled,
-fused MoE sum/all-reduce is disabled, and the runner is Triton. The original one-rank TP group is
-retained: inputs already contain the captured TP8 shard and the serving all-reduce lies outside this
-operator. This initialization avoids model-source resolution, so the standalone task needs neither
-model configuration/weights nor the historical `glm5_next` architecture patch. Initialization is
-still mandatory; an incompatible runtime context fails explicitly.
+No GPU qualification is claimed. Task-local metadata and provenance record source
+recovery, the retained structural inputs, and integration requirements.
 
-CPU tests cover source integrity, rejected host edits, independent module binding and context
-initialization. They do not establish GPU correctness or performance; fresh validation on the
-declared image and architecture remains required.
+Use the public runtime pinned in [config.yaml](config.yaml). The registry manifest,
+OCI config digest and historical `headkernel.capture_runtime` metadata remain
+separate. The integrated shared guard retains the newer DeepSeek checks.

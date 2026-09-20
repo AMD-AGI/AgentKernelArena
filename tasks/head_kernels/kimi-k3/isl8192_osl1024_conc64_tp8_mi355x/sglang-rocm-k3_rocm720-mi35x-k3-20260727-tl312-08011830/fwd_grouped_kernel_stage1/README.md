@@ -1,42 +1,52 @@
-# kimi-k3__fwd_grouped_kernel_stage1
+# fwd_grouped_kernel_stage1: generated-input task
 
-This task optimizes the **Kimi-K3** `_fwd_grouped_kernel_stage1` callable on MI355X (`gfx950`).
-The serving contract is ISL 8192 / OSL 1024 / CONC 64 / TP 8; its captured execution regime is `decode`.
+This Kimi-K3 task keeps all 2 package correctness geometries,
+every declared scored case, the original ABI, dtypes, layouts, calibrated numeric
+recipes, tolerance `0.02`, and 10-warmup/100-sample graph timing.
+Source kernel bodies are unchanged.
 
-Runtime image: `harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang-rocm-k3:rocm720-mi35x-k3-20260727-tl312-08011830`.
-Backend: `triton (attention)`; execute in that image's captured SGLang/AITER/PyTorch environment.
+**Coverage status:** this is an experimental operator benchmark, excluded from
+claimed validated HyperLoom coverage until native scenario and numerical
+qualification. The archived attention K pools have 395 and 524,352 rows; the existing timing recipe has 8,768 and 557,120 rows at context 8,704. Both are retained, but their pool/launch scenarios are not claimed equivalent.
 
-The runtime image, source package, editable files, required symbols, timeouts and architecture gate
-are declared in [config.yaml](config.yaml). Starting-source provenance: **prior-candidate**.
-The source snapshot is preserved as imported; inspect [ut/meta.json](ut/meta.json) for the captured
-cases and [ut/README.md](ut/README.md) for upstream measurement caveats.
 
-Provision the task's external artifacts using the suite's declared artifact manifest before running.
-Captured oracle and timing files must keep their recorded checksums. Missing inputs are environment
-errors and must not be replaced by generated routing, placeholder geometry or reduced case sets.
+Default execution needs no external tensor archive or cluster filesystem. The
+committed [structural JSON](ut/generated_cases.json) is 1,061,119
+bytes and retains exact integer paging/routing, tensor view/alias information,
+case order, and output contracts. Numeric inputs and fresh reference outputs are
+generated locally. Expert routing-weight values are generated while their
+captured zero mask and integer routing remain fixed.
 
-Inside the declared GPU runtime, run from this task directory:
+Correctness and performance use separate protected reference/candidate workers.
+Only profile and seed enter each worker. Golden outputs stay in parent memory;
+they are never supplied to a candidate or cached on disk. The parent checks all
+case IDs, complete outputs, original floating tolerance, exact integer/bool
+outputs, and all three original/changed/restored timed graph observations.
+Helper/codec and worker functions use the shared trusted preloader and guard.
+Aggregate workload scoring is disabled when any case lacks observed control evidence;
+all semantic cases remain available. Stage 1 additionally requires every individual
+launch in the retained independent torch-reference recipe to pass the original
+tolerance, without median aggregation.
+
+Attention keeps K/V slice aliases, noncontiguous paging and the live split-count
+calibration gate. MoE keeps original launch kwargs and padded decode replay.
+
+Run through the arena's Docker workspace preparation in the declared compatible
+runtime, or in an already materialized task workspace:
 
 ```bash
-python3 scripts/task_runner.py compile --timeout 600
-python3 scripts/task_runner.py correctness --timeout 3600
-python3 scripts/task_runner.py performance --timeout 3600
+python3 scripts/generated_task_runner.py compile
+python3 scripts/generated_task_runner.py correctness
+python3 scripts/generated_task_runner.py performance
 ```
 
-Compilation is a CPU syntax and symbol check. Correctness uses the immutable task-specific oracle
-and baseline contract with the original tolerances and supplemental replay/value checks.
-Performance must cover every declared case using equivalent work and state for both Arena legs.
-The Arena baseline is the committed starting implementation; historical GEAK speedups are archival
-provenance and do not supply this run's score. Reports are written below the task directory.
+The original archive and UT remain historical evidence. Their module-level candidate
+binding cannot be safely preloaded by the shared guard, so archival execution needs
+a separately reviewed archive-only configuration. The hash remains under
+`ut/meta.json:archival_capture`.
+No source archive was modified by this draft.
 
-Archival source package: `Z/Kimi-K3_fwd_grouped_kernel_stage1`. Capture-machine locations in metadata are
-recorded as `provenance://` identifiers; they are not runtime paths. This import has not been
-validated on a compatible GPU. A clean task-validator report is required before PR submission.
-
-The editable symbols include Python launchers or operator dispatch where declared in the config.
-Those edits must preserve the complete callable workload, launch dimensions, ABI and output/state
-contract. A device-kernel speedup cannot be claimed by deleting operator work or changing tested shapes.
-
-`ut/meta.json:standalone_binding` names the protected adapter used by the unit test
-and the common benchmark selector. Its `validate_layout()` method checks the same
-baseline and candidate inputs without importing GPU packages during compilation.
+This is an isolated draft with CPU regression coverage. **Fresh GPU correctness,
+performance and finalized task-validator qualification have not been run.**
+Runtime-image portability is integrated separately by the suite owner; the old
+capture image remains provenance rather than a downloaded fixture dependency.

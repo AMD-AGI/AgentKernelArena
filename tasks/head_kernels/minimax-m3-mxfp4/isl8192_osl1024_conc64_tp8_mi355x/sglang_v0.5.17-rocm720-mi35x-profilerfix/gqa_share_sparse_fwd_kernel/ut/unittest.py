@@ -29,6 +29,11 @@ import importlib.util as _ilu
 
 
 def _load(name, path):
+    existing = sys.modules.get(name)
+    if existing is not None:
+        if os.path.realpath(getattr(existing, "__file__", "")) != os.path.realpath(path):
+            raise RuntimeError(f"trusted helper alias names a different file: {name}")
+        return existing
     spec = _ilu.spec_from_file_location(name, path)
     mod = _ilu.module_from_spec(spec)
     sys.modules[name] = mod

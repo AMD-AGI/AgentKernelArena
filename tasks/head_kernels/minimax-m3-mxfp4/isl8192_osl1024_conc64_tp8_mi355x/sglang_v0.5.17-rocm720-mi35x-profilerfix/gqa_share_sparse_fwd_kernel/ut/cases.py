@@ -45,8 +45,9 @@ def _geo():
     the INDEX/paging structure have to be the live ones."""
     global _GEO
     if _GEO is None:
-        _GEO = _load_frozen_capture(torch, os.path.join(_HERE, "timing_geometry.pt"), map_location="cpu",
-                          weights_only=False)
+        import importlib
+        helper = importlib.import_module("generated_contract")
+        _GEO = helper.load_geometry(_HERE, torch)
     return _GEO
 
 
@@ -71,7 +72,9 @@ def _dt(name):
 
 
 def _build_args(g, rng=None, device="cuda"):
-    """Materialize one call's kwargs at EXACTLY the recorded online geometry.
+    """Build auxiliary validation kwargs with compact request rows/slot IDs.
+
+    Exact scored prefill uses the full captured record through timing_cases().
 
     q / k_cache / v_cache carry random values (the kernel's cost is value-independent; correctness
     against the oracle is checked separately on the RECORDED values). Everything that steers control
@@ -128,27 +131,36 @@ TIMING_MIN_M = 1024
 
 
 def timing_buckets(h, meta):
-    """The geometries that are allowed to CARRY WEIGHT.
-
-    The capture window also caught two tiny prefill-path calls (total_q = 1 and 186) from server
-    warmup / a short request. They are real, and they stay in the correctness oracle, but they are
-    NOT part of the ISL=8192 served workload: giving each of them its own self-weighted timing bucket
-    would let a change that only helps a 1-token chunk dominate the reported speedup. Only chunks at
-    or above TIMING_MIN_M tokens are timed."""
-    geos = _dedup(_geo())
-    big = [g for g in geos if g["total_q"] >= TIMING_MIN_M]
-    return big or geos
+    """Only an observed ISL=8192 call is eligible; no warmup fallback."""
+    selected = [g for g in _dedup(_geo()) if int(g["total_q"]) == 8192]
+    if len(selected) != 1:
+        raise RuntimeError("missing/ambiguous observed M=8192 prefill geometry; no timing fallback")
+    return selected
 
 
 def timing_cases(h, meta):
-    """PREFILL-only timing buckets. `m` = total_q (the packed chunk token count), which is what the
-    serving weight model multiplies by prefill call counts."""
+    """Reconstruct the full captured call, including table extent and slot dtype/IDs."""
+    import importlib
+    helper = importlib.import_module("generated_contract")
+    declarations = meta.get("performance_contract") or {}
+    wanted = declarations.get("source_signatures") or []
+    if declarations.get("status") != "ready" or len(wanted) != 1:
+        raise RuntimeError("exact prefill performance contract is missing")
+    geometries = timing_buckets(h, meta)
+    if [g["sig"] for g in geometries] != wanted:
+        raise RuntimeError("scored geometry differs from the observed prefill control record")
+    captured = helper.load_contract(_HERE)["records"]
+    matches = [record for record in captured if record["sig"] in wanted]
+    if len(matches) != len(wanted):
+        raise RuntimeError("observed prefill control record is missing; no timing fallback")
     out = []
-    for g in timing_buckets(h, meta):
-        out.append({"sig": f"prefill_m{g['total_q']}_s{g['num_seqs']}",
-                    "regime": "prefill",
-                    "m": g["total_q"],
-                    "args": _build_args(g, rng=None)})
+    for case_id, record in zip(declarations["case_ids"], matches):
+        positional, kwargs = helper.build_record(record, 0, torch, "cuda")
+        if positional:
+            raise RuntimeError("captured prefill positional ABI requires an explicit adapter")
+        out.append({"sig": case_id, "regime": "prefill", "m": 8192,
+                    "source_sig": record["sig"], "scenario_evidence": "captured_control_record",
+                    "args": kwargs})
     return out
 
 

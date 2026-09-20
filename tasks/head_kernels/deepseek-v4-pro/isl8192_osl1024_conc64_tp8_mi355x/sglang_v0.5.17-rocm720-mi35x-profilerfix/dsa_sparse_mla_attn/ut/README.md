@@ -1,3 +1,5 @@
+> Historical capture documentation. The active generated-input draft uses `generated_cases.json` and `generated_contract.py`, with fresh separate frozen-source references. No external tensor archive is required; see the task README for current commands.
+
 # DeepSeek-V4-Pro — head kernel `dsa_sparse_mla_attn`
 
 | Model | ISL | OSL | CONC | Docker / Image | Head Kernel | GPU Time Share (%) | Current Roofline | HL Run Directory |

@@ -2163,23 +2163,24 @@
     {
       "path": "ut/reference_io.pt",
       "sha256": "14e589b7296c667b170b39a5f962344152206ff954a84b4e16de4346567d12af",
-      "metadata_evidence": "ut/meta.json#/reference_io_sha256",
+      "metadata_evidence": "ut/meta.json#/archival_capture/reference_io_sha256",
       "inspected": true,
-      "status": "hash verified; metadata extracted with restricted weights_only=True CPU mmap/FakeTensorMode; tensor values not read"
+      "status": "hash verified; metadata extracted with restricted weights_only=True CPU mmap/FakeTensorMode; tensor values not read",
+      "runtime_requirement": "archival provenance only; not required by generated task entrypoints"
     }
   ],
   "sources": [
     {
       "path": "ut/meta.json",
-      "sha256": "c581d869114eb87dbccb2ae5481c5559b4653dc58dbcf15314ecb8e85b767a87"
+      "sha256": "4e07250645fbb190da72f6e418d218493b0e5eb38de549e473cca83b6b9ea184"
     },
     {
       "path": "ut/cases.py",
-      "sha256": "c2556151ed8a8d5798b635cd979610846c5e081fdda5e34fde74d5e97b4f3b7c"
+      "sha256": "289967c4ba984259e75b254c9d613a266ab837393539ae0c47e17c799f3eb96b"
     },
     {
       "path": "config.yaml",
-      "sha256": "1ee49dda51b9eb7612a8bae2f4cea113846c164c7b5f131f5338bfff44be3f1a"
+      "sha256": "5cc9c2b2bff098d434fa123fd833816e1d381fcaa48db2dafe574bbacb70f9ad"
     },
     {
       "path": "scripts/source_abi.json",
@@ -2196,6 +2197,30 @@
     {
       "path": "ut/capture_meta.json",
       "sha256": "3e77165961bb8ca3f3e485a51a22c5daf8bedf694e1093d3aeb688235e1c40e6"
+    },
+    {
+      "path": "ut/generated_cases.json",
+      "sha256": "c160ccfdebcb2f4d5551924b66ea2280308222544d39bb9067e3f5b37006d283"
+    },
+    {
+      "path": "ut/generated_contract.py",
+      "sha256": "81737cdbbc547d8934ddb1df118d61a62f3db1b08ac1a0c61a989ee7d97060d3"
+    },
+    {
+      "path": "scripts/generated_worker.py",
+      "sha256": "cabb82de6e6bedca99016aff78038c50d5afb0a103eb704b5cec7d864bc6c242"
+    },
+    {
+      "path": "scripts/generated_correctness.py",
+      "sha256": "15ae7e5323ec02554efb9a13b0472f7f4fedf60db4c1983bc48fdd129b5f33bc"
+    },
+    {
+      "path": "scripts/generated_task_runner.py",
+      "sha256": "66f8449eee331ee46ff4b49cc230e0c7548387eac47ad31527eddb1c813a2c0e"
+    },
+    {
+      "path": "ut/copy_layout_proof.json",
+      "sha256": "d4aa5f352de270d1c527c68834704946d9f8d44410a89c6990dfdaec0a88046b"
     }
   ],
   "validation": "Hash-verified restricted CPU tensor metadata extraction plus static builder inspection. No tensor values read and no GPU correctness/performance validation.",
@@ -2981,5 +3006,39 @@
     "cpu_wheel_report_sha256": "aa6b4b5c0cf62a4e2502d9a653355d4ece850167e135556fac8e9855442a43ad",
     "all_artifacts_report_sha256": "0a48b0f19bbf1469b41dbb2a13dbda229ed1c3c790e2f5e9b3f3ed3181751925",
     "supplement_report_sha256": "fae60fce8d55bdafd867606b30e052eaa8690fe4907d3fa156a667773f4d12d4"
+  },
+  "generated_input_draft": {
+    "correctness_case_ids": [
+      "oracle0_m19_decode",
+      "oracle1_m19_decode",
+      "oracle2_m19_decode",
+      "oracle3_m19_decode",
+      "oracle4_m1_decode",
+      "oracle5_m1_decode",
+      "oracle6_m8192_prefill"
+    ],
+    "random_case_ids": [
+      "rand_m64x2_decode",
+      "rand_m64x12_decode",
+      "rand_m64x16_decode",
+      "rand_m64x32_decode",
+      "rand_m16384x2_prefill",
+      "rand_m16384x12_prefill",
+      "rand_m16384x16_prefill",
+      "rand_m16384x32_prefill"
+    ],
+    "timed_case_ids": [
+      "[\"scale_m64x32_decode\",\"decode\"]",
+      "[\"scale_m64x2_decode\",\"decode\"]",
+      "[\"scale_m64x12_decode\",\"decode\"]",
+      "[\"scale_m16384x2_prefill\",\"prefill\"]",
+      "[\"scale_m16384x12_prefill\",\"prefill\"]",
+      "[\"scale_m16384x16_prefill\",\"prefill\"]",
+      "[\"scale_m16384x32_prefill\",\"prefill\"]",
+      "[\"scale_m64x16_decode\",\"decode\"]"
+    ],
+    "contract_file": "ut/generated_cases.json",
+    "contract_sha256": "c160ccfdebcb2f4d5551924b66ea2280308222544d39bb9067e3f5b37006d283",
+    "gpu_validated": false
   }
 }

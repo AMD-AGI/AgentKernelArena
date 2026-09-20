@@ -1350,21 +1350,22 @@
       "sha256": "38a624a5f502279a13a09c012fababbe232cadedacd560056d8411640a04aaf1",
       "metadata_evidence": "ut/meta.json#/reference_io_sha256",
       "inspected": true,
-      "status": "hash verified; metadata extracted with restricted weights_only=True CPU mmap/FakeTensorMode; tensor values not read"
+      "status": "optional archival numerical sample; structure extracted with restricted CPU loader",
+      "required_for_default_execution": false
     }
   ],
   "sources": [
     {
       "path": "ut/meta.json",
-      "sha256": "52c0ab82859be6819d9210084b1cc987314d25cda7a9d1e161176449d2c579a4"
+      "sha256": "b8a7f9fb6cb269445500dfdc61d13887e049b99932dc4c5067f43b211eba6168"
     },
     {
       "path": "ut/cases.py",
-      "sha256": "00bfb915aa61d9b791c06346e482d1786d978f058477e3a34e57bf6fde241b7e"
+      "sha256": "4c145ab40ec06a13dc43a737d4206540eff9a089204a423ced5350ae0086becd"
     },
     {
       "path": "config.yaml",
-      "sha256": "8215ac604cb39619852ffeb91b7e7a98a1085dabc3ba2fa2c464224a168e64c3"
+      "sha256": "604ffebd3f215596d73f87597a3e56872fffc2909ea32c805304abf458408f27"
     },
     {
       "path": "scripts/source_abi.json",
@@ -2500,5 +2501,17 @@
     "cpu_wheel_report_sha256": "aa6b4b5c0cf62a4e2502d9a653355d4ece850167e135556fac8e9855442a43ad",
     "all_artifacts_report_sha256": "0a48b0f19bbf1469b41dbb2a13dbda229ed1c3c790e2f5e9b3f3ed3181751925",
     "supplement_report_sha256": "fae60fce8d55bdafd867606b30e052eaa8690fe4907d3fa156a667773f4d12d4"
+  },
+  "generated_inputs": {
+    "kernel": "fused_recurrent_gated_delta_rule_decode",
+    "contract_file": "generated_cases.json",
+    "contract_sha256": "6fa60ae303ab9a146fff0030145fcb87d5f32b2cf76309dced6ade2ddb994998",
+    "case_ids": [
+      "decode_b64_live",
+      "decode_b1_live"
+    ],
+    "numeric_values": "seeded locally; not the original captured numerical sample",
+    "structural_values": "exact hash-verified archive routing, slot and page values in compact JSON",
+    "reference": "independent protected baseline process; full output comparison in the trusted parent"
   }
 }

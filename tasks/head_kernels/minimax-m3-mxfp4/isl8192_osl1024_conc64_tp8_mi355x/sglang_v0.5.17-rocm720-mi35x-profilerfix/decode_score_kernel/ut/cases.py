@@ -51,8 +51,9 @@ def _geo():
     RECORDED calls, and the served decode M buckets taken from the capture's shape histogram."""
     global _GEO
     if _GEO is None:
-        _GEO = _load_frozen_capture(torch, os.path.join(_HERE, "timing_geometry.pt"), map_location="cpu",
-                          weights_only=False)
+        import importlib
+        helper = importlib.import_module("generated_contract")
+        _GEO = helper.load_geometry(_HERE, torch)
     return _GEO
 
 
@@ -103,7 +104,9 @@ def _paged_rows(g, device):
 
 
 def _build_args(g, rng=None, device="cuda"):
-    """Materialize one call's kwargs at EXACTLY the recorded/served online geometry.
+    """Build auxiliary validation kwargs; request rows/slots may be compacted.
+
+    This helper is not an exact captured serving-call timing adapter.
 
     q and k_cache carry random VALUES (the kernel's cost is value-independent; correctness against
     the recorded golden is checked separately on the recorded values). Everything that steers control
@@ -147,24 +150,18 @@ def _build_args(g, rng=None, device="cuda"):
     }
 
 
-def timing_buckets(h, meta):
-    """The geometries that are allowed to CARRY WEIGHT: the SERVED decode M buckets only.
-
-    The five heavy oracle records are bs=1 / ctx~190 calls from sglang's own startup warmup (the
-    capture budget is spent before the benchmark's first real decode step). They are real and they
-    stay in the correctness oracle, but giving each its own self-weighted timing bucket would let a
-    change that only helps a 190-token toy dominate the reported speedup.
-    """
+def validation_buckets(h, meta):
+    """Histogram/analytic proxies retained only for existing random/replay validation."""
     served = [g for g in _geo() if g.get("source") == "served_histogram"]
-    return served or _geo()
+    if not served:
+        raise RuntimeError("serving robustness geometry is missing; warmup is not a substitute")
+    return served
 
 
 def timing_cases(h, meta):
-    """DECODE-only timing buckets, one per DECODE_M_BUCKETS entry. `m` = decode batch size, which is
-    what the serving weight model multiplies by the decode call count (OSL on the largest bucket)."""
-    return [{"sig": g["sig"], "regime": "decode", "m": g["batch_size"],
-             "args": _build_args(g, rng=None)}
-            for g in timing_buckets(h, meta)]
+    """No exact serving-case score is available from histogram/analytic proxies."""
+    raise RuntimeError((meta.get("performance_contract") or {}).get("reason") or
+                       "exact serving decode controls are missing; proxy timing is not scoreable")
 
 
 def _seq_len_variant(g, mode):
@@ -193,7 +190,7 @@ def _seq_len_variant(g, mode):
 def replay_shapes(h, meta):
     """>=2 boundary cases sharing one buffer set, for the CUDA-graph replay gate (regime.cuda_graph
     is true: the served decode path runs entirely as graph replay)."""
-    base = max(timing_buckets(h, meta), key=lambda g: (g["batch_size"], g["max_seqlen"]))
+    base = max(validation_buckets(h, meta), key=lambda g: (g["batch_size"], g["max_seqlen"]))
     return [{"sig": f"replay_{v['sig']}", "geo": v,
              "make_inputs": (lambda rng, v=v: _build_args(v, rng=rng))}
             for v in (_seq_len_variant(base, "uniform"), _seq_len_variant(base, "boundary"))]
@@ -207,7 +204,7 @@ def random_shapes(h, meta):
     produced by the frozen live kernel rather than by the candidate itself.
     """
     out = [{"sig": g["sig"], "make_inputs": (lambda rng, g=g: _build_args(g, rng=rng))}
-           for g in timing_buckets(h, meta)]
+           for g in validation_buckets(h, meta)]
     out += [{"sig": s["sig"], "make_inputs": s["make_inputs"]} for s in replay_shapes(h, meta)]
     return out
 

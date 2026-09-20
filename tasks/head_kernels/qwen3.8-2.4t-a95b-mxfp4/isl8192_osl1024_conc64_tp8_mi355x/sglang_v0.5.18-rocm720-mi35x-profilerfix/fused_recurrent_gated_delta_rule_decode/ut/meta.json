@@ -1166,7 +1166,7 @@
   "op_kind": "stateful_recurrence",
   "oracle_bytes_est": 626869764,
   "oracle_complete": true,
-  "oracle_policy": "Live eager capture from the production callable is authoritative for values, routing, layout, output, and recurrent-state transition; deployment CUDA-graph behavior is checked separately by capture-once/replay-many in unittest.py.",
+  "oracle_policy": "fresh_generated_inputs_and_protected_parent_reference",
   "oracle_save_count": 2,
   "persist_policy": "share_large",
   "pre_arg_indices": [],
@@ -1177,8 +1177,6 @@
   "process_id": 26800,
   "random_draws": 3,
   "rank": "unknown",
-  "reference_io": "reference_io.pt",
-  "reference_io_sha256": "38a624a5f502279a13a09c012fababbe232cadedacd560056d8411640a04aaf1",
   "regime": {
     "backend": "sglang",
     "capture_mode": "eager_to_observe_request_state",
@@ -1453,5 +1451,22 @@
       "osl": 1024,
       "prefill_chunk": 16384
     }
-  }
+  },
+  "archival_capture": {
+    "reference_io": "reference_io.pt",
+    "reference_io_sha256": "38a624a5f502279a13a09c012fababbe232cadedacd560056d8411640a04aaf1"
+  },
+  "generated_inputs": {
+    "kernel": "fused_recurrent_gated_delta_rule_decode",
+    "contract_file": "generated_cases.json",
+    "contract_sha256": "6fa60ae303ab9a146fff0030145fcb87d5f32b2cf76309dced6ade2ddb994998",
+    "case_ids": [
+      "decode_b64_live",
+      "decode_b1_live"
+    ],
+    "numeric_values": "seeded locally; not the original captured numerical sample",
+    "structural_values": "exact hash-verified archive routing, slot and page values in compact JSON",
+    "reference": "independent protected baseline process; full output comparison in the trusted parent"
+  },
+  "synthesized": true
 }

@@ -7,6 +7,12 @@ concurrency 64, and tensor parallelism 8. An isolated task replays an
 individual rank's operator; it does not launch an eight-GPU model or
 measure model end-to-end throughput.
 
+Read the [per-task workload-fidelity matrix](WORKLOAD_FIDELITY.md) and
+[native validation results](VALIDATION.md) before interpreting a score. Some
+paths are deliberately blocked because their original serving controls are
+missing or reconstructed. The suite does not claim that every retained case
+exactly reproduces its original HyperLoom execution.
+
 The [coverage catalog](catalog.json) connects each profiled kernel row to an
 optimization task or an explicit remaining capture/implementation requirement.
 Several profiler symbols share one callable and therefore one task. Catalog-only
@@ -14,7 +20,7 @@ entries have no task configuration and must not be counted as runnable tasks.
 The source table's reported GPU-time shares are historical selection evidence;
 historical speedups and roofline estimates are not benchmark rewards.
 
-## Exact workload and kernel tasks
+## Workload layout and kernel tasks
 
 There are **18 separate kernel tasks**, organized by complete model variant,
 serving workload, exact capture image, and kernel:
@@ -39,7 +45,7 @@ frozen contract, runners, and environment preflight. `SHAPES.json` preserves
 the complete case inventories and source evidence; `SHAPES.md` presents the
 tensor shapes, dtypes, physical layouts, and explicitly unknown metadata.
 
-| Model | Workload and image | Tasks | Principal targets |
+| Model | Workload and historical capture image | Tasks | Principal targets |
 | --- | --- | ---: | --- |
 | MiniMax M3 MXFP4 | [ISL8192 / OSL1024 / CONC64 / TP8 / v0.5.17](minimax-m3-mxfp4/isl8192_osl1024_conc64_tp8_mi355x/sglang_v0.5.17-rocm720-mi35x-profilerfix/README.md) | 3 | Decode-score attention; GQA sparse decode; GQA sparse prefill |
 | Kimi K3 | [ISL8192 / OSL1024 / CONC64 / TP8 / custom Kimi image](kimi-k3/isl8192_osl1024_conc64_tp8_mi355x/sglang-rocm-k3_rocm720-mi35x-k3-20260727-tl312-08011830/README.md) | 3 | Grouped MLA decode stage one; MoE stages one and two |
@@ -61,36 +67,39 @@ The committed starting implementation is what Arena measures as its baseline.
 In particular, a documented prior-candidate seed is not relabeled as an
 untuned stock implementation.
 
-## Prepare the exact inputs
+## Portable task inputs
 
-The suite uses captured shapes, dtypes, physical strides, tensor attributes,
-and reference contracts. **This revision is not yet fully fixture-free:** four
-tasks generate inputs and references from code, while 14 tasks require captured
-input/output fixtures totaling 33.14 GB across the whole suite. These files are
-test data, not model checkpoints. They must be provisioned explicitly and
-verified before a dependent task is copied into an evaluation workspace; use
-`--task` to install only the selected tasks' files. See
-[why this revision needs captures](../../docs/how-to/prepare-head-kernel-artifacts.md#why-this-revision-needs-captured-tensors).
+All **18 kernel tasks require zero external tensor fixtures**. Their inputs are
+constructed locally from committed structural JSON, deterministic generators,
+and task-local metadata. Large numerical buffers use generated samples; each task
+states which shapes, physical layouts, routing or paging controls, aliases and
+mutable-state rules come from captured evidence. Expected outputs are produced
+by an independent mathematical reference or protected original implementation.
+
+A checkout and the declared public runtime are sufficient to construct the task
+inputs. No model checkpoint, private registry, shared-NFS mirror, or original
+capture node is required. List or check the external-artifact declaration from
+the repository root:
 
 ```bash
 python3 src/tools/prepare_head_kernel_artifacts.py --list
-python3 src/tools/prepare_head_kernel_artifacts.py --mirror artifact_mirror
 python3 src/tools/prepare_head_kernel_artifacts.py --verify
 ```
 
-Run these commands from the repository root. The mirror keeps the original
-`<operation-id>/ut/<artifact-name>` layout. The version-2 manifest declares
-that location as `mirror_path` separately from each hierarchical destination
-`path`; the reviewed flat mirror files remain usable. A content-addressed
-cache is also supported.
-See [artifact preparation](../../docs/how-to/prepare-head-kernel-artifacts.md)
-and the exact [artifact manifest](artifacts.json).
+Both report **0 required fixtures and 0 required bytes**, with all 18 tasks
+listed as requiring no persistent fixture. These commands check the external
+artifact contract; the task runners separately verify committed input metadata,
+generators, references and case definitions before executing candidates.
 
-The three MiniMax `timing_geometry.pt` files have recorded hashes and are
-available in the current upstream delivery. Earlier suite prose describing
-them as missing is stale. A locally absent or mismatched fixture still fails
-preflight. Generated random-baseline caches and previous timing reports are
-not persistent correctness oracles.
+Original archive hashes remain optional provenance in [artifacts.json](artifacts.json)
+and each task's metadata. See [portable inputs and optional archives](../../docs/how-to/prepare-head-kernel-artifacts.md)
+for their role, and the [offline extraction guide](../../docs/how-to/extract-head-kernel-contracts.md)
+for developer-only archive inspection.
+
+Input portability does not establish exact-workload fidelity or GPU
+qualification. Tasks retain their explicit scoring gates where required serving
+controls or native runtime behavior have not been qualified. The current
+[validation status](VALIDATION.md) records those limits.
 
 ## Select the matching environment
 
@@ -103,9 +112,9 @@ select tasks sharing one public image.
 
 Use the [per-kernel environment matrix](../../docs/reference/top5-head-kernel-environments.md)
 and the [runtime guide](../../docs/how-to/top5-head-kernels-runtime.md).
-For nodes outside Crusoe, the [public image catalog](../../docs/reference/top5-public-images.md)
-records reachable Docker Hub images and the explicitly pinned GLM BF16
-validation candidate, which needs no external tensor fixtures.
+The [public image catalog](../../docs/reference/top5-public-images.md) records
+Docker Hub manifests and build pins. Historical private image names remain
+provenance and are not contacted by the runtime.
 For example, from the repository root:
 
 ```bash

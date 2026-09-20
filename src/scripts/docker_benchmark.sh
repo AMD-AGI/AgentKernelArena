@@ -55,6 +55,8 @@ usage() {
 Usage:
   src/scripts/docker_benchmark.sh run [main.py args...]
   src/scripts/docker_benchmark.sh verify --config_name <head-kernel-config>
+  GPU_IDS=0,1 src/scripts/docker_benchmark.sh parallel-verify --config_name <head-kernel-config>
+  src/scripts/docker_benchmark.sh trace --config_name <head-kernel-config> [trace options...]
   src/scripts/docker_benchmark.sh parallel-run [main.py args...]
   src/scripts/docker_benchmark.sh preflight [--config_name <run-config.yaml>]
   src/scripts/docker_benchmark.sh shell
@@ -70,7 +72,7 @@ Default run config:
   On another GPU, pass --config_name with a matching run configuration.
 
 Environment overrides:
-  GPU_IDS                 Comma/space separated GPU indices for parallel-run.
+  GPU_IDS                 Comma/space separated GPU indices; required for parallel-verify.
   AKA_LOGICAL_GPU         Logical GPU index inside a masked worker container (default: 0).
   AKA_DOCKER_IMAGE        Absolute Docker image override.
   AKA_VERIFY_RUNTIME_IMAGE
@@ -1776,8 +1778,69 @@ run_parallel() {
     fi
 }
 
+run_parallel_verify() {
+    local config_name declaration batch batch_relative worker_count task_digest worker gpu directory arg
+    local -a plan_fields=() pids=() exit_codes=()
+    config_name="$(extract_config_name "$@")"
+    [[ -n "${GPU_IDS:-}" ]] || die "parallel-verify requires explicit GPU_IDS"
+    for arg in "$@"; do
+        case "${arg%%=*}" in
+            --shard-index|--shard-count|--taskset-sha256|--output-directory)
+                die "parallel-verify manages shard/output arguments; provide only the cohort config" ;;
+        esac
+    done
+    declaration="$(cd "$HOST_ROOT" && python3 -c 'import json,sys; from pathlib import Path; from src.tools.verify_head_kernels import parallel_plan; print(json.dumps(parallel_plan(Path(sys.argv[1]),sys.argv[2])))' "$config_name" "$GPU_IDS")" \
+        || die "Could not plan parallel verification"
+    mapfile -t plan_fields < <(python3 -c 'import json,sys; p=json.loads(sys.argv[1]); print(p["plan"]["image"]); print(p["plan"]["expected_image_id"] or ""); print(len(p["workers"])); print(p["taskset_sha256"]); [print(w["gpu_id"]) for w in p["workers"]]' "$declaration")
+    [[ "${#plan_fields[@]}" -ge 5 ]] || die "Invalid parallel verification plan"
+    [[ -z "${AKA_DOCKER_IMAGE:-}" || "$AKA_DOCKER_IMAGE" == "${plan_fields[0]}" ]] \
+        || die "AKA_DOCKER_IMAGE conflicts with the cohort runtime"
+    [[ -z "${AKA_EXPECTED_IMAGE_ID:-}" || "$AKA_EXPECTED_IMAGE_ID" == "${plan_fields[1]}" ]] \
+        || die "AKA_EXPECTED_IMAGE_ID conflicts with the cohort config digest"
+    AKA_DOCKER_IMAGE="${plan_fields[0]}"
+    AKA_EXPECTED_IMAGE_ID="${plan_fields[1]}"
+    AKA_VERIFY_RUNTIME_IMAGE=1
+    select_runtime_for_config "$config_name"
+    REQUIRED_AGENTS=""
+    AGENTS_STRICT=0
+    AKA_AGENT_FREE_VERIFY=1
+    AKA_SKIP_DEV_MEM=1
+    AKA_TOP5_ISOLATED_CACHES=1
+    worker_count="${plan_fields[2]}"
+    task_digest="${plan_fields[3]}"
+    batch="$(mktemp -d "$HOST_ROOT/workspace_parallel_verification_XXXXXX")"
+    batch_relative="${batch#"$HOST_ROOT/"}"
+    printf '%s\n' "$declaration" > "$batch/parallel-plan.json"
+    echo "Parallel verification evidence: $batch_relative ($worker_count workers)" >&2
+    for ((worker = 0; worker < worker_count; worker++)); do
+        gpu="${plan_fields[$((worker + 4))]}"
+        printf -v directory 'worker-%03d' "$worker"
+        (
+            AKA_VISIBLE_GPU="$gpu"
+            AKA_LOGICAL_GPU=0
+            AKA_WORKER_ID="$worker"
+            AKA_CONTAINER_HOME="/tmp/aka-$batch_relative-$directory"
+            AKA_CACHE_SUFFIX="$batch_relative-$directory"
+            AGENT_HOME_ISOLATION=1
+            docker_exec 0 python3 -m src.tools.verify_head_kernels "$@" \
+                --shard-index "$worker" --shard-count "$worker_count" \
+                --taskset-sha256 "$task_digest" --output-directory "$batch_relative/$directory"
+        ) > "$batch/$directory.stdout" 2> "$batch/$directory.stderr" &
+        pids+=("$!")
+    done
+    for worker in "${!pids[@]}"; do
+        if wait "${pids[$worker]}"; then exit_codes+=(0); else exit_codes+=("$?"); fi
+    done
+    (cd "$HOST_ROOT" && python3 -c 'import sys; from pathlib import Path; from src.tools.verify_head_kernels import aggregate_parallel; code,path=aggregate_parallel(Path(sys.argv[1]),[int(x) for x in sys.argv[2:]]); print("Parallel verification summary:",path); raise SystemExit(code)' "$batch_relative" "${exit_codes[@]}")
+}
+
 case "${1:-}" in
-    verify)
+    parallel-verify)
+        shift
+        run_parallel_verify "$@"
+        ;;
+    verify|trace)
+        native_action="$1"
         shift
         config_name="$(extract_config_name "$@")"
         AKA_VERIFY_RUNTIME_IMAGE=1
@@ -1789,7 +1852,11 @@ case "${1:-}" in
         AKA_TOP5_ISOLATED_CACHES=1
         AKA_CONTAINER_HOME="/tmp/aka-verify-home-${HOST_UID}-${BASHPID}"
         AGENT_HOME_ISOLATION=1
-        docker_exec 0 python3 -m src.tools.verify_head_kernels "$@"
+        if [[ "$native_action" == "trace" ]]; then
+            docker_exec 0 python3 -m src.tools.trace_head_kernels "$@"
+        else
+            docker_exec 0 python3 -m src.tools.verify_head_kernels "$@"
+        fi
         ;;
     run)
         shift

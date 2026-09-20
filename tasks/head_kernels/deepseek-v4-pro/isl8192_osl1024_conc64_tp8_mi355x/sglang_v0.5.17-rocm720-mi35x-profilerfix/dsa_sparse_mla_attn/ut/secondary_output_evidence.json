@@ -1,0 +1,98 @@
+{
+  "source_revision": "d9e5ef7ce08ee7045d583aed768cff41aa9210fe",
+  "stage1_body_byte_identical_to_revision": true,
+  "sources": [
+    {
+      "repository": "ROCm/aiter",
+      "revision": "d9e5ef7ce08ee7045d583aed768cff41aa9210fe",
+      "path": "aiter/ops/flydsl/kernels/mixed_moe_gemm_2stage.py",
+      "sha256": "d6be8a234367022bbd1165094d3ec8c378b2a4048e6333e373e404ad401a32ce",
+      "excerpts": [
+        {
+          "first_line": 643,
+          "last_line": 650,
+          "text": "                arg_num_valid_ids, arith.constant(4, type=T.i32)\n            )\n            num_valid_i32 = buffer_ops.buffer_load(\n                numids_rsrc, arith.constant(0, index=True), vec_width=1, dtype=T.i32\n            )\n\n            sx_rsrc = 1\n            sw_rsrc = 1"
+        },
+        {
+          "first_line": 679,
+          "last_line": 700,
+          "text": "            # #3476: pad group-N (= inter_dim/32) up to a multiple of 8 so it\n            sorted_scale_cols = ((inter_dim // 32) + 7) // 8 * 8\n            sorted_scale_cols_i32 = arith.constant(sorted_scale_cols, type=T.i32)\n            sorted_scale_rsrc = None\n            if const_expr(need_sort):\n                sort_rows_idx = size_expert_ids_in * arith.constant(\n                    sort_block_m, index=True\n                )\n                sort_padded_rows = (\n                    (sort_rows_idx + arith.constant(255, index=True))\n                    // arith.constant(256, index=True)\n                    * arith.constant(256, index=True)\n                )\n                sort_padded_cols = arith.constant(\n                    ((sorted_scale_cols + 7) // 8) * 8, index=True\n                )\n                sort_scale_nbytes = arith.index_cast(\n                    T.i32, sort_padded_rows * sort_padded_cols\n                )\n                sorted_scale_rsrc = ptr_buffer_resource(\n                    arg_out_scale_sorted, sort_scale_nbytes\n                )"
+        },
+        {
+          "first_line": 713,
+          "last_line": 725,
+          "text": "            bx_m_i32 = arith.index_cast(T.i32, bx_m)\n            blk_valid = arith.cmpi(CmpIPredicate.ult, bx_m_i32, num_valid_i32)\n            expert_i32 = buffer_ops.buffer_load(\n                expert_rsrc, bx, vec_width=1, dtype=T.i32\n            )\n            expert_idx = arith.index_cast(ir.IndexType.get(), expert_i32)\n            exp_valid = arith.cmpi(\n                CmpIPredicate.ult, expert_i32, arith.constant(experts, type=T.i32)\n            )\n\n            def moe_gemm1_body():\n                nonlocal k_base_idx, lds_x_pong, lds_x_ping\n                expert_off_idx = expert_idx * arith.constant(2 * inter_dim, index=True)"
+        },
+        {
+          "first_line": 2370,
+          "last_line": 2390,
+          "text": "                )\n\n                def precompute_row(*, row_local, row):\n                    fused2 = memref.load(lds_tid, [row_local])\n                    row_i32 = arith.index_cast(T.i32, row)\n                    row_valid0 = arith.cmpi(CmpIPredicate.ult, row_i32, num_valid_i32)\n                    t = fused2 & mask24_i32\n                    s = fused2 >> 24\n                    t_ok = arith.cmpi(CmpIPredicate.ult, t, tokens_i32_v)\n                    s_ok = arith.cmpi(CmpIPredicate.ult, s, topk_i32_v)\n                    row_valid = arith.andi(row_valid0, arith.andi(t_ok, s_ok))\n                    t_idx = arith.index_cast(ir.IndexType.get(), t)\n                    s_idx = arith.index_cast(ir.IndexType.get(), s)\n                    ts_idx = t_idx * arith.constant(topk, index=True) + s_idx\n                    row_byte_base = out_base_idx + ts_idx * arith.constant(\n                        out_row_stride, index=True\n                    )\n                    return ((fused2, row_byte_base), row_valid)\n\n                def idx_to_llvm_ptr(idx_val, addr_space=1):\n                    idx_v = idx_val._value if hasattr(idx_val, \"_value\") else idx_val"
+        },
+        {
+          "first_line": 2618,
+          "last_line": 2652,
+          "text": "                            is_scale_writer = arith.cmpi(\n                                CmpIPredicate.eq, col_g0_i32 & c31_i32, c0_i32\n                            )\n                            if_scale = scf.IfOp(is_scale_writer)\n                            with ir.InsertionPoint(if_scale.then_block):\n                                row_i32_s = arith.index_cast(T.i32, row)\n                                col_s_i32 = col_g0_i32 >> c5_i32\n                                d0 = row_i32_s >> c5_i32\n                                d1 = (row_i32_s >> c4_i32) & c1_i32\n                                d2 = row_i32_s & c15_i32\n                                d3 = col_s_i32 >> c3_i32\n                                d4 = (col_s_i32 >> c2_i32) & c1_i32\n                                d5 = col_s_i32 & c3_i32\n                                byte_off = (\n                                    d0 * n32_sort\n                                    + d3 * c256_i32\n                                    + d5 * c64_i32\n                                    + d2 * c4_i32\n                                    + d4 * c2_i32\n                                    + d1\n                                )\n                                e8m0_i8 = arith.TruncIOp(T.i8, e8m0_biased)\n                                buffer_ops.buffer_store(\n                                    e8m0_i8,\n                                    sorted_scale_rsrc,\n                                    byte_off,\n                                    offset_is_bytes=True,\n                                )\n                                scf.YieldOp([])\n                    elif const_expr(is_splitk):\n                        col_idx = col_g0 + arith.constant(sk_n_offset[0], index=True)\n                        byte_off_col = col_idx * arith.constant(\n                            out_elem_bytes, index=True\n                        )\n                        ptr_addr_idx = row_byte_base + byte_off_col"
+        }
+      ]
+    },
+    {
+      "repository": "ROCm/aiter",
+      "revision": "d9e5ef7ce08ee7045d583aed768cff41aa9210fe",
+      "path": "aiter/fused_moe.py",
+      "sha256": "c5dcc5f3c1f2dae73c370a0380e707cf5c49cde1e97db4933443c196bc3f3949",
+      "excerpts": [
+        {
+          "first_line": 2709,
+          "last_line": 2725,
+          "text": "        kernel_bench_callable.append((\"stage1\", _stage1_call))\n    a2 = _stage1_call()\n    if m_indices is not None and isinstance(a2, tuple):\n        a2, a2_scale = a2[0], a2[1]\n    elif metadata.fuse_quant == \"fp4\" and isinstance(a2, tuple):\n        a2_raw, a2_scale = a2[0], a2[1]\n        _fp4_bytes = token_num * topk * (inter_dim // 2)\n        a2 = (\n            a2_raw.view(-1)\n            .view(torch.uint8)[:_fp4_bytes]\n            .view(dtypes.fp4x2)\n            .reshape(token_num, topk, -1)\n        )\n    elif metadata.fuse_quant == \"fp8\" and isinstance(a2, tuple):\n        a2, a2_scale = a2[0], a2[1]\n        a2 = a2.view(token_num, topk, -1)\n    elif ("
+        },
+        {
+          "first_line": 2800,
+          "last_line": 2825,
+          "text": "        sorted_expert_ids,\n        num_valid_ids,\n        moe_out,\n        topk,\n        w2_scale=(\n            # See stage1 w1_scale note: only reinterpret packed (e8m0) scales;\n            # per_Token fp8 uses an fp32 scale and must be passed through as-is\n            # (PR #3811 regression fix).\n            w2_scale.view(dtypes.fp8_e8m0)\n            if w2.dtype in (dtypes.fp4x2, dtypes.fp8)\n            and w2_scale is not None\n            and w2_scale.element_size() == 1\n            else w2_scale\n        ),\n        a2_scale=a2_scale,\n        block_m=block_size_M,\n        sorted_weights=stage2_sorted_weights,\n        **extra_stage2_args,\n    )\n    if kernel_bench_callable is not None:\n        kernel_bench_callable.append((\"stage2\", _stage2_call))\n    _stage2_call()\n\n    return moe_out\n\n"
+        }
+      ]
+    },
+    {
+      "repository": "ROCm/aiter",
+      "revision": "d9e5ef7ce08ee7045d583aed768cff41aa9210fe",
+      "path": "aiter/utility/fp4_utils.py",
+      "sha256": "6f4ecb4dd9eb22d30653264c851d000ce95b0ec8bc1fb40718b72c96eb3b70eb",
+      "excerpts": [
+        {
+          "first_line": 213,
+          "last_line": 221,
+          "text": "def e8m0_to_f32(scale_e8m0_biased):\n    scale_e8m0_biased = scale_e8m0_biased.view(torch.uint8)\n    zero_case = scale_e8m0_biased == 0\n    nan_case = scale_e8m0_biased == 0xFF\n    scale_f32 = scale_e8m0_biased.to(torch.int32) << 23\n    scale_f32[zero_case] = 0x00400000\n    scale_f32[nan_case] = 0x7F800001\n    scale_f32 = scale_f32.view(dtypes.fp32)\n    return scale_f32"
+        }
+      ]
+    }
+  ],
+  "dsa_producer": {
+    "task": "dsa_sparse_mla_attn",
+    "baseline_source": "tilelang_kernel.py.orig",
+    "sha256": "29ab236ef60c67b6e20d7d89afc972e40e31336251195b6221cc529c44ab004d",
+    "excerpts": [
+      {
+        "first_line": 2222,
+        "last_line": 2240,
+        "text": "    use_attn_sink: bool = False,\n) -> Any:\n    \"\"\"\n    Combine `n_groups` flash-attention partials into the final output.\n\n    Inputs:\n      Partial_O    : (batch, seq_len, n_groups, num_heads, dim+tail_dim) bf16\n      Partial_LSE  : (batch, seq_len, n_groups, num_heads) fp32, log2 form\n      Topk_length_1: (batch,) int32, actual phase-1 length\n      Topk_length_2: (batch,) int32, actual phase-2 length (dual only)\n      Attn_sink    : (num_heads,) fp32\n    Outputs:\n      Output : (batch, seq_len, num_heads, dim+tail_dim) bf16\n      LSE    : (batch, seq_len, num_heads) fp32, natural log\n\n    Each grid block handles `head_per_block` heads of one (batch, seq) row.\n    \"\"\"\n    log2e: float = 1.44269504\n    ln2: float = 0.69314718"
+      },
+      {
+        "first_line": 2424,
+        "last_line": 2452,
+        "text": "\n            for h_i in T.Parallel(H_per_block):\n                empty = lse_max[h_i] <= -(2**29)\n                final_lse[h_i] = T.if_then_else(\n                    empty,\n                    T.infinity(accum_dtype),\n                    (lse_max[h_i] + T.log2(lse_sum[h_i])) * ln2,\n                )\n\n            if use_attn_sink:\n                for h_i in T.Parallel(H_per_block):\n                    attn_sink_frag[h_i] = Attn_sink[H0 + h_i]\n                for h_i in T.Parallel(H_per_block):\n                    empty = lse_max[h_i] <= -(2**29)\n                    o_scale_frag[h_i] = T.if_then_else(\n                        empty,\n                        0.0,\n                        1.0\n                        / (\n                            1.0 + T.exp2((attn_sink_frag[h_i] - final_lse[h_i]) * log2e)\n                        ),\n                    )\n                for h_i, d_i in T.Parallel(H_per_block, DT):\n                    acc_o[h_i, d_i] = acc_o[h_i, d_i] * o_scale_frag[h_i]\n\n            T.copy(acc_o, Output[b_i, s_i, H0:H1, :])\n            T.copy(final_lse, LSE[b_i, s_i, H0:H1])\n\n    return main"
+      },
+      {
+        "first_line": 2461,
+        "last_line": 2478,
+        "text": "def dpsk_v4_fp8_attention_fwd(\n    q: torch.Tensor,\n    k_cache: torch.Tensor,\n    block_table: Optional[torch.Tensor],\n    cache_seqlens: Optional[torch.Tensor],\n    head_dim_v: int,\n    tile_scheduler_metadata: Any,\n    num_splits: None = None,\n    softmax_scale: Optional[float] = None,\n    causal: bool = False,\n    is_fp8_kvcache: bool = False,\n    indices: Optional[torch.Tensor] = None,\n    attn_sink: Optional[torch.Tensor] = None,\n    extra_k_cache: Optional[torch.Tensor] = None,\n    extra_indices_in_kvcache: Optional[torch.Tensor] = None,\n    topk_length: Optional[torch.Tensor] = None,\n    extra_topk_length: Optional[torch.Tensor] = None,\n) -> Tuple[torch.Tensor, torch.Tensor]:"
+      },
+      {
+        "first_line": 2566,
+        "last_line": 2576,
+        "text": "        n_groups_2,\n        block_I=block_I,\n        inner_iter_1=inner_iter_1,\n        inner_iter_2=inner_iter_2,\n        head_per_block=4,\n        threads=256,\n        use_attn_sink=True,\n    )\n    if has_extra:\n        return combine(partial_o, partial_lse, tk_len_1, tk_len_2, attn_sink)\n    return combine(partial_o, partial_lse, attn_sink)"
+      }
+    ]
+  },
+  "validity": "stage1: launched block, sorted row < num_valid_ids[0], token < active tokens, slot < topk, valid expert, real inter_dim/32 columns; E8M0 offsets follow the verified producer. DSA: exact archive LSE NaN mask only; signed infinity flags are exact numerical sentinels."
+}

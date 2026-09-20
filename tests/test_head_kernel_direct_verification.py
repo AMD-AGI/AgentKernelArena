@@ -119,7 +119,11 @@ class DirectVerificationTests(unittest.TestCase):
         # A killed child may briefly remain a zombie until its new parent reaps it.
         status = Path(f'/proc/{pid}/stat')
         for _ in range(100):
-            if not status.exists() or status.read_text().rsplit(')', 1)[1].split()[0] == 'Z':
+            try:
+                state = status.read_text().rsplit(')', 1)[1].split()[0]
+            except (FileNotFoundError, ProcessLookupError):
+                break
+            if state == 'Z':
                 break
             time.sleep(.01)
         else:
@@ -260,6 +264,37 @@ class DirectVerificationTests(unittest.TestCase):
         self.assertNotIn('AKA_HEAD_KERNEL_VALIDATION_RUNTIME', run.call_args.kwargs['env'])
         self.assertEqual(run.call_args.kwargs['env']['AKA_EXPECTED_IMAGE_ID'],
                          'sha256:ffe4af630e49b05c812db4a468bfb411c3dbb0e93124801f28349bfa31352dea')
+
+    def test_sharded_verifier_runs_only_its_tasks_and_preserves_output(self):
+        tasks = [f'head_kernels/task-{index}' for index in range(4)]
+        plan = {'image': 'example.invalid/runtime:v1', 'expected_image_id': 'sha256:' + 'a' * 64,
+                'tasks': tasks}
+        environment = {'AGENT_KERNEL_ARENA_DOCKER': '1',
+                       'AGENT_KERNEL_ARENA_DOCKER_IMAGE': plan['image'],
+                       'AGENT_KERNEL_ARENA_DOCKER_IMAGE_ID': plan['expected_image_id'],
+                       'AGENT_KERNEL_ARENA_DOCKER_CONFIG_DIGEST': plan['expected_image_id'],
+                       'AGENT_KERNEL_ARENA_HEAD_KERNEL_VALIDATION_RUNTIME': '',
+                       'AGENT_KERNEL_ARENA_HOST_GPU_ID': '5'}
+        def execute(source, workspace, repo):
+            return {'task': source.relative_to(repo / 'tasks').as_posix(),
+                    'status': 'all_native_phases_succeeded'}
+        with mock.patch.object(verifier, 'plan_run', return_value=plan), \
+                mock.patch.object(verifier, 'verify_task', side_effect=execute) as run_task, \
+                mock.patch.dict(os.environ, environment):
+            options = dict(shard_index=1, shard_count=2, taskset_sha256=verifier.taskset_digest(tasks),
+                           output_directory=Path('batch/worker-001'))
+            code, path = verifier.verify(self.repo / 'run.yaml', self.repo, **options)
+            self.assertEqual(code, 0)
+            report = json.loads(path.read_text())
+            self.assertEqual([task['task'] for task in report['tasks']], tasks[1::2])
+            self.assertEqual(report['shard']['host_gpu_id'], '5')
+            self.assertEqual(run_task.call_count, 2)
+            with self.assertRaises(FileExistsError):
+                verifier.verify(self.repo / 'run.yaml', self.repo, **options)
+            self.assertEqual(run_task.call_count, 2)
+            options['taskset_sha256'] = '0' * 64
+            with self.assertRaisesRegex(ValueError, 'task list changed'):
+                verifier.verify(self.repo / 'run.yaml', self.repo, **options)
 
 
 if __name__ == '__main__':

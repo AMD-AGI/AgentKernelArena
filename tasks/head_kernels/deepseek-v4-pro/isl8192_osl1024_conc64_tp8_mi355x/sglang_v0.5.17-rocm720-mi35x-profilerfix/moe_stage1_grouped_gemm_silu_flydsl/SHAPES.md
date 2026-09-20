@@ -35,10 +35,12 @@ Benchmark IDs above follow the protected timing builder and common adapter. All 
 | `return[0]` (output) | 5 exact variants in JSON; float8_e4m3fn; strides [2304, 384, 1]. preserved captured descriptor layout. |
 | `return[1]` (output) | 5 exact variants in JSON; float8_e8m0fnu; strides [16, 1]. preserved captured descriptor layout. |
 
-Each JSON tensor record cites the metadata field or protected builder that establishes its geometry. A `null` shape, dtype or stride means it is not established by readable metadata; it is not a wildcard or permission to replace the fixture. Packed weights, sparse paging maps and routing-dependent lengths must retain the protected artifact representation.
+Each JSON tensor record cites the metadata field or protected builder that establishes its geometry. A `null` shape, dtype or stride means it is not established by readable metadata; it is not a wildcard or permission to replace the fixture. The generated-input draft retains sparse paging maps, routing-dependent lengths, dtype/stride/alias contracts and packed formats in `ut/generated_cases.json`; large numerical buffers are generated locally.
 
-| Protected tensor artifact | Expected SHA-256 |
+| Historical tensor artifact (not required by the generated draft) | Original SHA-256 |
 | --- | --- |
 | `ut/reference_io.pt` | `722c170ae8e3c12d91c047d6acfd852ffc16beefecfd6b943fef51c6959159f4` |
 
 Source pointers in the JSON are relative to this task directory. Every declared artifact was SHA-256 verified and its tensor metadata extracted using PyTorch 2.9.1+cpu, `weights_only=True`, CPU mapping, mmap and FakeTensorMode. Tensor values were not read, and no GPU work was performed. The JSON preserves the parser, fixture hashes, descriptor layouts and serialized alias identities. Fresh GPU validation remains governed by the task contract.
+
+The current draft requires no external tensor archive. `ut/generated_cases.json` is the SHA-256-checked compact structural contract; `ut/generated_contract.py` supplies finite numerical values. The original archive hash remains provenance under `ut/meta.json:archival_capture`. Fresh GPU qualification is still required.

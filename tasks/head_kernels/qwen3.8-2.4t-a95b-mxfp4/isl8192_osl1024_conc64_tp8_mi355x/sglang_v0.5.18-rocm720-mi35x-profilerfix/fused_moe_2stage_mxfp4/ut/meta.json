@@ -89,10 +89,8 @@
   "notes": "Live prefill authority is M=8192. The earlier M=16384 assumption is rejected by capture evidence.",
   "num_cases": 2,
   "op_kind": "moe",
-  "oracle_policy": "Persistent live capture with real packed MXFP4 weights, uint8 scales, expert mask, top-k ids/weights, and full BF16 outputs. Random parity changes hidden values only and preserves live routing and expert state.",
+  "oracle_policy": "fresh_generated_inputs_and_protected_parent_reference",
   "random_draws": 3,
-  "reference_io": "reference_io.pt",
-  "reference_io_sha256": "09a71daa55bdd3683be45016f0e5139e2fd63b7c614ae5ba565f74cbd2c7e434",
   "regime": {
     "backend": "sglang",
     "capture_mode": "live_routing_weights_scales_and_output",
@@ -136,7 +134,7 @@
     "runtime_image": "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.18-rocm720-mi35x-profilerfix",
     "runtime_image_id": "sha256:760dd38b9b6f2bd11c13011d470eb8e377c3f0d71284a090a710d64a23bd789f"
   },
-  "synthesized": false,
+  "synthesized": true,
   "target_callable": "aiter.fused_moe:fused_moe",
   "task_id": "fused_moe_mxfp4_task",
   "tol": 0.02,
@@ -201,5 +199,21 @@
       "osl": 1024,
       "prefill_chunk": 16384
     }
+  },
+  "archival_capture": {
+    "reference_io": "reference_io.pt",
+    "reference_io_sha256": "09a71daa55bdd3683be45016f0e5139e2fd63b7c614ae5ba565f74cbd2c7e434"
+  },
+  "generated_inputs": {
+    "kernel": "fused_moe_2stage_mxfp4",
+    "contract_file": "generated_cases.json",
+    "contract_sha256": "6c701f1b2b73ed6b95e46173da8271e62ad090cc45ebcda739dca32878145923",
+    "case_ids": [
+      "prefill_m8192_live",
+      "decode_m64_live"
+    ],
+    "numeric_values": "seeded locally; not the original captured numerical sample",
+    "structural_values": "exact hash-verified archive routing, slot and page values in compact JSON",
+    "reference": "independent protected baseline process; full output comparison in the trusted parent"
   }
 }

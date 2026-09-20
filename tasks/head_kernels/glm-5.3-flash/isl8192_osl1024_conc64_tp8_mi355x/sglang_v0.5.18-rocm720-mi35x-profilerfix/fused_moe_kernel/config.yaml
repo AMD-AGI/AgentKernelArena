@@ -3,11 +3,11 @@ source_file_path:
 target_kernel_functions:
 - fused_moe_kernel
 compile_command:
-- python3 scripts/task_runner.py compile --timeout 600
+- python3 scripts/generated_task_runner.py compile --timeout 600
 correctness_command:
-- python3 scripts/task_runner.py correctness --timeout 3600
+- python3 scripts/generated_task_runner.py correctness --timeout 3600
 performance_command:
-- python3 scripts/task_runner.py performance --timeout 3600
+- python3 scripts/generated_task_runner.py performance --timeout 3600
 task_type: triton2triton
 task_result_template: null
 prompt:
@@ -51,7 +51,7 @@ headkernel:
   device_symbol: fused_moe_kernel
   target_callable: sglang.srt.layers.moe.moe_runner.triton_utils.fused_moe:fused_experts_impl
   tol: 0.02
-  oracle: frozen live-capture ut/reference_io.pt
+  oracle: Unscored semantic references at retained initialization/post-call shapes; authentic served-workload scoring blocked
   source_package: H/GLM-5.3-Flash_fused_moe_kernel
   source_seed: stock
   info_rows:
@@ -79,9 +79,24 @@ headkernel:
     sglang_version: 0.5.18
     qualification_status: pending
     public_tag: docker.io/rocm/hyperloom:sglang-v0.5.18-rocm7.2.0-mi350x
+  generated_input_revision: glm-generated-v1-draft
+  trusted_worker_modules:
+    generated_contract: ut/generated_contract.py
+    generated_worker: scripts/generated_worker.py
+    _glm_generated_cases: ut/cases.py
+    _headkernel_cases: ut/cases.py
+    _bench: scripts/_bench.py
+    _glm_device_binding: ut/device_source_contract.py
+    sglang_bootstrap: ut/sglang_bootstrap.py
+  common_boundary_revision: a7bf289b
+  workload_scoring:
+    enabled: false
+    status: blocked_missing_authentic_precall_workload_capture
+    evidence: ut/workload_fidelity.json
 compile_timeout: 600
 correctness_timeout: 3600
 performance_timeout: 3600
 platform_support:
   required_arch: gfx950
   status: active
+harness_path: scripts/generated_worker.py

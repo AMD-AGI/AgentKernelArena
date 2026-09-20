@@ -508,7 +508,7 @@ def trusted_worker_fixture(tmp_path, runner):
         shutil.copyfile(support / name, task / "scripts" / name)
     shutil.copyfile(repository / "src/tools/perf/aka_benchmark.py", task / "scripts/_aka_benchmark.py")
     (task / "scripts/runtime_preflight.py").write_text(
-        "def require_runtime(config): return {'cpu_test_fixture': True}\n")
+        "def require_runtime(config, **kwargs): return {'cpu_test_fixture': True}\n")
     (task / "scripts/torch.py").write_text(
         "from types import SimpleNamespace\n"
         "class Event:\n"

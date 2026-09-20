@@ -1,10 +1,12 @@
-# Shape and benchmark catalog: moe_gemm1_stage1
+# Shape and diagnostic catalog: moe_gemm1_stage1
 
-This is a single-GPU MI355X (gfx950) callable benchmark. The serving capture used ISL 8192, OSL 1024, concurrency 64 and TP=8; those settings are context, not a substitute for the tensor shapes below.
+This single-GPU MI355X (gfx950) catalog preserves callable shapes and unscored diagnostics. Historical serving sources share ISL 8192, OSL 1024, concurrency 64 and TP=8; these values do not establish one common capture scenario or replace the tensor shapes below.
 
 The complete case IDs, argument inventories, original metadata, scalars, tensor attributes, extracted fixture layouts and source hashes are in [SHAPES.json](SHAPES.json). The task environment and benchmark commands are in [config.yaml](config.yaml).
 
-The inventory has **3 shape records** and **3 benchmark cases**. The protected metadata's `num_cases` field is `not declared`; that field can count a different capture scope. Histogram observations and random value draws are not added to the benchmark count.
+The inventory has **3 shape records**, **zero enabled/scored benchmark cases**, and **3 unscored diagnostic timing cases**. All former timing IDs and all capture/boundary shapes are retained. Historical `workload.num_cases` counts remain unchanged and do not imply enabled scoring.
+
+Stage-1 ut/workload.json records the 0828 cycle1 --chunked-prefill-size 8192 flags. Its routing is second-hand from the separate 0817 stage-2 capture, and its decode launch variant is assumed rather than observed. ISL 8192 denotes input sequence length. See `ut/workload.json` (`regime` and `serving_weight_model`) for the unchanged historical values; the catalog preserves those source records verbatim.
 
 Callable: `aiter.ops.flydsl.moe_kernels:flydsl_moe_stage1`. Baseline recorded in metadata: `baseline_src/flydsl/moe_kernels.py:flydsl_moe_stage1`. Selected callable seam; kernel launch count is not asserted by this catalog.
 
@@ -12,13 +14,13 @@ grouped per-expert fused gate/up GEMM + activation
 
 Caller supplies out[M,16,384], which is written and returned. Real stage-2 routing is inverted and re-sorted for stage 1; the decode launch variant is assumed from prefill, as recorded in provenance_note.
 
-| Benchmark case ID | Regime | Tensor geometry | Shape source |
+| Unscored diagnostic case ID | Regime | Tensor geometry | Shape source |
 | --- | --- | --- | --- |
 | `prefill_M8192` | prefill | a [8192×3584] bfloat16 | `ut/meta.json#/case_specs/0`; JSON record 0 |
 | `decode_M1` | decode | a [1×3584] bfloat16 | `ut/meta.json#/case_specs/1`; JSON record 1 |
 | `decode_M64` | decode | a [64×3584] bfloat16 | `ut/meta.json#/case_specs/2`; JSON record 2 |
 
-Benchmark IDs above follow the protected timing builder and common adapter. All capture-only and boundary records remain in the JSON inventory with their original IDs and explicit benchmark membership. The `tensor_overrides` entries distinguish timing storage from captured storage: MiniMax prefill remaps selected request rows and changes `slot_ids` to int32; recurrent decode generates contiguous timing tensors.
+Diagnostic IDs above preserve the former timing builder membership. `benchmark_cases` and every shape record's `benchmark_case_ids` are empty; `unscored_diagnostic_cases` and `diagnostic_case_ids` retain those links. The authoritative [scoring policy](ut/meta.json) has `workload_scoring.enabled=false`: decode launch variant assumed, not observed; stage-1 routing is second-hand, not an observed stage-1 capture; zero-weight or boundary-only semantic case.
 
 | Argument / output | Recorded geometry and layout |
 | --- | --- |
@@ -35,8 +37,14 @@ Each JSON tensor record cites the metadata field or protected builder that estab
 
 ROUTING IS REAL but SECOND-HAND: it is the served topk distribution captured at the stage-2 seam of the 0817 session (ut_stage2/reference_io.pt, same model / TP=8 / ISL 8192 / OSL 1024 / conc 64), inverted back to (topk_ids, topk_weights) and re-sorted by the production aiter moe_sorting at stage-1's own block size. It was NOT captured at the stage-1 seam. The launch variant is the REAL 0828 one (kernel name recorded live in tuning/work + the architect report), resolved through the frozen registry, but the DECODE variant is assumed identical to prefill's rather than observed. _capture_overlay1/ is the (unrun) hook that would replace both with a first-hand stage-1 capture. SEPARATELY: the golden is the elementwise MEDIAN of 21 frozen-baseline launches, not a single launch, because this kernel is not run-to-run reproducible at served routing spreads -- see nondeterminism_calibration.
 
-| Protected tensor artifact | Expected SHA-256 |
+The generated correctness harness also requires each individual launch to pass its independent stage-1 reference gate. The historical median of 21 launches remains separate semantic coverage and cannot establish single-launch correctness.
+
+On 2026-09-20, the MI355X public-runtime preflight passed, but native correctness failed after 133.14 seconds with `independent generated reference mismatch: prefill_M8192:single:0`. The report keeps `single_launch_correctness_established=false` and identifies unresolved upstream individual-launch errors. `SHAPES.json.native_validation_observation` records the external campaign artifact identity and hashes. This is a known native correctness failure; no framework task-validator PASS is claimed.
+
+| Optional archival tensor evidence | Expected SHA-256 |
 | --- | --- |
 | `ut/reference_io.pt` | `3d175ea5803d3523001cac000aa5d6c7d54b4a06dfa97999cd8eb22c081b3e31` |
+
+Generated inputs use `ut/generated_cases.json`; the original tensor archive is optional historical evidence. The extraction description below records the earlier archive inspection, not a runtime dependency.
 
 Source pointers in the JSON are relative to this task directory. Every declared artifact was SHA-256 verified and its tensor metadata extracted using PyTorch 2.9.1+cpu, `weights_only=True`, CPU mapping, mmap and FakeTensorMode. Tensor values were not read, and no GPU work was performed. The JSON preserves the parser, fixture hashes, descriptor layouts and serialized alias identities. Fresh GPU validation remains governed by the task contract.

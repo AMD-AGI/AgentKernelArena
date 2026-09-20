@@ -38,7 +38,7 @@
     "runtime_image": "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.18-rocm720-mi35x-profilerfix",
     "runtime_image_id": "sha256:760dd38b9b6f2bd11c13011d470eb8e377c3f0d71284a090a710d64a23bd789f"
   },
-  "baseline_callable": "torch.nn.functional:linear",
+  "baseline_callable": "aiter.tuned_gemm:gemm_a16w16 (protected pre-overlay native callable)",
   "baseline_frozen_by": {
     "image": "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.18-rocm720-mi35x-profilerfix",
     "image_id": "sha256:760dd38b9b6f2bd11c13011d470eb8e377c3f0d71284a090a710d64a23bd789f"
@@ -214,5 +214,14 @@
   "negative_check": "negative_check.json",
   "geak_commit": "267a7594d847f3a6f55955202fe4ec3178deb38c",
   "num_cases": 5,
-  "notes": "The task owns one pure GEMM contract. The five case IDs preserve independent live shape/backend identities. Serving startup and unrelated model kernels are outside the UT loop."
+  "notes": "The task owns one pure GEMM contract. The five case IDs preserve independent live shape/backend identities. Serving startup and unrelated model kernels are outside the UT loop.",
+  "dispatch_config_sha256": "6039d5a13acfbfe601e4a958f581cda64794ac6cdf8c22c1d63263d76b3b600b",
+  "dispatch_setup": {
+    "entrypoint": "scripts/dense_task_runner.py",
+    "environment": "AITER_CONFIG_GEMM_BF16 is set before runtime imports",
+    "api": "AITER_CONFIGS.get_config_file cache invalidation and exact AITER_CONFIG_GEMM_BF16_FILE verification",
+    "candidate_binding": "Load the source dispatcher without duplicate torch_compile_guard registration; share warmed configuration getters, retain candidate backend functions, and prove direct candidate source execution.",
+    "selection_roles": "Recorded backend/config/device symbols constrain the native baseline only. Candidate source/device engagement plus unchanged mathematical and replay checks allow alternative valid backends."
+  },
+  "reference_callable": "torch.nn.functional:linear"
 }

@@ -4878,23 +4878,24 @@
     {
       "path": "ut/reference_io.pt",
       "sha256": "722c170ae8e3c12d91c047d6acfd852ffc16beefecfd6b943fef51c6959159f4",
-      "metadata_evidence": "ut/meta.json#/reference_io_sha256",
+      "metadata_evidence": "ut/meta.json#/archival_capture/reference_io_sha256",
       "inspected": true,
-      "status": "hash verified; metadata extracted with restricted weights_only=True CPU mmap/FakeTensorMode; tensor values not read"
+      "status": "hash verified; metadata extracted with restricted weights_only=True CPU mmap/FakeTensorMode; tensor values not read",
+      "runtime_requirement": "not required; numerical inputs generated locally from committed structural JSON"
     }
   ],
   "sources": [
     {
       "path": "ut/meta.json",
-      "sha256": "f2c1ea6b5c7dc77885fd9cdbe7663caf04aa73b9d74baf6e4297717c809139d7"
+      "sha256": "586f2e04a2d971b5397ef32c211cc2a1ba154e2690095bbb9adbf9fd7f50d13b"
     },
     {
       "path": "ut/cases.py",
-      "sha256": "e50b87accb5f14f5eb0eb8cdc7123b57416546b34cf3844c9751fe7373c3bef4"
+      "sha256": "79a0462e4c223894ea1b222ae45e077b5e5938fbbce327a3d849eccfa13e3af9"
     },
     {
       "path": "config.yaml",
-      "sha256": "bf1750a57691fd85758655a0ab552193b972cf2b5c116266485ba91d69d28650"
+      "sha256": "4e45e5f16894386151f8fd687b0e6bb9668d561f9ca471eb30a912ad4b0083e6"
     },
     {
       "path": "scripts/source_abi.json",
@@ -4915,9 +4916,33 @@
     {
       "path": "ut/workload.json",
       "sha256": "f3cf9f687af8a94f0c33793cbe9d005c4e0ed0377ce7d3dacb60b7f6770310d0"
+    },
+    {
+      "path": "ut/generated_cases.json",
+      "sha256": "553174ed046129782d3d91dddb30714a94e02f4e991302c7126881d6650ca023"
+    },
+    {
+      "path": "ut/generated_contract.py",
+      "sha256": "2f441082fe4b03a0d46dbe00a1b281a68acecdcffce0b7b75a445d0a7def08be"
+    },
+    {
+      "path": "scripts/generated_worker.py",
+      "sha256": "503a153e48f283c04eb8d976e721df287bbcae6f26ccf53662bc7979aa18f491"
+    },
+    {
+      "path": "scripts/generated_correctness.py",
+      "sha256": "4f103b6ed6e982a202fc1c3363ebec8ea3535f7b870a851f47578955ae38dbb0"
+    },
+    {
+      "path": "scripts/generated_task_runner.py",
+      "sha256": "dac6dcf2fed383d0d167c5a232eaaf7d8ea0452a5ec7c02347287a2bcc9fe0a8"
+    },
+    {
+      "path": "ut/secondary_output_evidence.json",
+      "sha256": "7e6fce679c8017eb376853813042e3fc9cc4bf76d72d38854ea449612ed4a717"
     }
   ],
-  "validation": "Hash-verified restricted CPU tensor metadata extraction plus static builder inspection. No tensor values read and no GPU correctness/performance validation.",
+  "validation": "Compact structural extraction verified against the original archive SHA-256 using CPU weights_only mmap. Generated values and frozen-source references require fresh GPU qualification.",
   "fixture_metadata": [
     {
       "artifact_path": "ut/reference_io.pt",
@@ -7173,5 +7198,27 @@
     "cpu_wheel_report_sha256": "aa6b4b5c0cf62a4e2502d9a653355d4ece850167e135556fac8e9855442a43ad",
     "all_artifacts_report_sha256": "0a48b0f19bbf1469b41dbb2a13dbda229ed1c3c790e2f5e9b3f3ed3181751925",
     "supplement_report_sha256": "fae60fce8d55bdafd867606b30e052eaa8690fe4907d3fa156a667773f4d12d4"
+  },
+  "generated_input_draft": {
+    "source_records": 5,
+    "contract_file": "ut/generated_cases.json",
+    "contract_sha256": "553174ed046129782d3d91dddb30714a94e02f4e991302c7126881d6650ca023",
+    "gpu_validated": false,
+    "fidelity": {
+      "captured_geometry_cases": 5,
+      "derived_cases": [],
+      "cache_compaction": false,
+      "numeric_values": "synthetic",
+      "native_gpu_fidelity_pass": false
+    },
+    "scored_case_ids": [
+      "a=T(2048, 7168):torch.float8_e4m3fn|a1_scale=T(36864, 224):torch.float8_e8m0fnu|a_dtype=str|a_scale_one=False|act=str|b_dtype=str|b_nt=2|bias=None|gate_mode=str|inter_dim_pad=0|k_batch=1|k_wave=1|model_dim_pad=0|num_valid_ids=T(2,):torch.int32|out=None|out_dtype=str|situ_beta=1.0|situ_linear_beta=1.0|sorted_expert_ids=T(576,):torch.int32|sorted_token_ids=T(36858,):torch.int32|sorted_weights=None|swiglu_limit=10.0|tile_k=256|tile_m=64|tile_n=256|topk=6|topk_ids=T(2048, 6):torch.int32|use_async_copy=True|w1=T(384, 768, 3584):torch.float4_e2m1fn_x2|w1_scale=T(294912, 224):torch.float8_e8m0fnu|waves_per_eu=1|xcd_swizzle=0",
+      "a=T(256, 7168):torch.float8_e4m3fn|a1_scale=T(13824, 224):torch.float8_e8m0fnu|a_dtype=str|a_scale_one=False|act=str|b_dtype=str|b_nt=2|bias=None|gate_mode=str|inter_dim_pad=0|k_batch=1|k_wave=1|model_dim_pad=0|num_valid_ids=T(2,):torch.int32|out=None|out_dtype=str|situ_beta=1.0|situ_linear_beta=1.0|sorted_expert_ids=T(432,):torch.int32|sorted_token_ids=T(13818,):torch.int32|sorted_weights=None|swiglu_limit=10.0|tile_k=256|tile_m=32|tile_n=128|topk=6|topk_ids=T(256, 6):torch.int32|use_async_copy=True|w1=T(384, 768, 3584):torch.float4_e2m1fn_x2|w1_scale=T(294912, 224):torch.float8_e8m0fnu|waves_per_eu=3|xcd_swizzle=0",
+      "a=T(64, 7168):torch.float8_e4m3fn|a1_scale=T(12672, 224):torch.float8_e8m0fnu|a_dtype=str|a_scale_one=False|act=str|b_dtype=str|b_nt=2|bias=None|gate_mode=str|inter_dim_pad=0|k_batch=1|k_wave=1|model_dim_pad=0|num_valid_ids=T(2,):torch.int32|out=None|out_dtype=str|situ_beta=1.0|situ_linear_beta=1.0|sorted_expert_ids=T(396,):torch.int32|sorted_token_ids=T(12666,):torch.int32|sorted_weights=None|swiglu_limit=10.0|tile_k=256|tile_m=32|tile_n=128|topk=6|topk_ids=T(64, 6):torch.int32|use_async_copy=True|w1=T(384, 768, 3584):torch.float4_e2m1fn_x2|w1_scale=T(294912, 224):torch.float8_e8m0fnu|waves_per_eu=2|xcd_swizzle=0",
+      "a=T(1, 7168):torch.float8_e4m3fn|a1_scale=T(12288, 224):torch.float8_e8m0fnu|a_dtype=str|a_scale_one=False|act=str|b_dtype=str|b_nt=2|bias=None|gate_mode=str|inter_dim_pad=0|k_batch=1|k_wave=4|model_dim_pad=0|num_valid_ids=T(2,):torch.int32|out=None|out_dtype=str|situ_beta=1.0|situ_linear_beta=1.0|sorted_expert_ids=T(384,):torch.int32|sorted_token_ids=T(12288,):torch.int32|sorted_weights=None|swiglu_limit=10.0|tile_k=256|tile_m=32|tile_n=64|topk=6|topk_ids=T(1, 6):torch.int32|use_async_copy=True|w1=T(384, 768, 3584):torch.float4_e2m1fn_x2|w1_scale=T(294912, 224):torch.float8_e8m0fnu|waves_per_eu=4|xcd_swizzle=0",
+      "a=T(32768, 7168):torch.float8_e4m3fn|a1_scale=T(221184, 224):torch.float8_e8m0fnu|a_dtype=str|a_scale_one=False|act=str|b_dtype=str|b_nt=0|bias=None|gate_mode=str|inter_dim_pad=0|k_batch=1|k_wave=1|model_dim_pad=0|num_valid_ids=T(2,):torch.int32|out=None|out_dtype=str|situ_beta=1.0|situ_linear_beta=1.0|sorted_expert_ids=T(3456,):torch.int32|sorted_token_ids=T(221178,):torch.int32|sorted_weights=None|swiglu_limit=10.0|tile_k=256|tile_m=64|tile_n=256|topk=6|topk_ids=T(32768, 6):torch.int32|use_async_copy=True|w1=T(384, 768, 3584):torch.float4_e2m1fn_x2|w1_scale=T(294912, 224):torch.float8_e8m0fnu|waves_per_eu=2|xcd_swizzle=4"
+    ],
+    "unscored_probe_ids": [],
+    "secondary_output_validation": "defined numeric returns, routed dequantization, and exact LSE masks/sentinels"
   }
 }

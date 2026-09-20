@@ -184,9 +184,86 @@ def verify_task(source: Path, workspace: Path, repo: Path) -> dict:
     return result
 
 
-def verify(config: Path, repo: Path = REPO_ROOT) -> tuple[int, Path]:
+def taskset_digest(tasks: list[str]) -> str:
+    return hashlib.sha256(json.dumps(tasks, separators=(",", ":")).encode()).hexdigest()
+
+
+def select_task_shard(tasks: list[str], index: int, count: int) -> list[str]:
+    if (not tasks or len(set(tasks)) != len(tasks) or count < 1 or count > len(tasks)
+            or index < 0 or index >= count):
+        raise ValueError("A verifier shard requires distinct tasks and 0 <= index < count <= task count")
+    selected = tasks[index::count]
+    if not selected:
+        raise ValueError("Refusing an empty verifier shard")
+    return selected
+
+
+def parallel_plan(config: Path, gpu_ids: str, repo: Path = REPO_ROOT) -> dict:
+    raw = gpu_ids.replace(",", " ").split()
+    if not raw or any(re.fullmatch(r"[0-9]+", value) is None for value in raw):
+        raise ValueError("parallel-verify requires explicit nonnegative GPU_IDS")
+    requested = [str(int(value)) for value in raw]
+    if len(set(requested)) != len(requested):
+        raise ValueError("GPU_IDS must not contain duplicate devices")
+    plan = plan_run(config, repo)
+    active = requested[:len(plan["tasks"])]
+    count = len(active)
+    workers = [{"index": index, "gpu_id": gpu, "directory": f"worker-{index:03d}",
+                "tasks": select_task_shard(plan["tasks"], index, count)}
+               for index, gpu in enumerate(active)]
+    return {"schema": "aka-parallel-verification-plan-v1", "plan": plan,
+            "taskset_sha256": taskset_digest(plan["tasks"]), "workers": workers,
+            "unused_gpu_ids": requested[count:]}
+
+
+def aggregate_parallel(batch: Path, exit_codes: list[int]) -> tuple[int, Path]:
+    declaration = json.loads((batch / "parallel-plan.json").read_text())
+    plan, workers = declaration["plan"], declaration["workers"]
+    result = {"schema": "aka-parallel-direct-verification-v1", **FRAMEWORK,
+              "plan": declaration, "status": "running", "workers": [], "errors": []}
+    if not workers or len(exit_codes) != len(workers):
+        result["errors"].append("Worker/exit-code coverage is incomplete")
+    seen = []
+    for index, worker in enumerate(workers):
+        entry = {**worker, "exit_code": exit_codes[index] if index < len(exit_codes) else None,
+                 "report": f"{worker['directory']}/direct-verification.json"}
+        result["workers"].append(entry)
+        try:
+            report = json.loads((batch / entry["report"]).read_text())
+            shard = report.get("shard") or {}
+            expected = select_task_shard(plan["tasks"], index, len(workers))
+            actual = [task.get("task") for task in report.get("tasks", [])]
+            if (entry["exit_code"] != 0 or report.get("status") != "all_native_phases_succeeded"
+                    or shard.get("index") != index or shard.get("count") != len(workers)
+                    or shard.get("taskset_sha256") != declaration["taskset_sha256"]
+                    or shard.get("assigned_tasks") != expected or actual != expected
+                    or str(shard.get("host_gpu_id")) != worker["gpu_id"]
+                    or report.get("plan", {}).get("image") != plan["image"]
+                    or report.get("plan", {}).get("expected_image_id") != plan["expected_image_id"]
+                    or any(task.get("status") != "all_native_phases_succeeded" for task in report.get("tasks", []))):
+                raise ValueError("worker failed or its task/GPU/runtime coverage disagrees with the declaration")
+            seen.extend(actual)
+            entry["status"] = "all_native_phases_succeeded"
+        except (OSError, ValueError, TypeError) as error:
+            entry.update(status="failed_or_incomplete", error=str(error))
+            result["errors"].append(f"worker {index}: {error}")
+    if len(seen) != len(set(seen)) or set(seen) != set(plan["tasks"]):
+        result["errors"].append("Successful worker reports do not cover each cohort task exactly once")
+    success = not result["errors"]
+    result["status"] = "all_native_phases_succeeded" if success else "parallel_verification_failed"
+    path = batch / "parallel-verification.json"
+    write_json(path, result)
+    return (0 if success else 1), path
+
+
+def verify(config: Path, repo: Path = REPO_ROOT, *, shard_index: int = 0, shard_count: int = 1,
+           taskset_sha256: str | None = None, output_directory: Path | None = None) -> tuple[int, Path]:
     repo = repo.resolve()
     plan = plan_run(config, repo)
+    assigned = select_task_shard(plan["tasks"], shard_index, shard_count)
+    digest = taskset_digest(plan["tasks"])
+    if taskset_sha256 is not None and taskset_sha256 != digest:
+        raise ValueError("The cohort task list changed after parallel planning")
     if os.environ.get("AGENT_KERNEL_ARENA_DOCKER") != "1":
         raise ValueError("Use top5_head_kernels.py verify through the standard Docker runner")
     image_id = os.environ.get("AGENT_KERNEL_ARENA_DOCKER_IMAGE_ID", "")
@@ -204,7 +281,13 @@ def verify(config: Path, repo: Path = REPO_ROOT) -> tuple[int, Path]:
             or os.environ.get("AGENT_KERNEL_ARENA_HEAD_KERNEL_VALIDATION_RUNTIME", "")
             != (plan.get("validation_runtime") or "")):
         raise ValueError("Selected Docker identity does not match the task runtime plan")
-    run = Path(tempfile.mkdtemp(prefix="workspace_direct_verification_", dir=repo))
+    if output_directory is None:
+        run = Path(tempfile.mkdtemp(prefix="workspace_direct_verification_", dir=repo))
+    else:
+        run = (repo / output_directory).resolve()
+        if not run.is_relative_to(repo) or run == repo:
+            raise ValueError("Verifier output directory must stay inside the repository")
+        run.mkdir(parents=True, exist_ok=False)
     identity = {name: os.environ.get(name) for name in (
         "AGENT_KERNEL_ARENA_DOCKER_IMAGE", "AGENT_KERNEL_ARENA_DOCKER_IMAGE_ID",
         "AGENT_KERNEL_ARENA_DOCKER_CONFIG_DIGEST", "AGENT_KERNEL_ARENA_DOCKER_IMAGE_ID_ROLE",
@@ -213,11 +296,14 @@ def verify(config: Path, repo: Path = REPO_ROOT) -> tuple[int, Path]:
         "AGENT_KERNEL_ARENA_HOST_GPU_ID", "AGENT_KERNEL_ARENA_HEAD_KERNEL_VALIDATION_RUNTIME",
         "AITER_JIT_DIR", "FLYDSL_RUNTIME_CACHE_DIR", "TVM_FFI_DISABLE_TORCH_C_DLPACK")}
     summary = {"schema": "aka-direct-verification-v1", **FRAMEWORK, "plan": plan,
+               "shard": {"index": shard_index, "count": shard_count, "assigned_tasks": assigned,
+                         "taskset_sha256": digest, "cohort_task_count": len(plan["tasks"]),
+                         "host_gpu_id": os.environ.get("AGENT_KERNEL_ARENA_HOST_GPU_ID")},
                "runtime_identity": identity, "status": "running", "tasks": []}
     path = run / "direct-verification.json"
     write_json(path, summary)
     print(f"Direct verification evidence: {path.relative_to(repo)}", flush=True)
-    for index, selector in enumerate(plan["tasks"]):
+    for index, selector in enumerate(assigned):
         source = (repo / "tasks" / selector).resolve()
         summary["tasks"].append(verify_task(source, run / f"{index:03d}-{source.name}", repo))
         write_json(path, summary)
@@ -230,9 +316,14 @@ def verify(config: Path, repo: Path = REPO_ROOT) -> tuple[int, Path]:
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config_name", required=True, type=Path)
+    parser.add_argument("--shard-index", type=int, default=0)
+    parser.add_argument("--shard-count", type=int, default=1)
+    parser.add_argument("--taskset-sha256")
+    parser.add_argument("--output-directory", type=Path)
     args = parser.parse_args(argv)
     try:
-        code, _ = verify(args.config_name)
+        code, _ = verify(args.config_name, shard_index=args.shard_index, shard_count=args.shard_count,
+                         taskset_sha256=args.taskset_sha256, output_directory=args.output_directory)
         return code
     except (OSError, ValueError, yaml.YAMLError) as error:
         parser.exit(2, f"error: {error}\n")

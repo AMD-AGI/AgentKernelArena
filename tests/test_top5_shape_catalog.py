@@ -105,11 +105,11 @@ def test_full_glm_correctness_coverage_and_observed_scored_cases():
 def test_attention_capture_geometry_and_timing_geometry_are_distinct():
     found = catalogs()
     kimi = found["kimi-k3__fwd_grouped_kernel_stage1"][1]
-    assert kimi["case_inventory"]["benchmark_case_ids"] == [
+    assert kimi["case_inventory"]["diagnostic_case_ids"] == [
         "decode_bs1_ctx8704", "decode_bs64_ctx8704",
     ]
     by_id = {x["case_id"]: x for x in kimi["cases"]}
-    for case_id in kimi["case_inventory"]["benchmark_case_ids"]:
+    for case_id in kimi["case_inventory"]["diagnostic_case_ids"]:
         record = by_id[case_id]
         operands = {x["name"]: x for x in record["tensors"]}
         assert operands["k_buffer"]["shape"][0] == (
@@ -128,7 +128,7 @@ def test_attention_capture_geometry_and_timing_geometry_are_distinct():
 def test_hash_verified_fixtures_close_physical_layout_unknowns():
     found = catalogs()
     assert sum(len(data["cases"]) for _, data in found.values()) == 121
-    assert sum(data["case_inventory"]["benchmark_case_count"] for _, data in found.values()) == 65
+    assert sum(data["case_inventory"]["benchmark_case_count"] for _, data in found.values()) == 49
     for _, data in found.values():
         assert data["unknown_tensor_metadata"] == []
         assert data["unknown_benchmark_tensor_overrides"] == []
@@ -140,3 +140,53 @@ def test_hash_verified_fixtures_close_physical_layout_unknowns():
     for record in dsa["cases"]:
         cache = next(t for t in record["tensors"] if t["name"] == "k_cache")
         assert cache["strides"] == [149760, 584, 584, 1]
+
+
+def test_kimi_disabled_scores_preserve_all_diagnostics_and_source_hashes():
+    expected = {
+        "fwd_grouped_kernel_stage1": (4, ["decode_bs1_ctx8704", "decode_bs64_ctx8704"]),
+        "moe_gemm1_stage1": (3, ["prefill_M8192", "decode_M1", "decode_M64"]),
+        "moe_gemm2_stage2": (4, ["prefill_M16384", "prefill_M8192", "decode_M1", "decode_M64"]),
+    }
+    found = catalogs()
+    for name, (shape_count, ids) in expected.items():
+        task, data = found["kimi-k3__" + name]
+        meta = json.loads((task / "ut/meta.json").read_text())
+        assert data["workload_scoring"] == meta["workload_scoring"]
+        assert data["workload_scoring"]["enabled"] is False
+        assert data["benchmark_cases"] == []
+        assert data["case_inventory"]["benchmark_case_count"] == 0
+        assert data["case_inventory"]["shape_record_count"] == shape_count
+        assert data["case_inventory"]["diagnostic_case_ids"] == ids
+        assert data["case_inventory"]["diagnostic_case_count"] == len(ids)
+        diagnostics = data["unscored_diagnostic_cases"]
+        assert [row["case_id"] for row in diagnostics] == ids
+        records = {row["case_id"]: row for row in data["cases"]}
+        assert all(row["benchmark_case_ids"] == [] for row in records.values())
+        for row in diagnostics:
+            assert row["scoring_enabled"] is False
+            assert row["scoring_reason"] == meta["workload_scoring"]["reason"]
+            assert row["case_id"] in records[row["shape_record_id"]]["diagnostic_case_ids"]
+        for source in data["sources"]:
+            assert source["sha256"] == hashlib.sha256((task / source["path"]).read_bytes()).hexdigest()
+
+
+def test_kimi_historical_prefill_chunks_are_distinct_from_shared_isl():
+    found = catalogs()
+    expected_chunks = {
+        "fwd_grouped_kernel_stage1": (None, 16384),
+        "moe_gemm1_stage1": (8192, 8192),
+        "moe_gemm2_stage2": (16384, 16384),
+    }
+    for name, (regime_chunk, weight_chunk) in expected_chunks.items():
+        task, data = found["kimi-k3__" + name]
+        workload = json.loads((task / "ut/workload.json").read_text())
+        group = json.loads((task.parent / "workload.json").read_text())
+        scenario = data["serving_capture_context"]["historical_scenario"]
+        assert group["serving_capture"]["input_sequence_length"] == 8192
+        assert scenario["regime_prefill_chunk"] == workload["regime"]["prefill_chunk"] == regime_chunk
+        assert scenario["analytic_weight_prefill_chunk"] == workload["serving_weight_model"]["prefill_chunk"] == weight_chunk
+        assert group["historical_scenarios"][name]["regime_prefill_chunk"] == regime_chunk
+        kernel = next(row for row in group["kernels"] if row["kernel_slug"] == name)
+        assert kernel["workload_scoring"]["enabled"] is False
+        assert kernel["workload_scoring"]["benchmark_case_count"] == 0

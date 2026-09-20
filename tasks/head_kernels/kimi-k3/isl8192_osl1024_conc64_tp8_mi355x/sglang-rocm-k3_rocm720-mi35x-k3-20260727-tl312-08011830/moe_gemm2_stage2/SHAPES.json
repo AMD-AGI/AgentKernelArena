@@ -3,12 +3,23 @@
   "task_id": "kimi-k3__moe_gemm2_stage2",
   "task_path": ".",
   "path_base": "task directory",
-  "scope": "Single-GPU callable/operator unit benchmark on MI355X (gfx950). Serving capture context does not define kernel tensor shapes.",
+  "scope": "Single-GPU callable/operator semantic and diagnostic inventory on MI355X (gfx950). No enabled scored benchmark cases. Serving context does not define kernel tensor shapes or one shared historical scenario.",
   "serving_capture_context": {
     "isl": 8192,
     "osl": 1024,
     "concurrency": 64,
-    "tensor_parallel_world_size": 8
+    "tensor_parallel_world_size": 8,
+    "historical_scenario": {
+      "scenario": "original stage-2 live-server capture context",
+      "regime_prefill_chunk": 16384,
+      "analytic_weight_prefill_chunk": 16384,
+      "note": "Stage-2 ut/workload.json records chunked_prefill_size=16384 from the original live server log. Both M=16384 and M=8192 shapes are retained. This is a distinct historical scenario from the 0828 stage-1 chunk of 8192; a case M value alone does not identify the configured chunk.",
+      "evidence": [
+        "ut/workload.json#/regime",
+        "ut/workload.json#/serving_weight_model"
+      ],
+      "shared_context_note": "ISL 8192 is input sequence length, not a shared prefill chunk or proof that all leaves came from one serving run."
+    }
   },
   "environment_evidence": "config.yaml",
   "interface": {
@@ -87,41 +98,18 @@
   "case_inventory": {
     "metadata_declared_num_cases": null,
     "shape_record_count": 4,
-    "benchmark_case_count": 4,
-    "benchmark_case_ids": [
+    "benchmark_case_count": 0,
+    "benchmark_case_ids": [],
+    "count_note": "benchmark_case_count counts enabled scored cases and is zero because ut/meta.json workload_scoring.enabled is false. Former timing cases remain unscored diagnostics. Every capture, boundary and diagnostic shape record is preserved.",
+    "diagnostic_case_count": 4,
+    "diagnostic_case_ids": [
       "prefill_M16384",
       "prefill_M8192",
       "decode_M1",
       "decode_M64"
-    ],
-    "count_note": "Counts describe distinct scopes. Captures, boundary specs, histogram observations and benchmark buckets are not interchangeable."
+    ]
   },
-  "benchmark_cases": [
-    {
-      "case_id": "prefill_M16384",
-      "shape_record_id": "prefill_M16384",
-      "regime": "prefill",
-      "evidence": "ut/unittest.py:265"
-    },
-    {
-      "case_id": "prefill_M8192",
-      "shape_record_id": "prefill_M8192",
-      "regime": "prefill",
-      "evidence": "ut/unittest.py:265"
-    },
-    {
-      "case_id": "decode_M1",
-      "shape_record_id": "decode_M1",
-      "regime": "decode",
-      "evidence": "ut/unittest.py:265"
-    },
-    {
-      "case_id": "decode_M64",
-      "shape_record_id": "decode_M64",
-      "regime": "decode",
-      "evidence": "ut/unittest.py:265"
-    }
-  ],
+  "benchmark_cases": [],
   "cases": [
     {
       "case_id": "prefill_M16384",
@@ -457,10 +445,11 @@
           }
         }
       ],
-      "benchmark_case_ids": [
+      "benchmark_case_ids": [],
+      "notes": [],
+      "diagnostic_case_ids": [
         "prefill_M16384"
-      ],
-      "notes": []
+      ]
     },
     {
       "case_id": "prefill_M8192",
@@ -796,10 +785,11 @@
           }
         }
       ],
-      "benchmark_case_ids": [
+      "benchmark_case_ids": [],
+      "notes": [],
+      "diagnostic_case_ids": [
         "prefill_M8192"
-      ],
-      "notes": []
+      ]
     },
     {
       "case_id": "decode_M1",
@@ -1135,10 +1125,11 @@
           }
         }
       ],
-      "benchmark_case_ids": [
+      "benchmark_case_ids": [],
+      "notes": [],
+      "diagnostic_case_ids": [
         "decode_M1"
-      ],
-      "notes": []
+      ]
     },
     {
       "case_id": "decode_M64",
@@ -1474,10 +1465,11 @@
           }
         }
       ],
-      "benchmark_case_ids": [
+      "benchmark_case_ids": [],
+      "notes": [],
+      "diagnostic_case_ids": [
         "decode_M64"
-      ],
-      "notes": []
+      ]
     }
   ],
   "source_inventories": {
@@ -1923,6 +1915,75 @@
           }
         }
       ]
+    },
+    "workload_scoring": {
+      "evidence": "ut/meta.json#/workload_scoring",
+      "records": {
+        "enabled": false,
+        "reason": "workload control weight is not observed trace evidence",
+        "cases": [
+          {
+            "case": "prefill_M16384",
+            "eligible": true,
+            "reasons": []
+          },
+          {
+            "case": "decode_M64",
+            "eligible": false,
+            "reasons": [
+              "workload control weight is not observed trace evidence"
+            ]
+          },
+          {
+            "case": "prefill_M8192",
+            "eligible": true,
+            "reasons": []
+          },
+          {
+            "case": "decode_M1",
+            "eligible": false,
+            "reasons": [
+              "workload control weight is not observed trace evidence"
+            ]
+          }
+        ],
+        "semantic_coverage": "all semantic cases retained; aggregate scoring fails closed"
+      }
+    },
+    "workload/regime": {
+      "evidence": "ut/meta.json#/workload/regime",
+      "records": {
+        "backend": "sglang",
+        "quant": {
+          "method": "mxfp4-pack-quantized",
+          "weight_dtype": "float4_e2m1fn_x2 (mx group_size 32, e8m0 scales)",
+          "act_dtype": "float8_e4m3fn (dynamic per-pair mx quant, e8m0 scales)",
+          "block_size": 32,
+          "source": "config.text_config.quantization_config (compressed-tensors Mxfp4MoEMethod); parse_regime.py reported method=none because the quantization_config is nested under text_config"
+        },
+        "kv_cache_dtype": "auto",
+        "compile": "eager",
+        "enforce_eager": false,
+        "cuda_graph": true,
+        "attention_backend": "triton",
+        "prefill_chunk": 16384,
+        "notes": "prefill_chunk from the live server log (chunked_prefill_size=16384); decode runs under HIP graph replay (cuda_graph=true), prefill runs eager."
+      }
+    },
+    "workload/serving_weight_model": {
+      "evidence": "ut/meta.json#/workload/serving_weight_model",
+      "records": {
+        "isl": 8192,
+        "osl": 1024,
+        "conc": 64,
+        "prefill_chunk": 16384,
+        "analytic_calls": {
+          "prefill": 64,
+          "decode": 1024
+        },
+        "ttft_ms": null,
+        "tpot_ms": null
+      }
     }
   },
   "observed_shape_inventories": [],
@@ -1942,15 +2003,16 @@
     {
       "path": "ut/reference_io.pt",
       "sha256": "5a3fefb2af1c8a2981980d68e4f90085985fd5f0301b69814d85de5c1d801a53",
-      "metadata_evidence": "ut/meta.json#/reference_io_sha256",
+      "metadata_evidence": "ut/meta.json#/archival_capture/reference_io_sha256",
       "inspected": true,
-      "status": "hash verified; metadata extracted with restricted weights_only=True CPU mmap/FakeTensorMode; tensor values not read"
+      "status": "hash verified; metadata extracted with restricted weights_only=True CPU mmap/FakeTensorMode; tensor values not read",
+      "runtime_requirement": "optional archival evidence; default inputs use committed structural JSON and code generation"
     }
   ],
   "sources": [
     {
       "path": "ut/meta.json",
-      "sha256": "3aeac3dc5d188c16e169b99755559322f163fdbd80d517c6bbaba06fd6473b78"
+      "sha256": "c8b89b5de29f25ebe5b488995ee42055bf80627c415beda9249687ada8e8abfb"
     },
     {
       "path": "ut/unittest.py",
@@ -1958,7 +2020,7 @@
     },
     {
       "path": "config.yaml",
-      "sha256": "cd572e8e1d38221093a60514e416ddb0cf3088681baadae313c59351dfe87484"
+      "sha256": "4ff32d8a8e0af0ca6295d93ace783b37a5e9f89e733c3e0a4bd5e809a1afb6c0"
     },
     {
       "path": "scripts/source_abi.json",
@@ -1967,9 +2029,33 @@
     {
       "path": "ut/workload.json",
       "sha256": "7d82bf5131e881c02491e25d3f7c788164ee307701e71ef23ac68298612e1fe7"
+    },
+    {
+      "path": "ut/generated_cases.json",
+      "sha256": "5fe7a885c6e9200cfdbc310c1bfbd2630e21c5a1936c5ccb866e214338404cfd"
+    },
+    {
+      "path": "ut/generated_contract.py",
+      "sha256": "aa756dce5dcd8ffe36d754ffd3c93b5ae11882b99bbceea5da5b91677c8e477e"
+    },
+    {
+      "path": "scripts/generated_task_runner.py",
+      "sha256": "586ab55373e6d400f2f7b0732eb01cbe1f9164ade152310201aa44010e5eb85a"
+    },
+    {
+      "path": "scripts/generated_controller.py",
+      "sha256": "830483414887b5135ad2347b4482e06a69e2d7c4657f69693cbf2a4fdfd9b94f"
+    },
+    {
+      "path": "scripts/generated_worker.py",
+      "sha256": "ec733139b2a49987c4259903126878f7c2eedb4901639420658f10f561a5fe8a"
+    },
+    {
+      "path": "scripts/archival_artifacts.json",
+      "sha256": "b7168cec88dfa3cc841ff103b8edb620f4e7f95c0e8ad51e164ac73e3069a55e"
     }
   ],
-  "validation": "Hash-verified restricted CPU tensor metadata extraction plus static builder inspection. No tensor values read and no GPU correctness/performance validation.",
+  "validation": "Hash-verified restricted CPU tensor metadata extraction plus static builder inspection. No tensor values read and no GPU correctness/performance validation. Workload scoring is disabled by ut/meta.json; diagnostic timing membership does not establish workload fidelity or native correctness.",
   "fixture_metadata": [
     {
       "artifact_path": "ut/reference_io.pt",
@@ -2849,5 +2935,87 @@
     "cpu_wheel_report_sha256": "aa6b4b5c0cf62a4e2502d9a653355d4ece850167e135556fac8e9855442a43ad",
     "all_artifacts_report_sha256": "0a48b0f19bbf1469b41dbb2a13dbda229ed1c3c790e2f5e9b3f3ed3181751925",
     "supplement_report_sha256": "fae60fce8d55bdafd867606b30e052eaa8690fe4907d3fa156a667773f4d12d4"
+  },
+  "generated_input_draft": {
+    "correctness_cases": 4,
+    "contract_file": "ut/generated_cases.json",
+    "contract_sha256": "5fe7a885c6e9200cfdbc310c1bfbd2630e21c5a1936c5ccb866e214338404cfd",
+    "gpu_validated": false,
+    "numerical_oracle_transported_to_candidate": false,
+    "actual_hyperloom_scenario_verified": false,
+    "workload_scoring_enabled": false
+  },
+  "unscored_diagnostic_cases": [
+    {
+      "case_id": "prefill_M16384",
+      "shape_record_id": "prefill_M16384",
+      "regime": "prefill",
+      "evidence": "ut/unittest.py:265",
+      "scoring_enabled": false,
+      "scoring_reason": "workload control weight is not observed trace evidence",
+      "scoring_evidence": "ut/meta.json#/workload_scoring",
+      "role": "Former timing case retained for semantic and diagnostic coverage; aggregate workload scoring is disabled."
+    },
+    {
+      "case_id": "prefill_M8192",
+      "shape_record_id": "prefill_M8192",
+      "regime": "prefill",
+      "evidence": "ut/unittest.py:265",
+      "scoring_enabled": false,
+      "scoring_reason": "workload control weight is not observed trace evidence",
+      "scoring_evidence": "ut/meta.json#/workload_scoring",
+      "role": "Former timing case retained for semantic and diagnostic coverage; aggregate workload scoring is disabled."
+    },
+    {
+      "case_id": "decode_M1",
+      "shape_record_id": "decode_M1",
+      "regime": "decode",
+      "evidence": "ut/unittest.py:265",
+      "scoring_enabled": false,
+      "scoring_reason": "workload control weight is not observed trace evidence",
+      "scoring_evidence": "ut/meta.json#/workload_scoring",
+      "role": "Former timing case retained for semantic and diagnostic coverage; aggregate workload scoring is disabled."
+    },
+    {
+      "case_id": "decode_M64",
+      "shape_record_id": "decode_M64",
+      "regime": "decode",
+      "evidence": "ut/unittest.py:265",
+      "scoring_enabled": false,
+      "scoring_reason": "workload control weight is not observed trace evidence",
+      "scoring_evidence": "ut/meta.json#/workload_scoring",
+      "role": "Former timing case retained for semantic and diagnostic coverage; aggregate workload scoring is disabled."
+    }
+  ],
+  "workload_scoring": {
+    "enabled": false,
+    "reason": "workload control weight is not observed trace evidence",
+    "cases": [
+      {
+        "case": "prefill_M16384",
+        "eligible": true,
+        "reasons": []
+      },
+      {
+        "case": "decode_M64",
+        "eligible": false,
+        "reasons": [
+          "workload control weight is not observed trace evidence"
+        ]
+      },
+      {
+        "case": "prefill_M8192",
+        "eligible": true,
+        "reasons": []
+      },
+      {
+        "case": "decode_M1",
+        "eligible": false,
+        "reasons": [
+          "workload control weight is not observed trace evidence"
+        ]
+      }
+    ],
+    "semantic_coverage": "all semantic cases retained; aggregate scoring fails closed"
   }
 }

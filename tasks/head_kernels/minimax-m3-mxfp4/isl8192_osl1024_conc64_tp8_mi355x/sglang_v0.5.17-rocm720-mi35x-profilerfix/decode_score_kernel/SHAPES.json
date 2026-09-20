@@ -73,27 +73,11 @@
   "case_inventory": {
     "metadata_declared_num_cases": 5,
     "shape_record_count": 7,
-    "benchmark_case_count": 2,
-    "benchmark_case_ids": [
-      "decode_m1_ctx8554",
-      "decode_m64_ctx8554"
-    ],
+    "benchmark_case_count": 0,
+    "benchmark_case_ids": [],
     "count_note": "Counts describe distinct scopes. Captures, boundary specs, histogram observations and benchmark buckets are not interchangeable."
   },
-  "benchmark_cases": [
-    {
-      "case_id": "decode_m1_ctx8554",
-      "shape_record_id": "decode_m1_ctx8554",
-      "regime": "decode",
-      "evidence": "ut/cases.py:150"
-    },
-    {
-      "case_id": "decode_m64_ctx8554",
-      "shape_record_id": "decode_m64_ctx8554",
-      "regime": "decode",
-      "evidence": "ut/cases.py:150"
-    }
-  ],
+  "benchmark_cases": [],
   "cases": [
     {
       "case_id": "block_size=128|disable_index_value=True|init_blocks=0|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=None|local_blocks=1|max_seqlen=187|page_size=1|q=T(1, 1, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|score_type=str|seq_lens=T(1,):torch.int64|sink=None|slot_ids=T(1,):torch.int64|sm_scale=None|topk=16|use_dense_main_attn=False|v_cache=None|v_scale=None",
@@ -1609,11 +1593,12 @@
           "evidence": "source/flash_with_topk_idx.py:994"
         }
       ],
-      "benchmark_case_ids": [
-        "decode_m1_ctx8554"
-      ],
+      "benchmark_case_ids": [],
       "notes": [
         "Callable returns (None, topk_idx, None); protected call projects the sole live tensor. Correctness captures are short warmup contexts; only served_histogram records carry timing."
+      ],
+      "unscored_proxy_case_ids": [
+        "decode_m1_ctx8554"
       ]
     },
     {
@@ -1951,11 +1936,12 @@
           "evidence": "source/flash_with_topk_idx.py:994"
         }
       ],
-      "benchmark_case_ids": [
-        "decode_m64_ctx8554"
-      ],
+      "benchmark_case_ids": [],
       "notes": [
         "Callable returns (None, topk_idx, None); protected call projects the sole live tensor. Correctness captures are short warmup contexts; only served_histogram records carry timing."
+      ],
+      "unscored_proxy_case_ids": [
+        "decode_m64_ctx8554"
       ]
     }
   ],
@@ -55005,7 +54991,7 @@
       {
         "function": "_seq_len_variant",
         "evidence": "ut/cases.py:170",
-        "docstring": "A copy of geometry `g` with the SAME buffer shapes and the SAME host scalars but DIFFERENT\nper-sequence context lengths.\n\nbatch_size, max_seqlen and every tensor shape are held fixed on purpose: `max_seqlen` sizes the\ninternally allocated `score` tensor AND (with batch_size) the launch grid, so holding both fixed\nis what lets ONE captured graph serve both variants — which is the whole point of the replay\ngate. What changes is exactly what the kernel branches on per row: seq_lens, i.e. the number of\nvalid 128-token blocks each (head, batch) row scans, including lengths that are NOT multiples of\nblock_size (the ragged tail) and rows with fewer than topk blocks (the trivial-topk path).",
+        "docstring": "A copy of geometry `g` with the SAME buffer shapes and the SAME host scalars but DIFFERENT\nper-sequence context lengths.\n\nbatch_size, max_seqlen and every tensor shape are held fixed on purpose: `max_seqlen` sizes the\ninternally allocated `score` tensor AND (with batch_size) the launch grid, so holding both fixed\nis what lets ONE captured graph serve both variants \u2014 which is the whole point of the replay\ngate. What changes is exactly what the kernel branches on per row: seq_lens, i.e. the number of\nvalid 128-token blocks each (head, batch) row scans, including lengths that are NOT multiples of\nblock_size (the ragged tail) and rows with fewer than topk blocks (the trivial-topk path).",
         "expressions": []
       },
       {
@@ -55026,7 +55012,7 @@
       {
         "function": "random_shapes",
         "evidence": "ut/cases.py:202",
-        "docstring": "Fixed online dims, fresh random VALUES per draw — the value-parity leg.\n\nThe replay boundary cases are included on purpose: the baseline leg then records their outputs in\nits OWN process (h.baseline_random_outputs), giving the graph-replay bundle a golden reference\nproduced by the frozen live kernel rather than by the candidate itself.",
+        "docstring": "Fixed online dims, fresh random VALUES per draw \u2014 the value-parity leg.\n\nThe replay boundary cases are included on purpose: the baseline leg then records their outputs in\nits OWN process (h.baseline_random_outputs), giving the graph-replay bundle a golden reference\nproduced by the frozen live kernel rather than by the candidate itself.",
         "expressions": [
           {
             "field": "sig",
@@ -55041,7 +55027,7 @@
       {
         "function": "eager_cases",
         "evidence": "ut/cases.py:234",
-        "docstring": "Stream the RECORDED inputs + golden outputs one at a time. Each record is ~1.3 GiB (the paged\nindex KV pool is an input), so materializing all of them would OOM — hence the lazy iterator plus\nh.check_correct_multi_lazy.",
+        "docstring": "Stream the RECORDED inputs + golden outputs one at a time. Each record is ~1.3 GiB (the paged\nindex KV pool is an input), so materializing all of them would OOM \u2014 hence the lazy iterator plus\nh.check_correct_multi_lazy.",
         "expressions": []
       }
     ]
@@ -55052,30 +55038,32 @@
     {
       "path": "ut/reference_io.pt",
       "sha256": "12dcffd9ba5a3ac20fa2fbce3949f1789a57e87c5aed80de5e0176c60cea1cbe",
-      "metadata_evidence": "ut/meta.json#/reference_io_sha256",
+      "metadata_evidence": "ut/meta.json#/archival_capture/reference_io_sha256",
       "inspected": true,
-      "status": "hash verified; metadata extracted with restricted weights_only=True CPU mmap/FakeTensorMode; tensor values not read"
+      "status": "hash verified; metadata extracted with restricted weights_only=True CPU mmap/FakeTensorMode; tensor values not read",
+      "runtime_requirement": "optional archival evidence; replaced by committed compact generated contract"
     },
     {
       "path": "ut/timing_geometry.pt",
       "sha256": "7a90e22e1248debfa30c40ab89b908399e394fc81de65f673d2ba83deee1fabb",
-      "metadata_evidence": "ut/meta.json#/timing_geometry_sha256",
+      "metadata_evidence": "ut/meta.json#/archival_capture/timing_geometry_sha256",
       "inspected": true,
-      "status": "hash verified; metadata extracted with restricted weights_only=True CPU mmap/FakeTensorMode; tensor values not read"
+      "status": "hash verified; metadata extracted with restricted weights_only=True CPU mmap/FakeTensorMode; tensor values not read",
+      "runtime_requirement": "optional archival evidence; replaced by committed compact generated contract"
     }
   ],
   "sources": [
     {
       "path": "ut/meta.json",
-      "sha256": "b42b34ffaa81449cf33bb563dbd8888925a3baaa0d397c3fb31aea1cec753a19"
+      "sha256": "e958573afaba6671e35384c12168ce26a7d21bb7281898f930a45f1017004703"
     },
     {
       "path": "ut/cases.py",
-      "sha256": "30c0b2bde2798672e06050cc0dbb650bd4cecbb7cc30c76847a12ae764a6887d"
+      "sha256": "81c9339f1677297c7b3663f5bb25d800ec0e8e8d04247695450b30f7a6d587cb"
     },
     {
       "path": "config.yaml",
-      "sha256": "fea2d55b0e811c94b179e5a7b92694ecc1857b1c767e9f29995a11260b86bd4c"
+      "sha256": "0ed39d3935a5d95719f2114240ee3ec1fdec14431c25ea8716466881766507aa"
     },
     {
       "path": "scripts/source_abi.json",
@@ -55088,9 +55076,33 @@
     {
       "path": "ut/workload.json",
       "sha256": "a2c499517f8fcfd4f6f65e2a3ee276deb824043bb26319d5b61a12c3e9fc3f53"
+    },
+    {
+      "path": "ut/generated_cases.json",
+      "sha256": "27aaaa416ade8c99c2977f668c408d80190b646919a23319614db718617fc1f4"
+    },
+    {
+      "path": "ut/timing_geometry.json",
+      "sha256": "5367518a9086c3cd0e0b56e1b79b68f6c264ea599f34545014bd5c003fccc28b"
+    },
+    {
+      "path": "ut/generated_contract.py",
+      "sha256": "8bf77cae56d0d61dd0e1a408353b516cdb0f947f264cd0d21dabf8f7d52622a4"
+    },
+    {
+      "path": "scripts/generated_worker.py",
+      "sha256": "6536fb6722e1835fba847a16e2d12b6ba820291e633fa891f123f46e8b7e28da"
+    },
+    {
+      "path": "scripts/generated_correctness.py",
+      "sha256": "7b1872dd1eb41caa4149ef117cc52f38a2a1415dc3d67da9794074a1b1171bcb"
+    },
+    {
+      "path": "scripts/generated_task_runner.py",
+      "sha256": "62418a3eb6d6c847d7a0740376e372e60fa40f4ce0087b9bf92e80429e952a64"
     }
   ],
-  "validation": "Hash-verified restricted CPU tensor metadata extraction plus static builder inspection. No tensor values read and no GPU correctness/performance validation.",
+  "validation": "Original restricted metadata extraction plus this revision: captured integer routing/page values extracted with weights_only=True CPU mmap; floating input/output values not copied. CPU checks only; no GPU qualification.",
   "fixture_metadata": [
     {
       "artifact_path": "ut/reference_io.pt",
@@ -56815,5 +56827,43 @@
     "cpu_wheel_report_sha256": "aa6b4b5c0cf62a4e2502d9a653355d4ece850167e135556fac8e9855442a43ad",
     "all_artifacts_report_sha256": "0a48b0f19bbf1469b41dbb2a13dbda229ed1c3c790e2f5e9b3f3ed3181751925",
     "supplement_report_sha256": "fae60fce8d55bdafd867606b30e052eaa8690fe4907d3fa156a667773f4d12d4"
-  }
+  },
+  "generated_input_draft": {
+    "correctness_cases": 5,
+    "contract_file": "ut/generated_cases.json",
+    "contract_sha256": "27aaaa416ade8c99c2977f668c408d80190b646919a23319614db718617fc1f4",
+    "geometry_file": "ut/timing_geometry.json",
+    "geometry_sha256": "5367518a9086c3cd0e0b56e1b79b68f6c264ea599f34545014bd5c003fccc28b",
+    "gpu_validated": false
+  },
+  "performance_contract": {
+    "status": "blocked_missing_observed_controls",
+    "scope": "exact_serving_call_structure",
+    "reason": "The declared M=1/M=64 serving decode buckets have no captured per-call control records: their sequence lengths and paging/block choices are histogram/analytic proxies. Recorded oracle calls remain correctness cases; they do not replace the declared serving buckets.",
+    "case_ids": [],
+    "unscored_validation_proxy_ids": [
+      "decode_m1_ctx8554",
+      "decode_m64_ctx8554"
+    ],
+    "fallback_allowed": false,
+    "required_evidence": [
+      "observed serving-bucket sequence lengths",
+      "original request-table shape/strides and slot IDs",
+      "captured paging rows and selected block IDs for the scored calls"
+    ]
+  },
+  "unscored_validation_proxies": [
+    {
+      "case_id": "decode_m1_ctx8554",
+      "shape_record_id": "decode_m1_ctx8554",
+      "regime": "decode",
+      "evidence": "ut/cases.py:150"
+    },
+    {
+      "case_id": "decode_m64_ctx8554",
+      "shape_record_id": "decode_m64_ctx8554",
+      "regime": "decode",
+      "evidence": "ut/cases.py:150"
+    }
+  ]
 }

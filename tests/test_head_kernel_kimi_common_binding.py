@@ -51,7 +51,11 @@ def mocked_image(monkeypatch):
     torch.Generator = Generator
     torch.bfloat16 = "bf16"
     torch.zeros = lambda shape, dtype, device: MarkerTensor(shape, dtype)
-    torch.load = lambda *args, **kwargs: {"cases": []}
+    torch.serialization = SimpleNamespace(clear_safe_globals=lambda: None)
+    def load_capture(*args, **kwargs):
+        assert kwargs["weights_only"] is True
+        return {"cases": []}
+    torch.load = load_capture
     flydsl = ModuleType("flydsl")
     flydsl.__version__ = "0.2.4+test-image"
     monkeypatch.setitem(sys.modules, "torch", torch)

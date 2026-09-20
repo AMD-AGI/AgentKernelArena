@@ -1,0 +1,76 @@
+{
+  "schema": "glm-original-ut-fidelity-evidence-v1",
+  "scope": "Recorded local source comparison for one archived GLM fused-MoE UT; not a runtime benchmark or a diagnosis of other GEAK runs.",
+  "source_comparison_sha256": "baf99db216f42fa79d9814a5e1772799812472a79edbeb03e77899c062288d9e",
+  "source_report_sha256": "20abd9dc1060b4876811ff18065fe4684e9940573275130172ad84e8a2ac074e",
+  "source_report_created_utc": "2026-09-20T16:49:41.468341+00:00",
+  "original_run_id": "20260829T045924Z-d82dabe1",
+  "original_task": "geak/e2e_cycle1/kernels/fused_moe_kernel_task",
+  "original_code_hashes": {
+    "cases.py": {
+      "observed": "b9fed1ccaa6f4eab9651e36b4927029cf68a0153de8e78628441045756c9c113",
+      "declared_in_archived_meta": "b9fed1ccaa6f4eab9651e36b4927029cf68a0153de8e78628441045756c9c113",
+      "matches": true
+    },
+    "unittest.py": {
+      "observed": "6b5e5baa762a0b14359611502dc32ffda7c56d3f3e897fa94c3d001a8e228355",
+      "declared_in_archived_meta": "6b5e5baa762a0b14359611502dc32ffda7c56d3f3e897fa94c3d001a8e228355",
+      "matches": true
+    },
+    "harness_lib.py": {
+      "observed": "fe8e18f4cba1313cc5033ae47950fb6154f6680e050d77436f7c5bb4095fd7f2",
+      "declared_in_archived_meta": "fe8e18f4cba1313cc5033ae47950fb6154f6680e050d77436f7c5bb4095fd7f2",
+      "matches": true
+    },
+    "leg_runner.py": {
+      "observed": "a35dde641f8072d042f71dfb52bd16adc2c462f17ee994cb10bbb4e42c73a465",
+      "declared_in_archived_meta": "a35dde641f8072d042f71dfb52bd16adc2c462f17ee994cb10bbb4e42c73a465",
+      "matches": true
+    }
+  },
+  "initial_suite_cases_sha256": "b7e00193c38e436adc48c40871cdd4dbc8dbfda200e415e32ce6cc4a096847eb",
+  "case_builder_AST_parity": {
+    "_routing_pool": true,
+    "_synth_inputs": true,
+    "eager_cases": true,
+    "timing_cases": true,
+    "random_shapes": true,
+    "_build_args": true
+  },
+  "case_source_difference_scope": "Initial suite added a verified frozen-capture loader; the six case-building functions remained AST-identical.",
+  "original_frozen_oracle_M": [
+    19,
+    1,
+    8192
+  ],
+  "observed_M": [
+    1,
+    19,
+    64,
+    8192,
+    16384
+  ],
+  "original_timing_M": [
+    64,
+    8192,
+    1
+  ],
+  "original_random_parity_M": [
+    1,
+    19,
+    64,
+    8192
+  ],
+  "routing_policy": "with-replacement sampling of captured regime routing rows",
+  "activation_policy": "fresh normal random activation values scaled by standard deviation of first captured activation",
+  "original_inplace_policy": "False in prepared blob static arguments; raw live captured argument was True",
+  "reported_workload_weight_norm": {
+    "decode_M64": 0.7,
+    "prefill_M8192": 0.3,
+    "decode_M1": 0.0
+  },
+  "actual_primary_metric": "harness_lib.serving_weighted_speedup weights baseline_ms by analytic calls (decode1024, prefill64; smaller transient M1 gets1); workload .7/.3 is not directly the primary-score weighting.",
+  "optimization_status_evidence": "Archived README explicitly says never optimized; null candidate; no accepted patch/e2e validation. This local follow-up did not re-read raw optimizer logs.",
+  "full_optimizer_prompt_found_in_inspected_local_packet": false,
+  "interpretation": "Inherited standalone replay-fidelity/coverage gap. Initial local exact-scenario classification was too strong; M64 was observed, not invented. No wrong-shape optimized gain is demonstrated."
+}

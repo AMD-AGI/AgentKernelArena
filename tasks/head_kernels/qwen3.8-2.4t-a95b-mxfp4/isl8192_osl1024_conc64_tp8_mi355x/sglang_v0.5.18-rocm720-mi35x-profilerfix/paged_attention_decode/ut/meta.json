@@ -130,10 +130,8 @@
   "notes": "Only pages referenced by kv_page_indices[:kv_indptr[-1]] are retained and indices are remapped losslessly.",
   "num_cases": 1,
   "op_kind": "attn",
-  "oracle_policy": "Persistent live capture with compacted but lossless referenced K/V pages, real ragged/page metadata and scales, plus the complete returned output. Random parity changes query values only.",
+  "oracle_policy": "fresh_generated_inputs_and_protected_parent_reference",
   "random_draws": 3,
-  "reference_io": "reference_io.pt",
-  "reference_io_sha256": "9c40d52c145027f8affca9e41bbf1100189fde724d42d085ac6296d57020ac56",
   "regime": {
     "backend": "sglang",
     "capture_mode": "live_referenced_kv_pages_metadata_scales_and_output",
@@ -176,7 +174,7 @@
     "runtime_image": "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.18-rocm720-mi35x-profilerfix",
     "runtime_image_id": "sha256:760dd38b9b6f2bd11c13011d470eb8e377c3f0d71284a090a710d64a23bd789f"
   },
-  "synthesized": false,
+  "synthesized": true,
   "target_callable": "aiter.ops.attention:paged_attention_ragged",
   "task_id": "paged_attention_decode_task",
   "tol": 0.02,
@@ -226,5 +224,20 @@
       "osl": 1024,
       "prefill_chunk": 16384
     }
+  },
+  "archival_capture": {
+    "reference_io": "reference_io.pt",
+    "reference_io_sha256": "9c40d52c145027f8affca9e41bbf1100189fde724d42d085ac6296d57020ac56"
+  },
+  "generated_inputs": {
+    "kernel": "paged_attention_decode",
+    "contract_file": "generated_cases.json",
+    "contract_sha256": "bc911ca4ff8dab6f33e46822ec78da7b47d8d42a8d61be39885bce79a1561b89",
+    "case_ids": [
+      "decode_m64_live"
+    ],
+    "numeric_values": "seeded locally; not the original captured numerical sample",
+    "structural_values": "exact hash-verified archive routing, slot and page values in compact JSON",
+    "reference": "independent protected baseline process; full output comparison in the trusted parent"
   }
 }

@@ -1,95 +1,110 @@
 # Validation status
 
-This branch is undergoing native GPU qualification. It is **not yet a validated
-benchmark release**. Publishing this reviewable branch does not imply that all
-tasks have passed GPU correctness, performance, or the task validator.
+This is a reviewable, portable suite of **18 operator tasks**, not a fully
+qualified benchmark release. All default inputs are generated locally from
+committed code and compact structural metadata. **No external tensor archive,
+private registry, or cluster filesystem is required.** Optional historical
+archives are listed separately in `artifacts.json`.
 
-The latest root verification on 2026-09-20 completed **449 CPU tests and
-44 subtests**, with **21 explicitly skipped tests requiring unavailable host
-PyTorch functionality**. There were no failures. The checks cover workload
-layout, fixture integrity and publication, fixed interfaces, source-to-harness
-binding, graph-failure handling, runtime image selection, protected imports,
-known timer/comparator attacks, and forged or incomplete benchmark reports.
+Native GPU execution, supported workload geometry, and framework validation
+are separate requirements. A successful microbenchmark does not establish
+full HyperLoom serving equivalence or reproduce a historical end-to-end gain.
+The [workload fidelity report](WORKLOAD_FIDELITY.md) records those distinctions.
 
-The 17 required external fixtures (33,139,788,731 bytes) have been copied into
-an independent owned mirror and their complete SHA-256 hashes verified. The
-fixture preparation guide describes how to populate a task-local copy.
+## Current acceptance restrictions
 
-## First allocated runtime attempt
+- MiniMax decode-score and sparse-decode workload scores are blocked: their
+  timing contexts and addressing were reconstructed, not captured per call.
+  Their correctness and replay probes remain available.
+- MiniMax sparse prefill uses the observed M8192 record, including its full
+  `[4097,11268]` request table, original slot `[4]` with int64 dtype, captured
+  block indices, and original full KV allocations. This needs fresh GPU checks.
+- GLM BF16 and FP8 GEMMs retain 27 and 21 mandatory correctness cases, but each
+  scores only seven observed M64 cases. The other combinations are unscored
+  generalization checks.
+- GLM fused-MoE workload scoring is blocked. The original archives contain
+  M19/M1/M8192 records; M64/M16384 were counters only. The snapshots were taken
+  after an in-place call. Generated routing cannot replace missing pre-call
+  serving captures.
+- All three Kimi aggregate workload scores are blocked. Attention uses inferred
+  context/pools; stage 1 uses second-hand routing and an assumed decode variant;
+  stage 2 has estimated decode control weights. All semantic cases remain.
+  Stage 1 additionally requires three individual launches at each of three
+  shapes to pass an independent reference; a median cannot hide a bad launch.
+- DeepSeek scores four observed attention cases and five cases per MoE task.
+  Derived M1 attention slices remain mandatory, unscored robustness probes.
+  The checker also validates consumed stage-1 scales and defined LSE values.
+- Qwen retains partial captured coverage. Two MoE cases do not cover all four
+  telemetry shapes, and one compacted paged-attention capture does not cover
+  all observed request signatures. The fidelity report bounds each claim.
 
-On 2026-09-20, burst job `158486` started seven separate Docker task workers
-on MI355X node `crsuse2-m2m-055`. The v0.5.18 image/config ID matched the
-captured `sha256:760dd38b9b6f2bd11c13011d470eb8e377c3f0d71284a090a710d64a23bd789f`.
-All seven Python syntax/fixed-interface checks passed. All seven correctness
-commands then failed during the shared AITER runtime import: the ordinary user
-could not read bundled FlyDSL cache files while AITER attempted to copy its
-installed JIT directory. Performance was not run after those failures.
+These restrictions fail closed. A blocked performance phase is not a zero-time
+kernel, a passing task, or a speedup.
 
-Commit `084368cf1ad16918dde53f7f227dcb69f2d6c22b` fixes this startup path using
-the supported `AITER_JIT_DIR` and `FLYDSL_RUNTIME_CACHE_DIR` overrides and
-separate writable worker caches. Its 31 focused runtime CPU tests and mocked
-Docker checks passed. This is a tested environment correction, not a successful
-GPU rerun. The node-specific retry was cancelled while pending after the
-scheduler reported a GPU/resource allocation mismatch.
+## Completed native GPU evidence
 
-| Cohort | Registered tasks | Latest completed evidence |
-| --- | ---: | --- |
-| SGLang v0.5.17 | 8 | GLM BF16 native positive and negative controls completed at `97555eb2`; other tasks and later contract changes remain pending |
-| SGLang v0.5.18 | 7 | All seven stopped at the AITER import failure; cache fix requires GPU retest |
-| Kimi K3 capture image | 3 | CPU checks; GPU qualification not run |
+All entries below used MI355X/gfx950 and pinned public `rocm/hyperloom` images.
+The exact image manifest and config digests are in the
+[environment matrix](../../docs/reference/top5-head-kernel-environments.md).
+Reports were retained with their hashes and source revisions.
 
-There are currently **no framework-finalized task-validator PASS reports** for
-this release. Native execution evidence is recorded separately below.
-The separate MiniMax generated-input draft is not part of this branch; the
-14 capture-dependent tasks still require their declared fixtures.
+| Job | Source revision | Task / scope | Native result |
+| --- | --- | --- | --- |
+| 158785 | `97555eb2` | GLM BF16 GEMM | 27/27 correctness and 27/27 performance cases passed; 10 warmups and 100 samples per case. This predates the seven-case scoring restriction. |
+| 158821 | `97555eb2`, isolated negative-control edit | GLM BF16 GEMM | Zeroed output from the editable function was rejected by the numerical check (error 0.9948567748069763); performance was skipped. |
+| 158838 | `97555eb2` | GLM FP8 blockscale GEMM | 21/21 correctness and performance cases passed. This predates the seven-case scoring restriction. |
+| 158846 | `97555eb2` | Qwen RMSNorm | Correctness and both performance cases passed. |
+| 158846 | `97555eb2` | Qwen dense GEMM | Configuration-selection check failed; performance was skipped. |
+| 158923 | `49684b76` | GLM BF16 baseline device trace | All seven observed cases produced actual GPU events. The retained full symbol matched two cases; the old summary lacks per-case mappings and grid/block dimensions, so complete dispatch equivalence is unproved. This was a trace diagnostic, not full correctness. |
+| 159038 | `908879dc` | Qwen dense GEMM after configuration repair | All five expected configurations and GPU symbols appeared, but every backend-hook count was zero. Source binding and correctness were not certified; performance was skipped. |
 
-## GLM BF16 native GPU verification
+The successful GLM public runtime reported SGLang 0.5.17, PyTorch
+`2.9.1+rocm7.2.0.git7e1940d4`, HIP `7.2.26015-fc0010cf6a`, and Triton 3.6.0.
+A newer source revision requires its own qualification; earlier passes are
+not silently transferred to later contract changes.
 
-At commit `97555eb20ffc7683ff151b9695b6f025b0386b34`, job `158785` completed on
-an MI355X with the pinned public v0.5.17 image. All **27 correctness cases and
-27 performance cases passed**, with the expected complete unique case set,
-10 warmups and 100 samples per case. All device times were positive and finite,
-and actual timed-graph replay, changed-input probing and state restoration
-checks succeeded. This was direct verification, not the LLM task-validator
-review or a serving end-to-end experiment.
+The Qwen dense source-binding investigation found two concrete integration bugs:
+AITER's duplicate operator-registration decorator discarded the later candidate
+function, and the overlay builder overwrote the corrected binding template with
+its old generic literal. The loader now binds the actual source body, and the
+builder uses that canonical template. Baseline dispatch fidelity remains checked;
+valid candidates may change their backend. A fresh GPU positive and wrong-output
+negative control are still required for this final correction.
 
-The run observed SGLang `0.5.17`, PyTorch
-`2.9.1+rocm7.2.0.git7e1940d4`, HIP `7.2.26015-fc0010cf6a`, Triton `3.6.0`,
-and `gfx950`. It verified manifest
-`sha256:1f5464829559b086eb66f9b803cb9c7a817438c43edff2d5ef59b46a186745f6`
-and config digest
-`sha256:ffe4af630e49b05c812db4a468bfb411c3dbb0e93124801f28349bfa31352dea`.
-The engine exposed the manifest digest as its image ID; the complete
-manifest-to-config binding was verified. Native correctness/performance report
-SHA-256 values are respectively
-`d715d6cd57264ddb65cc2216e8fc8bc0e6ce8fe48dee12f229bbf99903109048` and
-`f3ba78f36f27cb6b43c876705c0107a2ec8f80ea1ee7721d8cae4f43d51dc6c6`.
+## CPU and integrity checks
 
-Job `158821` then tested a deliberately incorrect implementation in a separate
-copy: only the editable `torch_gemm` body was changed to zero its normal output.
-Compilation and runtime checks passed; candidate-versus-FP32-reference
-comparison rejected it with error `0.9948567748069763`, and performance was
-skipped. This demonstrates actual editable-source binding and numerical
-rejection for the tested path. Both attempts completed ownership-scoped
-container cleanup.
+The final combined CPU run at `e3afdbf6` passed **770 tests and 60 subtests**
+with no failures or skips. It covers the task catalogs, generated inputs,
+source binding, fixed interfaces, runtime identity, native-verifier aggregation,
+and the tested integrity controls. Earlier integration-test failures were
+corrected before this complete run. The later Qwen overlay-builder correction passed
+32 focused integration tests, including the actual generated-overlay path.
+The Docker runner's mocked runtime,
+agent-selection and isolation checks, and `make check-perf-helpers`, also passed.
 
-The scenario-fidelity audit subsequently classified only **seven** of the
-27 BF16 combinations as supported by the retained workload trace. The other
-20 remain mandatory correctness/generalization tests. Commit `9ac67071`
-restricts scoring to the seven supported cases; the earlier GPU result does
-not certify the later scoring contract or full HyperLoom workload fidelity.
-The analogous FP8 task retains 21 correctness cases and scores seven observed
-cases. Source kernel bodies and numerical tolerances were not changed by that
-classification correction.
+Actual-worker adversarial controls independently rejected replacement of trusted
+checkers and output encoders, module-alias substitution, and forged Tensor-to-NumPy
+serialization. Integer and boolean outputs use exact comparison. Numerical
+references run independently and are compared in protected parent memory.
+The guards preserve the same attested helper modules across preflight, candidate
+loading, correctness, and timing. These are bounded tested protections; the
+worker process is not an operating-system security sandbox.
 
-Native qualification remains required for every registered task:
+The canonical benchmark retains its warmup/sample policy, actual timed replay
+validation, changed-input probes, state restoration, and fixed callable contracts.
+Its graph timing and equal-case aggregation differ from some original eager
+capture and serving-frequency regimes. Those differences are documented rather
+than labeled exact serving performance.
 
-- Matching image and actual MI355X/gfx950 runtime identity.
-- Complete physical shape and layout evidence, including runtime transformations.
-- Successful compilation and correctness over every declared case.
-- Validated output from the actual timed replay, with preserved state and ABI.
-- Scoreable, consistent timing with no missing or failed cases.
-- A fresh framework-finalized task-validator report with `overall_status: PASS`.
+## Release gate
 
-Results will be recorded against the exact task and harness versions. A partial,
-preempted, skipped, or failed run cannot be counted as a successful validation.
+There are **no framework-finalized `task_validator` PASS reports** for this
+release. Direct `verify` and `parallel-verify` run the task's native commands
+without LLM credentials and retain their real reports; they do not fabricate a
+framework validator result.
+
+Every enabled task needs complete native correctness/performance evidence and a
+fresh framework-finalized `validation_report.yaml` with `overall_status: PASS`
+before PR submission. A timeout, partial report, blocked score, or historical
+pass does not satisfy that gate. See the
+[validator contract](../../docs/how-to/task-validator.md).

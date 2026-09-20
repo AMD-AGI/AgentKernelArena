@@ -312,9 +312,8 @@
       "slots_written": 3
     }
   ],
-  "reference_io_sha256": "017f8ede884504695283291955fa8750be3e5d2779dd67b3914f13ab7ae85b98",
   "oracle_source": "live_capture",
-  "synthesized": false,
+  "synthesized": true,
   "workload": {
     "schema": "workload-v1",
     "op_kind": "attn",
@@ -507,7 +506,7 @@
         }
       }
     ],
-    "notes": "WARNING: regime 'decode' present in meta but ZERO profiled time — likely a capture-biased window; set --min-regime-share to keep it. auto decode-floor: analytic serving model has decode=1024 calls but profiled decode share=0.00 < 0.30 (graph-hidden / under-captured decode) -> flooring decode to 0.30; authoritative split remains the unittest self-weight (measured ms x analytic_calls). [refresh post-tuning-r2] live_pct_gpu updated 20.62 -> 9.95 (the tuning round already banked the BLOCK_N=32 half); the kernel is graph-hidden in profile/round_tuning/profile_workload.json so the weights stay 'prior'/floored and the authoritative split remains the unittest self-weight."
+    "notes": "WARNING: regime 'decode' present in meta but ZERO profiled time \u2014 likely a capture-biased window; set --min-regime-share to keep it. auto decode-floor: analytic serving model has decode=1024 calls but profiled decode share=0.00 < 0.30 (graph-hidden / under-captured decode) -> flooring decode to 0.30; authoritative split remains the unittest self-weight (measured ms x analytic_calls). [refresh post-tuning-r2] live_pct_gpu updated 20.62 -> 9.95 (the tuning round already banked the BLOCK_N=32 half); the kernel is graph-hidden in profile/round_tuning/profile_workload.json so the weights stay 'prior'/floored and the authoritative split remains the unittest self-weight."
   },
   "m_buckets": [
     1,
@@ -1515,5 +1514,86 @@
     "oracle": "reference_io.pt NOT re-frozen; the fresh capture's shape_counts reproduce the frozen geometry exactly (q[1,12,576] bf16, k/v pool [833385,1,576]/[...,512] bf16, att_out[1,12,256,512] fp32, max_kv_splits=256, page_size=1, sm_scale=0.07216878364870322), so the Aug-29 oracle is confirmed in-regime on the current stack."
   },
   "standalone_binding": "bindings.py:resolve_pair",
-  "frozen_baseline_file": "baseline_ref/decode_attention.py.orig"
+  "frozen_baseline_file": "baseline_ref/decode_attention.py.orig",
+  "archival_capture": {
+    "synthesized": false,
+    "reference_io_sha256": "017f8ede884504695283291955fa8750be3e5d2779dd67b3914f13ab7ae85b98"
+  },
+  "generated_inputs": {
+    "schema_version": 1,
+    "contract_file": "generated_cases.json",
+    "contract_sha256": "15ac8ffc7c9ac66d40a09301faade6568c7b43d85d80bd49230f275c54b2c30c",
+    "numeric_policy": "existing calibrated recipes; captured integer routing/paging; generated routing-weight values with exact zero mask",
+    "reference_policy": "fresh frozen-baseline worker; outputs compared only in the parent; no candidate golden input",
+    "archive_optional": true,
+    "gpu_qualified": false,
+    "actual_hyperloom_scenario_verified": false,
+    "coverage_policy": "experimental operator benchmark; exclude from claimed validated HyperLoom coverage until native scenario and numerical qualification",
+    "scenario_fidelity": {
+      "archive_pool_rows": [
+        395,
+        524352
+      ],
+      "archive_k_strides": [
+        [
+          576,
+          576,
+          1
+        ],
+        [
+          576,
+          576,
+          1
+        ]
+      ],
+      "timed_pool_rows": [
+        8768,
+        557120
+      ],
+      "timed_context": [
+        8704,
+        8704
+      ],
+      "status": "original archive layouts and synthetic timing recipe both preserved; they are not an exact common pool/scenario replay"
+    }
+  },
+  "workload_scoring": {
+    "enabled": false,
+    "reason": "proxy context/pool; exact original control mapping unavailable; zero-weight or boundary-only semantic case",
+    "cases": [
+      {
+        "case": "oracle_bs1_ctx395",
+        "eligible": false,
+        "reasons": [
+          "proxy context/pool; exact original control mapping unavailable",
+          "zero-weight or boundary-only semantic case"
+        ]
+      },
+      {
+        "case": "oracle_bs64_ctx8193",
+        "eligible": false,
+        "reasons": [
+          "proxy context/pool; exact original control mapping unavailable",
+          "zero-weight or boundary-only semantic case"
+        ]
+      },
+      {
+        "case": "decode_bs1_ctx8704",
+        "eligible": false,
+        "reasons": [
+          "proxy context/pool; exact original control mapping unavailable",
+          "zero-weight or boundary-only semantic case"
+        ]
+      },
+      {
+        "case": "decode_bs64_ctx8704",
+        "eligible": false,
+        "reasons": [
+          "proxy context/pool; exact original control mapping unavailable",
+          "zero-weight or boundary-only semantic case"
+        ]
+      }
+    ],
+    "semantic_coverage": "all semantic cases retained; aggregate scoring fails closed"
+  }
 }

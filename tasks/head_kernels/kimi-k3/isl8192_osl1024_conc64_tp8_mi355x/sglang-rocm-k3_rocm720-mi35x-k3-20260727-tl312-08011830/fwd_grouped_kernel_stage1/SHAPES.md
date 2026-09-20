@@ -1,10 +1,12 @@
-# Shape and benchmark catalog: fwd_grouped_kernel_stage1
+# Shape and diagnostic catalog: fwd_grouped_kernel_stage1
 
-This is a single-GPU MI355X (gfx950) callable benchmark. The serving capture used ISL 8192, OSL 1024, concurrency 64 and TP=8; those settings are context, not a substitute for the tensor shapes below.
+This single-GPU MI355X (gfx950) catalog preserves callable shapes and unscored diagnostics. Historical serving sources share ISL 8192, OSL 1024, concurrency 64 and TP=8; these values do not establish one common capture scenario or replace the tensor shapes below.
 
 The complete case IDs, argument inventories, original metadata, scalars, tensor attributes, extracted fixture layouts and source hashes are in [SHAPES.json](SHAPES.json). The task environment and benchmark commands are in [config.yaml](config.yaml).
 
-The inventory has **4 shape records** and **2 benchmark cases**. The protected metadata's `num_cases` field is `not declared`; that field can count a different capture scope. Histogram observations and random value draws are not added to the benchmark count.
+The inventory has **4 shape records**, **zero enabled/scored benchmark cases**, and **2 unscored diagnostic timing cases**. All former timing IDs and all capture/boundary shapes are retained. Historical `workload.num_cases` counts remain unchanged and do not imply enabled scoring.
+
+The attention regime does not declare a prefill chunk. Its historical analytic weight model uses 16384 but has zero prefill calls; this is not an observed attention prefill scenario. ISL 8192 denotes input sequence length. See `ut/workload.json` (`regime` and `serving_weight_model`) for the unchanged historical values; the catalog preserves those source records verbatim.
 
 Callable: `sglang.kernels.ops.attention.decode_attention:_decode_grouped_att_m_fwd`. Baseline recorded in metadata: `sglang.kernels.ops.attention.decode_attention:_decode_grouped_att_m_fwd`. Selected callable seam; kernel launch count is not asserted by this catalog.
 
@@ -12,12 +14,12 @@ MLA absorbed decode, split-KV stage 1: for each (batch b, q-head h, kv split s) 
 
 Native callable writes att_out and att_lse. The harness exposes these output buffers as a tuple; inactive split slots stay at their initial zero. Timing v_buffer is a view of k_buffer.
 
-| Benchmark case ID | Regime | Tensor geometry | Shape source |
+| Unscored diagnostic case ID | Regime | Tensor geometry | Shape source |
 | --- | --- | --- | --- |
 | `decode_bs1_ctx8704` | decode | q [1×12×576] bfloat16; k_buffer [8768×1×576] bfloat16 | `ut/meta.json#/cases/2`; JSON record 2 |
 | `decode_bs64_ctx8704` | decode | q [64×12×576] bfloat16; k_buffer [557120×1×576] bfloat16 | `ut/meta.json#/cases/3`; JSON record 3 |
 
-Benchmark IDs above follow the protected timing builder and common adapter. All capture-only and boundary records remain in the JSON inventory with their original IDs and explicit benchmark membership. The `tensor_overrides` entries distinguish timing storage from captured storage: MiniMax prefill remaps selected request rows and changes `slot_ids` to int32; recurrent decode generates contiguous timing tensors.
+Diagnostic IDs above preserve the former timing builder membership. `benchmark_cases` and every shape record's `benchmark_case_ids` are empty; `unscored_diagnostic_cases` and `diagnostic_case_ids` retain those links. The authoritative [scoring policy](ut/meta.json) has `workload_scoring.enabled=false`: proxy context/pool; exact original control mapping unavailable; zero-weight or boundary-only semantic case.
 
 | Argument / output | Recorded geometry and layout |
 | --- | --- |
@@ -32,8 +34,10 @@ Benchmark IDs above follow the protected timing builder and common adapter. All 
 
 Each JSON tensor record cites the metadata field or protected builder that establishes its geometry. A `null` shape, dtype or stride means it is not established by readable metadata; it is not a wildcard or permission to replace the fixture. Packed weights, sparse paging maps and routing-dependent lengths must retain the protected artifact representation.
 
-| Protected tensor artifact | Expected SHA-256 |
+| Optional archival tensor evidence | Expected SHA-256 |
 | --- | --- |
 | `ut/reference_io.pt` | `017f8ede884504695283291955fa8750be3e5d2779dd67b3914f13ab7ae85b98` |
+
+Generated inputs use `ut/generated_cases.json`; the original tensor archive is optional historical evidence. The extraction description below records the earlier archive inspection, not a runtime dependency.
 
 Source pointers in the JSON are relative to this task directory. Every declared artifact was SHA-256 verified and its tensor metadata extracted using PyTorch 2.9.1+cpu, `weights_only=True`, CPU mapping, mmap and FakeTensorMode. Tensor values were not read, and no GPU work was performed. The JSON preserves the parser, fixture hashes, descriptor layouts and serialized alias identities. Fresh GPU validation remains governed by the task contract.

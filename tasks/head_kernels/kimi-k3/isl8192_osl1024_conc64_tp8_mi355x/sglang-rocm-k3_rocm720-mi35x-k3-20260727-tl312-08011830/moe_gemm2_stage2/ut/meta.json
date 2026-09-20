@@ -9,7 +9,7 @@
   "kernel_src": "kernel_src/flydsl",
   "baseline_src": "baseline_src/flydsl",
   "editable": true,
-  "synthesized": false,
+  "synthesized": true,
   "build": false,
   "candidate_backends": [
     "flydsl",
@@ -740,10 +740,55 @@
         }
       }
     ],
-    "notes": "op_kind=moe: per-expert token counts are routing-dependent; effective-M buckets from meta drive a GEMM-style regime split. Treat weights as lower-confidence. WARNING: regime 'decode' has meta buckets [1, 64] but ZERO profiled time — likely a prefill/decode-biased profiling window. Decode-critical serving should set --min-regime-share to avoid ignoring it. auto decode-floor: analytic serving model has decode=1024 calls but profiled decode share=0.00 < 0.30 (graph-hidden / under-captured decode) -> flooring decode to 0.30; authoritative split remains the unittest self-weight (measured ms x analytic_calls). applied --min-regime-share 0.3: floored regimes ['decode']."
+    "notes": "op_kind=moe: per-expert token counts are routing-dependent; effective-M buckets from meta drive a GEMM-style regime split. Treat weights as lower-confidence. WARNING: regime 'decode' has meta buckets [1, 64] but ZERO profiled time \u2014 likely a prefill/decode-biased profiling window. Decode-critical serving should set --min-regime-share to avoid ignoring it. auto decode-floor: analytic serving model has decode=1024 calls but profiled decode share=0.00 < 0.30 (graph-hidden / under-captured decode) -> flooring decode to 0.30; authoritative split remains the unittest self-weight (measured ms x analytic_calls). applied --min-regime-share 0.3: floored regimes ['decode']."
   },
   "workload_note": "attribute_weights --name-match moe2 matches the two mfma_moe2_* stage-2 GEMM trace entries (5.19%+1.94%); the moe_reduction_kernel_plain_bf16_topk16_md3584 entry (3.2%) is emitted by the SAME flydsl_moe_stage2 call but cannot be captured by the same single substring, so live_pct_gpu here (7.13) understates the timed unit's true head share (10.2%).",
-  "reference_io_sha256": "5a3fefb2af1c8a2981980d68e4f90085985fd5f0301b69814d85de5c1d801a53",
   "reference_io_bytes": 181204137,
-  "standalone_binding": "flydsl_package.py:load_moe_package"
+  "standalone_binding": "flydsl_package.py:load_moe_package",
+  "archival_capture": {
+    "synthesized": false,
+    "reference_io_sha256": "5a3fefb2af1c8a2981980d68e4f90085985fd5f0301b69814d85de5c1d801a53"
+  },
+  "generated_inputs": {
+    "schema_version": 1,
+    "contract_file": "generated_cases.json",
+    "contract_sha256": "5fe7a885c6e9200cfdbc310c1bfbd2630e21c5a1936c5ccb866e214338404cfd",
+    "numeric_policy": "existing calibrated recipes; captured integer routing/paging; generated routing-weight values with exact zero mask",
+    "reference_policy": "fresh frozen-baseline worker; outputs compared only in the parent; no candidate golden input",
+    "archive_optional": true,
+    "gpu_qualified": false,
+    "actual_hyperloom_scenario_verified": false,
+    "coverage_policy": "experimental operator benchmark; exclude from claimed validated HyperLoom coverage until native scenario and numerical qualification"
+  },
+  "workload_scoring": {
+    "enabled": false,
+    "reason": "workload control weight is not observed trace evidence",
+    "cases": [
+      {
+        "case": "prefill_M16384",
+        "eligible": true,
+        "reasons": []
+      },
+      {
+        "case": "decode_M64",
+        "eligible": false,
+        "reasons": [
+          "workload control weight is not observed trace evidence"
+        ]
+      },
+      {
+        "case": "prefill_M8192",
+        "eligible": true,
+        "reasons": []
+      },
+      {
+        "case": "decode_M1",
+        "eligible": false,
+        "reasons": [
+          "workload control weight is not observed trace evidence"
+        ]
+      }
+    ],
+    "semantic_coverage": "all semantic cases retained; aggregate scoring fails closed"
+  }
 }

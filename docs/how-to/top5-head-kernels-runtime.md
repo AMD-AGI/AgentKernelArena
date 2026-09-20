@@ -54,9 +54,10 @@ python3 src/scripts/top5_head_kernels.py check-agents --config "$CONFIG_PATH"
 python3 src/scripts/top5_head_kernels.py run --config "$CONFIG_PATH"
 ```
 
-Each task must also satisfy its local input contract before execution. The
-runtime launcher does not download model checkpoints or tensor fixtures. See
-individual task documentation for its case/input construction and availability.
+All 18 tasks construct their inputs from the checkout and require zero external
+tensor fixtures or model checkpoints. Each task must still satisfy its local
+input and integrity contract before execution; see [portable input preparation](prepare-head-kernel-artifacts.md).
+The runtime launcher performs no task-data downloads.
 
 The standard Docker runner consumes `AKA_DOCKER_IMAGE`; it does not read task
 metadata. The cohort launcher passes the declared public manifest to that runner.
@@ -84,6 +85,79 @@ Docker inspection and committed public manifest metadata; no extra registry
 request is required after the image has been pulled.
 
 ## Direct verification without an agent
+
+### Parallel native verification
+
+Use `parallel-verify` with explicit host GPU IDs to distribute one public-image
+cohort across ordinary verifier containers:
+
+```bash
+GPU_IDS=0,1,2,3,4,5,6,7 \
+  python3 src/scripts/top5_head_kernels.py parallel-verify \
+  --config example_configs/top5_validator_sglang_v0518_mi355x.yaml
+```
+
+For the complete 18-task native matrix, the following exact-selector configs
+cover every task once across two separate image runs:
+
+```bash
+# Eleven tasks, eight workers: the v0.5.17 cohort plus Kimi.
+GPU_IDS=0,1,2,3,4,5,6,7 python3 src/scripts/top5_head_kernels.py parallel-verify \
+  --config example_configs/top5_parallel_verify_public_v0517_mi355x.yaml
+
+# Seven tasks, seven workers; the eighth requested GPU remains idle.
+GPU_IDS=0,1,2,3,4,5,6,7 python3 src/scripts/top5_head_kernels.py parallel-verify \
+  --config example_configs/top5_parallel_verify_public_v0518_mi355x.yaml
+```
+
+Use the physical GPU indexes actually assigned to the caller. The runner sets
+the corresponding per-worker physical mask and logical GPU 0. Pull each config's
+pinned image once before launching its workers. Use the repository's image
+identity check: an outer driver must not compare Docker `.Id` directly with the
+config digest, because supported containerd engines report the manifest ID.
+Collect the entire `workspace_parallel_verification_*` tree, including partial
+worker output if an external job deadline interrupts the command. Determine the
+expected worker count from `parallel-plan.json`, not the allocation size, and
+treat a missing final aggregate as incomplete verification.
+
+The complete checks are not guaranteed to fit a 12-minute allocation. The GPU
+qualification campaign hit that limit during several full correctness suites,
+leaving later tasks in the same shard unstarted. Use the task's declared phase
+timeouts when budgeting a full run, or select fewer tasks for a bounded attempt.
+An external deadline does not reduce the mandatory cases, warmups, or samples;
+interrupted work remains incomplete. See the [recorded outcomes](../../tasks/head_kernels/VALIDATION.md).
+
+Tasks are assigned deterministically by position (`tasks[index::worker_count]`)
+with no duplicates. Each active worker sees its selected physical GPU through
+`ROCR_VISIBLE_DEVICES` and uses logical GPU 0 inside the container. The image
+identity is verified once before workers start; each worker has separate home,
+JIT/cache directories, and output paths. No agent CLI or authentication state
+is mounted. GPU IDs must be distinct nonnegative indexes; there is no automatic
+GPU discovery for this command. When GPUs outnumber tasks, the surplus devices
+are recorded as unused and no empty workers are launched.
+
+The command creates `workspace_parallel_verification_<unique>/` containing the
+declared plan, per-worker stdout/stderr, and a separate `worker-NNN/` directory
+with each worker's normal `direct-verification.json`, task workspaces, and all
+retained native reports. The final `parallel-verification.json` checks worker
+exit status, native task status, image/GPU/shard identity, and complete exactly-once
+task coverage. Missing, failed, duplicated, or incomplete worker evidence makes
+the overall command fail. A task-list digest prevents workers from silently
+using a changed cohort selection. Existing output directories are never reused.
+
+The low-level verifier also accepts `--shard-index`, `--shard-count`,
+`--taskset-sha256`, and `--output-directory`; the host parallel route owns these
+arguments. Ordinary `verify` remains a single full-cohort run by default.
+Parallel execution preserves each task's commands, phase timeouts, correctness
+checks, case set, and benchmark controls. Successful native execution is still
+not a framework-finalized task-validator PASS. Select a config containing only
+one runtime; the v0.5.17 and Kimi cohorts may share a combined config because
+they use the same public image, while v0.5.18 must run separately.
+
+For optional sampled baseline GPU symbols and launch metadata, use the separate
+[device-trace diagnostic](head-kernel-device-trace.md). It profiles the existing
+baseline/scored-case path and records its coverage and limits without changing
+scoring or replacing correctness validation.
 
 The `verify` action runs each selected task's declared compile, correctness,
 and performance commands in order through the standard Docker runner. It uses
@@ -227,3 +301,27 @@ GPU_IDS=0,1 python3 src/scripts/top5_head_kernels.py parallel-run --config "$CON
 Each parallel worker gets one GPU and an independent task; worker count does
 not change captured tensor-parallel shard shapes. Keep the runtime identity
 fixed when resuming an existing run.
+
+## Worker preflight and source-overlay order
+
+The common worker uses two preflight phases so native imports cannot cache a
+stock target before an optimization overlay is installed:
+
+1. `require_runtime(config, phase="environment")` validates the selected image,
+   required environment and PyTorch/GPU properties. It defers native packages,
+   model-architecture resolution and target imports.
+2. The worker preloads declared trusted helper aliases and installs the integrity
+   monitor over those actual objects, including the preflight implementation.
+3. It rejects any overlay module already cached by a preload helper, then installs
+   the source overlay.
+4. `require_runtime(config)` performs complete native package/version/model/target
+   validation under the monitor. The same attested entrypoint then executes.
+
+Environment-only results are written to `runtime_preflight_environment.json` and
+carry `native_resolution_complete: false`. Complete results remain in
+`runtime_preflight.json`, with the resolved target's module file. An environment
+phase alone cannot finalize a worker or establish runtime qualification.
+
+Availability stubs in CPU worker tests must accept the `phase` keyword; production
+code must provide both phases. The protocol is shared across tasks and does not
+change kernel ABIs, tensor contracts, source identity checks or scoring policy.

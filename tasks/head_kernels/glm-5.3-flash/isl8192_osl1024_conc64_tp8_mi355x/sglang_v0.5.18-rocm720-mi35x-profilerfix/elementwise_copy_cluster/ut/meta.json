@@ -31,7 +31,7 @@
     "cuda_graph": false,
     "attention_backend": "",
     "prefill_chunk": null,
-    "notes": "enforce-eager/disable-cuda-graph set: the deployment runs eagerly (no graph replay), so eager IS the faithful baseline for this regime — NOT a strawman."
+    "notes": "enforce-eager/disable-cuda-graph set: the deployment runs eagerly (no graph replay), so eager IS the faithful baseline for this regime \u2014 NOT a strawman."
   },
   "served_regimes": [
     "prefill",
@@ -640,8 +640,6 @@
     "prefill"
   ],
   "oracle_complete": true,
-  "reference_io": "reference_io.pt",
-  "reference_io_sha256": "14e589b7296c667b170b39a5f962344152206ff954a84b4e16de4346567d12af",
   "capture_process": "capture.pid-1671140.rank-unknown",
   "note": "Oracle captured from the live TP=8 baseline. unittest.py / cases.py / reference_io.pt / meta.json are IMMUTABLE; kernel_src/ is the only writable path.",
   "workload": {
@@ -667,7 +665,7 @@
       "cuda_graph": false,
       "attention_backend": "",
       "prefill_chunk": null,
-      "notes": "enforce-eager/disable-cuda-graph set: the deployment runs eagerly (no graph replay), so eager IS the faithful baseline for this regime — NOT a strawman."
+      "notes": "enforce-eager/disable-cuda-graph set: the deployment runs eagerly (no graph replay), so eager IS the faithful baseline for this regime \u2014 NOT a strawman."
     },
     "served_regimes": [
       "decode",
@@ -1079,6 +1077,60 @@
         "g": 16
       }
     ],
-    "notes": "distributed 0us of unattributed kernel time across 8 shape-hidden case(s) by size prior (regime_prior) — shapes absent from the trace (e.g. HIP/CUDA-graph decode); larger-batch case dominates. CROSS-CHECK regime 'decode': 97% of capture CALLS vs 0% of profiled TIME (count≠time; large gap ⇒ biased capture window or mis-attributed profile — weight uses TIME). CROSS-CHECK regime 'prefill': 3% of capture CALLS vs 100% of profiled TIME (count≠time; large gap ⇒ biased capture window or mis-attributed profile — weight uses TIME). applied --min-regime-share 0.3: floored regimes ['prefill']. | dims re-spelled from the profile's transposed [G,M] operand to the seam's [M,G] argument; weights untouched."
-  }
+    "notes": "distributed 0us of unattributed kernel time across 8 shape-hidden case(s) by size prior (regime_prior) \u2014 shapes absent from the trace (e.g. HIP/CUDA-graph decode); larger-batch case dominates. CROSS-CHECK regime 'decode': 97% of capture CALLS vs 0% of profiled TIME (count\u2260time; large gap \u21d2 biased capture window or mis-attributed profile \u2014 weight uses TIME). CROSS-CHECK regime 'prefill': 3% of capture CALLS vs 100% of profiled TIME (count\u2260time; large gap \u21d2 biased capture window or mis-attributed profile \u2014 weight uses TIME). applied --min-regime-share 0.3: floored regimes ['prefill']. | dims re-spelled from the profile's transposed [G,M] operand to the seam's [M,G] argument; weights untouched."
+  },
+  "archival_capture": {
+    "reference_io_sha256": "14e589b7296c667b170b39a5f962344152206ff954a84b4e16de4346567d12af",
+    "reference_io": "reference_io.pt",
+    "synthesized": true
+  },
+  "generated_inputs": {
+    "schema_version": 1,
+    "contract_file": "generated_cases.json",
+    "contract_sha256": "c160ccfdebcb2f4d5551924b66ea2280308222544d39bb9067e3f5b37006d283",
+    "captured_case_ids": [
+      "T(19, 32):torch.float32",
+      "T(19, 12):torch.float32",
+      "T(19, 16):torch.float32",
+      "T(19, 2):torch.float32",
+      "T(1, 32):torch.float32",
+      "T(1, 12):torch.float32",
+      "T(8192, 32):torch.float32"
+    ],
+    "profiles": {
+      "recorded": [
+        "oracle0_m19_decode",
+        "oracle1_m19_decode",
+        "oracle2_m19_decode",
+        "oracle3_m19_decode",
+        "oracle4_m1_decode",
+        "oracle5_m1_decode",
+        "oracle6_m8192_prefill"
+      ],
+      "random": [
+        "rand_m64x2_decode",
+        "rand_m64x12_decode",
+        "rand_m64x16_decode",
+        "rand_m64x32_decode",
+        "rand_m16384x2_prefill",
+        "rand_m16384x12_prefill",
+        "rand_m16384x16_prefill",
+        "rand_m16384x32_prefill"
+      ],
+      "timed": [
+        "[\"scale_m64x32_decode\",\"decode\"]",
+        "[\"scale_m64x2_decode\",\"decode\"]",
+        "[\"scale_m64x12_decode\",\"decode\"]",
+        "[\"scale_m16384x2_prefill\",\"prefill\"]",
+        "[\"scale_m16384x12_prefill\",\"prefill\"]",
+        "[\"scale_m16384x16_prefill\",\"prefill\"]",
+        "[\"scale_m16384x32_prefill\",\"prefill\"]",
+        "[\"scale_m64x16_decode\",\"decode\"]"
+      ]
+    },
+    "oracle": "fresh protected reference workers; all expected outputs compared only in parent memory",
+    "numeric_policy": "finite generated FP8 expert values, positive FP32 block scales, seeded activation values; exact captured routing bytes",
+    "gpu_qualified": false
+  },
+  "synthesized": true
 }

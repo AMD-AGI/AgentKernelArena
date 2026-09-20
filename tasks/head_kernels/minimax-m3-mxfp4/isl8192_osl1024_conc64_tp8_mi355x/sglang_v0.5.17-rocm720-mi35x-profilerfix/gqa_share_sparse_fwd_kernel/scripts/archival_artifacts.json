@@ -1,0 +1,12 @@
+[
+  {
+    "filename": "reference_io.pt",
+    "size_bytes": 7283246268,
+    "sha256": "55f55d92b743c71e0362c4c4e0e47d7a0120c9c19bdc03fac7d1972ac80be6ba"
+  },
+  {
+    "filename": "timing_geometry.pt",
+    "size_bytes": 676789,
+    "sha256": "d1ad8a11fd31d42d04a92aa7d9854db6dce4ba5ba0aa43168185b731f4471462"
+  }
+]

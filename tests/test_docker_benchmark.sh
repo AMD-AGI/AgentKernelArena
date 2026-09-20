@@ -115,6 +115,29 @@ docker() {
             || printf 'sidecar-stop:%s\n' "${!#}" >> "$FAKE_DOCKER_EVENTS"
         return 0
     fi
+    if [[ "${FAKE_PARALLEL_VERIFY:-0}" == "1" && " $* " == *" --shard-index "* ]]; then
+        "$REAL_PYTHON3" - "$@" <<'PY'
+import json,os,sys
+from pathlib import Path
+from src.tools.verify_head_kernels import select_task_shard
+args=sys.argv[1:]
+value=lambda key: args[args.index(key)+1]
+directory=Path(value('--output-directory'))
+declaration=json.loads((directory.parent/'parallel-plan.json').read_text())
+index,count=int(value('--shard-index')),int(value('--shard-count'))
+gpu=next(arg.split('=',1)[1] for arg in args if arg.startswith('AGENT_KERNEL_ARENA_HOST_GPU_ID='))
+expected=select_task_shard(declaration['plan']['tasks'],index,count)
+directory.mkdir()
+failure=os.environ.get('FAKE_PARALLEL_FAIL_INDEX')==str(index)
+report={'cpu_mock':True,'plan':declaration['plan'],'status':'all_native_phases_succeeded',
+        'shard':{'index':index,'count':count,'assigned_tasks':expected,'host_gpu_id':gpu,
+                 'taskset_sha256':value('--taskset-sha256')},
+        'tasks':[{'task':task,'status':'failed' if failure else 'all_native_phases_succeeded'} for task in expected]}
+(directory/'direct-verification.json').write_text(json.dumps(report))
+(directory/'mock-docker-argv.json').write_text(json.dumps(args))
+PY
+        return
+    fi
     local value
     for value in "$@"; do
         if [[ "$value" == "agents.quality_loop" ]]; then
@@ -168,6 +191,16 @@ QUALITY_ARTIFACT_REL="quality_loop_runs/$QUALITY_TEST_RUN_ID"
 QUALITY_WORKTREE_REL=".quality_loop_worktrees/$QUALITY_TEST_RUN_ID"
 QUALITY_EVAL_ARTIFACT_DIR="$ROOT/.eval-tool-artifacts/quality-loop-$QUALITY_TEST_RUN_ID"
 trap 'rm -rf -- "$TEST_HOME" "$PATH_TEST_PARENT" "$ROOT/$QUALITY_ARTIFACT_REL" "$ROOT/$QUALITY_WORKTREE_REL" "$QUALITY_EVAL_ARTIFACT_DIR"' EXIT
+# Keep all mocked parallel-run output inside this test's owned cleanup root.
+mktemp() {
+    if [[ -n "${FAKE_PARALLEL_PARENT:-}" && "$*" == *workspace_parallel_verification_* ]]; then
+        mkdir -p "$FAKE_PARALLEL_PARENT"
+        command mktemp -d "$FAKE_PARALLEL_PARENT/workspace_parallel_verification_XXXXXX"
+    else
+        command mktemp "$@"
+    fi
+}
+export -f mktemp
 UNRELATED_GEAK_WORKFLOW_DIR="$TEST_HOME/unrelated-geak-workflow"
 GEAK_SDK_PYTHONPATH="PYTHONPATH=/workspace/.aka-pyuserbase/geak-sdk"
 mkdir -p "$UNRELATED_GEAK_WORKFLOW_DIR"
@@ -307,6 +340,53 @@ for value in "${verify_args[@]}"; do
     case "$value" in
         *:/opt/aka-agent-state/*|*:/opt/codex-node:*|*:/opt/claude-node:*|*:*/.gitconfig:*)
             fail "direct verification mounted agent state or host configuration: $value" ;;
+    esac
+done
+
+# Parallel verification masks each worker to one GPU, preserves reports, and
+# fails aggregation on a native task failure even when the mock exits zero.
+for parallel_failure in none 1; do
+    parent="$PATH_TEST_PARENT/parallel-$parallel_failure"
+    if env HOME="$TEST_HOME" FAKE_PARALLEL_VERIFY=1 FAKE_PARALLEL_PARENT="$parent" \
+        FAKE_PARALLEL_FAIL_INDEX="$parallel_failure" GPU_IDS=2,5 \
+        FAKE_SELECTED_IMAGE_ID="sha256:af24798ab4d57196fa1e928e4c81202bafb06cdeb663158f4d4f038fdb18f1a3" \
+        bash "$RUNNER" parallel-verify --config_name example_configs/top5_validator_sglang_v0518_mi355x.yaml \
+        > "$TEST_HOME/parallel-$parallel_failure.stdout" 2> "$TEST_HOME/parallel-$parallel_failure.stderr"; then
+        [[ "$parallel_failure" == none ]] || fail "failed native task passed parallel verification"
+    else
+        [[ "$parallel_failure" != none ]] || { cat "$TEST_HOME/parallel-$parallel_failure.stderr" >&2; fail "parallel verification fixture failed"; }
+    fi
+    "$REAL_PYTHON3" - "$parent" <<'PY'
+import json,sys
+from pathlib import Path
+batch,=Path(sys.argv[1]).glob('workspace_parallel_verification_*')
+summary=json.loads((batch/'parallel-verification.json').read_text())
+assert len(summary['workers'])==2
+for index,gpu in enumerate(('2','5')):
+ args=json.loads((batch/f'worker-{index:03d}/mock-docker-argv.json').read_text())
+ for expected in (f'ROCR_VISIBLE_DEVICES={gpu}','HIP_VISIBLE_DEVICES=0','CUDA_VISIBLE_DEVICES=0',
+                  f'AGENT_KERNEL_ARENA_WORKER_ID={index}',f'AGENT_KERNEL_ARENA_HOST_GPU_ID={gpu}'):
+  assert expected in args,expected
+ assert not any('/opt/aka-agent-state/' in value and ':' in value for value in args)
+ assert not any('/.gitconfig:' in value for value in args)
+PY
+done
+
+# Optional baseline tracing uses the same credential-free container boundary.
+mapfile -t trace_args < <(
+    HOME="$TEST_HOME" AKA_DOCKER_IMAGE="$CAPTURE_IMAGE" \
+        AKA_EXPECTED_IMAGE_ID="$CAPTURE_IMAGE_ID" FAKE_SELECTED_IMAGE_ID="$CAPTURE_IMAGE_ID" \
+        bash "$RUNNER" trace --config_name example_configs/top5_validator_sglang_v0518_mi355x.yaml \
+        --max-cases 2 --timeout 120 2>/dev/null
+)
+assert_has src.tools.trace_head_kernels "${trace_args[@]}"
+assert_has --max-cases "${trace_args[@]}"
+assert_not_has src.tools.verify_head_kernels "${trace_args[@]}"
+assert_not_has main.py "${trace_args[@]}"
+for value in "${trace_args[@]}"; do
+    case "$value" in
+        *:/opt/aka-agent-state/*|*:/opt/codex-node:*|*:/opt/claude-node:*|*:*/.gitconfig:*)
+            fail "device tracing mounted agent state or host configuration: $value" ;;
     esac
 done
 

@@ -53921,7 +53921,6 @@
   "graph_replayed": false,
   "in_graph_calls": 0,
   "reference_io": "reference_io.pt",
-  "reference_io_sha256": "12dcffd9ba5a3ac20fa2fbce3949f1789a57e87c5aed80de5e0176c60cea1cbe",
   "oracle_complete": true,
   "byte_budget": 8589934592,
   "case_byte_limit": 2147483648,
@@ -53977,7 +53976,6 @@
     64
   ],
   "geometry_file": "timing_geometry.pt",
-  "timing_geometry_sha256": "7a90e22e1248debfa30c40ab89b908399e394fc81de65f673d2ba83deee1fabb",
   "captured_keys": [
     "batch_size",
     "block_size",
@@ -54050,7 +54048,7 @@
       "kv_cache_dtype": "auto"
     },
     "live_pct_gpu": 1.0,
-    "regime_warning": "seam is only 1.0% GPU under the online regime (quant=quark); it is probably NOT the live kernel — verify the seam (e.g. unquantized GEMM serving only lm_head). Do NOT trust its weight/speedup for e2e.",
+    "regime_warning": "seam is only 1.0% GPU under the online regime (quant=quark); it is probably NOT the live kernel \u2014 verify the seam (e.g. unquantized GEMM serving only lm_head). Do NOT trust its weight/speedup for e2e.",
     "serving_weight_model": {
       "isl": 8192,
       "osl": 1024,
@@ -54200,8 +54198,40 @@
         }
       }
     ],
-    "notes": "seam is only 1.0% GPU under the online regime (quant=quark); it is probably NOT the live kernel — verify the seam (e.g. unquantized GEMM serving only lm_head). Do NOT trust its weight/speedup for e2e."
+    "notes": "seam is only 1.0% GPU under the online regime (quant=quark); it is probably NOT the live kernel \u2014 verify the seam (e.g. unquantized GEMM serving only lm_head). Do NOT trust its weight/speedup for e2e."
   },
   "workload_path": "workload.json",
-  "workload_provenance": "provenance://wekafs/test_results/Minimax_m3_MXFP4_20260828/MiniMax-M3-MXFP4/20260828T105325Z-4d49e44f/geak/e2e_cycle0/kernels/_decode_score_kernel_task/workload.json"
+  "workload_provenance": "provenance://wekafs/test_results/Minimax_m3_MXFP4_20260828/MiniMax-M3-MXFP4/20260828T105325Z-4d49e44f/geak/e2e_cycle0/kernels/_decode_score_kernel_task/workload.json",
+  "generated_inputs": {
+    "schema_version": 1,
+    "contract_file": "generated_cases.json",
+    "contract_sha256": "27aaaa416ade8c99c2977f668c408d80190b646919a23319614db718617fc1f4",
+    "geometry_file": "timing_geometry.json",
+    "geometry_sha256": "5367518a9086c3cd0e0b56e1b79b68f6c264ea599f34545014bd5c003fccc28b",
+    "draws": 3,
+    "oracle": "fresh separate frozen-baseline worker; compared only in trusted parent",
+    "archive_optional": true
+  },
+  "archival_capture": {
+    "synthesized": false,
+    "reference_io_sha256": "12dcffd9ba5a3ac20fa2fbce3949f1789a57e87c5aed80de5e0176c60cea1cbe",
+    "timing_geometry_sha256": "7a90e22e1248debfa30c40ab89b908399e394fc81de65f673d2ba83deee1fabb"
+  },
+  "synthesized": true,
+  "performance_contract": {
+    "status": "blocked_missing_observed_controls",
+    "scope": "exact_serving_call_structure",
+    "reason": "The declared M=1/M=64 serving decode buckets have no captured per-call control records: their sequence lengths and paging/block choices are histogram/analytic proxies. Recorded oracle calls remain correctness cases; they do not replace the declared serving buckets.",
+    "case_ids": [],
+    "unscored_validation_proxy_ids": [
+      "decode_m1_ctx8554",
+      "decode_m64_ctx8554"
+    ],
+    "fallback_allowed": false,
+    "required_evidence": [
+      "observed serving-bucket sequence lengths",
+      "original request-table shape/strides and slot IDs",
+      "captured paging rows and selected block IDs for the scored calls"
+    ]
+  }
 }

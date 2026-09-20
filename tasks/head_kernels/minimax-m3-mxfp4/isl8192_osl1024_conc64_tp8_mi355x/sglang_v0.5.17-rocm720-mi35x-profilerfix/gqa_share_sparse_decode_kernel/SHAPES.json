@@ -73,27 +73,11 @@
   "case_inventory": {
     "metadata_declared_num_cases": 3,
     "shape_record_count": 5,
-    "benchmark_case_count": 2,
-    "benchmark_case_ids": [
-      "decode_m1_ctx8704",
-      "decode_m64_ctx8704"
-    ],
+    "benchmark_case_count": 0,
+    "benchmark_case_ids": [],
     "count_note": "Counts describe distinct scopes. Captures, boundary specs, histogram observations and benchmark buckets are not interchangeable."
   },
-  "benchmark_cases": [
-    {
-      "case_id": "decode_m1_ctx8704",
-      "shape_record_id": "decode_m1_ctx8704",
-      "regime": "decode",
-      "evidence": "ut/cases.py:169"
-    },
-    {
-      "case_id": "decode_m64_ctx8704",
-      "shape_record_id": "decode_m64_ctx8704",
-      "regime": "decode",
-      "evidence": "ut/cases.py:169"
-    }
-  ],
+  "benchmark_cases": [],
   "cases": [
     {
       "case_id": "block_size=128|k_cache=T(4358330, 1, 128):torch.bfloat16|k_scale=1.0|q=T(1, 8, 128):torch.bfloat16|q_scale=None|req_to_token=T(4097, 11268):torch.int32|seq_lens=T(1,):torch.int64|sink=None|slot_ids=T(1,):torch.int64|sm_scale=None|topk_idx=T(1, 1, 16):torch.int32|v_cache=T(4358330, 1, 128):torch.bfloat16|v_scale=1.0",
@@ -1139,10 +1123,11 @@
           "evidence": "source/topk_sparse.py:439"
         }
       ],
-      "benchmark_case_ids": [
+      "benchmark_case_ids": [],
+      "notes": [],
+      "unscored_proxy_case_ids": [
         "decode_m1_ctx8704"
-      ],
-      "notes": []
+      ]
     },
     {
       "case_id": "decode_m64_ctx8704",
@@ -1505,10 +1490,11 @@
           "evidence": "source/topk_sparse.py:439"
         }
       ],
-      "benchmark_case_ids": [
+      "benchmark_case_ids": [],
+      "notes": [],
+      "unscored_proxy_case_ids": [
         "decode_m64_ctx8704"
-      ],
-      "notes": []
+      ]
     }
   ],
   "source_inventories": {
@@ -3459,7 +3445,7 @@
       {
         "function": "_seq_len_variant",
         "evidence": "ut/cases.py:190",
-        "docstring": "A copy of geometry `g` with the SAME buffer shapes and the SAME host scalars but DIFFERENT\nper-sequence context lengths.\n\nbatch_size, every tensor shape and every host scalar are held fixed on purpose: batch_size and\nnum_kv_heads size the launch grid and max_topk sizes the split-K chunking, so holding them fixed\nis what lets ONE captured graph serve both variants — which is the whole point of the replay\ngate. What changes is exactly what the kernel branches on per row: seq_lens (hence the number of\nvalid blocks, the ragged tail mask `off_n < seq_len - c`, and rows with fewer than topk blocks\nwhere whole split-K chunks fall through empty).",
+        "docstring": "A copy of geometry `g` with the SAME buffer shapes and the SAME host scalars but DIFFERENT\nper-sequence context lengths.\n\nbatch_size, every tensor shape and every host scalar are held fixed on purpose: batch_size and\nnum_kv_heads size the launch grid and max_topk sizes the split-K chunking, so holding them fixed\nis what lets ONE captured graph serve both variants \u2014 which is the whole point of the replay\ngate. What changes is exactly what the kernel branches on per row: seq_lens (hence the number of\nvalid blocks, the ragged tail mask `off_n < seq_len - c`, and rows with fewer than topk blocks\nwhere whole split-K chunks fall through empty).",
         "expressions": []
       },
       {
@@ -3480,7 +3466,7 @@
       {
         "function": "random_shapes",
         "evidence": "ut/cases.py:222",
-        "docstring": "Fixed online dims, fresh random VALUES per draw — the value-parity leg.\n\nThe replay boundary cases are included on purpose: the baseline leg then records their outputs in\nits OWN process (h.baseline_random_outputs), giving the graph-replay bundle a golden reference\nproduced by the frozen live kernel rather than by the candidate itself.",
+        "docstring": "Fixed online dims, fresh random VALUES per draw \u2014 the value-parity leg.\n\nThe replay boundary cases are included on purpose: the baseline leg then records their outputs in\nits OWN process (h.baseline_random_outputs), giving the graph-replay bundle a golden reference\nproduced by the frozen live kernel rather than by the candidate itself.",
         "expressions": [
           {
             "field": "sig",
@@ -3495,7 +3481,7 @@
       {
         "function": "eager_cases",
         "evidence": "ut/cases.py:236",
-        "docstring": "Stream the RECORDED inputs + golden outputs one at a time. Each record is ~2.4 GiB (both paged\nKV pools are inputs), so materializing all of them at once would OOM — hence the lazy iterator\nplus h.check_correct_multi_lazy.",
+        "docstring": "Stream the RECORDED inputs + golden outputs one at a time. Each record is ~2.4 GiB (both paged\nKV pools are inputs), so materializing all of them at once would OOM \u2014 hence the lazy iterator\nplus h.check_correct_multi_lazy.",
         "expressions": []
       }
     ]
@@ -3506,30 +3492,32 @@
     {
       "path": "ut/reference_io.pt",
       "sha256": "835db1b0e1791b3be723288068630d702f78affc44334ee1a453651bd46c28e8",
-      "metadata_evidence": "ut/meta.json#/reference_io_sha256",
+      "metadata_evidence": "ut/meta.json#/archival_capture/reference_io_sha256",
       "inspected": true,
-      "status": "hash verified; metadata extracted with restricted weights_only=True CPU mmap/FakeTensorMode; tensor values not read"
+      "status": "hash verified; metadata extracted with restricted weights_only=True CPU mmap/FakeTensorMode; tensor values not read",
+      "runtime_requirement": "optional archival evidence; replaced by committed compact generated contract"
     },
     {
       "path": "ut/timing_geometry.pt",
       "sha256": "53f447bdd43f30cdc8f7789c5a1a4693390b13272a1e53376d0207ea2eb530cd",
-      "metadata_evidence": "ut/meta.json#/timing_geometry_sha256",
+      "metadata_evidence": "ut/meta.json#/archival_capture/timing_geometry_sha256",
       "inspected": true,
-      "status": "hash verified; metadata extracted with restricted weights_only=True CPU mmap/FakeTensorMode; tensor values not read"
+      "status": "hash verified; metadata extracted with restricted weights_only=True CPU mmap/FakeTensorMode; tensor values not read",
+      "runtime_requirement": "optional archival evidence; replaced by committed compact generated contract"
     }
   ],
   "sources": [
     {
       "path": "ut/meta.json",
-      "sha256": "6b2a487d22ec4247c34bd19ba88ee7ab9015a375d733682611812feba6d7a5de"
+      "sha256": "f1b06ad8cdb2930bcacaf960befd831ab413d1dfb6d1f9fff6f2fa256d23c2d4"
     },
     {
       "path": "ut/cases.py",
-      "sha256": "1fca7a896e70b0c1fd0f29e017f2a2fe2257d3c1ca2c7e7e04bdb51de5884d32"
+      "sha256": "4377b842133c8864cc7dfba0faec9c0eeab0d7092d6cb440be3c473d1aab15a4"
     },
     {
       "path": "config.yaml",
-      "sha256": "21e9fb38c257641db97ce2b3c1f35b3888f70779f809c21772ea3889f0da7eef"
+      "sha256": "c85e774570b4d77a38d2583f4c53a68475c84b3077e9a9a4bb14e85fb744d4cd"
     },
     {
       "path": "scripts/source_abi.json",
@@ -3542,9 +3530,33 @@
     {
       "path": "ut/workload.json",
       "sha256": "2ccda98b33042c796c88ca24f31acf2d9395d4070929d9103e366c4834c29a93"
+    },
+    {
+      "path": "ut/generated_cases.json",
+      "sha256": "fbf25403f8332963687e65deb1402f799c4e928f8152a17fdfd88310efee711e"
+    },
+    {
+      "path": "ut/timing_geometry.json",
+      "sha256": "2fd0852bbebd6453040f7e081c7506e7f66f39862755bb5633f33695ed6535d5"
+    },
+    {
+      "path": "ut/generated_contract.py",
+      "sha256": "8bf77cae56d0d61dd0e1a408353b516cdb0f947f264cd0d21dabf8f7d52622a4"
+    },
+    {
+      "path": "scripts/generated_worker.py",
+      "sha256": "6536fb6722e1835fba847a16e2d12b6ba820291e633fa891f123f46e8b7e28da"
+    },
+    {
+      "path": "scripts/generated_correctness.py",
+      "sha256": "7b1872dd1eb41caa4149ef117cc52f38a2a1415dc3d67da9794074a1b1171bcb"
+    },
+    {
+      "path": "scripts/generated_task_runner.py",
+      "sha256": "62418a3eb6d6c847d7a0740376e372e60fa40f4ce0087b9bf92e80429e952a64"
     }
   ],
-  "validation": "Hash-verified restricted CPU tensor metadata extraction plus static builder inspection. No tensor values read and no GPU correctness/performance validation.",
+  "validation": "Original restricted metadata extraction plus this revision: captured integer routing/page values extracted with weights_only=True CPU mmap; floating input/output values not copied. CPU checks only; no GPU qualification.",
   "fixture_metadata": [
     {
       "artifact_path": "ut/reference_io.pt",
@@ -4893,5 +4905,43 @@
     "cpu_wheel_report_sha256": "aa6b4b5c0cf62a4e2502d9a653355d4ece850167e135556fac8e9855442a43ad",
     "all_artifacts_report_sha256": "0a48b0f19bbf1469b41dbb2a13dbda229ed1c3c790e2f5e9b3f3ed3181751925",
     "supplement_report_sha256": "fae60fce8d55bdafd867606b30e052eaa8690fe4907d3fa156a667773f4d12d4"
-  }
+  },
+  "generated_input_draft": {
+    "correctness_cases": 3,
+    "contract_file": "ut/generated_cases.json",
+    "contract_sha256": "fbf25403f8332963687e65deb1402f799c4e928f8152a17fdfd88310efee711e",
+    "geometry_file": "ut/timing_geometry.json",
+    "geometry_sha256": "2fd0852bbebd6453040f7e081c7506e7f66f39862755bb5633f33695ed6535d5",
+    "gpu_validated": false
+  },
+  "performance_contract": {
+    "status": "blocked_missing_observed_controls",
+    "scope": "exact_serving_call_structure",
+    "reason": "The declared M=1/M=64 serving decode buckets have no captured per-call control records: their sequence lengths and paging/block choices are histogram/analytic proxies. Recorded oracle calls remain correctness cases; they do not replace the declared serving buckets.",
+    "case_ids": [],
+    "unscored_validation_proxy_ids": [
+      "decode_m1_ctx8704",
+      "decode_m64_ctx8704"
+    ],
+    "fallback_allowed": false,
+    "required_evidence": [
+      "observed serving-bucket sequence lengths",
+      "original request-table shape/strides and slot IDs",
+      "captured paging rows and selected block IDs for the scored calls"
+    ]
+  },
+  "unscored_validation_proxies": [
+    {
+      "case_id": "decode_m1_ctx8704",
+      "shape_record_id": "decode_m1_ctx8704",
+      "regime": "decode",
+      "evidence": "ut/cases.py:169"
+    },
+    {
+      "case_id": "decode_m64_ctx8704",
+      "shape_record_id": "decode_m64_ctx8704",
+      "regime": "decode",
+      "evidence": "ut/cases.py:169"
+    }
+  ]
 }

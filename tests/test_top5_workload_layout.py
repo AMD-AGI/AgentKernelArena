@@ -48,10 +48,14 @@ def test_six_image_workloads_list_every_kernel_and_its_local_shape_and_runtime()
     seen = []
     for group in groups:
         workload = json.loads((group / "workload.json").read_text())
-        assert workload["serving_capture"] == {
+        dimensions = {
             "input_sequence_length": 8192, "output_sequence_length": 1024,
             "concurrency": 64, "tensor_parallel_world_size": 8,
         }
+        assert {key: workload["serving_capture"][key] for key in dimensions} == dimensions
+        assert set(workload["serving_capture"]) - set(dimensions) <= {"scope_note"}
+        if "scope_note" in workload["serving_capture"]:
+            assert workload["serving_capture"]["scope_note"]
         assert workload["device"] == {"model": "MI355X", "architecture": "gfx950"}
         assert workload["workload_slug"] == WORKLOAD
         assert workload["kernel_count"] == len(workload["kernels"])

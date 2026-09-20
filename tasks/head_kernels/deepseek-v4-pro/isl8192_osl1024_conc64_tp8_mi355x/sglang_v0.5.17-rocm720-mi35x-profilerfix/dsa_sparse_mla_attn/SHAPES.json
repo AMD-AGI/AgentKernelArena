@@ -2195,7 +2195,9 @@
           "regime": "prefill_x64",
           "family_topk": 64,
           "phase": "prefill",
-          "rand_m": 1024
+          "rand_m": 1024,
+          "scored": true,
+          "case_role": "captured_workload"
         },
         {
           "name": "prefill_m8192_x1024",
@@ -2204,7 +2206,9 @@
           "regime": "prefill_x1024",
           "family_topk": 1024,
           "phase": "prefill",
-          "rand_m": 1024
+          "rand_m": 1024,
+          "scored": true,
+          "case_role": "captured_workload"
         },
         {
           "name": "decode_m64_x128",
@@ -2213,7 +2217,9 @@
           "regime": "decode_x128",
           "family_topk": 128,
           "phase": "decode",
-          "rand_m": 64
+          "rand_m": 64,
+          "scored": true,
+          "case_role": "captured_workload"
         },
         {
           "name": "decode_m64_x1024",
@@ -2223,7 +2229,9 @@
           "family_topk": 1024,
           "phase": "decode",
           "rand_m": 64,
-          "replay": true
+          "replay": true,
+          "scored": true,
+          "case_role": "captured_workload"
         },
         {
           "name": "decode_m1_x128",
@@ -2233,7 +2241,9 @@
           "family_topk": 128,
           "phase": "decode",
           "rand_m": 1,
-          "derived_from": "decode_m64_x128"
+          "derived_from": "decode_m64_x128",
+          "scored": false,
+          "case_role": "unscored_correctness_robustness"
         },
         {
           "name": "decode_m1_x1024",
@@ -2243,7 +2253,9 @@
           "family_topk": 1024,
           "phase": "decode",
           "rand_m": 1,
-          "derived_from": "decode_m64_x1024"
+          "derived_from": "decode_m64_x1024",
+          "scored": false,
+          "case_role": "unscored_correctness_robustness"
         }
       ]
     },
@@ -2511,23 +2523,24 @@
     {
       "path": "ut/reference_io.pt",
       "sha256": "981eb9be0909a11f831800c31e6399cffb0970d31f1393469d4e7e3a91e35f5a",
-      "metadata_evidence": "ut/meta.json#/reference_io_sha256",
+      "metadata_evidence": "ut/meta.json#/archival_capture/reference_io_sha256",
       "inspected": true,
-      "status": "hash verified; metadata extracted with restricted weights_only=True CPU mmap/FakeTensorMode; tensor values not read"
+      "status": "hash verified; metadata extracted with restricted weights_only=True CPU mmap/FakeTensorMode; tensor values not read",
+      "runtime_requirement": "not required; numerical inputs generated locally from committed structural JSON"
     }
   ],
   "sources": [
     {
       "path": "ut/meta.json",
-      "sha256": "ad63843808b2684552ad19be9be45ff935941233e52145fa339e8d1ca77a0df4"
+      "sha256": "61293470049ade5e48521c051bc6206ca2a87a3049c005db2d111b9d77783090"
     },
     {
       "path": "ut/cases.py",
-      "sha256": "0969cc1e6d8bcb1c542a07c512175ea31b358e04a3b56a4f465b7fa902b703df"
+      "sha256": "79a0462e4c223894ea1b222ae45e077b5e5938fbbce327a3d849eccfa13e3af9"
     },
     {
       "path": "config.yaml",
-      "sha256": "b69cda796f886012e142c41500cc8de34580dfd67c452aeeb22835b40268783e"
+      "sha256": "2fec14729703410c249437ef965365d1e11421e36786b74f197c9662bca18263"
     },
     {
       "path": "scripts/source_abi.json",
@@ -2540,9 +2553,33 @@
     {
       "path": "ut/workload.json",
       "sha256": "f3bb90bd4a15d3d995eaadd45dd71e95467edcdac94e04004b8a6c797f57f2f7"
+    },
+    {
+      "path": "ut/generated_cases.json",
+      "sha256": "d7553763661671cb403bcd525dc1ee87e0cc2011cb0c1774877502cfc00b22e9"
+    },
+    {
+      "path": "ut/generated_contract.py",
+      "sha256": "2f441082fe4b03a0d46dbe00a1b281a68acecdcffce0b7b75a445d0a7def08be"
+    },
+    {
+      "path": "scripts/generated_worker.py",
+      "sha256": "503a153e48f283c04eb8d976e721df287bbcae6f26ccf53662bc7979aa18f491"
+    },
+    {
+      "path": "scripts/generated_correctness.py",
+      "sha256": "4f103b6ed6e982a202fc1c3363ebec8ea3535f7b870a851f47578955ae38dbb0"
+    },
+    {
+      "path": "scripts/generated_task_runner.py",
+      "sha256": "dac6dcf2fed383d0d167c5a232eaaf7d8ea0452a5ec7c02347287a2bcc9fe0a8"
+    },
+    {
+      "path": "ut/secondary_output_evidence.json",
+      "sha256": "7e6fce679c8017eb376853813042e3fc9cc4bf76d72d38854ea449612ed4a717"
     }
   ],
-  "validation": "Hash-verified restricted CPU tensor metadata extraction plus static builder inspection. No tensor values read and no GPU correctness/performance validation.",
+  "validation": "Compact structural extraction verified against the original archive SHA-256 using CPU weights_only mmap. Generated values and frozen-source references require fresh GPU qualification.",
   "fixture_metadata": [
     {
       "artifact_path": "ut/reference_io.pt",
@@ -4677,5 +4714,32 @@
     "cpu_wheel_report_sha256": "aa6b4b5c0cf62a4e2502d9a653355d4ece850167e135556fac8e9855442a43ad",
     "all_artifacts_report_sha256": "0a48b0f19bbf1469b41dbb2a13dbda229ed1c3c790e2f5e9b3f3ed3181751925",
     "supplement_report_sha256": "fae60fce8d55bdafd867606b30e052eaa8690fe4907d3fa156a667773f4d12d4"
+  },
+  "generated_input_draft": {
+    "source_records": 4,
+    "contract_file": "ut/generated_cases.json",
+    "contract_sha256": "d7553763661671cb403bcd525dc1ee87e0cc2011cb0c1774877502cfc00b22e9",
+    "gpu_validated": false,
+    "fidelity": {
+      "captured_geometry_cases": 4,
+      "derived_cases": [
+        "decode_m1_x128",
+        "decode_m1_x1024"
+      ],
+      "cache_compaction": false,
+      "numeric_values": "synthetic",
+      "native_gpu_fidelity_pass": false
+    },
+    "scored_case_ids": [
+      "prefill_m8192_x64",
+      "prefill_m8192_x1024",
+      "decode_m64_x128",
+      "decode_m64_x1024"
+    ],
+    "unscored_probe_ids": [
+      "decode_m1_x128",
+      "decode_m1_x1024"
+    ],
+    "secondary_output_validation": "defined numeric returns, routed dequantization, and exact LSE masks/sentinels"
   }
 }

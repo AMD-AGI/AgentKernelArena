@@ -1,4 +1,6 @@
 .DS_Store
+# Local conversion experiments and their generated reports are not shipping inputs.
+/drafts/
 logs
 __pycache__
 build/
@@ -56,3 +58,5 @@ docs/_build/
 tasks/flydsl2flydsl/*/build/
 tasks/flydsl2flydsl/*/.rocprofv3/
 tasks/flydsl2flydsl/*/performance_report.json
+
+/drafts/kimi_generated/extracted*/
