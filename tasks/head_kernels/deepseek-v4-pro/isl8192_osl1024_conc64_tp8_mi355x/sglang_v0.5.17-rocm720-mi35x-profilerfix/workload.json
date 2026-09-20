@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "model": "DeepSeek-V4-Pro",
   "model_slug": "deepseek-v4-pro",
   "workload_slug": "isl8192_osl1024_conc64_tp8_mi355x",
@@ -15,7 +15,7 @@
   },
   "execution_scope": "One rank's isolated operator replay; not an eight-GPU model-serving run.",
   "image_slug": "sglang_v0.5.17-rocm720-mi35x-profilerfix",
-  "docker": "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.17-rocm720-mi35x-profilerfix",
+  "docker": "docker.io/rocm/hyperloom@sha256:1f5464829559b086eb66f9b803cb9c7a817438c43edff2d5ef59b46a186745f6",
   "kernel_count": 3,
   "kernels": [
     {
@@ -27,8 +27,13 @@
       "shape_guide": "dsa_sparse_mla_attn/SHAPES.md",
       "backend": "tilelang",
       "runtime": {
-        "image": "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.17-rocm720-mi35x-profilerfix",
-        "expected_image_id": null,
+        "image": "docker.io/rocm/hyperloom@sha256:1f5464829559b086eb66f9b803cb9c7a817438c43edff2d5ef59b46a186745f6",
+        "capture_image": "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.17-rocm720-mi35x-profilerfix",
+        "capture_image_id": null,
+        "profile": "public_hyperloom_sglang_v0517",
+        "runtime_role": "public_portable",
+        "qualification_status": "pending",
+        "expected_image_id": "sha256:ffe4af630e49b05c812db4a468bfb411c3dbb0e93124801f28349bfa31352dea",
         "source_commits": {},
         "gpu_arch": "gfx950",
         "hip_version": "7.2.x",
@@ -42,6 +47,11 @@
         "package_versions": {
           "sglang": "0.5.17"
         },
+        "environment": {},
+        "cache_environment": [
+          "AITER_JIT_DIR",
+          "FLYDSL_RUNTIME_CACHE_DIR"
+        ],
         "required_model_types": []
       },
       "capture_contract": "Task-local callable, case, oracle and source contracts are authoritative."
@@ -55,8 +65,13 @@
       "shape_guide": "moe_stage1_grouped_gemm_silu_flydsl/SHAPES.md",
       "backend": "flydsl / aiter_asm",
       "runtime": {
-        "image": "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.17-rocm720-mi35x-profilerfix",
-        "expected_image_id": null,
+        "image": "docker.io/rocm/hyperloom@sha256:1f5464829559b086eb66f9b803cb9c7a817438c43edff2d5ef59b46a186745f6",
+        "capture_image": "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.17-rocm720-mi35x-profilerfix",
+        "capture_image_id": null,
+        "profile": "public_hyperloom_sglang_v0517",
+        "runtime_role": "public_portable",
+        "qualification_status": "pending",
+        "expected_image_id": "sha256:ffe4af630e49b05c812db4a468bfb411c3dbb0e93124801f28349bfa31352dea",
         "source_commits": {},
         "gpu_arch": "gfx950",
         "hip_version": "7.2.x",
@@ -70,6 +85,11 @@
         "package_versions": {
           "sglang": "0.5.17"
         },
+        "environment": {},
+        "cache_environment": [
+          "AITER_JIT_DIR",
+          "FLYDSL_RUNTIME_CACHE_DIR"
+        ],
         "required_model_types": []
       },
       "capture_contract": "Task-local callable, case, oracle and source contracts are authoritative."
@@ -83,8 +103,13 @@
       "shape_guide": "moe_stage2_down_proj_reduce_opus_a8w4/SHAPES.md",
       "backend": "aiter",
       "runtime": {
-        "image": "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.17-rocm720-mi35x-profilerfix",
-        "expected_image_id": null,
+        "image": "docker.io/rocm/hyperloom@sha256:1f5464829559b086eb66f9b803cb9c7a817438c43edff2d5ef59b46a186745f6",
+        "capture_image": "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.17-rocm720-mi35x-profilerfix",
+        "capture_image_id": null,
+        "profile": "public_hyperloom_sglang_v0517",
+        "runtime_role": "public_portable",
+        "qualification_status": "pending",
+        "expected_image_id": "sha256:ffe4af630e49b05c812db4a468bfb411c3dbb0e93124801f28349bfa31352dea",
         "source_commits": {},
         "gpu_arch": "gfx950",
         "hip_version": "7.2.x",
@@ -98,9 +123,22 @@
         "package_versions": {
           "sglang": "0.5.17"
         },
+        "environment": {},
+        "cache_environment": [
+          "AITER_JIT_DIR",
+          "FLYDSL_RUNTIME_CACHE_DIR"
+        ],
         "required_model_types": []
       },
       "capture_contract": "Task-local callable, case, oracle and source contracts are authoritative."
     }
-  ]
+  ],
+  "runtime_profile": "public_hyperloom_sglang_v0517",
+  "capture_runtime": {
+    "image": "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.17-rocm720-mi35x-profilerfix",
+    "image_id": null,
+    "scope": "Historical serving capture; not the current public runtime",
+    "sglang_version": "0.5.17"
+  },
+  "image_group_role": "historical_serving_capture"
 }

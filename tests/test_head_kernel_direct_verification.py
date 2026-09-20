@@ -227,8 +227,9 @@ class DirectVerificationTests(unittest.TestCase):
             self.assertEqual(launcher.main(['verify', '--config', str(config)]), 23)
         argv = run.call_args.args[0]
         self.assertEqual(argv[:3], ['bash', 'src/scripts/docker_benchmark.sh', 'verify'])
-        self.assertEqual(run.call_args.kwargs['env']['AKA_HEAD_KERNEL_VALIDATION_RUNTIME'],
-                         'public_hyperloom_rocm720')
+        self.assertNotIn('AKA_HEAD_KERNEL_VALIDATION_RUNTIME', run.call_args.kwargs['env'])
+        self.assertEqual(run.call_args.kwargs['env']['AKA_EXPECTED_IMAGE_ID'],
+                         'sha256:ffe4af630e49b05c812db4a468bfb411c3dbb0e93124801f28349bfa31352dea')
 
 
 if __name__ == '__main__':

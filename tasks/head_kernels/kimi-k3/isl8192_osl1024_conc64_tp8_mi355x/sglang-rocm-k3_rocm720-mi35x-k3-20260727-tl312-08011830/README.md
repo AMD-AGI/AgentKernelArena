@@ -3,7 +3,11 @@
 ISL **8192**, OSL **1024**, concurrency **64**, tensor parallel world size **8**.
 Each leaf is an isolated operator replay from one rank on MI355X (`gfx950`).
 
-Capture image: `harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang-rocm-k3:rocm720-mi35x-k3-20260727-tl312-08011830`.
+Current public runtime: `docker.io/rocm/hyperloom@sha256:1f5464829559b086eb66f9b803cb9c7a817438c43edff2d5ef59b46a186745f6`.
+
+Capture image (historical provenance only): `harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang-rocm-k3:rocm720-mi35x-k3-20260727-tl312-08011830`.
+The directory name identifies the serving capture; the current runtime above
+is public and does not require access to the original cluster.
 
 [workload.json](workload.json) records the exact configuration, task selectors,
 and per-kernel runtime requirements. Each leaf carries its own source, frozen

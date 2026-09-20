@@ -27,7 +27,9 @@ def test_eighteen_distinct_tasks_are_grouped_by_exact_model_workload_and_image()
         model, workload, image, kernel = task.relative_to(SUITE).parts
         assert model == config["headkernel"]["model"].lower()
         assert workload == WORKLOAD
-        assert image == config["headkernel"]["docker"].rsplit("/", 1)[-1].replace(":", "_")
+        capture = config["headkernel"]["capture_runtime"]["image"]
+        assert image == capture.rsplit("/", 1)[-1].replace(":", "_")
+        assert config["headkernel"]["docker"].startswith("docker.io/rocm/hyperloom@sha256:")
         assert kernel == operation.split("__", 1)[1]
         assert config["headkernel"]["serving"] == "ISL 8192 / OSL 1024 / CONC 64 / TP 8"
         assert config["platform_support"]["required_arch"] == "gfx950"
@@ -60,6 +62,9 @@ def test_six_image_workloads_list_every_kernel_and_its_local_shape_and_runtime()
             assert task.parent == group
             assert row["selector"] == task.relative_to(SUITE.parent).as_posix()
             assert row["runtime"]["image"] == workload["docker"] == config["headkernel"]["docker"]
+            assert workload["capture_runtime"] == config["headkernel"]["capture_runtime"]
+            assert workload["image_group_role"] == "historical_serving_capture"
+            assert row["runtime"]["expected_image_id"] == config["headkernel"]["runtime"]["expected_image_id"]
             assert (group / row["shapes"]).resolve() == task / "SHAPES.json"
             assert (group / row["shape_guide"]).resolve() == task / "SHAPES.md"
             assert row["runtime"]["gpu_arch"] == "gfx950"

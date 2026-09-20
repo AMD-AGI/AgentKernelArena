@@ -32,8 +32,8 @@ tasks/head_kernels/<model_slug>/
         scripts/
 ```
 
-Each image group has a `workload.json` and README listing its exact serving
-dimensions, image reference, kernel selectors, shapes, and per-kernel runtime
+Each capture-image group has a `workload.json` and README listing its exact serving
+dimensions, historical capture image, current public runtime, kernel selectors, shapes, and per-kernel runtime
 requirements. Each leaf remains a self-contained task with its own source,
 frozen contract, runners, and environment preflight. `SHAPES.json` preserves
 the complete case inventories and source evidence; `SHAPES.md` presents the
@@ -94,9 +94,12 @@ not persistent correctness oracles.
 
 ## Select the matching environment
 
-Images are a task property. This suite contains distinct SGLang v0.5.17,
-v0.5.18, and Kimi-specific image cohorts; selecting the suite does not make
-one image compatible with every task.
+Images are a task property. All 18 tasks now select pinned public
+`docker.io/rocm/hyperloom` images: 11 use SGLang v0.5.17, including Kimi, and
+seven use v0.5.18. The original capture images remain historical provenance;
+they are not contacted during execution. Directory groups identify the serving
+capture, while `config.yaml` selects the current public runtime. A run must
+select tasks sharing one public image.
 
 Use the [per-kernel environment matrix](../../docs/reference/top5-head-kernel-environments.md)
 and the [runtime guide](../../docs/how-to/top5-head-kernels-runtime.md).
