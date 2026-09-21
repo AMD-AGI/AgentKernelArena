@@ -116,13 +116,12 @@ def _terminate_process_group(
     term_timeout: float = 10,
     kill_timeout: float = 5,
 ) -> None:
-    """Terminate the forge process and ALL its descendants (kernel-agents, claude, GPU).
+    """Signal the supervised Forge process group and wait for shutdown.
 
-    The subprocess is launched in its own session (``start_new_session=True``), so
-    its PID is the process-group leader. Signalling the whole group (SIGTERM, then
-    SIGKILL after a grace period) terminates the deep child tree; signalling only the
-    leader would orphan those children, which would keep holding the GPU and could
-    keep editing the workspace while Arena runs git checkout and final scoring.
+    The subprocess is launched in its own session (``start_new_session=True``),
+    so its PID is the process-group leader. Signal the supervisor and members
+    still in its group; the supervisor's subreaper cleans up descendants that
+    created separate sessions. killpg alone cannot reach those descendants.
     """
     try:
         pgid = os.getpgid(process.pid)
@@ -732,11 +731,11 @@ def run_forge_subprocess(
 ) -> tuple[subprocess.Popen, list[str], list[str], bool]:
     """Stream a KernelForge subprocess to the log and hard-kill it on timeout.
 
-    Launched from the argv list with shell=False (no intermediate shell) and in a
-    NEW SESSION so the KernelForge process and its Claude/GPU subprocesses all
-    share one process group. On timeout we can then signal the ENTIRE group;
-    terminating only the leader would leave those children alive, still holding
-    the GPU / editing the workspace while Arena does final scoring.
+    The adapter supplies a supervised entry point, launched with shell=False
+    in a new session. On timeout, signal its group and let the supervisor reap
+    the complete child tree, including descendants in separate sessions, before
+    returning to candidate delivery. Callers must retain that supervision:
+    creating a session here does not keep all future descendants in one group.
     """
     process = subprocess.Popen(
         cmd_parts,

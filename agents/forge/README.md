@@ -37,12 +37,12 @@ another Arena agent or require a task-specific driver, category, factory name,
 or initialization command. `rewrite` explicitly requests initialization and
 selects the appropriate path for the declared target language.
 
-`initialization_budget_fraction` bounds both FlyDSL PORT and HIP/Triton
-initialization against the remaining shared campaign time. It reserves the
-remainder for native search, whose own initial measurements, analysis and round
-admission also take time. FlyDSL's `port_budget.json` records the phase deadline
-and outcome. A correct PORT is still not evidence of a completed search round;
-the native iteration records and final Arena acceptance establish that.
+`initialization_budget_fraction` bounds HIP/Triton initialization against the
+remaining shared campaign time. It reserves the remainder for native search,
+whose own initial measurements, analysis and round admission also take time.
+FlyDSL PORT is bounded instead by `max_port_attempts` and the engine's own phase
+budget. A correct PORT is still not evidence of a completed search round; the
+native iteration records and final Arena acceptance establish that.
 
 Native driver timeouts cover the task's complete action sequence: compile and
 correctness for validation; compile, correctness and performance for candidate
@@ -71,15 +71,11 @@ characters of command output as a single JSON-escaped diagnostic line. The
 nonzero exit keeps the engine from scoring that output. Diagnostic persistence
 does not change task commands, checks, benchmark boundaries or score selection.
 
-If the newly initialized candidate's actual measured path fails, the source-pinned
-compatibility layer clears its unverified incumbent timings. The independent
-baseline remains the score denominator. A first candidate may establish a valid
-incumbent even when it is slower than that baseline, but only after full
-correctness, all three benchmark suites with complete cases, and canonical
-acceptance. The native loop then commits and publishes it normally. This is
-recorded as establishing the first scoreable candidate, not a speed improvement.
-Later candidates use the normal improvement rule. Failed or incomplete
-measurements, correctness failures and integrity violations cannot use this path.
+The independent baseline remains the score denominator. Whether a first
+candidate slower than that baseline can establish the engine's incumbent is the
+engine's own policy; the adapter no longer overrides it. A first valid
+implementation is recorded as the first scoreable candidate rather than as a
+speed improvement, and Arena scores the delivered bundle either way.
 
 ### HIP/Triton initialization
 
@@ -102,7 +98,7 @@ entering the ordinary performance search:
 4. Commit the complete validated candidate bundle, including new declared tree
    helpers. Enter the real `forge-loop` once, passing the independent baseline
    timings and the refreshed file list. The loop measures the actual initialized
-   candidate as its first incumbent, even when its initial speedup is below 1x.
+   candidate as its first incumbent.
 
 The first valid implementation need not beat the production baseline. Its
 acceptance says nothing about final Arena scoring. If a successfully completed
@@ -212,22 +208,84 @@ search files are not installed. A claimed later best without its commit, missing
 iteration metadata, or an unsuccessful engine cannot use this fallback. Arena
 still checks and measures the delivered bundle independently, and retaining it
 does not claim an optimization gain or prove that a search iteration ran.
-A timeout, failed PORT, nonzero engine exit or missing structured result reports
-failure and leaves the original task candidate unchanged. Diagnostic scratch,
-logs, result JSON and selected artifact hashes are preserved in the fresh Forge
-artifact directory; old experiment directories are never removed. Disposable
-evaluation copies live only under this campaign's `evaluation-workspaces/`.
-After the engine exits or receives SIGTERM, its supervisor reaps all descendant
-processes, records its PID and this directory in a cleanup receipt outside the
-directory, then removes the copies, including those left by a SIGKILLed driver.
-If slow deletion outlasts the supervisor's shutdown grace period, the Arena
-parent finishes it after confirming supervisor exit and a matching receipt.
-The execution deadline and SIGTERM/SIGKILL grace periods are unchanged; this
-recovery performs only filesystem cleanup after the workers have been reaped.
-Cleanup never sweeps other `evaluate-*` paths or previous experiments. Missing,
-partial or mismatched receipts retain the directory and emit a warning. Killing
-the supervisor before it records reaping, killing Arena itself, or losing the
-machine still requires explicit recovery of retained artifacts.
+A failed PORT, unexplained nonzero engine exit, missing structured result, or a
+timeout that recovered no candidate reports failure and leaves the original task
+candidate unchanged. Diagnostic scratch, logs, result JSON and selected artifact
+hashes are preserved in the fresh Forge artifact directory; old experiment
+directories are never removed. The only disposable copy is the baseline tree,
+which lives in a temporary directory removed when its measurement ends; the
+candidate is measured in place, so a campaign makes no copy per assessment.
+Each driver invocation reaps its own descendants. Optimize and rewrite also
+run the native CLI beneath the standard-library-only [process supervisor](process_tree.py).
+It reaps the complete descendant tree on normal exit, failure or timeout,
+including nested loops and workers that create separate process sessions.
+Arena's timeout signals the supervisor's process group; the supervisor handles
+the descendants that a group signal alone cannot reach. Initialization retains
+its own equivalent supervision. Native stdout, stderr and exit status are
+preserved. If the supervisor itself receives SIGKILL before reaping finishes,
+or the machine fails, cleanup cannot be guaranteed and requires explicit recovery.
+This wrapper inherits the existing command's interpreter, arguments, working
+directory, environment and streams; it imports no engine code, invokes no shell,
+and adds no mounts or downloads. Artifact retention and task checks are unchanged.
+
+### Recovery at the deadline
+
+A campaign killed at the wall never writes its final result, so the search is
+read from what the engine published as it ran. The engine publishes each KEEP
+before it may start another agent session and defers termination signals across
+that publication, so the process group the supervisor signals cannot tear it.
+The adapter reads, in order:
+
+| Record | `delivery_selection` |
+| --- | --- |
+| `forge_experiments/best_result.json` with `correctness_passed` | `timeout_recovered_keep` |
+| `forge_experiments/run_state.json` `head_commit` | `timeout_recovered_search_head` |
+| The commit Arena accepted before launch | `timeout_recovered_validated_input` |
+
+The KEEP record comes first because it carries the engine's own correctness
+verdict. The search head covers a rewrite whose port committed but whose search
+never improved on it, and it requires that rewrite to have published `port_ok`;
+the engine resolves its own current best the same way. The last row is the
+verified input an optimize or initialize campaign already had, which needs no
+engine record. A record naming no usable commit is skipped rather than trusted,
+and a timeout that reaches none of these still fails with the original candidate
+untouched. No published record is deliberately pinned to an engine schema
+version, so an engine upgrade cannot silently turn recovery off.
+
+None of these rows is a verdict or a claim of improvement. They identify a
+committed bundle, read through `git ls-tree` rather than off the killed
+campaign's working tree, for Arena to compile, check and measure normally. The
+status keeps `timed_out` alongside the selection, so a reader can tell a
+recovered candidate from one the engine chose and reported itself.
+
+### Framework apply-back
+
+The rewrite CLI ends with a stage that patches the operator back into the
+framework repository it was ported from, and folds that patch into its own
+`success`, so it exits nonzero whenever the patch fails. Arena requests no such
+patch: it delivers a standalone candidate bundle and performs its own
+acceptance. The stage cannot be switched off, because the engine decides it is
+needed from the campaign workspace having a resolvable Git HEAD, which its agent
+sessions require before any port attempt can start.
+
+An engine whose capability probe reports `applyback_optional` is asked to skip
+it, which also returns the reserve it would otherwise hold to the search. The
+option is passed only where the probe reports it, because an engine that does
+not define it would reject the campaign before it starts.
+
+Where the stage still runs, a rewrite whose result reports a completed port, no
+failure class, and that patch as its only failed stage keeps its outcome, and
+the adapter records `applyback_not_requested` with the engine exit code and
+error. A nonzero exit with any other explanation still fails the campaign.
+Delivery always reads `flydsl_best_commit`: once the patch commits,
+`best_commit` names that commit, whose tree carries framework edits rather than
+the attempt's bundle.
+
+On such an engine two costs remain. It reserves the last 20 minutes of whatever
+budget it receives for the stage, so a rewrite searches for that much less than
+`timeout_seconds` suggests, and the stage edits the engine's own copy of any
+framework sources the task materialized. That copy is disposable and never
+scored, because Arena evaluates the delivered bundle in its own workspace.
 
 One `timeout_seconds` budget covers setup, preflight, initialization and optimization.
 Commands receive the same absolute deadline, and every task action is capped by
@@ -235,101 +293,37 @@ its remaining time. The rewrite's existing nested loop is not followed by a
 second outer loop. A Linux subreaper cleans up descendants even when the engine,
 SDK or runner starts a separate process session.
 
-The pinned loop's original remaining-time calculation ignores its absolute
-deadline and uses the CLI hour budget alone. The adapter bounds native round
-admission by both clocks, scales its default 30-minute reserve down to 10% of
-the remaining short campaign (at least 60 seconds), and reserves a separate 120
-seconds for native checkpoint/report publication and adapter delivery. Round
-admission, analysis and implementer sessions also reserve the complete assessment
-estimate: native history, observed initial three-suite timing scaled to include
-correctness and canonical acceptance, and the slowest complete assessment with
-25% headroom. The session limit includes provider resumes and in-session checks.
-Initialization uses its own smaller phase deadline.
-
-If an assessment still overruns the usable clock, cancellation reaps its native
-driver process group. The unfinished attempt receives `REVERT_VALIDATION_TIMEOUT`
-and cannot earn KEEP. The loop records that failure, restores its previous
-committed candidate, and exits through normal budget finalization. This includes
-the first-incumbent recovery gate; an incomplete first trial cannot establish a
-best. Task tolerances, cases, three measurements and canonical checks remain
-mandatory for every accepted candidate. Native finalization must actually finish
-and identify its selected commit before adapter delivery; Arena then evaluates
-that exact bundle normally. The outer deadline remains a hard failure boundary
-if cleanup or publication does not finish. An intermediate KEEP or an
-initialization-only run is not an Arena completion verdict.
+Inside that budget the engine owns its own round admission and reserves. The
+adapter hands it one relative budget, already short of the campaign by the
+startup margin and floored where the engine floors its own, and caps each task
+action by the time left when that action starts. Initialization runs under its
+own smaller phase deadline. Task tolerances, cases, measurements and canonical
+checks remain mandatory for every accepted candidate, and an intermediate KEEP,
+a recovered candidate, or an initialization-only run is not an Arena completion
+verdict.
 
 Common Arena post-processing owns exports. Neither this launcher nor the alias
 backfills an SIKL solution or assumes `kernel.py` / `workload.json`. The obsolete
 agent-specific backfill utility has been removed; exports use the framework.
 
-## Installed KernelForge compatibility
+## Installed KernelForge runtime
 
-`upstream.py` is an explicit, process-local compatibility layer. It changes no
-shared Hyperloom source or installed package. It keeps the two real upstream CLI
-entrypoints and supplies the following missing adapter capabilities:
+The command line and the measurement driver are the whole interface to the
+engine. The adapter patches no engine symbol and pins no engine module, so the
+two release cadences are independent; [engine.py](engine.py) exists for the two
+jobs that genuinely need the engine importable. `--arena-probe` reports what the
+installed engine accepts, in the exact interpreter the campaign will use, and
+checks that both commands still take the options the adapter builds.
+`--arena-initialize` runs the correctness-only implementer the engine publishes
+only as a library. It refuses anything else.
 
-- Replace the upstream legacy `compile_command` / `correctness_command` reader
-  with the public v2 bridge, including nested-loop canonical acceptance.
-- Use the task's actual entrypoints and instructions for PORT, replacing the
-  upstream derived-builder prompt and seed convention.
-- Carry and commit the complete candidate bundle; admit new nested helpers only
-  inside declared candidate boundaries.
-- Launch the nested loop through this same compatibility layer.
-- Mark upstream-framework apply-back as **not requested**, rather than claiming
-  that a framework patch passed. The corresponding 20-minute reserve is removed;
-  Arena receives standalone task artifacts and performs final acceptance.
-
-The preflight verifies the package version, exact reviewed module hashes in
-[upstream_compatibility.json](upstream_compatibility.json), CLI options and Python
-hook signatures **before installing any compatibility hook**. It refuses a
-different version or changed implementation even when the signatures still fit.
-A source checkout without distribution metadata must match the same hashes.
-There is no bypass switch. A new release requires a review of the affected private
-interfaces, updated compatibility tests and a GPU qualification campaign before
-updating the pin; do not simply regenerate hashes to suppress a mismatch.
-The accepted version, reviewed commit and hashes are recorded in
-`arena_forge_status.json`. No shared Hyperloom files are modified.
-
-The adapter also binds the implementer's working directory to the engine root,
-protects tracked files outside the candidate bundle, and lets the SDK workspace
-guard recognize new files inside declared candidate scopes. These are scoped
-process-local changes to the pinned Forge factory and run-spec constructor.
-New scratch repositories start on `codex/arena-forge`, independently of the
-runtime's Git default branch; upstream refuses to optimize on `main` or `master`.
-The public task assessment and final candidate installation still enforce the
-task boundary, including symbol-scoped colocated Python harnesses.
-
-The in-session gate uses the same explicit-target exemption as the reviewed
-SDK workspace guard. A declared implementation such as `test_add_kernel.py`
-is editable despite a default test-name glob. The generated driver and explicit
-protected paths remain protected even when also listed as targets. This does
-not permit editing colocated tests: the public assessment bridge checks the
-declared symbol boundary against its independent template before compilation,
-correctness, or performance, and final installation repeats that check.
-
-For large source snapshots, the compatibility layer resolves the exact protected
-path set once per inventory scan. The reviewed upstream walker otherwise repeats
-that work for every visited file, delaying the first model call quadratically.
-The scan retains every protected path, missing-path detection, symlink identities,
-default/extra name rules, and filesystem errors. Each new scan resolves paths
-again; no inventory or content cache spans model edits. Workspace rollback,
-in-session protection and Arena's independent assessment remain in place.
-
-At the PORT-to-OPTIMIZE transition, the adapter commits only its regenerated
-`arena_program.md` so the native campaign sees clean phase instructions. It
-does not commit other pending edits. A nested loop that fails, times out, or
-omits its completed result makes the adapter fail even if PORT succeeded.
-`nested_loop_status.json` preserves that distinction alongside the PORT evidence.
-
-Compatibility was inspected and CPU-tested against Hyperloom commit
-`0425bde3f6e76e1588400c37d056dfd3bb75ac11`, package version `1.1.0`.
 Upstream owns its GPU DSL/compiler support and SDKs. Install the `forge` extra in
 the GPU runtime environment (it also pulls the agent SDK dependencies):
 
 ```bash
 # HYPERLOOM_ROOT names the separately mounted/pinned checkout in the container.
 python3 -m pip install "${HYPERLOOM_ROOT}[forge]"
-python3 agents/forge/upstream.py --arena-probe
+python3 agents/forge/engine.py --arena-probe
 ```
 
 The checked dependency metadata requires Python 3.10+, Click, PyYAML, Anthropic,
@@ -341,33 +335,36 @@ A dedicated interpreter can be selected with run-level `agent.python`.
 
 Backend selection follows validated `candidate.language`. Operator and source
 owner identity come from `kernel_identity`; a CK operator written in HIP keeps
-its CK operator identity while using the HIP backend. The pinned engine does not
-provide a TileLang backend. TileLang tasks remain valid Arena tasks, but Forge
+its CK operator identity while using the HIP backend. The installed engine
+provides no TileLang backend. TileLang tasks remain valid Arena tasks, but Forge
 rejects them explicitly; it never substitutes FlyDSL. The retained legacy backend
 helper also rejects missing registries and unsupported languages.
 
-The pinned upstream Codex backend normally requires `OPENAI_BASE_URL` and
-`OPENAI_API_KEY`. For an existing native ChatGPT login, explicitly select
-`agent.codex_auth_mode: cli`. The adapter keeps the real Forge Codex SDK backend
-and copies only the caller's `CODEX_HOME/auth.json` into each isolated SDK HOME.
-The Codex CLI consumes and refreshes that login itself; no OAuth token is turned
-into an API key, and no refreshed state is copied back to the source. Gateway
-variables cannot be combined with this mode. Missing login state fails before
-the campaign starts. Gateway mode remains the default.
+New scratch repositories start on `codex/arena-forge`, independently of the
+runtime's Git default branch; upstream refuses to optimize on `main` or `master`.
+The public task assessment and final candidate installation enforce the task
+boundary, including symbol-scoped colocated Python harnesses: the bridge checks
+the declared symbol boundary against its independent template before
+compilation, correctness, or performance, and installation repeats that check.
 
 Search defaults live in [agent_config.yaml](agent_config.yaml); the run may
 override `workflow`, `model`, `agent_backend`, `permission_mode`,
 `timeout_seconds`, `session_timeout_seconds`, `max_port_attempts`,
 `initialization_max_attempts`, `initialization_budget_fraction`,
-`supervisor_backend`, `codex_auth_mode`, and `python`. An empty supervisor follows the selected
+`supervisor_backend`, and `python`. An empty supervisor follows the selected
 backend. Lane count, task preparation, profiling, planning probes and knowledge
-warm starts follow the engine defaults; the adapter no longer forces them off.
-Arena publishes the task and leaves the search policy to Forge. Two consequences
-are load bearing. The public task protocol exposes no profiler invocation, so
-the bridge answers `--profile-run` with an explicit unsupported capability. A
-single-file upstream recipe cannot describe a multi-file candidate, so a task
-whose `candidate.editable` spans more than one file may receive a warm start
-that covers only part of its submission.
+warm starts follow the engine defaults. Arena publishes the task and leaves the
+search policy to Forge. Two consequences are load bearing. The public task
+protocol exposes no profiler invocation, so the bridge answers `--profile-run`
+with an explicit unsupported capability. A single-file upstream recipe cannot
+describe a multi-file candidate, so a task whose `candidate.editable` spans more
+than one file may receive a warm start that covers only part of its submission.
+
+Search behaviour stays behind what the removed patch layer forced until the
+engine grows the seams it took: no injected protected paths, no total wall clock
+on an implementer invocation, no pluggable correctness adjudication, upstream's
+own seed and PORT prompt, and the apply-back stage attempted rather than
+declined.
 
 ## Verification and framework integration
 
@@ -378,18 +375,19 @@ AKA_FORGE_PROBE_PYTHON=<python-with-hyperloom-forge> \
   python3 -m pytest -q tests/test_forge_v2.py tests/test_forge_initialization.py
 ```
 
-The compatibility test uses real upstream seed/preflight/rewrite dispatch and
-canonical acceptance, with controlled PORT/OPTIMIZE replacements. CPU timing
-fixtures are protocol tests; they are not GPU measurements or actual optimization
-runs. The HIP/Triton tests execute the real Forge implementer, session execution,
-workspace guard and correctness gate with a scripted provider, then parse the
-actual loop CLI and exercise its incumbent measurement. They cover rejected
-attempts, a slower correct initialization, nested new helpers, false success
-text, harness tampering, timeouts and unreviewed engine rejection. The loop
-callback is controlled in those tests; they do not prove model quality or GPU
-compiler compatibility. Real LLM/GPU qualification remains a required integration
-gate, including at least five tasks of each retained task type in the parent
-campaign. In particular, HIP/Triton initialization is now implemented, but that
+Most tests drive the adapter with a replaced engine subprocess: they cover the
+protocol, the delivery selection and the recovery paths, and their CPU timing
+fixtures are not GPU measurements or actual optimization runs. The tests gated on
+`AKA_FORGE_PROBE_PYTHON` use the installed engine for real — that a driver's
+failure diagnostics are never read as a benchmark or a correctness pass, that the
+scratch branch survives campaign preflight under a `main` or `master` Git
+default, and that HIP/Triton initialization runs the real Forge implementer,
+session execution, workspace guard and correctness gate. They cover rejected
+attempts, an unedited workspace, harness tampering, session timeouts and a
+failing loop. The provider is scripted throughout, so they prove neither model
+quality nor GPU compiler compatibility. Real LLM/GPU qualification remains a
+required integration gate, including at least five tasks of each retained task
+type in the parent campaign. HIP/Triton initialization is implemented, but that
 campaign is required before claiming those task types are fully qualified.
 
 The framework integration must:

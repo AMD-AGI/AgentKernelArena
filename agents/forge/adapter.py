@@ -7,6 +7,7 @@ import logging
 import math
 import os
 from pathlib import Path
+import re
 import statistics
 import subprocess
 import sys
@@ -58,10 +59,8 @@ def _config(eval_config: dict) -> dict:
         raise ValueError("agent run configuration must be a mapping")
     allowed = {"workflow", "model", "timeout_seconds", "permission_mode", "agent_backend",
                "python", "max_port_attempts", "supervisor_backend", "session_timeout_seconds",
-               "initialization_max_attempts", "initialization_budget_fraction", "codex_auth_mode"}
+               "initialization_max_attempts", "initialization_budget_fraction"}
     config.update({key: value for key, value in overrides.items() if key in allowed})
-    if config["codex_auth_mode"] not in ("gateway", "cli"):
-        raise ValueError("Forge codex_auth_mode must be gateway or cli")
     if overrides.get("agent_backend") not in (None, "claude") and "model" not in overrides:
         # A Claude default is not a model ID for another provider. Let upstream
         # resolve that provider's configured model unless explicitly overridden.
@@ -108,14 +107,132 @@ def require_supported_backend(spec, capabilities: dict) -> str:
     return language
 
 
+def applyback_only_failure(result: dict) -> bool:
+    """Whether a nonzero rewrite exit is explained solely by framework apply-back.
+
+    The rewrite CLI exits nonzero unless its entire result succeeded, and its own
+    success includes publishing a patch that integrates the kernel back into the
+    framework repository it was ported from. Arena never asks for that patch: it
+    delivers a standalone candidate bundle and runs its own acceptance over it.
+    The stage still executes, because the engine decides it is needed from the
+    campaign workspace having a resolvable Git HEAD, which its agent sessions
+    require before any port attempt can start.
+
+    So a campaign that completed every stage it was asked for keeps its PORT and
+    search outcome when only that patch failed. A nonzero exit with any other
+    explanation, a reported failure class, or a port that did not complete stays
+    a campaign failure. This reads the engine's own result fields; it does not
+    infer an outcome from log text or excuse a missing result.
+    """
+    return (result.get("port_ok") is True
+            and result.get("applyback_required") is True
+            and result.get("applyback_ok") is False
+            and not result.get("failure_class"))
+
+
+def _commit(value) -> str:
+    """One full Git object name, or empty when the field identifies no commit."""
+    text = str(value or "").strip()
+    return text if re.fullmatch(r"[0-9a-fA-F]{40,64}", text) else ""
+
+
+def _published(path: Path):
+    """Read one durably published engine artifact; absent or unreadable is absent."""
+    try:
+        payload = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def rewrite_prefix(result, engine: Path) -> str:
+    """The attempt directory a rewrite bound its candidate to."""
+    attempts = result.get("temporary_paths") if isinstance(result, dict) else None
+    if not isinstance(attempts, list) or len(attempts) != 1:
+        raise ForgeRunError("Forge result must identify exactly one current attempt")
+    if not str(attempts[0]).startswith(".forge_rewrite/"):
+        raise ForgeRunError("Forge result candidate is outside the attempt directory")
+    resolve_task_path(engine, attempts[0], must_exist=True)
+    return attempts[0]
+
+
+def _timeout_fallback(plan: dict, status: dict) -> str:
+    """The commit Arena itself accepted for this workflow, when it has one."""
+    if plan["workflow"] == "optimize":
+        return _commit(status.get("initial_candidate_commit"))
+    if plan["workflow"] == "initialize" and status.get("initialization", {}).get("status") == "PASS":
+        return _commit(status["initialization"].get("commit"))
+    return ""
+
+
+def recover_timeout_candidate(plan: dict, engine: Path, result, fallback: str = "") -> tuple[str, str]:
+    """Identify a committed candidate left behind by an engine that ran out of time.
+
+    A campaign killed at the wall never writes its final result, so its search is
+    read from the records it published as it went. The engine publishes each KEEP
+    before it may start another agent session and defers termination signals
+    across that publication, so the group we signalled cannot have torn it. That
+    record carries the engine's own correctness verdict, which is why it is read
+    first.
+
+    Without a KEEP there can still be a committed candidate. A rewrite commits
+    its correct port before the search begins, and the search leaves HEAD on the
+    last state it committed; the engine reads its own current best the same way.
+    That route has no single attestation, so a rewrite must also have published
+    `port_ok`, and the caller's `fallback` supplies the commit Arena itself
+    accepted before the engine started.
+
+    None of these is a verdict: they identify a bundle for Arena to evaluate
+    normally. Returns the commit and how it was chosen, or empty strings when the
+    engine published nothing that names a candidate.
+    """
+    experiments = engine / "forge_experiments"
+    keep = _published(experiments / "best_result.json") or {}
+    if keep.get("correctness_passed") is True:
+        commit = _commit(keep.get("commit_hash"))
+        if commit:
+            return commit, "timeout_recovered_keep"
+    ported = plan["workflow"] != "rewrite" or (isinstance(result, dict) and result.get("port_ok") is True)
+    head = _commit((_published(experiments / "run_state.json") or {}).get("head_commit"))
+    if head and ported:
+        return head, "timeout_recovered_search_head"
+    if fallback:
+        return fallback, "timeout_recovered_validated_input"
+    return "", ""
+
+
+#: The engine dates its own budget from the moment its process is up, which
+#: trails the moment this argv is built by interpreter start, the capability
+#: probe and the engine import. Measured at 42s on MI355X; keep room to spare.
+ENGINE_STARTUP_MARGIN_SEC = 600
+
+#: The engine floors its own remaining budget at an hour, so asking for less
+#: buys no shorter search; the campaign's own hard timeout stops those runs.
+ENGINE_BUDGET_FLOOR_SEC = 3600
+
+
+def engine_budget_hours(plan: dict) -> float:
+    """Hand the engine one relative budget that already expires before we do."""
+    remaining = plan["deadline_unix"] - time.time() - ENGINE_STARTUP_MARGIN_SEC
+    return max(ENGINE_BUDGET_FLOOR_SEC, remaining) / 3600
+
+
+def engine_entry(config: dict, workflow: str) -> list[str]:
+    """Run the native CLI under process supervision; initialization embeds it."""
+    python = config.get("python") or sys.executable
+    if workflow == "initialize":
+        return [python, str(Path(__file__).with_name("engine.py")), "--arena-initialize"]
+    return [python, str(Path(__file__).with_name("process_tree.py")),
+            python, "-m", "kernelforge.cli"]
+
+
 def build_command(plan: dict, context: TaskContext, config: dict, *, gpu_arch: str, gpu_type: str) -> list[str]:
     root = Path(plan["engine_root"])
-    command = [config.get("python") or sys.executable, str(Path(__file__).with_name("upstream.py")),
+    command = [*engine_entry(config, plan["workflow"]),
                "forge-rewrite-by-flydsl" if plan["workflow"] == "rewrite" else "forge-loop",
                "--workspace", str(root), "--driver", str(root / "arena_forge_driver.py"),
                "--experiments-dir", str(root / "forge_experiments"), "--result-json", plan["result"],
-               "--max-hours", str(max(1.0, (plan["deadline_unix"] - time.time()) / 3600)),
-               "--deadline-unix", str(plan["deadline_unix"]),
+               "--max-hours", str(engine_budget_hours(plan)),
                "--gpu-target", gpu_arch, "--gpu-type", gpu_type,
                "--permission-mode", config["permission_mode"]]
     if config.get("model"):
@@ -130,7 +247,14 @@ def build_command(plan: dict, context: TaskContext, config: dict, *, gpu_arch: s
                     "--source-files", ",".join(map(str, files.values())),
                     "--target-functions", ",".join(symbols), "--operator-name", operator,
                     "--framework", identity.get("source_owner", "standalone"),
-                    "--task-type", "image_kernel",  # upstream multi-file switch only
+                    # An Arena task is a source tree carrying its own reference
+                    # and harness, which is what this value means upstream. Do
+                    # not drop it for being redundant with --source-files: that
+                    # only resolves multi-file handling, and a single-file
+                    # candidate would resolve to no task type at all, losing the
+                    # colocated test/reference protection and the entry-point
+                    # prompt sections with it.
+                    "--task-type", "repository",
                     "--baseline-json", plan["baseline"], "--program-md-file", plan["program"],
                     "--agent-backend", config["agent_backend"],
                     "--session-timeout-sec", str(config["session_timeout_seconds"])]
@@ -143,8 +267,13 @@ def build_command(plan: dict, context: TaskContext, config: dict, *, gpu_arch: s
             command += ["--framework", identity["source_owner"]]
         if context.spec.candidate.initial_language in ("triton", "hip", "cuda", "cpp"):
             command += ["--source-language", context.spec.candidate.initial_language]
-    if plan["workflow"] == "initialize":
-        command.insert(2, "--arena-initialize")
+        if plan.get("applyback_optional"):
+            # Arena delivers the standalone candidate and scores it itself; the
+            # framework patch is work this campaign would discard, and the
+            # engine reserves the end of its budget to produce it. An engine
+            # that cannot be told this still produces it, which is why the
+            # result reader keeps tolerating that stage's failure.
+            command += ["--no-applyback"]
     return command
 
 
@@ -172,30 +301,33 @@ def launch(eval_config: dict, task_config_dir: str, workspace: str) -> str:
         copy_workspace(context.workspace, engine)
         plan = {"version": 1, "context": str(context.path), "workflow": "optimize",
                 "engine_root": str(engine), "template": str(template), "deadline_unix": deadline,
-                "evaluation_root": str(artifact_root / "evaluation-workspaces"),
                 "anchor": _anchor(context), "result": str(artifact_root / "engine_result.json"),
                 "baseline": str(artifact_root / "baseline.json"), "program": str(engine / "arena_program.md"),
                 "initialization_result": str(artifact_root / "initialization.json"),
                 "agent_config": config, "gpu_arch": _resolve_gpu_arch(eval_config),
                 "gpu_type": _resolve_gpu_type(eval_config)}
-        Path(plan["evaluation_root"]).mkdir()
         plan_path = artifact_root / "bridge_plan.json"
         _write(plan_path, plan)
         env = os.environ.copy()
         env.update({"ARENA_FORGE_PLAN": str(plan_path), "PYTHONUNBUFFERED": "1", "IS_SANDBOX": "1",
                     "FORGE_AGENT_BACKEND": config["agent_backend"],
-                    "FORGE_AGENT_TIMEOUT_SEC": str(config["session_timeout_seconds"])})
+                    "FORGE_AGENT_TIMEOUT_SEC": str(config["session_timeout_seconds"]),
+                    # The bridge sets this for the actions it runs itself; the
+                    # engine's session can also reach a task module from its own
+                    # shell, and bytecode left there ends the session too.
+                    **bridge.TASK_ENV})
         arena_root = Path(__file__).resolve().parents[2]
         env["PYTHONPATH"] = os.pathsep.join([str(arena_root), *filter(None, [env.get("PYTHONPATH", "")])])
         # Probe in the exact interpreter used by both outer and nested CLIs.
         probe = subprocess.run([config.get("python") or sys.executable,
-                                str(Path(__file__).with_name("upstream.py")), "--arena-probe"],
+                                str(Path(__file__).with_name("engine.py")), "--arena-probe"],
                                env=env, capture_output=True, text=True,
                                timeout=max(1, min(60, deadline - time.time())))
         if probe.returncode:
             raise ForgeRunError("KernelForge runtime preflight failed: " + probe.stderr[-3000:])
         capabilities = json.loads(probe.stdout)
         status["engine"] = capabilities
+        plan["applyback_optional"] = bool(capabilities.get("applyback_optional"))
         require_supported_backend(context.spec, capabilities)
         candidate = context.spec.candidate
         initially_target = candidate.initial_state == "implemented" and candidate.initial_language == candidate.language
@@ -241,7 +373,7 @@ def launch(eval_config: dict, task_config_dir: str, workspace: str) -> str:
             for path in candidate_files(context.spec, engine, required=False).values():
                 path.unlink()
         _write(plan_path, plan)
-        from agents.forge.upstream import program_text
+        from agents.forge.program import program_text
         Path(plan["program"]).write_text(program_text(plan, initialize=plan["workflow"] == "initialize"))
         (engine / "arena_forge_driver.py").write_text(bridge.render_driver(plan_path, arena_root))
         if plan["workflow"] != "rewrite":
@@ -270,44 +402,53 @@ def launch(eval_config: dict, task_config_dir: str, workspace: str) -> str:
         (artifact_root / "engine.log").write_text(output)
         result = _read_forge_result(Path(plan["result"]), "\n".join(stdout))
         status.update({"exit_code": process.returncode, "timed_out": timed_out, "engine_result": result})
-        if not bridge.cleanup_evaluation_workspaces(plan, supervisor=process):
-            logger.warning("Forge evaluation copies retained: supervisor exit and descendant reaping "
-                           "were not confirmed for %s", plan["evaluation_root"])
         if Path(plan["initialization_result"]).is_file():
             status["initialization"] = json.loads(Path(plan["initialization_result"]).read_text())
         if timed_out:
-            raise TimeoutError("Forge campaign exceeded its shared deadline; partial artifacts retained")
-        if process.returncode != 0 or not isinstance(result, dict):
+            recovered, selection = recover_timeout_candidate(
+                plan, engine, result, fallback=_timeout_fallback(plan, status))
+            if not recovered:
+                raise TimeoutError("Forge campaign exceeded its shared deadline; partial artifacts retained")
+            status["delivery_selection"] = selection
+        elif (plan["workflow"] == "rewrite" and process.returncode != 0
+                and isinstance(result, dict) and applyback_only_failure(result)):
+            # Record the stage Arena did not request so a reader of this status
+            # can tell the campaign from the patch it happens to also produce.
+            status["applyback_not_requested"] = {
+                "engine_exit_code": process.returncode,
+                "applyback_error": " ".join(str(result.get("applyback_error", "")).split())[:1000]}
+        elif process.returncode != 0 or not isinstance(result, dict):
             raise ForgeRunError("Forge engine failed or omitted its structured result")
-        prefix = ""
-        selected_commit = result.get("best_commit")
-        if plan["workflow"] == "rewrite":
+        prefix = rewrite_prefix(result, engine) if plan["workflow"] == "rewrite" else ""
+        if timed_out:
+            selected_commit = recovered
+        elif plan["workflow"] == "rewrite":
             if result.get("port_ok") is not True:
                 raise ForgeRunError("Forge PORT did not deliver an implementation")
-            attempts = result.get("temporary_paths")
-            if not isinstance(attempts, list) or len(attempts) != 1:
-                raise ForgeRunError("Forge result must identify exactly one current attempt")
-            if not str(attempts[0]).startswith(".forge_rewrite/"):
-                raise ForgeRunError("Forge result candidate is outside the attempt directory")
-            resolve_task_path(engine, attempts[0], must_exist=True)
-            prefix = attempts[0]
-            selected_commit = result.get("flydsl_best_commit") or result.get("best_commit")
-        elif plan["workflow"] == "optimize" and not selected_commit:
-            iterations = result.get("iteration_count")
-            best_iteration = result.get("best_iteration")
-            if (not target_verified or type(best_iteration) is not int or best_iteration != 0
-                    or type(iterations) is not int or iterations < 0):
-                raise ForgeRunError("Forge omitted the identity of its selected best candidate")
-            selected_commit = status["initial_candidate_commit"]
-            status["delivery_selection"] = "initial_validated_implementation"
-        elif plan["workflow"] == "initialize" and not selected_commit:
-            # Native loop results can omit best_commit when no iteration earns
-            # KEEP. Preserve the independently validated first implementation;
-            # do not fabricate a loop win or rewrite its reported measurements.
-            initial = status.get("initialization", {})
-            if initial.get("status") == "PASS":
-                selected_commit = initial.get("commit")
-                status["delivery_selection"] = "initial_correct_implementation"
+            # Once apply-back runs, best_commit names its commit, whose tree holds
+            # framework edits rather than this attempt's bundle. Only the engine's
+            # own FlyDSL selection can identify the candidate to deliver.
+            selected_commit = result.get("flydsl_best_commit")
+            if not selected_commit:
+                raise ForgeRunError("Forge rewrite omitted the identity of its selected FlyDSL commit")
+        else:
+            selected_commit = result.get("best_commit")
+            if plan["workflow"] == "optimize" and not selected_commit:
+                iterations = result.get("iteration_count")
+                best_iteration = result.get("best_iteration")
+                if (not target_verified or type(best_iteration) is not int or best_iteration != 0
+                        or type(iterations) is not int or iterations < 0):
+                    raise ForgeRunError("Forge omitted the identity of its selected best candidate")
+                selected_commit = status["initial_candidate_commit"]
+                status["delivery_selection"] = "initial_validated_implementation"
+            elif plan["workflow"] == "initialize" and not selected_commit:
+                # Native loop results can omit best_commit when no iteration earns
+                # KEEP. Preserve the independently validated first implementation;
+                # do not fabricate a loop win or rewrite its reported measurements.
+                initial = status.get("initialization", {})
+                if initial.get("status") == "PASS":
+                    selected_commit = initial.get("commit")
+                    status["delivery_selection"] = "initial_correct_implementation"
         source = committed_candidate(context.spec, engine, selected_commit,
                                      artifact_root / "delivery", prefix=prefix)
         status["selected_commit"] = selected_commit

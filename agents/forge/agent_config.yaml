@@ -2,8 +2,6 @@
 workflow: auto
 model: claude-opus-5
 agent_backend: claude
-# Explicitly select cli for an existing native Codex ChatGPT login.
-codex_auth_mode: gateway
 permission_mode: acceptEdits
 # Shared wall-clock cap: setup, checks, PORT and nested OPTIMIZE together.
 timeout_seconds: 87300
