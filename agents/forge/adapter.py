@@ -394,6 +394,9 @@ def launch(eval_config: dict, task_config_dir: str, workspace: str) -> str:
         (artifact_root / "engine.log").write_text(output)
         result = _read_forge_result(Path(plan["result"]), "\n".join(stdout))
         status.update({"exit_code": process.returncode, "timed_out": timed_out, "engine_result": result})
+        if not bridge.cleanup_evaluation_workspaces(plan, supervisor=process):
+            logger.warning("Forge evaluation copies retained: supervisor exit and descendant reaping "
+                           "were not confirmed for %s", plan["evaluation_root"])
         if Path(plan["initialization_result"]).is_file():
             status["initialization"] = json.loads(Path(plan["initialization_result"]).read_text())
         if timed_out:
