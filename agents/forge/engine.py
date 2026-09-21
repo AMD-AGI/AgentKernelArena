@@ -50,9 +50,14 @@ def probe() -> dict:
         missing = parameters - {parameter.name for parameter in command.params}
         if missing:
             raise RuntimeError(f"KernelForge {name} lacks adapter-required parameters: {sorted(missing)}")
+    # Optional, so an engine that always patches the framework still runs; the
+    # adapter asks for the standalone kernel only where the engine accepts that.
+    rewrite = cli.main.commands["forge-rewrite-by-flydsl"]
+    applyback_optional = "applyback" in {parameter.name for parameter in rewrite.params}
     return {"adapter_api": ADAPTER_API, "version": version,
             "initialization_targets": ["flydsl", "hip", "triton"],
-            "backends": sorted(KERNEL_BACKENDS), "rewrite_target": "flydsl"}
+            "backends": sorted(KERNEL_BACKENDS), "rewrite_target": "flydsl",
+            "applyback_optional": applyback_optional}
 
 
 def main(argv=None):

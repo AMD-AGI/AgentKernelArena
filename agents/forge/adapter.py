@@ -267,6 +267,13 @@ def build_command(plan: dict, context: TaskContext, config: dict, *, gpu_arch: s
             command += ["--framework", identity["source_owner"]]
         if context.spec.candidate.initial_language in ("triton", "hip", "cuda", "cpp"):
             command += ["--source-language", context.spec.candidate.initial_language]
+        if plan.get("applyback_optional"):
+            # Arena delivers the standalone candidate and scores it itself; the
+            # framework patch is work this campaign would discard, and the
+            # engine reserves the end of its budget to produce it. An engine
+            # that cannot be told this still produces it, which is why the
+            # result reader keeps tolerating that stage's failure.
+            command += ["--no-applyback"]
     return command
 
 
@@ -320,6 +327,7 @@ def launch(eval_config: dict, task_config_dir: str, workspace: str) -> str:
             raise ForgeRunError("KernelForge runtime preflight failed: " + probe.stderr[-3000:])
         capabilities = json.loads(probe.stdout)
         status["engine"] = capabilities
+        plan["applyback_optional"] = bool(capabilities.get("applyback_optional"))
         require_supported_backend(context.spec, capabilities)
         candidate = context.spec.candidate
         initially_target = candidate.initial_state == "implemented" and candidate.initial_language == candidate.language
@@ -394,9 +402,6 @@ def launch(eval_config: dict, task_config_dir: str, workspace: str) -> str:
         (artifact_root / "engine.log").write_text(output)
         result = _read_forge_result(Path(plan["result"]), "\n".join(stdout))
         status.update({"exit_code": process.returncode, "timed_out": timed_out, "engine_result": result})
-        if not bridge.cleanup_evaluation_workspaces(plan, supervisor=process):
-            logger.warning("Forge evaluation copies retained: supervisor exit and descendant reaping "
-                           "were not confirmed for %s", plan["evaluation_root"])
         if Path(plan["initialization_result"]).is_file():
             status["initialization"] = json.loads(Path(plan["initialization_result"]).read_text())
         if timed_out:

@@ -379,12 +379,14 @@ def test_action_budget_is_capped_by_remaining_campaign(tmp_path):
         bounded_spec(context.spec, time.time() - 1)
 
 
-def mock_engine(monkeypatch, *, fail=False, port_ok=True, timeout=False):
+def mock_engine(monkeypatch, *, fail=False, port_ok=True, timeout=False, applyback_optional=False):
     commands = []
     real_run = subprocess.run
     def subprocess_run(command, **kwargs):
         if "--arena-probe" in command:
-            return SimpleNamespace(returncode=0, stdout=json.dumps({"backends": ["flydsl", "hip", "triton"], "adapter_api": 1}), stderr="")
+            return SimpleNamespace(returncode=0, stdout=json.dumps(
+                {"backends": ["flydsl", "hip", "triton"], "adapter_api": 1,
+                 "applyback_optional": applyback_optional}), stderr="")
         return real_run(command, **kwargs)
     monkeypatch.setattr(adapter.subprocess, "run", subprocess_run)
     monkeypatch.setattr(adapter, "_resolve_gpu_arch", lambda _: "gfx950")
@@ -434,6 +436,23 @@ def test_launcher_delivers_complete_bundle_without_repeating_loop(tmp_path, monk
     assert (context.baseline_workspace / "source/helper.py").read_text() == "3"
     assert '"arena_verdict": "pending"' in output
     assert not (context.workspace / "forge_driver.py").exists()
+
+
+@pytest.mark.parametrize("optional", [True, False])
+def test_rewrite_declines_the_framework_patch_when_the_engine_accepts_that(tmp_path, monkeypatch, optional):
+    """Arena scores the standalone candidate, so the patch is work it discards.
+
+    An engine that cannot be told this produces it anyway, and passing an
+    option it does not define would fail the campaign before it starts, so the
+    request is made only where the capability probe reports it.
+    """
+    context, _, _ = fixture_task(tmp_path, initial_state="unimplemented")
+    monkeypatch.setenv("ARENA_TASK_CONTEXT", str(context.path))
+    commands = mock_engine(monkeypatch, applyback_optional=optional)
+    adapter.launch({}, "unused", str(context.workspace))
+    command, = commands
+    assert "forge-rewrite-by-flydsl" in command
+    assert ("--no-applyback" in command) is optional
 
 
 def test_optimize_declares_a_source_tree_task_shape(tmp_path, monkeypatch):

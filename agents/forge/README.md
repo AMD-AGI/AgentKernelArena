@@ -268,19 +268,24 @@ acceptance. The stage cannot be switched off, because the engine decides it is
 needed from the campaign workspace having a resolvable Git HEAD, which its agent
 sessions require before any port attempt can start.
 
-A rewrite whose result reports a completed port, no failure class, and that
-patch as its only failed stage therefore keeps its outcome, and the adapter
-records `applyback_not_requested` with the engine exit code and error. A nonzero
-exit with any other explanation still fails the campaign. Delivery always reads
-`flydsl_best_commit`: once the patch commits, `best_commit` names that commit,
-whose tree carries framework edits rather than the attempt's bundle.
+An engine whose capability probe reports `applyback_optional` is asked to skip
+it, which also returns the reserve it would otherwise hold to the search. The
+option is passed only where the probe reports it, because an engine that does
+not define it would reject the campaign before it starts.
 
-Two costs remain rather than being worked around. The engine reserves the last
-20 minutes of whatever budget it receives for this stage, so a rewrite searches
-for that much less than `timeout_seconds` suggests. The stage also edits the
-engine's own copy of any framework sources the task materialized; that copy is
-disposable and never scored, because Arena evaluates the delivered bundle in its
-own workspace. Removing either cost needs an upstream way to decline the stage.
+Where the stage still runs, a rewrite whose result reports a completed port, no
+failure class, and that patch as its only failed stage keeps its outcome, and
+the adapter records `applyback_not_requested` with the engine exit code and
+error. A nonzero exit with any other explanation still fails the campaign.
+Delivery always reads `flydsl_best_commit`: once the patch commits,
+`best_commit` names that commit, whose tree carries framework edits rather than
+the attempt's bundle.
+
+On such an engine two costs remain. It reserves the last 20 minutes of whatever
+budget it receives for the stage, so a rewrite searches for that much less than
+`timeout_seconds` suggests, and the stage edits the engine's own copy of any
+framework sources the task materialized. That copy is disposable and never
+scored, because Arena evaluates the delivered bundle in its own workspace.
 
 One `timeout_seconds` budget covers setup, preflight, initialization and optimization.
 Commands receive the same absolute deadline, and every task action is capped by
