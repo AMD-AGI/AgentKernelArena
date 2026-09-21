@@ -347,7 +347,8 @@ def test_the_timed_path_is_held_to_the_checked_path(task):
     measure = (task / "scripts" / "task_measure.py").read_text()
 
     assert "eager = call()" in measure
-    assert "task_inputs.verdict(got, eager" in measure
+    assert "task_inputs.result_distance(got, eager)" in measure
+    assert "TIMED_PATH_MARGIN" in measure
 
 
 @pytest.mark.parametrize("task", TASKS, ids=lambda task: task.name)

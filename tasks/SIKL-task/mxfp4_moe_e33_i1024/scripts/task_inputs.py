@@ -226,6 +226,32 @@ def redraw_call_varying_inputs(inputs: dict[str, Any]) -> dict[str, Any]:
     return inputs
 
 
+# How much further the timed path may sit from the eager one than the eager one
+# sits from itself, and a floor under that measured spread. The spread is what
+# an implementation's own nondeterminism costs it -- a split reduction over
+# atomics does not repeat bit for bit, and the shipped aiter dispatch does not
+# at several of these shapes -- so it is measured per case rather than assumed.
+# The floor only has to clear the comparison's own arithmetic for an
+# implementation that does repeat exactly.
+TIMED_PATH_MARGIN = 4.0
+TIMED_PATH_FLOOR = 1e-6
+
+
+def result_distance(got: torch.Tensor, other: torch.Tensor) -> float:
+    """Largest elementwise gap between two results, against the result's scale.
+
+    Normalized by the whole tensor's magnitude rather than elementwise: a
+    per-element ratio is unbounded wherever the reference is near zero, which
+    says nothing about whether the two runs computed the same thing. Taking the
+    maximum rather than a mean is deliberate -- error concentrated in a few
+    elements is exactly what a path that skips most of the work produces, and
+    for a routed layer that is also what a mistake on one expert looks like.
+    """
+    got_f32, other_f32 = got.float(), other.float()
+    scale = other_f32.abs().max().clamp_min(torch.finfo(torch.float32).tiny)
+    return ((got_f32 - other_f32).abs().max() / scale).item()
+
+
 def call_kwargs(inputs: dict[str, Any]) -> dict[str, Any]:
     """The operator's full argument set, in the schema's input order."""
     return {

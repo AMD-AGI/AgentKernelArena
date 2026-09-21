@@ -131,10 +131,15 @@ def verify_timed_invocation(
     The third is a comparison against itself, not against the reference, and
     that distinction is what makes it usable: the shipped implementation does
     not clear the bundle's bar at every shape, so demanding reference accuracy
-    here would reject the baseline this task is scored against. Demanding that
-    an implementation match its own eager answer asks nothing of its accuracy,
-    only that the timed path be the same computation -- and it is the bundle's
-    comparison that decides "the same", so no tolerance is introduced here.
+    here would reject the baseline this task is scored against.
+
+    Nor is the bundle's tolerance the right bar for the self-comparison. An
+    implementation need not repeat bit for bit -- a split-k reduction over
+    atomics does not, and the shipped dispatch does not at several of these
+    shapes -- so the bar is what this implementation's own repetition costs it,
+    measured here by running the eager path twice. A timed path no further from
+    the eager one than the eager one is from itself computed the same thing;
+    one that is orders beyond that did not.
 
     Only the operands that vary between calls are redrawn. Holding the weight
     fixed is what a deployment does, and a redraw that replaced it would fail
@@ -174,16 +179,22 @@ def verify_timed_invocation(
         )
     # Taken after the replay: the buffers hold the draw the graph just read, so
     # calling the implementation eagerly on them is the answer the timed path
-    # owed. The clone matters because an implementation is free to return the
-    # same output buffer the replay wrote.
-    eager = call()
+    # owed. Twice, because the second reading is the bar for the first -- and
+    # cloned, because an implementation is free to return the same output
+    # buffer on every call.
+    eager = call().detach().clone()
+    repeat = call().detach().clone()
     torch.cuda.synchronize()
-    agreed, detail = task_inputs.verdict(got, eager.detach().clone())
-    if not agreed:
+    spread = task_inputs.result_distance(repeat, eager)
+    distance = task_inputs.result_distance(got, eager)
+    bar = max(spread * task_inputs.TIMED_PATH_MARGIN, task_inputs.TIMED_PATH_FLOOR)
+    if distance > bar:
         raise RuntimeError(
             "the timed invocation disagrees with this same implementation run "
-            f"eagerly on the draw it replayed over: {detail}. What was measured "
-            "is not the computation the correctness run accepted"
+            f"eagerly on the draw it replayed over: distance {distance:.6g} "
+            f"against a bar of {bar:.6g} set by its own run-to-run spread "
+            f"{spread:.6g}. What was measured is not the computation the "
+            "correctness run accepted"
         )
 
 
