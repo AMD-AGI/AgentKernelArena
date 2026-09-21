@@ -309,14 +309,63 @@ def test_the_timed_invocation_is_held_to_its_result(task):
     inputs = (task / "scripts" / "task_inputs.py").read_text()
 
     assert "timed_run=timed" in measure
-    assert "verify_timed_invocation(inputs, timed)" in measure
+    assert "verify_timed_invocation(inputs, timed, call)" in measure
     # Requesting the collector also makes an unobservable capture fatal, which
     # is what closes the variant that returns a cached tensor and runs nothing.
     assert "TimedRun" in measure
-    assert "refill_case_inputs" in measure
     assert 'fill_(float("nan"))' in measure
     assert "def refill_case_inputs" in inputs
     assert "REFILL_SEED" in inputs
+
+
+@pytest.mark.parametrize("task", TASKS, ids=lambda task: task.name)
+def test_one_logical_invocation_is_timed_per_replay(task):
+    # Judging the replay is not enough on its own. The benchmark batches as many
+    # calls as fill target_ms into one capture and divides by that count, and an
+    # implementation that answers the first call and serves the rest from a
+    # cache leaves one honest computation in the graph to be charged at a
+    # fraction of its cost -- the replay recomputes, so every judgement passes.
+    # Preparation selects the unbatched capture; the count is then asserted, so
+    # separating the two upstream breaks the task instead of the protocol.
+    measure = (task / "scripts" / "task_measure.py").read_text()
+
+    assert "prepare_fn=one_invocation_per_replay" in measure
+    assert 'metadata.get("benchmark_effective_repeats")' in measure
+    assert "if repeats != 1:" in measure
+
+
+@pytest.mark.parametrize("task", TASKS, ids=lambda task: task.name)
+def test_the_timed_path_is_held_to_the_checked_path(task):
+    # The capture state alone tells an implementation whether it is being timed
+    # or checked, so a path that computes honestly when observed and cheaply
+    # when captured clears both the poison and the bit-for-bit test while
+    # producing nothing. It is held to what the same implementation answers
+    # eagerly over the draw the replay consumed -- against itself, because the
+    # shipped implementation does not clear the bundle's bar at every shape and
+    # a reference criterion here would reject the baseline the task is scored
+    # against.
+    measure = (task / "scripts" / "task_measure.py").read_text()
+
+    assert "eager = call()" in measure
+    assert "task_inputs.verdict(got, eager" in measure
+
+
+@pytest.mark.parametrize("task", TASKS, ids=lambda task: task.name)
+def test_re_arming_a_replay_keeps_the_operands_a_caller_owns(task):
+    # Redrawing the weights too would fail an implementation for laying them out
+    # once on the first call, which is what a deployment does and what aiter
+    # does at load time. Only the operands that change between two calls on a
+    # live model are redrawn, and the draw stays the bundle's callback.
+    measure = (task / "scripts" / "task_measure.py").read_text()
+    inputs = (task / "scripts" / "task_inputs.py").read_text()
+
+    assert "task_inputs.redraw_call_varying_inputs(inputs)" in measure
+    assert "def redraw_call_varying_inputs" in inputs
+    assert "PERSISTENT_INPUTS" in inputs
+    assert "refill_case_inputs(inputs)" in inputs, (
+        "the redraw must go through the bundle's callback rather than fill "
+        "buffers itself"
+    )
 
 
 @pytest.mark.parametrize("task", TASKS, ids=lambda task: task.name)

@@ -154,6 +154,33 @@ def refill_case_inputs(inputs: dict[str, Any]) -> dict[str, Any]:
     return task_initialize.run(inputs, seed=REFILL_SEED)
 
 
+# The operands a production caller holds fixed while the activations change.
+# ``b`` is the weight: sglang loads it once and calls the operator per batch.
+PERSISTENT_INPUTS: tuple[str, ...] = ("b",)
+
+
+def redraw_call_varying_inputs(inputs: dict[str, Any]) -> dict[str, Any]:
+    """Redraw only what changes between two calls on a live model.
+
+    Re-arming a timed invocation has to move the ground under it without
+    invalidating work a real deployment would legitimately do once. Packing the
+    weight into a kernel's preferred layout on the first call and reusing it is
+    that kind of work -- aiter preshuffles at load time for the same reason --
+    so a redraw that also replaced the weight would make an implementation which
+    did it look like one that skipped the operator.
+
+    The draw itself stays the bundle's: the full callback runs, and the operands
+    the caller owns across calls are then restored. Selecting a subset of the
+    bundle's initializers instead would put a second copy of which distribution
+    fills which buffer in this file, and that copy is what goes stale.
+    """
+    held = {name: inputs[name].detach().clone() for name in PERSISTENT_INPUTS}
+    refill_case_inputs(inputs)
+    for name, value in held.items():
+        inputs[name].copy_(value)
+    return inputs
+
+
 def call_kwargs(inputs: dict[str, Any]) -> dict[str, Any]:
     """The operator's full argument set, in the schema's input order."""
     return {"a": inputs["a"], "b": inputs["b"]}

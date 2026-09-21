@@ -106,26 +106,56 @@ def compare_cases(launches: list | None) -> list[dict[str, Any]]:
     return results
 
 
-def verify_timed_invocation(inputs: dict[str, Any], timed: TimedRun) -> None:
+def one_invocation_per_replay() -> None:
+    """Select the unbatched capture. There is nothing to prepare.
+
+    Left to itself the benchmark captures as many calls as it takes to fill
+    ``target_ms`` and divides the replay by that count. The count is the whole
+    problem: an implementation that answers the first call in a capture and
+    serves the rest from a cache keyed on the inputs' identity leaves exactly
+    one computation in the graph, and the division then reports it at a
+    fraction of its cost while every replay still recomputes that one honestly.
+
+    Supplying a preparation callback is how the benchmark is told to capture a
+    single logical invocation, which is the property this task needs; that the
+    callback has nothing to do is incidental. Nothing is redrawn here because
+    nothing would be read: a replay executes recorded kernels, not the
+    implementation, so what a sample measures was settled at capture time.
+
+    ``time_cases`` asserts the count it gets rather than trusting this, so the
+    day the benchmark separates batching from preparation the task fails loudly
+    instead of quietly going back to reporting a fraction.
+    """
+
+
+def verify_timed_invocation(
+    inputs: dict[str, Any], timed: TimedRun, call: Callable
+) -> None:
     """Hold the invocation that was timed to the result it reported.
 
-    A case is timed over one set of input buffers: the call is built once and
-    every warmup, capture and replay reads those same objects. An implementation can
-    answer the first call and serve the rest from a cache keyed on their
-    identity, and the capture then records the cached path, so every replay
-    measures a lookup. Correctness would not notice, and not by accident: it
-    builds fresh inputs per case and calls once, which is always a miss. The two
-    modes are separate invocations, so an implementation can tell which one is
-    scored.
+    Correctness and timing are separate invocations and an implementation can
+    tell them apart -- the capture state alone is enough -- so the scored path
+    has to be judged on its own rather than inferred from the checked one. It
+    is judged on three things, over a draw it was not captured against:
 
-    Closing that means asking the timed unit itself, after the ground has moved:
-    the buffers are redrawn, the output it wrote is poisoned, and the same graph
-    is replayed. What the replay has to show is that it recomputed -- it wrote
-    over the poison, and it did not reproduce the answer it gave for the draw
-    before. Neither test involves a tolerance, deliberately: the production
-    implementation does not clear the bundle's bar at every shape, and on the
-    small-M cases it does not even agree with itself run to run, so any accuracy
-    criterion here would reject the baseline this task is scored against.
+    it wrote the output, so the poison cannot survive the replay; it did not
+    reproduce the answer it gave for the previous draw, which is what a cache
+    keyed on the inputs' identity would do; and it agrees with this same
+    implementation run eagerly on the draw the replay just consumed, which is
+    what a path that computes honestly when observed and cheaply when captured
+    would not.
+
+    The third is a comparison against itself, not against the reference, and
+    that distinction is what makes it usable: the shipped implementation does
+    not clear the bundle's bar at every shape, so demanding reference accuracy
+    here would reject the baseline this task is scored against. Demanding that
+    an implementation match its own eager answer asks nothing of its accuracy,
+    only that the timed path be the same computation -- and it is the bundle's
+    comparison that decides "the same", so no tolerance is introduced here.
+
+    Only the operands that vary between calls are redrawn. Holding the expert
+    weights fixed is what a deployment does, and a redraw that replaced them
+    would fail an implementation for laying them out once.
     """
     if not timed.bound:
         raise RuntimeError(
@@ -137,7 +167,7 @@ def verify_timed_invocation(inputs: dict[str, Any], timed: TimedRun) -> None:
         if isinstance(timed.outputs, torch.Tensor)
         else None
     )
-    task_inputs.refill_case_inputs(inputs)
+    task_inputs.redraw_call_varying_inputs(inputs)
     if isinstance(timed.outputs, torch.Tensor):
         timed.outputs.fill_(float("nan"))
     got = timed.rerun()
@@ -147,6 +177,7 @@ def verify_timed_invocation(inputs: dict[str, Any], timed: TimedRun) -> None:
             f"the timed invocation returned {type(got).__name__}, so its output "
             "cannot be inspected for whether the replay produced it"
         )
+    got = got.detach().clone()
     if not torch.isfinite(got).all():
         raise RuntimeError(
             "the timed invocation left part of its output unwritten: the poison "
@@ -157,6 +188,19 @@ def verify_timed_invocation(inputs: dict[str, Any], timed: TimedRun) -> None:
             "the timed invocation reproduced its previous output bit for bit "
             "over a fresh draw, so what was measured is a replay of a cached "
             "answer rather than the operator"
+        )
+    # Taken after the replay: the buffers hold the draw the graph just read, so
+    # calling the implementation eagerly on them is the answer the timed path
+    # owed. The clone matters because an implementation is free to return the
+    # same output buffer the replay wrote.
+    eager = call()
+    torch.cuda.synchronize()
+    agreed, detail = task_inputs.verdict(got, eager.detach().clone())
+    if not agreed:
+        raise RuntimeError(
+            "the timed invocation disagrees with this same implementation run "
+            f"eagerly on the draw it replayed over: {detail}. What was measured "
+            "is not the computation the correctness run accepted"
         )
 
 
@@ -176,9 +220,18 @@ def time_cases(launches: list | None) -> list[dict[str, Any]]:
             warmup=task_inputs.BENCH_WARMUP,
             repetition=task_inputs.BENCH_REPETITION,
             target_ms=task_inputs.BENCH_TARGET_MS,
+            prepare_fn=one_invocation_per_replay,
             timed_run=timed,
         )
-        verify_timed_invocation(inputs, timed)
+        repeats = metadata.get("benchmark_effective_repeats")
+        if repeats != 1:
+            raise RuntimeError(
+                f"the capture batched {repeats} invocations into one replay, so "
+                "each sample reports their average and one retained computation "
+                "would be charged at a fraction of its cost; this task requires "
+                "one logical invocation per replay"
+            )
+        verify_timed_invocation(inputs, timed, call)
         samples.append(
             {
                 "case_id": str(case["case_id"]),
