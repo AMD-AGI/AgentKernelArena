@@ -36,7 +36,9 @@ version exactly. Record the Node version and installed dependency tree
 (`npm ls --global --all --json`) with your experiment environment; the top-level
 CLI pin alone does not freeze npm's transitive dependency resolution.
 
-Agent settings live in [agent_config.yaml](agent_config.yaml):
+Agent defaults live in [agent_config.yaml](agent_config.yaml). The run config's
+`agent` mapping can override the settings below except `cli_version`, which
+remains pinned by the integration:
 
 | Setting | Meaning |
 | --- | --- |
@@ -47,8 +49,22 @@ Agent settings live in [agent_config.yaml](agent_config.yaml):
 | `base_url` | Endpoint override; null uses `DEEPSEEK_BASE_URL`, then upstream's protocol default |
 | `max_tokens` | Per-request output limit, not a total session budget |
 | `max_iterations` | Optimization guidance appended to the prompt, not a hard turn limit |
-| `timeout_seconds` | Wall-clock budget; the launcher stops the process group on expiry |
+| `timeout_seconds` | Positive per-invocation wall-clock budget; included in the prompt and enforced by stopping the process group on expiry |
 | `python_path` | Optional in-container Python interpreter; null uses Arena's interpreter |
+
+For example, budget a short run without editing shared defaults:
+
+```yaml
+agent:
+  template: deepseek_harness
+  timeout_seconds: 1200
+  max_iterations: 1
+```
+
+The shared budget guidance asks the agent to retain its best candidate at the
+declared paths and leave time for required checks. It does not weaken task
+acceptance or guarantee timely completion. Use `reasoning_effort` for DeepSeek;
+the other CLI integrations' `effort` field is not a DeepSeek setting.
 
 This adapter configures the DeepSeek provider. Other upstream providers and
 custom plugins are not exposed by this integration. For gateways, use a URL
@@ -95,7 +111,14 @@ Every invocation creates a fresh `.deepseek_harness-*` directory inside its
 task workspace. It preserves the prompt, credential-free Cordis patch,
 invocation settings, stdout/stderr logs, and a separate `home/` for upstream
 sessions. Retries create another directory rather than overwriting past runs.
-Nonzero CLI exits and timeouts fail the task instead of reporting completion.
+Nonzero CLI exits and timeouts raise an agent failure. Under schema v2, Arena
+records `agent_execution` separately and independently evaluates any retained
+candidate; a passing candidate does not turn a failed invocation into a completed
+agent run. The shared task prompt and `ARENA_TASK_CONTEXT`,
+`ARENA_VALIDATION_CONTEXT`, and `ARENA_EVAL_PHASE` environment variables reach
+the CLI unchanged, including for materialized image sources and initially empty
+SIKL candidates. Task commands, the frozen baseline, final reports, and exports
+remain owned by the shared framework.
 Output captured by the adapter redacts the configured API key; upstream session
 files are third-party artifacts and should be reviewed before sharing.
 

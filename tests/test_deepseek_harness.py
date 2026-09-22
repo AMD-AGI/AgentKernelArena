@@ -24,7 +24,6 @@ launcher = importlib.import_module("agents.deepseek_harness.launch_agent")
 @pytest.fixture
 def runtime(tmp_path, monkeypatch):
     config = launcher._load_config()
-    monkeypatch.setattr(launcher, "_load_config", lambda: dict(config))
     monkeypatch.setenv("DEEPSEEK_API_KEY", "private-test-key")
     monkeypatch.setenv("DSH_HOME", str(tmp_path / "host-history"))
     monkeypatch.setenv("DSH_TOOLS_MODE", "inherited-experimental-mode")
@@ -48,6 +47,9 @@ pathlib.Path("observed.json").write_text(json.dumps({
     "tools_mode": os.environ.get("DSH_TOOLS_MODE"),
     "gpu": os.environ.get("HIP_VISIBLE_DEVICES"),
     "python": os.environ["AGENT_KERNEL_ARENA_PYTHON"],
+    "arena_context": os.environ.get("ARENA_TASK_CONTEXT"),
+    "validation_context": os.environ.get("ARENA_VALIDATION_CONTEXT"),
+    "arena_phase": os.environ.get("ARENA_EVAL_PHASE"),
 }))
 print(json.dumps({"type": "final", "text": "finished", "turn_end": "completed"}))
 print("diagnostic " + os.environ["DEEPSEEK_API_KEY"], file=sys.stderr)
@@ -86,6 +88,7 @@ def test_launch_passes_full_prompt_isolates_state_and_redacts_key(runtime, monke
     assert calls == [("task/config.yaml", str(workspace), {"target_gpu_model": "MI300"})]
     assert observed["prompt"].startswith(original_prompt)
     assert "iterate up to 3 versions" in observed["prompt"]
+    assert f"budget for this agent invocation is {config['timeout_seconds']} seconds" in observed["prompt"]
     assert observed["cwd"] == str(workspace)
     assert observed["argv"][:3] == ["--profile", "headless", "--patch"]
     assert observed["argv"][-1] == "--json"
@@ -177,3 +180,59 @@ def test_endpoint_override_and_off_effort_do_not_embed_credentials(runtime):
     assert provider["baseURL"] == "https://gateway.example/v1"
     assert provider["reasoningEffort"] == "off"
     assert "apiKey" not in provider
+
+
+def test_v2_prompt_context_and_run_settings_reach_cli(runtime, monkeypatch):
+    defaults, _, workspace = runtime
+    config_path = workspace / "config.yaml"
+    config_path.write_text(yaml.safe_dump({
+        "schema_version": 2,
+        "candidate": {"language": "hip", "editable": ["kernel.hip"]},
+        "evaluation": {"runner": ["python3", "evaluate.py"]},
+    }))
+    (workspace / "README.md").write_text("Preserve the fixture operator contract.")
+    (workspace / "kernel.hip").write_text("// fixture candidate\n")
+    (workspace / "evaluate.py").write_text("# Declared action path; this test only invokes the fake CLI.\n")
+    task_context = str(workspace.parent / "agent_context.json")
+    validation_context = str(workspace.parent / "validation_context.json")
+    monkeypatch.setenv("ARENA_TASK_CONTEXT", task_context)
+    monkeypatch.setenv("ARENA_VALIDATION_CONTEXT", validation_context)
+    monkeypatch.setenv("ARENA_EVAL_PHASE", "candidate_evaluation")
+    launcher.launch_agent({
+        "target_gpu_model": "MI355X", "_task_id": "fixture/materialized-task",
+        "agent": {"template": "deepseek_harness", "model": "fixture-model",
+                  "reasoning_effort": "low", "timeout_seconds": 45, "max_iterations": 1,
+                  "cli_version": "not-an-allowed-run-override"},
+    }, str(config_path), str(workspace))
+    observed = json.loads((workspace / "observed.json").read_text())
+    assert observed["arena_context"] == task_context
+    assert observed["validation_context"] == validation_context
+    assert observed["arena_phase"] == "candidate_evaluation"
+    assert "Task: fixture/materialized-task" in observed["prompt"]
+    assert "Preserve the fixture operator contract." in observed["prompt"]
+    assert "python3 evaluate.py candidate correctness" in observed["prompt"]
+    assert "ARENA_EVAL_RESULT" in observed["prompt"]
+    assert "iterate up to 1 versions" in observed["prompt"]
+    assert "budget for this agent invocation is 45 seconds" in observed["prompt"]
+    state = Path(observed["dsh_home"]).parent
+    invocation = json.loads((state / "invocation.json").read_text())
+    assert invocation["agent_config"]["timeout_seconds"] == 45
+    assert invocation["cli_version"] == defaults["cli_version"]
+    patch = yaml.safe_load((state / "cordis.patch.yml").read_text())
+    assert patch[0]["config"]["model"] == "fixture-model"
+    assert patch[1]["config"]["reasoningEffort"] == "low"
+    assert launcher._load_config() == defaults
+
+
+@pytest.mark.parametrize("overrides", [
+    {"timeout_seconds": 0}, {"timeout_seconds": True}, {"max_iterations": -1},
+    {"model": ""}, {"reasoning_effort": "invalid"}, {"protocol": "invalid"},
+    "not-a-mapping", [], False,
+])
+def test_invalid_run_settings_fail_before_cli(runtime, monkeypatch, overrides):
+    _, _, workspace = runtime
+    def unexpected_preflight(*args):
+        pytest.fail("Invalid run settings reached the CLI")
+    monkeypatch.setattr(launcher, "_preflight", unexpected_preflight)
+    with pytest.raises(ValueError):
+        launcher.launch_agent({"agent": overrides}, "unused", str(workspace))

@@ -89,6 +89,11 @@ provider. Each task uses a fresh Harness home and the standard Arena evaluator.
 See [the integration guide](../../agents/deepseek_harness/README.md) for model,
 endpoint, Docker, and session-isolation details.
 
+DeepSeek's run-level overrides and per-invocation budget follow
+[its integration guide](../../agents/deepseek_harness/README.md#install-and-configure).
+It uses `reasoning_effort` rather than the other CLIs' `effort` field. Schema-v2
+agent completion and independent candidate acceptance are reported separately.
+
 `make vllm` starts an OpenAI-compatible local endpoint on port `30001`, but it
 does not automatically reconfigure an agent. Point the selected integration at
 that endpoint using the integration's own provider/base-URL mechanism.

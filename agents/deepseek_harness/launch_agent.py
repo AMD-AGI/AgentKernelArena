@@ -18,14 +18,26 @@ from typing import Any
 import yaml
 
 from agents import register_agent
+from agents.run_budget import append_run_budget
 from src.module_registration import AgentType, load_prompt_builder
 from src.runtime_env import build_subprocess_env
 
 
-def _load_config() -> dict[str, Any]:
+def _load_config(eval_config: dict[str, Any] | None = None) -> dict[str, Any]:
     config = yaml.safe_load(Path(__file__).with_name("agent_config.yaml").read_text())
     if not isinstance(config, dict):
         raise ValueError("DeepSeek Harness agent_config.yaml must be a mapping")
+    overrides = (eval_config or {}).get("agent", {})
+    if overrides is None:
+        overrides = {}
+    if not isinstance(overrides, dict):
+        raise ValueError("DeepSeek Harness agent must be a mapping")
+    for name in (
+        "model", "reasoning_effort", "protocol", "base_url", "max_tokens",
+        "max_iterations", "timeout_seconds", "python_path",
+    ):
+        if name in overrides:
+            config[name] = overrides[name]
     for name in ("cli_version", "model"):
         if not isinstance(config.get(name), str) or not config[name].strip():
             raise ValueError(f"DeepSeek Harness {name} must be a nonempty string")
@@ -174,7 +186,7 @@ def _run(
 
 @register_agent("deepseek_harness")
 def launch_agent(eval_config: dict, task_config_dir: str, workspace: str) -> str:
-    config = _load_config()
+    config = _load_config(eval_config)
     env = _environment(config)
     binary, version = _preflight(config, env)
     logger = logging.getLogger(__name__)
@@ -186,6 +198,7 @@ def launch_agent(eval_config: dict, task_config_dir: str, workspace: str) -> str
         f"\nUse this Python interpreter: `{env['AGENT_KERNEL_ARENA_PYTHON']}`. "
         "Run pytest through that interpreter with `-m pytest`.\n"
     )
+    prompt = append_run_budget(prompt, config["timeout_seconds"])
     # Unique on every invocation, including retries. Never reuse host sessions/settings.
     state = Path(tempfile.mkdtemp(prefix=".deepseek_harness-", dir=root))
     env["DSH_HOME"] = str(state / "home")
