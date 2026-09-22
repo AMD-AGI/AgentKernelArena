@@ -1,0 +1,273 @@
+{
+  "contract": "kernel_selection",
+  "ok": true,
+  "target_callable": "sglang.srt.layers.quantization.fp8_utils:materialize_bpreshuffle_fp8_scale",
+  "device_kernel": "void at::native::elementwise_kernel_manual_unroll<128, 4, at::native::gpu_kernel_impl_nocast<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1} const&)::{lambda(int, bool)#1}>(int, at::native::gpu_kernel_impl_nocast<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1} const&)::{lambda(int, bool)#1})",
+  "capture_target": "sglang.srt.layers.quantization.fp8_utils:materialize_bpreshuffle_fp8_scale",
+  "total_calls_observed": 17472,
+  "target_marker": "GEAK_TARGET::sglang.srt.layers.quantization.fp8_utils:materialize_bpreshuffle_fp8_scale",
+  "target_marker_calls": 48,
+  "matched_kernel_calls": 32,
+  "matched_kernel_names": [
+    "void at::native::elementwise_kernel_manual_unroll<128, 4, at::native::gpu_kernel_impl_nocast<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1} const&)::{lambda(int, bool)#1}>(int, at::native::gpu_kernel_impl_nocast<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1}>(at::TensorIteratorBase&, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#3}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1} const&)::{lambda(int, bool)#1})"
+  ],
+  "correlated_external_ids": 832,
+  "correlated_launch_correlations": 144,
+  "candidate_targets_tested": [
+    "sglang.srt.layers.quantization.fp8_utils:materialize_bpreshuffle_fp8_scale",
+    "sglang.srt.layers.quantization.fp8_utils:materialize_bpreshuffle_fp8_scale_tuple",
+    "sglang.srt.models.deepseek_common.attention_forward_methods.forward_mla_rocm:rocm_absorb_v_bmm"
+  ],
+  "live_candidate_targets": [
+    "sglang.srt.layers.quantization.fp8_utils:materialize_bpreshuffle_fp8_scale"
+  ],
+  "deeper_live_candidates": [],
+  "missing_candidate_markers": [],
+  "installed_but_never_live_candidates": [
+    "sglang.srt.layers.quantization.fp8_utils:materialize_bpreshuffle_fp8_scale_tuple",
+    "sglang.srt.models.deepseek_common.attention_forward_methods.forward_mla_rocm:rocm_absorb_v_bmm"
+  ],
+  "deepest_verified": true,
+  "evidence": "installed+live_nested_candidate_markers+torch_profiler_external_id_or_launch_correlation",
+  "failed": [],
+  "process_verdicts": [
+    {
+      "capture_meta_file": "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/capture.pid-1686813.rank-unknown/meta.json",
+      "trace_files": [
+        "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1686813.rank-unknown.call-1.json",
+        "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1686813.rank-unknown.call-2.json",
+        "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1686813.rank-unknown.call-3.json",
+        "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1686813.rank-unknown.call-4.json",
+        "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1686813.rank-unknown.call-5.json",
+        "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1686813.rank-unknown.call-6.json"
+      ],
+      "ok": true,
+      "failed": [],
+      "live_candidate_targets": [
+        "sglang.srt.layers.quantization.fp8_utils:materialize_bpreshuffle_fp8_scale"
+      ],
+      "deeper_live_candidates": []
+    },
+    {
+      "capture_meta_file": "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/capture.pid-1687137.rank-unknown/meta.json",
+      "trace_files": [
+        "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1687137.rank-unknown.call-1.json",
+        "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1687137.rank-unknown.call-2.json",
+        "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1687137.rank-unknown.call-3.json",
+        "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1687137.rank-unknown.call-4.json",
+        "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1687137.rank-unknown.call-5.json",
+        "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1687137.rank-unknown.call-6.json"
+      ],
+      "ok": true,
+      "failed": [],
+      "live_candidate_targets": [
+        "sglang.srt.layers.quantization.fp8_utils:materialize_bpreshuffle_fp8_scale"
+      ],
+      "deeper_live_candidates": []
+    },
+    {
+      "capture_meta_file": "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/capture.pid-1687350.rank-unknown/meta.json",
+      "trace_files": [
+        "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1687350.rank-unknown.call-1.json",
+        "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1687350.rank-unknown.call-2.json",
+        "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1687350.rank-unknown.call-3.json",
+        "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1687350.rank-unknown.call-4.json",
+        "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1687350.rank-unknown.call-5.json",
+        "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1687350.rank-unknown.call-6.json"
+      ],
+      "ok": true,
+      "failed": [],
+      "live_candidate_targets": [
+        "sglang.srt.layers.quantization.fp8_utils:materialize_bpreshuffle_fp8_scale"
+      ],
+      "deeper_live_candidates": []
+    },
+    {
+      "capture_meta_file": "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/capture.pid-1687571.rank-unknown/meta.json",
+      "trace_files": [
+        "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1687571.rank-unknown.call-1.json",
+        "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1687571.rank-unknown.call-2.json",
+        "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1687571.rank-unknown.call-3.json",
+        "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1687571.rank-unknown.call-4.json",
+        "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1687571.rank-unknown.call-5.json",
+        "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1687571.rank-unknown.call-6.json"
+      ],
+      "ok": true,
+      "failed": [],
+      "live_candidate_targets": [
+        "sglang.srt.layers.quantization.fp8_utils:materialize_bpreshuffle_fp8_scale"
+      ],
+      "deeper_live_candidates": []
+    },
+    {
+      "capture_meta_file": "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/capture.pid-1687775.rank-unknown/meta.json",
+      "trace_files": [
+        "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1687775.rank-unknown.call-1.json",
+        "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1687775.rank-unknown.call-2.json",
+        "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1687775.rank-unknown.call-3.json",
+        "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1687775.rank-unknown.call-4.json",
+        "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1687775.rank-unknown.call-5.json",
+        "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1687775.rank-unknown.call-6.json"
+      ],
+      "ok": true,
+      "failed": [],
+      "live_candidate_targets": [
+        "sglang.srt.layers.quantization.fp8_utils:materialize_bpreshuffle_fp8_scale"
+      ],
+      "deeper_live_candidates": []
+    },
+    {
+      "capture_meta_file": "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/capture.pid-1687981.rank-unknown/meta.json",
+      "trace_files": [
+        "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1687981.rank-unknown.call-1.json",
+        "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1687981.rank-unknown.call-2.json",
+        "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1687981.rank-unknown.call-3.json",
+        "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1687981.rank-unknown.call-4.json",
+        "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1687981.rank-unknown.call-5.json",
+        "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1687981.rank-unknown.call-6.json"
+      ],
+      "ok": true,
+      "failed": [],
+      "live_candidate_targets": [
+        "sglang.srt.layers.quantization.fp8_utils:materialize_bpreshuffle_fp8_scale"
+      ],
+      "deeper_live_candidates": []
+    },
+    {
+      "capture_meta_file": "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/capture.pid-1688192.rank-unknown/meta.json",
+      "trace_files": [
+        "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1688192.rank-unknown.call-1.json",
+        "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1688192.rank-unknown.call-2.json",
+        "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1688192.rank-unknown.call-3.json",
+        "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1688192.rank-unknown.call-4.json",
+        "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1688192.rank-unknown.call-5.json",
+        "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1688192.rank-unknown.call-6.json"
+      ],
+      "ok": true,
+      "failed": [],
+      "live_candidate_targets": [
+        "sglang.srt.layers.quantization.fp8_utils:materialize_bpreshuffle_fp8_scale"
+      ],
+      "deeper_live_candidates": []
+    },
+    {
+      "capture_meta_file": "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/capture.pid-1688396.rank-unknown/meta.json",
+      "trace_files": [
+        "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1688396.rank-unknown.call-1.json",
+        "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1688396.rank-unknown.call-2.json",
+        "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1688396.rank-unknown.call-3.json",
+        "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1688396.rank-unknown.call-4.json",
+        "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1688396.rank-unknown.call-5.json",
+        "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1688396.rank-unknown.call-6.json"
+      ],
+      "ok": true,
+      "failed": [],
+      "live_candidate_targets": [
+        "sglang.srt.layers.quantization.fp8_utils:materialize_bpreshuffle_fp8_scale"
+      ],
+      "deeper_live_candidates": []
+    }
+  ],
+  "best_process_meta_file": "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/capture.pid-1686813.rank-unknown/meta.json",
+  "trace_file": "",
+  "trace_files": [
+    "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1686813.rank-unknown.call-1.json",
+    "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1686813.rank-unknown.call-2.json",
+    "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1686813.rank-unknown.call-3.json",
+    "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1686813.rank-unknown.call-4.json",
+    "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1686813.rank-unknown.call-5.json",
+    "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1686813.rank-unknown.call-6.json",
+    "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1687137.rank-unknown.call-1.json",
+    "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1687137.rank-unknown.call-2.json",
+    "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1687137.rank-unknown.call-3.json",
+    "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1687137.rank-unknown.call-4.json",
+    "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1687137.rank-unknown.call-5.json",
+    "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1687137.rank-unknown.call-6.json",
+    "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1687350.rank-unknown.call-1.json",
+    "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1687350.rank-unknown.call-2.json",
+    "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1687350.rank-unknown.call-3.json",
+    "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1687350.rank-unknown.call-4.json",
+    "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1687350.rank-unknown.call-5.json",
+    "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1687350.rank-unknown.call-6.json",
+    "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1687571.rank-unknown.call-1.json",
+    "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1687571.rank-unknown.call-2.json",
+    "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1687571.rank-unknown.call-3.json",
+    "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1687571.rank-unknown.call-4.json",
+    "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1687571.rank-unknown.call-5.json",
+    "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1687571.rank-unknown.call-6.json",
+    "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1687775.rank-unknown.call-1.json",
+    "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1687775.rank-unknown.call-2.json",
+    "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1687775.rank-unknown.call-3.json",
+    "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1687775.rank-unknown.call-4.json",
+    "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1687775.rank-unknown.call-5.json",
+    "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1687775.rank-unknown.call-6.json",
+    "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1687981.rank-unknown.call-1.json",
+    "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1687981.rank-unknown.call-2.json",
+    "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1687981.rank-unknown.call-3.json",
+    "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1687981.rank-unknown.call-4.json",
+    "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1687981.rank-unknown.call-5.json",
+    "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1687981.rank-unknown.call-6.json",
+    "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1688192.rank-unknown.call-1.json",
+    "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1688192.rank-unknown.call-2.json",
+    "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1688192.rank-unknown.call-3.json",
+    "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1688192.rank-unknown.call-4.json",
+    "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1688192.rank-unknown.call-5.json",
+    "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1688192.rank-unknown.call-6.json",
+    "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1688396.rank-unknown.call-1.json",
+    "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1688396.rank-unknown.call-2.json",
+    "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1688396.rank-unknown.call-3.json",
+    "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1688396.rank-unknown.call-4.json",
+    "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1688396.rank-unknown.call-5.json",
+    "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1688396.rank-unknown.call-6.json"
+  ],
+  "trace_files_considered": [
+    "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1686813.rank-unknown.call-1.json",
+    "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1686813.rank-unknown.call-2.json",
+    "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1686813.rank-unknown.call-3.json",
+    "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1686813.rank-unknown.call-4.json",
+    "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1686813.rank-unknown.call-5.json",
+    "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1686813.rank-unknown.call-6.json",
+    "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1687137.rank-unknown.call-1.json",
+    "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1687137.rank-unknown.call-2.json",
+    "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1687137.rank-unknown.call-3.json",
+    "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1687137.rank-unknown.call-4.json",
+    "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1687137.rank-unknown.call-5.json",
+    "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1687137.rank-unknown.call-6.json",
+    "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1687350.rank-unknown.call-1.json",
+    "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1687350.rank-unknown.call-2.json",
+    "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1687350.rank-unknown.call-3.json",
+    "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1687350.rank-unknown.call-4.json",
+    "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1687350.rank-unknown.call-5.json",
+    "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1687350.rank-unknown.call-6.json",
+    "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1687571.rank-unknown.call-1.json",
+    "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1687571.rank-unknown.call-2.json",
+    "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1687571.rank-unknown.call-3.json",
+    "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1687571.rank-unknown.call-4.json",
+    "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1687571.rank-unknown.call-5.json",
+    "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1687571.rank-unknown.call-6.json",
+    "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1687775.rank-unknown.call-1.json",
+    "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1687775.rank-unknown.call-2.json",
+    "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1687775.rank-unknown.call-3.json",
+    "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1687775.rank-unknown.call-4.json",
+    "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1687775.rank-unknown.call-5.json",
+    "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1687775.rank-unknown.call-6.json",
+    "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1687981.rank-unknown.call-1.json",
+    "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1687981.rank-unknown.call-2.json",
+    "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1687981.rank-unknown.call-3.json",
+    "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1687981.rank-unknown.call-4.json",
+    "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1687981.rank-unknown.call-5.json",
+    "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1687981.rank-unknown.call-6.json",
+    "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1688192.rank-unknown.call-1.json",
+    "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1688192.rank-unknown.call-2.json",
+    "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1688192.rank-unknown.call-3.json",
+    "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1688192.rank-unknown.call-4.json",
+    "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1688192.rank-unknown.call-5.json",
+    "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1688192.rank-unknown.call-6.json",
+    "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1688396.rank-unknown.call-1.json",
+    "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1688396.rank-unknown.call-2.json",
+    "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1688396.rank-unknown.call-3.json",
+    "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1688396.rank-unknown.call-4.json",
+    "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1688396.rank-unknown.call-5.json",
+    "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/glm53-flash/GLM-5.3-Flash/20260829T045924Z-d82dabe1/geak/e2e_cycle1/kernels/elementwise_copy_cluster_bpreshuffle_scale_and_mla_absorb_task/_select/selection_trace.pid-1688396.rank-unknown.call-6.json"
+  ]
+}

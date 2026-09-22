@@ -1,0 +1,20 @@
+# Public runtime override: AKA_DOCKER_IMAGE=docker.io/rocm/hyperloom@sha256:1f5464829559b086eb66f9b803cb9c7a817438c43edff2d5ef59b46a186745f6
+# Public tag: docker.io/rocm/hyperloom:sglang-v0.5.17-rocm7.2.0-mi350x
+# Environment: TVM_FFI_DISABLE_TORCH_C_DLPACK=1; see runtime guide for caches/mounts.
+# Runtime status: candidate_unverified_custom_kimi_build
+# Original task headkernel.docker declarations remain unchanged.
+# No Kimi/K3 tag found in the complete Docker Hub rocm/hyperloom tag list on 2026-09-22.
+# Original headkernel.docker cohort: 3 Kimi-K3 tasks.
+# Image: harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang-rocm-k3:rocm720-mi35x-k3-20260727-tl312-08011830
+# Original baseline overlay and setup: docs/how-to/headkernel-upstream-runtime.md
+agent:
+  template: task_validator
+
+tasks:
+  - headkernel/kimi-k3__fwd_grouped_kernel_stage1
+  - headkernel/kimi-k3__moe_gemm1_stage1
+  - headkernel/kimi-k3__moe_gemm2_stage2
+
+target_gpu_model: MI355X
+log_directory: logs
+workspace_directory_prefix: workspace

@@ -1,0 +1,1 @@
+../../../../source/flydsl/kernels/moe_grouped_gemm_mxscale_gfx1250.py

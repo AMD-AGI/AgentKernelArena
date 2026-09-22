@@ -1,0 +1,61 @@
+{
+  "target": "sglang.srt.layers.layernorm:rocm_triton_gemma_fused_add_rmsnorm",
+  "process_id": 1179622,
+  "rank": "unknown",
+  "module": "sglang.srt.layers.layernorm",
+  "attr": "rocm_triton_gemma_fused_add_rmsnorm",
+  "num_cases": 0,
+  "total_calls_observed": 1,
+  "regimes_covered": [],
+  "cases": [],
+  "shape_counts": [
+    {
+      "sig": "T(1, 8192):torch.bfloat16|T(1, 8192):torch.bfloat16|T(8192,):torch.bfloat16|1e-06",
+      "count": 1,
+      "input_shapes": [
+        [
+          1,
+          8192
+        ],
+        [
+          1,
+          8192
+        ],
+        [
+          8192
+        ]
+      ],
+      "input_dtypes": [
+        "torch.bfloat16"
+      ]
+    }
+  ],
+  "num_distinct_shapes": 1,
+  "call_sequence": [
+    {
+      "sig": "T(1, 8192):torch.bfloat16|T(1, 8192):torch.bfloat16|T(8192,):torch.bfloat16|1e-06",
+      "in_graph": false
+    }
+  ],
+  "graph_replayed": false,
+  "in_graph_calls": 0,
+  "reference_io": "reference_io.pt",
+  "reference_io_sha256": null,
+  "oracle_complete": false,
+  "byte_budget": 8589934592,
+  "case_byte_limit": 4294967296,
+  "persist_policy": "share_large",
+  "pre_arg_indices": [],
+  "pre_kw_keys": [],
+  "capture_first_dims": [
+    64,
+    16384
+  ],
+  "shared_tensor_keys": [],
+  "oracle_bytes_est": 0,
+  "budget_exceeded": false,
+  "budget_skip_count": 0,
+  "oracle_save_count": 0,
+  "build": false,
+  "note": "Oracle captured from baseline. Do NOT edit unittest.py or reference_io.pt during opt."
+}

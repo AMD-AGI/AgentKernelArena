@@ -1,0 +1,355 @@
+{
+  "schema_version": 1,
+  "description": "User-authorized public runtime overrides. Original task configs remain source evidence. No GPU validation or equality to Harbor images is claimed.",
+  "observed_date": "2026-09-22",
+  "images": {
+    "sglang_v0517": {
+      "tag": "docker.io/rocm/hyperloom:sglang-v0.5.17-rocm7.2.0-mi350x",
+      "manifest_digest": "sha256:1f5464829559b086eb66f9b803cb9c7a817438c43edff2d5ef59b46a186745f6",
+      "config_digest": "sha256:ffe4af630e49b05c812db4a468bfb411c3dbb0e93124801f28349bfa31352dea",
+      "compressed_layer_bytes": 28479323239,
+      "pull_reference": "docker.io/rocm/hyperloom@sha256:1f5464829559b086eb66f9b803cb9c7a817438c43edff2d5ef59b46a186745f6",
+      "registry_manifest_verified_utc": "2026-09-22T10:42:54.493934+00:00"
+    },
+    "sglang_v0518": {
+      "tag": "docker.io/rocm/hyperloom:sglang-v0.5.18-rocm7.2.0-mi350x",
+      "manifest_digest": "sha256:da36f56f24cb2897a56be52dd43774c1a75b1500308ed7db3ba32fb8db4d259c",
+      "config_digest": "sha256:af24798ab4d57196fa1e928e4c81202bafb06cdeb663158f4d4f038fdb18f1a3",
+      "compressed_layer_bytes": 23161974193,
+      "pull_reference": "docker.io/rocm/hyperloom@sha256:da36f56f24cb2897a56be52dd43774c1a75b1500308ed7db3ba32fb8db4d259c",
+      "registry_manifest_verified_utc": "2026-09-22T10:42:54.683307+00:00"
+    }
+  },
+  "kimi_public_match": {
+    "matching_tag_found": false,
+    "tag_list_complete": true,
+    "source": "https://hub.docker.com/v2/repositories/rocm/hyperloom/tags?page_size=100",
+    "qualification": "Generic public v0.5.17 is a candidate only; the custom Kimi image remains the original requirement."
+  },
+  "setup_remote": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_ut_0914_full/20260922/setup",
+  "setup_manifest": "tools/headkernel-setup-artifacts.json",
+  "tasks": [
+    {
+      "task": "headkernel/deepseek-v4-pro__dsa_sparse_mla_attn",
+      "original_image": "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.17-rocm720-mi35x-profilerfix",
+      "public_tag": "docker.io/rocm/hyperloom:sglang-v0.5.17-rocm7.2.0-mi350x",
+      "public_image": "docker.io/rocm/hyperloom@sha256:1f5464829559b086eb66f9b803cb9c7a817438c43edff2d5ef59b46a186745f6",
+      "public_config_digest": "sha256:ffe4af630e49b05c812db4a468bfb411c3dbb0e93124801f28349bfa31352dea",
+      "status": "user_authorized_public_runtime_no_gpu_validation",
+      "environment": {
+        "TVM_FFI_DISABLE_TORCH_C_DLPACK": "1",
+        "PYTHONUNBUFFERED": "1",
+        "TRITON_CACHE_DIR": "/cache/triton",
+        "FLYDSL_RUNTIME_CACHE_DIR": "/cache/flydsl",
+        "AMD_COMGR_CACHE_DIR": "/cache/comgr",
+        "TILELANG_CACHE_DIR": "/cache/tilelang",
+        "TORCH_EXTENSIONS_DIR": "/cache/torch_ext",
+        "TVM_FFI_CACHE_DIR": "/tmp/c/tvm_ffi"
+      },
+      "external_patch": null,
+      "setup_mount": ".upstream-assets/setup/shared_nfs:/shared_nfs:ro"
+    },
+    {
+      "task": "headkernel/deepseek-v4-pro__moe_stage1_grouped_gemm_silu_flydsl",
+      "original_image": "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.17-rocm720-mi35x-profilerfix",
+      "public_tag": "docker.io/rocm/hyperloom:sglang-v0.5.17-rocm7.2.0-mi350x",
+      "public_image": "docker.io/rocm/hyperloom@sha256:1f5464829559b086eb66f9b803cb9c7a817438c43edff2d5ef59b46a186745f6",
+      "public_config_digest": "sha256:ffe4af630e49b05c812db4a468bfb411c3dbb0e93124801f28349bfa31352dea",
+      "status": "user_authorized_public_runtime_no_gpu_validation",
+      "environment": {
+        "TVM_FFI_DISABLE_TORCH_C_DLPACK": "1",
+        "PYTHONUNBUFFERED": "1",
+        "TRITON_CACHE_DIR": "/cache/triton",
+        "FLYDSL_RUNTIME_CACHE_DIR": "/cache/flydsl",
+        "AMD_COMGR_CACHE_DIR": "/cache/comgr",
+        "TILELANG_CACHE_DIR": "/cache/tilelang",
+        "TORCH_EXTENSIONS_DIR": "/cache/torch_ext",
+        "TVM_FFI_CACHE_DIR": "/tmp/c/tvm_ffi"
+      },
+      "external_patch": null,
+      "setup_mount": ".upstream-assets/setup/shared_nfs:/shared_nfs:ro"
+    },
+    {
+      "task": "headkernel/deepseek-v4-pro__moe_stage2_down_proj_reduce_opus_a8w4",
+      "original_image": "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.17-rocm720-mi35x-profilerfix",
+      "public_tag": "docker.io/rocm/hyperloom:sglang-v0.5.17-rocm7.2.0-mi350x",
+      "public_image": "docker.io/rocm/hyperloom@sha256:1f5464829559b086eb66f9b803cb9c7a817438c43edff2d5ef59b46a186745f6",
+      "public_config_digest": "sha256:ffe4af630e49b05c812db4a468bfb411c3dbb0e93124801f28349bfa31352dea",
+      "status": "user_authorized_public_runtime_no_gpu_validation",
+      "environment": {
+        "TVM_FFI_DISABLE_TORCH_C_DLPACK": "1",
+        "PYTHONUNBUFFERED": "1",
+        "TRITON_CACHE_DIR": "/cache/triton",
+        "FLYDSL_RUNTIME_CACHE_DIR": "/cache/flydsl",
+        "AMD_COMGR_CACHE_DIR": "/cache/comgr",
+        "TILELANG_CACHE_DIR": "/cache/tilelang",
+        "TORCH_EXTENSIONS_DIR": "/cache/torch_ext",
+        "TVM_FFI_CACHE_DIR": "/tmp/c/tvm_ffi"
+      },
+      "external_patch": null,
+      "setup_mount": ".upstream-assets/setup/shared_nfs:/shared_nfs:ro"
+    },
+    {
+      "task": "headkernel/glm-5.3-flash__elementwise_copy_cluster",
+      "original_image": "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.17-rocm720-mi35x-profilerfix",
+      "public_tag": "docker.io/rocm/hyperloom:sglang-v0.5.17-rocm7.2.0-mi350x",
+      "public_image": "docker.io/rocm/hyperloom@sha256:1f5464829559b086eb66f9b803cb9c7a817438c43edff2d5ef59b46a186745f6",
+      "public_config_digest": "sha256:ffe4af630e49b05c812db4a468bfb411c3dbb0e93124801f28349bfa31352dea",
+      "status": "user_authorized_public_runtime_no_gpu_validation",
+      "environment": {
+        "TVM_FFI_DISABLE_TORCH_C_DLPACK": "1",
+        "PYTHONUNBUFFERED": "1",
+        "TRITON_CACHE_DIR": "/cache/triton",
+        "FLYDSL_RUNTIME_CACHE_DIR": "/cache/flydsl",
+        "AMD_COMGR_CACHE_DIR": "/cache/comgr",
+        "TILELANG_CACHE_DIR": "/cache/tilelang",
+        "TORCH_EXTENSIONS_DIR": "/cache/torch_ext",
+        "TVM_FFI_CACHE_DIR": "/tmp/c/tvm_ffi"
+      },
+      "external_patch": null,
+      "setup_mount": ".upstream-assets/setup/shared_nfs:/shared_nfs:ro"
+    },
+    {
+      "task": "headkernel/minimax-m3__decode_score_kernel",
+      "original_image": "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.17-rocm720-mi35x-profilerfix",
+      "public_tag": "docker.io/rocm/hyperloom:sglang-v0.5.17-rocm7.2.0-mi350x",
+      "public_image": "docker.io/rocm/hyperloom@sha256:1f5464829559b086eb66f9b803cb9c7a817438c43edff2d5ef59b46a186745f6",
+      "public_config_digest": "sha256:ffe4af630e49b05c812db4a468bfb411c3dbb0e93124801f28349bfa31352dea",
+      "status": "user_authorized_public_runtime_no_gpu_validation",
+      "environment": {
+        "TVM_FFI_DISABLE_TORCH_C_DLPACK": "1",
+        "PYTHONUNBUFFERED": "1",
+        "TRITON_CACHE_DIR": "/cache/triton",
+        "FLYDSL_RUNTIME_CACHE_DIR": "/cache/flydsl",
+        "AMD_COMGR_CACHE_DIR": "/cache/comgr",
+        "TILELANG_CACHE_DIR": "/cache/tilelang",
+        "TORCH_EXTENSIONS_DIR": "/cache/torch_ext",
+        "TVM_FFI_CACHE_DIR": "/tmp/c/tvm_ffi"
+      },
+      "external_patch": null,
+      "setup_mount": ".upstream-assets/setup/shared_nfs:/shared_nfs:ro"
+    },
+    {
+      "task": "headkernel/minimax-m3__gqa_share_sparse_decode_kernel",
+      "original_image": "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.17-rocm720-mi35x-profilerfix",
+      "public_tag": "docker.io/rocm/hyperloom:sglang-v0.5.17-rocm7.2.0-mi350x",
+      "public_image": "docker.io/rocm/hyperloom@sha256:1f5464829559b086eb66f9b803cb9c7a817438c43edff2d5ef59b46a186745f6",
+      "public_config_digest": "sha256:ffe4af630e49b05c812db4a468bfb411c3dbb0e93124801f28349bfa31352dea",
+      "status": "user_authorized_public_runtime_no_gpu_validation",
+      "environment": {
+        "TVM_FFI_DISABLE_TORCH_C_DLPACK": "1",
+        "PYTHONUNBUFFERED": "1",
+        "TRITON_CACHE_DIR": "/cache/triton",
+        "FLYDSL_RUNTIME_CACHE_DIR": "/cache/flydsl",
+        "AMD_COMGR_CACHE_DIR": "/cache/comgr",
+        "TILELANG_CACHE_DIR": "/cache/tilelang",
+        "TORCH_EXTENSIONS_DIR": "/cache/torch_ext",
+        "TVM_FFI_CACHE_DIR": "/tmp/c/tvm_ffi"
+      },
+      "external_patch": null,
+      "setup_mount": ".upstream-assets/setup/shared_nfs:/shared_nfs:ro"
+    },
+    {
+      "task": "headkernel/minimax-m3__gqa_share_sparse_fwd_kernel",
+      "original_image": "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.17-rocm720-mi35x-profilerfix",
+      "public_tag": "docker.io/rocm/hyperloom:sglang-v0.5.17-rocm7.2.0-mi350x",
+      "public_image": "docker.io/rocm/hyperloom@sha256:1f5464829559b086eb66f9b803cb9c7a817438c43edff2d5ef59b46a186745f6",
+      "public_config_digest": "sha256:ffe4af630e49b05c812db4a468bfb411c3dbb0e93124801f28349bfa31352dea",
+      "status": "user_authorized_public_runtime_no_gpu_validation",
+      "environment": {
+        "TVM_FFI_DISABLE_TORCH_C_DLPACK": "1",
+        "PYTHONUNBUFFERED": "1",
+        "TRITON_CACHE_DIR": "/cache/triton",
+        "FLYDSL_RUNTIME_CACHE_DIR": "/cache/flydsl",
+        "AMD_COMGR_CACHE_DIR": "/cache/comgr",
+        "TILELANG_CACHE_DIR": "/cache/tilelang",
+        "TORCH_EXTENSIONS_DIR": "/cache/torch_ext",
+        "TVM_FFI_CACHE_DIR": "/tmp/c/tvm_ffi"
+      },
+      "external_patch": null,
+      "setup_mount": ".upstream-assets/setup/shared_nfs:/shared_nfs:ro"
+    },
+    {
+      "task": "headkernel/glm-5.3-flash__fused_moe_kernel",
+      "original_image": "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.18-rocm720-mi35x-profilerfix",
+      "public_tag": "docker.io/rocm/hyperloom:sglang-v0.5.18-rocm7.2.0-mi350x",
+      "public_image": "docker.io/rocm/hyperloom@sha256:da36f56f24cb2897a56be52dd43774c1a75b1500308ed7db3ba32fb8db4d259c",
+      "public_config_digest": "sha256:af24798ab4d57196fa1e928e4c81202bafb06cdeb663158f4d4f038fdb18f1a3",
+      "status": "user_authorized_public_runtime_no_gpu_validation",
+      "environment": {
+        "TVM_FFI_DISABLE_TORCH_C_DLPACK": "1",
+        "PYTHONUNBUFFERED": "1",
+        "TRITON_CACHE_DIR": "/cache/triton",
+        "FLYDSL_RUNTIME_CACHE_DIR": "/cache/flydsl",
+        "AMD_COMGR_CACHE_DIR": "/cache/comgr",
+        "TILELANG_CACHE_DIR": "/cache/tilelang",
+        "TORCH_EXTENSIONS_DIR": "/cache/torch_ext",
+        "TVM_FFI_CACHE_DIR": "/tmp/c/tvm_ffi",
+        "GEAK_MODEL_PATH": "/shared_nfs/models/GLM-5.3-Flash"
+      },
+      "external_patch": "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/patches/glm53-flash/001_glm5_next_arch_enablement.patch",
+      "setup_mount": ".upstream-assets/setup/shared_nfs:/shared_nfs:ro"
+    },
+    {
+      "task": "headkernel/qwen3.8-2.4t__dense_bf16_gemm_cluster",
+      "original_image": "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.18-rocm720-mi35x-profilerfix",
+      "public_tag": "docker.io/rocm/hyperloom:sglang-v0.5.18-rocm7.2.0-mi350x",
+      "public_image": "docker.io/rocm/hyperloom@sha256:da36f56f24cb2897a56be52dd43774c1a75b1500308ed7db3ba32fb8db4d259c",
+      "public_config_digest": "sha256:af24798ab4d57196fa1e928e4c81202bafb06cdeb663158f4d4f038fdb18f1a3",
+      "status": "user_authorized_public_runtime_no_gpu_validation",
+      "environment": {
+        "TVM_FFI_DISABLE_TORCH_C_DLPACK": "1",
+        "PYTHONUNBUFFERED": "1",
+        "TRITON_CACHE_DIR": "/cache/triton",
+        "FLYDSL_RUNTIME_CACHE_DIR": "/cache/flydsl",
+        "AMD_COMGR_CACHE_DIR": "/cache/comgr",
+        "TILELANG_CACHE_DIR": "/cache/tilelang",
+        "TORCH_EXTENSIONS_DIR": "/cache/torch_ext",
+        "TVM_FFI_CACHE_DIR": "/tmp/c/tvm_ffi"
+      },
+      "external_patch": null,
+      "setup_mount": ".upstream-assets/setup/shared_nfs:/shared_nfs:ro"
+    },
+    {
+      "task": "headkernel/qwen3.8-2.4t__fused_moe_2stage_mxfp4",
+      "original_image": "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.18-rocm720-mi35x-profilerfix",
+      "public_tag": "docker.io/rocm/hyperloom:sglang-v0.5.18-rocm7.2.0-mi350x",
+      "public_image": "docker.io/rocm/hyperloom@sha256:da36f56f24cb2897a56be52dd43774c1a75b1500308ed7db3ba32fb8db4d259c",
+      "public_config_digest": "sha256:af24798ab4d57196fa1e928e4c81202bafb06cdeb663158f4d4f038fdb18f1a3",
+      "status": "user_authorized_public_runtime_no_gpu_validation",
+      "environment": {
+        "TVM_FFI_DISABLE_TORCH_C_DLPACK": "1",
+        "PYTHONUNBUFFERED": "1",
+        "TRITON_CACHE_DIR": "/cache/triton",
+        "FLYDSL_RUNTIME_CACHE_DIR": "/cache/flydsl",
+        "AMD_COMGR_CACHE_DIR": "/cache/comgr",
+        "TILELANG_CACHE_DIR": "/cache/tilelang",
+        "TORCH_EXTENSIONS_DIR": "/cache/torch_ext",
+        "TVM_FFI_CACHE_DIR": "/tmp/c/tvm_ffi"
+      },
+      "external_patch": null,
+      "setup_mount": ".upstream-assets/setup/shared_nfs:/shared_nfs:ro"
+    },
+    {
+      "task": "headkernel/qwen3.8-2.4t__fused_recurrent_gated_delta_rule_decode",
+      "original_image": "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.18-rocm720-mi35x-profilerfix",
+      "public_tag": "docker.io/rocm/hyperloom:sglang-v0.5.18-rocm7.2.0-mi350x",
+      "public_image": "docker.io/rocm/hyperloom@sha256:da36f56f24cb2897a56be52dd43774c1a75b1500308ed7db3ba32fb8db4d259c",
+      "public_config_digest": "sha256:af24798ab4d57196fa1e928e4c81202bafb06cdeb663158f4d4f038fdb18f1a3",
+      "status": "user_authorized_public_runtime_no_gpu_validation",
+      "environment": {
+        "TVM_FFI_DISABLE_TORCH_C_DLPACK": "1",
+        "PYTHONUNBUFFERED": "1",
+        "TRITON_CACHE_DIR": "/cache/triton",
+        "FLYDSL_RUNTIME_CACHE_DIR": "/cache/flydsl",
+        "AMD_COMGR_CACHE_DIR": "/cache/comgr",
+        "TILELANG_CACHE_DIR": "/cache/tilelang",
+        "TORCH_EXTENSIONS_DIR": "/cache/torch_ext",
+        "TVM_FFI_CACHE_DIR": "/tmp/c/tvm_ffi"
+      },
+      "external_patch": null,
+      "setup_mount": ".upstream-assets/setup/shared_nfs:/shared_nfs:ro"
+    },
+    {
+      "task": "headkernel/qwen3.8-2.4t__gemma_fused_add_rmsnorm",
+      "original_image": "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.18-rocm720-mi35x-profilerfix",
+      "public_tag": "docker.io/rocm/hyperloom:sglang-v0.5.18-rocm7.2.0-mi350x",
+      "public_image": "docker.io/rocm/hyperloom@sha256:da36f56f24cb2897a56be52dd43774c1a75b1500308ed7db3ba32fb8db4d259c",
+      "public_config_digest": "sha256:af24798ab4d57196fa1e928e4c81202bafb06cdeb663158f4d4f038fdb18f1a3",
+      "status": "user_authorized_public_runtime_no_gpu_validation",
+      "environment": {
+        "TVM_FFI_DISABLE_TORCH_C_DLPACK": "1",
+        "PYTHONUNBUFFERED": "1",
+        "TRITON_CACHE_DIR": "/cache/triton",
+        "FLYDSL_RUNTIME_CACHE_DIR": "/cache/flydsl",
+        "AMD_COMGR_CACHE_DIR": "/cache/comgr",
+        "TILELANG_CACHE_DIR": "/cache/tilelang",
+        "TORCH_EXTENSIONS_DIR": "/cache/torch_ext",
+        "TVM_FFI_CACHE_DIR": "/tmp/c/tvm_ffi"
+      },
+      "external_patch": null,
+      "setup_mount": ".upstream-assets/setup/shared_nfs:/shared_nfs:ro"
+    },
+    {
+      "task": "headkernel/qwen3.8-2.4t__paged_attention_decode",
+      "original_image": "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.18-rocm720-mi35x-profilerfix",
+      "public_tag": "docker.io/rocm/hyperloom:sglang-v0.5.18-rocm7.2.0-mi350x",
+      "public_image": "docker.io/rocm/hyperloom@sha256:da36f56f24cb2897a56be52dd43774c1a75b1500308ed7db3ba32fb8db4d259c",
+      "public_config_digest": "sha256:af24798ab4d57196fa1e928e4c81202bafb06cdeb663158f4d4f038fdb18f1a3",
+      "status": "user_authorized_public_runtime_no_gpu_validation",
+      "environment": {
+        "TVM_FFI_DISABLE_TORCH_C_DLPACK": "1",
+        "PYTHONUNBUFFERED": "1",
+        "TRITON_CACHE_DIR": "/cache/triton",
+        "FLYDSL_RUNTIME_CACHE_DIR": "/cache/flydsl",
+        "AMD_COMGR_CACHE_DIR": "/cache/comgr",
+        "TILELANG_CACHE_DIR": "/cache/tilelang",
+        "TORCH_EXTENSIONS_DIR": "/cache/torch_ext",
+        "TVM_FFI_CACHE_DIR": "/tmp/c/tvm_ffi"
+      },
+      "external_patch": null,
+      "setup_mount": ".upstream-assets/setup/shared_nfs:/shared_nfs:ro"
+    },
+    {
+      "task": "headkernel/kimi-k3__fwd_grouped_kernel_stage1",
+      "original_image": "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang-rocm-k3:rocm720-mi35x-k3-20260727-tl312-08011830",
+      "public_tag": "docker.io/rocm/hyperloom:sglang-v0.5.17-rocm7.2.0-mi350x",
+      "public_image": "docker.io/rocm/hyperloom@sha256:1f5464829559b086eb66f9b803cb9c7a817438c43edff2d5ef59b46a186745f6",
+      "public_config_digest": "sha256:ffe4af630e49b05c812db4a468bfb411c3dbb0e93124801f28349bfa31352dea",
+      "status": "candidate_unverified_custom_kimi_build",
+      "environment": {
+        "TVM_FFI_DISABLE_TORCH_C_DLPACK": "1",
+        "PYTHONUNBUFFERED": "1",
+        "TRITON_CACHE_DIR": "/cache/triton",
+        "FLYDSL_RUNTIME_CACHE_DIR": "/cache/flydsl",
+        "AMD_COMGR_CACHE_DIR": "/cache/comgr",
+        "TILELANG_CACHE_DIR": "/cache/tilelang",
+        "TORCH_EXTENSIONS_DIR": "/cache/torch_ext",
+        "TVM_FFI_CACHE_DIR": "/tmp/c/tvm_ffi",
+        "GEAK_ROOT": "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/deps/kimi-k3/GEAK"
+      },
+      "external_patch": null,
+      "setup_mount": ".upstream-assets/setup/shared_nfs:/shared_nfs:ro"
+    },
+    {
+      "task": "headkernel/kimi-k3__moe_gemm1_stage1",
+      "original_image": "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang-rocm-k3:rocm720-mi35x-k3-20260727-tl312-08011830",
+      "public_tag": "docker.io/rocm/hyperloom:sglang-v0.5.17-rocm7.2.0-mi350x",
+      "public_image": "docker.io/rocm/hyperloom@sha256:1f5464829559b086eb66f9b803cb9c7a817438c43edff2d5ef59b46a186745f6",
+      "public_config_digest": "sha256:ffe4af630e49b05c812db4a468bfb411c3dbb0e93124801f28349bfa31352dea",
+      "status": "candidate_unverified_custom_kimi_build",
+      "environment": {
+        "TVM_FFI_DISABLE_TORCH_C_DLPACK": "1",
+        "PYTHONUNBUFFERED": "1",
+        "TRITON_CACHE_DIR": "/cache/triton",
+        "FLYDSL_RUNTIME_CACHE_DIR": "/cache/flydsl",
+        "AMD_COMGR_CACHE_DIR": "/cache/comgr",
+        "TILELANG_CACHE_DIR": "/cache/tilelang",
+        "TORCH_EXTENSIONS_DIR": "/cache/torch_ext",
+        "TVM_FFI_CACHE_DIR": "/tmp/c/tvm_ffi"
+      },
+      "external_patch": null,
+      "setup_mount": ".upstream-assets/setup/shared_nfs:/shared_nfs:ro"
+    },
+    {
+      "task": "headkernel/kimi-k3__moe_gemm2_stage2",
+      "original_image": "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang-rocm-k3:rocm720-mi35x-k3-20260727-tl312-08011830",
+      "public_tag": "docker.io/rocm/hyperloom:sglang-v0.5.17-rocm7.2.0-mi350x",
+      "public_image": "docker.io/rocm/hyperloom@sha256:1f5464829559b086eb66f9b803cb9c7a817438c43edff2d5ef59b46a186745f6",
+      "public_config_digest": "sha256:ffe4af630e49b05c812db4a468bfb411c3dbb0e93124801f28349bfa31352dea",
+      "status": "candidate_unverified_custom_kimi_build",
+      "environment": {
+        "TVM_FFI_DISABLE_TORCH_C_DLPACK": "1",
+        "PYTHONUNBUFFERED": "1",
+        "TRITON_CACHE_DIR": "/cache/triton",
+        "FLYDSL_RUNTIME_CACHE_DIR": "/cache/flydsl",
+        "AMD_COMGR_CACHE_DIR": "/cache/comgr",
+        "TILELANG_CACHE_DIR": "/cache/tilelang",
+        "TORCH_EXTENSIONS_DIR": "/cache/torch_ext",
+        "TVM_FFI_CACHE_DIR": "/tmp/c/tvm_ffi"
+      },
+      "external_patch": null,
+      "setup_mount": ".upstream-assets/setup/shared_nfs:/shared_nfs:ro"
+    }
+  ]
+}

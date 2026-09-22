@@ -1,0 +1,73 @@
+# qwen3.8-2.4t__gemma_fused_add_rmsnorm
+# Head kernel from the 2026-09-14 info table, rows: Q38-11
+
+source_file_path:
+  - source/minimax_m3_rmsnorm.py
+
+target_kernel_functions:
+  - gemma_fused_add_rmsnorm
+  - _gemma_fused_add_rmsnorm_kernel
+
+compile_command:
+  - python3 scripts/task_runner.py compile
+
+correctness_command:
+  - python3 scripts/task_runner.py correctness
+
+performance_command:
+  - python3 scripts/task_runner.py performance
+
+task_type: triton2triton
+
+task_result_template: null
+
+prompt:
+  source_code: null
+  instructions: |
+    Optimize the Qwen3.8-2.4T-A95B-MXFP4 head kernel `_gemma_fused_add_rmsnorm_kernel` (Triton) for maximum GPU
+    throughput on MI355X (gfx950) while keeping it numerically correct.
+
+    It is 5.06% of de-inflated GPU time in the serving profile
+    (ISL 8192 / OSL 1024 / CONC 64 / TP 8), currently at 77.9% memory-bound of its empirical roofline.
+
+    Edit only:
+      source/minimax_m3_rmsnorm.py
+
+    Entry points that must keep their signatures:
+      gemma_fused_add_rmsnorm
+      _gemma_fused_add_rmsnorm_kernel
+
+    The production seam is `sglang.srt.layers.layernorm:rocm_triton_gemma_fused_add_rmsnorm`; correctness is judged
+    against a deterministic baseline regenerated from the live shapes, strides and
+    dispatch selections that were actually observed in the serving profile, so the kernel
+    must stay faithful to the deployed contract (dtypes, layouts, quantization).
+
+    Note: prefill M=8192 and decode M=64 at N=8192. The oracle is a deterministic runtime baseline rather than a frozen blob; source/ is byte-identical to the deployed kernel, so the first measurement is a null run.
+  cheatsheet: null
+
+# ---------------------------------------------------------------------------
+# Provenance. Not read by the arena schema check; read by scripts/task_runner.py
+# and by anyone auditing where these numbers came from.
+headkernel:
+  model: "Qwen3.8-2.4T-A95B-MXFP4"
+  owner: "Li, Zeping <zepingl@amd.com>"
+  docker: "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.18-rocm720-mi35x-profilerfix"
+  serving: ISL 8192 / OSL 1024 / CONC 64 / TP 8
+  backend: Triton
+  regime: prefill+decode
+  device_symbol: _gemma_fused_add_rmsnorm_kernel
+  target_callable: "sglang.srt.layers.layernorm:rocm_triton_gemma_fused_add_rmsnorm"
+  tol: 0.02
+  oracle: runtime frozen baseline (no persistent tensor oracle) + live shape/dispatch evidence
+  source_package: P/fused_add_rmsnorm_task
+  source_seed: stock
+  info_rows:
+    - row: "Q38-11"
+      info_kernel: _gemma_fused_add_rmsnorm_kernel
+      gpu_pct: 5.06
+      empirical_roofline: "77.9% memory-bound"
+      optimized_roofline: null
+      e2e_uplift: "planning scenario ~+0.24% (NOT measured)"
+  symbol_locations:
+    gemma_fused_add_rmsnorm: source/minimax_m3_rmsnorm.py
+    _gemma_fused_add_rmsnorm_kernel: source/minimax_m3_rmsnorm.py

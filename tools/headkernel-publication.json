@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "source_file_count": 685,
+  "source_symlink_count": 170,
+  "source_final_comparison_utc": "2026-09-22T10:32:24.809762+00:00",
+  "source_changes_detected": 0,
+  "configured_tasks": 16,
+  "placeholders": 5,
+  "tensor_files": 17,
+  "tensor_bytes": 33139788731,
+  "tensor_oci_sha256_check": "passed, 17/17",
+  "tensor_verified_utc": "2026-09-22T10:42:56.444105+00:00",
+  "setup_files": 10,
+  "setup_bytes": 21170934,
+  "setup_oci_sha256_check": "passed, 10/10",
+  "oci_root": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_ut_0914_full/20260922",
+  "rclone_copy_flags": [
+    "--transfers",
+    "64000",
+    "--progress"
+  ],
+  "public_runtime_manifest": "tools/headkernel-public-runtimes.json",
+  "source_manifest": "tools/upstream-source/SOURCE-MANIFEST.json",
+  "gpu_validation_performed": false,
+  "framework_task_validator": "NOT_RUN",
+  "prior_adapted_validation_not_transferred": true,
+  "kimi_public_runtime": "unverified candidate; exact custom build not found publicly",
+  "cpu_compile_checks": "16/16 original AST/target compile commands passed",
+  "copy_helper_regressions": "51 copy/verify tests passed",
+  "oci_helper_regressions": "10 tests and 10 subtests passed"
+}

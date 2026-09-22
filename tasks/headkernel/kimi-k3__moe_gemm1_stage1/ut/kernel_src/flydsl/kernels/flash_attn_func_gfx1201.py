@@ -1,0 +1,1 @@
+../../../../source/flydsl/kernels/flash_attn_func_gfx1201.py

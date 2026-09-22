@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Install declared head-kernel fixtures from an explicitly selected local source.
+"""Install declared upstream head-kernel fixtures from explicit local or OCI sources.
 
-This setup utility uses only the standard library. It does not download,
-deserialize tensors, generate reference outputs, or run GPU workloads.
+This setup utility uses the standard library plus rclone for explicit OCI
+downloads. It never deserializes tensors, generates replacement inputs, or runs
+GPU workloads. Configure rclone credentials outside the repository.
 """
 
 from __future__ import annotations
@@ -17,11 +18,14 @@ from pathlib import Path, PurePosixPath
 import re
 import stat
 import sys
+import subprocess
+import tempfile
 from typing import Iterator
 import uuid
 
 
-DEFAULT_SUITE_ROOT = Path(__file__).resolve().parents[2] / "tasks/head_kernels"
+DEFAULT_SUITE_ROOT = Path(__file__).resolve().parents[2] / "tasks/headkernel"
+DEFAULT_MANIFEST = Path(__file__).resolve().parents[2] / "tools/headkernel-artifacts.json"
 HASH_KEYS = {
     "reference_io.pt": "reference_io_sha256",
     "timing_geometry.pt": "timing_geometry_sha256",
@@ -47,6 +51,7 @@ class Artifact:
 class Manifest:
     artifacts: tuple[Artifact, ...]
     tasks_without_persistent_fixtures: tuple[str, ...]
+    oci_remote_root: str | None = None
 
     @property
     def tasks(self) -> set[str]:
@@ -135,7 +140,13 @@ def load_manifest(path: Path) -> Manifest:
         without.append(task)
     if not artifacts and not without:
         raise ArtifactError("artifact manifest declares no tasks")
-    return Manifest(tuple(artifacts), tuple(without))
+    oci = data.get("oci_storage")
+    remote_root = None
+    if oci is not None:
+        if not isinstance(oci, dict):
+            raise ArtifactError("oci_storage must be an object")
+        remote_root = _oci_remote_root(oci.get("remote_root"))
+    return Manifest(tuple(artifacts), tuple(without), remote_root)
 
 
 def select_artifacts(manifest: Manifest, tasks: list[str] | None) -> list[Artifact]:
@@ -328,23 +339,87 @@ def prepare_artifacts(
     return results
 
 
+def _oci_remote_root(value: object) -> str:
+    if not isinstance(value, str) or value.count(":") != 1:
+        raise ArtifactError("OCI root must be a configured rclone REMOTE:bucket/prefix")
+    alias, path = value.split(":", 1)
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*", alias):
+        raise ArtifactError("OCI root requires a named rclone remote, not inline backend credentials")
+    _relative_parts(path)
+    return value
+
+
+def download_artifacts(artifacts: list[Artifact], suite_root: Path, remote_root: str | None):
+    """Copy only selected missing whole objects, verify them, and publish atomically."""
+    remote_root = _oci_remote_root(remote_root)
+    results = []
+    with _directory(suite_root) as root_fd:
+        missing = []
+        for artifact in artifacts:
+            with _parent(root_fd, artifact.path) as (parent_fd, name):
+                _check_metadata(parent_fd, artifact)
+                if _verify_existing(parent_fd, name, artifact):
+                    results.append((artifact.path, "verified existing"))
+                else:
+                    missing.append(artifact)
+        if not missing:
+            return results
+        # Keep large downloads on the destination filesystem, not a small /tmp.
+        with tempfile.TemporaryDirectory(prefix=".headkernel-oci-", dir=suite_root.parent) as temporary:
+            temporary_root = Path(temporary)
+            objects = temporary_root / "objects"
+            objects.mkdir(mode=0o700)
+            selected = temporary_root / "files.txt"
+            selected.write_text("".join((a.mirror_path or a.path) + "\n" for a in missing), encoding="utf-8")
+            command = ["rclone", "copy", remote_root, str(objects),
+                       "--files-from-raw", str(selected), "--transfers", "64000", "--progress"]
+            try:
+                # Preserve rclone's live progress; do not pass credentials or use a shell.
+                subprocess.run(command, check=True)
+            except subprocess.CalledProcessError as error:
+                raise ArtifactError(f"rclone copy failed with exit status {error.returncode}") from error
+            with _directory(objects) as objects_fd:
+                for artifact in missing:
+                    relative = artifact.mirror_path or artifact.path
+                    with _parent(root_fd, artifact.path) as (parent_fd, name):
+                        _check_metadata(parent_fd, artifact)
+                        if _verify_existing(parent_fd, name, artifact):
+                            results.append((artifact.path, "verified existing"))
+                            continue
+                        with _parent(objects_fd, relative) as (source_parent_fd, source_name):
+                            with _regular_file(source_parent_fd, source_name) as source_fd:
+                                _install(source_fd, parent_fd, name, artifact)
+                            os.unlink(source_name, dir_fd=source_parent_fd)
+                        results.append((artifact.path, "downloaded and verified"))
+    return results
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--suite-root", type=Path, default=DEFAULT_SUITE_ROOT)
-    parser.add_argument("--manifest", type=Path, help="default: <suite-root>/artifacts.json")
+    parser.add_argument("--manifest", type=Path, default=DEFAULT_MANIFEST,
+                        help="default: tools/headkernel-artifacts.json in this repository")
+    parser.add_argument("--oci-remote", help="override the full rclone REMOTE:bucket/prefix for --download")
     parser.add_argument("--task", action="append", help="task path relative to suite root; repeat to select a subset")
     operation = parser.add_mutually_exclusive_group(required=True)
-    operation.add_argument("--mirror", type=Path, help="local directory containing the manifest's mirror_path files")
+    operation.add_argument("--mirror", type=Path, help="local directory containing the declared <task>/ut/<fixture> files")
     operation.add_argument("--cache", type=Path, help="local directory containing files named by SHA-256")
+    operation.add_argument("--download", action="store_true", help="fetch selected original whole files from OCI using rclone")
     operation.add_argument("--verify", action="store_true", help="verify installed fixtures without writing")
     operation.add_argument("--list", action="store_true", help="list declarations without reading tensors")
     args = parser.parse_args(argv)
     try:
-        manifest = load_manifest(args.manifest or args.suite_root / "artifacts.json")
+        if args.oci_remote and not args.download:
+            raise ArtifactError("--oci-remote requires --download")
+        manifest = load_manifest(args.manifest)
         artifacts = select_artifacts(manifest, args.task)
         if args.list:
             for artifact in artifacts:
                 print(f"{artifact.size_bytes}\t{artifact.sha256}\t{artifact.path}")
+        elif args.download:
+            results = download_artifacts(artifacts, args.suite_root, args.oci_remote or manifest.oci_remote_root)
+            for path, action in results:
+                print(f"{action}: {path}")
         else:
             results = prepare_artifacts(
                 artifacts, args.suite_root, mirror=args.mirror, cache=args.cache,

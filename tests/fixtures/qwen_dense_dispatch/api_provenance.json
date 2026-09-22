@@ -1,9 +1,0 @@
-{
-  "commit": "d9e5ef7ce08ee7045d583aed768cff41aa9210fe",
-  "url": "https://raw.githubusercontent.com/ROCm/aiter/d9e5ef7ce08ee7045d583aed768cff41aa9210fe/aiter/jit/core.py",
-  "source_sha256": "622b8431b70b33b2193aee92d4134fa7ca4d8169ec8037a13d79749bcd9da01b",
-  "fixture_class": "AITER_CONFIG",
-  "class_body_verbatim": true,
-  "fixture_sha256": "d393d4cb7d0d4a6ea6c51316787143e681eb221e9b36bdb80bc126014e578f51",
-  "api": "AITER_CONFIG_GEMM_BF16 environment plus AITER_CONFIGS.get_config_file.cache_clear and AITER_CONFIG_GEMM_BF16_FILE"
-}

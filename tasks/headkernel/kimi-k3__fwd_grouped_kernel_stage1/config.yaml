@@ -1,0 +1,72 @@
+# kimi-k3__fwd_grouped_kernel_stage1
+# Head kernel from the 2026-09-14 info table, rows: K3-1
+
+source_file_path:
+  - source/geak_mla_stage1.py
+
+target_kernel_functions:
+  - _fwd_grouped_kernel_stage1_tm
+  - make_launcher
+
+compile_command:
+  - python3 scripts/task_runner.py compile
+
+correctness_command:
+  - python3 scripts/task_runner.py correctness
+
+performance_command:
+  - python3 scripts/task_runner.py performance
+
+task_type: triton2triton
+
+task_result_template: null
+
+prompt:
+  source_code: null
+  instructions: |
+    Optimize the Kimi-K3 head kernel `_fwd_grouped_kernel_stage1` (triton (attention)) for maximum GPU
+    throughput on MI355X (gfx950) while keeping it numerically correct.
+
+    It is 9.95% of de-inflated GPU time in the serving profile
+    (ISL 8192 / OSL 1024 / CONC 64 / TP 8), currently at 0.297 of its empirical roofline.
+
+    Edit only:
+      source/geak_mla_stage1.py
+
+    Entry points that must keep their signatures:
+      _fwd_grouped_kernel_stage1_tm
+      make_launcher
+
+    The production seam is `sglang.kernels.ops.attention.decode_attention:_decode_grouped_att_m_fwd`; correctness is judged
+    against a frozen live-server capture, not a re-derived reference, so the kernel
+    must stay faithful to the deployed contract (dtypes, layouts, quantization).
+  cheatsheet: null
+
+# ---------------------------------------------------------------------------
+# Provenance. Not read by the arena schema check; read by scripts/task_runner.py
+# and by anyone auditing where these numbers came from.
+headkernel:
+  model: "Kimi-K3"
+  owner: Hongtao
+  docker: "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang-rocm-k3:rocm720-mi35x-k3-20260727-tl312-08011830"
+  serving: ISL 8192 / OSL 1024 / CONC 64 / TP 8
+  backend: triton (attention)
+  regime: decode
+  device_symbol: _fwd_grouped_kernel_stage1
+  target_callable: "sglang.kernels.ops.attention.decode_attention:_decode_grouped_att_m_fwd"
+  tol: 0.02
+  oracle: "frozen live-capture ut/reference_io.pt"
+  source_package: "Z/Kimi-K3_fwd_grouped_kernel_stage1"
+  source_seed: "prior-candidate"
+  # 1 file(s) have no stock counterpart - they ARE the candidate seam (a new module the seam rebinds to), so the
+  # starting point is a prior candidate, not upstream code. Baseline speedup is measured against the live stack, not against this file.
+  info_rows:
+    - row: "K3-1"
+      info_kernel: _fwd_grouped_kernel_stage1
+      gpu_pct: 9.95
+      empirical_roofline: 0.297
+      optimized_roofline: 0.409
+      e2e_uplift: "+2.439%"
+  symbol_locations:
+    _fwd_grouped_kernel_stage1_tm: source/geak_mla_stage1.py
+    make_launcher: source/geak_mla_stage1.py

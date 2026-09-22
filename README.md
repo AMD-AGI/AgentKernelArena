@@ -1,5 +1,9 @@
 # AgentKernelArena: An A/B Testing and RL-Ready Environment for GPU Kernel Agents
 
+This branch contains the restored upstream top-five-model head-kernel setup.
+See [HEADKERNELS.md](HEADKERNELS.md) for the tasks, original environments, and
+required captured inputs.
+
 AgentKernelArena is a controlled experimentation platform for developing AI agents on real GPU kernel optimization tasks. It enables reproducible A/B testing across models, prompts, tools, and agent policies, while providing objective compilation, correctness, and performance signals that can serve as rewards for agent reinforcement learning.
 
 ## Overview

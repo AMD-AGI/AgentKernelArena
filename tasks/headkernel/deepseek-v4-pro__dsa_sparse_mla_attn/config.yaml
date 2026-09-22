@@ -1,0 +1,77 @@
+# deepseek-v4-pro__dsa_sparse_mla_attn
+# Head kernel from the 2026-09-14 info table, rows: DS-1
+
+source_file_path:
+  - source/tilelang_kernel.py
+
+target_kernel_functions:
+  - dpsk_v4_fp8_attention_fwd
+  - sparse_mla_fwd_decode_partial
+  - sparse_mla_fwd_decode_combine
+
+compile_command:
+  - python3 scripts/task_runner.py compile
+
+correctness_command:
+  - python3 scripts/task_runner.py correctness
+
+performance_command:
+  - python3 scripts/task_runner.py performance
+
+task_type: triton2triton
+
+task_result_template: null
+
+prompt:
+  source_code: null
+  instructions: |
+    Optimize the DeepSeek-V4-Pro head kernel `MLA` (tilelang) for maximum GPU
+    throughput on MI355X (gfx950) while keeping it numerically correct.
+
+    It is 44.9% of de-inflated GPU time in the serving profile
+    (ISL 8192 / OSL 1024 / CONC 64 / TP 8), currently at 18% of its empirical roofline.
+
+    Edit only:
+      source/tilelang_kernel.py
+
+    Entry points that must keep their signatures:
+      dpsk_v4_fp8_attention_fwd
+      sparse_mla_fwd_decode_partial
+      sparse_mla_fwd_decode_combine
+
+    The production seam is `sglang.kernels.ops.attention.dsa.tilelang_kernel:dpsk_v4_fp8_attention_fwd`; correctness is judged
+    against a frozen live-server capture, not a re-derived reference, so the kernel
+    must stay faithful to the deployed contract (dtypes, layouts, quantization).
+
+    Note: chushi optimized ~5.90x roofline~0.31; zhuqiong optimized ~8.63x roofline~0.51
+  cheatsheet: null
+
+# ---------------------------------------------------------------------------
+# Provenance. Not read by the arena schema check; read by scripts/task_runner.py
+# and by anyone auditing where these numbers came from.
+headkernel:
+  model: "DeepSeek-V4-Pro"
+  owner: zihao
+  docker: "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.17-rocm720-mi35x-profilerfix"
+  serving: ISL 8192 / OSL 1024 / CONC 64 / TP 8
+  backend: tilelang
+  regime: decode
+  device_symbol: main_kernel
+  target_callable: "sglang.kernels.ops.attention.dsa.tilelang_kernel:dpsk_v4_fp8_attention_fwd"
+  tol: 0.02
+  oracle: "frozen live-capture ut/reference_io.pt"
+  source_package: "Z/DeepSeek-V4-Pro_dsa_sparse_mla_attn"
+  source_seed: stock
+  # 1 file(s) shipped pre-tuned by a previous GEAK run and were reset to baseline_ref/*.orig; the tuned version is kept at
+  # _prior_solutions/deepseek-v4-pro__dsa_sparse_mla_attn/
+  info_rows:
+    - row: "DS-1"
+      info_kernel: MLA
+      gpu_pct: 44.9
+      empirical_roofline: "18%"
+      optimized_roofline: "18.1%"
+      e2e_uplift: null
+  symbol_locations:
+    dpsk_v4_fp8_attention_fwd: source/tilelang_kernel.py
+    sparse_mla_fwd_decode_partial: source/tilelang_kernel.py
+    sparse_mla_fwd_decode_combine: source/tilelang_kernel.py

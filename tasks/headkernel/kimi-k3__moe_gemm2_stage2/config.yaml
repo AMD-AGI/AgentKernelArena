@@ -1,0 +1,77 @@
+# kimi-k3__moe_gemm2_stage2
+# Head kernel from the 2026-09-14 info table, rows: K3-5
+
+source_file_path:
+  - source/flydsl/moe_kernels.py
+  - source/flydsl/kernels/mixed_moe_gemm_2stage.py
+  - source/flydsl/kernels/gemm_mxscale_gfx1250.py
+  - source/flydsl/kernels/moe_gemm_2stage.py
+  - source/flydsl/kernels/fmha_gfx1250/fmha_kernel.py
+  - source/flydsl/kernels/gemm_fp8fp4_gfx1250.py
+  - source/flydsl/kernels/fused_compress_attn.py
+  - source/flydsl/kernels/fused_compress_attn_gfx1250.py
+  - source/flydsl/kernels/fmha_gfx1250/fmha_core_loop.py
+
+target_kernel_functions:
+  - flydsl_moe_stage2
+
+compile_command:
+  - python3 scripts/task_runner.py compile
+
+correctness_command:
+  - python3 scripts/task_runner.py correctness
+
+performance_command:
+  - python3 scripts/task_runner.py performance
+
+task_type: triton2triton
+
+task_result_template: null
+
+prompt:
+  source_code: null
+  instructions: |
+    Optimize the Kimi-K3 head kernel `moe_gemm2_0` (aiter asm (AOT) / flydsl opus - fused_moe_2stages stage-2 down - mxfp4 + bf16) for maximum GPU
+    throughput on MI355X (gfx950) while keeping it numerically correct.
+
+    It is 5.47% of de-inflated GPU time in the serving profile
+    (ISL 8192 / OSL 1024 / CONC 64 / TP 8), currently at 0.230 of its empirical roofline.
+
+    Edit only:
+      source/flydsl/moe_kernels.py
+
+    Entry points that must keep their signatures:
+      flydsl_moe_stage2
+
+    The production seam is `aiter.ops.flydsl.moe_kernels:flydsl_moe_stage2`; correctness is judged
+    against a frozen live-server capture, not a re-derived reference, so the kernel
+    must stay faithful to the deployed contract (dtypes, layouts, quantization).
+
+    Note: same synthetic oracle layout as K3-4.
+  cheatsheet: null
+
+# ---------------------------------------------------------------------------
+# Provenance. Not read by the arena schema check; read by scripts/task_runner.py
+# and by anyone auditing where these numbers came from.
+headkernel:
+  model: "Kimi-K3"
+  owner: Hongtao
+  docker: "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang-rocm-k3:rocm720-mi35x-k3-20260727-tl312-08011830"
+  serving: ISL 8192 / OSL 1024 / CONC 64 / TP 8
+  backend: "aiter asm (AOT) / flydsl opus - fused_moe_2stages stage-2 down - mxfp4 + bf16"
+  regime: prefill
+  device_symbol: moe_gemm2_0
+  target_callable: "aiter.ops.flydsl.moe_kernels:flydsl_moe_stage2"
+  tol: 0.05
+  oracle: "frozen live-capture ut/reference_io.pt"
+  source_package: "Z/Kimi-K3_moe_gemm2_0"
+  source_seed: stock
+  info_rows:
+    - row: "K3-5"
+      info_kernel: moe_gemm2_0
+      gpu_pct: 5.47
+      empirical_roofline: 0.230
+      optimized_roofline: null
+      e2e_uplift: null
+  symbol_locations:
+    flydsl_moe_stage2: source/flydsl/moe_kernels.py

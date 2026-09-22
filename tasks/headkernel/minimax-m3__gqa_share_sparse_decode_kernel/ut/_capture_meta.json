@@ -1,0 +1,40 @@
+{
+  "task_dir": "/wekafs/test_results/Minimax_m3_MXFP4_20260828/MiniMax-M3-MXFP4/20260828T105325Z-4d49e44f/geak/e2e_cycle0/kernels/_gqa_share_sparse_decode_kernel_task",
+  "bytes_reclaimed": 57988655768,
+  "bytes_promoted": 7248452679,
+  "bytes_before": 57988655768,
+  "bytes_after": 0,
+  "capture_dirs_seen": [
+    "/wekafs/test_results/Minimax_m3_MXFP4_20260828/MiniMax-M3-MXFP4/20260828T105325Z-4d49e44f/geak/e2e_cycle0/kernels/_gqa_share_sparse_decode_kernel_task/capture.pid-1278437.rank-unknown",
+    "/wekafs/test_results/Minimax_m3_MXFP4_20260828/MiniMax-M3-MXFP4/20260828T105325Z-4d49e44f/geak/e2e_cycle0/kernels/_gqa_share_sparse_decode_kernel_task/capture.pid-1278438.rank-unknown",
+    "/wekafs/test_results/Minimax_m3_MXFP4_20260828/MiniMax-M3-MXFP4/20260828T105325Z-4d49e44f/geak/e2e_cycle0/kernels/_gqa_share_sparse_decode_kernel_task/capture.pid-1278439.rank-unknown",
+    "/wekafs/test_results/Minimax_m3_MXFP4_20260828/MiniMax-M3-MXFP4/20260828T105325Z-4d49e44f/geak/e2e_cycle0/kernels/_gqa_share_sparse_decode_kernel_task/capture.pid-1278440.rank-unknown",
+    "/wekafs/test_results/Minimax_m3_MXFP4_20260828/MiniMax-M3-MXFP4/20260828T105325Z-4d49e44f/geak/e2e_cycle0/kernels/_gqa_share_sparse_decode_kernel_task/capture.pid-1278441.rank-unknown",
+    "/wekafs/test_results/Minimax_m3_MXFP4_20260828/MiniMax-M3-MXFP4/20260828T105325Z-4d49e44f/geak/e2e_cycle0/kernels/_gqa_share_sparse_decode_kernel_task/capture.pid-1278442.rank-unknown",
+    "/wekafs/test_results/Minimax_m3_MXFP4_20260828/MiniMax-M3-MXFP4/20260828T105325Z-4d49e44f/geak/e2e_cycle0/kernels/_gqa_share_sparse_decode_kernel_task/capture.pid-1278443.rank-unknown",
+    "/wekafs/test_results/Minimax_m3_MXFP4_20260828/MiniMax-M3-MXFP4/20260828T105325Z-4d49e44f/geak/e2e_cycle0/kernels/_gqa_share_sparse_decode_kernel_task/capture.pid-1278444.rank-unknown"
+  ],
+  "removed_paths": [
+    "/wekafs/test_results/Minimax_m3_MXFP4_20260828/MiniMax-M3-MXFP4/20260828T105325Z-4d49e44f/geak/e2e_cycle0/kernels/_gqa_share_sparse_decode_kernel_task/capture.pid-1278437.rank-unknown",
+    "/wekafs/test_results/Minimax_m3_MXFP4_20260828/MiniMax-M3-MXFP4/20260828T105325Z-4d49e44f/geak/e2e_cycle0/kernels/_gqa_share_sparse_decode_kernel_task/capture.pid-1278438.rank-unknown",
+    "/wekafs/test_results/Minimax_m3_MXFP4_20260828/MiniMax-M3-MXFP4/20260828T105325Z-4d49e44f/geak/e2e_cycle0/kernels/_gqa_share_sparse_decode_kernel_task/capture.pid-1278439.rank-unknown",
+    "/wekafs/test_results/Minimax_m3_MXFP4_20260828/MiniMax-M3-MXFP4/20260828T105325Z-4d49e44f/geak/e2e_cycle0/kernels/_gqa_share_sparse_decode_kernel_task/capture.pid-1278440.rank-unknown",
+    "/wekafs/test_results/Minimax_m3_MXFP4_20260828/MiniMax-M3-MXFP4/20260828T105325Z-4d49e44f/geak/e2e_cycle0/kernels/_gqa_share_sparse_decode_kernel_task/capture.pid-1278441.rank-unknown",
+    "/wekafs/test_results/Minimax_m3_MXFP4_20260828/MiniMax-M3-MXFP4/20260828T105325Z-4d49e44f/geak/e2e_cycle0/kernels/_gqa_share_sparse_decode_kernel_task/capture.pid-1278442.rank-unknown",
+    "/wekafs/test_results/Minimax_m3_MXFP4_20260828/MiniMax-M3-MXFP4/20260828T105325Z-4d49e44f/geak/e2e_cycle0/kernels/_gqa_share_sparse_decode_kernel_task/capture.pid-1278443.rank-unknown",
+    "/wekafs/test_results/Minimax_m3_MXFP4_20260828/MiniMax-M3-MXFP4/20260828T105325Z-4d49e44f/geak/e2e_cycle0/kernels/_gqa_share_sparse_decode_kernel_task/capture.pid-1278444.rank-unknown"
+  ],
+  "promoted": true,
+  "keep_meta_path": "/wekafs/test_results/Minimax_m3_MXFP4_20260828/MiniMax-M3-MXFP4/20260828T105325Z-4d49e44f/geak/e2e_cycle0/kernels/_gqa_share_sparse_decode_kernel_task/capture.pid-1278443.rank-unknown/meta.json",
+  "errors": [],
+  "promote": {
+    "promoted_meta": true,
+    "promoted_oracle": true,
+    "bytes_promoted": 7248452679,
+    "oracle_path": "/wekafs/test_results/Minimax_m3_MXFP4_20260828/MiniMax-M3-MXFP4/20260828T105325Z-4d49e44f/geak/e2e_cycle0/kernels/_gqa_share_sparse_decode_kernel_task/reference_io.pt",
+    "meta_path": "/wekafs/test_results/Minimax_m3_MXFP4_20260828/MiniMax-M3-MXFP4/20260828T105325Z-4d49e44f/geak/e2e_cycle0/kernels/_gqa_share_sparse_decode_kernel_task/meta.json"
+  },
+  "capture_dirs_remaining": [],
+  "authoritative_oracle_bytes": 7248452679,
+  "authoritative_oracle_present": true
+}

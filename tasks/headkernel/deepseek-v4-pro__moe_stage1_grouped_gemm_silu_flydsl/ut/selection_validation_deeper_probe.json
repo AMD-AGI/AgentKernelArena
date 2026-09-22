@@ -1,0 +1,73 @@
+{
+  "contract": "kernel_selection",
+  "ok": false,
+  "target_callable": "aiter.fused_moe:_flydsl_stage1_wrapper",
+  "device_kernel": "mfma_moe1_silu_mul_afp8_wfp4_fp8_t64x128x256_pm1_fp8q_sort_async_gui_xcd4_v32",
+  "capture_target": "aiter.fused_moe:_flydsl_stage1_wrapper",
+  "total_calls_observed": 5,
+  "target_marker": "GEAK_TARGET::aiter.fused_moe:_flydsl_stage1_wrapper",
+  "target_marker_calls": 5,
+  "matched_kernel_calls": 1,
+  "matched_kernel_names": [
+    "mfma_moe1_silu_mul_afp8_wfp4_fp8_t64x128x256_pm1_fp8q_sort_async_gui_xcd4_v32"
+  ],
+  "correlated_external_ids": 670,
+  "correlated_launch_correlations": 148,
+  "candidate_targets_tested": [
+    "aiter.fused_moe:_flydsl_stage1_wrapper",
+    "aiter.ops.flydsl:flydsl_moe_stage1"
+  ],
+  "live_candidate_targets": [
+    "aiter.fused_moe:_flydsl_stage1_wrapper",
+    "aiter.ops.flydsl:flydsl_moe_stage1"
+  ],
+  "deeper_live_candidates": [
+    "aiter.ops.flydsl:flydsl_moe_stage1"
+  ],
+  "missing_candidate_markers": [],
+  "installed_but_never_live_candidates": [],
+  "deepest_verified": false,
+  "evidence": "installed+live_nested_candidate_markers+torch_profiler_external_id_or_launch_correlation",
+  "failed": [
+    "deeper_live_candidate_exists"
+  ],
+  "process_verdicts": [
+    {
+      "capture_meta_file": "/root/geak_cap_stage1/capture.pid-243954.rank-unknown/meta.json",
+      "trace_files": [
+        "/root/geak_cap_stage1/selection_trace.pid-243954.rank-unknown.call-1.json",
+        "/root/geak_cap_stage1/selection_trace.pid-243954.rank-unknown.call-2.json",
+        "/root/geak_cap_stage1/selection_trace.pid-243954.rank-unknown.call-3.json",
+        "/root/geak_cap_stage1/selection_trace.pid-243954.rank-unknown.call-4.json",
+        "/root/geak_cap_stage1/selection_trace.pid-243954.rank-unknown.call-5.json"
+      ],
+      "ok": false,
+      "failed": [
+        "deeper_live_candidate_exists"
+      ],
+      "live_candidate_targets": [
+        "aiter.fused_moe:_flydsl_stage1_wrapper",
+        "aiter.ops.flydsl:flydsl_moe_stage1"
+      ],
+      "deeper_live_candidates": [
+        "aiter.ops.flydsl:flydsl_moe_stage1"
+      ]
+    }
+  ],
+  "best_process_meta_file": "/root/geak_cap_stage1/capture.pid-243954.rank-unknown/meta.json",
+  "trace_file": "",
+  "trace_files": [
+    "/root/geak_cap_stage1/selection_trace.pid-243954.rank-unknown.call-1.json",
+    "/root/geak_cap_stage1/selection_trace.pid-243954.rank-unknown.call-2.json",
+    "/root/geak_cap_stage1/selection_trace.pid-243954.rank-unknown.call-3.json",
+    "/root/geak_cap_stage1/selection_trace.pid-243954.rank-unknown.call-4.json",
+    "/root/geak_cap_stage1/selection_trace.pid-243954.rank-unknown.call-5.json"
+  ],
+  "trace_files_considered": [
+    "/root/geak_cap_stage1/selection_trace.pid-243954.rank-unknown.call-1.json",
+    "/root/geak_cap_stage1/selection_trace.pid-243954.rank-unknown.call-2.json",
+    "/root/geak_cap_stage1/selection_trace.pid-243954.rank-unknown.call-3.json",
+    "/root/geak_cap_stage1/selection_trace.pid-243954.rank-unknown.call-4.json",
+    "/root/geak_cap_stage1/selection_trace.pid-243954.rank-unknown.call-5.json"
+  ]
+}

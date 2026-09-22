@@ -14,9 +14,8 @@ from __future__ import annotations
 
 import ast
 import hashlib
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-import symtable
 from typing import Iterable
 
 import yaml
@@ -55,20 +54,11 @@ _IGNORED_RUNTIME_DIRS = {
 
 
 @dataclass(frozen=True)
-class PythonHarnessPolicy:
-    """Baseline-owned binding boundary for a co-located Python harness."""
-
-    editable_functions: frozenset[str]
-    protected_bindings: frozenset[str]
-
-
-@dataclass(frozen=True)
 class WorkspaceSnapshot:
     """Immutable digest snapshot of protected workspace files."""
 
     root: Path
     digests: dict[str, str]
-    python_policies: dict[str, PythonHarnessPolicy] = field(default_factory=dict)
 
 
 def _is_protected_path(rel: Path) -> bool:
@@ -155,7 +145,7 @@ def _editable_entrypoint_targets(root: Path) -> dict[Path, set[str]]:
     # configured pytest/performance entrypoint but leave source_file_path empty.
     # Treat that entrypoint as the implied source for this family only. The AST
     # digest still protects tests, ordinary helpers, constants, and executable
-    # harness statements; only kernel-only imports and implementation nodes are masked.
+    # harness statements; only imports and Triton target/helper nodes are masked.
     if config.get("task_type") == "instruction2triton" and not source_paths:
         source_paths.update(entrypoints)
     return {
@@ -207,132 +197,34 @@ def _target_decorator_helper_names(
     return helper_names
 
 
-def _editable_python_functions(tree: ast.Module, editable_targets: set[str]) -> set[str]:
-    helpers = _target_decorator_helper_names(tree, editable_targets)
-    return editable_targets | {
-        node.name for node in tree.body
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-        and (node.name in helpers or _is_triton_jit_function(node))
-    }
-
-
-def _python_harness_policy(path: Path, editable_targets: set[str]) -> PythonHarnessPolicy:
-    """Freeze harness globals before editable code can redefine its own boundary.
-
-    Python's symbol table distinguishes a test's local ``x`` from the global
-    timer/import it uses. This leaves kernel-only imports editable without
-    allowing them to rebind protected helpers, constants, imports or builtins.
-    """
-    tree = ast.parse(path.read_text())
-    editable = _editable_python_functions(tree, editable_targets)
-    protected = ast.Module(body=[
-        node for node in tree.body
-        if not isinstance(node, (ast.Import, ast.ImportFrom))
-        and not (isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-                 and node.name in editable)
-    ], type_ignores=[])
-    symbols = symtable.symtable(ast.unparse(protected), str(path), "exec")
-    bindings = {symbol.get_name() for symbol in symbols.get_symbols()}
-
-    def collect_globals(table):
-        for child in table.get_children():
-            bindings.update(symbol.get_name() for symbol in child.get_symbols()
-                            if symbol.is_global())
-            collect_globals(child)
-
-    collect_globals(symbols)
-    return PythonHarnessPolicy(frozenset(editable), frozenset(bindings - editable))
-
-
-def _protected_import(
-    node: ast.Import | ast.ImportFrom, bindings: frozenset[str],
-) -> ast.Import | ast.ImportFrom | None:
-    """Retain only import aliases that can replace a protected module binding."""
-    if isinstance(node, ast.ImportFrom) and (
-        node.module == "__future__" or any(alias.name == "*" for alias in node.names)
-    ):
-        # Future imports change the surrounding module's semantics; wildcard
-        # imports can replace any global. Neither has a kernel-only boundary.
-        return node
-    names = [alias for alias in node.names
-             if (alias.asname or (alias.name.split(".")[0]
-                                 if isinstance(node, ast.Import) else alias.name)) in bindings]
-    if not names:
-        return None
-    if isinstance(node, ast.Import):
-        return ast.Import(names=names)
-    return ast.ImportFrom(module=node.module, names=names, level=node.level)
-
-
-def _global_imports(node: ast.AST, bindings: frozenset[str]) -> list[ast.AST]:
-    """Keep imports in editable scopes that explicitly overwrite harness globals.
-
-    An ordinary function-local import stays editable. ``global timer; import
-    payload as timer`` binds the module variable and must remain protected,
-    including when nested inside an editable implementation helper.
-    """
-    scopes = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)
-    nodes, nested = [], []
-
-    def walk_scope(current):
-        for child in ast.iter_child_nodes(current):
-            if isinstance(child, scopes):
-                nested.append(child)
-            else:
-                nodes.append(child)
-                walk_scope(child)
-
-    walk_scope(node)
-    globals_ = frozenset(name for child in nodes if isinstance(child, ast.Global)
-                         for name in child.names) & bindings
-    imports = [projected for child in nodes
-               if isinstance(child, (ast.Import, ast.ImportFrom))
-               and (projected := _protected_import(child, globals_)) is not None]
-    for child in nested:
-        imports.extend(_global_imports(child, bindings))
-    return imports
-
-
-def _sha256_python_harness(
-    path: Path, editable_targets: set[str], policy: PythonHarnessPolicy | None = None,
-) -> str:
+def _sha256_python_harness(path: Path, editable_targets: set[str]) -> str:
     """Hash the harness portion of a co-located Python kernel entrypoint.
 
     ROCmBench keeps editable Triton code and pytest harnesses in one module.
-    Kernel-only imports, declared target functions, Triton JIT helpers, and top-level
+    Imports, declared target functions, Triton JIT helpers, and top-level
     helpers called directly by target decorators are legitimate optimization
     surface, so omit their complete AST nodes.  Test/benchmark functions,
     unrelated ordinary Python helpers, module constants, and executable
-    statements remain in the digest. Import bindings used by the original
-    harness are frozen even if the candidate moves them into an editable scope.
+    statements remain in the digest.
     """
 
     try:
         tree = ast.parse(path.read_text())
-        if policy is None:
-            policy = _python_harness_policy(path, editable_targets)
     except (OSError, UnicodeDecodeError, SyntaxError):
         return "invalid-python:" + _sha256(path)
 
-    editable = policy.editable_functions | (
-        _editable_python_functions(tree, editable_targets) - policy.protected_bindings
-    )
-    protected, global_imports = [], []
-    for node in tree.body:
-        if isinstance(node, (ast.Import, ast.ImportFrom)):
-            projected = _protected_import(node, policy.protected_bindings)
-            if projected is not None:
-                protected.append(projected)
-        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name in editable:
-            imports = _global_imports(node, policy.protected_bindings)
-            if imports:
-                global_imports.append((node.name, [ast.dump(item, include_attributes=False)
-                                                    for item in imports]))
-        else:
-            protected.append(node)
-    tree.body = protected
+    decorator_helpers = _target_decorator_helper_names(tree, editable_targets)
+    tree.body = [
+        node
+        for node in tree.body
+        if not isinstance(node, (ast.Import, ast.ImportFrom))
+        and not (
+            isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and node.name in editable_targets | decorator_helpers
+        )
+        and not _is_triton_jit_function(node)
+    ]
     canonical = ast.dump(tree, annotate_fields=True, include_attributes=False)
-    canonical += repr(global_imports)
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
@@ -381,10 +273,7 @@ def _task_input_paths(root: Path, task_root: Path) -> set[str]:
     return protected
 
 
-def _protected_digests(
-    root: Path, extra_paths: Iterable[str] = (),
-    python_policies: dict[str, PythonHarnessPolicy] | None = None,
-) -> dict[str, str]:
+def _protected_digests(root: Path, extra_paths: Iterable[str] = ()) -> dict[str, str]:
     editable_entrypoints = _editable_entrypoint_targets(root)
     digests = {}
     paths = set(_iter_protected_files(root))
@@ -394,10 +283,7 @@ def _protected_digests(
     for path in sorted(paths):
         resolved = path.resolve()
         if resolved in editable_entrypoints:
-            # Configured entrypoints are resolved, while the filesystem scan
-            # can also encounter an in-workspace symlink to the same module.
-            policy = (python_policies or {}).get(str(resolved.relative_to(root.resolve())))
-            digest = _sha256_python_harness(path, editable_entrypoints[resolved], policy)
+            digest = _sha256_python_harness(path, editable_entrypoints[resolved])
         else:
             digest = _sha256(path)
         digests[str(path.relative_to(root))] = digest
@@ -447,15 +333,8 @@ def snapshot_workspace_harness(
     )
     if missing:
         raise RuntimeError(f"Task inputs missing before agent execution: {missing}")
-    policies = {}
-    for path, targets in _editable_entrypoint_targets(root).items():
-        try:
-            policies[str(path.relative_to(root.resolve()))] = _python_harness_policy(path, targets)
-        except (OSError, UnicodeDecodeError, SyntaxError):
-            # Invalid Python is protected byte-for-byte by the digest fallback.
-            continue
-    digests = _protected_digests(root, task_inputs, policies)
-    return WorkspaceSnapshot(root=root, digests=digests, python_policies=policies)
+    digests = _protected_digests(root, task_inputs)
+    return WorkspaceSnapshot(root=root, digests=digests)
 
 
 def verify_workspace_harness(snapshot: WorkspaceSnapshot, logger=None) -> None:
@@ -476,7 +355,7 @@ def verify_workspace_harness(snapshot: WorkspaceSnapshot, logger=None) -> None:
         # files. A raw SHA here would reject legitimate target-function edits.
         # Recheck the original paths even when their names do not match a
         # harness pattern (e.g. session_cases.json or a reference module).
-        return _protected_digests(snapshot.root, snapshot.digests, snapshot.python_policies)
+        return _protected_digests(snapshot.root, snapshot.digests)
 
     before = snapshot.digests
     current = _scan()

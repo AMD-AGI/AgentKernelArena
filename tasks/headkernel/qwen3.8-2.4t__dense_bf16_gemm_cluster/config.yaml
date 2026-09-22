@@ -1,0 +1,105 @@
+# qwen3.8-2.4t__dense_bf16_gemm_cluster
+# Head kernel from the 2026-09-14 info table, rows: Q38-4, Q38-5, Q38-6, Q38-7, Q38-8
+
+source_file_path:
+  - source/tuned_gemm_candidate.py
+
+target_kernel_functions:
+  - gemm_a16w16
+  - torch_gemm
+
+compile_command:
+  - python3 scripts/task_runner.py compile
+
+correctness_command:
+  - python3 scripts/task_runner.py correctness
+
+performance_command:
+  - python3 scripts/task_runner.py performance
+
+task_type: triton2triton
+
+task_result_template: null
+
+prompt:
+  source_code: null
+  instructions: |
+    Optimize the Qwen3.8-2.4T-A95B-MXFP4 head kernel `Cijk_Alik_Bljk_BBS_BH_Bias_HA_S_SAV_UserArgs_MT256x240x64_MI -> MT256x256x64_MI` (hipBLASLt / Tensile) for maximum GPU
+    throughput on MI355X (gfx950) while keeping it numerically correct.
+
+    It is 15.56% of de-inflated GPU time in the serving profile
+    (ISL 8192 / OSL 1024 / CONC 64 / TP 8), currently at 40.1% compute-bound of its empirical roofline.
+
+    The profiler resolves several device symbols to this one seam, so a change here
+    moves all of them:
+      - Cijk_Alik_Bljk_BBS_BH_Bias_HA_S_SAV_UserArgs_MT256x240x64_MI -> MT256x256x64_MI  (15.56% GPU, roofline 40.1% compute-bound)
+      - gemm_a16w16 M64 N32 K8192 - torch solution:0 -> native (retained control)  (21.43% GPU, roofline 1.95% memory-bound)
+      - gemm_a16w16 M64 N512 K8192 - torch solution:0 -> flydsl t16x64x256 split-K8  (21.43% GPU, roofline 10.96% memory-bound)
+      - gemm_a16w16 M64 N4608 K8192 - torch solution:0 -> bf16gemm_fp32bf16_tn_64x64_splitk_clean  (21.43% GPU, roofline 37.37% memory-bound)
+      - gemm_a16w16 M64 N8192 K256 - torch solution:0 -> flydsl t32x64x64 split-K1  (21.43% GPU, roofline 9.23% memory-bound)
+
+    Edit only:
+      source/tuned_gemm_candidate.py
+
+    Entry points that must keep their signatures:
+      gemm_a16w16
+      torch_gemm
+
+    The production seam is `aiter.tuned_gemm:gemm_a16w16`; correctness is judged
+    against a deterministic baseline regenerated from the live shapes, strides and
+    dispatch selections that were actually observed in the serving profile, so the kernel
+    must stay faithful to the deployed contract (dtypes, layouts, quantization).
+
+    Note: Q38-4..Q38-8 are one aiter.tuned_gemm seam with five live shapes (ledger hk04-hk08): the M=16384 prefill GEMM plus the four M=64 decode shapes that share the 21.43% bucket. The oracle is a deterministic runtime torch.nn.functional.linear baseline, not a frozen tensor blob, so the performance leg uses the GEAK interleaved legs rather than record replay. gpu_pct 21.43 is a bucket SHARED by Q38-5..Q38-8 - one aiter.tuned_gemm seam, four decode shapes. It is not additive: do not sum it across those four rows. Identity caveat: this package's distinct_baseline_candidate gate compares the candidate against torch.nn.functional.linear rather than against the unshadowed aiter callable, and _callable_identity reports the decorator's source file, so the gate does not by itself prove the timed code is source/tuned_gemm_candidate.py. The overlay rebind IS observable in the run log ('[overlay] rebound aiter.tuned_gemm:gemm_a16w16 -> tuned_gemm_candidate.gemm_a16w16'); check for that line before trusting a speedup on this task.
+  cheatsheet: null
+
+# ---------------------------------------------------------------------------
+# Provenance. Not read by the arena schema check; read by scripts/task_runner.py
+# and by anyone auditing where these numbers came from.
+headkernel:
+  model: "Qwen3.8-2.4T-A95B-MXFP4"
+  owner: "Li, Zeping <zepingl@amd.com>"
+  docker: "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.18-rocm720-mi35x-profilerfix"
+  serving: ISL 8192 / OSL 1024 / CONC 64 / TP 8
+  backend: hipBLASLt / Tensile
+  regime: prefill
+  device_symbol: "Cijk_Alik_Bljk_BBS_BH_Bias_HA_S_SAV_UserArgs_MT256x240x64_MI -> MT256x256x64_MI (ledger hk04 dispatches hipblaslt)"
+  target_callable: "aiter.tuned_gemm:gemm_a16w16"
+  tol: 0.02
+  oracle: runtime frozen baseline (no persistent tensor oracle) + live shape/dispatch evidence
+  source_package: P/dense_bf16_gemm_task
+  source_seed: stock
+  info_rows:
+    - row: "Q38-4"
+      info_kernel: "Cijk_Alik_Bljk_BBS_BH_Bias_HA_S_SAV_UserArgs_MT256x240x64_MI -> MT256x256x64_MI"
+      gpu_pct: 15.56
+      empirical_roofline: "40.1% compute-bound"
+      optimized_roofline: "64.3% compute-bound"
+      e2e_uplift: "E4 Prefill GEMM 5-row +1.563% paired / +2.306% native"
+    - row: "Q38-5"
+      info_kernel: "gemm_a16w16 M64 N32 K8192 - torch solution:0 -> native (retained control)"
+      gpu_pct: 21.43
+      empirical_roofline: "1.95% memory-bound"
+      optimized_roofline: "1.95% memory-bound"
+      e2e_uplift: "E2 Decode GEMM 22-row +2.039%; E3 E1+E2 native stack +3.922%"
+    - row: "Q38-6"
+      info_kernel: "gemm_a16w16 M64 N512 K8192 - torch solution:0 -> flydsl t16x64x256 split-K8"
+      gpu_pct: 21.43
+      empirical_roofline: "10.96% memory-bound"
+      optimized_roofline: "12.9% memory-bound"
+      e2e_uplift: "E2 Decode GEMM 22-row +2.039%; E3 E1+E2 native stack +3.922%"
+    - row: "Q38-7"
+      info_kernel: "gemm_a16w16 M64 N4608 K8192 - torch solution:0 -> bf16gemm_fp32bf16_tn_64x64_splitk_clean"
+      gpu_pct: 21.43
+      empirical_roofline: "37.37% memory-bound"
+      optimized_roofline: "51.68% memory-bound"
+      e2e_uplift: "E2 Decode GEMM 22-row +2.039%; E3 E1+E2 native stack +3.922%"
+    - row: "Q38-8"
+      info_kernel: "gemm_a16w16 M64 N8192 K256 - torch solution:0 -> flydsl t32x64x64 split-K1"
+      gpu_pct: 21.43
+      empirical_roofline: "9.23% memory-bound"
+      optimized_roofline: "13.98% memory-bound"
+      e2e_uplift: "E2 Decode GEMM 22-row +2.039%; E3 E1+E2 native stack +3.922%"
+  symbol_locations:
+    gemm_a16w16: source/tuned_gemm_candidate.py
+    torch_gemm: source/tuned_gemm_candidate.py

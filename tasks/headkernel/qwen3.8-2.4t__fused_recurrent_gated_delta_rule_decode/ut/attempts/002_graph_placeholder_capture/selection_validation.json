@@ -1,0 +1,215 @@
+{
+  "contract": "kernel_selection",
+  "ok": true,
+  "target_callable": "sglang.srt.layers.attention.linear.kernels.gdn_triton:fused_recurrent_gated_delta_rule_packed_decode",
+  "device_kernel": "fused_recurrent_gated_delta_rule_packed_decode_kernel",
+  "capture_target": "sglang.srt.layers.attention.linear.kernels.gdn_triton:fused_recurrent_gated_delta_rule_packed_decode",
+  "total_calls_observed": 47472,
+  "target_marker": "GEAK_TARGET::sglang.srt.layers.attention.linear.kernels.gdn_triton:fused_recurrent_gated_delta_rule_packed_decode",
+  "target_marker_calls": 16,
+  "matched_kernel_calls": 16,
+  "matched_kernel_names": [
+    "fused_recurrent_gated_delta_rule_packed_decode_kernel"
+  ],
+  "correlated_external_ids": 896,
+  "correlated_launch_correlations": 432,
+  "candidate_targets_tested": [
+    "sglang.kernels.ops.attention.fla.fused_recurrent:fused_recurrent_gated_delta_rule_packed_decode",
+    "sglang.srt.layers.attention.linear.kernels.gdn_triton:fused_recurrent_gated_delta_rule_packed_decode"
+  ],
+  "live_candidate_targets": [
+    "sglang.srt.layers.attention.linear.kernels.gdn_triton:fused_recurrent_gated_delta_rule_packed_decode"
+  ],
+  "deeper_live_candidates": [],
+  "missing_candidate_markers": [],
+  "installed_but_never_live_candidates": [
+    "sglang.kernels.ops.attention.fla.fused_recurrent:fused_recurrent_gated_delta_rule_packed_decode"
+  ],
+  "deepest_verified": true,
+  "evidence": "installed+live_nested_candidate_markers+torch_profiler_external_id_or_launch_correlation",
+  "failed": [],
+  "process_verdicts": [
+    {
+      "capture_meta_file": "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/gated_delta_decode_task/capture.pid-19397.rank-unknown/meta.json",
+      "trace_files": [
+        "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/gated_delta_decode_task/selection_trace.pid-19397.rank-unknown.call-1.json",
+        "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/gated_delta_decode_task/selection_trace.pid-19397.rank-unknown.call-2.json"
+      ],
+      "ok": true,
+      "failed": [],
+      "live_candidate_targets": [
+        "sglang.srt.layers.attention.linear.kernels.gdn_triton:fused_recurrent_gated_delta_rule_packed_decode"
+      ],
+      "deeper_live_candidates": []
+    },
+    {
+      "capture_meta_file": "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/gated_delta_decode_task/capture.pid-19398.rank-unknown/meta.json",
+      "trace_files": [
+        "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/gated_delta_decode_task/selection_trace.pid-19398.rank-unknown.call-1.json",
+        "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/gated_delta_decode_task/selection_trace.pid-19398.rank-unknown.call-2.json"
+      ],
+      "ok": true,
+      "failed": [],
+      "live_candidate_targets": [
+        "sglang.srt.layers.attention.linear.kernels.gdn_triton:fused_recurrent_gated_delta_rule_packed_decode"
+      ],
+      "deeper_live_candidates": []
+    },
+    {
+      "capture_meta_file": "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/gated_delta_decode_task/capture.pid-19399.rank-unknown/meta.json",
+      "trace_files": [
+        "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/gated_delta_decode_task/selection_trace.pid-19399.rank-unknown.call-1.json",
+        "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/gated_delta_decode_task/selection_trace.pid-19399.rank-unknown.call-2.json"
+      ],
+      "ok": true,
+      "failed": [],
+      "live_candidate_targets": [
+        "sglang.srt.layers.attention.linear.kernels.gdn_triton:fused_recurrent_gated_delta_rule_packed_decode"
+      ],
+      "deeper_live_candidates": []
+    },
+    {
+      "capture_meta_file": "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/gated_delta_decode_task/capture.pid-19400.rank-unknown/meta.json",
+      "trace_files": [
+        "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/gated_delta_decode_task/selection_trace.pid-19400.rank-unknown.call-1.json",
+        "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/gated_delta_decode_task/selection_trace.pid-19400.rank-unknown.call-2.json"
+      ],
+      "ok": true,
+      "failed": [],
+      "live_candidate_targets": [
+        "sglang.srt.layers.attention.linear.kernels.gdn_triton:fused_recurrent_gated_delta_rule_packed_decode"
+      ],
+      "deeper_live_candidates": []
+    },
+    {
+      "capture_meta_file": "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/gated_delta_decode_task/capture.pid-19401.rank-unknown/meta.json",
+      "trace_files": [
+        "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/gated_delta_decode_task/selection_trace.pid-19401.rank-unknown.call-1.json",
+        "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/gated_delta_decode_task/selection_trace.pid-19401.rank-unknown.call-2.json"
+      ],
+      "ok": true,
+      "failed": [],
+      "live_candidate_targets": [
+        "sglang.srt.layers.attention.linear.kernels.gdn_triton:fused_recurrent_gated_delta_rule_packed_decode"
+      ],
+      "deeper_live_candidates": []
+    },
+    {
+      "capture_meta_file": "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/gated_delta_decode_task/capture.pid-19402.rank-unknown/meta.json",
+      "trace_files": [
+        "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/gated_delta_decode_task/selection_trace.pid-19402.rank-unknown.call-1.json",
+        "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/gated_delta_decode_task/selection_trace.pid-19402.rank-unknown.call-2.json"
+      ],
+      "ok": true,
+      "failed": [],
+      "live_candidate_targets": [
+        "sglang.srt.layers.attention.linear.kernels.gdn_triton:fused_recurrent_gated_delta_rule_packed_decode"
+      ],
+      "deeper_live_candidates": []
+    },
+    {
+      "capture_meta_file": "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/gated_delta_decode_task/capture.pid-19403.rank-unknown/meta.json",
+      "trace_files": [
+        "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/gated_delta_decode_task/selection_trace.pid-19403.rank-unknown.call-1.json",
+        "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/gated_delta_decode_task/selection_trace.pid-19403.rank-unknown.call-2.json"
+      ],
+      "ok": true,
+      "failed": [],
+      "live_candidate_targets": [
+        "sglang.srt.layers.attention.linear.kernels.gdn_triton:fused_recurrent_gated_delta_rule_packed_decode"
+      ],
+      "deeper_live_candidates": []
+    },
+    {
+      "capture_meta_file": "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/gated_delta_decode_task/capture.pid-19404.rank-unknown/meta.json",
+      "trace_files": [
+        "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/gated_delta_decode_task/selection_trace.pid-19404.rank-unknown.call-1.json",
+        "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/gated_delta_decode_task/selection_trace.pid-19404.rank-unknown.call-2.json"
+      ],
+      "ok": true,
+      "failed": [],
+      "live_candidate_targets": [
+        "sglang.srt.layers.attention.linear.kernels.gdn_triton:fused_recurrent_gated_delta_rule_packed_decode"
+      ],
+      "deeper_live_candidates": []
+    }
+  ],
+  "best_process_meta_file": "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/gated_delta_decode_task/capture.pid-19397.rank-unknown/meta.json",
+  "trace_file": "",
+  "trace_files": [
+    "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/gated_delta_decode_task/selection_trace.pid-19397.rank-unknown.call-1.json",
+    "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/gated_delta_decode_task/selection_trace.pid-19397.rank-unknown.call-2.json",
+    "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/gated_delta_decode_task/selection_trace.pid-19398.rank-unknown.call-1.json",
+    "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/gated_delta_decode_task/selection_trace.pid-19398.rank-unknown.call-2.json",
+    "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/gated_delta_decode_task/selection_trace.pid-19399.rank-unknown.call-1.json",
+    "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/gated_delta_decode_task/selection_trace.pid-19399.rank-unknown.call-2.json",
+    "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/gated_delta_decode_task/selection_trace.pid-19400.rank-unknown.call-1.json",
+    "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/gated_delta_decode_task/selection_trace.pid-19400.rank-unknown.call-2.json",
+    "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/gated_delta_decode_task/selection_trace.pid-19401.rank-unknown.call-1.json",
+    "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/gated_delta_decode_task/selection_trace.pid-19401.rank-unknown.call-2.json",
+    "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/gated_delta_decode_task/selection_trace.pid-19402.rank-unknown.call-1.json",
+    "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/gated_delta_decode_task/selection_trace.pid-19402.rank-unknown.call-2.json",
+    "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/gated_delta_decode_task/selection_trace.pid-19403.rank-unknown.call-1.json",
+    "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/gated_delta_decode_task/selection_trace.pid-19403.rank-unknown.call-2.json",
+    "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/gated_delta_decode_task/selection_trace.pid-19404.rank-unknown.call-1.json",
+    "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/gated_delta_decode_task/selection_trace.pid-19404.rank-unknown.call-2.json"
+  ],
+  "trace_files_considered": [
+    "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/gated_delta_decode_task/selection_trace.pid-19397.rank-unknown.call-1.json",
+    "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/gated_delta_decode_task/selection_trace.pid-19397.rank-unknown.call-2.json",
+    "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/gated_delta_decode_task/selection_trace.pid-19398.rank-unknown.call-1.json",
+    "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/gated_delta_decode_task/selection_trace.pid-19398.rank-unknown.call-2.json",
+    "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/gated_delta_decode_task/selection_trace.pid-19399.rank-unknown.call-1.json",
+    "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/gated_delta_decode_task/selection_trace.pid-19399.rank-unknown.call-2.json",
+    "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/gated_delta_decode_task/selection_trace.pid-19400.rank-unknown.call-1.json",
+    "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/gated_delta_decode_task/selection_trace.pid-19400.rank-unknown.call-2.json",
+    "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/gated_delta_decode_task/selection_trace.pid-19401.rank-unknown.call-1.json",
+    "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/gated_delta_decode_task/selection_trace.pid-19401.rank-unknown.call-2.json",
+    "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/gated_delta_decode_task/selection_trace.pid-19402.rank-unknown.call-1.json",
+    "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/gated_delta_decode_task/selection_trace.pid-19402.rank-unknown.call-2.json",
+    "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/gated_delta_decode_task/selection_trace.pid-19403.rank-unknown.call-1.json",
+    "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/gated_delta_decode_task/selection_trace.pid-19403.rank-unknown.call-2.json",
+    "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/gated_delta_decode_task/selection_trace.pid-19404.rank-unknown.call-1.json",
+    "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/gated_delta_decode_task/selection_trace.pid-19404.rank-unknown.call-2.json"
+  ],
+  "capture_storage": {
+    "task_dir": "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/gated_delta_decode_task",
+    "bytes_reclaimed": 7352136650,
+    "bytes_promoted": 1050159238,
+    "bytes_before": 8402295888,
+    "bytes_after": 0,
+    "capture_dirs_seen": [
+      "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/gated_delta_decode_task/capture.pid-19397.rank-unknown",
+      "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/gated_delta_decode_task/capture.pid-19398.rank-unknown",
+      "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/gated_delta_decode_task/capture.pid-19399.rank-unknown",
+      "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/gated_delta_decode_task/capture.pid-19400.rank-unknown",
+      "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/gated_delta_decode_task/capture.pid-19401.rank-unknown",
+      "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/gated_delta_decode_task/capture.pid-19402.rank-unknown",
+      "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/gated_delta_decode_task/capture.pid-19403.rank-unknown",
+      "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/gated_delta_decode_task/capture.pid-19404.rank-unknown"
+    ],
+    "removed_paths": [
+      "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/gated_delta_decode_task/capture.pid-19397.rank-unknown",
+      "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/gated_delta_decode_task/capture.pid-19398.rank-unknown",
+      "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/gated_delta_decode_task/capture.pid-19399.rank-unknown",
+      "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/gated_delta_decode_task/capture.pid-19400.rank-unknown",
+      "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/gated_delta_decode_task/capture.pid-19401.rank-unknown",
+      "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/gated_delta_decode_task/capture.pid-19402.rank-unknown",
+      "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/gated_delta_decode_task/capture.pid-19403.rank-unknown",
+      "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/gated_delta_decode_task/capture.pid-19404.rank-unknown"
+    ],
+    "promoted": true,
+    "keep_meta_path": "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/gated_delta_decode_task/capture.pid-19397.rank-unknown/meta.json",
+    "errors": [],
+    "promote": {
+      "promoted_meta": true,
+      "promoted_oracle": true,
+      "bytes_promoted": 1050159238,
+      "oracle_path": "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/gated_delta_decode_task/reference_io.pt",
+      "meta_path": "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/gated_delta_decode_task/meta.json"
+    },
+    "capture_dirs_remaining": [],
+    "authoritative_oracle_bytes": 1050159238,
+    "authoritative_oracle_present": true
+  }
+}

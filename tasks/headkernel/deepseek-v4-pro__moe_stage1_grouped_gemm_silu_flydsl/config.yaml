@@ -1,0 +1,69 @@
+# deepseek-v4-pro__moe_stage1_grouped_gemm_silu_flydsl
+# Head kernel from the 2026-09-14 info table, rows: DS-2
+
+source_file_path:
+  - source/geak_flydsl_moe_kernels.py
+
+target_kernel_functions:
+  - flydsl_moe_stage1
+
+compile_command:
+  - python3 scripts/task_runner.py compile
+
+correctness_command:
+  - python3 scripts/task_runner.py correctness
+
+performance_command:
+  - python3 scripts/task_runner.py performance
+
+task_type: triton2triton
+
+task_result_template: null
+
+prompt:
+  source_code: null
+  instructions: |
+    Optimize the DeepSeek-V4-Pro head kernel `MoE stage-1 mfma_moe1_silu_mul_afp8_wfp4_fp8_t32x128x256` (flydsl / aiter_asm) for maximum GPU
+    throughput on MI355X (gfx950) while keeping it numerically correct.
+
+    It is 7.3% of de-inflated GPU time in the serving profile
+    (ISL 8192 / OSL 1024 / CONC 64 / TP 8), currently at ~100% HBM (raw 146%, byte model over-counts) of its empirical roofline.
+
+    Edit only:
+      source/geak_flydsl_moe_kernels.py
+
+    Entry points that must keep their signatures:
+      flydsl_moe_stage1
+
+    The production seam is `aiter.ops.flydsl:flydsl_moe_stage1`; correctness is judged
+    against a frozen live-server capture, not a re-derived reference, so the kernel
+    must stay faithful to the deployed contract (dtypes, layouts, quantization).
+  cheatsheet: null
+
+# ---------------------------------------------------------------------------
+# Provenance. Not read by the arena schema check; read by scripts/task_runner.py
+# and by anyone auditing where these numbers came from.
+headkernel:
+  model: "DeepSeek-V4-Pro"
+  owner: zihao
+  docker: "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.17-rocm720-mi35x-profilerfix"
+  serving: ISL 8192 / OSL 1024 / CONC 64 / TP 8
+  backend: flydsl / aiter_asm
+  regime: decode+prefill
+  device_symbol: mfma_moe1_silu_mul_afp8_wfp4_fp8_t32x128x256_pm1_fp8q_sort_async_gui_xcd4_v32
+  target_callable: "aiter.ops.flydsl:flydsl_moe_stage1"
+  tol: 0.15
+  oracle: "frozen live-capture ut/reference_io.pt"
+  source_package: "Z/DeepSeek-V4-Pro_moe_stage1_grouped_gemm_silu_flydsl"
+  source_seed: stock
+  # 1 file(s) shipped pre-tuned by a previous GEAK run and were reset to baseline_ref/*.orig; the tuned version is kept at
+  # _prior_solutions/deepseek-v4-pro__moe_stage1_grouped_gemm_silu_flydsl/
+  info_rows:
+    - row: "DS-2"
+      info_kernel: "MoE stage-1 mfma_moe1_silu_mul_afp8_wfp4_fp8_t32x128x256"
+      gpu_pct: 7.3
+      empirical_roofline: "~100% HBM (raw 146%, byte model over-counts)"
+      optimized_roofline: null
+      e2e_uplift: null
+  symbol_locations:
+    flydsl_moe_stage1: source/geak_flydsl_moe_kernels.py

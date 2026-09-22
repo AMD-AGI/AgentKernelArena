@@ -1,0 +1,172 @@
+{
+  "arch": "gfx950",
+  "cases": {
+    "hk04": {
+      "backend_hook_calls": 2,
+      "config_exact": true,
+      "device_event_count": 1,
+      "device_events": [
+        "Cijk_Alik_Bljk_BBS_BH_Bias_HA_S_SAV_UserArgs_MT256x256x64_MI16x16x1_SN_LDSB0_AFC0_AFEM1_AFEM1_ASEM1_CLR1_CADS0_DTLA1_DTLB1_DTVA0_DTVB0_EPS0_FDSI0_GRPM1_GRVWA8_GRVWB8_GSU0_GSUAMB_GLS0_ISA950_IU1_K1_LDSTI0_LBSPPA1024_LBSPPB1024_LBSPPM0_LPA16_LPB16_LPM0_LRVW8_LWPMn1_MIAV0_MIWT8_8_MO40_NTn1_NTA3_NTB3_NTC4_NTD0_NTM0_NEPBS0_NLCA1_NLCB1_ONLL1_PGR2_PLR1_PKA1_SIA3_SS1_SPO0_SRVW0_SSO0_SVW8_SK3_SKFTR0_SKXCCM0_TLDS2_ULSGRO0_USL1_UIOFGRO0_USFGRO0_VSn1_VWA8_VWB8_WSGRA0_WSGRB0_WS64_WG32_8_1"
+      ],
+      "expected_backend": "hipblaslt",
+      "ledger_id": "hk04",
+      "matching_device_events": [
+        "Cijk_Alik_Bljk_BBS_BH_Bias_HA_S_SAV_UserArgs_MT256x256x64_MI16x16x1_SN_LDSB0_AFC0_AFEM1_AFEM1_ASEM1_CLR1_CADS0_DTLA1_DTLB1_DTVA0_DTVB0_EPS0_FDSI0_GRPM1_GRVWA8_GRVWB8_GSU0_GSUAMB_GLS0_ISA950_IU1_K1_LDSTI0_LBSPPA1024_LBSPPB1024_LBSPPM0_LPA16_LPB16_LPM0_LRVW8_LWPMn1_MIAV0_MIWT8_8_MO40_NTn1_NTA3_NTB3_NTC4_NTD0_NTM0_NEPBS0_NLCA1_NLCB1_ONLL1_PGR2_PLR1_PKA1_SIA3_SS1_SPO0_SRVW0_SSO0_SVW8_SK3_SKFTR0_SKXCCM0_TLDS2_ULSGRO0_USL1_UIOFGRO0_USFGRO0_VSn1_VWA8_VWB8_WSGRA0_WSGRB0_WS64_WG32_8_1"
+      ],
+      "ok": true,
+      "output_shape_ok": true,
+      "profile_match": "MT256x256x64",
+      "runtime_config": {
+        "bw": 615.64,
+        "err_ratio": 0.0,
+        "kernelName": "Cijk_Alik_Bljk_BBS_BH_Bias_HA_S_SAV_UserArgs_MT256x256x64_MI16x16x1_SN_LDSB0_AFC0_AFEM1_AFEM1_ASEM1_CLR1_CADS0_DTLA1_DTLB1_DTVA0_DTVB0_EPS0_FDSI0_GRPM1_GRVWA8_GRVWB8_GSU0_GSUAMB_GLS0_ISA950_IU1_K1_LDSTI0_LBSPPA1024_LBSPPB1024_LBSPPM0_LPA16_LPB16_LPM0_LRVW8_LWPMn1_MIAV0_MIWT8_8_MO40_NTn1_NTA3_NTB3_NTC4_NTD0_NTM0_NEPBS0_NLCA1_NLCB1_ONLL1_PGR2_PLR1_PKA1_SIA3_SS1_SPO0_SRVW0_SSO0_SVW8_SK3_SKFTR0_SKXCCM0_TLDS2_ULSGRO0_USL1_UIOFGRO0_USFGRO0_VSn1_VWA8_VWB8_WSGRA0_WSGRB0_WS64_WG32_8_1",
+        "libtype": "hipblaslt",
+        "solidx": 438243,
+        "splitK": 0,
+        "tflops": 1538.65,
+        "us": 803.9188
+      },
+      "shape": [
+        16384,
+        4608,
+        8192
+      ]
+    },
+    "hk05": {
+      "backend_hook_calls": 2,
+      "config_exact": true,
+      "device_event_count": 1,
+      "device_events": [
+        "Cijk_Alik_Bljk_BBS_BH_Bias_HA_S_SAV_UserArgs_MT16x16x1024_MI16x16x1_SN_LDSB1_AFC0_AFEM1_AFEM1_ASEM1_CLR1_CADS0_DTLA0_DTLB0_DTVA0_DTVB0_EPS0_FDSI0_GRPM1_GRVWA8_GRVWB8_GSU0_GSUAMB_GLS0_ISA950_IU1_K1_LDSTI0_LBSPPA2048_LBSPPB2048_LBSPPM0_LPA16_LPB16_LPM0_LRVW8_LWPMn1_MIAV0_MIWT1_1_MO40_NTn1_NTA0_NTB0_NTC0_NTD0_NTM0_NEPBS0_NLCA1_NLCB1_ONLL1_PGR2_PLR1_PKA1_SIA3_SS1_SPO0_SRVW0_SSO0_SVW1_SK3_SKFTR0_SKXCCM0_TLDS1_ULSGRO0_USL1_UIOFGRO0_USFGRO0_VSn1_VWA1_VWB1_WSGRA0_WSGRB0_WS64_WG16_4_4"
+      ],
+      "expected_backend": "torch",
+      "ledger_id": "hk05",
+      "matching_device_events": [],
+      "ok": true,
+      "output_shape_ok": true,
+      "profile_match": "",
+      "runtime_config": {
+        "bw": 161.74,
+        "err_ratio": 0.0,
+        "kernelName": "native",
+        "libtype": "torch",
+        "solidx": 0,
+        "splitK": 0,
+        "tflops": 3.44,
+        "us": 9.7499
+      },
+      "shape": [
+        64,
+        32,
+        8192
+      ]
+    },
+    "hk06": {
+      "backend_hook_calls": 2,
+      "config_exact": true,
+      "device_event_count": 1,
+      "device_events": [
+        "hgemm_bf16_16x64x256x4_SPK8_W1x1x2_BLDS1_TN_AS1_0"
+      ],
+      "expected_backend": "flydsl",
+      "ledger_id": "hk06",
+      "matching_device_events": [
+        "hgemm_bf16_16x64x256x4_SPK8_W1x1x2_BLDS1_TN_AS1_0"
+      ],
+      "ok": true,
+      "output_shape_ok": true,
+      "profile_match": "hgemm_bf16_16x64x256",
+      "runtime_config": {
+        "bw": 1120.78,
+        "err_ratio": 0.0293,
+        "kernelName": "flydsl_gemm4_abf16_wbf16_bf16_t16x64x256_split_k8_block_m_warp1_block_n_warp1_block_k_warp2_async_copyTrue_b_to_ldsTrue_b_preshuffleFalse_c_to_ldsFalse_gfx950",
+        "libtype": "flydsl",
+        "solidx": 3358,
+        "splitK": 8,
+        "tflops": 63.32,
+        "us": 8.4787
+      },
+      "shape": [
+        64,
+        512,
+        8192
+      ]
+    },
+    "hk07": {
+      "backend_hook_calls": 2,
+      "config_exact": true,
+      "device_event_count": 1,
+      "device_events": [
+        "aiter::bf16gemm_fp32bf16_tn_64x64_splitk_clean"
+      ],
+      "expected_backend": "asm",
+      "ledger_id": "hk07",
+      "matching_device_events": [
+        "aiter::bf16gemm_fp32bf16_tn_64x64_splitk_clean"
+      ],
+      "ok": true,
+      "output_shape_ok": true,
+      "profile_match": "bf16gemm_fp32bf16_tn_64x64_splitk_clean",
+      "runtime_config": {
+        "bw": 3265.7,
+        "err_ratio": 0.0107,
+        "kernelName": "_ZN5aiter39bf16gemm_fp32bf16_tn_64x64_splitk_cleanE",
+        "libtype": "asm",
+        "solidx": 5,
+        "splitK": 3,
+        "tflops": 204.57,
+        "us": 23.62
+      },
+      "shape": [
+        64,
+        4608,
+        8192
+      ]
+    },
+    "hk08": {
+      "backend_hook_calls": 2,
+      "config_exact": true,
+      "device_event_count": 1,
+      "device_events": [
+        "hgemm_bf16_32x64x64x4_SPK1_W2x1x1_BLDS1_TN_AS1_0"
+      ],
+      "expected_backend": "flydsl",
+      "ledger_id": "hk08",
+      "matching_device_events": [
+        "hgemm_bf16_32x64x64x4_SPK1_W2x1x1_BLDS1_TN_AS1_0"
+      ],
+      "ok": true,
+      "output_shape_ok": true,
+      "profile_match": "hgemm_bf16_32x64x64",
+      "runtime_config": {
+        "bw": 1332.13,
+        "err_ratio": 0.0,
+        "kernelName": "flydsl_gemm4_abf16_wbf16_bf16_t32x64x64_split_k1_block_m_warp2_block_n_warp1_block_k_warp1_async_copyTrue_b_to_ldsTrue_b_preshuffleFalse_c_to_ldsFalse_gfx950",
+        "libtype": "flydsl",
+        "solidx": 2138,
+        "splitK": 1,
+        "tflops": 67.78,
+        "us": 3.9603
+      },
+      "shape": [
+        64,
+        8192,
+        256
+      ]
+    }
+  },
+  "contract": "live_dispatch_and_device_engagement",
+  "deepest_verified": true,
+  "device": "AMD Instinct MI355X",
+  "dispatch_config": "live_dispatch_rows.csv",
+  "note": "Each exact shape was resolved by the live AITER dispatcher, the selected solMap backend was observed executing, and a device-side profiler event was collected.",
+  "ok": true,
+  "source_evidence": {
+    "hk04_profiler_selection": "/shared_nfs/zepingl/qwen38_hyperloom_local_kernel_20260912T171040Z_093_multikernel_r10/hyperloom/Qwen3.8-2.4T-A95B-Quark-MXFP4/20260912T174806Z-6dfe2baa/geak/e2e_cycle0/kernels/Cijk_MT256x256x64_16384x4608x8192_task/selection_validation.json",
+    "hk05_profiler_selection": "/shared_nfs/zepingl/qwen38_hyperloom_local_kernel_20260913T081758Z_093_multikernel_r11/hyperloom/Qwen3.8-2.4T-A95B-Quark-MXFP4/20260913T083154Z-7df2e82d/geak/e2e_cycle0/kernels/Cijk_MT16x16x1024_decode_skinny_gemm_task/selection_validation.json",
+    "live_decode_config": "/shared_nfs/zepingl/qwen38_hyperloom_local_kernel_20260912T171040Z_093_multikernel_r10/baseline/aiter_tuned_configs/qwen38_24t_a95b_mxfp4_bf16_tuned_gemm.csv",
+    "live_prefill_config": "/shared_nfs/zepingl/qwen38_hyperloom_local_kernel_20260912T171040Z_093_multikernel_r10/baseline/aiter_tuned_configs/qwen38_prefill_bf16_tuned_gemm.csv"
+  },
+  "target_callable": "aiter.tuned_gemm:gemm_a16w16",
+  "validated_utc": "2026-09-14T09:35:33Z"
+}

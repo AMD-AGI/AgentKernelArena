@@ -1,0 +1,71 @@
+# glm-5.3-flash__elementwise_copy_cluster
+# Head kernel from the 2026-09-14 info table, rows: G53-5
+
+source_file_path:
+  - source/bpreshuffle_scale_impl.py
+
+target_kernel_functions:
+  - materialize_bpreshuffle_fp8_scale
+
+compile_command:
+  - python3 scripts/task_runner.py compile
+
+correctness_command:
+  - python3 scripts/task_runner.py correctness
+
+performance_command:
+  - python3 scripts/task_runner.py performance
+
+task_type: triton2triton
+
+task_result_template: null
+
+prompt:
+  source_code: null
+  instructions: |
+    Optimize the GLM-5.3-Flash head kernel `elementwise_kernel_manual_unroll` (ATen direct_copy_kernel_cuda) for maximum GPU
+    throughput on MI355X (gfx950) while keeping it numerically correct.
+
+    It is 3.24% of de-inflated GPU time in the serving profile
+    (ISL 8192 / OSL 1024 / CONC 64 / TP 8), currently at 0.0006 of its empirical roofline.
+
+    Edit only:
+      source/bpreshuffle_scale_impl.py
+
+    Entry points that must keep their signatures:
+      materialize_bpreshuffle_fp8_scale
+
+    The production seam is `sglang.srt.layers.quantization.fp8_utils:materialize_bpreshuffle_fp8_scale`; correctness is judged
+    against a frozen live-server capture, not a re-derived reference, so the kernel
+    must stay faithful to the deployed contract (dtypes, layouts, quantization).
+
+    Note: 1.4253x isolated, e2e never measured. Correctness is two-part: values AND transposed-contiguous physical stride.
+  cheatsheet: null
+
+# ---------------------------------------------------------------------------
+# Provenance. Not read by the arena schema check; read by scripts/task_runner.py
+# and by anyone auditing where these numbers came from.
+headkernel:
+  model: "GLM-5.3-Flash"
+  owner: Hongtaom
+  docker: "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.17-rocm720-mi35x-profilerfix"
+  serving: ISL 8192 / OSL 1024 / CONC 64 / TP 8
+  backend: ATen direct_copy_kernel_cuda
+  regime: decode
+  device_symbol: "elementwise_kernel_manual_unroll<128,4,...direct_copy_kernel_cuda...>"
+  target_callable: "sglang.srt.layers.quantization.fp8_utils:materialize_bpreshuffle_fp8_scale"
+  tol: "1e-06"
+  oracle: "frozen live-capture ut/reference_io.pt"
+  source_package: "H/GLM-5.3-Flash_elementwise_copy_cluster_0913"
+  source_seed: "prior-candidate"
+  # 1 file(s) have no stock counterpart - they ARE the candidate seam (a new module the seam rebinds to), so the
+  # starting point is a prior candidate, not upstream code. Baseline speedup is measured against the live stack, not against this file.
+  info_rows:
+    - row: "G53-5"
+      info_kernel: elementwise_kernel_manual_unroll
+      gpu_pct: 3.24
+      empirical_roofline: 0.0006
+      optimized_roofline: 0.0009
+      e2e_uplift: null
+  symbol_locations:
+    materialize_bpreshuffle_fp8_scale: source/bpreshuffle_scale_impl.py

@@ -1,0 +1,1160 @@
+{
+  "target": "aiter.fused_moe:fused_moe",
+  "process_id": 2459299,
+  "rank": "unknown",
+  "module": "aiter.fused_moe",
+  "attr": "fused_moe",
+  "num_cases": 0,
+  "total_calls_observed": 854,
+  "regimes_covered": [],
+  "cases": [],
+  "shape_counts": [
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "count": 762,
+      "input_shapes": [
+        [
+          16384,
+          8192
+        ],
+        [
+          64,
+          4096,
+          4096
+        ],
+        [
+          64,
+          8192,
+          1024
+        ],
+        [
+          16384,
+          10
+        ],
+        [
+          16384,
+          10
+        ],
+        [
+          64,
+          4096,
+          256
+        ],
+        [
+          64,
+          8192,
+          64
+        ],
+        [
+          512
+        ]
+      ],
+      "input_dtypes": [
+        "torch.bfloat16",
+        "torch.float32",
+        "torch.float4_e2m1fn_x2",
+        "torch.int32",
+        "torch.uint8"
+      ]
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(8192, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(8192, 10):torch.int32|topk_weight=T(8192, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "count": 92,
+      "input_shapes": [
+        [
+          8192,
+          8192
+        ],
+        [
+          64,
+          4096,
+          4096
+        ],
+        [
+          64,
+          8192,
+          1024
+        ],
+        [
+          8192,
+          10
+        ],
+        [
+          8192,
+          10
+        ],
+        [
+          64,
+          4096,
+          256
+        ],
+        [
+          64,
+          8192,
+          64
+        ],
+        [
+          512
+        ]
+      ],
+      "input_dtypes": [
+        "torch.bfloat16",
+        "torch.float32",
+        "torch.float4_e2m1fn_x2",
+        "torch.int32",
+        "torch.uint8"
+      ]
+    }
+  ],
+  "num_distinct_shapes": 2,
+  "call_sequence": [
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(8192, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(8192, 10):torch.int32|topk_weight=T(8192, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(8192, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(8192, 10):torch.int32|topk_weight=T(8192, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(8192, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(8192, 10):torch.int32|topk_weight=T(8192, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(8192, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(8192, 10):torch.int32|topk_weight=T(8192, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(8192, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(8192, 10):torch.int32|topk_weight=T(8192, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(8192, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(8192, 10):torch.int32|topk_weight=T(8192, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(8192, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(8192, 10):torch.int32|topk_weight=T(8192, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(8192, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(8192, 10):torch.int32|topk_weight=T(8192, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(8192, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(8192, 10):torch.int32|topk_weight=T(8192, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(8192, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(8192, 10):torch.int32|topk_weight=T(8192, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(8192, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(8192, 10):torch.int32|topk_weight=T(8192, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(8192, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(8192, 10):torch.int32|topk_weight=T(8192, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(8192, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(8192, 10):torch.int32|topk_weight=T(8192, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(8192, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(8192, 10):torch.int32|topk_weight=T(8192, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(8192, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(8192, 10):torch.int32|topk_weight=T(8192, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(8192, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(8192, 10):torch.int32|topk_weight=T(8192, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(8192, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(8192, 10):torch.int32|topk_weight=T(8192, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(8192, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(8192, 10):torch.int32|topk_weight=T(8192, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(8192, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(8192, 10):torch.int32|topk_weight=T(8192, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(8192, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(8192, 10):torch.int32|topk_weight=T(8192, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(8192, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(8192, 10):torch.int32|topk_weight=T(8192, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(8192, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(8192, 10):torch.int32|topk_weight=T(8192, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(8192, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(8192, 10):torch.int32|topk_weight=T(8192, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(8192, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(8192, 10):torch.int32|topk_weight=T(8192, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(8192, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(8192, 10):torch.int32|topk_weight=T(8192, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(8192, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(8192, 10):torch.int32|topk_weight=T(8192, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(8192, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(8192, 10):torch.int32|topk_weight=T(8192, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(8192, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(8192, 10):torch.int32|topk_weight=T(8192, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(8192, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(8192, 10):torch.int32|topk_weight=T(8192, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(8192, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(8192, 10):torch.int32|topk_weight=T(8192, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(8192, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(8192, 10):torch.int32|topk_weight=T(8192, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(8192, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(8192, 10):torch.int32|topk_weight=T(8192, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(8192, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(8192, 10):torch.int32|topk_weight=T(8192, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(8192, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(8192, 10):torch.int32|topk_weight=T(8192, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(8192, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(8192, 10):torch.int32|topk_weight=T(8192, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(8192, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(8192, 10):torch.int32|topk_weight=T(8192, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(8192, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(8192, 10):torch.int32|topk_weight=T(8192, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(8192, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(8192, 10):torch.int32|topk_weight=T(8192, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(8192, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(8192, 10):torch.int32|topk_weight=T(8192, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(8192, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(8192, 10):torch.int32|topk_weight=T(8192, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(8192, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(8192, 10):torch.int32|topk_weight=T(8192, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(8192, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(8192, 10):torch.int32|topk_weight=T(8192, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(8192, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(8192, 10):torch.int32|topk_weight=T(8192, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(8192, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(8192, 10):torch.int32|topk_weight=T(8192, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(8192, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(8192, 10):torch.int32|topk_weight=T(8192, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(8192, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(8192, 10):torch.int32|topk_weight=T(8192, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(8192, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(8192, 10):torch.int32|topk_weight=T(8192, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(8192, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(8192, 10):torch.int32|topk_weight=T(8192, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(8192, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(8192, 10):torch.int32|topk_weight=T(8192, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(8192, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(8192, 10):torch.int32|topk_weight=T(8192, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(8192, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(8192, 10):torch.int32|topk_weight=T(8192, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(8192, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(8192, 10):torch.int32|topk_weight=T(8192, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(8192, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(8192, 10):torch.int32|topk_weight=T(8192, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(8192, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(8192, 10):torch.int32|topk_weight=T(8192, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(8192, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(8192, 10):torch.int32|topk_weight=T(8192, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(8192, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(8192, 10):torch.int32|topk_weight=T(8192, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(8192, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(8192, 10):torch.int32|topk_weight=T(8192, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(8192, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(8192, 10):torch.int32|topk_weight=T(8192, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(8192, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(8192, 10):torch.int32|topk_weight=T(8192, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(8192, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(8192, 10):torch.int32|topk_weight=T(8192, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(8192, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(8192, 10):torch.int32|topk_weight=T(8192, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(8192, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(8192, 10):torch.int32|topk_weight=T(8192, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(8192, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(8192, 10):torch.int32|topk_weight=T(8192, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(8192, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(8192, 10):torch.int32|topk_weight=T(8192, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(8192, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(8192, 10):torch.int32|topk_weight=T(8192, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(8192, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(8192, 10):torch.int32|topk_weight=T(8192, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(8192, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(8192, 10):torch.int32|topk_weight=T(8192, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(8192, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(8192, 10):torch.int32|topk_weight=T(8192, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(8192, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(8192, 10):torch.int32|topk_weight=T(8192, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(8192, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(8192, 10):torch.int32|topk_weight=T(8192, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(8192, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(8192, 10):torch.int32|topk_weight=T(8192, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(8192, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(8192, 10):torch.int32|topk_weight=T(8192, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(8192, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(8192, 10):torch.int32|topk_weight=T(8192, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(8192, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(8192, 10):torch.int32|topk_weight=T(8192, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(8192, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(8192, 10):torch.int32|topk_weight=T(8192, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(8192, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(8192, 10):torch.int32|topk_weight=T(8192, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(8192, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(8192, 10):torch.int32|topk_weight=T(8192, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(8192, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(8192, 10):torch.int32|topk_weight=T(8192, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(8192, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(8192, 10):torch.int32|topk_weight=T(8192, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(8192, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(8192, 10):torch.int32|topk_weight=T(8192, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(8192, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(8192, 10):torch.int32|topk_weight=T(8192, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(8192, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(8192, 10):torch.int32|topk_weight=T(8192, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(8192, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(8192, 10):torch.int32|topk_weight=T(8192, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(8192, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(8192, 10):torch.int32|topk_weight=T(8192, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(8192, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(8192, 10):torch.int32|topk_weight=T(8192, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(8192, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(8192, 10):torch.int32|topk_weight=T(8192, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(8192, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(8192, 10):torch.int32|topk_weight=T(8192, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(8192, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(8192, 10):torch.int32|topk_weight=T(8192, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(8192, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(8192, 10):torch.int32|topk_weight=T(8192, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(8192, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(8192, 10):torch.int32|topk_weight=T(8192, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(8192, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(8192, 10):torch.int32|topk_weight=T(8192, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(8192, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(8192, 10):torch.int32|topk_weight=T(8192, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    },
+    {
+      "sig": "a1_scale=None|a2_scale=None|activation=ActivationType|bias1=None|bias2=None|doweight_stage1=False|expert_mask=T(512,):torch.int32|hidden_pad=0|hidden_states=T(16384, 8192):torch.bfloat16|intermediate_pad=0|quant_type=QuantType|topk_ids=T(16384, 10):torch.int32|topk_weight=T(16384, 10):torch.float32|w1=T(64, 4096, 4096):torch.float4_e2m1fn_x2|w1_scale=T(64, 4096, 256):torch.uint8|w2=T(64, 8192, 1024):torch.float4_e2m1fn_x2|w2_scale=T(64, 8192, 64):torch.uint8",
+      "in_graph": false
+    }
+  ],
+  "graph_replayed": false,
+  "in_graph_calls": 0,
+  "reference_io": "reference_io.pt",
+  "reference_io_sha256": null,
+  "oracle_complete": false,
+  "byte_budget": 6442450944,
+  "case_byte_limit": 4294967296,
+  "persist_policy": "moe_slim",
+  "pre_arg_indices": [],
+  "pre_kw_keys": [],
+  "capture_first_dims": [
+    64,
+    8192,
+    16384
+  ],
+  "capture_device_index": 0,
+  "compact_paged_attention": false,
+  "shared_tensor_keys": [],
+  "oracle_bytes_est": 0,
+  "budget_exceeded": false,
+  "budget_skip_count": 0,
+  "oracle_save_count": 0,
+  "build": false,
+  "note": "Oracle captured from baseline. Do NOT edit unittest.py or reference_io.pt during opt."
+}

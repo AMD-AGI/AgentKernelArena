@@ -1,0 +1,24 @@
+# Public runtime override: AKA_DOCKER_IMAGE=docker.io/rocm/hyperloom@sha256:1f5464829559b086eb66f9b803cb9c7a817438c43edff2d5ef59b46a186745f6
+# Public tag: docker.io/rocm/hyperloom:sglang-v0.5.17-rocm7.2.0-mi350x
+# Environment: TVM_FFI_DISABLE_TORCH_C_DLPACK=1; see runtime guide for caches/mounts.
+# Runtime status: user_authorized_public_runtime_no_gpu_validation
+# Original task headkernel.docker declarations remain unchanged.
+# Original headkernel.docker cohort: 7 tasks, including GLM elementwise copy.
+# Image: harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.17-rocm720-mi35x-profilerfix
+# Setup and the GLM config/documentation discrepancy:
+# docs/how-to/headkernel-upstream-runtime.md
+agent:
+  template: task_validator
+
+tasks:
+  - headkernel/deepseek-v4-pro__dsa_sparse_mla_attn
+  - headkernel/deepseek-v4-pro__moe_stage1_grouped_gemm_silu_flydsl
+  - headkernel/deepseek-v4-pro__moe_stage2_down_proj_reduce_opus_a8w4
+  - headkernel/glm-5.3-flash__elementwise_copy_cluster
+  - headkernel/minimax-m3__decode_score_kernel
+  - headkernel/minimax-m3__gqa_share_sparse_decode_kernel
+  - headkernel/minimax-m3__gqa_share_sparse_fwd_kernel
+
+target_gpu_model: MI355X
+log_directory: logs
+workspace_directory_prefix: workspace

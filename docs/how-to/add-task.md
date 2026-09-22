@@ -132,30 +132,9 @@ platform_support:
   skip_reason: null       # recommended when status is skip
 ```
 
-When a performance command is a controller that delegates timing to another
-worker, declare the actual timing worker with a task-relative `harness_path`:
-
-```yaml
-performance_command:
-  - python3 scripts/generated_task_runner.py performance --timeout 3600
-harness_path: scripts/_bench.py
-```
-
-Use `scripts/generated_worker.py` instead when that worker invokes the canonical
-timer directly. For example, the GLM generated controller uses that worker, while
-the MiniMax generated controller delegates to `scripts/_bench.py`. The same rule
-applies to new Kimi or other generated-input controllers: follow the actual
-performance call path rather than the wrapper filename.
-
-The benchmark entrypoint audit and workspace helper materialization consume this
-declaration. It adds the worker alongside the configured command; it does not
-replace the command or relax correctness, workload-readiness, timing, or harness
-protection checks. Keep `_aka_benchmark.py` materialization owned by the framework,
-and run `make check-perf-helpers` after adding a controller. An undeclared,
-noncanonical, or missing worker must not be used to make the audit pass.
-
-Other specialized launchers use additional fields such as `target_file_path`.
-Document those fields with the task or agent that consumes them.
+Some specialized launchers and task runners use additional fields such as
+`harness_path` or `target_file_path`. Document those fields with the task or
+agent that consumes them; they are not part of the common evaluator schema.
 
 Tasks with `platform_support.status: skip`, or with a `required_arch` that does
 not match the current run, are skipped before workspace creation. Historical

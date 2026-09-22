@@ -1,0 +1,1 @@
+../../../../source/flydsl/kernels/moe_contiguous_psum.py

@@ -1,0 +1,159 @@
+{
+  "schema_version": 1,
+  "description": "Original upstream whole-file tensor fixtures. Paths are relative to the selected suite root (tasks/headkernel by default), a local mirror, or the declared OCI object root. Upstream task files are not changed.",
+  "source": {
+    "package": "headkernel_ut_0914_full",
+    "upstream_task_root": "tasks/headkernel",
+    "original_nfs_mirror": "/shared_nfs/chuschen/agent-kernel-arena/top_model_kernels/headkernel_ut_0914_full/tasks/headkernel",
+    "access": "Use --download for OCI delivery through a caller-configured rclone remote, or --mirror for another explicitly selected local directory. Whole original files are verified against their declared byte counts and SHA-256 hashes before installation."
+  },
+  "provenance": {
+    "inventory_observed_utc": "2026-09-20",
+    "size_source": "Captured OMITTED-TENSOR-FIXTURES.json inventory",
+    "sha256_source": "Original upstream ut/meta.json, cross-checked against captured source-package metadata and fixture declarations",
+    "prior_delivery_verification": "All 17 bodies were SHA-256 verified during the recorded 2026-09-20 fixture delivery. This restoration uses metadata only; a new installation verifies every selected source body before publication.",
+    "timing_geometry_status": "All three original MiniMax timing_geometry.pt files are declared and present in the captured inventory."
+  },
+  "artifact_count": 17,
+  "total_size_bytes": 33139788731,
+  "artifacts": [
+    {
+      "task": "deepseek-v4-pro__dsa_sparse_mla_attn",
+      "path": "deepseek-v4-pro__dsa_sparse_mla_attn/ut/reference_io.pt",
+      "size_bytes": 2341765699,
+      "sha256": "981eb9be0909a11f831800c31e6399cffb0970d31f1393469d4e7e3a91e35f5a"
+    },
+    {
+      "task": "deepseek-v4-pro__moe_stage1_grouped_gemm_silu_flydsl",
+      "path": "deepseek-v4-pro__moe_stage1_grouped_gemm_silu_flydsl/ut/reference_io.pt",
+      "size_bytes": 1529157301,
+      "sha256": "722c170ae8e3c12d91c047d6acfd852ffc16beefecfd6b943fef51c6959159f4"
+    },
+    {
+      "task": "deepseek-v4-pro__moe_stage2_down_proj_reduce_opus_a8w4",
+      "path": "deepseek-v4-pro__moe_stage2_down_proj_reduce_opus_a8w4/ut/reference_io.pt",
+      "size_bytes": 2222265125,
+      "sha256": "3232c6110462fa4a7cb9d057f9c9f36ebda27e7a19cbf379194198e2cb509337"
+    },
+    {
+      "task": "glm-5.3-flash__elementwise_copy_cluster",
+      "path": "glm-5.3-flash__elementwise_copy_cluster/ut/reference_io.pt",
+      "size_bytes": 2113113,
+      "sha256": "14e589b7296c667b170b39a5f962344152206ff954a84b4e16de4346567d12af"
+    },
+    {
+      "task": "glm-5.3-flash__fused_moe_kernel",
+      "path": "glm-5.3-flash__fused_moe_kernel/ut/reference_io.pt",
+      "size_bytes": 1041269475,
+      "sha256": "59040b163efbc9dbd3592a28dee01bcc2801bb669de170197524dfe335c5feee"
+    },
+    {
+      "task": "kimi-k3__fwd_grouped_kernel_stage1",
+      "path": "kimi-k3__fwd_grouped_kernel_stage1/ut/reference_io.pt",
+      "size_bytes": 1019355421,
+      "sha256": "017f8ede884504695283291955fa8750be3e5d2779dd67b3914f13ab7ae85b98"
+    },
+    {
+      "task": "kimi-k3__moe_gemm1_stage1",
+      "path": "kimi-k3__moe_gemm1_stage1/ut/reference_io.pt",
+      "size_bytes": 103241119,
+      "sha256": "3d175ea5803d3523001cac000aa5d6c7d54b4a06dfa97999cd8eb22c081b3e31"
+    },
+    {
+      "task": "kimi-k3__moe_gemm2_stage2",
+      "path": "kimi-k3__moe_gemm2_stage2/ut/reference_io.pt",
+      "size_bytes": 181204137,
+      "sha256": "5a3fefb2af1c8a2981980d68e4f90085985fd5f0301b69814d85de5c1d801a53"
+    },
+    {
+      "task": "minimax-m3__decode_score_kernel",
+      "path": "minimax-m3__decode_score_kernel/ut/reference_io.pt",
+      "size_bytes": 6501978497,
+      "sha256": "12dcffd9ba5a3ac20fa2fbce3949f1789a57e87c5aed80de5e0176c60cea1cbe"
+    },
+    {
+      "task": "minimax-m3__decode_score_kernel",
+      "path": "minimax-m3__decode_score_kernel/ut/timing_geometry.pt",
+      "size_bytes": 231857,
+      "sha256": "7a90e22e1248debfa30c40ab89b908399e394fc81de65f673d2ba83deee1fabb"
+    },
+    {
+      "task": "minimax-m3__gqa_share_sparse_decode_kernel",
+      "path": "minimax-m3__gqa_share_sparse_decode_kernel/ut/reference_io.pt",
+      "size_bytes": 7248452679,
+      "sha256": "835db1b0e1791b3be723288068630d702f78affc44334ee1a453651bd46c28e8"
+    },
+    {
+      "task": "minimax-m3__gqa_share_sparse_decode_kernel",
+      "path": "minimax-m3__gqa_share_sparse_decode_kernel/ut/timing_geometry.pt",
+      "size_bytes": 725993,
+      "sha256": "53f447bdd43f30cdc8f7789c5a1a4693390b13272a1e53376d0207ea2eb530cd"
+    },
+    {
+      "task": "minimax-m3__gqa_share_sparse_fwd_kernel",
+      "path": "minimax-m3__gqa_share_sparse_fwd_kernel/ut/reference_io.pt",
+      "size_bytes": 7283246268,
+      "sha256": "55f55d92b743c71e0362c4c4e0e47d7a0120c9c19bdc03fac7d1972ac80be6ba"
+    },
+    {
+      "task": "minimax-m3__gqa_share_sparse_fwd_kernel",
+      "path": "minimax-m3__gqa_share_sparse_fwd_kernel/ut/timing_geometry.pt",
+      "size_bytes": 676789,
+      "sha256": "d1ad8a11fd31d42d04a92aa7d9854db6dce4ba5ba0aa43168185b731f4471462"
+    },
+    {
+      "task": "qwen3.8-2.4t__fused_moe_2stage_mxfp4",
+      "path": "qwen3.8-2.4t__fused_moe_2stage_mxfp4/ut/reference_io.pt",
+      "size_bytes": 2083145699,
+      "sha256": "09a71daa55bdd3683be45016f0e5139e2fd63b7c614ae5ba565f74cbd2c7e434"
+    },
+    {
+      "task": "qwen3.8-2.4t__fused_recurrent_gated_delta_rule_decode",
+      "path": "qwen3.8-2.4t__fused_recurrent_gated_delta_rule_decode/ut/reference_io.pt",
+      "size_bytes": 1044479494,
+      "sha256": "38a624a5f502279a13a09c012fababbe232cadedacd560056d8411640a04aaf1"
+    },
+    {
+      "task": "qwen3.8-2.4t__paged_attention_decode",
+      "path": "qwen3.8-2.4t__paged_attention_decode/ut/reference_io.pt",
+      "size_bytes": 536480065,
+      "sha256": "9c40d52c145027f8affca9e41bbf1100189fde724d42d085ac6296d57020ac56"
+    }
+  ],
+  "tasks_without_persistent_fixtures": [
+    {
+      "task": "qwen3.8-2.4t__dense_bf16_gemm_cluster",
+      "reason": "At runtime the frozen torch.nn.functional.linear baseline generates full outputs for deterministic nonzero inputs at the five live dispatch shapes; no persistent tensor oracle is stored."
+    },
+    {
+      "task": "qwen3.8-2.4t__gemma_fused_add_rmsnorm",
+      "reason": "Deterministic nonzero inputs are generated at the two live shapes. Golden full-tuple outputs are produced at unittest runtime by the frozen baseline overlay in a separate process."
+    }
+  ],
+  "placeholder_directories_not_provisioned": [
+    "glm-5.3-flash__ck_gemm_a8w8_blockscale_bpreshuffle",
+    "glm-5.3-flash__gemm_a16w16_bf16_cijk",
+    "kimi-k3__dense_bf16_gemm_cijk",
+    "kimi-k3__score_combine_mix_fused",
+    "minimax-m3__gemm_afp4wfp4_kernel"
+  ],
+  "excluded_generated_files": [
+    {
+      "path": "minimax-m3__decode_score_kernel/ut/_baseline_random.pt",
+      "size_bytes": 41953,
+      "sha256": null,
+      "reason": "Generated baseline cache, not an authoritative persistent fixture; no upstream digest is declared, so it is not provisioned."
+    }
+  ],
+  "oci_storage": {
+    "remote_root": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_ut_0914_full/20260922/tensors",
+    "namespace": "idhpuomb10ix",
+    "region": "us-ashburn-1",
+    "s3_compatible_endpoint": "idhpuomb10ix.compat.objectstorage.us-ashburn-1.oraclecloud.com",
+    "object_layout": "<task>/ut/<filename>; each object is the complete original file",
+    "publication_status": "verified",
+    "configuration": "Configure a compatible rclone remote outside the repository. --oci-remote overrides the full REMOTE:bucket/prefix; no credentials are stored here.",
+    "verified_utc": "2026-09-22T10:42:56.444105+00:00",
+    "verification": "All 17 uploaded objects downloaded from OCI and checked against original SHA-256; zero differences."
+  }
+}

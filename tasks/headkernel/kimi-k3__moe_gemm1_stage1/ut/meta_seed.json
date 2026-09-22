@@ -1,0 +1,131 @@
+{
+  "short_name": "flydsl_moe_stage1_gate_up_silu_mul",
+  "op_kind": "moe",
+  "math_contract": "grouped per-expert fused gate/up GEMM + activation",
+  "description": "aiter FlyDSL fused MoE stage-1: the per-expert gate/up projection GEMM (bf16 activation x mxfp4 w1 -> bf16) over the sorted (token,slot) pairs, with the SiTUv2 activation and gate*up multiply fused into the epilogue. Profiled as `moe_gemm1_0` -- 13.53% of e2e-weighted GPU time (99176 calls, 10624.8 ms), the single largest kernel in the Kimi-K3 0828 profile. The live 0828 launch variant is `flydsl_moe1_abf16_wfp4_bf16_t32x64x256_w3_xcd4_kw2`, i.e. out_dtype='bf16' -- stage-1 does NOT fuse the output quantization in this configuration, so the call returns one bf16 tensor and the mxfp4 requant of a2 happens in a separate fused_dynamic_mxfp4_quant_moe_sort call outside this seam.",
+  "target_callable": "aiter.ops.flydsl.moe_kernels:flydsl_moe_stage1",
+  "baseline_callable": "baseline_src/flydsl/moe_kernels.py:flydsl_moe_stage1",
+  "entry_attr": "flydsl_moe_stage1",
+  "kernel_src": "kernel_src/flydsl",
+  "baseline_src": "baseline_src/flydsl",
+  "editable": true,
+  "synthesized": false,
+  "build": false,
+  "candidate_backends": [
+    "flydsl",
+    "aiter",
+    "triton"
+  ],
+  "integration_lever": "author-fused-replacement",
+  "rebind_seam": "aiter.fused_moe:_flydsl_stage1_wrapper -> aiter.ops.flydsl.flydsl_moe_stage1",
+  "rebind_seam_note": "The live dispatch is AiterRunnerCore.run -> aiter.fused_moe:fused_moe -> fused_moe_2stages -> _flydsl_stage1_wrapper (fused_moe.py:1169) -> aiter.ops.flydsl.flydsl_moe_stage1. A candidate integrates by replacing aiter.ops.flydsl.flydsl_moe_stage1 (package attribute AND aiter.ops.flydsl.moe_kernels.flydsl_moe_stage1) via a PYTHONPATH sitecustomize overlay; the wrapper resolves tile/dtype/swizzle kwargs from get_flydsl_kernel_params(kernelName) and passes the WHOLE set through by keyword, so a replacement must accept the same keyword set (see meta.live_call_kwargs).",
+  "pct_gpu_time": 13.53,
+  "pct_gpu_time_note": "0828 cycle1 e2e-weighted: 99176 calls, 10624.76 ms total (prefill 4753.041 / decode_e2e 5871.718), prefill 956.731 us/call, decode 35.12 us/call, phase split prefill 53.5 / decode 46.5.",
+  "served_regimes": [
+    "prefill",
+    "decode"
+  ],
+  "decode_m_buckets": [
+    1,
+    64
+  ],
+  "prefill_m_buckets": [
+    8192
+  ],
+  "tol": 0.02,
+  "random_draws": 3,
+  "call_sequence_idx": [
+    0,
+    1,
+    0
+  ],
+  "device": "gfx950 MI355X",
+  "model": "/shared_nfs/hyperloom/models/Kimi-K3",
+  "serving": {
+    "backend": "sglang",
+    "tp": 8,
+    "gpus": "0,1,2,3,4,5,6,7",
+    "isl": 8192,
+    "osl": 1024,
+    "conc": 64
+  },
+  "regime": {
+    "backend": "sglang",
+    "quant": {
+      "method": "mxfp4-pack-quantized",
+      "weight_dtype": "float4_e2m1fn_x2 (mx group_size 32, e8m0 scales)",
+      "act_dtype": "bfloat16 (stage-1 consumes the UNQUANTIZED hidden states: untuned_fmoe_live.csv q_dtype_a=torch.bfloat16, so a1_scale is None and the kernel takes the a16w4 path)",
+      "block_size": 32,
+      "source": "config.text_config.quantization_config (compressed-tensors Mxfp4MoEMethod)"
+    },
+    "kv_cache_dtype": "auto",
+    "compile": "eager",
+    "enforce_eager": false,
+    "cuda_graph": true,
+    "attention_backend": "triton",
+    "prefill_chunk": 8192,
+    "notes": "0828 cycle1 baseline flags: --chunked-prefill-size 8192, --cuda-graph-max-bs 64, --moe-runner-backend aiter, --trust-remote-code. Decode replays under a HIP graph; prefill runs eager."
+  },
+  "tol_note": "0.02 (the default) -- but ONLY because correctness compares the elementwise MEDIAN over 21 independent launches of each leg. A SINGLE launch of this kernel is not reproducible (see nondeterminism_calibration); against a single-launch oracle no tolerance works, because the baseline's disagreement with ITSELF (harness err 27) exceeds the disagreement produced by a real wrong tile config. Medianed, the frozen baseline reproduces itself BITWISE and tol=0.02 still rejects act=silu (err 8.9) and situ_beta=0.5 (err 0.50). Do not raise this; if the median stops being bitwise-stable, raise median_launches instead -- _extract_gen1.py hard-fails on that.",
+  "provenance_note": "ROUTING IS REAL but SECOND-HAND: it is the served topk distribution captured at the stage-2 seam of the 0817 session (ut_stage2/reference_io.pt, same model / TP=8 / ISL 8192 / OSL 1024 / conc 64), inverted back to (topk_ids, topk_weights) and re-sorted by the production aiter moe_sorting at stage-1's own block size. It was NOT captured at the stage-1 seam. The launch variant is the REAL 0828 one (kernel name recorded live in tuning/work + the architect report), resolved through the frozen registry, but the DECODE variant is assumed identical to prefill's rather than observed. _capture_overlay1/ is the (unrun) hook that would replace both with a first-hand stage-1 capture. SEPARATELY: the golden is the elementwise MEDIAN of 21 frozen-baseline launches, not a single launch, because this kernel is not run-to-run reproducible at served routing spreads -- see nondeterminism_calibration.",
+  "median_launches": 21,
+  "nondeterminism_calibration": {
+    "summary": "aiter FlyDSL stage-1 is not run-to-run reproducible once the sorted routing spans more than ~50 expert blocks: ~0.5-1% of output elements differ between consecutive launches on identical inputs, relL2 ~2e-2. Every served bucket except M=1 is in that regime (decode M=64 -> 469 blocks, prefill M=8192 -> 4535 blocks).",
+    "onset_sweep_blocks_to_ndiff_of_393216": {
+      "32": 0,
+      "46": 0,
+      "64": 32,
+      "128": 9066,
+      "252": 5694,
+      "452": 2602,
+      "595": 3605
+    },
+    "ruled_out": [
+      "operand OOB: guard-padding a (4x), w1 (2x) and w1_scale (4x) changes nothing",
+      "output OOB: a guard row appended to `out` stays exactly 0.0, so padded-slot stores ARE masked",
+      "routing/padding: moe_sorting pad marker is (topk<<24)|M, 0 pads land inside [M,topk], 0 duplicate (token,slot) pairs",
+      "launch knobs: k_wave 2->1, k_batch, xcd_swizzle 4->0, waves_per_eu, b_nt, use_async_copy",
+      "call convention: kwargs match aiter/fused_moe.py:_flydsl_stage1_wrapper line for line",
+      "weight layout: reproduced with aiter's own recipe (shuffle_weight_a16w4 + shuffle_scale_a16w4); both shuffles are shape-preserving here (688128x112, factor 1.0)",
+      "the machine: ut_stage2's UT passes on the same node/GPU/container",
+      "the frozen copy: the INSTALLED aiter shows the same behaviour"
+    ],
+    "upstream_corroboration": "op_tests/flydsl_tests/test_flydsl_moe_a16wfp4.py:_check_result gates this op with cosine similarity + atol=1.0 + pass_pct=95.0, i.e. aiter itself does not treat these outputs as elementwise reproducible.",
+    "median_stability_trials": {
+      "prefill_M8192": {
+        "15": "0/4 unstable",
+        "21": "0/4",
+        "31": "0/4"
+      },
+      "decode_M64": {
+        "5": "1/4 unstable",
+        "9": "1/4",
+        "21": "0/4"
+      },
+      "decode_M1": {
+        "21": "0/4 (single launch already bitwise)"
+      }
+    },
+    "discriminating_power_at_tol_0.02_via_median": {
+      "act=silu": "FAIL err 8.9 (relL2 1.16)",
+      "situ_beta=0.5": "FAIL err 0.50 (relL2 0.37)",
+      "situ_linear_beta=0.5": "FAIL (relL2 0.36)",
+      "tile_n=256": "PASS -- and correctly so: resolve_flydsl_stage1_tile_n downgrades it to 128 and tiling is mathematically neutral. It is a PERF lever, never a correctness control; the NOTES.md lever must be measured in the timing legs, not here."
+    },
+    "known_limitation": "a perturbation confined to a single expert (1 of 896 scales doubled) stays inside the median's residual at the big buckets (relL2 0.039 vs 0.024 floor) and is invisible at M=1 when that expert is unrouted. This UT gates errors that touch a meaningful fraction of experts, not single-expert drift."
+  },
+  "scale_calibration": {
+    "chosen_scale_byte_lo": 117,
+    "chosen_scale_byte_hi": 121,
+    "why": "e8m0 group scales are drawn near 2^-10, not near 2^0 as in ut_stage2. A real mxfp4 w1 entry has std ~1/sqrt(model_dim); with unit-scale bf16 hidden states and K=3584 that puts the gate/up accumulator at O(1), which is where SiTUv2 operates.",
+    "sweep_scale_byte_to_absmax_and_saturated_fraction": {
+      "112": "absmax 0.003 (degenerate, all ~0)",
+      "116": "absmax 0.566, sat 0",
+      "117": "absmax 0.965, sat 0",
+      "118": "absmax 1.000, sat 7e-5",
+      "120": "absmax 1.000, sat 0.15",
+      "127": "absmax 1.000, sat 0.50"
+    },
+    "failure_it_prevents": "at scales near 2^0 the SiTUv2 output pins at its +-1 clamp for ~50% of elements, so the kernel's run-to-run spread appears as SIGN FLIPS of magnitude 2.0 -- an oracle no tolerance can gate."
+  }
+}

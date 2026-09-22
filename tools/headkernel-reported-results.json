@@ -1,0 +1,72 @@
+{
+  "schema_version": 1,
+  "claim_source": "user_supplied_historical_results",
+  "new_gpu_verification": false,
+  "new_framework_task_validator_pass_claimed": false,
+  "reported_configuration_for_all_rows": {
+    "runtime_label": "sglang:v0.5.17",
+    "ISL": 8192,
+    "OSL": 1024,
+    "CONC": 64,
+    "TP": 8
+  },
+  "scope_note": "These values are the user's reported historical E2E and kernel results, not new measurements of the restored branch. GPU-time shares, kernel speedups, roofline percentages and model E2E gains have distinct scopes and are not recomputed from one another. Next steps and ETA are retained as reported plans, not completion claims.",
+  "runtime_mapping_note": "The reported common sglang:v0.5.17 label is preserved. Restored execution declarations include SGLang v0.5.17, v0.5.18 and a custom Kimi image; public runtime candidates are separate identities. Consult docs/how-to/headkernel-upstream-runtime.md and tools/headkernel-public-runtimes.json; no image equivalence is claimed.",
+  "task_source_or_harness_changes": false,
+  "results": [
+    {
+      "model": "MiniMax M3",
+      "reported_e2e_gain": "+4.52%",
+      "reported_kernel_results": "Top1 kernel: decode_score_kernel with 11% GPU time, ~1.58× speedup and roofline 60%→86%. Top3 kernel: gqa_share_sparse_fwd_kernel with 7.63% GPU time, ~1.11× speedup and roofline 78%→86%.",
+      "reported_next_step": "Continue improve other head kernel roofline utilization",
+      "task_paths": [
+        "tasks/headkernel/minimax-m3__decode_score_kernel",
+        "tasks/headkernel/minimax-m3__gqa_share_sparse_fwd_kernel"
+      ],
+      "mapping_status": "unresolved_prefill_label_vs_decode_manifest",
+      "mapping_note": "The user labels the 7.63% result gqa_share_sparse_fwd_kernel (prefill); tools/manifest.json row MM-3 assigns 7.63% and 78% → 86% to gqa_share_sparse_decode_kernel. Both records are preserved without resolving the discrepancy.",
+      "alternative_manifest_task_path": "tasks/headkernel/minimax-m3__gqa_share_sparse_decode_kernel"
+    },
+    {
+      "model": "Kimi K3",
+      "reported_e2e_gain": "+11.09%",
+      "reported_kernel_results": "Top1 kernel: fwd_grouped_kernel_stage with 10% GPU time, ~10× speedup and roofline 20%→61%.",
+      "reported_next_step": "Continue improve head kernel roofline utilization",
+      "task_paths": [
+        "tasks/headkernel/kimi-k3__fwd_grouped_kernel_stage1"
+      ]
+    },
+    {
+      "model": "DeepSeek V4 Pro",
+      "reported_e2e_gain": "+131%",
+      "reported_kernel_results": "Top1 kernel: Flash MLA with 44% GPU time, ~8.6× speedup and roofline 18%→51%.",
+      "reported_next_step": "Continue improve head kernel roofline utilization",
+      "task_paths": [
+        "tasks/headkernel/deepseek-v4-pro__dsa_sparse_mla_attn"
+      ],
+      "mapping_note": "FlashMLA is the reported label; the restored task executes the ROCm TileLang DSA implementation. The label does not identify a CUDA FlashMLA implementation in this task."
+    },
+    {
+      "model": "GLM5.3 Flash",
+      "reported_e2e_gain": "+1.4%",
+      "reported_kernel_results": "Top1 kernel: fused moe with 24% GPU time, already has 98% empirical roofline utilization. Top2&3 kernel: ~12% GPU time, GEMM tune optimization.",
+      "reported_next_step": "Test on AgentX config ETA 9/22",
+      "task_paths": [
+        "tasks/headkernel/glm-5.3-flash__fused_moe_kernel",
+        "tasks/headkernel/glm-5.3-flash__gemm_a16w16_bf16_cijk",
+        "tasks/headkernel/glm-5.3-flash__ck_gemm_a8w8_blockscale_bpreshuffle"
+      ],
+      "mapping_note": "The two original GLM GEMM entries remain NOT_BUILT placeholders in this restoration. Their inclusion records the reported tuning targets, not current verification or runnable task status."
+    },
+    {
+      "model": "Qwen3.8 2.4T",
+      "reported_e2e_gain": "+2.4%",
+      "reported_kernel_results": "Top1 kernel: MoE1+ MoE2 with 33% GPU time, ~1.54× speedup and roofline 73%→82%.",
+      "reported_next_step": "Optimize other top kernels in workload",
+      "task_paths": [
+        "tasks/headkernel/qwen3.8-2.4t__fused_moe_2stage_mxfp4"
+      ],
+      "mapping_note": "The two reported MoE stages map to one composite restored task."
+    }
+  ]
+}

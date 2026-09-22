@@ -1,0 +1,30 @@
+{
+  "op_kind": "attn",
+  "task": "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/kimi-k3/Kimi-K3/20260829T041510Z-96caeb1a/geak/e2e_cycle0/kernels/_fwd_grouped_kernel_stage1_task",
+  "harness_suspect": false,
+  "harness_error": "",
+  "results": [
+    {
+      "backend": "current",
+      "available": false,
+      "correct": false,
+      "ms": null,
+      "note": "attention backend comparison is a SERVER-level flag (--attention-backend) -> delegated to the Config Tuner fast path; op-level bake-off skipped (no timing taken here)",
+      "artifact": "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/exp/kimi-k3/Kimi-K3/20260829T041510Z-96caeb1a/geak/e2e_cycle0/kernels/_fwd_grouped_kernel_stage1_task/reference_io.pt"
+    }
+  ],
+  "winner_backend": null,
+  "winner_ms": null,
+  "baseline_backend": null,
+  "baseline_ms": null,
+  "measured": false,
+  "isolated_speedup": null,
+  "pct_gpu_time": 9.95,
+  "amdahl_ceiling_e2e_pct": null,
+  "winner_editable": false,
+  "winner_kind": "none",
+  "tuning_artifact": "",
+  "apply_env": "",
+  "apply_flags": "",
+  "deployable_note": "verify deployability at the e2e gate"
+}

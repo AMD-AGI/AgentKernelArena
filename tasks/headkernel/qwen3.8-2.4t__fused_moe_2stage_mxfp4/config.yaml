@@ -1,0 +1,99 @@
+# qwen3.8-2.4t__fused_moe_2stage_mxfp4
+# Head kernel from the 2026-09-14 info table, rows: Q38-1, Q38-2, Q38-3
+
+source_file_path:
+  - source/moe_candidate.py
+
+target_kernel_functions:
+  - fused_moe
+
+compile_command:
+  - python3 scripts/task_runner.py compile
+
+correctness_command:
+  - python3 scripts/task_runner.py correctness
+
+performance_command:
+  - python3 scripts/task_runner.py performance
+
+task_type: triton2triton
+
+task_result_template: null
+
+prompt:
+  source_code: null
+  instructions: |
+    Optimize the Qwen3.8-2.4T-A95B-MXFP4 head kernel `mfma_moe1_silu_mul_afp4_wfp4_bf16_t32x128x256_pm1_async_v32 -> t32x32x256` (AITER / FlyDSL) for maximum GPU
+    throughput on MI355X (gfx950) while keeping it numerically correct.
+
+    It is 21.06% of de-inflated GPU time in the serving profile
+    (ISL 8192 / OSL 1024 / CONC 64 / TP 8), currently at 73.05% memory-bound of its empirical roofline.
+
+    The profiler resolves several device symbols to this one seam, so a change here
+    moves all of them:
+      - mfma_moe1_silu_mul_afp4_wfp4_bf16_t32x128x256_pm1_async_v32 -> t32x32x256  (21.06% GPU, roofline 73.05% memory-bound)
+      - mfma_moe2_afp4_wfp4_bf16_cshuffle_t32x128x256 [atomic_bnt2 -> atomic]  (11.58% GPU, roofline 75.47% memory-bound)
+      - FMoE 2-stage - S1 t64x128 + S2 atomic -> S1 t128x64 + S2 atomic_persist  (15.73% GPU, roofline 22.6% memory-bound)
+
+    Edit only:
+      source/moe_candidate.py
+
+    Entry points that must keep their signatures:
+      fused_moe
+
+    Do NOT remove these - they are not optimization targets, but the two-leg unit
+    test resolves its frozen baseline through them, and deleting one turns a
+    working kernel into an unexplained correctness failure:
+      baseline_callable
+      _BASELINE
+
+    The production seam is `aiter.fused_moe:fused_moe`; correctness is judged
+    against a frozen live-server capture, not a re-derived reference, so the kernel
+    must stay faithful to the deployed contract (dtypes, layouts, quantization).
+  cheatsheet: null
+
+# ---------------------------------------------------------------------------
+# Provenance. Not read by the arena schema check; read by scripts/task_runner.py
+# and by anyone auditing where these numbers came from.
+headkernel:
+  model: "Qwen3.8-2.4T-A95B-MXFP4"
+  owner: "Li, Zeping <zepingl@amd.com>"
+  docker: "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.18-rocm720-mi35x-profilerfix"
+  serving: ISL 8192 / OSL 1024 / CONC 64 / TP 8
+  backend: AITER / FlyDSL
+  regime: decode
+  device_symbol: mfma_moe1_silu_mul_afp4_wfp4_bf16_t32x128x256_pm1_async_v32
+  target_callable: "aiter.fused_moe:fused_moe"
+  tol: 0.02
+  oracle: "frozen live-capture ut/reference_io.pt"
+  source_package: P/fused_moe_mxfp4_task
+  source_seed: "stock+harness-shim"
+  # Symbols the UT resolves its frozen baseline through. They are not
+  # optimization targets, but deleting one turns a working kernel into an
+  # opaque correctness FAIL, so scripts/task_runner.py compile checks them.
+  preserve_symbols:
+    - baseline_callable
+    - _BASELINE
+  # source/ is the stock runtime-image file plus 10 line(s) of UT harness shim (the two-leg
+  # UT resolves its frozen baseline through them). Nothing has been pre-optimized.
+  info_rows:
+    - row: "Q38-1"
+      info_kernel: "mfma_moe1_silu_mul_afp4_wfp4_bf16_t32x128x256_pm1_async_v32 -> t32x32x256"
+      gpu_pct: 21.06
+      empirical_roofline: "73.05% memory-bound"
+      optimized_roofline: "82.37% memory-bound"
+      e2e_uplift: "E1 FMoE 6-row +1.025%; E3 E1+E2 native stack +3.922%"
+    - row: "Q38-2"
+      info_kernel: "mfma_moe2_afp4_wfp4_bf16_cshuffle_t32x128x256 [atomic_bnt2 -> atomic]"
+      gpu_pct: 11.58
+      empirical_roofline: "75.47% memory-bound"
+      optimized_roofline: "71.65% memory-bound"
+      e2e_uplift: "E1 FMoE 6-row +1.025%; E3 E1+E2 native stack +3.922%"
+    - row: "Q38-3"
+      info_kernel: "FMoE 2-stage - S1 t64x128 + S2 atomic -> S1 t128x64 + S2 atomic_persist"
+      gpu_pct: 15.73
+      empirical_roofline: "22.6% memory-bound"
+      optimized_roofline: "23.7% memory-bound"
+      e2e_uplift: "E1 FMoE 6-row +1.025%; E3 E1+E2 native stack +3.922%"
+  symbol_locations:
+    fused_moe: source/moe_candidate.py

@@ -1,0 +1,1 @@
+../../../../source/flydsl/kernels/moe_scatter_copy_token.py

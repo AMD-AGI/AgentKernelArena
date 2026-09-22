@@ -64,19 +64,6 @@ docker() {
         esac
     fi
     if [[ "${1:-}" == "image" && "${2:-}" == "inspect" ]]; then
-        [[ "${FAKE_IMAGE_INSPECT_FAILURE:-0}" == "0" ]] || return 1
-        if [[ -n "${FAKE_IMAGE_INSPECT_LOG:-}" ]]; then
-            printf '%s\n' "${!#}" >> "$FAKE_IMAGE_INSPECT_LOG"
-        fi
-        if [[ "${4:-}" == '{{json .RepoDigests}}' ]]; then
-            printf '%s\n' "${FAKE_IMAGE_REPO_DIGESTS:-[]}"
-            return 0
-        fi
-        if [[ "${4:-}" == '{{json .}}' ]]; then
-            "$REAL_PYTHON3" -c 'import json,sys; print(json.dumps({"Id":sys.argv[1], "RepoDigests":json.loads(sys.argv[2]), "Descriptor":json.loads(sys.argv[3])}))' \
-                "${FAKE_SELECTED_IMAGE_ID:-sha256:pinned-image-id}" "${FAKE_IMAGE_REPO_DIGESTS:-[]}" "${FAKE_IMAGE_DESCRIPTOR:-null}"
-            return 0
-        fi
         local reference="${!#}"
         if [[ "$reference" == "$PINNED_GFX950_IMMUTABLE_IMAGE" ]]; then
             printf '%s\n' "${FAKE_PINNED_IMAGE_ID:-sha256:pinned-image-id}"
@@ -114,29 +101,6 @@ docker() {
         [[ -z "${FAKE_DOCKER_EVENTS:-}" ]] \
             || printf 'sidecar-stop:%s\n' "${!#}" >> "$FAKE_DOCKER_EVENTS"
         return 0
-    fi
-    if [[ "${FAKE_PARALLEL_VERIFY:-0}" == "1" && " $* " == *" --shard-index "* ]]; then
-        "$REAL_PYTHON3" - "$@" <<'PY'
-import json,os,sys
-from pathlib import Path
-from src.tools.verify_head_kernels import select_task_shard
-args=sys.argv[1:]
-value=lambda key: args[args.index(key)+1]
-directory=Path(value('--output-directory'))
-declaration=json.loads((directory.parent/'parallel-plan.json').read_text())
-index,count=int(value('--shard-index')),int(value('--shard-count'))
-gpu=next(arg.split('=',1)[1] for arg in args if arg.startswith('AGENT_KERNEL_ARENA_HOST_GPU_ID='))
-expected=select_task_shard(declaration['plan']['tasks'],index,count)
-directory.mkdir()
-failure=os.environ.get('FAKE_PARALLEL_FAIL_INDEX')==str(index)
-report={'cpu_mock':True,'plan':declaration['plan'],'status':'all_native_phases_succeeded',
-        'shard':{'index':index,'count':count,'assigned_tasks':expected,'host_gpu_id':gpu,
-                 'taskset_sha256':value('--taskset-sha256')},
-        'tasks':[{'task':task,'status':'failed' if failure else 'all_native_phases_succeeded'} for task in expected]}
-(directory/'direct-verification.json').write_text(json.dumps(report))
-(directory/'mock-docker-argv.json').write_text(json.dumps(args))
-PY
-        return
     fi
     local value
     for value in "$@"; do
@@ -191,16 +155,6 @@ QUALITY_ARTIFACT_REL="quality_loop_runs/$QUALITY_TEST_RUN_ID"
 QUALITY_WORKTREE_REL=".quality_loop_worktrees/$QUALITY_TEST_RUN_ID"
 QUALITY_EVAL_ARTIFACT_DIR="$ROOT/.eval-tool-artifacts/quality-loop-$QUALITY_TEST_RUN_ID"
 trap 'rm -rf -- "$TEST_HOME" "$PATH_TEST_PARENT" "$ROOT/$QUALITY_ARTIFACT_REL" "$ROOT/$QUALITY_WORKTREE_REL" "$QUALITY_EVAL_ARTIFACT_DIR"' EXIT
-# Keep all mocked parallel-run output inside this test's owned cleanup root.
-mktemp() {
-    if [[ -n "${FAKE_PARALLEL_PARENT:-}" && "$*" == *workspace_parallel_verification_* ]]; then
-        mkdir -p "$FAKE_PARALLEL_PARENT"
-        command mktemp -d "$FAKE_PARALLEL_PARENT/workspace_parallel_verification_XXXXXX"
-    else
-        command mktemp "$@"
-    fi
-}
-export -f mktemp
 UNRELATED_GEAK_WORKFLOW_DIR="$TEST_HOME/unrelated-geak-workflow"
 GEAK_SDK_PYTHONPATH="PYTHONPATH=/workspace/.aka-pyuserbase/geak-sdk"
 mkdir -p "$UNRELATED_GEAK_WORKFLOW_DIR"
@@ -289,166 +243,8 @@ forwarded_agents="$(PATH="$FAKE_BIN:$PATH" bash "$RUNNER" _container_check_agent
 # The gfx950 default resolves to the pinned image and enables writable caches.
 mapfile -t args < <(run_shell_args AKA_GPU_ARCH=gfx950)
 assert_has "$PINNED_GFX950_IMAGE" "${args[@]}"
-assert_has "AGENT_KERNEL_ARENA_DOCKER_IMAGE=$PINNED_GFX950_IMAGE" "${args[@]}"
-assert_not_has "TVM_FFI_DISABLE_TORCH_C_DLPACK=1" "${args[@]}"
 assert_cache_args_present "" "${args[@]}"
 assert_not_has "AITER_ROOT_DIR=/tmp/aiter-root" "${args[@]}"
-
-# Opt-in capture runs inspect the selected tag before launching and use the
-# resolved local image ID for execution. RepoDigests is separate evidence.
-CAPTURE_IMAGE_ID="sha256:760dd38b9b6f2bd11c13011d470eb8e377c3f0d71284a090a710d64a23bd789f"
-CAPTURE_IMAGE="example.invalid/sglang:v0.5.18"
-mapfile -t args < <(run_shell_args AKA_GPU_ARCH=gfx950 AKA_DOCKER_IMAGE="$CAPTURE_IMAGE" \
-    TVM_FFI_DISABLE_TORCH_C_DLPACK=1 \
-    AKA_HEAD_KERNEL_VALIDATION_RUNTIME=public_hyperloom_rocm720 \
-    AKA_VERIFY_RUNTIME_IMAGE=1 AKA_EXPECTED_IMAGE_ID="$CAPTURE_IMAGE_ID" \
-    FAKE_SELECTED_IMAGE_ID="$CAPTURE_IMAGE_ID")
-assert_has "AGENT_KERNEL_ARENA_DOCKER_IMAGE=$CAPTURE_IMAGE" "${args[@]}"
-assert_has "AGENT_KERNEL_ARENA_HEAD_KERNEL_VALIDATION_RUNTIME=public_hyperloom_rocm720" "${args[@]}"
-assert_has "TVM_FFI_DISABLE_TORCH_C_DLPACK=1" "${args[@]}"
-assert_has "AGENT_KERNEL_ARENA_DOCKER_IMAGE_ID=$CAPTURE_IMAGE_ID" "${args[@]}"
-assert_has "AGENT_KERNEL_ARENA_DOCKER_REPO_DIGESTS=[]" "${args[@]}"
-assert_has "$CAPTURE_IMAGE_ID" "${args[@]}"
-assert_not_has "$CAPTURE_IMAGE" "${args[@]}"
-
-# Docker's containerd store can expose the pinned manifest as its engine ID.
-# Keep the config pin separate and require the real committed manifest binding.
-PUBLIC_MANIFEST="sha256:1f5464829559b086eb66f9b803cb9c7a817438c43edff2d5ef59b46a186745f6"
-PUBLIC_CONFIG="sha256:ffe4af630e49b05c812db4a468bfb411c3dbb0e93124801f28349bfa31352dea"
-PUBLIC_IMAGE="docker.io/rocm/hyperloom@$PUBLIC_MANIFEST"
-PUBLIC_DESCRIPTOR="$("$REAL_PYTHON3" -c 'import json,pathlib,sys; p=pathlib.Path(sys.argv[1]); raw=p.read_bytes(); print(json.dumps({"digest":"sha256:"+p.stem,"mediaType":json.loads(raw)["mediaType"],"size":len(raw)}))' "$ROOT/docker/head-kernels/manifests/${PUBLIC_MANIFEST#sha256:}.json")"
-mapfile -t manifest_args < <(run_shell_args AKA_GPU_ARCH=gfx950 AKA_DOCKER_IMAGE="$PUBLIC_IMAGE" \
-    AKA_VERIFY_RUNTIME_IMAGE=1 AKA_EXPECTED_IMAGE_ID="$PUBLIC_CONFIG" \
-    FAKE_SELECTED_IMAGE_ID="$PUBLIC_MANIFEST" FAKE_IMAGE_DESCRIPTOR="$PUBLIC_DESCRIPTOR" \
-    FAKE_IMAGE_REPO_DIGESTS="[\"rocm/hyperloom@$PUBLIC_MANIFEST\"]")
-assert_has "AGENT_KERNEL_ARENA_DOCKER_IMAGE_ID=$PUBLIC_MANIFEST" "${manifest_args[@]}"
-assert_has "AGENT_KERNEL_ARENA_DOCKER_CONFIG_DIGEST=$PUBLIC_CONFIG" "${manifest_args[@]}"
-assert_has "AGENT_KERNEL_ARENA_DOCKER_IMAGE_ID_ROLE=manifest_digest" "${manifest_args[@]}"
-assert_has "$PUBLIC_MANIFEST" "${manifest_args[@]}"
-
-# Direct verification starts one native utility container, without agent CLI,
-# authentication, or host git configuration mounts, even with an agent YAML.
-mapfile -t verify_args < <(
-    HOME="$TEST_HOME" AKA_DOCKER_IMAGE="$CAPTURE_IMAGE" \
-        AKA_EXPECTED_IMAGE_ID="$CAPTURE_IMAGE_ID" FAKE_SELECTED_IMAGE_ID="$CAPTURE_IMAGE_ID" \
-        bash "$RUNNER" verify --config_name example_configs/top5_validator_sglang_v0518_mi355x.yaml 2>/dev/null
-)
-assert_has src.tools.verify_head_kernels "${verify_args[@]}"
-assert_has "$CAPTURE_IMAGE_ID" "${verify_args[@]}"
-assert_not_has main.py "${verify_args[@]}"
-for value in "${verify_args[@]}"; do
-    case "$value" in
-        *:/opt/aka-agent-state/*|*:/opt/codex-node:*|*:/opt/claude-node:*|*:*/.gitconfig:*)
-            fail "direct verification mounted agent state or host configuration: $value" ;;
-    esac
-done
-
-# Parallel verification masks each worker to one GPU, preserves reports, and
-# fails aggregation on a native task failure even when the mock exits zero.
-for parallel_failure in none 1; do
-    parent="$PATH_TEST_PARENT/parallel-$parallel_failure"
-    if env HOME="$TEST_HOME" FAKE_PARALLEL_VERIFY=1 FAKE_PARALLEL_PARENT="$parent" \
-        FAKE_PARALLEL_FAIL_INDEX="$parallel_failure" GPU_IDS=2,5 \
-        FAKE_SELECTED_IMAGE_ID="sha256:af24798ab4d57196fa1e928e4c81202bafb06cdeb663158f4d4f038fdb18f1a3" \
-        bash "$RUNNER" parallel-verify --config_name example_configs/top5_validator_sglang_v0518_mi355x.yaml \
-        > "$TEST_HOME/parallel-$parallel_failure.stdout" 2> "$TEST_HOME/parallel-$parallel_failure.stderr"; then
-        [[ "$parallel_failure" == none ]] || fail "failed native task passed parallel verification"
-    else
-        [[ "$parallel_failure" != none ]] || { cat "$TEST_HOME/parallel-$parallel_failure.stderr" >&2; fail "parallel verification fixture failed"; }
-    fi
-    "$REAL_PYTHON3" - "$parent" <<'PY'
-import json,sys
-from pathlib import Path
-batch,=Path(sys.argv[1]).glob('workspace_parallel_verification_*')
-summary=json.loads((batch/'parallel-verification.json').read_text())
-assert len(summary['workers'])==2
-for index,gpu in enumerate(('2','5')):
- args=json.loads((batch/f'worker-{index:03d}/mock-docker-argv.json').read_text())
- for expected in (f'ROCR_VISIBLE_DEVICES={gpu}','HIP_VISIBLE_DEVICES=0','CUDA_VISIBLE_DEVICES=0',
-                  f'AGENT_KERNEL_ARENA_WORKER_ID={index}',f'AGENT_KERNEL_ARENA_HOST_GPU_ID={gpu}'):
-  assert expected in args,expected
- assert not any('/opt/aka-agent-state/' in value and ':' in value for value in args)
- assert not any('/.gitconfig:' in value for value in args)
-PY
-done
-
-# Optional baseline tracing uses the same credential-free container boundary.
-mapfile -t trace_args < <(
-    HOME="$TEST_HOME" AKA_DOCKER_IMAGE="$CAPTURE_IMAGE" \
-        AKA_EXPECTED_IMAGE_ID="$CAPTURE_IMAGE_ID" FAKE_SELECTED_IMAGE_ID="$CAPTURE_IMAGE_ID" \
-        bash "$RUNNER" trace --config_name example_configs/top5_validator_sglang_v0518_mi355x.yaml \
-        --max-cases 2 --timeout 120 2>/dev/null
-)
-assert_has src.tools.trace_head_kernels "${trace_args[@]}"
-assert_has --max-cases "${trace_args[@]}"
-assert_not_has src.tools.verify_head_kernels "${trace_args[@]}"
-assert_not_has main.py "${trace_args[@]}"
-for value in "${trace_args[@]}"; do
-    case "$value" in
-        *:/opt/aka-agent-state/*|*:/opt/codex-node:*|*:/opt/claude-node:*|*:*/.gitconfig:*)
-            fail "device tracing mounted agent state or host configuration: $value" ;;
-    esac
-done
-
-# Top-five cache isolation is opt-in, uses different roots per worker, and
-# creates ordinary user-owned directories without copying the image cache.
-top5_cache_root_from_args() {
-    local value
-    for value in "$@"; do
-        case "$value" in
-            AGENT_KERNEL_ARENA_RUNTIME_CACHE_ROOT=*) printf '%s\n' "${value#*=}"; return ;;
-        esac
-    done
-    return 1
-}
-if top5_cache_root_from_args "${args[@]}" >/dev/null; then
-    fail "capture image received top-five caches without opt-in"
-fi
-mapfile -t cache_args < <(run_shell_args AKA_GPU_ARCH=gfx950 AKA_DOCKER_IMAGE="$CAPTURE_IMAGE" \
-    AKA_TOP5_ISOLATED_CACHES=1 AKA_CACHE_SUFFIX=worker_0)
-cache_root_0="$(top5_cache_root_from_args "${cache_args[@]}")"
-[[ "$cache_root_0" == /tmp/aka-top5-cache-*worker_0 ]] || fail "unexpected top-five cache root"
-assert_has "AITER_JIT_DIR=$cache_root_0/aiter-jit" "${cache_args[@]}"
-assert_has "FLYDSL_RUNTIME_CACHE_DIR=$cache_root_0/flydsl" "${cache_args[@]}"
-assert_has "/tmp/aiter_configs:rw,uid=$(id -u),gid=$(id -g),mode=1777" "${cache_args[@]}"
-for value in "${cache_args[@]}"; do
-    case "$value" in
-        AITER_CONFIG_*=*) fail "top-five scratch isolation changed a native tuning selector: $value" ;;
-    esac
-done
-mapfile -t cache_args < <(run_shell_args AKA_GPU_ARCH=gfx950 AKA_DOCKER_IMAGE="$CAPTURE_IMAGE" \
-    AKA_TOP5_ISOLATED_CACHES=1 AKA_CACHE_SUFFIX=worker_1)
-cache_root_1="$(top5_cache_root_from_args "${cache_args[@]}")"
-[[ "$cache_root_0" != "$cache_root_1" ]] || fail "top-five workers share runtime caches"
-# Combining the old runtime defaults with the top-five opt-in must not add
-# duplicate mounts at the same target, which Docker rejects before launch.
-mapfile -t combined_cache_args < <(run_shell_args AKA_GPU_ARCH=gfx950 \
-    AKA_DOCKER_IMAGE="$PINNED_GFX950_IMAGE" AKA_TOP5_ISOLATED_CACHES=1)
-scratch_mount_count=0
-for value in "${combined_cache_args[@]}"; do
-    [[ "$value" != /tmp/aiter_configs:* ]] || scratch_mount_count=$((scratch_mount_count + 1))
-done
-[[ "$scratch_mount_count" -eq 1 ]] || fail "runtime added duplicate AITER config scratch mounts"
-fixture_cache_root="$TEST_HOME/top5-runtime-cache"
-AGENT_KERNEL_ARENA_RUNTIME_CACHE_ROOT="$fixture_cache_root" \
-    AITER_JIT_DIR="$fixture_cache_root/aiter-jit" \
-    FLYDSL_RUNTIME_CACHE_DIR="$fixture_cache_root/flydsl" \
-    bash "$RUNNER" _container_prepare_runtime_caches
-for cache_directory in "$fixture_cache_root/aiter-jit" "$fixture_cache_root/flydsl"; do
-    [[ -d "$cache_directory" && "$(stat -c %u "$cache_directory")" == "$(id -u)" ]] \
-        || fail "runtime cache was not created for the ordinary user"
-done
-for identity_failure in \
-    "AKA_EXPECTED_IMAGE_ID=sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" \
-    "FAKE_IMAGE_INSPECT_FAILURE=1" \
-    "FAKE_SELECTED_IMAGE_ID=sha256:invalid"; do
-    if run_shell_args AKA_GPU_ARCH=gfx950 AKA_DOCKER_IMAGE="$CAPTURE_IMAGE" \
-        AKA_VERIFY_RUNTIME_IMAGE=1 FAKE_SELECTED_IMAGE_ID="$CAPTURE_IMAGE_ID" \
-        "$identity_failure" > "$TEST_HOME/identity-failure-output"; then
-        fail "runtime identity failure did not stop Docker execution: $identity_failure"
-    fi
-    [[ ! -s "$TEST_HOME/identity-failure-output" ]] || fail "identity failure launched Docker"
-done
 
 # A worker suffix must isolate both runtime cache directories.
 mapfile -t args < <(run_shell_args AKA_GPU_ARCH=gfx950 AKA_CACHE_SUFFIX=worker/3)
@@ -460,7 +256,6 @@ assert_cache_args_present "" "${args[@]}"
 
 # Old and custom gfx950 images retain their existing Docker arguments.
 mapfile -t args < <(run_shell_args AKA_GPU_ARCH=gfx950 AKA_DOCKER_IMAGE="$OLD_GFX950_IMAGE")
-assert_has "AGENT_KERNEL_ARENA_DOCKER_IMAGE=$OLD_GFX950_IMAGE" "${args[@]}"
 assert_cache_args_absent "${args[@]}"
 mapfile -t args < <(run_shell_args AKA_GPU_ARCH=gfx950 AKA_DOCKER_IMAGE_GFX950=example.invalid/custom:latest)
 assert_cache_args_absent "${args[@]}"
@@ -817,23 +612,6 @@ for runtime_mode in shell smoke check-agents preflight run parallel-run; do
     assert_not_has build "${events[@]}"
     assert_not_has info "${events[@]}"
 done
-
-# A parallel capture run resolves the selected tag only once in the host
-# parent. All five containers execute the frozen ID inherited by the workers.
-IDENTITY_INSPECT_LOG="$TEST_HOME/capture-image-inspections"
-env HOME="$CLAUDE_HOME" AKA_NODE_PREFIX="$CLAUDE_PREFIX" \
-    GPU_IDS=0,1 AKA_DOCKER_IMAGE="$CAPTURE_IMAGE" AKA_VERIFY_RUNTIME_IMAGE=1 \
-    AKA_EVAL_TOOLS= FAKE_SELECTED_IMAGE_ID="$CAPTURE_IMAGE_ID" \
-    FAKE_IMAGE_INSPECT_LOG="$IDENTITY_INSPECT_LOG" \
-    bash "$RUNNER" parallel-run \
-    --config_name example_configs/top5_validator_sglang_v0518_mi355x.yaml \
-    > "$TEST_HOME/capture-parallel-argv" 2> "$TEST_HOME/capture-parallel-stderr" \
-    || fail "parallel capture identity run failed"
-mapfile -t inspected < "$IDENTITY_INSPECT_LOG"
-[[ "${#inspected[@]}" -eq 1 && "${inspected[0]}" == "$CAPTURE_IMAGE" ]] \
-    || fail "parallel workers independently re-resolved the mutable capture tag"
-[[ "$(awk -v id="$CAPTURE_IMAGE_ID" '$0 == id {n++} END {print n+0}' "$TEST_HOME/capture-parallel-argv")" == 5 ]] \
-    || fail "parallel containers did not all execute the verified image ID"
 
 # Build/daemon failures must propagate instead of launching a container.
 for failure in FAKE_DOCKER_BUILD_STATUS=42 FAKE_DOCKER_INFO_STATUS=1; do

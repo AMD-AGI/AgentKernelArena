@@ -1,0 +1,85 @@
+# qwen3.8-2.4t__paged_attention_decode
+# Head kernel from the 2026-09-14 info table, rows: Q38-9
+
+source_file_path:
+  - source/attention_candidate.py
+
+target_kernel_functions:
+  - paged_attention_ragged
+
+compile_command:
+  - python3 scripts/task_runner.py compile
+
+correctness_command:
+  - python3 scripts/task_runner.py correctness
+
+performance_command:
+  - python3 scripts/task_runner.py performance
+
+task_type: triton2triton
+
+task_result_template: null
+
+prompt:
+  source_code: null
+  instructions: |
+    Optimize the Qwen3.8-2.4T-A95B-MXFP4 head kernel `paged_attention_ll4mi_QKV_mfma16_kernel` (AITER / CK asm) for maximum GPU
+    throughput on MI355X (gfx950) while keeping it numerically correct.
+
+    It is 6.84% of de-inflated GPU time in the serving profile
+    (ISL 8192 / OSL 1024 / CONC 64 / TP 8), currently at 48.2% memory-bound of its empirical roofline.
+
+    Edit only:
+      source/attention_candidate.py
+
+    Entry points that must keep their signatures:
+      paged_attention_ragged
+
+    Do NOT remove these - they are not optimization targets, but the two-leg unit
+    test resolves its frozen baseline through them, and deleting one turns a
+    working kernel into an unexplained correctness failure:
+      baseline_callable
+      _BASELINE
+      direct_register_custom_op
+
+    The production seam is `aiter.ops.attention:paged_attention_ragged`; correctness is judged
+    against a frozen live-server capture, not a re-derived reference, so the kernel
+    must stay faithful to the deployed contract (dtypes, layouts, quantization).
+
+    Note: the live capture yielded exactly one decode geometry (M=64, 521351 referenced KV pages). The callable must return the supplied output buffer and leave query/KV/metadata/scales unchanged - the UT checks that, not just the values. source/ also stubs direct_register_custom_op so loading the overlay copy does not re-register the torch.library schemas the production module already owns; keep it.
+  cheatsheet: null
+
+# ---------------------------------------------------------------------------
+# Provenance. Not read by the arena schema check; read by scripts/task_runner.py
+# and by anyone auditing where these numbers came from.
+headkernel:
+  model: "Qwen3.8-2.4T-A95B-MXFP4"
+  owner: "Li, Zeping <zepingl@amd.com>"
+  docker: "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.18-rocm720-mi35x-profilerfix"
+  serving: ISL 8192 / OSL 1024 / CONC 64 / TP 8
+  backend: AITER / CK asm
+  regime: decode
+  device_symbol: paged_attention_ll4mi_QKV_mfma16_kernel
+  target_callable: "aiter.ops.attention:paged_attention_ragged"
+  tol: 0.02
+  oracle: "frozen live-capture ut/reference_io.pt"
+  source_package: P/paged_attention_decode_task
+  source_seed: "stock+harness-shim"
+  # Symbols the UT resolves its frozen baseline through. They are not
+  # optimization targets, but deleting one turns a working kernel into an
+  # opaque correctness FAIL, so scripts/task_runner.py compile checks them.
+  preserve_symbols:
+    - baseline_callable
+    - _BASELINE
+    - direct_register_custom_op
+  # source/ is the stock runtime-image file plus 22 line(s) of UT harness shim (the two-leg
+  # UT resolves its frozen baseline through them). Nothing has been pre-optimized.
+  info_rows:
+    - row: "Q38-9"
+      info_kernel: paged_attention_ll4mi_QKV_mfma16_kernel
+      gpu_pct: 6.84
+      empirical_roofline: "48.2% memory-bound"
+      optimized_roofline: null
+      e2e_uplift: "Stage-A scenario +0.25% (NOT measured)"
+  symbol_locations:
+    paged_attention_ragged: source/attention_candidate.py

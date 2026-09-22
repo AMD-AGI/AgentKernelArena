@@ -1,8 +1,0 @@
-{
-  "opus_a8w4_stage2_wrapper": [
-    {
-      "arguments": "arguments(posonlyargs=[], args=[arg(arg='inter_states'), arg(arg='w1'), arg(arg='w2'), arg(arg='sorted_token_ids'), arg(arg='sorted_expert_ids'), arg(arg='num_valid_ids'), arg(arg='out'), arg(arg='topk'), arg(arg='kernelName'), arg(arg='w2_scale'), arg(arg='a2_scale'), arg(arg='sorted_weights'), arg(arg='bias2'), arg(arg='inter_dim_pad', annotation=Name(id='int', ctx=Load())), arg(arg='model_dim_pad', annotation=Name(id='int', ctx=Load())), arg(arg='expert_mask'), arg(arg='topk_ids'), arg(arg='block_m', annotation=Name(id='int', ctx=Load())), arg(arg='kernel_id', annotation=Name(id='int', ctx=Load())), arg(arg='stage2_block_m', annotation=BinOp(left=Name(id='int', ctx=Load()), op=BitOr(), right=Constant(value=None))), arg(arg='stage2_reduce_block_n', annotation=BinOp(left=Name(id='int', ctx=Load()), op=BitOr(), right=Constant(value=None))), arg(arg='route_out', annotation=Name(id='bool', ctx=Load()))], kwonlyargs=[], kw_defaults=[], kwarg=arg(arg='_kwargs'), defaults=[Constant(value=''), Constant(value=None), Constant(value=None), Constant(value=None), Constant(value=None), Constant(value=0), Constant(value=0), Constant(value=None), Constant(value=None), Name(id='_DEFAULT_SORT_BLOCK_M', ctx=Load()), UnaryOp(op=USub(), operand=Constant(value=1)), Constant(value=None), Constant(value=None), Constant(value=False)])",
-      "source": "source/geak_opus_moe_stage2_adapter.py"
-    }
-  ]
-}

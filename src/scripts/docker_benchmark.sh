@@ -15,11 +15,6 @@ HOST_UID="$(id -u)"
 HOST_GID="$(id -g)"
 SELECTED_GPU_ARCH=""
 SELECTED_IMAGE=""
-SELECTED_IMAGE_ID=""
-SELECTED_IMAGE_REPO_DIGESTS="[]"
-SELECTED_IMAGE_CONFIG_DIGEST=""
-SELECTED_IMAGE_ID_ROLE=""
-SELECTED_IMAGE_IDENTITY="{}"
 AGENT_STATE_MOUNT_ROOT="${AKA_AGENT_STATE_MOUNT_ROOT:-/opt/aka-agent-state}"
 DEFAULT_RUN_CONFIG="example_configs/quickstart_claude_mi300.yaml"
 # Set by host-side commands after reading the selected run config. Keep this
@@ -54,9 +49,6 @@ usage() {
     cat <<'EOF'
 Usage:
   src/scripts/docker_benchmark.sh run [main.py args...]
-  src/scripts/docker_benchmark.sh verify --config_name <head-kernel-config>
-  GPU_IDS=0,1 src/scripts/docker_benchmark.sh parallel-verify --config_name <head-kernel-config>
-  src/scripts/docker_benchmark.sh trace --config_name <head-kernel-config> [trace options...]
   src/scripts/docker_benchmark.sh parallel-run [main.py args...]
   src/scripts/docker_benchmark.sh preflight [--config_name <run-config.yaml>]
   src/scripts/docker_benchmark.sh shell
@@ -72,16 +64,9 @@ Default run config:
   On another GPU, pass --config_name with a matching run configuration.
 
 Environment overrides:
-  GPU_IDS                 Comma/space separated GPU indices; required for parallel-verify.
+  GPU_IDS                 Comma/space separated GPU indices for parallel-run.
   AKA_LOGICAL_GPU         Logical GPU index inside a masked worker container (default: 0).
   AKA_DOCKER_IMAGE        Absolute Docker image override.
-  AKA_VERIFY_RUNTIME_IMAGE
-                           Set to 1 to inspect the local image once and launch every
-                           container in this run by its immutable Docker image ID.
-  AKA_EXPECTED_IMAGE_ID  Optional captured Docker image ID assertion (sha256:...).
-  AKA_TOP5_ISOLATED_CACHES
-                           Set to 1 for separate user-owned AITER and FlyDSL
-                           temporary caches in each top-five worker container.
   AKA_GPU_ARCH            GPU arch override for shell/smoke, or run configs without target_gpu_model.
   AKA_DOCKER_IMAGE_<ARCH> Per-arch image override, e.g. AKA_DOCKER_IMAGE_GFX950=...
   AKA_DOCKER_IMAGE_GFX942 Default image for gfx942.
@@ -240,34 +225,6 @@ select_runtime() {
         SELECTED_IMAGE="$(docker_image_for_arch "$SELECTED_GPU_ARCH")"
     fi
     echo "Docker runtime: arch=${SELECTED_GPU_ARCH} image=${SELECTED_IMAGE}" >&2
-    SELECTED_IMAGE_ID=""
-    SELECTED_IMAGE_REPO_DIGESTS="[]"
-    SELECTED_IMAGE_CONFIG_DIGEST=""
-    SELECTED_IMAGE_ID_ROLE=""
-    SELECTED_IMAGE_IDENTITY="{}"
-    if [[ "${AKA_VERIFY_RUNTIME_IMAGE:-0}" == "1" || -n "${AKA_EXPECTED_IMAGE_ID:-}" ]]; then
-        verify_runtime_image_identity
-    fi
-}
-
-verify_runtime_image_identity() {
-    local inspection identity
-    local -a identity_fields=()
-    # Inspect on the host, before any worker is forked, and use the resulting
-    # ID for every launch. A later retag cannot change the selected image bytes.
-    inspection="$(docker image inspect --format '{{json .}}' "$SELECTED_IMAGE" 2>/dev/null)" \
-        || die "Runtime image is unavailable locally: $SELECTED_IMAGE. Provision this exact capture image before running."
-    identity="$(printf '%s' "$inspection" | python3 "$HOST_ROOT/src/tools/runtime_image_identity.py" \
-        --image "$SELECTED_IMAGE" --expected-config "${AKA_EXPECTED_IMAGE_ID:-}")" \
-        || die "Runtime image identity verification failed for $SELECTED_IMAGE"
-    mapfile -t identity_fields < <(python3 -c 'import json,sys; x=json.loads(sys.argv[1]); print(x["engine_image_id"]); print(x["verified_config_digest"] or ""); print(x["engine_id_role"]); print(json.dumps(x["repo_digests"],separators=(",",":")))' "$identity")
-    [[ "${#identity_fields[@]}" -eq 4 ]] || die "Invalid runtime identity verifier response"
-    SELECTED_IMAGE_ID="${identity_fields[0]}"
-    SELECTED_IMAGE_CONFIG_DIGEST="${identity_fields[1]}"
-    SELECTED_IMAGE_ID_ROLE="${identity_fields[2]}"
-    SELECTED_IMAGE_REPO_DIGESTS="${identity_fields[3]}"
-    SELECTED_IMAGE_IDENTITY="$identity"
-    echo "Docker runtime identity: engine_id=$SELECTED_IMAGE_ID role=$SELECTED_IMAGE_ID_ROLE config_digest=$SELECTED_IMAGE_CONFIG_DIGEST repo_digests=$SELECTED_IMAGE_REPO_DIGESTS" >&2
 }
 
 select_runtime_for_config() {
@@ -1038,13 +995,6 @@ build_docker_args() {
         -e "MIOPEN_CACHE_DIR=/tmp/miopen-cache${cache_postfix}"
         -e "MIOPEN_CUSTOM_CACHE_DIR=/tmp/miopen-cache${cache_postfix}"
         -e "AGENT_KERNEL_ARENA_DOCKER=1"
-        -e "AGENT_KERNEL_ARENA_DOCKER_IMAGE=${SELECTED_IMAGE}"
-        -e "AGENT_KERNEL_ARENA_DOCKER_IMAGE_ID=${SELECTED_IMAGE_ID}"
-        -e "AGENT_KERNEL_ARENA_DOCKER_CONFIG_DIGEST=${SELECTED_IMAGE_CONFIG_DIGEST}"
-        -e "AGENT_KERNEL_ARENA_DOCKER_IMAGE_ID_ROLE=${SELECTED_IMAGE_ID_ROLE}"
-        -e "AGENT_KERNEL_ARENA_DOCKER_IDENTITY=${SELECTED_IMAGE_IDENTITY}"
-        -e "AGENT_KERNEL_ARENA_HEAD_KERNEL_VALIDATION_RUNTIME=${AKA_HEAD_KERNEL_VALIDATION_RUNTIME:-}"
-        -e "AGENT_KERNEL_ARENA_DOCKER_REPO_DIGESTS=${SELECTED_IMAGE_REPO_DIGESTS}"
         -e "AGENT_KERNEL_ARENA_WORKDIR=${CONTAINER_WORKDIR}"
         -e "AGENT_KERNEL_ARENA_GPU_ARCH=${SELECTED_GPU_ARCH}"
         -e "PYTORCH_ROCM_ARCH=${SELECTED_GPU_ARCH}"
@@ -1053,15 +1003,10 @@ build_docker_args() {
         -w "$CONTAINER_WORKDIR"
     )
 
-    # Explicit capture-runtime opt-in: v0.5.18 ships a CPU-only TVM FFI addon;
-    # disabling Torch C DLPack avoids failing ROCm addon compilation attempts.
-    if [[ -n "${TVM_FFI_DISABLE_TORCH_C_DLPACK:-}" ]]; then
-        docker_args+=(-e "TVM_FFI_DISABLE_TORCH_C_DLPACK=${TVM_FFI_DISABLE_TORCH_C_DLPACK}")
-    fi
-
     # geak_v4's claude-agent-sdk is installed with `pip install --target` into
-    # this host-mounted dir. Limit PYTHONPATH to GEAK runs so the SDK cannot
-    # shadow pinned runtime packages for other agents.
+    # this host-mounted dir (see container_setup_geak). Only put it on
+    # PYTHONPATH for GEAK runs so its dependency closure cannot shadow the
+    # runtime image's pinned packages for existing agents.
     if [[ "$GEAK_V4_RUNTIME" == "1" ]]; then
         docker_args+=(-e "PYTHONPATH=${CONTAINER_WORKDIR}/.aka-pyuserbase/geak-sdk")
     fi
@@ -1074,6 +1019,7 @@ build_docker_args() {
         docker_args+=(
             -e "AITER_JIT_DIR=/tmp/aiter-jit${cache_postfix}"
             -e "FLYDSL_RUNTIME_CACHE_DIR=/tmp/flydsl-runtime-cache${cache_postfix}"
+            --tmpfs "/tmp/aiter_configs:rw,uid=${HOST_UID},gid=${HOST_GID},mode=1777"
         )
     fi
 
@@ -1084,23 +1030,6 @@ build_docker_args() {
             -e "AITER_ROOT_DIR=/tmp/aiter-root${cache_postfix}"
             -e "AITER_JIT_DIR=/tmp/aiter-jit${cache_postfix}"
         )
-    fi
-
-    if [[ "${AKA_TOP5_ISOLATED_CACHES:-0}" == "1" ]]; then
-        local top5_cache_root="/tmp/aka-top5-cache-${HOST_UID}-${BASHPID}${cache_postfix}"
-        docker_args+=(
-            -e "AGENT_KERNEL_ARENA_RUNTIME_CACHE_ROOT=${top5_cache_root}"
-            -e "AITER_JIT_DIR=${top5_cache_root}/aiter-jit"
-            -e "FLYDSL_RUNTIME_CACHE_DIR=${top5_cache_root}/flydsl"
-        )
-    fi
-
-    # AITER merges its unchanged default/model CSV inputs into this hard-coded
-    # scratch directory and locks the generated file here. The image directory
-    # may be root-owned; give each container its own writable output mount.
-    # Do not override AITER_CONFIG_* selectors or touch host/image permissions.
-    if uses_gfx950_v0514_runtime || [[ "${AKA_TOP5_ISOLATED_CACHES:-0}" == "1" ]]; then
-        docker_args+=(--tmpfs "/tmp/aiter_configs:rw,uid=${HOST_UID},gid=${HOST_GID},mode=1777")
     fi
 
     if [[ -n "${AKA_VISIBLE_GPU:-}" ]]; then
@@ -1264,28 +1193,18 @@ build_docker_args() {
         add_mount /usr/bin/time /usr/bin/time ro
     fi
 
-    if [[ "${AKA_AGENT_FREE_VERIFY:-0}" != "1" && -e "$HOST_HOME/.gitconfig" ]]; then
+    if [[ -e "$HOST_HOME/.gitconfig" ]]; then
         add_mount "$HOST_HOME/.gitconfig" "$HOST_HOME/.gitconfig" ro
     fi
 
-    docker_args+=("${SELECTED_IMAGE_ID:-$SELECTED_IMAGE}")
+    docker_args+=("$SELECTED_IMAGE")
 }
 
 docker_exec() {
     local interactive="${1:-0}"
     shift
     build_docker_args "$interactive"
-    docker "${docker_args[@]}" -lc 'cd "$AGENT_KERNEL_ARENA_WORKDIR" && if [[ "${AGENT_KERNEL_ARENA_ISOLATED_HOME:-0}" == "1" ]]; then bash src/scripts/docker_benchmark.sh _container_prepare_worker_home; fi && if [[ -n "${AGENT_KERNEL_ARENA_RUNTIME_CACHE_ROOT:-}" ]]; then bash src/scripts/docker_benchmark.sh _container_prepare_runtime_caches; fi && exec "$@"' _ "$@"
-}
-
-container_prepare_runtime_caches() {
-    local cache_root="${AGENT_KERNEL_ARENA_RUNTIME_CACHE_ROOT:?runtime cache root is required}"
-    [[ "${AITER_JIT_DIR:-}" == "$cache_root/aiter-jit" \
-        && "${FLYDSL_RUNTIME_CACHE_DIR:-}" == "$cache_root/flydsl" ]] \
-        || die "runtime cache paths must match the worker cache root"
-    # Executed as the ordinary container user. No installed cache is inspected,
-    # copied, or chmodded; both upstream libraries support explicit cache paths.
-    mkdir -p -- "$AITER_JIT_DIR" "$FLYDSL_RUNTIME_CACHE_DIR"
+    docker "${docker_args[@]}" -lc 'cd "$AGENT_KERNEL_ARENA_WORKDIR" && if [[ "${AGENT_KERNEL_ARENA_ISOLATED_HOME:-0}" == "1" ]]; then bash src/scripts/docker_benchmark.sh _container_prepare_worker_home; fi && exec "$@"' _ "$@"
 }
 
 extract_config_name() {
@@ -1778,86 +1697,7 @@ run_parallel() {
     fi
 }
 
-run_parallel_verify() {
-    local config_name declaration batch batch_relative worker_count task_digest worker gpu directory arg
-    local -a plan_fields=() pids=() exit_codes=()
-    config_name="$(extract_config_name "$@")"
-    [[ -n "${GPU_IDS:-}" ]] || die "parallel-verify requires explicit GPU_IDS"
-    for arg in "$@"; do
-        case "${arg%%=*}" in
-            --shard-index|--shard-count|--taskset-sha256|--output-directory|--resume-prefix|--resume-prefix-sha256)
-                die "parallel-verify manages shard/output arguments; provide only the cohort config" ;;
-        esac
-    done
-    declaration="$(cd "$HOST_ROOT" && python3 -c 'import json,sys; from pathlib import Path; from src.tools.verify_head_kernels import parallel_plan; print(json.dumps(parallel_plan(Path(sys.argv[1]),sys.argv[2])))' "$config_name" "$GPU_IDS")" \
-        || die "Could not plan parallel verification"
-    mapfile -t plan_fields < <(python3 -c 'import json,sys; p=json.loads(sys.argv[1]); print(p["plan"]["image"]); print(p["plan"]["expected_image_id"] or ""); print(len(p["workers"])); print(p["taskset_sha256"]); [print(w["gpu_id"]) for w in p["workers"]]' "$declaration")
-    [[ "${#plan_fields[@]}" -ge 5 ]] || die "Invalid parallel verification plan"
-    [[ -z "${AKA_DOCKER_IMAGE:-}" || "$AKA_DOCKER_IMAGE" == "${plan_fields[0]}" ]] \
-        || die "AKA_DOCKER_IMAGE conflicts with the cohort runtime"
-    [[ -z "${AKA_EXPECTED_IMAGE_ID:-}" || "$AKA_EXPECTED_IMAGE_ID" == "${plan_fields[1]}" ]] \
-        || die "AKA_EXPECTED_IMAGE_ID conflicts with the cohort config digest"
-    AKA_DOCKER_IMAGE="${plan_fields[0]}"
-    AKA_EXPECTED_IMAGE_ID="${plan_fields[1]}"
-    AKA_VERIFY_RUNTIME_IMAGE=1
-    select_runtime_for_config "$config_name"
-    REQUIRED_AGENTS=""
-    AGENTS_STRICT=0
-    AKA_AGENT_FREE_VERIFY=1
-    AKA_SKIP_DEV_MEM=1
-    AKA_TOP5_ISOLATED_CACHES=1
-    worker_count="${plan_fields[2]}"
-    task_digest="${plan_fields[3]}"
-    batch="$(mktemp -d "$HOST_ROOT/workspace_parallel_verification_XXXXXX")"
-    batch_relative="${batch#"$HOST_ROOT/"}"
-    printf '%s\n' "$declaration" > "$batch/parallel-plan.json"
-    echo "Parallel verification evidence: $batch_relative ($worker_count workers)" >&2
-    for ((worker = 0; worker < worker_count; worker++)); do
-        gpu="${plan_fields[$((worker + 4))]}"
-        printf -v directory 'worker-%03d' "$worker"
-        (
-            AKA_VISIBLE_GPU="$gpu"
-            AKA_LOGICAL_GPU=0
-            AKA_WORKER_ID="$worker"
-            AKA_CONTAINER_HOME="/tmp/aka-$batch_relative-$directory"
-            AKA_CACHE_SUFFIX="$batch_relative-$directory"
-            AGENT_HOME_ISOLATION=1
-            docker_exec 0 python3 -m src.tools.verify_head_kernels "$@" \
-                --shard-index "$worker" --shard-count "$worker_count" \
-                --taskset-sha256 "$task_digest" --output-directory "$batch_relative/$directory"
-        ) > "$batch/$directory.stdout" 2> "$batch/$directory.stderr" &
-        pids+=("$!")
-    done
-    for worker in "${!pids[@]}"; do
-        if wait "${pids[$worker]}"; then exit_codes+=(0); else exit_codes+=("$?"); fi
-    done
-    (cd "$HOST_ROOT" && python3 -c 'import sys; from pathlib import Path; from src.tools.verify_head_kernels import aggregate_parallel; code,path=aggregate_parallel(Path(sys.argv[1]),[int(x) for x in sys.argv[2:]]); print("Parallel verification summary:",path); raise SystemExit(code)' "$batch_relative" "${exit_codes[@]}")
-}
-
 case "${1:-}" in
-    parallel-verify)
-        shift
-        run_parallel_verify "$@"
-        ;;
-    verify|trace)
-        native_action="$1"
-        shift
-        config_name="$(extract_config_name "$@")"
-        AKA_VERIFY_RUNTIME_IMAGE=1
-        select_runtime_for_config "$config_name"
-        REQUIRED_AGENTS=""
-        AGENTS_STRICT=0
-        AKA_AGENT_FREE_VERIFY=1
-        AKA_SKIP_DEV_MEM=1
-        AKA_TOP5_ISOLATED_CACHES=1
-        AKA_CONTAINER_HOME="/tmp/aka-verify-home-${HOST_UID}-${BASHPID}"
-        AGENT_HOME_ISOLATION=1
-        if [[ "$native_action" == "trace" ]]; then
-            docker_exec 0 python3 -m src.tools.trace_head_kernels "$@"
-        else
-            docker_exec 0 python3 -m src.tools.verify_head_kernels "$@"
-        fi
-        ;;
     run)
         shift
         config_name="$(extract_config_name "$@")"
@@ -2011,9 +1851,6 @@ case "${1:-}" in
         ;;
     _container_prepare_worker_home)
         container_prepare_worker_home
-        ;;
-    _container_prepare_runtime_caches)
-        container_prepare_runtime_caches
         ;;
     _print_eval_tool_docker_args)
         shift

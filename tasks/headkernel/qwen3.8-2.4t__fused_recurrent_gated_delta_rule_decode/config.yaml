@@ -1,0 +1,72 @@
+# qwen3.8-2.4t__fused_recurrent_gated_delta_rule_decode
+# Head kernel from the 2026-09-14 info table, rows: Q38-10
+
+source_file_path:
+  - source/fused_recurrent.py
+
+target_kernel_functions:
+  - fused_recurrent_gated_delta_rule_packed_decode
+  - fused_recurrent_gated_delta_rule_packed_decode_kernel
+
+compile_command:
+  - python3 scripts/task_runner.py compile
+
+correctness_command:
+  - python3 scripts/task_runner.py correctness
+
+performance_command:
+  - python3 scripts/task_runner.py performance
+
+task_type: triton2triton
+
+task_result_template: null
+
+prompt:
+  source_code: null
+  instructions: |
+    Optimize the Qwen3.8-2.4T-A95B-MXFP4 head kernel `fused_recurrent_gated_delta_rule_packed_decode_kernel` (Triton) for maximum GPU
+    throughput on MI355X (gfx950) while keeping it numerically correct.
+
+    It is 6.44% of de-inflated GPU time in the serving profile
+    (ISL 8192 / OSL 1024 / CONC 64 / TP 8), currently at 53.5% memory-bound of its empirical roofline.
+
+    Edit only:
+      source/fused_recurrent.py
+
+    Entry points that must keep their signatures:
+      fused_recurrent_gated_delta_rule_packed_decode
+      fused_recurrent_gated_delta_rule_packed_decode_kernel
+
+    The production seam is `sglang.srt.layers.attention.linear.kernels.gdn_triton:fused_recurrent_gated_delta_rule_packed_decode`; correctness is judged
+    against a frozen live-server capture, not a re-derived reference, so the kernel
+    must stay faithful to the deployed contract (dtypes, layouts, quantization).
+
+    Note: two live records, B=64 and B=1, compared as an ordered pair: the UT checks the recurrent state transition, not just the output tensor.
+  cheatsheet: null
+
+# ---------------------------------------------------------------------------
+# Provenance. Not read by the arena schema check; read by scripts/task_runner.py
+# and by anyone auditing where these numbers came from.
+headkernel:
+  model: "Qwen3.8-2.4T-A95B-MXFP4"
+  owner: "Li, Zeping <zepingl@amd.com>"
+  docker: "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.18-rocm720-mi35x-profilerfix"
+  serving: ISL 8192 / OSL 1024 / CONC 64 / TP 8
+  backend: Triton
+  regime: decode
+  device_symbol: fused_recurrent_gated_delta_rule_packed_decode_kernel
+  target_callable: "sglang.srt.layers.attention.linear.kernels.gdn_triton:fused_recurrent_gated_delta_rule_packed_decode"
+  tol: 0.02
+  oracle: "frozen live-capture ut/reference_io.pt"
+  source_package: P/gated_delta_decode_task
+  source_seed: stock
+  info_rows:
+    - row: "Q38-10"
+      info_kernel: fused_recurrent_gated_delta_rule_packed_decode_kernel
+      gpu_pct: 6.44
+      empirical_roofline: "53.5% memory-bound"
+      optimized_roofline: null
+      e2e_uplift: "Stage-A scenario +2.39% (NOT measured)"
+  symbol_locations:
+    fused_recurrent_gated_delta_rule_packed_decode: source/fused_recurrent.py
+    fused_recurrent_gated_delta_rule_packed_decode_kernel: source/fused_recurrent.py

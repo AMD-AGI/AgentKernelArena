@@ -1,0 +1,40 @@
+{
+  "task_dir": "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/gated_delta_decode_task",
+  "bytes_reclaimed": 7352136650,
+  "bytes_promoted": 1050159238,
+  "bytes_before": 8402295888,
+  "bytes_after": 0,
+  "capture_dirs_seen": [
+    "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/gated_delta_decode_task/capture.pid-19397.rank-unknown",
+    "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/gated_delta_decode_task/capture.pid-19398.rank-unknown",
+    "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/gated_delta_decode_task/capture.pid-19399.rank-unknown",
+    "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/gated_delta_decode_task/capture.pid-19400.rank-unknown",
+    "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/gated_delta_decode_task/capture.pid-19401.rank-unknown",
+    "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/gated_delta_decode_task/capture.pid-19402.rank-unknown",
+    "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/gated_delta_decode_task/capture.pid-19403.rank-unknown",
+    "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/gated_delta_decode_task/capture.pid-19404.rank-unknown"
+  ],
+  "removed_paths": [
+    "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/gated_delta_decode_task/capture.pid-19397.rank-unknown",
+    "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/gated_delta_decode_task/capture.pid-19398.rank-unknown",
+    "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/gated_delta_decode_task/capture.pid-19399.rank-unknown",
+    "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/gated_delta_decode_task/capture.pid-19400.rank-unknown",
+    "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/gated_delta_decode_task/capture.pid-19401.rank-unknown",
+    "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/gated_delta_decode_task/capture.pid-19402.rank-unknown",
+    "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/gated_delta_decode_task/capture.pid-19403.rank-unknown",
+    "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/gated_delta_decode_task/capture.pid-19404.rank-unknown"
+  ],
+  "promoted": true,
+  "keep_meta_path": "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/gated_delta_decode_task/capture.pid-19397.rank-unknown/meta.json",
+  "errors": [],
+  "promote": {
+    "promoted_meta": true,
+    "promoted_oracle": true,
+    "bytes_promoted": 1050159238,
+    "oracle_path": "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/gated_delta_decode_task/reference_io.pt",
+    "meta_path": "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/gated_delta_decode_task/meta.json"
+  },
+  "capture_dirs_remaining": [],
+  "authoritative_oracle_bytes": 1050159238,
+  "authoritative_oracle_present": true
+}

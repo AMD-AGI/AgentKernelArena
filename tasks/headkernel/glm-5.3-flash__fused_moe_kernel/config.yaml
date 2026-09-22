@@ -1,0 +1,75 @@
+# glm-5.3-flash__fused_moe_kernel
+# Head kernel from the 2026-09-14 info table, rows: G53-1
+
+source_file_path:
+  - source/fused_moe.py
+
+target_kernel_functions:
+  - fused_experts_impl
+  - fused_experts
+
+compile_command:
+  - python3 scripts/task_runner.py compile
+
+correctness_command:
+  - python3 scripts/task_runner.py correctness
+
+performance_command:
+  - python3 scripts/task_runner.py performance
+
+task_type: triton2triton
+
+task_result_template: null
+
+prompt:
+  source_code: null
+  instructions: |
+    Optimize the GLM-5.3-Flash head kernel `fused_moe_kernel` (Triton - sglang srt/layers/moe/moe_runner/triton_utils.fused_moe) for maximum GPU
+    throughput on MI355X (gfx950) while keeping it numerically correct.
+
+    It is 23.32% of de-inflated GPU time in the serving profile
+    (ISL 8192 / OSL 1024 / CONC 64 / TP 8), currently at 0.980 of its empirical roofline.
+
+    Edit only:
+      source/fused_moe.py
+
+    Entry points that must keep their signatures:
+      fused_experts_impl
+      fused_experts
+
+    The production seam is `sglang.srt.layers.moe.moe_runner.triton_utils.fused_moe:fused_experts_impl`; correctness is judged
+    against a frozen live-server capture, not a re-derived reference, so the kernel
+    must stay faithful to the deployed contract (dtypes, layouts, quantization).
+
+    Note: TWO blockers, in firing order. (1) IMAGE: runs only on sglang:v0.5.18-rocm720-mi35x-profilerfix - the stack it was captured on per its own ut/README.md. Under the model-level v0.5.17 pin it dies first at ut/sglang_bootstrap.py:39 with AttributeError: 'RuntimeContext' object has no attribute 'is_config_namespace_published', which is a 0.5.18+ API. This row now carries a docker override. (2) ARCH PATCH: with the right image but no patch it dies next at sglang_bootstrap.py:43 with ValueError: model type 'glm5_next' not recognized - it is the only package that boots sglang's ServerArgs against the real checkpoint, and the stock image registers no glm5_next architecture. Apply /shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/patches/glm53-flash/001_glm5_next_arch_enablement.patch to /sgl-workspace/sglang before running. Both were verified green together on 2026-09-13 by the package owner. NOTE also that an uncaught harness exception here surfaces as exit=1, which the runner labels 'correctness FAIL' - it is an environment failure; ut/unittest.py:47 lacks the try/except its neighbours have.
+  cheatsheet: null
+
+# ---------------------------------------------------------------------------
+# Provenance. Not read by the arena schema check; read by scripts/task_runner.py
+# and by anyone auditing where these numbers came from.
+headkernel:
+  model: "GLM-5.3-Flash"
+  owner: Hongtaom
+  docker: "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.18-rocm720-mi35x-profilerfix"
+  # A framework patch the stock image does not carry. tools/run_on_gpu.sh
+  # applies it to /sgl-workspace/sglang inside the container before the run.
+  pre_run_patch: "/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/patches/glm53-flash/001_glm5_next_arch_enablement.patch"
+  serving: ISL 8192 / OSL 1024 / CONC 64 / TP 8
+  backend: "Triton - sglang srt/layers/moe/moe_runner/triton_utils.fused_moe"
+  regime: decode
+  device_symbol: fused_moe_kernel
+  target_callable: "sglang.srt.layers.moe.moe_runner.triton_utils.fused_moe:fused_experts_impl"
+  tol: 0.02
+  oracle: "frozen live-capture ut/reference_io.pt"
+  source_package: "H/GLM-5.3-Flash_fused_moe_kernel"
+  source_seed: stock
+  info_rows:
+    - row: "G53-1"
+      info_kernel: fused_moe_kernel
+      gpu_pct: 23.32
+      empirical_roofline: 0.980
+      optimized_roofline: null
+      e2e_uplift: "3.48%"
+  symbol_locations:
+    fused_experts_impl: source/fused_moe.py
+    fused_experts: source/fused_moe.py

@@ -1,0 +1,40 @@
+{
+  "task_dir": "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/fused_add_rmsnorm_task",
+  "bytes_reclaimed": 4389996476,
+  "bytes_promoted": 627082996,
+  "bytes_before": 5017079472,
+  "bytes_after": 0,
+  "capture_dirs_seen": [
+    "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/fused_add_rmsnorm_task/capture.pid-1559.rank-unknown",
+    "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/fused_add_rmsnorm_task/capture.pid-1560.rank-unknown",
+    "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/fused_add_rmsnorm_task/capture.pid-1561.rank-unknown",
+    "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/fused_add_rmsnorm_task/capture.pid-1562.rank-unknown",
+    "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/fused_add_rmsnorm_task/capture.pid-1563.rank-unknown",
+    "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/fused_add_rmsnorm_task/capture.pid-1564.rank-unknown",
+    "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/fused_add_rmsnorm_task/capture.pid-1565.rank-unknown",
+    "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/fused_add_rmsnorm_task/capture.pid-1566.rank-unknown"
+  ],
+  "removed_paths": [
+    "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/fused_add_rmsnorm_task/capture.pid-1559.rank-unknown",
+    "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/fused_add_rmsnorm_task/capture.pid-1560.rank-unknown",
+    "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/fused_add_rmsnorm_task/capture.pid-1561.rank-unknown",
+    "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/fused_add_rmsnorm_task/capture.pid-1562.rank-unknown",
+    "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/fused_add_rmsnorm_task/capture.pid-1563.rank-unknown",
+    "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/fused_add_rmsnorm_task/capture.pid-1564.rank-unknown",
+    "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/fused_add_rmsnorm_task/capture.pid-1565.rank-unknown",
+    "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/fused_add_rmsnorm_task/capture.pid-1566.rank-unknown"
+  ],
+  "promoted": true,
+  "keep_meta_path": "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/fused_add_rmsnorm_task/capture.pid-1559.rank-unknown/meta.json",
+  "errors": [],
+  "promote": {
+    "promoted_meta": true,
+    "promoted_oracle": true,
+    "bytes_promoted": 627082996,
+    "oracle_path": "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/fused_add_rmsnorm_task/reference_io.pt",
+    "meta_path": "/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/fused_add_rmsnorm_task/meta.json"
+  },
+  "capture_dirs_remaining": [],
+  "authoritative_oracle_bytes": 627082996,
+  "authoritative_oracle_present": true
+}

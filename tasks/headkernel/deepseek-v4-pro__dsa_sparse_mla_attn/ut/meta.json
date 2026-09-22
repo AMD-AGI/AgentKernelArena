@@ -1,0 +1,1404 @@
+{
+  "short_name": "main_kernel",
+  "op_kind": "attn",
+  "editable": true,
+  "build": false,
+  "pct_gpu_time": 44.876,
+  "dtype": "bf16",
+  "math_contract": "sparse paged MLA: for each query row, gather topk_length[i] fp8 KV blocks named by indices[i] (and extra_indices_in_kvcache[i] from the second/compressed pool), compute softmax(Q.K^T * softmax_scale) . V over the gathered set with a per-head attention sink, split-K over the KV axis (dpsk_v4_fp8_partial_kernel) then LSE-combine the splits (dpsk_v4_combine_kernel); returns (out[T,1,H,head_dim_v] bf16, lse[T,1,H] fp32). Both device kernels are emitted as `main_kernel`.",
+  "target_callable": "sglang.kernels.ops.attention.dsa.tilelang_kernel:dpsk_v4_fp8_attention_fwd",
+  "baseline_callable": "",
+  "candidate_bind": {
+    "kind": "module",
+    "module": "sglang.kernels.ops.attention.dsa.tilelang_kernel",
+    "file": "kernel_src/tilelang_kernel.py"
+  },
+  "device_kernel": "main_kernel",
+  "reference_io": "reference_io.pt",
+  "regime": {
+    "backend": "sglang",
+    "quant": {
+      "method": "fp8_blockscale",
+      "weight_dtype": "fp8_e4m3",
+      "act_dtype": "fp8",
+      "block_size": [
+        128,
+        128
+      ],
+      "source": "model_config"
+    },
+    "kv_cache_dtype": "fp8_e4m3",
+    "compile": "eager",
+    "enforce_eager": false,
+    "cuda_graph": true,
+    "attention_backend": "dsv4",
+    "prefill_chunk": 16384,
+    "notes": "resolved from the LIVE baseline server_args (profile/round_0/server.log): kv_cache_dtype='fp8_e4m3' (set by the magpie sglang_mi355x.sh launcher, not by EXTRA_SGLANG_ARGS), attention_backend='dsv4' -> DeepseekV4HipRadixBackend on HIP, chunked_prefill_size=16384, page_size=256, disable_cuda_graph=False (decode graph backend='full') -> deployment_graph_mode=True. parse_regime.py alone reported kv_cache_dtype='auto'/prefill_chunk=null because those flags live in the launcher script, not in CURRENT_FLAGS.",
+    "page_size": 256
+  },
+  "served_regimes": [
+    "decode_x1024",
+    "decode_x128",
+    "prefill_x1024",
+    "prefill_x64"
+  ],
+  "random_draws": 2,
+  "tol": 0.02,
+  "m_buckets": [
+    1,
+    64,
+    8192
+  ],
+  "decode_m_buckets": [
+    1,
+    64
+  ],
+  "captured_keys": [
+    "q",
+    "k_cache",
+    "indices",
+    "topk_length",
+    "extra_k_cache",
+    "extra_indices_in_kvcache",
+    "extra_topk_length",
+    "attn_sink",
+    "head_dim_v",
+    "softmax_scale",
+    "is_fp8_kvcache",
+    "block_table",
+    "cache_seqlens",
+    "tile_scheduler_metadata"
+  ],
+  "geometry": {
+    "num_heads": 64,
+    "head_dim_qk": 576,
+    "head_dim_v": 512,
+    "kv_lora_rank": 512,
+    "page_size_main": 256,
+    "page_size_extra": 2,
+    "kv_row_bytes": 584,
+    "topk_main": 128,
+    "topk_extra_prefill": 64,
+    "topk_extra_decode": 128,
+    "softmax_scale": 0.04419417382415922,
+    "k_cache_shape": [
+      4013,
+      256,
+      1,
+      584
+    ],
+    "extra_k_cache_shape": [
+      40128,
+      2,
+      1,
+      584
+    ],
+    "kv_dtype": "float8_e4m3fn",
+    "q_dtype": "bfloat16",
+    "num_heads_per_rank": 64,
+    "sliding_window": 128,
+    "index_topk": 1024,
+    "families": [
+      64,
+      128,
+      1024
+    ],
+    "num_layers": 61
+  },
+  "case_specs": [
+    {
+      "name": "prefill_m8192_x64",
+      "source_sig": "attn_sink=T(64,):torch.float32|block_table=None|cache_seqlens=None|extra_indices_in_kvcache=T(8192, 1, 64):torch.int32|extra_k_cache=T(40128, 2, 1, 584):torch.float8_e4m3fn|extra_topk_length=T(8192,):torch.int32|head_dim_v=512|indices=T(8192, 1, 128):torch.int32|is_fp8_kvcache=True|k_cache=T(4013, 256, 1, 584):torch.float8_e4m3fn|q=T(8192, 1, 64, 512):torch.bfloat16|softmax_scale=0.04419417382415922|tile_scheduler_metadata=None|topk_length=T(8192,):torch.int32",
+      "m": 8192,
+      "regime": "prefill_x64",
+      "family_topk": 64,
+      "phase": "prefill",
+      "rand_m": 1024
+    },
+    {
+      "name": "prefill_m8192_x1024",
+      "source_sig": "attn_sink=T(64,):torch.float32|block_table=None|cache_seqlens=None|extra_indices_in_kvcache=T(8192, 1, 1024):torch.int32|extra_k_cache=T(40128, 64, 1, 584):torch.float8_e4m3fn|extra_topk_length=T(8192,):torch.int32|head_dim_v=512|indices=T(8192, 1, 128):torch.int32|is_fp8_kvcache=True|k_cache=T(4013, 256, 1, 584):torch.float8_e4m3fn|q=T(8192, 1, 64, 512):torch.bfloat16|softmax_scale=0.04419417382415922|tile_scheduler_metadata=None|topk_length=T(8192,):torch.int32",
+      "m": 8192,
+      "regime": "prefill_x1024",
+      "family_topk": 1024,
+      "phase": "prefill",
+      "rand_m": 1024
+    },
+    {
+      "name": "decode_m64_x128",
+      "source_sig": "attn_sink=T(64,):torch.float32|block_table=None|cache_seqlens=None|extra_indices_in_kvcache=T(64, 1, 128):torch.int32|extra_k_cache=T(40128, 2, 1, 584):torch.float8_e4m3fn|extra_topk_length=T(64,):torch.int32|head_dim_v=512|indices=T(64, 1, 128):torch.int32|is_fp8_kvcache=True|k_cache=T(4013, 256, 1, 584):torch.float8_e4m3fn|q=T(64, 1, 64, 512):torch.bfloat16|softmax_scale=0.04419417382415922|tile_scheduler_metadata=None|topk_length=T(64,):torch.int32",
+      "m": 64,
+      "regime": "decode_x128",
+      "family_topk": 128,
+      "phase": "decode",
+      "rand_m": 64
+    },
+    {
+      "name": "decode_m64_x1024",
+      "source_sig": "attn_sink=T(64,):torch.float32|block_table=None|cache_seqlens=None|extra_indices_in_kvcache=T(64, 1, 1024):torch.int32|extra_k_cache=T(40128, 64, 1, 584):torch.float8_e4m3fn|extra_topk_length=T(64,):torch.int32|head_dim_v=512|indices=T(64, 1, 128):torch.int32|is_fp8_kvcache=True|k_cache=T(4013, 256, 1, 584):torch.float8_e4m3fn|q=T(64, 1, 64, 512):torch.bfloat16|softmax_scale=0.04419417382415922|tile_scheduler_metadata=None|topk_length=T(64,):torch.int32",
+      "m": 64,
+      "regime": "decode_x1024",
+      "family_topk": 1024,
+      "phase": "decode",
+      "rand_m": 64,
+      "replay": true
+    },
+    {
+      "name": "decode_m1_x128",
+      "source_sig": "attn_sink=T(64,):torch.float32|block_table=None|cache_seqlens=None|extra_indices_in_kvcache=T(64, 1, 128):torch.int32|extra_k_cache=T(40128, 2, 1, 584):torch.float8_e4m3fn|extra_topk_length=T(64,):torch.int32|head_dim_v=512|indices=T(64, 1, 128):torch.int32|is_fp8_kvcache=True|k_cache=T(4013, 256, 1, 584):torch.float8_e4m3fn|q=T(64, 1, 64, 512):torch.bfloat16|softmax_scale=0.04419417382415922|tile_scheduler_metadata=None|topk_length=T(64,):torch.int32",
+      "m": 1,
+      "regime": "decode_x128",
+      "family_topk": 128,
+      "phase": "decode",
+      "rand_m": 1,
+      "derived_from": "decode_m64_x128"
+    },
+    {
+      "name": "decode_m1_x1024",
+      "source_sig": "attn_sink=T(64,):torch.float32|block_table=None|cache_seqlens=None|extra_indices_in_kvcache=T(64, 1, 1024):torch.int32|extra_k_cache=T(40128, 64, 1, 584):torch.float8_e4m3fn|extra_topk_length=T(64,):torch.int32|head_dim_v=512|indices=T(64, 1, 128):torch.int32|is_fp8_kvcache=True|k_cache=T(4013, 256, 1, 584):torch.float8_e4m3fn|q=T(64, 1, 64, 512):torch.bfloat16|softmax_scale=0.04419417382415922|tile_scheduler_metadata=None|topk_length=T(64,):torch.int32",
+      "m": 1,
+      "regime": "decode_x1024",
+      "family_topk": 1024,
+      "phase": "decode",
+      "rand_m": 1,
+      "derived_from": "decode_m64_x1024"
+    }
+  ],
+  "call_sequence": [
+    "prefill_m8192_x64",
+    "prefill_m8192_x1024",
+    "decode_m64_x128",
+    "decode_m64_x1024",
+    "decode_m1_x128",
+    "decode_m1_x1024"
+  ],
+  "shapes": {
+    "q": [
+      8192,
+      1,
+      64,
+      512
+    ],
+    "q_decode": [
+      64,
+      1,
+      64,
+      512
+    ],
+    "k_cache": [
+      4013,
+      256,
+      1,
+      584
+    ],
+    "extra_k_cache": [
+      40128,
+      2,
+      1,
+      584
+    ],
+    "indices": [
+      8192,
+      1,
+      128
+    ],
+    "extra_indices_in_kvcache": [
+      8192,
+      1,
+      64
+    ]
+  },
+  "synthesized": false,
+  "cases": [
+    {
+      "name": "prefill_m8192_x64",
+      "regime": "prefill",
+      "count": 124,
+      "input_shapes": [
+        [
+          8192,
+          1,
+          64,
+          512
+        ],
+        [
+          8192,
+          1,
+          128
+        ],
+        [
+          8192
+        ],
+        [
+          64
+        ],
+        [
+          8192,
+          1,
+          64
+        ],
+        [
+          8192
+        ]
+      ],
+      "input_dtypes": [
+        "torch.bfloat16",
+        "torch.float32",
+        "torch.int32"
+      ]
+    },
+    {
+      "name": "prefill_m8192_x1024",
+      "regime": "prefill",
+      "count": 120,
+      "input_shapes": [
+        [
+          8192,
+          1,
+          64,
+          512
+        ],
+        [
+          8192,
+          1,
+          128
+        ],
+        [
+          8192
+        ],
+        [
+          64
+        ],
+        [
+          8192,
+          1,
+          1024
+        ],
+        [
+          8192
+        ]
+      ],
+      "input_dtypes": [
+        "torch.bfloat16",
+        "torch.float32",
+        "torch.int32"
+      ]
+    },
+    {
+      "name": "decode_m64_x128",
+      "regime": "decode",
+      "count": 63479,
+      "input_shapes": [
+        [
+          64,
+          1,
+          64,
+          512
+        ],
+        [
+          64,
+          1,
+          128
+        ],
+        [
+          64
+        ],
+        [
+          64
+        ],
+        [
+          64,
+          1,
+          128
+        ],
+        [
+          64
+        ]
+      ],
+      "input_dtypes": [
+        "torch.bfloat16",
+        "torch.float32",
+        "torch.int32"
+      ]
+    },
+    {
+      "name": "decode_m64_x1024",
+      "regime": "decode",
+      "count": 61430,
+      "input_shapes": [
+        [
+          64,
+          1,
+          64,
+          512
+        ],
+        [
+          64,
+          1,
+          128
+        ],
+        [
+          64
+        ],
+        [
+          64
+        ],
+        [
+          64,
+          1,
+          1024
+        ],
+        [
+          64
+        ]
+      ],
+      "input_dtypes": [
+        "torch.bfloat16",
+        "torch.float32",
+        "torch.int32"
+      ]
+    }
+  ],
+  "workload": {
+    "schema": "workload-v1",
+    "op_kind": "attn",
+    "kernel": "main_kernel",
+    "name_match": "main_kernel",
+    "regime": {
+      "backend": "sglang",
+      "quant": {
+        "method": "fp8_blockscale",
+        "weight_dtype": "fp8_e4m3",
+        "act_dtype": "fp8",
+        "block_size": [
+          128,
+          128
+        ],
+        "source": "model_config"
+      },
+      "kv_cache_dtype": "fp8_e4m3",
+      "compile": "eager",
+      "enforce_eager": false,
+      "cuda_graph": true,
+      "attention_backend": "dsv4",
+      "prefill_chunk": 16384,
+      "notes": "resolved from the LIVE baseline server_args (profile/round_0/server.log): kv_cache_dtype='fp8_e4m3' (set by the magpie sglang_mi355x.sh launcher, not by EXTRA_SGLANG_ARGS), attention_backend='dsv4' -> DeepseekV4HipRadixBackend on HIP, chunked_prefill_size=16384, page_size=256, disable_cuda_graph=False (decode graph backend='full') -> deployment_graph_mode=True. parse_regime.py alone reported kv_cache_dtype='auto'/prefill_chunk=null because those flags live in the launcher script, not in CURRENT_FLAGS.",
+      "page_size": 256
+    },
+    "served_regimes": [
+      "decode_x1024",
+      "decode_x128",
+      "prefill_x1024",
+      "prefill_x64"
+    ],
+    "quant": {
+      "scheme": "fp8_blockscale",
+      "weight_dtype": "bf16",
+      "act_dtype": "fp8",
+      "out_dtype": "",
+      "weight_block_size": [
+        128,
+        128
+      ],
+      "scale_dtype": "float32",
+      "kv_cache_dtype": "fp8_e4m3"
+    },
+    "live_pct_gpu": 44.876,
+    "regime_warning": "online kv-cache-dtype=fp8: the attention oracle + kernel MUST use the fp8 KV layout/stride, else a bf16-stride read over fp8 bytes faults. Verify the captured KV dtype matches.",
+    "serving_weight_model": {
+      "isl": 8192,
+      "osl": 1024,
+      "conc": 64,
+      "prefill_chunk": 16384,
+      "analytic_calls": {
+        "prefill_x64": 1984,
+        "prefill_x1024": 1920,
+        "decode_x128": 31744,
+        "decode_x1024": 30720
+      },
+      "ttft_ms": null,
+      "tpot_ms": null,
+      "analytic_calls_phase": {
+        "prefill": 64,
+        "decode": 1024
+      },
+      "note": "analytic_calls is keyed by the UNITTEST's regime = <phase>_x<family topk>, and counts passes-per-request x that family's share of the 61 layers (measured from the live call histogram). meta.cases keeps the plain phase regimes that attribute_weights understands; analytic_calls_phase is its unsplit model."
+    },
+    "num_cases": 4,
+    "weights_provenance": "regime",
+    "cases": [
+      {
+        "name": "prefill_m8192_x64",
+        "dims": [
+          [
+            8192,
+            1,
+            64,
+            512
+          ],
+          [
+            8192,
+            1,
+            128
+          ],
+          [
+            8192
+          ],
+          [
+            64
+          ],
+          [
+            8192,
+            1,
+            64
+          ],
+          [
+            8192
+          ]
+        ],
+        "dtypes": [
+          "torch.bfloat16",
+          "torch.float32",
+          "torch.int32"
+        ],
+        "count": 124,
+        "weight": 157.06529999999995,
+        "weight_source": "regime",
+        "regime": "prefill",
+        "weight_norm": 0.35,
+        "quant": {
+          "scheme": "fp8_blockscale",
+          "weight_dtype": "bf16",
+          "act_dtype": "fp8",
+          "out_dtype": "",
+          "weight_block_size": [
+            128,
+            128
+          ],
+          "scale_dtype": "float32",
+          "kv_cache_dtype": "fp8_e4m3"
+        }
+      },
+      {
+        "name": "prefill_m8192_x1024",
+        "dims": [
+          [
+            8192,
+            1,
+            64,
+            512
+          ],
+          [
+            8192,
+            1,
+            128
+          ],
+          [
+            8192
+          ],
+          [
+            64
+          ],
+          [
+            8192,
+            1,
+            1024
+          ],
+          [
+            8192
+          ]
+        ],
+        "dtypes": [
+          "torch.bfloat16",
+          "torch.float32",
+          "torch.int32"
+        ],
+        "count": 120,
+        "weight": 157.06529999999995,
+        "weight_source": "regime",
+        "regime": "prefill",
+        "weight_norm": 0.35,
+        "quant": {
+          "scheme": "fp8_blockscale",
+          "weight_dtype": "bf16",
+          "act_dtype": "fp8",
+          "out_dtype": "",
+          "weight_block_size": [
+            128,
+            128
+          ],
+          "scale_dtype": "float32",
+          "kv_cache_dtype": "fp8_e4m3"
+        }
+      },
+      {
+        "name": "decode_m64_x128",
+        "dims": [
+          [
+            64,
+            1,
+            64,
+            512
+          ],
+          [
+            64,
+            1,
+            128
+          ],
+          [
+            64
+          ],
+          [
+            64
+          ],
+          [
+            64,
+            1,
+            128
+          ],
+          [
+            64
+          ]
+        ],
+        "dtypes": [
+          "torch.bfloat16",
+          "torch.float32",
+          "torch.int32"
+        ],
+        "count": 63479,
+        "weight": 67.31369999999998,
+        "weight_source": "regime",
+        "regime": "decode",
+        "weight_norm": 0.15,
+        "quant": {
+          "scheme": "fp8_blockscale",
+          "weight_dtype": "bf16",
+          "act_dtype": "fp8",
+          "out_dtype": "",
+          "weight_block_size": [
+            128,
+            128
+          ],
+          "scale_dtype": "float32",
+          "kv_cache_dtype": "fp8_e4m3"
+        }
+      },
+      {
+        "name": "decode_m64_x1024",
+        "dims": [
+          [
+            64,
+            1,
+            64,
+            512
+          ],
+          [
+            64,
+            1,
+            128
+          ],
+          [
+            64
+          ],
+          [
+            64
+          ],
+          [
+            64,
+            1,
+            1024
+          ],
+          [
+            64
+          ]
+        ],
+        "dtypes": [
+          "torch.bfloat16",
+          "torch.float32",
+          "torch.int32"
+        ],
+        "count": 61430,
+        "weight": 67.31369999999998,
+        "weight_source": "regime",
+        "regime": "decode",
+        "weight_norm": 0.15,
+        "quant": {
+          "scheme": "fp8_blockscale",
+          "weight_dtype": "bf16",
+          "act_dtype": "fp8",
+          "out_dtype": "",
+          "weight_block_size": [
+            128,
+            128
+          ],
+          "scale_dtype": "float32",
+          "kv_cache_dtype": "fp8_e4m3"
+        }
+      }
+    ],
+    "notes": "attn: 449us of unnamed launches spread across meta regimes by size. CROSS-CHECK regime 'decode': 100% of capture CALLS vs 1% of profiled TIME (count\u2260time; large gap \u21d2 biased capture window or mis-attributed profile \u2014 weight uses TIME). CROSS-CHECK regime 'prefill': 0% of capture CALLS vs 99% of profiled TIME (count\u2260time; large gap \u21d2 biased capture window or mis-attributed profile \u2014 weight uses TIME). auto decode-floor: analytic serving model has decode=1024 calls but profiled decode share=0.01 < 0.30 (graph-hidden / under-captured decode) -> flooring decode to 0.30; authoritative split remains the unittest self-weight (measured ms x analytic_calls). applied --min-regime-share 0.3: floored regimes ['decode']. online kv-cache-dtype=fp8: the attention oracle + kernel MUST use the fp8 KV layout/stride, else a bf16-stride read over fp8 bytes faults. Verify the captured KV dtype matches."
+  },
+  "reference_io_sha256": "981eb9be0909a11f831800c31e6399cffb0970d31f1393469d4e7e3a91e35f5a",
+  "capture_source": "oracle2/capture.pid-727130.rank-unknown",
+  "graph_replayed_in_capture": false,
+  "candidate_backends": [
+    "tilelang",
+    "triton",
+    "aiter"
+  ],
+  "seam_candidates": [
+    {
+      "target_callable": "sglang.srt.layers.attention.deepseek_v4_backend_hip_radix:DeepseekV4HipRadixBackend.forward",
+      "role": "outer_wrapper",
+      "device_kernels": [
+        "main_kernel"
+      ],
+      "depth": 0,
+      "runtime_verified": true,
+      "live": true,
+      "evidence": "deepseek_v4_backend_hip_radix.py:1385. LIVE backend for attention_backend='dsv4' on HIP (baseline server.log: 'Using DeepseekV4HipRadixBackend for compressed attention backend (HIP)'). Marker live in all 8 TP ranks; main_kernel correlated under it, but a deeper marked candidate also launches it -> rejected as outer wrapper."
+    },
+    {
+      "target_callable": "sglang.srt.layers.attention.deepseek_v4_backend_hip_radix:DeepseekV4HipRadixBackend._forward_unified_kv",
+      "role": "dispatcher",
+      "device_kernels": [
+        "main_kernel"
+      ],
+      "depth": 1,
+      "runtime_verified": true,
+      "live": false,
+      "evidence": "deepseek_v4_backend_hip_radix.py:1127, gated behind is_unified_kv_triton(); marker INSTALLED in all 8 ranks and never fired -> mutually-exclusive branch, dead this run."
+    },
+    {
+      "target_callable": "sglang.srt.layers.attention.hip_flash_mla:flash_mla_with_kvcache_entrypoint",
+      "role": "dispatcher",
+      "device_kernels": [
+        "main_kernel"
+      ],
+      "depth": 1,
+      "runtime_verified": true,
+      "live": true,
+      "evidence": "hip_flash_mla.py:12. LIVE; on HIP it re-reads SGLANG_HACK_FLASHMLA_BACKEND and routes backend=='tilelang' -> dpsk_v4_fp8_attention_fwd. Deeper marked candidate launches main_kernel -> rejected as dispatcher."
+    },
+    {
+      "target_callable": "sglang.kernels.ops.attention.dsa.tilelang_kernel:dpsk_v4_fp8_attention_fwd",
+      "role": "op_seam",
+      "device_kernels": [
+        "main_kernel"
+      ],
+      "depth": 2,
+      "runtime_verified": true,
+      "live": true,
+      "evidence": "tilelang_kernel.py:2461. SELECTED. Deepest live SAFE Python callable that launches main_kernel: 128 root marker calls across 8 ranks correlate 256 'main_kernel' device launches (2 per call = split-K partial + LSE combine), via torch-profiler External id AND launch correlation. Whole-operation seam for this fused head: signature mirrors flash_mla_with_kvcache and it owns block_I/threads/num_stages/block_per_cu/cu, _pick_inner_iter split-K, and the combine. No marked candidate is nested deeper with matched launches."
+    },
+    {
+      "target_callable": "sglang.kernels.ops.attention.dsa.tilelang_kernel:dpsk_v4_fp8_partial_kernel",
+      "role": "kernel_entry",
+      "device_kernels": [
+        "main_kernel"
+      ],
+      "depth": 3,
+      "runtime_verified": true,
+      "live": true,
+      "evidence": "tilelang_kernel.py:1569, @tilelang.jit factory (type JITImpl). Marker fires (it is CALLED once per attention call) but NO main_kernel launch is correlated inside its span: it only compiles/returns the JITKernel, which is invoked after it returns. Not a launcher; a JIT kernel_entry, not a monkeypatch target."
+    },
+    {
+      "target_callable": "sglang.kernels.ops.attention.dsa.tilelang_kernel:dpsk_v4_combine_kernel",
+      "role": "kernel_entry",
+      "device_kernels": [
+        "main_kernel"
+      ],
+      "depth": 3,
+      "runtime_verified": true,
+      "live": true,
+      "evidence": "tilelang_kernel.py:2210, @tilelang.jit factory (JITImpl). Same as above: called, but launches nothing inside its own span."
+    },
+    {
+      "target_callable": "sglang.srt.layers.attention.dsa_backend:DeepseekSparseAttnBackend.forward_decode",
+      "role": "outer_wrapper",
+      "device_kernels": [
+        "main_kernel"
+      ],
+      "depth": 0,
+      "runtime_verified": true,
+      "live": false,
+      "evidence": "dsa_backend.py. Architect candidate. Module force-imported and marker INSTALLED in all 8 ranks (proof in every trace) and NEVER fired: DeepseekSparseAttnBackend is not the backend this server builds (dsv4 -> DeepseekV4HipRadixBackend). Dead path."
+    },
+    {
+      "target_callable": "sglang.srt.layers.attention.dsa_backend:DeepseekSparseAttnBackend.forward_extend",
+      "role": "outer_wrapper",
+      "device_kernels": [
+        "main_kernel"
+      ],
+      "depth": 0,
+      "runtime_verified": true,
+      "live": false,
+      "evidence": "dsa_backend.py. Architect candidate; marker installed in all 8 ranks, never live. Dead path."
+    },
+    {
+      "target_callable": "sglang.srt.layers.attention.dsa_backend:DeepseekSparseAttnBackend._forward_tilelang",
+      "role": "dispatcher",
+      "device_kernels": [
+        "main_kernel"
+      ],
+      "depth": 1,
+      "runtime_verified": true,
+      "live": false,
+      "evidence": "dsa_backend.py. Architect candidate; marker installed in all 8 ranks, never live. Dead path."
+    },
+    {
+      "target_callable": "sglang.kernels.ops.attention.dsa.tilelang_kernel:tilelang_sparse_fwd",
+      "role": "op_seam",
+      "device_kernels": [
+        "main_kernel"
+      ],
+      "depth": 2,
+      "runtime_verified": true,
+      "live": false,
+      "evidence": "tilelang_kernel.py. Architect's proposed op_seam; marker installed in all 8 ranks, never live -- it is only reachable from the dsa_backend chain, which this server never constructs."
+    },
+    {
+      "target_callable": "sglang.kernels.ops.attention.dsa.tilelang_kernel:sparse_mla_fwd_decode_partial_fp8",
+      "role": "kernel_entry",
+      "device_kernels": [
+        "main_kernel"
+      ],
+      "depth": 3,
+      "runtime_verified": true,
+      "live": false,
+      "evidence": "@tilelang.jit factory; marker installed, never called. Belongs to the dead tilelang_sparse_fwd chain."
+    },
+    {
+      "target_callable": "sglang.kernels.ops.attention.dsa.tilelang_kernel:sparse_mla_fwd_decode_combine",
+      "role": "kernel_entry",
+      "device_kernels": [
+        "main_kernel"
+      ],
+      "depth": 3,
+      "runtime_verified": true,
+      "live": false,
+      "evidence": "@tilelang.jit factory; marker installed, never called. Dead chain."
+    },
+    {
+      "target_callable": "sglang.kernels.ops.attention.dsa.triton_sparse_mla:triton_sparse_mla_fwd",
+      "role": "op_seam",
+      "device_kernels": [
+        "main_kernel"
+      ],
+      "depth": 2,
+      "runtime_verified": true,
+      "live": false,
+      "evidence": "triton_sparse_mla.py. Architect's Triton rung. Module force-imported, marker installed in all 8 ranks, never live: it is gated behind the dsa_backend prefill path (SGLANG_DSA_TRITON_PREFILL), which this dsv4/hip-radix server never reaches. In-tree and contract-compatible, so still usable as an AUTHORING reference -- but NOT a live rebind seam."
+    },
+    {
+      "target_callable": "sglang.kernels.ops.attention.nsa_triton_decode:triton_fp8_attention_fwd",
+      "role": "op_seam",
+      "device_kernels": [
+        "main_kernel"
+      ],
+      "depth": 2,
+      "runtime_verified": true,
+      "live": false,
+      "evidence": "nsa_triton_decode.py. The alternative backend flash_mla_with_kvcache_entrypoint routes to when SGLANG_HACK_FLASHMLA_BACKEND=='triton'. Marker installed in all 8 ranks, never live at the stock default. This is the drop-in contract an authored replacement must satisfy."
+    }
+  ],
+  "undefined_positions": {
+    "policy": "cases.call()/cases._golden() zero the positions where the FROZEN ORACLE output is NaN",
+    "sources": [
+      "decode_*_x1024 rows 56..63: the server pads the decode batch and the padding slots' q is uninitialised (the oracle's own q is NaN there)",
+      "prefill_m8192_x1024 rows ~1792..6047: all 1024 extra_indices_in_kvcache entries are -1 (empty extra context) so the live op's softmax denominator is empty and it returns NaN"
+    ],
+    "note": "the mask is derived from the ORACLE only and applied identically to both legs, so a candidate that invents a NaN at any DEFINED position still fails"
+  },
+  "unittest_smoke": "pass",
+  "smoke_result": {
+    "correctness": "PASS",
+    "weighted_speedup_identity_legs": 0.9996,
+    "log": "unittest_smoke.log",
+    "baseline_ms": {
+      "prefill_m8192_x64": 4.567,
+      "prefill_m8192_x1024": 23.829,
+      "decode_m64_x128": 0.0551,
+      "decode_m64_x1024": 0.2483
+    },
+    "note": "both legs are the unmodified stack. eager (6 cases) + value-parity random draws + 2-boundary CUDA-graph replay + call_sequence all pass. decode_m1_x1024 reports max_rel_err 0.11819 (< tol*RMS): the M=1 slice schedules split-K differently from the M=64 batch it is sliced out of. MEASUREMENT NOTE: one identity run taken while another tenant was releasing the box reported baseline 8.53 ms on prefill_m8192_x64 (weighted 1.43); gpu_lock's idle check is start-of-run only, so a co-tenanted box can inflate a single bucket's BASELINE leg. Two idle-box runs reproduce 4.567 ms and weighted 0.9996-1.0004. RE-VERIFIED after the 14-candidate selection re-run (2026-08-30 23:36 and 23:46 UTC): CORRECTNESS PASS both times; the identity-leg weighted number is only meaningful on an idle box (0.9996 there), both reruns landed on a co-tenanted box.",
+    "reruns_after_selection_rerun": [
+      {
+        "log": "unittest_smoke.rerun.log",
+        "correctness": "PASS",
+        "weighted_speedup_identity_legs": 0.8972,
+        "box": "co-tenanted (all 8 GPUs busy with another tenant); prefill baseline inflated 4.567->8.108 ms on BOTH legs"
+      },
+      {
+        "log": "unittest_smoke.rerun2.log",
+        "correctness": "PASS",
+        "weighted_speedup_identity_legs": 0.8924,
+        "box": "co-tenanted; decode legs 0.32/0.76 on identical code -> timing untrusted, correctness unaffected"
+      }
+    ]
+  },
+  "selection_validation": {
+    "contract": "kernel_selection",
+    "ok": true,
+    "target_callable": "sglang.kernels.ops.attention.dsa.tilelang_kernel:dpsk_v4_fp8_attention_fwd",
+    "device_kernel": "main_kernel",
+    "capture_target": "sglang.kernels.ops.attention.dsa.tilelang_kernel:dpsk_v4_fp8_attention_fwd",
+    "total_calls_observed": 157935,
+    "target_marker": "GEAK_TARGET::sglang.kernels.ops.attention.dsa.tilelang_kernel:dpsk_v4_fp8_attention_fwd",
+    "target_marker_calls": 128,
+    "matched_kernel_calls": 256,
+    "matched_kernel_names": [
+      "main_kernel"
+    ],
+    "correlated_external_ids": 2912,
+    "correlated_launch_correlations": 624,
+    "candidate_targets_tested": [
+      "sglang.kernels.ops.attention.dsa.tilelang_kernel:dpsk_v4_combine_kernel",
+      "sglang.kernels.ops.attention.dsa.tilelang_kernel:dpsk_v4_fp8_attention_fwd",
+      "sglang.kernels.ops.attention.dsa.tilelang_kernel:dpsk_v4_fp8_partial_kernel",
+      "sglang.kernels.ops.attention.dsa.tilelang_kernel:sparse_mla_fwd_decode_combine",
+      "sglang.kernels.ops.attention.dsa.tilelang_kernel:sparse_mla_fwd_decode_partial_fp8",
+      "sglang.kernels.ops.attention.dsa.tilelang_kernel:tilelang_sparse_fwd",
+      "sglang.kernels.ops.attention.dsa.triton_sparse_mla:triton_sparse_mla_fwd",
+      "sglang.kernels.ops.attention.nsa_triton_decode:triton_fp8_attention_fwd",
+      "sglang.srt.layers.attention.deepseek_v4_backend_hip_radix:DeepseekV4HipRadixBackend._forward_unified_kv",
+      "sglang.srt.layers.attention.deepseek_v4_backend_hip_radix:DeepseekV4HipRadixBackend.forward",
+      "sglang.srt.layers.attention.dsa_backend:DeepseekSparseAttnBackend._forward_tilelang",
+      "sglang.srt.layers.attention.dsa_backend:DeepseekSparseAttnBackend.forward_decode",
+      "sglang.srt.layers.attention.dsa_backend:DeepseekSparseAttnBackend.forward_extend",
+      "sglang.srt.layers.attention.hip_flash_mla:flash_mla_with_kvcache_entrypoint"
+    ],
+    "live_candidate_targets": [
+      "sglang.kernels.ops.attention.dsa.tilelang_kernel:dpsk_v4_fp8_attention_fwd",
+      "sglang.srt.layers.attention.deepseek_v4_backend_hip_radix:DeepseekV4HipRadixBackend.forward",
+      "sglang.srt.layers.attention.hip_flash_mla:flash_mla_with_kvcache_entrypoint"
+    ],
+    "deeper_live_candidates": [],
+    "missing_candidate_markers": [],
+    "installed_but_never_live_candidates": [
+      "sglang.kernels.ops.attention.dsa.tilelang_kernel:sparse_mla_fwd_decode_combine",
+      "sglang.kernels.ops.attention.dsa.tilelang_kernel:sparse_mla_fwd_decode_partial_fp8",
+      "sglang.kernels.ops.attention.dsa.tilelang_kernel:tilelang_sparse_fwd",
+      "sglang.kernels.ops.attention.dsa.triton_sparse_mla:triton_sparse_mla_fwd",
+      "sglang.kernels.ops.attention.nsa_triton_decode:triton_fp8_attention_fwd",
+      "sglang.srt.layers.attention.deepseek_v4_backend_hip_radix:DeepseekV4HipRadixBackend._forward_unified_kv",
+      "sglang.srt.layers.attention.dsa_backend:DeepseekSparseAttnBackend._forward_tilelang",
+      "sglang.srt.layers.attention.dsa_backend:DeepseekSparseAttnBackend.forward_decode",
+      "sglang.srt.layers.attention.dsa_backend:DeepseekSparseAttnBackend.forward_extend"
+    ],
+    "deepest_verified": true,
+    "evidence": "installed+live_nested_candidate_markers+torch_profiler_external_id_or_launch_correlation",
+    "failed": [],
+    "process_verdicts": [
+      {
+        "capture_meta_file": "_sel4_cap/capture.pid-650257.rank-unknown/meta.json",
+        "trace_files": [
+          "_sel4_traces/trace.pid-650257.rank-unknown.call-1.json",
+          "_sel4_traces/trace.pid-650257.rank-unknown.call-10.json",
+          "_sel4_traces/trace.pid-650257.rank-unknown.call-11.json",
+          "_sel4_traces/trace.pid-650257.rank-unknown.call-12.json",
+          "_sel4_traces/trace.pid-650257.rank-unknown.call-13.json",
+          "_sel4_traces/trace.pid-650257.rank-unknown.call-14.json",
+          "_sel4_traces/trace.pid-650257.rank-unknown.call-15.json",
+          "_sel4_traces/trace.pid-650257.rank-unknown.call-16.json",
+          "_sel4_traces/trace.pid-650257.rank-unknown.call-2.json",
+          "_sel4_traces/trace.pid-650257.rank-unknown.call-3.json",
+          "_sel4_traces/trace.pid-650257.rank-unknown.call-4.json",
+          "_sel4_traces/trace.pid-650257.rank-unknown.call-5.json",
+          "_sel4_traces/trace.pid-650257.rank-unknown.call-6.json",
+          "_sel4_traces/trace.pid-650257.rank-unknown.call-7.json",
+          "_sel4_traces/trace.pid-650257.rank-unknown.call-8.json",
+          "_sel4_traces/trace.pid-650257.rank-unknown.call-9.json"
+        ],
+        "ok": true,
+        "failed": [],
+        "live_candidate_targets": [
+          "sglang.kernels.ops.attention.dsa.tilelang_kernel:dpsk_v4_fp8_attention_fwd",
+          "sglang.srt.layers.attention.deepseek_v4_backend_hip_radix:DeepseekV4HipRadixBackend.forward",
+          "sglang.srt.layers.attention.hip_flash_mla:flash_mla_with_kvcache_entrypoint"
+        ],
+        "deeper_live_candidates": []
+      },
+      {
+        "capture_meta_file": "_sel4_cap/capture.pid-650258.rank-unknown/meta.json",
+        "trace_files": [
+          "_sel4_traces/trace.pid-650258.rank-unknown.call-1.json",
+          "_sel4_traces/trace.pid-650258.rank-unknown.call-10.json",
+          "_sel4_traces/trace.pid-650258.rank-unknown.call-11.json",
+          "_sel4_traces/trace.pid-650258.rank-unknown.call-12.json",
+          "_sel4_traces/trace.pid-650258.rank-unknown.call-13.json",
+          "_sel4_traces/trace.pid-650258.rank-unknown.call-14.json",
+          "_sel4_traces/trace.pid-650258.rank-unknown.call-15.json",
+          "_sel4_traces/trace.pid-650258.rank-unknown.call-16.json",
+          "_sel4_traces/trace.pid-650258.rank-unknown.call-2.json",
+          "_sel4_traces/trace.pid-650258.rank-unknown.call-3.json",
+          "_sel4_traces/trace.pid-650258.rank-unknown.call-4.json",
+          "_sel4_traces/trace.pid-650258.rank-unknown.call-5.json",
+          "_sel4_traces/trace.pid-650258.rank-unknown.call-6.json",
+          "_sel4_traces/trace.pid-650258.rank-unknown.call-7.json",
+          "_sel4_traces/trace.pid-650258.rank-unknown.call-8.json",
+          "_sel4_traces/trace.pid-650258.rank-unknown.call-9.json"
+        ],
+        "ok": true,
+        "failed": [],
+        "live_candidate_targets": [
+          "sglang.kernels.ops.attention.dsa.tilelang_kernel:dpsk_v4_fp8_attention_fwd",
+          "sglang.srt.layers.attention.deepseek_v4_backend_hip_radix:DeepseekV4HipRadixBackend.forward",
+          "sglang.srt.layers.attention.hip_flash_mla:flash_mla_with_kvcache_entrypoint"
+        ],
+        "deeper_live_candidates": []
+      },
+      {
+        "capture_meta_file": "_sel4_cap/capture.pid-650259.rank-unknown/meta.json",
+        "trace_files": [
+          "_sel4_traces/trace.pid-650259.rank-unknown.call-1.json",
+          "_sel4_traces/trace.pid-650259.rank-unknown.call-10.json",
+          "_sel4_traces/trace.pid-650259.rank-unknown.call-11.json",
+          "_sel4_traces/trace.pid-650259.rank-unknown.call-12.json",
+          "_sel4_traces/trace.pid-650259.rank-unknown.call-13.json",
+          "_sel4_traces/trace.pid-650259.rank-unknown.call-14.json",
+          "_sel4_traces/trace.pid-650259.rank-unknown.call-15.json",
+          "_sel4_traces/trace.pid-650259.rank-unknown.call-16.json",
+          "_sel4_traces/trace.pid-650259.rank-unknown.call-2.json",
+          "_sel4_traces/trace.pid-650259.rank-unknown.call-3.json",
+          "_sel4_traces/trace.pid-650259.rank-unknown.call-4.json",
+          "_sel4_traces/trace.pid-650259.rank-unknown.call-5.json",
+          "_sel4_traces/trace.pid-650259.rank-unknown.call-6.json",
+          "_sel4_traces/trace.pid-650259.rank-unknown.call-7.json",
+          "_sel4_traces/trace.pid-650259.rank-unknown.call-8.json",
+          "_sel4_traces/trace.pid-650259.rank-unknown.call-9.json"
+        ],
+        "ok": true,
+        "failed": [],
+        "live_candidate_targets": [
+          "sglang.kernels.ops.attention.dsa.tilelang_kernel:dpsk_v4_fp8_attention_fwd",
+          "sglang.srt.layers.attention.deepseek_v4_backend_hip_radix:DeepseekV4HipRadixBackend.forward",
+          "sglang.srt.layers.attention.hip_flash_mla:flash_mla_with_kvcache_entrypoint"
+        ],
+        "deeper_live_candidates": []
+      },
+      {
+        "capture_meta_file": "_sel4_cap/capture.pid-650260.rank-unknown/meta.json",
+        "trace_files": [
+          "_sel4_traces/trace.pid-650260.rank-unknown.call-1.json",
+          "_sel4_traces/trace.pid-650260.rank-unknown.call-10.json",
+          "_sel4_traces/trace.pid-650260.rank-unknown.call-11.json",
+          "_sel4_traces/trace.pid-650260.rank-unknown.call-12.json",
+          "_sel4_traces/trace.pid-650260.rank-unknown.call-13.json",
+          "_sel4_traces/trace.pid-650260.rank-unknown.call-14.json",
+          "_sel4_traces/trace.pid-650260.rank-unknown.call-15.json",
+          "_sel4_traces/trace.pid-650260.rank-unknown.call-16.json",
+          "_sel4_traces/trace.pid-650260.rank-unknown.call-2.json",
+          "_sel4_traces/trace.pid-650260.rank-unknown.call-3.json",
+          "_sel4_traces/trace.pid-650260.rank-unknown.call-4.json",
+          "_sel4_traces/trace.pid-650260.rank-unknown.call-5.json",
+          "_sel4_traces/trace.pid-650260.rank-unknown.call-6.json",
+          "_sel4_traces/trace.pid-650260.rank-unknown.call-7.json",
+          "_sel4_traces/trace.pid-650260.rank-unknown.call-8.json",
+          "_sel4_traces/trace.pid-650260.rank-unknown.call-9.json"
+        ],
+        "ok": true,
+        "failed": [],
+        "live_candidate_targets": [
+          "sglang.kernels.ops.attention.dsa.tilelang_kernel:dpsk_v4_fp8_attention_fwd",
+          "sglang.srt.layers.attention.deepseek_v4_backend_hip_radix:DeepseekV4HipRadixBackend.forward",
+          "sglang.srt.layers.attention.hip_flash_mla:flash_mla_with_kvcache_entrypoint"
+        ],
+        "deeper_live_candidates": []
+      },
+      {
+        "capture_meta_file": "_sel4_cap/capture.pid-650261.rank-unknown/meta.json",
+        "trace_files": [
+          "_sel4_traces/trace.pid-650261.rank-unknown.call-1.json",
+          "_sel4_traces/trace.pid-650261.rank-unknown.call-10.json",
+          "_sel4_traces/trace.pid-650261.rank-unknown.call-11.json",
+          "_sel4_traces/trace.pid-650261.rank-unknown.call-12.json",
+          "_sel4_traces/trace.pid-650261.rank-unknown.call-13.json",
+          "_sel4_traces/trace.pid-650261.rank-unknown.call-14.json",
+          "_sel4_traces/trace.pid-650261.rank-unknown.call-15.json",
+          "_sel4_traces/trace.pid-650261.rank-unknown.call-16.json",
+          "_sel4_traces/trace.pid-650261.rank-unknown.call-2.json",
+          "_sel4_traces/trace.pid-650261.rank-unknown.call-3.json",
+          "_sel4_traces/trace.pid-650261.rank-unknown.call-4.json",
+          "_sel4_traces/trace.pid-650261.rank-unknown.call-5.json",
+          "_sel4_traces/trace.pid-650261.rank-unknown.call-6.json",
+          "_sel4_traces/trace.pid-650261.rank-unknown.call-7.json",
+          "_sel4_traces/trace.pid-650261.rank-unknown.call-8.json",
+          "_sel4_traces/trace.pid-650261.rank-unknown.call-9.json"
+        ],
+        "ok": true,
+        "failed": [],
+        "live_candidate_targets": [
+          "sglang.kernels.ops.attention.dsa.tilelang_kernel:dpsk_v4_fp8_attention_fwd",
+          "sglang.srt.layers.attention.deepseek_v4_backend_hip_radix:DeepseekV4HipRadixBackend.forward",
+          "sglang.srt.layers.attention.hip_flash_mla:flash_mla_with_kvcache_entrypoint"
+        ],
+        "deeper_live_candidates": []
+      },
+      {
+        "capture_meta_file": "_sel4_cap/capture.pid-650262.rank-unknown/meta.json",
+        "trace_files": [
+          "_sel4_traces/trace.pid-650262.rank-unknown.call-1.json",
+          "_sel4_traces/trace.pid-650262.rank-unknown.call-10.json",
+          "_sel4_traces/trace.pid-650262.rank-unknown.call-11.json",
+          "_sel4_traces/trace.pid-650262.rank-unknown.call-12.json",
+          "_sel4_traces/trace.pid-650262.rank-unknown.call-13.json",
+          "_sel4_traces/trace.pid-650262.rank-unknown.call-14.json",
+          "_sel4_traces/trace.pid-650262.rank-unknown.call-15.json",
+          "_sel4_traces/trace.pid-650262.rank-unknown.call-16.json",
+          "_sel4_traces/trace.pid-650262.rank-unknown.call-2.json",
+          "_sel4_traces/trace.pid-650262.rank-unknown.call-3.json",
+          "_sel4_traces/trace.pid-650262.rank-unknown.call-4.json",
+          "_sel4_traces/trace.pid-650262.rank-unknown.call-5.json",
+          "_sel4_traces/trace.pid-650262.rank-unknown.call-6.json",
+          "_sel4_traces/trace.pid-650262.rank-unknown.call-7.json",
+          "_sel4_traces/trace.pid-650262.rank-unknown.call-8.json",
+          "_sel4_traces/trace.pid-650262.rank-unknown.call-9.json"
+        ],
+        "ok": true,
+        "failed": [],
+        "live_candidate_targets": [
+          "sglang.kernels.ops.attention.dsa.tilelang_kernel:dpsk_v4_fp8_attention_fwd",
+          "sglang.srt.layers.attention.deepseek_v4_backend_hip_radix:DeepseekV4HipRadixBackend.forward",
+          "sglang.srt.layers.attention.hip_flash_mla:flash_mla_with_kvcache_entrypoint"
+        ],
+        "deeper_live_candidates": []
+      },
+      {
+        "capture_meta_file": "_sel4_cap/capture.pid-650263.rank-unknown/meta.json",
+        "trace_files": [
+          "_sel4_traces/trace.pid-650263.rank-unknown.call-1.json",
+          "_sel4_traces/trace.pid-650263.rank-unknown.call-10.json",
+          "_sel4_traces/trace.pid-650263.rank-unknown.call-11.json",
+          "_sel4_traces/trace.pid-650263.rank-unknown.call-12.json",
+          "_sel4_traces/trace.pid-650263.rank-unknown.call-13.json",
+          "_sel4_traces/trace.pid-650263.rank-unknown.call-14.json",
+          "_sel4_traces/trace.pid-650263.rank-unknown.call-15.json",
+          "_sel4_traces/trace.pid-650263.rank-unknown.call-16.json",
+          "_sel4_traces/trace.pid-650263.rank-unknown.call-2.json",
+          "_sel4_traces/trace.pid-650263.rank-unknown.call-3.json",
+          "_sel4_traces/trace.pid-650263.rank-unknown.call-4.json",
+          "_sel4_traces/trace.pid-650263.rank-unknown.call-5.json",
+          "_sel4_traces/trace.pid-650263.rank-unknown.call-6.json",
+          "_sel4_traces/trace.pid-650263.rank-unknown.call-7.json",
+          "_sel4_traces/trace.pid-650263.rank-unknown.call-8.json",
+          "_sel4_traces/trace.pid-650263.rank-unknown.call-9.json"
+        ],
+        "ok": true,
+        "failed": [],
+        "live_candidate_targets": [
+          "sglang.kernels.ops.attention.dsa.tilelang_kernel:dpsk_v4_fp8_attention_fwd",
+          "sglang.srt.layers.attention.deepseek_v4_backend_hip_radix:DeepseekV4HipRadixBackend.forward",
+          "sglang.srt.layers.attention.hip_flash_mla:flash_mla_with_kvcache_entrypoint"
+        ],
+        "deeper_live_candidates": []
+      },
+      {
+        "capture_meta_file": "_sel4_cap/capture.pid-650264.rank-unknown/meta.json",
+        "trace_files": [
+          "_sel4_traces/trace.pid-650264.rank-unknown.call-1.json",
+          "_sel4_traces/trace.pid-650264.rank-unknown.call-10.json",
+          "_sel4_traces/trace.pid-650264.rank-unknown.call-11.json",
+          "_sel4_traces/trace.pid-650264.rank-unknown.call-12.json",
+          "_sel4_traces/trace.pid-650264.rank-unknown.call-13.json",
+          "_sel4_traces/trace.pid-650264.rank-unknown.call-14.json",
+          "_sel4_traces/trace.pid-650264.rank-unknown.call-15.json",
+          "_sel4_traces/trace.pid-650264.rank-unknown.call-16.json",
+          "_sel4_traces/trace.pid-650264.rank-unknown.call-2.json",
+          "_sel4_traces/trace.pid-650264.rank-unknown.call-3.json",
+          "_sel4_traces/trace.pid-650264.rank-unknown.call-4.json",
+          "_sel4_traces/trace.pid-650264.rank-unknown.call-5.json",
+          "_sel4_traces/trace.pid-650264.rank-unknown.call-6.json",
+          "_sel4_traces/trace.pid-650264.rank-unknown.call-7.json",
+          "_sel4_traces/trace.pid-650264.rank-unknown.call-8.json",
+          "_sel4_traces/trace.pid-650264.rank-unknown.call-9.json"
+        ],
+        "ok": true,
+        "failed": [],
+        "live_candidate_targets": [
+          "sglang.kernels.ops.attention.dsa.tilelang_kernel:dpsk_v4_fp8_attention_fwd",
+          "sglang.srt.layers.attention.deepseek_v4_backend_hip_radix:DeepseekV4HipRadixBackend.forward",
+          "sglang.srt.layers.attention.hip_flash_mla:flash_mla_with_kvcache_entrypoint"
+        ],
+        "deeper_live_candidates": []
+      }
+    ],
+    "best_process_meta_file": "_sel4_cap/capture.pid-650257.rank-unknown/meta.json",
+    "trace_file": "",
+    "trace_files": [
+      "_sel4_traces/trace.pid-650257.rank-unknown.call-1.json",
+      "_sel4_traces/trace.pid-650257.rank-unknown.call-10.json",
+      "_sel4_traces/trace.pid-650257.rank-unknown.call-11.json",
+      "_sel4_traces/trace.pid-650257.rank-unknown.call-12.json",
+      "_sel4_traces/trace.pid-650257.rank-unknown.call-13.json",
+      "_sel4_traces/trace.pid-650257.rank-unknown.call-14.json",
+      "_sel4_traces/trace.pid-650257.rank-unknown.call-15.json",
+      "_sel4_traces/trace.pid-650257.rank-unknown.call-16.json",
+      "_sel4_traces/trace.pid-650257.rank-unknown.call-2.json",
+      "_sel4_traces/trace.pid-650257.rank-unknown.call-3.json",
+      "_sel4_traces/trace.pid-650257.rank-unknown.call-4.json",
+      "_sel4_traces/trace.pid-650257.rank-unknown.call-5.json",
+      "_sel4_traces/trace.pid-650257.rank-unknown.call-6.json",
+      "_sel4_traces/trace.pid-650257.rank-unknown.call-7.json",
+      "_sel4_traces/trace.pid-650257.rank-unknown.call-8.json",
+      "_sel4_traces/trace.pid-650257.rank-unknown.call-9.json",
+      "_sel4_traces/trace.pid-650258.rank-unknown.call-1.json",
+      "_sel4_traces/trace.pid-650258.rank-unknown.call-10.json",
+      "_sel4_traces/trace.pid-650258.rank-unknown.call-11.json",
+      "_sel4_traces/trace.pid-650258.rank-unknown.call-12.json",
+      "_sel4_traces/trace.pid-650258.rank-unknown.call-13.json",
+      "_sel4_traces/trace.pid-650258.rank-unknown.call-14.json",
+      "_sel4_traces/trace.pid-650258.rank-unknown.call-15.json",
+      "_sel4_traces/trace.pid-650258.rank-unknown.call-16.json",
+      "_sel4_traces/trace.pid-650258.rank-unknown.call-2.json",
+      "_sel4_traces/trace.pid-650258.rank-unknown.call-3.json",
+      "_sel4_traces/trace.pid-650258.rank-unknown.call-4.json",
+      "_sel4_traces/trace.pid-650258.rank-unknown.call-5.json",
+      "_sel4_traces/trace.pid-650258.rank-unknown.call-6.json",
+      "_sel4_traces/trace.pid-650258.rank-unknown.call-7.json",
+      "_sel4_traces/trace.pid-650258.rank-unknown.call-8.json",
+      "_sel4_traces/trace.pid-650258.rank-unknown.call-9.json",
+      "_sel4_traces/trace.pid-650259.rank-unknown.call-1.json",
+      "_sel4_traces/trace.pid-650259.rank-unknown.call-10.json",
+      "_sel4_traces/trace.pid-650259.rank-unknown.call-11.json",
+      "_sel4_traces/trace.pid-650259.rank-unknown.call-12.json",
+      "_sel4_traces/trace.pid-650259.rank-unknown.call-13.json",
+      "_sel4_traces/trace.pid-650259.rank-unknown.call-14.json",
+      "_sel4_traces/trace.pid-650259.rank-unknown.call-15.json",
+      "_sel4_traces/trace.pid-650259.rank-unknown.call-16.json",
+      "_sel4_traces/trace.pid-650259.rank-unknown.call-2.json",
+      "_sel4_traces/trace.pid-650259.rank-unknown.call-3.json",
+      "_sel4_traces/trace.pid-650259.rank-unknown.call-4.json",
+      "_sel4_traces/trace.pid-650259.rank-unknown.call-5.json",
+      "_sel4_traces/trace.pid-650259.rank-unknown.call-6.json",
+      "_sel4_traces/trace.pid-650259.rank-unknown.call-7.json",
+      "_sel4_traces/trace.pid-650259.rank-unknown.call-8.json",
+      "_sel4_traces/trace.pid-650259.rank-unknown.call-9.json",
+      "_sel4_traces/trace.pid-650260.rank-unknown.call-1.json",
+      "_sel4_traces/trace.pid-650260.rank-unknown.call-10.json",
+      "_sel4_traces/trace.pid-650260.rank-unknown.call-11.json",
+      "_sel4_traces/trace.pid-650260.rank-unknown.call-12.json",
+      "_sel4_traces/trace.pid-650260.rank-unknown.call-13.json",
+      "_sel4_traces/trace.pid-650260.rank-unknown.call-14.json",
+      "_sel4_traces/trace.pid-650260.rank-unknown.call-15.json",
+      "_sel4_traces/trace.pid-650260.rank-unknown.call-16.json",
+      "_sel4_traces/trace.pid-650260.rank-unknown.call-2.json",
+      "_sel4_traces/trace.pid-650260.rank-unknown.call-3.json",
+      "_sel4_traces/trace.pid-650260.rank-unknown.call-4.json",
+      "_sel4_traces/trace.pid-650260.rank-unknown.call-5.json",
+      "_sel4_traces/trace.pid-650260.rank-unknown.call-6.json",
+      "_sel4_traces/trace.pid-650260.rank-unknown.call-7.json",
+      "_sel4_traces/trace.pid-650260.rank-unknown.call-8.json",
+      "_sel4_traces/trace.pid-650260.rank-unknown.call-9.json",
+      "_sel4_traces/trace.pid-650261.rank-unknown.call-1.json",
+      "_sel4_traces/trace.pid-650261.rank-unknown.call-10.json",
+      "_sel4_traces/trace.pid-650261.rank-unknown.call-11.json",
+      "_sel4_traces/trace.pid-650261.rank-unknown.call-12.json",
+      "_sel4_traces/trace.pid-650261.rank-unknown.call-13.json",
+      "_sel4_traces/trace.pid-650261.rank-unknown.call-14.json",
+      "_sel4_traces/trace.pid-650261.rank-unknown.call-15.json",
+      "_sel4_traces/trace.pid-650261.rank-unknown.call-16.json",
+      "_sel4_traces/trace.pid-650261.rank-unknown.call-2.json",
+      "_sel4_traces/trace.pid-650261.rank-unknown.call-3.json",
+      "_sel4_traces/trace.pid-650261.rank-unknown.call-4.json",
+      "_sel4_traces/trace.pid-650261.rank-unknown.call-5.json",
+      "_sel4_traces/trace.pid-650261.rank-unknown.call-6.json",
+      "_sel4_traces/trace.pid-650261.rank-unknown.call-7.json",
+      "_sel4_traces/trace.pid-650261.rank-unknown.call-8.json",
+      "_sel4_traces/trace.pid-650261.rank-unknown.call-9.json",
+      "_sel4_traces/trace.pid-650262.rank-unknown.call-1.json",
+      "_sel4_traces/trace.pid-650262.rank-unknown.call-10.json",
+      "_sel4_traces/trace.pid-650262.rank-unknown.call-11.json",
+      "_sel4_traces/trace.pid-650262.rank-unknown.call-12.json",
+      "_sel4_traces/trace.pid-650262.rank-unknown.call-13.json",
+      "_sel4_traces/trace.pid-650262.rank-unknown.call-14.json",
+      "_sel4_traces/trace.pid-650262.rank-unknown.call-15.json",
+      "_sel4_traces/trace.pid-650262.rank-unknown.call-16.json",
+      "_sel4_traces/trace.pid-650262.rank-unknown.call-2.json",
+      "_sel4_traces/trace.pid-650262.rank-unknown.call-3.json",
+      "_sel4_traces/trace.pid-650262.rank-unknown.call-4.json",
+      "_sel4_traces/trace.pid-650262.rank-unknown.call-5.json",
+      "_sel4_traces/trace.pid-650262.rank-unknown.call-6.json",
+      "_sel4_traces/trace.pid-650262.rank-unknown.call-7.json",
+      "_sel4_traces/trace.pid-650262.rank-unknown.call-8.json",
+      "_sel4_traces/trace.pid-650262.rank-unknown.call-9.json",
+      "_sel4_traces/trace.pid-650263.rank-unknown.call-1.json",
+      "_sel4_traces/trace.pid-650263.rank-unknown.call-10.json",
+      "_sel4_traces/trace.pid-650263.rank-unknown.call-11.json",
+      "_sel4_traces/trace.pid-650263.rank-unknown.call-12.json",
+      "_sel4_traces/trace.pid-650263.rank-unknown.call-13.json",
+      "_sel4_traces/trace.pid-650263.rank-unknown.call-14.json",
+      "_sel4_traces/trace.pid-650263.rank-unknown.call-15.json",
+      "_sel4_traces/trace.pid-650263.rank-unknown.call-16.json",
+      "_sel4_traces/trace.pid-650263.rank-unknown.call-2.json",
+      "_sel4_traces/trace.pid-650263.rank-unknown.call-3.json",
+      "_sel4_traces/trace.pid-650263.rank-unknown.call-4.json",
+      "_sel4_traces/trace.pid-650263.rank-unknown.call-5.json",
+      "_sel4_traces/trace.pid-650263.rank-unknown.call-6.json",
+      "_sel4_traces/trace.pid-650263.rank-unknown.call-7.json",
+      "_sel4_traces/trace.pid-650263.rank-unknown.call-8.json",
+      "_sel4_traces/trace.pid-650263.rank-unknown.call-9.json",
+      "_sel4_traces/trace.pid-650264.rank-unknown.call-1.json",
+      "_sel4_traces/trace.pid-650264.rank-unknown.call-10.json",
+      "_sel4_traces/trace.pid-650264.rank-unknown.call-11.json",
+      "_sel4_traces/trace.pid-650264.rank-unknown.call-12.json",
+      "_sel4_traces/trace.pid-650264.rank-unknown.call-13.json",
+      "_sel4_traces/trace.pid-650264.rank-unknown.call-14.json",
+      "_sel4_traces/trace.pid-650264.rank-unknown.call-15.json",
+      "_sel4_traces/trace.pid-650264.rank-unknown.call-16.json",
+      "_sel4_traces/trace.pid-650264.rank-unknown.call-2.json",
+      "_sel4_traces/trace.pid-650264.rank-unknown.call-3.json",
+      "_sel4_traces/trace.pid-650264.rank-unknown.call-4.json",
+      "_sel4_traces/trace.pid-650264.rank-unknown.call-5.json",
+      "_sel4_traces/trace.pid-650264.rank-unknown.call-6.json",
+      "_sel4_traces/trace.pid-650264.rank-unknown.call-7.json",
+      "_sel4_traces/trace.pid-650264.rank-unknown.call-8.json",
+      "_sel4_traces/trace.pid-650264.rank-unknown.call-9.json"
+    ],
+    "trace_files_considered": [
+      "_sel4_traces/trace.pid-650257.rank-unknown.call-1.json",
+      "_sel4_traces/trace.pid-650257.rank-unknown.call-10.json",
+      "_sel4_traces/trace.pid-650257.rank-unknown.call-11.json",
+      "_sel4_traces/trace.pid-650257.rank-unknown.call-12.json",
+      "_sel4_traces/trace.pid-650257.rank-unknown.call-13.json",
+      "_sel4_traces/trace.pid-650257.rank-unknown.call-14.json",
+      "_sel4_traces/trace.pid-650257.rank-unknown.call-15.json",
+      "_sel4_traces/trace.pid-650257.rank-unknown.call-16.json",
+      "_sel4_traces/trace.pid-650257.rank-unknown.call-2.json",
+      "_sel4_traces/trace.pid-650257.rank-unknown.call-3.json",
+      "_sel4_traces/trace.pid-650257.rank-unknown.call-4.json",
+      "_sel4_traces/trace.pid-650257.rank-unknown.call-5.json",
+      "_sel4_traces/trace.pid-650257.rank-unknown.call-6.json",
+      "_sel4_traces/trace.pid-650257.rank-unknown.call-7.json",
+      "_sel4_traces/trace.pid-650257.rank-unknown.call-8.json",
+      "_sel4_traces/trace.pid-650257.rank-unknown.call-9.json",
+      "_sel4_traces/trace.pid-650258.rank-unknown.call-1.json",
+      "_sel4_traces/trace.pid-650258.rank-unknown.call-10.json",
+      "_sel4_traces/trace.pid-650258.rank-unknown.call-11.json",
+      "_sel4_traces/trace.pid-650258.rank-unknown.call-12.json",
+      "_sel4_traces/trace.pid-650258.rank-unknown.call-13.json",
+      "_sel4_traces/trace.pid-650258.rank-unknown.call-14.json",
+      "_sel4_traces/trace.pid-650258.rank-unknown.call-15.json",
+      "_sel4_traces/trace.pid-650258.rank-unknown.call-16.json",
+      "_sel4_traces/trace.pid-650258.rank-unknown.call-2.json",
+      "_sel4_traces/trace.pid-650258.rank-unknown.call-3.json",
+      "_sel4_traces/trace.pid-650258.rank-unknown.call-4.json",
+      "_sel4_traces/trace.pid-650258.rank-unknown.call-5.json",
+      "_sel4_traces/trace.pid-650258.rank-unknown.call-6.json",
+      "_sel4_traces/trace.pid-650258.rank-unknown.call-7.json",
+      "_sel4_traces/trace.pid-650258.rank-unknown.call-8.json",
+      "_sel4_traces/trace.pid-650258.rank-unknown.call-9.json",
+      "_sel4_traces/trace.pid-650259.rank-unknown.call-1.json",
+      "_sel4_traces/trace.pid-650259.rank-unknown.call-10.json",
+      "_sel4_traces/trace.pid-650259.rank-unknown.call-11.json",
+      "_sel4_traces/trace.pid-650259.rank-unknown.call-12.json",
+      "_sel4_traces/trace.pid-650259.rank-unknown.call-13.json",
+      "_sel4_traces/trace.pid-650259.rank-unknown.call-14.json",
+      "_sel4_traces/trace.pid-650259.rank-unknown.call-15.json",
+      "_sel4_traces/trace.pid-650259.rank-unknown.call-16.json",
+      "_sel4_traces/trace.pid-650259.rank-unknown.call-2.json",
+      "_sel4_traces/trace.pid-650259.rank-unknown.call-3.json",
+      "_sel4_traces/trace.pid-650259.rank-unknown.call-4.json",
+      "_sel4_traces/trace.pid-650259.rank-unknown.call-5.json",
+      "_sel4_traces/trace.pid-650259.rank-unknown.call-6.json",
+      "_sel4_traces/trace.pid-650259.rank-unknown.call-7.json",
+      "_sel4_traces/trace.pid-650259.rank-unknown.call-8.json",
+      "_sel4_traces/trace.pid-650259.rank-unknown.call-9.json",
+      "_sel4_traces/trace.pid-650260.rank-unknown.call-1.json",
+      "_sel4_traces/trace.pid-650260.rank-unknown.call-10.json",
+      "_sel4_traces/trace.pid-650260.rank-unknown.call-11.json",
+      "_sel4_traces/trace.pid-650260.rank-unknown.call-12.json",
+      "_sel4_traces/trace.pid-650260.rank-unknown.call-13.json",
+      "_sel4_traces/trace.pid-650260.rank-unknown.call-14.json",
+      "_sel4_traces/trace.pid-650260.rank-unknown.call-15.json",
+      "_sel4_traces/trace.pid-650260.rank-unknown.call-16.json",
+      "_sel4_traces/trace.pid-650260.rank-unknown.call-2.json",
+      "_sel4_traces/trace.pid-650260.rank-unknown.call-3.json",
+      "_sel4_traces/trace.pid-650260.rank-unknown.call-4.json",
+      "_sel4_traces/trace.pid-650260.rank-unknown.call-5.json",
+      "_sel4_traces/trace.pid-650260.rank-unknown.call-6.json",
+      "_sel4_traces/trace.pid-650260.rank-unknown.call-7.json",
+      "_sel4_traces/trace.pid-650260.rank-unknown.call-8.json",
+      "_sel4_traces/trace.pid-650260.rank-unknown.call-9.json",
+      "_sel4_traces/trace.pid-650261.rank-unknown.call-1.json",
+      "_sel4_traces/trace.pid-650261.rank-unknown.call-10.json",
+      "_sel4_traces/trace.pid-650261.rank-unknown.call-11.json",
+      "_sel4_traces/trace.pid-650261.rank-unknown.call-12.json",
+      "_sel4_traces/trace.pid-650261.rank-unknown.call-13.json",
+      "_sel4_traces/trace.pid-650261.rank-unknown.call-14.json",
+      "_sel4_traces/trace.pid-650261.rank-unknown.call-15.json",
+      "_sel4_traces/trace.pid-650261.rank-unknown.call-16.json",
+      "_sel4_traces/trace.pid-650261.rank-unknown.call-2.json",
+      "_sel4_traces/trace.pid-650261.rank-unknown.call-3.json",
+      "_sel4_traces/trace.pid-650261.rank-unknown.call-4.json",
+      "_sel4_traces/trace.pid-650261.rank-unknown.call-5.json",
+      "_sel4_traces/trace.pid-650261.rank-unknown.call-6.json",
+      "_sel4_traces/trace.pid-650261.rank-unknown.call-7.json",
+      "_sel4_traces/trace.pid-650261.rank-unknown.call-8.json",
+      "_sel4_traces/trace.pid-650261.rank-unknown.call-9.json",
+      "_sel4_traces/trace.pid-650262.rank-unknown.call-1.json",
+      "_sel4_traces/trace.pid-650262.rank-unknown.call-10.json",
+      "_sel4_traces/trace.pid-650262.rank-unknown.call-11.json",
+      "_sel4_traces/trace.pid-650262.rank-unknown.call-12.json",
+      "_sel4_traces/trace.pid-650262.rank-unknown.call-13.json",
+      "_sel4_traces/trace.pid-650262.rank-unknown.call-14.json",
+      "_sel4_traces/trace.pid-650262.rank-unknown.call-15.json",
+      "_sel4_traces/trace.pid-650262.rank-unknown.call-16.json",
+      "_sel4_traces/trace.pid-650262.rank-unknown.call-2.json",
+      "_sel4_traces/trace.pid-650262.rank-unknown.call-3.json",
+      "_sel4_traces/trace.pid-650262.rank-unknown.call-4.json",
+      "_sel4_traces/trace.pid-650262.rank-unknown.call-5.json",
+      "_sel4_traces/trace.pid-650262.rank-unknown.call-6.json",
+      "_sel4_traces/trace.pid-650262.rank-unknown.call-7.json",
+      "_sel4_traces/trace.pid-650262.rank-unknown.call-8.json",
+      "_sel4_traces/trace.pid-650262.rank-unknown.call-9.json",
+      "_sel4_traces/trace.pid-650263.rank-unknown.call-1.json",
+      "_sel4_traces/trace.pid-650263.rank-unknown.call-10.json",
+      "_sel4_traces/trace.pid-650263.rank-unknown.call-11.json",
+      "_sel4_traces/trace.pid-650263.rank-unknown.call-12.json",
+      "_sel4_traces/trace.pid-650263.rank-unknown.call-13.json",
+      "_sel4_traces/trace.pid-650263.rank-unknown.call-14.json",
+      "_sel4_traces/trace.pid-650263.rank-unknown.call-15.json",
+      "_sel4_traces/trace.pid-650263.rank-unknown.call-16.json",
+      "_sel4_traces/trace.pid-650263.rank-unknown.call-2.json",
+      "_sel4_traces/trace.pid-650263.rank-unknown.call-3.json",
+      "_sel4_traces/trace.pid-650263.rank-unknown.call-4.json",
+      "_sel4_traces/trace.pid-650263.rank-unknown.call-5.json",
+      "_sel4_traces/trace.pid-650263.rank-unknown.call-6.json",
+      "_sel4_traces/trace.pid-650263.rank-unknown.call-7.json",
+      "_sel4_traces/trace.pid-650263.rank-unknown.call-8.json",
+      "_sel4_traces/trace.pid-650263.rank-unknown.call-9.json",
+      "_sel4_traces/trace.pid-650264.rank-unknown.call-1.json",
+      "_sel4_traces/trace.pid-650264.rank-unknown.call-10.json",
+      "_sel4_traces/trace.pid-650264.rank-unknown.call-11.json",
+      "_sel4_traces/trace.pid-650264.rank-unknown.call-12.json",
+      "_sel4_traces/trace.pid-650264.rank-unknown.call-13.json",
+      "_sel4_traces/trace.pid-650264.rank-unknown.call-14.json",
+      "_sel4_traces/trace.pid-650264.rank-unknown.call-15.json",
+      "_sel4_traces/trace.pid-650264.rank-unknown.call-16.json",
+      "_sel4_traces/trace.pid-650264.rank-unknown.call-2.json",
+      "_sel4_traces/trace.pid-650264.rank-unknown.call-3.json",
+      "_sel4_traces/trace.pid-650264.rank-unknown.call-4.json",
+      "_sel4_traces/trace.pid-650264.rank-unknown.call-5.json",
+      "_sel4_traces/trace.pid-650264.rank-unknown.call-6.json",
+      "_sel4_traces/trace.pid-650264.rank-unknown.call-7.json",
+      "_sel4_traces/trace.pid-650264.rank-unknown.call-8.json",
+      "_sel4_traces/trace.pid-650264.rank-unknown.call-9.json"
+    ]
+  },
+  "selection_validation_dead_path_probe": "/shared_nfs/zihao/arena/exp/DeepSeek-V4-Pro-bigmoe3/DeepSeek-V4-Pro/20260830T005045Z-433821d2/geak/e2e_cycle0/kernels/main_kernel_task/selection_validation.all14_with_dead_path.json",
+  "selection_validation_evidence": {
+    "run": "_selection2 (BACKEND=sglang, TP=8, GPU=0-7, ISL/OSL/CONC=8192/1024/64, overlay=_selection_overlay with 14 markers + 1 capture)",
+    "verdict_file": "/shared_nfs/zihao/arena/exp/DeepSeek-V4-Pro-bigmoe3/DeepSeek-V4-Pro/20260830T005045Z-433821d2/geak/e2e_cycle0/kernels/main_kernel_task/selection_validation.json",
+    "capture_metas": "/shared_nfs/zihao/arena/exp/DeepSeek-V4-Pro-bigmoe3/DeepSeek-V4-Pro/20260830T005045Z-433821d2/geak/e2e_cycle0/kernels/main_kernel_task/_selection_cap/capture.pid-*.rank-unknown/meta.json (8 = one per TP rank)",
+    "root_call_traces": "/shared_nfs/zihao/arena/exp/DeepSeek-V4-Pro-bigmoe3/DeepSeek-V4-Pro/20260830T005045Z-433821d2/geak/e2e_cycle0/kernels/main_kernel_task/selection_trace.pid-*.rank-*.call-*.json (128 = 16 per rank)",
+    "prior_run_evidence": "/shared_nfs/zihao/arena/exp/DeepSeek-V4-Pro-bigmoe3/DeepSeek-V4-Pro/20260830T005045Z-433821d2/geak/e2e_cycle0/kernels/main_kernel_task/_evidence_run5"
+  },
+  "source_path_in_sglang": "/sgl-workspace/sglang/python/sglang/kernels/ops/attention/dsa/tilelang_kernel.py",
+  "regimes_captured": [
+    "prefill",
+    "decode"
+  ],
+  "num_cases": 4,
+  "notes": "Selection re-probed (run #4) with markers PROVABLY INSTALLED on all 14 candidates in all 8 TP ranks: _sel4_overlay/geak_lazy_markers.py force-imports the candidate modules the live path never imports (dsa_backend, dsa.triton_sparse_mla, nsa_triton_decode) at a late trigger (first import of deepseek_v4_backend_hip_radix -- past init_process_group, before the first attention forward), which converts them from 'missing_candidate_markers' (probe omitted) into 'installed_but_never_live' (proven dead). kernel_selection.py: ok=true, deepest_verified=true, failed=[], missing_candidate_markers=[], deeper_live_candidates=[]."
+}

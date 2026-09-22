@@ -1,6 +1,4 @@
 .DS_Store
-# Local conversion experiments and their generated reports are not shipping inputs.
-/drafts/
 logs
 __pycache__
 build/
@@ -59,4 +57,13 @@ tasks/flydsl2flydsl/*/build/
 tasks/flydsl2flydsl/*/.rocprofv3/
 tasks/flydsl2flydsl/*/performance_report.json
 
-/drafts/kimi_generated/extracted*/
+# Restored upstream runtime inputs and generated outputs
+.upstream-assets/
+tasks/.headkernel-oci-*/
+_cache/
+_runs/
+_results/
+tasks/headkernel/**/ut/*.pt
+tasks/headkernel/**/ut/_cand_overlay/
+tasks/headkernel/**/ut/reports/
+tasks/headkernel/**/ut/result.json

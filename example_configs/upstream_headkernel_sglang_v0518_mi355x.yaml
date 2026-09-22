@@ -1,0 +1,23 @@
+# Public runtime override: AKA_DOCKER_IMAGE=docker.io/rocm/hyperloom@sha256:da36f56f24cb2897a56be52dd43774c1a75b1500308ed7db3ba32fb8db4d259c
+# Public tag: docker.io/rocm/hyperloom:sglang-v0.5.18-rocm7.2.0-mi350x
+# Environment: TVM_FFI_DISABLE_TORCH_C_DLPACK=1; see runtime guide for caches/mounts.
+# Runtime status: user_authorized_public_runtime_no_gpu_validation
+# Original task headkernel.docker declarations remain unchanged.
+# Original headkernel.docker cohort: GLM fused MoE and 5 Qwen tasks.
+# Image: harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.18-rocm720-mi35x-profilerfix
+# GLM fused MoE requires its declared external architecture patch and checkpoint
+# configuration. See docs/how-to/headkernel-upstream-runtime.md before running.
+agent:
+  template: task_validator
+
+tasks:
+  - headkernel/glm-5.3-flash__fused_moe_kernel
+  - headkernel/qwen3.8-2.4t__dense_bf16_gemm_cluster
+  - headkernel/qwen3.8-2.4t__fused_moe_2stage_mxfp4
+  - headkernel/qwen3.8-2.4t__fused_recurrent_gated_delta_rule_decode
+  - headkernel/qwen3.8-2.4t__gemma_fused_add_rmsnorm
+  - headkernel/qwen3.8-2.4t__paged_attention_decode
+
+target_gpu_model: MI355X
+log_directory: logs
+workspace_directory_prefix: workspace

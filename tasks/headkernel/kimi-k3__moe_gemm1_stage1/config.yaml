@@ -1,0 +1,77 @@
+# kimi-k3__moe_gemm1_stage1
+# Head kernel from the 2026-09-14 info table, rows: K3-4
+
+source_file_path:
+  - source/flydsl/moe_kernels.py
+  - source/flydsl/kernels/mixed_moe_gemm_2stage.py
+  - source/flydsl/kernels/gemm_mxscale_gfx1250.py
+  - source/flydsl/kernels/moe_gemm_2stage.py
+  - source/flydsl/kernels/fmha_gfx1250/fmha_kernel.py
+  - source/flydsl/kernels/gemm_fp8fp4_gfx1250.py
+  - source/flydsl/kernels/fused_compress_attn.py
+  - source/flydsl/kernels/fused_compress_attn_gfx1250.py
+  - source/flydsl/kernels/fmha_gfx1250/fmha_core_loop.py
+
+target_kernel_functions:
+  - flydsl_moe_stage1
+
+compile_command:
+  - python3 scripts/task_runner.py compile
+
+correctness_command:
+  - python3 scripts/task_runner.py correctness
+
+performance_command:
+  - python3 scripts/task_runner.py performance
+
+task_type: triton2triton
+
+task_result_template: null
+
+prompt:
+  source_code: null
+  instructions: |
+    Optimize the Kimi-K3 head kernel `moe_gemm1_0` (aiter asm (AOT) - fused_moe_2stages stage-1 gate+up - mxfp4 w + bf16 act) for maximum GPU
+    throughput on MI355X (gfx950) while keeping it numerically correct.
+
+    It is 6.51% of de-inflated GPU time in the serving profile
+    (ISL 8192 / OSL 1024 / CONC 64 / TP 8), currently at 0.254 of its empirical roofline.
+
+    Edit only:
+      source/flydsl/moe_kernels.py
+
+    Entry points that must keep their signatures:
+      flydsl_moe_stage1
+
+    The production seam is `aiter.ops.flydsl.moe_kernels:flydsl_moe_stage1`; correctness is judged
+    against a frozen live-server capture, not a re-derived reference, so the kernel
+    must stay faithful to the deployed contract (dtypes, layouts, quantization).
+
+    Note: oracle uses the synthetic {schema,cases,spec} layout, not {target,records} - performance falls back to the GEAK harness. Known upstream aiter nondeterminism: UT gates on a 21-launch elementwise median.
+  cheatsheet: null
+
+# ---------------------------------------------------------------------------
+# Provenance. Not read by the arena schema check; read by scripts/task_runner.py
+# and by anyone auditing where these numbers came from.
+headkernel:
+  model: "Kimi-K3"
+  owner: Hongtao
+  docker: "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang-rocm-k3:rocm720-mi35x-k3-20260727-tl312-08011830"
+  serving: ISL 8192 / OSL 1024 / CONC 64 / TP 8
+  backend: "aiter asm (AOT) - fused_moe_2stages stage-1 gate+up - mxfp4 w + bf16 act"
+  regime: prefill
+  device_symbol: moe_gemm1_0
+  target_callable: "aiter.ops.flydsl.moe_kernels:flydsl_moe_stage1"
+  tol: 0.02
+  oracle: "frozen live-capture ut/reference_io.pt"
+  source_package: "Z/Kimi-K3_moe_gemm1_0"
+  source_seed: stock
+  info_rows:
+    - row: "K3-4"
+      info_kernel: moe_gemm1_0
+      gpu_pct: 6.51
+      empirical_roofline: 0.254
+      optimized_roofline: null
+      e2e_uplift: null
+  symbol_locations:
+    flydsl_moe_stage1: source/flydsl/moe_kernels.py

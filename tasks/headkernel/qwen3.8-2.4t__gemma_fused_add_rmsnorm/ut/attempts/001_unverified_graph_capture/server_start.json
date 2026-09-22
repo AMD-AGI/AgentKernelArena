@@ -1,0 +1,1 @@
+{"status":"ok","reason":"none","phase_hint":"[2026-09-14 03:11:25] INFO:     127.0.0.1:58494 - 'GET /health HTTP/1.1' 200 OK","wait_sec":1482,"ceiling_sec":7200,"stall_window_sec":1800,"port":"30903","backend":"sglang","log":"/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks/fused_add_rmsnorm_task/bench/server.log"}
