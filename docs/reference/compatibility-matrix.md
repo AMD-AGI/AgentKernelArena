@@ -86,10 +86,13 @@ Selectable names are defined in [the registry](../../src/module_registration.py)
 This dependency list does not assert that every agent/model/task combination
 has completed qualification.
 
-DeepSeek Harness was exercised on MI355X through Slurm and Docker with the
-existing HIP GELU and Triton RMSNorm tasks. Both passed compilation and
-correctness with scoreable timings. Its MI300 example and multi-GPU scheduling
-have not yet been validated on hardware.
+DeepSeek Harness qualification is recorded in
+[PR #111](https://github.com/AMD-AGI/AgentKernelArena/pull/111), including the
+schema-v2 SIKL FlyDSL GEMM and HIP quantization image tasks on MI355X through
+Slurm and Docker. Results apply to the recorded task, candidate, and runtime;
+earlier HIP GELU and Triton RMSNorm observations predate the schema-v2 rebase.
+Its MI300 example, RDNA4 execution, and multi-GPU scheduling have not yet been
+validated on hardware.
 
 ## Model providers
 

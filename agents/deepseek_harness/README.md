@@ -104,8 +104,15 @@ make slurm-run CONFIG="$CONFIG_PATH" RUN_ARGS="--run-suffix deepseek_smoke"
 ```
 
 See [the Slurm guide](../../docs/how-to/slurm-run.md) for resource selection and
-batch submission. The single-GPU MI355X path has been exercised with HIP GELU
-and Triton RMSNorm; MI300 and multi-GPU runs remain unverified on hardware.
+batch submission. The schema-v2 MI355X checks use the
+[SIKL FlyDSL GEMM task](../../tasks/SIKL-task/gemm_a16w16_nt_n32_k6144/README.md)
+and [HIP quantization image task](../../tasks/image_kernel/mi355x_vllm_hip_dynamic_per_tensor_quant/README.md),
+with an explicit image override from the
+[runtime qualification record](../../docs/reference/runtime-upgrade-qualification.md).
+[PR #111](https://github.com/AMD-AGI/AgentKernelArena/pull/111) records their
+agent status, correctness, timing, and export results. Earlier HIP GELU and
+Triton RMSNorm observations predate the schema-v2 rebase and do not qualify this
+revision. MI300, RDNA4, and multi-GPU runs remain unverified on hardware.
 
 Every invocation creates a fresh `.deepseek_harness-*` directory inside its
 task workspace. It preserves the prompt, credential-free Cordis patch,
