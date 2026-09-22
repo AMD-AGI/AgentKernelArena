@@ -183,6 +183,32 @@ else: raise AssertionError('candidate silently fell back to baseline')
     assert result.returncode == 0, result.stderr
 
 
+def test_workload_scope_preserves_declared_scalar_combinations(bundle, tmp_path):
+    definition_path = bundle / "definitions/gemm.json"
+    definition = json.loads(definition_path.read_text())
+    definition["inputs"]["mode"] = {
+        "shape": None, "dtype": "int32", "description": "Upstream modes: 0, 1, 2.",
+    }
+    write_json(definition_path, definition)
+    workload_path = bundle / "workloads/gemm.jsonl"
+    rows = [json.loads(line) for line in workload_path.read_text().splitlines()]
+    for row, mode in zip(rows, (0, 2)):
+        row["workload"]["inputs"]["mode"] = {"type": "scalar", "value": mode}
+    workload_path.write_text("\n".join(json.dumps(row) for row in rows) + "\n")
+    task = inspect_bundle(bundle)[0]
+    draft = tmp_path / "scoped"
+    materialize_task(task, Config(str(bundle)), draft)
+    workload = json.loads((draft / "scripts/workload.json").read_text())
+    assert workload["definition"] == definition
+    assert workload["rows"] == rows
+    assert [case["params"]["scalars"] for case in workload["cases"]] == [
+        {"mode": 0}, {"mode": 2},
+    ]
+    description = yaml.safe_load((draft / "config.yaml").read_text())["description"]
+    assert "supported axis and scalar combinations are exactly" in description
+    assert "tensor values vary" in description
+
+
 @pytest.mark.parametrize("status,finalized,command_ok,changed,stale", [
     ("PASS", True, True, False, False), ("WARN", True, True, False, False),
     ("FAIL", True, True, False, False), ("PASS", False, True, False, False),

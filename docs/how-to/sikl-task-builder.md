@@ -71,6 +71,12 @@ expressions, unsupported input descriptors, destination-passing interfaces, and
 absolute imports of local solution modules fail explicitly. Unknown descriptive
 fields are preserved; they do not automatically acquire runtime meaning.
 
+Each generated task explicitly scopes its supported axis and scalar combinations
+to the supplied workload rows, keeping every row and literal unchanged. Broader
+options documented by an upstream operator definition do not implicitly expand
+that benchmark domain. Tensor values still vary through the task initializer and
+the in-place replay-refill checks; the scope is not a fixed set of tensor values.
+
 The conversion preserves metadata and source text. **It cannot reconstruct the
 original tensors from `{"type": "random"}`.** Inputs use an explicit versioned
 synthesis policy when no initializer is supplied. Supplied initializers own the
