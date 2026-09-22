@@ -7,7 +7,6 @@ import logging
 import os
 import shutil
 import sys
-import time
 import uuid
 from pathlib import Path
 
@@ -54,9 +53,26 @@ def check_task(draft: Path, artifacts: Path, config: Config, mode: str, timeout=
     workspace = (artifacts / "workspace").resolve()
     copy_task_files(draft, workspace)
     materialize_perf_helpers_in_workspace(workspace)
-    return run_process([sys.executable, "scripts/task_runner.py", "--mode", mode], workspace,
-                       artifacts / f"{mode}.log", timeout or config.command_timeout,
-                       build_subprocess_env())
+    role, action = ("baseline", "correctness") if mode == "source-check" else ("candidate", mode)
+    env = build_subprocess_env()
+    env["ARENA_EVAL_PHASE"] = "task_validation"
+    result = run_process([sys.executable, "scripts/task_runner.py", role, action], workspace,
+                         artifacts / f"{mode}.log", timeout or config.command_timeout, env)
+    if not result["timed_out"]:
+        from src.task_protocol import parse_command_result, CaseManifest, ActionResult
+        from .bundle import case_manifest
+        try:
+            parsed = parse_command_result(Path(result["log"]).read_text(), role=role,
+                                          action=action, returncode=result["exit_code"])
+            contract = json.loads((workspace / "scripts/workload.json").read_text())
+            manifest = ActionResult("task", "validate-task", "PASS", tuple(case_manifest(
+                contract["definition"], contract["rows"])))
+            CaseManifest.from_result(manifest).validate(parsed)
+            result["result"] = parsed.to_mapping()
+            result["ok"] = result["ok"] and parsed.passed
+        except ValueError as error:
+            result.update(ok=False, protocol_error=str(error))
+    return result
 
 
 def validate_task(draft: Path, artifacts: Path, config: Config, timeout=None) -> dict:
@@ -68,36 +84,33 @@ def validate_task(draft: Path, artifacts: Path, config: Config, timeout=None) ->
     copy_task_files(draft, workspace)
     materialize_perf_helpers_in_workspace(workspace)
     runtime_files = task_tree(workspace)
-    deadline = time.monotonic() + (timeout or config.max_task_seconds)
-    checks = {}
-    # Independent command outcomes cannot be replaced by a model-written PASS.
-    for mode in ("source-check", "compile", "correctness", "performance"):
-        remaining = deadline - time.monotonic()
-        if remaining <= 0:
-            checks[mode] = {"ok": False, "timed_out": True}
-            break
-        checks[mode] = run_process(
-            [sys.executable, "scripts/task_runner.py", "--mode", mode], workspace,
-            root / f"{mode}.log", min(config.command_timeout, remaining), build_subprocess_env(),
-        )
-        if not checks[mode]["ok"]:
-            break
-    command_ok = len(checks) == 4 and all(c["ok"] for c in checks.values())
-    formal = {"ok": False}
-    if command_ok and deadline > time.monotonic():
-        # Use a subprocess to enforce the campaign deadline even if the formal
-        # validator expands its own backend timeout to cover command budgets.
-        request = root / "validator_request.json"
-        request.write_text(json.dumps({"workspace": str(workspace), "config": config.mapping()}))
-        formal = run_process(
-            [sys.executable, "-m", "agents.sikl_task_builder.validation", str(request)],
-            Path(__file__).resolve().parents[2], root / "validator.log",
-            deadline - time.monotonic(), build_subprocess_env(),
-        )
+    # The v2 framework owns all seven executions, their manifests and the
+    # pre-review context. One bounded subprocess covers actions plus review.
+    request = root / "validator_request.json"
+    task_id = config.arena_task_id(json.loads((draft / "scripts/provenance.json").read_text())["definition"])
+    request.write_text(json.dumps({"workspace": str(workspace), "config": config.mapping(),
+                                   "task_id": task_id, "validation_id": validation_id}))
+    formal = run_process(
+        [sys.executable, "-m", "agents.sikl_task_builder.validation", str(request)],
+        Path(__file__).resolve().parents[2], root / "validator.log",
+        timeout or config.max_task_seconds, build_subprocess_env(),
+    )
     from agents.task_validator.report_schema import validation_report_is_complete
     complete = validation_report_is_complete(workspace)
     report_path = workspace / "validation_report.yaml"
     report = yaml.safe_load(report_path.read_text()) if complete else {}
+    complete = bool(complete and report.get("validation_schema_version") == 4
+                    and report.get("task_schema_version") == 2
+                    and report.get("task_name") == task_id
+                    and report.get("validation_request_id") == validation_id)
+    command_ok = complete and report.get("initial_validation_gate") == "PASS"
+    checks = {}
+    for path in sorted((root / "session").glob("action-*.json")):
+        record = json.loads(path.read_text())
+        outcome = record.get("result") or {}
+        key = f"{outcome.get('role', 'unknown')}/{outcome.get('action', path.stem)}"
+        checks[key] = {"ok": outcome.get("status") == "PASS", "result": outcome,
+                       "execution_error": record.get("execution_error")}
     after = task_tree(workspace)
     changed = [p for p, digest in runtime_files.items() if after.get(p) != digest]
     added_code = [p for p in after if p not in runtime_files and
@@ -125,10 +138,20 @@ def _main():
     config = Config(**request["config"])
     workspace = Path(request["workspace"])
     logging.basicConfig(level=logging.INFO)
-    launch_agent({"target_gpu_model": config.target_gpu_model,
-                  "agent": {"template": "task_validator", **config.validator}},
-                 str(workspace / "config.yaml"), str(workspace))
+    from src.task_spec import load_task_spec
+    from src.task_session import TaskSession
+    from src.task_run import validate_task_session
+    spec = load_task_spec(workspace / "config.yaml", task_id=request["task_id"])
+    session = TaskSession.create(spec, workspace, workspace.parent / "session")
+    report = validate_task_session(
+        session,
+        eval_config={"target_gpu_model": config.target_gpu_model,
+                     "agent": {"template": "task_validator", **config.validator}},
+        task_config_dir=str(workspace / "config.yaml"), agent_launcher=launch_agent,
+        validation_request_id=request["validation_id"],
+    )
+    return 0 if report["overall_status"] == "PASS" else 1
 
 
 if __name__ == "__main__":
-    _main()
+    raise SystemExit(_main())

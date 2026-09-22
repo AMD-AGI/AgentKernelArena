@@ -1,4 +1,4 @@
-"""Version-1 input policy. Builder repairs may edit this file only.
+"""Use supplied initialization callbacks or the legacy version-1 input policy.
 
 Random tensors are synthesized, not reconstructed captured inputs. Preserve
 all definition shapes, dtypes, scalar literals and operator semantics.
@@ -7,10 +7,11 @@ all definition shapes, dtypes, scalar literals and operator semantics.
 from __future__ import annotations
 
 import hashlib
+from pathlib import Path
 
 import torch
 
-from scripts.task_api import dimensions, dtype, shape_of
+from scripts.task_api import dimensions, dtype, shape_of, load_solution, validate_inputs
 
 
 def make_inputs(definition, row, policy, device="cuda"):
@@ -18,6 +19,13 @@ def make_inputs(definition, row, policy, device="cuda"):
         f"{policy['seed']}:{row['workload']['uuid']}".encode()).digest()[:8], "little")
     generator = torch.Generator(device=device).manual_seed(seed)
     axes = dimensions(definition, row)
+    if definition.get("initialize"):
+        values = {
+            name: (row["workload"]["inputs"][name]["value"] if spec.get("shape") is None else
+                   torch.empty(shape_of(spec, axes), dtype=dtype(spec["dtype"]), device=device))
+            for name, spec in definition["inputs"].items()
+        }
+        return initialize_buffers(values, definition, row, seed % (2**63), device)
     if definition["op_type"] == "moe":
         return _moe(definition, row, axes, generator, device)
     if definition["op_type"] != "gemm":
@@ -33,6 +41,35 @@ def make_inputs(definition, row, policy, device="cuda"):
                 raise NotImplementedError(f"No generic random policy for {name}: {kind}")
             result[name] = torch.randn(shape_of(spec, axes), generator=generator, device=device, dtype=kind)
     return result
+
+
+def initialize_buffers(values, definition, row, seed, device):
+    initialize = load_solution(Path(__file__).parent / "initialize", "main.py::run")
+    original = dict(values)
+    storage = {name: (v.data_ptr(), v.stride()) for name, v in values.items() if isinstance(v, torch.Tensor)}
+    if initialize(values, seed=seed) is not values:
+        raise ValueError("initialize must return the original input dictionary")
+    validate_inputs(values, definition, row, device)
+    for name, (pointer, stride) in storage.items():
+        if values[name] is not original[name] or values[name].data_ptr() != pointer or values[name].stride() != stride:
+            raise ValueError(f"initialize replaced input buffer: {name}")
+    return values
+
+
+def refill_inputs(values, definition, row, policy, device="cuda"):
+    """Change the input draw without changing graph-bound storage or metadata."""
+    changed_policy = {**policy, "seed": policy["seed"] + 1}
+    if definition.get("initialize"):
+        seed = int.from_bytes(hashlib.sha256(
+            f"{changed_policy['seed']}:{row['workload']['uuid']}".encode()).digest()[:8], "little") % (2**63)
+        return initialize_buffers(values, definition, row, seed, device)
+    replacement = make_inputs(definition, row, changed_policy, device)
+    for name, value in values.items():
+        if isinstance(value, torch.Tensor):
+            value.copy_(replacement[name])
+            if hasattr(replacement[name], "is_shuffled"):
+                value.is_shuffled = replacement[name].is_shuffled
+    return values
 
 
 def _moe(definition, row, axes, generator, device):

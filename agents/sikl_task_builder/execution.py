@@ -21,6 +21,14 @@ def run_process(argv: list[str], cwd: Path, log: Path, timeout: float, env=None)
             process.wait(timeout=max(0.01, timeout))
         except subprocess.TimeoutExpired:
             timed_out = True
+            # TaskSession actions and validator backends own nested sessions.
+            # Interrupt their Python supervisor first so its BaseException
+            # cleanup can kill those groups before the outer group disappears.
+            try:
+                process.send_signal(signal.SIGINT)
+                process.wait(timeout=20)
+            except (ProcessLookupError, subprocess.TimeoutExpired):
+                pass
         finally:
             # Descendants may survive their leader. Never leave GPU/agent work
             # running while the controller accepts files or starts another task.

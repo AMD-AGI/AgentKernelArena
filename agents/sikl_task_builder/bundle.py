@@ -21,6 +21,23 @@ def fingerprint(value: Any) -> str:
     return hashlib.sha256(json.dumps(value, sort_keys=True, allow_nan=False).encode()).hexdigest()
 
 
+def case_manifest(definition: dict, rows: list[dict]) -> list[dict]:
+    cases = []
+    for row in rows:
+        axes = {**{k: a["value"] for k, a in definition["axes"].items() if a["type"] == "const"},
+                **row["workload"]["axes"]}
+        cases.append({
+            "test_case_id": row["workload"]["uuid"],
+            "shape": {name: [axes[d] if isinstance(d, str) else d for d in spec["shape"]]
+                      for name, spec in definition["inputs"].items() if spec.get("shape") is not None},
+            "dtype": json.dumps({name: spec["dtype"] for name, spec in definition["inputs"].items()}, sort_keys=True),
+            "params": {"axes": axes, "scalars": {name: value["value"] for name, value in
+                       row["workload"]["inputs"].items() if value["type"] == "scalar"}},
+            "checks": ["correctness", "performance"], "status": "PASS",
+        })
+    return cases
+
+
 def relative_path(raw: str) -> str:
     path = PurePosixPath(raw)
     if (not raw or path.is_absolute() or ".." in path.parts or "\\" in raw
@@ -50,8 +67,8 @@ def read_json(path: Path) -> Any:
 
 def source_files(solution: dict) -> dict[str, str]:
     spec = solution.get("spec", {})
-    if spec.get("language") != "python" or spec.get("destination_passing_style") is not False:
-        raise ImportProblem("unsupported_interface", "Require Python, return-value solutions")
+    if spec.get("language") not in {"python", "triton", "flydsl"} or spec.get("destination_passing_style") is not False:
+        raise ImportProblem("unsupported_interface", "Require Python-hosted, return-value solutions")
     files = {}
     for source in solution.get("sources", []):
         path = relative_path(source.get("path", ""))
@@ -85,6 +102,42 @@ def source_files(solution: dict) -> dict[str, str]:
     return files
 
 
+def callback_source(definition: dict, name: str) -> str | None:
+    """Validate callback source as data; importing it belongs to the GPU runtime."""
+    source = definition.get(name)
+    if source is None and name != "reference":
+        return None
+    if not isinstance(source, str) or not source.strip():
+        raise ImportProblem("invalid_callback", f"{definition['name']}: {name} must export run")
+    try:
+        tree = ast.parse(source, filename=f"{name}.py")
+    except SyntaxError as exc:
+        raise ImportProblem("invalid_callback", f"{name}: {exc}") from exc
+    if not any(isinstance(node, ast.FunctionDef) and node.name == "run" for node in tree.body):
+        raise ImportProblem("invalid_callback", f"{name}: missing run function")
+    return source
+
+
+def solution_targets(solution: dict) -> list[dict]:
+    spec = solution["spec"]
+    if "target" in spec:
+        targets = spec["target"]
+        if "target_hardware" in spec:
+            raise ImportProblem("ambiguous_target", "Do not mix target and target_hardware")
+        if not isinstance(targets, list) or not targets or any(
+            not isinstance(t, dict) or not isinstance(t.get("arch"), str)
+            or not re.fullmatch(r"gfx[0-9a-f]+", t["arch"])
+            or not isinstance(t.get("hardware_id"), str) or not t["hardware_id"]
+            for t in targets
+        ):
+            raise ImportProblem("invalid_target", "target requires arch/hardware_id objects")
+        return targets
+    targets = spec.get("target_hardware", [])
+    if not isinstance(targets, list) or any(not isinstance(t, str) or not t for t in targets):
+        raise ImportProblem("invalid_target", "target_hardware must be a list of names")
+    return [{"hardware_id": t} for t in targets]
+
+
 @dataclass(frozen=True)
 class TaskSpec:
     task_id: str
@@ -105,7 +158,8 @@ class TaskSpec:
     def summary(self) -> dict:
         return {"task_id": self.task_id, "op_type": self.definition["op_type"],
                 "cases": len(self.rows), "digest": self.digest, "origins": self.origins,
-                "target_hardware": self.baseline["spec"].get("target_hardware", [])}
+                "target": solution_targets(self.baseline),
+                "input_schema_version": self.definition.get("schema_version", 1)}
 
 
 def _validate_rows(definition: dict, rows: list[dict], origin: str) -> None:
@@ -186,6 +240,14 @@ def inspect_bundle(root: Path, selections: dict | None = None) -> list[TaskSpec]
         if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*", name) or name in definitions:
             raise ImportProblem("invalid_definition", f"Duplicate or invalid definition name in {path}")
         definitions[name] = (data, path)
+        version = data.get("schema_version", 1)
+        if type(version) is not int or version not in {1, 2}:
+            raise ImportProblem("unsupported_schema", f"{path}: unsupported schema_version {version!r}")
+        if version == 2:
+            for callback in ("reference", "initialize", "compare"):
+                callback_source(data, callback)
+        elif any(key in data for key in ("reference", "initialize", "compare")):
+            raise ImportProblem("unsupported_schema", "Embedded callbacks require schema_version: 2")
     solutions: dict[tuple[str, str], list] = {}
     for role in ("baseline", "reference"):
         for path in sorted((root / "solutions" / role).rglob("*.json")):
@@ -217,12 +279,24 @@ def inspect_bundle(root: Path, selections: dict | None = None) -> list[TaskSpec]
         for role in ("baseline", "reference"):
             matches = solutions.get((role, name), [])
             selected = selections.get(name, {}).get(role)
+            if role == "reference" and definition.get("schema_version") == 2:
+                if matches or selected:
+                    raise ImportProblem("ambiguous_solution", f"{name}: v2 reference is owned by the definition")
+                chosen[role] = {
+                    "name": f"{name}__reference", "definition": name,
+                    "spec": {**chosen["baseline"]["spec"], "language": "python", "entry_point": "main.py::run"},
+                    "sources": [{"path": "main.py", "content": definition["reference"]}],
+                }
+                source_files(chosen[role])
+                origins[role] = origins["definition"] + "#reference"
+                continue
             if selected:
                 matches = [item for item in matches if item[0].get("name") == selected]
             if len(matches) != 1:
                 raise ImportProblem("ambiguous_solution", f"{name}: choose exactly one {role}; found {len(matches)}")
             chosen[role], source = matches[0]
             source_files(chosen[role])
+            solution_targets(chosen[role])
             origins[role] = str(source.relative_to(root))
         tasks.append(TaskSpec(name, definition, rows, chosen["baseline"], chosen["reference"], origins))
     if not tasks:

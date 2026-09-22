@@ -100,6 +100,11 @@ def outputs(value, definition, row, device):
 def assert_outputs(got, expected, definition, row, policy, device):
     actual = outputs(got, definition, row, device)
     wanted = outputs(expected, definition, row, device)
+    if definition.get("compare"):
+        compare = load_solution(Path(__file__).parent / "compare", "main.py::run")
+        if compare(got, expected) is not None:
+            raise ValueError("compare must return None on success or raise AssertionError")
+        return
     for a, b in zip(actual, wanted):
         torch.testing.assert_close(a, b, rtol=policy["rtol"], atol=policy["atol"], equal_nan=False)
 

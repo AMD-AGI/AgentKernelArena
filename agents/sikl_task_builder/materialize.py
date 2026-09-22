@@ -9,11 +9,17 @@ from pathlib import Path
 import yaml
 
 from . import BUILDER_VERSION
-from .bundle import ImportProblem, TaskSpec, fingerprint, source_files
+from .bundle import ImportProblem, TaskSpec, case_manifest, fingerprint, source_files, solution_targets
 from .config import Config
 
 TEMPLATES = Path(__file__).with_name("templates")
 EDITABLE = "scripts/task_inputs.py"
+
+
+def authoring_editable(task: TaskSpec) -> list[str]:
+    # A supplied initializer owns the distribution and cannot be repaired by
+    # choosing an easier input population after a numerical failure.
+    return [] if task.definition.get("initialize") else [EDITABLE]
 
 
 def task_files(task: TaskSpec, config: Config) -> dict[str, str]:
@@ -23,15 +29,19 @@ def task_files(task: TaskSpec, config: Config) -> dict[str, str]:
         raise ImportProblem("unsupported_platform", config.target_gpu_model)
     aliases = {arch.lower(), config.target_gpu_model.lower()}
     for role, solution in (("baseline", task.baseline), ("reference", task.reference)):
-        targets = solution["spec"].get("target_hardware", [])
-        if not targets or not aliases.intersection(str(t).lower() for t in targets):
+        targets = solution_targets(solution)
+        if not any(t["arch"] == arch if "arch" in t else t["hardware_id"].lower() in aliases for t in targets):
             raise ImportProblem("platform_deferred", f"{role} hardware {targets} does not match {config.target_gpu_model}")
-    contract = {**task.contract(), "policy": config.policy}
+    contract = {**task.contract(), "policy": config.policy,
+                "cases": case_manifest(task.definition, task.rows)}
     files = {"scripts/__init__.py": "", "source/__init__.py": "",
              # Tuple outputs follow the definition's insertion order.
              "scripts/workload.json": json.dumps(contract, indent=2) + "\n"}
     for name in ("task_api.py", "task_runner.py", "task_inputs.py"):
         files[f"scripts/{name}"] = (TEMPLATES / name).read_text()
+    for name in ("initialize", "compare"):
+        if task.definition.get(name):
+            files[f"scripts/{name}/main.py"] = task.definition[name]
     for role, solution in (("baseline", task.baseline), ("reference", task.reference)):
         for path, content in source_files(solution).items():
             files[f"scripts/{role}/{path}"] = content
@@ -39,30 +49,34 @@ def task_files(task: TaskSpec, config: Config) -> dict[str, str]:
         files[f"source/implementation/{path}"] = content
     entry = repr(task.baseline["spec"]["entry_point"])
     files["source/kernel.py"] = (
-        '"""Initial production baseline. Replace run with your Triton implementation."""\n'
+        f'"""Initial production baseline. Replace run with your {config.target_language} implementation."""\n'
         "from pathlib import Path\nfrom scripts.task_api import load_solution\n\n"
         f"_initial = load_solution(Path(__file__).parent / 'implementation', {entry})\n\n"
         "def run(**kwargs):\n    return _initial(**kwargs)\n"
     )
     editable_sources = sorted(p for p in files if p.startswith("source/") and p.endswith(".py") and not p.endswith("__init__.py"))
     cfg = {
-        "task_type": "instruction2triton", "source_file_path": editable_sources,
-        "target_kernel_functions": ["run"],
-        "compile_command": ["python3 scripts/task_runner.py --mode compile"],
-        "correctness_command": ["python3 scripts/task_runner.py --mode correctness"],
-        "performance_command": ["python3 scripts/task_runner.py --mode performance"],
-        "compile_timeout": config.command_timeout, "correctness_timeout": config.command_timeout,
-        "performance_timeout": config.command_timeout,
+        "schema_version": 2,
+        "candidate": {"language": config.target_language, "initial_state": "implemented",
+                      "initial_language": task.baseline["spec"]["language"],
+                      "editable": editable_sources,
+                      "entrypoints": [{"file": "source/kernel.py", "kind": "function", "symbol": "run"}]},
+        "baseline": {"kind": "provided", "language": task.baseline["spec"]["language"],
+                     "source_files": sorted(p for p in files if p.startswith("scripts/baseline/"))},
+        "evaluation": {"runner": ["python3", "scripts/task_runner.py"],
+                       "workloads": "scripts/workload.json", "timeout_s": config.command_timeout},
         "platform_support": {"required_arch": arch, "status": "active"},
-        "prompt": {"instructions": (
-            f"Implement {task.task_id} in Triton with the source/kernel.py run(**kwargs) interface. "
+        "description": (
+            f"Implement {task.task_id} in {config.target_language} with the source/kernel.py run(**kwargs) interface. "
             "The initial source is the production baseline, not a completed rewrite. "
             "Read scripts/workload.json and the protected reference for the full contract. "
             "Implement your own GPU computation; do not delegate it to the protected baseline "
             "or a library product. Keep all workload cases, input/output dtypes and semantics. "
             "Inputs are functional and may not be mutated. Edit only declared source files."
-        )},
+        ),
     }
+    from src.task_spec import TaskSpec as ArenaTaskSpec
+    ArenaTaskSpec.from_mapping(cfg, task_id=config.arena_task_id(task.task_id))
     files["config.yaml"] = yaml.safe_dump(cfg, sort_keys=False)
     files["scripts/provenance.json"] = json.dumps({
         "builder_version": BUILDER_VERSION, "source_digest": task.digest,
@@ -73,6 +87,8 @@ def task_files(task: TaskSpec, config: Config) -> dict[str, str]:
         },
         "policy": config.policy, "synthesized_inputs": True,
         "reference_modified": False,
+        "callback_sources": {name: f"scripts/{name}/main.py" for name in ("reference", "initialize", "compare")
+                             if task.definition.get(name)},
     }, indent=2, sort_keys=True) + "\n"
     return files
 
@@ -86,7 +102,7 @@ def materialize_task(task: TaskSpec, config: Config, destination: Path) -> dict:
         path = destination / relative
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content)
-    return {"task_id": task.task_id, "files": sorted(files), "editable": [EDITABLE]}
+    return {"task_id": task.task_id, "files": sorted(files), "editable": authoring_editable(task)}
 
 
 def task_tree(root: Path) -> dict[str, str]:
@@ -115,7 +131,7 @@ def check_contract(task: TaskSpec, config: Config, draft: Path) -> dict:
         path = draft / relative
         if not path.is_file():
             diagnostics.append({"code": "missing_file", "path": relative})
-        elif relative != EDITABLE and path.read_text() != content:
+        elif relative not in authoring_editable(task) and path.read_text() != content:
             diagnostics.append({"code": "contract_changed", "path": relative})
     for relative in actual:
         if relative not in expected:

@@ -46,8 +46,8 @@ class Config:
             or any(not isinstance(n, str) for n in v.values()) for v in self.selections.values()
         ):
             raise ValueError("selections maps definition names to baseline/reference solution names")
-        if self.target_language != "triton":
-            raise ValueError("First release supports target_language: triton")
+        if self.target_language not in {"triton", "flydsl"}:
+            raise ValueError("target_language must be triton or flydsl")
         if self.generator.get("backend", "codex") != "codex":
             raise ValueError("Generator backend must be codex")
         if self.validator.get("backend", "codex") not in {"codex", "claude_code"}:
@@ -72,6 +72,11 @@ class Config:
 
     def mapping(self) -> dict:
         return asdict(self)
+
+    def arena_task_id(self, definition: str) -> str:
+        repo = Path(__file__).resolve().parents[2]
+        output = (repo / self.output_dir).resolve()
+        return (output.relative_to(repo / "tasks") / definition).as_posix()
 
 
 def load_config(path: Path) -> Config:

@@ -29,12 +29,15 @@ for accurate source metadata, contract checks and runtime evidence:
 {tools} validate_task
 {tools} read_validation --validation-id <id>
 
-You may edit ONLY scripts/task_inputs.py in this task directory. The source
+Read describe_task's editable list first. If the definition supplies initialize,
+the input adapter and callbacks are immutable: inspect and diagnose only.
+Otherwise you may edit ONLY scripts/task_inputs.py in this task directory. The source
 baseline/reference, workload, config, measurement runner and other tasks are
 immutable. This file may define helper functions; no extra files are needed.
 Preserve every case, shape, dtype, scalar, quantization/layout and functional
 input/output contract. Do not mutate inputs or weaken numerical checks. Random
-input distribution is a declared synthesis policy, not recovered model data.
+input distribution belongs to the supplied initialize callback when present;
+otherwise it is a declared synthesis policy, not recovered model data.
 Do not shrink inputs, replace them with zeros, or choose only easy routing to
 make a numerical mismatch pass. A repair must be justified by source semantics.
 The bundled baseline and reference are separate sources of truth. If they

@@ -336,3 +336,21 @@ def test_real_validator_launcher_uses_initial_evidence_and_semantic_gate(tmp_pat
     assert report["checks"]["correctness"]["status"] == "PASS"
     assert report["candidate_initial_checks"]["correctness"]["status"] == "SKIP"
     assert not (workspace / "task_result.yaml").exists()
+
+
+@pytest.mark.parametrize("request_id", [None, "controller-owned-validation-id"])
+def test_validation_session_preserves_controller_request_id(tmp_path, request_id):
+    from src.task_run import validate_task_session
+    session = create(tmp_path)
+    observed = []
+    def launcher(*, eval_config, **kwargs):
+        observed.append(eval_config["_task_validation_request_id"])
+    report = validate_task_session(session, eval_config={},
+                                   task_config_dir=str(session.workspace / "config.yaml"),
+                                   agent_launcher=launcher, validation_request_id=request_id)
+    assert observed[0]
+    assert report["validation_request_id"] == observed[0]
+    if request_id is not None:
+        assert observed == [request_id]
+    # The absence of semantic review still cannot authorize a PASS.
+    assert report["overall_status"] == "FAIL"

@@ -1013,7 +1013,7 @@ assert_has "resume" "${args[@]}"
 assert_has "--run-id" "${args[@]}"
 assert_has "run" "${args[@]}"
 assert_has "/sikl-config.yaml" "${args[@]}"
-assert_has "AGENT_KERNEL_ARENA_IMAGE=$PINNED_GFX950_IMAGE" "${args[@]}"
+assert_has "AGENT_KERNEL_ARENA_IMAGE=$PINNED_GFX950_IMMUTABLE_IMAGE" "${args[@]}"
 assert_not_has "$QUALITY_HOME/.config/gh:$QUALITY_HOME/.config/gh:ro" "${args[@]}"
 
 echo "PASS: docker_benchmark runtime, agent-selection, and eval-tool isolation tests"

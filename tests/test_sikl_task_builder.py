@@ -16,7 +16,8 @@ from agents.sikl_task_builder.materialize import check_contract, materialize_tas
 from agents.sikl_task_builder.orchestrator import install_task, run
 from agents.sikl_task_builder import validation
 from agents.task_validator.report_schema import finalize_report
-from test_task_validator import _valid_raw_report
+from tests.test_task_validator_v2 import context as validation_context, draft as validation_draft
+from agents.task_validator.report_v2 import DRAFT_FILENAME
 
 
 def write_json(path, value):
@@ -134,7 +135,12 @@ def test_emission_preserves_all_source_and_contract(emitted):
     for role in ("baseline", "reference"):
         for source in getattr(task, role)["sources"]:
             assert (draft / "scripts" / role / source["path"]).read_text() == source["content"]
-    assert yaml.safe_load((draft / "config.yaml").read_text())["task_type"] == "instruction2triton"
+    from src.task_spec import load_task_spec
+    spec = load_task_spec(draft / "config.yaml", task_id="SIKL-task/tiny_gemm")
+    assert spec.candidate.language == "triton"
+    assert spec.candidate.initial_language == "python"
+    assert spec.baseline.kind == "provided"
+    assert len(spec.actions) == 7
     (draft / "scripts/task_inputs.py").write_text("def make_inputs(*args): return {}\n")
     assert check_contract(task, cfg, draft)["ok"]  # semantic check belongs to GPU validator
     (draft / "scripts/workload.json").write_text("{}")
@@ -177,33 +183,41 @@ else: raise AssertionError('candidate silently fell back to baseline')
     assert result.returncode == 0, result.stderr
 
 
-@pytest.mark.parametrize("status,finalized,command_ok,changed", [
-    ("PASS", True, True, False), ("WARN", True, True, False),
-    ("FAIL", True, True, False), ("PASS", False, True, False),
-    ("PASS", True, False, False), ("PASS", True, True, True),
+@pytest.mark.parametrize("status,finalized,command_ok,changed,stale", [
+    ("PASS", True, True, False, False), ("WARN", True, True, False, False),
+    ("FAIL", True, True, False, False), ("PASS", False, True, False, False),
+    ("PASS", True, False, False, False), ("PASS", True, True, True, False),
+    ("PASS", True, True, False, True),
 ])
-def test_validation_requires_commands_finalized_pass_and_same_files(emitted, tmp_path, monkeypatch, status, finalized, command_ok, changed):
+def test_validation_requires_commands_finalized_pass_and_same_files(emitted, tmp_path, monkeypatch, status, finalized, command_ok, changed, stale):
     _, cfg, draft = emitted
-    check_name = "correctness_implementation_review" if status == "WARN" else "correctness"
+    check_name = "correctness_implementation_review"
     monkeypatch.setattr(validation, "runtime_identity", lambda c: {"arch": "gfx950"})
     def process(argv, cwd, log, timeout, env):
-        if "--mode" in argv:
-            return {"ok": command_ok, "exit_code": 0 if command_ok else 1}
         request = json.loads(Path(argv[-1]).read_text())
         workspace = Path(request["workspace"])
-        raw = _valid_raw_report("workspace")
+        if stale:
+            request["validation_id"] = "different-validation-attempt"
+        ctx = validation_context(tmp_path / "captured", state="implemented", numerical_fail=not command_ok)
+        raw = validation_draft(ctx, request_id=request["validation_id"])
+        ctx["task_id"] = request["task_id"]
+        ctx["workspace"] = str(workspace)
+        raw["task_name"] = request["task_id"]
+        from agents.task_validator.trusted_evidence import snapshot_task_evidence
+        raw["task_evidence_sha256"] = snapshot_task_evidence(ctx, task_id=request["task_id"]).sha256
         if status != "PASS":
             raw["checks"][check_name]["status"] = status
             raw["checks"][check_name]["evidence"] = [{"path": "scripts/workload.json", "finding": "Test diagnostic"}]
-        (workspace / "validation_report.yaml").write_text(yaml.safe_dump(raw))
+        (workspace / DRAFT_FILENAME).write_text(yaml.safe_dump(raw))
         if finalized:
-            finalize_report(workspace, expected_task_name="workspace")
+            finalize_report(workspace, expected_task_name=request["task_id"], trusted_task_evidence=ctx,
+                            validation_request_id=request["validation_id"], task_schema_version=2)
         if changed:
             (workspace / "scripts/task_inputs.py").write_text("# validator tampering\n")
         return {"ok": True, "exit_code": 0}
     monkeypatch.setattr(validation, "run_process", process)
     result = validation.validate_task(draft, tmp_path / "validation", cfg)
-    assert result["ok"] == (status == "PASS" and finalized and command_ok and not changed)
+    assert result["ok"] == (status == "PASS" and finalized and command_ok and not changed and not stale)
     if status != "PASS" and finalized and command_ok:
         assert any(d["check"] == check_name and d["status"] == status for d in result["diagnostics"])
 
@@ -345,3 +359,218 @@ def test_graph_replay_poison_rejects_stale_and_aliased_output(emitted):
     assert_outputs(captured, expected, task.definition, row, cfg.policy, 'cpu')
     with pytest.raises(ValueError, match='aliasing'):
         poison_outputs(captured, expected, {'input': captured}, task.definition, row, 'cpu')
+
+
+@pytest.fixture
+def bundle_v2(bundle):
+    definition = json.loads((bundle / "definitions/gemm.json").read_text())
+    definition.update(
+        schema_version=2,
+        reference="def run(a, b):\n    return (a.double() @ b.double().T).to(a.dtype)\n",
+        initialize=("import torch\nfrom dataclasses import dataclass\n"
+                    "@dataclass\nclass Settings:\n    scale: float = 0.5\n"
+                    "def run(inputs, seed=0):\n"
+                    "    rng = torch.Generator(device=inputs['a'].device).manual_seed(seed)\n"
+                    "    for value in inputs.values():\n"
+                    "        value.normal_(std=Settings().scale, generator=rng)\n"
+                    "    return inputs\n"),
+        compare=("import torch\ndef run(actual, expected):\n"
+                 "    torch.testing.assert_close(actual, expected, rtol=1e-5, atol=1e-6)\n"),
+    )
+    write_json(bundle / "definitions/gemm.json", definition)
+    (bundle / "solutions/reference/gemm.json").unlink()
+    baseline = json.loads((bundle / "solutions/baseline/gemm.json").read_text())
+    baseline["spec"].pop("target_hardware")
+    baseline["spec"]["target"] = [{"arch": "gfx950", "hardware_id": "MI355X"}]
+    write_json(bundle / "solutions/baseline/gemm.json", baseline)
+    return bundle
+
+
+def test_v2_callbacks_are_exact_and_not_authoring_editable(bundle_v2, tmp_path):
+    task = inspect_bundle(bundle_v2)[0]
+    cfg = Config(str(bundle_v2), target_language="flydsl")
+    draft = tmp_path / "draft"
+    info = materialize_task(task, cfg, draft)
+    assert info["editable"] == []
+    for name in ("reference", "initialize", "compare"):
+        assert (draft / f"scripts/{name}/main.py").read_text() == task.definition[name]
+    assert task.origins["reference"] == "definitions/gemm.json#reference"
+    from src.task_spec import load_task_spec
+    spec = load_task_spec(draft / "config.yaml", task_id="SIKL-task/tiny_gemm")
+    assert spec.candidate.language == "flydsl"
+    assert check_contract(task, cfg, draft)["ok"]
+    (draft / "scripts/task_inputs.py").write_text("# replace distribution\n")
+    assert not check_contract(task, cfg, draft)["ok"]
+
+
+@pytest.mark.parametrize("version", [0, 3, True, "2", None])
+def test_unknown_schema_rejected(bundle_v2, version):
+    path = bundle_v2 / "definitions/gemm.json"
+    definition = json.loads(path.read_text())
+    definition["schema_version"] = version
+    write_json(path, definition)
+    with pytest.raises(ImportProblem, match="schema"):
+        inspect_bundle(bundle_v2)
+
+
+@pytest.mark.parametrize("name", ["reference", "initialize", "compare"])
+def test_callbacks_need_syntax_and_run_without_importing(bundle_v2, name):
+    path = bundle_v2 / "definitions/gemm.json"
+    data = json.loads(path.read_text())
+    data[name] = "raise RuntimeError('metadata must not execute')\ndef run(*args, **kw): pass\n"
+    write_json(path, data)
+    assert inspect_bundle(bundle_v2)[0].definition[name] == data[name]
+    data[name] = "def no_run(): pass\n"
+    write_json(path, data)
+    with pytest.raises(ImportProblem, match="run"):
+        inspect_bundle(bundle_v2)
+
+
+def test_v2_embedded_reference_cannot_be_overridden(bundle_v2):
+    with pytest.raises(ImportProblem, match="owned by the definition"):
+        inspect_bundle(bundle_v2, {"tiny_gemm": {"reference": "other"}})
+
+
+def test_target_arch_is_authoritative(bundle_v2, tmp_path):
+    path = bundle_v2 / "solutions/baseline/gemm.json"
+    data = json.loads(path.read_text())
+    data["spec"]["target"][0]["arch"] = "gfx942"
+    write_json(path, data)
+    task = inspect_bundle(bundle_v2)[0]
+    with pytest.raises(ImportProblem, match="does not match"):
+        materialize_task(task, Config(str(bundle_v2)), tmp_path / "draft")
+
+
+def test_v2_callbacks_execute_and_refill_preserves_storage(bundle_v2, tmp_path):
+    task = inspect_bundle(bundle_v2)[0]
+    draft = tmp_path / "draft"
+    cfg = Config(str(bundle_v2))
+    cfg.policy.update(rtol=100, atol=100)  # Must not override the bundle's comparison.
+    materialize_task(task, cfg, draft)
+    script = '''import json
+from pathlib import Path
+import torch
+from scripts.task_api import assert_outputs, load_solution
+from scripts.task_inputs import make_inputs, refill_inputs
+from source.kernel import run
+c = json.loads(Path('scripts/workload.json').read_text())
+d, row, policy = c['definition'], c['rows'][0], c['policy']
+x = make_inputs(d, row, policy, device='cpu')
+y = make_inputs(d, row, policy, device='cpu')
+assert all(torch.equal(x[k], y[k]) for k in x)
+expected = load_solution(Path('scripts/reference'), 'main.py::run')(**x)
+assert_outputs(run(**x), expected, d, row, policy, 'cpu')
+try: assert_outputs(expected + 1, expected, d, row, policy, 'cpu')
+except AssertionError: pass
+else: raise AssertionError('bundle comparison was bypassed')
+pointers = {k: v.data_ptr() for k, v in x.items()}
+refill_inputs(x, d, row, policy, device='cpu')
+assert all(x[k].data_ptr() == pointers[k] for k in x)
+assert any(not torch.equal(x[k], y[k]) for k in x)
+'''
+    result = subprocess.run([sys.executable, "-c", script], cwd=draft,
+                            env={**os.environ, "PYTHONPATH": ""}, text=True, capture_output=True)
+    assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.parametrize("malformed", ["missing_result", "missing_case", "wrong_role"])
+def test_diagnostic_tool_rejects_false_success(emitted, tmp_path, monkeypatch, malformed):
+    task, cfg, draft = emitted
+    monkeypatch.setattr(validation, "runtime_identity", lambda c: {})
+    def process(argv, cwd, log, timeout, env):
+        from agents.sikl_task_builder.bundle import case_manifest
+        cases = case_manifest(task.definition, task.rows)
+        if malformed == "missing_case":
+            cases.pop()
+        obj = {"protocol": "arena-eval-v1", "role": "baseline" if malformed == "wrong_role" else "candidate",
+               "action": "correctness", "status": "PASS", "cases": cases}
+        log.write_text("PASS\n" if malformed == "missing_result" else "ARENA_EVAL_RESULT=" + json.dumps(obj))
+        return {"ok": True, "exit_code": 0, "timed_out": False, "log": str(log)}
+    monkeypatch.setattr(validation, "run_process", process)
+    assert not validation.check_task(draft, tmp_path / "check", cfg, "correctness")["ok"]
+
+
+def test_refilled_replay_rejects_precomputed_result_and_vacuous_compare(bundle_v2, tmp_path):
+    task = inspect_bundle(bundle_v2)[0]
+    draft = tmp_path / "draft"
+    materialize_task(task, Config(str(bundle_v2)), draft)
+    script = '''import json, sys, types
+from pathlib import Path
+from scripts import task_runner as runner
+c = json.loads(Path('scripts/workload.json').read_text())
+d, row, policy = c['definition'], c['rows'][0], c['policy']
+reference = runner.load_solution(Path('scripts/reference'), 'main.py::run')
+x = runner.make_inputs(d, row, policy, device='cpu')
+assert runner.validate_case(d, row, policy, reference, x, device='cpu')['wrong_output_rejected']
+for stale in [False, True]:
+    def benchmark(fn, *, timed_run, **kwargs):
+        cached = fn().clone()
+        output = cached.clone()
+        def replay():
+            output.copy_(cached if stale else fn())
+            return output
+        timed_run._bind(replay, output)
+        return 0.01, {'benchmark_method': 'cuda_graph'}  # CPU replay fixture, not device evidence.
+    sys.modules['_aka_benchmark'] = types.SimpleNamespace(benchmark_cuda_graph_or_events=benchmark)
+    x = runner.make_inputs(d, row, policy, device='cpu')
+    try: runner.measure_case(reference, reference, x, d, row, policy, device='cpu')
+    except AssertionError:
+        assert stale
+    else:
+        assert not stale, 'cached result passed after input refill'
+compare = runner.load_solution(Path('scripts/compare'), 'main.py::run')
+sys.modules[compare.__module__].run = lambda *args: None
+x = runner.make_inputs(d, row, policy, device='cpu')
+try: runner.validate_case(d, row, policy, reference, x, device='cpu')
+except ValueError as error: assert 'incorrect finite' in str(error)
+else: raise AssertionError('vacuous comparison accepted')
+'''
+    result = subprocess.run([sys.executable, "-c", script], cwd=draft,
+                            env={**os.environ, "PYTHONPATH": ""}, text=True, capture_output=True)
+    assert result.returncode == 0, result.stderr
+
+
+def test_baseline_action_does_not_compile_or_load_candidate(emitted):
+    _, _, draft = emitted
+    (draft / 'source/kernel.py').write_text('broken python !!!\n')
+    script = '''from scripts import task_runner as runner
+# CPU lifecycle fixture; only the device boundary is replaced.
+runner.torch.cuda.is_available = lambda: True
+runner.torch.version.hip = 'CPU fixture'
+runner.torch.cuda.synchronize = lambda: None
+make_inputs, validate_inputs, outputs = runner.make_inputs, runner.validate_inputs, runner.outputs
+runner.make_inputs = lambda d, r, p: make_inputs(d, r, p, device='cpu')
+runner.validate_inputs = lambda v, d, r, device: validate_inputs(v, d, r, 'cpu')
+runner.outputs = lambda v, d, r, device: outputs(v, d, r, 'cpu')
+assert runner.main(['baseline', 'compile']) == 0
+assert runner.main(['candidate', 'compile']) == 1
+'''
+    result = subprocess.run([sys.executable, '-c', script], cwd=draft,
+                            env={**os.environ, 'PYTHONPATH': ''}, text=True, capture_output=True)
+    assert result.returncode == 0, result.stderr
+
+
+def test_deadline_cleans_framework_action_in_separate_session(tmp_path):
+    marker = tmp_path / 'escaped-session'
+    started = tmp_path / 'started'
+    child = (
+        'from pathlib import Path; import time; '
+        f'Path({str(started)!r}).touch(); time.sleep(1.5); Path({str(marker)!r}).touch()'
+    )
+    parent = (
+        'from src.task_execution import _run_process; from pathlib import Path; import os,sys; '
+        f'_run_process((sys.executable, "-c", {child!r}), Path.cwd(), dict(os.environ), 30)'
+    )
+    result = run_process([sys.executable, '-c', parent], Path(__file__).resolve().parents[1],
+                         tmp_path / 'deadline.log', 0.8)
+    assert started.is_file(), (tmp_path / 'deadline.log').read_text()
+    assert result['timed_out'] and not result['ok']
+    time.sleep(1.6)
+    assert not marker.exists(), 'framework action outlived the authoring deadline'
+
+
+def test_report_identity_follows_output_suite():
+    assert Config('bundle', output_dir='tasks/imported/subsuite').arena_task_id('gemm') == 'imported/subsuite/gemm'
+    assert Config('bundle', output_dir='tasks/../tasks/imported').arena_task_id('gemm') == 'imported/gemm'
+    root = Path(__file__).resolve().parents[1]
+    assert Config('bundle', output_dir=str(root / 'tasks/imported')).arena_task_id('gemm') == 'imported/gemm'

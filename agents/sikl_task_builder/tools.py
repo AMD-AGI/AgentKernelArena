@@ -10,7 +10,7 @@ from pathlib import Path
 
 from .bundle import inspect_bundle
 from .config import Config
-from .materialize import check_contract, materialize_task
+from .materialize import authoring_editable, check_contract, materialize_task
 from .validation import check_task, validate_task
 
 
@@ -26,7 +26,7 @@ def dispatch(action: str, run_dir: Path, task_id: str, mode="source-check", vali
     artifacts = run_dir / "tool_runs" / task_id
     if action == "describe_task":
         return {"ok": True, **selected.summary(), "contract": selected.contract(),
-                "editable": ["scripts/task_inputs.py"]}
+                "editable": authoring_editable(selected)}
     if action == "materialize_task":
         return {"ok": True, **materialize_task(selected, config, draft)}
     if action == "check_contract":

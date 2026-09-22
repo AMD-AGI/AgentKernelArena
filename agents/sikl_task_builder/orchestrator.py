@@ -179,7 +179,7 @@ def run(config: Config, run_id: str | None = None, *, repo: Path = REPO,
                     atomic_json(root / "state.json", state)
                 if record["state"] != "installed":
                     previous = record.get("feedback", {}).get("validation", {}).get("commands", {})
-                    record["state"] = "needs_spec" if not previous.get("source-check", {"ok": True})["ok"] else "failed"
+                    record["state"] = "needs_spec" if not previous.get("baseline/correctness", {"ok": True})["ok"] else "failed"
             except Exception as exc:
                 code = getattr(exc, "code", "execution_error")
                 record.update(state="platform_deferred" if code == "platform_deferred" else "failed",

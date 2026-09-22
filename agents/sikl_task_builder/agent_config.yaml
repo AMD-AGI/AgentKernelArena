@@ -14,7 +14,8 @@ agent_timeout: 1800
 command_timeout: 1800
 max_task_seconds: 14400
 # Fixed for the whole run. A failure cannot cause the agent to loosen this policy.
-# Check these tolerances against your operator before starting a campaign.
+# rtol/atol apply only when the definition has no compare callback. A supplied
+# initialize/compare owns its distribution/numerical rule and cannot be repaired.
 policy:
   version: 1
   seed: 29

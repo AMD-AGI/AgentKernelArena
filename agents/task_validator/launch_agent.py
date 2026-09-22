@@ -300,7 +300,11 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
         context_path = None
         context_file_hash = None
         if is_v2:
-            request_id = uuid.uuid4().hex
+            request_id = eval_config.pop("_task_validation_controller_request_id", None)
+            if request_id is None:
+                request_id = uuid.uuid4().hex
+            if not isinstance(request_id, str) or not request_id.strip():
+                raise ValueError("Framework validation request ID must be a nonempty string")
             eval_config["_task_validation_request_id"] = request_id
             context_path = eval_config.get("_task_validation_context") or os.environ.get("ARENA_VALIDATION_CONTEXT")
             if not isinstance(context_path, str) or not context_path:
