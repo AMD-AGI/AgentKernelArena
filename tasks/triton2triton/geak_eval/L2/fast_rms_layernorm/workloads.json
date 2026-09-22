@@ -1,0 +1,213 @@
+{
+  "version": 1,
+  "source": "kernel.py",
+  "candidate_symbols": [
+    {
+      "name": "_rms_layernorm_forward",
+      "jit": true
+    },
+    {
+      "name": "_rms_layernorm_backward",
+      "jit": true
+    },
+    {
+      "name": "_gemma_rms_layernorm_forward",
+      "jit": true
+    }
+  ],
+  "input_tables": {
+    "performance": [
+      [
+        2,
+        4,
+        8
+      ]
+    ],
+    "original_correctness": [
+      [
+        2,
+        4,
+        8
+      ]
+    ],
+    "controls": [
+      {
+        "test_case_id": "control-rms-17-False",
+        "shape": [
+          3,
+          17
+        ],
+        "params": {
+          "gemma": false,
+          "nonuniform_gradient": true
+        }
+      },
+      {
+        "test_case_id": "control-rms-17-True",
+        "shape": [
+          3,
+          17
+        ],
+        "params": {
+          "gemma": true,
+          "nonuniform_gradient": true
+        }
+      },
+      {
+        "test_case_id": "control-rms-257-False",
+        "shape": [
+          3,
+          257
+        ],
+        "params": {
+          "gemma": false,
+          "nonuniform_gradient": true
+        }
+      },
+      {
+        "test_case_id": "control-rms-257-True",
+        "shape": [
+          3,
+          257
+        ],
+        "params": {
+          "gemma": true,
+          "nonuniform_gradient": true
+        }
+      },
+      {
+        "test_case_id": "control-rms-1024-False",
+        "shape": [
+          3,
+          1024
+        ],
+        "params": {
+          "gemma": false,
+          "nonuniform_gradient": true
+        }
+      },
+      {
+        "test_case_id": "control-rms-1024-True",
+        "shape": [
+          3,
+          1024
+        ],
+        "params": {
+          "gemma": true,
+          "nonuniform_gradient": true
+        }
+      }
+    ]
+  },
+  "cases": [
+    {
+      "test_case_id": "case/0",
+      "params": {
+        "case_index": 0,
+        "configuration": [
+          2,
+          4,
+          8
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control-rms-17-False",
+      "shape": [
+        3,
+        17
+      ],
+      "params": {
+        "gemma": false,
+        "nonuniform_gradient": true
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "control-rms-17-True",
+      "shape": [
+        3,
+        17
+      ],
+      "params": {
+        "gemma": true,
+        "nonuniform_gradient": true
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "control-rms-257-False",
+      "shape": [
+        3,
+        257
+      ],
+      "params": {
+        "gemma": false,
+        "nonuniform_gradient": true
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "control-rms-257-True",
+      "shape": [
+        3,
+        257
+      ],
+      "params": {
+        "gemma": true,
+        "nonuniform_gradient": true
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "control-rms-1024-False",
+      "shape": [
+        3,
+        1024
+      ],
+      "params": {
+        "gemma": false,
+        "nonuniform_gradient": true
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "control-rms-1024-True",
+      "shape": [
+        3,
+        1024
+      ],
+      "params": {
+        "gemma": true,
+        "nonuniform_gradient": true
+      },
+      "checks": [
+        "correctness"
+      ]
+    }
+  ],
+  "timing_calls_per_case": [
+    "candidate",
+    "reference"
+  ],
+  "migration": {
+    "original_harness_sha256": "87a8dff1806c177b055f588e994c1ac3681ce7da96f2a02a553d83083605342a",
+    "original_source_sha256": "b123ce92d2da1cf493986d139b3076dd2bb0c1bf8393eb83584936ac50222fe6",
+    "preservation": "Original correctness subset executes first, in its original order; additional performance cases are checked afterward. Original performance order, RNG calls, reset callbacks, sample counts and median reduction remain intact."
+  }
+}

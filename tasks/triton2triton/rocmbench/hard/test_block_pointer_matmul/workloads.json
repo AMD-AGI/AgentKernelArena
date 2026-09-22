@@ -1,0 +1,321 @@
+{
+  "version": 1,
+  "source": "test_block_pointer_matmul.py",
+  "kernel_symbols": [
+    "matmul_no_scf_with_advance_kernel"
+  ],
+  "cases": [
+    {
+      "test_case_id": "test_block_ptr_matmul_no_scf/a0915e728379804087ba",
+      "params": {
+        "function": "test_block_ptr_matmul_no_scf",
+        "arguments": {
+          "shape": [
+            64,
+            64,
+            16
+          ],
+          "num_warps": 4
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_block_ptr_matmul_no_scf/5bf5b9d01abf4472284f",
+      "params": {
+        "function": "test_block_ptr_matmul_no_scf",
+        "arguments": {
+          "shape": [
+            64,
+            64,
+            16
+          ],
+          "num_warps": 8
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_block_ptr_matmul_no_scf/244eba16990916fa50b6",
+      "params": {
+        "function": "test_block_ptr_matmul_no_scf",
+        "arguments": {
+          "shape": [
+            64,
+            64,
+            32
+          ],
+          "num_warps": 4
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_block_ptr_matmul_no_scf/e16edfb354e00580da70",
+      "params": {
+        "function": "test_block_ptr_matmul_no_scf",
+        "arguments": {
+          "shape": [
+            64,
+            64,
+            32
+          ],
+          "num_warps": 8
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_block_ptr_matmul_no_scf/9994146c204781c3f12d",
+      "params": {
+        "function": "test_block_ptr_matmul_no_scf",
+        "arguments": {
+          "shape": [
+            64,
+            64,
+            64
+          ],
+          "num_warps": 4
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_block_ptr_matmul_no_scf/5ba45e2aa006f42c7a21",
+      "params": {
+        "function": "test_block_ptr_matmul_no_scf",
+        "arguments": {
+          "shape": [
+            64,
+            64,
+            64
+          ],
+          "num_warps": 8
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/729aca05cb80e25705cc",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "shape": [
+            64,
+            64,
+            64
+          ],
+          "num_warps_arg": 4,
+          "dtype_str": "fp16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/e08481505ee36869d891",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "shape": [
+            64,
+            64,
+            64
+          ],
+          "num_warps_arg": 8,
+          "dtype_str": "fp16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/7bb3d1ae646cc73966ae",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "shape": [
+            128,
+            128,
+            128
+          ],
+          "num_warps_arg": 4,
+          "dtype_str": "fp16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/ce8027f738e54bb19fa4",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "shape": [
+            128,
+            128,
+            128
+          ],
+          "num_warps_arg": 8,
+          "dtype_str": "fp16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/0e2e00ea1f4bc8e187d3",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "shape": [
+            64,
+            128,
+            256
+          ],
+          "num_warps_arg": 4,
+          "dtype_str": "fp16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/c4c554c473591180b246",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "shape": [
+            64,
+            128,
+            256
+          ],
+          "num_warps_arg": 8,
+          "dtype_str": "fp16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/1cb4fb82b579e00ad4b3",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "shape": [
+            256,
+            64,
+            128
+          ],
+          "num_warps_arg": 4,
+          "dtype_str": "fp16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/0fc4eb0a5b586574f912",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "shape": [
+            256,
+            64,
+            128
+          ],
+          "num_warps_arg": 8,
+          "dtype_str": "fp16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/e10c4a27b2696efbd532",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "shape": [
+            128,
+            256,
+            64
+          ],
+          "num_warps_arg": 4,
+          "dtype_str": "fp16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/6e789f9a640b7e81ac92",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "shape": [
+            128,
+            256,
+            64
+          ],
+          "num_warps_arg": 8,
+          "dtype_str": "fp16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    }
+  ],
+  "migration": {
+    "original_source_sha256": "0d4d176787e88aaa3ab50ba2cd086ffd1ee4ce2a718b2ee423f7b89404b6826c",
+    "case_policy": "All original parametrizations retained; runtime skips are failures, not passing or omitted cases."
+  }
+}

@@ -1,0 +1,188 @@
+{
+  "version": 1,
+  "candidate_symbols": {
+    "source/triton_fused_moe.py": [
+      {
+        "name": "fused_moe_kernel",
+        "jit": true
+      }
+    ]
+  },
+  "case_table": "TEST_SHAPES",
+  "input_table": [
+    [
+      16,
+      64,
+      4,
+      64,
+      2
+    ],
+    [
+      32,
+      128,
+      8,
+      128,
+      2
+    ],
+    [
+      64,
+      256,
+      8,
+      256,
+      2
+    ],
+    [
+      128,
+      512,
+      16,
+      512,
+      2
+    ],
+    [
+      256,
+      1024,
+      8,
+      1024,
+      2
+    ]
+  ],
+  "cases": [
+    {
+      "test_case_id": "perf1",
+      "dtype": "float16,float32,int32",
+      "params": {
+        "case_index": 0,
+        "configuration": [
+          16,
+          64,
+          4,
+          64,
+          2
+        ],
+        "configuration_names": "(M, K, E, N, topk)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf2",
+      "dtype": "float16,float32,int32",
+      "params": {
+        "case_index": 1,
+        "configuration": [
+          32,
+          128,
+          8,
+          128,
+          2
+        ],
+        "configuration_names": "(M, K, E, N, topk)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf3",
+      "dtype": "float16,float32,int32",
+      "params": {
+        "case_index": 2,
+        "configuration": [
+          64,
+          256,
+          8,
+          256,
+          2
+        ],
+        "configuration_names": "(M, K, E, N, topk)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf4",
+      "dtype": "float16,float32,int32",
+      "params": {
+        "case_index": 3,
+        "configuration": [
+          128,
+          512,
+          16,
+          512,
+          2
+        ],
+        "configuration_names": "(M, K, E, N, topk)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf5",
+      "dtype": "float16,float32,int32",
+      "params": {
+        "case_index": 4,
+        "configuration": [
+          256,
+          1024,
+          8,
+          1024,
+          2
+        ],
+        "configuration_names": "(M, K, E, N, topk)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control_optional_weights",
+      "dtype": "float16,float32,int32",
+      "params": {
+        "control": "optional_weights"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control_unweighted",
+      "dtype": "float16,float32,int32",
+      "params": {
+        "control": "unweighted"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control_invalid_experts",
+      "dtype": "float16,float32,int32",
+      "params": {
+        "control": "invalid_experts"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    }
+  ],
+  "migration": {
+    "original_harness_sha256": "7fc48c22947882028b8ef24e02df0e4f4ad8bf4f88d2738861927ebe2e9099a5",
+    "original_correctness_sha256": "2ee3b78579a98bfc94ecd9cdc1af88e2fe1031dcab88cd3b606d2e86ef021ca0"
+  }
+}

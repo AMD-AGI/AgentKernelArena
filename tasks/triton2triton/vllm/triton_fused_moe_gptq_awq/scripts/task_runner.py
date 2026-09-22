@@ -17,17 +17,6 @@ TEST_SHAPES = [
 ]
 WARMUP_ITERATIONS = 10
 BENCHMARK_ITERATIONS = 100
-CORRECTNESS_ATOL = 1.0
-CORRECTNESS_RTOL = 0.5
-
-# (use_int4, has_zero_points, mul_routed_weight, pass_topk_weights)
-CORRECTNESS_VARIANTS = [
-    (True, True, True, True),
-    (True, False, True, True),
-    (False, True, True, True),
-    (False, False, False, False),
-    (True, True, False, True),
-]
 
 
 # >>> AKA-GENERATED: shared CUDA-graph benchmark helpers - edit src/tools/perf/vllm_cuda_graph_block.py then run `make sync-perf-helpers` >>>
@@ -46,6 +35,11 @@ def _benchmark_cuda_graph_or_events(*args, **kwargs):
         "src/tools/perf/vllm_cuda_graph_block.py into the workspace."
     )
 # <<< AKA-GENERATED <<<
+
+sys.path.insert(0, TASK_DIR)
+from _contract_checks import checked_call, checked_benchmark, compare_output, perturb_activation, NumericalMismatch
+from _numerical_contract import reference_and_bound, assert_accuracy
+
 
 def load_module():
     spec = importlib.util.spec_from_file_location("triton_kernel", SOURCE_FILE)
@@ -68,19 +62,16 @@ def run_compile():
         return False, str(e)
 
 
-def reference_fused_moe(input_t, qweight, scales, zeros, topk_ids,
-                        topk_weights, mul_routed_weight, group_size,
-                        use_int4):
-    """CPU reference for INT4/INT8 (GPTQ/AWQ) weight-only MoE.
+def reference_fused_moe_int4(input_t, qweight, scales, zeros, topk_ids,
+                             topk_weights, mul_routed_weight, group_size):
+    """CPU reference for INT4 (GPTQ/AWQ) weight-only MoE.
 
-    In INT4 mode the Triton kernel packs two values per uint8 element along K:
-        qweight: [E, K//2, N] uint8, low nibble = even k, high = odd k
+    The Triton kernel packs 2 x int4 values per uint8 element along the K
+    dimension:
+        qweight: [E, K//2, N]  uint8  – low nibble = even k, high nibble = odd k
         scales:  [E, K//group_size, N] fp16
         zeros:   [E, K//group_size, N//2] uint8 (packed 4-bit zero points per N)
                  or None (default zp = 8)
-
-    In INT8 mode qweight is [E, K, N], zeros (when present) is
-    [E, K//group_size, N], and the default zero point is 128.
     """
     import torch
     M, K = input_t.shape
@@ -93,32 +84,27 @@ def reference_fused_moe(input_t, qweight, scales, zeros, topk_ids,
     qw_cpu = qweight.cpu().to(torch.int16)  # promote to avoid sign issues
     scales_cpu = scales.cpu().float()
 
-    if use_int4:
-        # Unpack weights: 2 x int4 per uint8 along K dim -> [E, K, N].
-        w_lo = (qw_cpu & 0xF).float()
-        w_hi = ((qw_cpu >> 4) & 0xF).float()
-        w_unpacked = torch.zeros(E, K, N, dtype=torch.float32)
-        w_unpacked[:, 0::2, :] = w_lo
-        w_unpacked[:, 1::2, :] = w_hi
-    else:
-        w_unpacked = qw_cpu.float()
+    # Unpack weights: 2 x int4 per uint8 along K dim  -> [E, K, N]
+    K_packed = qweight.shape[1]  # K // 2
+    w_lo = (qw_cpu & 0xF).float()          # even k indices
+    w_hi = ((qw_cpu >> 4) & 0xF).float()   # odd k indices
+    # Interleave: w_unpacked[:, 0::2, :] = lo, w_unpacked[:, 1::2, :] = hi
+    w_unpacked = torch.zeros(E, K, N, dtype=torch.float32)
+    w_unpacked[:, 0::2, :] = w_lo
+    w_unpacked[:, 1::2, :] = w_hi
 
     # Unpack zero points
     num_groups = K // group_size
     if zeros is not None:
         zp_cpu = zeros.cpu().to(torch.int16)
-        if use_int4:
-            # INT4 zero points are packed along N.
-            zp_lo = (zp_cpu & 0xF).float()
-            zp_hi = ((zp_cpu >> 4) & 0xF).float()
-            zp_unpacked = torch.zeros(E, num_groups, N, dtype=torch.float32)
-            zp_unpacked[:, :, 0::2] = zp_lo
-            zp_unpacked[:, :, 1::2] = zp_hi
-        else:
-            zp_unpacked = zp_cpu.float()
+        # zeros: [E, K//group_size, N//2] – packed along N dim
+        zp_lo = (zp_cpu & 0xF).float()
+        zp_hi = ((zp_cpu >> 4) & 0xF).float()
+        zp_unpacked = torch.zeros(E, num_groups, N, dtype=torch.float32)
+        zp_unpacked[:, :, 0::2] = zp_lo
+        zp_unpacked[:, :, 1::2] = zp_hi
     else:
-        default_zp = 8.0 if use_int4 else 128.0
-        zp_unpacked = torch.full((E, num_groups, N), default_zp)
+        zp_unpacked = torch.full((E, num_groups, N), 8.0)
 
     # Dequantize: w_float = (w_int4 - zp) * scale
     w_deq = torch.zeros(E, K, N, dtype=torch.float32)
@@ -139,172 +125,173 @@ def reference_fused_moe(input_t, qweight, scales, zeros, topk_ids,
                 continue
             row = x @ w_deq[expert_id]
             if mul_routed_weight:
-                if topk_weights is not None:
-                    row *= topk_weights[flat_idx].item()
+                row *= topk_weights[flat_idx].item()
             output[flat_idx] = row
     return output
 
 
-def _outputs_match(result, reference):
-    """Apply the task tolerance while explicitly rejecting omitted writes."""
+
+CONTROL_CASES = ('int4_explicit', 'int4_default', 'int8_explicit', 'int8_default', 'int4_unrouted')
+
+
+def reference(inputs, options):
     import torch
+    A, qweight, scales, ids = inputs['A'], inputs['qweight'], inputs['scales'], inputs['ids']
+    zeros, weights = inputs.get('zeros'), inputs.get('weights')
+    if weights is None:
+        weights = torch.ones(ids.numel(), dtype=torch.float32, device=A.device)
+    if options['use_int4']:
+        # Preserve the independent original INT4 unpack/dequantize comparison.
+        out = reference_fused_moe_int4(A, qweight, scales, zeros, ids, weights,
+                                      options['mul_routed_weight'], options['group_size'])
+    else:
+        M, K = A.shape
+        E, _, N = qweight.shape
+        zp = zeros.detach().cpu().float() if zeros is not None else torch.full(scales.shape,128.)
+        group = torch.arange(K)//options['group_size']
+        dequant = (qweight.detach().cpu().float()-zp[:,group,:])*scales.detach().cpu().float()[:,group,:]
+        out = torch.zeros(M*ids.shape[1],N,dtype=torch.float32)
+        for token in range(M):
+            for lane in range(ids.shape[1]):
+                expert = int(ids[token,lane].item())
+                if not 0<=expert<E:
+                    continue
+                row = A[token].detach().cpu().float() @ dequant[expert]
+                if options['mul_routed_weight']:
+                    row *= float(weights[token*ids.shape[1]+lane].item())
+                out[token*ids.shape[1]+lane] = row
+    return out.to(device=A.device,dtype=A.dtype)
 
-    if not torch.count_nonzero(result).item():
-        return False
-    return torch.allclose(
-        result.float(), reference.float(),
-        atol=CORRECTNESS_ATOL, rtol=CORRECTNESS_RTOL,
-    )
+
+def control_inputs(name, device):
+    import torch
+    if name == 'int4_unrouted':
+        inputs, options = control_inputs('int4_explicit', device)
+        return inputs, {**options, 'mul_routed_weight': False}
+    # Basis activations and binary-exact scales give hand-checkable large outputs.
+    # K=48 also exercises the public partial-K load branch; N=70 crosses a tile.
+    M, K, E, N, group_size = 5, 48, 3, 70, 16
+    int4 = name.startswith('int4')
+    A = torch.zeros(M,K,device=device,dtype=torch.float16)
+    A[torch.arange(M,device=device),torch.tensor([0,1,16,33,47],device=device)] = torch.tensor([2,-3,4,-2,3],device=device,dtype=torch.float16)
+    width = K//2 if int4 else K
+    qweight = ((torch.arange(E*width*N,device=device).reshape(E,width,N)*37+19)%256).to(torch.uint8)
+    scales = torch.full((E,K//group_size,N),0.5 if int4 else 0.125,device=device,dtype=torch.float16)
+    scales[:,1,:] *= 2
+    ids = torch.tensor([[0,1,1],[-1,2,3],[2,0,1],[1,2,0],[0,-1,2]],device=device,dtype=torch.int32)
+    inputs={'A':A,'qweight':qweight,'scales':scales,'ids':ids}
+    if name.endswith('explicit'):
+        zwidth = N//2 if int4 else N
+        inputs['zeros']=((torch.arange(E*3*zwidth,device=device).reshape(E,3,zwidth)*13+7)%256).to(torch.uint8)
+        inputs['weights']=torch.tensor([-2.,3.,0.5]*M,device=device,dtype=torch.float32)
+    return inputs, {'group_size':group_size,'use_int4':int4,'mul_routed_weight':name!='int8_explicit'}
 
 
-def run_correctness():
+def invoke(mod, inputs, options):
+    return mod.fused_moe_gptq_awq(inputs['A'],inputs['qweight'],inputs['scales'],inputs.get('zeros'),
+                                inputs['ids'],inputs.get('weights'),**options)
+
+
+def check_output(actual, expected):
+    compare_output(actual, expected, atol=1.0, rtol=0.5)
+
+
+def check_control_output(actual, expected):
+    # Each control row has one nonzero integer activation. Integer quantized
+    # weights/zero points, power-of-two scales and dyadic routing weights make
+    # every intermediate and output exactly representable in FP16. There is
+    # no reduction error to budget here. Keep the original random-case gate
+    # above, but reject systematic scaling and packing errors on these controls.
+    compare_output(actual, expected, atol=0.0, rtol=0.0)
+
+
+def numerical_contract(options, *, exact_control=False):
+    # checked_call/checked_benchmark invoke oracle on private pristine inputs
+    # before the candidate, including the changed-input timed replay. Recompute
+    # the bound for those exact inputs; never derive it from a measured output.
+    prepared = {}
+    def oracle(saved):
+        prepared['ideal'], prepared['bound'] = reference_and_bound(saved, options)
+        return reference(saved, options)
+    def check(actual, expected):
+        check_output(actual, expected)  # retain the original allclose constraint
+        assert_accuracy(actual, prepared['ideal'], prepared['bound'], NumericalMismatch)
+        if exact_control:
+            check_control_output(actual, expected)
+    return oracle, check
+
+
+def run_correctness(*, case_index=None, control=None):
     import torch
     try:
         mod = load_module()
-    except Exception as e:
-        return False, f"Failed to load module: {e}"
-
-    device = "cuda"
-    for i, (M, K, E, N, topk, group_size) in enumerate(TEST_SHAPES):
-        try:
-            # Held-out injection can supply more shapes than variants. Cycle
-            # variants so every shape is checked without changing the public cases.
-            variant = CORRECTNESS_VARIANTS[i % len(CORRECTNESS_VARIANTS)]
-            use_int4, has_zp, mul_routed_weight, pass_topk_weights = variant
+        device = 'cuda'
+        if control is not None:
+            assert control in CONTROL_CASES, 'Unknown control'
+            inputs, options = control_inputs(control, device)
+            oracle, check = numerical_contract(options, exact_control=True)
+            checked_call(lambda: invoke(mod, inputs, options), inputs=inputs,
+                         reference=oracle, check=check)
+            return True, None
+        for i, (M, K, E, N, topk, group_size) in enumerate(TEST_SHAPES):
+            if case_index is not None and i != case_index:
+                continue
             torch.manual_seed(42 + i)
-            input_tensor = torch.randn(M, K, device=device, dtype=torch.float16) * 0.5
-
-            packed_k = K // 2 if use_int4 else K
-            qweight = torch.randint(0, 256, (E, packed_k, N), device=device,
+            input_tensor = torch.randn(M, K, device=device, dtype=torch.float16) * 0.1
+            qweight = torch.randint(0, 255, (E, K // 2, N), device=device,
                                     dtype=torch.int32).to(torch.uint8)
             num_groups = K // group_size
             scales_t = (torch.randn(E, num_groups, N, device=device,
-                                    dtype=torch.float16).abs() * 0.05 + 0.02)
-
-            zeros_t = None
-            if has_zp:
-                zero_n = N // 2 if use_int4 else N
-                zeros_t = torch.randint(
-                    0, 256, (E, num_groups, zero_n), device=device,
-                    dtype=torch.int32,
-                ).to(torch.uint8)
-
+                                    dtype=torch.float16).abs() * 0.01 + 0.001)
+            zeros_t = torch.randint(0, 255, (E, num_groups, N // 2), device=device,
+                                    dtype=torch.int32).to(torch.uint8)
             topk_ids = torch.randint(0, E, (M, topk), device=device, dtype=torch.int32)
-            topk_weights_flat = torch.randn(M * topk, device=device,
-                                            dtype=torch.float32).abs()
-            topk_weights_arg = topk_weights_flat if pass_topk_weights else None
-
-            result = mod.fused_moe_gptq_awq(
-                input_tensor, qweight, scales_t, zeros_t, topk_ids,
-                topk_weights_arg, mul_routed_weight=mul_routed_weight,
-                group_size=group_size, use_int4=use_int4,
-            )
-            torch.cuda.synchronize()
-
-            ref = reference_fused_moe(
-                input_tensor, qweight, scales_t, zeros_t, topk_ids,
-                topk_weights_arg, mul_routed_weight, group_size, use_int4,
-            ).to(device).to(torch.float16)
-
-            if torch.allclose(
-                torch.zeros_like(ref).float(), ref.float(),
-                atol=CORRECTNESS_ATOL, rtol=CORRECTNESS_RTOL,
-            ):
-                return False, f"Shape {i+1}: reference signal is too small"
-
-            if not _outputs_match(result, ref):
-                max_diff = (result.float() - ref.float()).abs().max().item()
-                return False, f"Shape {i+1}: max diff = {max_diff:.6f}"
-        except Exception as e:
-            return False, f"Shape {i+1}: exception: {e}"
-    return True, None
+            topk_weights_flat = torch.randn(M * topk, device=device, dtype=torch.float32).abs()
+            inputs={'A':input_tensor,'qweight':qweight,'scales':scales_t,'zeros':zeros_t,
+                    'ids':topk_ids,'weights':topk_weights_flat}
+            options={'mul_routed_weight':True,'group_size':group_size,'use_int4':True}
+            oracle, check = numerical_contract(options)
+            checked_call(lambda: invoke(mod, inputs, options), inputs=inputs,
+                         reference=oracle, check=check)
+        return True, None
+    except Exception as exc:
+        return False, exc
 
 
 def run_performance():
     import torch
-    try:
-        mod = load_module()
-    except Exception:
-        return []
-
-    device = "cuda"
+    mod = load_module()
+    device = 'cuda'
     test_cases = []
-
     for test_idx, (M, K, E, N, topk, group_size) in enumerate(TEST_SHAPES):
+        row = {'test_case_id': f'perf{test_idx+1}', 'params': {'M':M,'K':K,'E':E,'N':N,'topk':topk,'group_size':group_size}}
         try:
             torch.manual_seed(42 + test_idx)
-            input_tensor = torch.randn(M, K, device=device, dtype=torch.float16) * 0.5
-
-            # INT4 packed weights: [E, K//2, N] uint8
-            qweight = torch.randint(0, 256, (E, K // 2, N), device=device,
+            input_tensor = torch.randn(M, K, device=device, dtype=torch.float16) * 0.1
+            qweight = torch.randint(0, 255, (E, K // 2, N), device=device,
                                     dtype=torch.int32).to(torch.uint8)
             num_groups = K // group_size
             scales_t = (torch.randn(E, num_groups, N, device=device,
-                                    dtype=torch.float16).abs() * 0.05 + 0.02)
-            zeros_t = torch.randint(0, 256, (E, num_groups, N // 2), device=device,
+                                    dtype=torch.float16).abs() * 0.01 + 0.001)
+            zeros_t = torch.randint(0, 255, (E, num_groups, N // 2), device=device,
                                     dtype=torch.int32).to(torch.uint8)
             topk_ids = torch.randint(0, E, (M, topk), device=device, dtype=torch.int32)
             topk_weights_flat = torch.randn(M * topk, device=device, dtype=torch.float32).abs()
-
-            # Build the independent reference before any measured invocation.
-            reference = reference_fused_moe(
-                input_tensor, qweight, scales_t, zeros_t, topk_ids,
-                topk_weights_flat, True, group_size, True,
-            ).to(device).to(torch.float16)
-            if torch.allclose(
-                torch.zeros_like(reference).float(), reference.float(),
-                atol=CORRECTNESS_ATOL, rtol=CORRECTNESS_RTOL,
-            ):
-                raise RuntimeError("performance reference signal is too small")
-            timed_output = [None]
-
-            def _bench_fn():
-                result = mod.fused_moe_gptq_awq(
-                    input_tensor, qweight, scales_t, zeros_t,
-                    topk_ids, topk_weights_flat,
-                    True, group_size, use_int4=True,
-                )
-                timed_output[0] = result
-                return result
-
-            elapsed_ms, benchmark_metadata = _benchmark_cuda_graph_or_events(
-                _bench_fn,
-                warmup=WARMUP_ITERATIONS,
-                repetition=BENCHMARK_ITERATIONS,
-                use_cuda_graph=False,
-                fallback_reason="fused_moe_host_routing_and_dynamic_allocations",
-            )
-            if timed_output[0] is None or not _outputs_match(
-                timed_output[0], reference
-            ):
-                raise RuntimeError("timed invocation output failed validation")
-
-            test_cases.append({
-                "test_case_id": f"perf{test_idx + 1}",
-                "execution_time_ms": elapsed_ms,
-                **benchmark_metadata,
-                "params": {
-                    "M": M,
-                    "K": K,
-                    "E": E,
-                    "N": N,
-                    "topk": topk,
-                    "group_size": group_size
-                }
-            })
-        except Exception:
-            test_cases.append({
-                "test_case_id": f"perf{test_idx + 1}",
-                "execution_time_ms": -1.0,
-                "params": {
-                    "M": M,
-                    "K": K,
-                    "E": E,
-                    "N": N,
-                    "topk": topk,
-                    "group_size": group_size
-                }
-            })
+            inputs={'A':input_tensor,'qweight':qweight,'scales':scales_t,'zeros':zeros_t,
+                    'ids':topk_ids,'weights':topk_weights_flat}
+            options={'mul_routed_weight':True,'group_size':group_size,'use_int4':True}
+            oracle, check = numerical_contract(options)
+            elapsed_ms, metadata = checked_benchmark(
+                _benchmark_cuda_graph_or_events, lambda: invoke(mod, inputs, options),
+                inputs=inputs, reference=oracle, check=check,
+                perturb=perturb_activation, warmup=WARMUP_ITERATIONS,
+                repetition=BENCHMARK_ITERATIONS, use_cuda_graph=False,
+                fallback_reason='fused_moe_host_routing_and_dynamic_allocations')
+            row.update(execution_time_ms=elapsed_ms, **metadata)
+        except Exception as exc:
+            row.update(execution_time_ms=-1.0, error=f'{type(exc).__name__}: {exc}',
+                       failure_kind=getattr(exc, 'failure_kind', 'measurement_failure'))
+        test_cases.append(row)
     return test_cases
 
 
@@ -317,7 +304,7 @@ def main():
 
     if args.mode == "compile":
         ok, err = run_compile()
-        report = {"status": "ok" if ok else "fail", "error": err}
+        report = {"status": "ok" if ok else "fail", "error": str(err) if err else None}
         with open(os.path.join(build_dir, "compile_report.json"), "w") as f:
             json.dump(report, f, indent=2)
         print(f"Compilation: {'PASS' if ok else 'FAIL'}")
@@ -325,7 +312,7 @@ def main():
         sys.exit(0 if ok else 1)
     elif args.mode == "correctness":
         ok, err = run_correctness()
-        report = {"status": "ok" if ok else "fail", "error": err, "num_shapes": len(TEST_SHAPES)}
+        report = {"status": "ok" if ok else "fail", "error": str(err) if err else None, "num_shapes": len(TEST_SHAPES)}
         with open(os.path.join(build_dir, "correctness_report.json"), "w") as f:
             json.dump(report, f, indent=2)
         print(f"Correctness: {'PASS' if ok else 'FAIL'}")

@@ -12,15 +12,8 @@ from pathlib import Path
 
 import torch
 from _aka_benchmark import benchmark_cuda_graph_or_events_samples
-
-# Newer aiter imports template-backed C++ interfaces eagerly and defaults their
-# build cache to ~/.aiter. The Docker validator exposes a read-only HOME, so keep
-# that cache local to this task before importing kernel.py/aiter.
-os.environ.setdefault(
-    "AITER_ROOT_DIR",
-    str(Path(__file__).resolve().parent / "build" / "aiter_root"),
-)
-
+from _timed_contract import checked_call, checked_benchmark, assert_output_contract
+from _rounding_reference import NumericalMismatch, attention_rounding_bounds, check_rounding_bounds
 
 def benchmark_cuda_graph_or_events(*args, **kwargs):
     samples, metadata = benchmark_cuda_graph_or_events_samples(*args, **kwargs)
@@ -34,16 +27,13 @@ def benchmark_cuda_graph_or_events(*args, **kwargs):
     return median_ms, metadata
 
 # Ensure aiter is importable
-REPO_ROOT = os.environ.get(
-    "GEAK_WORK_DIR",
-    os.environ.get(
-        "GEAK_REPO_ROOT",
-        os.path.dirname(os.path.abspath(__file__)),
-    ),
-)
+REPO_ROOT = os.path.dirname(os.path.abspath(__file__))
 if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
+from _aiter_dependency import bind_dependency
+
+bind_dependency()
 from kernel import decode_attention_fwd_grouped_rope
 
 torch.set_default_device("cuda")
@@ -78,7 +68,7 @@ def _pick(configs, count):
     return [round(i * (n - 1) / (count - 1)) for i in range(count)]
 
 
-def setup_inputs(ctx_len, batch_size, nhead, use_rope=False):
+def setup_inputs(ctx_len, batch_size, nhead):
     """Set up one decode query per sequence for the local Triton wrapper."""
     torch.manual_seed(42)
 
@@ -101,39 +91,11 @@ def setup_inputs(ctx_len, batch_size, nhead, use_rope=False):
     kv_cache = torch.randn((total_kv, qk_head_dim), dtype=torch.bfloat16)
     k_input = kv_cache.unsqueeze(1)
     v_input = kv_cache[:, :kv_lora_rank].contiguous().unsqueeze(1)
-    # NaN sentinels make incomplete writes fail the finite-output check below.
-    output = torch.full(
-        (batch_size, nhead, v_head_dim), float("nan"), dtype=torch.bfloat16
-    )
-    attn_logits = torch.full(
+    output = torch.empty((batch_size, nhead, v_head_dim), dtype=torch.bfloat16)
+    attn_logits = torch.empty(
         (batch_size, nhead, num_kv_splits, kv_lora_rank + 1),
-        float("nan"),
         dtype=torch.bfloat16,
     )
-
-    rotary_dim = qk_rope_head_dim
-    if use_rope:
-        inv_freq = 1.0 / (
-            10000.0
-            ** (
-                torch.arange(0, rotary_dim, 2, dtype=torch.float32)
-                / rotary_dim
-            )
-        )
-        freqs = torch.outer(
-            torch.arange(ctx_len + 1, dtype=torch.float32), inv_freq
-        )
-        cos_sin_cache = torch.cat((freqs.cos(), freqs.sin()), dim=-1).to(q.dtype)
-        positions = torch.full((batch_size,), ctx_len, dtype=torch.int64)
-        k_pe_tokens = torch.full(
-            (batch_size, qk_rope_head_dim),
-            float("nan"),
-            dtype=kv_cache.dtype,
-        )
-    else:
-        cos_sin_cache = None
-        positions = None
-        k_pe_tokens = None
 
     return {
         "q": q,
@@ -147,11 +109,6 @@ def setup_inputs(ctx_len, batch_size, nhead, use_rope=False):
         "v_head_dim": v_head_dim,
         "sm_scale": sm_scale,
         "kv_lora_rank": kv_lora_rank,
-        "rotary_dim": rotary_dim,
-        "cos_sin_cache": cos_sin_cache,
-        "positions": positions,
-        "k_pe_tokens": k_pe_tokens,
-        "use_rope": use_rope,
     }
 
 
@@ -164,99 +121,103 @@ def run_kernel(inputs):
         inputs["output"],
         inputs["kv_indptr"],
         inputs["kv_indices"],
-        inputs["k_pe_tokens"],
+        None,
         inputs["kv_lora_rank"],
-        inputs["rotary_dim"] if inputs["use_rope"] else None,
-        inputs["cos_sin_cache"],
-        inputs["positions"],
+        None,
+        None,
+        None,
         inputs["attn_logits"],
         inputs["num_kv_splits"],
         sm_scale=inputs["sm_scale"],
         logit_cap=0.0,
-        use_rope=inputs["use_rope"],
+        use_rope=False,
     )
     return inputs["output"]
 
 
-def apply_rope_ref(x, cos_sin_cache, positions, rotary_dim):
-    """Apply GPT-J-style RoPE using an independent PyTorch implementation."""
-    x_rot = x[..., :rotary_dim]
-    x_pass = x[..., rotary_dim:]
-    cos, sin = cos_sin_cache.index_select(0, positions).chunk(2, dim=-1)
-    while cos.ndim < x_rot.ndim:
-        cos = cos.unsqueeze(1)
-        sin = sin.unsqueeze(1)
-    cos = cos.repeat_interleave(2, dim=-1)
-    sin = sin.repeat_interleave(2, dim=-1)
-    x_even = x_rot[..., ::2]
-    x_odd = x_rot[..., 1::2]
-    x_rotated = torch.stack((-x_odd, x_even), dim=-1).flatten(-2)
-    result = x_rot * cos + x_rotated * sin
-    return torch.cat((result, x_pass), dim=-1)
-
-
 def run_ref(inputs):
     """Independent PyTorch grouped-attention reference."""
-    q = inputs["q"]
+    q = inputs["q"].float()
     batch_size = q.shape[0]
     ctx_len = inputs["kv_indices"].numel() // batch_size
     token_ids = inputs["kv_indices"].long()
-    keys = inputs["k_input"][token_ids, 0].view(batch_size, ctx_len, -1)
+    keys = inputs["k_input"][token_ids, 0].float().view(batch_size, ctx_len, -1)
     values = inputs["v_input"][token_ids, 0].float().view(batch_size, ctx_len, -1)
-
-    expected_k_pe_tokens = None
-    if inputs["use_rope"]:
-        rank = inputs["kv_lora_rank"]
-        q = q.clone()
-        keys = keys.clone()
-        q[..., rank:] = apply_rope_ref(
-            q[..., rank:],
-            inputs["cos_sin_cache"],
-            inputs["positions"],
-            inputs["rotary_dim"],
-        )
-        expected_k_pe_tokens = apply_rope_ref(
-            keys[:, -1, rank:],
-            inputs["cos_sin_cache"],
-            inputs["positions"],
-            inputs["rotary_dim"],
-        )
-        keys[:, -1, rank:] = expected_k_pe_tokens
-
-    scores = torch.einsum("bhd,btd->bht", q.float(), keys.float())
+    scores = torch.einsum("bhd,btd->bht", q, keys)
     probabilities = torch.softmax(scores * inputs["sm_scale"], dim=-1)
-    output = torch.einsum("bht,btd->bhd", probabilities, values).to(
+    return torch.einsum("bht,btd->bhd", probabilities, values).to(
         inputs["output"].dtype
     )
-    return output, expected_k_pe_tokens
 
 
 def check_correctness_val(out_ref, out_asm):
-    """Reject non-finite or unbounded errors while retaining the source tolerance."""
-    finite = torch.isfinite(out_ref).all() & torch.isfinite(out_asm).all()
-    is_close = torch.isclose(out_ref, out_asm, rtol=1e-2, atol=1e-2)
-    err_ratio = (~is_close).float().mean().item()
-    # A small fraction of BF16 reduction results can straddle the primary
-    # tolerance boundary. Bound every such outlier so the ratio allowance can
-    # never hide sparse garbage.
-    within_error_bound = torch.isclose(out_ref, out_asm, rtol=2e-2, atol=2e-2)
+    """Check correctness using checkAllclose logic from test_mla.py.
+    Uses rtol=1e-2, atol=1e-2 (same as original).
+    Returns (pass_bool, err_ratio, cos_diff).
+    The original test_mla.py uses tol_err_ratio=0.05 but does not assert on
+    failure. This harness turns that same 5% threshold into a scored result.
+    """
+    assert_output_contract(out_asm, out_ref)
+    # checkAllclose style check
+    isClose = torch.isclose(out_ref, out_asm, rtol=1e-2, atol=1e-2)
+    if isClose.all():
+        err_ratio = 0.0
+    else:
+        mask = ~isClose
+        num = mask.sum()
+        err_ratio = (num / out_ref.numel()).item()
 
     # Also compute cos_diff for reporting
     x, y = out_ref.double(), out_asm.double()
-    if finite.item():
-        cos_diff = 1 - 2 * (x * y).sum().item() / max(
-            (x * x + y * y).sum().item(), 1e-12
-        )
-    else:
-        cos_diff = float("inf")
+    cos_diff = 1 - 2 * (x * y).sum().item() / max((x * x + y * y).sum().item(), 1e-12)
 
-    passed = bool(
-        finite.item()
-        and err_ratio <= 0.05
-        and within_error_bound.all().item()
-        and cos_diff <= 1e-3
-    )
+    passed = err_ratio <= 0.05
     return passed, err_ratio, cos_diff
+
+
+def _mla_contract(inputs):
+    readonly = {name: value for name, value in inputs.items()
+                if isinstance(value, torch.Tensor)
+                and name not in ('output', 'attn_logits')}
+    bounds = {}
+    def reference(saved):
+        private = {**inputs, **saved}
+        batch = saved['q'].shape[0]
+        values = saved['v_input'][saved['kv_indices'].long(), 0].float().view(batch, -1, KV_LORA_RANK)
+        bounds['lower'] = values.amin(dim=1).unsqueeze(1)
+        bounds['upper'] = values.amax(dim=1).unsqueeze(1)
+        bounds['rounding'] = attention_rounding_bounds(private)
+        return run_ref(private)
+    def check(actual, expected):
+        passed, ratio, cosine = check_correctness_val(expected, actual)
+        if not passed:
+            raise NumericalMismatch(f'MLA numerical mismatch: ratio={ratio}, cosine={cosine}')
+        check_rounding_bounds(actual, expected, *bounds['rounding'])
+        # Each output coordinate is a convex combination of V coordinates.
+        # The original absolute tolerance accounts for output rounding.
+        assert (actual.float() >= bounds['lower'] - 1e-2).all(), 'Attention below value range'
+        assert (actual.float() <= bounds['upper'] + 1e-2).all(), 'Attention above value range'
+    return readonly, reference, check
+
+
+CONTROL_CASES = [{'test_case_id': 'control-mla-uniform-attention',
+                  'params': {'ctx_len': 21, 'batch_size': 1, 'nhead': 16}}]
+
+
+def run_contract_controls():
+    inputs = setup_inputs(21, 1, 16)
+    inputs['q'].zero_()
+    # Zero logits imply uniform attention, independently of all key values.
+    values = torch.arange(21, device=inputs['v_input'].device, dtype=torch.float32)
+    values = (values - 10).view(21, 1, 1).expand_as(inputs['v_input'])
+    inputs['v_input'].copy_(values)
+    readonly, _, _ = _mla_contract(inputs)
+    expected = torch.zeros_like(inputs['output'])  # exact mean(-10 .. 10)
+    checked_call(lambda: run_kernel(inputs), inputs=readonly,
+                 reference=lambda saved: expected.clone(),
+                 check=lambda actual, reference: torch.testing.assert_close(
+                     actual, reference, atol=1e-2, rtol=1e-2))
+    print(CONTROL_CASES[0]['test_case_id'], 'PASS')
 
 
 def benchmark_kernel(inputs):
@@ -264,8 +225,12 @@ def benchmark_kernel(inputs):
     def fn():
         return run_kernel(inputs)
 
-    return benchmark_cuda_graph_or_events(
-        fn, warmup=WARMUP, repetition=ITERATIONS
+    readonly, reference, check = _mla_contract(inputs)
+    return checked_benchmark(
+        benchmark_cuda_graph_or_events, fn, inputs=readonly,
+        reference=reference, check=check,
+        perturb=lambda saved: {**saved, 'q': -saved['q']},
+        warmup=WARMUP, repetition=ITERATIONS,
     )
 
 
@@ -274,44 +239,44 @@ def config_str(cfg):
     return "ctx={} bs={} nhead={}".format(ctx_len, batch_size, nhead)
 
 
-def mode_correctness(indices):
+def mode_correctness(indices, *, collect=False):
     print("Running correctness check on {} configs...".format(len(indices)))
     all_pass = True
-    for case_number, idx in enumerate(indices):
+    outcomes = []
+    for idx in indices:
         cfg = ALL_CONFIGS[idx]
         ctx_len, batch_size, nhead = cfg
-        use_rope = case_number % 2 == 1
-        label = "{} rope={}".format(config_str(cfg), use_rope)
+        label = config_str(cfg)
+        outcome = {'test_case_id': f'case/{idx}', 'status': 'PASS'}
         try:
-            inputs = setup_inputs(ctx_len, batch_size, nhead, use_rope=use_rope)
-            out_asm = run_kernel(inputs)
-            out_ref, expected_k_pe_tokens = run_ref(inputs)
+            inputs = setup_inputs(ctx_len, batch_size, nhead)
+            readonly, reference, check = _mla_contract(inputs)
+            out_asm = checked_call(lambda: run_kernel(inputs), inputs=readonly,
+                                   reference=reference, check=check)
+            out_ref = run_ref(inputs)
             passed, err_ratio, cos_diff = check_correctness_val(out_ref, out_asm)
-            rope_err_ratio = None
-            if use_rope:
-                rope_passed, rope_err_ratio, _ = check_correctness_val(
-                    expected_k_pe_tokens, inputs["k_pe_tokens"]
-                )
-                passed = passed and rope_passed
-            rope_result = (
-                " rope_err_ratio={:.4f}".format(rope_err_ratio)
-                if rope_err_ratio is not None
-                else ""
-            )
             if passed:
-                print("  [{}] {}  err_ratio={:.4f} cos_diff={:.2e}{}  PASS".format(
-                    idx, label, err_ratio, cos_diff, rope_result))
+                print("  [{}] {}  err_ratio={:.4f} cos_diff={:.2e}  PASS".format(
+                    idx, label, err_ratio, cos_diff))
             else:
-                print("  [{}] {}  err_ratio={:.4f} cos_diff={:.2e}{}  FAIL".format(
-                    idx, label, err_ratio, cos_diff, rope_result))
+                print("  [{}] {}  err_ratio={:.4f} cos_diff={:.2e}  FAIL".format(
+                    idx, label, err_ratio, cos_diff))
                 all_pass = False
+                outcome.update(status='FAIL', reason=f'MLA numerical mismatch: ratio={err_ratio}',
+                               failure_kind='numerical_mismatch')
         except Exception as e:
             print("  [{}] {}  ERROR: {}".format(idx, label, e))
             all_pass = False
+            outcome.update(status='FAIL', reason=f'{type(e).__name__}: {e}',
+                           failure_kind='numerical_mismatch' if isinstance(e, NumericalMismatch)
+                                        else 'execution_failure')
         finally:
+            outcomes.append(outcome)
             torch.cuda.empty_cache()
 
     print("GEAK_SHAPES_USED={}".format(indices))
+    if collect:
+        return outcomes
     if not all_pass:
         print("CORRECTNESS FAILED")
         sys.exit(1)

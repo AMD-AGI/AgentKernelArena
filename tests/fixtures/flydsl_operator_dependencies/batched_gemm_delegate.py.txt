@@ -1,0 +1,95 @@
+"""FlyDSL implementation of the batched bf16 GEMM contract."""
+
+import torch
+import flydsl.compiler as flyc
+
+# This is FlyDSL's native HGEMM family.  It emits and launches a FlyDSL kernel;
+# the loop here only maps the strided batch ABI onto its contiguous 2-D ABI.
+from aiter.ops.flydsl.gemm_kernels import flydsl_hgemm
+
+
+# Each library HGEMM launch operates on one 2-D matrix.  Keep a small pool of
+# streams so independent batch matrices can occupy the GPU together instead of
+# serializing sixteen under-filled grids on the caller stream.
+_STREAMS: dict[tuple[int, int], list[torch.cuda.Stream]] = {}
+
+
+def _stream_count(n: int) -> int:
+    return 1 if n == 8192 else 4
+
+
+def _batch_streams(device: torch.device, count: int) -> list[torch.cuda.Stream]:
+    index = device.index if device.index is not None else torch.cuda.current_device()
+    key = (index, count)
+    streams = _STREAMS.get(key)
+    if streams is None:
+        streams = [torch.cuda.Stream(device=device) for _ in range(count)]
+        _STREAMS[key] = streams
+    return streams
+
+
+def _config(m: int, n: int, k: int) -> dict:
+    # This exact wide-N shape otherwise takes the small-M 16-row family,
+    # staging four M tiles per matrix.  A 64-row generic tile is exact here
+    # and retains the proven two-stage direct-B-to-LDS pipeline.
+    if (m, n, k) == (64, 8192, 1024):
+        return dict(
+            kernel_family="hgemm", tile_m=64, tile_n=64, tile_k=64,
+            block_m_warps=1, block_n_warps=4, block_k_warps=1,
+            stages=2, b_to_lds=True,
+        )
+    # This exact dense projection benefits from additional N workgroups while
+    # retaining the same 128-row and 64-K MFMA blocking.
+    if (m, n, k) == (128, 1280, 8192):
+        return dict(
+            kernel_family="hgemm", tile_m=128, tile_n=64, tile_k=64,
+            block_m_warps=2, block_n_warps=2, block_k_warps=1,
+            stages=2, b_to_lds=True,
+        )
+    if (m, n, k) == (256, 8192, 1024):
+        return dict(
+            kernel_family="hgemm", tile_m=128, tile_n=64, tile_k=64,
+            block_m_warps=2, block_n_warps=2, block_k_warps=1,
+            stages=2, b_to_lds=True,
+        )
+    if (m, n, k) == (512, 1280, 8192):
+        return dict(
+            kernel_family="hgemm", tile_m=128, tile_n=64, tile_k=128,
+            block_m_warps=2, block_n_warps=2, block_k_warps=1,
+            stages=2, b_to_lds=True,
+        )
+    # The small-M family is specialized for narrow projection cases.
+    if m <= 64:
+        return dict(
+            kernel_family="small_m", tile_m=16, tile_n=128, tile_k=64,
+            block_m_warps=1, block_n_warps=2, block_k_warps=1,
+            stages=2, b_to_lds=True,
+        )
+    return dict(
+        kernel_family="hgemm", tile_m=128, tile_n=128, tile_k=64,
+        block_m_warps=2, block_n_warps=2, block_k_warps=1,
+        stages=2, b_to_lds=True,
+    )
+
+
+def flydsl_batched_gemm_bf16(x: torch.Tensor, w: torch.Tensor) -> torch.Tensor:
+    """Compute ``x[b] @ w[b].T`` with fp32 MFMA accumulation and bf16 output."""
+    b, m, k = x.shape
+    n = w.shape[1]
+    out = torch.empty((b, m, n), device=x.device, dtype=x.dtype)
+    cfg = _config(m, n, k)
+    stream_count = min(b, _stream_count(n))
+    parent_stream = torch.cuda.current_stream(x.device)
+    streams = _batch_streams(x.device, stream_count)
+    # Inputs may have been produced on the caller stream immediately before
+    # this operator.  Make each child stream observe that producer work.
+    for stream in streams:
+        stream.wait_stream(parent_stream)
+    for batch in range(b):
+        stream = streams[batch % stream_count]
+        with torch.cuda.stream(stream):
+            flydsl_hgemm(x[batch], w[batch], out[batch], **cfg)
+    # Preserve ordinary eager-stream semantics for the returned tensor.
+    for stream in streams:
+        parent_stream.wait_stream(stream)
+    return out

@@ -1,0 +1,145 @@
+{
+  "version": 1,
+  "candidate_symbols": {
+    "source/triton_rejection_random_sample.py": [
+      {
+        "name": "rejection_random_sample_kernel",
+        "jit": true
+      }
+    ]
+  },
+  "case_table": "TEST_SHAPES",
+  "input_table": [
+    [
+      4,
+      3,
+      8,
+      64
+    ],
+    [
+      8,
+      5,
+      16,
+      128
+    ],
+    [
+      16,
+      4,
+      16,
+      256
+    ],
+    [
+      32,
+      6,
+      32,
+      512
+    ],
+    [
+      64,
+      8,
+      64,
+      256
+    ]
+  ],
+  "cases": [
+    {
+      "test_case_id": "perf1",
+      "dtype": "bool,float64,int32",
+      "params": {
+        "case_index": 0,
+        "configuration": [
+          4,
+          3,
+          8,
+          64
+        ],
+        "configuration_names": "(batch_size, max_draft, max_spec_len, vocab_size)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf2",
+      "dtype": "bool,float64,int32",
+      "params": {
+        "case_index": 1,
+        "configuration": [
+          8,
+          5,
+          16,
+          128
+        ],
+        "configuration_names": "(batch_size, max_draft, max_spec_len, vocab_size)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf3",
+      "dtype": "bool,float64,int32",
+      "params": {
+        "case_index": 2,
+        "configuration": [
+          16,
+          4,
+          16,
+          256
+        ],
+        "configuration_names": "(batch_size, max_draft, max_spec_len, vocab_size)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf4",
+      "dtype": "bool,float64,int32",
+      "params": {
+        "case_index": 3,
+        "configuration": [
+          32,
+          6,
+          32,
+          512
+        ],
+        "configuration_names": "(batch_size, max_draft, max_spec_len, vocab_size)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf5",
+      "dtype": "bool,float64,int32",
+      "params": {
+        "case_index": 4,
+        "configuration": [
+          64,
+          8,
+          64,
+          256
+        ],
+        "configuration_names": "(batch_size, max_draft, max_spec_len, vocab_size)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    }
+  ],
+  "migration": {
+    "original_harness_sha256": "3b85a7061b98eba0944ef238e06664723c1bc35a7c747e01d57124361b82f469",
+    "original_correctness_sha256": "31811d680b4dbbe8093db170b08d4963ad345f3c5798f262f7e8ab89bed680f9"
+  }
+}

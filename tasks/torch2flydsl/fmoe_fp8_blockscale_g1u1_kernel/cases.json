@@ -1,0 +1,49 @@
+{
+  "cases": [
+    {
+      "test_case_id": "case_0000",
+      "params": {
+        "tokens": 16,
+        "model_dim": 7168,
+        "inter_dim": 256,
+        "experts": 257,
+        "topk": 9,
+        "seed": 20260401
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0001",
+      "params": {
+        "tokens": 32,
+        "model_dim": 7168,
+        "inter_dim": 256,
+        "experts": 257,
+        "topk": 9,
+        "seed": 20260401
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0002",
+      "params": {
+        "tokens": 32,
+        "model_dim": 6144,
+        "inter_dim": 256,
+        "experts": 257,
+        "topk": 9,
+        "seed": 20260401
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    }
+  ]
+}

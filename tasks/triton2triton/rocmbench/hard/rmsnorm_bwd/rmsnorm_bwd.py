@@ -556,84 +556,96 @@ def test_rmsnorm(M, N, ZERO_CENTERED_GAMMA, in_dtype_str, out_dtype_str, request
     USE_BLOCKED = n_cols > blk_size
     NUM_PRGMS = min(n_rows, get_num_sms())
 
-    y_triton = rmsnorm(x, g, y, rsigma, dx, dg, dg_tmp, n_rows, n_cols, ZERO_CENTERED_GAMMA, blk_size, USE_BLOCKED,
-                       NUM_PRGMS)
+    from _arena_reference import FrozenInputs
+    frozen = FrozenInputs([x, g])
+    backward_inputs = None
+    try:
+        y_triton = rmsnorm(x, g, y, rsigma, dx, dg, dg_tmp, n_rows, n_cols, ZERO_CENTERED_GAMMA, blk_size, USE_BLOCKED,
+                           NUM_PRGMS)
 
-    y_torch, rsigma_torch = torch_rmsnorm_fwd(x, g, ZERO_CENTERED_GAMMA, out_dtype)
+        y_torch, rsigma_torch = torch_rmsnorm_fwd(x, g, ZERO_CENTERED_GAMMA, out_dtype)
 
-    if out_dtype in (torch.float16, torch.bfloat16):
-        atol, rtol = 1e-3, 1e-2
-    else:
-        # float32 typically can be tighter
-        atol, rtol = 1e-5, 1e-5
+        if out_dtype in (torch.float16, torch.bfloat16):
+            atol, rtol = 1e-3, 1e-2
+        else:
+            # float32 typically can be tighter
+            atol, rtol = 1e-5, 1e-5
 
-    result_gold['_CALL_SUCCESS_'] = torch.tensor([[1.0]])
-    
-    assert y_triton.dtype == out_dtype, f"y_triton has dtype={y_triton.dtype}, expected {out_dtype}"
-    assert y_torch.dtype == out_dtype, f"y_torch has dtype={y_torch.dtype}, expected {out_dtype}"
+        result_gold['_CALL_SUCCESS_'] = torch.tensor([[1.0]])
 
-    assert torch.allclose(y_triton, y_torch, atol=atol, rtol=rtol), \
-        f"Mismatch in 'y' (in={in_dtype_str}, out={out_dtype_str})"
-    assert torch.allclose(rsigma, rsigma_torch, atol=atol, rtol=rtol), \
-        f"Mismatch in 'rsigma' (in={in_dtype_str}, out={out_dtype_str})"
+        assert y_triton.dtype == out_dtype, f"y_triton has dtype={y_triton.dtype}, expected {out_dtype}"
+        assert y_torch.dtype == out_dtype, f"y_torch has dtype={y_torch.dtype}, expected {out_dtype}"
 
-    grad_output = torch.randn_like(y_torch)
+        assert torch.allclose(y_triton, y_torch, atol=atol, rtol=rtol), \
+            f"Mismatch in 'y' (in={in_dtype_str}, out={out_dtype_str})"
+        assert torch.allclose(rsigma, rsigma_torch, atol=atol, rtol=rtol), \
+            f"Mismatch in 'rsigma' (in={in_dtype_str}, out={out_dtype_str})"
 
-    # 1) PyTorch reference backward
-    # We must clone and set requires_grad = True for backward
-    x_ref = x.clone().detach().requires_grad_()
-    g_ref = g.clone().detach().requires_grad_()
-    y_ref, rsigma_ref = torch_rmsnorm_fwd(x_ref, g_ref, ZERO_CENTERED_GAMMA, out_dtype)
+        grad_output = torch.randn_like(y_torch)
 
-    # Backpropagate through PyTorch
-    y_ref.backward(grad_output)
-    grad_x_ref = x_ref.grad.to(out_dtype)
-    grad_g_ref = g_ref.grad.to(out_dtype)
+        # 1) PyTorch reference backward
+        # We must clone and set requires_grad = True for backward
+        x_ref = frozen.original[0].clone().requires_grad_()
+        g_ref = frozen.original[1].clone().requires_grad_()
+        y_ref, rsigma_ref = torch_rmsnorm_fwd(x_ref, g_ref, ZERO_CENTERED_GAMMA, out_dtype)
 
-    # 2) Triton backward
-    x_triton = x.clone().detach().requires_grad_()
-    g_triton = g.clone().detach().requires_grad_()
+        # Backpropagate through PyTorch
+        y_ref.backward(grad_output)
+        grad_x_ref = x_ref.grad.to(out_dtype)
+        grad_g_ref = g_ref.grad.to(out_dtype)
 
-    y_triton_buf = torch.empty_like(x_triton, dtype=out_dtype)
-    rsigma_triton = torch.empty((M, ), device=x_triton.device, dtype=torch.float32)
+        # 2) Triton backward
+        x_triton = x.clone().detach().requires_grad_()
+        g_triton = g.clone().detach().requires_grad_()
 
-    dx_b = torch.empty_like(x_triton, dtype=in_dtype, requires_grad=False)
-    dg_b = torch.empty_like(g_triton, dtype=in_dtype, requires_grad=False)
-    dg_tmp_b = torch.zeros(M, N, device=x_triton.device, dtype=torch.float32, requires_grad=False)
+        y_triton_buf = torch.empty_like(x_triton, dtype=out_dtype)
+        rsigma_triton = torch.empty((M, ), device=x_triton.device, dtype=torch.float32)
 
-    # Run Triton forward pass to build the graph for backward.
-    y_triton = rmsnorm(x_triton, g_triton, y_triton_buf, rsigma_triton, dx_b, dg_b, dg_tmp_b, n_rows, n_cols,
-                       ZERO_CENTERED_GAMMA, blk_size, USE_BLOCKED, NUM_PRGMS)
-    y_triton.backward(grad_output, retain_graph=True)
-    grad_x_triton = x_triton.grad.to(out_dtype)
-    grad_g_triton = g_triton.grad.to(out_dtype)
+        dx_b = torch.empty_like(x_triton, dtype=in_dtype, requires_grad=False)
+        dg_b = torch.empty_like(g_triton, dtype=in_dtype, requires_grad=False)
+        dg_tmp_b = torch.zeros(M, N, device=x_triton.device, dtype=torch.float32, requires_grad=False)
 
-    # Compare backward outputs (grad_x and grad_g)
-    err_x = (grad_x_triton - grad_x_ref).abs().max().item()
+        # Run Triton forward pass to build the graph for backward.
+        y_triton = rmsnorm(x_triton, g_triton, y_triton_buf, rsigma_triton, dx_b, dg_b, dg_tmp_b, n_rows, n_cols,
+                           ZERO_CENTERED_GAMMA, blk_size, USE_BLOCKED, NUM_PRGMS)
+        backward_inputs = FrozenInputs([x_triton, g_triton, grad_output, rsigma_triton])
+        y_triton.backward(grad_output, retain_graph=True)
+        grad_x_triton = x_triton.grad.to(out_dtype)
+        grad_g_triton = g_triton.grad.to(out_dtype)
 
-
-    ################### save grad_x_triton, grad_g_triton in result_gold ###################
-    test_case_name = request.node.name
-    sanitized_key_name = test_case_name.replace("::", "_").replace("[", "_").replace("]", "").replace("-", "_") + "_grad_x_triton"
-    result_gold[sanitized_key_name] = grad_x_triton.clone().detach().cpu()
-
-    sanitized_key_name = test_case_name.replace("::", "_").replace("[", "_").replace("]", "").replace("-", "_") + "_grad_g_triton"
-    result_gold[sanitized_key_name] = grad_g_triton.clone().detach().cpu()
-    ################################################################### 
+        # Compare backward outputs (grad_x and grad_g)
+        err_x = (grad_x_triton - grad_x_ref).abs().max().item()
 
 
-    assert torch.allclose(grad_x_triton, grad_x_ref, atol=atol, rtol=rtol), \
-    f"Triton dx mismatch (max error: {err_x:.4e})\n\n"
-    f"Triton grad x:\n{grad_x_triton}\n\nPyTorch grad_x:\n{grad_x_ref}"
+        ################### save grad_x_triton, grad_g_triton in result_gold ###################
+        test_case_name = request.node.name
+        sanitized_key_name = test_case_name.replace("::", "_").replace("[", "_").replace("]", "").replace("-", "_") + "_grad_x_triton"
+        result_gold[sanitized_key_name] = grad_x_triton.clone().detach().cpu()
 
-    err_g = (grad_g_triton - grad_g_ref).abs().max().item()
-    assert torch.allclose(grad_g_triton, grad_g_ref, atol=atol, rtol=rtol), \
-    f"Triton dg mismatch (max error: {err_g:.4e})\n\n"
-    f"Triton grad g:\n{grad_g_triton}\n\nPyTorch grad_g:\n{grad_g_ref}"
+        sanitized_key_name = test_case_name.replace("::", "_").replace("[", "_").replace("]", "").replace("-", "_") + "_grad_g_triton"
+        result_gold[sanitized_key_name] = grad_g_triton.clone().detach().cpu()
+        ###################################################################
 
 
-# --- Define TFLOPS and GB/s calculators for the RMSNorm backward target ---
-def calculate_rmsnorm_bwd_gbps(params: dict, ms: float) -> float:
+        assert torch.allclose(grad_x_triton, grad_x_ref, atol=atol, rtol=rtol), \
+        f"Triton dx mismatch (max error: {err_x:.4e})\n\n"
+        f"Triton grad x:\n{grad_x_triton}\n\nPyTorch grad_x:\n{grad_x_ref}"
+
+        err_g = (grad_g_triton - grad_g_ref).abs().max().item()
+        assert torch.allclose(grad_g_triton, grad_g_ref, atol=atol, rtol=rtol), \
+        f"Triton dg mismatch (max error: {err_g:.4e})\n\n"
+        f"Triton grad g:\n{grad_g_triton}\n\nPyTorch grad_g:\n{grad_g_ref}"
+
+        frozen.check()
+        backward_inputs.check()
+        request.node.user_properties.append(("rms_bwd_contract", {"readonly_input_checked": True, "full_output_checked": True, "original_autograd_gates_checked": True}))
+    finally:
+        frozen.restore()
+        if backward_inputs is not None: backward_inputs.restore()
+
+
+# --- Define TFLOPS and GB/s calculators for RMSNorm Forward ---
+def calculate_rmsnorm_fwd_gbps(params: dict, ms: float) -> float:
     M, N = params['M'], params['N']
     dtype_str = params.get('dtype_str', 'fp16')
     if dtype_str == 'fp32': current_dtype = torch.float32
@@ -641,20 +653,57 @@ def calculate_rmsnorm_bwd_gbps(params: dict, ms: float) -> float:
     else: current_dtype = torch.float16
     element_size = torch.tensor([], dtype=current_dtype).element_size()
     
-    # Read grad_output (M,N), x (M,N), g (N), and rsigma (M).
-    # Write dx (M,N) and the fp32 intermediate dg (M,N).
-    bytes_read = 2 * M * N * element_size + N * element_size + M * 4
-    bytes_written = M * N * element_size + M * N * 4
+    # Read x (M,N), g (N)
+    # Write y (M,N), rsigma (M)
+    bytes_read_x = M * N * element_size
+    bytes_read_g = N * element_size
+    bytes_write_y = M * N * element_size
+    bytes_write_rsigma = M * 4 # rsigma is usually float32
 
-    total_bytes = bytes_read + bytes_written
+    total_bytes = bytes_read_x + bytes_read_g + bytes_write_y + bytes_write_rsigma
+    gbps = total_bytes / (ms / 1000) / 1e9
+    return gbps
+
+def calculate_rmsnorm_fwd_tflops(params: dict, ms: float) -> float:
+    M, N = params['M'], params['N']
+    # FLOPs for RMSNorm forward:
+    # 1. Sum of squares: N squares, N-1 additions per row (2N-1 ops)
+    # 2. Mean square: 1 division per row (1 op)
+    # 3. rsqrt: (approx ~5-10 ops, let's say 5)
+    # 4. Normalize & Scale: N mult (x*rsigma), N mult (*g) per row (2N ops)
+    # (If ZERO_CENTERED_GAMMA, N additions for g = g+1)
+    # Total per row approx: (2N-1) + 1 + 5 + 2N = 4N + 5 ops
+    # If ZERO_CENTERED_GAMMA: add N ops => 5N + 5
+    flops_per_row = 4 * N + 5
+    if params.get('ZERO_CENTERED_GAMMA', False):
+        flops_per_row += N
+    total_flops = M * flops_per_row
+    tflops = total_flops / (ms / 1000) / 1e12
+    return tflops
+
+def calculate_rmsnorm_bwd_gbps(params: dict, ms: float) -> float:
+    M, N = params['M'], params['N']
+    dtype_str = params.get('dtype_str', 'fp16')
+    if dtype_str == 'fp32': current_dtype = torch.float32
+    elif dtype_str == 'bf16': current_dtype = torch.bfloat16
+    else: current_dtype = torch.float16
+    element_size = torch.tensor([], dtype=current_dtype).element_size()
+
+    # Read: grad_output (M,N), x (M,N), g (N), rsigma (M)
+    # Write: dx (M,N), dg_tmp (M,N)
+    bytes_read = (2 * M * N + N) * element_size + M * 4  # rsigma is float32
+    bytes_write = M * N * element_size + M * N * 4  # dg_tmp is float32
+
+    total_bytes = bytes_read + bytes_write
     gbps = total_bytes / (ms / 1000) / 1e9
     return gbps
 
 def calculate_rmsnorm_bwd_tflops(params: dict, ms: float) -> float:
     M, N = params['M'], params['N']
-    # Per row: grad_sum uses 3N-1 ops, dx approximately 7N+3 ops,
-    # and dg uses 2N ops. Zero-centered gamma adds N additions.
-    flops_per_row = 12 * N + 2
+    # FLOPs for RMSNorm backward (per row):
+    # 1. dx computation: ~6N ops (dot products, scaling, subtraction)
+    # 2. dg accumulation: ~2N ops
+    flops_per_row = 8 * N
     if params.get('ZERO_CENTERED_GAMMA', False):
         flops_per_row += N
     total_flops = M * flops_per_row
@@ -683,15 +732,18 @@ def test_performance(M, N, ZERO_CENTERED_GAMMA, dtype_str, request):
     elif dtype_str == 'bf16': current_dtype = torch.bfloat16
     else: current_dtype = torch.float16
 
-    # Prepare inputs and output buffers for rms_bwd_kernel.
+    # Prepare inputs and output buffers for RMSNorm.apply
     x = torch.randn(M, N, device='cuda', dtype=current_dtype)
     g = torch.rand(N, device='cuda', dtype=current_dtype) # Original test_rmsnorm used (1,N)
                                                        # Kernel expects g_ptr + col_offsets, so 1D g is fine.
-    grad_output = torch.randn_like(x)
-    y_buffer = torch.empty_like(x)
-    rsigma_buffer = torch.empty(M, device='cuda', dtype=torch.float32)
-    dx_buffer = torch.empty_like(x)
-    dg_tmp_buffer = torch.empty(M, N, device='cuda', dtype=torch.float32)
+    y_buffer = torch.empty_like(x) # Output buffer for forward
+    rsigma_buffer = torch.empty(M, device='cuda', dtype=torch.float32) # rsigma output
+
+    # Dummy buffers for backward context (not used by fwd pass, but part of RMSNorm.apply signature)
+    # Their dtypes should match what backward pass would expect if it were called.
+    dx_dummy = torch.empty_like(x)
+    dg_dummy = torch.empty_like(g)
+    dg_tmp_dummy = torch.empty(M, N, device='cuda', dtype=torch.float32) # As per original test_rmsnorm
 
     # Kernel launch parameters (from original test_rmsnorm)
     n_rows, n_cols = x.shape
@@ -705,26 +757,26 @@ def test_performance(M, N, ZERO_CENTERED_GAMMA, dtype_str, request):
     NUM_PRGMS_fwd = min(n_rows, get_num_sms()) if n_rows > 0 and get_num_sms() > 0 else 1
 
 
-    # Populate the saved forward statistic outside the timed region.
-    grid_fwd = lambda meta: (NUM_PRGMS_fwd, )
-    rms_kernel[grid_fwd](
-        y_buffer, x, g, rsigma_buffer, x.stride(0), y_buffer.stride(0),
-        n_rows, n_cols, eps, ZERO_CENTERED_GAMMA,
-        blk_size_fwd, USE_BLOCKED_fwd, NUM_PRGMS_fwd
+    # --- Run forward pass once to obtain rsigma needed by backward ---
+    rmsnorm(
+        x, g, y_buffer, rsigma_buffer,
+        dx_dummy, dg_dummy, dg_tmp_dummy,
+        n_rows, n_cols, ZERO_CENTERED_GAMMA,
+        blk_size_fwd, USE_BLOCKED_fwd, NUM_PRGMS_fwd, eps
     )
 
-    # Time exactly the declared editable target. Both outputs are fully
-    # overwritten on every invocation, so repeated samples need no state reset.
+    # --- Create op_lambda for benchmarking the backward kernel ---
+    grad_output = torch.randn_like(x)
+    dx_bench = torch.empty_like(x)
+    dg_tmp_bench = torch.zeros(M, N, device='cuda', dtype=torch.float32)
     grid_bwd = lambda meta: (NUM_PRGMS_fwd, )
-
-    def op_lambda():
-        rms_bwd_kernel[grid_bwd](
-            grad_output, x, g, rsigma_buffer, dx_buffer, dg_tmp_buffer,
-            x.stride(0), grad_output.stride(0), n_rows, n_cols,
-            ZERO_CENTERED_GAMMA, blk_size_fwd, USE_BLOCKED_fwd,
-            NUM_PRGMS_fwd, num_warps=8
-        )
-        return dx_buffer, dg_tmp_buffer
+    num_warps_bwd = 8
+    op_lambda = lambda: rms_bwd_kernel[grid_bwd](
+        grad_output, x, g, rsigma_buffer, dx_bench, dg_tmp_bench,
+        x.stride(0), grad_output.stride(0), n_rows, n_cols,
+        ZERO_CENTERED_GAMMA, blk_size_fwd, USE_BLOCKED_fwd, NUM_PRGMS_fwd,
+        num_warps=num_warps_bwd
+    )
 
     # --- Benchmarking ---
     bench_config = do_bench_config(warm_up=10, repetition=100)
@@ -740,9 +792,24 @@ def test_performance(M, N, ZERO_CENTERED_GAMMA, dtype_str, request):
         "blk_size_fwd": blk_size_fwd, "USE_BLOCKED_fwd": USE_BLOCKED_fwd, "NUM_PRGMS_fwd": NUM_PRGMS_fwd
     }
 
+    # PyTorch baseline: autograd backward through torch_rmsnorm_fwd
+    x_ref = x.clone().detach().requires_grad_(True)
+    g_ref = g.clone().detach().requires_grad_(True)
+    grad_out_ref = torch.randn_like(x)
+    # Warm up the reference forward+backward once
+    y_ref, _ = torch_rmsnorm_fwd(x_ref, g_ref, ZERO_CENTERED_GAMMA, current_dtype, eps)
+    y_ref.backward(grad_out_ref, retain_graph=True)
+    def baseline_bwd():
+        x_ref.grad = None
+        g_ref.grad = None
+        y_r, _ = torch_rmsnorm_fwd(x_ref, g_ref, ZERO_CENTERED_GAMMA, current_dtype, eps)
+        y_r.backward(grad_out_ref, retain_graph=True)
+    baseline_callable = baseline_bwd
+
     benchmarker.run_benchmark(current_params_dict=current_params_for_logs_and_calc,
                               gbps_calculator=calculate_rmsnorm_bwd_gbps,
-                              tflops_calculator=calculate_rmsnorm_bwd_tflops)
+                              tflops_calculator=calculate_rmsnorm_bwd_tflops,
+                              baseline_callable=baseline_callable)
     
 ######################################## HELPERS for Eval ########################################     
 # --- Pytest hook to save the dictionary at the end of the session ---  

@@ -1,0 +1,128 @@
+{
+  "original_cases": {
+    "correctness": [
+      {
+        "m": 256,
+        "n": 512,
+        "k": 512,
+        "dtype_str": "bfloat16"
+      },
+      {
+        "m": 128,
+        "n": 256,
+        "k": 512,
+        "dtype_str": "float16"
+      }
+    ],
+    "performance": [
+      [
+        "gemm_m4096_n4096_k4096",
+        {
+          "m": 4096,
+          "n": 4096,
+          "k": 4096,
+          "dtype_str": "bfloat16"
+        }
+      ],
+      [
+        "gemm_m8192_n8192_k1024",
+        {
+          "m": 8192,
+          "n": 8192,
+          "k": 1024,
+          "dtype_str": "bfloat16"
+        }
+      ]
+    ]
+  },
+  "cases": [
+    {
+      "test_case_id": "correctness-0",
+      "params": {
+        "m": 256,
+        "n": 512,
+        "k": 512,
+        "dtype_str": "bfloat16",
+        "seed": 0
+      },
+      "checks": [
+        "correctness"
+      ],
+      "shape": [
+        256,
+        512,
+        512
+      ],
+      "dtype": "bfloat16"
+    },
+    {
+      "test_case_id": "correctness-1",
+      "params": {
+        "m": 128,
+        "n": 256,
+        "k": 512,
+        "dtype_str": "float16",
+        "seed": 0
+      },
+      "checks": [
+        "correctness"
+      ],
+      "shape": [
+        128,
+        256,
+        512
+      ],
+      "dtype": "float16"
+    },
+    {
+      "test_case_id": "gemm_m4096_n4096_k4096",
+      "params": {
+        "m": 4096,
+        "n": 4096,
+        "k": 4096,
+        "dtype_str": "bfloat16",
+        "seed": 0
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "shape": [
+        4096,
+        4096,
+        4096
+      ],
+      "dtype": "bfloat16",
+      "metadata": {
+        "timed_replay_input_transform": {
+          "x": "negate_in_place"
+        }
+      }
+    },
+    {
+      "test_case_id": "gemm_m8192_n8192_k1024",
+      "params": {
+        "m": 8192,
+        "n": 8192,
+        "k": 1024,
+        "dtype_str": "bfloat16",
+        "seed": 0
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "shape": [
+        8192,
+        8192,
+        1024
+      ],
+      "dtype": "bfloat16",
+      "metadata": {
+        "timed_replay_input_transform": {
+          "x": "negate_in_place"
+        }
+      }
+    }
+  ]
+}

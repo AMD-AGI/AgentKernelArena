@@ -1,0 +1,174 @@
+{
+  "original_cases": {
+    "correctness": [
+      {
+        "id": "qwen3_5-122b-decode-m64-ctx1024",
+        "model": "Qwen3.5-122B-A10B-FP8",
+        "session_id": "90d4b4a8-1db6-4e9b-9ce4-b1d9e7d5238d",
+        "kernel_ids": [
+          "L001"
+        ],
+        "gpu_pct": 15.799,
+        "params": {
+          "num_seqs": 64,
+          "num_query_heads": 4,
+          "num_kv_heads": 1,
+          "head_size": 256,
+          "block_size": 16,
+          "ctx_len": 1024,
+          "kv_cache_dtype": "auto",
+          "dtype": "bf16"
+        },
+        "trace_input_shapes": [
+          "Q/O (64,4,256) bf16",
+          "K/V step (64,1,256) bf16"
+        ]
+      },
+      {
+        "id": "qwen3_5-122b-decode-m64-ctx2048",
+        "model": "Qwen3.5-122B-A10B-FP8",
+        "session_id": "90d4b4a8-1db6-4e9b-9ce4-b1d9e7d5238d",
+        "kernel_ids": [
+          "L001"
+        ],
+        "gpu_pct": null,
+        "params": {
+          "num_seqs": 64,
+          "num_query_heads": 4,
+          "num_kv_heads": 1,
+          "head_size": 256,
+          "block_size": 16,
+          "ctx_len": 2048,
+          "kv_cache_dtype": "auto",
+          "dtype": "bf16"
+        },
+        "trace_input_shapes": [
+          "Q/O (64,4,256) bf16",
+          "K/V step (64,1,256) bf16"
+        ]
+      },
+      {
+        "id": "qwen3_5-122b-decode-m64-ctx3072",
+        "model": "Qwen3.5-122B-A10B-FP8",
+        "session_id": "90d4b4a8-1db6-4e9b-9ce4-b1d9e7d5238d",
+        "kernel_ids": [
+          "L001"
+        ],
+        "gpu_pct": null,
+        "params": {
+          "num_seqs": 64,
+          "num_query_heads": 4,
+          "num_kv_heads": 1,
+          "head_size": 256,
+          "block_size": 16,
+          "ctx_len": 3072,
+          "kv_cache_dtype": "auto",
+          "dtype": "bf16"
+        },
+        "trace_input_shapes": [
+          "Q/O (64,4,256) bf16",
+          "K/V step (64,1,256) bf16"
+        ]
+      }
+    ],
+    "performance": null
+  },
+  "cases": [
+    {
+      "test_case_id": "qwen3_5-122b-decode-m64-ctx1024",
+      "params": {
+        "num_seqs": 64,
+        "num_query_heads": 4,
+        "num_kv_heads": 1,
+        "head_size": 256,
+        "block_size": 16,
+        "ctx_len": 1024,
+        "kv_cache_dtype": "auto",
+        "dtype": "bf16",
+        "seed": 23
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "shape": [
+        "Q/O (64,4,256) bf16",
+        "K/V step (64,1,256) bf16"
+      ],
+      "dtype": "bf16",
+      "metadata": {
+        "model": "Qwen3.5-122B-A10B-FP8",
+        "session_id": "90d4b4a8-1db6-4e9b-9ce4-b1d9e7d5238d",
+        "kernel_ids": [
+          "L001"
+        ],
+        "gpu_pct": 15.799,
+        "timed_replay_seed": 37
+      }
+    },
+    {
+      "test_case_id": "qwen3_5-122b-decode-m64-ctx2048",
+      "params": {
+        "num_seqs": 64,
+        "num_query_heads": 4,
+        "num_kv_heads": 1,
+        "head_size": 256,
+        "block_size": 16,
+        "ctx_len": 2048,
+        "kv_cache_dtype": "auto",
+        "dtype": "bf16",
+        "seed": 23
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "shape": [
+        "Q/O (64,4,256) bf16",
+        "K/V step (64,1,256) bf16"
+      ],
+      "dtype": "bf16",
+      "metadata": {
+        "model": "Qwen3.5-122B-A10B-FP8",
+        "session_id": "90d4b4a8-1db6-4e9b-9ce4-b1d9e7d5238d",
+        "kernel_ids": [
+          "L001"
+        ],
+        "gpu_pct": null,
+        "timed_replay_seed": 37
+      }
+    },
+    {
+      "test_case_id": "qwen3_5-122b-decode-m64-ctx3072",
+      "params": {
+        "num_seqs": 64,
+        "num_query_heads": 4,
+        "num_kv_heads": 1,
+        "head_size": 256,
+        "block_size": 16,
+        "ctx_len": 3072,
+        "kv_cache_dtype": "auto",
+        "dtype": "bf16",
+        "seed": 23
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "shape": [
+        "Q/O (64,4,256) bf16",
+        "K/V step (64,1,256) bf16"
+      ],
+      "dtype": "bf16",
+      "metadata": {
+        "model": "Qwen3.5-122B-A10B-FP8",
+        "session_id": "90d4b4a8-1db6-4e9b-9ce4-b1d9e7d5238d",
+        "kernel_ids": [
+          "L001"
+        ],
+        "gpu_pct": null,
+        "timed_replay_seed": 37
+      }
+    }
+  ]
+}

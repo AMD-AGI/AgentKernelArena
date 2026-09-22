@@ -1,16 +1,25 @@
-source_file_path:
-- kernel.py
-target_kernel_functions:
-- flydsl_hgemm
-- build_hgemm_module
-- compile_hgemm_kernel
-compile_command:
-- python3 -c "import torch; from kernel import build_hgemm_module; build_hgemm_module('bf16',
-  256, 5120, tile_m=128, tile_n=128, tile_k=64, split_k=1, block_m_warps=2, block_n_warps=2);
-  print('compile ok')"
-correctness_command:
-- python3 test_kernel_harness.py --correctness
-performance_command:
-- python3 test_kernel_harness.py --full-benchmark
-task_type: torch2flydsl
-task_result_template: null
+schema_version: 2
+description: Implement or optimize hgemm in FlyDSL, preserving all task inputs, outputs and numerical
+  gates.
+instructions:
+- README.md
+candidate:
+  language: flydsl
+  initial_state: implemented
+  editable:
+  - kernel.py
+  entrypoints:
+  - file: kernel.py
+    kind: function
+    symbol: flydsl_hgemm
+  initial_language: flydsl
+baseline:
+  kind: initial_candidate
+  correctness_policy: required
+  language: flydsl
+evaluation:
+  runner:
+  - python3
+  - scripts/evaluate.py
+  workloads: cases.json
+  timeout_s: 3600

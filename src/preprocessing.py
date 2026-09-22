@@ -451,11 +451,12 @@ def is_task_complete(
         run_directory: Run-level directory (e.g., workspace_MI300_cursor/run_20250115_143022/)
         task_name: Full task name (e.g., "hip2hip/gpumode/SiLU")
         timestamp: Timestamp string used in task directory name
-        agent_name: Agent name. task_validator uses validation_report.yaml;
-            all other agents use task_result.yaml.
+        agent_name: task_validator uses the finalized validation report. V2
+            optimization requires the framework completion record; legacy
+            optimization uses task_result.yaml.
 
     Returns:
-        True if the expected completion report exists, False otherwise
+        True if the task's applicable completion contract is satisfied
     """
     task_dir = get_task_workspace_path(run_directory, task_name, timestamp)
     if agent_name == "task_validator":
@@ -465,6 +466,25 @@ def is_task_complete(
         from agents.task_validator.report_schema import validation_report_is_complete
 
         return validation_report_is_complete(task_dir)
+    # External state keeps an agent-edited/deleted config from downgrading a
+    # materialized v2 task to the legacy report-exists completion rule.
+    v2_state = any(os.path.lexists(run_directory / directory / task_dir.name)
+                   for directory in (".task-materialization", ".task-sessions"))
+    try:
+        with (task_dir / "config.yaml").open() as handle:
+            declaration = yaml.safe_load(handle)
+        v2_state = v2_state or (isinstance(declaration, dict) and "schema_version" in declaration)
+    except (OSError, UnicodeError, yaml.YAMLError):
+        pass
+    if v2_state:
+        try:
+            from src.task_run import task_run_is_complete
+        except ModuleNotFoundError as exc:
+            if exc.name != "src.task_run":
+                raise
+            # Staged integration without the completion owner must fail closed.
+            return False
+        return task_run_is_complete(task_dir, expected_task_name=task_name, agent_name=agent_name)
     return (task_dir / "task_result.yaml").exists()
 
 
@@ -473,7 +493,11 @@ def setup_workspace(task_config_dir: str, run_directory: Path, timestamp: str, l
     """
     Setup workspace for agent execution by duplicating the task directory.
 
-    Repo materialization depends on the task's source:
+    V2 tasks use TaskSpec and deadline-bound source materialization. A completed
+    workspace is reused only after its framework-side record is verified;
+    candidate edits are retained and setup is not rerun on resume.
+
+    Legacy materialization remains during task migration:
       - repo_url (repository tasks): clone once into a tasks/ CACHE (reused across
         runs to avoid re-cloning over the network), then copy into the workspace.
       - image_repo_path (image_kernel tasks): the in-image tree is already a single
@@ -497,6 +521,24 @@ def setup_workspace(task_config_dir: str, run_directory: Path, timestamp: str, l
     # Load task config
     with open(task_config_path, "r") as f:
         task_config = yaml.safe_load(f) or {}
+
+    if "schema_version" in task_config:
+        from src.task_materialization import materialize_task_workspace
+        from src.task_spec import TaskConfigError, load_task_spec
+
+        stable_id = task_name
+        if not stable_id:
+            try:
+                stable_id = task_folder.resolve().relative_to(
+                    Path(__file__).resolve().parents[1] / "tasks"
+                ).as_posix()
+            except ValueError as exc:
+                raise TaskConfigError("v2 setup_workspace requires the stable discovered task_name") from exc
+        spec = load_task_spec(task_config_path, task_id=stable_id)
+        return materialize_task_workspace(
+            spec, task_config_path,
+            get_task_workspace_path(run_directory, stable_id, timestamp), logger,
+        )
 
     # 1. Determine the repo subdir + source.
     #    Two sources are supported:

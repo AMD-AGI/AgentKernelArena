@@ -1,11 +1,10 @@
-"""Repro + regression tests for the `image_kernel` task type and the forge
-repo-subdir kernel-path resolution fix.
+"""Image-suite tasks use the shared v2 contract, acquisition and prompt path.
 
-Run: python3 -m pytest tests/test_image_kernel.py -q
-(These are pure-Python tests: no GPU, no network, no torch required.)
+CPU/filesystem regression tests only; these do not qualify an image or GPU.
 """
 from __future__ import annotations
 
+import json
 import logging
 import os
 import signal
@@ -17,118 +16,103 @@ from pathlib import Path
 import pytest
 import yaml
 
-LOG = logging.getLogger("test_image_kernel")
+from src.task_materialization import (
+    MaterializationError, load_materialization_record, materialize_task_workspace,
+)
+from src.task_protocol import CaseManifest, RESULT_PREFIX, parse_command_result
+from src.task_spec import TaskConfigError, TaskSpec, load_task_spec, resolve_task_path
+
+LOG = logging.getLogger(__name__)
+ROOT = Path(__file__).resolve().parents[1]
+IMAGE_CONFIGS = sorted((ROOT / "tasks/image_kernel").glob("*/config.yaml"))
 
 
-# --------------------------------------------------------------------------
-# 0. MI355X image_kernel tasks declare complete kernel identity and task-suite
-#    metadata. Workloads remain Arena evaluation inputs, not Forge selectors.
-# --------------------------------------------------------------------------
-def test_mi355x_image_kernel_configs_require_kernel_identity():
-    tasks_root = Path(__file__).resolve().parents[1] / "tasks" / "image_kernel"
-    config_paths = sorted(tasks_root.glob("mi355x_*/config.yaml"))
-    assert config_paths, "no MI355X image_kernel task configs found"
-
-    errors: list[str] = []
-    for config_path in config_paths:
-        config = yaml.safe_load(config_path.read_text()) or {}
-        task_name = config_path.parent.name
-        if config.get("task_type") != "image_kernel":
-            errors.append(f"{task_name}: task_type must be image_kernel")
-
-        for field in ("source_file_path", "target_kernel_functions"):
-            values = config.get(field)
-            if not (
-                isinstance(values, list)
-                and values
-                and all(isinstance(value, str) and value.strip() for value in values)
-            ):
-                errors.append(f"{task_name}: {field} must be a non-empty string list")
-
-        kernel_identity = config.get("kernel_identity")
-        if not isinstance(kernel_identity, dict):
-            errors.append(f"{task_name}: kernel_identity must be a mapping")
-            continue
-
-        for field in ("logical_operator", "kernel_kind", "source_owner"):
-            value = kernel_identity.get(field)
-            if not isinstance(value, str) or not value.strip():
-                errors.append(f"{task_name}: kernel_identity.{field} is required")
-
-        workload = kernel_identity.get("workload")
-        if not isinstance(workload, dict) or not workload:
-            errors.append(f"{task_name}: kernel_identity.workload is required")
-            continue
-        has_source = isinstance(workload.get("source"), str) and bool(
-            workload["source"].strip()
-        )
-        has_shapes = isinstance(workload.get("shapes"), dict) and bool(
-            workload["shapes"]
-        )
-        if not has_source and not has_shapes:
-            errors.append(
-                f"{task_name}: workload requires a non-empty source or shapes mapping"
-            )
-    assert not errors, "\n".join(errors)
+def _load_image_task(config_path):
+    # Reuse the public schema parser; image acquisition is not a task type.
+    spec = load_task_spec(config_path, task_id="image_kernel/" + config_path.parent.name)
+    config = spec.to_mapping()
+    if "kernel_identity" in config:
+        assert set(config["kernel_identity"]) == {"logical_operator", "source_owner"}
+    assert config["workspace"]["sources"]  # image or explicitly pinned Git; no family dispatch
+    # This validates declarations only. PASS below is a protocol fixture, never
+    # a claim that the task's validate-task action ran on its actual image.
+    workload = resolve_task_path(config_path.parent, config["evaluation"]["workloads"], must_exist=True)
+    rows = json.loads(workload.read_text())["cases"]
+    envelope = dict(protocol="arena-eval-v1", role="task", action="validate-task",
+                    status="PASS", cases=[dict(row, status="PASS") for row in rows])
+    result = parse_command_result(RESULT_PREFIX + json.dumps(envelope),
+                                  role="task", action="validate-task", returncode=0)
+    return spec, CaseManifest.from_result(result)
 
 
-# --------------------------------------------------------------------------
-# 1. forge kernel-file resolution must be repo-subdir aware (PR #52 fix).
-#    Repository / image_kernel tasks put the source under a repo subdir, so a
-#    kernel path given relative to the repo root must still resolve. Plain
-#    workspace-root files (legacy triton2triton etc.) must keep working.
-# --------------------------------------------------------------------------
-def _mk_workspace(tmp_path: Path) -> Path:
+@pytest.mark.parametrize("config_path", IMAGE_CONFIGS, ids=lambda p: p.parent.name)
+def test_image_configs_use_shared_schema_and_task_owned_workloads(config_path):
+    spec, manifest = _load_image_task(config_path)
+    assert spec.candidate.initial_state == "implemented"
+    assert spec.baseline.kind == "initial_candidate"
+    assert spec.baseline.correctness_policy == "required"
+    assert spec.candidate.editable and manifest.cases
+    assert {a.role for a in spec.actions} == {"task", "baseline", "candidate"}
+    # README carries operator/layout/dispatch constraints formerly in prompt fields.
+    assert (config_path.parent / "README.md").read_text().strip()
+
+
+def test_mi355x_image_configs_retain_canonical_operator_identity():
+    configs = [path for path in IMAGE_CONFIGS if path.parent.name.startswith("mi355x_")]
+    assert len(configs) == 16
+    for path in configs:
+        spec, _ = _load_image_task(path)
+        assert set(spec.to_mapping()["kernel_identity"]) == {"logical_operator", "source_owner"}
+
+
+@pytest.mark.parametrize("field,value", [
+    ("task_type", "image_kernel"),
+    ("source_file_path", ["old/path.py"]),
+    ("target_kernel_functions", ["old_symbol"]),
+    ("repository_language", "hip"),
+    ("image_repo_path", "/old/image/repository"),
+])
+def test_image_config_rejects_mixed_legacy_fields(field, value):
+    raw = yaml.safe_load(IMAGE_CONFIGS[0].read_text())
+    raw[field] = value
+    with pytest.raises(TaskConfigError, match="unknown fields"):
+        TaskSpec.from_mapping(raw, task_id="image_kernel/fixture")
+
+
+@pytest.mark.parametrize("field,value", [("kernel_kind", "ck"), ("workload", {"source": "cases.json"})])
+def test_image_identity_does_not_reintroduce_backend_or_workload_schema(field, value):
+    raw = yaml.safe_load(IMAGE_CONFIGS[0].read_text())
+    raw["kernel_identity"] = {"logical_operator": "attention", "source_owner": "aiter", field: value}
+    with pytest.raises(TaskConfigError, match="unknown fields"):
+        TaskSpec.from_mapping(raw, task_id="image_kernel/fixture")
+
+
+def _mk_workspace(tmp_path):
     ws = tmp_path / "ws"
-    (ws / "aiter" / "csrc" / "cpp_itfs" / "pa").mkdir(parents=True)
-    (ws / "aiter" / "csrc" / "cpp_itfs" / "pa" / "pa_kernels.cuh").write_text("// kernel\n")
-    (ws / "naive_softmax.py").write_text("# kernel\n")  # legacy workspace-root file
+    path = ws / "vendor/aiter/csrc/k.cuh"
+    path.parent.mkdir(parents=True)
+    path.write_text("// kernel\n")
+    (ws / "kernel.py").write_text("def compute(): return 1\n")
     return ws
 
 
-def test_forge_resolve_workspace_relative(tmp_path):
-    from agents.forge.launch_agent import _resolve_kernel_file
-
-    ws = _mk_workspace(tmp_path)
-    # workspace-relative path that includes the repo subdir
-    got = _resolve_kernel_file(str(ws), ["aiter/csrc/cpp_itfs/pa/pa_kernels.cuh"], {})
-    assert got == (ws / "aiter/csrc/cpp_itfs/pa/pa_kernels.cuh").resolve()
+@pytest.mark.parametrize("relative", ["vendor/aiter/csrc/k.cuh", "kernel.py"])
+def test_shared_source_resolution_preserves_declared_task_paths(tmp_path, relative):
+    workspace = _mk_workspace(tmp_path)
+    assert resolve_task_path(workspace, relative, must_exist=True) == workspace / relative
 
 
-def test_forge_resolve_repo_root_relative(tmp_path):
-    from agents.forge.launch_agent import _resolve_kernel_file
-
-    ws = _mk_workspace(tmp_path)
-    # path given relative to the repo root; repo_url implies the subdir name.
-    cfg = {"repo_url": "https://github.com/ROCm/aiter.git"}
-    got = _resolve_kernel_file(str(ws), ["csrc/cpp_itfs/pa/pa_kernels.cuh"], cfg)
-    assert got == (ws / "aiter/csrc/cpp_itfs/pa/pa_kernels.cuh").resolve()
+def test_shared_resolution_does_not_guess_image_basename(tmp_path):
+    workspace = _mk_workspace(tmp_path)
+    with pytest.raises(TaskConfigError):
+        resolve_task_path(workspace, "csrc/k.cuh", must_exist=True)
 
 
-def test_forge_resolve_image_kernel_subdir(tmp_path):
-    from agents.forge.launch_agent import _resolve_kernel_file
-
-    ws = _mk_workspace(tmp_path)
-    # image_kernel tasks: repo_subdir derived from image_repo_path basename.
-    cfg = {"image_repo_path": "/sgl-workspace/aiter"}
-    got = _resolve_kernel_file(str(ws), ["csrc/cpp_itfs/pa/pa_kernels.cuh"], cfg)
-    assert got == (ws / "aiter/csrc/cpp_itfs/pa/pa_kernels.cuh").resolve()
-
-
-def test_forge_resolve_legacy_root_file(tmp_path):
-    from agents.forge.launch_agent import _resolve_kernel_file
-
-    ws = _mk_workspace(tmp_path)
-    got = _resolve_kernel_file(str(ws), ["naive_softmax.py"], {})
-    assert got == (ws / "naive_softmax.py").resolve()
-
-
-def test_forge_resolve_missing_raises(tmp_path):
-    from agents.forge.launch_agent import _resolve_kernel_file
-
-    ws = _mk_workspace(tmp_path)
-    with pytest.raises(RuntimeError):
-        _resolve_kernel_file(str(ws), ["does/not/exist.cu"], {})
+@pytest.mark.parametrize("relative", ["../outside.py", "/outside.py", "missing.py"])
+def test_shared_resolution_rejects_missing_or_escaping_source(tmp_path, relative):
+    workspace = _mk_workspace(tmp_path)
+    with pytest.raises(TaskConfigError):
+        resolve_task_path(workspace, relative, must_exist=True)
 
 
 # --------------------------------------------------------------------------
@@ -205,99 +189,86 @@ def test_terminate_process_group_kills_descendant_after_leader_exits():
             pass
 
 
-# --------------------------------------------------------------------------
-# 2. preprocessing: image_kernel seeds the repo from an in-image path
-#    (copy, no clone), excluding .git, idempotently.
-# --------------------------------------------------------------------------
-def _mk_fake_image_repo(tmp_path: Path) -> Path:
-    src = tmp_path / "image_aiter"
-    (src / "csrc").mkdir(parents=True)
-    (src / "csrc" / "k.cuh").write_text("// k\n")
-    (src / "aiter" / "jit" / "build").mkdir(parents=True)
-    (src / "aiter" / "jit" / "build" / "cached.so").write_text("cache\n")
-    (src / ".git").mkdir()
-    (src / ".git" / "config").write_text("[core]\n")
-    return src
+def _mk_fake_image_repo(tmp_path):
+    source = tmp_path / "image_aiter"
+    (source / "csrc").mkdir(parents=True)
+    (source / "csrc/k.cuh").write_text("// original kernel\n")
+    (source / "aiter/jit/build").mkdir(parents=True)
+    (source / "aiter/jit/build/cached.so").write_text("cache\n")
+    (source / ".git").mkdir()
+    (source / ".git/config").write_text("[core]\n")
+    return source
 
 
-def test_seed_from_image_copies_without_git(tmp_path):
-    from src.preprocessing import _ensure_repo_seeded_from_image
-
-    src = _mk_fake_image_repo(tmp_path)
-    dst = tmp_path / "tasks" / "aiter"
-    did = _ensure_repo_seeded_from_image(src, dst, LOG)
-    assert did is True
-    assert (dst / "csrc" / "k.cuh").exists()
-    assert not (dst / ".git").exists()  # .git excluded
-
-
-def test_seed_from_image_excludes_declared_disposable_cache(tmp_path):
-    from src.preprocessing import _ensure_repo_seeded_from_image
-
-    src = _mk_fake_image_repo(tmp_path)
-    dst = tmp_path / "tasks" / "aiter"
-    did = _ensure_repo_seeded_from_image(
-        src,
-        dst,
-        LOG,
-        ("aiter/jit/build",),
-    )
-    assert did is True
-    assert (dst / "csrc" / "k.cuh").exists()
-    assert not (dst / "aiter" / "jit" / "build").exists()
-    assert not (dst / ".git").exists()
+def _mk_image_task(tmp_path, source):
+    task = tmp_path / "task"
+    (task / "scripts").mkdir(parents=True)
+    # Materialization never executes evaluation actions; no fake GPU result.
+    (task / "scripts/evaluate.py").write_text("raise SystemExit('acquisition fixture only')\n")
+    (task / "README.md").write_text("Keep paged attention layouts and all case-specific numerical gates.\n")
+    config = {
+        "schema_version": 2,
+        "candidate": {"language": "hip", "editable": ["vendor/aiter/csrc/k.cuh"]},
+        "workspace": {"sources": [{"kind": "image", "image_path": str(source),
+                                    "destination": "vendor/aiter", "exclude": ["aiter/jit/build"]}]},
+        "evaluation": {"runner": ["python3", "scripts/evaluate.py"]},
+    }
+    path = task / "config.yaml"
+    path.write_text(yaml.safe_dump(config))
+    return load_task_spec(path, task_id="fixture/image_operator"), path
 
 
-def test_seed_from_image_idempotent(tmp_path):
-    from src.preprocessing import _ensure_repo_seeded_from_image
-
-    src = _mk_fake_image_repo(tmp_path)
-    dst = tmp_path / "tasks" / "aiter"
-    assert _ensure_repo_seeded_from_image(src, dst, LOG) is True
-    # second call: already seeded -> no re-copy
-    assert _ensure_repo_seeded_from_image(src, dst, LOG) is False
-
-
-def test_seed_from_image_missing_raises(tmp_path):
-    from src.preprocessing import _ensure_repo_seeded_from_image
-
-    with pytest.raises(RuntimeError):
-        _ensure_repo_seeded_from_image(tmp_path / "nope", tmp_path / "dst", LOG)
+def test_v2_image_acquisition_preserves_source_and_excludes_git_cache(tmp_path):
+    source = _mk_fake_image_repo(tmp_path)
+    spec, config = _mk_image_task(tmp_path, source)
+    workspace = materialize_task_workspace(spec, config, tmp_path / "workspace")
+    assert (workspace / "vendor/aiter/csrc/k.cuh").read_bytes() == (source / "csrc/k.cuh").read_bytes()
+    assert not (workspace / "vendor/aiter/.git").exists()
+    assert not (workspace / "vendor/aiter/aiter/jit/build").exists()
+    assert (source / "aiter/jit/build/cached.so").exists()
+    assert (source / ".git/config").exists()
+    assert not (config.parent / "vendor").exists()
+    acquisition = load_materialization_record(workspace)["sources"][0]
+    assert acquisition["input_tree_sha256"] == acquisition["copied_tree_sha256"]
+    assert acquisition["declaration"]["destination"] == "vendor/aiter"
 
 
-# --------------------------------------------------------------------------
-# 3. image_kernel task-type prompt + prompt_builder wiring.
-# --------------------------------------------------------------------------
-def test_image_kernel_prompt_nonempty():
-    from src.prompts import task_type
+def test_v2_image_resume_preserves_candidate_and_frozen_baseline(tmp_path):
+    from src.task_session import TaskSession
 
-    txt = task_type.image_kernel_task_type()
-    assert isinstance(txt, str) and len(txt) > 50
+    source = _mk_fake_image_repo(tmp_path)
+    spec, config = _mk_image_task(tmp_path, source)
+    workspace = materialize_task_workspace(spec, config, tmp_path / "workspace")
+    session = TaskSession.create(spec, workspace, workspace.parent / ".task-sessions" / workspace.name)
+    candidate = workspace / "vendor/aiter/csrc/k.cuh"
+    candidate.write_text("// edited candidate\n")
+    assert materialize_task_workspace(spec, config, workspace) == workspace
+    assert candidate.read_text() == "// edited candidate\n"
+    assert (session.baseline_workspace / "vendor/aiter/csrc/k.cuh").read_text() == "// original kernel\n"
+    assert (source / "csrc/k.cuh").read_text() == "// original kernel\n"
 
 
-def test_prompt_builder_accepts_image_kernel(tmp_path):
-    import yaml
+def test_v2_missing_image_is_explicit_materialization_failure(tmp_path):
+    spec, config = _mk_image_task(tmp_path, tmp_path / "missing-image")
+    with pytest.raises((FileNotFoundError, MaterializationError)):
+        materialize_task_workspace(spec, config, tmp_path / "workspace")
+
+
+def test_prompt_builder_uses_v2_image_contract_and_readme(tmp_path):
     from src.prompt_builder import prompt_builder
 
-    task_dir = tmp_path / "img_task"
-    task_dir.mkdir()
-    cfg = {
-        "task_type": "image_kernel",
-        "image_repo_path": "/sgl-workspace/aiter",
-        "repository_language": "hip",
-        "source_file_path": ["csrc/cpp_itfs/pa/pa_kernels.cuh"],
-        "target_kernel_functions": ["paged_attention_ll4mi_QKV_mfma16_kernel"],
-        "compile_command": ["python3 scripts/task_runner.py compile"],
-        "correctness_command": ["python3 scripts/task_runner.py correctness"],
-        "performance_command": ["python3 scripts/task_runner.py performance"],
-    }
-    cfg_path = task_dir / "config.yaml"
-    cfg_path.write_text(yaml.safe_dump(cfg))
-
-    prompt = prompt_builder(str(cfg_path), task_dir, {"target_gpu_model": "MI325X"}, LOG)
-    assert isinstance(prompt, str) and len(prompt) > 0
-    # must have selected the image_kernel task-type prompt (not raised "Unknown task type")
-    assert "image" in prompt.lower()
+    source = _mk_fake_image_repo(tmp_path)
+    spec, config = _mk_image_task(tmp_path, source)
+    workspace = materialize_task_workspace(spec, config, tmp_path / "workspace")
+    prompt = prompt_builder(str(config), workspace,
+                            {"target_gpu_model": "MI355X", "_task_id": spec.task_id}, LOG)
+    assert "vendor/aiter/csrc/k.cuh" in prompt
+    assert "Required final implementation backend: hip" in prompt
+    assert "Performance baseline: initial_candidate" in prompt
+    assert (workspace / "README.md").read_text().strip() in prompt
+    for action in ("compile", "correctness", "performance"):
+        assert f"python3 scripts/evaluate.py candidate {action}" in prompt
+    assert "separate frozen baseline workspace" in prompt
 
 
 def test_mi355x_validator_discovers_every_mi355x_image_task(monkeypatch):
@@ -326,9 +297,3 @@ def test_task_discovery_rejects_unmatched_selectors(monkeypatch):
 
     with pytest.raises(ValueError, match="matched no task configs"):
         _discover_tasks(["image_kernel/task_that_does_not_exist"])
-
-
-if __name__ == "__main__":
-    import sys
-
-    sys.exit(pytest.main([__file__, "-q"]))

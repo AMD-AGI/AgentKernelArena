@@ -10,6 +10,7 @@ harness so candidate edits cannot change the measured contract or reference.
 """
 from __future__ import annotations
 from _aka_benchmark import benchmark_cuda_graph_or_events_samples
+from _timed_contract import checked_call, checked_benchmark, assert_output_contract
 
 
 def benchmark_cuda_graph_or_events(*args, **kwargs):
@@ -24,22 +25,6 @@ def benchmark_cuda_graph_or_events(*args, **kwargs):
     return median_ms, metadata
 
 
-class CapturedGraphRun:
-    """Handle populated by the benchmark helper with the exact timed graph."""
-
-    def __init__(self):
-        self._replay = None
-        self.output = None
-
-    def _bind(self, replay, output):
-        self._replay = replay
-        self.output = output
-
-    def replay(self):
-        if self._replay is None:
-            raise RuntimeError("captured graph replay was not bound")
-        return self._replay()
-
 # GEAK materialized harness bootstrap
 import importlib.util
 import json
@@ -48,54 +33,15 @@ import sys
 from pathlib import Path
 
 def _find_baseline_kernel_dir():
-    """Find preprocess dir (has benchmark_baseline.txt) by walking up from GEAK_WORK_DIR."""
-    work = os.environ.get("GEAK_WORK_DIR", "").strip()
-    if not work:
-        return None
-    d = Path(work).resolve()
-    for _ in range(10):
-        if d is None or not d.exists():
-            break
-        bb = d / "benchmark_baseline.txt"
-        if bb.is_file():
-            return str(d)
-        d = d.parent
+    """Arena's session owns the frozen baseline; external worktrees are not inputs."""
     return None
 
-def _load_baseline_triton(baseline_dir, module_alias, entry_name):
-    """Load kernel from baseline_dir. Returns callable or None."""
-    entry_file = Path(baseline_dir) / "kernel.py"
-    if not entry_file.is_file():
-        return None
-    if baseline_dir not in sys.path:
-        sys.path.insert(0, baseline_dir)
-    spec = importlib.util.spec_from_file_location(module_alias, entry_file)
-    if spec is None or spec.loader is None:
-        return None
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[module_alias] = module
-    try:
-        spec.loader.exec_module(module)
-        return getattr(module, entry_name, None)
-    except Exception:
-        return None
+def _load_baseline_triton(*args, **kwargs):
+    raise RuntimeError("External baseline loading is not part of the v2 task contract")
 
 def _resolve_geak_kernel_dir():
-    candidates = []
-    work_dir = os.environ.get("GEAK_WORK_DIR", "").strip()
-    if work_dir:
-        candidates.append(work_dir)
-    repo_root = os.environ.get("GEAK_REPO_ROOT", "").strip()
-    rel_kernel_dir = '.'
-    if repo_root and rel_kernel_dir:
-        candidates.append(os.path.join(repo_root, rel_kernel_dir))
-    original_kernel_dir = os.path.dirname(os.path.abspath(__file__))
-    if original_kernel_dir:
-        candidates.append(original_kernel_dir)
-    for candidate in candidates:
-        if candidate and os.path.isfile(os.path.join(candidate, "kernel.py")):
-            return candidate
-    return original_kernel_dir or os.getcwd()
+    """Resolve only the local candidate (or the session's frozen task copy)."""
+    return os.path.dirname(os.path.abspath(__file__))
 
 _KERNEL_DIR = _resolve_geak_kernel_dir()
 if _KERNEL_DIR and _KERNEL_DIR not in sys.path:
@@ -366,22 +312,25 @@ def _run_single_correctness(B, QH_PER_KH, KH, D, rotate_style, nope, nope_first,
     )
     ref_freqs = freqs[pos].squeeze(-2)
 
-    q_triton, k_triton, v_triton = fused_qkv_split_qk_rope(
-        qkv, cos, sin, pos,
-        QH_PER_KH * KH, KH, head_dim,
-        is_neox=(rotate_style == RotateStyle.NEOX),
-        offsets=None,
-        reuse_freqs_front_part=reuse_freqs_front_part,
-        nope_first=nope_first,
-    )
-    q_torch, k_torch, v_torch = torch_op(
-        qkv, QH_PER_KH, KH, head_dim,
-        ref_freqs, reuse_freqs_front_part, nope, nope_first, rotate_style,
+    def invoke():
+        return fused_qkv_split_qk_rope(
+            qkv, cos, sin, pos, QH_PER_KH * KH, KH, head_dim,
+            is_neox=(rotate_style == RotateStyle.NEOX), offsets=None,
+            reuse_freqs_front_part=reuse_freqs_front_part, nope_first=nope_first,
+        )
+    checked_call(
+        invoke, inputs={'qkv': qkv, 'cos': cos, 'sin': sin, 'positions': pos,
+                        'ref_freqs': ref_freqs},
+        reference=lambda saved: torch_op(
+            saved['qkv'], QH_PER_KH, KH, head_dim, saved['ref_freqs'],
+            reuse_freqs_front_part, nope, nope_first, rotate_style),
+        check=_check_qkv,
     )
 
-    torch.testing.assert_close(q_torch, q_triton, atol=ATOL, rtol=RTOL)
-    torch.testing.assert_close(k_torch, k_triton, atol=ATOL, rtol=RTOL)
-    torch.testing.assert_close(v_torch, v_triton, atol=ATOL, rtol=RTOL)
+
+def _check_qkv(actual, expected):
+    for output, reference in zip(actual, expected):
+        torch.testing.assert_close(output, reference, atol=ATOL, rtol=RTOL)
 
 
 def run_correctness(configs=None, verbose=True):
@@ -486,26 +435,17 @@ def run_benchmark(configs=None, warmup=50, iters=200, verbose=True):
                 nope_first=nope_first,
             )
 
-        timed_run = CapturedGraphRun()
-        triton_ms, triton_meta = benchmark_cuda_graph_or_events(
-            run_kernel, warmup=warmup, repetition=iters, timed_run=timed_run,
+        triton_ms, triton_meta = checked_benchmark(
+            benchmark_cuda_graph_or_events, run_kernel,
+            inputs={'qkv': qkv, 'cos': cos, 'sin': sin, 'positions': pos,
+                    'ref_freqs': ref_freqs},
+            reference=lambda saved: torch_op(
+                saved['qkv'], QH_PER_KH, KH, head_dim, saved['ref_freqs'],
+                reuse, nope, nope_first, rs),
+            check=_check_qkv,
+            perturb=lambda saved: {**saved, 'qkv': -saved['qkv']},
+            warmup=warmup, repetition=iters,
         )
-
-        # Poison the graph-owned outputs, replay the exact executable that was
-        # timed, and compare those outputs with the protected oracle. This
-        # catches captures that omit work or fail to overwrite an output.
-        q_expected, k_expected, v_expected = torch_op(
-            qkv, QH_PER_KH, KH, head_dim, ref_freqs,
-            reuse, nope, nope_first, rs,
-        )
-        if not isinstance(timed_run.output, tuple) or len(timed_run.output) != 3:
-            raise AssertionError("timed graph did not expose Q/K/V outputs")
-        for output in timed_run.output:
-            output.fill_(float("nan"))
-        q_replayed, k_replayed, v_replayed = timed_run.replay()
-        torch.testing.assert_close(q_expected, q_replayed, atol=ATOL, rtol=RTOL)
-        torch.testing.assert_close(k_expected, k_replayed, atol=ATOL, rtol=RTOL)
-        torch.testing.assert_close(v_expected, v_replayed, atol=ATOL, rtol=RTOL)
 
         def run_reference():
             if baseline_fn is not None:

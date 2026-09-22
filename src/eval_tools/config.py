@@ -79,6 +79,47 @@ def _timeout(value: Any, *, field: str, maximum: int = MAX_TOOL_TIMEOUT_SECONDS)
     return value
 
 
+# Only options consumed by the built-in plugins belong in authored adapter
+# configuration. Runtime assets and invocation deadlines are evaluator-owned.
+_ADAPTER_OPTION_KEYS = {
+    "gpu_asan": frozenset({"command", "attestation_path"}),
+    "triton_fpsan": frozenset({"command", "comparison_command", "attestation_path"}),
+    "hip_fpsan": frozenset({"command", "comparison_command", "attestation_path"}),
+    "rocjitsu": frozenset({"command", "launcher", "capsule", "race_report", "expected_kernel"}),
+    "rocjitsu_waitcheck": frozenset({"code_object", "expected_kernel", "kernel_entry"}),
+    "rocjitsu_consan": frozenset({"code_object", "command", "oracle_command"}),
+}
+_ARGV_OPTIONS = frozenset({"command", "comparison_command", "launcher", "oracle_command"})
+
+
+def _adapter_options(tool: str, value: Any, *, field: str) -> dict[str, Any]:
+    if not isinstance(value, Mapping):
+        raise ValueError(f"{field} must be a mapping")
+    reserved = (reserved_option_keys(tool) | {"timeout_s"}).intersection(value)
+    if reserved:
+        raise ValueError(f"{field} contains reserved options (reserved framework keys): {sorted(reserved)}")
+    # These two inputs are fingerprinted by the common manager independently
+    # of the selected plugin; declaring them does not attest an execution.
+    allowed = _ADAPTER_OPTION_KEYS[tool] | {"capsule", "code_object"}
+    _validate_keys(value, allowed=allowed, field=field)
+    for key, item in value.items():
+        if key in _ARGV_OPTIONS:
+            if not isinstance(item, (list, tuple)) or not item or any(
+                not isinstance(part, str) or not part or "\x00" in part for part in item
+            ):
+                raise ValueError(f"{field}.{key} must be a nonempty argv list of NUL-free strings")
+        elif key == "kernel_entry":
+            try:
+                parsed = int(item, 0) if isinstance(item, str) else item
+            except ValueError as error:
+                raise ValueError(f"{field}.kernel_entry must be a non-negative integer") from error
+            if isinstance(parsed, bool) or not isinstance(parsed, int) or parsed < 0:
+                raise ValueError(f"{field}.kernel_entry must be a non-negative integer")
+        elif not isinstance(item, str) or not item.strip() or "\x00" in item:
+            raise ValueError(f"{field}.{key} must be a nonempty NUL-free string")
+    return dict(value)
+
+
 def _canonical(value: Any) -> Any:
     if hasattr(value, "to_dict"):
         return _canonical(value.to_dict())
@@ -203,7 +244,7 @@ class EvalToolsConfig:
         else:
             raise ValueError("evaluation_tools.enabled must be a list of tool names")
 
-        raw_tool_config = section.get("tools") or {}
+        raw_tool_config = section.get("tools", {})
         if not isinstance(raw_tool_config, Mapping):
             raise ValueError("evaluation_tools.tools must be a mapping")
         canonical_tool_config: dict[str, Mapping[object, object]] = {}
@@ -223,6 +264,18 @@ class EvalToolsConfig:
                 allowed=_TOOL_CONFIG_KEYS,
                 field=f"evaluation_tools.tools.{name}",
             )
+            _adapter_options(
+                name, raw_item.get("options", {}),
+                field=f"evaluation_tools.tools.{name}.options",
+            )
+            if "timeout_s" in raw_item:
+                _timeout(raw_item["timeout_s"], field=f"evaluation_tools.tools.{name}.timeout_s")
+            if (
+                raw_item.get("runtime_ref") is not None
+                and raw_item.get("image_digest") is not None
+                and raw_item["runtime_ref"] != raw_item["image_digest"]
+            ):
+                raise ValueError(f"evaluation_tools.tools.{name} has conflicting runtime identities")
             canonical_tool_config[name] = raw_item
         default_timeout = _timeout(
             section.get("timeout_s", MAX_TOOL_TIMEOUT_SECONDS),
@@ -388,51 +441,40 @@ def merge_task_tool_config(
     different runtime image, or increase the run-level timeout.
     """
 
-    section = task_config.get("evaluation_tools") or {}
-    if not section:
-        return config
+    section = task_config.get("evaluation_tools", {})
     if not isinstance(section, Mapping):
         raise ValueError("task evaluation_tools must be a mapping")
-    forbidden = set(section) - {"tools"}
-    if forbidden:
-        raise ValueError(
-            "task evaluation_tools may only define per-tool adapter options; "
-            f"forbidden fields={sorted(forbidden)}"
-        )
-    raw_tools = section.get("tools") or {}
+    _validate_keys(section, allowed=frozenset({"tools"}), field="task evaluation_tools")
+    raw_tools = section.get("tools", {})
     if not isinstance(raw_tools, Mapping):
         raise ValueError("task evaluation_tools.tools must be a mapping")
-    unknown = set(str(name) for name in raw_tools) - set(config.enabled)
-    if unknown:
-        raise ValueError(
-            "task config contains options for tools not enabled by the run: "
-            f"{sorted(unknown)}"
+
+    # Validate every registered adapter, including dormant ones. Merely declaring
+    # an adapter never adds it to config.tools or causes a runtime probe.
+    overrides: dict[str, Mapping[str, Any]] = {}
+    for raw_name, override in raw_tools.items():
+        name = _tool_name(raw_name)
+        if name not in _ADAPTER_OPTION_KEYS:
+            raise ValueError(f"task evaluation_tools.tools contains unknown tool: {name}")
+        if name in overrides:
+            raise ValueError(f"task evaluation_tools.tools contains duplicate normalized tool: {name}")
+        if not isinstance(override, Mapping):
+            raise ValueError(f"task evaluation_tools.tools.{name} must be a mapping")
+        _validate_keys(
+            override, allowed=frozenset({"options", "timeout_s"}),
+            field=f"task evaluation_tools.tools.{name}",
         )
+        _adapter_options(
+            name, override.get("options", {}),
+            field=f"task evaluation_tools.tools.{name}.options",
+        )
+        if "timeout_s" in override:
+            _timeout(override["timeout_s"], field=f"task timeout for {name}")
+        overrides[name] = override
 
     merged: list[ToolConfig] = []
     for base in config.tools:
-        override = raw_tools.get(base.name) or {}
-        if not isinstance(override, Mapping):
-            raise ValueError(
-                f"task evaluation_tools.tools.{base.name} must be a mapping"
-            )
-        forbidden_tool = set(override) - {"options", "timeout_s"}
-        if forbidden_tool:
-            raise ValueError(
-                f"task tool {base.name} cannot override {sorted(forbidden_tool)}"
-            )
-        raw_options = override.get("options") or {}
-        if not isinstance(raw_options, Mapping):
-            raise ValueError(
-                f"task evaluation_tools.tools.{base.name}.options must be a mapping"
-            )
-        reserved_options = reserved_option_keys(base.name)
-        attempted_reserved = reserved_options.intersection(str(key) for key in raw_options)
-        if attempted_reserved:
-            raise ValueError(
-                f"task tool {base.name} cannot override reserved options "
-                f"{sorted(attempted_reserved)}"
-            )
+        override = overrides.get(base.name, {})
         timeout = _timeout(
             override.get("timeout_s", base.timeout_s),
             field=f"task timeout for {base.name}",
@@ -443,7 +485,7 @@ def merge_task_tool_config(
                 name=base.name,
                 runtime_ref=base.runtime_ref,
                 timeout_s=timeout,
-                options={**dict(base.options), **dict(raw_options)},
+                options={**dict(base.options), **dict(override.get("options", {}))},
             )
         )
     return EvalToolsConfig(

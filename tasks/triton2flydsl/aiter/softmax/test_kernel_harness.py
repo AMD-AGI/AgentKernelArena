@@ -20,9 +20,11 @@ import math
 import os
 import sys
 from pathlib import Path
-from _aka_benchmark import benchmark_cuda_graph_or_events
+from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
+from scripts.replay_checks import allclose_output, require_tensor_contract, require_unchanged, verify_timed_run
 
-SOURCE_FILE = "softmax.py"
+from task_runtime import candidate_relative_path
+SOURCE_FILE = candidate_relative_path()
 ENTRY = "softmax"
 KERNEL = "_softmax_kernel_online"
 
@@ -56,6 +58,7 @@ def _load_source():
     entry = os.path.join(_HERE, SOURCE_FILE)
     spec = importlib.util.spec_from_file_location("softmax_src", entry)
     mod = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = mod
     spec.loader.exec_module(mod)
     return mod
 
@@ -78,6 +81,11 @@ def run_compile():
     return True
 
 
+def _reference_softmax(x):
+    import torch
+    return torch.softmax(x, axis=1)
+
+
 def run_correctness(verbose=True):
     import torch
 
@@ -88,9 +96,12 @@ def run_correctness(verbose=True):
             tag = f"{shape['name']}_{dt}"
             try:
                 x = _make_inputs(shape["M"], shape["N"], _torch_dtype(dt))
+                originals = tuple(t.clone() for t in (x,))
                 y = mod.softmax(x)
                 torch.cuda.synchronize()
-                ref = torch.softmax(x, axis=1)
+                require_unchanged((x,), originals)
+                ref = _reference_softmax(x)
+                require_tensor_contract(y, ref, dtype=x.dtype)
                 finite = bool(torch.isfinite(y).all().item())
                 close = torch.allclose(y, ref, atol=1e-2, rtol=1e-2)
                 ok = finite and close
@@ -120,6 +131,9 @@ def run_benchmark(verbose=True):
     report, latencies = [], []
     for idx, shape in enumerate(TEST_SHAPES):
         x = _make_inputs(shape["M"], shape["N"], _torch_dtype("bf16"))
+        originals = tuple(t.clone() for t in (x,))
+        expected = _reference_softmax(x)
+        timed = TimedRun()
         fn = lambda: mod.softmax(x)  # noqa: E731
         fn()
         torch.cuda.synchronize()
@@ -127,8 +141,13 @@ def run_benchmark(verbose=True):
             fn()
         torch.cuda.synchronize()
         ms, bench_meta = benchmark_cuda_graph_or_events(
-            fn, warmup=0, repetition=ITERS
+            fn, warmup=0, repetition=ITERS, timed_run=timed
         )
+        bench_meta.update(verify_timed_run(
+            timed, inputs=(x,), originals=originals, expected=expected,
+            perturb=lambda: x.neg_(), reference=lambda: _reference_softmax(x),
+            compare=lambda actual, wanted: allclose_output(
+                actual, wanted, atol=1e-2, rtol=1e-2, dtype=x.dtype)))
         latencies.append(ms)
         nbytes = 2.0 * shape["M"] * shape["N"] * 2  # bf16 read+write
         report.append(

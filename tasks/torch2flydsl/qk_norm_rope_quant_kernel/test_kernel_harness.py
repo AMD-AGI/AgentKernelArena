@@ -21,23 +21,25 @@ import os
 import sys
 import time
 from pathlib import Path
-from _aka_benchmark import benchmark_cuda_graph_or_events
+from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
+from scripts.replay_checks import require_tensor_contract, require_unchanged
 
-KERNEL_FILE = "kernel.py"
+from task_runtime import candidate_relative_path
+KERNEL_FILE = candidate_relative_path()
+ARENA_PROVIDED_BASELINE = False
 MODEL_FILE = "model.py"
+# Keep earlier correctness imports alive when performance reloads the alias.
+# Old FlyDSL module finalizers may call hipModuleUnload during graph capture.
+_LOADED_MODULES = []
 
 
 def _resolve_kernel_dir():
-    here = os.path.dirname(os.path.abspath(__file__))
-    if os.path.isfile(os.path.join(here, KERNEL_FILE)):
-        return here
-    cwd = os.getcwd()
-    if os.path.isfile(os.path.join(cwd, KERNEL_FILE)):
-        return cwd
-    return here
+    return str(__import__("pathlib").Path(__file__).resolve().parent)
 
 
 def _load_module(kernel_dir, filename, alias):
+    if filename == KERNEL_FILE and ARENA_PROVIDED_BASELINE:
+        return None
     entry = os.path.join(kernel_dir, filename)
     if not os.path.isfile(entry):
         return None
@@ -49,6 +51,9 @@ def _load_module(kernel_dir, filename, alias):
     mod = importlib.util.module_from_spec(spec)
     sys.modules[alias] = mod
     spec.loader.exec_module(mod)
+    _LOADED_MODULES.append(mod)
+    if filename == KERNEL_FILE:
+        _require_candidate_outputs(mod)
     return mod
 
 
@@ -122,6 +127,48 @@ def _norm_max_err(ref, out):
     return max_abs / denom, max_abs, denom
 
 
+def _checked_qk_outputs(actual, expected):
+    import torch
+    if not isinstance(actual, (tuple, list)) or len(actual) != 4:
+        raise AssertionError("quant=False requires (BF16 Q, BF16 KV, None, None)")
+    if actual[2] is not None or actual[3] is not None:
+        raise AssertionError("quant=False must not return quantization scales")
+    for out, ref in zip(actual[:2], expected):
+        require_tensor_contract(out, ref)
+        if not bool(torch.isfinite(out).all() and torch.isfinite(ref).all()):
+            raise AssertionError("Non-finite Q/KV output/reference")
+        if _norm_max_err(ref, out)[0] > REL_TOL:
+            raise AssertionError("Numerical mismatch: Q/KV normalized max error exceeds original gate")
+
+
+def _qk_replay_validator(model, inputs):
+    originals = tuple(value.clone() for value in inputs)
+    expected = model(*inputs)
+    def validate(timed):
+        if not timed.bound:
+            raise RuntimeError("Benchmark did not expose its measured invocation")
+        require_unchanged(inputs, originals)
+        _checked_qk_outputs(timed.outputs, expected)
+        try:
+            # RMSNorm/RoPE preserve this sign change without changing the
+            # declared BF16 domain or the original strided KV allocation.
+            inputs[0].neg_()
+            inputs[1].neg_()
+            changed = tuple(value.clone() for value in inputs)
+            replay_expected = model(*inputs)
+            for output in timed.outputs[:2]:
+                output.fill_(float("nan"))
+            replay_output = timed.rerun()
+            require_unchanged(inputs, changed)
+            _checked_qk_outputs(replay_output, replay_expected)
+        finally:
+            for value, original in zip(inputs, originals):
+                value.copy_(original)
+        return {"timed_output_correctness": "PASS", "replay_correctness": "PASS",
+                "replay_inputs_perturbed": True, "replay_output_poisoned": True}
+    return validate
+
+
 def run_correctness(verbose=True):
     import torch
 
@@ -150,6 +197,8 @@ def run_correctness(verbose=True):
         try:
             model = mmod.Model(H, D, RD, G).to("cuda").eval()
             q, kv, kv_weight, cos, sin, positions = _make_inputs(mmod, shape)
+            protected_inputs = (q, kv, kv_weight, cos, sin, positions)
+            originals = tuple(v.clone() for v in protected_inputs)
 
             with torch.no_grad():
                 ref_q, ref_kv = model(q, kv, kv_weight, cos, sin, positions)
@@ -164,6 +213,8 @@ def run_correctness(verbose=True):
             out_q, out_kv, qs, ks = _retry(_run, what=shape["name"])
             torch.cuda.synchronize()
 
+            require_unchanged(protected_inputs, originals)
+            _checked_qk_outputs((out_q, out_kv, qs, ks), (ref_q, ref_kv))
             err_q, ma_q, _ = _norm_max_err(ref_q, out_q)
             err_kv, ma_kv, _ = _norm_max_err(ref_kv, out_kv)
             err = max(err_q, err_kv)
@@ -211,6 +262,8 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
         model = mmod.Model(H, D, RD, G).to("cuda").eval()
         q, kv, kv_weight, cos, sin, positions = _make_inputs(mmod, shape)
 
+        replay_validate = _qk_replay_validator(model, (q, kv, kv_weight, cos, sin, positions))
+
         def run_kernel():
             return kmod.flydsl_qk_norm_rope_quant(
                 q, kv, kv_weight, cos, sin, positions,
@@ -223,9 +276,12 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
             run_kernel()
         torch.cuda.synchronize()
 
+        timed = TimedRun()
         kernel_ms, kernel_bench_meta = benchmark_cuda_graph_or_events(
-            run_kernel, warmup=0, repetition=iters
+            run_kernel, warmup=0, repetition=iters, timed_run=timed
         )
+
+        kernel_bench_meta.update(replay_validate(timed))
 
         with torch.no_grad():
             ref_ms, ref_bench_meta = benchmark_cuda_graph_or_events(
@@ -305,3 +361,115 @@ if __name__ == "__main__":
         sys.exit(0)
     else:
         run_benchmark(warmup=args.warmup, iters=args.iterations)
+
+
+def _require_candidate_outputs(mod):
+    import functools
+    for name in tuple(vars(mod)):
+        target = getattr(mod, name)
+        if name.startswith("flydsl_") and callable(target):
+            @functools.wraps(target)
+            def checked(*args, __target=target, **kwargs):
+                try:
+                    result = __target(*args, **kwargs)
+                except NotImplementedError as exc:
+                    raise RuntimeError("Executed candidate is unimplemented; no baseline fallback") from exc
+                if result is None:
+                    raise RuntimeError("Candidate operator returned None; output is required")
+                return result
+            setattr(mod, name, checked)
+
+
+# V2 direct timing evidence from this invocation.
+def arena_benchmark(warmup=10, iters=100, verbose=True):
+    import torch
+
+    kmod = _load_module(_KERNEL_DIR, KERNEL_FILE, "flydsl_kernel")
+    mmod = _load_module(_KERNEL_DIR, MODEL_FILE, "torch_model")
+    assert kmod is not None and mmod is not None, "cannot load kernel.py / model.py"
+
+    latencies, speedups, report = [], [], []
+    print(f"{'Config':<24} {'Ref':>10} {'FlyDSL':>10} {'Speedup':>10}")
+    print("-" * 60)
+    for idx, shape in enumerate(SHAPES):
+        T, H, D, RD, G = (
+            shape["T"], shape["H"], shape["D"], shape["RD"], shape["group_size"]
+        )
+        model = mmod.Model(H, D, RD, G).to("cuda").eval()
+        q, kv, kv_weight, cos, sin, positions = _make_inputs(mmod, shape)
+
+        replay_validate = _qk_replay_validator(model, (q, kv, kv_weight, cos, sin, positions))
+
+        def run_kernel():
+            return kmod.flydsl_qk_norm_rope_quant(
+                q, kv, kv_weight, cos, sin, positions,
+                num_q_heads=H, head_dim=D, rope_head_dim=RD, quant=False,
+            )
+
+        _retry(run_kernel, what=shape["name"])
+        torch.cuda.synchronize()
+        for _ in range(warmup):
+            run_kernel()
+        torch.cuda.synchronize()
+
+        timed = TimedRun()
+        kernel_ms, kernel_bench_meta = benchmark_cuda_graph_or_events(
+            run_kernel, warmup=0, repetition=iters, timed_run=timed
+        )
+
+        kernel_bench_meta.update(replay_validate(timed))
+
+        with torch.no_grad():
+            ref_ms, ref_bench_meta = benchmark_cuda_graph_or_events(
+                lambda: model(q, kv, kv_weight, cos, sin, positions),
+                warmup=warmup,
+                repetition=iters,
+            )
+
+        methods_match = kernel_bench_meta["benchmark_method"] == ref_bench_meta["benchmark_method"]
+        speedup = (
+            ref_ms / kernel_ms if methods_match and kernel_ms > 0 else None
+        )
+        speedup_display = (
+            format(speedup, ">8.2f") + "x"
+            if speedup is not None
+            else f"{'N/A':>9}"
+        )
+        latencies.append(kernel_ms)
+        if speedup is not None:
+            speedups.append(speedup)
+        # bytes moved: Q in/out + KV in/out + kv_weight (bf16).
+        bytes_total = (T * H * D * 2 * 2) + (T * D * 2 * 2) + (D * 2)
+        gbps = bytes_total / (kernel_ms * 1e-3) / 1e9
+        report.append({
+            "test_case_id": f"test_case_{idx}",
+            "execution_time_ms": kernel_ms,
+            **kernel_bench_meta,
+            "reference_benchmark_method": ref_bench_meta["benchmark_method"],
+            "benchmark_method_consistent": kernel_bench_meta["benchmark_method"] == ref_bench_meta["benchmark_method"],
+            "shape": [T, H, D, RD],
+            "params": {"T": T, "H": H, "D": D, "RD": RD, "group_size": G, "dtype": "bf16"},
+            "gbps": gbps,
+        })
+        if verbose:
+            print(f"{shape['name']:<24} {ref_ms:>8.4f}ms {kernel_ms:>8.4f}ms {speedup_display}")
+        del model, q, kv, kv_weight, cos, sin, positions
+        torch.cuda.empty_cache()
+
+    geomean_latency = math.exp(sum(math.log(x) for x in latencies) / len(latencies))
+    geomean_speedup = math.exp(sum(math.log(x) for x in speedups) / len(speedups)) if speedups else None
+    geomean_speedup_display = (
+        format(geomean_speedup, ".2f") + "x"
+        if geomean_speedup is not None
+        else "N/A"
+    )
+
+    build_dir = Path(_KERNEL_DIR) / "build"
+    build_dir.mkdir(exist_ok=True)
+    with open(build_dir / "performance_report.json", "w") as f:
+        json.dump(report, f, indent=2)
+
+    print("-" * 60)
+    print(f"Geometric mean latency: {geomean_latency:.4f} ms")
+    print(f"Geometric mean speedup: {geomean_speedup_display}")
+    return report

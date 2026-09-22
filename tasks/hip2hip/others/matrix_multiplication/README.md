@@ -1,3 +1,40 @@
+# matrix_multiplication: native HIP task
+
+Optimize only `source/kernel.hpp`. All task inputs, references,
+CPU comparisons, wrappers, bindings, compiler flags, launch boundaries, and
+benchmark helpers are protected. The initial implementation is present and
+written in HIP. Arena freezes that initial candidate in a separate workspace
+for every baseline action; final candidate actions always build and execute the
+submitted implementation, with no baseline fallback.
+
+The complete independent manifest in `workload.json` includes **5 cases**
+from the original 5 shapes, including every measured operation/layout.
+The original harness remains `scripts/task_runner.py`; its seed schedule,
+numerical tolerances and output-contract checks are retained. Its independent numerical reference is implemented in the protected C++ host
+program; the native benchmark also validates graph replay. The Python reference
+check module performs structural checks only. Do not reduce these
+cases or alter expected outputs to improve a score.
+
+Compilation uses the actual original HIP compiler/extension build, including
+both native verification and benchmark binaries where applicable. The original
+warmup (10), sample count (100), CUDA-graph/event fallback policy, state reset,
+and allocation/timing boundaries remain in the protected harness. Runtime
+requirements are the selected ROCm image, a compatible GPU and HIP compiler,
+and PyTorch for extension tasks. Generated performance helpers are supplied by
+Arena and must not be edited.
+
+Call `python3 scripts/evaluate.py` followed by `validate-task`, or by
+`baseline|candidate` and `compile|correctness|performance`. Each action emits one
+`ARENA_EVAL_RESULT=` envelope. Missing cases, compiler errors, numerical errors,
+and unavailable runtime dependencies are failures, never implicit skips.
+
+The GPU implementation was extracted verbatim into `source/kernel.hpp`. The
+original C++ host harness remains protected and includes that header. Its launch
+interface and constants are part of the fixed task contract; a Python symbol
+scope is not used to protect C++ code.
+
+## Previous task notes
+
 # HIP-Basic Matrix Multiplication Example
 
 ## Description
@@ -52,3 +89,11 @@ $$c_{ij}=\sum_{k=1}^{N}a_{ik}b_{kj}$$
 - `hipMemcpy`
 - `hipGetLastError`
 - `hipFree`
+
+The original constant-input correctness gate remains unchanged. Correctness also
+runs the benchmark's original nonuniform inputs against a full CPU product for
+all five shapes. The same full-output reference checks the timed replay after
+poisoning output storage. Its original scaled tolerance is unchanged (0.002 times
+max(1, abs(expected))); CPU reference construction and validation are outside the
+timed samples. Repeated CPU dot products are reused only after comparing actual
+rows/columns for equality. Warmups, sample counts and GPU timing are unchanged.

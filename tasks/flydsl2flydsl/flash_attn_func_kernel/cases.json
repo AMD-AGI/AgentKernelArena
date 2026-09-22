@@ -1,0 +1,164 @@
+{
+  "cases": [
+    {
+      "test_case_id": "case_0000",
+      "params": {
+        "B": 1,
+        "S": 128,
+        "H": 8,
+        "D": 128,
+        "dtype": "f16",
+        "causal": true
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "f16"
+    },
+    {
+      "test_case_id": "case_0001",
+      "params": {
+        "B": 1,
+        "S": 256,
+        "H": 8,
+        "D": 128,
+        "dtype": "f16",
+        "causal": true
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "f16"
+    },
+    {
+      "test_case_id": "case_0002",
+      "params": {
+        "B": 1,
+        "S": 512,
+        "H": 8,
+        "D": 128,
+        "dtype": "f16",
+        "causal": true
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "f16"
+    },
+    {
+      "test_case_id": "case_0003",
+      "params": {
+        "B": 1,
+        "S": 1024,
+        "H": 8,
+        "D": 128,
+        "dtype": "f16",
+        "causal": true
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "f16"
+    },
+    {
+      "test_case_id": "case_0004",
+      "params": {
+        "B": 1,
+        "S": 2048,
+        "H": 8,
+        "D": 128,
+        "dtype": "f16",
+        "causal": true
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "f16"
+    },
+    {
+      "test_case_id": "case_0005",
+      "params": {
+        "B": 4,
+        "S": 512,
+        "H": 16,
+        "D": 128,
+        "dtype": "f16",
+        "causal": true
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "f16"
+    },
+    {
+      "test_case_id": "case_0006",
+      "params": {
+        "B": 8,
+        "S": 256,
+        "H": 32,
+        "D": 128,
+        "dtype": "f16",
+        "causal": true
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "f16"
+    },
+    {
+      "test_case_id": "case_0007",
+      "params": {
+        "B": 8,
+        "S": 512,
+        "H": 64,
+        "D": 128,
+        "dtype": "f16",
+        "causal": true
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "f16"
+    },
+    {
+      "test_case_id": "case_0008",
+      "params": {
+        "B": 1,
+        "S": 512,
+        "H": 8,
+        "D": 128,
+        "dtype": "bf16",
+        "causal": true
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bf16"
+    },
+    {
+      "test_case_id": "case_0009",
+      "params": {
+        "B": 1,
+        "S": 1024,
+        "H": 8,
+        "D": 128,
+        "dtype": "bf16",
+        "causal": true
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bf16"
+    }
+  ]
+}

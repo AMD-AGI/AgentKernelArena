@@ -1,0 +1,348 @@
+{
+  "version": 1,
+  "source": "test_triton_swizzle2d.py",
+  "kernel_symbols": [
+    "swizzle2d_kernel"
+  ],
+  "cases": [
+    {
+      "test_case_id": "test_swizzle2d/1fc4aebc888d310fb9c2",
+      "params": {
+        "function": "test_swizzle2d",
+        "arguments": {
+          "size_i": 5,
+          "size_j": 7,
+          "size_g": 3
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/2cff81cfd5cf59f0cdfa",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "size_i_k": 32,
+          "size_j_k": 32,
+          "size_g_k": 4,
+          "output_dtype_str": "int32"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/1441e2f73ca46cc6d937",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "size_i_k": 32,
+          "size_j_k": 32,
+          "size_g_k": 4,
+          "output_dtype_str": "int64"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/111967be8ab7a6201962",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "size_i_k": 64,
+          "size_j_k": 64,
+          "size_g_k": 8,
+          "output_dtype_str": "int32"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/7194d2d1cfc1fce72046",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "size_i_k": 64,
+          "size_j_k": 64,
+          "size_g_k": 8,
+          "output_dtype_str": "int64"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/59bbe1ed88eadd7e81a7",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "size_i_k": 128,
+          "size_j_k": 128,
+          "size_g_k": 16,
+          "output_dtype_str": "int32"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/fc0e108f450e190e44bc",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "size_i_k": 128,
+          "size_j_k": 128,
+          "size_g_k": 16,
+          "output_dtype_str": "int64"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/32213b014ca9ae14c656",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "size_i_k": 256,
+          "size_j_k": 256,
+          "size_g_k": 16,
+          "output_dtype_str": "int32"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/80642addea642ba2630c",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "size_i_k": 256,
+          "size_j_k": 256,
+          "size_g_k": 16,
+          "output_dtype_str": "int64"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/341b5d5ca3374fbba5a3",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "size_i_k": 256,
+          "size_j_k": 256,
+          "size_g_k": 32,
+          "output_dtype_str": "int32"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/eae211149c2d6cd537c5",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "size_i_k": 256,
+          "size_j_k": 256,
+          "size_g_k": 32,
+          "output_dtype_str": "int64"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/83111700be6e9fb3ed79",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "size_i_k": 512,
+          "size_j_k": 512,
+          "size_g_k": 32,
+          "output_dtype_str": "int32"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/b965925bd710eb15a5c6",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "size_i_k": 512,
+          "size_j_k": 512,
+          "size_g_k": 32,
+          "output_dtype_str": "int64"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/60087e9fe3aab8146f46",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "size_i_k": 512,
+          "size_j_k": 64,
+          "size_g_k": 8,
+          "output_dtype_str": "int32"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/ad1c81a87e65ca2667d3",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "size_i_k": 512,
+          "size_j_k": 64,
+          "size_g_k": 8,
+          "output_dtype_str": "int64"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/6e6fed7f60bb3bb94e9d",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "size_i_k": 64,
+          "size_j_k": 512,
+          "size_g_k": 8,
+          "output_dtype_str": "int32"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/821610367e8ec6e0db79",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "size_i_k": 64,
+          "size_j_k": 512,
+          "size_g_k": 8,
+          "output_dtype_str": "int64"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_swizzle2d_boundary/52d8e1dc1992fc083b6e",
+      "params": {
+        "function": "test_swizzle2d_boundary",
+        "arguments": {
+          "size_i": 5,
+          "size_j": 7,
+          "size_g": 3,
+          "output_dtype": "torch.float32"
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_swizzle2d_boundary/aa5c2f2149a366952dcc",
+      "params": {
+        "function": "test_swizzle2d_boundary",
+        "arguments": {
+          "size_i": 128,
+          "size_j": 128,
+          "size_g": 16,
+          "output_dtype": "torch.int32"
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_swizzle2d_boundary/ee1b24fc0d9851b28e0f",
+      "params": {
+        "function": "test_swizzle2d_boundary",
+        "arguments": {
+          "size_i": 64,
+          "size_j": 512,
+          "size_g": 8,
+          "output_dtype": "torch.int64"
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    }
+  ],
+  "migration": {
+    "original_source_sha256": "efab899c122b4fb4477122d02b933d9b79cb40010fc28b0bec86e62a51ba56e6",
+    "case_policy": "All original parametrizations retained; runtime skips are failures, not passing or omitted cases."
+  }
+}

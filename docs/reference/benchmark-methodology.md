@@ -70,8 +70,8 @@ For each fixed test case, the helper:
 7. For tasks that request a timed-run handle, exposes the exact captured output
    buffers and an additional replay of the same graph executable. Correctness
    checks poison or perturb those buffers, replay, and compare them with the
-   eager/reference result. Such tasks fail closed rather than falling back to an
-   unobservable Event invocation.
+   eager/reference result. Automatic graph-to-Event fallback with a collector
+   fails closed. Explicit Event observation is described below.
 
 The start event, graph replay, and end event all run on the same side stream.
 This ordering is important: recording events on one stream while replaying on
@@ -123,6 +123,22 @@ Fallback still uses device events; it does not use Python, subprocess, or CPU
 wall-clock timing.  Host and wall-time-only fields are rejected by the central
 performance parser.
 
+For an explicit Event path, `timed_run=TimedRun()` exposes the return value from
+the last **measured** sample, after its ending GPU Event completes. It does not
+run a new untimed invocation to obtain that value. Its `rerun()` invokes the
+same eager callable on the measured stream, with `prepare_fn` before the call.
+This can allocate a new output and execute different Python dispatch decisions;
+it is not captured graph replay. The task must validate the measured output
+first and then validate the returned re-invocation output. Output observation
+alone is not a correctness verdict.
+
+Collector metadata records `benchmark_timed_run_kind: eager_callable` for
+explicit Events and `captured_graph` for graph replay. The existing
+`benchmark_method: cuda_event_fallback` and fallback reason are unchanged.
+Automatic fallback from a failed/empty/invalid graph still rejects a requested
+collector; it does not silently switch the validation contract. Event timing
+must be selected explicitly when that is the task's declared methodology.
+
 ## Independent task workspaces
 
 Task sources do not import AgentKernelArena's `src` package and do not carry
@@ -141,13 +157,13 @@ The materialized workspace is self-contained. The Python timing helper depends
 only on the standard library and PyTorch; the native helper depends only on the
 HIP runtime already required by its task.
 
-Generated helpers, marked adapters, native benchmark drivers, and the source
-files directly named by `performance_command` are covered by the harness
-integrity guard. If a ROCmBench task intentionally colocates its editable kernel
-and benchmark in one Python file, the guard omits imports, complete declared
-target AST nodes, and complete top-level `@triton.jit`/`@jit` helper nodes.
-Benchmark/test functions, ordinary Python helpers, module constants, and
-executable harness statements remain protected.
+Generated helpers, marked adapters, native benchmark drivers, and protected
+evaluation inputs are covered by the harness integrity guard. V2 tasks declare
+file, symbol, or tree boundaries in `candidate.editable`. A colocated
+kernel/benchmark file must use symbol scopes for implementation functions and
+explicitly permitted helpers; benchmark/test functions, reference logic,
+constants, and executable harness statements remain protected. See the task
+guide for the exact declaration rules.
 
 Normal optimization runs and `quality_loop` also snapshot the original task
 package's non-editable inputs before launching the optimizer. This includes
@@ -155,9 +171,8 @@ case data such as `session_cases.json`, reference implementations, and helper
 files outside test directories. The snapshot is kept in framework memory and
 checked before evaluation and again before writing the final result. Editing,
 deleting, or renaming an original input rejects the run for every agent.
-`source_file_path`, `target_file_path`, and `editable_sources` identify editable
-files; the existing function-level harness protection still applies to
-colocated kernel/benchmark files. Runtime outputs under `build/`, `logs/`, and
+`candidate.editable` identifies the implementation boundary; symbol-level
+protection applies to colocated kernel/benchmark files. Runtime outputs under `build/`, `logs/`, and
 `perf/`, environment caches, and generated result reports are not task inputs.
 New preparation files are allowed unless they match protected harness patterns,
 in which case the existing scratch-file removal policy applies. Cloned or
@@ -227,3 +242,34 @@ using an undocumented timer.
 
 Pull requests also run the CPU/mock unit suite and Python compilation audit in
 CI.
+
+## Event output-observation qualification
+
+On 2026-09-15, Slurm job 139392 ran the three
+`tests/test_gpu_graph_smoke.py` checks on an MI355X (`gfx950`) with the pinned
+SGLang 0.5.19 qualification image on node `crsuse2-m2m-001`: all three
+passed, none skipped. Before qualification, the allocated device had 99.8% of
+its memory free and AMD-SMI reported no running processes. The previous
+helper rejected an explicit Event collector on the same GPU; the updated helper
+observed the actual measured output and validated eager re-invocation. See the
+[runtime qualification record](runtime-upgrade-qualification.md) for image identities.
+
+The HGEMM task also exercised all five original cases with the existing pinned
+SGLang 0.5.14 runtime (FlyDSL 0.2.2). Original and updated harnesses both passed
+baseline compile, correctness and performance actions using the same canonical
+helper. Each retained 100 Event samples, one call per sample and the original
+capture-unsafe reference reason. Updated results additionally recorded
+`eager_callable`, `timed_output_correctness: PASS` and `replay_correctness: PASS`
+for all five cases. These sequential runs verify timing boundaries and output
+checks; they do not establish a performance improvement. Action-level evidence
+is distinct from the full task-validator report. That separate HGEMM report
+was subsequently framework-finalized as `PASS` in the same job, with an
+implemented frozen initial candidate and no baseline diagnostic exemption.
+
+Earlier job 139346 on node `crsuse2-m2m-217` also produced successful functional
+reports, but a subsequent audit found external process/memory occupancy and
+other tasks failed with allocation/launch resource errors. Preserve those
+reports as historical functional evidence; all performance from that node is
+unqualified. Job 139392 explicitly excluded node217 and repeated the smoke,
+HGEMM boundary checks and full validator on the available-memory allocation
+described above. Neither sequential run establishes an optimization gain.

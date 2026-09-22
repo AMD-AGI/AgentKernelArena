@@ -164,8 +164,8 @@ def _prepare(case: dict) -> dict:
         inp["seg_state0"] = [state[n + 1].double().clone() for n in range(num_seqs)]
         inp["segments"] = [(n, n + 1) for n in range(num_seqs)]
 
-    # Both kernels update the state in place, so the golden's starting state is
-    # snapshotted above (seg_state0) BEFORE any kernel touches it.
+    # Snapshot state before either kernel executes. Decode updates its cache;
+    # chunk returns a separate final state and leaves this input unchanged.
     inp["state"] = state
     return inp
 
@@ -190,7 +190,7 @@ def _run(inp: dict):
 # --------------------------------------------------------------------------- #
 # Reference
 # --------------------------------------------------------------------------- #
-def _golden(inp: dict):
+def _golden(inp: dict, *, return_state=False):
     """Independent float64 transcription of the KDA gated-delta-rule recurrence.
 
     Taken directly from ``fused_recurrent_kda_packed_decode_kernel``
@@ -230,7 +230,8 @@ def _golden(inp: dict):
     qn = q / torch.sqrt((q * q).sum(-1, keepdim=True) + 1e-6) * scale
     kn = k / torch.sqrt((k * k).sum(-1, keepdim=True) + 1e-6)
 
-    out = torch.zeros(inp["total_t"], H, D, dtype=torch.float64, device="cuda")
+    out = torch.zeros(inp["total_t"], H, D, dtype=torch.float64, device=q.device)
+    final_states = []
     for (bos, eos), S0 in zip(inp["segments"], inp["seg_state0"]):
         S = S0.clone()                                     # [H, V, K]
         for t in range(bos, eos):
@@ -239,7 +240,162 @@ def _golden(inp: dict):
             vt = vt * beta[t].unsqueeze(-1)
             S = S + vt.unsqueeze(2) * kn[t].unsqueeze(1)   # + outer(v, k)
             out[t] = (S * qn[t].unsqueeze(1)).sum(-1)      # S @ q
+        final_states.append(S)
+    if return_state:
+        return out.unsqueeze(0), final_states
     return out.unsqueeze(0)
+
+
+def _assert_numerics(got, expected, params):
+    torch = _torch()
+    assert got.shape == expected.shape, "Wrong KDA comparison shape"
+    actual, reference = got.double().flatten(), expected.double().flatten()
+    assert torch.isfinite(actual).all() and torch.isfinite(reference).all(), "Nonfinite KDA comparison"
+    actual_scale, reference_scale = actual.abs().max(), reference.abs().max()
+    if actual_scale == 0 or reference_scale == 0:
+        # Cosine has no direction at zero. The independent FP64 recurrence
+        # can retain values smaller than the declared output type represents.
+        # Accept zero only if correctly rounding that reference to the output
+        # type produces exactly the actual vector; representable values still
+        # fail. Keep the unrounded reference for the magnitude check below.
+        assert torch.equal(got.flatten(), reference.to(got.dtype)), (
+            "KDA cosine mismatch: only one vector is zero after output rounding"
+        )
+        cosine = 1.0
+    else:
+        # Scaling each vector does not change its angle. It avoids cosine's
+        # default epsilon turning equal tiny nonzero vectors into a mismatch.
+        cosine = torch.nn.functional.cosine_similarity(
+            actual / actual_scale, reference / reference_scale, dim=0,
+        )
+    rel_max = (actual - reference).abs().max() / reference.abs().max().clamp_min(1e-8)
+    assert float(cosine) > params.get("min_cosine", 0.999), "KDA cosine mismatch"
+    assert float(rel_max) < params.get("max_rel_err", 0.03), "KDA relative maximum mismatch"
+
+
+def _assert_state_result(inp, result, expected_states, before):
+    torch = _torch()
+    assert isinstance(result, tuple) and len(result) == 2, "KDA must return output and state"
+    output, state = result
+    assert output.shape == (1, inp["total_t"], inp["H"], inp["D"]), "Wrong KDA output shape"
+    assert output.dtype == torch.bfloat16, "KDA output must be BF16"
+    assert output.device == inp["state"].device, "Wrong KDA output device"
+    assert torch.isfinite(output).all(), "Nonfinite KDA output"
+    assert state.dtype == torch.float32 and state.device == inp["state"].device
+    assert torch.isfinite(state).all(), "Nonfinite KDA state"
+    if inp["mode"] == "packed_decode":
+        assert state.shape == before.shape and state.data_ptr() == inp["state"].data_ptr()
+        selected = state[inp["state_indices"].long()]
+        mask = torch.ones(state.shape[0], dtype=torch.bool, device=state.device)
+        mask[inp["state_indices"].long()] = False
+        torch.testing.assert_close(state[mask], before[mask], rtol=0, atol=0)
+    else:
+        assert state.shape == inp["state"].shape
+        assert output.data_ptr() == inp["v"].data_ptr(), "Chunk output must alias v"
+        assert output.stride() == inp["v"].stride(), "Wrong chunk output layout"
+        # Chunk returns the final state. Its caller performs cache scattering;
+        # that external model operation is outside this operator's timing scope.
+        torch.testing.assert_close(inp["state"], before, rtol=0, atol=0)
+        selected = state
+    _assert_numerics(selected, torch.stack(expected_states), inp["cfg"]["params"])
+
+
+def _reference_state_inputs(inputs, state):
+    result = dict(inputs)
+    slots = (inputs["state_indices"].tolist() if inputs["mode"] == "packed_decode"
+             else range(inputs["num_seqs"]))
+    result["state"] = state
+    result["seg_state0"] = [state[i].double().clone() for i in slots]
+    return result
+
+
+def _repeated_reference(inputs, state, repeats):
+    reference = _reference_state_inputs(inputs, state)
+    assert type(repeats) is int and repeats > 0
+    for _ in range(repeats):
+        expected, states = _golden(reference, return_state=True)
+        if inputs["mode"] == "packed_decode":
+            reference["seg_state0"] = states
+        else:
+            # Public chunk.py writes output into v (o=v). Each subsequent
+            # invocation consumes that BF16-rounded value; initial state stays
+            # unchanged. Reproduce the existing evolving-input graph exactly.
+            reference["v"] = expected.to(inputs["v"].dtype)
+    return expected, states
+
+
+def _prepare_timed_check(inp):
+    torch = _torch()
+    originals = {key: value for key, value in inp.items() if isinstance(value, torch.Tensor)}
+    snapshots = {key: value.detach().clone() for key, value in originals.items()}
+    private = {**inp, **snapshots}
+    return dict(originals=originals, snapshots=snapshots, private=private, sample=None)
+
+
+def _observe_timed_sample(inp, check, calls_per_replay):
+    # Called by the canonical helper on the measurement stream, before its
+    # start event. Retain only the last measured sample's private starting
+    # mutable tensor.
+    # Unlike prepare_fn, this observes state without resetting it or forcing R=1.
+    assert type(calls_per_replay) is int and calls_per_replay > 0
+    mutable = "state" if inp["mode"] == "packed_decode" else "v"
+    check["sample"] = (inp[mutable].detach().clone(), calls_per_replay)
+
+
+def _assert_readonly_inputs(inp, check, expected):
+    torch = _torch()
+    for key, original in check["originals"].items():
+        assert inp[key] is original, "KDA input replaced: " + key
+        assert original.dtype == expected[key].dtype and original.shape == expected[key].shape
+        assert original.device == expected[key].device
+        mutable = "state" if inp["mode"] == "packed_decode" else "v"
+        if key == mutable:
+            continue  # The output/state contract verifies this actual mutation.
+        assert torch.equal(original.contiguous().view(torch.uint8),
+                           expected[key].contiguous().view(torch.uint8)), "Readonly KDA input changed: " + key
+
+
+def _assert_timed_outputs(inp, timed, metadata, check):
+    try:
+        assert timed.bound, "Timing must expose its captured invocation"
+        _assert_readonly_inputs(inp, check, check["snapshots"])
+        repeats = int(metadata["benchmark_effective_repeats"])
+        assert repeats > 0
+        assert check["sample"] is not None, "Canonical timing helper did not observe measured KDA state"
+        sample, observed_repeats = check["sample"]
+        assert repeats == observed_repeats, "Observed KDA replay count differs from measured count"
+        private = dict(check["private"])
+        before = sample if inp["mode"] == "packed_decode" else check["snapshots"]["state"]
+        if inp["mode"] == "chunk":
+            private["v"] = sample
+        expected, states = _repeated_reference(private, before, repeats)
+        _assert_state_result(inp, timed.outputs, states, before)
+        _assert_numerics(timed.outputs[0], expected, inp["cfg"]["params"])
+
+        # A second independent input tests the exact captured unit. Derive it
+        # from pre-candidate snapshots, never from candidate-modified values.
+        changed = dict(check["snapshots"])
+        key = "mixed_qkv" if inp["mode"] == "packed_decode" else "q"
+        changed_names = (key, "raw_g", "state") + (("v",) if inp["mode"] == "chunk" else ())
+        for name in changed_names:
+            changed[name] = -check["snapshots"][name]
+            inp[name].copy_(changed[name])
+        private = {**check["private"], **changed}
+        expected, states = _repeated_reference(private, changed["state"], repeats)
+        if inp["mode"] == "chunk":
+            # Output aliases v, so poisoning it would destroy the new input.
+            # Check the complete aliased output against the independent oracle.
+            timed.outputs[1].fill_(float("nan"))
+        else:
+            timed.outputs[0].fill_(float("nan"))
+        observed = timed.rerun()
+        _assert_readonly_inputs(inp, check, changed)
+        _assert_state_result(inp, observed, states, changed["state"])
+        _assert_numerics(observed[0], expected, inp["cfg"]["params"])
+    finally:
+        for key, original in check["originals"].items():
+            original.copy_(check["snapshots"][key])
+            inp[key] = original
 
 
 # --------------------------------------------------------------------------- #
@@ -256,9 +412,11 @@ def run_correctness() -> None:
     torch = _torch()
     for case in CASES:
         inp = _prepare(case)
-        ref = _golden(inp)          # BEFORE _run: the kernels mutate the state
+        before = inp["state"].clone()
+        ref, final_states = _golden(inp, return_state=True)
         out, _state = _run(inp)
         torch.cuda.synchronize()
+        _assert_state_result(inp, (out, _state), final_states, before)
 
         assert torch.isfinite(out).all(), (case["id"], "non-finite output")
         expected_shape = (1, inp["total_t"], inp["H"], inp["D"])
@@ -285,26 +443,25 @@ def run_correctness() -> None:
 
 
 def run_performance() -> None:
-    # Sibling tasks additionally validate the timed invocation itself (they pass a
-    # `timed_run` collector to the benchmark and assert on the buffers it wrote).
-    # That is not done here yet: KDA advances `inp["state"]` in place, and a
-    # captured graph chains `benchmark_effective_repeats` invocations, so the
-    # timed output corresponds to the recurrence applied that many times rather
-    # than once. Checking it needs a golden that carries state across repeats,
-    # which must be validated on a build that can run the operator.
+    # Validate the exact captured invocation after collecting unchanged timings.
     rows = []
     for case in CASES:
         inp = _prepare(case)
+        check = _prepare_timed_check(inp)
         _run(inp)
         _torch().cuda.synchronize()
         bench = case.get("benchmark", {})
+        timed = _TimedRun()
+        timed.before_sample = lambda repeats: _observe_timed_sample(inp, check, repeats)
         exec_ms, meta = _benchmark_cuda_graph_or_events(
             lambda: _run(inp),
             warmup=bench.get("warmup", 3),
             repetition=bench.get("repetition", 20),
             target_ms=bench.get("target_ms", 2.0),
             max_graph_repeats=bench.get("max_graph_repeats", 50),
+            timed_run=timed,
         )
+        _assert_timed_outputs(inp, timed, meta, check)
         metadata = {
             **case["params"],
             "model": case.get("model"),
@@ -324,6 +481,7 @@ def run_performance() -> None:
         print(case["id"], f"{exec_ms:.6f} ms", meta.get("benchmark_method"),
               meta.get("benchmark_fallback_reason", ""))
     _write_report(rows)
+    return rows
 
 
 def main() -> None:

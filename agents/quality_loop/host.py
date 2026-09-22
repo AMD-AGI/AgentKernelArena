@@ -122,6 +122,17 @@ def finalize(config: QualityLoopConfig, run_id: str, logger: logging.Logger) -> 
     ):
         raise RuntimeError(f"publication worktree is missing or changed: {worktree}")
 
+    workflow = QualityLoop(REPO_ROOT, config, logger=logger, publisher=publisher)
+    workflow.state = state
+    workflow.artifact_dir = artifact
+    workflow.worktree = worktree
+    workflow.preflight = preflight
+    for task_id, record in state.data.get("tasks", {}).items():
+        if record.get("state") == "completed" and not workflow._terminal_evidence_current(
+            task_id, worktree / "tasks" / task_id
+        ):
+            raise RuntimeError(f"stale or missing task validation evidence before publication: {task_id}")
+
     expected_paths = {
         f"tasks/{task_id}/{relative}"
         for task_id, record in state.data.get("tasks", {}).items()
@@ -145,11 +156,6 @@ def finalize(config: QualityLoopConfig, run_id: str, logger: logging.Logger) -> 
         record["commit_pending"] = False
         state.save()
 
-    workflow = QualityLoop(REPO_ROOT, config, logger=logger, publisher=publisher)
-    workflow.state = state
-    workflow.artifact_dir = artifact
-    workflow.worktree = worktree
-    workflow.preflight = preflight
     report_path = workflow._write_report()
     pr_url = None
     if config.github.publish:

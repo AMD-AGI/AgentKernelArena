@@ -3,6 +3,8 @@ import yaml
 import logging
 from pathlib import Path
 from src.prompts import task_type
+from src.task_spec import load_task_spec
+from src.task_prompt import build_task_prompt
 
 
 def source_code(config: dict) -> str:
@@ -129,7 +131,9 @@ def _load_cheatsheet(task_type_name: str, target_gpu_model: str, project_root: P
         # --- Knowledge section ---
         # L3 repository / image_kernel tasks: language is configured per task
         # (repository_language → key in default_cheatsheet.yaml).
-        if task_type_name in ('repository', 'image_kernel'):
+        if task_config.get('schema_version') == 2:
+            target_language = task_config['candidate']['language'].lower()
+        elif task_type_name in ('repository', 'image_kernel'):
             raw = task_config.get('repository_language')
             if raw is None or str(raw).strip() == '':
                 raise ValueError(
@@ -271,6 +275,18 @@ def prompt_builder(task_config_dir: str, workspace_directory: Path, eval_config:
         )
     logger.info(f"Building prompt from config: {task_config_path}")
 
+    if task_config.get('schema_version') == 2:
+        project_root = Path(__file__).resolve().parent.parent
+        stable_id = eval_config.get('_task_id')
+        if stable_id is None:
+            stable_id = task_config_path.resolve().parent.relative_to(project_root / 'tasks').as_posix()
+        spec = load_task_spec(task_config_path, task_id=stable_id)
+        context, gfx_arch = _load_cheatsheet(
+            spec.candidate.language, target_gpu_model, project_root, spec.to_mapping(), logger,
+        )
+        return build_task_prompt(spec, Path(workspace_directory), target_gpu=target_gpu_model,
+                                 hardware_context=context, target_arch=gfx_arch)
+
     # Build prompt sections
     prompt_sections = []
 
@@ -293,6 +309,8 @@ def prompt_builder(task_config_dir: str, workspace_directory: Path, eval_config:
         task_type_prompt = task_type.torch2flydsl_task_type()
     elif task_type_name == 'triton2flydsl':
         task_type_prompt = task_type.triton2flydsl_task_type()
+    elif task_type_name == 'operator2flydsl':
+        task_type_prompt = task_type.operator2flydsl_task_type()
     elif task_type_name == 'repository':
         task_type_prompt = task_type.repository_task_type()
     elif task_type_name == 'image_kernel':

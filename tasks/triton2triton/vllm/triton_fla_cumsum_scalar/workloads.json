@@ -1,0 +1,95 @@
+{
+  "version": 1,
+  "candidate_symbols": {
+    "source/triton_fla_cumsum_scalar.py": [
+      {
+        "name": "chunk_local_cumsum_scalar_kernel",
+        "jit": true
+      }
+    ]
+  },
+  "case_table": "SEEDS",
+  "input_table": [
+    42,
+    43,
+    44,
+    45,
+    46
+  ],
+  "cases": [
+    {
+      "test_case_id": "perf1",
+      "dtype": "float32",
+      "params": {
+        "case_index": 0,
+        "configuration": 42,
+        "configuration_names": "seed"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf2",
+      "dtype": "float32",
+      "params": {
+        "case_index": 1,
+        "configuration": 43,
+        "configuration_names": "seed"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf3",
+      "dtype": "float32",
+      "params": {
+        "case_index": 2,
+        "configuration": 44,
+        "configuration_names": "seed"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf4",
+      "dtype": "float32",
+      "params": {
+        "case_index": 3,
+        "configuration": 45,
+        "configuration_names": "seed"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf5",
+      "dtype": "float32",
+      "params": {
+        "case_index": 4,
+        "configuration": 46,
+        "configuration_names": "seed"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    }
+  ],
+  "migration": {
+    "original_harness_sha256": "19a0a3bd4e6fdb7f1de60987782555df6cb63729a069d55e72e4384d2a7c46c5",
+    "original_correctness_sha256": "30d0f3ab51b258068fd99b7038ec15f3b04f13ee52c533b6f2c7f83776a4a955"
+  }
+}

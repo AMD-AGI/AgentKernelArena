@@ -9,6 +9,7 @@ from typing import Any
 
 import yaml
 
+from agents.task_validator.report_v2 import V2_REPORT_SCHEMA_VERSION
 from agents.task_validator.report_schema import (
     CHECK_NAMES,
     REPORT_FILENAME,
@@ -22,14 +23,15 @@ def validation_post_processing(
 ) -> bool:
     """Write a deterministic summary and return whether every task passed.
 
-    WARN remains a completed, non-failing validation result. Missing, legacy,
-    malformed, tampered, TIMEOUT, and ordinary FAIL reports make this gate fail.
+    Only PASS is a clean validation gate. WARN remains a completed report but
+    requires a separate maintainer disposition; it does not silently pass here.
+    Version-3 reports remain readable during the schema-v2 migration.
     """
     total_tasks = len(workspace_paths)
     reports: list[dict[str, Any]] = []
     invalid_reports: list[str] = []
     check_stats = {
-        name: {"PASS": 0, "FAIL": 0, "WARN": 0, "TIMEOUT": 0, "SKIP": 0}
+        name: {"PASS": 0, "FAIL": 0, "WARN": 0, "TIMEOUT": 0, "SKIP": 0, "NOT_RUN": 0}
         for name in CHECK_NAMES
     }
     overall_counts = {"PASS": 0, "FAIL": 0, "WARN": 0}
@@ -39,10 +41,9 @@ def validation_post_processing(
         report_file = workspace / REPORT_FILENAME
         if not validation_report_is_complete(workspace):
             logger.error(
-                "Invalid or incomplete validator report in %s (a version-%s "
+                "Invalid or incomplete validator report in %s (a matching "
                 "framework completion marker is required)",
                 workspace,
-                REPORT_SCHEMA_VERSION,
             )
             invalid_reports.append(str(workspace))
             overall_counts["FAIL"] += 1
@@ -64,7 +65,8 @@ def validation_post_processing(
             check_stats[check_name][report["checks"][check_name]["status"]] += 1
 
     logger.info("=" * 90)
-    logger.info("Task Validation Summary Report (schema v%s)", REPORT_SCHEMA_VERSION)
+    logger.info("Task Validation Summary Report (report schemas %s)",
+                sorted({r["validation_schema_version"] for r in reports}))
     logger.info("=" * 90)
     logger.info("Total Tasks:      %s", total_tasks)
     logger.info("Reports Valid:    %s", len(reports))
@@ -74,14 +76,14 @@ def validation_post_processing(
     logger.info("Overall FAIL:     %s", overall_counts["FAIL"])
     logger.info("-" * 90)
 
-    header = f"{'Check':<35} {'PASS':>6} {'FAIL':>6} {'WARN':>6} {'TIMEOUT':>8} {'SKIP':>6}"
+    header = f"{'Check':<35} {'PASS':>6} {'FAIL':>6} {'WARN':>6} {'TIMEOUT':>8} {'SKIP':>6} {'NOT_RUN':>8}"
     logger.info(header)
     logger.info("-" * 90)
     for check_name in CHECK_NAMES:
         stats = check_stats[check_name]
         logger.info(
             f"{check_name:<35} {stats['PASS']:>6} {stats['FAIL']:>6} "
-            f"{stats['WARN']:>6} {stats['TIMEOUT']:>8} {stats['SKIP']:>6}"
+            f"{stats['WARN']:>6} {stats['TIMEOUT']:>8} {stats['SKIP']:>6} {stats['NOT_RUN']:>8}"
         )
 
     logger.info("-" * 90)
@@ -104,8 +106,11 @@ def validation_post_processing(
     logger.info("=" * 90)
 
     summary_data = {
-        "validation_schema_version": REPORT_SCHEMA_VERSION,
-        "validation_passed": not invalid_reports and overall_counts["FAIL"] == 0,
+        "validation_schema_version": V2_REPORT_SCHEMA_VERSION if any(
+            r["validation_schema_version"] == V2_REPORT_SCHEMA_VERSION for r in reports
+        ) else REPORT_SCHEMA_VERSION,
+        "report_schema_versions": sorted({r["validation_schema_version"] for r in reports}),
+        "validation_passed": bool(workspace_paths) and not invalid_reports and overall_counts["PASS"] == total_tasks,
         "total_tasks": total_tasks,
         "reports_valid": len(reports),
         "reports_invalid": len(invalid_reports),
@@ -116,6 +121,7 @@ def validation_post_processing(
                 "task_name": report["task_name"],
                 "overall_status": report["overall_status"],
                 "validation_errors": report.get("validation_errors", []),
+                "task_validation_failures": report.get("task_validation_failures", []),
                 "validation_warnings": report.get("validation_warnings", []),
                 "policy_findings": report.get("policy_findings", []),
                 "summary": report.get("summary", ""),
@@ -135,4 +141,4 @@ def validation_post_processing(
             logger.error("Failed to write validation summary: %s", exc)
             return False
 
-    return bool(workspace_paths) and not invalid_reports and overall_counts["FAIL"] == 0
+    return bool(summary_data["validation_passed"])

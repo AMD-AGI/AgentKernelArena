@@ -1,0 +1,135 @@
+{
+  "version": 1,
+  "candidate_symbols": {
+    "source/triton_count_expert_tokens.py": [
+      {
+        "name": "_count_expert_num_tokens",
+        "jit": true
+      }
+    ]
+  },
+  "case_table": "TEST_SHAPES",
+  "input_table": [
+    [
+      32,
+      2,
+      8
+    ],
+    [
+      64,
+      2,
+      16
+    ],
+    [
+      128,
+      4,
+      8
+    ],
+    [
+      256,
+      2,
+      32
+    ],
+    [
+      512,
+      2,
+      64
+    ]
+  ],
+  "cases": [
+    {
+      "test_case_id": "perf1",
+      "dtype": "int32",
+      "params": {
+        "case_index": 0,
+        "configuration": [
+          32,
+          2,
+          8
+        ],
+        "configuration_names": "(num_tokens, topk, num_experts)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf2",
+      "dtype": "int32",
+      "params": {
+        "case_index": 1,
+        "configuration": [
+          64,
+          2,
+          16
+        ],
+        "configuration_names": "(num_tokens, topk, num_experts)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf3",
+      "dtype": "int32",
+      "params": {
+        "case_index": 2,
+        "configuration": [
+          128,
+          4,
+          8
+        ],
+        "configuration_names": "(num_tokens, topk, num_experts)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf4",
+      "dtype": "int32",
+      "params": {
+        "case_index": 3,
+        "configuration": [
+          256,
+          2,
+          32
+        ],
+        "configuration_names": "(num_tokens, topk, num_experts)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf5",
+      "dtype": "int32",
+      "params": {
+        "case_index": 4,
+        "configuration": [
+          512,
+          2,
+          64
+        ],
+        "configuration_names": "(num_tokens, topk, num_experts)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    }
+  ],
+  "migration": {
+    "original_harness_sha256": "cde9b097978017ad8a84024c03aab0f0a51c24118b89691f6a07d5f35da2b6f0",
+    "original_correctness_sha256": "93444faaf4e31869aae10fdb83bbeef2f754329e8a95ee5ce5bb5361ce8f00b8"
+  }
+}

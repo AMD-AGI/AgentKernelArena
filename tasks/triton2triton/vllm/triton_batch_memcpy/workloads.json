@@ -1,0 +1,125 @@
+{
+  "version": 1,
+  "candidate_symbols": {
+    "source/triton_batch_memcpy.py": [
+      {
+        "name": "batch_memcpy_kernel",
+        "jit": true
+      }
+    ]
+  },
+  "case_table": "TEST_SHAPES",
+  "input_table": [
+    [
+      4,
+      256
+    ],
+    [
+      8,
+      1024
+    ],
+    [
+      16,
+      4096
+    ],
+    [
+      32,
+      2048
+    ],
+    [
+      64,
+      8192
+    ]
+  ],
+  "cases": [
+    {
+      "test_case_id": "perf1",
+      "dtype": "int32,int64,uint8",
+      "params": {
+        "case_index": 0,
+        "configuration": [
+          4,
+          256
+        ],
+        "configuration_names": "(batch, sz)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf2",
+      "dtype": "int32,int64,uint8",
+      "params": {
+        "case_index": 1,
+        "configuration": [
+          8,
+          1024
+        ],
+        "configuration_names": "(batch, sz)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf3",
+      "dtype": "int32,int64,uint8",
+      "params": {
+        "case_index": 2,
+        "configuration": [
+          16,
+          4096
+        ],
+        "configuration_names": "(batch, sz)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf4",
+      "dtype": "int32,int64,uint8",
+      "params": {
+        "case_index": 3,
+        "configuration": [
+          32,
+          2048
+        ],
+        "configuration_names": "(batch, sz)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf5",
+      "dtype": "int32,int64,uint8",
+      "params": {
+        "case_index": 4,
+        "configuration": [
+          64,
+          8192
+        ],
+        "configuration_names": "(batch, sz)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    }
+  ],
+  "migration": {
+    "original_harness_sha256": "755da4df0049ac310259617d1ed9737d09eff4fcf80751c740d2cb167e64f601",
+    "original_correctness_sha256": "ebf555f467d7f7867c4200b6695d403591969f5d437694905bc2ce95f84f072a"
+  }
+}

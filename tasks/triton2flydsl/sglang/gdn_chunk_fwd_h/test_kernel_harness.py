@@ -18,13 +18,16 @@ import json
 import time
 import argparse
 import importlib.util
-from _aka_benchmark import benchmark_cuda_graph_or_events
+from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
+from scripts.replay_checks import require_unchanged, verify_timed_pair
 
 TASK_DIR = os.path.dirname(os.path.abspath(__file__))
 os.chdir(TASK_DIR)
 
 TASK_NAME = "triton2flydsl/sglang/gdn_chunk_fwd_h"
-SOURCE_FILE = os.path.join(TASK_DIR, "gdn_chunk_fwd_h.py")
+from task_runtime import candidate_relative_path
+SOURCE_FILE = candidate_relative_path()
+ENTRY = 'chunk_gated_delta_rule_fwd_h'
 BT = 64  # CHUNK_SIZE
 
 # Test configs: (B, T, Hg, H, K, V, pool). real Qwen3.5-35B GDN prefill:
@@ -42,12 +45,13 @@ TEST_SHAPES = [
 WARMUP_ITERATIONS = 10
 BENCHMARK_ITERATIONS = 100
 MAX_OOM_RETRIES = 5
-DTYPE_NAME = os.environ.get("GDN_DTYPE", "bfloat16")
+DTYPE_NAME = 'bfloat16'  # protected suite dtype
 
 
 def load_module():
     spec = importlib.util.spec_from_file_location("gdn_chunk_fwd_h_src", SOURCE_FILE)
     mod = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = mod
     spec.loader.exec_module(mod)
     return mod
 
@@ -180,6 +184,67 @@ def run_compile():
         return False, str(e)
 
 
+def _checked_recurrent_output(actual, inp):
+    import torch
+    count = 3
+    if not isinstance(actual, (tuple, list)) or len(actual) != count:
+        raise AssertionError("Missing recurrent operator outputs/state")
+    layout = inp["k"]
+    shapes = ((inp["B"], inp["NT"], inp["H"], inp["V"], inp["K"]), tuple(inp["u"].shape), tuple(inp["init"].shape))
+    for output, shape in zip(actual, shapes):
+        if (not isinstance(output, torch.Tensor) or output.shape != shape
+                or output.dtype != layout.dtype or output.device != layout.device):
+            raise AssertionError("Recurrent output shape/dtype/device contract mismatch")
+        if not bool(torch.isfinite(output).all()):
+            raise AssertionError("Non-finite recurrent output/state")
+
+
+def _require_unused_state(actual, initial, indices):
+    import torch
+    untouched = torch.ones(initial.shape[0], dtype=torch.bool, device=initial.device)
+    untouched[indices] = False
+    require_unchanged((actual[untouched],), (initial[untouched],))
+
+
+def _compare_recurrent_output(actual, expected, inp):
+    import torch
+    _checked_recurrent_output(actual, inp)
+    if not all(bool(torch.isfinite(v).all()) for v in expected):
+        raise AssertionError("Non-finite recurrent reference")
+    dtype = inp["k"].dtype
+    indices = inp["idx"]
+    _require_unused_state(actual[-1], expected[-1], indices)
+    pairs = list(zip(actual[:-1], expected[:-1])) + [(actual[-1][indices], expected[-1][indices])]
+    atol = 1e-4 if dtype == torch.float32 else 5e-2
+    rtol = 1e-4 if dtype == torch.float32 else 1e-2
+    max_ratio = 0.0 if dtype == torch.float32 else 0.05
+    for out, ref in pairs:
+        if not _close(out, ref, atol, rtol, max_ratio)[0]:
+            raise AssertionError("Numerical mismatch: original chunk state/value gate")
+
+
+def _recurrent_replay_validator(inp, initial):
+    import torch
+    reference_inputs = dict(inp, init=initial)
+    inputs = tuple(v for key, v in inp.items() if isinstance(v, torch.Tensor) and key != "init") + (initial,)
+    originals = tuple(v.clone() for v in inputs)
+    def reference():
+        return reference_h(reference_inputs)
+    expected = reference()
+    def perturb():
+        initial.neg_()
+        inp["u"].neg_()
+    def compare(actual, expected):
+        _compare_recurrent_output(actual, expected, reference_inputs)
+    def validate(timed):
+        # The canonical rerun invokes the existing prepare_fn outside timing,
+        # restoring the requested initial state before the exact measured unit.
+        return verify_timed_pair(timed, inputs=inputs, originals=originals,
+                                 expected=expected, perturb=perturb,
+                                 reference=reference, compare=compare)
+    return validate
+
+
 def run_correctness():
     import torch
     try:
@@ -200,7 +265,12 @@ def run_correctness():
         try:
             torch.manual_seed(42 + i)
             inp = make_test_data(B, T, Hg, H, K, V, pool, "cuda", dtype)
+            protected_inputs = tuple(v for v in inp.values() if isinstance(v, torch.Tensor))
+            originals = tuple(v.clone() for v in protected_inputs)
             h_t, vn_t, init_t = _run_triton(mod, inp)
+            require_unchanged(protected_inputs, originals)
+            _checked_recurrent_output((h_t, vn_t, init_t), inp)
+            _require_unused_state(init_t, inp["init"], inp["idx"])
             h_r, vn_r, init_r = reference_h(inp)
             idx = inp["idx"]
             h_ok, h_er, h_md = _close(h_t, h_r, atol, rtol, max_ratio)
@@ -237,15 +307,17 @@ def run_performance():
             inp = make_test_data(B, T, Hg, H, K, V, pool, "cuda", dtype)
             init = inp["init"]
             bench_init = init.clone()
+            replay_validate = _recurrent_replay_validator(inp, init)
 
             def prepare_fn():
                 bench_init.copy_(init)
 
             def fn():
-                mod.chunk_gated_delta_rule_fwd_h(
+                h, v_new = mod.chunk_gated_delta_rule_fwd_h(
                     k=inp["k"], w=inp["w"], u=inp["u"], g=inp["g"],
                     initial_state=bench_init, initial_state_indices=inp["idx"],
                     save_new_value=True, cu_seqlens=None)
+                return h, v_new, bench_init
 
             prepare_fn()
             _retry_oom(fn)
@@ -253,19 +325,21 @@ def run_performance():
                 prepare_fn()
                 fn()
             torch.cuda.synchronize()
+            timed = TimedRun()
             elapsed_ms, bench_meta = benchmark_cuda_graph_or_events(
                 fn, warmup=0, repetition=BENCHMARK_ITERATIONS,
-                prepare_fn=prepare_fn,
+                prepare_fn=prepare_fn, timed_run=timed,
             )
+            bench_meta.update(replay_validate(timed))
             test_cases.append({"test_case_id": f"perf{ti+1}",
                                "execution_time_ms": elapsed_ms,
                                **bench_meta,
                                "params": params})
-        except Exception:
+        except Exception as error:
             test_cases.append({"test_case_id": f"perf{ti+1}",
                                "execution_time_ms": -1.0,
                                "benchmark_method": "benchmark_failed",
-                               "benchmark_fallback_reason": "performance case failed before timing completed",
+                               "benchmark_fallback_reason": "performance case failed: " + str(error),
                                "params": params})
     return test_cases
 

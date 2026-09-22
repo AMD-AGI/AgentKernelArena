@@ -19,23 +19,22 @@ import math
 import os
 import sys
 from pathlib import Path
-from _aka_benchmark import benchmark_cuda_graph_or_events
+from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
+from scripts.replay_checks import require_tensor_contract, require_unchanged, verify_timed_run
 
-KERNEL_FILE = "kernel.py"
+from task_runtime import candidate_relative_path
+KERNEL_FILE = candidate_relative_path()
+ARENA_PROVIDED_BASELINE = False
 MODEL_FILE = "model.py"
 
 
 def _resolve_kernel_dir():
-    here = os.path.dirname(os.path.abspath(__file__))
-    if os.path.isfile(os.path.join(here, KERNEL_FILE)):
-        return here
-    cwd = os.getcwd()
-    if os.path.isfile(os.path.join(cwd, KERNEL_FILE)):
-        return cwd
-    return here
+    return str(__import__("pathlib").Path(__file__).resolve().parent)
 
 
 def _load_module(kernel_dir, filename, alias):
+    if filename == KERNEL_FILE and ARENA_PROVIDED_BASELINE:
+        return None
     entry = os.path.join(kernel_dir, filename)
     if not os.path.isfile(entry):
         return None
@@ -47,6 +46,8 @@ def _load_module(kernel_dir, filename, alias):
     mod = importlib.util.module_from_spec(spec)
     sys.modules[alias] = mod
     spec.loader.exec_module(mod)
+    if filename == KERNEL_FILE:
+        _require_candidate_outputs(mod)
     return mod
 
 
@@ -145,6 +146,43 @@ def _make_reference_runner(jagged, dense, bias, m_per_group):
     return launch
 
 
+def _checked_jagged_output(actual, expected):
+    import torch
+    require_tensor_contract(actual, expected)
+    if not bool(torch.isfinite(actual).all() and torch.isfinite(expected).all()):
+        raise AssertionError("Non-finite jagged GEMM output/reference")
+    delta = (actual.float() - expected.float()).abs().max().item()
+    denom = expected.float().abs().max().item()
+    rel = delta / denom if denom > 0 else delta
+    if rel > REL_GATE:
+        raise AssertionError(f"Numerical mismatch: original jagged gate: rel={rel}")
+
+
+def _check_prepared_jagged(kmod, inputs, expected, shape):
+    originals = tuple(value.clone() for value in inputs)
+    run = _make_candidate_runner(kmod, *inputs, max(shape["m_per_group"]))
+    actual = run()
+    require_unchanged(inputs, originals)
+    _checked_jagged_output(actual, expected)
+
+
+def _jagged_replay_validator(model, inputs):
+    originals = tuple(value.clone() for value in inputs)
+    def oracle():
+        return model(*inputs)
+    expected = oracle()
+    def perturb():
+        # Flip both product and bias, preserving original group offsets and
+        # the prepared metadata, allocation and launch boundaries.
+        inputs[1].neg_()
+        inputs[2].neg_()
+    def validate(timed):
+        return verify_timed_run(timed, inputs=inputs, originals=originals,
+                                expected=expected, perturb=perturb,
+                                reference=oracle, compare=_checked_jagged_output)
+    return validate
+
+
 def run_correctness(verbose=True):
     import torch
 
@@ -162,11 +200,16 @@ def run_correctness(verbose=True):
     for shape in SHAPES:
         try:
             jagged, dense, bias, seq_offsets = _make_inputs(shape["m_per_group"])
+            protected_inputs = (jagged, dense, bias, seq_offsets)
+            originals = tuple(v.clone() for v in protected_inputs)
             with torch.no_grad():
                 ref = model(jagged, dense, bias, seq_offsets)
             out = kmod.flydsl_jagged_dense_bmm(jagged, dense, bias, seq_offsets)
             torch.cuda.synchronize()
 
+            require_unchanged(protected_inputs, originals)
+            _checked_jagged_output(out, ref)
+            _check_prepared_jagged(kmod, protected_inputs, ref, shape)
             ref_f, out_f = ref.float(), out.float()
             denom = ref_f.abs().max().item()
             max_delta = (ref_f - out_f).abs().max().item()
@@ -212,6 +255,7 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
     print("-" * 56)
     for idx, shape in enumerate(SHAPES):
         jagged, dense, bias, seq_offsets = _make_inputs(shape["m_per_group"])
+        replay_validate = _jagged_replay_validator(model, (jagged, dense, bias, seq_offsets))
         B = len(shape["m_per_group"])
         total_M = sum(shape["m_per_group"])
         run_kernel = _make_candidate_runner(
@@ -232,9 +276,12 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
             run_kernel()
         torch.cuda.synchronize()
 
+        timed = TimedRun()
         kernel_ms, kernel_bench_meta = benchmark_cuda_graph_or_events(
-            run_kernel, warmup=0, repetition=iters
+            run_kernel, warmup=0, repetition=iters, timed_run=timed
         )
+
+        kernel_bench_meta.update(replay_validate(timed))
 
         with torch.no_grad():
             ref_ms, ref_bench_meta = benchmark_cuda_graph_or_events(
@@ -313,3 +360,120 @@ if __name__ == "__main__":
         sys.exit(0)
     else:
         run_benchmark(warmup=args.warmup, iters=args.iterations)
+
+
+def _require_candidate_outputs(mod):
+    import functools
+    for name in tuple(vars(mod)):
+        target = getattr(mod, name)
+        if name.startswith("flydsl_") and callable(target):
+            @functools.wraps(target)
+            def checked(*args, __target=target, **kwargs):
+                try:
+                    result = __target(*args, **kwargs)
+                except NotImplementedError as exc:
+                    raise RuntimeError("Executed candidate is unimplemented; no baseline fallback") from exc
+                if result is None:
+                    raise RuntimeError("Candidate operator returned None; output is required")
+                return result
+            setattr(mod, name, checked)
+
+
+# V2 direct timing evidence from this invocation.
+def arena_benchmark(warmup=10, iters=100, verbose=True):
+    import torch
+
+    kmod = _load_module(_KERNEL_DIR, KERNEL_FILE, "flydsl_kernel")
+    mmod = _load_module(_KERNEL_DIR, MODEL_FILE, "torch_model")
+    if kmod is None or mmod is None:
+        print("FAIL: cannot load kernel.py / model.py")
+        return {"geomean_latency_ms": -1, "geomean_speedup": -1}
+
+    model = mmod.Model().to("cuda").eval()
+
+    latencies, speedups, report = [], [], []
+    print(f"{'Config':<22} {'Ref':>10} {'FlyDSL':>10} {'Speedup':>10}")
+    print("-" * 56)
+    for idx, shape in enumerate(SHAPES):
+        jagged, dense, bias, seq_offsets = _make_inputs(shape["m_per_group"])
+        replay_validate = _jagged_replay_validator(model, (jagged, dense, bias, seq_offsets))
+        B = len(shape["m_per_group"])
+        total_M = sum(shape["m_per_group"])
+        run_kernel = _make_candidate_runner(
+            kmod,
+            jagged,
+            dense,
+            bias,
+            seq_offsets,
+            max(shape["m_per_group"]),
+        )
+        run_ref = _make_reference_runner(
+            jagged, dense, bias, shape["m_per_group"]
+        )
+
+        run_kernel()
+        torch.cuda.synchronize()
+        for _ in range(warmup):
+            run_kernel()
+        torch.cuda.synchronize()
+
+        timed = TimedRun()
+        kernel_ms, kernel_bench_meta = benchmark_cuda_graph_or_events(
+            run_kernel, warmup=0, repetition=iters, timed_run=timed
+        )
+
+        kernel_bench_meta.update(replay_validate(timed))
+
+        with torch.no_grad():
+            ref_ms, ref_bench_meta = benchmark_cuda_graph_or_events(
+                run_ref,
+                warmup=warmup,
+                repetition=iters,
+            )
+
+        methods_match = kernel_bench_meta["benchmark_method"] == ref_bench_meta["benchmark_method"]
+        speedup = (
+            ref_ms / kernel_ms if methods_match and kernel_ms > 0 else None
+        )
+        speedup_display = (
+            format(speedup, ">8.2f") + "x"
+            if speedup is not None
+            else f"{'N/A':>9}"
+        )
+        latencies.append(kernel_ms)
+        if speedup is not None:
+            speedups.append(speedup)
+        flops = 2.0 * total_M * N * K
+        tflops = flops / (kernel_ms * 1e-3) / 1e12 if kernel_ms > 0 else 0.0
+        report.append({
+            "test_case_id": f"test_case_{idx}",
+            "execution_time_ms": kernel_ms,
+            **kernel_bench_meta,
+            "reference_benchmark_method": ref_bench_meta["benchmark_method"],
+            "benchmark_method_consistent": kernel_bench_meta["benchmark_method"] == ref_bench_meta["benchmark_method"],
+            "shape": [B, total_M, N, K],
+            "params": {"B": B, "total_M": total_M, "N": N, "K": K, "dtype": "bf16"},
+            "tflops": tflops,
+        })
+        if verbose:
+            print(f"{shape['name']:<22} {ref_ms:>8.4f}ms {kernel_ms:>8.4f}ms {speedup_display}")
+        del jagged, dense, bias, seq_offsets
+        torch.cuda.empty_cache()
+
+    geomean_latency = math.exp(sum(math.log(x) for x in latencies) / len(latencies))
+    geomean_speedup = math.exp(sum(math.log(x) for x in speedups) / len(speedups)) if speedups else None
+    geomean_speedup_display = (
+        format(geomean_speedup, ".2f") + "x"
+        if geomean_speedup is not None
+        else "N/A"
+    )
+
+    build_dir = Path(_KERNEL_DIR) / "build"
+    build_dir.mkdir(exist_ok=True)
+    with open(build_dir / "performance_report.json", "w") as f:
+        json.dump(report, f, indent=2)
+
+    print("-" * 56)
+    print(f"Geometric mean latency: {geomean_latency:.4f} ms")
+    print(f"Geometric mean speedup: {geomean_speedup_display}")
+    return report

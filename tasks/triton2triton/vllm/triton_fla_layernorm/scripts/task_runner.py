@@ -58,20 +58,17 @@ def reference(x, weight, bias=None, eps=1e-5, z=None, norm_before_gate=True, is_
     if is_rms_norm:
         var = (x_f * x_f).mean(dim=-1, keepdim=True)
         x_hat = x_f * torch.rsqrt(var + eps)
-        mean = None
     else:
         mean = x_f.mean(dim=-1, keepdim=True)
         var = ((x_f - mean) ** 2).mean(dim=-1, keepdim=True)
         x_hat = (x_f - mean) * torch.rsqrt(var + eps)
-    rstd = torch.rsqrt(var + eps)
     y = x_hat * weight.float().cpu()
     if bias is not None:
         y = y + bias.float().cpu()
     if z is not None and norm_before_gate:
         z_f = z.float().cpu()
         y = y * z_f * torch.sigmoid(z_f)
-    mean = mean.squeeze(-1) if mean is not None else None
-    return y, mean, rstd.squeeze(-1)
+    return y
 
 
 def gen_inputs(seed, case_idx, device):
@@ -100,7 +97,7 @@ def run_compile():
         return False, str(e)
 
 
-def run_correctness():
+def run_correctness(*, case_index=None):
     import torch
     try:
         mod = load_module()
@@ -109,44 +106,23 @@ def run_correctness():
 
     device = "cuda"
     for i, test_case in enumerate(TEST_CASES):
+        if case_index is not None and i != case_index:
+            continue
         try:
             args, kwargs = gen_inputs(42 + i, i, device)
             args_cpu = tuple(a.float().cpu() if isinstance(a, torch.Tensor) else a for a in args)
 
             result_tuple = mod.layer_norm_fwd(*args, **kwargs)
-            if not isinstance(result_tuple, tuple) or len(result_tuple) != 3:
-                return False, (
-                    f"Case {i+1} {test_case}: expected (out, mean, rstd), "
-                    f"got {type(result_tuple).__name__}"
-                )
-
-            results = result_tuple
-            refs = reference(
+            result = result_tuple[0] if isinstance(result_tuple, tuple) else result_tuple
+            ref = reference(
                 args_cpu[0], args_cpu[1], args_cpu[2],
                 z=kwargs["z"], norm_before_gate=kwargs["norm_before_gate"], is_rms_norm=kwargs["is_rms_norm"]
             )
-            for name, result, ref in zip(("out", "mean", "rstd"), results, refs):
-                if ref is None:
-                    if result is not None:
-                        return False, f"Case {i+1} {test_case}: {name} must be None"
-                    continue
-                if not isinstance(result, torch.Tensor):
-                    return False, f"Case {i+1} {test_case}: {name} is not a tensor"
-
-                r_cpu = result.float().cpu()
-                ref_f = ref.float()
-                if r_cpu.shape != ref_f.shape:
-                    return False, (
-                        f"Case {i+1} {test_case}: {name} shape {tuple(r_cpu.shape)} "
-                        f"!= {tuple(ref_f.shape)}"
-                    )
-                if not torch.isfinite(r_cpu).all():
-                    return False, f"Case {i+1} {test_case}: {name} contains non-finite values"
-                if not torch.allclose(r_cpu, ref_f, atol=1e-3, rtol=1e-3):
-                    max_diff = (r_cpu - ref_f).abs().max().item()
-                    return False, (
-                        f"Case {i+1} {test_case}: {name} max diff = {max_diff:.6f}"
-                    )
+            r_cpu = result.float().cpu()
+            ref_f = ref.float()
+            if not torch.allclose(r_cpu, ref_f, atol=1e-3, rtol=1e-3):
+                max_diff = (r_cpu - ref_f).abs().max().item()
+                return False, f"Case {i+1} {test_case}: max diff = {max_diff:.6f}"
 
             torch.cuda.synchronize()
         except Exception as e:

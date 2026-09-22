@@ -1,0 +1,135 @@
+{
+  "version": 1,
+  "candidate_symbols": {
+    "source/triton_eagle_prepare_inputs_padded.py": [
+      {
+        "name": "eagle_prepare_inputs_padded_kernel",
+        "jit": true
+      }
+    ]
+  },
+  "case_table": "TEST_SHAPES",
+  "input_table": [
+    [
+      4,
+      3,
+      10
+    ],
+    [
+      8,
+      5,
+      16
+    ],
+    [
+      16,
+      7,
+      32
+    ],
+    [
+      32,
+      4,
+      20
+    ],
+    [
+      64,
+      6,
+      24
+    ]
+  ],
+  "cases": [
+    {
+      "test_case_id": "perf1",
+      "dtype": "int32",
+      "params": {
+        "case_index": 0,
+        "configuration": [
+          4,
+          3,
+          10
+        ],
+        "configuration_names": "(nr, md, mq)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf2",
+      "dtype": "int32",
+      "params": {
+        "case_index": 1,
+        "configuration": [
+          8,
+          5,
+          16
+        ],
+        "configuration_names": "(nr, md, mq)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf3",
+      "dtype": "int32",
+      "params": {
+        "case_index": 2,
+        "configuration": [
+          16,
+          7,
+          32
+        ],
+        "configuration_names": "(nr, md, mq)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf4",
+      "dtype": "int32",
+      "params": {
+        "case_index": 3,
+        "configuration": [
+          32,
+          4,
+          20
+        ],
+        "configuration_names": "(nr, md, mq)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf5",
+      "dtype": "int32",
+      "params": {
+        "case_index": 4,
+        "configuration": [
+          64,
+          6,
+          24
+        ],
+        "configuration_names": "(nr, md, mq)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    }
+  ],
+  "migration": {
+    "original_harness_sha256": "092275d2d597e10eab8c769729809fec5280116bb7d2993f6a60e7427bb1dc38",
+    "original_correctness_sha256": "c562047c5f9b4d19d50c27668a5819ddc6e1e7512811766bd389673b7a5729b7"
+  }
+}

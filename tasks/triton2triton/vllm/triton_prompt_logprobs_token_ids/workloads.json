@@ -1,0 +1,146 @@
+{
+  "version": 1,
+  "candidate_symbols": {
+    "source/triton_prompt_logprobs_token_ids.py": [
+      {
+        "name": "_prompt_logprobs_token_ids_kernel",
+        "jit": true
+      }
+    ]
+  },
+  "case_table": "TEST_SHAPES",
+  "input_table": [
+    [
+      4,
+      32,
+      128
+    ],
+    [
+      8,
+      64,
+      256
+    ],
+    [
+      16,
+      128,
+      512
+    ],
+    [
+      32,
+      256,
+      1024
+    ],
+    [
+      64,
+      512,
+      2048
+    ]
+  ],
+  "cases": [
+    {
+      "test_case_id": "perf1",
+      "dtype": "int32,int64",
+      "params": {
+        "case_index": 0,
+        "configuration": [
+          4,
+          32,
+          128
+        ],
+        "configuration_names": "(batch, qlen, max_len)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf2",
+      "dtype": "int32,int64",
+      "params": {
+        "case_index": 1,
+        "configuration": [
+          8,
+          64,
+          256
+        ],
+        "configuration_names": "(batch, qlen, max_len)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf3",
+      "dtype": "int32,int64",
+      "params": {
+        "case_index": 2,
+        "configuration": [
+          16,
+          128,
+          512
+        ],
+        "configuration_names": "(batch, qlen, max_len)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf4",
+      "dtype": "int32,int64",
+      "params": {
+        "case_index": 3,
+        "configuration": [
+          32,
+          256,
+          1024
+        ],
+        "configuration_names": "(batch, qlen, max_len)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf5",
+      "dtype": "int32,int64",
+      "params": {
+        "case_index": 4,
+        "configuration": [
+          64,
+          512,
+          2048
+        ],
+        "configuration_names": "(batch, qlen, max_len)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "contract_controls",
+      "status": "PASS",
+      "checks": [
+        "correctness"
+      ],
+      "params": {
+        "case_index": 5,
+        "coverage": "Controls cover request remapping, heterogeneous query lengths and nonzero computed-token offsets; expected token IDs use an independent CPU gather."
+      }
+    }
+  ],
+  "migration": {
+    "original_harness_sha256": "0cdd5edc558258e3dbde95bfbaf1d610477d6eb8f06a417d369c9234420ad00a",
+    "original_correctness_sha256": "f8211598036ea19e7465f1895cf81c8019cbfcae25aff372ae02f1f5d41512fa"
+  }
+}

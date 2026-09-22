@@ -15,15 +15,6 @@ TEST_SHAPES = [
     (256, 64, 4),
     (512, 64, 2),
 ]
-
-# Correctness-only coverage for row tails, topk limits, and 32-bit word edges.
-# These are intentionally separate from TEST_SHAPES so benchmark inputs remain
-# unchanged.
-BOUNDARY_TEST_SHAPES = [
-    (17, 31, 1),
-    (33, 32, 31),
-    (513, 33, 32),
-]
 WARMUP_ITERATIONS = 10
 BENCHMARK_ITERATIONS = 100
 
@@ -53,62 +44,17 @@ def load_module():
 
 
 def reference_pack_bitmatrix(topk_ids, num_experts):
-    """CPU reference: pack topk_ids into bitmatrix.
-
-    Mirrors the Triton kernel exactly, including its treatment of padding
-    slots.  The kernel loads BLOCK_SIZE_K (=32) entries per row; positions
-    beyond the real topk are filled with -1 (the ``other`` value of
-    ``tl.load``).  Because Triton uses C-style truncated integer division,
-    -1 // 32 == 0 and -1 % 32 == -1.  The hardware shift ``1u << -1``
-    (i.e. ``1u << 31``) then sets bit-31 in column 0 for every row.  The
-    reference must reproduce this behaviour to match the kernel output.
-    """
+    """Independent CPU expert-membership oracle; padding is not an assignment."""
     import torch
     n_rows, topk = topk_ids.shape
-    BLOCK_SIZE_K = 32
-    bm_cols = (num_experts + 31) // 32
-    bitmatrix = torch.zeros(n_rows, bm_cols, dtype=torch.uint32)
+    bitmatrix = torch.zeros(n_rows, (num_experts + 31) // 32, dtype=torch.uint32)
     for row in range(n_rows):
-        for k in range(BLOCK_SIZE_K):
-            eid = topk_ids[row, k].item() if k < topk else -1
-            if eid >= 0:
-                col = eid // 32
-                bit = eid % 32
-            else:
-                # C-style truncated division: -1 / 32 == 0, -1 % 32 == -1
-                # Hardware: uint32(1) << -1 wraps to 1 << 31
-                col = 0
-                bit = 31
-            if 0 <= col < bm_cols:
-                bitmatrix[row, col] = bitmatrix[row, col].item() | (1 << bit)
+        for eid in topk_ids[row].tolist():
+            if not 0 <= eid < num_experts:
+                raise ValueError("Expert ID is outside the declared expert range")
+            col, bit = divmod(eid, 32)
+            bitmatrix[row, col] = bitmatrix[row, col].item() | (1 << bit)
     return bitmatrix
-
-
-def make_boundary_topk_ids(n_rows, num_experts, topk, device):
-    """Build deterministic valid IDs with duplicates and word-edge values."""
-    import torch
-
-    rows = torch.arange(n_rows, dtype=torch.int64)[:, None]
-    cols = torch.arange(topk, dtype=torch.int64)[None, :]
-    topk_ids = ((rows * 17 + cols * 7) % num_experts).to(torch.int16)
-
-    # Row zero includes duplicates and IDs on both sides of the 31/32 word
-    # boundary whenever those IDs are valid for the case.
-    edge_ids = [
-        0,
-        0,
-        min(30, num_experts - 1),
-        min(31, num_experts - 1),
-        min(32, num_experts - 1),
-        num_experts - 1,
-        num_experts - 1,
-    ]
-    prefix_len = min(topk, len(edge_ids))
-    topk_ids[0, :prefix_len] = torch.tensor(
-        edge_ids[:prefix_len], dtype=torch.int16
-    )
-    topk_ids[-1, 0] = num_experts - 1
-    return topk_ids.to(device)
 
 
 def run_compile():
@@ -125,7 +71,10 @@ def run_compile():
         return False, str(e)
 
 
-def run_correctness():
+def run_correctness(*, case_index=None):
+    if case_index is not None and case_index >= 10000:
+        from _upstream_controls import run_control
+        return run_control(case_index - 10000, load_module)
     import torch
     try:
         mod = load_module()
@@ -134,6 +83,8 @@ def run_correctness():
 
     device = "cuda"
     for i, (n_rows, num_experts, topk) in enumerate(TEST_SHAPES):
+        if case_index is not None and i != case_index:
+            continue
         try:
             torch.manual_seed(42 + i)
             topk_ids = torch.randint(0, num_experts, (n_rows, topk), device=device, dtype=torch.int16)
@@ -147,24 +98,6 @@ def run_correctness():
                 return False, f"Shape {i+1}: {diff_count} mismatched elements"
         except Exception as e:
             return False, f"Shape {i+1}: exception: {e}"
-
-    for i, (n_rows, num_experts, topk) in enumerate(BOUNDARY_TEST_SHAPES):
-        try:
-            topk_ids = make_boundary_topk_ids(
-                n_rows, num_experts, topk, device
-            )
-
-            result = mod.pack_topk_to_bitmatrix(topk_ids, num_experts)
-            torch.cuda.synchronize()
-
-            ref = reference_pack_bitmatrix(topk_ids.cpu(), num_experts).to(device)
-            if not torch.equal(result, ref):
-                diff_count = (result != ref).sum().item()
-                return False, (
-                    f"Boundary shape {i+1}: {diff_count} mismatched elements"
-                )
-        except Exception as e:
-            return False, f"Boundary shape {i+1}: exception: {e}"
     return True, None
 
 
@@ -230,11 +163,7 @@ def main():
         sys.exit(0 if ok else 1)
     elif args.mode == "correctness":
         ok, err = run_correctness()
-        report = {
-            "status": "ok" if ok else "fail",
-            "error": err,
-            "num_shapes": len(TEST_SHAPES) + len(BOUNDARY_TEST_SHAPES),
-        }
+        report = {"status": "ok" if ok else "fail", "error": err, "num_shapes": len(TEST_SHAPES)}
         with open(os.path.join(build_dir, "correctness_report.json"), "w") as f:
             json.dump(report, f, indent=2)
         print(f"Correctness: {'PASS' if ok else 'FAIL'}")

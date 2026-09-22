@@ -19,8 +19,17 @@ OUTPUT_JSON = DATA_ROOT / "data.json"
 OUTPUT_JS = DATA_ROOT / "data.js"
 
 STATUS_PATTERN = re.compile(
-    r"^(PASS|FAIL|PARTIAL)\s+(\S+)\s+Score:\s*([0-9.]+)\s+Speedup:\s*([0-9.]+)x\s*$"
+    r"^(PASS|FAIL|PARTIAL|ACCEPTED|NOT_ACCEPTED|INCOMPLETE)\s+(\S+)\s+Score:\s*([0-9.]+)\s+Speedup:\s*([0-9.]+)x"
+    r"(?:\s+Accepted:\s*(YES|NO|N/A)\s+Delivery:\s*(COMPLETE|INCOMPLETE|NOT_ACCEPTED|N/A))?\s*$"
 )
+
+
+def parse_acceptance(value: str | None) -> bool | None:
+    return True if value == "YES" else False if value == "NO" else None
+
+
+def parse_delivery(value: str | None) -> str | None:
+    return value if value in ("COMPLETE", "INCOMPLETE", "NOT_ACCEPTED") else None
 
 
 def format_run_timestamp(raw: str) -> str:
@@ -37,11 +46,13 @@ def load_status_map(report_path: Path) -> dict[str, dict[str, Any]]:
         match = STATUS_PATTERN.match(line.strip())
         if not match:
             continue
-        status, task_name, score, speedup = match.groups()
+        status, task_name, score, speedup, accepted, delivery = match.groups()
         status_map[task_name] = {
             "status": status,
             "score_from_report": float(score),
             "speedup_from_report": float(speedup),
+            "candidateAccepted": parse_acceptance(accepted),
+            "deliveryStatus": parse_delivery(delivery),
         }
     return status_map
 
@@ -195,11 +206,16 @@ def build_dataset(include_workspace_runs: bool = False) -> dict[str, Any]:
             for row in reader:
                 task_name = row["Task Name"].strip()
                 task_type = row["Task Type"].strip()
-                status = status_map.get(task_name, {}).get("status", "UNKNOWN")
+                status_info = status_map.get(task_name, {})
+                status = row.get("Status") or status_info.get("status", "UNKNOWN")
                 task = {
                     "taskName": task_name,
                     "taskType": task_type,
                     "status": status,
+                    "candidateAccepted": (parse_acceptance(row["Candidate Accepted"])
+                                          if "Candidate Accepted" in row else status_info.get("candidateAccepted")),
+                    "deliveryStatus": (parse_delivery(row["Delivery Status"])
+                                       if "Delivery Status" in row else status_info.get("deliveryStatus")),
                     "score": as_float(row["Score"]),
                     "speedup": as_float(row["Speedup"]),
                     "optimizationSummary": row["Optimization_summary"].strip(),
@@ -230,6 +246,8 @@ def build_dataset(include_workspace_runs: bool = False) -> dict[str, Any]:
                 "taskName": task_name,
                 "taskType": inferred_task_type,
                 "status": status_info["status"],
+                "candidateAccepted": status_info.get("candidateAccepted"),
+                "deliveryStatus": status_info.get("deliveryStatus"),
                 "score": status_info["score_from_report"],
                 "speedup": status_info["speedup_from_report"],
                 "optimizationSummary": "Recovered from overall_report.txt",

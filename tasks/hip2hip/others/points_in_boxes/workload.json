@@ -1,0 +1,238 @@
+{
+  "test_shapes": [
+    [
+      1,
+      2,
+      16
+    ],
+    [
+      2,
+      4,
+      64
+    ],
+    [
+      4,
+      8,
+      256
+    ],
+    [
+      2,
+      16,
+      1024
+    ],
+    [
+      8,
+      4,
+      512
+    ]
+  ],
+  "candidate_files": [
+    "src/points_in_boxes_cuda.hip"
+  ],
+  "cases": [
+    {
+      "test_case_id": "shape_0_part_standard",
+      "params": {
+        "B": 1,
+        "T": 2,
+        "M": 16,
+        "output_mode": "part",
+        "box_type": "standard"
+      }
+    },
+    {
+      "test_case_id": "shape_0_part_rotated",
+      "params": {
+        "B": 1,
+        "T": 2,
+        "M": 16,
+        "output_mode": "part",
+        "box_type": "rotated"
+      }
+    },
+    {
+      "test_case_id": "shape_0_all_standard",
+      "params": {
+        "B": 1,
+        "T": 2,
+        "M": 16,
+        "output_mode": "all",
+        "box_type": "standard"
+      }
+    },
+    {
+      "test_case_id": "shape_0_all_rotated",
+      "params": {
+        "B": 1,
+        "T": 2,
+        "M": 16,
+        "output_mode": "all",
+        "box_type": "rotated"
+      }
+    },
+    {
+      "test_case_id": "shape_1_part_standard",
+      "params": {
+        "B": 2,
+        "T": 4,
+        "M": 64,
+        "output_mode": "part",
+        "box_type": "standard"
+      }
+    },
+    {
+      "test_case_id": "shape_1_part_rotated",
+      "params": {
+        "B": 2,
+        "T": 4,
+        "M": 64,
+        "output_mode": "part",
+        "box_type": "rotated"
+      }
+    },
+    {
+      "test_case_id": "shape_1_all_standard",
+      "params": {
+        "B": 2,
+        "T": 4,
+        "M": 64,
+        "output_mode": "all",
+        "box_type": "standard"
+      }
+    },
+    {
+      "test_case_id": "shape_1_all_rotated",
+      "params": {
+        "B": 2,
+        "T": 4,
+        "M": 64,
+        "output_mode": "all",
+        "box_type": "rotated"
+      }
+    },
+    {
+      "test_case_id": "shape_2_part_standard",
+      "params": {
+        "B": 4,
+        "T": 8,
+        "M": 256,
+        "output_mode": "part",
+        "box_type": "standard"
+      }
+    },
+    {
+      "test_case_id": "shape_2_part_rotated",
+      "params": {
+        "B": 4,
+        "T": 8,
+        "M": 256,
+        "output_mode": "part",
+        "box_type": "rotated"
+      }
+    },
+    {
+      "test_case_id": "shape_2_all_standard",
+      "params": {
+        "B": 4,
+        "T": 8,
+        "M": 256,
+        "output_mode": "all",
+        "box_type": "standard"
+      }
+    },
+    {
+      "test_case_id": "shape_2_all_rotated",
+      "params": {
+        "B": 4,
+        "T": 8,
+        "M": 256,
+        "output_mode": "all",
+        "box_type": "rotated"
+      }
+    },
+    {
+      "test_case_id": "shape_3_part_standard",
+      "params": {
+        "B": 2,
+        "T": 16,
+        "M": 1024,
+        "output_mode": "part",
+        "box_type": "standard"
+      }
+    },
+    {
+      "test_case_id": "shape_3_part_rotated",
+      "params": {
+        "B": 2,
+        "T": 16,
+        "M": 1024,
+        "output_mode": "part",
+        "box_type": "rotated"
+      }
+    },
+    {
+      "test_case_id": "shape_3_all_standard",
+      "params": {
+        "B": 2,
+        "T": 16,
+        "M": 1024,
+        "output_mode": "all",
+        "box_type": "standard"
+      }
+    },
+    {
+      "test_case_id": "shape_3_all_rotated",
+      "params": {
+        "B": 2,
+        "T": 16,
+        "M": 1024,
+        "output_mode": "all",
+        "box_type": "rotated"
+      }
+    },
+    {
+      "test_case_id": "shape_4_part_standard",
+      "params": {
+        "B": 8,
+        "T": 4,
+        "M": 512,
+        "output_mode": "part",
+        "box_type": "standard"
+      }
+    },
+    {
+      "test_case_id": "shape_4_part_rotated",
+      "params": {
+        "B": 8,
+        "T": 4,
+        "M": 512,
+        "output_mode": "part",
+        "box_type": "rotated"
+      }
+    },
+    {
+      "test_case_id": "shape_4_all_standard",
+      "params": {
+        "B": 8,
+        "T": 4,
+        "M": 512,
+        "output_mode": "all",
+        "box_type": "standard"
+      }
+    },
+    {
+      "test_case_id": "shape_4_all_rotated",
+      "params": {
+        "B": 8,
+        "T": 4,
+        "M": 512,
+        "output_mode": "all",
+        "box_type": "rotated"
+      }
+    }
+  ],
+  "graph_policy": {
+    "enabled": true,
+    "reason": null
+  }
+}

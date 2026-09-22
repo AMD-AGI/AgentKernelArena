@@ -1,6 +1,7 @@
 """CPU regression checks for false passes fixed by the task-quality campaigns."""
 
 import importlib.util
+import ast
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -27,7 +28,20 @@ def runner(monkeypatch):
     monkeypatch.setitem(sys.modules, "_aka_benchmark", helper)
 
     def load(task):
-        return load_file(ROOT / "tasks" / task / "scripts/task_runner.py", "task_runner_test")
+        path = ROOT / 'tasks' / task / 'scripts/task_runner.py'
+        monkeypatch.syspath_prepend(str(path.parent))
+        monkeypatch.syspath_prepend(str(path.parent.parent))
+        for key in list(sys.modules):
+            if key == 'scripts' or key.startswith('scripts.') or key in {'_contract_checks', '_numerical_contract'}:
+                monkeypatch.delitem(sys.modules, key, raising=False)
+        tree = ast.parse(path.read_text())
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Constant) and node.value == 'cuda': node.value = 'cpu'
+        module = __import__('types').ModuleType('task_runner_test')
+        module.__file__ = str(path)
+        monkeypatch.setitem(sys.modules, module.__name__, module)
+        exec(compile(tree, str(path), 'exec'), module.__dict__)
+        return module
 
     return load
 
@@ -57,25 +71,24 @@ def test_kda_rejects_incomplete_or_invalid_outputs(runner, monkeypatch, bad_outp
 
 @pytest.mark.parametrize("replacement", [float("nan"), float("inf"), 0.0])
 def test_logit_bias_rejects_corrupted_masked_logits(runner, replacement):
-    task = runner("triton2triton/vllm/triton_logit_bias")
-    reference = torch.tensor([1.0, -float("inf"), float("inf")])
-    output = reference.clone()
-    output[1] = replacement
-    assert not task.compare_outputs(output, reference, "masked")[0]
-    assert task.compare_outputs(reference.clone(), reference, "valid") == (True, None)
-    output = reference.clone()
-    output[0] = 2.0
-    assert not task.compare_outputs(output, reference, "finite")[0]
+    check = load_file(ROOT / 'tasks/triton2triton/vllm/triton_logit_bias/_arena_replay.py', 'masked_check').compare
+    reference = torch.tensor([1.0, -float('inf'), float('inf')])
+    output = reference.clone(); output[1] = replacement
+    with pytest.raises(AssertionError): check(output, reference, atol=.01, rtol=.01)
+    check(reference.clone(), reference, atol=.01, rtol=.01)
+    output = reference.clone(); output[0] = 2.0
+    with pytest.raises(AssertionError): check(output, reference, atol=.01, rtol=.01)
 
 
 def test_moe_rejects_omitted_writes_even_with_small_reference(runner):
     task = runner("triton2triton/vllm/triton_fused_moe_gptq_awq")
-    reference = torch.full((2, 4), task.CORRECTNESS_ATOL / 2)
-    output = torch.zeros_like(reference)
-    assert torch.allclose(output, reference, atol=task.CORRECTNESS_ATOL,
-                          rtol=task.CORRECTNESS_RTOL)
-    assert not task._outputs_match(output, reference)
-    assert task._outputs_match(reference.clone(), reference)
+    inputs, options = task.control_inputs('int4_explicit', 'cpu')
+    oracle, check = task.numerical_contract(options)
+    reference = oracle(inputs)
+    check(reference.clone(), reference)
+    for wrong in (torch.zeros_like(reference), reference * .5):
+        with pytest.raises(Exception, match='mismatch|bound|accuracy'):
+            check(wrong, reference)
 
 
 @pytest.mark.parametrize("seed", [0, 17])
@@ -103,3 +116,30 @@ def test_assign_score_backward_reference_accumulates_duplicate_neighbors(runner,
         scores.detach(), points.detach(), centers.detach(), indices, upstream)
     for got, reference in zip(actual, expected):
         torch.testing.assert_close(got, reference, rtol=1e-12, atol=1e-12)
+
+
+@pytest.mark.parametrize('bad', [False, True])
+def test_unrouted_quant_control_checks_actual_candidate_and_exact_arithmetic(runner, monkeypatch, bad):
+    task = runner('triton2triton/vllm/triton_fused_moe_gptq_awq')
+    calls = []
+    def candidate(A, qweight, scales, zeros, ids, weights, **options):
+        calls.append(options.copy())
+        inputs = dict(A=A, qweight=qweight, scales=scales, zeros=zeros, ids=ids, weights=weights)
+        output = task.reference(inputs, options)
+        return output * weights[:, None].to(output.dtype) if bad else output
+    monkeypatch.setattr(task, 'load_module', lambda: SimpleNamespace(fused_moe_gptq_awq=candidate))
+    ok, error = task.run_correctness(control='int4_unrouted')
+    assert ok is (not bad), error
+    assert len(calls) == 1 and calls[0]['mul_routed_weight'] is False
+
+
+@pytest.mark.parametrize('control', ['m_tail', 'n_tail', 'k_below64', 'k_above64'])
+@pytest.mark.parametrize('bad', [False, True])
+def test_mmk_new_tails_detect_missing_reduction_tile(runner, monkeypatch, control, bad):
+    task = runner('triton2triton/vllm/triton_moe_mmk')
+    def candidate(a, b):
+        return ((a[:, :32].float() @ b[:32].float()) if bad else
+                (a.float() @ b.float())).to(a.dtype)
+    monkeypatch.setattr(task, 'load_module', lambda: SimpleNamespace(moe_matmul=candidate))
+    ok, error = task.run_correctness(control=control)
+    assert ok is (not bad), error

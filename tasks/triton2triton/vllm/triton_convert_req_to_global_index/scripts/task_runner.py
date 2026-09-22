@@ -110,7 +110,7 @@ def run_compile():
         return False, str(e)
 
 
-def run_correctness():
+def run_correctness(*, case_index=None):
     import torch
     try:
         mod = load_module()
@@ -120,6 +120,8 @@ def run_correctness():
     device = "cuda"
 
     for i, (nt, nr, mbpr, ntk, bs, bn) in enumerate(TEST_SHAPES):
+        if case_index is not None and i != case_index:
+            continue
         try:
             torch.manual_seed(42 + i)
             req_id, block_table, token_indices = make_test_data(nt, nr, mbpr, ntk, bs, device)

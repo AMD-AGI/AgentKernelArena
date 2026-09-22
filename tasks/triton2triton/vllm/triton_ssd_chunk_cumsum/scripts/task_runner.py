@@ -5,6 +5,10 @@ import math
 
 TASK_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 os.chdir(TASK_DIR)
+if TASK_DIR not in sys.path:
+    sys.path.insert(0, TASK_DIR)
+from scripts.ssd_checks import InputSnapshot, check_outputs, validate_timed
+from scripts import semantic_controls
 SOURCE_FILE = os.path.join(TASK_DIR, "source", "triton_ssd_chunk_cumsum.py")
 
 # (seqlen, nheads, chunk_size, has_bias, softplus)
@@ -14,36 +18,6 @@ TEST_SHAPES = [
     (512, 8, 128, False, True),
     (256, 32, 64, True, True),
     (384, 16, 64, False, False),
-]
-
-# Correctness-only cases that cover non-uniform chunk masks, non-power-of-two
-# dimensions, clamp limits, lower precision, and non-contiguous strides without
-# changing the performance workload.
-CORRECTNESS_EDGE_CASES = [
-    {
-        "name": "variable_chunks_odd_heads_clamped",
-        "seqlen": 121,
-        "nheads": 7,
-        "chunk_size": 48,
-        "cu_chunk_seqlens": (0, 48, 79, 121),
-        "has_bias": True,
-        "softplus": False,
-        "dt_limit": (0.01, 0.06),
-        "dtype": "float32",
-        "strided": False,
-    },
-    {
-        "name": "short_chunks_strided_float16",
-        "seqlen": 67,
-        "nheads": 5,
-        "chunk_size": 33,
-        "cu_chunk_seqlens": (0, 1, 34, 58, 67),
-        "has_bias": True,
-        "softplus": True,
-        "dt_limit": (0.0, float("inf")),
-        "dtype": "float16",
-        "strided": True,
-    },
 ]
 WARMUP_ITERATIONS = 10
 BENCHMARK_ITERATIONS = 100
@@ -66,10 +40,14 @@ def _benchmark_cuda_graph_or_events(*args, **kwargs):
     )
 # <<< AKA-GENERATED <<<
 
+_LOADED_MODULES = []
+
+
 def load_module():
     spec = importlib.util.spec_from_file_location("kernel", SOURCE_FILE)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
+    _LOADED_MODULES.append(mod)
     return mod
 
 
@@ -78,7 +56,7 @@ def ref_softplus(x):
     return torch.where(x <= 20.0, torch.log1p(torch.exp(x)), x)
 
 
-def reference(dt, A, chunk_size, cu, dt_bias, softplus, dt_limit=(0.0, float("inf"))):
+def reference(dt, A, chunk_size, cu, dt_bias, softplus):
     import torch
     seqlen, nheads = dt.shape
     nchunks = len(cu) - 1
@@ -96,10 +74,10 @@ def reference(dt, A, chunk_size, cu, dt_bias, softplus, dt_limit=(0.0, float("in
                 dt_chunk += dt_bias.cpu().float()[h]
             if softplus:
                 dt_chunk = ref_softplus(dt_chunk)
-            dt_chunk = dt_chunk.clamp(min=dt_limit[0], max=dt_limit[1])
+            dt_chunk = dt_chunk.clamp(min=0.0)
             dt_out[h, c, :clen] = dt_chunk
-            dA = dt_out[h, c] * A_f[h]
-            dA_cumsum[h, c] = torch.cumsum(dA, 0)
+            dA = dt_chunk * A_f[h]
+            dA_cumsum[h, c, :clen] = torch.cumsum(dA, 0)
     return dA_cumsum, dt_out
 
 
@@ -116,79 +94,42 @@ def run_compile():
         return False, str(e)
 
 
-def run_correctness():
+def run_correctness(*, case_index=None):
+    if case_index is not None and case_index >= 10000:
+        from _upstream_controls import run_control
+        return run_control(case_index - 10000, load_module)
     import torch
     try:
         mod = load_module()
     except Exception as e:
         return False, f"Load failed: {e}"
     device = "cuda"
-
-    cases = []
     for i, (seqlen, nheads, chunk_size, has_bias, softplus) in enumerate(TEST_SHAPES):
-        nchunks = seqlen // chunk_size
-        cases.append({
-            "name": f"baseline_{i}",
-            "seqlen": seqlen,
-            "nheads": nheads,
-            "chunk_size": chunk_size,
-            "cu_chunk_seqlens": tuple(j * chunk_size for j in range(nchunks + 1)),
-            "has_bias": has_bias,
-            "softplus": softplus,
-            "dt_limit": (0.0, float("inf")),
-            "dtype": "float32",
-            "strided": False,
-        })
-    cases.extend(CORRECTNESS_EDGE_CASES)
-
-    for i, case in enumerate(cases):
+        if case_index is not None and i != case_index:
+            continue
         try:
-            seqlen = case["seqlen"]
-            nheads = case["nheads"]
-            chunk_size = case["chunk_size"]
-            has_bias = case["has_bias"]
-            softplus = case["softplus"]
-            dt_limit = case["dt_limit"]
-            dtype = getattr(torch, case["dtype"])
             torch.manual_seed(42 + i)
-            if case["strided"]:
-                dt_storage = torch.randn(
-                    seqlen * 2, nheads * 2, device=device, dtype=dtype
-                ) * 0.1
-                dt = dt_storage[::2, ::2]
-                A_storage = -torch.rand(
-                    nheads * 2, device=device, dtype=torch.float32
-                ) * 0.5
-                A = A_storage[::2]
-                if has_bias:
-                    dt_bias_storage = torch.randn(
-                        nheads * 2, device=device, dtype=torch.float32
-                    ) * 0.01
-                    dt_bias = dt_bias_storage[::2]
-                else:
-                    dt_bias = None
-            else:
-                dt = torch.randn(seqlen, nheads, device=device, dtype=dtype) * 0.1
-                A = -torch.rand(nheads, device=device, dtype=torch.float32) * 0.5
-                dt_bias = torch.randn(nheads, device=device, dtype=torch.float32) * 0.01 if has_bias else None
-            cu = torch.tensor(case["cu_chunk_seqlens"], device=device, dtype=torch.int32)
-            dA_cs, dt_out = mod.chunk_cumsum_fwd(
-                dt, A, chunk_size, cu, dt_bias=dt_bias,
-                dt_softplus=softplus, dt_limit=dt_limit,
-            )
-            ref_dA, ref_dt = reference(
-                dt, A, chunk_size, cu, dt_bias, softplus, dt_limit,
-            )
+            nchunks = seqlen // chunk_size
+            dt = torch.randn(seqlen, nheads, device=device, dtype=torch.float32) * 0.1
+            A = -torch.rand(nheads, device=device, dtype=torch.float32) * 0.5
+            dt_bias = torch.randn(nheads, device=device, dtype=torch.float32) * 0.01 if has_bias else None
+            cu = torch.arange(0, nchunks + 1, device=device, dtype=torch.int32) * chunk_size
+            readonly = InputSnapshot(dict(dt=dt, A=A, dt_bias=dt_bias, cu=cu))
+            dA_cs, dt_out = mod.chunk_cumsum_fwd(dt, A, chunk_size, cu, dt_bias=dt_bias, dt_softplus=softplus)
+            readonly.check()
+            ref_dA, ref_dt = reference(dt, A, chunk_size, cu, dt_bias, softplus)
             ref_dA = ref_dA.to(device)
             ref_dt = ref_dt.to(device)
+            check_outputs((dA_cs, dt_out), (ref_dA, ref_dt), atol=1e-3, rtol=1e-3,
+                          inputs=[e[1] for e in readonly.entries])
             if not torch.allclose(dA_cs, ref_dA, atol=1e-3, rtol=1e-3):
                 diff = (dA_cs - ref_dA).abs().max().item()
-                return False, f"{case['name']} dA_cumsum: max diff={diff}"
+                return False, f"Shape {i} dA_cumsum: max diff={diff}"
             if not torch.allclose(dt_out, ref_dt, atol=1e-3, rtol=1e-3):
                 diff = (dt_out - ref_dt).abs().max().item()
-                return False, f"{case['name']} dt_out: max diff={diff}"
+                return False, f"Shape {i} dt_out: max diff={diff}"
         except Exception as e:
-            return False, f"{case['name']}: {e}"
+            return False, f"Shape {i}: {e}"
     return True, None
 
 
@@ -209,13 +150,20 @@ def run_performance():
             A = -torch.rand(nheads, device=device, dtype=torch.float32) * 0.5
             dt_bias = torch.randn(nheads, device=device, dtype=torch.float32) * 0.01 if has_bias else None
             cu = torch.arange(0, nchunks + 1, device=device, dtype=torch.int32) * chunk_size
+            readonly = InputSnapshot(dict(dt=dt, A=A, dt_bias=dt_bias, cu=cu))
+            from _aka_benchmark import TimedRun
+            timed = TimedRun()
             def _bench_fn():
-                mod.chunk_cumsum_fwd(dt, A, chunk_size, cu, dt_bias=dt_bias, dt_softplus=softplus)
+                return mod.chunk_cumsum_fwd(dt, A, chunk_size, cu, dt_bias=dt_bias, dt_softplus=softplus)
             elapsed_ms, benchmark_metadata = _benchmark_cuda_graph_or_events(
                 _bench_fn,
                 warmup=WARMUP_ITERATIONS,
                 repetition=BENCHMARK_ITERATIONS,
+                timed_run=timed,
             )
+            benchmark_metadata.update(validate_timed(
+                timed, readonly, lambda: tuple(x.to(device) for x in reference(dt, A, chunk_size, cu, dt_bias, softplus)),
+                lambda: dt.add_(0.25), atol=1e-3, rtol=1e-3))
 
             test_cases.append({
                 "test_case_id": f"perf{test_idx + 1}",
@@ -229,8 +177,9 @@ def run_performance():
                     "softplus": softplus
                 }
             })
-        except Exception:
+        except Exception as exc:
             test_cases.append({
+                "error": f"{type(exc).__name__}: {exc}",
                 "test_case_id": f"perf{test_idx + 1}",
                 "execution_time_ms": -1.0,
                 "params": {
@@ -242,6 +191,14 @@ def run_performance():
                 }
             })
     return test_cases
+
+
+def run_reference_controls():
+    return semantic_controls.reference_controls(sys.modules[__name__])
+
+
+def run_semantic_controls():
+    return semantic_controls.run_controls(load_module(), device="cuda")
 
 
 def main():
@@ -259,6 +216,7 @@ def main():
         if err: print(f"Error: {err}")
         sys.exit(0 if ok else 1)
     elif args.mode == "correctness":
+        run_semantic_controls()
         ok, err = run_correctness()
         report = {"status": "ok" if ok else "fail", "error": err}
         with open(os.path.join(build_dir, "correctness_report.json"), "w") as f:

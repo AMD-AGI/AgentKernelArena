@@ -18,13 +18,15 @@ import json
 import time
 import argparse
 import importlib.util
-from _aka_benchmark import benchmark_cuda_graph_or_events
+from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
+from scripts.replay_checks import require_tensor_contract, require_unchanged, verify_timed_run
 
 TASK_DIR = os.path.dirname(os.path.abspath(__file__))
 os.chdir(TASK_DIR)
 
 TASK_NAME = "triton2flydsl/sglang/decode_attention"
-SOURCE_FILE = os.path.join(TASK_DIR, "decode_attention.py")
+from task_runtime import candidate_relative_path
+SOURCE_FILE = candidate_relative_path()
 MAX_KV_SPLITS = 8
 
 # Per-batch KV seq lens + head config. kv_group=1 hits the MHA normal stage1;
@@ -45,6 +47,7 @@ MAX_OOM_RETRIES = 5
 def load_module():
     spec = importlib.util.spec_from_file_location("decode_attention_src", SOURCE_FILE)
     mod = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = mod
     spec.loader.exec_module(mod)
     return mod
 
@@ -139,6 +142,56 @@ def run_compile():
         return False, str(e)
 
 
+def _compare_decode_output(actual, expected):
+    import torch
+    require_tensor_contract(actual, expected, dtype=torch.bfloat16)
+    if not bool(torch.isfinite(actual).all() and torch.isfinite(expected).all()):
+        raise AssertionError("Non-finite decode attention output/reference")
+    diff = (actual.float() - expected.float()).abs().max().item()
+    denom = expected.float().abs().max().item()
+    rel = diff / denom if denom > 0 else diff
+    frac = torch.isclose(actual.float(), expected.float(), atol=1e-2, rtol=1e-2).float().mean().item()
+    if not (frac >= 0.999 or rel <= 1e-2):
+        raise AssertionError(f"Numerical mismatch: decode rel={rel}, close_fraction={frac}")
+
+
+def _reroute_kv_indices_(kv_indices):
+    """Select repeated, noncontiguous cache rows without changing storage/length.
+
+    A permutation of a full B=1 segment leaves attention unchanged. Selecting
+    every other physical row, in reverse order and with repetition, instead
+    changes membership/multiplicity while retaining valid page-size-one indices.
+    This check-only mapping is never used by the measured benchmark samples.
+    """
+    import torch
+    count = kv_indices.numel()
+    slots = torch.arange(count, device=kv_indices.device, dtype=kv_indices.dtype)
+    kv_indices.copy_(count - 1 - 2 * (slots % ((count + 1) // 2)))
+
+
+def _check_decode_routing(mod, tensors, cfg, sm_scale):
+    """Exercise the same candidate/build case on a second, unscored KV layout."""
+    import torch
+    q, k_buf, v_buf, o, kvp, kvi, al, alse, nks = tensors
+    inputs = (q, k_buf, v_buf, kvp, kvi, nks)
+    originals = tuple(value.clone() for value in inputs)
+    try:
+        _reroute_kv_indices_(kvi)
+        changed = tuple(value.clone() for value in inputs)
+        expected = reference(q, k_buf, v_buf, kvi, cfg, sm_scale)
+        o.fill_(float("nan"))
+        _retry_oom(lambda: mod.decode_attention_fwd(
+            q, k_buf, v_buf, o, kvp, kvi, al, alse, nks, MAX_KV_SPLITS,
+            sm_scale, 1.0, 1.0))
+        torch.cuda.synchronize()
+        require_unchanged(inputs, changed)
+        _compare_decode_output(o, expected)
+    finally:
+        for value, original in zip(inputs, originals):
+            value.copy_(original)
+    return {"status": "PASS", "mapping": "repeated_noncontiguous_kv"}
+
+
 def run_correctness():
     import torch
     try:
@@ -157,11 +210,14 @@ def run_correctness():
             torch.manual_seed(42 + i)
             (q, k_buf, v_buf, o, kvp, kvi, al, alse, nks) = make_inputs(cfg, "cuda")
             sm_scale = 1.0 / (cfg["Lk"] ** 0.5)
+            originals = tuple(value.clone() for value in (q, k_buf, v_buf, kvp, kvi, nks))
             _retry_oom(lambda: mod.decode_attention_fwd(
                 q, k_buf, v_buf, o, kvp, kvi, al, alse, nks, MAX_KV_SPLITS,
                 sm_scale, 1.0, 1.0))
             torch.cuda.synchronize()
+            require_unchanged((q, k_buf, v_buf, kvp, kvi, nks), originals)
             ref = reference(q, k_buf, v_buf, kvi, cfg, sm_scale)
+            require_tensor_contract(o, ref, dtype=torch.bfloat16)
             finite = bool(torch.isfinite(o).all().item())
             diff = (o.float() - ref.float()).abs().max().item()
             denom = ref.float().abs().max().item()
@@ -169,8 +225,12 @@ def run_correctness():
             frac = torch.isclose(o.float(), ref.float(),
                                  atol=1e-2, rtol=1e-2).float().mean().item()
             passed = finite and (frac >= 0.999 or rel <= 1e-2)
+            routing = _check_decode_routing(
+                mod, (q, k_buf, v_buf, o, kvp, kvi, al, alse, nks), cfg, sm_scale,
+            ) if passed else None
             details.append({"shape_id": i + 1, "shape": sh, "max_diff": diff,
-                            "rel": rel, "frac": frac, "passed": passed})
+                            "rel": rel, "frac": frac, "passed": passed,
+                            "kv_routing_control": routing})
             if not passed:
                 return False, (f"Shape {i+1} {sh}: max_diff={diff:.4e} "
                                f"rel={rel:.4e} frac={frac:.5f} "
@@ -195,19 +255,30 @@ def run_performance():
             torch.manual_seed(42 + ti)
             (q, k_buf, v_buf, o, kvp, kvi, al, alse, nks) = make_inputs(cfg, "cuda")
             sm_scale = 1.0 / (cfg["Lk"] ** 0.5)
+            originals = tuple(value.clone() for value in (q, k_buf, v_buf, kvp, kvi, nks))
 
             def fn():
                 mod.decode_attention_fwd(
                     q, k_buf, v_buf, o, kvp, kvi, al, alse, nks, MAX_KV_SPLITS,
                     sm_scale, 1.0, 1.0)
+                return o
 
+            expected = reference(q, k_buf, v_buf, kvi, cfg, sm_scale)
             _retry_oom(fn)
             for _ in range(WARMUP_ITERATIONS):
                 fn()
             torch.cuda.synchronize()
+            timed = TimedRun()
             elapsed_ms, bench_meta = benchmark_cuda_graph_or_events(
-                fn, warmup=0, repetition=BENCHMARK_ITERATIONS
+                fn, warmup=0, repetition=BENCHMARK_ITERATIONS, timed_run=timed
             )
+            bench_meta.update(verify_timed_run(
+                timed, inputs=(q, k_buf, v_buf, kvp, kvi, nks), originals=originals, expected=expected,
+                perturb=lambda: (q.neg_(), v_buf.neg_(), _reroute_kv_indices_(kvi)),
+                reference=lambda: reference(q, k_buf, v_buf, kvi, cfg, sm_scale),
+                compare=_compare_decode_output,
+            ))
+            bench_meta["replay_kv_routing"] = "repeated_noncontiguous_kv"
             test_cases.append({"test_case_id": f"perf{ti+1}",
                                "execution_time_ms": elapsed_ms,
                                **bench_meta,

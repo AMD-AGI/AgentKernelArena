@@ -67,7 +67,7 @@ def run_compile():
         return False, str(e)
 
 
-def run_correctness():
+def run_correctness(*, case_index=None):
     import torch
     try:
         mod = load_module()
@@ -76,6 +76,8 @@ def run_correctness():
 
     device = "cuda"
     for i, (num_reqs, vocab_size) in enumerate(TEST_SHAPES):
+        if case_index is not None and i != case_index:
+            continue
         try:
             torch.manual_seed(42 + i)
             logits = torch.randn(num_reqs, vocab_size, device=device, dtype=torch.float16)

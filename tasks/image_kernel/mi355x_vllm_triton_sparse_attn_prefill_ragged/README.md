@@ -19,6 +19,20 @@ reconstruction (>= topk); the kernel is pure ragged gather-attention, so
 correctness is well-defined for any synthesized sparse pattern. See
 `session_cases.json` for full provenance.
 
+The three historical scored cases synthesize **uniform 512-position CSR rows**;
+their latency measures that fixed-top-k workload, not a distribution of ragged
+row lengths. Those cases, seeds, and timing policy are retained. Two additional
+mandatory correctness cases use 64 and 1073 queries with repeating row lengths
+`[0, 1, 15, 16, 17, 31, 32, 33, 127, 255, 511, 512]`. They cover empty rows,
+short rows, and partial blocks around the original kernel's 16-position block.
+Selections contain valid KV indices; attention sinks are outside this task's
+contract. An empty row produces zero output. Both ordinary execution and captured
+graph replay with refreshed Q/KV and poisoned output must pass the same BF16
+`atol=rtol=0.08` rule. These extra semantic checks contribute no scored latency.
+The FP32 reference groups equal-length rows for bounded-memory dense attention;
+independent analytical controls cover empty, one-position, and two-position rows
+and reject zero-output and fixed-width interpretations of the same CSR payload.
+
 The kernel is loaded from the editable workspace copy of the in-image source tree,
 so agent edits to `rocm_aiter_mla_sparse.py` take effect (Triton JIT recompiles on
 source change).
@@ -28,3 +42,49 @@ Expected runtime image:
 ```text
 harbor.crusoe.primus-safe.amd.com/sync/vllm-openai-rocm:v0.24.0
 ```
+
+## Effective task instructions
+
+Optimize the Triton ragged sparse-attention prefill kernel _sparse_attn_prefill_ragged_kernel (in rocm_aiter_mla_sparse.py) on MI355X/gfx950. This is DeepSeek-V4 Sparse Attention (DSA) prefill - each query attends only to a top-k selected set of MLA-latent KV positions supplied in ragged CSR form (indices/indptr); the latent (head_dim=512 = 448 NoPE + 64 RoPE) serves as both K and V. The harness cases use the real DeepSeek-V4-Flash config (64 query heads, index_topk=512, BF16) reconstructed from the Hyperloom 2026-07-24 session and stored in session_cases.json. Preserve all correctness cases and improve CUDA-graph measured performance. Do not change the signature of _sparse_attn_prefill_ragged_kernel or _rocm_sparse_attn_prefill_ragged_triton.
+
+## Arena v2 contract
+
+The candidate is the existing implementation in the declared image sources.
+Its required final language and exact task-relative editable files are in
+`config.yaml`; directory names do not select execution behavior. The framework
+freezes this initial implementation into a separate baseline workspace. Both
+roles run the same protected harness in their own workspace; an absent candidate
+or missing image source is an error, never permission to use the installed copy.
+
+Setup runs `python3 scripts/setup_task.py` after declared image materialization
+and before baseline capture. It validates source paths and required build assets.
+Do not edit `scripts/`, workload files or references. Additional source files
+outside `candidate.editable` are dependencies, not editable implementation.
+Preserve the original numerical gates, seeds, layouts, dispatch, state handling
+and CUDA graph/event timing. `workloads.json` enumerates the complete manifest
+independently of reported timings; `session_cases.json`, when present, retains
+its original session provenance. Cases marked correctness-only are not scored.
+
+Use the agent-neutral commands:
+
+```bash
+python3 scripts/evaluate.py validate-task
+python3 scripts/evaluate.py baseline compile
+python3 scripts/evaluate.py baseline correctness
+python3 scripts/evaluate.py baseline performance
+python3 scripts/evaluate.py candidate compile
+python3 scripts/evaluate.py candidate correctness
+python3 scripts/evaluate.py candidate performance
+```
+
+Baseline commands run in the framework's frozen workspace. Each command emits
+one `ARENA_EVAL_RESULT=` envelope. A failed dependency, dispatch or output contract
+is a failure, not an accepted baseline numerical diagnostic. The original
+`task_runner.py` remains the protected operator implementation of these checks;
+its generated performance region must be materialized by Arena. Optional
+profiling does not supply final evaluation evidence. Agent CLI adaptation belongs
+to the agent integration; use the declared v2 runner for task evaluation, with
+the task's full numerical and workload checks.
+This migration has CPU regression coverage; formal GPU task validation and the
+optimization campaign are coordinated separately. Runtime source availability
+must be checked against the selected immutable image, not inferred from a tag.

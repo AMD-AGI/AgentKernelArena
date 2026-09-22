@@ -164,8 +164,8 @@ static inline int compute_blocks_capped(int64_t work_items, int threads) {
 
 // ---------- Launcher ----------
 torch::Tensor forward(torch::Tensor x) {
-    // In-place on contiguous storage; if non-contiguous, materialize contiguous copy
-    torch::Tensor y = x.is_contiguous() ? x : x.contiguous();
+    // F.gelu is out-of-place. Work on separate contiguous output storage.
+    torch::Tensor y = x.contiguous().clone();
     TORCH_CHECK(y.is_cuda(), "Input must be a HIP tensor under ROCm.");
 
     int64_t N = y.numel();
@@ -239,6 +239,6 @@ torch::Tensor forward(torch::Tensor x) {
 }
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
-    m.def("forward", &forward, "In-place exact GELU forward (HIP, fused, vectorized, tuned)");
+    m.def("forward", &forward, "Out-of-place exact GELU forward (HIP, fused, vectorized, tuned)");
 }
 

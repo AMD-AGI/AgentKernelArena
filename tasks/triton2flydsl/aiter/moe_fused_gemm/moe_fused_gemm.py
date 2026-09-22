@@ -593,6 +593,11 @@ def fused_moe(
     config: Optional[Dict[str, Any]] = None,
 ) -> None:
     """Launch the fused MoE GEMM. Results written in-place to C [M, top_k, N]."""
+    # Task host ABI uses torch.dtype for both initial and final backends.
+    if compute_type is torch.bfloat16:
+        compute_type = tl.bfloat16
+    elif compute_type is torch.float16:
+        compute_type = tl.float16
     assert topk_weights.stride(1) == 1
     assert sorted_token_ids.stride(0) == 1
 

@@ -1,0 +1,1193 @@
+{
+  "version": 1,
+  "source": "test_gemm_no_scf.py",
+  "kernel_symbols": [
+    "matmul_no_scf_kernel"
+  ],
+  "cases": [
+    {
+      "test_case_id": "test_gemm_no_scf/2abdcd69e7712211100a",
+      "params": {
+        "function": "test_gemm_no_scf",
+        "arguments": {
+          "M": 64,
+          "N": 16,
+          "K": 16,
+          "NUM_CTAS": 1,
+          "NUM_WARPS": 4,
+          "TRANS_A": false,
+          "TRANS_B": true,
+          "OUTPUT_TYPE": "float16",
+          "USE_TMA_EPILOGUE": true
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_gemm_no_scf/0912a93587ecdb738df4",
+      "params": {
+        "function": "test_gemm_no_scf",
+        "arguments": {
+          "M": 64,
+          "N": 32,
+          "K": 16,
+          "NUM_CTAS": 1,
+          "NUM_WARPS": 4,
+          "TRANS_A": false,
+          "TRANS_B": true,
+          "OUTPUT_TYPE": "float16",
+          "USE_TMA_EPILOGUE": true
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_gemm_no_scf/6886da1ff940ad3a9870",
+      "params": {
+        "function": "test_gemm_no_scf",
+        "arguments": {
+          "M": 64,
+          "N": 64,
+          "K": 16,
+          "NUM_CTAS": 1,
+          "NUM_WARPS": 4,
+          "TRANS_A": false,
+          "TRANS_B": true,
+          "OUTPUT_TYPE": "float16",
+          "USE_TMA_EPILOGUE": true
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_gemm_no_scf/22f7c9277ee617794b0b",
+      "params": {
+        "function": "test_gemm_no_scf",
+        "arguments": {
+          "M": 64,
+          "N": 64,
+          "K": 16,
+          "NUM_CTAS": 1,
+          "NUM_WARPS": 4,
+          "TRANS_A": false,
+          "TRANS_B": true,
+          "OUTPUT_TYPE": "float32",
+          "USE_TMA_EPILOGUE": true
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_gemm_no_scf/d7dea8ed17c29f3b9074",
+      "params": {
+        "function": "test_gemm_no_scf",
+        "arguments": {
+          "M": 64,
+          "N": 64,
+          "K": 32,
+          "NUM_CTAS": 1,
+          "NUM_WARPS": 4,
+          "TRANS_A": false,
+          "TRANS_B": true,
+          "OUTPUT_TYPE": "float32",
+          "USE_TMA_EPILOGUE": true
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_gemm_no_scf/400d98f9dbe0e864e075",
+      "params": {
+        "function": "test_gemm_no_scf",
+        "arguments": {
+          "M": 64,
+          "N": 64,
+          "K": 64,
+          "NUM_CTAS": 1,
+          "NUM_WARPS": 4,
+          "TRANS_A": false,
+          "TRANS_B": true,
+          "OUTPUT_TYPE": "float32",
+          "USE_TMA_EPILOGUE": true
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_gemm_no_scf/6067238ca9861c94b55e",
+      "params": {
+        "function": "test_gemm_no_scf",
+        "arguments": {
+          "M": 128,
+          "N": 128,
+          "K": 16,
+          "NUM_CTAS": 1,
+          "NUM_WARPS": 4,
+          "TRANS_A": false,
+          "TRANS_B": true,
+          "OUTPUT_TYPE": "float16",
+          "USE_TMA_EPILOGUE": true
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_gemm_no_scf/f29cdd353ff524fe0a4c",
+      "params": {
+        "function": "test_gemm_no_scf",
+        "arguments": {
+          "M": 128,
+          "N": 128,
+          "K": 16,
+          "NUM_CTAS": 1,
+          "NUM_WARPS": 4,
+          "TRANS_A": false,
+          "TRANS_B": true,
+          "OUTPUT_TYPE": "float32",
+          "USE_TMA_EPILOGUE": true
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_gemm_no_scf/2525653d36560fccb9d4",
+      "params": {
+        "function": "test_gemm_no_scf",
+        "arguments": {
+          "M": 256,
+          "N": 64,
+          "K": 16,
+          "NUM_CTAS": 4,
+          "NUM_WARPS": 4,
+          "TRANS_A": false,
+          "TRANS_B": true,
+          "OUTPUT_TYPE": "float16",
+          "USE_TMA_EPILOGUE": true
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_gemm_no_scf/58822b5388866914b5ab",
+      "params": {
+        "function": "test_gemm_no_scf",
+        "arguments": {
+          "M": 256,
+          "N": 64,
+          "K": 16,
+          "NUM_CTAS": 4,
+          "NUM_WARPS": 4,
+          "TRANS_A": false,
+          "TRANS_B": true,
+          "OUTPUT_TYPE": "float32",
+          "USE_TMA_EPILOGUE": true
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_gemm_no_scf/a07899c454dc2fda27f0",
+      "params": {
+        "function": "test_gemm_no_scf",
+        "arguments": {
+          "M": 128,
+          "N": 128,
+          "K": 16,
+          "NUM_CTAS": 4,
+          "NUM_WARPS": 4,
+          "TRANS_A": false,
+          "TRANS_B": true,
+          "OUTPUT_TYPE": "float16",
+          "USE_TMA_EPILOGUE": true
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_gemm_no_scf/b2f9cefb57d92b65d33b",
+      "params": {
+        "function": "test_gemm_no_scf",
+        "arguments": {
+          "M": 128,
+          "N": 128,
+          "K": 16,
+          "NUM_CTAS": 4,
+          "NUM_WARPS": 4,
+          "TRANS_A": false,
+          "TRANS_B": true,
+          "OUTPUT_TYPE": "float32",
+          "USE_TMA_EPILOGUE": true
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_gemm_no_scf/7478e5f8d605c9672317",
+      "params": {
+        "function": "test_gemm_no_scf",
+        "arguments": {
+          "M": 16,
+          "N": 16,
+          "K": 16,
+          "NUM_CTAS": 1,
+          "NUM_WARPS": 4,
+          "TRANS_A": false,
+          "TRANS_B": true,
+          "OUTPUT_TYPE": "float32",
+          "USE_TMA_EPILOGUE": true
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_gemm_no_scf/511270703e0ac200bc74",
+      "params": {
+        "function": "test_gemm_no_scf",
+        "arguments": {
+          "M": 16,
+          "N": 32,
+          "K": 16,
+          "NUM_CTAS": 1,
+          "NUM_WARPS": 4,
+          "TRANS_A": false,
+          "TRANS_B": true,
+          "OUTPUT_TYPE": "float32",
+          "USE_TMA_EPILOGUE": true
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_gemm_no_scf/1e870e50127f3c686072",
+      "params": {
+        "function": "test_gemm_no_scf",
+        "arguments": {
+          "M": 32,
+          "N": 16,
+          "K": 16,
+          "NUM_CTAS": 1,
+          "NUM_WARPS": 4,
+          "TRANS_A": false,
+          "TRANS_B": true,
+          "OUTPUT_TYPE": "float32",
+          "USE_TMA_EPILOGUE": true
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_gemm_no_scf/338e5cddd382fd56a889",
+      "params": {
+        "function": "test_gemm_no_scf",
+        "arguments": {
+          "M": 32,
+          "N": 32,
+          "K": 16,
+          "NUM_CTAS": 1,
+          "NUM_WARPS": 4,
+          "TRANS_A": false,
+          "TRANS_B": true,
+          "OUTPUT_TYPE": "float32",
+          "USE_TMA_EPILOGUE": true
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_gemm_no_scf/05c96cf79db3d8668b65",
+      "params": {
+        "function": "test_gemm_no_scf",
+        "arguments": {
+          "M": 64,
+          "N": 16,
+          "K": 16,
+          "NUM_CTAS": 1,
+          "NUM_WARPS": 4,
+          "TRANS_A": false,
+          "TRANS_B": true,
+          "OUTPUT_TYPE": "float16",
+          "USE_TMA_EPILOGUE": false
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_gemm_no_scf/e1371ad7cabda0c9e85c",
+      "params": {
+        "function": "test_gemm_no_scf",
+        "arguments": {
+          "M": 64,
+          "N": 32,
+          "K": 16,
+          "NUM_CTAS": 1,
+          "NUM_WARPS": 4,
+          "TRANS_A": false,
+          "TRANS_B": true,
+          "OUTPUT_TYPE": "float16",
+          "USE_TMA_EPILOGUE": false
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_gemm_no_scf/0682b869567d73bbd03c",
+      "params": {
+        "function": "test_gemm_no_scf",
+        "arguments": {
+          "M": 64,
+          "N": 64,
+          "K": 16,
+          "NUM_CTAS": 1,
+          "NUM_WARPS": 4,
+          "TRANS_A": false,
+          "TRANS_B": true,
+          "OUTPUT_TYPE": "float16",
+          "USE_TMA_EPILOGUE": false
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_gemm_no_scf/c90d02a5d7164848328c",
+      "params": {
+        "function": "test_gemm_no_scf",
+        "arguments": {
+          "M": 64,
+          "N": 64,
+          "K": 16,
+          "NUM_CTAS": 1,
+          "NUM_WARPS": 4,
+          "TRANS_A": false,
+          "TRANS_B": true,
+          "OUTPUT_TYPE": "float32",
+          "USE_TMA_EPILOGUE": false
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_gemm_no_scf/d528c709b171e47140c5",
+      "params": {
+        "function": "test_gemm_no_scf",
+        "arguments": {
+          "M": 64,
+          "N": 64,
+          "K": 32,
+          "NUM_CTAS": 1,
+          "NUM_WARPS": 4,
+          "TRANS_A": false,
+          "TRANS_B": true,
+          "OUTPUT_TYPE": "float32",
+          "USE_TMA_EPILOGUE": false
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_gemm_no_scf/07d8f00d55b9b4dbd012",
+      "params": {
+        "function": "test_gemm_no_scf",
+        "arguments": {
+          "M": 64,
+          "N": 64,
+          "K": 64,
+          "NUM_CTAS": 1,
+          "NUM_WARPS": 4,
+          "TRANS_A": false,
+          "TRANS_B": true,
+          "OUTPUT_TYPE": "float32",
+          "USE_TMA_EPILOGUE": false
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_gemm_no_scf/82c79fabe6f511af6920",
+      "params": {
+        "function": "test_gemm_no_scf",
+        "arguments": {
+          "M": 128,
+          "N": 128,
+          "K": 16,
+          "NUM_CTAS": 1,
+          "NUM_WARPS": 4,
+          "TRANS_A": false,
+          "TRANS_B": true,
+          "OUTPUT_TYPE": "float16",
+          "USE_TMA_EPILOGUE": false
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_gemm_no_scf/b4c839472cca506ac1bc",
+      "params": {
+        "function": "test_gemm_no_scf",
+        "arguments": {
+          "M": 128,
+          "N": 128,
+          "K": 16,
+          "NUM_CTAS": 1,
+          "NUM_WARPS": 4,
+          "TRANS_A": false,
+          "TRANS_B": true,
+          "OUTPUT_TYPE": "float32",
+          "USE_TMA_EPILOGUE": false
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_gemm_no_scf/9a28b810baca3fb342ae",
+      "params": {
+        "function": "test_gemm_no_scf",
+        "arguments": {
+          "M": 256,
+          "N": 64,
+          "K": 16,
+          "NUM_CTAS": 4,
+          "NUM_WARPS": 4,
+          "TRANS_A": false,
+          "TRANS_B": true,
+          "OUTPUT_TYPE": "float16",
+          "USE_TMA_EPILOGUE": false
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_gemm_no_scf/f81c5378f50fb106f47c",
+      "params": {
+        "function": "test_gemm_no_scf",
+        "arguments": {
+          "M": 256,
+          "N": 64,
+          "K": 16,
+          "NUM_CTAS": 4,
+          "NUM_WARPS": 4,
+          "TRANS_A": false,
+          "TRANS_B": true,
+          "OUTPUT_TYPE": "float32",
+          "USE_TMA_EPILOGUE": false
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_gemm_no_scf/09d68f4aa91196a5e9b4",
+      "params": {
+        "function": "test_gemm_no_scf",
+        "arguments": {
+          "M": 128,
+          "N": 128,
+          "K": 16,
+          "NUM_CTAS": 4,
+          "NUM_WARPS": 4,
+          "TRANS_A": false,
+          "TRANS_B": true,
+          "OUTPUT_TYPE": "float16",
+          "USE_TMA_EPILOGUE": false
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_gemm_no_scf/e671a5566acb88f70196",
+      "params": {
+        "function": "test_gemm_no_scf",
+        "arguments": {
+          "M": 128,
+          "N": 128,
+          "K": 16,
+          "NUM_CTAS": 4,
+          "NUM_WARPS": 4,
+          "TRANS_A": false,
+          "TRANS_B": true,
+          "OUTPUT_TYPE": "float32",
+          "USE_TMA_EPILOGUE": false
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_gemm_no_scf/11b5c6e9b5c48bf32715",
+      "params": {
+        "function": "test_gemm_no_scf",
+        "arguments": {
+          "M": 16,
+          "N": 16,
+          "K": 16,
+          "NUM_CTAS": 1,
+          "NUM_WARPS": 4,
+          "TRANS_A": false,
+          "TRANS_B": true,
+          "OUTPUT_TYPE": "float32",
+          "USE_TMA_EPILOGUE": false
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_gemm_no_scf/0acacae5145b1c222b00",
+      "params": {
+        "function": "test_gemm_no_scf",
+        "arguments": {
+          "M": 16,
+          "N": 32,
+          "K": 16,
+          "NUM_CTAS": 1,
+          "NUM_WARPS": 4,
+          "TRANS_A": false,
+          "TRANS_B": true,
+          "OUTPUT_TYPE": "float32",
+          "USE_TMA_EPILOGUE": false
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_gemm_no_scf/f4d8a28d42379f1890f2",
+      "params": {
+        "function": "test_gemm_no_scf",
+        "arguments": {
+          "M": 32,
+          "N": 16,
+          "K": 16,
+          "NUM_CTAS": 1,
+          "NUM_WARPS": 4,
+          "TRANS_A": false,
+          "TRANS_B": true,
+          "OUTPUT_TYPE": "float32",
+          "USE_TMA_EPILOGUE": false
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_gemm_no_scf/f25b3daccc7589874b95",
+      "params": {
+        "function": "test_gemm_no_scf",
+        "arguments": {
+          "M": 32,
+          "N": 32,
+          "K": 16,
+          "NUM_CTAS": 1,
+          "NUM_WARPS": 4,
+          "TRANS_A": false,
+          "TRANS_B": true,
+          "OUTPUT_TYPE": "float32",
+          "USE_TMA_EPILOGUE": false
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/aed02ae4e4fef7e4dedf",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 64,
+          "N": 64,
+          "K": 16,
+          "NUM_CTAS": 1,
+          "NUM_WARPS": 4,
+          "TRANS_A": false,
+          "TRANS_B": false,
+          "OUTPUT_TYPE": "float16",
+          "USE_TMA_EPILOGUE": true
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/4f0d9a5a96373d78b228",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 64,
+          "N": 64,
+          "K": 16,
+          "NUM_CTAS": 1,
+          "NUM_WARPS": 4,
+          "TRANS_A": false,
+          "TRANS_B": false,
+          "OUTPUT_TYPE": "float32",
+          "USE_TMA_EPILOGUE": true
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/f96a1a5748311c6e8ec1",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 128,
+          "N": 128,
+          "K": 16,
+          "NUM_CTAS": 1,
+          "NUM_WARPS": 4,
+          "TRANS_A": false,
+          "TRANS_B": false,
+          "OUTPUT_TYPE": "float16",
+          "USE_TMA_EPILOGUE": true
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/682771eb412c2965d913",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 64,
+          "N": 64,
+          "K": 32,
+          "NUM_CTAS": 1,
+          "NUM_WARPS": 4,
+          "TRANS_A": false,
+          "TRANS_B": false,
+          "OUTPUT_TYPE": "float16",
+          "USE_TMA_EPILOGUE": true
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/a7c7cd5c2688f5964cac",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 64,
+          "N": 64,
+          "K": 32,
+          "NUM_CTAS": 1,
+          "NUM_WARPS": 4,
+          "TRANS_A": false,
+          "TRANS_B": false,
+          "OUTPUT_TYPE": "float32",
+          "USE_TMA_EPILOGUE": true
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/6a817f9d4852566890eb",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 128,
+          "N": 64,
+          "K": 32,
+          "NUM_CTAS": 1,
+          "NUM_WARPS": 4,
+          "TRANS_A": false,
+          "TRANS_B": false,
+          "OUTPUT_TYPE": "float16",
+          "USE_TMA_EPILOGUE": true
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/ad38944c1be4cb458f6e",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 32,
+          "N": 32,
+          "K": 64,
+          "NUM_CTAS": 1,
+          "NUM_WARPS": 4,
+          "TRANS_A": false,
+          "TRANS_B": false,
+          "OUTPUT_TYPE": "float16",
+          "USE_TMA_EPILOGUE": true
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/df94b44a3aa1330084c5",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 64,
+          "N": 64,
+          "K": 64,
+          "NUM_CTAS": 1,
+          "NUM_WARPS": 4,
+          "TRANS_A": false,
+          "TRANS_B": false,
+          "OUTPUT_TYPE": "float16",
+          "USE_TMA_EPILOGUE": true
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/1f2bab4e4c472657341f",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 64,
+          "N": 64,
+          "K": 64,
+          "NUM_CTAS": 1,
+          "NUM_WARPS": 4,
+          "TRANS_A": false,
+          "TRANS_B": false,
+          "OUTPUT_TYPE": "float32",
+          "USE_TMA_EPILOGUE": true
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/5abaaed70e0e38d40372",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 32,
+          "N": 32,
+          "K": 128,
+          "NUM_CTAS": 1,
+          "NUM_WARPS": 4,
+          "TRANS_A": false,
+          "TRANS_B": false,
+          "OUTPUT_TYPE": "float16",
+          "USE_TMA_EPILOGUE": true
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/6acfc6387922fa3138ac",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 64,
+          "N": 64,
+          "K": 16,
+          "NUM_CTAS": 1,
+          "NUM_WARPS": 4,
+          "TRANS_A": false,
+          "TRANS_B": false,
+          "OUTPUT_TYPE": "float16",
+          "USE_TMA_EPILOGUE": false
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/9b635eb92e0b79bd863a",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 64,
+          "N": 64,
+          "K": 16,
+          "NUM_CTAS": 1,
+          "NUM_WARPS": 4,
+          "TRANS_A": false,
+          "TRANS_B": false,
+          "OUTPUT_TYPE": "float32",
+          "USE_TMA_EPILOGUE": false
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/172f03ad40d203c4b2a5",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 128,
+          "N": 128,
+          "K": 16,
+          "NUM_CTAS": 1,
+          "NUM_WARPS": 4,
+          "TRANS_A": false,
+          "TRANS_B": false,
+          "OUTPUT_TYPE": "float16",
+          "USE_TMA_EPILOGUE": false
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/d80506f1112687967de2",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 64,
+          "N": 64,
+          "K": 32,
+          "NUM_CTAS": 1,
+          "NUM_WARPS": 4,
+          "TRANS_A": false,
+          "TRANS_B": false,
+          "OUTPUT_TYPE": "float16",
+          "USE_TMA_EPILOGUE": false
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/40e16c4fdf25939de87b",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 64,
+          "N": 64,
+          "K": 32,
+          "NUM_CTAS": 1,
+          "NUM_WARPS": 4,
+          "TRANS_A": false,
+          "TRANS_B": false,
+          "OUTPUT_TYPE": "float32",
+          "USE_TMA_EPILOGUE": false
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/e0c30225f3e9c22af13a",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 128,
+          "N": 64,
+          "K": 32,
+          "NUM_CTAS": 1,
+          "NUM_WARPS": 4,
+          "TRANS_A": false,
+          "TRANS_B": false,
+          "OUTPUT_TYPE": "float16",
+          "USE_TMA_EPILOGUE": false
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/876ca4ddb7822a4e91bb",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 32,
+          "N": 32,
+          "K": 64,
+          "NUM_CTAS": 1,
+          "NUM_WARPS": 4,
+          "TRANS_A": false,
+          "TRANS_B": false,
+          "OUTPUT_TYPE": "float16",
+          "USE_TMA_EPILOGUE": false
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/c49dab201d4b37efad4c",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 64,
+          "N": 64,
+          "K": 64,
+          "NUM_CTAS": 1,
+          "NUM_WARPS": 4,
+          "TRANS_A": false,
+          "TRANS_B": false,
+          "OUTPUT_TYPE": "float16",
+          "USE_TMA_EPILOGUE": false
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/204eae75d6cc24077ad4",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 64,
+          "N": 64,
+          "K": 64,
+          "NUM_CTAS": 1,
+          "NUM_WARPS": 4,
+          "TRANS_A": false,
+          "TRANS_B": false,
+          "OUTPUT_TYPE": "float32",
+          "USE_TMA_EPILOGUE": false
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/6085960b1a7f64900727",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 32,
+          "N": 32,
+          "K": 128,
+          "NUM_CTAS": 1,
+          "NUM_WARPS": 4,
+          "TRANS_A": false,
+          "TRANS_B": false,
+          "OUTPUT_TYPE": "float16",
+          "USE_TMA_EPILOGUE": false
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_transposed_left_control/3b9abde748d594d909fe",
+      "params": {
+        "function": "test_transposed_left_control",
+        "arguments": {
+          "OUTPUT_TYPE": "float16",
+          "USE_TMA_EPILOGUE": false,
+          "M": 32,
+          "N": 16,
+          "K": 64
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_transposed_left_control/c6bbab9f8051c03d4e64",
+      "params": {
+        "function": "test_transposed_left_control",
+        "arguments": {
+          "OUTPUT_TYPE": "float16",
+          "USE_TMA_EPILOGUE": true,
+          "M": 32,
+          "N": 16,
+          "K": 64
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_transposed_left_control/1cdb435b517f5cc52cc8",
+      "params": {
+        "function": "test_transposed_left_control",
+        "arguments": {
+          "OUTPUT_TYPE": "float32",
+          "USE_TMA_EPILOGUE": false,
+          "M": 32,
+          "N": 16,
+          "K": 64
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_transposed_left_control/e9abe914ecca12530148",
+      "params": {
+        "function": "test_transposed_left_control",
+        "arguments": {
+          "OUTPUT_TYPE": "float32",
+          "USE_TMA_EPILOGUE": true,
+          "M": 32,
+          "N": 16,
+          "K": 64
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    }
+  ],
+  "migration": {
+    "original_source_sha256": "97372452c35e0b26099bf1c4c60329b568582a4b318d343c2b24edd888c26e03",
+    "case_policy": "All original parametrizations retained; runtime skips are failures, not passing or omitted cases."
+  }
+}

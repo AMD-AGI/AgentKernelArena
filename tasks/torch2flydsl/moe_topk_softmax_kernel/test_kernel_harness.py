@@ -29,23 +29,22 @@ import os
 import sys
 import time
 from pathlib import Path
-from _aka_benchmark import benchmark_cuda_graph_or_events
+from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
+from scripts.replay_checks import require_unchanged
 
-KERNEL_FILE = "kernel.py"
+from task_runtime import candidate_relative_path
+KERNEL_FILE = candidate_relative_path()
+ARENA_PROVIDED_BASELINE = False
 MODEL_FILE = "model.py"
 
 
 def _resolve_kernel_dir():
-    here = os.path.dirname(os.path.abspath(__file__))
-    if os.path.isfile(os.path.join(here, KERNEL_FILE)):
-        return here
-    cwd = os.getcwd()
-    if os.path.isfile(os.path.join(cwd, KERNEL_FILE)):
-        return cwd
-    return here
+    return str(__import__("pathlib").Path(__file__).resolve().parent)
 
 
 def _load_module(kernel_dir, filename, alias):
+    if filename == KERNEL_FILE and ARENA_PROVIDED_BASELINE:
+        return None
     entry = os.path.join(kernel_dir, filename)
     if not os.path.isfile(entry):
         return None
@@ -57,6 +56,8 @@ def _load_module(kernel_dir, filename, alias):
     mod = importlib.util.module_from_spec(spec)
     sys.modules[alias] = mod
     spec.loader.exec_module(mod)
+    if filename == KERNEL_FILE:
+        _require_candidate_outputs(mod)
     return mod
 
 
@@ -194,6 +195,72 @@ def _compare_routing(ref_w, ref_id, out_w, out_id, sel, topk):
     return genuine, max_w_err
 
 
+def _require_routing_contract(weights, ids, gating, topk):
+    import torch
+    if not isinstance(weights, torch.Tensor) or not isinstance(ids, torch.Tensor):
+        raise AssertionError("Routing output must be two Tensors")
+    shape = (gating.shape[0], topk)
+    if tuple(weights.shape) != shape or tuple(ids.shape) != shape:
+        raise AssertionError("Routing output shape mismatch")
+    if weights.dtype != torch.float32 or ids.dtype != torch.int32:
+        raise AssertionError("Routing output dtype mismatch")
+    if weights.device != gating.device or ids.device != gating.device:
+        raise AssertionError("Routing output device mismatch")
+    if not bool(torch.isfinite(weights).all()):
+        raise AssertionError("Non-finite routing weights")
+    if not bool(((ids >= 0) & (ids < gating.shape[1])).all()):
+        raise AssertionError("Routing expert id out of range")
+    ordered = ids.sort(dim=-1).values
+    if topk > 1 and bool((ordered[:, 1:] == ordered[:, :-1]).any()):
+        raise AssertionError("Routing expert ids must be unique per token")
+
+
+def _routing_reference(model, mmod, gating, bias):
+    import torch
+    with torch.no_grad():
+        weights, ids = model(gating)
+        selection = mmod.selection_scores(gating, bias)
+    return weights, ids, selection
+
+
+def _verify_routing_timed(timed, model, mmod, gating, bias, shape, originals, expected):
+    """Check both actual measured outputs with the original tie/weight policy."""
+    import torch
+    topk = shape["topk"]
+    if not timed.bound:
+        raise RuntimeError("Benchmark did not expose its measured invocation")
+    def compare(actual, reference):
+        if not isinstance(actual, (tuple, list)) or len(actual) != 2:
+            raise AssertionError("Routing must return weights and expert ids")
+        weights, ids = actual
+        ref_w, ref_id, selection = reference
+        _require_routing_contract(weights, ids, gating, topk)
+        _require_routing_contract(ref_w, ref_id, gating, topk)
+        genuine, weight_error = _compare_routing(ref_w, ref_id, weights, ids, selection, topk)
+        id_tol = _BIAS_ID_ERR_TOL if shape.get("use_bias") else 0.0
+        if genuine / max(shape["tokens"], 1) > id_tol or weight_error > _WEIGHT_ATOL:
+            raise AssertionError("Numerical mismatch in timed routing ids/weights")
+    require_unchanged((gating, bias), originals)
+    compare(timed.outputs, expected)
+    try:
+        # Preserve the case's score distribution, but permute expert identities.
+        gating.copy_(gating.roll(1, dims=-1))
+        bias.copy_(bias.roll(1))
+        changed = (gating.clone(), bias.clone())
+        reference = _routing_reference(model, mmod, gating, bias)
+        timed.outputs[0].fill_(float("nan"))
+        timed.outputs[1].fill_(-1)
+        result = timed.rerun()
+        require_unchanged((gating, bias), changed)
+        compare(result, reference)
+    finally:
+        gating.copy_(originals[0])
+        bias.copy_(originals[1])
+    return {"timed_output_correctness": "PASS", "replay_correctness": "PASS",
+            "replay_inputs_perturbed": True, "replay_output_poisoned": True,
+            "replay_checked_outputs": ["weights", "expert_ids"]}
+
+
 def run_correctness(verbose=True):
     import torch
 
@@ -211,12 +278,16 @@ def run_correctness(verbose=True):
             if model.correction_bias is not None
             else torch.empty(0, dtype=torch.float32, device=gating.device)
         )
+        originals = (gating.clone(), bias.clone())
         with torch.no_grad():
             ref_w, ref_id = model(gating)
             a_w, a_id = _aiter_softmax(aiter, gating, bias, shape["topk"], shape["route_scale"])
             sel = mmod.selection_scores(gating, bias)
         torch.cuda.synchronize()
 
+        require_unchanged((gating, bias), originals)
+        _require_routing_contract(ref_w, ref_id, gating, shape["topk"])
+        _require_routing_contract(a_w, a_id, gating, shape["topk"])
         genuine, w_err = _compare_routing(ref_w, ref_id, a_w, a_id, sel, shape["topk"])
         id_err = genuine / max(shape["tokens"], 1)
         # Unbiased shapes must be exact (id_err == 0); biased large-E shapes use the
@@ -240,6 +311,7 @@ def run_correctness(verbose=True):
                     gating, bias, shape["topk"], shape["route_scale"]
                 )
             except NotImplementedError:
+                raise RuntimeError("Executed candidate is unimplemented; no baseline fallback")
                 has_kernel = False
                 if verbose:
                     print(
@@ -248,6 +320,8 @@ def run_correctness(verbose=True):
                     )
             else:
                 torch.cuda.synchronize()
+                require_unchanged((gating, bias), originals)
+                _require_routing_contract(k_w, k_id, gating, shape["topk"])
                 kg, kw = _compare_routing(ref_w, ref_id, k_w, k_id, sel, shape["topk"])
                 k_id_err = kg / max(shape["tokens"], 1)
                 kok = k_id_err <= id_tol and kw <= _WEIGHT_ATOL
@@ -287,6 +361,7 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
             with torch.no_grad():
                 kmod.flydsl_topk_softmax(gating0, bias0, s0["topk"], s0["route_scale"])
         except NotImplementedError:
+            raise RuntimeError("Executed candidate is unimplemented; no baseline fallback")
             has_kernel = False
             print(
                 "SKIP: kernel.py FlyDSL target not implemented yet "
@@ -306,6 +381,8 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
             else torch.empty(0, dtype=torch.float32, device=gating.device)
         )
         topk, rs = shape["topk"], shape["route_scale"]
+        originals = (gating.clone(), bias.clone())
+        expected = _routing_reference(model, mmod, gating, bias)
 
         with torch.no_grad():
             if has_kernel:
@@ -347,9 +424,13 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
             for _ in range(warmup):
                 run_fused()
             torch.cuda.synchronize()
+            timed = TimedRun()
             fused_ms, fused_bench_meta = benchmark_cuda_graph_or_events(
-                run_fused, warmup=0, repetition=iters
+                run_fused, warmup=0, repetition=iters, timed_run=timed
             )
+            fused_bench_meta.update(_verify_routing_timed(
+                timed, model, mmod, gating, bias, shape, originals, expected,
+            ))
 
             ref_ms, ref_bench_meta = benchmark_cuda_graph_or_events(
                 lambda: model(gating), warmup=0, repetition=iters
@@ -422,3 +503,162 @@ if __name__ == "__main__":
         sys.exit(0)
     else:
         run_benchmark(warmup=args.warmup, iters=args.iterations)
+
+
+def _require_candidate_outputs(mod):
+    import functools
+    for name in tuple(vars(mod)):
+        target = getattr(mod, name)
+        if name.startswith("flydsl_") and callable(target):
+            @functools.wraps(target)
+            def checked(*args, __target=target, **kwargs):
+                try:
+                    result = __target(*args, **kwargs)
+                except NotImplementedError as exc:
+                    raise RuntimeError("Executed candidate is unimplemented; no baseline fallback") from exc
+                if result is None:
+                    raise RuntimeError("Candidate operator returned None; output is required")
+                return result
+            setattr(mod, name, checked)
+
+
+# V2 direct timing evidence from this invocation.
+def arena_benchmark(warmup=10, iters=100, verbose=True):
+    import torch
+    import aiter
+
+    mmod = _load_module(_KERNEL_DIR, MODEL_FILE, "torch_model")
+    assert mmod is not None, "cannot load model.py"
+    kmod = _load_module(_KERNEL_DIR, KERNEL_FILE, "flydsl_kernel")
+    has_kernel = kmod is not None
+
+    if has_kernel:
+        s0 = SHAPES[0]
+        model0, gating0 = _build_model(mmod, s0)
+        bias0 = (
+            model0.correction_bias.detach().float()
+            if model0.correction_bias is not None
+            else torch.empty(0, dtype=torch.float32, device=gating0.device)
+        )
+        try:
+            with torch.no_grad():
+                kmod.flydsl_topk_softmax(gating0, bias0, s0["topk"], s0["route_scale"])
+        except NotImplementedError:
+            raise RuntimeError("Executed candidate is unimplemented; no baseline fallback")
+            has_kernel = False
+            print(
+                "SKIP: kernel.py FlyDSL target not implemented yet "
+                "(benchmarking aiter op instead)"
+            )
+        del model0, gating0
+        torch.cuda.empty_cache()
+
+    latencies, speedups, report = [], [], []
+    print(f"{'Config':<24} {'Ref':>10} {'Fused':>10} {'Speedup':>10}")
+    print("-" * 60)
+    for idx, shape in enumerate(SHAPES):
+        model, gating = _build_model(mmod, shape)
+        bias = (
+            model.correction_bias.detach().float()
+            if model.correction_bias is not None
+            else torch.empty(0, dtype=torch.float32, device=gating.device)
+        )
+        topk, rs = shape["topk"], shape["route_scale"]
+        originals = (gating.clone(), bias.clone())
+        expected = _routing_reference(model, mmod, gating, bias)
+
+        with torch.no_grad():
+            if has_kernel:
+                def run_fused():
+                    return kmod.flydsl_topk_softmax(gating, bias, topk, rs)
+            else:
+                def run_fused():
+                    # Match the public candidate/reference contract: both
+                    # return freshly allocated result tensors. Do not give the
+                    # aiter fallback caller-owned outputs while timing the
+                    # torch reference's allocations.
+                    fused_w = torch.empty(
+                        (shape["tokens"], topk), dtype=torch.float32,
+                        device=gating.device,
+                    )
+                    fused_idx = torch.empty(
+                        (shape["tokens"], topk), dtype=torch.int32,
+                        device=gating.device,
+                    )
+                    aiter.topk_gating(
+                        fused_w,
+                        fused_idx,
+                        gating,
+                        bias,
+                        need_renorm=False,
+                        routed_scaling_factor=rs,
+                        score_func="softmax",
+                    )
+                    return fused_w, fused_idx
+
+                def prepare_fused():
+                    run_fused()
+                    torch.cuda.synchronize()
+
+                _retry(prepare_fused, what="aiter.topk_gating(softmax)")
+
+            run_fused()
+            torch.cuda.synchronize()
+            for _ in range(warmup):
+                run_fused()
+            torch.cuda.synchronize()
+            timed = TimedRun()
+            fused_ms, fused_bench_meta = benchmark_cuda_graph_or_events(
+                run_fused, warmup=0, repetition=iters, timed_run=timed
+            )
+            fused_bench_meta.update(_verify_routing_timed(
+                timed, model, mmod, gating, bias, shape, originals, expected,
+            ))
+
+            ref_ms, ref_bench_meta = benchmark_cuda_graph_or_events(
+                lambda: model(gating), warmup=0, repetition=iters
+            )
+
+        methods_match = fused_bench_meta["benchmark_method"] == ref_bench_meta["benchmark_method"]
+        speedup = (
+            ref_ms / fused_ms if methods_match and fused_ms > 0 else None
+        )
+        speedup_display = (
+            format(speedup, ">8.2f") + "x"
+            if speedup is not None
+            else f"{'N/A':>9}"
+        )
+        latencies.append(fused_ms)
+        if speedup is not None:
+            speedups.append(speedup)
+        report.append({
+            "test_case_id": f"test_case_{idx}",
+            "execution_time_ms": fused_ms,
+            **fused_bench_meta,
+            "reference_benchmark_method": ref_bench_meta["benchmark_method"],
+            "benchmark_method_consistent": fused_bench_meta["benchmark_method"] == ref_bench_meta["benchmark_method"],
+            "shape": [shape["tokens"], shape["experts"], shape["topk"]],
+            "params": {k: shape[k] for k in ("tokens", "experts", "topk", "route_scale", "use_bias")},
+        })
+        if verbose:
+            print(f"{shape['name']:<24} {ref_ms:>8.4f}ms {fused_ms:>8.4f}ms {speedup_display}")
+        del model, gating
+        torch.cuda.empty_cache()
+
+    geomean_latency = math.exp(sum(math.log(x) for x in latencies) / len(latencies))
+    geomean_speedup = math.exp(sum(math.log(x) for x in speedups) / len(speedups)) if speedups else None
+    geomean_speedup_display = (
+        format(geomean_speedup, ".2f") + "x"
+        if geomean_speedup is not None
+        else "N/A"
+    )
+
+    build_dir = Path(_KERNEL_DIR) / "build"
+    build_dir.mkdir(exist_ok=True)
+    with open(build_dir / "performance_report.json", "w") as f:
+        json.dump(report, f, indent=2)
+
+    print("-" * 60)
+    print(f"Geometric mean latency: {geomean_latency:.4f} ms")
+    print(f"Geometric mean speedup: {geomean_speedup_display}")
+    return report

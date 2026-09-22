@@ -1,13 +1,25 @@
-source_file_path:
-- jagged_dense_broadcast_add.py
-target_kernel_functions:
-- triton_jagged_dense_broadcast_add
-- jagged_dense_broadcast_add_kernel
-compile_command:
-- python3 test_kernel_harness.py --compile
-correctness_command:
-- python3 test_kernel_harness.py --correctness
-performance_command:
-- python3 test_kernel_harness.py --full-benchmark
-task_type: triton2flydsl
-task_result_template: null
+schema_version: 2
+description: Translate the declared jagged_dense_broadcast_add implementation from Triton to FlyDSL while
+  preserving all operator and evaluation contracts.
+instructions:
+- README.md
+candidate:
+  language: flydsl
+  initial_state: implemented
+  initial_language: triton
+  editable:
+  - jagged_dense_broadcast_add.py
+  entrypoints:
+  - file: jagged_dense_broadcast_add.py
+    kind: function
+    symbol: triton_jagged_dense_broadcast_add
+baseline:
+  kind: initial_candidate
+  language: triton
+  correctness_policy: required
+evaluation:
+  runner:
+  - python3
+  - scripts/evaluate.py
+  workloads: cases.json
+  timeout_s: 3600

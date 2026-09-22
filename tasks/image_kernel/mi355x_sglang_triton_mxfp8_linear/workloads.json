@@ -1,0 +1,195 @@
+{
+  "original_cases": {
+    "correctness": [
+      {
+        "id": "qkv_proj-decode-m1",
+        "family": "qkv_proj",
+        "regime": "decode",
+        "params": {
+          "m": 1,
+          "n": 1280,
+          "k": 6144,
+          "max_relerr": 0.06
+        }
+      },
+      {
+        "id": "qkv_proj-decode-m64",
+        "family": "qkv_proj",
+        "regime": "decode",
+        "params": {
+          "m": 64,
+          "n": 1280,
+          "k": 6144,
+          "max_relerr": 0.06
+        }
+      },
+      {
+        "id": "qkv_proj-prefill-m16384",
+        "family": "qkv_proj",
+        "regime": "prefill",
+        "params": {
+          "m": 16384,
+          "n": 1280,
+          "k": 6144,
+          "max_relerr": 0.06
+        }
+      },
+      {
+        "id": "o_proj-decode-m1",
+        "family": "o_proj",
+        "regime": "decode",
+        "params": {
+          "m": 1,
+          "n": 6144,
+          "k": 1024,
+          "max_relerr": 0.06
+        }
+      },
+      {
+        "id": "o_proj-decode-m64",
+        "family": "o_proj",
+        "regime": "decode",
+        "params": {
+          "m": 64,
+          "n": 6144,
+          "k": 1024,
+          "max_relerr": 0.06
+        }
+      },
+      {
+        "id": "o_proj-prefill-m16384",
+        "family": "o_proj",
+        "regime": "prefill",
+        "params": {
+          "m": 16384,
+          "n": 6144,
+          "k": 1024,
+          "max_relerr": 0.06
+        }
+      }
+    ],
+    "performance": null
+  },
+  "cases": [
+    {
+      "test_case_id": "qkv_proj-decode-m1",
+      "params": {
+        "m": 1,
+        "n": 1280,
+        "k": 6144,
+        "max_relerr": 0.06,
+        "seed": 0
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bfloat16",
+      "metadata": {
+        "family": "qkv_proj",
+        "regime": "decode",
+        "timed_replay_seed": 59
+      }
+    },
+    {
+      "test_case_id": "qkv_proj-decode-m64",
+      "params": {
+        "m": 64,
+        "n": 1280,
+        "k": 6144,
+        "max_relerr": 0.06,
+        "seed": 0
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bfloat16",
+      "metadata": {
+        "family": "qkv_proj",
+        "regime": "decode",
+        "timed_replay_seed": 59
+      }
+    },
+    {
+      "test_case_id": "qkv_proj-prefill-m16384",
+      "params": {
+        "m": 16384,
+        "n": 1280,
+        "k": 6144,
+        "max_relerr": 0.06,
+        "seed": 0
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bfloat16",
+      "metadata": {
+        "family": "qkv_proj",
+        "regime": "prefill",
+        "timed_replay_seed": 59
+      }
+    },
+    {
+      "test_case_id": "o_proj-decode-m1",
+      "params": {
+        "m": 1,
+        "n": 6144,
+        "k": 1024,
+        "max_relerr": 0.06,
+        "seed": 0
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bfloat16",
+      "metadata": {
+        "family": "o_proj",
+        "regime": "decode",
+        "timed_replay_seed": 59
+      }
+    },
+    {
+      "test_case_id": "o_proj-decode-m64",
+      "params": {
+        "m": 64,
+        "n": 6144,
+        "k": 1024,
+        "max_relerr": 0.06,
+        "seed": 0
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bfloat16",
+      "metadata": {
+        "family": "o_proj",
+        "regime": "decode",
+        "timed_replay_seed": 59
+      }
+    },
+    {
+      "test_case_id": "o_proj-prefill-m16384",
+      "params": {
+        "m": 16384,
+        "n": 6144,
+        "k": 1024,
+        "max_relerr": 0.06,
+        "seed": 0
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bfloat16",
+      "metadata": {
+        "family": "o_proj",
+        "regime": "prefill",
+        "timed_replay_seed": 59
+      }
+    }
+  ]
+}

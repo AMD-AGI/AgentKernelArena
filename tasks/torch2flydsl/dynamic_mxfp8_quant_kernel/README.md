@@ -1,0 +1,70 @@
+# dynamic_mxfp8_quant_kernel: task-owned v2 contract
+
+Implement or optimize dynamic_mxfp8_quant in FlyDSL, preserving all task inputs, outputs and numerical gates.
+
+The candidate starts **unimplemented**. The runner explicitly selects the provided baseline before loading any candidate source. An empty candidate is allowed only at initial task validation.
+The original harness's primary implementation timing is retained; additional
+reference/operator timings are diagnostic only. `test_kernel_harness.py` defines
+the exact dispatch and allocation boundary for this task. The provided path uses
+the task-local PyTorch model or installed AITER operator specified there, with its
+original graph/event policy. `model.py` is protected reference/source material;
+its presence alone does not select the performance baseline.
+
+There are 8 declared cases in `cases.json`. All original dimensions,
+parameter variants, seeds, tolerances, numerical metrics, output checks, warmups
+and repetition counts remain in the protected harness. It validates the PyTorch
+reference against the original independent AITER comparison wherever that check
+was present. Small independent known-answer and negative-output controls in
+`scripts/reference_controls.py` supplement the full GPU checks.
+
+Edit only `candidate.editable` paths from `config.yaml`. Preserve each declared
+public operator/builder interface and all outputs (including residuals, packed
+quantization codes/scales, routing indices or state when applicable). Inspect the
+protected harness calls and `model.py` to understand shapes, strides and layout.
+The final operator computation must run FlyDSL GPU kernels. PyTorch is allowed
+for allocation, views and launch preparation, not replacement operator compute.
+Do not import the model, harness, reference or baseline from candidate code.
+No Triton, AITER operator calls, external kernels, dynamic module loading, native
+launch bypasses or subprocess dispatch are allowed as the final computation.
+Bundled implementation utilities remain protected unless config explicitly lists
+them as editable. Candidate absence, a stub or a None output is a final failure.
+
+Use the public task-local runner from the materialized workspace:
+
+```sh
+python3 scripts/evaluate.py validate-task
+python3 scripts/evaluate.py baseline compile
+python3 scripts/evaluate.py baseline correctness
+python3 scripts/evaluate.py baseline performance
+python3 scripts/evaluate.py candidate compile
+python3 scripts/evaluate.py candidate correctness
+python3 scripts/evaluate.py candidate performance
+```
+
+Compile syntax-checks the actual role's Python sources; correctness then exercises
+real case-specific GPU compilation and execution. Every action emits
+`ARENA_EVAL_RESULT=` with an `arena-eval-v1` JSON envelope. Arena owns final scores
+and reports. Agents do not write `task_result.yaml`.
+
+The runtime image supplies ROCm, PyTorch, FlyDSL and required AITER operators. Arena
+must materialize the canonical `_aka_benchmark.py` helper. CPU controls do not
+establish GPU correctness or timing support. Historical validation files predate
+this migration; the parent integration schedules fresh GPU validation.
+
+All eight original shapes, seed20 and input distribution remain unchanged.
+Both output tensors require their declared shape, device and dtype: E4M3 FN
+codes [M,K] and uint8 E8M0 scales [M,K/32]. Non-finite codes and reserved scale
+255 fail. The original code-byte difference <=1 and exact scale-byte gate
+remain unchanged. Inputs are read-only. The scored Model baseline and candidate
+have their actual measured outputs checked against the independent AITER oracle;
+post-timing replay changes signs and scale magnitude, poisons both outputs and
+restores inputs. Formal graph/Event selection, warmups, samples and timed work
+are unchanged. Candidate-only backend auditing requires real FlyDSL calls and
+rejects replacement AITER/PyTorch operator computation, outside timed windows.
+
+
+Only the entrypoints listed in config.yaml are required interfaces. The primary
+operator is `flydsl_dynamic_mxfp8_quant`; any additional declared callables used by the harness
+remain required. Legacy build/compile helpers are optional implementation details;
+no builder return protocol is required by this task. A candidate may choose its
+own internal compilation helpers, while implementing all tested work in FlyDSL.

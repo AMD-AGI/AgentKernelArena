@@ -1,12 +1,25 @@
-source_file_path:
-- kernel.py
-target_kernel_functions:
-- flydsl_moe_2stage_generic
-compile_command:
-- python3 -c "import model, kernel; print('compile ok')"
-correctness_command:
-- python3 test_kernel_harness.py --correctness
-performance_command:
-- python3 test_kernel_harness.py --full-benchmark
-task_type: torch2flydsl
-task_result_template: null
+schema_version: 2
+description: Implement or optimize moe_2stage_generic in FlyDSL, preserving all task inputs, outputs and
+  numerical gates.
+instructions:
+- README.md
+candidate:
+  language: flydsl
+  initial_state: unimplemented
+  editable:
+  - kernel.py
+  entrypoints:
+  - file: kernel.py
+    kind: function
+    symbol: flydsl_moe_2stage_generic
+baseline:
+  kind: provided
+  correctness_policy: required
+  source_files:
+  - model.py
+evaluation:
+  runner:
+  - python3
+  - scripts/evaluate.py
+  workloads: cases.json
+  timeout_s: 3600

@@ -1,0 +1,130 @@
+{
+  "cases": [
+    {
+      "test_case_id": "case_0000",
+      "params": {
+        "batch": 1,
+        "num_heads": 32,
+        "seed": 42,
+        "dtype": "bfloat16"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bfloat16"
+    },
+    {
+      "test_case_id": "case_0001",
+      "params": {
+        "batch": 8,
+        "num_heads": 32,
+        "seed": 43,
+        "dtype": "bfloat16"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bfloat16"
+    },
+    {
+      "test_case_id": "case_0002",
+      "params": {
+        "batch": 32,
+        "num_heads": 32,
+        "seed": 44,
+        "dtype": "bfloat16"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bfloat16"
+    },
+    {
+      "test_case_id": "case_0003",
+      "params": {
+        "batch": 128,
+        "num_heads": 16,
+        "seed": 45,
+        "dtype": "bfloat16"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bfloat16"
+    },
+    {
+      "test_case_id": "case_0004",
+      "params": {
+        "batch": 256,
+        "num_heads": 16,
+        "seed": 46,
+        "dtype": "bfloat16"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bfloat16"
+    },
+    {
+      "test_case_id": "case_0005",
+      "params": {
+        "batch": 512,
+        "num_heads": 32,
+        "seed": 47,
+        "dtype": "bfloat16"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bfloat16"
+    },
+    {
+      "test_case_id": "case_0006",
+      "params": {
+        "batch": 64,
+        "num_heads": 8,
+        "seed": 48,
+        "dtype": "bfloat16"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bfloat16"
+    },
+    {
+      "test_case_id": "case_0007",
+      "params": {
+        "batch": 16,
+        "num_heads": 4,
+        "seed": 49,
+        "dtype": "bfloat16"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bfloat16"
+    },
+    {
+      "test_case_id": "case_0008",
+      "params": {
+        "batch": 128,
+        "num_heads": 128,
+        "seed": 50,
+        "dtype": "bfloat16"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bfloat16"
+    }
+  ]
+}

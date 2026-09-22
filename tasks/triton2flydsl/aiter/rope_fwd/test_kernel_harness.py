@@ -24,9 +24,11 @@ import math
 import os
 import sys
 from pathlib import Path
-from _aka_benchmark import benchmark_cuda_graph_or_events
+from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
+from scripts.replay_checks import require_tensor_contract, require_unchanged, verify_timed_run
 
-SOURCE_FILE = "rope_fwd.py"
+from task_runtime import candidate_relative_path
+SOURCE_FILE = candidate_relative_path()
 ENTRY = "rope_fwd"
 KERNEL = "_rope_kernel_sbhd_fwd"
 
@@ -50,6 +52,7 @@ def _load_source():
     entry = os.path.join(_HERE, SOURCE_FILE)
     spec = importlib.util.spec_from_file_location("rope_fwd_src", entry)
     mod = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = mod
     spec.loader.exec_module(mod)
     return mod
 
@@ -145,6 +148,35 @@ def run_compile():
     return True
 
 
+def _checked_flat_output(out, x):
+    require_tensor_contract(out, x)
+
+
+def _compare_flat_output(actual, expected):
+    import torch
+    require_tensor_contract(actual, expected)
+    if not bool(torch.isfinite(actual).all() and torch.isfinite(expected).all()):
+        raise AssertionError("Non-finite RoPE/reference output")
+    # Preserve the original BF16 allclose arithmetic and0.1/0.1 gate.
+    if not torch.allclose(actual, expected, atol=1e-1, rtol=1e-1):
+        raise AssertionError("Numerical mismatch: RoPE allclose atol=rtol=0.1")
+
+
+def _flat_replay_validator(x, freqs, style, reuse, nope_first, NEOX):
+    inputs = (x, freqs)
+    originals = tuple(v.clone() for v in inputs)
+    expected = _ref_rope_sbhd_fwd(x, freqs, style, reuse, nope_first, NEOX)
+    def perturb():
+        x.neg_()
+    def reference():
+        return _ref_rope_sbhd_fwd(x, freqs, style, reuse, nope_first, NEOX)
+    def validate(timed):
+        return verify_timed_run(timed, inputs=inputs, originals=originals,
+                                expected=expected, perturb=perturb,
+                                reference=reference, compare=_compare_flat_output)
+    return validate
+
+
 def run_correctness(verbose=True):
     import torch
 
@@ -157,6 +189,8 @@ def run_correctness(verbose=True):
         try:
             style = NEOX if c["style"] == "NEOX" else GPTJ
             x, freqs = _make_inputs(c["B"], c["S"], c["nope"], c["reuse"])
+            protected_inputs = (x, freqs)
+            originals = tuple(v.clone() for v in protected_inputs)
             y = mod.rope_fwd(
                 x,
                 freqs,
@@ -165,6 +199,8 @@ def run_correctness(verbose=True):
                 nope_first=c["nope_first"],
             )
             torch.cuda.synchronize()
+            require_unchanged(protected_inputs, originals)
+            _checked_flat_output(y, x)
             ref = _ref_rope_sbhd_fwd(
                 x, freqs, style, c["reuse"], c["nope_first"], NEOX
             )
@@ -202,6 +238,7 @@ def run_benchmark(verbose=True):
     report, latencies = [], []
     for idx, shape in enumerate(shapes):
         x, freqs = _make_inputs(shape["B"], shape["S"], False, True)
+        replay_validate = _flat_replay_validator(x, freqs, NEOX, True, False, NEOX)
         fn = lambda: mod.rope_fwd(  # noqa: E731
             x, freqs, rotate_style=NEOX, reuse_freqs_front_part=True, nope_first=False
         )
@@ -210,9 +247,11 @@ def run_benchmark(verbose=True):
         for _ in range(WARMUP):
             fn()
         torch.cuda.synchronize()
+        timed = TimedRun()
         ms, bench_meta = benchmark_cuda_graph_or_events(
-            fn, warmup=0, repetition=ITERS
+            fn, warmup=0, repetition=ITERS, timed_run=timed
         )
+        bench_meta.update(replay_validate(timed))
         latencies.append(ms)
         nbytes = 2.0 * shape["S"] * shape["B"] * H * D * 2  # bf16 read+write
         report.append(

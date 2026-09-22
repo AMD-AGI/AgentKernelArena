@@ -1,16 +1,25 @@
-source_file_path:
-- mla.py
-target_kernel_functions:
-- mla_decode_fwd
-- mla_prefill_fwd
-- _mla_decode_fwd_kernel
-- _mla_prefill_fwd_kernel
-- _mla_decode_fwd_reduce_kernel
-compile_command:
-- python3 test_kernel_harness.py --compile
-correctness_command:
-- python3 test_kernel_harness.py --correctness
-performance_command:
-- python3 test_kernel_harness.py --full-benchmark
-task_type: triton2flydsl
-task_result_template: null
+schema_version: 2
+description: Translate the declared mla implementation from Triton to FlyDSL while preserving all operator
+  and evaluation contracts.
+instructions:
+- README.md
+candidate:
+  language: flydsl
+  initial_state: implemented
+  initial_language: triton
+  editable:
+  - mla.py
+  entrypoints:
+  - file: mla.py
+    kind: function
+    symbol: mla_decode_fwd
+baseline:
+  kind: initial_candidate
+  language: triton
+  correctness_policy: required
+evaluation:
+  runner:
+  - python3
+  - scripts/evaluate.py
+  workloads: cases.json
+  timeout_s: 3600

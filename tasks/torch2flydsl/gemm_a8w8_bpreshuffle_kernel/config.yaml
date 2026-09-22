@@ -1,16 +1,28 @@
-source_file_path:
-- kernel.py
-target_kernel_functions:
-- flydsl_gemm_a8w8_bpreshuffle
-- build_gemm_a8w8_bpreshuffle_module
-- compile_preshuffle_gemm_a8
-compile_command:
-- python3 -c "import torch; from kernel import build_gemm_a8w8_bpreshuffle_module;
-  build_gemm_a8w8_bpreshuffle_module(5120, 1280, tile_m=128, tile_n=128, tile_k=256,
-  in_dtype='fp8', out_dtype='bf16'); print('compile ok')"
-correctness_command:
-- python3 test_kernel_harness.py --correctness
-performance_command:
-- python3 test_kernel_harness.py --full-benchmark
-task_type: torch2flydsl
-task_result_template: null
+schema_version: 2
+description: Implement or optimize gemm_a8w8_bpreshuffle in FlyDSL, preserving all task inputs, outputs
+  and numerical gates.
+instructions:
+- README.md
+candidate:
+  language: flydsl
+  initial_state: implemented
+  editable:
+  - kernel.py
+  entrypoints:
+  - file: kernel.py
+    kind: function
+    symbol: flydsl_gemm_a8w8_bpreshuffle
+  - file: kernel.py
+    kind: function
+    symbol: preshuffle_weight_a8
+  initial_language: flydsl
+baseline:
+  kind: initial_candidate
+  correctness_policy: required
+  language: flydsl
+evaluation:
+  runner:
+  - python3
+  - scripts/evaluate.py
+  workloads: cases.json
+  timeout_s: 3600

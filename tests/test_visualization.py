@@ -66,6 +66,10 @@ class VisualizationBuildTests(unittest.TestCase):
             ):
                 local_dataset = build_data.build_dataset()
                 self.assertEqual(local_dataset["meta"]["reportCount"], 1)
+                legacy_task = local_dataset["reports"][0]["tasks"][0]
+                self.assertEqual(legacy_task["status"], "PASS")
+                self.assertIsNone(legacy_task["candidateAccepted"])
+                self.assertIsNone(legacy_task["deliveryStatus"])
                 self.assertEqual(
                     local_dataset["reports"][0]["sourceFiles"]["summaryCsv"],
                     "reports/manual_baseline/overall_summary.csv",

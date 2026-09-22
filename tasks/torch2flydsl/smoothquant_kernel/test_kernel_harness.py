@@ -27,24 +27,23 @@ import os
 import sys
 import time
 from pathlib import Path
-from _aka_benchmark import benchmark_cuda_graph_or_events
+from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
+from scripts.replay_checks import require_unchanged
 
-KERNEL_FILE = "kernel.py"
+from task_runtime import candidate_relative_path
+KERNEL_FILE = candidate_relative_path()
+ARENA_PROVIDED_BASELINE = False
 MODEL_FILE = "model.py"
 KERNEL_ENTRY = "flydsl_smoothquant"
 
 
 def _resolve_kernel_dir():
-    here = os.path.dirname(os.path.abspath(__file__))
-    if os.path.isfile(os.path.join(here, MODEL_FILE)):
-        return here
-    cwd = os.getcwd()
-    if os.path.isfile(os.path.join(cwd, MODEL_FILE)):
-        return cwd
-    return here
+    return str(__import__("pathlib").Path(__file__).resolve().parent)
 
 
 def _load_module(kernel_dir, filename, alias):
+    if filename == KERNEL_FILE and ARENA_PROVIDED_BASELINE:
+        return None
     entry = os.path.join(kernel_dir, filename)
     if not os.path.isfile(entry):
         return None
@@ -56,6 +55,8 @@ def _load_module(kernel_dir, filename, alias):
     mod = importlib.util.module_from_spec(spec)
     sys.modules[alias] = mod
     spec.loader.exec_module(mod)
+    if filename == KERNEL_FILE:
+        _require_candidate_outputs(mod)
     return mod
 
 
@@ -148,6 +149,62 @@ def run_compile(verbose=True):
     return True
 
 
+def _checked_quant_pair(pair, inp, mmod):
+    import torch
+    if not isinstance(pair, (tuple, list)) or len(pair) != 2:
+        raise AssertionError("Quantizer must return codes and scales")
+    input = inp[0]
+    code_dtype = torch.int8
+    code_shape = tuple(input.shape)
+    scale_shape = (input.shape[0], 1)
+    for value, shape, dtype in zip(pair, (code_shape, scale_shape), (code_dtype, torch.float32)):
+        if not isinstance(value, torch.Tensor) or tuple(value.shape) != shape or value.dtype != dtype or value.device != input.device:
+            raise AssertionError("Quantizer output shape/dtype/device violates the contract")
+        if not bool(torch.isfinite(value.float()).all()):
+            raise AssertionError("Non-finite quantizer output")
+    return pair
+
+
+def _compare_quant_outputs(actual, expected, inp, mmod):
+    _checked_quant_pair(actual, inp, mmod)
+    _checked_quant_pair(expected, inp, mmod)
+    if not _compare(actual, expected)[0]:
+        raise AssertionError("Numerical mismatch: quantizer codes or scale")
+
+
+def _quant_replay_validator(mmod, inp):
+    import torch
+    originals = tuple(x.clone() for x in inp)
+    expected = _checked_quant_pair(_aiter_op(*inp), inp, mmod)
+    require_unchanged(inp, originals)
+    def validate(timed):
+        if not timed.bound:
+            raise RuntimeError("Benchmark did not expose measured quantization outputs")
+        require_unchanged(inp, originals)
+        _compare_quant_outputs(timed.outputs, expected, inp, mmod)
+        try:
+            inp[0].neg_()
+            inp[1].mul_(0.5)
+            changed = tuple(x.clone() for x in inp)
+            replay_expected = _checked_quant_pair(_aiter_op(*inp), inp, mmod)
+            codes, scale = timed.outputs
+            if codes.dtype == torch.int8:
+                codes.fill_(-128)
+            else:
+                nan_byte = 128 if codes.dtype == torch.float8_e4m3fnuz else 127
+                codes.view(torch.uint8).fill_(nan_byte)
+            scale.fill_(float("nan"))
+            replayed = timed.rerun()
+            require_unchanged(inp, changed)
+            _compare_quant_outputs(replayed, replay_expected, inp, mmod)
+        finally:
+            for value, original in zip(inp, originals):
+                value.copy_(original)
+        return {"timed_output_correctness": "PASS", "replay_correctness": "PASS",
+                "replay_inputs_perturbed": True, "replay_output_poisoned": True}
+    return validate
+
+
 def run_correctness(verbose=True):
     import torch
 
@@ -159,12 +216,17 @@ def run_correctness(verbose=True):
     failures = []
     for shape in SHAPES:
         inp = _make_inputs(shape)
+        protected_inputs = inp
+        originals = tuple(v.clone() for v in protected_inputs)
         model = mmod.Model(*mmod.get_init_inputs()).to("cuda")
         with torch.no_grad():
             ref = model(*inp)
             truth = _retry(lambda: _aiter_op(*inp), what="aiter smoothquant_fwd")
         torch.cuda.synchronize()
 
+        require_unchanged(protected_inputs, originals)
+        _checked_quant_pair(ref, protected_inputs, mmod)
+        _checked_quant_pair(truth, protected_inputs, mmod)
         ok, cmax, epct, srel = _compare(ref, truth)
         if verbose:
             print(
@@ -180,6 +242,7 @@ def run_correctness(verbose=True):
             try:
                 kout = _retry(lambda: kmod.flydsl_smoothquant(*inp), what=KERNEL_ENTRY)
             except NotImplementedError:
+                raise RuntimeError("Executed candidate is unimplemented; no baseline fallback")
                 has_kernel = False
                 if verbose:
                     print(
@@ -189,6 +252,8 @@ def run_correctness(verbose=True):
                 kout = None
             if kout is not None:
                 torch.cuda.synchronize()
+                require_unchanged(protected_inputs, originals)
+                _checked_quant_pair(kout, protected_inputs, mmod)
                 k_ok, kc, ke, ks = _compare(kout, truth)
                 if verbose:
                     print(
@@ -209,13 +274,14 @@ def run_correctness(verbose=True):
     return True
 
 
-def _mean_ms(fn, warmup, iters):
+def _mean_ms(fn, warmup, iters, *, validate):
+    timed = TimedRun()
     mean_ms, bench_meta = benchmark_cuda_graph_or_events(
-        fn, warmup=warmup, repetition=iters
+        fn, warmup=warmup, repetition=iters, timed_run=timed
     )
+    bench_meta.update(validate(timed))
     _mean_ms.benchmark_metadata = bench_meta
     return mean_ms
-
 
 def run_benchmark(warmup=10, iters=100, verbose=True):
     import torch
@@ -231,6 +297,7 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
             kmod.flydsl_smoothquant(*_probe)
             del _probe
         except NotImplementedError:
+            raise RuntimeError("Executed candidate is unimplemented; no baseline fallback")
             has_kernel = False
             print(
                 "SKIP: kernel.py FlyDSL target not implemented yet "
@@ -244,12 +311,13 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
     for idx, shape in enumerate(SHAPES):
         inp = _make_inputs(shape)
         model = mmod.Model(*mmod.get_init_inputs()).to("cuda")
+        validate = _quant_replay_validator(mmod, inp)
         with torch.no_grad():
-            op_ms = _mean_ms(lambda: _aiter_op(*inp), warmup, iters)
-            ref_ms = _mean_ms(lambda: model(*inp), warmup, iters)
+            op_ms = _mean_ms(lambda: _aiter_op(*inp), warmup, iters, validate=validate)
+            ref_ms = _mean_ms(lambda: model(*inp), warmup, iters, validate=validate)
             ref_bench_meta = _mean_ms.benchmark_metadata
             ker_ms = (
-                _mean_ms(lambda: kmod.flydsl_smoothquant(*inp), warmup, iters)
+                _mean_ms(lambda: kmod.flydsl_smoothquant(*inp), warmup, iters, validate=validate)
                 if has_kernel
                 else None
             )
@@ -315,3 +383,91 @@ if __name__ == "__main__":
         sys.exit(0)
     else:
         run_benchmark(warmup=args.warmup, iters=args.iterations)
+
+
+def _require_candidate_outputs(mod):
+    import functools
+    for name in tuple(vars(mod)):
+        target = getattr(mod, name)
+        if name.startswith("flydsl_") and callable(target):
+            @functools.wraps(target)
+            def checked(*args, __target=target, **kwargs):
+                try:
+                    result = __target(*args, **kwargs)
+                except NotImplementedError as exc:
+                    raise RuntimeError("Executed candidate is unimplemented; no baseline fallback") from exc
+                if result is None:
+                    raise RuntimeError("Candidate operator returned None; output is required")
+                return result
+            setattr(mod, name, checked)
+
+
+# V2 direct timing evidence from this invocation.
+def arena_benchmark(warmup=10, iters=100, verbose=True):
+    import torch
+
+    mmod = _load_module(_KERNEL_DIR, MODEL_FILE, "torch_model")
+    assert mmod is not None, "cannot load model.py"
+    kmod = _load_module(_KERNEL_DIR, KERNEL_FILE, "flydsl_kernel")
+    has_kernel = kmod is not None and hasattr(kmod, KERNEL_ENTRY)
+
+    if has_kernel:
+        try:
+            _probe = _make_inputs(SHAPES[0])
+            kmod.flydsl_smoothquant(*_probe)
+            del _probe
+        except NotImplementedError:
+            raise RuntimeError("Executed candidate is unimplemented; no baseline fallback")
+            has_kernel = False
+            print(
+                "SKIP: kernel.py FlyDSL target not implemented yet "
+                "(benchmarking reference instead)"
+            )
+        import torch as _t; _t.cuda.empty_cache()
+
+    latencies, report = [], []
+    print(f"{'Config':<20} {'aiter':>10} {'ref':>10} {'kernel':>10}")
+    print("-" * 56)
+    for idx, shape in enumerate(SHAPES):
+        inp = _make_inputs(shape)
+        model = mmod.Model(*mmod.get_init_inputs()).to("cuda")
+        validate = _quant_replay_validator(mmod, inp)
+        with torch.no_grad():
+            op_ms = _mean_ms(lambda: _aiter_op(*inp), warmup, iters, validate=validate)
+            ref_ms = _mean_ms(lambda: model(*inp), warmup, iters, validate=validate)
+            ref_bench_meta = _mean_ms.benchmark_metadata
+            ker_ms = (
+                _mean_ms(lambda: kmod.flydsl_smoothquant(*inp), warmup, iters, validate=validate)
+                if has_kernel
+                else None
+            )
+
+        primary_ms = ker_ms if ker_ms is not None else ref_ms
+        bench_meta = _mean_ms.benchmark_metadata
+        latencies.append(primary_ms)
+        report.append({
+            "test_case_id": f"test_case_{idx}",
+            "execution_time_ms": primary_ms,
+            **bench_meta,
+            "reference_benchmark_method": ref_bench_meta["benchmark_method"],
+            "benchmark_method_consistent": bench_meta["benchmark_method"] == ref_bench_meta["benchmark_method"],
+            "shape": [shape["m"], shape["n"]],
+            "params": {"m": shape["m"], "n": shape["n"], "dtype": "int8"},
+            "aiter_ms": op_ms,
+            "reference_ms": ref_ms,
+        })
+        if verbose:
+            ker_s = f"{ker_ms:>8.4f}ms" if ker_ms is not None else f"{'n/a':>10}"
+            print(f"{shape['name']:<20} {op_ms:>8.4f}ms {ref_ms:>8.4f}ms {ker_s}")
+        del inp, model
+        torch.cuda.empty_cache()
+
+    geomean = math.exp(sum(math.log(x) for x in latencies) / len(latencies))
+    build_dir = Path(_KERNEL_DIR) / "build"
+    build_dir.mkdir(exist_ok=True)
+    with open(build_dir / "performance_report.json", "w") as f:
+        json.dump(report, f, indent=2)
+
+    print("-" * 56)
+    print(f"Geometric mean latency: {geomean:.4f} ms")
+    return report

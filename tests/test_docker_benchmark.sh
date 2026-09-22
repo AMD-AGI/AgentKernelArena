@@ -156,7 +156,7 @@ QUALITY_WORKTREE_REL=".quality_loop_worktrees/$QUALITY_TEST_RUN_ID"
 QUALITY_EVAL_ARTIFACT_DIR="$ROOT/.eval-tool-artifacts/quality-loop-$QUALITY_TEST_RUN_ID"
 trap 'rm -rf -- "$TEST_HOME" "$PATH_TEST_PARENT" "$ROOT/$QUALITY_ARTIFACT_REL" "$ROOT/$QUALITY_WORKTREE_REL" "$QUALITY_EVAL_ARTIFACT_DIR"' EXIT
 UNRELATED_GEAK_WORKFLOW_DIR="$TEST_HOME/unrelated-geak-workflow"
-GEAK_SDK_PYTHONPATH="PYTHONPATH=/workspace/.aka-pyuserbase/geak-sdk"
+GEAK_SDK_PYTHONPATH="AKA_GEAK_SDK_PATH=/workspace/.aka-pyuserbase/geak-sdk"
 mkdir -p "$UNRELATED_GEAK_WORKFLOW_DIR"
 touch "$UNRELATED_GEAK_WORKFLOW_DIR/kernel_workflow.js"
 
@@ -240,11 +240,18 @@ chmod +x "$FAKE_BIN/python"
 forwarded_agents="$(PATH="$FAKE_BIN:$PATH" bash "$RUNNER" _container_check_agents cursor)"
 [[ "$forwarded_agents" == "cursor" ]] || fail "container check received '$forwarded_agents', expected cursor"
 
-# The gfx950 default resolves to the pinned image and enables writable caches.
+# The gfx950 default uses the immutable manifest, not the movable dated tag,
+# and retains the verified image's writable caches.
 mapfile -t args < <(run_shell_args AKA_GPU_ARCH=gfx950)
-assert_has "$PINNED_GFX950_IMAGE" "${args[@]}"
+assert_has "$PINNED_GFX950_IMMUTABLE_IMAGE" "${args[@]}"
+assert_not_has "$PINNED_GFX950_IMAGE" "${args[@]}"
 assert_cache_args_present "" "${args[@]}"
 assert_not_has "AITER_ROOT_DIR=/tmp/aiter-root" "${args[@]}"
+
+# An explicit analysis requirement reaches the container instead of being
+# confused with the core graph/event timing prerequisites.
+mapfile -t args < <(run_shell_args AKA_GPU_ARCH=gfx950 AKA_REQUIRED_PROFILERS=rocprof-compute,rocprofv3)
+assert_has "AKA_REQUIRED_PROFILERS=rocprof-compute,rocprofv3" "${args[@]}"
 
 # A worker suffix must isolate both runtime cache directories.
 mapfile -t args < <(run_shell_args AKA_GPU_ARCH=gfx950 AKA_CACHE_SUFFIX=worker/3)
@@ -252,7 +259,18 @@ assert_cache_args_present "-worker_3" "${args[@]}"
 
 # Explicitly selecting the same verified tag has the same behavior.
 mapfile -t args < <(run_shell_args AKA_GPU_ARCH=gfx950 AKA_DOCKER_IMAGE="$PINNED_GFX950_IMAGE")
+assert_has "$PINNED_GFX950_IMAGE" "${args[@]}"
 assert_cache_args_present "" "${args[@]}"
+
+# The qualification image has the same non-root cache requirement. Test both
+# public references and per-worker isolation without promoting it to default.
+for image in \
+    lmsysorg/sglang-rocm:v0.5.19-rocm10-mi35x-20260913 \
+    lmsysorg/sglang-rocm@sha256:106a7adbeec5554b6e66a4bda0b3694af442717b9fe92754a9885520077b6f93; do
+    mapfile -t args < <(run_shell_args AKA_GPU_ARCH=gfx950 AKA_DOCKER_IMAGE="$image" AKA_CACHE_SUFFIX=worker-3)
+    assert_has "$image" "${args[@]}"
+    assert_cache_args_present "-worker-3" "${args[@]}"
+done
 
 # Old and custom gfx950 images retain their existing Docker arguments.
 mapfile -t args < <(run_shell_args AKA_GPU_ARCH=gfx950 AKA_DOCKER_IMAGE="$OLD_GFX950_IMAGE")
@@ -535,6 +553,35 @@ assert_not_has "$GEAK_SDK_PYTHONPATH" "${args[@]}"
 assert_not_has "$UNRELATED_GEAK_WORKFLOW_DIR:$UNRELATED_GEAK_WORKFLOW_DIR:ro" "${args[@]}"
 assert_not_has "GEAK_V4_WORKFLOW_DIR=$UNRELATED_GEAK_WORKFLOW_DIR" "${args[@]}"
 
+# An explicit private credential seed replaces only Claude's auth directory;
+# worker isolation still mounts it read-only and never writes back credentials.
+CLAUDE_PRIVATE_AUTH_DIR="$TEST_HOME/private-claude-auth"
+mkdir -p "$CLAUDE_PRIVATE_AUTH_DIR"
+mapfile -t args < <(run_check_args \
+    "$NATIVE_CLAUDE_HOME" "$NATIVE_CLAUDE_CONFIG" \
+    AGENT_HOME_ISOLATION=1 AKA_CLAUDE_AUTH_DIR="$CLAUDE_PRIVATE_AUTH_DIR")
+assert_has "$CLAUDE_PRIVATE_AUTH_DIR:/opt/aka-agent-state/.claude:ro" "${args[@]}"
+assert_not_has "$NATIVE_CLAUDE_HOME/.claude:/opt/aka-agent-state/.claude:ro" "${args[@]}"
+assert_has "$NATIVE_CLAUDE_HOME/.claude.json:/opt/aka-agent-state/.claude.json:ro" "${args[@]}"
+
+# Official setup-token authentication is forwarded by name, never by value.
+# It does not require browser-login state, including the .claude.json file.
+CLAUDE_TOKEN_HOME="$TEST_HOME/claude-token-home"
+mkdir -p "$CLAUDE_TOKEN_HOME/.local/bin" "$CLAUDE_TOKEN_HOME/.local/share/claude/versions"
+touch "$CLAUDE_TOKEN_HOME/.local/share/claude/versions/2.1.0"
+ln -s ../share/claude/versions/2.1.0 "$CLAUDE_TOKEN_HOME/.local/bin/claude"
+mapfile -t args < <(run_check_args \
+    "$CLAUDE_TOKEN_HOME" "$NATIVE_CLAUDE_CONFIG" \
+    AGENT_HOME_ISOLATION=1 CLAUDE_CODE_OAUTH_TOKEN=fixture-token-not-a-secret)
+assert_has "CLAUDE_CODE_OAUTH_TOKEN" "${args[@]}"
+assert_has "claude_code" "${args[@]}"
+assert_not_has "CLAUDE_CODE_OAUTH_TOKEN=fixture-token-not-a-secret" "${args[@]}"
+assert_not_has "$CLAUDE_TOKEN_HOME/.claude:/opt/aka-agent-state/.claude:ro" "${args[@]}"
+mapfile -t args < <(run_check_args \
+    "$NATIVE_CODEX_HOME" "$CODEX_CONFIG" \
+    CLAUDE_CODE_OAUTH_TOKEN=fixture-token-not-a-secret)
+assert_not_has "CLAUDE_CODE_OAUTH_TOKEN" "${args[@]}"
+
 # Omitting --config_name uses the one-task MI300/MI300X Claude quickstart.
 mapfile -t args < <(
     env \
@@ -700,12 +747,45 @@ assert_has "$GEAK_PREFIX:/opt/claude-node:ro" "${args[@]}"
 assert_has "$GEAK_HOME/.claude:$GEAK_HOME/.claude" "${args[@]}"
 assert_has "$GEAK_HOME/.claude.json:$GEAK_HOME/.claude.json" "${args[@]}"
 assert_has "claude_code" "${args[@]}"
-assert_has "$GEAK_WORKFLOW_DIR:$GEAK_WORKFLOW_DIR:ro" "${args[@]}"
+assert_has "${GEAK_WORKFLOW_DIR%/kernel_workflow}:${GEAK_WORKFLOW_DIR%/kernel_workflow}:ro" "${args[@]}"
+assert_has "GEAK_HOME=${GEAK_WORKFLOW_DIR%/kernel_workflow}" "${args[@]}"
 assert_has "GEAK_V4_WORKFLOW_DIR=$GEAK_WORKFLOW_DIR" "${args[@]}"
 # The Claude Agent SDK is installed with `pip install --target` into the mounted
 # user-base (setup-geak); its dir must be forwarded on PYTHONPATH so the venv
 # python in the standard sglang images can import it.
 assert_has "$GEAK_SDK_PYTHONPATH" "${args[@]}"
+
+# Public GEAK and its v2 aliases need the complete read-only checkout, SDK path,
+# and Claude authentication; other agents must not acquire that mount.
+for geak_template in geak geak_v4; do
+    printf 'agent:\n  template: %s\n' "$geak_template" > "$GEAK_CONFIG"
+    mapfile -t args < <(run_check_args \
+        "$GEAK_HOME" "$GEAK_CONFIG" \
+        AKA_NODE_PREFIX="$GEAK_PREFIX" \
+        GEAK_HOME="${GEAK_WORKFLOW_DIR%/kernel_workflow}")
+    assert_has "${GEAK_WORKFLOW_DIR%/kernel_workflow}:${GEAK_WORKFLOW_DIR%/kernel_workflow}:ro" "${args[@]}"
+    assert_has "GEAK_HOME=${GEAK_WORKFLOW_DIR%/kernel_workflow}" "${args[@]}"
+    assert_has "$GEAK_SDK_PYTHONPATH" "${args[@]}"
+    assert_has "claude_code" "${args[@]}"
+done
+printf 'agent:\n  template: geak_v4\n' > "$GEAK_CONFIG"
+
+# Run the actual container bootstrap in a CPU shell. GEAK's dependency prefix
+# must retain an image-owned source path such as AITER's import root.
+for ((bootstrap_index=0; bootstrap_index<${#args[@]}; bootstrap_index++)); do
+    if [[ "${args[$bootstrap_index]}" == "-lc" ]]; then
+        bootstrap_script="${args[$((bootstrap_index+1))]}"
+        break
+    fi
+done
+combined_pythonpath="$(env \
+    AGENT_KERNEL_ARENA_WORKDIR="$ROOT" \
+    AGENT_KERNEL_ARENA_ISOLATED_HOME=0 \
+    AKA_GEAK_SDK_PATH=/runtime/geak-sdk \
+    PYTHONPATH=/runtime/image-aiter \
+    bash -c "$bootstrap_script" _ python3 -c 'import os; print(os.environ["PYTHONPATH"])')"
+[[ "$combined_pythonpath" == /runtime/geak-sdk:/runtime/image-aiter ]] \
+    || fail "GEAK bootstrap lost the image's Python import path"
 
 # The explicit setup command has no run config or required agent CLI, but still
 # needs the GEAK-only dependency path and workflow mount for its container check.
@@ -718,7 +798,7 @@ mapfile -t args < <(
         bash "$RUNNER" setup-geak 2>/dev/null
 )
 assert_has "$GEAK_SDK_PYTHONPATH" "${args[@]}"
-assert_has "$GEAK_WORKFLOW_DIR:$GEAK_WORKFLOW_DIR:ro" "${args[@]}"
+assert_has "${GEAK_WORKFLOW_DIR%/kernel_workflow}:${GEAK_WORKFLOW_DIR%/kernel_workflow}:ro" "${args[@]}"
 assert_has "GEAK_V4_WORKFLOW_DIR=$GEAK_WORKFLOW_DIR" "${args[@]}"
 assert_has "_container_setup_geak" "${args[@]}"
 assert_not_has "ANTHROPIC_AUTH_TOKEN" "${args[@]}"

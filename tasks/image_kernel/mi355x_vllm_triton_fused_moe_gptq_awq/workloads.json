@@ -1,0 +1,198 @@
+{
+  "original_cases": {
+    "correctness": [
+      {
+        "id": "kimi-k2.7-moe-m7211",
+        "model": "Kimi-K2.7-Code",
+        "session_id": "0e13b6b5-a63f-44e2-b6ff-cc2308e6cb82",
+        "kernel_ids": [
+          "gptq-awq-seq"
+        ],
+        "gpu_pct": 43.862,
+        "params": {
+          "tokens": 7211,
+          "num_experts": 384,
+          "topk": 8,
+          "hidden": 7168,
+          "inter": 256,
+          "group_size": 32,
+          "weight_bits": 4,
+          "has_zero_point": false,
+          "dtype": "bf16"
+        },
+        "trace_input_shapes": [
+          "activation (7211,7168) bf16",
+          "w1 (384,512,3584) int4-packed uint8",
+          "w2 (384,7168,128) int4-packed uint8",
+          "scale (384,7168,8) bf16",
+          "routing (7211,8)"
+        ]
+      },
+      {
+        "id": "kimi-k2.7-moe-m1080",
+        "model": "Kimi-K2.7-Code",
+        "session_id": "0e13b6b5-a63f-44e2-b6ff-cc2308e6cb82",
+        "kernel_ids": [
+          "gptq-awq-seq"
+        ],
+        "gpu_pct": null,
+        "params": {
+          "tokens": 1080,
+          "num_experts": 384,
+          "topk": 8,
+          "hidden": 7168,
+          "inter": 256,
+          "group_size": 32,
+          "weight_bits": 4,
+          "has_zero_point": false,
+          "dtype": "bf16"
+        },
+        "trace_input_shapes": [
+          "activation (1080,7168) bf16",
+          "w1 (384,512,3584) int4-packed uint8",
+          "w2 (384,7168,128) int4-packed uint8",
+          "scale (384,7168,8) bf16",
+          "routing (1080,8)"
+        ]
+      },
+      {
+        "id": "kimi-k2.7-moe-m64",
+        "model": "Kimi-K2.7-Code",
+        "session_id": "0e13b6b5-a63f-44e2-b6ff-cc2308e6cb82",
+        "kernel_ids": [
+          "gptq-awq-seq"
+        ],
+        "gpu_pct": null,
+        "params": {
+          "tokens": 64,
+          "num_experts": 384,
+          "topk": 8,
+          "hidden": 7168,
+          "inter": 256,
+          "group_size": 32,
+          "weight_bits": 4,
+          "has_zero_point": false,
+          "dtype": "bf16"
+        },
+        "trace_input_shapes": [
+          "activation (64,7168) bf16",
+          "w1 (384,512,3584) int4-packed uint8",
+          "w2 (384,7168,128) int4-packed uint8",
+          "scale (384,7168,8) bf16",
+          "routing (64,8)"
+        ]
+      }
+    ],
+    "performance": null
+  },
+  "cases": [
+    {
+      "test_case_id": "kimi-k2.7-moe-m7211",
+      "params": {
+        "tokens": 7211,
+        "num_experts": 384,
+        "topk": 8,
+        "hidden": 7168,
+        "inter": 256,
+        "group_size": 32,
+        "weight_bits": 4,
+        "has_zero_point": false,
+        "dtype": "bf16",
+        "seed": 31
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "shape": [
+        "activation (7211,7168) bf16",
+        "w1 (384,512,3584) int4-packed uint8",
+        "w2 (384,7168,128) int4-packed uint8",
+        "scale (384,7168,8) bf16",
+        "routing (7211,8)"
+      ],
+      "dtype": "bf16",
+      "metadata": {
+        "model": "Kimi-K2.7-Code",
+        "session_id": "0e13b6b5-a63f-44e2-b6ff-cc2308e6cb82",
+        "kernel_ids": [
+          "gptq-awq-seq"
+        ],
+        "gpu_pct": 43.862,
+        "timed_replay_seed": 53
+      }
+    },
+    {
+      "test_case_id": "kimi-k2.7-moe-m1080",
+      "params": {
+        "tokens": 1080,
+        "num_experts": 384,
+        "topk": 8,
+        "hidden": 7168,
+        "inter": 256,
+        "group_size": 32,
+        "weight_bits": 4,
+        "has_zero_point": false,
+        "dtype": "bf16",
+        "seed": 31
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "shape": [
+        "activation (1080,7168) bf16",
+        "w1 (384,512,3584) int4-packed uint8",
+        "w2 (384,7168,128) int4-packed uint8",
+        "scale (384,7168,8) bf16",
+        "routing (1080,8)"
+      ],
+      "dtype": "bf16",
+      "metadata": {
+        "model": "Kimi-K2.7-Code",
+        "session_id": "0e13b6b5-a63f-44e2-b6ff-cc2308e6cb82",
+        "kernel_ids": [
+          "gptq-awq-seq"
+        ],
+        "gpu_pct": null,
+        "timed_replay_seed": 53
+      }
+    },
+    {
+      "test_case_id": "kimi-k2.7-moe-m64",
+      "params": {
+        "tokens": 64,
+        "num_experts": 384,
+        "topk": 8,
+        "hidden": 7168,
+        "inter": 256,
+        "group_size": 32,
+        "weight_bits": 4,
+        "has_zero_point": false,
+        "dtype": "bf16",
+        "seed": 31
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "shape": [
+        "activation (64,7168) bf16",
+        "w1 (384,512,3584) int4-packed uint8",
+        "w2 (384,7168,128) int4-packed uint8",
+        "scale (384,7168,8) bf16",
+        "routing (64,8)"
+      ],
+      "dtype": "bf16",
+      "metadata": {
+        "model": "Kimi-K2.7-Code",
+        "session_id": "0e13b6b5-a63f-44e2-b6ff-cc2308e6cb82",
+        "kernel_ids": [
+          "gptq-awq-seq"
+        ],
+        "gpu_pct": null,
+        "timed_replay_seed": 53
+      }
+    }
+  ]
+}

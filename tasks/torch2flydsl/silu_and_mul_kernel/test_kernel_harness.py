@@ -26,24 +26,24 @@ import os
 import sys
 import time
 from pathlib import Path
-from _aka_benchmark import benchmark_cuda_graph_or_events
+from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
+from scripts.replay_checks import (allclose_output, normalized_output,
+                                  require_tensor_contract, require_unchanged, verify_timed_run)
 
-KERNEL_FILE = "kernel.py"
+from task_runtime import candidate_relative_path
+KERNEL_FILE = candidate_relative_path()
+ARENA_PROVIDED_BASELINE = False
 MODEL_FILE = "model.py"
 KERNEL_ENTRY = "flydsl_silu_and_mul"
 
 
 def _resolve_kernel_dir():
-    here = os.path.dirname(os.path.abspath(__file__))
-    if os.path.isfile(os.path.join(here, MODEL_FILE)):
-        return here
-    cwd = os.getcwd()
-    if os.path.isfile(os.path.join(cwd, MODEL_FILE)):
-        return cwd
-    return here
+    return str(__import__("pathlib").Path(__file__).resolve().parent)
 
 
 def _load_module(kernel_dir, filename, alias):
+    if filename == KERNEL_FILE and ARENA_PROVIDED_BASELINE:
+        return None
     entry = os.path.join(kernel_dir, filename)
     if not os.path.isfile(entry):
         return None
@@ -55,6 +55,8 @@ def _load_module(kernel_dir, filename, alias):
     mod = importlib.util.module_from_spec(spec)
     sys.modules[alias] = mod
     spec.loader.exec_module(mod)
+    if filename == KERNEL_FILE:
+        _require_candidate_outputs(mod)
     return mod
 
 
@@ -136,12 +138,14 @@ def run_correctness(verbose=True):
     failures = []
     for shape in SHAPES:
         inp = _make_inputs(shape)
+        originals = (inp.clone(),)
         model = mmod.Model(*mmod.get_init_inputs())
         with torch.no_grad():
-            ref = model(inp).float()
-            truth = _retry(lambda: _aiter_op(inp), what="aiter.silu_and_mul").float()
+            ref = _checked_silu_result(model(inp), inp).float()
+            truth = _checked_silu_result(_retry(lambda: _aiter_op(inp), what="aiter.silu_and_mul"), inp).float()
         torch.cuda.synchronize()
 
+        require_unchanged((inp,), originals)
         max_abs = (ref - truth).abs().max().item()
         scale = truth.abs().max().item() + 1e-9
         rel_err = max_abs / scale
@@ -159,10 +163,11 @@ def run_correctness(verbose=True):
 
         if has_kernel:
             try:
-                kout = _retry(
+                kout = _checked_silu_result(_retry(
                     lambda: kmod.flydsl_silu_and_mul(inp, LIMIT), what=KERNEL_ENTRY
-                ).float()
+                ), inp).float()
             except NotImplementedError:
+                raise RuntimeError("Executed candidate is unimplemented; no baseline fallback")
                 has_kernel = False
                 if verbose:
                     print(
@@ -172,6 +177,7 @@ def run_correctness(verbose=True):
                 kout = None
             if kout is not None:
                 torch.cuda.synchronize()
+                require_unchanged((inp,), originals)
                 k_abs = (ref - kout).abs().max().item()
                 k_rel = k_abs / (ref.abs().max().item() + 1e-9)
                 k_ok = k_rel <= REL_TOL
@@ -193,10 +199,31 @@ def run_correctness(verbose=True):
     return True
 
 
-def _mean_ms(fn, warmup, iters):
+def _checked_silu_result(result, inp):
+    require_tensor_contract(result, inp[:, :inp.shape[1] // 2])
+    return result
+
+
+def _silu_replay_validator(inp, oracle):
+    originals = (inp.clone(),)
+    expected = oracle(inp)
+
+    def validate(timed):
+        return verify_timed_run(
+            timed, inputs=(inp,), originals=originals, expected=expected,
+            perturb=lambda: inp.neg_(), reference=lambda: oracle(inp),
+            compare=lambda actual, ref: normalized_output(actual, ref, tolerance=REL_TOL),
+        )
+    return validate
+
+
+def _mean_ms(fn, warmup, iters, validate=None):
+    timed = TimedRun() if validate is not None else None
     mean_ms, bench_meta = benchmark_cuda_graph_or_events(
-        fn, warmup=warmup, repetition=iters
+        fn, warmup=warmup, repetition=iters, timed_run=timed
     )
+    if validate is not None:
+        bench_meta.update(validate(timed))
     _mean_ms.benchmark_metadata = bench_meta
     return mean_ms
 
@@ -217,15 +244,20 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
         model = mmod.Model(*mmod.get_init_inputs())
         with torch.no_grad():
             op_ms = _mean_ms(lambda: _aiter_op(inp), warmup, iters)
-            ref_ms = _mean_ms(lambda: model(inp), warmup, iters)
+            # The original provided baseline is Model; AITER remains its
+            # independent numerical oracle and diagnostic timing.
+            ref_validate = None if has_kernel else _silu_replay_validator(inp, _aiter_op)
+            ref_ms = _mean_ms(lambda: model(inp), warmup, iters, validate=ref_validate)
             ref_bench_meta = _mean_ms.benchmark_metadata
             ker_ms = None
             if has_kernel:
                 try:
                     ker_ms = _mean_ms(
-                        lambda: kmod.flydsl_silu_and_mul(inp, LIMIT), warmup, iters
+                        lambda: kmod.flydsl_silu_and_mul(inp, LIMIT), warmup, iters,
+                        validate=_silu_replay_validator(inp, model),
                     )
                 except NotImplementedError:
+                    raise RuntimeError("Executed candidate is unimplemented; no baseline fallback")
                     has_kernel = False
                     if verbose:
                         print(
@@ -294,3 +326,89 @@ if __name__ == "__main__":
         sys.exit(0)
     else:
         run_benchmark(warmup=args.warmup, iters=args.iterations)
+
+
+def _require_candidate_outputs(mod):
+    import functools
+    for name in tuple(vars(mod)):
+        target = getattr(mod, name)
+        if name == KERNEL_ENTRY and callable(target):
+            @functools.wraps(target)
+            def checked(*args, __target=target, **kwargs):
+                try:
+                    result = __target(*args, **kwargs)
+                except NotImplementedError as exc:
+                    raise RuntimeError("Executed candidate is unimplemented; no baseline fallback") from exc
+                if result is None:
+                    raise RuntimeError("Candidate operator returned None; output is required")
+                return _checked_silu_result(result, args[0])
+            setattr(mod, name, checked)
+
+
+# V2 direct timing evidence from this invocation.
+def arena_benchmark(warmup=10, iters=100, verbose=True):
+    import torch
+
+    mmod = _load_module(_KERNEL_DIR, MODEL_FILE, "torch_model")
+    assert mmod is not None, "cannot load model.py"
+    kmod = _load_module(_KERNEL_DIR, KERNEL_FILE, "flydsl_kernel")
+    has_kernel = kmod is not None and hasattr(kmod, KERNEL_ENTRY)
+
+    latencies, report = [], []
+    print(f"{'Config':<20} {'aiter':>10} {'ref':>10} {'kernel':>10}")
+    print("-" * 56)
+    for idx, shape in enumerate(SHAPES):
+        inp = _make_inputs(shape)
+        model = mmod.Model(*mmod.get_init_inputs())
+        with torch.no_grad():
+            op_ms = _mean_ms(lambda: _aiter_op(inp), warmup, iters)
+            # The original provided baseline is Model; AITER remains its
+            # independent numerical oracle and diagnostic timing.
+            ref_validate = None if has_kernel else _silu_replay_validator(inp, _aiter_op)
+            ref_ms = _mean_ms(lambda: model(inp), warmup, iters, validate=ref_validate)
+            ref_bench_meta = _mean_ms.benchmark_metadata
+            ker_ms = None
+            if has_kernel:
+                try:
+                    ker_ms = _mean_ms(
+                        lambda: kmod.flydsl_silu_and_mul(inp, LIMIT), warmup, iters,
+                        validate=_silu_replay_validator(inp, model),
+                    )
+                except NotImplementedError:
+                    raise RuntimeError("Executed candidate is unimplemented; no baseline fallback")
+                    has_kernel = False
+                    if verbose:
+                        print(
+                            "        SKIP: kernel.py FlyDSL target not implemented "
+                            "yet (benchmarking reference instead)"
+                        )
+
+        primary_ms = ker_ms if ker_ms is not None else ref_ms
+        bench_meta = _mean_ms.benchmark_metadata
+        latencies.append(primary_ms)
+        report.append({
+            "test_case_id": f"test_case_{idx}",
+            "execution_time_ms": primary_ms,
+            **bench_meta,
+            "reference_benchmark_method": ref_bench_meta["benchmark_method"],
+            "benchmark_method_consistent": bench_meta["benchmark_method"] == ref_bench_meta["benchmark_method"],
+            "shape": [shape["m"], shape["n"]],
+            "params": {"m": shape["m"], "n": shape["n"], "limit": LIMIT},
+            "aiter_ms": op_ms,
+            "reference_ms": ref_ms,
+        })
+        if verbose:
+            ker_s = f"{ker_ms:>8.4f}ms" if ker_ms is not None else f"{'n/a':>10}"
+            print(f"{shape['name']:<20} {op_ms:>8.4f}ms {ref_ms:>8.4f}ms {ker_s}")
+        del inp, model
+        torch.cuda.empty_cache()
+
+    geomean = math.exp(sum(math.log(x) for x in latencies) / len(latencies))
+    build_dir = Path(_KERNEL_DIR) / "build"
+    build_dir.mkdir(exist_ok=True)
+    with open(build_dir / "performance_report.json", "w") as f:
+        json.dump(report, f, indent=2)
+
+    print("-" * 56)
+    print(f"Geometric mean latency: {geomean:.4f} ms")
+    return report

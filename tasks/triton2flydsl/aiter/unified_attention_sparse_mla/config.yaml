@@ -1,13 +1,25 @@
-source_file_path:
-- unified_attention_sparse_mla.py
-target_kernel_functions:
-- unified_attention_sparse_mla
-- _kernel_unified_attention_sparse_mla_2d
-compile_command:
-- python3 test_kernel_harness.py --compile
-correctness_command:
-- python3 test_kernel_harness.py --correctness
-performance_command:
-- python3 test_kernel_harness.py --full-benchmark
-task_type: triton2flydsl
-task_result_template: null
+schema_version: 2
+description: Translate the declared unified_attention_sparse_mla implementation from Triton to FlyDSL
+  while preserving all operator and evaluation contracts.
+instructions:
+- README.md
+candidate:
+  language: flydsl
+  initial_state: implemented
+  initial_language: triton
+  editable:
+  - unified_attention_sparse_mla.py
+  entrypoints:
+  - file: unified_attention_sparse_mla.py
+    kind: function
+    symbol: unified_attention_sparse_mla
+baseline:
+  kind: initial_candidate
+  language: triton
+  correctness_policy: required
+evaluation:
+  runner:
+  - python3
+  - scripts/evaluate.py
+  workloads: cases.json
+  timeout_s: 3600

@@ -1,18 +1,15 @@
-backend: claude_code          # claude_code | codex
-timeout_seconds: 1200         # minimum outer timeout; auto-raised for task command budgets (0 disables)
-# null -> auto-use the framework-detected interpreter (AGENT_KERNEL_ARENA_PYTHON),
-# which is correct inside the Docker container (e.g. /opt/venv/bin/python).
-python_path: null
+backend: codex               # codex | claude_code; run-level agent fields override
+# v2: semantic-review budget; TaskSession has already run initial task actions.
+# legacy: minimum outer budget, raised to cover configured task commands.
+timeout_seconds: 1200         # 0 disables the outer timeout
+python_path: null             # framework interpreter, then this process's interpreter
 
-# Optional model settings for the active backend.
-# codex:       model -> `codex exec --model`, effort -> `model_reasoning_effort`.
-# claude_code: model -> `claude --model`,      effort -> `claude --effort`.
-# Example Claude Sonnet config: backend: claude_code, model: sonnet, effort: max.
-# Valid claude_code effort: low | medium | high | xhigh | max  (max is the maximum).
-model: claude-sonnet-5
-effort: max
+# Already verified by the CLI integration qualification; no model discovery at run time.
+model: gpt-5.6-terra
+effort: medium
+# Optional Claude Code run-level setting: agent.max_budget_usd
 
-# Per-command timeouts (seconds) for each validation check
+# Legacy command defaults; v2 uses TaskSpec action timeouts.
 compile_timeout: 600
 correctness_timeout: 600
 performance_timeout: 600

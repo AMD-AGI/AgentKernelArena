@@ -5,6 +5,7 @@ import argparse
 import copy
 import re
 import torch
+from case_controls import configure_models
 import shutil
 import sys
 from typing import Any, Dict, List, Tuple, Union
@@ -309,7 +310,9 @@ def cal_kernel_perf(
         inputs_func = copy.deepcopy(inputs)
 
         inputs_modu_cuda = [x.to('cuda') if isinstance(x, torch.Tensor) else x for x in inputs_modu]
+        configure_models((kernel_modu,), inputs_modu_cuda)
         inputs_func_cuda = [x.to('cuda') if isinstance(x, torch.Tensor) else x for x in inputs_func]
+        configure_models((kernel_func,), inputs_func_cuda)
 
         # Extract params from input shape for layer_normalization: x
         params: Dict[str, Any] = {}

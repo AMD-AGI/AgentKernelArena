@@ -1,0 +1,1322 @@
+#!/usr/bin/env python3
+"""Stable GEAK v4 kernel-workflow runner for external orchestrators.
+
+The GEAK JavaScript workflow can only execute inside Claude Code's dynamic
+``Workflow`` runtime.  This module keeps that volatile SDK/tool lifecycle out of
+the Arena launcher:
+
+* map a versioned handoff onto ``kernel_workflow.js`` arguments;
+* pin a known evaluation directory for completion/recovery;
+* keep the SDK client alive when Workflow runs as a background task;
+* recover the authoritative result from on-disk GEAK artifacts; and
+* honor the handoff's ``apply_to_original`` (the Arena launcher sets ``"true"``
+  so GEAK's Director applies the validated patch straight into the workspace).
+
+The command is intentionally usable in ``--dry-run`` mode without importing the
+Claude Agent SDK or contacting a model.
+"""
+
+from __future__ import annotations
+
+import argparse
+import builtins
+import importlib.metadata
+import hashlib
+import json
+import math
+import os
+import shutil
+import stat
+import sys
+import tempfile
+import time
+from pathlib import Path
+from typing import Any, Iterable
+
+
+if __package__ in (None, ""):
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+from agents.geak.argument_transport import (
+    decode_workflow_args, validate_args_transport, workflow_inputs_match,
+)
+
+
+SCHEMA_VERSION = 1
+ALLOWED_TOOLS = ["Workflow", "Bash", "Read", "Write"]
+VALID_EFFORTS = {"low", "medium", "high", "xhigh", "max"}
+DEFAULT_SETTINGS = {"enableWorkflows": True, "ultracode": True}
+_JSON_SIZE_LIMIT = 8 * 1024 * 1024
+_SDK_OUTPUT_FILE_LIMIT = 8 * 1024 * 1024
+_TRANSCRIPT_SIZE_LIMIT = 8 * 1024 * 1024
+_TRANSCRIPT_JSON_LINE_LIMIT = 64
+
+
+class HandoffError(ValueError):
+    """The caller supplied an invalid GEAK handoff."""
+
+
+def _open_directory_fd(
+    path: Path | str,
+    *,
+    parent_fd: int | None = None,
+) -> int:
+    flags = os.O_RDONLY
+    flags |= getattr(os, "O_CLOEXEC", 0)
+    flags |= getattr(os, "O_DIRECTORY", 0)
+    flags |= getattr(os, "O_NOFOLLOW", 0)
+    descriptor = os.open(path, flags, dir_fd=parent_fd)
+    metadata = os.fstat(descriptor)
+    if not stat.S_ISDIR(metadata.st_mode):
+        os.close(descriptor)
+        raise OSError(f"not a directory: {path}")
+    return descriptor
+
+
+def _atomic_write_json(
+    path: Path,
+    payload: dict[str, Any],
+    *,
+    directory_fd: int | None = None,
+) -> None:
+    """Write JSON without following attacker-created file symlinks.
+
+    When ``directory_fd`` is supplied, the write stays pinned to that already
+    opened directory even if Workflow renames or replaces its pathname.
+    """
+    encoded = (
+        json.dumps(payload, indent=2, sort_keys=True) + "\n"
+    ).encode("utf-8")
+    owned_directory_fd = directory_fd is None
+    if directory_fd is None:
+        directory_fd = _open_directory_fd(path.parent)
+
+    temporary_fd = -1
+    temporary_name = ""
+    try:
+        proc_directory = Path(f"/proc/self/fd/{directory_fd}")
+        temporary_fd, temporary_path = tempfile.mkstemp(
+            prefix=f".{path.name}.tmp.",
+            dir=proc_directory,
+        )
+        temporary_name = Path(temporary_path).name
+        metadata = os.fstat(temporary_fd)
+        if not stat.S_ISREG(metadata.st_mode) or metadata.st_nlink != 1:
+            raise OSError("atomic JSON temporary is not a private regular file")
+        with os.fdopen(temporary_fd, "wb", closefd=True) as stream:
+            temporary_fd = -1
+            stream.write(encoded)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(
+            temporary_name,
+            path.name,
+            src_dir_fd=directory_fd,
+            dst_dir_fd=directory_fd,
+        )
+        temporary_name = ""
+        os.fsync(directory_fd)
+    finally:
+        if temporary_fd >= 0:
+            os.close(temporary_fd)
+        if temporary_name:
+            try:
+                os.unlink(temporary_name, dir_fd=directory_fd)
+            except FileNotFoundError:
+                pass
+        if owned_directory_fd:
+            os.close(directory_fd)
+
+
+def _read_bounded_text(path: Path, size_limit: int) -> str | None:
+    flags = os.O_RDONLY
+    flags |= getattr(os, "O_CLOEXEC", 0)
+    flags |= getattr(os, "O_NOFOLLOW", 0)
+    flags |= getattr(os, "O_NONBLOCK", 0)
+    try:
+        descriptor = os.open(path, flags)
+    except OSError:
+        return None
+    try:
+        metadata = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(metadata.st_mode)
+            or metadata.st_size > size_limit
+        ):
+            return None
+        with os.fdopen(descriptor, "rb", closefd=False) as stream:
+            content = stream.read(size_limit + 1)
+        if len(content) > size_limit:
+            return None
+        return content.decode("utf-8")
+    except (OSError, UnicodeDecodeError):
+        return None
+    finally:
+        os.close(descriptor)
+
+
+def _read_json(path: Path) -> dict[str, Any] | None:
+    content = _read_bounded_text(path, _JSON_SIZE_LIMIT)
+    if content is None:
+        return None
+    try:
+        value = json.loads(content)
+    except json.JSONDecodeError:
+        return None
+    return value if isinstance(value, dict) else None
+
+
+def load_handoff(path: Path) -> dict[str, Any]:
+    value = _read_json(path)
+    if value is None:
+        raise HandoffError(f"handoff is not a readable JSON object: {path}")
+    if value.get("schema_version") != SCHEMA_VERSION:
+        raise HandoffError(
+            f"unsupported handoff schema_version={value.get('schema_version')!r}; "
+            f"expected {SCHEMA_VERSION}"
+        )
+    return value
+
+
+def _absolute_path(value: Any, field: str) -> Path:
+    if not isinstance(value, str) or not value.strip():
+        raise HandoffError(f"{field} must be a non-empty absolute path")
+    path = Path(value)
+    if not path.is_absolute():
+        raise HandoffError(f"{field} must be absolute: {path}")
+    return path.resolve()
+
+
+def _positive_int(value: Any, field: str) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError) as exc:
+        raise HandoffError(f"{field} must be an integer") from exc
+    if parsed <= 0:
+        raise HandoffError(f"{field} must be positive")
+    return parsed
+
+
+def _nonnegative_float(value: Any, field: str) -> float:
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError) as exc:
+        raise HandoffError(f"{field} must be numeric") from exc
+    if not math.isfinite(parsed) or parsed < 0:
+        raise HandoffError(f"{field} must be finite and non-negative")
+    return parsed
+
+
+def _gpu_ids(value: Any) -> str:
+    if isinstance(value, (list, tuple)):
+        value = ",".join(str(item) for item in value)
+    text = str(value if value is not None else "0")
+    parts = [part.strip() for part in text.split(",") if part.strip()]
+    if not parts or any(not part.isdigit() for part in parts):
+        raise HandoffError(f"gpu_ids must be comma-separated non-negative integers: {text!r}")
+    return ",".join(parts)
+
+
+def map_workflow_args(handoff: dict[str, Any]) -> tuple[Path, dict[str, Any]]:
+    """Validate a handoff and return ``(script_path, workflow_args)``."""
+    kernel_path = _absolute_path(handoff.get("kernel_path"), "kernel_path")
+    workflow_dir = _absolute_path(handoff.get("workflow_dir"), "workflow_dir")
+    eval_dir = _absolute_path(handoff.get("eval_dir"), "eval_dir")
+    exp_root = _absolute_path(
+        handoff.get("exp_root") or str(eval_dir.parent),
+        "exp_root",
+    )
+    script_path = workflow_dir / "kernel_workflow.js"
+
+    apply_to_original = str(handoff.get("apply_to_original", "false")).strip().lower()
+    if apply_to_original not in {"true", "false"}:
+        raise HandoffError(
+            "apply_to_original must be 'true' or 'false': "
+            f"{handoff.get('apply_to_original')!r}"
+        )
+
+    if not kernel_path.is_dir():
+        raise HandoffError(f"kernel_path is not a directory: {kernel_path}")
+    if not script_path.is_file():
+        raise HandoffError(f"GEAK kernel workflow not found: {script_path}")
+    if eval_dir.exists() and (
+        not eval_dir.is_dir() or any(eval_dir.iterdir())
+    ):
+        raise HandoffError(f"eval_dir must be absent or an empty directory: {eval_dir}")
+    for path, field in ((eval_dir, "eval_dir"), (exp_root, "exp_root")):
+        try:
+            path.relative_to(kernel_path)
+        except ValueError:
+            pass
+        else:
+            raise HandoffError(
+                f"{field} must not be inside kernel_path; GEAK copies kernel_path "
+                f"and would recursively copy its own outputs: {path}"
+            )
+
+    args: dict[str, Any] = {
+        "kernel_path": str(kernel_path),
+        "workflow_dir": str(workflow_dir),
+        "eval_dir": str(eval_dir),
+        "exp_root": str(exp_root),
+        "gpu_ids": _gpu_ids(handoff.get("gpu_ids", "0")),
+        "budget": _positive_int(handoff.get("budget", 6), "budget"),
+        "min_improve": _nonnegative_float(
+            handoff.get("min_improve", 0.02),
+            "min_improve",
+        ),
+        "deep_cost": _positive_int(handoff.get("deep_cost", 2), "deep_cost"),
+        "mode": "optimize",
+        # Handoff-driven: with "true" GEAK's Director git-applies the validated
+        # patch straight into kernel_path; with "false" the caller imports it.
+        "apply_to_original": apply_to_original,
+    }
+    task = handoff.get("task")
+    if task:
+        args["task"] = str(task)
+    if bool(handoff.get("use_expert_skills", False)):
+        args["use_expert_skills"] = "true"
+    return script_path, args
+
+
+def build_prompt(script_path: Path, workflow_args: dict[str, Any], *,
+                 invocation_args: dict[str, Any] | None = None) -> str:
+    eval_dir = workflow_args["eval_dir"]
+    workflow_input = json.dumps(
+        {"scriptPath": str(script_path),
+         "args": workflow_args if invocation_args is None else invocation_args}, ensure_ascii=False
+    )
+    return_path = json.dumps(f"{eval_dir}/workflow_return.json", ensure_ascii=False)
+    if workflow_args.get("apply_to_original") == "true":
+        patch_note = (
+            "apply_to_original is true, so the Director writes the validated patch "
+            "back into kernel_path itself. "
+        )
+    else:
+        patch_note = (
+            "Do not edit the original kernel_path directly; apply_to_original is "
+            "false and the caller owns patch import. "
+        )
+    return (
+        "Invoke the Workflow tool exactly once with this exact JSON object:\n"
+        f"```json\n{workflow_input}\n```\n"
+        "Use ONLY the two top-level Workflow keys scriptPath and args. "
+        "The args field MUST be a JSON object, not a JSON-encoded string. "
+        "Pass the object itself: do not stringify it or put quotes around it. "
+        "Do not add any other top-level keys, including run_in_background "
+        "(even with a false value). Preserve every nested args value and JSON type "
+        "exactly as supplied. The tool may complete synchronously or return a "
+        "background task; if it returns a background task, wait for its matching "
+        "native completion notification and result without invoking Workflow again. "
+        "Run the complete GEAK kernel pipeline through independent Director "
+        f"validation. {patch_note}When the "
+        "Workflow finishes, write its exact full return object as compact JSON to "
+        f"{return_path}, then print exactly that compact JSON "
+        "as the final line and print nothing after it."
+    )
+
+
+def _iter_message_text(message: Any) -> Iterable[str]:
+    """Yield text fragments from SDK objects across supported SDK shapes."""
+    if message is None:
+        return
+    if isinstance(message, str):
+        if message.strip():
+            yield message
+        return
+    if isinstance(message, dict):
+        for key in ("result", "text", "summary"):
+            value = message.get(key)
+            if isinstance(value, str) and value.strip():
+                yield value
+        content = message.get("content")
+        if isinstance(content, str):
+            if content.strip():
+                yield content
+        elif isinstance(content, (list, tuple)):
+            for item in content:
+                yield from _iter_message_text(item)
+        return
+
+    for attribute in ("result", "text", "summary"):
+        value = getattr(message, attribute, None)
+        if isinstance(value, str) and value.strip():
+            yield value
+    content = getattr(message, "content", None)
+    if isinstance(content, str):
+        if content.strip():
+            yield content
+    elif isinstance(content, (list, tuple)):
+        for item in content:
+            yield from _iter_message_text(item)
+
+
+def _finite_number(value: Any) -> bool:
+    try:
+        return math.isfinite(float(value))
+    except (TypeError, ValueError):
+        return False
+
+
+def _matches_pinned_patch(value: Any, eval_dir: Path) -> bool:
+    return isinstance(value, str) and value == str(eval_dir / "final_patch.diff")
+
+
+def _valid_workflow_return(
+    value: Any,
+    eval_dir: Path,
+    *,
+    require_pinned_patch: bool = False,
+) -> bool:
+    if not isinstance(value, dict):
+        return False
+    raw_eval_dir = value.get("eval_dir")
+    if not isinstance(raw_eval_dir, str):
+        return False
+    matches = raw_eval_dir == str(eval_dir)
+    status = value.get("validation_status")
+    patch_contract_ok = (
+        not require_pinned_patch
+        or status not in {"accepted", "flagged"}
+        or _matches_pinned_patch(value.get("final_patch"), eval_dir)
+    )
+    return (
+        matches
+        and isinstance(status, str)
+        and _finite_number(value.get("final_geomean"))
+        and isinstance(value.get("final_patch"), str)
+        and patch_contract_ok
+        and (
+            "workload_aligned" not in value
+            or isinstance(value.get("workload_aligned"), bool)
+        )
+    )
+
+
+def _valid_director_validation(
+    value: Any,
+    eval_dir: Path | None = None,
+) -> bool:
+    valid = (
+        isinstance(value, dict)
+        and value.get("validation_status") in {"accepted", "flagged"}
+        and value.get("correctness") in {"pass", "fail"}
+        and _finite_number(value.get("director_verified_speedup_geomean"))
+        and value.get("applied_to_original") in {"true", "false"}
+        and isinstance(value.get("final_patch"), str)
+    )
+    return valid and (
+        eval_dir is None
+        or _matches_pinned_patch(value.get("final_patch"), eval_dir)
+    )
+
+
+def _terminal_artifact_exists(eval_dir: Path) -> bool:
+    workflow_return = _read_json(eval_dir / "workflow_return.json")
+    director_validation = _read_json(eval_dir / "director_validation.json")
+    return _valid_workflow_return(
+        workflow_return,
+        eval_dir,
+        require_pinned_patch=True,
+    ) or _valid_director_validation(director_validation, eval_dir)
+
+
+def _extract_workflow_return(transcript: str, expected_eval_dir: Path) -> dict[str, Any] | None:
+    """Read the final compact JSON line without quadratic brace scanning."""
+    lines = transcript.splitlines()
+    for raw_line in reversed(lines[-_TRANSCRIPT_JSON_LINE_LIMIT:]):
+        line = raw_line.strip()
+        if not line or len(line.encode("utf-8")) > _JSON_SIZE_LIMIT:
+            continue
+        try:
+            value = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if _valid_workflow_return(
+            value,
+            expected_eval_dir,
+            require_pinned_patch=True,
+        ):
+            return value
+    return None
+
+
+def _completed_producer_error(
+    state: dict[str, bool],
+    pending: set[str],
+    producer_error: list[BaseException],
+) -> BaseException | None:
+    if not state["producer_done"]:
+        return None
+    if producer_error:
+        return producer_error[0]
+    if pending:
+        return RuntimeError(
+            "Claude SDK message stream ended with unfinished GEAK tasks: "
+            f"{sorted(pending)}"
+        )
+    if not state["result_seen"]:
+        return RuntimeError(
+            "Claude SDK message stream ended without a ResultMessage or "
+            "a valid GEAK terminal artifact"
+        )
+    return None
+
+
+def _record_runtime_identity(message: Any, identity: dict[str, Any]) -> None:
+    """Retain observed CLI/model identity without conversation or auth material."""
+    def record_workflow_identity(wrapper: Any) -> None:
+        rows = wrapper.get("workflowProgress") if isinstance(wrapper, dict) else None
+        if not isinstance(rows, list):
+            return
+        models = {row["model"] for row in rows
+                  if isinstance(row, dict) and isinstance(row.get("model"), str)}
+        if models:
+            identity["workflow_models"] = sorted(set(identity.get("workflow_models", [])) | models)
+        failures = {(row["label"], row["code"]) for row in identity.get("workflow_agent_errors", [])}
+        for row in rows:
+            if not isinstance(row, dict) or row.get("state") != "error":
+                continue
+            error = str(row.get("error", ""))
+            code = next((code for code in ("reasoning_extraction", "authentication_error", "rate_limit_error",
+                                           "context_length_exceeded", "overloaded_error") if code in error), "agent_error")
+            failures.add((str(row.get("label", "unknown"))[:100], code))
+        if failures:
+            identity["workflow_agent_errors"] = [{"label": label, "code": code} for label, code in sorted(failures)]
+
+    name = type(message).__name__
+    if name == "RateLimitEvent":
+        info = getattr(message, "rate_limit_info", None)
+        limit = {}
+        for key, allowed in (
+            ("status", {"allowed", "allowed_warning", "rejected"}),
+            ("overage_status", {"allowed", "allowed_warning", "rejected"}),
+            ("rate_limit_type", {"five_hour", "seven_day", "seven_day_opus", "seven_day_sonnet", "overage"}),
+        ):
+            value = getattr(info, key, None)
+            if isinstance(value, str) and value in allowed:
+                limit[key] = value
+        for key in ("resets_at", "overage_resets_at"):
+            value = getattr(info, key, None)
+            if type(value) is int and 0 <= value < 2 ** 53:
+                limit[key] = value
+        if limit:
+            identity["rate_limit"] = limit
+        if limit.get("status") == "rejected":
+            identity["runtime_error_codes"] = sorted(set(identity.get("runtime_error_codes", [])) | {"rate_limit"})
+    if name == "SystemMessage" and getattr(message, "subtype", None) == "init":
+        data = getattr(message, "data", {})
+        for source, target in (("model", "init_model"), ("claude_code_version", "cli_version")):
+            value = data.get(source) if isinstance(data, dict) else None
+            if isinstance(value, str):
+                identity[target] = value
+    if name == "AssistantMessage":
+        model = getattr(message, "model", None)
+        if isinstance(model, str):
+            identity["assistant_models"] = sorted(set(identity.get("assistant_models", [])) | {model})
+        error = getattr(message, "error", None)
+        if isinstance(error, str) and error in {
+            "authentication_failed", "billing_error", "rate_limit", "invalid_request", "server_error"
+        }:
+            identity["runtime_error_codes"] = sorted(set(identity.get("runtime_error_codes", [])) | {error})
+        # Claude emits authentication failures as synthetic assistant messages,
+        # before a Workflow exists. Keep only known codes, never provider text.
+        if model == "<synthetic>":
+            errors = set(identity.get("runtime_error_codes", []))
+            for block in getattr(message, "content", []) or []:
+                value = getattr(block, "text", None)
+                if not isinstance(value, str) or len(value) > _JSON_SIZE_LIMIT:
+                    continue
+                value = value.lower()
+                for phrase, code in (("oauth session expired", "oauth_session_expired"),
+                                     ("could not be refreshed", "oauth_refresh_failed"),
+                                     ("failed to authenticate", "authentication_failed")):
+                    if phrase in value:
+                        errors.add(code)
+            if errors:
+                identity["runtime_error_codes"] = sorted(errors)
+    if name == "TaskNotificationMessage" and getattr(message, "status", None) == "completed":
+        output = getattr(message, "output_file", None)
+        wrapper = _read_json(Path(output)) if output else None
+        record_workflow_identity(wrapper)
+    # Fast Workflows may complete synchronously without a task notification.
+    # Read structured tool output only; assistant prose is not runtime evidence.
+    if name == "UserMessage":
+        for block in getattr(message, "content", []) or []:
+            if type(block).__name__ != "ToolResultBlock":
+                continue
+            for text in _iter_message_text(block):
+                if len(text) > _JSON_SIZE_LIMIT:
+                    continue
+                try:
+                    record_workflow_identity(json.loads(text))
+                except json.JSONDecodeError:
+                    pass
+
+
+_SDK_FAILURE_REASONS = {
+    "GEAK Workflow invocation does not match its pinned script and arguments": "workflow_arguments_mismatch",
+    "GEAK Workflow invocation has no tool identity": "workflow_identity_missing",
+    "GEAK requires exactly one outer Workflow invocation": "workflow_count_invalid",
+    "GEAK Workflow background task did not complete successfully": "workflow_background_failed",
+    "GEAK Workflow tool returned an error": "workflow_tool_error",
+    "GEAK ended without an observed native Workflow return": "native_return_missing",
+    "GEAK did not return a valid terminal Workflow result": "native_return_invalid",
+    "GEAK returned an unknown terminal status": "terminal_status_invalid",
+    "GEAK could not dispatch a search after child-agent errors": "workflow_agent_errors_before_search",
+}
+_SDK_EXCEPTION_CLASSES = {
+    "RuntimeError", "ValueError", "TypeError", "OSError", "TimeoutError", "CancelledError",
+    "FileNotFoundError", "PermissionError", "BrokenPipeError", "ConnectionError",
+    "ClaudeSDKError", "CLIConnectionError", "CLINotFoundError", "ProcessError",
+    "ResultError", "CLIJSONDecodeError", "MessageParseError",
+}
+
+
+def _exception_group_types() -> tuple[type[BaseException], ...]:
+    """Resolve native/backported groups lazily; dry-run needs neither SDK nor backport."""
+    group_type = getattr(builtins, "BaseExceptionGroup", None)
+    if group_type is None:
+        try:
+            from exceptiongroup import BaseExceptionGroup as group_type
+        except ImportError:
+            return ()  # Plain exceptions must remain diagnosable without the SDK.
+    if isinstance(group_type, type) and issubclass(group_type, BaseException):
+        return (group_type,)
+    return ()
+
+
+def _record_sdk_failure(identity: dict[str, Any], exc: BaseException) -> None:
+    """Bound group/chain traversal; never serialize exception messages or locals."""
+    stack = [exc]
+    seen: set[int] = set()
+    leaves = []
+    truncated = False
+    group_types = _exception_group_types()
+    while stack and len(seen) < 32 and len(leaves) < 16:
+        current = stack.pop()
+        if id(current) in seen:
+            continue
+        seen.add(id(current))
+        if isinstance(current, group_types):
+            truncated |= len(current.exceptions) > 16
+            stack.extend(reversed(current.exceptions[:16]))
+        else:
+            name = type(current).__name__
+            reason = {"ProcessError": "cli_process_failed", "ResultError": "cli_result_error",
+                      "CLIConnectionError": "cli_connection_error", "CLINotFoundError": "cli_not_found",
+                      "CLIJSONDecodeError": "cli_json_error", "MessageParseError": "sdk_message_parse_error"}.get(
+                          name, "timeout" if isinstance(current, TimeoutError) else "unclassified")
+            if current.args and type(current.args[0]) is str and len(current.args[0]) <= 512:
+                reason = _SDK_FAILURE_REASONS.get(current.args[0], reason)
+            row = {"exception_class": name if name in _SDK_EXCEPTION_CLASSES else "UnknownException",
+                   "reason": reason}
+            for attribute in ("exit_code", "returncode"):
+                code = getattr(current, attribute, None)
+                if type(code) is int and -(2 ** 31) <= code < 2 ** 31:
+                    row["exit_code"] = code
+                    break
+            leaves.append(row)
+        cause = current.__cause__
+        if cause is None and not current.__suppress_context__:
+            cause = current.__context__
+        if cause is not None:
+            stack.append(cause)
+    identity.setdefault("sdk_diagnostics", {})["failure"] = {
+        "leaves": leaves, "truncated": truncated or bool(stack),
+    }
+
+
+def _diagnostic_type(value: Any) -> str:
+    return {dict: "object", list: "array", str: "string", bool: "boolean",
+            int: "integer", float: "number", type(None): "null"}.get(type(value), "other")
+
+
+def _record_workflow_calls(message: Any, identity: dict[str, Any], expected: dict[str, Any] | None,
+                           args_transport: dict | None = None) -> None:
+    """Record the observed message prefix, not a reconstructed full CLI session.
+
+    Only trusted expected field names are copied. Unknown keys are counted;
+    nested values, paths, source text and credentials are never retained.
+    """
+    if type(message).__name__ != "AssistantMessage":
+        return
+    diagnostic = identity["sdk_diagnostics"]
+    for block in getattr(message, "content", []) or []:
+        if type(block).__name__ != "ToolUseBlock" or getattr(block, "name", None) != "Workflow":
+            continue
+        inputs = getattr(block, "input", None)
+        diagnostic["observed_workflow_calls"] += 1
+        matches = (expected is not None
+                   and workflow_inputs_match(inputs, expected, args_transport=args_transport))
+        diagnostic["matched_workflow_calls"] += int(matches)
+        calls = diagnostic.setdefault("calls", [])
+        if len(calls) >= 8:
+            diagnostic["calls_truncated"] = True
+            continue
+        row = {"input_type": _diagnostic_type(inputs),
+               "expected_fields_match": matches if expected is not None else None, "differences": []}
+        calls.append(row)
+        if not isinstance(inputs, dict) or expected is None:
+            continue
+        raw_args = inputs.get("args")
+        row["args_encoding"] = "json_string" if type(raw_args) is str else _diagnostic_type(raw_args)
+        row["args_comparison"] = (f"geak_dispatch_v{args_transport['adapter_version']}"
+                                  if args_transport is not None else "strict")
+        # Bind raw encoding without copying paths, prompts or arbitrary values.
+        raw_json = json.dumps(raw_args, ensure_ascii=True, sort_keys=True)
+        row["raw_args_sha256"] = hashlib.sha256(raw_json.encode()).hexdigest()
+        if args_transport is not None:
+            try:
+                decoded = decode_workflow_args(raw_args)
+                if args_transport["adapter_version"] == 4 and decoded != {}:
+                    raise ValueError("GEAK dispatcher v4 requires empty object args")
+                row["normalized_args_type"] = "object"
+            except (ValueError, TypeError, OverflowError, RecursionError):
+                row["normalized_args_type"] = "invalid"
+        if "run_in_background" in inputs and "run_in_background" not in expected:
+            # Known dispatch mistake: retain its key/type, never the value.
+            row["extra_key_types"] = {"run_in_background": _diagnostic_type(inputs["run_in_background"])}
+        # One level of args is enough to locate a mismatch without dumping an
+        # arbitrary nested contract. Extra keys never enter the diagnostic.
+        for prefix, wanted, actual in (([], expected, inputs),
+                                       (["args"], expected.get("args"), inputs.get("args"))):
+            if not isinstance(wanted, dict) or not isinstance(actual, dict):
+                continue
+            row["args_extra_keys" if prefix else "extra_keys"] = len(actual.keys() - wanted.keys())
+            if len(wanted) > 64:
+                row["differences_truncated"] = True
+            for key in list(wanted)[:64]:
+                if not isinstance(key, str) or not key.isidentifier() or len(key) > 64:
+                    continue
+                if key in actual and type(actual[key]) is type(wanted[key]) and actual[key] == wanted[key]:
+                    continue
+                if len(row["differences"]) >= 16:
+                    row["differences_truncated"] = True
+                    break
+                row["differences"].append({"field": prefix + [key],
+                    "expected_type": _diagnostic_type(wanted[key]),
+                    "actual_type": _diagnostic_type(actual[key]) if key in actual else "missing"})
+
+
+def invoke_via_sdk(
+    prompt: str,
+    *,
+    workflow_dir: Path,
+    eval_dir: Path,
+    model: str,
+    effort: str,
+    settings: str,
+    cli_path: str,
+    timeout_seconds: int,
+    done_grace_seconds: float,
+    done_poll_seconds: float,
+    quiet: bool = False,
+    runtime_metadata: dict[str, Any] | None = None,
+    require_workflow_result: bool = False,
+    runtime_metadata_path: Path | None = None,
+    expected_workflow: dict[str, Any] | None = None,
+    workflow_args_transport: dict | None = None,
+) -> str:
+    """Invoke Claude Code while surviving synchronous and background Workflows."""
+    validate_args_transport(expected_workflow, workflow_args_transport)
+    try:
+        import anyio
+        from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
+    except ImportError as exc:
+        raise RuntimeError(
+            "claude_agent_sdk is required for reliable GEAK Workflow lifecycle "
+            "handling; install it into the runner's Python (pip install "
+            "claude-agent-sdk)"
+        ) from exc
+
+    option_extras: dict[str, Any] = {}
+    if effort in VALID_EFFORTS:
+        option_extras["effort"] = effort
+    if hasattr(os, "geteuid") and os.geteuid() == 0:
+        raise RuntimeError(
+            "GEAK v4 refuses to run Claude as root without a real OS sandbox; "
+            "use the Docker runner's non-root host UID mapping"
+        )
+    sdk_env = {
+        "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1",
+    }
+    if runtime_metadata is None and runtime_metadata_path is not None:
+        runtime_metadata = {}
+    recorded_identity: str | None = None
+
+    def persist_identity() -> None:
+        nonlocal recorded_identity
+        if runtime_metadata_path is None or runtime_metadata is None:
+            return
+        encoded = json.dumps(runtime_metadata, sort_keys=True)
+        if encoded != recorded_identity:
+            _atomic_write_json(runtime_metadata_path, runtime_metadata)
+            recorded_identity = encoded
+
+    if runtime_metadata is not None:
+        if workflow_args_transport is not None:
+            runtime_metadata["workflow_args_transport"] = dict(workflow_args_transport)
+        runtime_metadata.update(requested_model=model,
+                                sdk_version=importlib.metadata.version("claude-agent-sdk"))
+        runtime_metadata["sdk_diagnostics"] = {"observed_workflow_calls": 0,
+            "matched_workflow_calls": 0, "match_checked": expected_workflow is not None}
+        persist_identity()
+
+    def record_stderr(line: str) -> None:
+        # This is supplementary evidence, never an acceptance/auth policy input.
+        # Do not enable verbose SDK output or forward raw stderr to the parent.
+        if runtime_metadata is None or not isinstance(line, str):
+            return
+        diagnostic = runtime_metadata["sdk_diagnostics"]
+        if diagnostic.get("stderr_truncated"):
+            return
+        diagnostic["stderr_callbacks"] = diagnostic.get("stderr_callbacks", 0) + 1
+        if diagnostic["stderr_callbacks"] > 1024:
+            diagnostic["stderr_truncated"] = True
+        codes = set(diagnostic.get("stderr_codes", []))
+        text = line[:4096].lower() if not diagnostic.get("stderr_truncated") else ""
+        for phrase, code in (("oauth session expired", "oauth_session_expired"),
+                             ("could not be refreshed", "oauth_refresh_failed"),
+                             ("failed to authenticate", "authentication_failed"),
+                             ("rate_limit_error", "rate_limit"),
+                             ("invalid_request_error", "invalid_request"),
+                             ("overloaded_error", "server_error")):
+            if phrase in text:
+                codes.add(code)
+        changed = sorted(codes) != diagnostic.get("stderr_codes")
+        diagnostic["stderr_codes"] = sorted(codes)
+        if not changed and not diagnostic.get("stderr_truncated"):
+            return  # Persist counters at the next SDK message or completion.
+        try:
+            persist_identity()
+        except OSError:
+            pass  # A supplemental log write must not replace the SDK failure.
+
+    options = ClaudeAgentOptions(
+        model=model,
+        allowed_tools=ALLOWED_TOOLS,
+        permission_mode="bypassPermissions",
+        settings=settings,
+        extra_args=option_extras,
+        cwd=str(workflow_dir),
+        env=sdk_env,
+        **({"stderr": record_stderr} if runtime_metadata is not None else {}),
+        **({"cli_path": cli_path} if cli_path else {}),
+    )
+
+    async def _run() -> str:
+        chunks: list[str] = []
+        captured_return: dict[str, Any] | None = None
+        runtime_notifications: list[Any] = []
+        workflow_tools: set[str] = set()
+        workflow_tasks: dict[str, str] = {}
+        workflow_outputs: list[Path] = []
+        synchronous_returns: list[dict[str, Any]] = []
+        captured_chars = 0
+        pending: set[str] = set()
+        state = {
+            "background_started": False,
+            "terminal_task_seen": False,
+            "result_seen": False,
+            "producer_done": False,
+        }
+
+        def runtime_return(wrapper: Any) -> dict[str, Any] | None:
+            value = wrapper.get("result", wrapper) if isinstance(wrapper, dict) else None
+            return value if _valid_workflow_return(value, eval_dir, require_pinned_patch=True) else None
+
+        def observe_workflow(message: Any) -> None:
+            """Bind completion to the invoked tool, never assistant prose or disk JSON."""
+            name = type(message).__name__
+            if name == "AssistantMessage":
+                for block in getattr(message, "content", []) or []:
+                    if type(block).__name__ != "ToolUseBlock" or getattr(block, "name", None) != "Workflow":
+                        continue
+                    if expected_workflow is not None:
+                        inputs = getattr(block, "input", None)
+                        if not workflow_inputs_match(inputs, expected_workflow,
+                                                     args_transport=workflow_args_transport):
+                            raise RuntimeError("GEAK Workflow invocation does not match its pinned script and arguments")
+                    tool_id = getattr(block, "id", None)
+                    if not isinstance(tool_id, str) or not tool_id:
+                        raise RuntimeError("GEAK Workflow invocation has no tool identity")
+                    workflow_tools.add(tool_id)
+                    if len(workflow_tools) != 1:
+                        raise RuntimeError("GEAK requires exactly one outer Workflow invocation")
+            elif name == "TaskStartedMessage":
+                tool_id = getattr(message, "tool_use_id", None)
+                task_id = getattr(message, "task_id", None)
+                if tool_id in workflow_tools and task_id:
+                    workflow_tasks[str(task_id)] = tool_id
+            elif name == "TaskNotificationMessage":
+                tool_id = getattr(message, "tool_use_id", None)
+                task_id = str(getattr(message, "task_id", ""))
+                if tool_id not in workflow_tools and workflow_tasks.get(task_id) not in workflow_tools:
+                    return
+                if getattr(message, "status", None) != "completed":
+                    raise RuntimeError("GEAK Workflow background task did not complete successfully")
+                output = getattr(message, "output_file", None)
+                if output:
+                    workflow_outputs.append(Path(output))
+            elif name == "UserMessage":
+                for block in getattr(message, "content", []) or []:
+                    if (type(block).__name__ != "ToolResultBlock"
+                            or getattr(block, "tool_use_id", None) not in workflow_tools):
+                        continue
+                    if getattr(block, "is_error", False):
+                        raise RuntimeError("GEAK Workflow tool returned an error")
+                    for text in _iter_message_text(block):
+                        if len(text.encode("utf-8")) > _JSON_SIZE_LIMIT:
+                            continue
+                        try:
+                            value = runtime_return(json.loads(text))
+                        except json.JSONDecodeError:
+                            continue
+                        if value is not None:
+                            synchronous_returns.append(value)
+
+        with anyio.fail_after(timeout_seconds):
+            async with ClaudeSDKClient(options=options) as client:
+                await client.query(prompt)
+                producer_error: list[BaseException] = []
+
+                async def _receive() -> None:
+                    nonlocal captured_chars
+                    try:
+                        async for message in client.receive_messages():
+                            if runtime_metadata is not None:
+                                _record_runtime_identity(message, runtime_metadata)
+                                _record_workflow_calls(message, runtime_metadata, expected_workflow,
+                                                       workflow_args_transport)
+                                persist_identity()
+                            if require_workflow_result:
+                                observe_workflow(message)
+                            for text in _iter_message_text(message):
+                                remaining = _TRANSCRIPT_SIZE_LIMIT - captured_chars
+                                if remaining > 0:
+                                    retained = text[:remaining]
+                                    chunks.append(retained)
+                                    captured_chars += len(retained)
+                                compact = " ".join(text[:2000].split())
+                                if compact and not quiet:
+                                    print(
+                                        f"[GEAK SDK] {compact[:500]}",
+                                        file=sys.stderr,
+                                        flush=True,
+                                    )
+
+                            name = type(message).__name__
+                            if name == "TaskStartedMessage":
+                                task_id = getattr(message, "task_id", None)
+                                if task_id:
+                                    pending.add(str(task_id))
+                                    state["background_started"] = True
+                            elif name == "TaskNotificationMessage":
+                                if runtime_metadata is not None or require_workflow_result:
+                                    runtime_notifications.append(message)
+                                state["terminal_task_seen"] = True
+                                task_id = getattr(message, "task_id", None)
+                                if task_id:
+                                    pending.discard(str(task_id))
+                                output_file = getattr(message, "output_file", None)
+                                if output_file:
+                                    output = _read_bounded_text(
+                                        Path(output_file),
+                                        _SDK_OUTPUT_FILE_LIMIT,
+                                    )
+                                    remaining = _TRANSCRIPT_SIZE_LIMIT - captured_chars
+                                    if output and remaining > 0:
+                                        retained = output[:remaining]
+                                        chunks.append(retained)
+                                        captured_chars += len(retained)
+                            elif name == "ResultMessage":
+                                state["result_seen"] = True
+                    except BaseException as exc:
+                        producer_error.append(exc)
+                    finally:
+                        state["producer_done"] = True
+
+                async with anyio.create_task_group() as task_group:
+                    task_group.start_soon(_receive)
+                    weak_deadline: float | None = None
+                    while True:
+                        # Match GEAK's lifecycle contract: a task notification
+                        # is authoritative over an on-disk marker. The Director
+                        # writes its JSON before StructuredOutput returns and
+                        # the JS Workflow assembles its final result.
+                        if pending and not state["producer_done"]:
+                            await anyio.sleep(max(0.1, done_poll_seconds))
+                            continue
+                        if require_workflow_result:
+                            if producer_error:
+                                raise producer_error[0]
+                            # Notification files may still be partial; reread them
+                            # within the existing deadline/grace period. An agent's
+                            # workflow_return.json cannot stand in for this result.
+                            returned = list(synchronous_returns)
+                            for path in workflow_outputs:
+                                value = runtime_return(_read_json(path))
+                                if value is not None:
+                                    returned.append(value)
+                            if returned:
+                                captured_return = returned[0]
+                                break
+                        elif _terminal_artifact_exists(eval_dir):
+                            break
+                        if state["result_seen"] and not state["background_started"]:
+                            break
+                        completion_error = _completed_producer_error(
+                            state,
+                            pending,
+                            producer_error,
+                        )
+                        if completion_error is not None:
+                            raise completion_error
+
+                        weak_terminal = (
+                            state["background_started"]
+                            and state["result_seen"]
+                            and not pending
+                            and (
+                                state["terminal_task_seen"]
+                                or state["producer_done"]
+                            )
+                        )
+                        if weak_terminal and weak_deadline is None:
+                            weak_deadline = (
+                                time.monotonic() + max(0.0, done_grace_seconds)
+                            )
+                        if weak_deadline is not None and time.monotonic() >= weak_deadline:
+                            break
+                        if (
+                            state["producer_done"]
+                            and not state["background_started"]
+                            and not state["result_seen"]
+                        ):
+                            break
+                        await anyio.sleep(max(0.1, done_poll_seconds))
+                    task_group.cancel_scope.cancel()
+        if require_workflow_result and captured_return is None:
+            raise RuntimeError("GEAK ended without an observed native Workflow return")
+        # CLI 2.1.272 can notify completion before the JSON output file has
+        # finished being written. Read it again after the lifecycle completes.
+        if runtime_metadata is not None:
+            for notification in runtime_notifications:
+                _record_runtime_identity(notification, runtime_metadata)
+            persist_identity()
+        transcript = "\n".join(chunks)[:_TRANSCRIPT_SIZE_LIMIT]
+        if captured_return is not None:
+            terminal = json.dumps(captured_return, separators=(",", ":"))
+            transcript = transcript[:max(0, _TRANSCRIPT_SIZE_LIMIT - len(terminal) - 1)] + "\n" + terminal
+        return transcript
+
+    try:
+        return anyio.run(_run)
+    except Exception as exc:
+        if runtime_metadata is not None:
+            _record_sdk_failure(runtime_metadata, exc)
+            try:
+                persist_identity()
+            except OSError:
+                pass  # Preserve the original exception and failure semantics.
+        raise
+
+
+def _number(value: Any) -> float | None:
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if math.isfinite(parsed) else None
+
+
+def normalize_result(
+    eval_dir: Path,
+    workflow_return: dict[str, Any] | None = None,
+    *,
+    require_applied: bool = False,
+) -> dict[str, Any]:
+    """Build the stable runner result from GEAK's authoritative artifacts.
+
+    With ``require_applied`` set, an accepted gain is only ``"ok"`` when the
+    patch actually reached the workspace (``applied_to_original == "true"``).
+    """
+    disk_return_path = eval_dir / "workflow_return.json"
+    disk_return = _read_json(disk_return_path)
+    disk_return_present = disk_return_path.exists() or disk_return_path.is_symlink()
+    disk_return_valid = _valid_workflow_return(
+        disk_return,
+        eval_dir,
+        require_pinned_patch=True,
+    )
+    workflow_contract_invalid = disk_return_present and not disk_return_valid
+    if disk_return_valid:
+        workflow_return = disk_return
+    elif not _valid_workflow_return(
+        workflow_return,
+        eval_dir,
+        require_pinned_patch=True,
+    ):
+        workflow_return = {}
+    validation = _read_json(eval_dir / "director_validation.json") or {}
+
+    validation_status = str(
+        validation.get("validation_status")
+        or workflow_return.get("validation_status")
+        or "unknown"
+    ).lower()
+    correctness = str(validation.get("correctness") or "unknown").lower()
+    workload_aligned = workflow_return.get("workload_aligned") is True
+    weighted = _number(validation.get("director_verified_speedup_weighted"))
+    geomean = _number(validation.get("director_verified_speedup_geomean"))
+    workflow_speedup = _number(workflow_return.get("final_speedup"))
+    speedup = (
+        weighted
+        if workload_aligned and weighted is not None
+        else (geomean if geomean is not None else workflow_speedup)
+    )
+
+    patch_path = eval_dir / "final_patch.diff"
+    patch_exists = patch_path.is_file() and patch_path.stat().st_size > 0
+
+    applied_to_original = str(
+        validation.get("applied_to_original", "unknown")
+    ).lower()
+    accepted = validation_status == "accepted" and correctness == "pass"
+    gained = speedup is not None and speedup > 1.0
+    director_valid = _valid_director_validation(validation, eval_dir)
+    primary_metric_valid = speedup is not None
+    patch_applied_ok = (not require_applied) or applied_to_original == "true"
+    if (
+        accepted
+        and gained
+        and patch_exists
+        and director_valid
+        and patch_applied_ok
+        and not workflow_contract_invalid
+    ):
+        status = "ok"
+    elif accepted and director_valid and workflow_contract_invalid:
+        status = "error"
+    elif accepted and director_valid and not primary_metric_valid:
+        status = "error"
+    elif accepted and gained and director_valid and not patch_applied_ok:
+        status = "error"
+    elif accepted and director_valid and not gained:
+        status = "no_gain"
+    elif validation_status == "flagged" or correctness == "fail":
+        status = "rejected"
+    else:
+        status = "error"
+
+    if not director_valid and validation_status in {"accepted", "flagged"}:
+        reason = "GEAK Director artifact is missing or invalid"
+    elif workflow_contract_invalid:
+        reason = "GEAK workflow return artifact is present but invalid"
+    elif not accepted:
+        reason = (
+            f"GEAK validation did not accept the candidate "
+            f"(status={validation_status}, correctness={correctness})"
+        )
+    elif not primary_metric_valid:
+        metric = "weighted" if workload_aligned else "geomean"
+        reason = f"GEAK Director artifact has no finite {metric} speedup"
+    elif not gained:
+        reason = f"GEAK did not verify a speedup above 1.0x (speedup={speedup})"
+    elif not patch_exists:
+        reason = f"GEAK accepted a gain but produced no non-empty patch at {patch_path}"
+    elif not patch_applied_ok:
+        reason = (
+            "GEAK accepted a gain but did not apply the patch to the workspace "
+            f"(applied_to_original={applied_to_original!r}); Arena would re-score "
+            "the unmodified baseline"
+        )
+    else:
+        reason = ""
+
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "status": status,
+        "eval_dir": str(eval_dir),
+        "validation_status": validation_status,
+        "correctness": correctness,
+        "workload_aligned": workload_aligned,
+        "final_speedup": speedup,
+        "final_geomean": geomean,
+        "final_weighted": weighted,
+        "final_patch": str(patch_path),
+        "director_final_patch": validation.get("final_patch"),
+        "workflow_final_patch": workflow_return.get("final_patch"),
+        "report_path": str(
+            workflow_return.get("report_path")
+            or eval_dir / "tech_lead_report.md"
+        ),
+        "budget_used": workflow_return.get("budget_used"),
+        "budget_total": workflow_return.get("budget_total"),
+        "applied_to_original": validation.get("applied_to_original", "unknown"),
+        "reason": reason,
+    }
+
+
+def run_handoff(handoff: dict[str, Any]) -> dict[str, Any]:
+    script_path, workflow_args = map_workflow_args(handoff)
+    eval_dir = Path(workflow_args["eval_dir"])
+    eval_dir.parent.mkdir(parents=True, exist_ok=True)
+    prompt = build_prompt(script_path, workflow_args)
+
+    timeout_seconds = _positive_int(
+        handoff.get("timeout_seconds", 43200),
+        "timeout_seconds",
+    )
+    model = str(handoff.get("model") or "claude-opus-4-8")
+    effort = str(handoff.get("effort") or "ultracode")
+    settings_value = handoff.get("settings", DEFAULT_SETTINGS)
+    settings = (
+        settings_value
+        if isinstance(settings_value, str)
+        else json.dumps(settings_value)
+    )
+    cli_path = str(
+        handoff.get("claude_cli_path")
+        or os.environ.get("GEAK_CLAUDE_BIN")
+        or shutil.which("claude")
+        or ""
+    ).strip()
+    if not cli_path:
+        raise RuntimeError("Claude Code CLI not found; cannot run GEAK Workflow")
+    done_grace = _nonnegative_float(
+        handoff.get("done_grace_seconds", 1800),
+        "done_grace_seconds",
+    )
+    done_poll = _nonnegative_float(
+        handoff.get("done_poll_seconds", 5),
+        "done_poll_seconds",
+    )
+
+    run_directory_fd = _open_directory_fd(eval_dir.parent)
+    try:
+        transcript = ""
+        invocation_error: Exception | None = None
+        try:
+            transcript = invoke_via_sdk(
+                prompt,
+                workflow_dir=script_path.parent,
+                eval_dir=eval_dir,
+                model=model,
+                effort=effort,
+                settings=settings,
+                cli_path=cli_path,
+                timeout_seconds=timeout_seconds,
+                done_grace_seconds=done_grace,
+                done_poll_seconds=done_poll,
+            )
+        except Exception as exc:  # disk recovery below may still prove completion
+            invocation_error = exc
+
+        parsed_return = _extract_workflow_return(transcript, eval_dir)
+        if parsed_return:
+            eval_directory_fd = _open_directory_fd(
+                eval_dir.name,
+                parent_fd=run_directory_fd,
+            )
+            try:
+                try:
+                    os.stat(
+                        "workflow_return.json",
+                        dir_fd=eval_directory_fd,
+                        follow_symlinks=False,
+                    )
+                except FileNotFoundError:
+                    _atomic_write_json(
+                        eval_dir / "workflow_return.json",
+                        parsed_return,
+                        directory_fd=eval_directory_fd,
+                    )
+            finally:
+                os.close(eval_directory_fd)
+
+        if _terminal_artifact_exists(eval_dir):
+            result = normalize_result(
+                eval_dir,
+                parsed_return,
+                require_applied=workflow_args.get("apply_to_original") == "true",
+            )
+            if invocation_error:
+                result["recovered_after_error"] = type(invocation_error).__name__
+            return result
+        if invocation_error:
+            raise invocation_error
+        raise RuntimeError(
+            "GEAK Workflow exited without workflow_return.json or "
+            f"director_validation.json under {eval_dir}"
+        )
+    finally:
+        os.close(run_directory_fd)
+
+
+def _dry_run_result(
+    handoff: dict[str, Any],
+    script_path: Path,
+    workflow_args: dict[str, Any],
+) -> dict[str, Any]:
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "status": "dry_run",
+        "script_path": str(script_path),
+        "workflow_args": workflow_args,
+        "prompt": build_prompt(script_path, workflow_args),
+        "model": str(handoff.get("model") or "claude-opus-4-8"),
+        "effort": str(handoff.get("effort") or "ultracode"),
+    }
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Run GEAK v4 kernel_workflow")
+    parser.add_argument("handoff", type=Path)
+    parser.add_argument("result", type=Path)
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="validate/map the handoff without importing the SDK or invoking Claude",
+    )
+    namespace = parser.parse_args(argv)
+
+    result_directory_fd = _open_directory_fd(namespace.result.parent)
+    try:
+        result: dict[str, Any]
+        try:
+            handoff = load_handoff(namespace.handoff)
+            if namespace.dry_run:
+                script_path, workflow_args = map_workflow_args(handoff)
+                result = _dry_run_result(handoff, script_path, workflow_args)
+            else:
+                result = run_handoff(handoff)
+        except Exception as exc:
+            result = {
+                "schema_version": SCHEMA_VERSION,
+                "status": "error",
+                "error_type": type(exc).__name__,
+                "error": str(exc),
+            }
+            _atomic_write_json(
+                namespace.result,
+                result,
+                directory_fd=result_directory_fd,
+            )
+            print(json.dumps(result, ensure_ascii=False), flush=True)
+            return 1
+
+        _atomic_write_json(
+            namespace.result,
+            result,
+            directory_fd=result_directory_fd,
+        )
+        print(json.dumps(result, ensure_ascii=False), flush=True)
+        return 1 if result.get("status") == "error" else 0
+    finally:
+        os.close(result_directory_fd)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

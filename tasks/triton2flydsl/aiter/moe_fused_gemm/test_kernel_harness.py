@@ -12,8 +12,8 @@ The token->expert sort + block padding is produced by the in-source
 
 Modes:
   --compile         ast-parse + import the standalone source, assert entry/kernel symbols
-  --correctness     run the Triton kernel on TEST_SHAPES, assert finite output
-                    (flydsl-vs-triton comparison added when the FlyDSL target lands)
+  --correctness     independent per-expert FP32 projection and optional routing
+                    weights, with the original normalized maximum-error gate
   --full-benchmark  graph-first GPU timing, write build/performance_report.json
 """
 import argparse
@@ -24,10 +24,13 @@ import math
 import os
 import sys
 from pathlib import Path
-from _aka_benchmark import benchmark_cuda_graph_or_events
+from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
+from scripts.replay_checks import require_tensor_contract, require_unchanged, verify_timed_run
 
-SOURCE_FILE = "moe_fused_gemm.py"
+from task_runtime import candidate_relative_path
+SOURCE_FILE = candidate_relative_path()
 ENTRY = "fused_moe"
+ENTRIES = ("moe_align_block_size", "fused_moe")
 KERNEL = "_fused_moe_kernel"
 
 # (num_tokens M, hidden K, expert-out N, num_experts E, top_k)
@@ -50,6 +53,7 @@ def _load_source():
     entry = os.path.join(_HERE, SOURCE_FILE)
     spec = importlib.util.spec_from_file_location("moe_fused_gemm_src", entry)
     mod = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = mod
     spec.loader.exec_module(mod)
     return mod
 
@@ -76,7 +80,6 @@ def _make_inputs(M, K, N, E, top_k, device="cuda"):
 
 def _prepare_kernel(mod, A, B, topk_ids, topk_weights, top_k, mul_routed_weight):
     import torch
-    import triton.language as tl
 
     M, K = A.shape
     E, N, _ = B.shape
@@ -103,7 +106,7 @@ def _prepare_kernel(mod, A, B, topk_ids, topk_weights, top_k, mul_routed_weight)
             num_post,
             mul_routed_weight,
             top_k,
-            tl.bfloat16,
+            torch.bfloat16,
             config=config,
         )
         return C
@@ -162,10 +165,43 @@ def run_compile():
     return True
 
 
+def _checked_flat_output(out, A, B, top_k):
+    import torch
+    if (not isinstance(out, torch.Tensor) or out.shape != (A.shape[0], top_k, B.shape[1])
+            or out.dtype != A.dtype or out.device != A.device):
+        raise AssertionError("MoE projection shape/dtype/device contract mismatch")
+
+
+def _compare_flat_output(actual, expected):
+    import torch
+    require_tensor_contract(actual, expected, dtype=torch.bfloat16)
+    if not bool(torch.isfinite(actual).all() and torch.isfinite(expected).all()):
+        raise AssertionError("Non-finite MoE/reference output")
+    abs_err = (actual.float() - expected.float()).abs()
+    denom = expected.float().abs().max().item()
+    nme = float((abs_err.max() / denom).item()) if denom > 0 else float(abs_err.max().item())
+    if nme > 1e-2:
+        raise AssertionError(f"Numerical mismatch: normalized_max_error={nme}")
+
+
+def _flat_replay_validator(A, B, topk_ids, topk_weights, top_k, mul):
+    inputs = (A, B, topk_ids, topk_weights)
+    originals = tuple(v.clone() for v in inputs)
+    expected = _ref_moe_gemm(A, B, topk_ids, topk_weights, top_k, mul)
+    def perturb():
+        # Fixed routing preserves the sort/padding prepared outside timing.
+        A.neg_()
+    def reference():
+        return _ref_moe_gemm(A, B, topk_ids, topk_weights, top_k, mul)
+    def validate(timed):
+        return verify_timed_run(timed, inputs=inputs, originals=originals,
+                                expected=expected, perturb=perturb,
+                                reference=reference, compare=_compare_flat_output)
+    return validate
+
+
 def run_correctness(verbose=True):
-    # Runs the Triton kernel on TEST_SHAPES and asserts finite output. No torch
-    # comparison: the flydsl-vs-triton comparison is added when the FlyDSL target
-    # lands (the Triton kernel is the reference here).
+    # Both routing-weight states use the protected independent per-expert oracle.
     import torch
 
     mod = _load_source()
@@ -181,8 +217,12 @@ def run_correctness(verbose=True):
                 A, B, topk_ids, topk_weights = _make_inputs(
                     shape["M"], shape["K"], shape["N"], shape["E"], shape["top_k"]
                 )
+                protected_inputs = (A, B, topk_ids, topk_weights)
+                originals = tuple(v.clone() for v in protected_inputs)
                 C = _run_kernel(mod, A, B, topk_ids, topk_weights, shape["top_k"], mul)
                 torch.cuda.synchronize()
+                require_unchanged(protected_inputs, originals)
+                _checked_flat_output(C, A, B, shape["top_k"])
                 finite = bool(torch.isfinite(C).all().item())
 
                 ref = _ref_moe_gemm(A, B, topk_ids, topk_weights, shape["top_k"], mul)
@@ -224,6 +264,7 @@ def run_benchmark(verbose=True):
         A, B, topk_ids, topk_weights = _make_inputs(
             shape["M"], shape["K"], shape["N"], shape["E"], shape["top_k"]
         )
+        replay_validate = _flat_replay_validator(A, B, topk_ids, topk_weights, shape["top_k"], True)
         fn, output = _prepare_kernel(
             mod, A, B, topk_ids, topk_weights, shape["top_k"], True
         )
@@ -234,9 +275,11 @@ def run_benchmark(verbose=True):
             prepare_fn()
             fn()
         torch.cuda.synchronize()
+        timed = TimedRun()
         ms, bench_meta = benchmark_cuda_graph_or_events(
-            fn, warmup=0, repetition=ITERS, prepare_fn=prepare_fn
+            fn, warmup=0, repetition=ITERS, prepare_fn=prepare_fn, timed_run=timed
         )
+        bench_meta.update(replay_validate(timed))
         latencies.append(ms)
         flops = 2.0 * shape["M"] * shape["top_k"] * shape["N"] * shape["K"]
         report.append(

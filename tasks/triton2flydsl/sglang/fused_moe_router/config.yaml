@@ -1,14 +1,25 @@
-source_file_path:
-- fused_moe_router.py
-target_kernel_functions:
-- fused_moe_router_shim
-- fused_moe_router_cudacore_kernel
-- fused_moe_router_tensorcore_kernel
-compile_command:
-- python3 test_kernel_harness.py --compile
-correctness_command:
-- python3 test_kernel_harness.py --correctness
-performance_command:
-- python3 test_kernel_harness.py --full-benchmark
-task_type: triton2flydsl
-task_result_template: null
+schema_version: 2
+description: Translate the declared fused_moe_router implementation from Triton to FlyDSL while preserving
+  all operator and evaluation contracts.
+instructions:
+- README.md
+candidate:
+  language: flydsl
+  initial_state: implemented
+  initial_language: triton
+  editable:
+  - fused_moe_router.py
+  entrypoints:
+  - file: fused_moe_router.py
+    kind: function
+    symbol: fused_moe_router_shim
+baseline:
+  kind: initial_candidate
+  language: triton
+  correctness_policy: required
+evaluation:
+  runner:
+  - python3
+  - scripts/evaluate.py
+  workloads: cases.json
+  timeout_s: 3600

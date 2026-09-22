@@ -1,0 +1,175 @@
+{
+  "version": 1,
+  "candidate_symbols": {
+    "source/triton_selective_scan_update.py": [
+      {
+        "name": "_selective_scan_update_kernel",
+        "jit": true
+      }
+    ]
+  },
+  "case_table": "TEST_SHAPES",
+  "input_table": [
+    [
+      4,
+      8,
+      64,
+      16,
+      4,
+      true,
+      false
+    ],
+    [
+      8,
+      4,
+      128,
+      32,
+      2,
+      true,
+      true
+    ],
+    [
+      2,
+      16,
+      64,
+      64,
+      8,
+      false,
+      false
+    ],
+    [
+      4,
+      8,
+      128,
+      16,
+      4,
+      true,
+      true
+    ],
+    [
+      16,
+      4,
+      64,
+      32,
+      2,
+      true,
+      false
+    ]
+  ],
+  "cases": [
+    {
+      "test_case_id": "perf1",
+      "dtype": "float32",
+      "params": {
+        "case_index": 0,
+        "configuration": [
+          4,
+          8,
+          64,
+          16,
+          4,
+          true,
+          false
+        ],
+        "configuration_names": "(batch, nheads, dim, dstate, ngroups, has_D, has_z)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf2",
+      "dtype": "float32",
+      "params": {
+        "case_index": 1,
+        "configuration": [
+          8,
+          4,
+          128,
+          32,
+          2,
+          true,
+          true
+        ],
+        "configuration_names": "(batch, nheads, dim, dstate, ngroups, has_D, has_z)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf3",
+      "dtype": "float32",
+      "params": {
+        "case_index": 2,
+        "configuration": [
+          2,
+          16,
+          64,
+          64,
+          8,
+          false,
+          false
+        ],
+        "configuration_names": "(batch, nheads, dim, dstate, ngroups, has_D, has_z)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf4",
+      "dtype": "float32",
+      "params": {
+        "case_index": 3,
+        "configuration": [
+          4,
+          8,
+          128,
+          16,
+          4,
+          true,
+          true
+        ],
+        "configuration_names": "(batch, nheads, dim, dstate, ngroups, has_D, has_z)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf5",
+      "dtype": "float32",
+      "params": {
+        "case_index": 4,
+        "configuration": [
+          16,
+          4,
+          64,
+          32,
+          2,
+          true,
+          false
+        ],
+        "configuration_names": "(batch, nheads, dim, dstate, ngroups, has_D, has_z)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    }
+  ],
+  "migration": {
+    "original_harness_sha256": "48934342117a2098404d3171a3d5ff7d9b36a54ce5a762bb3d8c7ef56e1f11f4",
+    "original_correctness_sha256": "702ea3c72264592a79d686bd6ec3beb8525416b63db53c0429e680ad52dfa458"
+  }
+}

@@ -20,13 +20,16 @@ import json
 import time
 import argparse
 import importlib.util
-from _aka_benchmark import benchmark_cuda_graph_or_events
+from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
+from scripts.replay_checks import require_tensor_contract, require_unchanged, verify_timed_run
 
 TASK_DIR = os.path.dirname(os.path.abspath(__file__))
 os.chdir(TASK_DIR)
 
 TASK_NAME = "triton2flydsl/generative_recommenders/swiglu"
-SOURCE_FILE = os.path.join(TASK_DIR, "swiglu.py")
+from task_runtime import candidate_relative_path
+SOURCE_FILE = candidate_relative_path()
+ENTRY = 'triton_swiglu_fwd'
 
 # Test configurations: (M, N, K)
 #   M = rows (batch_size * seq_len)
@@ -53,6 +56,7 @@ PASS_FRACTION = 0.999
 def load_module():
     spec = importlib.util.spec_from_file_location("swiglu_src", SOURCE_FILE)
     mod = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = mod
     spec.loader.exec_module(mod)
     return mod
 
@@ -108,7 +112,7 @@ def _close(ref, out):
     close = torch.isclose(out, ref, atol=ATOL, rtol=RTOL)
     frac = close.float().mean().item()
     denom = ref.abs().max().item()
-    norm = (out - ref).abs().max().item() / denom if denom > 0 else 0.0
+    norm = (out - ref).abs().max().item() / denom if denom > 0 else (out - ref).abs().max().item()
     return (frac >= PASS_FRACTION) or (norm <= 1e-2), frac, norm
 
 
@@ -129,6 +133,38 @@ def run_compile():
         return False, str(e)
 
 
+def _checked_gr_output(out, x, columns):
+    import torch
+    if (not isinstance(out, torch.Tensor) or out.shape != (x.shape[0], columns)
+            or out.dtype != x.dtype or out.device != x.device):
+        raise AssertionError("GR output shape/dtype/device contract mismatch")
+
+
+def _compare_gr_output(actual, expected):
+    import torch
+    require_tensor_contract(actual, expected, dtype=torch.bfloat16)
+    if not bool(torch.isfinite(actual).all() and torch.isfinite(expected).all()):
+        raise AssertionError("Non-finite GR/reference output")
+    close, fraction, normalized = _close(expected, actual)
+    if not close:
+        raise AssertionError(f"Numerical mismatch: fraction={fraction}, normalized_max_error={normalized}")
+
+
+def _gr_replay_validator(x, w_gate, w_up):
+    inputs = tuple(v for v in (x, w_gate, w_up,) if v is not None)
+    originals = tuple(v.clone() for v in inputs)
+    expected = _torch_ref(x, w_gate, w_up)
+    def perturb():
+        w_up.neg_()
+    def reference():
+        return _torch_ref(x, w_gate, w_up)
+    def validate(timed):
+        return verify_timed_run(timed, inputs=inputs, originals=originals,
+                                expected=expected, perturb=perturb,
+                                reference=reference, compare=_compare_gr_output)
+    return validate
+
+
 def run_correctness():
     import torch
     try:
@@ -144,8 +180,12 @@ def run_correctness():
         try:
             torch.manual_seed(42 + i)
             x, w_gate, w_up = make_test_data(M, N, K, device, dtype)
+            protected_inputs = tuple(v for v in (x, w_gate, w_up,) if v is not None)
+            originals = tuple(v.clone() for v in protected_inputs)
             result = _call_kernel(mod, x, w_gate, w_up)
             torch.cuda.synchronize()
+            require_unchanged(protected_inputs, originals)
+            _checked_gr_output(result, x, w_gate.shape[0])
 
             finite = bool(torch.isfinite(result.float()).all().item())
             shape_ok = list(result.shape) == [M, N]
@@ -194,6 +234,7 @@ def run_performance():
         try:
             torch.manual_seed(42 + test_idx)
             x, w_gate, w_up = make_test_data(M, N, K, device, dtype)
+            replay_validate = _gr_replay_validator(x, w_gate, w_up)
 
             def launch():
                 return mod.triton_swiglu_fwd(x, w_gate, w_up)
@@ -204,24 +245,26 @@ def run_performance():
                 launch()
             torch.cuda.synchronize()
 
+            timed = TimedRun()
             elapsed_ms, bench_meta = benchmark_cuda_graph_or_events(
                 launch,
                 warmup=0,
-                repetition=BENCHMARK_ITERATIONS,
+                repetition=BENCHMARK_ITERATIONS, timed_run=timed,
             )
 
+            bench_meta.update(replay_validate(timed))
             test_cases.append({
                 "test_case_id": f"perf{test_idx + 1}",
                 "execution_time_ms": elapsed_ms,
                 **bench_meta,
                 "params": params,
             })
-        except Exception:
+        except Exception as error:
             test_cases.append({
                 "test_case_id": f"perf{test_idx + 1}",
                 "execution_time_ms": -1.0,
                 "benchmark_method": "benchmark_failed",
-                "benchmark_fallback_reason": "performance case failed before timing completed",
+                "benchmark_fallback_reason": "performance case failed: " + str(error),
                 "params": params,
             })
     return test_cases

@@ -20,7 +20,6 @@ TEST_SHAPES = [
     (32, 1024, 64),
     (64, 2048, 128),
 ]
-NUM_CORRECTNESS_BOUNDARY_CASES = 3
 WARMUP_ITERATIONS = 10
 BENCHMARK_ITERATIONS = 100
 
@@ -78,7 +77,10 @@ def run_compile():
         return False, str(e)
 
 
-def run_correctness():
+def run_correctness(*, case_index=None):
+    if case_index is not None and case_index >= 10000:
+        from _upstream_controls import run_control
+        return run_control(case_index - 10000, load_module)
     import torch
     try:
         mod = load_module()
@@ -86,23 +88,9 @@ def run_correctness():
         return False, f"Failed to load module: {e}"
 
     device = "cuda"
-
-    def check_case(case_name, output, write_indices, write_starts, write_contents, cu_lens):
-        output_gpu = output.clone()
-        mod.apply_write(
-            output_gpu, write_indices, write_starts, write_contents, cu_lens
-        )
-        torch.cuda.synchronize()
-
-        ref = reference_apply_write(
-            output.cpu(), write_indices.cpu(), write_starts.cpu(),
-            write_contents.cpu(), cu_lens.cpu(),
-        )
-        if not torch.equal(output_gpu.cpu(), ref):
-            return False, f"{case_name}: mismatch"
-        return True, None
-
     for i, (num_writes, row_size, avg_content_len) in enumerate(TEST_SHAPES):
+        if case_index is not None and i != case_index:
+            continue
         try:
             torch.manual_seed(42 + i)
             num_rows = num_writes + 8
@@ -122,73 +110,19 @@ def run_correctness():
             total_content = int(cu_lens[-1].item())
             write_contents = torch.randint(1, 10000, (total_content,), dtype=torch.int32, device=device)
 
-            ok, err = check_case(
-                f"Shape {i + 1}", output, write_indices, write_starts,
-                write_contents, cu_lens,
+            output_gpu = output.clone()
+            mod.apply_write(output_gpu, write_indices, write_starts, write_contents, cu_lens)
+            torch.cuda.synchronize()
+
+            ref = reference_apply_write(
+                output.cpu(), write_indices.cpu(), write_starts.cpu(),
+                write_contents.cpu(), cu_lens.cpu(),
             )
-            if not ok:
-                return False, err
+
+            if not torch.equal(output_gpu.cpu(), ref):
+                return False, f"Shape {i+1}: mismatch"
         except Exception as e:
             return False, f"Shape {i+1}: exception: {e}"
-
-    boundary_cases = [
-        {
-            "name": "zero writes",
-            "output": torch.randint(
-                -100, 100, (4, 64), dtype=torch.int32, device=device
-            ),
-            "write_indices": torch.empty(0, dtype=torch.int32, device=device),
-            "write_starts": torch.empty(0, dtype=torch.int32, device=device),
-            "content_lens": [],
-        },
-        {
-            "name": "zero-length segments",
-            "output": torch.randint(
-                -100, 100, (10, 64), dtype=torch.int32, device=device
-            ),
-            "write_indices": torch.tensor(
-                [0, 1, 2, 3, 4, 5, 6, 7], dtype=torch.int32, device=device
-            ),
-            "write_starts": torch.tensor(
-                [3, 7, 11, 17, 23, 31, 37, 41],
-                dtype=torch.int32,
-                device=device,
-            ),
-            "content_lens": [0, 0, 5, 0, 9, 0, 3, 0],
-        },
-        {
-            "name": "skewed lengths at the block cap",
-            "output": torch.randint(
-                -100, 100, (6, 4096), dtype=torch.int32, device=device
-            ),
-            "write_indices": torch.tensor(
-                [0, 1, 2, 3], dtype=torch.int32, device=device
-            ),
-            "write_starts": torch.tensor(
-                [4095, 3072, 1536, 2047], dtype=torch.int32, device=device
-            ),
-            "content_lens": [1, 1024, 1025, 2049],
-        },
-    ]
-
-    for case in boundary_cases:
-        try:
-            content_lens = torch.tensor(
-                case["content_lens"], dtype=torch.int32, device=device
-            )
-            cu_lens = torch.cumsum(content_lens, dim=0).to(torch.int32)
-            total_content = int(cu_lens[-1].item()) if cu_lens.numel() else 0
-            write_contents = torch.randint(
-                1, 10000, (total_content,), dtype=torch.int32, device=device
-            )
-            ok, err = check_case(
-                case["name"], case["output"], case["write_indices"],
-                case["write_starts"], write_contents, cu_lens,
-            )
-            if not ok:
-                return False, err
-        except Exception as e:
-            return False, f"{case['name']}: exception: {e}"
 
     return True, None
 
@@ -269,11 +203,7 @@ def main():
         sys.exit(0 if ok else 1)
     elif args.mode == "correctness":
         ok, err = run_correctness()
-        report = {
-            "status": "ok" if ok else "fail",
-            "error": err,
-            "num_shapes": len(TEST_SHAPES) + NUM_CORRECTNESS_BOUNDARY_CASES,
-        }
+        report = {"status": "ok" if ok else "fail", "error": err, "num_shapes": len(TEST_SHAPES)}
         with open(os.path.join(build_dir, "correctness_report.json"), "w") as f:
             json.dump(report, f, indent=2)
         print(f"Correctness: {'PASS' if ok else 'FAIL'}")

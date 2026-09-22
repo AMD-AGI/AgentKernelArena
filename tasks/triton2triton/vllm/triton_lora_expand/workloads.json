@@ -1,0 +1,155 @@
+{
+  "version": 1,
+  "candidate_symbols": {
+    "source/triton_lora_expand.py": [
+      {
+        "name": "_lora_expand_kernel",
+        "jit": true
+      }
+    ]
+  },
+  "case_table": "TEST_SHAPES",
+  "input_table": [
+    [
+      16,
+      64,
+      8,
+      2,
+      1
+    ],
+    [
+      32,
+      128,
+      16,
+      4,
+      1
+    ],
+    [
+      64,
+      256,
+      16,
+      4,
+      2
+    ],
+    [
+      128,
+      512,
+      32,
+      8,
+      1
+    ],
+    [
+      256,
+      1024,
+      32,
+      8,
+      2
+    ]
+  ],
+  "cases": [
+    {
+      "test_case_id": "perf1",
+      "dtype": "bfloat16,float16,float32,int64",
+      "params": {
+        "case_index": 0,
+        "configuration": [
+          16,
+          64,
+          8,
+          2,
+          1
+        ],
+        "configuration_names": "(M, hidden_size, lora_rank, num_loras, num_slices)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf2",
+      "dtype": "bfloat16,float16,float32,int64",
+      "params": {
+        "case_index": 1,
+        "configuration": [
+          32,
+          128,
+          16,
+          4,
+          1
+        ],
+        "configuration_names": "(M, hidden_size, lora_rank, num_loras, num_slices)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf3",
+      "dtype": "bfloat16,float16,float32,int64",
+      "params": {
+        "case_index": 2,
+        "configuration": [
+          64,
+          256,
+          16,
+          4,
+          2
+        ],
+        "configuration_names": "(M, hidden_size, lora_rank, num_loras, num_slices)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf4",
+      "dtype": "bfloat16,float16,float32,int64",
+      "params": {
+        "case_index": 3,
+        "configuration": [
+          128,
+          512,
+          32,
+          8,
+          1
+        ],
+        "configuration_names": "(M, hidden_size, lora_rank, num_loras, num_slices)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf5",
+      "dtype": "bfloat16,float16,float32,int64",
+      "params": {
+        "case_index": 4,
+        "configuration": [
+          256,
+          1024,
+          32,
+          8,
+          2
+        ],
+        "configuration_names": "(M, hidden_size, lora_rank, num_loras, num_slices)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    }
+  ],
+  "migration": {
+    "original_harness_sha256": "14d3f0a4cb3fafb086fee0bea8e5e627bcc457d335102fcbe52a29c359d88957",
+    "original_correctness_sha256": "4a958d5b8b8774c1c8d01ed8c9945e13c6bdabc97974d3fd2e29559c313f78a5"
+  }
+}

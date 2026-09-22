@@ -6,6 +6,7 @@ import sys
 import types
 from pathlib import Path
 from _aka_benchmark import benchmark_cuda_graph_or_events_samples
+from _timed_contract import checked_call, checked_benchmark
 
 
 def benchmark_cuda_graph_or_events(*args, **kwargs):
@@ -20,54 +21,15 @@ def benchmark_cuda_graph_or_events(*args, **kwargs):
     return median_ms, metadata
 
 def _find_baseline_kernel_dir():
-    """Find preprocess dir (has benchmark_baseline.txt) by walking up from GEAK_WORK_DIR."""
-    work = os.environ.get("GEAK_WORK_DIR", "").strip()
-    if not work:
-        return None
-    d = Path(work).resolve()
-    for _ in range(10):
-        if d is None or not d.exists():
-            break
-        bb = d / "benchmark_baseline.txt"
-        if bb.is_file():
-            return str(d)
-        d = d.parent
+    """Arena's session owns the frozen baseline; external worktrees are not inputs."""
     return None
 
-def _load_baseline_triton(baseline_dir, module_alias, entry_name):
-    """Load kernel from baseline_dir. Returns callable or None."""
-    entry_file = Path(baseline_dir) / "kernel.py"
-    if not entry_file.is_file():
-        return None
-    if baseline_dir not in sys.path:
-        sys.path.insert(0, baseline_dir)
-    spec = importlib.util.spec_from_file_location(module_alias, entry_file)
-    if spec is None or spec.loader is None:
-        return None
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[module_alias] = module
-    try:
-        spec.loader.exec_module(module)
-        return getattr(module, entry_name, None)
-    except Exception:
-        return None
+def _load_baseline_triton(*args, **kwargs):
+    raise RuntimeError("External baseline loading is not part of the v2 task contract")
 
 def _resolve_geak_kernel_dir():
-    candidates = []
-    work_dir = os.environ.get("GEAK_WORK_DIR", "").strip()
-    if work_dir:
-        candidates.append(work_dir)
-    repo_root = os.environ.get("GEAK_REPO_ROOT", "").strip()
-    rel_kernel_dir = '.'
-    if repo_root and rel_kernel_dir:
-        candidates.append(os.path.join(repo_root, rel_kernel_dir))
-    original_kernel_dir = os.path.dirname(os.path.abspath(__file__))
-    if original_kernel_dir:
-        candidates.append(original_kernel_dir)
-    for candidate in candidates:
-        if candidate and os.path.isfile(os.path.join(candidate, "kernel.py")):
-            return candidate
-    return original_kernel_dir or os.getcwd()
+    """Resolve only the local candidate (or the session's frozen task copy)."""
+    return os.path.dirname(os.path.abspath(__file__))
 
 def _ensure_geak_package(module_name):
     parts = module_name.split(".")
@@ -106,6 +68,9 @@ def _register_geak_aliases(kernel_dir):
         return
     for alias in aliases:
         if alias in sys.modules:
+            existing = getattr(sys.modules[alias], "__file__", None)
+            if existing is None or Path(existing).resolve() != Path(entry_file).resolve():
+                raise RuntimeError("Candidate module alias resolved outside the task workspace")
             continue
         _ensure_geak_package(alias)
         spec = importlib.util.spec_from_file_location(alias, entry_file)
@@ -207,6 +172,82 @@ def _torch_routing_sigmoid_top1(
     return topk_ids, topk_weights
 
 
+def _routing_reference(saved, shared=True):
+    # tl.dot accumulates in FP32: BF16-rounding the dot before sigmoid changes
+    # the selection on the original noninteger benchmark inputs.
+    scores = torch.sigmoid(saved['x'].float() @ saved['w'].float())
+    weights, ids = scores.max(dim=1, keepdim=True)  # first index wins ties
+    ids = ids.to(torch.int32)
+    if shared:
+        ids = torch.cat((ids, torch.full_like(ids, saved['w'].shape[1])), dim=1)
+        weights = torch.cat((weights, torch.ones_like(weights)), dim=1)
+    return ids, weights
+
+
+def _check_routing(actual, expected, atol=1e-4, rtol=1e-4):
+    torch.testing.assert_close(actual[0], expected[0], atol=atol, rtol=rtol)
+    torch.testing.assert_close(actual[1], expected[1], atol=atol, rtol=rtol)
+
+
+def _check_timed_routing(actual, expected, lower, upper):
+    ids, weights = actual
+    ref_ids, ref_weights = expected
+    torch.testing.assert_close(weights, ref_weights, atol=1e-4, rtol=1e-4)
+    torch.testing.assert_close(ids[:, 1:], ref_ids[:, 1:], atol=1e-4, rtol=1e-4)
+    selected = ids[:, 0].long()
+    assert ((selected >= 0) & (selected < lower.shape[1])).all(), 'Invalid expert ID'
+    # Normally the index is exact. The only exception is an ambiguous first
+    # saturated sigmoid value: FP32 accumulation can round a boundary logit
+    # one way or the other, making that expert's score equal to 1.0.
+    first_certain = torch.where(lower == 1, torch.arange(lower.shape[1], device=lower.device),
+                                lower.shape[1]).amin(dim=1)
+    possible = upper.gather(1, selected[:, None]).squeeze(1) == 1
+    ambiguous_saturation = ((ref_weights[:, 0] == 1) & (weights[:, 0] == 1)
+                            & (lower.amax(dim=1) == 1) & possible
+                            & (selected <= first_certain))
+    assert ((ids[:, 0] == ref_ids[:, 0]) | ambiguous_saturation).all(), 'Routing selected a nonmaximal expert'
+
+
+def _timed_routing_contract():
+    bounds = {}
+    def reference(saved):
+        expected = _routing_reference(saved)
+        # An independent FP64 dot locates the narrow FP32 saturation boundary.
+        # Adjacent FP32 logits bracket one final accumulation-rounding step;
+        # this is not the task's much larger 1e-4 output tolerance.
+        exact_dot = saved['x'].double() @ saved['w'].double()
+        rounded = exact_dot.float()
+        lower_dot = torch.nextafter(rounded, torch.full_like(rounded, -float('inf')))
+        upper_dot = torch.nextafter(rounded, torch.full_like(rounded, float('inf')))
+        bounds['lower'] = 1 / (1 + torch.exp(-lower_dot))
+        bounds['upper'] = 1 / (1 + torch.exp(-upper_dot))
+        return expected
+    def check(actual, expected):
+        _check_timed_routing(actual, expected, bounds['lower'], bounds['upper'])
+    return reference, check
+
+
+CONTROL_CASES = [
+    {'test_case_id': 'control-routing-no-shared', 'params': {'shared': False, 'ties': False}},
+    {'test_case_id': 'control-routing-leftmost-tie', 'params': {'shared': True, 'ties': True}},
+]
+
+
+def run_contract_controls():
+    for case in CONTROL_CASES:
+        params = case['params']
+        x = torch.zeros((128, 16), device='cuda', dtype=torch.bfloat16)
+        w = torch.zeros((16, 16), device='cuda', dtype=torch.bfloat16)
+        if not params['ties']:
+            x[:, 0] = 1
+            w[0] = torch.arange(16, device='cuda') / 16
+        checked_call(lambda: routing_sigmoid_top1(x, w, 1, fused_shared_experts=params['shared']),
+                     inputs={'x': x, 'w': w},
+                     reference=lambda saved: _routing_reference(saved, params['shared']),
+                     check=_check_routing)
+        print(case['test_case_id'], 'PASS')
+
+
 def _gpu_median_time(fn, warmup, iterations):
     """Time *fn* using graph replay, with CUDA-event fallback."""
     return benchmark_cuda_graph_or_events(
@@ -234,19 +275,18 @@ def run_correctness(shapes, atol, rtol):
         dummy_ids = torch.ones((M, 1), dtype=torch.int32, device=device) * N
         dummy_weights = torch.ones((M, 1), dtype=torch.float32, device=device)
 
-        topk_ids, topk_weights = routing_sigmoid_top1(
-            x, w, TOPK, fused_shared_experts=True
-        )
-
         ref_fn = partial(
             _torch_routing_sigmoid_top1,
-            dummy_ids=dummy_ids, dummy_weights=dummy_weights,
+            dummy_ids=dummy_ids.clone(), dummy_weights=dummy_weights.clone(),
         )
-        ref_ids, ref_weights = ref_fn(x, w, TOPK, fused_shared_experts=True)
-
         try:
-            torch.testing.assert_close(ref_ids, topk_ids, atol=atol, rtol=rtol)
-            torch.testing.assert_close(ref_weights, topk_weights, atol=atol, rtol=rtol)
+            checked_call(
+                lambda: routing_sigmoid_top1(x, w, TOPK, fused_shared_experts=True),
+                inputs={'x': x, 'w': w},
+                # Retain the original integer-input correctness oracle/gates.
+                reference=lambda saved: ref_fn(saved['x'], saved['w'], TOPK, fused_shared_experts=True),
+                check=lambda actual, expected: _check_routing(actual, expected, atol, rtol),
+            )
             print(f"  [{i+1}/{len(shapes)}] M={M}, N={N}, K={K}: PASS")
         except AssertionError as e:
             print(f"  [{i+1}/{len(shapes)}] M={M}, N={N}, K={K}: FAIL")
@@ -330,10 +370,16 @@ def run_benchmark(shapes, warmup, iterations):
                 ref_fn(x, w, TOPK, fused_shared_experts=True)
 
         def _run_kernel(x=x, w=w):
-            routing_sigmoid_top1(x, w, TOPK, fused_shared_experts=True)
+            return routing_sigmoid_top1(x, w, TOPK, fused_shared_experts=True)
 
         ref_time, ref_meta = _gpu_median_time(_run_ref, warmup, iterations)
-        kernel_time, kernel_meta = _gpu_median_time(_run_kernel, warmup, iterations)
+        timed_reference, timed_check = _timed_routing_contract()
+        kernel_time, kernel_meta = checked_benchmark(
+            benchmark_cuda_graph_or_events, _run_kernel, inputs={'x': x, 'w': w},
+            reference=timed_reference, check=timed_check,
+            perturb=lambda saved: {**saved, 'x': -saved['x']},
+            warmup=warmup, repetition=iterations,
+        )
 
         methods_match = ref_meta["benchmark_method"] == kernel_meta["benchmark_method"]
         speedup = ref_time / kernel_time if kernel_time > 0 and methods_match else None

@@ -27,14 +27,14 @@ def test_retired_agent_templates_are_rejected(name, spelling):
 
 
 @pytest.mark.parametrize("name", [
-    "cursor", "claude_code", "codex", "task_validator", "geak_v4", "forge",
+    "cursor", "claude_code", "codex", "task_validator", "geak", "geak_v4", "forge", "forge_operator2flydsl",
 ])
 def test_remaining_agents_load_with_their_postprocessors(name):
     logger = logging.getLogger(__name__)
     agent = AgentType.from_string(name)
     assert AgentType.from_string(name.upper().replace("_", "-")) is agent
     launcher = load_agent_launcher(agent, logger)
-    assert launcher is importlib.import_module(f"agents.{name}.launch_agent").launch_agent
+    assert launcher is importlib.import_module(f"agents.{agent.value}.launch_agent").launch_agent
 
     if name == "task_validator":
         from agents.task_validator.validation_postprocessing import validation_post_processing

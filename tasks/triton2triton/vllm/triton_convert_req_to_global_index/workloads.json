@@ -1,0 +1,165 @@
+{
+  "version": 1,
+  "candidate_symbols": {
+    "source/triton_convert_req_to_global_index.py": [
+      {
+        "name": "_convert_req_index_to_global_index_kernel",
+        "jit": true
+      }
+    ]
+  },
+  "case_table": "TEST_SHAPES",
+  "input_table": [
+    [
+      16,
+      4,
+      8,
+      128,
+      64,
+      128
+    ],
+    [
+      32,
+      8,
+      16,
+      256,
+      64,
+      128
+    ],
+    [
+      64,
+      16,
+      32,
+      512,
+      64,
+      128
+    ],
+    [
+      128,
+      32,
+      16,
+      256,
+      32,
+      128
+    ],
+    [
+      256,
+      64,
+      32,
+      512,
+      64,
+      128
+    ]
+  ],
+  "cases": [
+    {
+      "test_case_id": "perf1",
+      "dtype": "int32",
+      "params": {
+        "case_index": 0,
+        "configuration": [
+          16,
+          4,
+          8,
+          128,
+          64,
+          128
+        ],
+        "configuration_names": "(nt, nr, mbpr, ntk, bs, bn)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf2",
+      "dtype": "int32",
+      "params": {
+        "case_index": 1,
+        "configuration": [
+          32,
+          8,
+          16,
+          256,
+          64,
+          128
+        ],
+        "configuration_names": "(nt, nr, mbpr, ntk, bs, bn)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf3",
+      "dtype": "int32",
+      "params": {
+        "case_index": 2,
+        "configuration": [
+          64,
+          16,
+          32,
+          512,
+          64,
+          128
+        ],
+        "configuration_names": "(nt, nr, mbpr, ntk, bs, bn)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf4",
+      "dtype": "int32",
+      "params": {
+        "case_index": 3,
+        "configuration": [
+          128,
+          32,
+          16,
+          256,
+          32,
+          128
+        ],
+        "configuration_names": "(nt, nr, mbpr, ntk, bs, bn)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf5",
+      "dtype": "int32",
+      "params": {
+        "case_index": 4,
+        "configuration": [
+          256,
+          64,
+          32,
+          512,
+          64,
+          128
+        ],
+        "configuration_names": "(nt, nr, mbpr, ntk, bs, bn)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    }
+  ],
+  "migration": {
+    "original_harness_sha256": "9000c18be59a8e7877df7578124e29e3c91cdba631c389650b99c41e098e11e9",
+    "original_correctness_sha256": "c7cc5ba25f69a763fc8f92ad8dc29cd5d12c1cb2dd92acd3068ef42c746b6dde"
+  }
+}

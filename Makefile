@@ -31,7 +31,7 @@ help:
 	@echo "make docker-quality-loop CONFIG=example_configs/quality_loop_mi300.yaml - Audit and harden config-selected tasks, then open at most one draft PR"
 	@echo "                         Default quality-loop CONFIG is agents/quality_loop/agent_config.yaml"
 	@echo "make docker-setup-flydsl - Install FlyDSL when absent (for flydsl2flydsl, torch2flydsl, and triton2flydsl)"
-	@echo "make docker-setup-geak   - Install the Claude Agent SDK when absent (for the geak_v4 agent)"
+	@echo "make docker-setup-geak   - Install the Claude Agent SDK when absent (for the geak agent)"
 	@echo "make check-docker-runner - Check Docker runner syntax and runtime-specific arguments"
 	@echo "make check-slurm-runner - Check Slurm/Spur resource and Docker handoff arguments"
 	@echo ""
@@ -158,7 +158,7 @@ docker-setup-flydsl:
 	@$(DOCKER_RUNNER) setup-flydsl
 
 # Install the Claude Agent SDK into the container's persistent pip user-base when
-# the selected image does not ship it. Needed by the geak_v4 agent.
+# the selected image does not ship it. Needed by the geak agent.
 docker-setup-geak:
 	@$(DOCKER_RUNNER) setup-geak
 

@@ -24,9 +24,11 @@ import math
 import os
 import sys
 from pathlib import Path
-from _aka_benchmark import benchmark_cuda_graph_or_events
+from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
+from scripts.replay_checks import require_unchanged
 
-SOURCE_FILE = "dynamic_mxfp8_quant.py"
+from task_runtime import candidate_relative_path
+SOURCE_FILE = candidate_relative_path()
 ENTRY = "dynamic_mxfp8_quant"
 KERNEL = "_dynamic_mxfp8_quant_kernel"
 QUANT_BLOCK_SIZE = 32
@@ -57,6 +59,7 @@ def _load_source():
     entry = os.path.join(_HERE, SOURCE_FILE)
     spec = importlib.util.spec_from_file_location("dynamic_mxfp8_quant_src", entry)
     mod = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = mod
     spec.loader.exec_module(mod)
     return mod
 
@@ -95,6 +98,54 @@ def run_compile():
     return True
 
 
+def _checked_mx_pair(pair, x):
+    import torch
+    if not isinstance(pair, (tuple, list)) or len(pair) != 2:
+        raise AssertionError("MXFP8 must return values and E8M0 scales")
+    expected_shapes = (tuple(x.shape), (*x.shape[:-1], x.shape[-1] // QUANT_BLOCK_SIZE))
+    for value, shape, dtype in zip(pair, expected_shapes, (torch.float8_e4m3fn, torch.uint8)):
+        if not isinstance(value, torch.Tensor) or tuple(value.shape) != shape or value.dtype != dtype or value.device != x.device:
+            raise AssertionError("MXFP8 output shape/dtype/device contract mismatch")
+    if not bool(torch.isfinite(pair[0].float()).all()) or bool((pair[1] == 255).any()):
+        raise AssertionError("Non-finite MXFP8 values or E8M0 scales")
+    return pair
+
+
+def _mx_reference(x):
+    y, scale = _torch_mxfp8_quant_from_fp32(x.reshape(-1, x.shape[-1]).float())
+    return y.reshape(x.shape), scale.reshape(*x.shape[:-1], x.shape[-1] // QUANT_BLOCK_SIZE)
+
+
+def _compare_mx_pair(actual, expected, x):
+    import torch
+    _checked_mx_pair(actual, x)
+    _checked_mx_pair(expected, x)
+    difference = (actual[0].view(torch.uint8).int() - expected[0].view(torch.uint8).int()).abs().max().item()
+    if difference > 1 or not torch.equal(actual[1], expected[1]):
+        raise AssertionError("Numerical mismatch: MXFP8 one-byte-step values or exact E8M0 scales")
+
+
+def _verify_quant_timed(timed, x, originals, expected):
+    import torch
+    if not timed.bound:
+        raise RuntimeError("Benchmark did not expose measured quantizer outputs")
+    require_unchanged((x,), originals)
+    _compare_mx_pair(timed.outputs, expected, x)
+    try:
+        x.neg_().mul_(0.5)
+        changed = (x.clone(),)
+        reference = _mx_reference(x)
+        timed.outputs[0].view(torch.uint8).fill_(127)
+        timed.outputs[1].fill_(255)
+        result = timed.rerun()
+        require_unchanged((x,), changed)
+        _compare_mx_pair(result, reference, x)
+    finally:
+        x.copy_(originals[0])
+    return {"timed_output_correctness": "PASS", "replay_correctness": "PASS",
+            "replay_inputs_perturbed": True, "replay_output_poisoned": True}
+
+
 def run_correctness(verbose=True):
     import torch
 
@@ -106,10 +157,13 @@ def run_correctness(verbose=True):
         try:
             torch.manual_seed(SEED)
             x = torch.randn(sh, dtype=torch.bfloat16, device="cuda") * 4.0
+            originals = (x.clone(),)
             K = sh[-1]
             x_flat = x.reshape(-1, K).to(torch.float32)
             y_ref, s_ref = _torch_mxfp8_quant_from_fp32(x_flat)
             y_kern, s_kern = mod.dynamic_mxfp8_quant(x)
+            require_unchanged((x,), originals)
+            _checked_mx_pair((y_kern, s_kern), x)
             torch.cuda.synchronize()
             y_kern_flat = y_kern.reshape(-1, K)
             s_kern_flat = s_kern.reshape(-1, K // QUANT_BLOCK_SIZE)
@@ -152,15 +206,19 @@ def run_benchmark(verbose=True):
         sh = shape["shape"]
         torch.manual_seed(SEED)
         x = torch.randn(sh, dtype=torch.bfloat16, device="cuda")
+        originals = (x.clone(),)
+        expected = _mx_reference(x)
         fn = lambda: mod.dynamic_mxfp8_quant(x)  # noqa: E731
         fn()
         torch.cuda.synchronize()
         for _ in range(WARMUP):
             fn()
         torch.cuda.synchronize()
+        timed = TimedRun()
         ms, bench_meta = benchmark_cuda_graph_or_events(
-            fn, warmup=0, repetition=ITERS
+            fn, warmup=0, repetition=ITERS, timed_run=timed
         )
+        bench_meta.update(_verify_quant_timed(timed, x, originals, expected))
         latencies.append(ms)
         report.append(
             {

@@ -1,0 +1,128 @@
+{
+  "test_shapes": [
+    [
+      2,
+      32,
+      4
+    ],
+    [
+      4,
+      128,
+      16
+    ],
+    [
+      2,
+      512,
+      32
+    ],
+    [
+      8,
+      1024,
+      64
+    ],
+    [
+      2,
+      2048,
+      128
+    ]
+  ],
+  "candidate_files": [
+    "src/furthest_point_sample_cuda.hip"
+  ],
+  "cases": [
+    {
+      "test_case_id": "shape_0_fps_coords",
+      "params": {
+        "B": 2,
+        "N": 32,
+        "npoints": 4,
+        "input_type": "coords"
+      }
+    },
+    {
+      "test_case_id": "shape_0_fps_dist",
+      "params": {
+        "B": 2,
+        "N": 32,
+        "npoints": 4,
+        "input_type": "distance_matrix"
+      }
+    },
+    {
+      "test_case_id": "shape_1_fps_coords",
+      "params": {
+        "B": 4,
+        "N": 128,
+        "npoints": 16,
+        "input_type": "coords"
+      }
+    },
+    {
+      "test_case_id": "shape_1_fps_dist",
+      "params": {
+        "B": 4,
+        "N": 128,
+        "npoints": 16,
+        "input_type": "distance_matrix"
+      }
+    },
+    {
+      "test_case_id": "shape_2_fps_coords",
+      "params": {
+        "B": 2,
+        "N": 512,
+        "npoints": 32,
+        "input_type": "coords"
+      }
+    },
+    {
+      "test_case_id": "shape_2_fps_dist",
+      "params": {
+        "B": 2,
+        "N": 512,
+        "npoints": 32,
+        "input_type": "distance_matrix"
+      }
+    },
+    {
+      "test_case_id": "shape_3_fps_coords",
+      "params": {
+        "B": 8,
+        "N": 1024,
+        "npoints": 64,
+        "input_type": "coords"
+      }
+    },
+    {
+      "test_case_id": "shape_3_fps_dist",
+      "params": {
+        "B": 8,
+        "N": 1024,
+        "npoints": 64,
+        "input_type": "distance_matrix"
+      }
+    },
+    {
+      "test_case_id": "shape_4_fps_coords",
+      "params": {
+        "B": 2,
+        "N": 2048,
+        "npoints": 128,
+        "input_type": "coords"
+      }
+    },
+    {
+      "test_case_id": "shape_4_fps_dist",
+      "params": {
+        "B": 2,
+        "N": 2048,
+        "npoints": 128,
+        "input_type": "distance_matrix"
+      }
+    }
+  ],
+  "graph_policy": {
+    "enabled": true,
+    "reason": null
+  }
+}

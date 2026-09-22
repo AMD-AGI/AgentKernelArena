@@ -1,18 +1,28 @@
-source_file_path:
-- fav3_sage_mxfp4.py
-target_kernel_functions:
-- fav3_sage_mxfp4_wrapper
-- sage_fwd_mxfp4
-- sage_quant_mxfp4
-compile_command:
-- python3 test_kernel_harness.py --compile
-correctness_command:
-- python3 test_kernel_harness.py --correctness
-performance_command:
-- python3 test_kernel_harness.py --full-benchmark
-task_type: triton2flydsl
+schema_version: 2
+description: Translate the declared fav3_sage_mxfp4 implementation from Triton to FlyDSL while preserving
+  all operator and evaluation contracts.
+instructions:
+- README.md
+candidate:
+  language: flydsl
+  initial_state: implemented
+  initial_language: triton
+  editable:
+  - fav3_sage_mxfp4.py
+  entrypoints:
+  - file: fav3_sage_mxfp4.py
+    kind: function
+    symbol: fav3_sage_mxfp4_wrapper
+baseline:
+  kind: initial_candidate
+  language: triton
+  correctness_policy: required
+evaluation:
+  runner:
+  - python3
+  - scripts/evaluate.py
+  workloads: cases.json
+  timeout_s: 3600
 platform_support:
   required_arch: gfx950
   status: active
-  skip_reason: null
-task_result_template: null

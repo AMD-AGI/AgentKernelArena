@@ -14,13 +14,14 @@ from __future__ import annotations
 
 import ast
 import hashlib
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable
 
 import yaml
 
 from .perf_helper_materialization import configured_performance_entrypoints
+from .task_spec import EditScope, TaskSpec, resolve_task_path
 
 
 _HARNESS_DIRS = {
@@ -59,6 +60,295 @@ class WorkspaceSnapshot:
 
     root: Path
     digests: dict[str, str]
+    task_spec: TaskSpec | None = None
+    initial_symbols: dict[str, frozenset[str]] = field(default_factory=dict)
+
+
+_V2_OUTPUT_NAMES = {
+    "task_result.yaml", "validation_report.yaml", ".validation_complete",
+    "baseline_perf.yaml", "optimized_perf.yaml",
+}
+_V2_RUNTIME_DIRS = _IGNORED_RUNTIME_DIRS | {"build", "logs", "perf", ".pytest_cache"}
+
+
+def _v2_files(root: Path) -> Iterable[Path]:
+    for path in root.rglob("*"):
+        relative = path.relative_to(root)
+        if (path.is_file() and not set(relative.parts[:-1]) & _V2_RUNTIME_DIRS
+                and path.name not in _V2_OUTPUT_NAMES):
+            yield path
+
+
+def _v2_protected_paths(root: Path, spec: TaskSpec) -> set[str]:
+    protected = set()
+    for path in _v2_files(root):
+        relative = path.relative_to(root)
+        edits = [edit for edit in spec.candidate.editable if edit.contains(relative.as_posix())]
+        if (not edits or edits[0].scope == "symbols" or _is_protected_path(relative)):
+            protected.add(relative.as_posix())
+    return protected
+
+
+def _top_level_names(path: Path) -> frozenset[str]:
+    names = set()
+    for node in ast.parse(path.read_text(encoding="utf-8")).body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            names.add(node.name)
+        elif isinstance(node, (ast.Import, ast.ImportFrom)):
+            names.update(alias.asname or alias.name.split(".")[0] for alias in node.names)
+        elif isinstance(node, (ast.Assign, ast.AnnAssign)):
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+            names.update(item.id for target in targets for item in ast.walk(target) if isinstance(item, ast.Name))
+    return frozenset(names)
+
+
+_COMPILER_DECORATORS = frozenset({"triton.jit", "triton.autotune", "triton.heuristics"})
+_TEST_LIFECYCLE_NAMES = frozenset({
+    "setup_module", "teardown_module", "setup_function", "teardown_function",
+    "setup_class", "teardown_class", "setup_method", "teardown_method",
+})
+_MODULE_INTROSPECTION_HOOKS = frozenset({"__getattr__", "__dir__"})
+
+
+def _import_bindings(tree: ast.Module) -> dict[str, str]:
+    bindings = {}
+    for node in tree.body:
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                bindings[alias.asname or alias.name.split(".")[0]] = (
+                    alias.name if alias.asname else alias.name.split(".")[0])
+        elif isinstance(node, ast.ImportFrom) and node.module and not node.level:
+            for alias in node.names:
+                if alias.name != "*":
+                    bindings[alias.asname or alias.name] = node.module + "." + alias.name
+    return bindings
+
+
+def _qualified_import(node: ast.AST, bindings: dict[str, str]) -> str | None:
+    if isinstance(node, ast.Name):
+        return bindings.get(node.id)
+    if isinstance(node, ast.Attribute):
+        parent = _qualified_import(node.value, bindings)
+        return parent + "." + node.attr if parent else None
+    return None
+
+
+def _passive_expression(node: ast.AST | None) -> bool:
+    # Defaults, annotations and class attributes execute while definitions are
+    # imported. They must not register fixtures through calls/walrus expressions.
+    # Function bodies remain candidate implementation, not a Python sandbox.
+    return node is None or not any(isinstance(item, (
+        ast.Call, ast.NamedExpr, ast.Await, ast.Yield, ast.YieldFrom,
+        ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp,
+    )) for item in ast.walk(node))
+
+
+def _definition_calls(node: ast.AST):
+    if isinstance(node, ast.Lambda):
+        # Lambda bodies are deferred implementation; their defaults are not.
+        for value in [*node.args.defaults, *node.args.kw_defaults]:
+            if value is not None:
+                yield from _definition_calls(value)
+        return
+    if isinstance(node, ast.Call):
+        yield node
+    for child in ast.iter_child_nodes(node):
+        yield from _definition_calls(child)
+
+
+def _config_factory_body_allowed(node: ast.FunctionDef, bindings: dict[str, str],
+                                 protected_functions: set[str], bound_names: set[str]) -> bool:
+    """Allow editable configuration constructors, not arbitrary import-time code.
+
+    Existing ROCmBench contracts explicitly let the agent tune these helpers.
+    Their bodies may build configuration data and branch on protected predicates;
+    they cannot acquire the arbitrary-call privilege of protected functions.
+    """
+    if node.decorator_list:
+        return False
+    locals_ = {item.id for item in ast.walk(node) if isinstance(item, ast.Name)
+               and isinstance(item.ctx, ast.Store)}
+    locals_.update(arg.arg for arg in [*node.args.posonlyargs, *node.args.args, *node.args.kwonlyargs])
+    locals_.update(arg.arg for arg in [node.args.vararg, node.args.kwarg] if arg)
+    for statement in node.body:
+        for item in ast.walk(statement):
+            if isinstance(item, ast.stmt) and not isinstance(item, (
+                    ast.Return, ast.Assign, ast.AnnAssign, ast.If, ast.Pass)):
+                if not (isinstance(item, ast.Expr) and isinstance(item.value, ast.Constant)):
+                    return False
+            if isinstance(item, ast.Assign) and not all(isinstance(t, ast.Name) for t in item.targets):
+                return False
+            if isinstance(item, ast.AnnAssign) and not isinstance(item.target, ast.Name):
+                return False
+            if isinstance(item, (ast.NamedExpr, ast.Await, ast.Yield, ast.YieldFrom)):
+                return False
+        for call in _definition_calls(statement):
+            unshadowed = {key: value for key, value in bindings.items() if key not in locals_}
+            imported = _qualified_import(call.func, unshadowed)
+            protected = (isinstance(call.func, ast.Name)
+                         and call.func.id in protected_functions - locals_)
+            builtin_range = (isinstance(call.func, ast.Name) and call.func.id == "range"
+                             and "range" not in bound_names | locals_)
+            if not (protected or builtin_range or imported in {
+                    "triton.Config", "triton.cdiv", "triton.next_power_of_2", "itertools.product"}):
+                return False
+    return True
+
+
+def _validate_editable_definition(node: ast.AST, bindings: dict[str, str], *,
+                                  initial_names: frozenset[str], definition_names: set[str],
+                                  configuration_factories: set[str],
+                                  new_helper: bool, method: bool = False) -> None:
+    name = node.name
+    if new_helper and not method and name in _MODULE_INTROSPECTION_HOOKS:
+        # Pytest inspects modules through getattr/dir during collection. These
+        # bodies therefore run automatically even without a fixture decorator.
+        # Ordinary instance methods with the same names remain implementation.
+        raise ValueError(f"New module helper {name!r} is an automatic introspection hook")
+    if new_helper and (name.startswith(("test", "Test", "pytest_"))
+                       or name in _TEST_LIFECYCLE_NAMES):
+        raise ValueError(f"New helper {name!r} is a test or test lifecycle hook")
+    for decorator in node.decorator_list:
+        target = decorator.func if isinstance(decorator, ast.Call) else decorator
+        qualified = _qualified_import(target, bindings)
+        plain_method = (method and isinstance(decorator, ast.Name)
+                        and decorator.id in {"staticmethod", "classmethod", "property"}
+                        and decorator.id not in bindings
+                        and decorator.id not in initial_names | definition_names)
+        if qualified not in _COMPILER_DECORATORS and not plain_method:
+            raise ValueError(f"Unsupported decorator on editable definition {name!r}: "
+                             f"{ast.unparse(decorator)}; only compiler decorators are allowed")
+        # A compiler wrapper must not hide a fixture call in its arguments.
+        if any((_qualified_import(item, bindings) or "").split(".")[0]
+               in {"pytest", "unittest", "pluggy"} for item in ast.walk(decorator)):
+            raise ValueError(f"Test environment reference in decorator on {name!r}")
+        if isinstance(decorator, ast.Call):
+            for value in [*decorator.args, *[kw.value for kw in decorator.keywords]]:
+                if any(isinstance(item, ast.NamedExpr) for item in ast.walk(value)):
+                    raise ValueError(f"Decorator on {name!r} contains a binding expression")
+                for call in _definition_calls(value):
+                    imported = _qualified_import(call.func, bindings)
+                    config_factory = (isinstance(call.func, ast.Name)
+                                      and call.func.id in configuration_factories)
+                    builtin_range = (isinstance(call.func, ast.Name) and call.func.id == "range"
+                                     and "range" not in initial_names | definition_names)
+                    if not (imported in {"triton.Config", "triton.cdiv", "triton.next_power_of_2"}
+                            or config_factory or builtin_range):
+                        raise ValueError(f"Unapproved definition-time factory in decorator on {name!r}: "
+                                         f"{ast.unparse(call.func)}")
+    if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        args = node.args
+        expressions = [*args.defaults, *args.kw_defaults, node.returns]
+        expressions.extend(arg.annotation for arg in [
+            *args.posonlyargs, *args.args, *args.kwonlyargs,
+            *([args.vararg] if args.vararg else []), *([args.kwarg] if args.kwarg else []),
+        ])
+        if not all(_passive_expression(expr) for expr in expressions):
+            raise ValueError(f"Editable definition {name!r} has executable defaults or annotations")
+    else:
+        # A new class body executes at import time too. Plain data/method helper
+        # classes remain usable; metaclasses, executable bodies and test classes
+        # do not become an unguarded extension of the test environment.
+        if node.keywords or any(not isinstance(base, ast.Name) or base.id != "object"
+                                or "object" in initial_names | definition_names
+                                for base in node.bases):
+            raise ValueError(f"Editable helper class {name!r} has executable bases/metaclass")
+        local_names = {child.name for child in node.body
+                       if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))}
+        for child in node.body:
+            targets = (child.targets if isinstance(child, ast.Assign) else
+                       [child.target] if isinstance(child, ast.AnnAssign) else [])
+            local_names.update(target.id for target in targets if isinstance(target, ast.Name))
+        local_bindings = {key: value for key, value in bindings.items() if key not in local_names}
+        for child in node.body:
+            if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                _validate_editable_definition(child, local_bindings, initial_names=initial_names,
+                                              definition_names=definition_names | local_names,
+                                              configuration_factories=configuration_factories - local_names,
+                                              new_helper=True, method=True)
+            elif isinstance(child, ast.Pass):
+                continue
+            elif isinstance(child, ast.Expr) and isinstance(child.value, ast.Constant):
+                continue
+            elif (isinstance(child, ast.Assign) and all(isinstance(t, ast.Name) for t in child.targets)
+                  and _passive_expression(child.value)):
+                continue
+            elif (isinstance(child, ast.AnnAssign) and isinstance(child.target, ast.Name)
+                  and _passive_expression(child.value) and _passive_expression(child.annotation)):
+                continue
+            else:
+                raise ValueError(f"Editable helper class {name!r} has an executable class body")
+
+
+def _v2_symbol_digest(path: Path, edit: EditScope, initial_names: frozenset[str],
+                      entrypoint_symbols: frozenset[str] = frozenset()) -> str:
+    try:
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, SyntaxError):
+        return "invalid-python:" + _sha256(path)
+    kept = []
+    bindings = _import_bindings(tree)
+    definition_names = {node.name for node in tree.body
+                        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))}
+    definitions = [node for node in tree.body
+                   if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))]
+    for name in definition_names:
+        if (name in edit.symbols or (edit.allow_new_helpers and name not in initial_names)):
+            if sum(node.name == name for node in definitions) != 1:
+                raise RuntimeError(f"Protected test/harness policy rejected {path.name}: "
+                                   f"Multiple definitions of editable binding {name!r}")
+    functions = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
+    # These definitions remain in the digest: an initial global alias, class,
+    # editable target or newly introduced helper is not a protected factory.
+    protected_functions = (set(functions) & initial_names) - set(edit.symbols)
+    configuration_factories = set(protected_functions)
+    for name in (set(functions) & initial_names & set(edit.symbols)) - entrypoint_symbols:
+        if _config_factory_body_allowed(functions[name], bindings, protected_functions,
+                                        set(initial_names) | definition_names):
+            configuration_factories.add(name)
+    for node in tree.body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            new_helper = node.name not in initial_names
+            if node.name in edit.symbols or (edit.allow_new_helpers and new_helper):
+                try:
+                    _validate_editable_definition(node, bindings, initial_names=initial_names,
+                                                  definition_names=definition_names,
+                                                  configuration_factories=configuration_factories,
+                                                  new_helper=new_helper)
+                except ValueError as exc:
+                    raise RuntimeError(f"Protected test/harness policy rejected {path.name}: {exc}") from exc
+                continue
+        kept.append(node)
+    tree.body = kept
+    return hashlib.sha256(ast.dump(tree, include_attributes=False).encode("utf-8")).hexdigest()
+
+
+def _v2_digests(root: Path, spec: TaskSpec, paths: Iterable[str],
+                 initial_symbols: dict[str, frozenset[str]]) -> dict[str, str]:
+    scopes = {edit.path: edit for edit in spec.candidate.editable if edit.scope == "symbols"}
+    selected = set(paths)
+    # Keep the existing policy for newly created files matching protected
+    # patterns. Use the original TaskSpec, never an agent-modified config.
+    selected.update(p.relative_to(root).as_posix() for p in _v2_files(root)
+                    if _is_protected_path(p.relative_to(root)))
+    result = {}
+    for relative in sorted(selected):
+        try:
+            path = resolve_task_path(root, relative)
+        except ValueError as exc:
+            raise RuntimeError(f"Protected task path escaped workspace: {relative}") from exc
+        if not path.is_file():
+            continue
+        if relative in scopes:
+            if path.suffix != ".py":
+                raise ValueError(f"Symbol-scoped protection currently requires Python: {relative}")
+            entrypoints = frozenset(entry.symbol for entry in spec.candidate.entrypoints
+                                    if entry.file == relative and entry.symbol)
+            result[relative] = _v2_symbol_digest(path, scopes[relative],
+                                                initial_symbols.get(relative, frozenset()), entrypoints)
+        else:
+            result[relative] = _sha256(path)
+    return result
 
 
 def _is_protected_path(rel: Path) -> bool:
@@ -290,16 +580,27 @@ def _protected_digests(root: Path, extra_paths: Iterable[str] = ()) -> dict[str,
     return digests
 
 
-def describe_workspace_harness(root: Path) -> dict[str, object]:
+def describe_workspace_harness(
+    root: Path, *, snapshot: WorkspaceSnapshot | None = None
+) -> dict[str, object]:
     """Return trusted, non-secret facts about the active harness guard.
 
     Task validators run inside the materialized task workspace and cannot inspect
     the framework source tree that applies the guard.  Expose the effective path
-    boundary so validation prompts do not have to infer it from task-local files
-    or look for a guard manifest that intentionally does not live in the task.
+    boundary and digest semantics so validators need not infer a whole-file lock
+    from a digest. Sessions supply their original snapshot: candidate edits must
+    not redefine this description through a changed config or new helper names.
     """
 
     root = Path(root)
+    if snapshot is not None:
+        if snapshot.root.resolve() != root.resolve():
+            raise ValueError("Harness snapshot belongs to a different workspace")
+        if snapshot.task_spec is not None:
+            return _describe_v2_snapshot(snapshot)
+    config = _task_config(root)
+    if config.get("schema_version") == 2:
+        return _describe_v2_snapshot(snapshot_workspace_harness(root))
     editable_entrypoints = _editable_entrypoint_targets(root)
     return {
         "enforced_during_optimization": True,
@@ -315,8 +616,36 @@ def describe_workspace_harness(root: Path) -> dict[str, object]:
     }
 
 
+def _describe_v2_snapshot(snapshot: WorkspaceSnapshot) -> dict[str, object]:
+    """Describe existing digest selection; do not recompute or change enforcement."""
+    assert snapshot.task_spec is not None
+    scopes = {edit.path: edit for edit in snapshot.task_spec.candidate.editable
+              if edit.scope == "symbols"}
+    policies = {}
+    for path, digest in sorted(snapshot.digests.items()):
+        edit = scopes.get(path)
+        policies[path] = {
+            "digest": digest,
+            "digest_mode": ("sha256_python_ast_excluding_editable_symbols" if edit
+                            else "sha256_bytes"),
+            "editable_symbols": list(edit.symbols) if edit else [],
+            "allow_new_helpers": edit.allow_new_helpers if edit else False,
+            "initial_top_level_names": sorted(snapshot.initial_symbols.get(path, ())),
+            "definition_policy": "compiler_decorators_no_test_hooks_v1" if edit else "byte_protected",
+            "allowed_compiler_decorators": sorted(_COMPILER_DECORATORS) if edit else [],
+        }
+    return {
+        "enforced_during_optimization": True,
+        "protected_paths": sorted(snapshot.digests),
+        "editable_entrypoint_targets": {
+            path: list(edit.symbols) for path, edit in scopes.items()
+        },
+        "protected_path_policies": policies,
+    }
+
+
 def snapshot_workspace_harness(
-    root: Path, *, task_root: Path | None = None
+    root: Path, *, task_root: Path | None = None, task_spec: TaskSpec | None = None
 ) -> WorkspaceSnapshot:
     """Capture harness digests and, when supplied, immutable task-package inputs.
 
@@ -325,6 +654,24 @@ def snapshot_workspace_harness(
     """
 
     root = Path(root)
+    config = _task_config(root)
+    if task_spec is not None or config.get("schema_version") == 2:
+        spec = task_spec or TaskSpec.from_mapping(config, task_id="workspace")
+        protected = _v2_protected_paths(root, spec)
+        initial_symbols = {}
+        for edit in spec.candidate.editable:
+            if edit.scope == "symbols":
+                path = resolve_task_path(root, edit.path, must_exist=True)
+                initial_symbols[edit.path] = _top_level_names(path)
+        if task_root is not None:
+            # Missing shipped inputs cannot disappear from the snapshot merely
+            # because a preparation step deleted them.
+            protected.update(_v2_protected_paths(Path(task_root), spec))
+        missing = sorted(relative for relative in protected if not (root / relative).is_file())
+        if missing:
+            raise RuntimeError(f"Task inputs missing before agent execution: {missing}")
+        digests = _v2_digests(root, spec, protected, initial_symbols)
+        return WorkspaceSnapshot(root, digests, spec, initial_symbols)
     task_inputs = (
         _task_input_paths(root, Path(task_root)) if task_root is not None else set()
     )
@@ -337,7 +684,7 @@ def snapshot_workspace_harness(
     return WorkspaceSnapshot(root=root, digests=digests)
 
 
-def verify_workspace_harness(snapshot: WorkspaceSnapshot, logger=None) -> None:
+def verify_workspace_harness(snapshot: WorkspaceSnapshot, logger=None, *, discard_added: bool = True) -> None:
     """Reject tampering with protected harness files; discard ones the agent added.
 
     Editing or deleting a harness file the task shipped is harness hacking and the score
@@ -348,6 +695,8 @@ def verify_workspace_harness(snapshot: WorkspaceSnapshot, logger=None) -> None:
     a scratch file whose name happened to end in ``_test.py``.
 
     Deletions are always logged: a silent removal would be worse than a hard failure.
+    Read-only callers use ``discard_added=False`` to reject added protected files
+    without deleting them. Existing protected inputs are verified in both modes.
     """
 
     def _scan() -> dict[str, str]:
@@ -355,12 +704,16 @@ def verify_workspace_harness(snapshot: WorkspaceSnapshot, logger=None) -> None:
         # files. A raw SHA here would reject legitimate target-function edits.
         # Recheck the original paths even when their names do not match a
         # harness pattern (e.g. session_cases.json or a reference module).
+        if snapshot.task_spec is not None:
+            return _v2_digests(snapshot.root, snapshot.task_spec, snapshot.digests, snapshot.initial_symbols)
         return _protected_digests(snapshot.root, snapshot.digests)
 
     before = snapshot.digests
     current = _scan()
 
     discarded = sorted(rel for rel in current if rel not in before)
+    if discarded and not discard_added:
+        raise RuntimeError(f"Added protected harness files require review: {discarded}")
     for rel in discarded:
         (snapshot.root / rel).unlink()
         message = (

@@ -1,31 +1,33 @@
-task_type: flydsl2flydsl
-source_file_path:
+schema_version: 2
+description: "Optimize the FlyDSL partitioned paged-attention decode kernel for sliding-window\nattention\
+  \ on AMD CDNA GPUs.\nYou MUST keep the kernel in FlyDSL \u2014 do NOT rewrite it in HIP, CUDA, or Triton.\n\
+  You MUST NOT add FastLauncher, ctypes dispatch bypass, _call_state_cache extraction,\nor any wrapper\
+  \ that bypasses JitFunction.__call__. Only optimize the GPU kernel\ncomputation itself."
+instructions:
+- README.md
+candidate:
+  language: flydsl
+  initial_state: implemented
+  initial_language: flydsl
+  editable:
   - kernel.py
-harness_path: test_kernel_harness.py
-compile_command:
-  - python3 -c "from kernel import compile_pa_decode_sw; compile_pa_decode_sw(256); print('compile ok')"
-correctness_command:
-  - python3 test_kernel_harness.py --correctness
-performance_command:
-  - python3 test_kernel_harness.py --full-benchmark
-target_kernel_functions:
-  - compile_pa_decode_sw
-  - compile_pa_decode_sw_reduce
-source_origin:
-  repo: https://github.com/ROCm/FlyDSL
-  path: kernels/pa_decode_swa.py
-  commit: 28a18d328b4882c999864b2df2f8f9fe3fcc8b47
-  date: 2026-06-01  # v0.2.0 (28a18d3)
-prompt:
-  instructions: |
-    Optimize the FlyDSL partitioned paged-attention decode kernel for sliding-window
-    attention on AMD CDNA GPUs.
-    You MUST keep the kernel in FlyDSL — do NOT rewrite it in HIP, CUDA, or Triton.
-    You MUST NOT add FastLauncher, ctypes dispatch bypass, _call_state_cache extraction,
-    or any wrapper that bypasses JitFunction.__call__. Only optimize the GPU kernel
-    computation itself.
-
+  entrypoints:
+  - file: kernel.py
+    kind: builder
+    symbol: compile_pa_decode_sw
+  - file: kernel.py
+    kind: builder
+    symbol: compile_pa_decode_sw_reduce
+baseline:
+  kind: initial_candidate
+  language: flydsl
+  correctness_policy: required
+evaluation:
+  runner:
+  - python3
+  - scripts/evaluate.py
+  workloads: cases.json
+  timeout_s: 3600
 platform_support:
-  required_arch: gfx942
-  runnable_on_gfx942: true
+  required_arch: [gfx942, gfx950]
   status: active

@@ -1,0 +1,2020 @@
+{
+  "version": 1,
+  "source": "triton_multreduce_matmul_kernel.py",
+  "kernel_symbols": [
+    "triton_matmul_kernel",
+    "triton_multreduce_matmul_kernel"
+  ],
+  "cases": [
+    {
+      "test_case_id": "test_matmul/4ba9823e3c03567d4e3f",
+      "params": {
+        "function": "test_matmul",
+        "arguments": {
+          "use_bias": false,
+          "M": 1,
+          "N": 8192,
+          "K": 28672
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_matmul/d116f4f6c4dde29d7c9a",
+      "params": {
+        "function": "test_matmul",
+        "arguments": {
+          "use_bias": false,
+          "M": 1,
+          "N": 6144,
+          "K": 6144
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_matmul/7617c6947ad0ce334cf9",
+      "params": {
+        "function": "test_matmul",
+        "arguments": {
+          "use_bias": false,
+          "M": 1,
+          "N": 4096,
+          "K": 4096
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_matmul/40b46d560fba97bc738f",
+      "params": {
+        "function": "test_matmul",
+        "arguments": {
+          "use_bias": false,
+          "M": 2,
+          "N": 16384,
+          "K": 16384
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_matmul/17eb152765b4cf11a047",
+      "params": {
+        "function": "test_matmul",
+        "arguments": {
+          "use_bias": false,
+          "M": 1,
+          "N": 4096,
+          "K": 3078
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_matmul/2e1d24d35fab5ef7ab6e",
+      "params": {
+        "function": "test_matmul",
+        "arguments": {
+          "use_bias": false,
+          "M": 1,
+          "N": 23,
+          "K": 31
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_matmul/56e593e7d796a80e1aa5",
+      "params": {
+        "function": "test_matmul",
+        "arguments": {
+          "use_bias": false,
+          "M": 1,
+          "N": 23,
+          "K": 128
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_matmul/91a874a01a516e3cf62c",
+      "params": {
+        "function": "test_matmul",
+        "arguments": {
+          "use_bias": true,
+          "M": 1,
+          "N": 8192,
+          "K": 28672
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_matmul/7b9e4414c7c4086d07bd",
+      "params": {
+        "function": "test_matmul",
+        "arguments": {
+          "use_bias": true,
+          "M": 1,
+          "N": 6144,
+          "K": 6144
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_matmul/183eadc8c804dca3293e",
+      "params": {
+        "function": "test_matmul",
+        "arguments": {
+          "use_bias": true,
+          "M": 1,
+          "N": 4096,
+          "K": 4096
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_matmul/67f639ef99a80bc9b1b8",
+      "params": {
+        "function": "test_matmul",
+        "arguments": {
+          "use_bias": true,
+          "M": 2,
+          "N": 16384,
+          "K": 16384
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_matmul/a201096c6f0ea1d69d02",
+      "params": {
+        "function": "test_matmul",
+        "arguments": {
+          "use_bias": true,
+          "M": 1,
+          "N": 4096,
+          "K": 3078
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_matmul/6fc6758e9ad85c7287c8",
+      "params": {
+        "function": "test_matmul",
+        "arguments": {
+          "use_bias": true,
+          "M": 1,
+          "N": 23,
+          "K": 31
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_matmul/ccd445f45954ce1314fd",
+      "params": {
+        "function": "test_matmul",
+        "arguments": {
+          "use_bias": true,
+          "M": 1,
+          "N": 23,
+          "K": 128
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/16fe0d6902f255b22a34",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "m_n_k_shape": [
+            512,
+            512,
+            512
+          ],
+          "block_config": [
+            32,
+            32,
+            32
+          ],
+          "use_bias_flag": false,
+          "dtype_str": "fp16",
+          "num_stages_val": 1,
+          "num_warps_val": 4
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/11882c1984451627e07a",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "m_n_k_shape": [
+            512,
+            512,
+            512
+          ],
+          "block_config": [
+            16,
+            64,
+            32
+          ],
+          "use_bias_flag": false,
+          "dtype_str": "fp16",
+          "num_stages_val": 1,
+          "num_warps_val": 4
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/8e71605a6fd91dbcb1e5",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "m_n_k_shape": [
+            512,
+            512,
+            512
+          ],
+          "block_config": [
+            64,
+            16,
+            32
+          ],
+          "use_bias_flag": false,
+          "dtype_str": "fp16",
+          "num_stages_val": 1,
+          "num_warps_val": 4
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/bb14c76038e762655f4c",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "m_n_k_shape": [
+            512,
+            512,
+            512
+          ],
+          "block_config": [
+            32,
+            64,
+            32
+          ],
+          "use_bias_flag": false,
+          "dtype_str": "fp16",
+          "num_stages_val": 1,
+          "num_warps_val": 4
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/a325dd64652b289b2716",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "m_n_k_shape": [
+            512,
+            512,
+            512
+          ],
+          "block_config": [
+            64,
+            32,
+            32
+          ],
+          "use_bias_flag": false,
+          "dtype_str": "fp16",
+          "num_stages_val": 1,
+          "num_warps_val": 4
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/1211b3c98e529976e72e",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "m_n_k_shape": [
+            512,
+            512,
+            512
+          ],
+          "block_config": [
+            16,
+            128,
+            32
+          ],
+          "use_bias_flag": false,
+          "dtype_str": "fp16",
+          "num_stages_val": 1,
+          "num_warps_val": 4
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/972f914e3b3acbca65f4",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "m_n_k_shape": [
+            512,
+            512,
+            512
+          ],
+          "block_config": [
+            128,
+            16,
+            32
+          ],
+          "use_bias_flag": false,
+          "dtype_str": "fp16",
+          "num_stages_val": 1,
+          "num_warps_val": 4
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/e6bcbc768732dc279041",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "m_n_k_shape": [
+            512,
+            512,
+            512
+          ],
+          "block_config": [
+            64,
+            64,
+            32
+          ],
+          "use_bias_flag": false,
+          "dtype_str": "fp16",
+          "num_stages_val": 1,
+          "num_warps_val": 4
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/abbad0bb1bac997d9d89",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "m_n_k_shape": [
+            512,
+            512,
+            512
+          ],
+          "block_config": [
+            32,
+            128,
+            32
+          ],
+          "use_bias_flag": false,
+          "dtype_str": "fp16",
+          "num_stages_val": 1,
+          "num_warps_val": 4
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/37740c46c50e95bbce40",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "m_n_k_shape": [
+            512,
+            512,
+            512
+          ],
+          "block_config": [
+            128,
+            32,
+            32
+          ],
+          "use_bias_flag": false,
+          "dtype_str": "fp16",
+          "num_stages_val": 1,
+          "num_warps_val": 4
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/43df99a9812e96b12a49",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "m_n_k_shape": [
+            512,
+            512,
+            512
+          ],
+          "block_config": [
+            32,
+            32,
+            64
+          ],
+          "use_bias_flag": false,
+          "dtype_str": "fp16",
+          "num_stages_val": 1,
+          "num_warps_val": 4
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/4c7c987ac83924b47335",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "m_n_k_shape": [
+            512,
+            512,
+            512
+          ],
+          "block_config": [
+            16,
+            64,
+            64
+          ],
+          "use_bias_flag": false,
+          "dtype_str": "fp16",
+          "num_stages_val": 1,
+          "num_warps_val": 4
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/3e9c9719ac04840f2631",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "m_n_k_shape": [
+            512,
+            512,
+            512
+          ],
+          "block_config": [
+            64,
+            16,
+            64
+          ],
+          "use_bias_flag": false,
+          "dtype_str": "fp16",
+          "num_stages_val": 1,
+          "num_warps_val": 4
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/a2862c2358be4fb2ce3a",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "m_n_k_shape": [
+            512,
+            512,
+            512
+          ],
+          "block_config": [
+            32,
+            64,
+            64
+          ],
+          "use_bias_flag": false,
+          "dtype_str": "fp16",
+          "num_stages_val": 1,
+          "num_warps_val": 4
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/da9a4c6c767f4132fd5e",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "m_n_k_shape": [
+            512,
+            512,
+            512
+          ],
+          "block_config": [
+            64,
+            32,
+            64
+          ],
+          "use_bias_flag": false,
+          "dtype_str": "fp16",
+          "num_stages_val": 1,
+          "num_warps_val": 4
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/f3a27143af77a1ab9ede",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "m_n_k_shape": [
+            512,
+            512,
+            512
+          ],
+          "block_config": [
+            16,
+            128,
+            64
+          ],
+          "use_bias_flag": false,
+          "dtype_str": "fp16",
+          "num_stages_val": 1,
+          "num_warps_val": 4
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/a082d6c24be46afcf423",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "m_n_k_shape": [
+            512,
+            512,
+            512
+          ],
+          "block_config": [
+            128,
+            16,
+            64
+          ],
+          "use_bias_flag": false,
+          "dtype_str": "fp16",
+          "num_stages_val": 1,
+          "num_warps_val": 4
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/c0131d1cf663f80d29e7",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "m_n_k_shape": [
+            512,
+            512,
+            512
+          ],
+          "block_config": [
+            64,
+            64,
+            64
+          ],
+          "use_bias_flag": false,
+          "dtype_str": "fp16",
+          "num_stages_val": 1,
+          "num_warps_val": 4
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/66b0f44f5d1dfb0cb5ab",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "m_n_k_shape": [
+            512,
+            512,
+            512
+          ],
+          "block_config": [
+            32,
+            128,
+            64
+          ],
+          "use_bias_flag": false,
+          "dtype_str": "fp16",
+          "num_stages_val": 1,
+          "num_warps_val": 4
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/3993cb9530556c6ea778",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "m_n_k_shape": [
+            512,
+            512,
+            512
+          ],
+          "block_config": [
+            128,
+            32,
+            64
+          ],
+          "use_bias_flag": false,
+          "dtype_str": "fp16",
+          "num_stages_val": 1,
+          "num_warps_val": 4
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/40958e32bed5653cf4d7",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "m_n_k_shape": [
+            512,
+            512,
+            512
+          ],
+          "block_config": [
+            1,
+            64,
+            128
+          ],
+          "use_bias_flag": false,
+          "dtype_str": "fp16",
+          "num_stages_val": 1,
+          "num_warps_val": 4
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/432d374738e76fa605f8",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "m_n_k_shape": [
+            512,
+            512,
+            512
+          ],
+          "block_config": [
+            1,
+            64,
+            256
+          ],
+          "use_bias_flag": false,
+          "dtype_str": "fp16",
+          "num_stages_val": 1,
+          "num_warps_val": 4
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/32cb4133a7bc55fb0790",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "m_n_k_shape": [
+            1024,
+            1024,
+            512
+          ],
+          "block_config": [
+            32,
+            32,
+            32
+          ],
+          "use_bias_flag": false,
+          "dtype_str": "fp16",
+          "num_stages_val": 1,
+          "num_warps_val": 4
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/2fa793d7e580aad7b2f1",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "m_n_k_shape": [
+            1024,
+            1024,
+            512
+          ],
+          "block_config": [
+            16,
+            64,
+            32
+          ],
+          "use_bias_flag": false,
+          "dtype_str": "fp16",
+          "num_stages_val": 1,
+          "num_warps_val": 4
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/ce4df1614e9e5ff05bf7",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "m_n_k_shape": [
+            1024,
+            1024,
+            512
+          ],
+          "block_config": [
+            64,
+            16,
+            32
+          ],
+          "use_bias_flag": false,
+          "dtype_str": "fp16",
+          "num_stages_val": 1,
+          "num_warps_val": 4
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/7204ec19bcdae83a01c7",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "m_n_k_shape": [
+            1024,
+            1024,
+            512
+          ],
+          "block_config": [
+            32,
+            64,
+            32
+          ],
+          "use_bias_flag": false,
+          "dtype_str": "fp16",
+          "num_stages_val": 1,
+          "num_warps_val": 4
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/5c0e39eabb1b22775e21",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "m_n_k_shape": [
+            1024,
+            1024,
+            512
+          ],
+          "block_config": [
+            64,
+            32,
+            32
+          ],
+          "use_bias_flag": false,
+          "dtype_str": "fp16",
+          "num_stages_val": 1,
+          "num_warps_val": 4
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/f89fe92b58a5be367398",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "m_n_k_shape": [
+            1024,
+            1024,
+            512
+          ],
+          "block_config": [
+            16,
+            128,
+            32
+          ],
+          "use_bias_flag": false,
+          "dtype_str": "fp16",
+          "num_stages_val": 1,
+          "num_warps_val": 4
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/00cd7dac42fae6cb4ff9",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "m_n_k_shape": [
+            1024,
+            1024,
+            512
+          ],
+          "block_config": [
+            128,
+            16,
+            32
+          ],
+          "use_bias_flag": false,
+          "dtype_str": "fp16",
+          "num_stages_val": 1,
+          "num_warps_val": 4
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/d3cdc2777181e9516414",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "m_n_k_shape": [
+            1024,
+            1024,
+            512
+          ],
+          "block_config": [
+            64,
+            64,
+            32
+          ],
+          "use_bias_flag": false,
+          "dtype_str": "fp16",
+          "num_stages_val": 1,
+          "num_warps_val": 4
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/85b2cdfd371f2aa89d9e",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "m_n_k_shape": [
+            1024,
+            1024,
+            512
+          ],
+          "block_config": [
+            32,
+            128,
+            32
+          ],
+          "use_bias_flag": false,
+          "dtype_str": "fp16",
+          "num_stages_val": 1,
+          "num_warps_val": 4
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/47372fb6ac7c7a896a3d",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "m_n_k_shape": [
+            1024,
+            1024,
+            512
+          ],
+          "block_config": [
+            128,
+            32,
+            32
+          ],
+          "use_bias_flag": false,
+          "dtype_str": "fp16",
+          "num_stages_val": 1,
+          "num_warps_val": 4
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/0973dbc2082da8899450",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "m_n_k_shape": [
+            1024,
+            1024,
+            512
+          ],
+          "block_config": [
+            32,
+            32,
+            64
+          ],
+          "use_bias_flag": false,
+          "dtype_str": "fp16",
+          "num_stages_val": 1,
+          "num_warps_val": 4
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/66e67370ce8f24639e49",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "m_n_k_shape": [
+            1024,
+            1024,
+            512
+          ],
+          "block_config": [
+            16,
+            64,
+            64
+          ],
+          "use_bias_flag": false,
+          "dtype_str": "fp16",
+          "num_stages_val": 1,
+          "num_warps_val": 4
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/1ab3da3418429d814b34",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "m_n_k_shape": [
+            1024,
+            1024,
+            512
+          ],
+          "block_config": [
+            64,
+            16,
+            64
+          ],
+          "use_bias_flag": false,
+          "dtype_str": "fp16",
+          "num_stages_val": 1,
+          "num_warps_val": 4
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/d2af4f1817e1003fb36d",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "m_n_k_shape": [
+            1024,
+            1024,
+            512
+          ],
+          "block_config": [
+            32,
+            64,
+            64
+          ],
+          "use_bias_flag": false,
+          "dtype_str": "fp16",
+          "num_stages_val": 1,
+          "num_warps_val": 4
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/b1a4e33859e4c4fb5259",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "m_n_k_shape": [
+            1024,
+            1024,
+            512
+          ],
+          "block_config": [
+            64,
+            32,
+            64
+          ],
+          "use_bias_flag": false,
+          "dtype_str": "fp16",
+          "num_stages_val": 1,
+          "num_warps_val": 4
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/7eabf6671bbccb7b2d86",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "m_n_k_shape": [
+            1024,
+            1024,
+            512
+          ],
+          "block_config": [
+            16,
+            128,
+            64
+          ],
+          "use_bias_flag": false,
+          "dtype_str": "fp16",
+          "num_stages_val": 1,
+          "num_warps_val": 4
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/637dbaf3734868ec726b",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "m_n_k_shape": [
+            1024,
+            1024,
+            512
+          ],
+          "block_config": [
+            128,
+            16,
+            64
+          ],
+          "use_bias_flag": false,
+          "dtype_str": "fp16",
+          "num_stages_val": 1,
+          "num_warps_val": 4
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/26af8fedbb707ae779bb",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "m_n_k_shape": [
+            1024,
+            1024,
+            512
+          ],
+          "block_config": [
+            64,
+            64,
+            64
+          ],
+          "use_bias_flag": false,
+          "dtype_str": "fp16",
+          "num_stages_val": 1,
+          "num_warps_val": 4
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/ed56656102ef0815a127",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "m_n_k_shape": [
+            1024,
+            1024,
+            512
+          ],
+          "block_config": [
+            32,
+            128,
+            64
+          ],
+          "use_bias_flag": false,
+          "dtype_str": "fp16",
+          "num_stages_val": 1,
+          "num_warps_val": 4
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/1de61b09fe16935a9b86",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "m_n_k_shape": [
+            1024,
+            1024,
+            512
+          ],
+          "block_config": [
+            128,
+            32,
+            64
+          ],
+          "use_bias_flag": false,
+          "dtype_str": "fp16",
+          "num_stages_val": 1,
+          "num_warps_val": 4
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/409cfc9a272f901fd773",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "m_n_k_shape": [
+            1024,
+            1024,
+            512
+          ],
+          "block_config": [
+            1,
+            64,
+            128
+          ],
+          "use_bias_flag": false,
+          "dtype_str": "fp16",
+          "num_stages_val": 1,
+          "num_warps_val": 4
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/e2f0a913cdec896b63dd",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "m_n_k_shape": [
+            1024,
+            1024,
+            512
+          ],
+          "block_config": [
+            1,
+            64,
+            256
+          ],
+          "use_bias_flag": false,
+          "dtype_str": "fp16",
+          "num_stages_val": 1,
+          "num_warps_val": 4
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/53c10db00e3b27c18f48",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "m_n_k_shape": [
+            2048,
+            1024,
+            256
+          ],
+          "block_config": [
+            32,
+            32,
+            32
+          ],
+          "use_bias_flag": false,
+          "dtype_str": "fp16",
+          "num_stages_val": 1,
+          "num_warps_val": 4
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/19a17bec71031dc462e5",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "m_n_k_shape": [
+            2048,
+            1024,
+            256
+          ],
+          "block_config": [
+            16,
+            64,
+            32
+          ],
+          "use_bias_flag": false,
+          "dtype_str": "fp16",
+          "num_stages_val": 1,
+          "num_warps_val": 4
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/9fb5835a75773b912795",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "m_n_k_shape": [
+            2048,
+            1024,
+            256
+          ],
+          "block_config": [
+            64,
+            16,
+            32
+          ],
+          "use_bias_flag": false,
+          "dtype_str": "fp16",
+          "num_stages_val": 1,
+          "num_warps_val": 4
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/6fd11669be047b8915f9",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "m_n_k_shape": [
+            2048,
+            1024,
+            256
+          ],
+          "block_config": [
+            32,
+            64,
+            32
+          ],
+          "use_bias_flag": false,
+          "dtype_str": "fp16",
+          "num_stages_val": 1,
+          "num_warps_val": 4
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/2a15a164fdb782f62b7f",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "m_n_k_shape": [
+            2048,
+            1024,
+            256
+          ],
+          "block_config": [
+            64,
+            32,
+            32
+          ],
+          "use_bias_flag": false,
+          "dtype_str": "fp16",
+          "num_stages_val": 1,
+          "num_warps_val": 4
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/3f48b3da70d03e969a41",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "m_n_k_shape": [
+            2048,
+            1024,
+            256
+          ],
+          "block_config": [
+            16,
+            128,
+            32
+          ],
+          "use_bias_flag": false,
+          "dtype_str": "fp16",
+          "num_stages_val": 1,
+          "num_warps_val": 4
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/274643bb5eadb86b6bb7",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "m_n_k_shape": [
+            2048,
+            1024,
+            256
+          ],
+          "block_config": [
+            128,
+            16,
+            32
+          ],
+          "use_bias_flag": false,
+          "dtype_str": "fp16",
+          "num_stages_val": 1,
+          "num_warps_val": 4
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/2f6e7f45605d126bd1ec",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "m_n_k_shape": [
+            2048,
+            1024,
+            256
+          ],
+          "block_config": [
+            64,
+            64,
+            32
+          ],
+          "use_bias_flag": false,
+          "dtype_str": "fp16",
+          "num_stages_val": 1,
+          "num_warps_val": 4
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/7e48be72921e9791f482",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "m_n_k_shape": [
+            2048,
+            1024,
+            256
+          ],
+          "block_config": [
+            32,
+            128,
+            32
+          ],
+          "use_bias_flag": false,
+          "dtype_str": "fp16",
+          "num_stages_val": 1,
+          "num_warps_val": 4
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/8752e3777bef9ba15c9b",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "m_n_k_shape": [
+            2048,
+            1024,
+            256
+          ],
+          "block_config": [
+            128,
+            32,
+            32
+          ],
+          "use_bias_flag": false,
+          "dtype_str": "fp16",
+          "num_stages_val": 1,
+          "num_warps_val": 4
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/5db3a058bc7f272a4f06",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "m_n_k_shape": [
+            2048,
+            1024,
+            256
+          ],
+          "block_config": [
+            32,
+            32,
+            64
+          ],
+          "use_bias_flag": false,
+          "dtype_str": "fp16",
+          "num_stages_val": 1,
+          "num_warps_val": 4
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/8de4cf96aa057cdb0de8",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "m_n_k_shape": [
+            2048,
+            1024,
+            256
+          ],
+          "block_config": [
+            16,
+            64,
+            64
+          ],
+          "use_bias_flag": false,
+          "dtype_str": "fp16",
+          "num_stages_val": 1,
+          "num_warps_val": 4
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/808feacb633b2294578f",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "m_n_k_shape": [
+            2048,
+            1024,
+            256
+          ],
+          "block_config": [
+            64,
+            16,
+            64
+          ],
+          "use_bias_flag": false,
+          "dtype_str": "fp16",
+          "num_stages_val": 1,
+          "num_warps_val": 4
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/7805d52b0472b4f9217d",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "m_n_k_shape": [
+            2048,
+            1024,
+            256
+          ],
+          "block_config": [
+            32,
+            64,
+            64
+          ],
+          "use_bias_flag": false,
+          "dtype_str": "fp16",
+          "num_stages_val": 1,
+          "num_warps_val": 4
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/79d5d911b2ef00a562c3",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "m_n_k_shape": [
+            2048,
+            1024,
+            256
+          ],
+          "block_config": [
+            64,
+            32,
+            64
+          ],
+          "use_bias_flag": false,
+          "dtype_str": "fp16",
+          "num_stages_val": 1,
+          "num_warps_val": 4
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/da64f21bd426a80fb51f",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "m_n_k_shape": [
+            2048,
+            1024,
+            256
+          ],
+          "block_config": [
+            16,
+            128,
+            64
+          ],
+          "use_bias_flag": false,
+          "dtype_str": "fp16",
+          "num_stages_val": 1,
+          "num_warps_val": 4
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/9f174c8f1bb08a244f72",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "m_n_k_shape": [
+            2048,
+            1024,
+            256
+          ],
+          "block_config": [
+            128,
+            16,
+            64
+          ],
+          "use_bias_flag": false,
+          "dtype_str": "fp16",
+          "num_stages_val": 1,
+          "num_warps_val": 4
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/7c6599a5678f03f908b1",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "m_n_k_shape": [
+            2048,
+            1024,
+            256
+          ],
+          "block_config": [
+            64,
+            64,
+            64
+          ],
+          "use_bias_flag": false,
+          "dtype_str": "fp16",
+          "num_stages_val": 1,
+          "num_warps_val": 4
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/202f53a0b297de7e9d3f",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "m_n_k_shape": [
+            2048,
+            1024,
+            256
+          ],
+          "block_config": [
+            32,
+            128,
+            64
+          ],
+          "use_bias_flag": false,
+          "dtype_str": "fp16",
+          "num_stages_val": 1,
+          "num_warps_val": 4
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/8155eb9a9619bcc000f7",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "m_n_k_shape": [
+            2048,
+            1024,
+            256
+          ],
+          "block_config": [
+            128,
+            32,
+            64
+          ],
+          "use_bias_flag": false,
+          "dtype_str": "fp16",
+          "num_stages_val": 1,
+          "num_warps_val": 4
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/b1064358a47333d6bf70",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "m_n_k_shape": [
+            2048,
+            1024,
+            256
+          ],
+          "block_config": [
+            1,
+            64,
+            128
+          ],
+          "use_bias_flag": false,
+          "dtype_str": "fp16",
+          "num_stages_val": 1,
+          "num_warps_val": 4
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/d82efad43546ae5807d5",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "m_n_k_shape": [
+            2048,
+            1024,
+            256
+          ],
+          "block_config": [
+            1,
+            64,
+            256
+          ],
+          "use_bias_flag": false,
+          "dtype_str": "fp16",
+          "num_stages_val": 1,
+          "num_warps_val": 4
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    }
+  ],
+  "migration": {
+    "original_source_sha256": "bf5ab7a3fe7103e42b2a4b34873b0c1b123cd755e125516e0d3dbff98f0ef931",
+    "case_policy": "All original parametrizations retained; runtime skips are failures, not passing or omitted cases."
+  }
+}

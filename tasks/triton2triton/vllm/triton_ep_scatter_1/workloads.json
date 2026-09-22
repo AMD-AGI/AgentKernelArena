@@ -1,0 +1,125 @@
+{
+  "version": 1,
+  "candidate_symbols": {
+    "source/triton_ep_scatter_1.py": [
+      {
+        "name": "_fwd_kernel_ep_scatter_1",
+        "jit": true
+      }
+    ]
+  },
+  "case_table": "TEST_SHAPES",
+  "input_table": [
+    [
+      4,
+      32
+    ],
+    [
+      8,
+      64
+    ],
+    [
+      16,
+      128
+    ],
+    [
+      32,
+      64
+    ],
+    [
+      64,
+      128
+    ]
+  ],
+  "cases": [
+    {
+      "test_case_id": "perf1",
+      "dtype": "int32",
+      "params": {
+        "case_index": 0,
+        "configuration": [
+          4,
+          32
+        ],
+        "configuration_names": "(num_experts, max_tpe)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf2",
+      "dtype": "int32",
+      "params": {
+        "case_index": 1,
+        "configuration": [
+          8,
+          64
+        ],
+        "configuration_names": "(num_experts, max_tpe)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf3",
+      "dtype": "int32",
+      "params": {
+        "case_index": 2,
+        "configuration": [
+          16,
+          128
+        ],
+        "configuration_names": "(num_experts, max_tpe)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf4",
+      "dtype": "int32",
+      "params": {
+        "case_index": 3,
+        "configuration": [
+          32,
+          64
+        ],
+        "configuration_names": "(num_experts, max_tpe)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf5",
+      "dtype": "int32",
+      "params": {
+        "case_index": 4,
+        "configuration": [
+          64,
+          128
+        ],
+        "configuration_names": "(num_experts, max_tpe)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    }
+  ],
+  "migration": {
+    "original_harness_sha256": "ab90f2ba8c4932d86f5bfb536f4067004e807110b1ea34ab8d2950563b617653",
+    "original_correctness_sha256": "95ec9137fac428d8bdd62df643c3a1f64874c97fe6d8f1533fa06a3b8b5176c3"
+  }
+}

@@ -149,5 +149,31 @@ for each run. The Docker runner copies mutable state into an isolated temporary
 native and npm-based Claude Code installations, and native Cursor Agent
 installations are supported.
 
+Claude subscription logins contain rotating OAuth credentials. Independent
+copies can become stale after another worker refreshes the same login. A
+successful `claude auth status` only confirms local login state; it does not
+prove that the next inference or token refresh will succeed. An agent startup
+failure is not a completed optimization, even when the unchanged starting
+implementation passes the final numerical checks.
+
+For unattended or parallel Claude/GEAK runs, Claude's documented
+[`claude setup-token` authentication](https://code.claude.com/docs/en/authentication#generate-a-long-lived-token)
+provides a long-lived inference token through `CLAUDE_CODE_OAUTH_TOKEN`. Set it
+through your credential manager before submission; never put its value in a
+run YAML, shell command argument, tracked file, or report. The Docker runner
+passes this environment variable by name only to containers that run Claude
+Code, including GEAK, and does not require browser-login files in this mode.
+
+For an existing browser login, `AKA_CLAUDE_AUTH_DIR` can select a separately
+managed directory containing `.credentials.json`; the default remains
+`~/.claude`. Under worker isolation this directory is mounted read-only, then
+copied into the private worker home. Keep it outside task/source/report trees,
+owned by the submitting user, with directory mode `0700` and credential mode
+`0600`. This is an explicit credential source, not a refresh coordinator:
+updating a seed does not update already-running copies, and Arena does not
+write refreshed credentials back to the user's login. Coordinate renewal or
+use setup-token for runs that outlast the current login lease. Preserve failed
+run evidence and launch a new attempt after authentication is restored.
+
 Docker images are cached per compute node. The first job scheduled onto a node
 may spend several minutes pulling the selected SGLang image.

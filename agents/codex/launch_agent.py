@@ -1,8 +1,10 @@
 # Copyright(C) [2026] Advanced Micro Devices, Inc. All rights reserved.
 import json
 import logging
+import os
 import shlex
 import shutil
+import signal
 import subprocess
 import threading
 from pathlib import Path
@@ -11,8 +13,64 @@ from typing import Any
 import yaml
 
 from agents import register_agent
+from agents.prompt_input import prompt_input
+from agents.run_budget import append_run_budget
 from src.module_registration import AgentType, load_prompt_builder
 from src.runtime_env import build_subprocess_env
+
+
+def _load_agent_config(eval_config: dict[str, Any]) -> dict[str, Any]:
+    """Resolve defaults plus run-level settings, independently of task files."""
+    with Path(__file__).with_name("agent_config.yaml").open() as f:
+        config = yaml.safe_load(f) or {}
+    overrides = eval_config.get("agent", {})
+    if overrides is None:
+        overrides = {}
+    if not isinstance(overrides, dict):
+        raise ValueError("agent must be a mapping")
+    for key in ("model", "effort", "timeout_seconds", "max_iterations", "python_path"):
+        if key in overrides:
+            config[key] = overrides[key]
+    timeout = config.get("timeout_seconds")
+    if isinstance(timeout, bool) or not isinstance(timeout, int) or timeout <= 0:
+        raise ValueError("agent.timeout_seconds must be a positive integer")
+    for key in ("model", "effort"):
+        value = config.get(key)
+        if value is not None and (not isinstance(value, str) or not value.strip()):
+            raise ValueError(f"agent.{key} must be a nonempty string or null")
+    return config
+
+
+def _build_command(
+    agent_bin: str, workspace: str, prompt: str | None, config: dict[str, Any]
+) -> list[str]:
+    """Build literal argv; None selects stdin prompt transport without a shell."""
+    cmd = [
+        agent_bin, "exec", "--json",
+        "--dangerously-bypass-approvals-and-sandbox", "--skip-git-repo-check",
+        "--ephemeral", "-c", "features.memories=false", "--cd", workspace,
+    ]
+    if config.get("model"):
+        cmd.extend(["--model", config["model"]])
+    if config.get("effort"):
+        cmd.extend(["-c", f'model_reasoning_effort={json.dumps(config["effort"])}'])
+    cmd.extend(["--", "-" if prompt is None else prompt])
+    return cmd
+
+
+def _stop_process(process: subprocess.Popen) -> None:
+    """Terminate the invocation's process group, including compiler/tool children."""
+    for sig in (signal.SIGTERM, signal.SIGKILL):
+        try:
+            os.killpg(process.pid, sig)
+        except ProcessLookupError:
+            break
+        if sig == signal.SIGTERM:
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                pass
+    process.wait()
 
 
 def integrate_agent_config(
@@ -24,6 +82,7 @@ def integrate_agent_config(
     max_iters = agent_config.get("max_iterations")
     if max_iters is not None:
         prompt = prompt.rstrip() + f"\n\nFor this optimization, you must iterate up to {max_iters} versions."
+    prompt = append_run_budget(prompt, agent_config.get("timeout_seconds"))
     if python_path:
         prompt = prompt.rstrip() + (
             f"\n\nUse this Python interpreter: `{python_path}`. "
@@ -169,9 +228,7 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
             f"Command '{AGENT}' not found. Please ensure Codex CLI is installed and in your PATH."
         )
 
-    config_path = Path(__file__).with_name("agent_config.yaml")
-    with config_path.open("r") as f:
-        agent_config = yaml.safe_load(f) or {}
+    agent_config = _load_agent_config(eval_config)
 
     logger = logging.getLogger(__name__)
     process_env = build_subprocess_env(agent_config.get("python_path"))
@@ -185,58 +242,34 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
     configured_model = agent_config.get("model")
     configured_effort = agent_config.get("effort")
 
-    cmd = [
-        AGENT,
-        "exec",
-        "--json",
-        "--dangerously-bypass-approvals-and-sandbox",
-        "--skip-git-repo-check",
-        # Explicitly disable cross-session "Memories" so headless runs never read
-        # or write persistent learned memory (off by default, pinned for safety).
-        "-c",
-        "features.memories=false",
-        "--cd",
-        workspace,
-    ]
-    if configured_model:
-        cmd.extend(["--model", str(configured_model)])
-    if configured_effort:
-        # Codex has no --effort flag; reasoning effort is a config key.
-        cmd.extend(["-c", f'model_reasoning_effort="{configured_effort}"'])
-    cmd.append(prompt)
+    cmd = _build_command(codex_bin, workspace, None, agent_config)
 
     logger.info("Codex Preflight")
     logger.info(f"  codex_binary: {codex_bin}")
-    logger.info(f"  codex_version: {_get_codex_version(AGENT, process_env)}")
+    logger.info(f"  codex_version: {_get_codex_version(codex_bin, process_env)}")
     logger.info(f"  workspace: {workspace}")
     logger.info(f"  python_path: {process_env.get('AGENT_KERNEL_ARENA_PYTHON', '<unset>')}")
     if configured_model:
-        logger.info(f"  model: {configured_model} (explicit via agents/codex/agent_config.yaml)")
+        logger.info(f"  model: {configured_model} (resolved run setting)")
     else:
         logger.info("  model: <codex CLI default/config> (not explicitly set)")
     logger.info(f"  effort: {configured_effort if configured_effort else '<codex config default>'} (model_reasoning_effort)")
-    logger.info(f"Running command: {' '.join(shlex.quote(p) for p in cmd[:8])} ...")
+    logger.info("Running command: %s <stdin prompt>", shlex.join(cmd))
     logger.info("=" * 80)
     logger.info("Agent Output (streaming):")
     logger.info("=" * 80)
 
     timeout_seconds = int(agent_config.get("timeout_seconds", 600))
 
-    process = subprocess.Popen(
-        cmd,
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        cwd=workspace,
-        bufsize=1,
-        env=process_env,
-    )
-    if process.stdin:
-        process.stdin.close()
+    with prompt_input(prompt) as stream:
+        process = subprocess.Popen(
+            cmd, stdin=stream, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            text=True, cwd=workspace, bufsize=1, env=process_env, start_new_session=True,
+        )
 
     stdout_lines: list[str] = []
     stderr_lines: list[str] = []
+    failed_turn = threading.Event()
 
     def read_stream(stream, output_list, prefix, log_func):
         try:
@@ -247,6 +280,8 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
                 if not raw_line.strip():
                     continue
                 formatted = _format_codex_event(raw_line)
+                if formatted.startswith("turn.failed:"):
+                    failed_turn.set()
                 output_list.append(formatted)
                 log_func(f"{prefix} {formatted[:240]}")
         finally:
@@ -265,16 +300,16 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
     stdout_thread.start()
     stderr_thread.start()
 
+    timed_out = False
     try:
         process.wait(timeout=timeout_seconds)
     except subprocess.TimeoutExpired:
+        timed_out = True
         logger.warning(f"Codex agent timed out after {timeout_seconds}s; terminating process")
-        process.terminate()
-        try:
-            process.wait(timeout=10)
-        except subprocess.TimeoutExpired:
-            logger.warning("Force killing Codex agent process")
-            process.kill()
+        _stop_process(process)
+    except BaseException:
+        _stop_process(process)
+        raise
 
     stdout_thread.join(timeout=5)
     stderr_thread.join(timeout=5)
@@ -291,4 +326,10 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
     output = "\n".join(stdout_lines)
     if stderr_lines:
         output += "\n=== STDERR ===\n" + "\n".join(stderr_lines)
+    if timed_out:
+        raise TimeoutError(f"Codex timed out after {timeout_seconds}s; see agent logs")
+    if process.returncode != 0:
+        raise RuntimeError(f"Codex exited with code {process.returncode}; see agent logs")
+    if failed_turn.is_set():
+        raise RuntimeError("Codex reported a failed turn; see agent logs")
     return output

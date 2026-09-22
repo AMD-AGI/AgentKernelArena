@@ -204,3 +204,83 @@ def test_consan_broad_library_runtime_is_unsupported():
     )
     assert capability.engine.state == CapabilityState.UNSUPPORTED
     assert capability.engine.reason_code == "CONSAN_BROAD_LIBRARY_RUNTIME_UNSUPPORTED"
+
+
+@pytest.mark.parametrize("language,artifact,adapter", [
+    ("hip", ArtifactKind.SOURCE_AOT, "hip_source"),
+    ("triton", ArtifactKind.PYTHON_JIT, "triton_python_jit"),
+    ("flydsl", ArtifactKind.PYTHON_JIT, "flydsl_python_jit"),
+])
+def test_v2_candidate_is_authoritative_over_legacy_family_and_baseline(language, artifact, adapter):
+    config = {
+        "schema_version": 2, "task_type": "repository", "repository_language": "hip",
+        "image_repo_path": "/sgl-workspace/aiter", "source_file_path": ["wrong.hip"],
+        "candidate": {"language": language, "initial_state": "unimplemented", "editable": ["source/kernel.py"],
+                      "entrypoints": [{"file": "source/kernel.py", "kind": "builder", "symbol": "build_operator"}]},
+        "kernel_identity": {"source_owner": "aiter", "logical_operator": "arbitrary_operator"},
+        "workspace": {"sources": [{"kind": "image", "image_path": "/sgl-workspace/aiter", "destination": "baseline_source"}]},
+    }
+    profile = resolve_task_profile(config)
+    assert profile.task_type == ""
+    assert profile.language.value == language
+    assert profile.artifact_kind == artifact
+    assert profile.adapter == adapter
+    assert profile.source_files == ("source/kernel.py",)
+    assert profile.target_functions == ("build_operator",)
+    assert profile.framework == "standalone"
+    assert profile.evidence["kernel_identity"] == config["kernel_identity"]
+    assert profile.evidence["candidate"]["entrypoints"][0]["kind"] == "builder"
+    config["candidate"]["editable"].append("later.py")
+    assert profile.source_files == ("source/kernel.py",)
+    assert profile.evidence["candidate"]["editable"] == ["source/kernel.py"]
+
+
+def test_v2_scoped_sources_and_materialization_keep_task_relative_paths():
+    profile = resolve_task_profile({
+        "schema_version": 2,
+        "candidate": {"language": "triton", "editable": [
+            {"path": "vendor/kernels/kernel.py", "scope": "symbols", "symbols": ["compute"], "allow_new_helpers": True},
+            {"path": "vendor/kernels/helpers", "scope": "tree"},
+            {"path": "shim.py", "scope": "file"},
+        ]},
+        "workspace": {"sources": [{"kind": "image", "image_path": "/sgl-workspace/aiter", "destination": "vendor/kernels"}]},
+    })
+    assert profile.source_files == ("vendor/kernels/kernel.py", "vendor/kernels/helpers", "shim.py")
+    assert profile.target_functions == ("compute",)
+    assert profile.framework == "aiter"
+    assert profile.artifact_kind == ArtifactKind.PYTHON_JIT
+    assert profile.evidence["candidate"]["editable"][0]["allow_new_helpers"]
+
+
+def test_v2_language_override_cannot_misrepresent_flydsl_as_triton():
+    with pytest.raises(ValueError, match="conflicts with candidate.language"):
+        resolve_task_profile({"schema_version": 2,
+            "candidate": {"language": "flydsl", "editable": ["kernel.py"]},
+            "evaluation_profile": {"language": "triton"}})
+
+
+def test_v2_flydsl_does_not_acquire_unsupported_instrumentation():
+    profile = resolve_task_profile({"schema_version": 2,
+        "candidate": {"language": "flydsl", "editable": ["kernel.py"]}})
+    assert profile.instrumentation_control == InstrumentationControl.NONE
+    runtime = CapabilityCheck.ready(target_arch="gfx950")
+    for tool in ("gpu_asan", "triton_fpsan"):
+        assert not resolve_builtin_capability(tool, profile, runtime).ready
+
+
+def test_artifact_override_recomputes_dependent_defaults():
+    profile = resolve_task_profile({"schema_version": 2,
+        "candidate": {"language": "hip", "editable": ["kernel.hip"]},
+        "evaluation_profile": {"artifact_kind": "hsaco_precompiled"}})
+    assert not profile.source_available
+    assert profile.instrumentation_control == InstrumentationControl.NONE
+    assert profile.adapter == "precompiled"
+
+
+@pytest.mark.parametrize("language", ["cuda", "tilelang", "custom_dsl"])
+def test_v2_unknown_backend_does_not_inherit_legacy_hip_capabilities(language):
+    profile = resolve_task_profile({"schema_version": 2,
+        "candidate": {"language": language, "editable": ["kernel.cu"]}})
+    assert profile.language == KernelLanguage.UNKNOWN
+    assert profile.instrumentation_control == InstrumentationControl.UNKNOWN
+    assert not resolve_builtin_capability("gpu_asan", profile).ready

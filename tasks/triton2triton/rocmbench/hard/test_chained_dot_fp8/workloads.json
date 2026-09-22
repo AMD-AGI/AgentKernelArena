@@ -1,0 +1,553 @@
+{
+  "version": 1,
+  "source": "test_chained_dot_fp8.py",
+  "kernel_symbols": [
+    "_chained_dot"
+  ],
+  "cases": [
+    {
+      "test_case_id": "test_chained_dot/b9139fc100d2e4e8484a",
+      "params": {
+        "function": "test_chained_dot",
+        "arguments": {
+          "D": 32,
+          "M": 128,
+          "N": 64,
+          "dtype": "fp8",
+          "msize": 16
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_chained_dot/52f8d65e978dde3306de",
+      "params": {
+        "function": "test_chained_dot",
+        "arguments": {
+          "D": 32,
+          "M": 128,
+          "N": 64,
+          "dtype": "fp8",
+          "msize": 32
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_chained_dot/1eda3eb52c8038bb29c5",
+      "params": {
+        "function": "test_chained_dot",
+        "arguments": {
+          "D": 128,
+          "M": 256,
+          "N": 128,
+          "dtype": "fp8",
+          "msize": 16
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_chained_dot/d023ccfbaa795e0af5ae",
+      "params": {
+        "function": "test_chained_dot",
+        "arguments": {
+          "D": 128,
+          "M": 256,
+          "N": 128,
+          "dtype": "fp8",
+          "msize": 32
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/054ffd654494d2ade573",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "test_config": {
+            "D": 32,
+            "M": 128,
+            "N_kv": 64,
+            "dtype_str": "fp16",
+            "msize": 16
+          }
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/a15911459fc4c5856736",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "test_config": {
+            "D": 32,
+            "M": 128,
+            "N_kv": 64,
+            "dtype_str": "fp16",
+            "msize": 32
+          }
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/0f89ac6e8f383a89a0b7",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "test_config": {
+            "D": 32,
+            "M": 128,
+            "N_kv": 64,
+            "dtype_str": "fp8",
+            "msize": 16
+          }
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/d9ff2c177ba43ad458dc",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "test_config": {
+            "D": 32,
+            "M": 128,
+            "N_kv": 64,
+            "dtype_str": "fp8",
+            "msize": 32
+          }
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/8507c09a95d00466b8b0",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "test_config": {
+            "D": 64,
+            "M": 256,
+            "N_kv": 128,
+            "dtype_str": "fp16",
+            "msize": 16
+          }
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/ce4ef0a8d414c423eb0a",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "test_config": {
+            "D": 64,
+            "M": 256,
+            "N_kv": 128,
+            "dtype_str": "fp16",
+            "msize": 32
+          }
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/5afc3f9f2a10cb5ef887",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "test_config": {
+            "D": 64,
+            "M": 256,
+            "N_kv": 128,
+            "dtype_str": "fp8",
+            "msize": 16
+          }
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/f8d4952ad42d6b437761",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "test_config": {
+            "D": 64,
+            "M": 256,
+            "N_kv": 128,
+            "dtype_str": "fp8",
+            "msize": 32
+          }
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/ef60e109bd5524f7f019",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "test_config": {
+            "D": 128,
+            "M": 512,
+            "N_kv": 128,
+            "dtype_str": "fp16",
+            "msize": 16
+          }
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/6217215af38d3abf0977",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "test_config": {
+            "D": 128,
+            "M": 512,
+            "N_kv": 128,
+            "dtype_str": "fp16",
+            "msize": 32
+          }
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/83efaf84317100b89872",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "test_config": {
+            "D": 128,
+            "M": 512,
+            "N_kv": 128,
+            "dtype_str": "fp8",
+            "msize": 16
+          }
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/3606cae6d42ebc392c41",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "test_config": {
+            "D": 128,
+            "M": 512,
+            "N_kv": 128,
+            "dtype_str": "fp8",
+            "msize": 32
+          }
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/89a240a61ff9a08b70a8",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "test_config": {
+            "D": 128,
+            "M": 1024,
+            "N_kv": 256,
+            "dtype_str": "fp16",
+            "msize": 16
+          }
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/de8c3adda4feca5eddd8",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "test_config": {
+            "D": 128,
+            "M": 1024,
+            "N_kv": 256,
+            "dtype_str": "fp16",
+            "msize": 32
+          }
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/3172d1b8e03279847742",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "test_config": {
+            "D": 128,
+            "M": 1024,
+            "N_kv": 256,
+            "dtype_str": "fp8",
+            "msize": 16
+          }
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/1dbdcc9fd838c4c17f46",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "test_config": {
+            "D": 128,
+            "M": 1024,
+            "N_kv": 256,
+            "dtype_str": "fp8",
+            "msize": 32
+          }
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/e4b99555e9d7b4b8ebff",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "test_config": {
+            "D": 64,
+            "M": 2048,
+            "N_kv": 512,
+            "dtype_str": "fp16",
+            "msize": 16
+          }
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/602ec83c346d64f3ebe7",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "test_config": {
+            "D": 64,
+            "M": 2048,
+            "N_kv": 512,
+            "dtype_str": "fp16",
+            "msize": 32
+          }
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/c98c64816d3490766a60",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "test_config": {
+            "D": 64,
+            "M": 2048,
+            "N_kv": 512,
+            "dtype_str": "fp8",
+            "msize": 16
+          }
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/53b9ac77676614ac1212",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "test_config": {
+            "D": 64,
+            "M": 2048,
+            "N_kv": 512,
+            "dtype_str": "fp8",
+            "msize": 32
+          }
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_batched_tail_and_scale_control/6c7bb0561c4b150a08b3",
+      "params": {
+        "function": "test_batched_tail_and_scale_control",
+        "arguments": {
+          "dtype_str": "fp16"
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS",
+      "coverage": {
+        "BATCH": 2,
+        "M": 17,
+        "N": 35,
+        "D": 16,
+        "dtype": "fp16",
+        "matrix_instr_nonkdim": 16,
+        "scales": [
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "scored": false,
+        "inputs": {
+          "q": "(arange%9-4)*0.125",
+          "k": "(arange%7-3)*0.25+0.125",
+          "v": "(arange%5-2)*0.125+0.125",
+          "replay": "FP8 Q exact sign flip; FP16 Q sign/column flip plus row offsets and K column flip; recompute oracle"
+        }
+      }
+    },
+    {
+      "test_case_id": "test_batched_tail_and_scale_control/72af88dfcfdd1b2e546d",
+      "params": {
+        "function": "test_batched_tail_and_scale_control",
+        "arguments": {
+          "dtype_str": "fp8"
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS",
+      "coverage": {
+        "BATCH": 2,
+        "M": 17,
+        "N": 35,
+        "D": 16,
+        "dtype": "fp8",
+        "matrix_instr_nonkdim": 16,
+        "scales": [
+          0.5,
+          0.5,
+          2.0,
+          2.0,
+          0.5,
+          0.5
+        ],
+        "scored": false,
+        "inputs": {
+          "q": "(arange%9-4)*0.125",
+          "k": "(arange%7-3)*0.25+0.125",
+          "v": "(arange%5-2)*0.125+0.125",
+          "replay": "FP8 Q exact sign flip; FP16 Q sign/column flip plus row offsets and K column flip; recompute oracle"
+        }
+      }
+    }
+  ],
+  "migration": {
+    "original_source_sha256": "0444f4580de6ff7c12114e2bda57d9eabed21f743da65dc74a630993742e74e2",
+    "case_policy": "All original parametrizations retained; runtime skips are failures, not passing or omitted cases."
+  }
+}

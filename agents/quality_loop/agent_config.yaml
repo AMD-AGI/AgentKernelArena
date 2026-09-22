@@ -7,14 +7,19 @@ target_gpu_model: MI300
 quality_loop:
   backend:
     name: codex
-    model: null                 # null uses the Codex CLI default/config
-    effort: xhigh
+    model: gpt-5.6-terra        # Explicit budget; may be overridden per campaign.
+    effort: medium
     timeout_seconds: 3600
   reviewer:
     name: codex                 # independent, read-only Codex session
-    model: null
-    effort: xhigh
+    model: gpt-5.6-terra
+    effort: medium
     timeout_seconds: 1800
+  validator:
+    name: codex
+    model: gpt-5.6-terra
+    effort: medium
+    timeout_seconds: 3600
 
   max_repair_attempts: 1
   optimization_iterations: 1  # enforced; any other value is rejected

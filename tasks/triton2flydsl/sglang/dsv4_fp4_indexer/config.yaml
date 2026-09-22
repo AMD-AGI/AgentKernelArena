@@ -1,15 +1,28 @@
-source_file_path:
-- dsv4_fp4_indexer.py
-target_kernel_functions:
-- quantize_fp4_indexer_tensor
-- store_fp4_index_k_cache
-- _quantize_fp4_indexer_kernel
-- _store_fp4_index_k_cache_kernel
-compile_command:
-- python3 test_kernel_harness.py --compile
-correctness_command:
-- python3 test_kernel_harness.py --correctness
-performance_command:
-- python3 test_kernel_harness.py --full-benchmark
-task_type: triton2flydsl
-task_result_template: null
+schema_version: 2
+description: Translate the declared dsv4_fp4_indexer implementation from Triton to FlyDSL while preserving
+  all operator and evaluation contracts.
+instructions:
+- README.md
+candidate:
+  language: flydsl
+  initial_state: implemented
+  initial_language: triton
+  editable:
+  - dsv4_fp4_indexer.py
+  entrypoints:
+  - file: dsv4_fp4_indexer.py
+    kind: function
+    symbol: quantize_fp4_indexer_tensor
+  - file: dsv4_fp4_indexer.py
+    kind: function
+    symbol: store_fp4_index_k_cache
+baseline:
+  kind: initial_candidate
+  language: triton
+  correctness_policy: required
+evaluation:
+  runner:
+  - python3
+  - scripts/evaluate.py
+  workloads: cases.json
+  timeout_s: 3600

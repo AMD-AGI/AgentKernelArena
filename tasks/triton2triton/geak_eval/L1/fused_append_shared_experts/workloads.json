@@ -1,0 +1,602 @@
+{
+  "version": 1,
+  "source": "kernel.py",
+  "candidate_symbols": [
+    {
+      "name": "_fused_append_shared_experts_kernel",
+      "jit": true
+    }
+  ],
+  "input_tables": {
+    "performance": [
+      {
+        "M": 1,
+        "K": 2,
+        "S": 1,
+        "N": 8,
+        "scale_factor": 1.0
+      },
+      {
+        "M": 2,
+        "K": 2,
+        "S": 1,
+        "N": 8,
+        "scale_factor": 1.0
+      },
+      {
+        "M": 4,
+        "K": 2,
+        "S": 1,
+        "N": 8,
+        "scale_factor": 1.0
+      },
+      {
+        "M": 8,
+        "K": 2,
+        "S": 1,
+        "N": 8,
+        "scale_factor": 1.0
+      },
+      {
+        "M": 16,
+        "K": 2,
+        "S": 1,
+        "N": 8,
+        "scale_factor": 1.0
+      },
+      {
+        "M": 24,
+        "K": 2,
+        "S": 1,
+        "N": 8,
+        "scale_factor": 1.0
+      },
+      {
+        "M": 32,
+        "K": 2,
+        "S": 1,
+        "N": 8,
+        "scale_factor": 1.0
+      },
+      {
+        "M": 48,
+        "K": 2,
+        "S": 1,
+        "N": 8,
+        "scale_factor": 1.0
+      },
+      {
+        "M": 64,
+        "K": 2,
+        "S": 1,
+        "N": 8,
+        "scale_factor": 1.0
+      },
+      {
+        "M": 96,
+        "K": 2,
+        "S": 1,
+        "N": 8,
+        "scale_factor": 1.0
+      },
+      {
+        "M": 128,
+        "K": 2,
+        "S": 1,
+        "N": 8,
+        "scale_factor": 1.0
+      },
+      {
+        "M": 256,
+        "K": 2,
+        "S": 1,
+        "N": 8,
+        "scale_factor": 1.0
+      },
+      {
+        "M": 512,
+        "K": 2,
+        "S": 1,
+        "N": 8,
+        "scale_factor": 1.0
+      },
+      {
+        "M": 1024,
+        "K": 2,
+        "S": 1,
+        "N": 8,
+        "scale_factor": 1.0
+      },
+      {
+        "M": 1536,
+        "K": 2,
+        "S": 1,
+        "N": 8,
+        "scale_factor": 1.0
+      },
+      {
+        "M": 2048,
+        "K": 2,
+        "S": 1,
+        "N": 8,
+        "scale_factor": 1.0
+      },
+      {
+        "M": 3072,
+        "K": 2,
+        "S": 1,
+        "N": 8,
+        "scale_factor": 1.0
+      },
+      {
+        "M": 4096,
+        "K": 2,
+        "S": 1,
+        "N": 8,
+        "scale_factor": 1.0
+      }
+    ],
+    "original_correctness": [
+      {
+        "M": 1,
+        "K": 2,
+        "S": 1,
+        "N": 8,
+        "scale_factor": 1.0
+      },
+      {
+        "M": 2,
+        "K": 2,
+        "S": 1,
+        "N": 8,
+        "scale_factor": 1.0
+      },
+      {
+        "M": 4,
+        "K": 2,
+        "S": 1,
+        "N": 8,
+        "scale_factor": 1.0
+      },
+      {
+        "M": 8,
+        "K": 2,
+        "S": 1,
+        "N": 8,
+        "scale_factor": 1.0
+      },
+      {
+        "M": 16,
+        "K": 2,
+        "S": 1,
+        "N": 8,
+        "scale_factor": 1.0
+      },
+      {
+        "M": 24,
+        "K": 2,
+        "S": 1,
+        "N": 8,
+        "scale_factor": 1.0
+      },
+      {
+        "M": 32,
+        "K": 2,
+        "S": 1,
+        "N": 8,
+        "scale_factor": 1.0
+      },
+      {
+        "M": 48,
+        "K": 2,
+        "S": 1,
+        "N": 8,
+        "scale_factor": 1.0
+      },
+      {
+        "M": 64,
+        "K": 2,
+        "S": 1,
+        "N": 8,
+        "scale_factor": 1.0
+      },
+      {
+        "M": 96,
+        "K": 2,
+        "S": 1,
+        "N": 8,
+        "scale_factor": 1.0
+      },
+      {
+        "M": 128,
+        "K": 2,
+        "S": 1,
+        "N": 8,
+        "scale_factor": 1.0
+      },
+      {
+        "M": 256,
+        "K": 2,
+        "S": 1,
+        "N": 8,
+        "scale_factor": 1.0
+      },
+      {
+        "M": 512,
+        "K": 2,
+        "S": 1,
+        "N": 8,
+        "scale_factor": 1.0
+      },
+      {
+        "M": 1024,
+        "K": 2,
+        "S": 1,
+        "N": 8,
+        "scale_factor": 1.0
+      },
+      {
+        "M": 1536,
+        "K": 2,
+        "S": 1,
+        "N": 8,
+        "scale_factor": 1.0
+      },
+      {
+        "M": 2048,
+        "K": 2,
+        "S": 1,
+        "N": 8,
+        "scale_factor": 1.0
+      },
+      {
+        "M": 3072,
+        "K": 2,
+        "S": 1,
+        "N": 8,
+        "scale_factor": 1.0
+      },
+      {
+        "M": 4096,
+        "K": 2,
+        "S": 1,
+        "N": 8,
+        "scale_factor": 1.0
+      }
+    ]
+  },
+  "cases": [
+    {
+      "test_case_id": "case/0",
+      "params": {
+        "case_index": 0,
+        "configuration": {
+          "M": 1,
+          "K": 2,
+          "S": 1,
+          "N": 8,
+          "scale_factor": 1.0
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/1",
+      "params": {
+        "case_index": 1,
+        "configuration": {
+          "M": 2,
+          "K": 2,
+          "S": 1,
+          "N": 8,
+          "scale_factor": 1.0
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/2",
+      "params": {
+        "case_index": 2,
+        "configuration": {
+          "M": 4,
+          "K": 2,
+          "S": 1,
+          "N": 8,
+          "scale_factor": 1.0
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/3",
+      "params": {
+        "case_index": 3,
+        "configuration": {
+          "M": 8,
+          "K": 2,
+          "S": 1,
+          "N": 8,
+          "scale_factor": 1.0
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/4",
+      "params": {
+        "case_index": 4,
+        "configuration": {
+          "M": 16,
+          "K": 2,
+          "S": 1,
+          "N": 8,
+          "scale_factor": 1.0
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/5",
+      "params": {
+        "case_index": 5,
+        "configuration": {
+          "M": 24,
+          "K": 2,
+          "S": 1,
+          "N": 8,
+          "scale_factor": 1.0
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/6",
+      "params": {
+        "case_index": 6,
+        "configuration": {
+          "M": 32,
+          "K": 2,
+          "S": 1,
+          "N": 8,
+          "scale_factor": 1.0
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/7",
+      "params": {
+        "case_index": 7,
+        "configuration": {
+          "M": 48,
+          "K": 2,
+          "S": 1,
+          "N": 8,
+          "scale_factor": 1.0
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/8",
+      "params": {
+        "case_index": 8,
+        "configuration": {
+          "M": 64,
+          "K": 2,
+          "S": 1,
+          "N": 8,
+          "scale_factor": 1.0
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/9",
+      "params": {
+        "case_index": 9,
+        "configuration": {
+          "M": 96,
+          "K": 2,
+          "S": 1,
+          "N": 8,
+          "scale_factor": 1.0
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/10",
+      "params": {
+        "case_index": 10,
+        "configuration": {
+          "M": 128,
+          "K": 2,
+          "S": 1,
+          "N": 8,
+          "scale_factor": 1.0
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/11",
+      "params": {
+        "case_index": 11,
+        "configuration": {
+          "M": 256,
+          "K": 2,
+          "S": 1,
+          "N": 8,
+          "scale_factor": 1.0
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/12",
+      "params": {
+        "case_index": 12,
+        "configuration": {
+          "M": 512,
+          "K": 2,
+          "S": 1,
+          "N": 8,
+          "scale_factor": 1.0
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/13",
+      "params": {
+        "case_index": 13,
+        "configuration": {
+          "M": 1024,
+          "K": 2,
+          "S": 1,
+          "N": 8,
+          "scale_factor": 1.0
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/14",
+      "params": {
+        "case_index": 14,
+        "configuration": {
+          "M": 1536,
+          "K": 2,
+          "S": 1,
+          "N": 8,
+          "scale_factor": 1.0
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/15",
+      "params": {
+        "case_index": 15,
+        "configuration": {
+          "M": 2048,
+          "K": 2,
+          "S": 1,
+          "N": 8,
+          "scale_factor": 1.0
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/16",
+      "params": {
+        "case_index": 16,
+        "configuration": {
+          "M": 3072,
+          "K": 2,
+          "S": 1,
+          "N": 8,
+          "scale_factor": 1.0
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/17",
+      "params": {
+        "case_index": 17,
+        "configuration": {
+          "M": 4096,
+          "K": 2,
+          "S": 1,
+          "N": 8,
+          "scale_factor": 1.0
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    }
+  ],
+  "timing_calls_per_case": [
+    "candidate"
+  ],
+  "migration": {
+    "original_harness_sha256": "a60a1274ed0292cbe847d5873eda857eed815282533212d46d35f169ad3dde9b",
+    "original_source_sha256": "610d118a64b1bd8ffd62fd861915eca0ff700e6e43338929d1ee4b5d01053728",
+    "preservation": "Original correctness subset executes first, in its original order; additional performance cases are checked afterward. Original performance order, RNG calls, reset callbacks, sample counts and median reduction remain intact."
+  }
+}

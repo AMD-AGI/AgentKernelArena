@@ -1,0 +1,172 @@
+{
+  "original_cases": {
+    "correctness": [
+      {
+        "ctx_lens": 1024,
+        "num_seqs": 4,
+        "num_heads": [
+          8,
+          1
+        ],
+        "head_size": 128,
+        "block_size": 16,
+        "dtype_str": "bfloat16"
+      },
+      {
+        "ctx_lens": 512,
+        "num_seqs": 8,
+        "num_heads": [
+          16,
+          2
+        ],
+        "head_size": 128,
+        "block_size": 16,
+        "dtype_str": "bfloat16"
+      }
+    ],
+    "performance": [
+      [
+        "pa_decode_ctx1024_s256",
+        {
+          "ctx_lens": 1024,
+          "num_seqs": 256,
+          "num_heads": [
+            8,
+            1
+          ],
+          "head_size": 128,
+          "block_size": 16,
+          "dtype_str": "bfloat16"
+        }
+      ],
+      [
+        "pa_decode_ctx8192_s128",
+        {
+          "ctx_lens": 8192,
+          "num_seqs": 128,
+          "num_heads": [
+            16,
+            2
+          ],
+          "head_size": 128,
+          "block_size": 16,
+          "dtype_str": "bfloat16"
+        }
+      ]
+    ]
+  },
+  "cases": [
+    {
+      "test_case_id": "correctness-0",
+      "params": {
+        "ctx_lens": 1024,
+        "num_seqs": 4,
+        "num_heads": [
+          8,
+          1
+        ],
+        "head_size": 128,
+        "block_size": 16,
+        "dtype_str": "bfloat16",
+        "seed": 0
+      },
+      "checks": [
+        "correctness"
+      ],
+      "shape": [
+        4,
+        8,
+        128,
+        1024
+      ],
+      "dtype": "bfloat16"
+    },
+    {
+      "test_case_id": "correctness-1",
+      "params": {
+        "ctx_lens": 512,
+        "num_seqs": 8,
+        "num_heads": [
+          16,
+          2
+        ],
+        "head_size": 128,
+        "block_size": 16,
+        "dtype_str": "bfloat16",
+        "seed": 0
+      },
+      "checks": [
+        "correctness"
+      ],
+      "shape": [
+        8,
+        16,
+        128,
+        512
+      ],
+      "dtype": "bfloat16"
+    },
+    {
+      "test_case_id": "pa_decode_ctx1024_s256",
+      "params": {
+        "ctx_lens": 1024,
+        "num_seqs": 256,
+        "num_heads": [
+          8,
+          1
+        ],
+        "head_size": 128,
+        "block_size": 16,
+        "dtype_str": "bfloat16",
+        "seed": 0
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "shape": [
+        256,
+        8,
+        128,
+        1024
+      ],
+      "dtype": "bfloat16",
+      "metadata": {
+        "timed_replay_input_transform": {
+          "query": "negate_in_place"
+        }
+      }
+    },
+    {
+      "test_case_id": "pa_decode_ctx8192_s128",
+      "params": {
+        "ctx_lens": 8192,
+        "num_seqs": 128,
+        "num_heads": [
+          16,
+          2
+        ],
+        "head_size": 128,
+        "block_size": 16,
+        "dtype_str": "bfloat16",
+        "seed": 0
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "shape": [
+        128,
+        16,
+        128,
+        8192
+      ],
+      "dtype": "bfloat16",
+      "metadata": {
+        "timed_replay_input_transform": {
+          "query": "negate_in_place"
+        }
+      }
+    }
+  ]
+}

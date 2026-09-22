@@ -1,0 +1,54 @@
+{
+  "cases": [
+    {
+      "test_case_id": "case_0000",
+      "params": {
+        "T": 8,
+        "E": 32,
+        "topk": 4
+      },
+      "checks": [
+        "correctness"
+      ],
+      "dtype": "int32,float32"
+    },
+    {
+      "test_case_id": "case_0001",
+      "params": {
+        "T": 32,
+        "E": 32,
+        "topk": 4
+      },
+      "checks": [
+        "correctness"
+      ],
+      "dtype": "int32,float32"
+    },
+    {
+      "test_case_id": "case_0002",
+      "params": {
+        "T": 128,
+        "E": 64,
+        "topk": 8
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "int32,float32"
+    },
+    {
+      "test_case_id": "case_0003",
+      "params": {
+        "T": 32,
+        "E": 64,
+        "topk": 8
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "int32,float32"
+    }
+  ]
+}

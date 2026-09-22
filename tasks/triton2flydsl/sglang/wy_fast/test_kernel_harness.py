@@ -21,13 +21,16 @@ import json
 import time
 import argparse
 import importlib.util
-from _aka_benchmark import benchmark_cuda_graph_or_events
+from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
+from scripts.replay_checks import require_unchanged, verify_timed_pair
 
 TASK_DIR = os.path.dirname(os.path.abspath(__file__))
 os.chdir(TASK_DIR)
 
 TASK_NAME = "triton2flydsl/sglang/wy_fast"
-SOURCE_FILE = os.path.join(TASK_DIR, "wy_fast.py")
+from task_runtime import candidate_relative_path
+SOURCE_FILE = candidate_relative_path()
+ENTRY = 'recompute_w_u_fwd'
 BT = 64  # CHUNK_SIZE = A.shape[-1]
 
 # Test configs: (B, T, Hg, H, K, V). real Qwen3-Next / Kimi-Linear GDN:
@@ -45,12 +48,13 @@ TEST_SHAPES = [
 WARMUP_ITERATIONS = 10
 BENCHMARK_ITERATIONS = 100
 MAX_OOM_RETRIES = 5
-DTYPE_NAME = os.environ.get("GDN_DTYPE", "bfloat16")
+DTYPE_NAME = 'bfloat16'  # protected suite dtype
 
 
 def load_module():
     spec = importlib.util.spec_from_file_location("wy_fast_src", SOURCE_FILE)
     mod = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = mod
     spec.loader.exec_module(mod)
     return mod
 
@@ -157,6 +161,54 @@ def run_compile():
         return False, str(e)
 
 
+def _checked_gdn_output(actual, inp):
+    import torch
+    if not isinstance(actual, (tuple, list)) or len(actual) != 2:
+        raise AssertionError("WY must return both w and u")
+    outputs = actual
+    contracts = (((inp["B"], inp["T"], inp["H"], inp["K"]), inp["k"].dtype),
+                 ((inp["B"], inp["T"], inp["H"], inp["V"]), inp["v"].dtype))
+    for output, (shape, dtype) in zip(outputs, contracts):
+        if (not isinstance(output, torch.Tensor) or output.shape != shape
+                or output.dtype != dtype or output.device != inp["k"].device):
+            raise AssertionError("GDN output shape/dtype/device contract mismatch")
+        if not bool(torch.isfinite(output).all()):
+            raise AssertionError("Non-finite GDN output")
+
+
+def _compare_gdn_output(actual, expected, inp):
+    import torch
+    _checked_gdn_output(actual, inp)
+    dtype = inp["k"].dtype
+    atol = 1e-4 if dtype == torch.float32 else 3e-2
+    rtol = 1e-4 if dtype == torch.float32 else 1e-2
+    for output, ref in zip(actual, expected):
+        if output.shape != ref.shape or output.device != ref.device or not bool(torch.isfinite(ref).all()):
+            raise AssertionError("Invalid GDN reference contract")
+        isclose = torch.isclose(output.float(), ref.float(), atol=atol, rtol=rtol)
+        err_ratio = (~isclose).float().mean().item()
+        if err_ratio > 0.02:
+            raise AssertionError(f"Numerical mismatch: original GDN err_ratio={err_ratio}")
+
+
+def _gdn_replay_validator(inp):
+    inputs = tuple(inp[key] for key in ("k", "v", "beta", "g", "A"))
+    originals = tuple(v.clone() for v in inputs)
+    expected = reference_wu(inp)
+    def perturb():
+        inp["k"].neg_()
+        inp["v"].neg_()
+    def replay_reference():
+        return reference_wu(inp)
+    def compare(actual, expected):
+        _compare_gdn_output(actual, expected, inp)
+    def validate(timed):
+        return verify_timed_pair(timed, inputs=inputs, originals=originals,
+                                expected=expected, perturb=perturb,
+                                reference=replay_reference, compare=compare)
+    return validate
+
+
 def run_correctness():
     import torch
     try:
@@ -172,10 +224,14 @@ def run_correctness():
         try:
             torch.manual_seed(42 + i)
             inp = make_test_data(B, T, Hg, H, K, V, "cuda", dtype)
+            protected_inputs = tuple(inp[key] for key in ("k", "v", "beta", "g", "A"))
+            originals = tuple(v.clone() for v in protected_inputs)
             w_t, u_t = _retry_oom(lambda: mod.recompute_w_u_fwd(
                 k=inp["k"], v=inp["v"], beta=inp["beta"], g_cumsum=inp["g"],
                 A=inp["A"], cu_seqlens=None))
             torch.cuda.synchronize()
+            require_unchanged(protected_inputs, originals)
+            _checked_gdn_output((w_t, u_t), inp)
             w_r, u_r = reference_wu(inp)
             w_diff = (w_t.float() - w_r.float()).abs().max().item()
             u_diff = (u_t.float() - u_r.float()).abs().max().item()
@@ -211,9 +267,10 @@ def run_performance():
         try:
             torch.manual_seed(42 + ti)
             inp = make_test_data(B, T, Hg, H, K, V, "cuda", dtype)
+            replay_validate = _gdn_replay_validator(inp)
 
             def fn():
-                mod.recompute_w_u_fwd(
+                return mod.recompute_w_u_fwd(
                     k=inp["k"], v=inp["v"], beta=inp["beta"], g_cumsum=inp["g"],
                     A=inp["A"], cu_seqlens=None)
 
@@ -221,18 +278,20 @@ def run_performance():
             for _ in range(WARMUP_ITERATIONS):
                 fn()
             torch.cuda.synchronize()
+            timed = TimedRun()
             elapsed_ms, bench_meta = benchmark_cuda_graph_or_events(
-                fn, warmup=0, repetition=BENCHMARK_ITERATIONS
+                fn, warmup=0, repetition=BENCHMARK_ITERATIONS, timed_run=timed
             )
+            bench_meta.update(replay_validate(timed))
             test_cases.append({"test_case_id": f"perf{ti+1}",
                                "execution_time_ms": elapsed_ms,
                                **bench_meta,
                                "params": params})
-        except Exception:
+        except Exception as error:
             test_cases.append({"test_case_id": f"perf{ti+1}",
                                "execution_time_ms": -1.0,
                                "benchmark_method": "benchmark_failed",
-                               "benchmark_fallback_reason": "performance case failed before timing completed",
+                               "benchmark_fallback_reason": "performance case failed: " + str(error),
                                "params": params})
     return test_cases
 

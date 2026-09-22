@@ -1,0 +1,481 @@
+{
+  "version": 1,
+  "source": "kernel.py",
+  "candidate_symbols": [
+    {
+      "name": "_attn_lean_tile",
+      "jit": true
+    },
+    {
+      "name": "la_persistent_paged",
+      "jit": true
+    }
+  ],
+  "input_tables": {
+    "performance": [
+      [
+        1,
+        32,
+        16,
+        [
+          512
+        ],
+        128,
+        304,
+        "torch.float16",
+        16,
+        16,
+        2,
+        4
+      ],
+      [
+        1,
+        32,
+        16,
+        [
+          1024
+        ],
+        128,
+        304,
+        "torch.float16",
+        16,
+        16,
+        2,
+        4
+      ],
+      [
+        1,
+        32,
+        16,
+        [
+          2048
+        ],
+        128,
+        304,
+        "torch.float16",
+        16,
+        16,
+        2,
+        4
+      ],
+      [
+        1,
+        32,
+        16,
+        [
+          4096
+        ],
+        128,
+        304,
+        "torch.float16",
+        16,
+        16,
+        2,
+        4
+      ],
+      [
+        1,
+        32,
+        16,
+        [
+          8192
+        ],
+        128,
+        304,
+        "torch.float16",
+        16,
+        16,
+        2,
+        4
+      ],
+      [
+        1,
+        32,
+        16,
+        [
+          16384
+        ],
+        128,
+        304,
+        "torch.float16",
+        16,
+        16,
+        2,
+        4
+      ],
+      [
+        1,
+        32,
+        16,
+        [
+          32768
+        ],
+        128,
+        304,
+        "torch.float16",
+        16,
+        16,
+        2,
+        4
+      ]
+    ],
+    "original_correctness": [
+      [
+        1,
+        64,
+        16,
+        [
+          4096
+        ],
+        64,
+        304,
+        "torch.float16",
+        16,
+        64,
+        2,
+        4
+      ],
+      [
+        1,
+        96,
+        16,
+        [
+          32768
+        ],
+        64,
+        304,
+        "torch.float16",
+        16,
+        64,
+        2,
+        4
+      ],
+      [
+        1,
+        128,
+        16,
+        [
+          65536
+        ],
+        64,
+        304,
+        "torch.float16",
+        16,
+        64,
+        2,
+        4
+      ],
+      [
+        3,
+        64,
+        16,
+        [
+          4096,
+          32768,
+          65536
+        ],
+        64,
+        304,
+        "torch.float16",
+        16,
+        64,
+        2,
+        4
+      ]
+    ]
+  },
+  "cases": [
+    {
+      "test_case_id": "case/0",
+      "params": {
+        "case_index": 0,
+        "configuration": [
+          1,
+          32,
+          16,
+          [
+            512
+          ],
+          128,
+          304,
+          "torch.float16",
+          16,
+          16,
+          2,
+          4
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/1",
+      "params": {
+        "case_index": 1,
+        "configuration": [
+          1,
+          32,
+          16,
+          [
+            1024
+          ],
+          128,
+          304,
+          "torch.float16",
+          16,
+          16,
+          2,
+          4
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/2",
+      "params": {
+        "case_index": 2,
+        "configuration": [
+          1,
+          32,
+          16,
+          [
+            2048
+          ],
+          128,
+          304,
+          "torch.float16",
+          16,
+          16,
+          2,
+          4
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/3",
+      "params": {
+        "case_index": 3,
+        "configuration": [
+          1,
+          32,
+          16,
+          [
+            4096
+          ],
+          128,
+          304,
+          "torch.float16",
+          16,
+          16,
+          2,
+          4
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/4",
+      "params": {
+        "case_index": 4,
+        "configuration": [
+          1,
+          32,
+          16,
+          [
+            8192
+          ],
+          128,
+          304,
+          "torch.float16",
+          16,
+          16,
+          2,
+          4
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/5",
+      "params": {
+        "case_index": 5,
+        "configuration": [
+          1,
+          32,
+          16,
+          [
+            16384
+          ],
+          128,
+          304,
+          "torch.float16",
+          16,
+          16,
+          2,
+          4
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/6",
+      "params": {
+        "case_index": 6,
+        "configuration": [
+          1,
+          32,
+          16,
+          [
+            32768
+          ],
+          128,
+          304,
+          "torch.float16",
+          16,
+          16,
+          2,
+          4
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "original-correctness/0",
+      "params": {
+        "original_correctness_index": 0,
+        "configuration": [
+          1,
+          64,
+          16,
+          [
+            4096
+          ],
+          64,
+          304,
+          "torch.float16",
+          16,
+          64,
+          2,
+          4
+        ]
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "original-correctness/1",
+      "params": {
+        "original_correctness_index": 1,
+        "configuration": [
+          1,
+          96,
+          16,
+          [
+            32768
+          ],
+          64,
+          304,
+          "torch.float16",
+          16,
+          64,
+          2,
+          4
+        ]
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "original-correctness/2",
+      "params": {
+        "original_correctness_index": 2,
+        "configuration": [
+          1,
+          128,
+          16,
+          [
+            65536
+          ],
+          64,
+          304,
+          "torch.float16",
+          16,
+          64,
+          2,
+          4
+        ]
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "original-correctness/3",
+      "params": {
+        "original_correctness_index": 3,
+        "configuration": [
+          3,
+          64,
+          16,
+          [
+            4096,
+            32768,
+            65536
+          ],
+          64,
+          304,
+          "torch.float16",
+          16,
+          64,
+          2,
+          4
+        ]
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    }
+  ],
+  "timing_calls_per_case": [
+    "candidate"
+  ],
+  "migration": {
+    "original_harness_sha256": "e847c22256ee10c3d3e36d2b3c63441890bd81df1bcc4eae2bb7b45935f239ed",
+    "original_source_sha256": "c85fe968399d2ac487dce6e5aaec5d267ee68a645a2abdb1725fbb5e824fa366",
+    "preservation": "Original correctness subset executes first, in its original order; additional performance cases are checked afterward. Original performance order, RNG calls, reset callbacks, sample counts and median reduction remain intact."
+  }
+}

@@ -1,0 +1,247 @@
+{
+  "cases": [
+    {
+      "test_case_id": "case_0000",
+      "params": {
+        "rows": 4,
+        "last": 64,
+        "dtype": "bf16",
+        "seed": 20260601
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bf16"
+    },
+    {
+      "test_case_id": "case_0001",
+      "params": {
+        "rows": 4,
+        "last": 64,
+        "dtype": "fp16",
+        "seed": 20260601
+      },
+      "checks": [
+        "correctness"
+      ],
+      "dtype": "fp16"
+    },
+    {
+      "test_case_id": "case_0002",
+      "params": {
+        "rows": 128,
+        "last": 256,
+        "dtype": "bf16",
+        "seed": 20260601
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bf16"
+    },
+    {
+      "test_case_id": "case_0003",
+      "params": {
+        "rows": 128,
+        "last": 256,
+        "dtype": "fp16",
+        "seed": 20260601
+      },
+      "checks": [
+        "correctness"
+      ],
+      "dtype": "fp16"
+    },
+    {
+      "test_case_id": "case_0004",
+      "params": {
+        "rows": 31,
+        "last": 500,
+        "dtype": "bf16",
+        "seed": 20260601
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bf16"
+    },
+    {
+      "test_case_id": "case_0005",
+      "params": {
+        "rows": 31,
+        "last": 500,
+        "dtype": "fp16",
+        "seed": 20260601
+      },
+      "checks": [
+        "correctness"
+      ],
+      "dtype": "fp16"
+    },
+    {
+      "test_case_id": "case_0006",
+      "params": {
+        "rows": 32,
+        "last": 768,
+        "dtype": "bf16",
+        "seed": 20260601
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bf16"
+    },
+    {
+      "test_case_id": "case_0007",
+      "params": {
+        "rows": 32,
+        "last": 768,
+        "dtype": "fp16",
+        "seed": 20260601
+      },
+      "checks": [
+        "correctness"
+      ],
+      "dtype": "fp16"
+    },
+    {
+      "test_case_id": "case_0008",
+      "params": {
+        "rows": 32,
+        "last": 1024,
+        "dtype": "bf16",
+        "seed": 20260601
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bf16"
+    },
+    {
+      "test_case_id": "case_0009",
+      "params": {
+        "rows": 32,
+        "last": 1024,
+        "dtype": "fp16",
+        "seed": 20260601
+      },
+      "checks": [
+        "correctness"
+      ],
+      "dtype": "fp16"
+    },
+    {
+      "test_case_id": "case_0010",
+      "params": {
+        "rows": 2048,
+        "last": 768,
+        "dtype": "bf16",
+        "seed": 20260601
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bf16"
+    },
+    {
+      "test_case_id": "case_0011",
+      "params": {
+        "rows": 2048,
+        "last": 768,
+        "dtype": "fp16",
+        "seed": 20260601
+      },
+      "checks": [
+        "correctness"
+      ],
+      "dtype": "fp16"
+    },
+    {
+      "test_case_id": "case_0012",
+      "params": {
+        "rows": 2048,
+        "last": 1024,
+        "dtype": "bf16",
+        "seed": 20260601
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bf16"
+    },
+    {
+      "test_case_id": "case_0013",
+      "params": {
+        "rows": 2048,
+        "last": 1024,
+        "dtype": "fp16",
+        "seed": 20260601
+      },
+      "checks": [
+        "correctness"
+      ],
+      "dtype": "fp16"
+    },
+    {
+      "test_case_id": "case_0014",
+      "params": {
+        "rows": 65544,
+        "last": 768,
+        "dtype": "bf16",
+        "seed": 20260601
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bf16"
+    },
+    {
+      "test_case_id": "case_0015",
+      "params": {
+        "rows": 65544,
+        "last": 768,
+        "dtype": "fp16",
+        "seed": 20260601
+      },
+      "checks": [
+        "correctness"
+      ],
+      "dtype": "fp16"
+    },
+    {
+      "test_case_id": "case_0016",
+      "params": {
+        "rows": 57904,
+        "last": 1024,
+        "dtype": "bf16",
+        "seed": 20260601
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bf16"
+    },
+    {
+      "test_case_id": "case_0017",
+      "params": {
+        "rows": 57904,
+        "last": 1024,
+        "dtype": "fp16",
+        "seed": 20260601
+      },
+      "checks": [
+        "correctness"
+      ],
+      "dtype": "fp16"
+    }
+  ]
+}

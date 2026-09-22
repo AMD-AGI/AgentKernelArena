@@ -20,13 +20,16 @@ import json
 import time
 import argparse
 import importlib.util
-from _aka_benchmark import benchmark_cuda_graph_or_events
+from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
+from scripts.replay_checks import require_tensor_contract, require_unchanged, verify_timed_run, verify_timed_pair
 
 TASK_DIR = os.path.dirname(os.path.abspath(__file__))
 os.chdir(TASK_DIR)
 
 TASK_NAME = "triton2flydsl/sglang/dsv4_fp4_indexer"
-SOURCE_FILE = os.path.join(TASK_DIR, "dsv4_fp4_indexer.py")
+from task_runtime import candidate_relative_path
+SOURCE_FILE = candidate_relative_path()
+ENTRIES = ("quantize_fp4_indexer_tensor", "store_fp4_index_k_cache")
 HEAD = 128  # the indexer key dim (fixed by the kernel: x.shape[-1] == 128)
 
 # Token counts to quantize (last dim is always 128).
@@ -47,6 +50,7 @@ _DTYPES = {"bf16": "bfloat16", "fp16": "float16", "fp32": "float32"}
 def load_module():
     spec = importlib.util.spec_from_file_location("dsv4_fp4_indexer_src", SOURCE_FILE)
     mod = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = mod
     spec.loader.exec_module(mod)
     return mod
 
@@ -156,6 +160,30 @@ def _store_reference(x, x_fp4, x_sf, loc, page_size, num_pages):
     return cache
 
 
+def _compare_indexer_pair(actual, expected):
+    import torch
+    if not isinstance(actual, (tuple, list)) or len(actual) != 2:
+        raise AssertionError("Indexer must return (INT8 codes[N,64], INT32 scales[N])")
+    for value, ref in zip(actual, expected):
+        require_tensor_contract(value, ref)
+        if not torch.equal(value, ref):
+            raise AssertionError("Numerical mismatch: indexer codes/scales must be bit-exact")
+
+
+def _indexer_replay_validator(x):
+    originals = (x.clone(),)
+    expected = reference(x)
+    def perturb():
+        # Exact power-of-two rescaling in all three declared input dtypes:
+        # change both signed packed codes and block scale exponents.
+        x.neg_().mul_(4)
+    def validate(timed):
+        return verify_timed_pair(timed, inputs=(x,), originals=originals,
+                                 expected=expected, perturb=perturb,
+                                 reference=lambda: reference(x), compare=_compare_indexer_pair)
+    return validate
+
+
 def run_correctness():
     import torch
     try:
@@ -169,9 +197,12 @@ def run_correctness():
         try:
             torch.manual_seed(42 + i)
             x = make_inputs(cfg, "cuda")
+            originals = (x.clone(),)
             x_fp4, x_sf = _retry_oom(lambda: mod.quantize_fp4_indexer_tensor(x))
             torch.cuda.synchronize()
             ref_fp4, ref_sf = reference(x)
+            require_unchanged((x,), originals)
+            _compare_indexer_pair((x_fp4, x_sf), (ref_fp4, ref_sf))
             fp4_ok = bool(torch.equal(x_fp4.cpu(), ref_fp4.cpu()))
             sf_ok = bool(torch.equal(x_sf.cpu(), ref_sf.cpu()))
 
@@ -181,10 +212,13 @@ def run_correctness():
             loc = torch.randperm(num_pages * page_size, device="cuda")[:N].to(torch.int32)
             cache = torch.zeros(num_pages, page_size * (64 + 4), device="cuda",
                                 dtype=torch.uint8)
+            location_originals = (x.clone(), loc.clone())
             _retry_oom(lambda: mod.store_fp4_index_k_cache(
                 x, cache, loc, page_size=page_size))
             torch.cuda.synchronize()
             ref_cache = _store_reference(x, ref_fp4, ref_sf, loc, page_size, num_pages)
+            require_unchanged((x, loc), location_originals)
+            require_tensor_contract(cache, ref_cache)
             store_ok = bool(torch.equal(cache.cpu(), ref_cache.cpu()))
 
             passed = fp4_ok and sf_ok and store_ok
@@ -215,25 +249,32 @@ def run_performance():
             torch.manual_seed(42 + ti)
             x = make_inputs(cfg, "cuda")
 
+            replay_validate = _indexer_replay_validator(x)
+
             def fn():
-                mod.quantize_fp4_indexer_tensor(x)
+                return mod.quantize_fp4_indexer_tensor(x)
 
             _retry_oom(fn)
             for _ in range(WARMUP_ITERATIONS):
                 fn()
             torch.cuda.synchronize()
+            timed = TimedRun()
             elapsed_ms, bench_meta = benchmark_cuda_graph_or_events(
-                fn, warmup=0, repetition=BENCHMARK_ITERATIONS
+                fn, warmup=0, repetition=BENCHMARK_ITERATIONS, timed_run=timed
             )
+            bench_meta["benchmark_external_warmup"] = WARMUP_ITERATIONS
+            bench_meta["benchmark_total_warmup"] = WARMUP_ITERATIONS + bench_meta["benchmark_warmup"]
+            bench_meta["benchmark_warmup_scope"] = "collector_only"
+            bench_meta.update(replay_validate(timed))
             test_cases.append({"test_case_id": f"perf{ti+1}",
                                "execution_time_ms": elapsed_ms,
                                **bench_meta,
                                "params": params})
-        except Exception:
+        except Exception as error:
             test_cases.append({"test_case_id": f"perf{ti+1}",
                                "execution_time_ms": -1.0,
                                "benchmark_method": "benchmark_failed",
-                               "benchmark_fallback_reason": "performance case failed before timing completed",
+                               "benchmark_fallback_reason": "performance case failed: " + str(error),
                                "params": params})
     return test_cases
 

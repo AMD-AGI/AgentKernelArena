@@ -48,12 +48,13 @@ __global__ void k_forward(
     const float* __restrict__ feat_img_bc,  // [B,C]
     const float* __restrict__ feat_sound,   // [B,C,H,W]
     const float* __restrict__ scale,        // [C]
-    const float  bias,                      // scalar
+    const float* __restrict__ bias_ptr,                      // scalar
     float* __restrict__ out,                // [B,1,H,W] (as [B,H,W])
     int B, int C, int H, int W)
 {
     extern __shared__ float smem[]; // C floats
     smem_load_scale(scale, smem, C);
+    const float bias = bias_ptr[0]; // Read in stream order on the GPU, including graph replay.
 
     const int64_t total = (int64_t)B * H * W;
     for (int64_t linear = blockIdx.x * blockDim.x + threadIdx.x;
@@ -67,7 +68,9 @@ __global__ void k_forward(
         const float* __restrict__ fi_b = feat_img_bc + (int64_t)b * C;            // [C]
         const float* __restrict__ fs_b = feat_sound  + (int64_t)b * C * H * W;    // [C,H,W]
 
-        float acc = 0.0f;
+        // Match the reference's float32 scaling, but avoid sequential FP32
+        // reduction cancellation over 512 channels. Round the dot before bias.
+        double acc = 0.0;
         const int64_t planeHW = (int64_t)H * W;
         const int64_t base_hw = (int64_t)h * W + w;
 
@@ -89,18 +92,18 @@ __global__ void k_forward(
             float fs2 = fs_b[(int64_t)(c + 2) * planeHW + base_hw];
             float fs3 = fs_b[(int64_t)(c + 3) * planeHW + base_hw];
 
-            acc += (fi0 * sc0) * fs0;
-            acc += (fi1 * sc1) * fs1;
-            acc += (fi2 * sc2) * fs2;
-            acc += (fi3 * sc3) * fs3;
+            acc += static_cast<double>(fi0 * sc0) * static_cast<double>(fs0);
+            acc += static_cast<double>(fi1 * sc1) * static_cast<double>(fs1);
+            acc += static_cast<double>(fi2 * sc2) * static_cast<double>(fs2);
+            acc += static_cast<double>(fi3 * sc3) * static_cast<double>(fs3);
         }
         for (; c < C; ++c) {
             float fi = fi_b[c];
             float sc = smem[c];
             float fs = fs_b[(int64_t)c * planeHW + base_hw];
-            acc += (fi * sc) * fs;
+            acc += static_cast<double>(fi * sc) * static_cast<double>(fs);
         }
-        out[linear] = acc + bias;
+        out[linear] = static_cast<float>(acc) + bias;
     }
 }
 
@@ -109,12 +112,13 @@ __global__ void k_forward_nosum(
     const float* __restrict__ feat_img_bc,  // [B,C]
     const float* __restrict__ feat_sound,   // [B,C,H,W]
     const float* __restrict__ scale,        // [C]
-    const float  bias,                      // scalar
+    const float* __restrict__ bias_ptr,                      // scalar
     float* __restrict__ out,                // [B,C,H,W]
     int B, int C, int H, int W)
 {
     extern __shared__ float smem[]; // C floats
     smem_load_scale(scale, smem, C);
+    const float bias = bias_ptr[0]; // Read in stream order on the GPU, including graph replay.
 
     const int64_t total = (int64_t)B * C * H * W;
     for (int64_t idx = blockIdx.x * blockDim.x + threadIdx.x;
@@ -138,12 +142,13 @@ __global__ void k_forward_pixelwise(
     const float* __restrict__ feats_img,   // [B,C,HI,WI]
     const float* __restrict__ feat_sound,  // [B,C,HS,WS]
     const float* __restrict__ scale,       // [C]
-    const float  bias,                     // scalar
+    const float* __restrict__ bias_ptr,                     // scalar
     float* __restrict__ out,               // [B,HI,WI,HS,WS]
     int B, int C, int HI, int WI, int HS, int WS)
 {
     extern __shared__ float smem[]; // C floats
     smem_load_scale(scale, smem, C);
+    const float bias = bias_ptr[0]; // Read in stream order on the GPU, including graph replay.
 
     const int64_t total = (int64_t)B * HI * WI * HS * WS;
     for (int64_t idx = blockIdx.x * blockDim.x + threadIdx.x;
@@ -164,7 +169,9 @@ __global__ void k_forward_pixelwise(
         const int64_t img_base = (int64_t)hi * WI + wi;
         const int64_t snd_base = (int64_t)hs * WS + ws;
 
-        float acc = 0.0f;
+        // Match the reference's float32 scaling, but avoid sequential FP32
+        // reduction cancellation over 512 channels. Round the dot before bias.
+        double acc = 0.0;
         int c = 0;
         int C4 = (C / 4) * 4;
         for (; c < C4; c += 4) {
@@ -183,18 +190,18 @@ __global__ void k_forward_pixelwise(
             float fs2 = fs_b[(int64_t)(c + 2) * snd_hw + snd_base];
             float fs3 = fs_b[(int64_t)(c + 3) * snd_hw + snd_base];
 
-            acc += (fi0 * sc0) * fs0;
-            acc += (fi1 * sc1) * fs1;
-            acc += (fi2 * sc2) * fs2;
-            acc += (fi3 * sc3) * fs3;
+            acc += static_cast<double>(fi0 * sc0) * static_cast<double>(fs0);
+            acc += static_cast<double>(fi1 * sc1) * static_cast<double>(fs1);
+            acc += static_cast<double>(fi2 * sc2) * static_cast<double>(fs2);
+            acc += static_cast<double>(fi3 * sc3) * static_cast<double>(fs3);
         }
         for (; c < C; ++c) {
             float fi = fi_b[(int64_t)c * img_hw + img_base];
             float sc = smem[c];
             float fs = fs_b[(int64_t)c * snd_hw + snd_base];
-            acc += (fi * sc) * fs;
+            acc += static_cast<double>(fi * sc) * static_cast<double>(fs);
         }
-        out[idx] = acc + bias;
+        out[idx] = static_cast<float>(acc) + bias;
     }
 }
 
@@ -234,7 +241,7 @@ static torch::Tensor impl_forward(
     const float* fi = feat_img_bc.data_ptr<float>();
     const float* fs = feat_sound.data_ptr<float>();
     const float* sc = scale.data_ptr<float>();
-    const float  bi = bias.data_ptr<float>()[0];
+    const float* bi = bias.data_ptr<float>();
     float*       oz = out.data_ptr<float>();
 
     const int threads = 256;
@@ -282,7 +289,7 @@ static torch::Tensor impl_forward_nosum(
     const float* fi = feat_img_bc.data_ptr<float>();
     const float* fs = feat_sound.data_ptr<float>();
     const float* sc = scale.data_ptr<float>();
-    const float  bi = bias.data_ptr<float>()[0];
+    const float* bi = bias.data_ptr<float>();
     float*       oz = out.data_ptr<float>();
 
     const int threads = 256;
@@ -330,7 +337,7 @@ static torch::Tensor impl_forward_pixelwise(
     const float* fi = feats_img.data_ptr<float>();
     const float* fs = feat_sound.data_ptr<float>();
     const float* sc = scale.data_ptr<float>();
-    const float  bi = bias.data_ptr<float>()[0];
+    const float* bi = bias.data_ptr<float>();
     float*       oz = out.data_ptr<float>();
 
     const int threads = 256;

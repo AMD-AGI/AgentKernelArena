@@ -1,13 +1,25 @@
-source_file_path:
-- gemm_a8w8_blockscale.py
-target_kernel_functions:
-- gemm_a8w8_blockscale
-- _gemm_a8w8_blockscale_kernel
-compile_command:
-- python3 test_kernel_harness.py --compile
-correctness_command:
-- python3 test_kernel_harness.py --correctness
-performance_command:
-- python3 test_kernel_harness.py --full-benchmark
-task_type: triton2flydsl
-task_result_template: null
+schema_version: 2
+description: Translate the declared gemm_a8w8_blockscale implementation from Triton to FlyDSL while preserving
+  all operator and evaluation contracts.
+instructions:
+- README.md
+candidate:
+  language: flydsl
+  initial_state: implemented
+  initial_language: triton
+  editable:
+  - gemm_a8w8_blockscale.py
+  entrypoints:
+  - file: gemm_a8w8_blockscale.py
+    kind: function
+    symbol: gemm_a8w8_blockscale
+baseline:
+  kind: initial_candidate
+  language: triton
+  correctness_policy: required
+evaluation:
+  runner:
+  - python3
+  - scripts/evaluate.py
+  workloads: cases.json
+  timeout_s: 3600

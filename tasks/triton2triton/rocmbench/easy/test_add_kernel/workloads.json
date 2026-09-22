@@ -1,0 +1,107 @@
+{
+  "version": 1,
+  "source": "test_add_kernel.py",
+  "kernel_symbols": [
+    "add_kernel"
+  ],
+  "cases": [
+    {
+      "test_case_id": "test_add/dd94a770a837e999b7b2",
+      "params": {
+        "function": "test_add",
+        "arguments": {
+          "SIZE": 98432,
+          "BLOCK_SIZE": 1024,
+          "dtype_str": "float16"
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_add/d9eb32ed884029ea7104",
+      "params": {
+        "function": "test_add",
+        "arguments": {
+          "SIZE": 98432,
+          "BLOCK_SIZE": 1024,
+          "dtype_str": "float32"
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/a6a8696e16c611a7aca2",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "SIZE": 98432,
+          "BLOCK_SIZE_ARG": 1024,
+          "dtype_str": "float16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/d575cec0a47c36426753",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "SIZE": 98432,
+          "BLOCK_SIZE_ARG": 1024,
+          "dtype_str": "float32"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/84ec147256cdab1ecb1d",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "SIZE": 1048576,
+          "BLOCK_SIZE_ARG": 2048,
+          "dtype_str": "float16"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/4d950cd0453149324b91",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "SIZE": 1048576,
+          "BLOCK_SIZE_ARG": 2048,
+          "dtype_str": "float32"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    }
+  ],
+  "migration": {
+    "original_source_sha256": "170d37646ba76ebe1e4c350fea7b6c9e56221f2155842da8443c05419486c3b7",
+    "case_policy": "All original parametrizations retained; runtime skips are failures, not passing or omitted cases."
+  }
+}

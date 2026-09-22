@@ -1,16 +1,28 @@
-task_type: triton2triton
-source_file_path:
-- kernel.py
-harness_path: test_kernel_harness.py
-compile_command:
-- python3 -c "import ast; ast.parse(open('kernel.py').read())"
-correctness_command:
-- python3 test_kernel_harness.py --correctness
-performance_command:
-- python3 test_kernel_harness.py --full-benchmark
-target_kernel_functions:
-- ff_llama
-- ff_llama_opt
-prompt:
-  instructions: Optimize this Triton LLaMA feed-forward kernel for AMD MI300X GPU.
-    The kernel fuses RMSNorm, SiLU-gated linear projections, and element-wise operations.
+schema_version: 2
+description: Optimize the declared Triton implementation of llama_ff_triton, preserving the protected
+  operator and output contracts.
+candidate:
+  language: triton
+  initial_state: implemented
+  editable:
+  - path: kernel.py
+    scope: symbols
+    symbols:
+    - ff_llama
+    - ff_llama_opt
+    allow_new_helpers: true
+  entrypoints:
+  - file: kernel.py
+    kind: function
+    symbol: ff_llama
+  - file: kernel.py
+    kind: function
+    symbol: ff_llama_opt
+baseline:
+  kind: initial_candidate
+  language: triton
+evaluation:
+  runner:
+  - python3
+  - _arena_eval.py
+  workloads: workloads.json

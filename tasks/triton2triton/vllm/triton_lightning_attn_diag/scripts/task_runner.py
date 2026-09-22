@@ -116,7 +116,7 @@ def run_compile():
         return False, str(e)
 
 
-def run_correctness():
+def run_correctness(*, case_index=None):
     """Run correctness checks against PyTorch reference."""
     import torch
     try:
@@ -128,6 +128,8 @@ def run_correctness():
     dtype = torch.float16
 
     for i, (B, H, N, D, E) in enumerate(TEST_SHAPES):
+        if case_index is not None and i != case_index:
+            continue
         try:
             torch.manual_seed(42 + i)
             s = torch.rand(H, device=device, dtype=torch.float32) * 0.1 + 0.01

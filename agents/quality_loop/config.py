@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import math
 from pathlib import Path
 from typing import Any
 
@@ -18,8 +19,8 @@ def _runtime_root(value: Any, name: str) -> str:
 @dataclass(frozen=True)
 class BackendConfig:
     name: str = "codex"
-    model: str | None = None
-    effort: str = "xhigh"
+    model: str | None = "gpt-5.6-terra"
+    effort: str = "medium"
     timeout_seconds: int = 3600
 
     @classmethod
@@ -31,11 +32,11 @@ class BackendConfig:
         timeout = int(raw.get("timeout_seconds", 3600))
         if timeout <= 0:
             raise ValueError("backend.timeout_seconds must be positive")
-        model = raw.get("model")
+        model = raw.get("model", "gpt-5.6-terra")
         return cls(
             name=name,
             model=str(model) if model else None,
-            effort=str(raw.get("effort", "xhigh")),
+            effort=str(raw.get("effort", "medium")),
             timeout_seconds=timeout,
         )
 
@@ -70,6 +71,7 @@ class QualityLoopConfig:
     target_gpu_model: str = "MI300"
     backend: BackendConfig = field(default_factory=BackendConfig)
     reviewer: BackendConfig = field(default_factory=BackendConfig)
+    validator: BackendConfig = field(default_factory=BackendConfig)
     github: GitHubConfig = field(default_factory=GitHubConfig)
     max_repair_attempts: int = 1
     optimization_iterations: int = 1
@@ -107,8 +109,8 @@ class QualityLoopConfig:
         if confirmations < 1:
             raise ValueError("easy_confirmation_runs must be at least 1")
         threshold = float(audit.get("easy_speedup_threshold", 5.0))
-        if threshold <= 1.0:
-            raise ValueError("easy_speedup_threshold must be greater than 1.0")
+        if not math.isfinite(threshold) or threshold <= 1.0:
+            raise ValueError("easy_speedup_threshold must be finite and greater than 1.0")
 
         if "promotion_task_types" in audit:
             raise ValueError(
@@ -123,6 +125,7 @@ class QualityLoopConfig:
             target_gpu_model=target,
             backend=BackendConfig.from_dict(audit.get("backend")),
             reviewer=BackendConfig.from_dict(audit.get("reviewer", audit.get("backend"))),
+            validator=BackendConfig.from_dict(audit.get("validator")),
             github=GitHubConfig.from_dict(audit.get("github")),
             max_repair_attempts=repair_attempts,
             optimization_iterations=iterations,

@@ -78,7 +78,7 @@ def batched_triton_kernel(
             mask=mask_m[:, None] & (offs_k[None, :] < K - k * BLOCK_K),
             other=0.0,
         )
-        b = tl.load(b_ptrs, mask=offs_k[:, None] < K - k * BLOCK_K, other=0.0)
+        b = tl.load(b_ptrs, mask=(offs_k[:, None] < K - k * BLOCK_K) & (offs_n[None, :] < cta_n_size), other=0.0)
         accumulator += tl.dot(a, b)
         a_ptrs += BLOCK_K * stride_ak
         b_ptrs += BLOCK_K * stride_bk

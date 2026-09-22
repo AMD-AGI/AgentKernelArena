@@ -29,7 +29,8 @@ import flydsl.expr as fx
 from flydsl._mlir import ir
 from flydsl._mlir.dialects import memref as memref_ops
 from flydsl.compiler.kernel_function import CompilationContext
-from flydsl.expr import buffer_ops, gpu, range_constexpr
+from flydsl.expr import gpu, range_constexpr
+from flydsl_compat import buffer_ops
 from flydsl.expr import rocdl as fly_rocdl
 from flydsl.expr.arith import ArithValue
 from flydsl.expr.typing import T
