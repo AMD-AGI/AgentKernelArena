@@ -13,6 +13,7 @@ class AgentType(Enum):
     CURSOR = "cursor"
     CLAUDE_CODE = "claude_code"
     CODEX = "codex"
+    DEEPSEEK_HARNESS = "deepseek_harness"
     TASK_VALIDATOR = "task_validator"
     GEAK = "geak"
     FORGE = "forge"
@@ -65,6 +66,8 @@ def load_agent_launcher(agent_type: AgentType, logger: logging.Logger) -> Callab
             from agents.claude_code import launch_agent  # noqa: F401
         elif agent_type == AgentType.CODEX:
             from agents.codex import launch_agent  # noqa: F401
+        elif agent_type == AgentType.DEEPSEEK_HARNESS:
+            from agents.deepseek_harness import launch_agent  # noqa: F401
         elif agent_type == AgentType.TASK_VALIDATOR:
             from agents.task_validator import launch_agent  # noqa: F401
         elif agent_type == AgentType.GEAK:
@@ -106,7 +109,7 @@ def load_post_processing_handler(agent_type: AgentType, logger: logging.Logger) 
         from agents.task_validator.validation_postprocessing import validation_post_processing
         logger.info(f"Using validation_post_processing for agent: {agent_name}")
         return validation_post_processing
-    elif agent_type in [AgentType.CURSOR, AgentType.CLAUDE_CODE, AgentType.CODEX, AgentType.GEAK, AgentType.FORGE]:
+    elif agent_type in [AgentType.CURSOR, AgentType.CLAUDE_CODE, AgentType.CODEX, AgentType.DEEPSEEK_HARNESS, AgentType.GEAK, AgentType.FORGE]:
         logger.info(f"Using general_post_processing for agent: {agent_name}")
         return general_post_processing
     else:
@@ -132,7 +135,7 @@ def load_prompt_builder(agent_type: AgentType, logger: logging.Logger) -> Callab
     agent_name = agent_type.value
 
     # Map agents to their prompt builder functions
-    if agent_type in [AgentType.CURSOR, AgentType.CLAUDE_CODE, AgentType.CODEX]:
+    if agent_type in [AgentType.CURSOR, AgentType.CLAUDE_CODE, AgentType.CODEX, AgentType.DEEPSEEK_HARNESS]:
         logger.info(f"Using standard prompt_builder for agent: {agent_name}")
         return prompt_builder
     else:

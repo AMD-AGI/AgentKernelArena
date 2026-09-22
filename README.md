@@ -10,7 +10,7 @@ The platform provides:
 
 - **Controlled A/B experiments**: Label and compare repeated runs while holding tasks, hardware, environment, and evaluation rules constant.
 - **RL-ready feedback**: Produce per-task compilation, correctness, runtime, speedup, and score signals that can be consumed as rewards by an external reinforcement-learning system.
-- **Multiple agent integrations**: Run Cursor Agent, Claude Code, Codex, GEAK-based agents, or custom agents through a shared interface.
+- **Multiple agent integrations**: Run Cursor Agent, Claude Code, Codex, DeepSeek Harness, GEAK-based agents, or custom agents through a shared interface.
 - **Real GPU task environments**: Work with HIP, Triton, FlyDSL, PyTorch-to-kernel conversion, instruction-to-kernel generation, and image-backed kernel optimization tasks.
 - **Isolated and reproducible execution**: Give every task its own timestamped workspace and preserve logs, modified sources, and structured results.
 - **Centralized evaluation**: Measure compilation, correctness, and GPU performance independently of the optimizing agent.
@@ -75,6 +75,7 @@ AgentKernelArena/
 │   ├── cursor/                     # Cursor Agent CLI
 │   ├── claude_code/                # Claude Code CLI
 │   ├── codex/                      # Codex CLI
+│   ├── deepseek_harness/            # DeepSeek Harness headless CLI
 │   ├── forge/                      # KernelForge through the shared task contract
 │   ├── geak/                       # Native GEAK Workflow integration
 │   └── task_validator/             # Task quality validator
@@ -117,6 +118,7 @@ Each run selects one `agent.template`. Repeated runs can compare different agent
 | `cursor` | Cursor Agent CLI integration |
 | `claude_code` | Claude Code CLI integration |
 | `codex` | Codex CLI integration |
+| `deepseek_harness` | DeepSeek Harness headless CLI ([setup](agents/deepseek_harness/README.md)) |
 | `forge` | KernelForge search through the shared task interface; initialize, translate, or optimize as required |
 | `geak` | GEAK multi-agent Workflow engine through the shared v2 task interface |
 | `task_validator` | Task quality validation; does not optimize kernels |
@@ -162,7 +164,8 @@ The prompt system also recognizes `cuda2hip`; the current bundled task tree does
   without `sudo`
 - Git
 - Node.js 22+ and npm when using the alternative npm installation of Claude Code
-  (or another npm-installed agent CLI)
+  (or another npm-installed agent CLI); DeepSeek Harness uses a dedicated
+  Node.js 24 prefix as described in [its setup guide](agents/deepseek_harness/README.md)
 - For MI300/MI355X, use the GPU-specific SGLang image: `gfx942` uses `lmsysorg/sglang:v0.5.12-rocm720-mi30x`; `gfx950` uses `lmsysorg/sglang-rocm:v0.5.14-rocm720-mi35x-20260705`
 - For RDNA4 `gfx1201`, the runner automatically builds the default [pinned RDNA4 runtime](docker/rdna4/README.md) on first use if it is missing.
 - A supported agent CLI installed and logged in on the host, or the dependencies required by a specialized agent
@@ -212,6 +215,8 @@ The following configurations provide starting points for supported runtimes:
 | `example_configs/quickstart_claude_mi300.yaml` | One Claude Code GELU task on MI300/MI300X (`gfx942`); use this for a first run on MI300-series hardware. |
 | `example_configs/quickstart_claude_mi355x.yaml` | One Claude Code GELU task on MI355X (`gfx950`); use this for a first run on MI355X. |
 | `example_configs/quickstart_claude_rdna4.yaml` | One Claude Code GELU task on RDNA4 (`gfx1201`); builds the default runtime on first use if missing. |
+| `example_configs/quickstart_deepseek_harness_mi300.yaml` | One DeepSeek Harness GELU task on MI300/MI300X; requires the pinned CLI and API key. |
+| `example_configs/quickstart_deepseek_harness_mi355x.yaml` | One DeepSeek Harness GELU task on MI355X; see [setup](agents/deepseek_harness/README.md). |
 | `example_configs/benchmark_cursor_mi355x.yaml` | Curated 60-task Cursor Agent benchmark on MI355X; use this for a longer benchmark only after installing and authenticating Cursor Agent. |
 
 Running `make docker-run` without `CONFIG` uses the MI300/MI300X Claude
@@ -260,6 +265,11 @@ check Cursor, Claude Code, and Codex together. Specialized integrations such as
 Forge and legacy mini-swe have their own dependency checks. GEAK and its v2 aliases
 resolve to Claude Code for this CLI check; a normal run additionally checks the
 pinned GEAK engine and SDK.
+
+DeepSeek Harness also supports config-selected `docker-check-agents`, or an
+explicit `AGENTS=deepseek_harness`. It uses an API key and isolated per-task
+state; see [its setup guide](agents/deepseek_harness/README.md). `AGENTS=all`
+continues to check the original three CLIs.
 
 ### Run Serially
 

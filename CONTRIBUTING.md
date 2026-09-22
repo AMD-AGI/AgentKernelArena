@@ -24,7 +24,7 @@ make docker-smoke
 CONFIG_PATH=example_configs/quickstart_claude_mi300.yaml
 make docker-check-agents CONFIG="$CONFIG_PATH"
 
-# Optional strict check of all three first-class CLIs
+# Optional strict check of Cursor, Claude Code, and Codex
 make docker-check-agents AGENTS=all
 
 # Optional: install the Cursor Agent CLI on the host (so it can be mounted)
@@ -40,6 +40,10 @@ pre-commit install
 # to it is integration-specific; the endpoint does not reconfigure agents.
 make vllm
 ```
+
+DeepSeek Harness is opt-in: follow its [setup guide](agents/deepseek_harness/README.md)
+and select its run config or use `AGENTS=deepseek_harness`. `AGENTS=all` retains
+the three-CLI check above.
 
 ## Workflow
 

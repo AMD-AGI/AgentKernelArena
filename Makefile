@@ -20,7 +20,7 @@ help:
 	@echo "make docker-shell        - Enter the runtime image with repo and agent auth mounted"
 	@echo "make docker-check-agents - Verify the first-class host CLI selected by CONFIG"
 	@echo "                         Use CONFIG=... for another config; AGENTS=... overrides it"
-	@echo "                         AGENTS=all explicitly checks all three first-class CLIs"
+	@echo "                         AGENTS=all checks Cursor, Claude Code, and Codex; DeepSeek is opt-in"
 	@echo "make docker-smoke        - Verify Docker Python, ROCm tools, imports, and GPU access"
 	@echo "make docker-build-rdna4  - Prebuild/rebuild gfx1201 runtime (also builds on first use)"
 	@echo "make docker-run CONFIG=example_configs/quickstart_claude_mi300.yaml RUN_ARGS=\"--run-suffix test\" - Run an experiment in Docker"
