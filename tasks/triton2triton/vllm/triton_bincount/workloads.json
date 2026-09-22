@@ -1,0 +1,135 @@
+{
+  "version": 1,
+  "candidate_symbols": {
+    "source/triton_bincount.py": [
+      {
+        "name": "_bincount_kernel",
+        "jit": true
+      }
+    ]
+  },
+  "case_table": "TEST_SHAPES",
+  "input_table": [
+    [
+      4,
+      128,
+      256
+    ],
+    [
+      8,
+      256,
+      512
+    ],
+    [
+      16,
+      512,
+      1024
+    ],
+    [
+      32,
+      1024,
+      2048
+    ],
+    [
+      64,
+      2048,
+      4096
+    ]
+  ],
+  "cases": [
+    {
+      "test_case_id": "perf1",
+      "dtype": "int32",
+      "params": {
+        "case_index": 0,
+        "configuration": [
+          4,
+          128,
+          256
+        ],
+        "configuration_names": "(batch, seq_len, vocab)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf2",
+      "dtype": "int32",
+      "params": {
+        "case_index": 1,
+        "configuration": [
+          8,
+          256,
+          512
+        ],
+        "configuration_names": "(batch, seq_len, vocab)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf3",
+      "dtype": "int32",
+      "params": {
+        "case_index": 2,
+        "configuration": [
+          16,
+          512,
+          1024
+        ],
+        "configuration_names": "(batch, seq_len, vocab)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf4",
+      "dtype": "int32",
+      "params": {
+        "case_index": 3,
+        "configuration": [
+          32,
+          1024,
+          2048
+        ],
+        "configuration_names": "(batch, seq_len, vocab)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf5",
+      "dtype": "int32",
+      "params": {
+        "case_index": 4,
+        "configuration": [
+          64,
+          2048,
+          4096
+        ],
+        "configuration_names": "(batch, seq_len, vocab)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    }
+  ],
+  "migration": {
+    "original_harness_sha256": "3b55748557caf0db5c2f80e49c065c8d7613a7f9e9213cf162723529f46feb00",
+    "original_correctness_sha256": "83eb9235c3f3cddced1d369ea4f3bd983ccf7fbff30a478f0eb3cf10a1b890fc"
+  }
+}

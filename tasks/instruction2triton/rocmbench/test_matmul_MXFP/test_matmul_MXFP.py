@@ -239,7 +239,8 @@ def dot_scale_ref(x, scale, y, type_x, type_y):
     type_fp8_y = {"e4m3": torch.float8_e4m3fn, "e5m2": torch.float8_e5m2}[type_y]
 
     out_dtype = torch.bfloat16
-    x_upcast = mxfp_to_bf16_torch(x, scale, type_x)
+    x_grouped = x.reshape(*scale.shape, -1)
+    x_upcast = mxfp_to_bf16_torch(x_grouped, scale, type_x).reshape(x.shape[0], -1)
     y_upcast = y.view(type_fp8_y)
 
     class AccumulateInFp32:
@@ -285,8 +286,6 @@ def test_mxfp_to_bf16_numerical_correctness(request):
 def test_pipeline_matmul(scale, request, device='cuda'):
     check_capabilities()
     set_seed()
-    if scale and not is_cuda():
-        pytest.skip("NYI: scale_dot just implemented in CUDA")
     M, N, K = 512, 512, 128
     BLOCK_M, BLOCK_N, BLOCK_K = 64, 64, 32
     NUM_STAGES = 4
@@ -344,6 +343,22 @@ def test_pipeline_matmul(scale, request, device='cuda'):
 
 
     torch.testing.assert_close(ref_out, output, atol=atol, rtol=rtol, equal_nan=scale)
+
+    # Unscored known-answer control at an ordinary E8M0 scale. The original
+    # tiny random scales are retained above, but alone can let zero output pass
+    # the unchanged 1e-2 tolerance. All decoded operands here are exactly one.
+    if scale:
+        a.fill_(0x22)
+        scale_a.fill_(127)
+        b.fill_(0x38 if b_type == "e4m3" else 0x3c)
+        output.fill_(float("nan"))
+        matmul_kernel[grid](a, scale_a, b, output, M, N, K,
+                            a.stride(0), a.stride(1), stride_sm, stride_sk,
+                            b.stride(0), b.stride(1), output.stride(0), output.stride(1),
+                            BLOCK_M, BLOCK_N, BLOCK_K, NUM_STAGES=NUM_STAGES,
+                            a_type=a_type, b_type=b_type)
+        torch.testing.assert_close(output, torch.full_like(output, scale_a.shape[-1] * 32),
+                                   atol=1e-2, rtol=1e-2)
 
 
 # Define these globally so they are accessible by test_matmul_mxfp_performance

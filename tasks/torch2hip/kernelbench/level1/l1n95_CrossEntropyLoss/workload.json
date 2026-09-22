@@ -1,0 +1,149 @@
+{
+  "cases": [
+    {
+      "test_case_id": "case_0",
+      "params": {
+        "inputs": [
+          {
+            "shape": [
+              8192,
+              1024
+            ],
+            "dtype": "torch.float32",
+            "stride": [
+              1024,
+              1
+            ]
+          },
+          {
+            "shape": [
+              8192
+            ],
+            "dtype": "torch.int64",
+            "stride": [
+              1
+            ]
+          }
+        ],
+        "model_init_seed": 0,
+        "correctness_seed": 1337
+      }
+    },
+    {
+      "test_case_id": "case_1",
+      "params": {
+        "inputs": [
+          {
+            "shape": [
+              16384,
+              2048
+            ],
+            "dtype": "torch.float32",
+            "stride": [
+              2048,
+              1
+            ]
+          },
+          {
+            "shape": [
+              16384
+            ],
+            "dtype": "torch.int64",
+            "stride": [
+              1
+            ]
+          }
+        ],
+        "model_init_seed": 0,
+        "correctness_seed": 1338
+      }
+    },
+    {
+      "test_case_id": "case_2",
+      "params": {
+        "inputs": [
+          {
+            "shape": [
+              32768,
+              4096
+            ],
+            "dtype": "torch.float32",
+            "stride": [
+              4096,
+              1
+            ]
+          },
+          {
+            "shape": [
+              32768
+            ],
+            "dtype": "torch.int64",
+            "stride": [
+              1
+            ]
+          }
+        ],
+        "model_init_seed": 0,
+        "correctness_seed": 1339
+      }
+    },
+    {
+      "test_case_id": "case_3",
+      "params": {
+        "inputs": [
+          {
+            "shape": [
+              16384,
+              8192
+            ],
+            "dtype": "torch.float32",
+            "stride": [
+              8192,
+              1
+            ]
+          },
+          {
+            "shape": [
+              16384
+            ],
+            "dtype": "torch.int64",
+            "stride": [
+              1
+            ]
+          }
+        ],
+        "model_init_seed": 0,
+        "correctness_seed": 1340
+      }
+    },
+    {
+      "test_case_id": "case_4",
+      "params": {
+        "inputs": [
+          {
+            "shape": [
+              8192,
+              16384
+            ],
+            "dtype": "torch.float32",
+            "stride": [
+              16384,
+              1
+            ]
+          },
+          {
+            "shape": [
+              8192
+            ],
+            "dtype": "torch.int64",
+            "stride": [
+              1
+            ]
+          }
+        ],
+        "model_init_seed": 0,
+        "correctness_seed": 1341
+      }
+    }
+  ]
+}

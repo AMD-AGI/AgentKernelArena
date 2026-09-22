@@ -23,17 +23,16 @@ A run configuration defines a single experiment. Start from a file under
 | `log_directory` | string | Directory for run logs. |
 | `workspace_directory_prefix` | string | Prefix for the workspace directory. The full name is `<prefix>_<gpu>_<agent>`. |
 
-Specialized GEAK and mini-swe integrations also accept some optional top-level
-fields:
+GEAK resolves GPU IDs within the process-visible namespace; a masked Docker
+worker uses logical device zero. Host allocations remain controlled by the
+Docker/Slurm runner. GEAK search settings use the `agent` mapping in the
+[GEAK guide](../../agents/geak/README.md#runtime-setup). The `geak_v4` template
+name is a registry alias for this same integration.
 
-| Field | Type | Description |
-| --- | --- | --- |
-| `gpu_ids` | string | Comma-separated GPU IDs exposed to specialized internal workers. This is separate from the host runner's `GPU_IDS` variable. |
-| `num_parallel` | integer | Number of GEAK sub-agents/worktrees to run in parallel. mini-swe configures this under its agent config instead. |
-| `run_mode` | string | `geak_v3_triton` mode override, such as `quick` or `full`. |
-
-Agent-specific settings remain in `agents/<agent_name>/agent_config.yaml`; see
-the selected integration's directory for precedence rules and additional fields.
+Agent-specific defaults live in `agents/<agent_name>/agent_config.yaml`.
+Supported fields in the run config's `agent` mapping override those defaults;
+see [agent settings](../how-to/agents.md#models-providers-and-agent-settings)
+and the selected integration's directory for supported fields and precedence.
 
 Example:
 
@@ -163,7 +162,7 @@ The following Make targets are available for running experiments.
 | `make docker-run CONFIG=example_configs/quickstart_claude_mi300.yaml` | Run tasks serially in one Docker container |
 | `make docker-parallel-run CONFIG=example_configs/benchmark_cursor_mi355x.yaml GPU_IDS=0,1` | Run one Docker worker per listed GPU, using a shared dynamic task queue |
 | `make docker-smoke` | Verify Docker, ROCm runtime visibility, Python imports, and GPU access |
-| `make docker-check-agents CONFIG=example_configs/quickstart_claude_mi300.yaml` | Verify the first-class host CLI selected by the config inside Docker (`task_validator` resolves to its backend). Override with `AGENTS=claude_code,codex`; use `AGENTS=all` for all three. Specialized integrations use their own checks |
+| `make docker-check-agents CONFIG=example_configs/quickstart_claude_mi300.yaml` | Verify the first-class host CLI selected by the config inside Docker (`task_validator` resolves to its backend; GEAK and its v2 aliases resolve to Claude Code). Override with `AGENTS=claude_code,codex`; use `AGENTS=all` for all three. Engine/SDK checks are separate from this CLI check |
 | `make docker-shell` | Open an interactive shell in the experiment runtime |
 
 `docker-parallel-run` accepts these environment variables:
@@ -182,58 +181,25 @@ full scheduling model.
 
 ## Task configuration
 
-Each task is defined by a `config.yaml` in its directory. Command fields are
-*lists*.
+[Task definition, schema, and authoring](../how-to/add-task.md) is the canonical
+reference for task configuration. It replaces the former task-family-specific
+field tables on this page and covers:
 
-For isolated-kernel tasks (`hip2hip`, `cuda2hip`, `triton2triton`,
-`triton2flydsl`, `instruction2triton`, `torch2hip`, `torch2flydsl`, and
-`flydsl2flydsl`):
+- The selected unified v2 schema and compact examples.
+- Command and result protocols, baseline/reference/candidate roles, and lifecycle.
+- Workspace paths, edit boundaries, agent independence, and task-local checks.
+- Optional sanitizer commands, common exports, and how to add or modify a task.
+- Legacy field mappings and runtime migration requirements.
 
-| Field | Required | Description |
-| --- | --- | --- |
-| `source_file_path` | Yes | Source files containing the kernel, relative to the task root |
-| `target_kernel_functions` | Yes | Kernel function names that must be defined in the source |
-| `compile_command` | Yes | Command(s) to compile or build-check |
-| `correctness_command` | Yes | Command(s) to validate correctness |
-| `task_type` | Yes | One of `hip2hip`, `cuda2hip`, `triton2triton`, `triton2flydsl`, `instruction2triton`, `torch2hip`, `torch2flydsl`, or `flydsl2flydsl` |
-| `performance_command` | No | Command(s) to measure performance |
-| `compile_timeout` | No | Per-command compilation timeout in seconds (default `3600`) |
-| `correctness_timeout` | No | Per-command correctness timeout in seconds (default `3600`) |
-| `performance_timeout` | No | Per-command performance timeout in seconds (default `3600`) |
-| `task_result_template` | No | Legacy compatibility field. The centralized evaluator writes the standard result schema regardless of this value |
-| `platform_support` | No | Optional run-gating metadata; see below |
-| `prompt.source_code` | No | Override the prompt's source-code section |
-| `prompt.instructions` | No | Custom prompt instructions |
-| `prompt.cheatsheet` | No | Reference/cheatsheet content for the prompt |
-
-For repository-level tasks (`task_type: repository`):
-
-| Field | Required | Description |
-| --- | --- | --- |
-| `repo_url` | Yes | Upstream repository to clone for the task |
-| `task_type` | Yes | Must be `repository` |
-| `repository_language` | Yes | Primary optimization stack, for example `hip` or `triton` |
-| `compile_command` | Yes | Command(s) to compile or build-check |
-| `correctness_command` | Yes | Command(s) to validate correctness |
-| `performance_command` | No | Command(s) to measure performance |
-| `compile_timeout` | No | Per-command compilation timeout in seconds (default `3600`) |
-| `correctness_timeout` | No | Per-command correctness timeout in seconds (default `3600`) |
-| `performance_timeout` | No | Per-command performance timeout in seconds (default `3600`) |
-| `post_clone_install` | No | Setup command(s) to run after cloning the upstream repository |
-| `post_clone_install_mode` | No | Controls when `post_clone_install` runs, for example `every_setup` |
-| `repo_subdir` | No | Workspace subdirectory for the clone; defaults to the repository name derived from `repo_url` |
-| `source_file_path` | No | Optional target source-file hints, relative to the cloned repository root |
-| `target_kernel_functions` | No | Optional target function or kernel-symbol hints |
-| `platform_support` | No | Optional run-gating metadata; see below |
-| `prompt.instructions` | No | Custom prompt instructions |
-| `prompt.cheatsheet` | No | Reference/cheatsheet content for the prompt |
-
-See [Add a task](../how-to/add-task.md) for layout and authoring rules.
+**Implementation status:** all retained task configurations and runners use v2
+through the shared loader, evaluator, and validator. GPU qualification remains
+separate from schema migration. Run and final-result schemas remain documented
+on this page; the task guide describes executable task contracts.
 
 ### Evaluation profile
 
-The evaluator infers a profile from `task_type`, `repository_language`, source
-suffixes, and repository paths. Add `evaluation_profile` only when that
+The evaluator infers a profile from `candidate.language`, declared candidate
+paths, and source ownership. Add `evaluation_profile` only when that
 inference is insufficient. Recognized profile overrides, including
 `submission_paths`, are recorded in
 `resolved_task_profile.explicit_overrides`. Unknown profile fields are currently
@@ -247,13 +213,14 @@ ignored, so use only the documented keys.
 | `evaluation_profile.instrumentation_control` | string | `compiler_controlled`, `recompile`, `none`, or `unknown`. This describes whether the selected candidate can be rebuilt/instrumented. |
 | `evaluation_profile.adapter` | string or `null` | Explicit adapter identity, for example `triton_aot`, `flydsl_aot`, or `hip_fpsan_manual`. It is a claim that must still be supported by adapter options/evidence. |
 | `evaluation_profile.source_available` | boolean | Whether source for the selected candidate is available to the evaluator. |
-| `evaluation_profile.submission_paths` | string or list of strings | Workspace-relative candidate files captured before agent edits and fingerprinted after optimization. Required when repository/image tasks change files beyond the normal source fields. Absolute paths and `..` are rejected. |
+| `evaluation_profile.submission_paths` | string or list of strings | Additional workspace-relative evidence files. V2 always includes candidate declarations and protected task inputs; this field extends that set and cannot hide candidate edits. Absolute paths and `..` are rejected. |
 | `evaluation_profile.fpsan_ported` | boolean | Explicit evidence that the HIP reference and candidate were manually ported to HIP-FpSan value semantics. |
 | `evaluation_profile.rebuilt_from_source` | boolean | Explicit evidence used when a framework/library path is rebuilt from controlled source. It does not replace artifact attestation. |
 
 ### Task-level tool adapters
 
-A task can add adapter options only for tools enabled by the run. The only
+A task can register adapters for known tools, including tools the current run
+does not enable. Disabled adapters are validated and remain dormant. The only
 allowed task-level structure is:
 
 ```yaml
@@ -265,7 +232,7 @@ evaluation_tools:
         command: [python3, scripts/eval_tools/run_gpu_asan.py]
 ```
 
-`timeout_s` must be between 1 and the run-level value. Task configuration cannot
+For an enabled tool, `timeout_s` must be between 1 and the run-level value. Task configuration cannot
 enable another tool, change the top-level `policy` or `positive_control`, select
 another runtime image, increase a timeout, or set any reserved framework option
 listed above. Other options are merged over the run-level options.
@@ -324,6 +291,8 @@ Each task produces a `task_result.yaml` in its workspace:
 | `baseline_benchmark_methods` | Timing methods observed while measuring the baseline |
 | `optimized_benchmark_methods` | Timing methods observed while measuring the optimized kernel |
 | `benchmark_method_consistent` | Whether baseline and optimized timing methods matched |
+| `workload_consistent` | Whether every baseline/optimized case paired and reported the same shape, parameters, and dtype |
+| `workload_mismatches` | Per-case workload differences; mismatches disable performance scoring |
 | `valid_baseline_cases` | Number of baseline test cases with usable timing results |
 | `valid_optimized_cases` | Number of optimized test cases with usable timing results |
 | `speedup_calculation_error_message` | Error text if speedup could not be calculated, else `null` |

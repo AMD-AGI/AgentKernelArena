@@ -115,12 +115,11 @@ def make_task(root: Path) -> Path:
     (task / "config.yaml").write_text(
         yaml.safe_dump(
             {
-                "task_type": "hip2hip",
-                "source_file_path": ["kernel.py"],
-                "target_kernel_functions": ["kernel"],
-                "compile_command": ["true"],
-                "correctness_command": ["true"],
-                "performance_command": ["true"],
+                "schema_version": 2,
+                "candidate": {"language": "hip", "editable": ["kernel.py"]},
+                # This workflow-only fixture substitutes validation/evaluation;
+                # protocol execution is exercised separately in test_quality_loop_v2.
+                "evaluation": {"runner": ["python3", "scripts/evaluate.py"]},
             }
         )
     )
@@ -227,7 +226,11 @@ class QualityLoopTests(unittest.TestCase):
             for task_id in ("custom/selected", "hip2hip/not-selected"):
                 task = root / "tasks" / task_id
                 task.mkdir(parents=True)
-                (task / "config.yaml").write_text("task_type: custom\n")
+                (task / "config.yaml").write_text(yaml.safe_dump({
+                    "schema_version": 2,
+                    "candidate": {"language": "hip", "editable": ["kernel.hip"]},
+                    "evaluation": {"runner": ["python3", "evaluate.py"]},
+                }))
             config = QualityLoopConfig.from_dict(
                 {
                     "tasks": ["custom/selected"],
@@ -527,6 +530,9 @@ class QualityLoopTests(unittest.TestCase):
                 logger=LOGGER,
                 reviewer_backend=TamperingReviewerBackend(),
             )
+            # Isolate this workspace check; test_quality_loop_review_evidence
+            # exercises the actual external TaskSession evidence.
+            workflow._sessions[workspace] = mock.Mock()
             with self.assertRaisesRegex(RuntimeError, "protected evaluation evidence"):
                 workflow._review(
                     "hip2hip/sample",
@@ -562,6 +568,7 @@ class QualityLoopTests(unittest.TestCase):
                 reports=[
                     {"overall_status": "FAIL", "checks": {}, "summary": "broken"},
                     {"overall_status": "PASS", "checks": {}, "summary": "fixed"},
+                    {"overall_status": "PASS", "checks": {}, "summary": "final"},
                 ],
             )
             attach_state(workflow, root, worktree)
@@ -662,6 +669,7 @@ class QualityLoopTests(unittest.TestCase):
                 reports=[
                     {"overall_status": "FAIL", "checks": {}, "summary": "broken"},
                     {"overall_status": "PASS", "checks": {}, "summary": "fixed"},
+                    {"overall_status": "PASS", "checks": {}, "summary": "final"},
                 ],
             )
             attach_state(workflow, root, worktree)

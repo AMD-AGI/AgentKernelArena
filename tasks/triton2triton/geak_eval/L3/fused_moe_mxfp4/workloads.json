@@ -1,0 +1,506 @@
+{
+  "version": 1,
+  "source": "kernel.py",
+  "candidate_symbols": [
+    {
+      "name": "fused_moe_mxfp4",
+      "jit": false
+    }
+  ],
+  "input_tables": {
+    "performance": [
+      [
+        64,
+        64,
+        128,
+        8,
+        2
+      ],
+      [
+        16,
+        256,
+        256,
+        128,
+        4
+      ],
+      [
+        1000,
+        704,
+        800,
+        3,
+        1
+      ],
+      [
+        1000,
+        704,
+        800,
+        8,
+        2
+      ],
+      [
+        64,
+        14336,
+        4096,
+        8,
+        2
+      ],
+      [
+        16,
+        14336,
+        128,
+        8,
+        2
+      ],
+      [
+        16,
+        14336,
+        4096,
+        4,
+        1
+      ],
+      [
+        1,
+        14336,
+        128,
+        4,
+        2
+      ],
+      [
+        3,
+        14336,
+        128,
+        4,
+        2
+      ],
+      [
+        16,
+        14336,
+        128,
+        1,
+        1
+      ],
+      [
+        64,
+        7186,
+        128,
+        8,
+        2
+      ],
+      [
+        64,
+        3584,
+        128,
+        8,
+        2
+      ],
+      [
+        64,
+        1792,
+        128,
+        8,
+        2
+      ],
+      [
+        64,
+        64,
+        128,
+        8,
+        2
+      ],
+      [
+        1,
+        1024,
+        16384,
+        2,
+        1
+      ]
+    ],
+    "original_correctness": [
+      [
+        64,
+        64,
+        128,
+        8,
+        2
+      ],
+      [
+        16,
+        256,
+        256,
+        128,
+        4
+      ],
+      [
+        1000,
+        704,
+        800,
+        3,
+        1
+      ],
+      [
+        1000,
+        704,
+        800,
+        8,
+        2
+      ],
+      [
+        64,
+        14336,
+        4096,
+        8,
+        2
+      ],
+      [
+        16,
+        14336,
+        128,
+        8,
+        2
+      ],
+      [
+        16,
+        14336,
+        4096,
+        4,
+        1
+      ],
+      [
+        1,
+        14336,
+        128,
+        4,
+        2
+      ],
+      [
+        3,
+        14336,
+        128,
+        4,
+        2
+      ],
+      [
+        16,
+        14336,
+        128,
+        1,
+        1
+      ],
+      [
+        64,
+        7186,
+        128,
+        8,
+        2
+      ],
+      [
+        64,
+        3584,
+        128,
+        8,
+        2
+      ],
+      [
+        64,
+        1792,
+        128,
+        8,
+        2
+      ],
+      [
+        64,
+        64,
+        128,
+        8,
+        2
+      ],
+      [
+        1,
+        1024,
+        16384,
+        2,
+        1
+      ]
+    ]
+  },
+  "cases": [
+    {
+      "test_case_id": "case/0",
+      "params": {
+        "case_index": 0,
+        "configuration": [
+          64,
+          64,
+          128,
+          8,
+          2
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/1",
+      "params": {
+        "case_index": 1,
+        "configuration": [
+          16,
+          256,
+          256,
+          128,
+          4
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/2",
+      "params": {
+        "case_index": 2,
+        "configuration": [
+          1000,
+          704,
+          800,
+          3,
+          1
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/3",
+      "params": {
+        "case_index": 3,
+        "configuration": [
+          1000,
+          704,
+          800,
+          8,
+          2
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/4",
+      "params": {
+        "case_index": 4,
+        "configuration": [
+          64,
+          14336,
+          4096,
+          8,
+          2
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/5",
+      "params": {
+        "case_index": 5,
+        "configuration": [
+          16,
+          14336,
+          128,
+          8,
+          2
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/6",
+      "params": {
+        "case_index": 6,
+        "configuration": [
+          16,
+          14336,
+          4096,
+          4,
+          1
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/7",
+      "params": {
+        "case_index": 7,
+        "configuration": [
+          1,
+          14336,
+          128,
+          4,
+          2
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/8",
+      "params": {
+        "case_index": 8,
+        "configuration": [
+          3,
+          14336,
+          128,
+          4,
+          2
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/9",
+      "params": {
+        "case_index": 9,
+        "configuration": [
+          16,
+          14336,
+          128,
+          1,
+          1
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/10",
+      "params": {
+        "case_index": 10,
+        "configuration": [
+          64,
+          7186,
+          128,
+          8,
+          2
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/11",
+      "params": {
+        "case_index": 11,
+        "configuration": [
+          64,
+          3584,
+          128,
+          8,
+          2
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/12",
+      "params": {
+        "case_index": 12,
+        "configuration": [
+          64,
+          1792,
+          128,
+          8,
+          2
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/13",
+      "params": {
+        "case_index": 13,
+        "configuration": [
+          64,
+          64,
+          128,
+          8,
+          2
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "case/14",
+      "params": {
+        "case_index": 14,
+        "configuration": [
+          1,
+          1024,
+          16384,
+          2,
+          1
+        ]
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    }
+  ],
+  "timing_calls_per_case": [
+    "candidate"
+  ],
+  "migration": {
+    "original_harness_sha256": "521a71e9b08fb07825a50172f7f5118f90a5fa6a1565e72daf3f9a854c533170",
+    "original_source_sha256": "f3508a407b18c17982c3b056420c0a88ee4243a62b67924eea579be492f1ce6c",
+    "preservation": "Original correctness subset executes first, in its original order; additional performance cases are checked afterward. Original performance order, RNG calls, reset callbacks, sample counts and median reduction remain intact."
+  }
+}

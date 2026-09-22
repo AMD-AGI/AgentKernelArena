@@ -1,0 +1,4 @@
+*
+!Dockerfile
+!prepare_runtime.py
+!requirements.lock

@@ -1,24 +1,37 @@
-source_file_path:
-- hip/hip_11184_Sigmoid.hip
-target_kernel_functions:
-- forward
-compile_command:
-- python3 eval_tools/compile.py --hip_file hip/hip_11184_Sigmoid.hip
-correctness_command:
-- python3 eval_tools/correctness_check.py --py_modu_file pytorch_code_module/py_11184_Sigmoid.py
-  --py_func_file pytorch_code_functional/py_11184_Sigmoid_func.py --hip_file hip/hip_11184_Sigmoid.hip
-performance_command:
-- python3 eval_tools/cal_kernel_perf.py --py_modu_file pytorch_code_module/py_11184_Sigmoid.py
-  --py_func_file pytorch_code_functional/py_11184_Sigmoid_func.py --hip_file hip/hip_11184_Sigmoid.hip
-  --ref_hip_file hip/hip_11184_Sigmoid_ref.hip
-prompt:
-  source_code: null
-  instructions: You are a hip expert and good at gpu kernel implementation. Please
-    implemnt a target HIP kernel code corresponding to pytorch modullle code provided
-    as followings, which includes hip kernel, kernel laucher and python bliding code
-    for the hip launcher.
-  task_type: null
-  cheatsheet: null
-target_file_path: hip/hip_11184_Sigmoid.hip
-task_type: hip2hip
-task_result_template: null
+schema_version: 2
+description: Optimize Sigmoid in HIP; preserve all declared input cases and the protected reference contract.
+instructions:
+- README.md
+candidate:
+  language: hip
+  initial_state: implemented
+  editable:
+  - hip/hip_11184_Sigmoid.hip
+  entrypoints:
+  - file: hip/hip_11184_Sigmoid.hip
+    kind: function
+    symbol: forward
+baseline:
+  kind: provided
+  language: hip
+  source_files:
+  - pytorch_code_module/py_11184_Sigmoid.py
+  - pytorch_code_functional/py_11184_Sigmoid_func.py
+  - hip/hip_11184_Sigmoid_ref.hip
+evaluation:
+  runner:
+  - python3
+  - eval_tools/evaluate.py
+  - --candidate
+  - hip/hip_11184_Sigmoid.hip
+  - --module
+  - pytorch_code_module/py_11184_Sigmoid.py
+  - --functional
+  - pytorch_code_functional/py_11184_Sigmoid_func.py
+  - --model-class
+  - Sigmoid
+  - --initial-state
+  - implemented
+  - --baseline-hip
+  - hip/hip_11184_Sigmoid_ref.hip
+  workloads: workload.json

@@ -33,23 +33,22 @@ import math
 import os
 import sys
 from pathlib import Path
-from _aka_benchmark import benchmark_cuda_graph_or_events
+from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
+from scripts.replay_checks import require_tensor_contract, require_unchanged, verify_timed_pair
 
-KERNEL_FILE = "kernel.py"
+from task_runtime import candidate_relative_path
+KERNEL_FILE = candidate_relative_path()
+ARENA_PROVIDED_BASELINE = False
 MODEL_FILE = "model.py"
 
 
 def _resolve_kernel_dir():
-    here = os.path.dirname(os.path.abspath(__file__))
-    if os.path.isfile(os.path.join(here, KERNEL_FILE)):
-        return here
-    cwd = os.getcwd()
-    if os.path.isfile(os.path.join(cwd, KERNEL_FILE)):
-        return cwd
-    return here
+    return str(__import__("pathlib").Path(__file__).resolve().parent)
 
 
 def _load_module(kernel_dir, filename, alias):
+    if filename == KERNEL_FILE and ARENA_PROVIDED_BASELINE:
+        return None
     entry = os.path.join(kernel_dir, filename)
     if not os.path.isfile(entry):
         return None
@@ -61,6 +60,8 @@ def _load_module(kernel_dir, filename, alias):
     mod = importlib.util.module_from_spec(spec)
     sys.modules[alias] = mod
     spec.loader.exec_module(mod)
+    if filename == KERNEL_FILE:
+        _require_candidate_outputs(mod)
     return mod
 
 
@@ -148,6 +149,7 @@ def _exact_check(shape, ref, out, verbose=True):
     """Return (ok, detail). Asserts exact integer match; bitwise weights."""
     import torch
 
+    _checked_sort_outputs(out, ref)
     ref_ids, ref_w, ref_eids, ref_nv = ref
     out_ids, out_w, out_eids, out_nv = out
 
@@ -250,6 +252,41 @@ def _cross_check_aiter(mmod, shape, topk_ids, topk_weights, ref, verbose=True):
     return ok
 
 
+def _checked_sort_outputs(actual, expected):
+    import torch
+    if not isinstance(actual, (tuple, list)) or len(actual) != 4:
+        raise AssertionError("MoE sort must return IDs, weights, expert IDs and valid counts")
+    for value, ref in zip(actual, expected):
+        require_tensor_contract(value, ref)
+    valid = int(expected[3][0].item())
+    # Tail capacity beyond valid is explicitly uninitialized by the original
+    # kernel/AITER contract; only valid weights, including run padding, matter.
+    if not bool(torch.isfinite(actual[1][:valid]).all()):
+        raise AssertionError("Non-finite valid sorted weights")
+
+
+def _sorting_replay_validator(mmod, shape, topk_ids, topk_weights):
+    inputs = (topk_ids, topk_weights)
+    originals = tuple(value.clone() for value in inputs)
+    def oracle():
+        return _ref_outputs(mmod, shape, topk_ids, topk_weights)
+    expected = oracle()
+    def compare(actual, ref):
+        ok, detail = _exact_check(shape, ref, actual, verbose=False)
+        if not ok:
+            raise AssertionError("Numerical mismatch: exact routing layout: " + str(detail))
+    def perturb():
+        # Bijection on expert IDs preserves each token's unique top-k experts.
+        # Recompute the independent sort plan after changing IDs, outside timing.
+        topk_ids.copy_((topk_ids + 1) % shape["E"])
+        topk_weights.mul_(0.5)
+    def validate(timed):
+        return verify_timed_pair(timed, inputs=inputs, originals=originals,
+                                 expected=expected, perturb=perturb,
+                                 reference=oracle, compare=compare)
+    return validate
+
+
 def run_correctness(verbose=True):
     import torch
 
@@ -263,11 +300,13 @@ def run_correctness(verbose=True):
         torch.manual_seed(SEED)
         torch.cuda.manual_seed_all(SEED)
         topk_ids, topk_weights = _make_inputs(mmod, shape)
+        originals = (topk_ids.clone(), topk_weights.clone())
         with torch.no_grad():
             ref = _ref_outputs(mmod, shape, topk_ids, topk_weights)
             out = kmod.flydsl_moe_sorting(topk_ids, topk_weights, shape["E"], unit_size=BLOCK_SIZE)
         torch.cuda.synchronize()
 
+        require_unchanged((topk_ids, topk_weights), originals)
         ok, detail = _exact_check(shape, ref, out, verbose=verbose)
         if not ok:
             failures.append(shape["name"])
@@ -275,6 +314,7 @@ def run_correctness(verbose=True):
                 print(detail)
 
         ac = _cross_check_aiter(mmod, shape, topk_ids, topk_weights, ref, verbose=verbose)
+        require_unchanged((topk_ids, topk_weights), originals)
         if ac is not None:
             aiter_results.append(ac)
             if ac is False:
@@ -305,6 +345,7 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
     for idx, shape in enumerate(SHAPES):
         torch.manual_seed(SEED)
         topk_ids, topk_weights = _make_inputs(mmod, shape)
+        replay_validate = _sorting_replay_validator(mmod, shape, topk_ids, topk_weights)
         model = mmod.Model(num_experts=shape["E"], topk=shape["topk"], block_size=BLOCK_SIZE)
         run_ref = _make_prepared_reference(shape, topk_ids, topk_weights)
 
@@ -319,9 +360,12 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
             for _ in range(warmup):
                 run_kernel()
             torch.cuda.synchronize()
+            timed = TimedRun()
             kernel_ms, kernel_bench_meta = benchmark_cuda_graph_or_events(
-                run_kernel, warmup=0, repetition=iters
+                run_kernel, warmup=0, repetition=iters, timed_run=timed
             )
+
+            kernel_bench_meta.update(replay_validate(timed))
 
             ref_ms, ref_bench_meta = benchmark_cuda_graph_or_events(
                 run_ref, warmup=0, repetition=iters
@@ -393,3 +437,104 @@ if __name__ == "__main__":
         sys.exit(0)
     else:
         run_benchmark(warmup=args.warmup, iters=args.iterations)
+
+
+def _require_candidate_outputs(mod):
+    import functools
+    for name in tuple(vars(mod)):
+        target = getattr(mod, name)
+        if name.startswith("flydsl_") and callable(target):
+            @functools.wraps(target)
+            def checked(*args, __target=target, **kwargs):
+                try:
+                    result = __target(*args, **kwargs)
+                except NotImplementedError as exc:
+                    raise RuntimeError("Executed candidate is unimplemented; no baseline fallback") from exc
+                if result is None:
+                    raise RuntimeError("Candidate operator returned None; output is required")
+                return result
+            setattr(mod, name, checked)
+
+
+# V2 direct timing evidence from this invocation.
+def arena_benchmark(warmup=10, iters=100, verbose=True):
+    import torch
+
+    kmod = _load_module(_KERNEL_DIR, KERNEL_FILE, "flydsl_kernel")
+    mmod = _load_module(_KERNEL_DIR, MODEL_FILE, "torch_model")
+    assert kmod is not None and mmod is not None, "cannot load kernel.py / model.py"
+
+    latencies, speedups, report = [], [], []
+    print(f"{'Config':<24} {'Ref':>10} {'FlyDSL':>10} {'Speedup':>10}")
+    print("-" * 60)
+    for idx, shape in enumerate(SHAPES):
+        torch.manual_seed(SEED)
+        topk_ids, topk_weights = _make_inputs(mmod, shape)
+        replay_validate = _sorting_replay_validator(mmod, shape, topk_ids, topk_weights)
+        model = mmod.Model(num_experts=shape["E"], topk=shape["topk"], block_size=BLOCK_SIZE)
+        run_ref = _make_prepared_reference(shape, topk_ids, topk_weights)
+
+        with torch.no_grad():
+            def run_kernel():
+                return kmod.flydsl_moe_sorting(
+                    topk_ids, topk_weights, shape["E"], unit_size=BLOCK_SIZE
+                )
+
+            run_kernel()
+            torch.cuda.synchronize()
+            for _ in range(warmup):
+                run_kernel()
+            torch.cuda.synchronize()
+            timed = TimedRun()
+            kernel_ms, kernel_bench_meta = benchmark_cuda_graph_or_events(
+                run_kernel, warmup=0, repetition=iters, timed_run=timed
+            )
+
+            kernel_bench_meta.update(replay_validate(timed))
+
+            ref_ms, ref_bench_meta = benchmark_cuda_graph_or_events(
+                run_ref, warmup=0, repetition=iters
+            )
+
+        methods_match = kernel_bench_meta["benchmark_method"] == ref_bench_meta["benchmark_method"]
+        speedup = (
+            ref_ms / kernel_ms if methods_match and kernel_ms > 0 else None
+        )
+        speedup_display = (
+            format(speedup, ">8.2f") + "x"
+            if speedup is not None
+            else f"{'N/A':>9}"
+        )
+        latencies.append(kernel_ms)
+        if speedup is not None:
+            speedups.append(speedup)
+        report.append({
+            "test_case_id": f"test_case_{idx}",
+            "execution_time_ms": kernel_ms,
+            **kernel_bench_meta,
+            "reference_benchmark_method": ref_bench_meta["benchmark_method"],
+            "benchmark_method_consistent": kernel_bench_meta["benchmark_method"] == ref_bench_meta["benchmark_method"],
+            "shape": [shape["M"], shape["E"], shape["topk"]],
+            "params": {k: shape[k] for k in ("M", "E", "topk")},
+        })
+        if verbose:
+            print(f"{shape['name']:<24} {ref_ms:>8.4f}ms {kernel_ms:>8.4f}ms {speedup_display}")
+        torch.cuda.empty_cache()
+
+    geomean_latency = math.exp(sum(math.log(x) for x in latencies) / len(latencies))
+    geomean_speedup = math.exp(sum(math.log(x) for x in speedups) / len(speedups)) if speedups else None
+    geomean_speedup_display = (
+        format(geomean_speedup, ".2f") + "x"
+        if geomean_speedup is not None
+        else "N/A"
+    )
+
+    build_dir = Path(_KERNEL_DIR) / "build"
+    build_dir.mkdir(exist_ok=True)
+    with open(build_dir / "performance_report.json", "w") as f:
+        json.dump(report, f, indent=2)
+
+    print("-" * 60)
+    print(f"Geometric mean latency: {geomean_latency:.4f} ms")
+    print(f"Geometric mean speedup: {geomean_speedup_display}")
+    return report

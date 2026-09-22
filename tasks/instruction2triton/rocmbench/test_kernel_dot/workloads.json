@@ -1,0 +1,140 @@
+{
+  "version": 1,
+  "source": "test_kernel_dot.py",
+  "kernel_symbols": [
+    "kernel_dot"
+  ],
+  "cases": [
+    {
+      "test_case_id": "test_compile_kernel_dot_in_forked_subproc/44136fa355b3678a1146",
+      "params": {
+        "function": "test_compile_kernel_dot_in_forked_subproc",
+        "arguments": {}
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_kernel_dot_numerical_correctness/af463ef8dd7ae912a04e",
+      "params": {
+        "function": "test_kernel_dot_numerical_correctness",
+        "arguments": {
+          "dtype_str": "fp32"
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_kernel_dot_numerical_correctness/6c7bb0561c4b150a08b3",
+      "params": {
+        "function": "test_kernel_dot_numerical_correctness",
+        "arguments": {
+          "dtype_str": "fp16"
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/ee497449c59de5395cc0",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "dtype_str": "fp32",
+          "num_warps_launch": 1
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/e974a10add60cf1cca96",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "dtype_str": "fp32",
+          "num_warps_launch": 2
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/2deca923289b3f6e4157",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "dtype_str": "fp32",
+          "num_warps_launch": 4
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/d16e87b8b709be2ac0e2",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "dtype_str": "fp16",
+          "num_warps_launch": 1
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/9dfc9a58a662809343a1",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "dtype_str": "fp16",
+          "num_warps_launch": 2
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/97f1348e84a652dc81ca",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "dtype_str": "fp16",
+          "num_warps_launch": 4
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    }
+  ],
+  "migration": {
+    "original_source_sha256": "d643637942cd6342a847555573b1f3be8c1b7a1a5093c3f7105573bc3de02d1e",
+    "case_policy": "All original parametrizations retained; runtime skips are failures, not passing or omitted cases."
+  }
+}

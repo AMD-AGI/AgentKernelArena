@@ -11,12 +11,11 @@ Pipeline (per the kernel's intended usage, both stages run):
   stage 1: launch_pa_decode_sw        -> exp_sums / max_logits / tmp_out
   stage 2: launch_pa_decode_sw_reduce -> final output
 
-Oracle: SELF-REFERENCE. We load the PRISTINE kernel from this task dir as the
-oracle and the candidate kernel from $GEAK_WORK_DIR (fallback: task dir). The
-two kernels are fed identical inputs and their final outputs must match
-tightly. A full torch sliding-window paged-attention reference is impractical
-for this packed-FP8 layout, so self-reference vs the original FlyDSL kernel is
-the accepted correctness oracle.
+The correctness oracle dequantizes the actual stored FP8 KV cache and computes
+sliding-window grouped-query attention independently in PyTorch FP32. Both
+baseline and candidate are compared against that reference with ATOL=3e-2.
+The task-local runner selects the frozen initial baseline or the candidate;
+neither implementation supplies its own expected output.
 """
 import argparse
 import importlib.util
@@ -25,14 +24,16 @@ import math
 import os
 import sys
 from pathlib import Path
-from _aka_benchmark import benchmark_cuda_graph_or_events
+from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
+from scripts.replay_checks import verify_timed_run, compare_output
 
 # ============================================================================
 # Bootstrap / path discipline
 # ============================================================================
-KERNEL_FILE = "kernel.py"
+from task_runtime import candidate_relative_path
+KERNEL_FILE = candidate_relative_path()
 _TASK_DIR = os.path.dirname(os.path.abspath(__file__))
-_FLYDSL2_DIR = os.path.abspath(os.path.join(_TASK_DIR, ".."))  # has `kernels` pkg
+_FLYDSL2_DIR = _TASK_DIR  # has `kernels` pkg
 
 # Make `from kernels import ...` work for kernel.py imports.
 if _FLYDSL2_DIR not in sys.path:
@@ -40,10 +41,8 @@ if _FLYDSL2_DIR not in sys.path:
 
 
 def _candidate_kernel_dir():
-    work_dir = os.environ.get("GEAK_WORK_DIR", "").strip()
-    if work_dir and os.path.isfile(os.path.join(work_dir, KERNEL_FILE)):
-        return work_dir
-    return _TASK_DIR
+    """The framework supplies a separate frozen workspace for each role."""
+    return str(__import__("pathlib").Path(__file__).resolve().parent)
 
 
 def _load_kernel(kernel_dir, alias):
@@ -437,7 +436,7 @@ def run_benchmark(shapes=None, warmup=10, iters=100, verbose=True):
             }
             status = f"  [FAIL: {str(ex)[:60]}]"
 
-        speedup = 1.0  # no torch SWA paged-attention reference; report latency
+        speedup = 1.0  # The correctness oracle is not timed; report latency.
         if kernel_ms == kernel_ms:  # not nan
             latencies.append(kernel_ms)
             speedups.append(speedup)
@@ -524,3 +523,94 @@ if __name__ == "__main__":
         run_benchmark(HARNESS_SHAPES, warmup=args.warmup, iters=args.iterations)
 
     print("=" * 62)
+
+
+# V2 action entrypoint; original timing boundaries and sample counts above apply.
+def arena_benchmark(shapes=None, warmup=10, iters=100, verbose=True):
+    import torch
+
+    if shapes is None:
+        shapes = HARNESS_SHAPES
+
+    mod = _load_kernel(_candidate_kernel_dir(), "pa_swa_candidate")
+
+    latencies, speedups, report_cases = [], [], []
+    print(f"Running benchmark on {len(shapes)} shapes, {warmup} warmup, "
+          f"{iters} iterations...")
+    print(f"{'Config (seqs,ctx,kvh,sw)':<34} {'FlyDSL(ms)':>12} {'Speedup':>10}")
+    print("-" * 62)
+
+    for idx, (num_seqs, ctx, kvh, sw) in enumerate(shapes):
+        try:
+            data = _create_inputs(num_seqs, ctx, kvh, sw, seed=42)
+            run_fn, output = _make_decode(mod, data)
+            inputs = tuple(value for value in data.values() if isinstance(value, torch.Tensor))
+            originals = tuple(value.clone() for value in inputs)
+            expected = reference_swa_decode(data)
+
+            # one trial launch to surface any error before timing
+            run_fn()
+            torch.cuda.synchronize()
+
+            for _ in range(warmup):
+                run_fn()
+            torch.cuda.synchronize()
+
+            timed = TimedRun()
+            def launch():
+                run_fn()
+                return output
+            kernel_ms, kernel_bench_meta = benchmark_cuda_graph_or_events(
+                launch, warmup=0, repetition=iters, timed_run=timed,
+            )
+            kernel_bench_meta.update(verify_timed_run(
+                timed, inputs=inputs, originals=originals, expected=expected,
+                perturb=lambda: data['query'].neg_(), reference=lambda: reference_swa_decode(data),
+                compare=lambda actual, ref: compare_output(actual, ref, ATOL),
+            ))
+            status = ""
+        except Exception as ex:
+            kernel_ms = float("nan")
+            kernel_bench_meta = {
+                "benchmark_method": "benchmark_failed",
+                "benchmark_fallback_reason": str(ex),
+            }
+            status = f"  [FAIL: {str(ex)[:60]}]"
+
+        speedup = 1.0  # The correctness oracle is not timed; report latency.
+        if kernel_ms == kernel_ms:  # not nan
+            latencies.append(kernel_ms)
+            speedups.append(speedup)
+
+        report_cases.append({
+            "test_case_id": f"test_case_{idx}",
+            "execution_time_ms": kernel_ms,
+            **kernel_bench_meta,
+            "params": {"num_seqs": num_seqs, "context_len": ctx,
+                       "num_kv_heads": kvh, "sliding_window": sw},
+        })
+        if verbose:
+            print(f"(seqs={num_seqs:>2}, ctx={ctx:>5}, kvh={kvh:>2}, sw={sw:>4})"
+                  f"        {kernel_ms:>10.4f}  {speedup:>8.2f}x{status}", flush=True)
+        torch.cuda.empty_cache()
+
+    if not latencies:
+        print("FAIL: no successful timing")
+        print("GEAK_RESULT_LATENCY_MS=-1", flush=True)
+        print("GEAK_RESULT_GEOMEAN_SPEEDUP=-1", flush=True)
+        return report_cases
+
+    geomean_latency = math.exp(sum(math.log(l) for l in latencies) / len(latencies))
+    geomean_speedup = math.exp(sum(math.log(s) for s in speedups) / len(speedups))
+
+    build_dir = Path(_candidate_kernel_dir()) / "build"
+    build_dir.mkdir(exist_ok=True)
+    with open(build_dir / "performance_report.json", "w") as f:
+        json.dump(report_cases, f, indent=2)
+
+    print("-" * 62)
+    print(f"{'Geometric mean latency:':<26} {geomean_latency:.4f} ms")
+    print(f"GEAK_RESULT_LATENCY_MS={geomean_latency:.4f}", flush=True)
+    print(f"GEAK_RESULT_GEOMEAN_SPEEDUP={geomean_speedup:.4f}", flush=True)
+    return report_cases
+    return report_cases

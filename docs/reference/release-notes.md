@@ -9,6 +9,18 @@ myst:
 
 This topic summarizes the features available in each AgentKernelArena release. For the hardware and software versions validated for a release, see the [Compatibility matrix](compatibility-matrix.md).
 
+## Unreleased
+
+- Removed the unused `geak_v3`, `geak_v3_triton`, and `mini_swe_triton`
+  integrations, their configuration files, and their shared parallel-count
+  helper. These names, including hyphenated and uppercase spellings, are no
+  longer accepted as `agent.template` values. New runs must select a
+  [supported agent](../how-to/agents.md#supported-agents); to resume an old run
+  with its original retired agent, use a revision from before this removal.
+- Removed the retired integrations' `num_parallel` and `run_mode` settings
+  from the configuration reference. GEAK v4 and Forge remain supported, and
+  GEAK-derived task packages and saved experiment results are unchanged.
+
 ## AgentKernelArena 0.2.0
 
 AgentKernelArena 0.2.0 evolves the initial kernel-agent framework into a
@@ -37,7 +49,7 @@ execution, and RL-ready GPU kernel evaluation.
 - Added architecture-aware ROCm/SGLang runtime selection for gfx942 and gfx950.
 - Added GPU, agent CLI, authentication-state, and writable runtime-cache provisioning.
 - Added native standalone Codex mounting alongside the existing npm installation path.
-- Improved environment handling for PyTorch, Triton, MIOpen, HIP, and repository-level tasks.
+- Improved environment handling for PyTorch, Triton, MIOpen, and HIP tasks.
 - Stopped mounting host SSH credentials into benchmark containers.
 
 #### Multi-GPU parallel runs
@@ -58,7 +70,7 @@ This release adds 146 task packages:
 - 51 triton2flydsl tasks.
 - 17 GEAK-oriented triton2triton tasks covering GEMM, attention, MoE, normalization, quantization, routing, and other workloads.
 
-Version 0.2.0 contains 397 task packages across `hip2hip`, `instruction2triton`, `torch2hip`, `torch2flydsl`, `triton2triton`, `triton2flydsl`, `flydsl2flydsl`, and `repository`.
+Version 0.2.0 shipped 397 task packages. This historical count is not the current task inventory.
 
 The legacy 184-task `instruction2triton/tritonbench` suite and several obsolete HIP tasks were removed as part of repository cleanup.
 
@@ -73,7 +85,7 @@ The legacy 184-task `instruction2triton/tritonbench` suite and several obsolete 
 
 #### Agent and validator updates
 
-The supported agent templates are now:
+The agent templates shipped in 0.2.0 were:
 
 - `claude_code`
 - `codex`
@@ -83,7 +95,7 @@ The supported agent templates are now:
 - `mini_swe_triton`
 - `task_validator`
 
-The task validator now includes Codex backend support, repository-task validation, improved Python-environment propagation, stronger source and target checks, starter-stub detection, and standardized validation reports.
+The task validator now includes Codex backend support, improved Python-environment propagation, stronger source and target checks, starter-stub detection, and standardized validation reports.
 
 #### Documentation and onboarding
 
@@ -99,7 +111,6 @@ The task validator now includes Codex backend support, repository-task validatio
 - Fixed large-shape reduction accuracy in `InnerProd` and `MaskedLanguageModel`.
 - Strengthened `ball_query` correctness validation against its CPU reference.
 - Fixed MIOpen cache permission and lockfile failures.
-- Ensured repository task subprocesses use the ROCm-enabled Python environment.
 - Added `/usr/bin/time` to the container where required by build scripts.
 - Rejected missing or unimplemented generated targets before performance scoring.
 - Improved benchmark integrity by moving correctness and timing logic outside editable kernel files.
@@ -108,7 +119,7 @@ The task validator now includes Codex backend support, repository-task validatio
 
 - Docker is now required for supported experiment execution.
 - The root `requirements.txt` and host-venv workflow have been removed.
-- The legacy `SWE_agent`, `geak_hip`, `geak_optimagentv2`, `geak_ourllm_kernel2kernel`, `openevolve`, and `single_llm_call` templates were removed. Use `geak_v3`, `geak_v3_triton`, or `mini_swe_triton` for current GEAK-oriented workflows.
+- The legacy `SWE_agent`, `geak_hip`, `geak_optimagentv2`, `geak_ourllm_kernel2kernel`, `openevolve`, and `single_llm_call` templates were removed. The GEAK v3 and mini-swe replacements shipped in this release have since been retired; see [Unreleased](#unreleased) for the current upgrade notes.
 - The legacy instruction2triton/tritonbench task paths are no longer available.
 - Held-out evaluation moved under `src.held_out`.
 - Visualization is now invoked through `python3 -m src.visualization`.
@@ -177,8 +188,8 @@ agent-launch, evaluation, scoring, logging, and report-generation pipeline.
 
 At that release, the registry included Cursor, Claude Code, Codex, SWE-agent,
 single-call, OpenEvolve, and earlier GEAK integrations. The bundled top-level
-task directories were `hip2hip`, `triton2triton`, `instruction2triton`,
-`torch2hip`, `flydsl2flydsl`, and `repository`. Later development replaced
+task directories included `hip2hip`, `triton2triton`, `instruction2triton`,
+`torch2hip`, and `flydsl2flydsl`. Later development replaced
 several agent integrations and added the current parallel runner, shared
 performance helpers, FlyDSL conversion suites, and other capabilities listed
 above.

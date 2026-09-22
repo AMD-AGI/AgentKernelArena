@@ -1,0 +1,94 @@
+{
+  "cases": [
+    {
+      "test_case_id": "case_0000",
+      "params": {
+        "T": 1,
+        "H": 16,
+        "D": 512,
+        "RD": 64,
+        "group_size": 64,
+        "seed": 0
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0001",
+      "params": {
+        "T": 16,
+        "H": 16,
+        "D": 512,
+        "RD": 64,
+        "group_size": 64,
+        "seed": 0
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0002",
+      "params": {
+        "T": 64,
+        "H": 16,
+        "D": 512,
+        "RD": 64,
+        "group_size": 32,
+        "seed": 0
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0003",
+      "params": {
+        "T": 256,
+        "H": 16,
+        "D": 512,
+        "RD": 64,
+        "group_size": 128,
+        "seed": 0
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0004",
+      "params": {
+        "T": 64,
+        "H": 128,
+        "D": 512,
+        "RD": 64,
+        "group_size": 64,
+        "seed": 0
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0005",
+      "params": {
+        "T": 512,
+        "H": 128,
+        "D": 512,
+        "RD": 64,
+        "group_size": 64,
+        "seed": 0
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    }
+  ]
+}

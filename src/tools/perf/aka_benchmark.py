@@ -657,27 +657,63 @@ def benchmark_cuda_event_samples(
     fn: Callable[[], Any],
     repetition: int = 100,
     prepare_fn: Callable[[], Any] | None = None,
+    timed_run: Any | None = None,
 ) -> list[float]:
     """Return eager per-call GPU-event samples in milliseconds.
 
     This is the explicit fallback path for callables that cannot be captured in
     a CUDA/HIP Graph.  ``prepare_fn``, when provided, is enqueued before the
-    start event for each sample.  It never falls back further to a CPU timer.
+    start event for each sample. It never falls back further to a CPU timer.
+    An optional collector retains the last actual measured return value and
+    re-invokes this same eager callable; it does not represent a captured graph.
     """
 
+    if timed_run is not None:
+        timed_run._bind(None, None)
+    observer = getattr(timed_run, "before_sample", None)
+    if observer is not None and not callable(observer):
+        raise TypeError("TimedRun.before_sample must be callable or None")
     _require_gpu_timing()
     repetition = _positive_int(repetition)
     samples: list[float] = []
+    measured_output = None
+    measured_stream = None
     for _ in range(repetition):
+        # Only the final sample is retained. Release a previous sample before
+        # the next interval, so it does not overlap the next output allocation.
+        measured_output = None
         start_event = torch.cuda.Event(enable_timing=True)
         end_event = torch.cuda.Event(enable_timing=True)
         if prepare_fn is not None:
             prepare_fn()
+        if timed_run is not None:
+            measured_stream = torch.cuda.current_stream()
+        if observer is not None:
+            observer(1)
         start_event.record()
-        fn()
+        if timed_run is None:
+            fn()
+        else:
+            measured_output = fn()
         end_event.record()
         _wait_for_event(end_event)
         samples.append(_event_elapsed_ms(start_event, end_event))
+    if timed_run is not None:
+        def _rerun_eager() -> Any:
+            _require_gpu_timing()
+            # Order caller-side input changes before this invocation. Use the
+            # measured stream and the same preparation/callable as each sample.
+            measured_stream.wait_stream(torch.cuda.current_stream())
+            with torch.cuda.stream(measured_stream):
+                if prepare_fn is not None:
+                    prepare_fn()
+                outputs = fn()
+                torch.cuda.synchronize()
+            return outputs
+
+        # Bind only after every measured sample and its GPU timing succeeded.
+        # Never obtain this value from a new untimed call after measurement.
+        timed_run._bind(_rerun_eager, measured_output)
     return samples
 
 
@@ -722,6 +758,7 @@ def _graph_replay_samples(
     samples: int,
     calls_per_replay: int,
     prepare_fn: Callable[[], Any] | None = None,
+    before_sample: Callable[[int], Any] | None = None,
 ) -> list[float]:
     values: list[float] = []
     for _ in range(samples):
@@ -736,6 +773,8 @@ def _graph_replay_samples(
                 # makes replay consume the fresh state without charging the
                 # preparation work to the kernel sample.
                 prepare_fn()
+            if before_sample is not None:
+                before_sample(calls_per_replay)
             start_event.record(stream)
             graph.replay()
             end_event.record(stream)
@@ -779,6 +818,49 @@ def _event_fallback(
     return values, _fallback_metadata(metadata, repetition, reason)
 
 
+class TimedRun:
+    """Handle on the exact invocation a benchmark measured.
+
+    Timing and correctness are otherwise separate invocations, so a kernel can
+    tell them apart and do less work in the one that is scored. Passing this
+    collector to the benchmark makes the scored invocation itself observable:
+    ``outputs`` aliases the buffers the timed unit last wrote, and ``rerun``
+    executes that same unit again.
+
+    Under CUDA-graph timing the buffers are captured once and every replay
+    writes to those same addresses, so ``outputs`` keeps tracking replays. Under
+    explicit GPU-event timing, ``outputs`` is the return value from the last
+    measured sample. Eager ``rerun`` calls the same Python callable (and optional
+    preparation) again and may return newly allocated buffers. It is not graph
+    replay. Automatic graph-to-event fallback with a collector remains an error.
+
+    A task may set ``before_sample(calls_per_replay)`` to snapshot evolving state.
+    It runs on the measurement stream after preparation and before the start
+    event of each reported sample, never during warmup, capture, calibration or
+    ``rerun``. The callback must only observe state; it must not reset inputs or
+    perform reference computation. It does not force one call per graph.
+    """
+
+    def __init__(self) -> None:
+        self._rerun: Callable[[], Any] | None = None
+        self.outputs: Any = None
+        self.before_sample: Callable[[int], Any] | None = None
+
+    def _bind(self, rerun: Callable[[], Any] | None, outputs: Any = None) -> None:
+        self._rerun = rerun
+        self.outputs = outputs
+
+    @property
+    def bound(self) -> bool:
+        return self._rerun is not None
+
+    def rerun(self) -> Any:
+        if self._rerun is None:
+            raise RuntimeError("timed run was never bound")
+        self.outputs = self._rerun()
+        return self.outputs
+
+
 def benchmark_cuda_graph_or_events_samples(
     fn: Callable[[], Any],
     warmup: int = 10,
@@ -810,11 +892,13 @@ def benchmark_cuda_graph_or_events_samples(
     """
 
     del n_retries
-    if timed_run is not None and not torch.cuda.is_available():
-        raise RuntimeError(
-            "CUDA is unavailable; timed_run requires an observable CUDA-graph "
-            "replay and cannot validate a separate post-timing invocation"
-        )
+    if timed_run is not None:
+        # Reusing a collector after a failed benchmark cannot expose old data
+        # as if it belonged to the new attempted measurement.
+        timed_run._bind(None, None)
+    observer = getattr(timed_run, "before_sample", None)
+    if observer is not None and not callable(observer):
+        raise TypeError("TimedRun.before_sample must be callable or None")
     _require_gpu_timing()
 
     if os.environ.get(_FORCE_EVENT_ENV) == "1":
@@ -844,11 +928,14 @@ def benchmark_cuda_graph_or_events_samples(
 
     if not use_cuda_graph:
         if timed_run is not None:
-            raise RuntimeError(
-                "CUDA-graph timing is disabled; timed_run requires an observable "
-                "CUDA-graph replay and cannot validate a separate post-timing "
-                "invocation"
+            values = benchmark_cuda_event_samples(
+                fn, repetition, prepare_fn=prepare_fn, timed_run=timed_run,
             )
+            metadata = _fallback_metadata(
+                metadata, repetition, fallback_reason or "cuda_graph_disabled",
+            )
+            metadata["benchmark_timed_run_kind"] = "eager_callable"
+            return values, metadata
         return _event_fallback(
             fn,
             repetition,
@@ -921,12 +1008,14 @@ def benchmark_cuda_graph_or_events_samples(
             calls_per_replay=graph_repeats,
             prepare_fn=prepare_fn,
         )
+        observation_kwargs = {"before_sample": observer} if observer is not None else {}
         values = _graph_replay_samples(
             graph,
             stream,
             samples=repetition,
             calls_per_replay=graph_repeats,
             prepare_fn=prepare_fn,
+            **observation_kwargs,
         )
 
         if not values or any(
@@ -965,6 +1054,7 @@ def benchmark_cuda_graph_or_events_samples(
                 return captured_output
 
             timed_run._bind(_replay_once, captured_output)
+            metadata["benchmark_timed_run_kind"] = "captured_graph"
         return values, metadata
     except _EmptyGraphCapture:
         return _event_fallback(
@@ -1036,6 +1126,7 @@ def benchmark_cuda_graph_or_events(
 
 
 __all__ = [
+    "TimedRun",
     "benchmark_cuda_event_samples",
     "benchmark_cuda_graph_or_events",
     "benchmark_cuda_graph_or_events_samples",

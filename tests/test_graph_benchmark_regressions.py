@@ -1,3 +1,4 @@
+import ast
 from pathlib import Path
 
 
@@ -6,9 +7,9 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def test_hip2hip_gpumode_restores_state_and_uses_reference_method_policy():
     harnesses = sorted(
-        (ROOT / "tasks/hip2hip/gpumode").glob("*/eval_tools/cal_kernel_perf.py")
+        (ROOT / "tasks/hip2hip/gpumode").rglob("cal_kernel_perf.py")
     )
-    assert harnesses
+    assert len(harnesses) == 22
     for harness in harnesses:
         source = harness.read_text()
         assert "ref_check_pristine" in source, harness
@@ -93,7 +94,7 @@ def test_flydsl_topk_fallback_matches_allocating_output_contract():
         assert "fused_idx = torch.empty(" in run_fused, harness
 
 
-def test_hipblaslt_starter_baselines_are_predetermined_event_only():
+def test_hipblaslt_baseline_and_candidate_share_predetermined_event_policy():
     tasks = [
         "batched_gemm_a8w8_kernel",
         "batched_gemm_bf16_kernel",
@@ -110,7 +111,8 @@ def test_hipblaslt_starter_baselines_are_predetermined_event_only():
     for task in tasks:
         harness = ROOT / "tasks/torch2flydsl" / task / "test_kernel_harness.py"
         source = harness.read_text()
-        assert "use_graph = has_kernel" in source, harness
+        assert "use_graph = has_kernel" not in source, harness
+        assert source.count("use_graph = False") == 2, harness
         assert "capture_unsafe_aiter_hipblaslt" in source, harness
 
 
@@ -119,7 +121,17 @@ def test_implemented_gemm_and_hipblaslt_reference_share_event_policy():
     for task in tasks:
         harness = ROOT / "tasks/torch2flydsl" / task / "test_kernel_harness.py"
         source = harness.read_text()
-        assert source.count("use_cuda_graph=False") == 2, harness
+        tree = ast.parse(source)
+        # Both the legacy entrypoint and the v2 result adapter preserve the
+        # predetermined Event policy for the candidate/reference timing pair.
+        functions = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
+        for name in ("run_benchmark", "arena_benchmark"):
+            calls = [node for node in ast.walk(functions[name]) if isinstance(node, ast.Call)
+                     and getattr(node.func, "id", "") == "benchmark_cuda_graph_or_events"]
+            assert len(calls) == 2, (harness, name)
+            for call in calls:
+                use_graph = next(k.value for k in call.keywords if k.arg == "use_cuda_graph")
+                assert isinstance(use_graph, ast.Constant) and use_graph.value is False
         assert "capture_unsafe_hipblaslt_reference" in source, harness
 
 
@@ -149,28 +161,6 @@ def test_torch2flydsl_gfx950_configs_use_platform_support():
         assert "status: active" in config, task
 
 
-def test_aiter_task_venvs_inherit_the_image_parent_packages():
-    tasks = [
-        "mla_decode_rope",
-        "moe_routing_sigmoid_top1_fused",
-        "pa_decode",
-        "pa_prefill",
-        "unified_attention",
-    ]
-    for task in tasks:
-        runner = (
-            ROOT / "tasks/repository/aiter" / task / "scripts/task_runner.py"
-        ).read_text()
-        assert "def _inherit_parent_site_packages(" in runner, task
-        assert "aka_parent_site_packages.pth" in runner, task
-        assert "site.addsitedir" in runner, task
-        assert 'os.environ.setdefault("USER", "agentkernelarena")' in runner, task
-        assert 'os.environ.setdefault("LOGNAME", "agentkernelarena")' in runner, task
-        assert runner.index("_inherit_parent_site_packages(venv_python)") < (
-            runner.index("if not ready_marker.exists()")
-        ), task
-
-
 def test_sglang_mxfp8_runners_handle_anonymous_docker_uids():
     tasks = [
         "mi355x_sglang_triton_mxfp8_grouped_gemm",
@@ -178,10 +168,9 @@ def test_sglang_mxfp8_runners_handle_anonymous_docker_uids():
     ]
     for task in tasks:
         scripts = ROOT / "tasks/image_kernel" / task / "scripts"
-        for name in ("task_runner.py", "standalone_driver.py"):
-            source = (scripts / name).read_text()
-            assert 'os.environ.setdefault("USER", "agentkernelarena")' in source
-            assert 'os.environ.setdefault("LOGNAME", "agentkernelarena")' in source
+        source = (scripts / "task_runner.py").read_text()
+        assert 'os.environ.setdefault("USER", "agentkernelarena")' in source
+        assert 'os.environ.setdefault("LOGNAME", "agentkernelarena")' in source
 
 
 def test_normal_attention_dot_predetermines_event_timing_for_rocm_teardown():

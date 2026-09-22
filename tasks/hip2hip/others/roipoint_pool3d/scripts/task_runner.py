@@ -135,6 +135,12 @@ def run_correctness():
             mismatch = (gpu_flag.cpu() != cpu_flag).sum().item()
             return False, f"Shape {i+1} (B={B},N={N},C={C},M={M}): empty_flag {mismatch} mismatches"
 
+        from reference_checks import full_output
+        try:
+            full_output(gpu_feat, cpu_feat, gpu=True)
+        except (ValueError, AssertionError) as exc:
+            return False, f"Shape {i+1}: full pooled feature mismatch: {exc}"
+
         # For non-empty boxes, compare pooled features
         # Due to potential ordering differences in point containment checks,
         # compare using sorted feature sums per box
@@ -154,6 +160,8 @@ def run_correctness():
 
 def run_performance():
     from kernel_loader import roipoint_pool3d_ext
+    from replay_validation import measure
+    from reference_checks import check_timed_output
 
     test_cases = []
     
@@ -177,13 +185,17 @@ def run_performance():
             pooled_empty_flag.zero_()
 
         def run_pool():
-            return roipoint_pool3d_ext.forward(
+            roipoint_pool3d_ext.forward(
                 points.contiguous(), pooled_boxes3d, point_features.contiguous(),
                 pooled_features, pooled_empty_flag, pts_assign, pts_idx,
             )
+            return pooled_features, pooled_empty_flag
 
-        elapsed_ms, benchmark_meta = benchmark_cuda_graph_or_events(
-            run_pool,
+        expected = cpu_roipoint_pool3d(points.cpu(), point_features.cpu(), boxes3d.cpu(), nsample)
+        elapsed_ms, benchmark_meta = measure(
+            benchmark_cuda_graph_or_events, run_pool,
+            (points, point_features, boxes3d),
+            lambda actual: check_timed_output(actual, expected),
             warmup=10,
             repetition=100,
             use_cuda_graph=HIP_GRAPH_ENABLED,

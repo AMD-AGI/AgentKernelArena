@@ -1,4 +1,4 @@
-# Validates every task touched by PR #77 against its current task contract.
+# Validates the retained tasks touched by PR #77 against their current task contracts.
 # Run with: make docker-parallel-run CONFIG=example_configs/pr77_touched_tasks_validator_mi355x.yaml GPU_IDS=0,1,2,3,4,5,6,7
 agent:
   template: task_validator
@@ -61,15 +61,6 @@ tasks:
   - image_kernel/mi300x_sglang_triton_gemm
   - image_kernel/mi355x_sglang_triton_mxfp8_grouped_gemm
   - image_kernel/mi355x_sglang_triton_mxfp8_linear
-  - repository/aiter/mla_decode_rope
-  - repository/aiter/moe_routing_sigmoid_top1_fused
-  - repository/aiter/pa_decode
-  - repository/aiter/pa_prefill
-  - repository/aiter/unified_attention
-  - repository/rocprim/block_radix_rank
-  - repository/rocprim/device_binary_search
-  - repository/rocprim/device_merge_sort
-  - repository/rocprim/device_search_n
   - torch2flydsl/batched_gemm_a8w8_kernel
   - torch2flydsl/batched_gemm_bf16_kernel
   - torch2flydsl/dynamic_mxfp8_quant_kernel

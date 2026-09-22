@@ -35,6 +35,8 @@
 #include <cstdlib>
 #include <cstring>
 #include <random>
+#include <numeric>
+#include "scripts/native/routing_controls.hpp"
 #include <string>
 #include <vector>
 
@@ -114,121 +116,11 @@ static uint8_t f32_to_fp8_e4m3fn(float x) {
 // Kernel
 // ---------------------------------------------------------------------------
 
-__device__ __forceinline__ float warp_reduce_max(float x) {
-    for (int off = WARP_SIZE / 2; off > 0; off >>= 1) {
-        float y = __shfl_xor(x, off);
-        x = fmaxf(x, y);
-    }
-    return x;
-}
-
-__device__ __forceinline__ float warp_reduce_sum(float x) {
-    for (int off = WARP_SIZE / 2; off > 0; off >>= 1) {
-        x += __shfl_xor(x, off);
-    }
-    return x;
-}
-
+// Candidate compilation is isolated: its macros cannot affect the host oracle.
 extern "C" __global__ void mla_decode_kernel(
-    const bf16*    __restrict__ q,             // [batch, NHEAD, LK]
-    const uint8_t* __restrict__ kv,            // [num_tokens, 1, LK] fp8 e4m3fn
-    const int32_t* __restrict__ req_to_token,  // [batch, max_ctx]
-    const int32_t* __restrict__ b_seq_len,     // [batch]
-    float sm_scale,
-    bf16*  __restrict__ o,                     // [batch, NHEAD, LV]
-    float* __restrict__ lse,                   // [batch, NHEAD] (optional)
-    int stride_r2t_b,                          // elements
-    int /*max_ctx*/
-) {
-    const int batch_id = blockIdx.x;
-    const int hg_id    = blockIdx.y;
-    const int lane_id  = threadIdx.x;
-
-    const int head_base = hg_id * BLOCK_H;
-    const int seq_len   = b_seq_len[batch_id];
-
-    extern __shared__ float smem_buf[];
-    float* q_lds = smem_buf;  // BLOCK_H * LK floats = 36 KB
-
-    {
-        const bf16* q_head = q + (batch_id * NHEAD + head_base) * LK;
-        for (int i = lane_id; i < BLOCK_H * LK; i += BLOCK_THREADS) {
-            q_lds[i] = __bfloat162float(q_head[i]);
-        }
-    }
-    __syncthreads();
-
-    float e_max[BLOCK_H];
-    float e_sum[BLOCK_H];
-    float acc[BLOCK_H][DIMS_PER_LANE];
-
-    #pragma unroll
-    for (int h = 0; h < BLOCK_H; ++h) {
-        e_max[h] = -INFINITY;
-        e_sum[h] = 0.0f;
-        #pragma unroll
-        for (int d = 0; d < DIMS_PER_LANE; ++d) acc[h][d] = 0.0f;
-    }
-
-    for (int tok = 0; tok < seq_len; ++tok) {
-        const int phys = req_to_token[batch_id * stride_r2t_b + tok];
-        const uint8_t* k_row = kv + static_cast<size_t>(phys) * LK;
-
-        // Each lane computes its slice of the LK dot (9 elements), then we
-        // warp-reduce-sum to broadcast the full QK score to every lane.
-        float qk[BLOCK_H];
-        #pragma unroll
-        for (int h = 0; h < BLOCK_H; ++h) qk[h] = 0.0f;
-
-        #pragma unroll
-        for (int i = 0; i < LK_PER_LANE; ++i) {
-            const int d = lane_id * LK_PER_LANE + i;
-            float k_v = fp8_e4m3fn_to_f32(k_row[d]);
-            #pragma unroll
-            for (int h = 0; h < BLOCK_H; ++h) {
-                qk[h] = fmaf(q_lds[h * LK + d], k_v, qk[h]);
-            }
-        }
-        #pragma unroll
-        for (int h = 0; h < BLOCK_H; ++h) {
-            qk[h] = warp_reduce_sum(qk[h]) * sm_scale;
-        }
-
-        #pragma unroll
-        for (int h = 0; h < BLOCK_H; ++h) {
-            float new_max  = fmaxf(e_max[h], qk[h]);
-            float old_scale = __expf(e_max[h] - new_max);
-            float p        = __expf(qk[h] - new_max);
-
-            e_sum[h] = e_sum[h] * old_scale + p;
-            e_max[h] = new_max;
-            #pragma unroll
-            for (int d = 0; d < DIMS_PER_LANE; ++d) acc[h][d] *= old_scale;
-
-            #pragma unroll
-            for (int d = 0; d < DIMS_PER_LANE; ++d) {
-                int v_idx = lane_id * DIMS_PER_LANE + d;
-                float v = fp8_e4m3fn_to_f32(k_row[v_idx]);
-                acc[h][d] = fmaf(p, v, acc[h][d]);
-            }
-        }
-    }
-
-    #pragma unroll
-    for (int h = 0; h < BLOCK_H; ++h) {
-        const int head = head_base + h;
-        const float inv_sum = 1.0f / e_sum[h];
-        #pragma unroll
-        for (int d = 0; d < DIMS_PER_LANE; ++d) {
-            int v_idx = lane_id * DIMS_PER_LANE + d;
-            float out_val = acc[h][d] * inv_sum;
-            o[(batch_id * NHEAD + head) * LV + v_idx] = __float2bfloat16(out_val);
-        }
-        if (lane_id == 0 && lse != nullptr) {
-            lse[batch_id * NHEAD + head] = e_max[h] + __logf(e_sum[h]);
-        }
-    }
-}
+    const bf16* q, const uint8_t* kv, const int32_t* req_to_token,
+    const int32_t* b_seq_len, float sm_scale, bf16* o, float* lse,
+    int stride_r2t_b, int max_ctx);
 
 // ---------------------------------------------------------------------------
 // Host helpers: random fill, fp32 reference, max_diff
@@ -311,7 +203,12 @@ static void max_diff(
         const double x = static_cast<double>(__bfloat162float(a[i]));
         const double y = static_cast<double>(__bfloat162float(b[i]));
         const double d = std::fabs(x - y);
-        if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(d)) {
+        uint64_t xb, yb;
+        std::memcpy(&xb, &x, sizeof(xb));
+        std::memcpy(&yb, &y, sizeof(yb));
+        // std::isfinite may be folded away by this task's -ffast-math build.
+        if ((xb & 0x7ff0000000000000ULL) == 0x7ff0000000000000ULL ||
+            (yb & 0x7ff0000000000000ULL) == 0x7ff0000000000000ULL) {
             max_abs = INFINITY;
             max_rel = INFINITY;
             return;
@@ -386,11 +283,7 @@ int main(int argc, char** argv) {
 
     fill_random_bf16(h_q,  -1.0f, 1.0f, /*seed=*/42 + batch * 31 + ctx);
     fill_kv_fp8     (h_kv,                   /*seed=*/123 + batch * 17 + ctx);
-    for (int b = 0; b < batch; ++b) {
-        for (int t = 0; t < ctx; ++t) {
-            h_r2t[static_cast<size_t>(b) * ctx + t] = b * ctx + t;
-        }
-    }
+    mla_routing_inputs(h_r2t, h_bsl, batch, ctx, kv_tokens);
 
     bf16    *d_q = nullptr,  *d_o = nullptr;
     uint8_t *d_kv = nullptr;
@@ -438,12 +331,33 @@ int main(int argc, char** argv) {
         check_ok = (max_abs <= atol) || (max_rel <= rtol);
         printf("Check: max_abs=%.4g max_rel=%.4g -> %s\n",
                max_abs, max_rel, check_ok ? "PASS" : "FAIL");
+
+        // Same native kernel, independent analytical routing/length control.
+        // Preserve the random workload for any following benchmark action.
+        auto original_q = h_q;
+        auto original_kv = h_kv;
+        std::fill(h_q.begin(), h_q.end(), __float2bfloat16(0.0f));
+        const auto means = mla_routing_known_answer(h_kv, h_r2t, h_bsl, batch, ctx, LK, f32_to_fp8_e4m3fn);
+        HIP_CHECK(hipMemcpy(d_q, h_q.data(), q_e * sizeof(bf16), hipMemcpyHostToDevice));
+        HIP_CHECK(hipMemcpy(d_kv, h_kv.data(), kv_e, hipMemcpyHostToDevice));
+        HIP_CHECK(hipMemset(d_o, 0xFF, o_e * sizeof(bf16)));
+        launch();
+        HIP_CHECK(hipDeviceSynchronize());
+        HIP_CHECK(hipMemcpy(h_o.data(), d_o, o_e * sizeof(bf16), hipMemcpyDeviceToHost));
+        for(int b = 0; b < batch; ++b)
+            std::fill_n(h_ref.begin() + std::size_t(b) * NHEAD * LV, NHEAD * LV, __float2bfloat16(means[b]));
+        max_diff(h_o, h_ref, max_abs, max_rel);
+        const bool routing_ok = (max_abs <= atol) || (max_rel <= rtol);
+        check_ok = check_ok && routing_ok;
+        printf("Routing check: max_abs=%.4g max_rel=%.4g -> %s\n", max_abs, max_rel, routing_ok ? "PASS" : "FAIL");
+        HIP_CHECK(hipMemcpy(d_q, original_q.data(), q_e * sizeof(bf16), hipMemcpyHostToDevice));
+        HIP_CHECK(hipMemcpy(d_kv, original_kv.data(), kv_e, hipMemcpyHostToDevice));
     }
 
     // Performance (full or bench mode).
     if (mode == Mode::Full || mode == Mode::Bench) {
         const float us = time_kernel_ms(launch, /*warmup=*/10, /*iters=*/100) * 1000.0f;
-        const double bytes_kv = static_cast<double>(batch) * ctx * LK;       // kv reads
+        const double bytes_kv = static_cast<double>(std::accumulate(h_bsl.begin(), h_bsl.end(), int64_t{0})) * LK; // valid kv reads
         const double bytes_q  = static_cast<double>(batch) * NHEAD * LK * 2; // bf16 q reads
         const double bytes_o  = static_cast<double>(batch) * NHEAD * LV * 2; // bf16 o writes
         const double gbs = ((bytes_kv + bytes_q + bytes_o) / (us * 1e-6)) / 1e9;

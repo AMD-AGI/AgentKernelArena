@@ -5,7 +5,13 @@ DEFAULT_DOCKER_IMAGE_GFX942="${AKA_DOCKER_IMAGE_GFX942:-lmsysorg/sglang:v0.5.12-
 GFX950_V0514_DOCKER_IMAGE="lmsysorg/sglang-rocm:v0.5.14-rocm720-mi35x-20260705"
 GFX950_V0514_MANIFEST_DIGEST="sha256:b435b508b5aa696abb25c909341ce73e41574c4271cf716bed72418dcea86b78"
 GFX950_V0514_IMMUTABLE_IMAGE="lmsysorg/sglang-rocm@${GFX950_V0514_MANIFEST_DIGEST}"
-DEFAULT_DOCKER_IMAGE_GFX950="${AKA_DOCKER_IMAGE_GFX950:-$GFX950_V0514_DOCKER_IMAGE}"
+GFX950_V0519_DOCKER_IMAGE="lmsysorg/sglang-rocm:v0.5.19-rocm10-mi35x-20260913"
+GFX950_V0519_IMMUTABLE_IMAGE="lmsysorg/sglang-rocm@sha256:106a7adbeec5554b6e66a4bda0b3694af442717b9fe92754a9885520077b6f93"
+# Keep qualification and scoring on the verified bytes, even if the dated tag
+# moves. New runtime candidates remain explicit overrides until qualified.
+DEFAULT_DOCKER_IMAGE_GFX950="${AKA_DOCKER_IMAGE_GFX950:-$GFX950_V0514_IMMUTABLE_IMAGE}"
+# Built on first use when absent; its Dockerfile pins the base.
+DEFAULT_DOCKER_IMAGE_GFX1201="${AKA_DOCKER_IMAGE_GFX1201:-agent-kernel-arena:rdna4-rocm10-v1}"
 CONTAINER_WORKDIR="${AKA_DOCKER_WORKDIR:-/workspace}"
 HOST_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 HOST_HOME="${HOME:?HOME must be set}"
@@ -16,9 +22,9 @@ SELECTED_IMAGE=""
 AGENT_STATE_MOUNT_ROOT="${AKA_AGENT_STATE_MOUNT_ROOT:-/opt/aka-agent-state}"
 DEFAULT_RUN_CONFIG="example_configs/quickstart_claude_mi300.yaml"
 # Set by host-side commands after reading the selected run config. Keep this
-# separate from REQUIRED_AGENTS because geak_v4 is normalized to claude_code
+# separate from REQUIRED_AGENTS because GEAK templates normalize to claude_code
 # before Docker arguments are built.
-GEAK_V4_RUNTIME=0
+GEAK_RUNTIME=0
 # quality_loop keeps the repository checkout read-only in the agent container.
 # Only these host-validated, run-specific subdirectories are over-mounted rw.
 QUALITY_LOOP_ARTIFACT_REL=""
@@ -58,6 +64,7 @@ Usage:
   src/scripts/docker_benchmark.sh quality-loop [--config <quality-loop-config.yaml>] [quality_loop args...]
   src/scripts/docker_benchmark.sh sikl-task-builder [--config <config.yaml>] <inspect|run|resume> [args...]
   src/scripts/docker_benchmark.sh smoke
+  src/scripts/docker_benchmark.sh build-rdna4-image
   src/scripts/docker_benchmark.sh eval-tools-smoke
   src/scripts/docker_benchmark.sh build-eval-tool-images
 
@@ -73,8 +80,12 @@ Environment overrides:
   AKA_DOCKER_IMAGE_<ARCH> Per-arch image override, e.g. AKA_DOCKER_IMAGE_GFX950=...
   AKA_DOCKER_IMAGE_GFX942 Default image for gfx942.
   AKA_DOCKER_IMAGE_GFX950 Default image for gfx950.
+  AKA_DOCKER_IMAGE_GFX1201 RDNA4 image (also the build-rdna4-image output tag).
   AKA_NODE_PREFIX         Host Node prefix containing bin/node and npm-installed agent CLI(s).
   AKA_AGENTS              Agent CLI(s) to check, comma/space separated; use all for all three.
+  AKA_REQUIRED_PROFILERS  Optional comma/space-separated profiler binaries required by
+                          this run: rocprof-compute, rocprofv3. Smoke reports both;
+                          core graph/event timing does not require either profiler.
   AKA_EVAL_TOOLS          Override evaluation_tools.enabled (comma/space separated).
   AKA_EVAL_TOOL_IMAGE_<TOOL>
                            Per-tool sidecar image override, e.g. AKA_EVAL_TOOL_IMAGE_GPU_ASAN.
@@ -120,16 +131,22 @@ docker_image_for_arch() {
     case "$arch" in
         gfx942) printf '%s\n' "$DEFAULT_DOCKER_IMAGE_GFX942" ;;
         gfx950) printf '%s\n' "$DEFAULT_DOCKER_IMAGE_GFX950" ;;
+        gfx1201) printf '%s\n' "$DEFAULT_DOCKER_IMAGE_GFX1201" ;;
         *)
             die "No Docker image mapping for GPU arch '$arch'. Set AKA_DOCKER_IMAGE or ${env_name}."
             ;;
     esac
 }
 
-uses_gfx950_v0514_runtime() {
+uses_gfx950_aiter_cache_overrides() {
     [[ "$SELECTED_GPU_ARCH" == "gfx950" ]] || return 1
-    [[ "$SELECTED_IMAGE" == "$GFX950_V0514_DOCKER_IMAGE" \
-        || "$SELECTED_IMAGE" == "$GFX950_V0514_IMMUTABLE_IMAGE" \
+    # Evaluation-tool setup may replace SELECTED_IMAGE with its verified local
+    # ID. That verifier checks the pinned scoring bytes, including custom aliases.
+    local image_reference="${AKA_SCORING_IMAGE_REFERENCE:-$SELECTED_IMAGE}"
+    [[ "$image_reference" == "$GFX950_V0514_DOCKER_IMAGE" \
+        || "$image_reference" == "$GFX950_V0514_IMMUTABLE_IMAGE" \
+        || "$image_reference" == "$GFX950_V0519_DOCKER_IMAGE" \
+        || "$image_reference" == "$GFX950_V0519_IMMUTABLE_IMAGE" \
         || ( -n "${AKA_SCORING_IMAGE_RUNTIME_REF:-}" \
             && "$SELECTED_IMAGE" == "$AKA_SCORING_IMAGE_RUNTIME_REF" ) ]]
 }
@@ -216,7 +233,7 @@ detect_host_gpu_arch() {
 
 select_runtime() {
     local arch="$1"
-    [[ -n "$arch" ]] || die "Could not infer GPU arch; set AKA_GPU_ARCH=gfx942 or AKA_GPU_ARCH=gfx950"
+    [[ -n "$arch" ]] || die "Could not infer GPU arch; set AKA_GPU_ARCH (for example gfx942, gfx950, or gfx1201)"
 
     SELECTED_GPU_ARCH="$(normalize_gpu_arch "$arch")"
     if [[ -n "${AKA_DOCKER_IMAGE:-}" ]]; then
@@ -234,6 +251,31 @@ select_runtime_for_config() {
 
 select_runtime_for_host() {
     select_runtime "$(detect_host_gpu_arch)"
+}
+
+build_rdna4_image() {
+    # Send only the recipe, normalizer, and package lock as build context.
+    docker build --pull=false \
+        --file "$HOST_ROOT/docker/rdna4/Dockerfile" \
+        --tag "$DEFAULT_DOCKER_IMAGE_GFX1201" \
+        "$HOST_ROOT/docker/rdna4"
+}
+
+ensure_runtime_image() {
+    # Custom images retain Docker's normal pull/run behavior, even if an
+    # override happens to equal our default tag. Never build over an override.
+    [[ "$SELECTED_GPU_ARCH" == "gfx1201" \
+        && -z "${AKA_DOCKER_IMAGE:-}" \
+        && -z "${AKA_DOCKER_IMAGE_GFX1201:-}" ]] || return 0
+    if docker image inspect "$SELECTED_IMAGE" >/dev/null 2>&1; then
+        return 0
+    fi
+    # An unavailable daemon is not evidence that the image is missing.
+    docker info >/dev/null \
+        || die "Cannot access Docker; check daemon access before building the RDNA4 runtime."
+    echo "RDNA4 image '$SELECTED_IMAGE' is missing; building the pinned runtime before launch. The first build may download the base image and locked packages." >&2
+    build_rdna4_image >&2 \
+        || die "RDNA4 runtime build failed; no experiment was started. Retry the command or run make docker-build-rdna4."
 }
 
 detect_node_prefix() {
@@ -338,12 +380,12 @@ read_agent_template() {
     sed -nE 's/^[[:space:]]+template:[[:space:]]*["'"'"']?([A-Za-z0-9_]+).*/\1/p' "$config" | head -n 1
 }
 
-configure_geak_v4_runtime() {
+configure_geak_runtime() {
     local config="$1"
-    GEAK_V4_RUNTIME=0
-    if [[ "$(read_agent_template "$config")" == "geak_v4" ]]; then
-        GEAK_V4_RUNTIME=1
-    fi
+    GEAK_RUNTIME=0
+    case "$(read_agent_template "$config")" in
+        geak|geak_v4) GEAK_RUNTIME=1 ;;
+    esac
 }
 
 agent_list_contains() {
@@ -405,8 +447,8 @@ resolve_required_agents() {
         claude|claude_code) printf 'claude_code\n' ;;
         cursor|cursor-agent) printf 'cursor\n' ;;
         codex) printf 'codex\n' ;;
-        # GEAK v4 drives Claude Code; extra deps handled in build/preflight.
-        geak_v4|geak-v4|geak) printf 'claude_code\n' ;;
+        # All retained v2 tasks use GEAK's unified Claude Workflow engine.
+        geak|geak_v4|geak-v4) printf 'claude_code\n' ;;
         *) printf '%s\n' "$tmpl" ;;
     esac
 }
@@ -423,7 +465,7 @@ normalize_check_agents() {
             all)
                 normalized+=(codex claude_code cursor)
                 ;;
-            claude|claude_code|geak_v4|geak-v4|geak)
+            claude|claude_code|geak|geak_v4|geak-v4)
                 normalized+=(claude_code)
                 ;;
             cursor|cursor-agent)
@@ -482,6 +524,11 @@ mount_agent() {
             local native_claude_bin="$HOST_HOME/.local/bin/claude"
             local native_claude_root="$HOST_HOME/.local/share/claude"
             local claude_node_prefix=""
+            local claude_auth_dir="${AKA_CLAUDE_AUTH_DIR:-$HOST_HOME/.claude}"
+            local claude_auth_required="$strict"
+            # A setup-token supplies headless authentication without requiring
+            # a browser-login credential directory. Never put its value in argv.
+            [[ -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]] || claude_auth_required=0
             if [[ -e "$native_claude_bin" && -d "$native_claude_root" ]]; then
                 add_mount "$HOST_HOME/.local/bin" "$HOST_HOME/.local/bin" ro
                 add_mount "$native_claude_root" "$native_claude_root" ro
@@ -496,14 +543,14 @@ mount_agent() {
                 fi
                 add_mount "$claude_node_prefix" /opt/claude-node ro
             fi
-            need_path "$HOST_HOME/.claude" "Claude Code auth directory" "$strict" || return 0
-            need_path "$HOST_HOME/.claude.json" "Claude Code auth/config file" "$strict" || return 0
+            need_path "$claude_auth_dir" "Claude Code auth directory" "$claude_auth_required" || true
+            need_path "$HOST_HOME/.claude.json" "Claude Code auth/config file" "$claude_auth_required" || true
             if [[ "$isolate" == "1" ]]; then
-                add_mount "$HOST_HOME/.claude" "$AGENT_STATE_MOUNT_ROOT/.claude" ro
-                add_mount "$HOST_HOME/.claude.json" "$AGENT_STATE_MOUNT_ROOT/.claude.json" ro
+                [[ ! -d "$claude_auth_dir" ]] || add_mount "$claude_auth_dir" "$AGENT_STATE_MOUNT_ROOT/.claude" ro
+                [[ ! -f "$HOST_HOME/.claude.json" ]] || add_mount "$HOST_HOME/.claude.json" "$AGENT_STATE_MOUNT_ROOT/.claude.json" ro
             else
-                add_mount "$HOST_HOME/.claude" "$HOST_HOME/.claude"
-                add_mount "$HOST_HOME/.claude.json" "$HOST_HOME/.claude.json"
+                [[ ! -d "$claude_auth_dir" ]] || add_mount "$claude_auth_dir" "$HOST_HOME/.claude"
+                [[ ! -f "$HOST_HOME/.claude.json" ]] || add_mount "$HOST_HOME/.claude.json" "$HOST_HOME/.claude.json"
             fi
             ;;
         cursor)
@@ -927,6 +974,10 @@ build_docker_args() {
     local codex_home="${AKA_CODEX_HOME:-$container_home/.codex}"
     local cache_suffix="${AKA_CACHE_SUFFIX:-}"
     local cache_postfix=""
+    local container_username
+    # Arbitrary host UIDs need not exist in the image's passwd database.
+    # Python getpass (used by TorchInductor/AITER) also accepts USER/LOGNAME.
+    container_username="$(id -un 2>/dev/null)" || container_username="aka-$HOST_UID"
 
     if [[ -n "$cache_suffix" ]]; then
         cache_suffix="${cache_suffix//[^A-Za-z0-9_.-]/_}"
@@ -934,6 +985,9 @@ build_docker_args() {
     fi
 
     [[ -n "$SELECTED_IMAGE" ]] || select_runtime_for_host
+    # Parallel runs finish their preflight before starting any workers, so the
+    # first container builds a missing default and subsequent containers reuse it.
+    ensure_runtime_image
 
     docker_args=(run --rm --entrypoint bash)
     unset _MOUNTED_TARGETS
@@ -951,6 +1005,8 @@ build_docker_args() {
         --security-opt=seccomp=unconfined
         --user "${HOST_UID}:${HOST_GID}"
         -e "HOME=${container_home}"
+        -e "USER=${container_username}"
+        -e "LOGNAME=${container_username}"
         -e "CODEX_HOME=${codex_home}"
         -e "XDG_CACHE_HOME=/tmp/agent-cache${cache_postfix}"
         -e "MPLCONFIGDIR=/tmp/matplotlib${cache_postfix}"
@@ -963,29 +1019,39 @@ build_docker_args() {
         -e "AGENT_KERNEL_ARENA_DOCKER=1"
         -e "AGENT_KERNEL_ARENA_WORKDIR=${CONTAINER_WORKDIR}"
         -e "AGENT_KERNEL_ARENA_GPU_ARCH=${SELECTED_GPU_ARCH}"
+        -e "AKA_REQUIRED_PROFILERS=${AKA_REQUIRED_PROFILERS:-}"
         -e "PYTORCH_ROCM_ARCH=${SELECTED_GPU_ARCH}"
         -e "AGENT_STATE_MOUNT_ROOT=${AGENT_STATE_MOUNT_ROOT}"
         -e "PATH=${container_path}"
         -w "$CONTAINER_WORKDIR"
     )
 
-    # geak_v4's claude-agent-sdk is installed with `pip install --target` into
+    # GEAK's claude-agent-sdk is installed with `pip install --target` into
     # this host-mounted dir (see container_setup_geak). Only put it on
-    # PYTHONPATH for GEAK runs so its dependency closure cannot shadow the
-    # runtime image's pinned packages for existing agents.
-    if [[ "$GEAK_V4_RUNTIME" == "1" ]]; then
-        docker_args+=(-e "PYTHONPATH=${CONTAINER_WORKDIR}/.aka-pyuserbase/geak-sdk")
+    # a GEAK-only path for the container bootstrap to prepend to PYTHONPATH.
+    # Do not replace the image's PYTHONPATH: it can supply AITER/source imports.
+    if [[ "$GEAK_RUNTIME" == "1" ]]; then
+        docker_args+=(-e "AKA_GEAK_SDK_PATH=${CONTAINER_WORKDIR}/.aka-pyuserbase/geak-sdk")
     fi
 
-    # The pinned gfx950 image ships root-owned AITER/FlyDSL caches, and its
+    # These known gfx950 images ship root-owned AITER/FlyDSL caches, and their
     # /tmp/aiter_configs directory is not writable by the host UID used below.
-    # Keep these overrides tied to that exact runtime so custom images and
+    # Keep these overrides tied to their references so custom images and
     # other GPU architectures retain their existing cache behavior.
-    if uses_gfx950_v0514_runtime; then
+    if uses_gfx950_aiter_cache_overrides; then
         docker_args+=(
             -e "AITER_JIT_DIR=/tmp/aiter-jit${cache_postfix}"
             -e "FLYDSL_RUNTIME_CACHE_DIR=/tmp/flydsl-runtime-cache${cache_postfix}"
             --tmpfs "/tmp/aiter_configs:rw,uid=${HOST_UID},gid=${HOST_GID},mode=1777"
+        )
+    fi
+
+    if [[ "$SELECTED_GPU_ARCH" == "gfx1201" ]]; then
+        # AITER's repository and installed-package builds use separate caches.
+        # The host-UID container does not have a writable host-home mount.
+        docker_args+=(
+            -e "AITER_ROOT_DIR=/tmp/aiter-root${cache_postfix}"
+            -e "AITER_JIT_DIR=/tmp/aiter-jit${cache_postfix}"
         )
     fi
 
@@ -1005,13 +1071,16 @@ build_docker_args() {
     if [[ "${AGENT_HOME_ISOLATION:-0}" == "1" ]]; then
         docker_args+=(-e "AGENT_KERNEL_ARENA_ISOLATED_HOME=1")
     fi
+    if agent_list_contains "$agents" claude_code && [[ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]]; then
+        docker_args+=(-e CLAUDE_CODE_OAUTH_TOKEN)
+    fi
     # Forward the host's Claude / Anthropic auth+config only for GEAK execution
     # containers that provision Claude Code. Requiring both conditions keeps
     # existing Claude/task-validator runs unchanged and prevents setup-geak
     # (which has no agent CLI) from receiving runtime credentials. Each var is
     # passed by name only (no "=value") so secrets stay out of argv / process
     # listings.
-    if [[ "$GEAK_V4_RUNTIME" == "1" ]] && agent_list_contains "$agents" claude_code; then
+    if [[ "$GEAK_RUNTIME" == "1" ]] && agent_list_contains "$agents" claude_code; then
         local claude_env_var
         for claude_env_var in \
             ANTHROPIC_AUTH_TOKEN ANTHROPIC_API_KEY ANTHROPIC_BASE_URL \
@@ -1137,18 +1206,24 @@ build_docker_args() {
         mount_agent "$_agent" "$strict"
     done
 
-    # Mount the GEAK kernel_workflow checkout only for GEAK runs so an exported
+    # Mount the pinned GEAK checkout only for GEAK runs so an exported
     # host setting does not change the container surface for existing agents.
-    if [[ "$GEAK_V4_RUNTIME" == "1" && -n "${GEAK_V4_WORKFLOW_DIR:-}" ]]; then
-        local geak_dir
-        geak_dir="$(cd "$GEAK_V4_WORKFLOW_DIR" 2>/dev/null && pwd || true)"
+    # The v2 adapter also reads git identity and perf_knowledge in its parent.
+    if [[ "$GEAK_RUNTIME" == "1" && ( -n "${GEAK_HOME:-}" || -n "${GEAK_V4_WORKFLOW_DIR:-}" ) ]]; then
+        local geak_dir geak_root
+        if [[ -n "${GEAK_HOME:-}" ]]; then
+            geak_root="$GEAK_HOME"
+        else
+            geak_root="$(dirname "${GEAK_V4_WORKFLOW_DIR%/}")"
+        fi
+        geak_dir="$(cd "$geak_root" 2>/dev/null && pwd || true)"
         if [[ -n "$geak_dir" && -d "$geak_dir" ]]; then
             add_mount "$geak_dir" "$geak_dir" ro
-            docker_args+=(-e "GEAK_V4_WORKFLOW_DIR=$geak_dir")
+            docker_args+=(-e "GEAK_HOME=$geak_dir" -e "GEAK_V4_WORKFLOW_DIR=$geak_dir/kernel_workflow")
         elif [[ "$strict" == "1" ]]; then
-            die "GEAK_V4_WORKFLOW_DIR is set but is not a directory: $GEAK_V4_WORKFLOW_DIR"
+            die "GEAK checkout is not a directory: $geak_root"
         else
-            warn "GEAK_V4_WORKFLOW_DIR is set but is not a directory: $GEAK_V4_WORKFLOW_DIR; skipping GEAK mount"
+            warn "GEAK checkout is not a directory: $geak_root; skipping GEAK mount"
         fi
     fi
 
@@ -1170,7 +1245,7 @@ docker_exec() {
     local interactive="${1:-0}"
     shift
     build_docker_args "$interactive"
-    docker "${docker_args[@]}" -lc 'cd "$AGENT_KERNEL_ARENA_WORKDIR" && if [[ "${AGENT_KERNEL_ARENA_ISOLATED_HOME:-0}" == "1" ]]; then bash src/scripts/docker_benchmark.sh _container_prepare_worker_home; fi && exec "$@"' _ "$@"
+    docker "${docker_args[@]}" -lc 'cd "$AGENT_KERNEL_ARENA_WORKDIR" && if [[ -n "${AKA_GEAK_SDK_PATH:-}" ]]; then export PYTHONPATH="${AKA_GEAK_SDK_PATH}${PYTHONPATH:+:$PYTHONPATH}"; fi && if [[ "${AGENT_KERNEL_ARENA_ISOLATED_HOME:-0}" == "1" ]]; then bash src/scripts/docker_benchmark.sh _container_prepare_worker_home; fi && exec "$@"' _ "$@"
 }
 
 extract_config_name() {
@@ -1243,11 +1318,27 @@ import sys
 print(f"python={sys.executable}")
 print(f"version={sys.version.split()[0]}")
 
-for cmd in ("hipcc", "rocprof-compute"):
+selected_arch = os.environ.get("AGENT_KERNEL_ARENA_GPU_ARCH")
+for cmd in ("hipcc",):
     path = shutil.which(cmd)
     if not path:
         raise SystemExit(f"missing command: {cmd}")
     print(f"{cmd}={path}")
+
+# Core correctness and graph/event timing do not launch a profiler. Report
+# binary availability separately; it does not attest profiling support on this
+# device, or that any candidate was analyzed. Optional evaluation-tool sidecars
+# retain their own capability and evidence gates.
+profilers = ("rocprof-compute", "rocprofv3")
+required = set(os.environ.get("AKA_REQUIRED_PROFILERS", "").replace(",", " ").split())
+unknown = required.difference(profilers)
+if unknown:
+    raise SystemExit(f"unknown required profiler(s): {', '.join(sorted(unknown))}")
+for profiler in profilers:
+    path = shutil.which(profiler)
+    print(f"{profiler}={path or 'optional-missing'}")
+    if profiler in required and not path:
+        raise SystemExit(f"missing required profiler: {profiler}")
 
 for mod_name in ("torch", "triton", "pytest", "yaml", "numpy"):
     mod = importlib.import_module(mod_name)
@@ -1264,7 +1355,6 @@ print(f"torch_cuda_available={torch.cuda.is_available()}")
 if not torch.cuda.is_available():
     raise SystemExit("torch.cuda.is_available() is False")
 print(f"torch_cuda_device={torch.cuda.get_device_name(0)}")
-selected_arch = os.environ.get("AGENT_KERNEL_ARENA_GPU_ARCH")
 actual_arch = getattr(torch.cuda.get_device_properties(0), "gcnArchName", "")
 if actual_arch:
     print(f"torch_cuda_arch={actual_arch}")
@@ -1346,11 +1436,13 @@ container_preflight() {
     container_smoke
     # Only verify the agent(s) this config actually uses (mounts are scoped the same way).
     container_check_agents $(resolve_required_agents "$config_name")
-    # GEAK v4 also needs the Claude Agent SDK and its kernel_workflow checkout.
-    if [[ "$(read_agent_template "$config_name")" == geak_v4 ]]; then
-        container_setup_geak
-        container_check_geak
-    fi
+    # GEAK aliases all use the same v2 SDK and pinned engine.
+    case "$(read_agent_template "$config_name")" in
+        geak|geak_v4)
+            container_setup_geak
+            container_check_geak
+            ;;
+    esac
 python - "$config_name" <<'PY'
 import pathlib
 import sys
@@ -1384,9 +1476,22 @@ container_setup_flydsl() {
 }
 
 container_setup_geak() {
-    # Install claude-agent-sdk when the image does not ship it.
-    if python -c 'import claude_agent_sdk' 2>/dev/null; then
-        python -c 'import claude_agent_sdk; print("claude-agent-sdk already provided by image: " + str(getattr(claude_agent_sdk, "__version__", "unknown")) + "; nothing to install")'
+    # Install only the SDK version qualified by the adapter, even when an image
+    # or earlier setup supplies a different version.
+    if python - <<'PY'
+from importlib.metadata import PackageNotFoundError, version
+from pathlib import Path
+required = next(line.split("==", 1)[1].strip() for line in
+                Path("agents/geak/requirements.txt").read_text().splitlines()
+                if line.startswith("claude-agent-sdk=="))
+try:
+    installed = version("claude-agent-sdk")
+except PackageNotFoundError:
+    installed = None
+raise SystemExit(0 if installed == required else 1)
+PY
+    then
+        python -c 'from importlib.metadata import version; print("claude-agent-sdk=" + version("claude-agent-sdk") + " already qualified")'
         return 0
     fi
     # Install into a host-mounted target dir (survives the --rm container) and
@@ -1402,17 +1507,24 @@ container_setup_geak() {
     # SDK via PYTHONPATH and short-circuit above.
     local target="${PYTHONUSERBASE:-$PWD/.aka-pyuserbase}/geak-sdk"
     echo "claude-agent-sdk not found in image; installing into $target ..."
-    python -m pip install --target "$target" claude-agent-sdk
+    python -m pip install --upgrade --target "$target" -r agents/geak/requirements.txt
     PYTHONPATH="$target${PYTHONPATH:+:$PYTHONPATH}" python -c 'import claude_agent_sdk; print("claude-agent-sdk=" + str(getattr(claude_agent_sdk, "__version__", "unknown")) + " setup OK")'
 }
 
 container_check_geak() {
-    # Confirm the kernel_workflow checkout is reachable inside the container.
-    local dir="${GEAK_V4_WORKFLOW_DIR:-/opt/geak/kernel_workflow}"
-    if [[ ! -f "$dir/kernel_workflow.js" ]]; then
-        die "GEAK kernel workflow not found: $dir/kernel_workflow.js. Export GEAK_V4_WORKFLOW_DIR on the host (the runner mounts and forwards it) to your GEAK kernel_workflow directory."
-    fi
-    echo "geak_workflow=$dir/kernel_workflow.js"
+    python - <<'PY'
+import os
+from pathlib import Path
+from agents.geak.compatibility import verify_upstream
+
+root = os.environ.get("GEAK_HOME")
+if not root and os.environ.get("GEAK_V4_WORKFLOW_DIR"):
+    root = str(Path(os.environ["GEAK_V4_WORKFLOW_DIR"]).parent)
+if not root:
+    raise SystemExit("Set GEAK_HOME to the pinned checkout before starting Docker")
+verify_upstream(Path(root))
+print("geak_engine=pinned clean checkout; live Workflow capability is checked by the agent")
+PY
 }
 
 container_prepare_worker_home() {
@@ -1584,7 +1696,7 @@ run_parallel() {
     local config_name
     config_name="$(extract_config_name "$@")"
     select_runtime_for_config "$config_name"
-    configure_geak_v4_runtime "$config_name"
+    configure_geak_runtime "$config_name"
 
     REQUIRED_AGENTS="$(resolve_required_agents "$config_name")"
     AGENTS_STRICT=1
@@ -1667,7 +1779,7 @@ case "${1:-}" in
         shift
         config_name="$(extract_config_name "$@")"
         select_runtime_for_config "$config_name"
-        configure_geak_v4_runtime "$config_name"
+        configure_geak_runtime "$config_name"
         # Only the configured agent's CLI/auth is required for a run.
         REQUIRED_AGENTS="$(resolve_required_agents "$config_name")"
         AGENTS_STRICT=1
@@ -1774,7 +1886,7 @@ case "${1:-}" in
         shift
         config_name="$(extract_config_name "$@")"
         select_runtime_for_config "$config_name"
-        configure_geak_v4_runtime "$config_name"
+        configure_geak_runtime "$config_name"
         REQUIRED_AGENTS="$(resolve_required_agents "$config_name")"
         AGENTS_STRICT=1
         docker_exec 0 bash src/scripts/docker_benchmark.sh _container_preflight "$config_name"
@@ -1795,12 +1907,15 @@ case "${1:-}" in
         if [[ -z "${AKA_AGENTS:-}" ]]; then
             [[ -f "$config_name" ]] || die "config file not found: $config_name"
         fi
-        configure_geak_v4_runtime "$config_name"
+        configure_geak_runtime "$config_name"
         # By default, check only the CLI selected by CONFIG. AKA_AGENTS can
         # request one, several, or `all` explicitly.
         REQUIRED_AGENTS="$(normalize_check_agents "$(resolve_required_agents "$config_name")")"
         AGENTS_STRICT=1
         docker_exec 0 bash src/scripts/docker_benchmark.sh _container_check_agents $REQUIRED_AGENTS
+        ;;
+    build-rdna4-image)
+        build_rdna4_image
         ;;
     smoke)
         select_runtime_for_host
@@ -1834,7 +1949,7 @@ case "${1:-}" in
         ;;
     setup-geak)
         select_runtime_for_host
-        GEAK_V4_RUNTIME=1
+        GEAK_RUNTIME=1
         REQUIRED_AGENTS=""
         AGENTS_STRICT=0
         docker_exec 0 bash src/scripts/docker_benchmark.sh _container_setup_geak

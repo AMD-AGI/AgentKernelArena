@@ -13,7 +13,7 @@ the full repository campaign, isolated git worktree, resume manifest, and final 
 
 ## Hard preflight
 
-A real run stops before creating a branch or modifying a task unless all of these
+Host initialization stops before creating the audit branch unless these checks
 pass:
 
 - `gh auth status -h github.com`
@@ -21,7 +21,9 @@ pass:
 - `git`, `gh`, and `codex` are installed
 - Git has a usable author identity for task commits
 - the source worktree is clean
-- the configured GPU/runtime is available through the Docker runner
+
+The Docker execution phase checks the selected GPU/runtime before task work.
+Successful host initialization alone is not evidence of GPU execution.
 
 Only the host-side deterministic publisher uses `gh`. The Docker runner performs
 GitHub preflight and creates the audit worktree on the host, runs Codex/GPU work
@@ -68,30 +70,192 @@ make docker-quality-loop \
 `--no-publish` still requires the GitHub login/write preflight, but suppresses
 push and PR creation. `--plan` is the only intentionally offline mode.
 
+## Task contract and budgets
+
+Tasks use the common [v2 task contract](../../docs/how-to/add-task.md).
+Discovery preserves the full path below `tasks/` as the stable ID, including when
+copying a task to a scratch directory. Nested dependency configs are not separate
+tasks. `TaskSpec` validates every selected or edited config; legacy task fields
+are rejected rather than silently translated.
+
+Language, starting state, candidate paths and baseline policy come from
+`candidate` and `baseline`. Directory names select tasks only. Commands and their
+timeouts come from `spec.action(...)`. The task runner continues to own its
+reference, cases, comparison rules and timing implementation. Configs written by
+promotion are serialized through `TaskSpec.to_mapping()` and remain v2.
+
+Optimizer/repair/case-enhancement (`backend`), reviewer and validator have
+independently configurable model and timeout budgets. Defaults use the previously
+smoke-tested `gpt-5.6-terra` with `medium` effort; see
+[CLI qualification](../../docs/reference/agent-model-defaults.md) for the dated
+model evidence. The role defaults are in [agent_config.yaml](agent_config.yaml).
+For example, a run config can override just the validator budget:
+
+```yaml
+quality_loop:
+  validator:
+    name: codex
+    model: gpt-5.6-terra
+    effort: medium
+    timeout_seconds: 1800
+```
+
+An omitted validator block retains its own defaults instead of inheriting a more
+expensive optimizer. Reviewer settings inherit an explicitly configured backend
+when no reviewer block is supplied. CLI nonzero exits, failed/missing completed
+turn events and timeouts are operational failures; timeout cleanup terminates the
+CLI process group. These failures do not authorize task edits.
+
+Optimizer, repair, reviewer and case-enhancement prompts use anonymous stdin,
+not command-line arguments. Each invocation logs a unique private receipt directory
+beside its task workspace: `.quality_loop-<role>-<unique-id>/`. It contains
+`stdout.log`, `stderr.log` and `process.json`, including failed and timed-out calls.
+The metadata records the role, model, safe argv, prompt byte count/hash, timestamps,
+exit status, observed and retained-prefix hashes and the latest terminal/usage events; it does
+not serialize prompt text, credentials or the process environment. The separately
+launched task validator does not use this backend receipt mechanism.
+
+Raw stdout/stderr retain at most 8 MiB/1 MiB per invocation. Truncation is explicit;
+the backend continues draining, hashing and checking terminal events after those
+limits. A JSON event line larger than 1 MiB is an operational failure. Available
+token counts are CLI-reported evidence, not a dollar-cost estimate. A receipt left
+in `starting`/`running`, or without stream EOF, is incomplete evidence. These logs
+are outside task edit scopes and must be preserved with run artifacts; permissive
+agent subprocesses are not a security sandbox. Role completion and its receipt do
+not approve a candidate or replace independent review and framework finalization.
+Raw receipts are flushed/fsynced before success; status files are flushed/fsynced
+before atomic replacement, followed by a directory fsync. Storage errors fail the
+call, with a failed receipt saved when storage permits. A shorter post-exit pipe
+drain timeout is identified separately from the configured role deadline.
+
 ## Per-task gates
 
-1. Run the existing 10-check validator in a fresh workspace.
-2. Record WARN findings without repairing them.
-3. For FAIL, allow one task-local repair and re-run the full validator in another
-   fresh workspace. Record an unresolved failure locally if it still fails.
-4. Measure the baseline, run one Codex optimization candidate, protect the
-   harness, and use the centralized compile/correctness/performance evaluator.
-5. Run an independent read-only Codex review. Deterministic evaluator failures
-   always override an agent acceptance.
-6. Treat the task as easy only when three measurements of the single candidate
-   have median speedup at least 5x, use consistent benchmark methods and case
-   counts, and the reviewer accepts logic equivalence.
-7. Attempt promotion for every task selected by the run config. Capability checks,
-   rather than task-type names, reject candidates without a committed source
-   baseline that can pass fresh validation and the dual correctness gate.
-8. Case changes may touch only test/harness paths and are accepted only when both
-   the pre-audit kernel and candidate pass the updated cases.
-9. Before any host commit, the complete worktree diff must exactly match the
-   accepted per-task paths recorded in `state.yaml`; unexpected edits abort
-   publication.
+1. Run the shared task validator in a fresh workspace. Require the framework's
+   completion marker, matching report hash, task ID, fresh timestamp and successful
+   framework status. Missing or operationally failed reports stop the attempt.
+2. Record WARN findings without repairing them. For task FAIL, allow one repair
+   and re-run the validator in a new workspace; a repair needs clean PASS.
+3. Use the shared `TaskSession` to validate the initial package and freeze its
+   baseline before the optimizer edits anything. Unimplemented candidates remain
+   legal only during initial validation. The declared baseline correctness policy
+   still applies; a diagnostic baseline never relaxes final candidate correctness.
+4. Run one Codex optimization iteration, enforce declared edit scopes through the
+   shared harness guard, and submit the candidate to the common evaluator.
+5. Run an independent read-only review of the current finalized result. The review
+   cannot override deterministic failures or absent required tool evidence.
+6. When the first speedup reaches the configured easy-task threshold and the
+   reviewer accepts, perform the remaining confirmations against the same frozen
+   baseline. The easy-task gate requires finite speedups, matching case counts,
+   consistent methods and successful candidate/tool/reviewer gates.
+7. Promote a baseline only when it is an implemented `initial_candidate` with
+   committed editable sources. Preserve nested paths and tree helpers. A provided
+   baseline is independent: copying a candidate cannot replace its implementation.
+   After cross-language promotion, declare the new starting/baseline language.
+8. When enabled and requested by an accepting reviewer, propose case enhancements.
+   The current file allowlist accepts paths under `script/`, `scripts/`, `test/`
+   or `tests/`, names beginning with `test_` or ending in `_test.py` or
+   `_harness.py`, and the declared `evaluation.workloads` file. Candidate scopes,
+   materialized source destinations and `performance_utils_pytest.py` remain
+   excluded. Other changed files reject the entire proposal before validation;
+   this includes a README or an input generator outside the allowed paths.
+   For an eligible proposal, revalidate the original baseline with new cases and
+   check the actual optimized candidate. An original generation stub is not
+   executed as a candidate. Failed hardening is rolled back.
+9. Every material task change needs a fresh framework-finalized validation PASS
+   before it is applied to the audit worktree. WARN does not authorize publication.
+10. Before any host commit, recheck retained validation evidence and task file
+    fingerprints. The complete diff must match accepted per-task paths in
+    `state.yaml`; unexpected edits abort publication.
+
+Each attempt has a unique artifact directory. Existing workspaces, reports and
+rejected candidates are preserved; a reused output path moves to a sibling
+`.quality_loop_history/` directory rather than being deleted. Old reports are not
+copied into new task packages. Resume skips a terminal task only while its files
+and completed validation evidence still match the recorded fingerprints.
+
+Task proposals exclude runtime reports, ROCmBench `*_py.pt` outputs, materialized
+benchmark helpers, compiled objects/libraries, and ELF executables (including
+extensionless binaries). Ordinary tensor/input fixtures and executable scripts
+remain eligible for review. Reviewer snapshots still observe report mutations.
+The host checks for generated outputs again before committing, even when an older
+campaign manifest lists them as accepted changes; it refuses publication without
+deleting the experiment artifacts. Keep raw results in the run artifact directory
+and share summaries and artifact links in the PR instead of committing outputs.
 
 Run artifacts are written under `quality_loop_runs/<run-id>/`; the isolated audit
 branch lives under `.quality_loop_worktrees/<run-id>/`. Both are ignored by Git.
 Tasks pinned to another GPU architecture are reported as `platform_deferred`; run
-the matching MI300/MI355X campaign to audit those tasks. If a run produces no
-accepted file changes, it writes the local report without opening an empty PR.
+the matching campaign to audit them. No accepted changes means no empty PR.
+
+A completed campaign or accepted implementation review does not mean a baseline
+was promoted or cases were enhanced. Inspect `baseline_hardened`, `cases_enhanced`,
+accepted changes and retained stage logs separately. The current case allowlist
+does not support every task's input-generator layout; a manifest edit alone also
+cannot change a generator with a fixed case list. See the
+[recorded GPU smoke](../../docs/how-to/quality-loop.md#recorded-gpu-smoke-2026-09-15)
+for an actual completed campaign with a rejected enhancement proposal.
+
+## Shared-runtime integration
+
+[runtime.py](runtime.py) is the only quality-loop lifecycle adapter. It calls
+`TaskSession.create(spec, workspace, state_directory)`, `validate_initial()` and
+`candidate_action(...)`. Initial baseline evidence and `agent_context.json` stay
+in the session state directory outside the candidate workspace. Confirmation
+measurements reuse this same session, never snapshot an optimized candidate as
+its own baseline.
+
+Before independent review, the controller writes a unique `review-evidence-*.json`
+index in that external session directory and supplies its path and SHA256 in the
+reviewer prompt. It locates the initial contexts and this evaluation's candidate
+compile/correctness/performance records, including actual argv, exit codes, stdout
+protocol envelopes and per-case results. `task_result.yaml` is an aggregate; it
+does not need to embed those action records. An action without a completed record
+is explicitly marked `NO_COMPLETED_ACTION`, never inferred to have passed.
+
+Contexts are captured before optimization. Candidate records must match the
+controller's in-memory executions, and the result must bind the current candidate
+sources. Candidate-provided evidence paths are not consulted. Indexed files are
+checked again after review, as are the frozen baseline and existing workspace
+boundaries. The index improves evidence discovery; it does not relax numerical,
+coverage, tool, timing or reviewer gates. It is a reproducibility check, not an OS
+security sandbox. Preserve it with the external session and role receipts.
+
+The shared runtime provides:
+
+- v2 materialization through `src.preprocessing.setup_workspace`, including all
+  declared `workspace.sources`, without modifying committed task packages;
+- v2 prompting with the stable `_task_id` supplied by quality loop;
+- `src.evaluator.evaluate_task_session(session, *, eval_config, logger)`, which
+  uses that session's frozen baseline and manifest, performs all candidate and
+  configured evaluation-tool gates, scores through the shared scoring code,
+  writes a fresh `session.workspace / "task_result.yaml"`, and returns the same
+  report mapping (including `task_name`, case counts, method consistency,
+  compilation/correctness/tool gates and speedup);
+- `src.task_run.validate_task_session`, which executes initial actions, passes
+  captured evidence to the validator, and re-finalizes its semantic review with
+  the original in-memory context. Validator model/effort and timeout settings
+  remain independent of the optimizer.
+
+A missing session/evaluator entrypoint raises an actionable error. There is no
+fallback to legacy commands, local scoring or a model-authored PASS. The focused CPU tests use
+synthetic timing rows only to exercise protocol plumbing; they are not GPU timing
+or task validation evidence.
+
+## Focused verification
+
+The worker change was tested on Linux with Python 3.12.3 and pytest 9.1.1:
+
+```bash
+python3 -m pytest -q tests/test_quality_loop.py tests/test_quality_loop_v2.py tests/test_quality_loop_backend.py
+python3 -m compileall -q agents/quality_loop
+git diff --check
+```
+
+Against worker base `deefc493`, 51 tests and three subtests passed; seven shared
+lifecycle/prompt tests skipped because those parent-owned modules postdate the
+base. Loading the actual shared `src` modules from integration commit `d88c9c55`
+produced 58 passed tests, three passed subtests and no skips. Subsequent integration
+coverage in `tests/test_task_run_v2.py` exercises the actual shared scoring and
+validator paths with CPU processes and synthetic timing rows. The CLI
+tests use local fake processes, including a child-process timeout test; no new
+paid inference or GPU work was submitted in this change.

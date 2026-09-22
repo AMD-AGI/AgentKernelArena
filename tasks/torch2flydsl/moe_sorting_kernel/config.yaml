@@ -1,17 +1,25 @@
-source_file_path:
-- kernel.py
-target_kernel_functions:
-- flydsl_moe_sorting
-- build_moe_sorting_module
-- _compile_moe_sorting_oneshot
-compile_command:
-- python3 -c "import torch; from kernel import build_moe_sorting_module; build_moe_sorting_module(num_experts=256,
-  topk=8, max_tokens=16, unit_size=32); build_moe_sorting_module(num_experts=32, topk=2,
-  max_tokens=64, unit_size=32); build_moe_sorting_module(num_experts=8, topk=2, max_tokens=64,
-  unit_size=32); print('compile ok')"
-correctness_command:
-- python3 test_kernel_harness.py --correctness
-performance_command:
-- python3 test_kernel_harness.py --full-benchmark
-task_type: torch2flydsl
-task_result_template: null
+schema_version: 2
+description: Implement or optimize moe_sorting in FlyDSL, preserving all task inputs, outputs and numerical
+  gates.
+instructions:
+- README.md
+candidate:
+  language: flydsl
+  initial_state: implemented
+  editable:
+  - kernel.py
+  entrypoints:
+  - file: kernel.py
+    kind: function
+    symbol: flydsl_moe_sorting
+  initial_language: flydsl
+baseline:
+  kind: initial_candidate
+  correctness_policy: required
+  language: flydsl
+evaluation:
+  runner:
+  - python3
+  - scripts/evaluate.py
+  workloads: cases.json
+  timeout_s: 3600

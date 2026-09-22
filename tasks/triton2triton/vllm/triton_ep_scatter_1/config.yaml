@@ -1,34 +1,19 @@
-source_file_path:
+schema_version: 2
+description: Optimize triton_ep_scatter_1 with the original Triton operator contract.
+candidate:
+  language: triton
+  initial_state: implemented
+  editable:
   - source/triton_ep_scatter_1.py
-
-target_kernel_functions:
-  - _fwd_kernel_ep_scatter_1
-
-compile_command:
-  - python3 scripts/task_runner.py compile
-
-correctness_command:
-  - python3 scripts/task_runner.py correctness
-
-performance_command:
-  - python3 scripts/task_runner.py performance
-
-task_type: triton2triton
-
-task_result_template: null
-
-prompt:
-  source_code: null
-  instructions: |
-    Optimize the Triton `_fwd_kernel_ep_scatter_1` kernel for maximum GPU throughput.
-    This kernel computes expert start locations via prefix sum of 128-aligned token
-    counts, then fills m_indices with expert IDs.
-
-    Key optimization opportunities:
-    - Efficient prefix sum computation
-    - m_indices fill loop optimization
-
-    Constraints:
-    - Must maintain the same function signature for `ep_scatter_1`
-    - expert_start_loc and m_indices must exactly match reference
-  cheatsheet: null
+  entrypoints:
+  - file: source/triton_ep_scatter_1.py
+    kind: function
+    symbol: _fwd_kernel_ep_scatter_1
+baseline:
+  kind: initial_candidate
+  language: triton
+evaluation:
+  runner:
+  - python3
+  - _arena_eval.py
+  workloads: workloads.json

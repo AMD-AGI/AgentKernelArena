@@ -1,0 +1,376 @@
+# Image kernel tasks: v2 contracts and runtime compatibility
+
+All 21 packages use the same [task schema](../../docs/how-to/add-task.md).
+There is no runtime dispatch on the directory name or legacy `task_type`.
+These are optimization tasks with existing implementations, not empty ports.
+Each has `candidate.initial_state: implemented` and a required-correctness
+`baseline.kind: initial_candidate`. The framework must materialize sources, run
+setup, and freeze an independent baseline **before** an agent edits the candidate.
+Baseline actions use that snapshot; candidate actions use the submitted files.
+Missing sources or unsupported runtimes fail explicitly without baseline fallback.
+
+## Inventory
+
+Counts are independently enumerated in each protected `workloads.json`.
+Correctness-only cases are additional checks, never additional score points.
+
+| Task directory | Final language | Correctness cases | Performance cases |
+| --- | --- | ---: | ---: |
+| [mi300x_sglang_hip_mha_batch_prefill](mi300x_sglang_hip_mha_batch_prefill/README.md) | hip | 4 | 2 |
+| [mi300x_sglang_hip_pa_decode](mi300x_sglang_hip_pa_decode/README.md) | hip | 4 | 2 |
+| [mi300x_sglang_hip_pa_ragged](mi300x_sglang_hip_pa_ragged/README.md) | hip | 4 | 2 |
+| [mi300x_sglang_triton_fp8_gemm](mi300x_sglang_triton_fp8_gemm/README.md) | triton | 4 | 2 |
+| [mi300x_sglang_triton_gemm](mi300x_sglang_triton_gemm/README.md) | triton | 4 | 2 |
+| [mi355x_sglang_triton_mxfp8_grouped_gemm](mi355x_sglang_triton_mxfp8_grouped_gemm/README.md) | triton | 3 | 3 |
+| [mi355x_sglang_triton_mxfp8_linear](mi355x_sglang_triton_mxfp8_linear/README.md) | triton | 6 | 6 |
+| [mi355x_vllm_aiter_mxfp4_moe_2stage_kimi_k3](mi355x_vllm_aiter_mxfp4_moe_2stage_kimi_k3/README.md) | flydsl | 14 | 2 |
+| [mi355x_vllm_ck_a8w8_blockscale_gemm](mi355x_vllm_ck_a8w8_blockscale_gemm/README.md) | hip | 5 | 3 |
+| [mi355x_vllm_ck_cktile_moe_2stage](mi355x_vllm_ck_cktile_moe_2stage/README.md) | hip | 1 | 1 |
+| [mi355x_vllm_ck_moe_2stage](mi355x_vllm_ck_moe_2stage/README.md) | hip | 4 | 3 |
+| [mi355x_vllm_hip_dynamic_per_tensor_quant](mi355x_vllm_hip_dynamic_per_tensor_quant/README.md) | hip | 3 | 3 |
+| [mi355x_vllm_hip_paged_attention_decode](mi355x_vllm_hip_paged_attention_decode/README.md) | hip | 7 | 7 |
+| [mi355x_vllm_tilelang_mhc_fused_post_pre](mi355x_vllm_tilelang_mhc_fused_post_pre/README.md) | tilelang | 4 | 4 |
+| [mi355x_vllm_triton_fused_moe_gemma4](mi355x_vllm_triton_fused_moe_gemma4/README.md) | triton | 3 | 3 |
+| [mi355x_vllm_triton_fused_moe_gptq_awq](mi355x_vllm_triton_fused_moe_gptq_awq/README.md) | triton | 3 | 3 |
+| [mi355x_vllm_triton_kda_linear_attn_kimi_k3](mi355x_vllm_triton_kda_linear_attn_kimi_k3/README.md) | triton | 5 | 5 |
+| [mi355x_vllm_triton_paged_attention_2d](mi355x_vllm_triton_paged_attention_2d/README.md) | triton | 3 | 3 |
+| [mi355x_vllm_triton_sparse_attn_prefill_ragged](mi355x_vllm_triton_sparse_attn_prefill_ragged/README.md) | triton | 5 | 3 |
+| [mi355x_vllm_triton_unified_attention](mi355x_vllm_triton_unified_attention/README.md) | triton | 10 | 5 |
+| [mi355x_vllm_triton_unified_attention_gemma4](mi355x_vllm_triton_unified_attention_gemma4/README.md) | triton | 4 | 4 |
+| **Total** | | **100** | **68** |
+
+## Task-local execution
+
+Each task supplies `scripts/evaluate.py`, `scripts/setup_task.py`,
+`scripts/task_adapter.py`, `scripts/reference_controls.py`, the original
+protected `scripts/task_runner.py`, and a complete `workloads.json` manifest.
+No task imports repository `src` or `agents` modules. README instructions carry
+forward the former task prompt's operator, layout, dispatch and optimization
+constraints. Exact editable paths are explicit, including nested Python packages,
+HIP headers, and Kimi's five-file FlyDSL/config/dispatch implementation.
+
+The entrypoint accepts `validate-task` and `{baseline,candidate}
+`{compile,correctness,performance}` and emits one `ARENA_EVAL_RESULT=` JSON envelope
+using `arena-eval-v1`, including on dependency, import, compile or comparison errors.
+Validation reports the initial state, complete case manifest, source hashes, and
+independent reference-control results. Compile executes the original JIT/operator
+smoke. Correctness covers every declared case. Performance converts **fresh**
+returned device measurements; it never reads a previous performance report.
+Conflicting case IDs, shape/parameter changes, duplicate or missing cases,
+nonfinite/nonpositive timings, and host timing methods are rejected.
+
+The original harness comparison assertions are retained. Assertion failures can
+also indicate shape, dtype, state or dispatch problems, so they are reported as
+`evaluation_error`, not falsely classified as an acceptable numerical diagnostic.
+Both baseline and candidate require successful numerical checks.
+
+The former 16 `scripts/forge_driver.py` adapters and eight merged
+`scripts/standalone_driver.py` copies are retired. No current task action or
+setup step uses them. Forge generates its own bridge to the same declared v2
+commands used by other agents. Tasks do not supply an agent-specific CLI,
+alternate allclose/SNR acceptance policy, or cached stdout timing interface.
+The original files remain in Git history for interpreting older experiments.
+Historical driver outputs quoted in task READMEs are not current run commands
+or v2 validation evidence.
+
+The public `task_runner.py` functions, references, `profile_case()` helpers and
+recorded profiling case IDs remain available. Removing the obsolete wrappers
+does not remove those task-owned interfaces. Profiling integrations must invoke
+the required task functions explicitly; the retired `--profile-run` CLI is not
+part of the seven-action evaluation protocol or an automatic profiling hook.
+Optional profiling never replaces the full correctness or performance actions.
+
+Python imports and direct loaders are checked against the materialized candidate
+paths. HIP actions use separate fresh build directories and record successful
+compiler inputs matching a declared target. A changed AITER dispatcher selecting
+another implementation does not establish that the requested CK source compiled.
+Compiler hooks are outside device timing; build dependencies must be materialized
+before evaluation. Build-input evidence is limited coverage, not an execution trace
+of every kernel or proof against arbitrary hostile Python.
+
+Setup freezes Kimi's numerical stage implementation separately from its editable
+`fused_moe.py`. The SGLang MXFP8 references use a protected, independent UE8M0
+per-32-element dequantizer instead of importing the editable kernel's helper.
+MXFP8 linear additionally limits edits to its two GEMM entrypoints and new
+implementation helpers. Existing quantizers in that same file generate test and
+replay inputs and must stay protected by the shared symbol-scoped guard.
+The remaining Torch references and all input generation remain protected.
+
+The Kimi and CK two-stage MoE reference controls include the BF16 intermediate
+between the gate/up and down projections. The independent scalar known answer
+rounds at that boundary, matching the reference's declared dtype. Omitting this
+rounding made the Kimi self-check compare `4.03125` with `4.0`; correcting the
+known answer keeps the control tolerance and the scored numerical gates intact.
+
+## Preservation evidence and deliberate corrections
+
+`tests/test_image_task_migration_v2.py` pins evidence from commit `5c9f8ef2`:
+original CASES/PERF_CASES, original session JSON bytes, numerical constants, and
+ASTs of all original compile/correctness/performance methods. The initial
+migration only added returns for freshly produced rows. A subsequent qualification
+fix adds captured-output checks after timing to the five older AITER tasks. The
+regression removes only those reviewed additions when comparing the original
+measurement body; original timing arguments and comparison gates stay pinned.
+Generated `AKA-GENERATED` performance regions are byte-for-byte unchanged.
+Thus seeds, workload cases, tolerance constants, warmup/repetition settings,
+graph/event method, synchronization, state reset and timed replay logic remain.
+
+The manifest distinguishes original small checks from scored dimensions:
+
+- Five older AITER tasks retain two small correctness cases plus two full-size
+  performance cases, all four already checked by the original correctness action.
+- CK GEMM and CK MoE originally clamped correctness M/token to 64. Those checks
+  remain, and the adapter additionally checks every larger scored shape against
+  the same reference/tolerance. CK-Tile's single M=64 case needs no extra shape.
+  This adds three full-size comparisons; their GPU cost and numerical outcome
+  still require formal qualification, rather than assuming the original small
+  check proves the scored shape correct.
+- AITER unified attention retains all five context-128 2D checks and five original
+  full-context 3D scored cases. Kimi retains all 14 reachable M buckets: two scored
+  cases and twelve additional correctness cases, with its worst-of-three rule.
+- MHC now explicitly rejects missing output tuple members; its four individual
+  `assert_close` gates are unchanged. MXFP8 linear additionally rejects wrong
+  shape, dtype/device and nonfinite output before its unchanged relative-error gate.
+- Sparse prefill retains its three historical scored uniform-512 CSR cases and
+  adds two unscored nonuniform-CSR correctness and captured-replay cases. Empty,
+  short and partial-block rows use the same `0.08/0.08` numerical rule. The grouped
+  FP32 oracle has analytical empty/one/two-element controls. These additions keep
+  all 98 migrated correctness cases and 68 score points; they do not claim the
+  historical fixed-top-k timings measure every ragged row-length distribution.
+- Three Torch references allocate on their input's device rather than a literal
+  CUDA device, allowing small independent CPU known-answer tests with identical
+  GPU behavior.
+
+Representative unchanged gates include old A16W16 GEMM `atol=0.01` (BF16) / `0.005` (FP16), `rtol=0.02`,
+FP8 GEMM `0.03/0.01`, old HIP attention `0.02/0.02`, CK GEMM `0.15/0.12`,
+CK MoE cosine error `<0.03`, and MHC `0.08/0.08`. Kimi's per-case cosine/norm
+thresholds and KDA's per-case output/state thresholds remain in the original
+session specifications. No universal tolerance replaces these task-owned rules.
+
+Independent nonzero known answers and deliberately wrong outputs are provided for
+all tasks. The CPU suite directly executes the real reference/comparison controls
+for 15 tasks. Six controls require the image's imported dependencies: the two older
+HIP PA tasks, two CK MoE tasks, Kimi MoE, and TileLang MHC. Their execution was
+outstanding at the initial migration checkpoint; the later GPU qualification
+records supersede that checkpoint. Tiny controls validate reference semantics;
+they do not replace full quantized workloads or GPU validation.
+
+The CPU session regression uses the actual migrated envelope runner and real
+TaskSession to execute all seven actions, then corrupts the candidate and proves
+that correctness fails while the frozen baseline still passes. Its synthetic
+latency is explicitly a test fixture and provides no GPU performance evidence.
+
+## Actual immutable-image probe: job 138977
+
+On 2026-09-15, a single bounded job requested `amd-aicos-qos`, node
+`crsuse2-m2m-213`, **one MI355X**, 8 CPU, 32 GiB, with a 15-minute cap. It initially
+waited for `Resources`; without a retry or request change it ran at 05:14:52 UTC
+and completed at 05:15:38 with exit `0:0` (scheduler elapsed 45 seconds).
+`ROCR_VISIBLE_DEVICES=0` exposed exactly one device. Both containers executed a
+nonzero Torch GPU calculation and the original image task's AITER Triton A16W16
+wrapper against an independent Torch matmul reference. The allocation was released.
+This was an import/JIT/API numerical smoke and source inventory, **not** a v2
+validator, full workload sweep, or timed performance qualification.
+
+The precise image references were:
+
+- Old: `lmsysorg/sglang-rocm@sha256:b435b508b5aa696abb25c909341ce73e41574c4271cf716bed72418dcea86b78`
+- New: `lmsysorg/sglang-rocm@sha256:106a7adbeec5554b6e66a4bda0b3694af442717b9fe92754a9885520077b6f93`
+
+| Observed component | Old image | New image |
+| --- | --- | --- |
+| Python package tree | `/opt/venv/lib/python3.10/site-packages` | `/opt/venv/lib/python3.12/site-packages` |
+| Torch | `2.9.1+rocm7.2.0.lw.git7e1940d4` | `2.11.0+rocm10.0.0` |
+| Triton | `3.6.0+git42270451` | `3.8.0+git4cff872c.rocm10.0.0` |
+| SGLang | `0.5.14.dev20260705+g3ea875fef4` | `0.5.19.dev20260913+g14b647cf27` |
+| FlyDSL | `0.2.2` | `0.3.2` |
+| TileLang | `0.1.7.post3+cuda.gita55a8230` | same |
+
+Image source inventory gives these **availability** results; none means the full
+task passed:
+
+| Task group | Old image | New image | Required next step |
+| --- | --- | --- | --- |
+| Five `mi300x_sglang_*` AITER tasks | All declared target files found | All found | Full role/case validation; only Triton A16W16 API probed here |
+| Two `mi355x_sglang_triton_mxfp8_*` tasks | Both original target modules found | Both target modules absent | Retain the compatible pinned source/runtime; qualify an explicit pinned overlay or task migration before upgrading |
+| Kimi AITER FlyDSL MoE | Four of five corrected nested source paths found; tuned Kimi CSV missing | All five found under `aiter/aiter/` | Validate required tuned dispatch, SiTU layout, all M buckets and numerics; source presence alone is insufficient |
+| Other 13 `mi355x_vllm_*` tasks | Declared installed source directory absent | Declared installed source directory absent | Use and pin their actual session-compatible vLLM image or build a qualified overlay with the exact dependencies/layout |
+
+The missing vLLM paths are real filesystem observations, not just missing package
+metadata. They include the declared `/usr/local/lib/python3.12/dist-packages/`
+`vllm`, `aiter`, and `aiter_meta` roots. The complete AITER repository under
+`/sgl-workspace/aiter` supplies some similarly named files, but does not establish
+that the vLLM dispatch/API/package layout exists. In particular, an AITER
+`fused_moe.py` is not a replacement for vLLM's identically named file. The probe's
+heuristic alternative-file inventory must not be treated as a source fallback.
+
+Original session JSON specifies the intended vLLM/SGLang base images and, where
+needed, custom builds. Those historical tags are provenance, not newly qualified
+immutable defaults. No image default or declared source path is silently changed
+for the 13 unavailable tasks. `aiter_meta` is explicitly declared as a second source
+for the package-layout unified-attention task so headers resolve within the copied
+workspace, rather than via an external image symlink.
+
+The new SGLang image is therefore not a suite-wide replacement for the old image.
+Keep the existing default until suitable per-task runtimes and complete v2 checks
+are qualified. Missing source packages require source/runtime qualification;
+loosening numerical gates or accepting installed fallback would not solve them.
+
+## Integration handoff and evidence locations
+
+The parent migration owns shared runtime/loader/evaluator integration. Its perf
+helper discovery must materialize the original `scripts/task_runner.py` even
+though `evaluation.runner` now points to `scripts/evaluate.py`, which reaches the
+harness by a task-local import. The committed generated stubs intentionally fail
+if that materialization is missing. This migration does not hand-edit them.
+
+Run the focused CPU suite with `python -m pytest -q
+tests/test_image_task_migration_v2.py` in the parent-provided test environment.
+The shared v2 pipeline is now integrated. Use the complete `task_validator`
+flow described in the [validator guide](../../docs/how-to/task-validator.md),
+with the matching pinned runtime and declared sources. The initial migration
+checkpoint predates full validation; subsequent evidence is retained
+separately under `logs/image-v2-gpu-validation/`. No optimization is included
+in these qualification runs.
+
+Uncommitted reproducibility artifacts are retained under
+`logs/image-migration-v2/`: the Slurm request, final job state, masked GPU output,
+Docker image inspections, old/new JSON inventories, copied inspected source files,
+original harness evidence, and CPU test outputs. Job-specific files are under
+`logs/image-migration-v2/138977/`. Source SHA256 hashes in action envelopes identify
+the actual materialized implementation, since image tags alone are insufficient.
+
+## Qualification follow-up from parent base `5fb2b9d6`
+
+The five older AITER harnesses now observe the actual captured output, negate one
+input in its original storage, poison the output, replay, and compare against a
+fresh reference with the original tolerance. This runs after measurement, with no
+change to the measured kernel, warmups or repetitions. It addresses their missing
+exact-replay evidence; a separate ordinary correctness invocation is insufficient.
+An event fallback whose outputs cannot be observed is explicitly rejected by the
+existing shared timed-run collector. At this follow-up checkpoint the new controls
+had CPU negative coverage,
+with full GPU validation still outstanding. Later full reports supersede this
+checkpoint for their exact task version and runtime.
+
+Six AITER-based `mi355x_vllm_*` configs now explicitly select the real SGLang
+repository layout observed in job 138977. The three CK tasks and two HIP tasks
+seed `/sgl-workspace/aiter` into `aiter_meta`. Unified attention additionally seeds
+`/sgl-workspace/aiter/aiter` into `aiter`. Their task-relative candidate paths,
+reference rules and source-build checks remain unchanged. The historical table
+above describes the original source declarations at `5fb2b9d6`; these six source
+availability errors are corrected in the follow-up, without claiming GPU PASS.
+At that checkpoint the two removed SGLang MXFP8 modules and seven actual
+vLLM-source tasks still needed compatible explicitly pinned source/runtime
+assets; an identically named AITER file is not a valid substitute for a vLLM
+implementation.
+
+Qualification job 139081 allocated GPUs 2 and 3 on node100, then failed in Docker
+before process startup because the read-only snapshot lacked its `logs/` mount
+point. Scheduler elapsed: 13 seconds, exit `125:0`; GPUs were released. It produced
+**zero** validator results and no GPU computation evidence. The launch preparation
+now creates that mount point before the read-only mount. This is a launcher fix,
+not a change to framework evaluation or task acceptance. Its artifacts are under
+`logs/image-v2-gpu-validation/139081/`.
+
+## Pinned source recovery for the two SGLang MXFP8 tasks
+
+These tasks now explicitly acquire
+[SGLang commit 3ea875fef48f6f01fa3bddd9e2197ad190cef29d](https://github.com/sgl-project/sglang/tree/3ea875fef48f6f01fa3bddd9e2197ad190cef29d)
+through `workspace.sources: kind: git`. Task setup stages its `python/sglang`
+package at the unchanged `sglang/` candidate paths. This supersedes reliance on
+the scoring image containing the two historical modules. A completed staging
+receipt identifies the declared source and package content. Harmless repeated
+setup keeps the candidate unchanged; unknown collisions, changed source identity
+and escaping symlinks fail. Setup never overwrites an existing candidate; the
+upstream copy remains protected.
+
+The upstream files match the immutable old-image inventory from job 138977 byte
+for byte (SHA-256):
+
+- `srt/layers/quantization/mxfp8_amd_gfx95.py`:
+  `a80677e9863df4f7d9ad35dccdad414488d7eaa53e81c7b35fefc3f8cbd66baa`.
+- `srt/layers/moe/moe_runner/triton_utils/mxfp8_moe_amd_gfx95.py`:
+  `69d2987ca17b5a24a0a16d2f07d539d8a73e43ed7c5846c272bca9921e16d271`.
+
+No operator, candidate entrypoint, workload, reference, tolerance or timing
+method changes with this acquisition correction. Source identity is established;
+runtime compatibility and a fresh complete GPU validator remain required.
+
+The real Git acquisition and both declared setup commands have also completed
+on CPU, with the staged linear kernel matching the above SHA-256. The package's
+formatting-file symlink into the same upstream checkout is copied by content;
+links outside that checkout are rejected. These acquisition checks provide no
+GPU correctness or performance evidence.
+
+## Original vLLM runtime: identity and setup verified
+
+The official `vllm/vllm-openai-rocm:v0.24.0` registry manifest was resolved to
+`vllm/vllm-openai-rocm@sha256:3832d79d9e514ce2e072580689da078726454596d833c8ab803f29f3cea5ea28`.
+Its actual local image ID and RepoDigest both match that digest. The registry
+configuration blob is
+`sha256:ee424d681e1d5644fa96f13cced1e511401e67ef04207bb459c1986d35ab84e7`.
+
+The six tasks below record
+`harbor.crusoe.primus-safe.amd.com/sync/vllm-openai-rocm:v0.24.0` in their
+original `session_cases.json`. Inspection from the allocated compute node in
+job 139130 confirmed that this original registry manifest exactly equals the
+official manifest, including the digest, configuration and layers. The two
+references identify the same image content. The Harbor hostname did not resolve
+on the development host; it did resolve on the compute node.
+
+During job 139130, a separate container **without GPU devices** inspected this
+image. It contains every declared candidate file and top-level entrypoint for:
+
+- `mi355x_vllm_tilelang_mhc_fused_post_pre`
+- `mi355x_vllm_triton_fused_moe_gemma4`
+- `mi355x_vllm_triton_fused_moe_gptq_awq`
+- `mi355x_vllm_triton_paged_attention_2d`
+- `mi355x_vllm_triton_sparse_attn_prefill_ragged`
+- `mi355x_vllm_triton_unified_attention_gemma4`
+
+Observed package metadata: Python 3.12.13, Torch `2.11.0+gitd0c8b1f`,
+Triton 3.6.0, vLLM `0.24.0+rocm723`, TileLang 0.1.10 and FlyDSL 0.1.4.2.
+The installed vLLM package uses the task-declared
+`/usr/local/lib/python3.12/dist-packages/vllm` layout. No source redirection to
+AITER is needed or permitted. A separate CPU-only container also completed real
+framework materialization and every declared setup command for all six tasks,
+using frozen source `69e3436f`. These are source and setup checks, **not** GPU
+import, compile, correctness, timing or task-validator passes.
+
+Qualification of these tasks uses a separate run with `AKA_DOCKER_IMAGE` set
+to the above digest and only the matching vLLM tasks. Each run must freeze its own
+baseline under the same runtime used for the candidate. This does not change the
+Arena default image, and does not establish that compiled vLLM extensions can be
+copied into the newer SGLang image.
+
+The original Kimi KDA custom build remains unavailable: this official image
+lacks its `models/kimi_k3/amd/ops/third_party/kda` and corresponding shared FLA
+sources. The original task records custom build
+`0.1.dev19253+g5f76ae224.d20260727`. Its accessible archived session contains
+reports but no matching kernel files; the original kernel workspace is empty.
+
+The retained task now uses an explicit, semantic-preserving public-source port
+to vLLM commit `000c7df9ffd3e470980fd4cd6b8ec1b0585500ff`, with declared Git
+acquisition and protected setup. This is not recovery of the custom bytes or
+substitution of a different attention operator. The task keeps the packed
+non-speculative decode and chunk entrypoints, full workloads and original output
+gates, and additionally checks final state and actual graph replay. See its
+[task contract](mi355x_vllm_triton_kda_linear_attn_kimi_k3/README.md) for the
+source, aliasing, independent recurrence and baseline comparison boundaries.
+
+## Current GPU qualification
+
+The [runtime qualification record](../../docs/reference/runtime-upgrade-qualification.md)
+supersedes the historical source/setup-only checkpoints above. As of
+2026-09-15, 11:16 UTC, all 21 current task packages have complete framework-finalized
+validator PASS: 14 on the explicit SGLang 0.5.19 image and seven on the original
+vLLM 0.24.0 image. The public KDA port additionally passed the actual unchanged
+candidate through the shared final evaluator in job 140103. Exact report,
+completion-marker, runtime and source identities are retained under
+`logs/image-v2-gpu-validation/`. Historical failures remain separate evidence.
+
+These runs cover the complete 100 correctness cases and 68 performance cases
+listed above. A task's recorded runtime matters: a vLLM-image PASS does not
+qualify that task on SGLang. No default image promotion or optimized-agent result
+is implied; the original custom KDA source bytes remain unavailable.

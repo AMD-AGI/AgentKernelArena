@@ -1,0 +1,125 @@
+{
+  "version": 1,
+  "candidate_symbols": {
+    "source/triton_fused_gdn_gating.py": [
+      {
+        "name": "fused_gdn_gating_kernel",
+        "jit": true
+      }
+    ]
+  },
+  "case_table": "TEST_SHAPES",
+  "input_table": [
+    [
+      16,
+      8
+    ],
+    [
+      32,
+      16
+    ],
+    [
+      64,
+      32
+    ],
+    [
+      128,
+      64
+    ],
+    [
+      256,
+      128
+    ]
+  ],
+  "cases": [
+    {
+      "test_case_id": "perf1",
+      "dtype": "float16,float32",
+      "params": {
+        "case_index": 0,
+        "configuration": [
+          16,
+          8
+        ],
+        "configuration_names": "(batch, nh)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf2",
+      "dtype": "float16,float32",
+      "params": {
+        "case_index": 1,
+        "configuration": [
+          32,
+          16
+        ],
+        "configuration_names": "(batch, nh)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf3",
+      "dtype": "float16,float32",
+      "params": {
+        "case_index": 2,
+        "configuration": [
+          64,
+          32
+        ],
+        "configuration_names": "(batch, nh)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf4",
+      "dtype": "float16,float32",
+      "params": {
+        "case_index": 3,
+        "configuration": [
+          128,
+          64
+        ],
+        "configuration_names": "(batch, nh)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf5",
+      "dtype": "float16,float32",
+      "params": {
+        "case_index": 4,
+        "configuration": [
+          256,
+          128
+        ],
+        "configuration_names": "(batch, nh)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    }
+  ],
+  "migration": {
+    "original_harness_sha256": "ccc233a1c138ea15a68846cc40cf73b1a90065a461c4bda2c94dd194c38b93e6",
+    "original_correctness_sha256": "bbb07a33bc797e9fe4947b3e148af0abb9cb4cc804c368793c06e461049d3aa8"
+  }
+}

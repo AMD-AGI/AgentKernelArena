@@ -1,0 +1,651 @@
+# MI355X runtime upgrade qualification
+
+This record accompanies the task-schema refactor. It qualifies runtime changes
+separately from task validation and agent optimization. A tag existing in a
+registry, an import succeeding, or a runtime smoke passing does not establish
+correctness or performance for all Arena tasks.
+
+## Decision
+
+Retain the verified SGLang 0.5.14 / ROCm 7.2 runtime for `gfx950`. The default in
+[`docker_benchmark.sh`](../../src/scripts/docker_benchmark.sh) now selects its
+immutable manifest reference, rather than its movable dated tag. This preserves
+the existing software stack, cache handling, and evaluation-tool image gate.
+Explicit `AKA_DOCKER_IMAGE` and per-architecture overrides remain available.
+
+The two ROCm 10 candidates below are **not approved as default scoring images**.
+Their runtime and GPU evidence is recorded separately below. The `gfx942` and
+`gfx1201` defaults are unchanged. An MI355X qualification cannot establish
+support on those other architectures.
+
+The explicit SGLang 0.5.19 candidate now receives the same private AITER/FlyDSL
+cache paths and writable AITER config directory as the existing gfx950 runtime.
+GPU job 139224 exposed 3,795 root-owned, unreadable bundled FlyDSL cache files
+when AITER used its default copy-on-import path. Setting `AITER_JIT_DIR` selects
+its writable-cache path instead. The override is limited to the recorded image
+references and isolated per worker; installed image packages remain unchanged.
+Docker argument tests cover the dated tag, immutable digest, and worker suffix.
+The subsequent full image-task runs below exercise this cache configuration.
+They neither promote the default image nor change the separately pinned
+evaluation-tool compatibility gate.
+
+## Image task qualification checkpoint (2026-09-15, 11:16 UTC)
+
+**All 21 current image-task packages have a complete, framework-finalized
+`task_validator` PASS.** These are full Codex medium reviews plus the shared
+framework's task, baseline compilation, correctness and performance actions.
+The report/completion markers bind each result to its frozen task tree,
+materialized upstream sources and actual runtime. A successful action alone
+is not counted as a complete validator result.
+
+| Qualification runtime | Current complete image-task PASS | Scope |
+| --- | ---: | --- |
+| SGLang 0.5.19 / ROCm 10, immutable manifest below | 14 | Five older AITER tasks, both recovered SGLang MXFP8 tasks, Kimi MoE, three CK tasks, HIP quantization and paged attention, AITER unified attention. |
+| Original vLLM 0.24.0, `sha256:3832d79d9e514ce2e072580689da078726454596d833c8ab803f29f3cea5ea28` | 7 | TileLang mHC, Gemma4/GPTQ-AWQ MoE, paged attention 2D, sparse prefill, Gemma4 unified attention and the public KDA port. |
+| SGLang 0.5.18 / ROCm 10, immutable manifest below | Not an image-suite validator run | Actual HIP/Triton/FlyDSL v2 representatives passed on both ROCm 10 images in job 139982; see the separate comparison below. |
+
+The original vLLM results establish compatibility with that runtime, not with
+SGLang 0.5.19. None of these qualifications is an optimization campaign.
+
+The latest source-specific passes include sparse attention (139802), CKTile
+packing/activation and fixed magnitude checks (139933), CK MoE quantization
+and HIP paged-attention template compilation (139983), and Kimi's explicitly
+fixed synthetic workload (139960). Both original timed outputs and perturbed
+replay outputs are checked where required. The fresh reports supersede only
+their matching older failures; those failed reports remain preserved.
+
+KDA completed full validation in job **140103**, frozen task source `288bb2ed`,
+with all five correctness and five performance cases. The same job then ran the
+unchanged candidate through the real shared final evaluator: compilation,
+correctness, workload/method consistency and positive device timing all passed.
+The final evaluation kept the validator report complete. No agent optimization
+was performed. Raw evidence is under `logs/image-v2-gpu-validation/140103/vllm/`:
+`reports.json`, `candidate-pipeline.json`, `candidate-pipeline.log`, the task
+session actions, and the framework-owned `task_result.yaml`.
+The independent final audit is
+`logs/image-v2-gpu-validation/140103/kda-final-independent-audit.json`.
+It verifies all seven actions and all nine candidate files against the actual
+workspace, independent frozen baseline and initial source manifest.
+
+The unchanged-code mean device timings were 0.790660 ms for the baseline and
+1.556085 ms for the candidate. The raw per-case timings and effective replay
+counts are retained; this single sequential run does not establish stable
+relative performance, and the difference must be investigated before using it
+as comparative performance evidence. The paired investigation below did not
+reproduce the discrepancy; the original result remains preserved and must not
+be treated as an optimization gain.
+The original vLLM runtime also lacks optional `matplotlib`: plot creation was
+skipped, while the raw score, numerical checks and device timings completed.
+
+This task explicitly ports the retained operator to public vLLM commit
+`000c7df9ffd3e470980fd4cd6b8ec1b0585500ff`; the custom historical kernel bytes
+were not recovered. New baselines and candidates use that same public source
+and pinned runtime. No performance equivalence with the unavailable historical
+implementation is claimed.
+
+The earlier KDA failures remain preserved. Job 139994 completed four timed
+cases but rejected the last state comparison. Diagnostic 140067 found actual
+FP32 state zero and independent FP64 reference at most `6.06615263031705e-128`;
+correctly rounding the reference to FP32 yields exactly the actual zero vector.
+The revised comparator permits this representation boundary only when the
+rounded reference exactly equals the zero output. It still rejects zero for any
+representable nonzero reference and uses the original unrounded magnitude gate.
+Nonzero cosine, thresholds, cases, seeds and timing settings are unchanged.
+The diagnostic alone was not counted as a validator PASS.
+
+Detailed report paths, report/completion hashes, frozen task-tree identities,
+materialization records and runtime evidence are preserved under
+`logs/image-v2-gpu-validation/`. The live `full21-evidence.json` and
+`CURRENT-QUALIFICATION.md` distinguish current matching PASS, historical
+failures and pending work. These are experiment artifacts, not task inputs.
+The default image is unchanged. Neither ROCm 10 image has completed the full
+promotion gate, sanitizer qualification or a matched optimization campaign.
+
+## KDA same-source paired timing (job 140154)
+
+The requested crossover study completed on node 104, physical GPU 3, UUID
+`30646234-6534-6635-6436-636464363431`, the same device used by job 140103.
+The container saw exactly one allocated MI355X, with 287 GiB free and a passing
+device-computation preflight. One GPU was allocated for 9 minutes 24 seconds;
+the job completed with exit code zero and released it. No model calls,
+credentials, concurrent GPU probes or GPU configuration changes were involved.
+
+The study used the exact frozen `288bb2ed` task and canonical helper, public
+vLLM source `000c7df9ffd3e470980fd4cd6b8ec1b0585500ff`, and original vLLM image
+`sha256:3832d79d9e514ce2e072580689da078726454596d833c8ab803f29f3cea5ea28`.
+The helper SHA256 was
+`072fb2d68cd7b7923750e2f2e4c0b09e86436063fde2607844181f9f84d66269`.
+Actual versions were Python 3.12.13, PyTorch `2.11.0+gitd0c8b1f`, HIP
+`7.2.53211`, Triton 3.6.0 and installed vLLM `0.24.0+rocm723`.
+The candidate workspace and independent frozen baseline retained all 10,254
+initial source entries. The task's nine implementation files matched their
+recorded hashes.
+
+After separate compilation and correctness preflights, the real shared
+`run_action` entrypoint executed six pairs of full performance actions. The
+first three assigned workspace A to baseline and B to candidate; the last
+three exchanged those roles. Physical execution order alternated AB/BA.
+All 12 actions passed all five cases and the existing independent checks of
+actual timed outputs, state, read-only inputs and perturbed graph replay.
+All seeds, shapes, tolerances, warmups, sample counts, target durations and
+repeat caps were unchanged. The original adaptive repeat rule selected 48–49
+for decode, 4 for T7211, 16 for T1080 and 1 for both longer cases.
+
+| Case | Original candidate/baseline | Six-pair median ratio | Six-pair range |
+| --- | ---: | ---: | ---: |
+| Packed decode, 62 sequences | 0.9924 | 1.0038 | 0.9971–1.0061 |
+| Chunk T7211 | 2.3246 | 0.9961 | 0.9774–1.0216 |
+| Chunk T1080 | 3.1298 | 0.9995 | 0.9907–1.0090 |
+| Chunk T16384 | 2.2929 | 0.9993 | 0.9765–1.0337 |
+| Chunk T32768 | 1.6772 | 0.9996 | 0.9717–1.0360 |
+
+Pooling the equally represented roles and cases gives 0.781138 ms for baseline
+and 0.781776 ms for candidate, ratio **1.000817**. These are descriptive paired
+measurements, not an optimization result. Workspace B remained about 0.7–2.3%
+slower on chunk cases after its role changed. Both old and new workspaces had
+the same 78 compiled kernel variants: executable code, loaded data and compiler
+metadata matched; only ELF debug sections differed. Their six autotuning keys
+and search spaces matched, but independently measured tuning selected one
+different configuration in the original pair and two in the new pair. This is
+a plausible contributor to the small workspace effect, not proof of the cause
+of the original large discrepancy.
+
+Four separate diagnostic actions crossed each workspace with both evaluation
+phases. All passed and recorded 380 reported device samples. Prepared tensor
+bytes, shapes, strides and dtypes were identical across these arms. The helper
+observed mutable state before the start event; it did not reset inputs or add
+calls inside the graph. Decode retained its evolving state-cache semantics;
+chunk retained its evolving, aliased `v` output. Actual final measured state
+and outputs still passed the independent reference and replay checks. Chunk
+sample coefficients of variation were 0.13–0.70%; decode was 2.1–5.1%.
+Diagnostic collection occurred outside measured work and is kept separate
+from the 12 uninstrumented primary actions.
+
+**The original 1.968-fold mean discrepancy was not reproduced.** No persistent
+role, phase, state or capture-boundary bug was demonstrated. These results
+support comparable timing under this paired setup; they do not establish the
+specific transient cause of the earlier anomaly or justify calling a twofold
+outlier ordinary noise. No task, framework, scoring rule or default image was
+changed, and the historical result remains unsuitable as evidence of a gain.
+
+Raw evidence is under `logs/image-v2-gpu-validation/140154/`: `vllm/pair-*.json`
+contains exact action arguments, stdout, stderr and envelopes;
+`vllm/diagnostic-*.json` contains samples and buffer/state fingerprints.
+`cache-comparison.json`, `elf-comparison.json` and `autotune-comparison.json`
+retain the old/new cache audit. The independent `paired-final-audit.json`
+binds all 16 actions, 80 case-action checks, source/runtime identities and
+analysis artifacts; SHA256
+`5aae23812a7ed8f2e5a646df1223fee5618e8f6089614aace455d46e05d788cf`.
+The original audit is `140103/original-paired-timing-audit.json` under the same
+artifact root. This study is additional timing evidence, not another full
+LLM validator run and not a replacement for the preserved 21 validator reports.
+
+## KDA observer GPU evidence (job 139646)
+
+On node 100, one allocated MI355X (physical ID 2, UUID
+`36376430-3032-3037-6366-633933643165`) ran the public KDA packed-decode case in
+the pinned original vLLM runtime. The actual old canonical helper, new helper
+with observation off, and new helper with observation on ran sequentially in
+order old/off/on/on/off/old. All six arms used the same case, seed, five warmups,
+30 samples and 20 invocations per reported graph replay. This was an unscored
+experiment with a common fixed repeat cap; scored task settings were unchanged.
+
+The captured callable counts were identical (five for the estimate graph,
+20 for the measured graph). All final outputs and states were bitwise equal.
+The observer ran exactly 30 times with count 20 in each enabled arm, and both
+those arms passed the task's independent original-output/state and perturbed
+replay numerical checks. Per-arm median device times were 20.213, 19.455,
+19.513, 19.246, 19.821 and 19.082 microseconds respectively. These short trials
+establish execution/count/state agreement, not a statistically established
+speedup or zero system-level overhead.
+
+Raw evidence: `logs/image-v2-gpu-validation/139646/vllm/helper-before-after.json`,
+SHA256 `e3cfbf3fd883dc46cec55fa281da5584fb6a701561f20d6bb1636b086f7cfbd5`.
+The file includes helper hashes, every sample and capture counts.
+
+The full KDA validator in that job **failed** separately: all five correctness
+cases passed, and timed decode passed, but the chunk implementation explicitly
+uses `o=v` and the harness incorrectly required `v` to remain read-only.
+A subsequent task-local correction observes and independently verifies the
+actual repeated BF16 value updates and enforces the output alias. The old
+failure remains evidence. Later qualification, including job 139994 above, is
+recorded separately; the unchanged-candidate final evaluation was not run after
+this failed validator.
+
+## Registry evidence (2026-09-15 UTC)
+
+The Docker Registry v2 API returned single-platform `linux/amd64` manifests for
+all three references. SHA256 of the downloaded manifest bytes matched the
+registry's `Docker-Content-Digest`. The image-config blob digest is distinct
+from the pullable manifest digest. Record Docker's locally resolved `.Id`
+separately: the observed Docker 29.7.2 daemon reports the manifest digest as
+`.Id`, rather than the config-blob digest.
+
+Repository for every reference: `lmsysorg/sglang-rocm`.
+
+| Role | Dated tag | Manifest digest | Config-blob digest | Compressed layers |
+| --- | --- | --- | --- | --- |
+| Existing stack | `v0.5.14-rocm720-mi35x-20260705` | `sha256:b435b508b5aa696abb25c909341ce73e41574c4271cf716bed72418dcea86b78` | `sha256:0a78d51f2f1db80a1abfe23350fc2e5733ac5acb1528d6dc7ce3679bdb099aff` | 27,994,781,865 bytes |
+| New candidate | `v0.5.19-rocm10-mi35x-20260913` | `sha256:106a7adbeec5554b6e66a4bda0b3694af442717b9fe92754a9885520077b6f93` | `sha256:83a0d6661fed28e45e241ef1c24f619b6aaa4f94dd179ede4e06171d0be0c4f7` | 13,699,345,131 bytes |
+| Earlier candidate | `v0.5.18-rocm10-mi35x-20260904` | `sha256:916da507975f74e0a4c869bd7f5dceebf8838b2d065835bc7574032330ef4910` | `sha256:6f0335cb633fc0689bd229d4906647b5a09853f1bd9ccbb70d9337f5f15e71f2` | 13,525,716,969 bytes |
+
+The upstream [SGLang v0.5.19 release](https://github.com/sgl-project/sglang/releases/tag/v0.5.19)
+announces ROCm 10 images. The [registry](https://hub.docker.com/r/lmsysorg/sglang-rocm/tags)
+and [upstream Docker recipe](https://github.com/sgl-project/sglang/blob/main/docker/rocm.Dockerfile)
+provide context; the manifest and config blobs above establish the particular
+images examined here. A live upstream recipe can change after qualification.
+
+### Build metadata versus installed versions
+
+The downloaded config histories describe these builds:
+
+| Property | Existing stack | New candidate | Earlier candidate |
+| --- | --- | --- | --- |
+| Ubuntu label | 22.04 | 24.04 | 24.04 |
+| Python build selection | 3.10 | 3.12 | 3.12 |
+| ROCm build selection | 7.2 | SDK 10.0.0 | SDK 10.0.0 |
+| PyTorch build selection | 2.9.1 | 2.11.0 | 2.11.0 |
+| Triton ROCm 10 build selection | Not applicable | `3.8.0+git4cff872c` | `3.8.0+git4cff872c` |
+| SGLang generated package version | `0.5.14.dev20260705+g3ea875fef4` | `0.5.19.dev20260913+g14b647cf27` | `0.5.18.dev20260904+g978cc228ca` |
+| AITER checkout | `9127c94a18e4398e1eba91f6639e910f0994ad02` | `4ad99832823dde2315b361cbd3b54b1c5c12acd5` | `c16d44b93a528b2a4bfd6d8d3409116d465872a9` |
+
+These are **build metadata**, not a substitute for importing the installed
+packages. The daily images contain development versions and additional AITER
+patches, so neither the SGLang tag prefix nor the AITER checkout alone identifies
+the complete installed implementation. Preserve the image digest as well.
+
+The candidates put the ROCm SDK beneath
+`/opt/venv/lib/python3.12/site-packages/_rocm_sdk_devel` and create `/opt/rocm`
+as a compatibility symlink. They retain `/opt/venv`. Actual compiler execution,
+non-root cache permissions, profiler availability, and the FlyDSL APIs used by
+tasks still require runtime checks; the presence of a symlink is insufficient.
+
+## Observed container compatibility
+
+CPU-only, non-root inspection of the existing stack on node 071 confirmed
+Python `3.10.12`, PyTorch module `2.9.1+rocm7.2.0.git7e1940d4` (distribution
+`2.9.1+rocm7.2.0.lw.git7e1940d4`), Triton module `3.6.0` (distribution
+`3.6.0+git42270451`), FlyDSL `0.2.2`, and AITER distribution metadata
+`0.1.17.dev110+g9127c94a1`. Its `rocprof-compute` executable is present.
+Its AITER import also requires a GPU and fails in CPU-only inspection.
+
+CPU-only, non-root inspection of the new candidate on the same node confirmed:
+
+- Python `3.12.3`, PyTorch `2.11.0+rocm10.0.0`, Triton module `3.8.0`
+  (distribution `3.8.0+git4cff872c.rocm10.0.0`), FlyDSL `0.3.2`.
+- SGLang `0.5.19.dev20260913+g14b647cf27`; AITER distribution metadata
+  `0.1.21.dev48+g4ad998328.d20260913`.
+- `pytest`, PyYAML, NumPy, pandas, SciPy and jsonschema import successfully.
+  Arena evaluator/performance/preprocessing modules and the unchanged
+  `fp8_gemm_4wave_kernel` candidate module also import successfully.
+  Importing that FlyDSL module does not compile or execute its GPU kernel.
+- `hipcc`, `rocminfo`, `rocprofv3` and `amd-smi` are available through
+  `/opt/venv/bin`; `/opt/rocm` resolves to the SDK directory. `hipcc --version`
+  executes successfully and reports AMD clang `23.0.0git` at LLVM commit
+  `8f497e0992fb7513f7f78a6f6b6f1056c375e961`.
+- **`rocprof-compute` is missing.** In the initial inspection, the then-current
+  `_container_smoke` entrypoint returned exit 1 with
+  `missing command: rocprof-compute`, before reaching the GPU check. The bounded
+  follow-up audits whether this is a core dependency and introduces an explicit
+  [profiler capability policy](#profiler-capability-policy); the initial failure
+  remains part of the evidence.
+- AITER import requests GPU architecture using `rocminfo` and fails with no GPU
+  mounted. This CPU result does not establish an AITER compatibility failure
+  on a GPU, and is not a successful import qualification.
+- `torch.version.hip` reports `7.15.26333`, despite the distribution and ROCm
+  SDK version being `10.0.0`. Preserve both rather than inferring one from the
+  other. GPU device count is zero by design in this CPU-only check.
+
+The unchanged HIP `TanH` task compilation command completed successfully in
+18.44 seconds with `PYTORCH_ROCM_ARCH=gfx950` and `MAX_JOBS=2`, producing the
+compiled extension and a successful `build/compile_report.json` in a materialized
+copy. This is a real host-side HIP extension compilation, **not GPU execution**;
+no device was mounted, and no correctness or timing claim follows from it.
+
+The earlier ROCm 10 image was also pulled and inspected as the host UID. It
+contains Python `3.12.3`, PyTorch `2.11.0+rocm10.0.0`, Triton distribution
+`3.8.0+git4cff872c.rocm10.0.0`, **FlyDSL `0.3.1`**, SGLang
+`0.5.18.dev20260904+g978cc228ca`, and AITER distribution metadata
+`0.1.19.post3.dev139+gc16d44b93.d20260904`. The report dependencies import, but
+`rocprof-compute` is missing here too. AITER again requires a GPU. Thus the
+earlier candidate does not avoid the profiler gap; its different FlyDSL/AITER
+versions need their own GPU qualification. The actual task compilation and
+492-test selection above were run on the newer candidate only.
+
+The local daemon reports image ID
+`sha256:106a7adbeec5554b6e66a4bda0b3694af442717b9fe92754a9885520077b6f93`
+for the new candidate, matching its manifest digest. Raw image inspection is
+preserved alongside the separate config-blob digest above.
+
+## Qualification scope and artifacts
+
+Artifacts belong under `logs/runtime-qualification/` in the worker checkout and
+are intentionally not committed. They include:
+
+- Exact registry manifest/config bytes and compact summaries.
+- Slurm submission IDs, authoritative job-status snapshots, stdout and stderr.
+- Image pull logs, local image inspection, package/import inventories.
+- A GPU probe script that materializes task copies, leaving committed tasks
+  unchanged, then executes their existing compile/correctness/performance
+  commands without changing cases, tolerances, timing, or result parsing.
+
+The initial, undispatched GPU probe selected HIP `TanH`, Triton `test_kernel_sub`,
+FlyDSL `fp8_gemm_4wave_kernel`, SIKL `gemm_a16w16_nt_n32_k6144`, and SIKL
+`mxfp4_moe_e65_i1024`. The SIKL stubs exercise production baseline behavior;
+passing those paths would not establish a completed candidate. A per-command
+180-second qualification cap is recorded as a timeout, never a successful task
+validation. Full validator runs must honor the task's actual declared limits.
+
+The CPU probes explicitly set writable temporary caches. They do not establish
+that the candidate image works with every default cache path in an Arena agent
+run; verify that behavior through the actual Docker runner before promotion.
+
+No agent authentication or shared Hyperloom/GEAK installations are needed for
+these probes. The registry pull uses public images; credentials are not written
+to evidence. Probe containers bind the checkout read-only and only their log
+and copied-task tree writable. The GPU probe requires an assigned GPU and sets its visibility mask; this is
+a reproducibility boundary, not a security sandbox. CPU inspection uses no GPU
+mounts or privileged-container flag. Instrumentation sidecars are not enabled.
+
+## Slurm / Spur observations
+
+The login host provides Spur 0.11.0 Slurm-compatible commands. Where the
+`scontrol` and `sacctmgr` aliases are absent, use `spur show` and `spur accounts`.
+Both requested QoS names exist: `amd-aicos-qos` has a configured group limit of
+7 nodes and `amd-oai-qos` 8 nodes. These are limits, not free-node counts.
+Snapshot availability must be checked again before the optimization campaign.
+
+The initial attempts were serialized, with each failed pending job explicitly
+cancelled before its replacement:
+
+| Job | Request | Observed result |
+| --- | --- | --- |
+| 138832 | One typed MI355X GPU, amd-aicos | Launch confirmation failed: GPU/resource allocation mismatch |
+| 138842 | One untyped GPU, amd-aicos | Same explicit launch failure |
+| 138849 | One GPU pinned to idle node 214 | Same explicit launch failure |
+| 138854 | Short exclusive node 214, no explicit GPU count | Same explicit launch failure; batch script never started |
+| 138866 | One GPU pinned to mixed-use node 071 | Same explicit launch failure |
+| 138870 | Two CPUs / 16 GB, nonexclusive node 071 | CPU inspection completed for all three images; no GPU reservation or device use |
+
+The failed jobs never reached the batch script and produced no container
+results. Their `spur show job` records report
+`JobLaunchFailure (dispatch confirmation failed (0/1 confirmed): 1 gpu/resource allocation mismatch)`.
+This is a scheduler/worker launch failure, not an Arena task failure or a Docker
+image failure. Retrying because a polling request expires would be incorrect;
+these replacements were based on explicit controller failures.
+
+A CPU job starting on node 071 while GPU requests fail isolates the problem to
+the resource/dispatch path. In the inspected upstream Spur source
+([controller classification](https://github.com/ROCm/spur/blob/61de615cccdaad77f71b3566c3b2751fc5dac696/crates/spurctld/src/scheduler_loop.rs#L1016),
+[node allocation check](https://github.com/ROCm/spur/blob/61de615cccdaad77f71b3566c3b2751fc5dac696/crates/spurd/src/agent_server.rs#L4334)),
+this label means the controller's resource allocation is unavailable in the
+node's local allocation table. This supports a controller/node state mismatch
+as the diagnosis; the installed client build is `11e7fa6b`, so this source
+inspection is not a claim that the deployed node binary was audited. It does not authorize using unallocated GPUs from a
+CPU job. The campaign should not proceed by bypassing GPU accounting.
+
+### Bounded GPU follow-up
+
+Further observations on 2026-09-15 change the scheduler conclusion: **real GPU
+allocations and Docker computation work on node `crsuse2-m2m-213`, including a
+nonexclusive single-GPU allocation**. The earlier failures are not evidence of
+cluster-wide GPU unavailability. Follow-up artifacts are preserved separately
+under `logs/spur-followup/`, with one directory per started job.
+
+The installed client is `0.11.0 (11e7fa6b)`. Its help, `spur show config`, current
+node/resource views, user associations, and QoS limits were inspected read-only.
+Both authorized account/QoS pairs are usable by this user. The runtime's existing
+typed `-G mi355x:<count>` resource syntax is supported; no Slurm runner change is
+justified by the observations.
+
+| Job | Request | Observation |
+| --- | --- | --- |
+| 138913 | `amd-oai` / `amd-oai-qos`, mixed node 219, `--gres gpu:mi355x:1`, 8 CPUs / 32 GB / 15 min | `PENDING`, `QOSGrpNodeLimit`; never dispatched, then explicitly cancelled. This is quota admission, not a GPU launch failure. |
+| 138914 | `amd-aicos` / `amd-aicos-qos`, idle node 213, `-G mi355x:8 --exclusive`, 16 CPUs / 64 GB / 15 min | Started and allocated all eight GPU IDs. Custom non-root probe omitted the host numeric `render` group and failed HIP initialization. Failed after 2m16s; no task correctness result. |
+| 138917 | Same node/account and eight GPUs, corrected container groups, 10 min | Completed in 54s. All eight allocated GPUs executed checked tensors; actual Arena smoke and the two legacy representative task paths passed. |
+| 138918 | Same node/account, `-G mi355x:1`, nonexclusive, 16 CPUs / 64 GB / 15 min, newer pinned image | Completed in 3m34s including image pull. GPU ID `0`, actual Arena smoke, checked computation and three legacy task paths passed. |
+
+At most two requests were live at once. The unsuccessful OAI request was
+cancelled rather than repeatedly resubmitted under an unchanged quota. Whole-node
+jobs exited when their probes ended. No node was reset, no controller or shared
+installation changed, and no GPU was accessed from a CPU allocation.
+
+All four follow-up jobs are terminal; no GPU reservation is retained. The final
+queue snapshot and per-job status are preserved in `logs/spur-followup/`.
+
+Node 213 was newly idle (`CPUAlloc=0`, eight advertised MI355X devices). The first
+successful request changed both the node and explicit GPU count, so that attempt
+alone could not establish which difference mattered. Job 138918 subsequently
+demonstrates that one typed GPU works there too. The failed earlier typed request
+and successful new typed request do **not** establish a CLI syntax fix; node and
+allocation state changed. Container group membership fixes the separate probe
+permission error, not controller dispatch. The normal Arena Docker runner already
+adds the correct host numeric `render` and `video` groups.
+
+Job 138918 records `ReqTRES=cpu=16,mem=65536M,node=1,gres/gpu=1` and
+`ReqGPUs=1`. Its allocated ID `0` is passed as `ROCR_VISIBLE_DEVICES=0`; the
+container observes exactly one GPU and successfully computes and compares a
+tensor result. The device name is `AMD Instinct MI355X`, architecture
+`gfx950:sramecc+:xnack-`. Device-file presence or `device_count` alone would not
+have established this result.
+
+An administrator investigating the earlier dispatch failures has this bounded
+evidence: jobs 138849/138854 on node 214 and 138866 on node 071 reported
+`dispatch confirmation failed (0/1 confirmed): 1 gpu/resource allocation mismatch`,
+before any batch script. CPU-only job 138870 ran on 071; GPU jobs 138917/138918
+ran on 213. Compare the failed jobs' controller GPU assignments with those nodes'
+local allocation owners and deployed binary versions. No request to reset a
+node follows from these observations. OAI job 138913 instead stopped at its
+configured eight-node group limit and needs quota availability, not the same
+dispatch investigation.
+
+### Legacy representative GPU scope
+
+These probes use task files from parent base `d0d8122e`, with canonical benchmark
+helpers materialized into copies. They do **not** exercise the parent's subsequent
+SIKL v2 migration (`d88c9c55`), root runtime protocol integration, full
+`task_validator`, or any agent campaign. They never write an authoritative
+`validation_report.yaml` or claim a full validation pass.
+
+Job 138917 uses the existing immutable image from the registry table. It passes
+the actual Docker runner smoke, checked tensor computation on all eight assigned
+GPUs, and these unchanged legacy task entrypoints on logical GPU 0:
+
+| Task | Compile | Correctness | Performance |
+| --- | --- | --- | --- |
+| `triton2triton/geak_eval/L1/fused_append_shared_experts` | PASS | PASS | PASS |
+| `SIKL-task/gemm_a16w16_nt_n32_k6144` | PASS | PASS, 13 cases | PASS, 13 cases |
+
+Job 138918 uses the new candidate manifest
+`sha256:106a7adbeec5554b6e66a4bda0b3694af442717b9fe92754a9885520077b6f93`.
+The local Docker image ID matches that manifest. The actual runner smoke reports
+Python `3.12.3`, PyTorch `2.11.0+rocm10.0.0`, Triton `3.8.0`, FlyDSL `0.3.2`,
+`hipcc` and `rocprofv3` in `/opt/venv/bin`, and `rocprof-compute=optional-missing`.
+The one allocated GPU executes checked tensor work, followed by:
+
+| Task | Compile | Correctness | Performance |
+| --- | --- | --- | --- |
+| `triton2triton/geak_eval/L1/fused_append_shared_experts` | PASS | PASS | PASS |
+| `SIKL-task/gemm_a16w16_nt_n32_k6144` | PASS | PASS, 13 cases | PASS, 13 cases |
+| `flydsl2flydsl/fp8_gemm_4wave_kernel` | PASS | PASS, 5 shapes | PASS, 5 shapes |
+
+These results support further qualification of the new image. They do not
+establish an improvement in performance: command durations include JIT/setup,
+and a matched repeated scoring campaign has not been run. HIP `TanH` was compiled
+on the new image in the earlier CPU-only job, but HIP GPU correctness, MoE,
+agent integration, sanitizer compatibility and the full migrated suite remain
+outside this legacy probe's coverage. The later v2 comparison below supplies
+GPU evidence for both ROCm 10 candidates.
+
+The SIKL stub routes to the production AITER baseline. Its successful execution
+validates that baseline path, not a generated FlyDSL candidate. Compile phases
+mean the task's declared compile check; JIT compilation may occur in correctness.
+The follow-up runs all original cases, with an outer 120-second per-command
+probe cap; a cap expiry is recorded as a probe timeout, never a task pass. No
+threshold, workload, warmup, timing boundary, or scoring policy is changed.
+
+### Migrated v2 representatives on both ROCm 10 candidates
+
+Job **139982**, on 2026-09-15, completed successfully in 9m28s using one
+MI355X on node100. It ran the immutable 0.5.18 and then 0.5.19 manifests from the
+registry table on the same physical GPU, UUID
+`36376430-3032-3037-6366-633933643165`. Each container verified one visible GPU,
+more than 256 GiB free memory, checked tensor computation and the actual
+`docker_benchmark.sh _container_smoke` entrypoint. Both smoke checks passed.
+
+The read-only source snapshot was `85050b1f`. Each image independently
+materialized these v2 tasks, validated their initial baseline, then ran the
+unchanged candidate through the shared final evaluator:
+
+| Task | Complete scored cases | 0.5.18 | 0.5.19 | Device timing |
+| --- | ---: | --- | --- | --- |
+| `hip2hip/gpumode/TanH` | 11 | PASS | PASS | CUDA graph |
+| `triton2triton/geak_eval/L1/fused_append_shared_experts` | 18 | PASS | PASS | CUDA graph |
+| `flydsl2flydsl/fp8_gemm_4wave_kernel` | 5 | PASS | PASS | CUDA graph |
+
+An independent artifact audit checked every action's successful exit and
+`arena-eval-v1` envelope, final compilation/correctness/workload/timing flags,
+case coverage, runtime digest and candidate source hashes. Both images used
+identical candidate bytes from the snapshot and identical case manifests.
+Baseline and candidate timings are retained in the raw reports; one sequential
+comparison does not establish a performance improvement or its variance.
+
+Artifacts are under `logs/image-v2-gpu-validation/139982/`, including per-image
+`gpu.json`, `image.json`, `smoke.log`, `task-comparison.json`, session actions
+and framework-owned `task_result.yaml` files. The consolidated audit is
+`runtime-comparison-audit.json`, SHA256
+`e4f45d04e7072848d50c6d0d22d815d89d0d0127b2c079cffcc2666826edb80e`.
+The snapshot and launch bundle were verified before execution. No task source,
+case, tolerance, timing parameter or installed package changed between images.
+
+This is real GPU qualification of the listed v2 action/final-evaluation paths,
+not an LLM task-validator run or an optimization campaign. FlyDSL was 0.3.1 in
+0.5.18 and 0.3.2 in 0.5.19; both retained the previously recorded PyTorch/Triton
+versions. Both reported `rocprof-compute=optional-missing`. These representatives
+do not exercise AITER-dependent MoE or all image-backed tasks, and do not qualify
+profiler counters, sanitizers or arbitrary default cache paths. Containers used
+explicit private temporary paths and a writable AITER config mount. No credentials
+or agent installations were mounted. The scoring default remains unchanged.
+
+## Profiler capability policy
+
+The executable audit found no call to `rocprof-compute` in core evaluation or
+timing paths. Shared timing uses GPU events/graphs. The old mandatory executable
+check was in Docker smoke; `src.preprocessing.check_environment()` also mentions
+it but has no callers at this base. Task profiling and agent analysis can still
+require it: availability must be declared and tested for those workflows.
+
+Smoke and run preflight now report both `rocprof-compute` and `rocprofv3`, printing
+`optional-missing` for an absent optional binary. `hipcc`, required Python imports,
+GPU availability and the selected-versus-actual architecture checks remain
+mandatory. A workflow that requires a profiler names it explicitly:
+
+```bash
+AKA_REQUIRED_PROFILERS=rocprof-compute make docker-smoke
+```
+
+The variable also accepts a comma/space-separated list and is forwarded into the
+container. Missing requested binaries and unknown names fail preflight; finding
+`rocprofv3` cannot satisfy a request for `rocprof-compute`. This tests executable
+availability only. It neither qualifies hardware counters nor proves candidate
+analysis. Evaluation-tool sidecar image, capability and attestation gates are
+unchanged. The default image remains the existing pinned stack.
+
+### Optional ROCm 10 profiler overlay, not installed
+
+The [official Compute Profiler installation source](https://github.com/ROCm/rocm-systems/blob/develop/projects/rocprofiler-compute/docs/install/core-install.rst)
+documents the `rocm[profiler]` pip extra. A moving installation example is not an
+immutable overlay lock. The candidate's [AMD package index](https://stable.repo.amd.com/rocm/whl-next/rocm-profiler/)
+contains `rocm_profiler-10.0.0-py3-none-linux_x86_64.whl`; read-only inspection
+confirmed `_rocm_profiler/bin/rocprof-compute` and no `Requires-Dist` entries in
+that wheel. The downloaded 64,883,923-byte wheel has SHA256
+`ae05423eef63b2c57ea00f2de8f8208c94bdd148baf96f275ad6bd014989326d`.
+Separately, `rocm==10.0.0` metadata pins `rocm-sdk-core==10.0.0` and the profiler
+extra to `rocm-profiler==10.0.0`. None of this establishes a working installation.
+
+If profiling is required, build a separate derivative of the candidate manifest,
+pin every added artifact by version/hash, inspect the complete dependency plan,
+and preserve the existing PyTorch/Triton/FlyDSL packages. Verify package consistency,
+entrypoint discovery as the host UID, profiler version, and actual counter
+collection from a small known kernel on an allocated MI355X. Then rerun unchanged
+task checks and qualify any instrumentation independently. Do not install into
+shared host environments or silently upgrade scoring packages to satisfy pip.
+No overlay was installed or promoted in this qualification.
+
+## Regression checks
+
+The initial runtime patch pins the existing image. The bounded follow-up separates
+profiler availability from core smoke and enforces explicitly requested profiler
+binaries. Neither alters a harness, tolerance, timing method, agent or task schema.
+
+Follow-up checks:
+
+- `python3 tests/test_rdna4_runtime.py`: **12 tests PASS**, including optional
+  profiler inventory, explicit missing/unknown capability rejection, compiler,
+  GPU and architecture failures. The host lacks `pytest`, so the attempted
+  `python3 -m pytest` invocation failed before collection; this test file's
+  standard-library `unittest` entrypoint was run instead.
+- `make check-docker-runner`: PASS, including forwarding the explicit profiler
+  requirement and the existing cache, agent-selection and sidecar isolation tests.
+- `make check-slurm-runner`: PASS; no resource-request code change was necessary.
+- `git diff --check`: PASS.
+- Real Docker/GPU smoke: PASS on the old pinned image (138917) and newer image
+  (138918), with the representative legacy outcomes above. RDNA4 and gfx942
+  profiler-policy coverage is mocked; no new hardware qualification is claimed
+  for either architecture.
+
+Initial image-pin checks:
+
+- `make check-docker-runner`: PASS before and after the change. The regression
+  now asserts that an implicit gfx950 launch uses the manifest digest, keeps
+  writable cache configuration, and preserves an explicit dated-tag override.
+- `make check-slurm-runner`: PASS.
+- `git diff --check`: PASS.
+- Inside the new candidate image, as the host UID with no GPU mounts:
+
+  ```bash
+  python3 -m pytest -q -p no:cacheprovider \
+    tests/test_score.py tests/test_perf_helper_materialization.py \
+    tests/test_evaluator_stub_guard.py tests/test_sikl_tasks.py
+  ```
+
+  Result: **492 passed, 21 skipped** in 12.88 seconds. The 21 skipped checks
+  require `kernelforge.rewrite_by_flydsl.protocol`, which is not installed in
+  the base image. This test selection does not execute GPU kernels or the
+  refactor's future TaskSpec implementation.
+
+## Promotion gate
+
+Before changing the scoring default to either candidate:
+
+1. Obtain a real compatible GPU reservation. The follow-up establishes that
+   node 213 can allocate GPUs; earlier failures on other nodes do not imply
+   cluster-wide unavailability. Recheck current resource and QoS availability.
+2. Import the framework and each required task dependency as the actual host
+   UID, with the same paths and cache behavior used by the Arena runner.
+3. Run unchanged representative compile, correctness and device-timing paths
+   on old and candidate images. Preserve failures and separate numerical
+   baseline discrepancies from runtime incompatibility.
+   If the campaign requires a profiler, require its named capability explicitly
+   and validate actual profiling, not just executable presence.
+4. Complete the refactor's full task-validator and agent optimization campaign
+   on the selected stack. A few representative probes do not replace it.
+5. Qualify sanitizer sidecars against the selected immutable scoring image
+   separately. The current image gate intentionally rejects a different stack;
+   do not remove it to make an upgrade pass.
+6. Record the promoted manifest digest and resulting installed versions, keep
+   an explicit old-image rollback, and compare experiments only when their
+   complete runtime identities and timing policies match.
+
+For a deliberate candidate smoke on an allocated MI355X, use an immutable
+override (this does not promote the default):
+
+```bash
+AKA_DOCKER_IMAGE=lmsysorg/sglang-rocm@sha256:106a7adbeec5554b6e66a4bda0b3694af442717b9fe92754a9885520077b6f93 \
+  make docker-smoke
+```
+
+See the [task authoring contract](../how-to/add-task.md),
+[Slurm runner guide](../how-to/slurm-run.md), and
+[evaluation-tool policy](../how-to/use-evaluation-tools.md) for the existing
+validation, resource-isolation, and instrumentation requirements.

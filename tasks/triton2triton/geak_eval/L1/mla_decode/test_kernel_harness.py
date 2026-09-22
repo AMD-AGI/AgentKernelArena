@@ -12,15 +12,8 @@ from pathlib import Path
 
 import torch
 from _aka_benchmark import benchmark_cuda_graph_or_events_samples
-
-# Newer aiter imports template-backed C++ interfaces eagerly and defaults their
-# build cache to ~/.aiter. The Docker validator exposes a read-only HOME, so keep
-# that cache local to this task before importing kernel.py/aiter.
-os.environ.setdefault(
-    "AITER_ROOT_DIR",
-    str(Path(__file__).resolve().parent / "build" / "aiter_root"),
-)
-
+from _timed_contract import checked_call, checked_benchmark, assert_output_contract
+from _rounding_reference import NumericalMismatch, attention_rounding_bounds, check_rounding_bounds
 
 def benchmark_cuda_graph_or_events(*args, **kwargs):
     samples, metadata = benchmark_cuda_graph_or_events_samples(*args, **kwargs)
@@ -34,16 +27,13 @@ def benchmark_cuda_graph_or_events(*args, **kwargs):
     return median_ms, metadata
 
 # Ensure aiter is importable
-REPO_ROOT = os.environ.get(
-    "GEAK_WORK_DIR",
-    os.environ.get(
-        "GEAK_REPO_ROOT",
-        os.path.dirname(os.path.abspath(__file__)),
-    ),
-)
+REPO_ROOT = os.path.dirname(os.path.abspath(__file__))
 if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
+from _aiter_dependency import bind_dependency
+
+bind_dependency()
 from kernel import decode_attention_fwd_grouped_rope
 
 torch.set_default_device("cuda")
@@ -167,6 +157,7 @@ def check_correctness_val(out_ref, out_asm):
     The original test_mla.py uses tol_err_ratio=0.05 but does not assert on
     failure. This harness turns that same 5% threshold into a scored result.
     """
+    assert_output_contract(out_asm, out_ref)
     # checkAllclose style check
     isClose = torch.isclose(out_ref, out_asm, rtol=1e-2, atol=1e-2)
     if isClose.all():
@@ -184,13 +175,62 @@ def check_correctness_val(out_ref, out_asm):
     return passed, err_ratio, cos_diff
 
 
+def _mla_contract(inputs):
+    readonly = {name: value for name, value in inputs.items()
+                if isinstance(value, torch.Tensor)
+                and name not in ('output', 'attn_logits')}
+    bounds = {}
+    def reference(saved):
+        private = {**inputs, **saved}
+        batch = saved['q'].shape[0]
+        values = saved['v_input'][saved['kv_indices'].long(), 0].float().view(batch, -1, KV_LORA_RANK)
+        bounds['lower'] = values.amin(dim=1).unsqueeze(1)
+        bounds['upper'] = values.amax(dim=1).unsqueeze(1)
+        bounds['rounding'] = attention_rounding_bounds(private)
+        return run_ref(private)
+    def check(actual, expected):
+        passed, ratio, cosine = check_correctness_val(expected, actual)
+        if not passed:
+            raise NumericalMismatch(f'MLA numerical mismatch: ratio={ratio}, cosine={cosine}')
+        check_rounding_bounds(actual, expected, *bounds['rounding'])
+        # Each output coordinate is a convex combination of V coordinates.
+        # The original absolute tolerance accounts for output rounding.
+        assert (actual.float() >= bounds['lower'] - 1e-2).all(), 'Attention below value range'
+        assert (actual.float() <= bounds['upper'] + 1e-2).all(), 'Attention above value range'
+    return readonly, reference, check
+
+
+CONTROL_CASES = [{'test_case_id': 'control-mla-uniform-attention',
+                  'params': {'ctx_len': 21, 'batch_size': 1, 'nhead': 16}}]
+
+
+def run_contract_controls():
+    inputs = setup_inputs(21, 1, 16)
+    inputs['q'].zero_()
+    # Zero logits imply uniform attention, independently of all key values.
+    values = torch.arange(21, device=inputs['v_input'].device, dtype=torch.float32)
+    values = (values - 10).view(21, 1, 1).expand_as(inputs['v_input'])
+    inputs['v_input'].copy_(values)
+    readonly, _, _ = _mla_contract(inputs)
+    expected = torch.zeros_like(inputs['output'])  # exact mean(-10 .. 10)
+    checked_call(lambda: run_kernel(inputs), inputs=readonly,
+                 reference=lambda saved: expected.clone(),
+                 check=lambda actual, reference: torch.testing.assert_close(
+                     actual, reference, atol=1e-2, rtol=1e-2))
+    print(CONTROL_CASES[0]['test_case_id'], 'PASS')
+
+
 def benchmark_kernel(inputs):
     """Benchmark the MLA decode kernel with graph replay when supported."""
     def fn():
         return run_kernel(inputs)
 
-    return benchmark_cuda_graph_or_events(
-        fn, warmup=WARMUP, repetition=ITERATIONS
+    readonly, reference, check = _mla_contract(inputs)
+    return checked_benchmark(
+        benchmark_cuda_graph_or_events, fn, inputs=readonly,
+        reference=reference, check=check,
+        perturb=lambda saved: {**saved, 'q': -saved['q']},
+        warmup=WARMUP, repetition=ITERATIONS,
     )
 
 
@@ -199,16 +239,20 @@ def config_str(cfg):
     return "ctx={} bs={} nhead={}".format(ctx_len, batch_size, nhead)
 
 
-def mode_correctness(indices):
+def mode_correctness(indices, *, collect=False):
     print("Running correctness check on {} configs...".format(len(indices)))
     all_pass = True
+    outcomes = []
     for idx in indices:
         cfg = ALL_CONFIGS[idx]
         ctx_len, batch_size, nhead = cfg
         label = config_str(cfg)
+        outcome = {'test_case_id': f'case/{idx}', 'status': 'PASS'}
         try:
             inputs = setup_inputs(ctx_len, batch_size, nhead)
-            out_asm = run_kernel(inputs)
+            readonly, reference, check = _mla_contract(inputs)
+            out_asm = checked_call(lambda: run_kernel(inputs), inputs=readonly,
+                                   reference=reference, check=check)
             out_ref = run_ref(inputs)
             passed, err_ratio, cos_diff = check_correctness_val(out_ref, out_asm)
             if passed:
@@ -218,13 +262,21 @@ def mode_correctness(indices):
                 print("  [{}] {}  err_ratio={:.4f} cos_diff={:.2e}  FAIL".format(
                     idx, label, err_ratio, cos_diff))
                 all_pass = False
+                outcome.update(status='FAIL', reason=f'MLA numerical mismatch: ratio={err_ratio}',
+                               failure_kind='numerical_mismatch')
         except Exception as e:
             print("  [{}] {}  ERROR: {}".format(idx, label, e))
             all_pass = False
+            outcome.update(status='FAIL', reason=f'{type(e).__name__}: {e}',
+                           failure_kind='numerical_mismatch' if isinstance(e, NumericalMismatch)
+                                        else 'execution_failure')
         finally:
+            outcomes.append(outcome)
             torch.cuda.empty_cache()
 
     print("GEAK_SHAPES_USED={}".format(indices))
+    if collect:
+        return outcomes
     if not all_pass:
         print("CORRECTNESS FAILED")
         sys.exit(1)

@@ -51,8 +51,9 @@ def run_compile():
                 os.environ.get("HIPCXX", "hipcc"),
                 "-O3", "-ffast-math",
                 "--offload-arch=gfx950", "--offload-arch=gfx942",
-                "-munsafe-fp-atomics", "-std=c++17",
-                BENCH_SOURCE, "-o", BENCH_BINARY,
+                "-munsafe-fp-atomics", "-std=c++17", "-fopenmp",
+                BENCH_SOURCE, os.path.join(TASK_DIR, "scripts", "native", "candidate_driver.hip"),
+                "-o", BENCH_BINARY,
             ],
             cwd=TASK_DIR, capture_output=True, text=True, timeout=600,
         )
@@ -126,7 +127,8 @@ def run_performance():
                 return [], f"Shape {shape_idx} native benchmark failed:\n{output}"
             parsed = _parse_native_result(output)
             parsed["test_case_id"] = f"shape_{shape_idx}"
-            parsed["params"] = {"batch": batch, "ctx": ctx}
+            parsed["params"] = {"batch": batch, "ctx": ctx,
+                                "routing": 'reverse_cache_with_1024_spare_slots; lengths_cycle=half_plus_one,full,full_minus_one,one'}
             test_cases.append(parsed)
         except Exception as error:
             return [], f"Shape {shape_idx} native benchmark failed: {error}"

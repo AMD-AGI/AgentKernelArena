@@ -1,0 +1,140 @@
+{
+  "cases": [
+    {
+      "test_case_id": "case_0000",
+      "params": {
+        "M": 16,
+        "K": 2048,
+        "I": 512,
+        "E": 256,
+        "topk": 8,
+        "seed": 42,
+        "dtype": "bfloat16"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bfloat16"
+    },
+    {
+      "test_case_id": "case_0001",
+      "params": {
+        "M": 64,
+        "K": 2048,
+        "I": 512,
+        "E": 256,
+        "topk": 8,
+        "seed": 43,
+        "dtype": "bfloat16"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bfloat16"
+    },
+    {
+      "test_case_id": "case_0002",
+      "params": {
+        "M": 256,
+        "K": 2048,
+        "I": 512,
+        "E": 256,
+        "topk": 8,
+        "seed": 44,
+        "dtype": "bfloat16"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bfloat16"
+    },
+    {
+      "test_case_id": "case_0003",
+      "params": {
+        "M": 1024,
+        "K": 2048,
+        "I": 512,
+        "E": 256,
+        "topk": 8,
+        "seed": 45,
+        "dtype": "bfloat16"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bfloat16"
+    },
+    {
+      "test_case_id": "case_0004",
+      "params": {
+        "M": 2048,
+        "K": 2048,
+        "I": 512,
+        "E": 256,
+        "topk": 8,
+        "seed": 46,
+        "dtype": "bfloat16"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bfloat16"
+    },
+    {
+      "test_case_id": "case_0005",
+      "params": {
+        "M": 4096,
+        "K": 2048,
+        "I": 512,
+        "E": 256,
+        "topk": 8,
+        "seed": 47,
+        "dtype": "bfloat16"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bfloat16"
+    },
+    {
+      "test_case_id": "case_0006",
+      "params": {
+        "M": 1024,
+        "K": 2048,
+        "I": 512,
+        "E": 128,
+        "topk": 8,
+        "seed": 48,
+        "dtype": "bfloat16"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bfloat16"
+    },
+    {
+      "test_case_id": "case_0007",
+      "params": {
+        "M": 512,
+        "K": 2048,
+        "I": 512,
+        "E": 256,
+        "topk": 4,
+        "seed": 49,
+        "dtype": "bfloat16"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bfloat16"
+    }
+  ]
+}

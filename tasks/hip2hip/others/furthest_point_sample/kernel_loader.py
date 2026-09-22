@@ -1,8 +1,24 @@
 # Copyright(C) [2026] Advanced Micro Devices, Inc. All rights reserved.
+from pathlib import Path
+import shutil
+import tempfile
+
 from torch.utils.cpp_extension import load
 
-furthest_point_sample_ext = load(name="furthest_point_sample",
-               sources=["src/furthest_point_sample_cuda.hip", "src/furthest_point_sample.cpp"],
-               verbose=True)
-
-
+ROOT = Path(__file__).resolve().parent
+# PyTorch hipify can write generated *_hip.cpp/HIP files next to its inputs.
+# Keep those writes in a fresh task-owned build directory, never frozen sources.
+_build_root = ROOT / "build" / "native_sources"
+if not _build_root.resolve().is_relative_to(ROOT):
+    raise ValueError("Native build directory escapes the task")
+_build_root.mkdir(parents=True, exist_ok=True)
+for _path in (ROOT / "src").rglob("*"):
+    if not _path.resolve().is_relative_to(ROOT):
+        raise ValueError("Native source tree escapes the task")
+_stage = Path(tempfile.mkdtemp(prefix="compile-", dir=_build_root))
+shutil.copytree(ROOT / "src", _stage / "src")
+# Retain staged inputs as compilation evidence. Copying the whole src directory
+# preserves relative includes; each load snapshots the current candidate bytes.
+furthest_point_sample_ext = load(name='furthest_point_sample',
+    sources=[str(_stage / relative) for relative in ['src/furthest_point_sample_cuda.hip', 'src/furthest_point_sample.cpp']],
+    verbose=True)

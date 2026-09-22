@@ -1,0 +1,96 @@
+{
+  "cases": [
+    {
+      "test_case_id": "case_0000",
+      "params": {
+        "cu": [
+          0,
+          100,
+          228,
+          484,
+          712,
+          1024
+        ],
+        "h": 8,
+        "d": 128,
+        "seed": 0,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": true,
+        "nope_first": false
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0001",
+      "params": {
+        "cu": [
+          0,
+          233,
+          456,
+          711,
+          1024
+        ],
+        "h": 16,
+        "d": 128,
+        "seed": 0,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": true,
+        "nope_first": false
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0002",
+      "params": {
+        "cu": [
+          0,
+          100,
+          102,
+          128,
+          233,
+          456,
+          460,
+          711,
+          1024
+        ],
+        "h": 8,
+        "d": 64,
+        "seed": 0,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": true,
+        "nope_first": false
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0003",
+      "params": {
+        "cu": [
+          0,
+          512,
+          1024,
+          2048
+        ],
+        "h": 32,
+        "d": 128,
+        "seed": 0,
+        "rotate_style": 0,
+        "reuse_freqs_front_part": true,
+        "nope_first": false
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    }
+  ]
+}

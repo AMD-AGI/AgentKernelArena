@@ -1,0 +1,428 @@
+{
+  "version": 1,
+  "candidate_symbols": {
+    "source/triton_chunked_prefill_paged_decode.py": [
+      {
+        "name": "kernel_paged_attention_2d",
+        "jit": true
+      }
+    ]
+  },
+  "case_table": "TEST_SHAPES",
+  "input_table": [
+    [
+      4,
+      64,
+      8,
+      8,
+      64,
+      16,
+      8
+    ],
+    [
+      2,
+      128,
+      16,
+      4,
+      64,
+      16,
+      8
+    ],
+    [
+      8,
+      256,
+      32,
+      8,
+      128,
+      16,
+      8
+    ],
+    [
+      4,
+      128,
+      16,
+      16,
+      64,
+      32,
+      8
+    ],
+    [
+      2,
+      512,
+      8,
+      8,
+      128,
+      32,
+      8
+    ]
+  ],
+  "cases": [
+    {
+      "test_case_id": "perf1",
+      "dtype": "float16,float32,int32",
+      "params": {
+        "case_index": 0,
+        "configuration": [
+          4,
+          64,
+          8,
+          8,
+          64,
+          16,
+          8
+        ],
+        "configuration_names": "(num_seqs, slk, nqh, nkvh, hs, bs, xf)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf2",
+      "dtype": "float16,float32,int32",
+      "params": {
+        "case_index": 1,
+        "configuration": [
+          2,
+          128,
+          16,
+          4,
+          64,
+          16,
+          8
+        ],
+        "configuration_names": "(num_seqs, slk, nqh, nkvh, hs, bs, xf)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf3",
+      "dtype": "float16,float32,int32",
+      "params": {
+        "case_index": 2,
+        "configuration": [
+          8,
+          256,
+          32,
+          8,
+          128,
+          16,
+          8
+        ],
+        "configuration_names": "(num_seqs, slk, nqh, nkvh, hs, bs, xf)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf4",
+      "dtype": "float16,float32,int32",
+      "params": {
+        "case_index": 3,
+        "configuration": [
+          4,
+          128,
+          16,
+          16,
+          64,
+          32,
+          8
+        ],
+        "configuration_names": "(num_seqs, slk, nqh, nkvh, hs, bs, xf)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf5",
+      "dtype": "float16,float32,int32",
+      "params": {
+        "case_index": 4,
+        "configuration": [
+          2,
+          512,
+          8,
+          8,
+          128,
+          32,
+          8
+        ],
+        "configuration_names": "(num_seqs, slk, nqh, nkvh, hs, bs, xf)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "mixed_filtered_alibi_window",
+      "dtype": "float16,float32,int32",
+      "params": {
+        "batch": 2,
+        "query_heads": 8,
+        "kv_heads": 2,
+        "head_dim": 64,
+        "seed": 927,
+        "dtypes": {
+          "data": "float16",
+          "statistics": "float32",
+          "routing": "int32",
+          "alibi_slopes": "float32"
+        },
+        "contract_case": "mixed_filtered_alibi_window",
+        "sequence_lengths": [
+          19,
+          7
+        ],
+        "query_lengths": [
+          1,
+          3
+        ],
+        "block_size": 16,
+        "x_factor": 8,
+        "filter_by_query_len": true,
+        "sliding_window": 8,
+        "alibi_slopes": [
+          0.5,
+          0.25,
+          0.125,
+          0.0625,
+          0.5,
+          0.25,
+          0.125,
+          0.0625
+        ],
+        "k_scale": 0.75,
+        "v_scale": 1.25,
+        "initial_output_value": 23.5,
+        "input_shapes": {
+          "query": [
+            4,
+            8,
+            64
+          ],
+          "key_cache": [
+            8,
+            2,
+            8,
+            16,
+            8
+          ],
+          "value_cache": [
+            8,
+            2,
+            64,
+            16
+          ],
+          "block_table": [
+            2,
+            2
+          ],
+          "seq_lens": [
+            2
+          ],
+          "query_start_loc": [
+            3
+          ],
+          "alibi_slopes": [
+            8
+          ]
+        },
+        "output_shapes": {
+          "output": [
+            4,
+            8,
+            64
+          ]
+        },
+        "page_mapping": "reversed physical page order"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control-upstream-1",
+      "params": {
+        "case_index": 10000,
+        "configuration": {
+          "name": "unaligned_shuffled_strided_x4_head80",
+          "seq_lens": [
+            1,
+            17,
+            31
+          ],
+          "query_lens": [
+            1,
+            1,
+            1
+          ],
+          "num_query_heads": 12,
+          "num_kv_heads": 3,
+          "head_size": 80,
+          "block_size": 16,
+          "x_factor": 4,
+          "page_mapping": "shuffled",
+          "strided_layout": true,
+          "filter_by_query_len": false
+        },
+        "source_revision": "0acf65b3a967ef1025dbfc5fd4b415b259e3bd43"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control-upstream-2",
+      "params": {
+        "case_index": 10001,
+        "configuration": {
+          "name": "mixed_query_filter_sliding_x16_head96",
+          "seq_lens": [
+            33,
+            70,
+            47,
+            95
+          ],
+          "query_lens": [
+            1,
+            3,
+            1,
+            2
+          ],
+          "num_query_heads": 8,
+          "num_kv_heads": 2,
+          "head_size": 96,
+          "block_size": 32,
+          "x_factor": 16,
+          "page_mapping": "reversed",
+          "strided_layout": false,
+          "filter_by_query_len": true,
+          "sliding_window": 17
+        },
+        "source_revision": "0acf65b3a967ef1025dbfc5fd4b415b259e3bd43"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control-upstream-3",
+      "params": {
+        "case_index": 10002,
+        "configuration": {
+          "name": "unaligned_alibi_mha",
+          "seq_lens": [
+            23,
+            49
+          ],
+          "query_lens": [
+            1,
+            1
+          ],
+          "num_query_heads": 4,
+          "num_kv_heads": 4,
+          "head_size": 64,
+          "block_size": 16,
+          "x_factor": 8,
+          "page_mapping": "shuffled",
+          "strided_layout": false,
+          "filter_by_query_len": false,
+          "use_alibi": true
+        },
+        "source_revision": "0acf65b3a967ef1025dbfc5fd4b415b259e3bd43"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    }
+  ],
+  "migration": {
+    "original_harness_sha256": "852ee742896f92ed5b4e728ee6d8d84e1abe2d5aaa9aecc716e1b09da9adc29c",
+    "original_correctness_sha256": "e02a792f783d4ccfc2b12c8e0d655dc0bcef0cb6a2cc2e98f24c88d5d6160464"
+  },
+  "upstream_controls": [
+    {
+      "name": "unaligned_shuffled_strided_x4_head80",
+      "seq_lens": [
+        1,
+        17,
+        31
+      ],
+      "query_lens": [
+        1,
+        1,
+        1
+      ],
+      "num_query_heads": 12,
+      "num_kv_heads": 3,
+      "head_size": 80,
+      "block_size": 16,
+      "x_factor": 4,
+      "page_mapping": "shuffled",
+      "strided_layout": true,
+      "filter_by_query_len": false
+    },
+    {
+      "name": "mixed_query_filter_sliding_x16_head96",
+      "seq_lens": [
+        33,
+        70,
+        47,
+        95
+      ],
+      "query_lens": [
+        1,
+        3,
+        1,
+        2
+      ],
+      "num_query_heads": 8,
+      "num_kv_heads": 2,
+      "head_size": 96,
+      "block_size": 32,
+      "x_factor": 16,
+      "page_mapping": "reversed",
+      "strided_layout": false,
+      "filter_by_query_len": true,
+      "sliding_window": 17
+    },
+    {
+      "name": "unaligned_alibi_mha",
+      "seq_lens": [
+        23,
+        49
+      ],
+      "query_lens": [
+        1,
+        1
+      ],
+      "num_query_heads": 4,
+      "num_kv_heads": 4,
+      "head_size": 64,
+      "block_size": 16,
+      "x_factor": 8,
+      "page_mapping": "shuffled",
+      "strided_layout": false,
+      "filter_by_query_len": false,
+      "use_alibi": true
+    }
+  ]
+}

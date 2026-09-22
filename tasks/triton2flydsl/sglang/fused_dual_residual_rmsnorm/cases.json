@@ -1,0 +1,116 @@
+{
+  "cases": [
+    {
+      "test_case_id": "case_0000",
+      "params": {
+        "bs": 16,
+        "hidden": 4096,
+        "dtype": "bf16",
+        "seed": 42
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bf16"
+    },
+    {
+      "test_case_id": "case_0001",
+      "params": {
+        "bs": 128,
+        "hidden": 4096,
+        "dtype": "bf16",
+        "seed": 43
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bf16"
+    },
+    {
+      "test_case_id": "case_0002",
+      "params": {
+        "bs": 1,
+        "hidden": 8192,
+        "dtype": "bf16",
+        "seed": 44
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bf16"
+    },
+    {
+      "test_case_id": "case_0003",
+      "params": {
+        "bs": 64,
+        "hidden": 5120,
+        "dtype": "bf16",
+        "seed": 45
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bf16"
+    },
+    {
+      "test_case_id": "case_0004",
+      "params": {
+        "bs": 256,
+        "hidden": 2048,
+        "dtype": "bf16",
+        "seed": 46
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bf16"
+    },
+    {
+      "test_case_id": "case_0005",
+      "params": {
+        "bs": 32,
+        "hidden": 3072,
+        "dtype": "bf16",
+        "seed": 47
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bf16"
+    },
+    {
+      "test_case_id": "case_0006",
+      "params": {
+        "bs": 8,
+        "hidden": 4096,
+        "dtype": "fp16",
+        "seed": 48
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "fp16"
+    },
+    {
+      "test_case_id": "case_0007",
+      "params": {
+        "bs": 4,
+        "hidden": 1024,
+        "dtype": "fp32",
+        "seed": 49
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "fp32"
+    }
+  ]
+}

@@ -1,0 +1,82 @@
+# sglang_fused_moe: Triton to FlyDSL task contract
+
+The initial implementation is real **Triton**, not an empty FlyDSL starter.
+Arena freezes it in a separate baseline workspace. The required final backend
+is **FlyDSL**. Finishing with the original Triton implementation is not accepted,
+even when it passes the numerical tests. No agent-specific driver is required.
+
+Edit only `candidate.editable` paths in `config.yaml`. Keep the declared callable
+interfaces and all outputs/state changes exercised by the protected harness.
+Names containing `triton` are historical public API names; preserve those names
+while replacing their implementation with FlyDSL. Private GPU function names can
+change unless they are explicitly declared or called by the protected harness.
+
+The final candidate-owned arithmetic must execute FlyDSL GPU kernels. Python and
+PyTorch may prepare layouts, allocate storage and launch kernels. Candidate code
+must not use PyTorch/AITER/Triton/reference/model code as a replacement operator,
+or import task runners or protected reference functions. Do not introduce dynamic
+module loading, external native kernels, subprocess dispatch or launch bypasses.
+The protected harness's existing glue operations and allocation/reset boundaries
+remain identical for baseline and candidate.
+
+`cases.json` contains 8 independent correctness identities and 8
+performance identities, including every original dtype, bias, activation, routing
+and shape variant. Performance variants have correctness coverage. Input generators,
+explicit seeds, numerical gates, output-contract checks, warmups, sample counts,
+state reset and graph/event benchmark calls remain in `test_kernel_harness.py`.
+Where the original suite allowed an environment dtype override, the manifest now
+pins its original default; selecting a different suite requires updating both the
+protected manifest and case definition. The small independent known answers in
+`scripts/reference_controls.py` supplement the complete original GPU suite.
+
+The source and module docstrings retain upstream operator semantics/provenance.
+The task's public actions, from a materialized workspace, are:
+
+```sh
+python3 scripts/evaluate.py validate-task
+python3 scripts/evaluate.py baseline compile
+python3 scripts/evaluate.py baseline correctness
+python3 scripts/evaluate.py baseline performance
+python3 scripts/evaluate.py candidate compile
+python3 scripts/evaluate.py candidate correctness
+python3 scripts/evaluate.py candidate performance
+```
+
+The compile action syntax-checks actual role sources. Correctness performs real
+GPU compilation/launches and the original comparisons. Every action emits one
+`ARENA_EVAL_RESULT=` + `arena-eval-v1` JSON envelope. Failed or incomplete timings
+cannot be scoreable. Arena owns score aggregation and final result files.
+
+The runtime image provides ROCm, Triton (initial baseline) and FlyDSL (candidate),
+plus any operator dependencies stated by the source. Arena must materialize the
+canonical `_aka_benchmark.py` helper before GPU execution. CPU controls/protocol
+checks do not qualify these GPU kernels. Existing legacy reports are historical;
+the parent integration schedules new GPU validation.
+
+The prepared MoE host launch ABI accepts `torch.dtype` for `compute_type`. The
+initial Triton host wrapper converts it to its internal Triton dtype. Final
+FlyDSL code receives the same neutral dtype; it need not expose `mod.tl`. Keep
+routing preparation outside timing and preserve all fixed intermediate buffers.
+The timed region retains the protected two-GEMM path, pointwise activation
+and top-k combine. The task-owned pointwise glue is fixed for both roles; the
+editable grouped-GEMM compute must use the requested final backend.
+
+The harness checks the actual measured output and a perturbed replay against
+its protected reference using the original numerical gate. It also validates
+output shape, dtype, device, finite values and read-only input preservation;
+output and intermediate scratch buffers remain writable. Oracle calculations,
+input perturbation, output poisoning and restoration occur outside timing.
+The baseline and candidate keep the original callable, workload cases, seeds,
+warmups, repetition counts and Graph/Event selection. A captured Graph replay
+and an explicit Event eager re-invocation are reported distinctly.
+
+Candidate dependency enforcement runs before candidate import for compile,
+correctness and performance. AITER package/operator imports are forbidden,
+including `aiter.ops.flydsl` implementations; a FlyDSL runtime call from an
+imported operator is not candidate-owned arithmetic. Import aliases and
+`from ... import ...` do not change this rule. External backend/native dispatch
+(`ctypes`, subprocesses, or `torch.ops`) and dynamic implementation loading are
+also forbidden. Ordinary Python utilities, PyTorch allocation/layout operations,
+and the task's bundled `kernels/` helpers remain available under the existing
+numerical and timing contract. Baseline checks retain their declared initial
+backend; the final candidate must use FlyDSL.

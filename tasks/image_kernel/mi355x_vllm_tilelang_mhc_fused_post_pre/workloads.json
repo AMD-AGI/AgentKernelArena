@@ -1,0 +1,265 @@
+{
+  "original_cases": {
+    "correctness": [
+      {
+        "id": "deepseek-pro-k014",
+        "model": "DeepSeek-V4-Pro",
+        "session_breakdown_id": 88574,
+        "kernel_ids": [
+          "k014"
+        ],
+        "gpu_pct": 8.898,
+        "params": {
+          "tokens": 64,
+          "hidden_size": 7168,
+          "hc_mult": 4,
+          "dtype": "bf16",
+          "rms_eps": 1e-06,
+          "hc_pre_eps": 1e-06,
+          "hc_sinkhorn_eps": 1e-06,
+          "hc_post_mult": 2.0,
+          "sinkhorn_repeat": 20
+        },
+        "trace_input_shapes": [
+          "(64,7168) bf16",
+          "(64,4,7168) bf16",
+          "(64,4,1) fp32",
+          "(64,4,4) fp32",
+          "(24,28672) fp32",
+          "(3,) fp32",
+          "(24,) fp32"
+        ]
+      },
+      {
+        "id": "deepseek-pro-k015",
+        "model": "DeepSeek-V4-Pro",
+        "session_breakdown_id": 88574,
+        "kernel_ids": [
+          "k015"
+        ],
+        "gpu_pct": 5.801,
+        "params": {
+          "tokens": 7211,
+          "hidden_size": 7168,
+          "hc_mult": 4,
+          "dtype": "bf16",
+          "rms_eps": 1e-06,
+          "hc_pre_eps": 1e-06,
+          "hc_sinkhorn_eps": 1e-06,
+          "hc_post_mult": 2.0,
+          "sinkhorn_repeat": 20
+        },
+        "trace_input_shapes": [
+          "(7211,7168) bf16",
+          "(7211,4,7168) bf16",
+          "(7211,4,1) fp32",
+          "(7211,4,4) fp32",
+          "(24,28672) fp32"
+        ]
+      },
+      {
+        "id": "deepseek-flash-k021",
+        "model": "DeepSeek-V4-Flash",
+        "session_breakdown_id": 88507,
+        "kernel_ids": [
+          "k021"
+        ],
+        "gpu_pct": 4.652,
+        "params": {
+          "tokens": 64,
+          "hidden_size": 4096,
+          "hc_mult": 4,
+          "dtype": "bf16",
+          "rms_eps": 1e-06,
+          "hc_pre_eps": 1e-06,
+          "hc_sinkhorn_eps": 1e-06,
+          "hc_post_mult": 2.0,
+          "sinkhorn_repeat": 20
+        },
+        "trace_input_shapes": [
+          "(64,4096) bf16",
+          "(64,4,4096) bf16",
+          "(64,4,1) fp32",
+          "(64,4,4) fp32",
+          "(24,16384) fp32"
+        ]
+      },
+      {
+        "id": "deepseek-flash-k022",
+        "model": "DeepSeek-V4-Flash",
+        "session_breakdown_id": 88507,
+        "kernel_ids": [
+          "k022"
+        ],
+        "gpu_pct": 3.962,
+        "params": {
+          "tokens": 7211,
+          "hidden_size": 4096,
+          "hc_mult": 4,
+          "dtype": "bf16",
+          "rms_eps": 1e-06,
+          "hc_pre_eps": 1e-06,
+          "hc_sinkhorn_eps": 1e-06,
+          "hc_post_mult": 2.0,
+          "sinkhorn_repeat": 20
+        },
+        "trace_input_shapes": [
+          "(7211,4096) bf16",
+          "(7211,4,4096) bf16",
+          "(7211,4,1) fp32",
+          "(7211,4,4) fp32",
+          "(24,16384) fp32"
+        ]
+      }
+    ],
+    "performance": null
+  },
+  "cases": [
+    {
+      "test_case_id": "deepseek-pro-k014",
+      "params": {
+        "tokens": 64,
+        "hidden_size": 7168,
+        "hc_mult": 4,
+        "dtype": "bf16",
+        "rms_eps": 1e-06,
+        "hc_pre_eps": 1e-06,
+        "hc_sinkhorn_eps": 1e-06,
+        "hc_post_mult": 2.0,
+        "sinkhorn_repeat": 20,
+        "seed": 13
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "shape": [
+        "(64,7168) bf16",
+        "(64,4,7168) bf16",
+        "(64,4,1) fp32",
+        "(64,4,4) fp32",
+        "(24,28672) fp32",
+        "(3,) fp32",
+        "(24,) fp32"
+      ],
+      "dtype": "bf16",
+      "metadata": {
+        "model": "DeepSeek-V4-Pro",
+        "session_breakdown_id": 88574,
+        "kernel_ids": [
+          "k014"
+        ],
+        "gpu_pct": 8.898,
+        "timed_replay_seed": 29
+      }
+    },
+    {
+      "test_case_id": "deepseek-pro-k015",
+      "params": {
+        "tokens": 7211,
+        "hidden_size": 7168,
+        "hc_mult": 4,
+        "dtype": "bf16",
+        "rms_eps": 1e-06,
+        "hc_pre_eps": 1e-06,
+        "hc_sinkhorn_eps": 1e-06,
+        "hc_post_mult": 2.0,
+        "sinkhorn_repeat": 20,
+        "seed": 13
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "shape": [
+        "(7211,7168) bf16",
+        "(7211,4,7168) bf16",
+        "(7211,4,1) fp32",
+        "(7211,4,4) fp32",
+        "(24,28672) fp32"
+      ],
+      "dtype": "bf16",
+      "metadata": {
+        "model": "DeepSeek-V4-Pro",
+        "session_breakdown_id": 88574,
+        "kernel_ids": [
+          "k015"
+        ],
+        "gpu_pct": 5.801,
+        "timed_replay_seed": 29
+      }
+    },
+    {
+      "test_case_id": "deepseek-flash-k021",
+      "params": {
+        "tokens": 64,
+        "hidden_size": 4096,
+        "hc_mult": 4,
+        "dtype": "bf16",
+        "rms_eps": 1e-06,
+        "hc_pre_eps": 1e-06,
+        "hc_sinkhorn_eps": 1e-06,
+        "hc_post_mult": 2.0,
+        "sinkhorn_repeat": 20,
+        "seed": 13
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "shape": [
+        "(64,4096) bf16",
+        "(64,4,4096) bf16",
+        "(64,4,1) fp32",
+        "(64,4,4) fp32",
+        "(24,16384) fp32"
+      ],
+      "dtype": "bf16",
+      "metadata": {
+        "model": "DeepSeek-V4-Flash",
+        "session_breakdown_id": 88507,
+        "kernel_ids": [
+          "k021"
+        ],
+        "gpu_pct": 4.652,
+        "timed_replay_seed": 29
+      }
+    },
+    {
+      "test_case_id": "deepseek-flash-k022",
+      "params": {
+        "tokens": 7211,
+        "hidden_size": 4096,
+        "hc_mult": 4,
+        "dtype": "bf16",
+        "rms_eps": 1e-06,
+        "hc_pre_eps": 1e-06,
+        "hc_sinkhorn_eps": 1e-06,
+        "hc_post_mult": 2.0,
+        "sinkhorn_repeat": 20,
+        "seed": 13
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "shape": [
+        "(7211,4096) bf16",
+        "(7211,4,4096) bf16",
+        "(7211,4,1) fp32",
+        "(7211,4,4) fp32",
+        "(24,16384) fp32"
+      ],
+      "dtype": "bf16",
+      "metadata": {
+        "model": "DeepSeek-V4-Flash",
+        "session_breakdown_id": 88507,
+        "kernel_ids": [
+          "k022"
+        ],
+        "gpu_pct": 3.962,
+        "timed_replay_seed": 29
+      }
+    }
+  ]
+}

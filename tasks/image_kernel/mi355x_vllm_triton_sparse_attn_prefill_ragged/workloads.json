@@ -1,0 +1,256 @@
+{
+  "original_cases": {
+    "correctness": [
+      {
+        "id": "dsv4-flash-prefill-sq7211",
+        "model": "DeepSeek-V4-Flash",
+        "session_id": "5fa5a97c-fbf2-4c3e-a84e-78576f745622",
+        "kernel_ids": [
+          "prefill-ragged"
+        ],
+        "gpu_pct": 10.231,
+        "params": {
+          "num_queries": 7211,
+          "num_heads": 64,
+          "nope_head_dim": 448,
+          "rope_head_dim": 64,
+          "head_dim": 512,
+          "topk": 512,
+          "num_kv": 8192,
+          "dtype": "bf16"
+        },
+        "trace_input_shapes": [
+          "q (7211,64,512) bf16",
+          "kv (8192,512) bf16",
+          "indices/indptr ragged, topk=512"
+        ]
+      },
+      {
+        "id": "dsv4-flash-prefill-sq1073",
+        "model": "DeepSeek-V4-Flash",
+        "session_id": "5fa5a97c-fbf2-4c3e-a84e-78576f745622",
+        "kernel_ids": [
+          "prefill-ragged"
+        ],
+        "gpu_pct": null,
+        "params": {
+          "num_queries": 1073,
+          "num_heads": 64,
+          "nope_head_dim": 448,
+          "rope_head_dim": 64,
+          "head_dim": 512,
+          "topk": 512,
+          "num_kv": 6144,
+          "dtype": "bf16"
+        },
+        "trace_input_shapes": [
+          "q (1073,64,512) bf16",
+          "kv (6144,512) bf16",
+          "indices/indptr ragged, topk=512"
+        ]
+      },
+      {
+        "id": "dsv4-flash-prefill-sq64",
+        "model": "DeepSeek-V4-Flash",
+        "session_id": "5fa5a97c-fbf2-4c3e-a84e-78576f745622",
+        "kernel_ids": [
+          "prefill-ragged"
+        ],
+        "gpu_pct": null,
+        "params": {
+          "num_queries": 64,
+          "num_heads": 64,
+          "nope_head_dim": 448,
+          "rope_head_dim": 64,
+          "head_dim": 512,
+          "topk": 512,
+          "num_kv": 4096,
+          "dtype": "bf16"
+        },
+        "trace_input_shapes": [
+          "q (64,64,512) bf16",
+          "kv (4096,512) bf16",
+          "indices/indptr ragged, topk=512"
+        ]
+      }
+    ],
+    "performance": null
+  },
+  "cases": [
+    {
+      "test_case_id": "dsv4-flash-prefill-sq7211",
+      "params": {
+        "num_queries": 7211,
+        "num_heads": 64,
+        "nope_head_dim": 448,
+        "rope_head_dim": 64,
+        "head_dim": 512,
+        "topk": 512,
+        "num_kv": 8192,
+        "dtype": "bf16",
+        "seed": 29
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "shape": [
+        "q (7211,64,512) bf16",
+        "kv (8192,512) bf16",
+        "indices/indptr ragged, topk=512"
+      ],
+      "dtype": "bf16",
+      "metadata": {
+        "model": "DeepSeek-V4-Flash",
+        "session_id": "5fa5a97c-fbf2-4c3e-a84e-78576f745622",
+        "kernel_ids": [
+          "prefill-ragged"
+        ],
+        "gpu_pct": 10.231,
+        "timed_replay_seed": 47
+      }
+    },
+    {
+      "test_case_id": "dsv4-flash-prefill-sq1073",
+      "params": {
+        "num_queries": 1073,
+        "num_heads": 64,
+        "nope_head_dim": 448,
+        "rope_head_dim": 64,
+        "head_dim": 512,
+        "topk": 512,
+        "num_kv": 6144,
+        "dtype": "bf16",
+        "seed": 29
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "shape": [
+        "q (1073,64,512) bf16",
+        "kv (6144,512) bf16",
+        "indices/indptr ragged, topk=512"
+      ],
+      "dtype": "bf16",
+      "metadata": {
+        "model": "DeepSeek-V4-Flash",
+        "session_id": "5fa5a97c-fbf2-4c3e-a84e-78576f745622",
+        "kernel_ids": [
+          "prefill-ragged"
+        ],
+        "gpu_pct": null,
+        "timed_replay_seed": 47
+      }
+    },
+    {
+      "test_case_id": "dsv4-flash-prefill-sq64",
+      "params": {
+        "num_queries": 64,
+        "num_heads": 64,
+        "nope_head_dim": 448,
+        "rope_head_dim": 64,
+        "head_dim": 512,
+        "topk": 512,
+        "num_kv": 4096,
+        "dtype": "bf16",
+        "seed": 29
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "shape": [
+        "q (64,64,512) bf16",
+        "kv (4096,512) bf16",
+        "indices/indptr ragged, topk=512"
+      ],
+      "dtype": "bf16",
+      "metadata": {
+        "model": "DeepSeek-V4-Flash",
+        "session_id": "5fa5a97c-fbf2-4c3e-a84e-78576f745622",
+        "kernel_ids": [
+          "prefill-ragged"
+        ],
+        "gpu_pct": null,
+        "timed_replay_seed": 47
+      }
+    },
+    {
+      "test_case_id": "dsv4-ragged-boundaries-sq64",
+      "params": {
+        "num_queries": 64,
+        "num_heads": 64,
+        "head_dim": 512,
+        "nope_head_dim": 448,
+        "rope_head_dim": 64,
+        "num_kv": 4096,
+        "topk": 512,
+        "dtype": "bf16",
+        "row_lengths": [
+          0,
+          1,
+          15,
+          16,
+          17,
+          31,
+          32,
+          33,
+          127,
+          255,
+          511,
+          512
+        ],
+        "seed": 29
+      },
+      "checks": [
+        "correctness"
+      ],
+      "dtype": "bf16",
+      "metadata": {
+        "csr_seed": 53,
+        "timed_replay_seed": 47,
+        "scored": false,
+        "coverage": "Nonuniform CSR, empty rows, partial 16-position blocks; direct and captured replay"
+      }
+    },
+    {
+      "test_case_id": "dsv4-ragged-boundaries-sq1073",
+      "params": {
+        "num_queries": 1073,
+        "num_heads": 64,
+        "head_dim": 512,
+        "nope_head_dim": 448,
+        "rope_head_dim": 64,
+        "num_kv": 4096,
+        "topk": 512,
+        "dtype": "bf16",
+        "row_lengths": [
+          0,
+          1,
+          15,
+          16,
+          17,
+          31,
+          32,
+          33,
+          127,
+          255,
+          511,
+          512
+        ],
+        "seed": 29
+      },
+      "checks": [
+        "correctness"
+      ],
+      "dtype": "bf16",
+      "metadata": {
+        "csr_seed": 53,
+        "timed_replay_seed": 47,
+        "scored": false,
+        "coverage": "Nonuniform CSR, empty rows, partial 16-position blocks; direct and captured replay"
+      }
+    }
+  ]
+}

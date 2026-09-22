@@ -1,15 +1,25 @@
-source_file_path:
-- decode_attention.py
-target_kernel_functions:
-- decode_attention_fwd
-- _fwd_kernel_stage1
-- _fwd_grouped_kernel_stage1
-- _fwd_kernel_stage2
-compile_command:
-- python3 test_kernel_harness.py --compile
-correctness_command:
-- python3 test_kernel_harness.py --correctness
-performance_command:
-- python3 test_kernel_harness.py --full-benchmark
-task_type: triton2flydsl
-task_result_template: null
+schema_version: 2
+description: Translate the declared decode_attention implementation from Triton to FlyDSL while preserving
+  all operator and evaluation contracts.
+instructions:
+- README.md
+candidate:
+  language: flydsl
+  initial_state: implemented
+  initial_language: triton
+  editable:
+  - decode_attention.py
+  entrypoints:
+  - file: decode_attention.py
+    kind: function
+    symbol: decode_attention_fwd
+baseline:
+  kind: initial_candidate
+  language: triton
+  correctness_policy: required
+evaluation:
+  runner:
+  - python3
+  - scripts/evaluate.py
+  workloads: cases.json
+  timeout_s: 3600

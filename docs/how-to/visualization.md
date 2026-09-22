@@ -30,6 +30,17 @@ Workspace-run reports, which are usually located at
 `workspace_<gpu>_<agent>/run_<timestamp>/reports/`, can also be scanned, but this
 is opt-in.
 
+Numerical correctness and speedup remain separate from final acceptance and
+delivery. The leaderboard shows **Accepted** and **Delivered** counts, and each
+task shows its acceptance and delivery status. A rejected delivered candidate
+is `NOT_ACCEPTED`; an accepted candidate whose export failed is `INCOMPLETE`.
+These outcomes do not erase measured scores or timings.
+
+Historical reports without acceptance or delivery fields show `N/A` for those
+fields. Leaderboard fractions use only tasks with a reported outcome and list
+any unknown count separately. A historical `PASS` denotes numerical correctness,
+not evidence of final acceptance or delivery.
+
 ## Build the dashboard data and serve it
 
 After a normal AgentKernelArena run, reports land in

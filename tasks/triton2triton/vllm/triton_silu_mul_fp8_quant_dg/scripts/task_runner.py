@@ -84,7 +84,10 @@ def run_compile():
         return False, str(e)
 
 
-def run_correctness():
+def run_correctness(*, case_index=None):
+    if case_index is not None and case_index >= 10000:
+        from _upstream_controls import run_control
+        return run_control(case_index - 10000, load_module)
     import torch
     try:
         mod = load_module()
@@ -93,6 +96,8 @@ def run_correctness():
 
     device = "cuda"
     for i, (E, T, H, group_size) in enumerate(TEST_SHAPES):
+        if case_index is not None and i != case_index:
+            continue
         try:
             torch.manual_seed(42 + i)
             y = torch.randn(E, T, 2 * H, device=device, dtype=torch.float16) * 0.5

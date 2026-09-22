@@ -9,7 +9,7 @@ myst:
 
 AgentKernelArena runs controlled agent experiments against GPU kernel tasks on
 an AMD GPU. Docker is the supported workflow: each experiment runs inside the
-GPU-architecture-specific SGLang image and bind-mounts the required local agent
+GPU-architecture-specific runtime image and bind-mounts the required local agent
 CLI plus its login state.
 
 ## Prerequisites
@@ -20,11 +20,13 @@ The following prerequisites are required before running AgentKernelArena.
   `/dev/dri` must be present. The runner also mounts `/dev/mem` when present.
 - **Docker Engine:** the current user must be able to access the Docker daemon
   without `sudo`.
-- **SGLang runtime image:** `gfx942` uses
+- **Runtime image:** `gfx942` uses
   `lmsysorg/sglang:v0.5.12-rocm720-mi30x`; `gfx950` uses
   `lmsysorg/sglang-rocm:v0.5.14-rocm720-mi35x-20260705`. The runner selects from
   `target_gpu_model` for experiment runs and from the visible host GPU for shell
   and smoke commands.
+  For `gfx1201`, the runner automatically builds the default
+  [RDNA4 runtime](../../docker/rdna4/README.md) on first use if it is missing.
 - **Git**
 - **Node.js 22+ and npm**, when using the alternative npm installation of Claude
   Code or another npm-installed agent CLI.
@@ -59,6 +61,35 @@ same Docker runtime. See [Run on Slurm/Spur GPU nodes](../how-to/slurm-run.md).
 Install and authenticate the agent selected by your configuration before
 starting an experiment; the next section covers the first-class host CLIs.
 
+### RDNA4 (`gfx1201`)
+
+The RDNA4 image normalizes the upstream Python and ROCm SDK paths so the same
+runner can execute as the host user. On the GPU host, the first command builds
+the default image if it is missing, then checks the runtime:
+
+```bash
+make docker-smoke
+```
+
+You can also start a task directly; its preflight prepares the same image.
+After installing and authenticating Claude Code, use:
+
+```bash
+CONFIG_PATH=example_configs/quickstart_claude_rdna4.yaml
+make docker-check-agents CONFIG="$CONFIG_PATH"
+make docker-run CONFIG="$CONFIG_PATH"
+```
+
+Existing images are reused. `make docker-build-rdna4` remains available for
+prebuilding or rebuilding after recipe changes. Explicit image overrides disable
+automatic builds; see the runtime guide for custom image handling.
+
+The smoke check requires `rocprofv3` on `gfx1201`; the CDNA profiler requirement
+is unchanged. See the [image recipe and limitations](../../docker/rdna4/README.md)
+for its pinned base, non-root runtime layout, and task coverage. A successful
+smoke establishes runtime availability, not support for every task or profiler
+analysis of an optimized candidate.
+
 ## Install agent CLIs
 
 Install whichever agent you plan to run. Claude Code recommends its native
@@ -90,20 +121,21 @@ installation and its alternative npm installation. See the
 [official Claude Code setup guide](https://code.claude.com/docs/en/installation)
 for current installation alternatives.
 
-The `geak_v3`, `geak_v3_triton`, and `mini_swe_triton` integrations require
-their own runtime dependencies. Review the corresponding directory under
-`agents/` before selecting one.
+Specialized integrations require additional runtime setup. Review
+[GEAK](../../agents/geak/README.md) or
+[Forge](../../agents/forge/README.md) before selecting one.
 
 ## Choose an example configuration
 
 Choose the configuration that matches the physical GPU and installed agent.
-The two quickstart configurations each run one GELU task; the benchmark
+The quickstart configurations each run one GELU task; the benchmark
 configuration is a longer 60-task Cursor Agent run.
 
 | Configuration | Purpose |
 | --- | --- |
 | `example_configs/quickstart_claude_mi300.yaml` | First Claude Code run on MI300/MI300X (`gfx942`). |
 | `example_configs/quickstart_claude_mi355x.yaml` | First Claude Code run on MI355X (`gfx950`). |
+| `example_configs/quickstart_claude_rdna4.yaml` | First Claude Code run on RDNA4 (`gfx1201`); builds the default runtime on first use if missing. |
 | `example_configs/benchmark_cursor_mi355x.yaml` | Curated 60-task Cursor Agent benchmark on MI355X; requires an installed and authenticated Cursor Agent CLI. |
 
 The default `make docker-run` configuration is the MI300/MI300X quickstart.
@@ -136,10 +168,10 @@ cp "$CONFIG_PATH" my_experiment.yaml
 
 ## FlyDSL tasks (optional)
 
-`flydsl2flydsl`, `torch2flydsl`, and `triton2flydsl` tasks need the `flydsl`
-package inside the container. The selected image may already ship it
-(`make docker-smoke` prints `flydsl=ok <version>` when present). If yours does
-not, install it once into the container's persistent pip user-base:
+`flydsl2flydsl`, `torch2flydsl`, `triton2flydsl`, and `operator2flydsl` tasks
+need the `flydsl` package inside the container. The selected image may already
+ship it (`make docker-smoke` prints `flydsl=ok <version>` when present). If
+yours does not, install it once into the container's persistent pip user-base:
 
 ```bash
 make docker-setup-flydsl
@@ -163,10 +195,10 @@ make docker-check-agents AGENTS=all
 ```
 
 `AGENTS=all` is the explicit strict check for Cursor, Claude Code, and Codex.
-Specialized integrations such as GEAK and mini-swe use their own dependency and
-authentication checks. They read credentials and provider endpoints from their
-own environment/configuration; there is no shared provider field in the root
-run configuration.
+Specialized integrations read credentials and provider endpoints from their
+own environment/configuration; their documentation describes the additional
+setup and checks. There is no shared provider field in the root run
+configuration.
 
 To run against a self-hosted model instead of a hosted provider, start a local
 vLLM server:

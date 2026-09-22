@@ -75,7 +75,7 @@ def moe_mmk_kernel(
     pid_n = pid % num_pid_n
 
     offs_m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
-    offs_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N) % N
+    offs_n = (pid_n * BLOCK_N + tl.arange(0, BLOCK_N)) % N
     offs_k = tl.arange(0, BLOCK_K)
     mask_m = offs_m < M
 

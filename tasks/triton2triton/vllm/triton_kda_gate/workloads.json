@@ -1,0 +1,95 @@
+{
+  "version": 1,
+  "candidate_symbols": {
+    "source/triton_kda_gate.py": [
+      {
+        "name": "kda_gate_fwd_kernel",
+        "jit": true
+      }
+    ]
+  },
+  "case_table": "SEEDS",
+  "input_table": [
+    42,
+    43,
+    44,
+    45,
+    46
+  ],
+  "cases": [
+    {
+      "test_case_id": "perf1",
+      "dtype": "float32",
+      "params": {
+        "case_index": 0,
+        "configuration": 42,
+        "configuration_names": "seed"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf2",
+      "dtype": "float32",
+      "params": {
+        "case_index": 1,
+        "configuration": 43,
+        "configuration_names": "seed"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf3",
+      "dtype": "float32",
+      "params": {
+        "case_index": 2,
+        "configuration": 44,
+        "configuration_names": "seed"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf4",
+      "dtype": "float32",
+      "params": {
+        "case_index": 3,
+        "configuration": 45,
+        "configuration_names": "seed"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf5",
+      "dtype": "float32",
+      "params": {
+        "case_index": 4,
+        "configuration": 46,
+        "configuration_names": "seed"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    }
+  ],
+  "migration": {
+    "original_harness_sha256": "661b670860d1c1b942ef26b19d2651516ae8ff9b3bdac5da5b468d209504cc80",
+    "original_correctness_sha256": "eab1398f221ab2cc7915cb81c36f460efd87f133e4d3c7bc9930d1c6eb944ece"
+  }
+}

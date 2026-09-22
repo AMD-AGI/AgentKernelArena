@@ -1,0 +1,39 @@
+# triton_count_expert_tokens
+
+The starting candidate is implemented Triton. Improve the declared source files in place;
+the framework freezes the initial implementation as the baseline. Baseline and candidate
+actions execute only this workspace, with no fallback to another implementation.
+
+Optimize the Triton `_count_expert_num_tokens` kernel for maximum GPU throughput.
+This kernel counts tokens assigned to each expert from a topk_ids tensor,
+equivalent to torch.bincount per expert.
+
+Key optimization opportunities:
+- Block size tuning
+- Efficient reduction
+- Memory access pattern optimization
+
+Constraints:
+- Must maintain the same function signature for `count_expert_num_tokens`
+- Output must exactly match reference counts
+
+
+## Evaluation contract
+
+Run `python3 _arena_eval.py validate-task`, or `python3 _arena_eval.py baseline|candidate compile|correctness|performance`
+(with one role and one action). Use `ARENA_EVAL_PHASE=candidate_evaluation` for submitted candidates.
+`workloads.json` declares all five original cases; the adapter verifies it against the
+protected harness table. Original input seeds, comparisons, tolerances, warmups, sample
+counts and graph/event timing remain in `scripts/task_runner.py`. Compilation includes
+syntax and import/interface checks. Missing candidates, incomplete measurements and
+invalid timing fail; commands emit `arena-eval-v1`, never final Arena score reports.
+Canonical benchmark helpers must be materialized by Arena; do not edit their generated regions.
+
+
+The protected checks require int32 counts on the input device with exactly one
+count per expert, and compare against a reference made from pristine IDs.
+Correctness also exercises the documented -1 invalid assignment. Performance
+checks the actual captured output, poisons it and replays after changing expert
+assignments and introducing invalid IDs. Inputs and the public callable are
+restored even if replay fails. Original five cases, seeds, full wrapper/allocation
+boundary, 10 warmups, 100 samples and exact integer comparison are unchanged.

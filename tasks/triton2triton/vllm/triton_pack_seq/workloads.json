@@ -1,0 +1,389 @@
+{
+  "version": 1,
+  "candidate_symbols": {
+    "source/triton_pack_seq.py": [
+      {
+        "name": "_pack_seq_kernel",
+        "jit": true
+      }
+    ]
+  },
+  "case_table": "TEST_SHAPES",
+  "input_table": [
+    [
+      4,
+      [
+        8,
+        12,
+        6,
+        10
+      ],
+      64
+    ],
+    [
+      2,
+      [
+        32,
+        16
+      ],
+      128
+    ],
+    [
+      8,
+      [
+        4,
+        8,
+        2,
+        16,
+        6,
+        10,
+        3,
+        7
+      ],
+      64
+    ],
+    [
+      3,
+      [
+        64,
+        32,
+        48
+      ],
+      256
+    ],
+    [
+      6,
+      [
+        10,
+        20,
+        15,
+        5,
+        25,
+        12
+      ],
+      128
+    ]
+  ],
+  "cases": [
+    {
+      "test_case_id": "perf1",
+      "dtype": "float16,int32",
+      "params": {
+        "case_index": 0,
+        "configuration": [
+          4,
+          [
+            8,
+            12,
+            6,
+            10
+          ],
+          64
+        ],
+        "configuration_names": "(B, lengths_list, D)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf2",
+      "dtype": "float16,int32",
+      "params": {
+        "case_index": 1,
+        "configuration": [
+          2,
+          [
+            32,
+            16
+          ],
+          128
+        ],
+        "configuration_names": "(B, lengths_list, D)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf3",
+      "dtype": "float16,int32",
+      "params": {
+        "case_index": 2,
+        "configuration": [
+          8,
+          [
+            4,
+            8,
+            2,
+            16,
+            6,
+            10,
+            3,
+            7
+          ],
+          64
+        ],
+        "configuration_names": "(B, lengths_list, D)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf4",
+      "dtype": "float16,int32",
+      "params": {
+        "case_index": 3,
+        "configuration": [
+          3,
+          [
+            64,
+            32,
+            48
+          ],
+          256
+        ],
+        "configuration_names": "(B, lengths_list, D)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf5",
+      "dtype": "float16,int32",
+      "params": {
+        "case_index": 4,
+        "configuration": [
+          6,
+          [
+            10,
+            20,
+            15,
+            5,
+            25,
+            12
+          ],
+          128
+        ],
+        "configuration_names": "(B, lengths_list, D)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "contract_controls",
+      "status": "PASS",
+      "checks": [
+        "correctness"
+      ],
+      "params": {
+        "case_index": 5,
+        "coverage": "The original scored path launches the kernel directly into a preallocated output with pad=0; replay checks that exact path. Public-wrapper correctness also checks its default -inf and explicit padding; allocation remains outside original scored timing."
+      }
+    },
+    {
+      "test_case_id": "control-upstream-1",
+      "params": {
+        "case_index": 10000,
+        "configuration": {
+          "name": "default_pad_odd_d_float32",
+          "lengths": [
+            17,
+            5,
+            9
+          ],
+          "feature_shape": [
+            70
+          ],
+          "dtype": "float32"
+        },
+        "source_revision": "0acf65b3a967ef1025dbfc5fd4b415b259e3bd43"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control-upstream-2",
+      "params": {
+        "case_index": 10001,
+        "configuration": {
+          "name": "zero_lengths_long_time_bfloat16",
+          "lengths": [
+            0,
+            70,
+            13,
+            0
+          ],
+          "feature_shape": [
+            65
+          ],
+          "dtype": "bfloat16",
+          "pad_value": 2.5
+        },
+        "source_revision": "0acf65b3a967ef1025dbfc5fd4b415b259e3bd43"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control-upstream-3",
+      "params": {
+        "case_index": 10002,
+        "configuration": {
+          "name": "multidimensional_float16",
+          "lengths": [
+            9,
+            0,
+            4
+          ],
+          "feature_shape": [
+            3,
+            5
+          ],
+          "dtype": "float16",
+          "pad_value": -1.25
+        },
+        "source_revision": "0acf65b3a967ef1025dbfc5fd4b415b259e3bd43"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control-empty-1",
+      "params": {
+        "case_index": 10003,
+        "configuration": {
+          "name": "all_empty_float16",
+          "lengths": [
+            0,
+            0,
+            0
+          ],
+          "feature_shape": [
+            65
+          ],
+          "dtype": "float16"
+        },
+        "source": "PR107 final public empty-domain coverage"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control-empty-2",
+      "params": {
+        "case_index": 10004,
+        "configuration": {
+          "name": "all_empty_multidimensional_bfloat16",
+          "lengths": [
+            0,
+            0
+          ],
+          "feature_shape": [
+            3,
+            5
+          ],
+          "dtype": "bfloat16",
+          "pad_value": 2.5
+        },
+        "source": "PR107 final public empty-domain coverage"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    }
+  ],
+  "migration": {
+    "original_harness_sha256": "9ab5b581b5210b61b3c1e256e2069655e8ffb478d2eac6c467f16c48d72f08b3",
+    "original_correctness_sha256": "008673918ef772556083b79a863ed585e4c90383ec1597da08f9490ff253af6f"
+  },
+  "upstream_controls": [
+    {
+      "name": "default_pad_odd_d_float32",
+      "lengths": [
+        17,
+        5,
+        9
+      ],
+      "feature_shape": [
+        70
+      ],
+      "dtype": "float32"
+    },
+    {
+      "name": "zero_lengths_long_time_bfloat16",
+      "lengths": [
+        0,
+        70,
+        13,
+        0
+      ],
+      "feature_shape": [
+        65
+      ],
+      "dtype": "bfloat16",
+      "pad_value": 2.5
+    },
+    {
+      "name": "multidimensional_float16",
+      "lengths": [
+        9,
+        0,
+        4
+      ],
+      "feature_shape": [
+        3,
+        5
+      ],
+      "dtype": "float16",
+      "pad_value": -1.25
+    },
+    {
+      "name": "all_empty_float16",
+      "lengths": [
+        0,
+        0,
+        0
+      ],
+      "feature_shape": [
+        65
+      ],
+      "dtype": "float16"
+    },
+    {
+      "name": "all_empty_multidimensional_bfloat16",
+      "lengths": [
+        0,
+        0
+      ],
+      "feature_shape": [
+        3,
+        5
+      ],
+      "dtype": "bfloat16",
+      "pad_value": 2.5
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+# Reimplement a production BF16 GEMM in FlyDSL. The unified Forge adapter
+# chooses initialization from the task's candidate declaration, then optimizes.
+# Arena evaluates every declared case against the task-owned reference and
+# production AITER baseline. The common exporter produces the SIKL solution.
+# See agents/forge/README.md for the pinned engine and authentication setup.
+agent:
+  template: forge
+
+# Select all GEMM and MoE tasks with `- SIKL-task`.
+tasks:
+  - SIKL-task/gemm_a16w16_nt_n6144_k6144
+
+target_gpu_model: MI355X
+log_directory: logs
+workspace_directory_prefix: workspace

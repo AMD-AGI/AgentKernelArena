@@ -1,0 +1,464 @@
+{
+  "version": 1,
+  "source": "gemm.py",
+  "kernel_symbols": [
+    "matmul_kernel"
+  ],
+  "cases": [
+    {
+      "test_case_id": "test_correctness/d98502caf429020ceac9",
+      "params": {
+        "function": "test_correctness",
+        "arguments": {
+          "M": 1024,
+          "N": 1024,
+          "K": 1024,
+          "in_dtype_a": "fp16",
+          "in_dtype_b": "fp16",
+          "out_dtype": "fp16",
+          "col_a": false,
+          "col_b": false
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_correctness/d49fcb8be684e95fc74f",
+      "params": {
+        "function": "test_correctness",
+        "arguments": {
+          "M": 2048,
+          "N": 2048,
+          "K": 2048,
+          "in_dtype_a": "fp16",
+          "in_dtype_b": "fp16",
+          "out_dtype": "fp16",
+          "col_a": false,
+          "col_b": false
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_correctness/462647411668a5676f0c",
+      "params": {
+        "function": "test_correctness",
+        "arguments": {
+          "M": 3072,
+          "N": 3072,
+          "K": 3072,
+          "in_dtype_a": "fp16",
+          "in_dtype_b": "fp16",
+          "out_dtype": "fp16",
+          "col_a": false,
+          "col_b": false
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_correctness/e1cc824462455f65b7d2",
+      "params": {
+        "function": "test_correctness",
+        "arguments": {
+          "M": 4096,
+          "N": 4096,
+          "K": 4096,
+          "in_dtype_a": "fp16",
+          "in_dtype_b": "fp16",
+          "out_dtype": "fp16",
+          "col_a": false,
+          "col_b": false
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_correctness/e11fb7e63f3a97fa965b",
+      "params": {
+        "function": "test_correctness",
+        "arguments": {
+          "M": 5120,
+          "N": 5120,
+          "K": 5120,
+          "in_dtype_a": "fp16",
+          "in_dtype_b": "fp16",
+          "out_dtype": "fp16",
+          "col_a": false,
+          "col_b": false
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_correctness/1aace2d13fac8ab9f472",
+      "params": {
+        "function": "test_correctness",
+        "arguments": {
+          "M": 6144,
+          "N": 6144,
+          "K": 6144,
+          "in_dtype_a": "fp16",
+          "in_dtype_b": "fp16",
+          "out_dtype": "fp16",
+          "col_a": false,
+          "col_b": false
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_correctness/aef639a5e5b71ea11ede",
+      "params": {
+        "function": "test_correctness",
+        "arguments": {
+          "M": 7168,
+          "N": 7168,
+          "K": 7168,
+          "in_dtype_a": "fp16",
+          "in_dtype_b": "fp16",
+          "out_dtype": "fp16",
+          "col_a": false,
+          "col_b": false
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_correctness/ff312c86f2300f9dd75a",
+      "params": {
+        "function": "test_correctness",
+        "arguments": {
+          "M": 8192,
+          "N": 8192,
+          "K": 8192,
+          "in_dtype_a": "fp16",
+          "in_dtype_b": "fp16",
+          "out_dtype": "fp16",
+          "col_a": false,
+          "col_b": false
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_correctness/068fcb0604bf53892fe7",
+      "params": {
+        "function": "test_correctness",
+        "arguments": {
+          "M": 4864,
+          "N": 4096,
+          "K": 8192,
+          "in_dtype_a": "fp16",
+          "in_dtype_b": "fp16",
+          "out_dtype": "fp16",
+          "col_a": false,
+          "col_b": false
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_correctness/8abda8256cfd2398b3d8",
+      "params": {
+        "function": "test_correctness",
+        "arguments": {
+          "M": 9728,
+          "N": 8192,
+          "K": 65536,
+          "in_dtype_a": "fp16",
+          "in_dtype_b": "fp16",
+          "out_dtype": "fp16",
+          "col_a": false,
+          "col_b": false
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_correctness/00f42acae0c67f8c9d5b",
+      "params": {
+        "function": "test_correctness",
+        "arguments": {
+          "M": 4864,
+          "N": 8192,
+          "K": 4160,
+          "in_dtype_a": "fp16",
+          "in_dtype_b": "fp16",
+          "out_dtype": "fp16",
+          "col_a": false,
+          "col_b": false
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/f02589bca1eb53780889",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 1024,
+          "N": 1024,
+          "K": 1024,
+          "in_dtype_a_str": "fp16",
+          "in_dtype_b_str": "fp16",
+          "out_dtype_str": "fp16",
+          "col_a": false,
+          "col_b": false
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/64d93ba50c6d6d37f22e",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 2048,
+          "N": 2048,
+          "K": 2048,
+          "in_dtype_a_str": "fp16",
+          "in_dtype_b_str": "fp16",
+          "out_dtype_str": "fp16",
+          "col_a": false,
+          "col_b": false
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/7e5f96b70d81712ddb63",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 3072,
+          "N": 3072,
+          "K": 3072,
+          "in_dtype_a_str": "fp16",
+          "in_dtype_b_str": "fp16",
+          "out_dtype_str": "fp16",
+          "col_a": false,
+          "col_b": false
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/a57fcd93c868b49b60de",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 4096,
+          "N": 4096,
+          "K": 4096,
+          "in_dtype_a_str": "fp16",
+          "in_dtype_b_str": "fp16",
+          "out_dtype_str": "fp16",
+          "col_a": false,
+          "col_b": false
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/01b5d784e44cb052dc05",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 5120,
+          "N": 5120,
+          "K": 5120,
+          "in_dtype_a_str": "fp16",
+          "in_dtype_b_str": "fp16",
+          "out_dtype_str": "fp16",
+          "col_a": false,
+          "col_b": false
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/486f9b0432e70921d9f3",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 6144,
+          "N": 6144,
+          "K": 6144,
+          "in_dtype_a_str": "fp16",
+          "in_dtype_b_str": "fp16",
+          "out_dtype_str": "fp16",
+          "col_a": false,
+          "col_b": false
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/5d366416c9573571a224",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 7168,
+          "N": 7168,
+          "K": 7168,
+          "in_dtype_a_str": "fp16",
+          "in_dtype_b_str": "fp16",
+          "out_dtype_str": "fp16",
+          "col_a": false,
+          "col_b": false
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/1a0de70c0ee169b5bb53",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 8192,
+          "N": 8192,
+          "K": 8192,
+          "in_dtype_a_str": "fp16",
+          "in_dtype_b_str": "fp16",
+          "out_dtype_str": "fp16",
+          "col_a": false,
+          "col_b": false
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/cb531552424c31edf058",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 4864,
+          "N": 4096,
+          "K": 8192,
+          "in_dtype_a_str": "fp16",
+          "in_dtype_b_str": "fp16",
+          "out_dtype_str": "fp16",
+          "col_a": false,
+          "col_b": false
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/9fa883e969d23b20fe18",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 9728,
+          "N": 8192,
+          "K": 65536,
+          "in_dtype_a_str": "fp16",
+          "in_dtype_b_str": "fp16",
+          "out_dtype_str": "fp16",
+          "col_a": false,
+          "col_b": false
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/9071e1c39fcb9503e5e5",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "M": 4864,
+          "N": 8192,
+          "K": 4160,
+          "in_dtype_a_str": "fp16",
+          "in_dtype_b_str": "fp16",
+          "out_dtype_str": "fp16",
+          "col_a": false,
+          "col_b": false
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    }
+  ],
+  "migration": {
+    "original_source_sha256": "65f213a3710624e929932411ce2bdf247bb26ca76f6591306b46ff65cc1aebdf",
+    "case_policy": "All original parametrizations retained; runtime skips are failures, not passing or omitted cases."
+  }
+}

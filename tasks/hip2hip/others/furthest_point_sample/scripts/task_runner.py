@@ -98,9 +98,13 @@ def run_correctness():
     return True, None
 
 
-def _time_kernel(fn, n_warmup=10, n_iter=100):
-    return benchmark_cuda_graph_or_events(
-        fn, warmup=n_warmup, repetition=n_iter,
+def _time_kernel(fn, inputs, expected, n_warmup=10, n_iter=100):
+    from replay_validation import measure
+    from reference_checks import close
+    return measure(
+        benchmark_cuda_graph_or_events, fn, inputs,
+        lambda actual: close(actual, expected, gpu=True),
+        warmup=n_warmup, repetition=n_iter,
         use_cuda_graph=HIP_GRAPH_ENABLED,
         fallback_reason=HIP_GRAPH_FALLBACK_REASON,
     )
@@ -116,11 +120,15 @@ def run_performance():
         xyz = torch.randn(B, N, 3, device="cuda", dtype=torch.float32)
 
         # Perf1: FPS on raw point coordinates
-        ms_coords, meta_coords = _time_kernel(lambda: furthest_point_sample(xyz, npoints))
+        expected_coords = cpu_fps(xyz.cpu(), npoints)
+        ms_coords, meta_coords = _time_kernel(lambda: furthest_point_sample(xyz, npoints),
+                                               (xyz,), expected_coords)
 
         # Perf2: FPS with pre-computed distance matrix
         dist_matrix = torch.cdist(xyz, xyz).pow(2)
-        ms_dist, meta_dist = _time_kernel(lambda: furthest_point_sample_with_dist(dist_matrix, npoints))
+        expected_dist = cpu_fps_with_dist(dist_matrix.cpu(), npoints)
+        ms_dist, meta_dist = _time_kernel(lambda: furthest_point_sample_with_dist(dist_matrix, npoints),
+                                         (dist_matrix,), expected_dist)
 
         test_cases.append({
             "test_case_id": f"shape_{shape_idx}_fps_coords",

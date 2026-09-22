@@ -8,9 +8,9 @@ Self-contained harness mirroring the triton2flydsl template:
 
 Jagged x dense batched matmul with broadcast bias add. Public entry:
 `triton_jagged_dense_bmm_add(...)`; @triton.jit kernel:
-`jagged_dense_bmm_broadcast_add_kernel`. The Triton kernel IS the reference --
-there is NO torch comparison here (the flydsl-vs-triton comparison will be added
-when the FlyDSL target lands).
+`jagged_dense_bmm_broadcast_add_kernel`. The frozen original Triton source is
+the performance baseline. An independent FP32 per-segment matrix product and
+bias reference supplies the numerical gate.
 
 GPU may be shared; kernel launches retry with backoff on transient CUDA/HIP OOM.
 """
@@ -20,13 +20,16 @@ import json
 import time
 import argparse
 import importlib.util
-from _aka_benchmark import benchmark_cuda_graph_or_events
+from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
+from scripts.replay_checks import require_tensor_contract, require_unchanged, verify_timed_run
 
 TASK_DIR = os.path.dirname(os.path.abspath(__file__))
 os.chdir(TASK_DIR)
 
 TASK_NAME = "triton2flydsl/generative_recommenders/jagged_dense_bmm_broadcast_add"
-SOURCE_FILE = os.path.join(TASK_DIR, "jagged_dense_bmm_broadcast_add.py")
+from task_runtime import candidate_relative_path
+SOURCE_FILE = candidate_relative_path()
+ENTRY = 'triton_jagged_dense_bmm_add'
 
 # Test configurations: (B, max_seq_len, K, N, elementwise)
 #   B           = batch size (number of jagged segments)
@@ -53,6 +56,7 @@ def load_module():
         "jagged_dense_bmm_broadcast_add_src", SOURCE_FILE
     )
     mod = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = mod
     spec.loader.exec_module(mod)
     return mod
 
@@ -163,6 +167,41 @@ def run_compile():
         return False, str(e)
 
 
+def _checked_gr_output(out, x, columns):
+    import torch
+    if (not isinstance(out, torch.Tensor) or out.shape != (x.shape[0], columns)
+            or out.dtype != x.dtype or out.device != x.device):
+        raise AssertionError("GR output shape/dtype/device contract mismatch")
+
+
+def _compare_gr_output(actual, expected):
+    import torch
+    require_tensor_contract(actual, expected, dtype=torch.bfloat16)
+    if not bool(torch.isfinite(actual).all() and torch.isfinite(expected).all()):
+        raise AssertionError("Non-finite GR/reference output")
+    denom = expected.float().abs().max().item()
+    error = (actual.float() - expected.float()).abs().max().item()
+    normalized = error / denom if denom > 0 else error
+    if normalized > 1e-2:
+        raise AssertionError(f"Numerical mismatch: normalized_max_error={normalized}")
+
+
+def _gr_replay_validator(seq_offsets, jagged, dense, bias, elementwise):
+    inputs = tuple(v for v in (seq_offsets, jagged, dense, bias,) if v is not None)
+    originals = tuple(v.clone() for v in inputs)
+    expected = _torch_ref(seq_offsets, jagged, dense, bias, elementwise)
+    def perturb():
+        jagged.neg_()
+        bias.neg_()
+    def reference():
+        return _torch_ref(seq_offsets, jagged, dense, bias, elementwise)
+    def validate(timed):
+        return verify_timed_run(timed, inputs=inputs, originals=originals,
+                                expected=expected, perturb=perturb,
+                                reference=reference, compare=_compare_gr_output)
+    return validate
+
+
 def run_correctness():
     import torch
     try:
@@ -180,10 +219,14 @@ def run_correctness():
             msl, seq_offsets, jagged, dense, bias = make_test_data(
                 B, max_seq_len, K, N, elementwise, device, dtype
             )
+            protected_inputs = tuple(v for v in (seq_offsets, jagged, dense, bias,) if v is not None)
+            originals = tuple(v.clone() for v in protected_inputs)
             total_rows = int(seq_offsets[-1].item())
 
             result = _call_kernel(mod, msl, seq_offsets, jagged, dense, bias, elementwise)
             torch.cuda.synchronize()
+            require_unchanged(protected_inputs, originals)
+            _checked_gr_output(result, jagged, dense.shape[2])
 
             ref = _torch_ref(seq_offsets, jagged, dense, bias, elementwise)
             ok = bool(torch.isfinite(result.float()).all().item())
@@ -192,7 +235,7 @@ def run_correctness():
             # torch reference at the bf16 tolerance (NEVER loosen).
             rf, of = ref.float(), result.float()
             denom = rf.abs().max().item()
-            norm = (rf - of).abs().max().item() / denom if denom > 0 else 0.0
+            norm = (rf - of).abs().max().item() / denom if denom > 0 else (rf - of).abs().max().item()
             close = torch.allclose(of, rf, atol=1e-2, rtol=1e-2)
             num_ok = bool(norm <= 1e-2)
             passed = ok and shape_ok and num_ok
@@ -246,6 +289,7 @@ def run_performance():
             msl, seq_offsets, jagged, dense, bias = make_test_data(
                 B, max_seq_len, K, N, elementwise, device, dtype
             )
+            replay_validate = _gr_replay_validator(seq_offsets, jagged, dense, bias, elementwise)
 
             def launch():
                 return mod.triton_jagged_dense_bmm_add(
@@ -258,24 +302,26 @@ def run_performance():
                 launch()
             torch.cuda.synchronize()
 
+            timed = TimedRun()
             elapsed_ms, bench_meta = benchmark_cuda_graph_or_events(
                 launch,
                 warmup=0,
-                repetition=BENCHMARK_ITERATIONS,
+                repetition=BENCHMARK_ITERATIONS, timed_run=timed,
             )
 
+            bench_meta.update(replay_validate(timed))
             test_cases.append({
                 "test_case_id": f"perf{test_idx + 1}",
                 "execution_time_ms": elapsed_ms,
                 **bench_meta,
                 "params": params,
             })
-        except Exception:
+        except Exception as error:
             test_cases.append({
                 "test_case_id": f"perf{test_idx + 1}",
                 "execution_time_ms": -1.0,
                 "benchmark_method": "benchmark_failed",
-                "benchmark_fallback_reason": "performance case failed before timing completed",
+                "benchmark_fallback_reason": "performance case failed: " + str(error),
                 "params": params,
             })
     return test_cases

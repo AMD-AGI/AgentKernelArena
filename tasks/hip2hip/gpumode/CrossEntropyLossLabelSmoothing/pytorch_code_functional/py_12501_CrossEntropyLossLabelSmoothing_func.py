@@ -57,7 +57,7 @@ def cross_entropy_label_smoothing(
             target = onehot(target, num_classes).type_as(inputs)
         if smooth_dist.dim() < target.dim():
             smooth_dist = smooth_dist.unsqueeze(0)
-        target.lerp_(smooth_dist, smooth_eps)
+        target = torch.lerp(target, smooth_dist, smooth_eps)
     if weight is not None:
         lsm = lsm * weight.unsqueeze(0)
     if _is_long(target):
@@ -137,10 +137,10 @@ def get_inputs():
     NOTE:
     - Input is always float32
     - Soft targets use probability distributions
-    - Matches the reference implementation pattern with 4D tensors [N, C, H, W]
+    - Matches the reference implementation pattern with 4D tensors [N, D1, D2, classes]
     """
     configs = [
-        # Standard cases - (N, C, H, W) format
+        # Preserve the original 4D shapes; the final axis contains classes
         (1, 10, 8, 8),
         (2, 10, 16, 16),
         (4, 20, 16, 16),
@@ -154,7 +154,7 @@ def get_inputs():
         input = torch.randn(N, C, H, W, dtype=torch.float32)
         target = torch.softmax(
             torch.randn(N, C, H, W, dtype=torch.float32),
-            dim=1,  # Softmax along class dimension
+            dim=-1,  # Operator class axis is the final dimension
         )
         yield [input, target]
 

@@ -21,9 +21,11 @@ import math
 import os
 import sys
 from pathlib import Path
-from _aka_benchmark import benchmark_cuda_graph_or_events
+from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
+from scripts.replay_checks import require_unchanged, verify_timed_run, allclose_output
 
-SOURCE_FILE = "rmsnorm.py"
+from task_runtime import candidate_relative_path
+SOURCE_FILE = candidate_relative_path()
 ENTRY = "rms_norm"
 KERNEL = "_rms_norm_kernel"
 
@@ -63,6 +65,7 @@ def _load_source():
     entry = os.path.join(_HERE, SOURCE_FILE)
     spec = importlib.util.spec_from_file_location("rmsnorm_src", entry)
     mod = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = mod
     spec.loader.exec_module(mod)
     return mod
 
@@ -78,13 +81,13 @@ def _make_inputs(M, N, dtype, device="cuda"):
 
 
 def _torch_rmsnorm(x, g, out_dtype):
-    # fp32-reduce reference (matches test_rmsnorm.py:torch_rmsnorm).
+    # fp32 reduction with the same EPS term specified by rms_norm's interface.
     import torch
 
     N = x.shape[1]
     x_f32 = x.float()
     g_f32 = g.float()
-    rms = torch.sqrt(torch.sum(x_f32 * x_f32, dim=-1) * (1.0 / N))
+    rms = torch.sqrt(torch.sum(x_f32 * x_f32, dim=-1) * (1.0 / N) + EPS)
     rsigma = 1.0 / rms
     out = x_f32 * rsigma.unsqueeze(1) * g_f32
     return out.to(out_dtype)
@@ -100,6 +103,29 @@ def run_compile():
     return True
 
 
+def _checked_elementwise_output(out, x):
+    import torch
+    if not isinstance(out, torch.Tensor) or out.shape != x.shape or out.dtype != x.dtype or out.device != x.device:
+        raise AssertionError("Output shape/dtype/device violates the operator contract")
+
+
+def _elementwise_replay_validator(x, weight):
+    inputs = (x, weight)
+    originals = tuple(v.clone() for v in inputs)
+    expected = _torch_rmsnorm(x, weight, x.dtype)
+    def perturb():
+        x.neg_()
+        weight.mul_(0.5)
+    def reference():
+        return _torch_rmsnorm(x, weight, x.dtype)
+    def compare(actual, expected):
+        _checked_elementwise_output(actual, x)
+        allclose_output(actual, expected, atol=1e-2, rtol=1e-2)
+    def validate(timed):
+        return verify_timed_run(timed, inputs=inputs, originals=originals, expected=expected, perturb=perturb, reference=reference, compare=compare)
+    return validate
+
+
 def run_correctness(verbose=True):
     import torch
 
@@ -110,7 +136,11 @@ def run_correctness(verbose=True):
             tag = f"{shape['name']}_{dt}"
             try:
                 x, weight = _make_inputs(shape["M"], shape["N"], _torch_dtype(dt))
+                protected_inputs = (x, weight)
+                originals = tuple(v.clone() for v in protected_inputs)
                 y = mod.rms_norm(x, weight, EPS)
+                require_unchanged(protected_inputs, originals)
+                _checked_elementwise_output(y, x)
                 torch.cuda.synchronize()
                 ref = _torch_rmsnorm(x, weight, y.dtype)
                 finite = bool(torch.isfinite(y).all().item())
@@ -142,15 +172,18 @@ def run_benchmark(verbose=True):
     report, latencies = [], []
     for idx, shape in enumerate(TEST_SHAPES):
         x, weight = _make_inputs(shape["M"], shape["N"], _torch_dtype("bf16"))
+        replay_validate = _elementwise_replay_validator(x, weight)
         fn = lambda: mod.rms_norm(x, weight, EPS)  # noqa: E731
         fn()
         torch.cuda.synchronize()
         for _ in range(WARMUP):
             fn()
         torch.cuda.synchronize()
+        timed = TimedRun()
         ms, bench_meta = benchmark_cuda_graph_or_events(
-            fn, warmup=0, repetition=ITERS
+            fn, warmup=0, repetition=ITERS, timed_run=timed
         )
+        bench_meta.update(replay_validate(timed))
         latencies.append(ms)
         nbytes = 2.0 * shape["M"] * shape["N"] * 2  # bf16 read+write
         report.append(

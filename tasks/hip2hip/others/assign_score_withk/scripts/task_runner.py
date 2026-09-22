@@ -58,8 +58,7 @@ def cpu_assign_score_withk_forward(scores, point_features, center_features, knn_
                     for m in range(M):
                         # neighbor kernel: (point - center, point)
                         diff = point_features[b, nb_idx, m, o] - center_features[b, center_idx, m, o]
-                        feat = point_features[b, nb_idx, m, o]
-                        val += scores[b, n, k, m] * (diff + feat)
+                        val += scores[b, n, k, m] * diff
                     output[b, o, n, k] = val
     return output
 
@@ -108,6 +107,47 @@ def cpu_assign_score_withk_forward_vectorized(scores, point_features, center_fea
     return output
 
 
+def cpu_assign_score_withk_backward_vectorized(
+        scores, point_features, center_features, knn_idx, grad_out):
+    """Independent CPU reference for all gradients of sum aggregation."""
+    B, N1, K, M = scores.shape
+    N0 = point_features.shape[1]
+    O = point_features.shape[3]
+
+    center_idx = knn_idx[:, :, 0:1].expand(-1, -1, K)
+    nb_idx_exp = knn_idx.unsqueeze(-1).unsqueeze(-1).expand(
+        -1, -1, -1, M, O)
+    ct_idx_exp = center_idx.unsqueeze(-1).unsqueeze(-1).expand(
+        -1, -1, -1, M, O)
+
+    points_by_neighbor = torch.gather(
+        point_features.unsqueeze(1).expand(-1, N1, -1, -1, -1),
+        2, nb_idx_exp.long())
+    centers_by_neighbor = torch.gather(
+        center_features.unsqueeze(1).expand(-1, N1, -1, -1, -1),
+        2, ct_idx_exp.long())
+
+    # grad_out is (B, O, N1, K); align it with the reference's
+    # (B, N1, K, M, O) intermediate without using the custom autograd path.
+    grad_out_exp = grad_out.permute(0, 2, 3, 1).unsqueeze(3)
+    grad_scores = (
+        (points_by_neighbor - centers_by_neighbor) * grad_out_exp
+    ).sum(dim=-1)
+
+    feature_contrib = scores.unsqueeze(-1) * grad_out_exp
+    feature_contrib = feature_contrib.reshape(B, N1 * K, M, O)
+    nb_scatter_idx = knn_idx.reshape(B, N1 * K, 1, 1).expand(
+        -1, -1, M, O)
+    ct_scatter_idx = center_idx.reshape(B, N1 * K, 1, 1).expand(
+        -1, -1, M, O)
+
+    grad_points = torch.zeros_like(point_features)
+    grad_centers = torch.zeros_like(center_features)
+    grad_points.scatter_add_(1, nb_scatter_idx.long(), feature_contrib)
+    grad_centers.scatter_add_(1, ct_scatter_idx.long(), -feature_contrib)
+    return grad_scores, grad_points, grad_centers
+
+
 def run_compile():
     try:
         from kernel_loader import assign_score_withk_ext  # noqa: F401
@@ -121,26 +161,55 @@ def run_correctness():
 
     for i, (B, N0, N1, M, K, O) in enumerate(TEST_SHAPES):
         torch.manual_seed(42 + i)
-        scores = torch.randn(B, N1, K, M, device="cuda", dtype=torch.float32)
-        point_features = torch.randn(B, N0, M, O, device="cuda", dtype=torch.float32)
-        center_features = torch.randn(B, N0, M, O, device="cuda", dtype=torch.float32)
+        scores = torch.randn(
+            B, N1, K, M, device="cuda", dtype=torch.float32,
+            requires_grad=True)
+        point_features = torch.randn(
+            B, N0, M, O, device="cuda", dtype=torch.float32,
+            requires_grad=True)
+        center_features = torch.randn(
+            B, N0, M, O, device="cuda", dtype=torch.float32,
+            requires_grad=True)
         knn_idx = torch.randint(0, N0, (B, N1, K), device="cuda", dtype=torch.int64)
 
+        # Freeze the independent oracle before candidate execution. The
+        # nonuniform upstream gradient is a correctness-only extension.
+        readonly = (scores, point_features, center_features, knn_idx)
+        pristine = tuple(value.detach().cpu().clone() for value in readonly)
+        grad_out = torch.randn(B, O, N1, K, device="cuda", dtype=torch.float32)
+        pristine_grad = grad_out.cpu().clone()
+        cpu_out = cpu_assign_score_withk_forward_vectorized(*pristine)
+        cpu_grad_scores, cpu_grad_points, cpu_grad_centers = (
+            cpu_assign_score_withk_backward_vectorized(*pristine, pristine_grad))
         gpu_out = assign_score_withk(scores, point_features, center_features, knn_idx, 'sum')
-        cpu_out = cpu_assign_score_withk_forward_vectorized(
-            scores.cpu(), point_features.cpu(), center_features.cpu(), knn_idx.cpu())
+        from reference_checks import close
+        close(gpu_out, cpu_out, atol=1e-3, rtol=1e-3, gpu=True)
+        gpu_out.backward(grad_out)
+        for value, saved in zip((*readonly, grad_out), (*pristine, pristine_grad)):
+            if not torch.equal(value.detach().cpu(), saved):
+                return False, 'Candidate changed a read-only forward/backward input'
 
-        if not torch.allclose(gpu_out.cpu(), cpu_out, atol=1e-3, rtol=1e-3):
-            max_diff = (gpu_out.cpu() - cpu_out).abs().max().item()
-            return False, (f"Forward shape {i+1} (B={B},N0={N0},N1={N1},M={M},K={K},O={O}): "
-                           f"max_diff={max_diff:.6f}")
+        gradient_checks = (
+            ("Backward scores", scores.grad.cpu(), cpu_grad_scores),
+            ("Backward points", point_features.grad.cpu(), cpu_grad_points),
+            ("Backward centers", center_features.grad.cpu(), cpu_grad_centers),
+        )
+        for name, gpu_grad, cpu_grad in gradient_checks:
+            if not torch.allclose(gpu_grad, cpu_grad, atol=1e-3, rtol=1e-3):
+                max_diff = (gpu_grad - cpu_grad).abs().max().item()
+                return False, (
+                    f"{name} shape {i+1} "
+                    f"(B={B},N0={N0},N1={N1},M={M},K={K},O={O}): "
+                    f"max_diff={max_diff:.6f}")
 
     return True, None
 
 
-def _time_kernel(fn, n_warmup=10, n_iter=100, prepare_fn=None):
-    return benchmark_cuda_graph_or_events(
-        fn, warmup=n_warmup, repetition=n_iter,
+def _time_kernel(fn, inputs, check, n_warmup=10, n_iter=100, prepare_fn=None):
+    from replay_validation import measure
+    return measure(
+        benchmark_cuda_graph_or_events, fn, inputs, check,
+        warmup=n_warmup, repetition=n_iter,
         use_cuda_graph=HIP_GRAPH_ENABLED,
         fallback_reason=HIP_GRAPH_FALLBACK_REASON,
         prepare_fn=prepare_fn,
@@ -159,14 +228,33 @@ def run_performance():
         center_features = torch.randn(B, N0, M, O, device="cuda", dtype=torch.float32, requires_grad=True)
         knn_idx = torch.randint(0, N0, (B, N1, K), device="cuda", dtype=torch.int64)
 
+        # Full forward and gradient reference for these exact timed inputs.
+        cpu_inputs = [value.detach().cpu().requires_grad_()
+                      for value in (scores, point_features, center_features)]
+        expected = cpu_assign_score_withk_forward_vectorized(*cpu_inputs, knn_idx.cpu())
+        expected.sum().backward()
+        expected_grads = [value.grad for value in cpu_inputs]
+        from reference_checks import close
+        def check_forward(actual):
+            close(actual, expected.detach(), atol=1e-3, rtol=1e-3, gpu=True)
+        def check_forward_backward(actual):
+            if not isinstance(actual, tuple) or len(actual) != 4:
+                raise ValueError('Timed backward must expose output and all three gradients')
+            check_forward(actual[0])
+            for grad, reference in zip(actual[1:], expected_grads):
+                close(grad, reference, atol=1e-3, rtol=1e-3, gpu=True)
+        caller_inputs = [scores, point_features, center_features, knn_idx]
         # Perf1: forward pass
-        ms_fwd, meta_fwd = _time_kernel(lambda: assign_score_withk(scores, point_features, center_features, knn_idx, 'sum'))
+        ms_fwd, meta_fwd = _time_kernel(
+            lambda: assign_score_withk(scores, point_features, center_features, knn_idx, 'sum'),
+            caller_inputs, check_forward)
 
         # Perf2: backward pass
         def fwd_bwd():
             out = assign_score_withk(scores, point_features, center_features, knn_idx, 'sum')
             loss = out.sum()
             loss.backward()
+            return out, scores.grad, point_features.grad, center_features.grad
 
         # Materialize stable leaf-gradient buffers once.  Repeated backward
         # otherwise accumulates into those buffers, so graph batching would
@@ -181,7 +269,7 @@ def run_performance():
 
         reset_input_grads()
         ms_fwd_bwd, meta_fwd_bwd = _time_kernel(
-            fwd_bwd, prepare_fn=reset_input_grads
+            fwd_bwd, caller_inputs, check_forward_backward, prepare_fn=reset_input_grads
         )
 
         # Add test cases for this shape

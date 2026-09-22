@@ -6,7 +6,7 @@
 
 SHELL := /bin/bash
 
-.PHONY: help docker-shell docker-check-agents docker-smoke docker-run docker-parallel-run docker-quality-loop docker-sikl-task-builder docker-setup-flydsl docker-setup-geak \
+.PHONY: help docker-shell docker-check-agents docker-smoke docker-build-rdna4 docker-run docker-parallel-run docker-quality-loop docker-sikl-task-builder docker-setup-flydsl docker-setup-geak \
         slurm-shell slurm-smoke slurm-parallel-smoke slurm-check-agents slurm-run slurm-parallel-run slurm-submit slurm-parallel-submit \
         check-docker-runner check-slurm-runner check-evaluator check-held-out check-visualization \
         visualization-build visualization-serve visualization-run \
@@ -22,17 +22,18 @@ help:
 	@echo "                         Use CONFIG=... for another config; AGENTS=... overrides it"
 	@echo "                         AGENTS=all explicitly checks all three first-class CLIs"
 	@echo "make docker-smoke        - Verify Docker Python, ROCm tools, imports, and GPU access"
+	@echo "make docker-build-rdna4  - Prebuild/rebuild gfx1201 runtime (also builds on first use)"
 	@echo "make docker-run CONFIG=example_configs/quickstart_claude_mi300.yaml RUN_ARGS=\"--run-suffix test\" - Run an experiment in Docker"
 	@echo "make docker-parallel-run CONFIG=example_configs/benchmark_cursor_mi355x.yaml GPU_IDS=0,1 - Run an experiment across one worker container per GPU"
 	@echo "                         Default CONFIG is the MI300/MI300X Claude quickstart"
 	@echo "                         On other GPUs, pass a matching CONFIG explicitly"
-	@echo "                         Images: gfx942->mi30x, gfx950->mi35x; override with AKA_DOCKER_IMAGE=..."
+	@echo "                         Images: gfx942->mi30x, gfx950->mi35x, gfx1201->local RDNA4 build"
 	@echo "make docker-quality-loop CONFIG=example_configs/quality_loop_mi300.yaml - Audit and harden config-selected tasks, then open at most one draft PR"
 	@echo "                         Default quality-loop CONFIG is agents/quality_loop/agent_config.yaml"
 	@echo "make docker-sikl-task-builder INPUT=/path/to/bundle - Generate, repair and validate SIKL tasks"
 	@echo "                         Use SIKL_BUILDER_ARGS='resume --run-id ...' to resume"
 	@echo "make docker-setup-flydsl - Install FlyDSL when absent (for flydsl2flydsl, torch2flydsl, and triton2flydsl)"
-	@echo "make docker-setup-geak   - Install the Claude Agent SDK when absent (for the geak_v4 agent)"
+	@echo "make docker-setup-geak   - Install the Claude Agent SDK when absent (for the geak agent)"
 	@echo "make check-docker-runner - Check Docker runner syntax and runtime-specific arguments"
 	@echo "make check-slurm-runner - Check Slurm/Spur resource and Docker handoff arguments"
 	@echo ""
@@ -118,6 +119,9 @@ docker-check-agents:
 docker-smoke:
 	@$(DOCKER_RUNNER) smoke
 
+docker-build-rdna4:
+	@$(DOCKER_RUNNER) build-rdna4-image
+
 docker-run:
 	@$(DOCKER_RUNNER) run --config_name $(CONFIG) $(RUN_ARGS)
 
@@ -162,7 +166,7 @@ docker-setup-flydsl:
 	@$(DOCKER_RUNNER) setup-flydsl
 
 # Install the Claude Agent SDK into the container's persistent pip user-base when
-# the selected image does not ship it. Needed by the geak_v4 agent.
+# the selected image does not ship it. Needed by the geak agent.
 docker-setup-geak:
 	@$(DOCKER_RUNNER) setup-geak
 

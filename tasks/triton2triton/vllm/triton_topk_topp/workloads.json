@@ -1,0 +1,221 @@
+{
+  "version": 1,
+  "candidate_symbols": {
+    "source/triton_topk_topp.py": [
+      {
+        "name": "_topk_topp_kernel",
+        "jit": true
+      }
+    ]
+  },
+  "case_table": "TEST_SHAPES",
+  "input_table": [
+    [
+      4,
+      256
+    ],
+    [
+      8,
+      1024
+    ],
+    [
+      16,
+      4096
+    ],
+    [
+      32,
+      8192
+    ],
+    [
+      64,
+      16384
+    ]
+  ],
+  "cases": [
+    {
+      "test_case_id": "perf1",
+      "dtype": "float32,int32",
+      "params": {
+        "case_index": 0,
+        "configuration": [
+          4,
+          256
+        ],
+        "configuration_names": "(batch_size, vocab_size)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf2",
+      "dtype": "float32,int32",
+      "params": {
+        "case_index": 1,
+        "configuration": [
+          8,
+          1024
+        ],
+        "configuration_names": "(batch_size, vocab_size)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf3",
+      "dtype": "float32,int32",
+      "params": {
+        "case_index": 2,
+        "configuration": [
+          16,
+          4096
+        ],
+        "configuration_names": "(batch_size, vocab_size)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf4",
+      "dtype": "float32,int32",
+      "params": {
+        "case_index": 3,
+        "configuration": [
+          32,
+          8192
+        ],
+        "configuration_names": "(batch_size, vocab_size)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf5",
+      "dtype": "float32,int32",
+      "params": {
+        "case_index": 4,
+        "configuration": [
+          64,
+          16384
+        ],
+        "configuration_names": "(batch_size, vocab_size)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "contract_controls",
+      "status": "PASS",
+      "checks": [
+        "correctness"
+      ],
+      "params": {
+        "case_index": 5,
+        "coverage": "Controls add top-p-only and heterogeneous k/p. Keep original numerical rules: finite-value atol/rtol=1e-4, top-k mask mismatch <=1, top-p/combined <=max(4,vocab//500). NaN/+inf cannot masquerade as a removed token. Original scored path remains direct preallocated top-k with k=50."
+      }
+    },
+    {
+      "test_case_id": "perf_top_p_only",
+      "status": "PASS",
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "params": {
+        "case_index": 6,
+        "variant": "top_p_only",
+        "logits": {
+          "generator": "linspace_row_repeat",
+          "start": -4.0,
+          "stop": 4.0,
+          "row_numel": 4096,
+          "repeat_rows": 8
+        },
+        "top_k": null,
+        "top_p": [
+          0.5,
+          0.6,
+          0.7,
+          0.8,
+          0.9,
+          0.95,
+          0.99,
+          1.0
+        ],
+        "mask_value": "-inf",
+        "timed_entrypoint": "_topk_topp_kernel",
+        "scratch_allocation": "outside_timing"
+      },
+      "shape": [
+        8,
+        4096
+      ],
+      "dtype": "float32"
+    },
+    {
+      "test_case_id": "perf_combined_topk_topp",
+      "status": "PASS",
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "params": {
+        "case_index": 7,
+        "variant": "combined_top_k_top_p",
+        "logits": {
+          "generator": "linspace_row_repeat",
+          "start": -4.0,
+          "stop": 4.0,
+          "row_numel": 4096,
+          "repeat_rows": 8
+        },
+        "top_k": [
+          8,
+          32,
+          128,
+          256,
+          512,
+          1024,
+          2048,
+          4096
+        ],
+        "top_p": [
+          0.5,
+          0.6,
+          0.7,
+          0.8,
+          0.9,
+          0.95,
+          0.99,
+          1.0
+        ],
+        "mask_value": "-inf",
+        "timed_entrypoint": "_topk_topp_kernel",
+        "scratch_allocation": "outside_timing"
+      },
+      "shape": [
+        8,
+        4096
+      ],
+      "dtype": "float32"
+    }
+  ],
+  "migration": {
+    "original_harness_sha256": "5c1afe27748acf4c78206e6feab6c3971c87595347b6b658813474bcf551cd33",
+    "original_correctness_sha256": "3d1ab9c419654a651fab4155e439b9c4127c039780e2158e93a603ecf9004557"
+  }
+}

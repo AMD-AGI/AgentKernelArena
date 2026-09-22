@@ -1,0 +1,88 @@
+{
+  "definition": "fused_moe_per_1x32_d6144_e65_topk9_n4096_k3072_i1024",
+  "op_type": "moe",
+  "axes": {
+    "model_dim": 6144,
+    "num_experts": 65,
+    "topk": 9,
+    "w1_rows": 4096,
+    "w1_cols": 3072,
+    "w2_cols": 1024,
+    "w1_scale_cols": 192,
+    "w2_scale_cols": 64
+  },
+  "seed": 0,
+  "bench": {
+    "warmup": 20,
+    "repetition": 100,
+    "target_ms": 1.0
+  },
+  "gate_policy": "Input initialization, reference, comparison and production baseline are the original bundled task callbacks. The requested role is evaluated independently over every case; candidate replay uses the same numerical gate. Any baseline numerical exception is declared in config.yaml and preserves the failed comparison evidence.",
+  "cases": [
+    {
+      "case_id": "num_tokens_1",
+      "uuid": "a5cd8804653e7c77",
+      "num_tokens": 1
+    },
+    {
+      "case_id": "num_tokens_2",
+      "uuid": "74f0663302f89091",
+      "num_tokens": 2
+    },
+    {
+      "case_id": "num_tokens_4",
+      "uuid": "74c268f46f660efa",
+      "num_tokens": 4
+    },
+    {
+      "case_id": "num_tokens_8",
+      "uuid": "0d9511ce55c4b9ad",
+      "num_tokens": 8
+    },
+    {
+      "case_id": "num_tokens_16",
+      "uuid": "f0f2c7333dda4b61",
+      "num_tokens": 16
+    },
+    {
+      "case_id": "num_tokens_32",
+      "uuid": "7a8ad87cdcae68f7",
+      "num_tokens": 32
+    },
+    {
+      "case_id": "num_tokens_64",
+      "uuid": "51825e3386b871e3",
+      "num_tokens": 64
+    },
+    {
+      "case_id": "num_tokens_128",
+      "uuid": "7a10d7f6f703c74a",
+      "num_tokens": 128
+    },
+    {
+      "case_id": "num_tokens_256",
+      "uuid": "accd9a58c30c5881",
+      "num_tokens": 256
+    },
+    {
+      "case_id": "num_tokens_512",
+      "uuid": "e4fa769420ccd927",
+      "num_tokens": 512
+    },
+    {
+      "case_id": "num_tokens_1024",
+      "uuid": "d5f93e4ef5f5eac8",
+      "num_tokens": 1024
+    },
+    {
+      "case_id": "num_tokens_2048",
+      "uuid": "5bd84bc176603019",
+      "num_tokens": 2048
+    },
+    {
+      "case_id": "num_tokens_4096",
+      "uuid": "43186af96e7a1da5",
+      "num_tokens": 4096
+    }
+  ]
+}

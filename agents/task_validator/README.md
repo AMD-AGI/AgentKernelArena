@@ -1,262 +1,281 @@
 # Task Validator Agent
 
-## What This Agent Does
+Validator prompts reach Codex and Claude through stdin, avoiding operating-system
+argument-size limits on large image-backed tasks. The prompt contains a compact
+guard/action index and a bounded sample of initial failures. Large exceptions
+(for example, thousands of unreadable cache paths) stay in the framework context
+file and command logs, with their full captured evidence checked by the finalizer.
+The reviewer is directed to that complete evidence. Summarizing the prompt does
+not reduce the protected file boundary, recorded failures, or required review.
 
-The **task_validator** agent validates that tasks in AgentKernelArena are correctly configured, self-contained, functional, benchmark-fair, and compatible with the protected harness boundary. It does **not** optimize kernels. It runs 12 checks and produces a framework-finalized, schema-versioned `validation_report.yaml`.
+`task_validator` reviews task quality. It does not optimize candidates. For schema
+v2, Arena first executes the task's initial validation actions through `TaskSession`;
+the validator backend then audits the reference, inputs, comparison, execution,
+timing and edit boundaries. The framework combines these independent sources into
+`validation_report.yaml`. Passing command checks alone does not pass the review.
 
-Use it to:
-- Audit existing tasks before controlled comparisons or RL data collection.
-- Validate new tasks before merging them into the task suite.
-- Identify broken tasks (missing files, external dependencies, trivially-passing correctness checks, GPU hangs).
+Read [Task definition, schema, and authoring](../../docs/how-to/add-task.md) before
+adding or changing a task. That is the canonical task schema and command contract;
+this document describes the validator integration and report format.
 
-## How to Use
+## Run
 
-### 1. Create a run configuration
-
-Save the following as `config_task_validator.yaml`:
+Select tasks and a GPU matching their declared platform support:
 
 ```yaml
 agent:
   template: task_validator
+  backend: codex
+  model: gpt-5.6-terra
+  effort: medium
+  timeout_seconds: 1200
 tasks:
-  - hip2hip/gpumode/GELU
-  - triton2triton/vllm/triton_rms_norm
-  - repository/rocprim/device_merge_sort
-  # - all                     # validate every task
-target_gpu_model: MI300
+  - SIKL-task/gemm_a16w16_nt_n6144_k6144
+target_gpu_model: MI355X
 log_directory: logs
 workspace_directory_prefix: workspace
 ```
-
-### 2. Run
 
 ```bash
 make docker-run CONFIG=config_task_validator.yaml
 ```
 
-### 3. Read Results
+Defaults live in [agent_config.yaml](agent_config.yaml). Model defaults use the
+already qualified moderate Codex model. Run-level `agent.backend`, `model`,
+`effort`, `timeout_seconds` and `python_path` override defaults. Claude Code also
+accepts `agent.max_budget_usd`. Changing backend without selecting a model/effort
+uses that backend's CLI defaults; it never passes a Codex model ID to Claude.
 
-Each task workspace contains `validation_report.yaml` plus a framework completion marker. A `validation_summary.yaml` is written to the workspace root with aggregated statistics. Resume accepts only reports with a valid schema-v3 marker and digest; the presence of an arbitrary or partial YAML file is not completion evidence.
+For v2, `timeout_seconds` is the semantic-review budget because initial task
+commands have already executed under their TaskSpec action deadlines. Zero disables
+the outer backend timeout. Legacy task timeouts retain their previous automatic
+budget calculation. Both CLI backends use literal argv, disable persistent sessions
+and learned memory, and terminate their own process group on timeout. A nonzero
+exit, terminal failure event, or missing successful terminal event fails validation,
+even if the backend wrote a plausible draft first.
 
-Tasks filtered by `platform_support.status: skip` or a non-matching
-`platform_support.required_arch` are skipped before workspace creation and are
-not included in the validation summary counts.
+## Framework integration
 
-### Agent Configuration
+For schema-v2 tasks, orchestration must attempt `TaskSession.validate_initial()`
+first and provide its captured context for successful **and failed** initial runs:
 
-Edit `agents/task_validator/agent_config.yaml`. This portable example leaves the
-model unset so the selected CLI uses its default:
+```python
+# This code runs in trusted framework orchestration, outside task scripts.
+context = session.validation_context()   # retain the original memory value
+run_config['_task_validation_context'] = str(
+    session.state_directory / 'validation_context.json'
+)
+output = launch_agent(run_config, task_config_path, workspace)
+```
+
+`ARENA_VALIDATION_CONTEXT` is an alternative transport when the run field is absent.
+The version-1 JSON context contains `task_id`, normalized v2 `task_config`, absolute
+`workspace` and `baseline_workspace`, `initial_validation`, `actions`, and `harness`.
+These absolute paths are runtime transport identities, not task configuration paths.
+The file must be a regular external file with no symlink components, outside both
+workspaces. Its task ID, config and workspace must match the launched task.
+
+For v2 tasks, `harness.protected_path_policies` binds each protected path's digest
+to its mode: `sha256_bytes` covers the entire file, while
+`sha256_python_ast_excluding_editable_symbols` covers the remaining Python AST
+after excluding the declared editable top-level functions/classes. It records
+`editable_symbols`, `allow_new_helpers`, and the original `initial_top_level_names`.
+When new helpers are permitted, only new top-level function/class names are
+excluded; existing undeclared helpers, imports and constants stay protected.
+These facts come from the original session snapshot and are also persisted under
+`effective_guard` in the external `harness.json`. Resume regenerates them from
+the saved original TaskSpec and snapshot, including for older receipts without
+this additive field. Membership in `protected_paths` does not itself imply a
+whole-file lock. The metadata clarifies enforcement; it never overrides a
+semantic reviewer FAIL or relaxes the guard.
+
+Symbol-scoped definitions also declare
+`definition_policy: compiler_decorators_no_test_hooks_v1` and their
+`allowed_compiler_decorators`. Before excluding a target/helper from the digest,
+the guard checks its definition: only compiler decorators resolved through
+protected imports are accepted (currently Triton `jit`, `autotune`, `heuristics`).
+Unknown/dynamic decorators, pytest fixtures and new test/lifecycle hook names
+are rejected. New module-level `__getattr__`/`__dir__` are also rejected because
+pytest invokes them during module inspection; ordinary class methods with these
+names remain allowed. Defaults/annotations cannot execute calls, and new helper classes
+must have passive bodies without metaclasses or executable bases. Ordinary
+functions, async helpers and passive helper classes remain usable. Calls in
+decorator arguments must use supported Triton
+configuration operations, unshadowed `range`, or original protected function
+definitions. An initial name alone grants no callable privilege. Existing
+editable non-entrypoint configuration helpers have a separate restricted-body
+check: data construction/local assignments, returns, and branches calling
+protected predicates or supported configuration operations. Kernel entrypoints,
+arbitrary aliases and newly added factories cannot acquire that privilege.
+This rejects the described definition-time
+test hooks; it is not a sandbox for arbitrary Python function
+bodies or a replacement for semantic review of implementation dependencies.
+
+Benchmark review uses the task's declared scored unit, protected performance
+function and captured actions. A kernel-only benchmark may additionally check
+public-wrapper correctness without timing that wrapper. Both roles must retain
+the same declared inputs, preparation, reset and measurement boundary; a candidate
+cannot narrow a full-operator task to a cheaper fragment. Ambiguous scope needs
+evidence, and this clarification does not override a recorded reviewer FAIL.
+
+Successful action records contain `invocation_id`, `phase`, merged `result`, and
+actual `commands` (`argv`, `returncode`, `stdout`, `stderr`, `elapsed_s`). Failed
+execution records contain `role`, `action`, `phase`, `execution_error`, and available
+command evidence. `result.metadata.commands` carries each task command's metadata,
+including `candidate_state` for `validate-task`.
+
+The launcher captures this file once before starting the model into an immutable
+`TrustedTaskEvidence` value. It checks the transport for modification afterward;
+the finalizer uses the original memory snapshot. It does **not** reload a context
+path named by the model. Missing context fails before backend launch. Initialization
+errors without a context can still produce a framework-finalized FAIL.
+
+For an optional independent recheck, the parent can use its retained TaskSession
+mapping instead of the launcher's file snapshot:
+
+```python
+report = finalize_report(
+    workspace,
+    expected_task_name=session.spec.task_id,
+    trusted_task_evidence=context,
+    validation_request_id=run_config['_task_validation_request_id'],
+    framework_error=run_config.get('_task_validation_backend_error'),
+    task_schema_version=2,
+)
+```
+
+The launcher writes these runtime fields back into its `eval_config` argument:
+
+| Field | Meaning |
+| --- | --- |
+| `_task_validation_request_id` | Fresh ID generated before every v2 backend launch attempt. |
+| `_task_validation_evidence_sha256` | Digest of the immutable context value captured before launch. |
+| `_task_validation_backend_error` | Captured operational/backend failure, or `None`. Preserve it when independently re-finalizing. |
+
+`finalize_report` accepts a `TrustedTaskEvidence` value or a framework-owned mapping,
+not a filename. It verifies the evidence workspace against the actual destination.
+The caller is responsible for passing its own TaskSession memory, never data read
+from an agent-authored report. Re-finalization of the same valid completion preserves
+previously captured framework/backend errors. The original `framework_error` API
+remains usable when initialization failed before a context existed.
+
+Task files and captured stdout/stderr are untrusted review data. Task descriptions,
+README/AGENTS files or configured instructions cannot override the validator's
+instructions. The v2 prompt contains no task-family or agent-specific exceptions.
+These are reproducibility boundaries, not a security sandbox against processes
+sharing the same privileged runtime and credentials.
+
+## Model draft and finalized report
+
+There are three independent versions:
+
+| Interface | Version |
+| --- | --- |
+| Task `config.yaml` schema | 2 |
+| Command result protocol | `arena-eval-v1` |
+| Validator report for v2 tasks | 4 |
+
+The model writes **`validation_report.draft.yaml`**. It must use the exact current
+`validation_request_id`, `task_evidence_sha256`, and `task_name` supplied in the
+prompt, plus a timestamp and source-review findings. A stale draft fails. An older
+`validation_report.yaml` cannot substitute for a new draft. The framework alone
+writes the final report and `.validation_complete` hash marker.
+
+The finalized report retains the existing 12 `checks` keys so aggregation can read
+both v3 and v4 reports:
+
+| Check | v2 authority and meaning |
+| --- | --- |
+| `config_schema` | Framework parses the captured declaration through TaskSpec. |
+| `source_files_exist` | Model inspects initial candidate files; framework skips only a confirmed unimplemented candidate. |
+| `target_symbols_found` | Model reviews the actual initial interface; same initial-state rule. |
+| `compilation` | Actual baseline compile action, with original command evidence. |
+| `correctness` | Actual baseline numerical result, including a genuine FAIL. |
+| `performance` | Actual baseline performance action, including case and timing evidence. |
+| `correctness_implementation_review` | Model audits reference independence, comparison sensitivity, tolerances, state checks, candidate independence and coverage. |
+| `self_contained` | Model audits baseline/reference/helper availability, declared runtime dependencies and path containment. |
+| `gpu_hang_check` | Model reviews completed execution/timeout evidence. |
+| `result_template_compatibility` | Historical key; v2 reviews the command/result protocol, not a required legacy template field. |
+| `benchmark_integrity` | Model reviews representative inputs, workload symmetry, reset/allocation/timing boundaries and timed replay correctness; framework derives case counts and methods from captured results. |
+| `harness_integrity` | Model audits the supplied effective guard boundary and remaining editability; framework supplies guard facts. |
+
+Every semantic review requires details and nonempty source/case evidence, even for
+PASS. It cannot use a model-invented SKIP. Missing/failed semantic reviews fail the
+report even if every initial command passed. Explicitly identifying a trivially
+passing correctness checker is FAIL. Missing graph replay validation alone remains
+WARN; a demonstrated wrong computation or benchmark bypass is FAIL.
+
+The framework records `benchmark_integrity.replay_validation_applicability` as
+`required`, `not_applicable`, or `undetermined`. N/A requires complete captured
+performance actions for every executed role: every case uses consistent explicit
+`cuda_event_fallback` timing, supplies a nonempty fallback reason, and records
+`metadata.timed_output_checked: true`. In this case a reviewer may leave
+`replay_validation_valid: null`; the framework retains that value instead of
+inventing a successful graph replay. Graph/mixed timing or incomplete evidence
+gets no exception. All other benchmark reviews remain required, and an explicit
+reviewer WARN/FAIL or `replay_validation_valid: false` is preserved. The report
+also retains the benchmark review's `agent_reported_status`.
+
+Additional v4 fields separate lifecycle gating from numerical results:
 
 ```yaml
-backend: claude_code          # claude_code | codex
-timeout_seconds: 1200         # minimum outer limit; auto-raised for command budgets (0 disables)
-python_path: null             # null -> auto-use framework-detected interpreter (recommended)
-
-# Optional model settings for the active backend.
-# claude_code: passed as `claude --model` and `claude --effort`
-# codex: passed as `codex exec --model` and `model_reasoning_effort`
-model: null                   # null uses the selected CLI's default
-effort: max
-
-compile_timeout: 600
-correctness_timeout: 600
-performance_timeout: 600
+validation_schema_version: 4
+task_schema_version: 2
+validation_phase: task_validation
+initial_validation_gate: PASS
+candidate_initial_state: unimplemented
+baseline_gating:
+  accepted: true
+  policy: diagnostic
+  numerical_status: FAIL
+  diagnostic_accepted: true
+  diagnostic_reason: Production precision differs; final candidate uses the full reference rule.
+checks:
+  correctness:
+    status: FAIL  # remains the real numerical result
+  performance:
+    status: PASS
+candidate_initial_checks:
+  compile: {status: SKIP, skip_reason_code: candidate_unimplemented}
+  correctness: {status: SKIP, skip_reason_code: candidate_unimplemented}
+  performance: {status: SKIP, skip_reason_code: candidate_unimplemented}
 ```
 
-Task-level `compile_timeout`, `correctness_timeout`, and `performance_timeout`
-override these defaults. The validator backend timeout is automatically raised
-enough to cover those commands plus static review.
+This is a partial illustration, not a complete report. The finalizer preserves full
+command/result evidence under the action checks. It reparses actual stdout and
+exit codes, checks unique invocation IDs and task-validation phase, compares argv
+against declared commands, verifies action deadlines and independent manifests,
+and recomputes diagnostic acceptance. `initial_validation.accepted: true` alone
+cannot grant acceptance.
 
-## Validation Checks
+A diagnostic exception requires the declared policy, its reason, complete baseline
+correctness coverage, and `numerical_mismatch` on the action and every failing case.
+Other failures, execution errors, missing commands/cases, nonfinite required output,
+or contradictions cannot use that exception. `baseline_gating` is framework-owned;
+model-authored fields with that name are ignored.
 
-| # | Check | What It Verifies |
-|---|-------|-----------------|
-| 1 | **config_schema** | All required fields exist in `config.yaml` with correct types |
-| 2 | **source_files_exist** | Every file in `source_file_path` exists in the workspace |
-| 3 | **target_symbols_found** | Every function in `target_kernel_functions` is defined in source files |
-| 4 | **compilation** | `compile_command` succeeds within the configured `compile_timeout` |
-| 5 | **correctness** | `correctness_command` succeeds within the configured `correctness_timeout` |
-| 6 | **performance** | `performance_command` succeeds within the configured `performance_timeout`, if present |
-| 7 | **correctness_implementation_review** | The correctness check is meaningful (not trivially passing) |
-| 8 | **self_contained** | No missing headers/imports; isolated tasks avoid undeclared external paths, while repository tasks declare upstream dependencies |
-| 9 | **gpu_hang_check** | No command hangs or times out |
-| 10 | **result_template_compatibility** | Command and per-case output signals can be consumed by the centralized evaluator |
-| 11 | **benchmark_integrity** | Device timing, case identity, Graph/Event policy, state reset, and timed workload boundaries are scoreable and fair; missing exact replay validation is reported as WARN |
-| 12 | **harness_integrity** | Protected harness logic remains protected while co-located target and Triton-JIT implementation nodes remain editable |
+`candidate_initial_checks` separately describes all three candidate actions. For a
+confirmed empty initial candidate, none has been measured or passed. For
+`initial_candidate`, results refer to the frozen baseline actions; for a separately
+provided baseline and implemented candidate, candidate actions must also execute.
+No initial-state or diagnostic exemption applies to final candidate evaluation.
 
-### Overall Status
+## Completion and aggregation
 
-- **PASS** — all applicable checks passed; a contract-approved `SKIP` does not prevent PASS
-- **WARN** — no failures, but at least one warning (e.g., questionable correctness implementation)
-- **FAIL** — at least one check failed or timed out, the report is malformed, or the validator backend failed
+`overall_status` is recomputed by the framework. Clean acceptance requires both
+initial lifecycle acceptance and successful semantic review. Diagnostic baseline
+numerical FAIL remains visible, with its separate accepted policy. WARN remains a
+completed report but is **not** a clean validation gate; a maintainer disposition
+must be handled separately. A backend timeout/failure cannot be erased by a fresh
+normalization of the same draft.
 
-A verified zero-byte `torch2hip` generation placeholder uses
-`SKIP/generation_placeholder` for candidate compilation and correctness. Its
-performance command still runs once with `--baseline_only` to validate reference
-timing before candidate generation.
+The v4 completion marker binds report bytes, request ID and evidence digest.
+Changing the report invalidates completion. Version-3 reports remain supported for
+legacy tasks during migration; their old prompt/normalization path is isolated
+from v2. Aggregation reports the actual report schema versions and only succeeds
+when every selected workspace has a complete PASS. Platform-filtered/skipped tasks
+are not validated and are not evidence of full task coverage.
 
-`overall_status` is recomputed by the framework from normalized checks. The
-validator agent's self-reported value cannot override a failed command, timeout,
-missing check, invalid benchmark method, or malformed report. A validation FAIL
-also makes the final CLI/post-processing gate exit nonzero.
-
-The framework supplies the validator with authoritative scoring-lifecycle and
-harness-guard facts. Baseline and candidate are measured in separate pre/post
-invocations of the same protected performance entrypoint; a task-local performance
-command does not need to time both implementations at once. Judgment-heavy WARN/FAIL
-findings should include source-line or runtime-case evidence. Insufficient evidence is
-WARN rather than an inferred failure.
-
----
-
-## New Task Requirements
-
-Every new task added to `tasks/` must satisfy the following requirements to pass validation.
-
-### Required Directory Structure
-
-```
-tasks/<task_type>/[<suite>/...]/<task_name>/
-├── config.yaml                  # Task configuration (required)
-├── scripts/
-│   └── task_runner.py           # Validation runner (recommended pattern)
-└── source/
-    └── <kernel files>           # .cu, .hip, .py, etc.
-```
-
-Alternative structures (Makefile-based, test-file-based) are acceptable as long as all config references resolve.
-
-### Required `config.yaml` Fields
-
-```yaml
-# List of source files containing kernel code (relative to task root)
-source_file_path:
-  - source/my_kernel.cu
-
-# List of kernel function names that must be found in source files
-target_kernel_functions:
-  - my_kernel_function
-
-# Command(s) to compile or build-check the task
-compile_command:
-  - python3 scripts/task_runner.py --mode compile
-
-# Command(s) to run correctness validation
-correctness_command:
-  - python3 scripts/task_runner.py --mode correctness
-
-# Task type: one of hip2hip, cuda2hip, triton2triton, triton2flydsl,
-# instruction2triton, torch2hip, torch2flydsl, flydsl2flydsl,
-# repository, image_kernel
-task_type: cuda2hip
-
-# Performance is required for current optimization tasks.
-performance_command:
-  - python3 scripts/task_runner.py --mode performance
-```
-
-### Optional `config.yaml` Fields
-
-```yaml
-# Legacy compatibility only; the centralized evaluator writes the standard schema.
-task_result_template: null
-
-# Prompt overrides for the optimization agent (null = auto-generated)
-prompt:
-  source_code: null
-  instructions: null
-  cheatsheet: null
-```
-
-### Self-Containedness Rules
-
-A normal isolated-kernel task **must** be fully self-contained. A
-`task_type: repository` task can declare an upstream repository with `repo_url`;
-its adapter scripts and dependency/setup contract must still be self-contained.
-For isolated tasks:
-
-1. **No external repo dependencies.** Do not reference paths like `../../vllm/`, `/opt/external/`, or assume a cloned repo exists in the workspace. All source code the task needs must be inside the task directory.
-
-2. **No missing headers.** Every `#include "foo.h"` in `.cu`/`.hip` files must resolve to a header that ships with the task (or is part of system/ROCm/CUDA includes).
-
-3. **No missing Python imports.** Every `import` or `from X import Y` must resolve to either:
-   - Python standard library
-   - Packages available in the Docker container environment (torch, numpy, triton, etc.)
-   - Local files within the task directory
-
-4. **No external data downloads.** Test inputs must be generated inline (random tensors, synthetic data) or bundled as small files in the task directory.
-
-### Correctness Check Rules
-
-The correctness check **must** be a real validation, not a trivial pass:
-
-1. **Compare against a reference.** Use a CPU/NumPy reference implementation, known-good output tensors, or a PyTorch eager-mode baseline.
-
-2. **Use reasonable tolerances.** For FP32: `atol=1e-3, rtol=1e-3` typical. For FP16/BF16: `atol=1e-2, rtol=1e-2` typical. For FP8/INT8: `atol=1e-1` or custom per-task.
-
-3. **Test multiple shapes.** Don't validate with a single input shape. Use at least 2-3 representative shapes covering small, medium, and large inputs.
-
-4. **Return non-zero exit code on failure.** The correctness command must `sys.exit(1)` or raise an exception if validation fails.
-
-### Compilation Check Rules
-
-1. The `compile_command` must actually compile or syntax-check the source code (not just search for text patterns).
-2. Exit code 0 means success, non-zero means failure.
-3. A `build/compile_report.json` with `{"status": "ok"}` or `{"status": "fail", "error": "..."}` is recommended.
-
-### Performance Check Rules
-
-1. The `performance_command` should measure kernel execution time and report it in a parseable format.
-2. It only needs to report the runtime for the implementation currently in the workspace. The framework runs the same command before and after agent execution and computes speedup.
-3. A `build/performance_report.json` with timing data is recommended.
-4. Every case must report finite positive device time, a stable ID/params/shape,
-   and `benchmark_method: cuda_graph` or `cuda_event_fallback`. Host/CPU timing is
-   invalid; Event fallback needs a reason and must not be candidate-controlled.
-5. Restore stateful/in-place inputs outside timing, keep avoidable scratch/JIT/reset
-   outside the timed callable, make pre/post workloads symmetric, and use
-   representative nonzero inputs. Exact output validation from the timed Graph replay
-   is strongly recommended; its absence is WARN unless runtime evidence demonstrates
-   an incorrect/stale replay or an unsafe state/reset defect.
-6. `10` warmups and `100` measured samples are recommended defaults, not a scoring
-   requirement. A sound documented alternative may receive WARN rather than FAIL.
-
-### Result Template Compatibility
-
-The task's output flow (compile → correctness → performance) must produce results that can populate the standard `task_result_template.yaml`:
-
-```yaml
-task_name: "<full path relative to tasks/>"
-pass_compilation: true/false
-compilation_error_message: null
-pass_correctness: true/false
-correctness_error_message: null
-base_execution_time: 0.0          # in ms
-best_optimized_execution_time: 0.0
-speedup_ratio: 0.0
-baseline_benchmark_methods: []
-optimized_benchmark_methods: []
-benchmark_method_consistent: true/false
-valid_baseline_cases: 0
-valid_optimized_cases: 0
-speedup_calculation_error_message: null
-optimization_summary: "Framework-generated evaluator summary"
-score: 0.0
-```
-
-### Checklist for New Task Authors
-
-Before submitting a new task, verify:
-
-- [ ] `config.yaml` has all required fields with correct types
-- [ ] All `source_file_path` entries exist
-- [ ] All `target_kernel_functions` are defined in the source files
-- [ ] `compile_command` succeeds with exit code 0
-- [ ] `correctness_command` succeeds with exit code 0
-- [ ] Correctness check compares against a real reference (not trivially passing)
-- [ ] Isolated tasks have no undeclared external paths; repository tasks declare `repo_url` and setup requirements
-- [ ] Commands complete within reasonable time (no GPU hangs)
-- [ ] Every performance case has scoreable device timing and method metadata
-- [ ] Stateful inputs, scratch/reset work, allocation, and Graph replay validation have fair boundaries
-- [ ] The declared editable targets are compatible with the protected harness boundary
-
-Run the task_validator agent on your task to automatically verify all of the above.
+New tasks and material task-contract/harness changes require a fresh compatible-GPU
+validation before PR submission. CPU tests of the parser, launcher, evidence and
+report gates are not GPU validation. See [Validate tasks](../../docs/how-to/task-validator.md).

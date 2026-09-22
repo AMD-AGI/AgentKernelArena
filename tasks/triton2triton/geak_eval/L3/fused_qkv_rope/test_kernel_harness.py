@@ -4,11 +4,13 @@ Test harness for fused_qkv_split_qk_rope kernel (aiter reference).
 
 Modes: --correctness, --profile, --benchmark, --full-benchmark
 
-The kernel and reference helpers are imported from the task-local
-``kernel.py`` so the materialized task has no external AITER dependency.
+Only the declared Triton kernel is imported from editable ``kernel.py``.
+Launch policy, output allocation, and the PyTorch oracle stay in this protected
+harness so candidate edits cannot change the measured contract or reference.
 """
 from __future__ import annotations
 from _aka_benchmark import benchmark_cuda_graph_or_events_samples
+from _timed_contract import checked_call, checked_benchmark, assert_output_contract
 
 
 def benchmark_cuda_graph_or_events(*args, **kwargs):
@@ -22,6 +24,7 @@ def benchmark_cuda_graph_or_events(*args, **kwargs):
     )
     return median_ms, metadata
 
+
 # GEAK materialized harness bootstrap
 import importlib.util
 import json
@@ -30,54 +33,15 @@ import sys
 from pathlib import Path
 
 def _find_baseline_kernel_dir():
-    """Find preprocess dir (has benchmark_baseline.txt) by walking up from GEAK_WORK_DIR."""
-    work = os.environ.get("GEAK_WORK_DIR", "").strip()
-    if not work:
-        return None
-    d = Path(work).resolve()
-    for _ in range(10):
-        if d is None or not d.exists():
-            break
-        bb = d / "benchmark_baseline.txt"
-        if bb.is_file():
-            return str(d)
-        d = d.parent
+    """Arena's session owns the frozen baseline; external worktrees are not inputs."""
     return None
 
-def _load_baseline_triton(baseline_dir, module_alias, entry_name):
-    """Load kernel from baseline_dir. Returns callable or None."""
-    entry_file = Path(baseline_dir) / "kernel.py"
-    if not entry_file.is_file():
-        return None
-    if baseline_dir not in sys.path:
-        sys.path.insert(0, baseline_dir)
-    spec = importlib.util.spec_from_file_location(module_alias, entry_file)
-    if spec is None or spec.loader is None:
-        return None
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[module_alias] = module
-    try:
-        spec.loader.exec_module(module)
-        return getattr(module, entry_name, None)
-    except Exception:
-        return None
+def _load_baseline_triton(*args, **kwargs):
+    raise RuntimeError("External baseline loading is not part of the v2 task contract")
 
 def _resolve_geak_kernel_dir():
-    candidates = []
-    work_dir = os.environ.get("GEAK_WORK_DIR", "").strip()
-    if work_dir:
-        candidates.append(work_dir)
-    repo_root = os.environ.get("GEAK_REPO_ROOT", "").strip()
-    rel_kernel_dir = '.'
-    if repo_root and rel_kernel_dir:
-        candidates.append(os.path.join(repo_root, rel_kernel_dir))
-    original_kernel_dir = os.path.dirname(os.path.abspath(__file__))
-    if original_kernel_dir:
-        candidates.append(original_kernel_dir)
-    for candidate in candidates:
-        if candidate and os.path.isfile(os.path.join(candidate, "kernel.py")):
-            return candidate
-    return original_kernel_dir or os.getcwd()
+    """Resolve only the local candidate (or the session's frozen task copy)."""
+    return os.path.dirname(os.path.abspath(__file__))
 
 _KERNEL_DIR = _resolve_geak_kernel_dir()
 if _KERNEL_DIR and _KERNEL_DIR not in sys.path:
@@ -85,15 +49,91 @@ if _KERNEL_DIR and _KERNEL_DIR not in sys.path:
 
 import argparse
 import math
+from enum import IntEnum
 
 import torch
+import triton
 
-from kernel import (
-    RotateStyle,
-    fused_qkv_split_qk_rope,
-    generate_rope_cached_freqs,
-    ref_rope_sbhd_fwd,
-)
+from kernel import _fused_qkv_split_qk_rope_kernel
+
+
+def fused_qkv_split_qk_rope(
+    qkv,
+    cos,
+    sin,
+    positions,
+    qh,
+    kvh,
+    head_dim,
+    is_neox=True,
+    offsets=None,
+    reuse_freqs_front_part=True,
+    nope_first=False,
+):
+    """Protected allocation and launch contract for the editable kernel."""
+    T = qkv.shape[0]
+    q_size = qh * head_dim
+    kv_size = kvh * head_dim
+
+    assert qh >= kvh and qh % kvh == 0, "qh must be mutiple of kvh"
+
+    q = torch.empty((T, qh, head_dim), dtype=qkv.dtype, device=qkv.device)
+    k = torch.empty((T, kvh, head_dim), dtype=qkv.dtype, device=qkv.device)
+    v = torch.empty((T, kvh, head_dim), dtype=qkv.dtype, device=qkv.device)
+
+    if cos.shape[-1] == head_dim // 2:
+        have_nope = not reuse_freqs_front_part
+    elif cos.shape[-1] == head_dim // 4:
+        have_nope = True
+    else:
+        have_nope = False
+
+    assert qkv.shape[-1] == q_size + 2 * kv_size, "Shape error"
+    effective_head_dim = head_dim // (2 if have_nope else 1)
+    assert effective_head_dim == triton.next_power_of_2(
+        effective_head_dim
+    ), "head_dim should be power of 2"
+
+    if have_nope:
+        block_d = head_dim // 2
+        block_d_half = head_dim // 4
+    else:
+        block_d = head_dim
+        block_d_half = head_dim // 2
+
+    block_t = 32
+    grid = (triton.cdiv(T, block_t), qh, 1)
+    _fused_qkv_split_qk_rope_kernel[grid](
+        qkv,
+        cos,
+        sin,
+        positions,
+        offsets,
+        q,
+        k,
+        v,
+        T,
+        *qkv.stride(),
+        cos.stride(0),
+        cos.stride(-1),
+        *positions.stride(),
+        *q.stride(),
+        *k.stride(),
+        HAVE_NOPE=have_nope,
+        NOPE_FIRST=nope_first,
+        REUSE_FREQS_FRONT_PART=reuse_freqs_front_part,
+        IS_NEOX=is_neox,
+        HAVE_POS=(positions is not None),
+        HAVE_OFFS=(offsets is not None),
+        QH=qh,
+        KVH=kvh,
+        BLOCK_T=block_t,
+        BLOCK_D=block_d,
+        BLOCK_D_HALF=block_d_half,
+        num_warps=4,
+        waves_per_eu=0,
+    )
+    return q, k, v
 
 
 def triton_op(qkv, cos, sin, positions, qh, kvh, head_dim, is_neox,
@@ -109,6 +149,62 @@ def triton_op(qkv, cos, sin, positions, qh, kvh, head_dim, is_neox,
 # ============================================================================
 # REFERENCE IMPLEMENTATIONS
 # ============================================================================
+
+
+class RotateStyle(IntEnum):
+    NEOX = 0
+    GPTJ = 1
+
+
+def rotate_half_neox(x):
+    x1 = x[..., : x.shape[-1] // 2]
+    x2 = x[..., x.shape[-1] // 2 :]
+    return torch.cat((-x2, x1), dim=-1)
+
+
+def rotate_half_gptj(x):
+    x1 = x[..., ::2]
+    x2 = x[..., 1::2]
+    return torch.stack((-x2, x1), dim=-1).flatten(-2)
+
+
+def ref_rope_sbhd_fwd(
+    x_,
+    freqs_,
+    rotate_style,
+    reuse_freqs_front_part,
+    nope_first,
+):
+    rotate_half = (
+        rotate_half_neox if rotate_style == RotateStyle.NEOX else rotate_half_gptj
+    )
+    rotate_dim = freqs_.shape[-1] * (2 if reuse_freqs_front_part else 1)
+    if nope_first:
+        d = x_.shape[-1]
+        x, x_forward = x_[..., d - rotate_dim :], x_[..., : d - rotate_dim]
+    else:
+        x, x_forward = x_[..., :rotate_dim], x_[..., rotate_dim:]
+
+    freqs = freqs_
+    if reuse_freqs_front_part:
+        if rotate_style == RotateStyle.NEOX:
+            freqs = freqs.repeat([1] * (freqs.dim() - 1) + [2])
+        else:
+            freqs = freqs.repeat_interleave(2, dim=-1)
+    x_embed = x * torch.cos(freqs) + rotate_half(x) * torch.sin(freqs)
+    if nope_first:
+        return torch.cat((x_forward, x_embed), dim=-1).to(dtype=x_.dtype)
+    return torch.cat((x_embed, x_forward), dim=-1).to(dtype=x_.dtype)
+
+
+def generate_rope_cached_freqs(B, max_embed_positions, freqs_D, dtype):
+    pos = torch.randint(0, max_embed_positions, (B,), device="cuda")
+    freqs = torch.randn(
+        (max_embed_positions, 1, 1, freqs_D), dtype=dtype, device="cuda"
+    )
+    cos = torch.cos(freqs)
+    sin = torch.sin(freqs)
+    return pos, freqs, cos, sin
 
 
 def generate_qkv_inputs(
@@ -216,22 +312,25 @@ def _run_single_correctness(B, QH_PER_KH, KH, D, rotate_style, nope, nope_first,
     )
     ref_freqs = freqs[pos].squeeze(-2)
 
-    q_triton, k_triton, v_triton = fused_qkv_split_qk_rope(
-        qkv, cos, sin, pos,
-        QH_PER_KH * KH, KH, head_dim,
-        is_neox=(rotate_style == RotateStyle.NEOX),
-        offsets=None,
-        reuse_freqs_front_part=reuse_freqs_front_part,
-        nope_first=nope_first,
-    )
-    q_torch, k_torch, v_torch = torch_op(
-        qkv, QH_PER_KH, KH, head_dim,
-        ref_freqs, reuse_freqs_front_part, nope, nope_first, rotate_style,
+    def invoke():
+        return fused_qkv_split_qk_rope(
+            qkv, cos, sin, pos, QH_PER_KH * KH, KH, head_dim,
+            is_neox=(rotate_style == RotateStyle.NEOX), offsets=None,
+            reuse_freqs_front_part=reuse_freqs_front_part, nope_first=nope_first,
+        )
+    checked_call(
+        invoke, inputs={'qkv': qkv, 'cos': cos, 'sin': sin, 'positions': pos,
+                        'ref_freqs': ref_freqs},
+        reference=lambda saved: torch_op(
+            saved['qkv'], QH_PER_KH, KH, head_dim, saved['ref_freqs'],
+            reuse_freqs_front_part, nope, nope_first, rotate_style),
+        check=_check_qkv,
     )
 
-    torch.testing.assert_close(q_torch, q_triton, atol=ATOL, rtol=RTOL)
-    torch.testing.assert_close(k_torch, k_triton, atol=ATOL, rtol=RTOL)
-    torch.testing.assert_close(v_torch, v_triton, atol=ATOL, rtol=RTOL)
+
+def _check_qkv(actual, expected):
+    for output, reference in zip(actual, expected):
+        torch.testing.assert_close(output, reference, atol=ATOL, rtol=RTOL)
 
 
 def run_correctness(configs=None, verbose=True):
@@ -336,8 +435,16 @@ def run_benchmark(configs=None, warmup=50, iters=200, verbose=True):
                 nope_first=nope_first,
             )
 
-        triton_ms, triton_meta = benchmark_cuda_graph_or_events(
-            run_kernel, warmup=warmup, repetition=iters,
+        triton_ms, triton_meta = checked_benchmark(
+            benchmark_cuda_graph_or_events, run_kernel,
+            inputs={'qkv': qkv, 'cos': cos, 'sin': sin, 'positions': pos,
+                    'ref_freqs': ref_freqs},
+            reference=lambda saved: torch_op(
+                saved['qkv'], QH_PER_KH, KH, head_dim, saved['ref_freqs'],
+                reuse, nope, nope_first, rs),
+            check=_check_qkv,
+            perturb=lambda saved: {**saved, 'qkv': -saved['qkv']},
+            warmup=warmup, repetition=iters,
         )
 
         def run_reference():

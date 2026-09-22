@@ -1,0 +1,636 @@
+{
+  "cases": [
+    {
+      "test_case_id": "case_0000",
+      "params": {
+        "M": 1,
+        "N": 32,
+        "mode": "static",
+        "quant_dtype": "int8",
+        "seed": 20
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0001",
+      "params": {
+        "M": 1,
+        "N": 32,
+        "mode": "static",
+        "quant_dtype": "fp8",
+        "seed": 20
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0002",
+      "params": {
+        "M": 1,
+        "N": 32,
+        "mode": "dyn_tensor",
+        "quant_dtype": "int8",
+        "seed": 20
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0003",
+      "params": {
+        "M": 1,
+        "N": 32,
+        "mode": "dyn_tensor",
+        "quant_dtype": "fp8",
+        "seed": 20
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0004",
+      "params": {
+        "M": 1,
+        "N": 32,
+        "mode": "dyn_token",
+        "quant_dtype": "int8",
+        "seed": 20
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0005",
+      "params": {
+        "M": 1,
+        "N": 32,
+        "mode": "dyn_token",
+        "quant_dtype": "fp8",
+        "seed": 20
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0006",
+      "params": {
+        "M": 32,
+        "N": 32,
+        "mode": "static",
+        "quant_dtype": "int8",
+        "seed": 20
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0007",
+      "params": {
+        "M": 32,
+        "N": 32,
+        "mode": "static",
+        "quant_dtype": "fp8",
+        "seed": 20
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0008",
+      "params": {
+        "M": 32,
+        "N": 32,
+        "mode": "dyn_tensor",
+        "quant_dtype": "int8",
+        "seed": 20
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0009",
+      "params": {
+        "M": 32,
+        "N": 32,
+        "mode": "dyn_tensor",
+        "quant_dtype": "fp8",
+        "seed": 20
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0010",
+      "params": {
+        "M": 32,
+        "N": 32,
+        "mode": "dyn_token",
+        "quant_dtype": "int8",
+        "seed": 20
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0011",
+      "params": {
+        "M": 32,
+        "N": 32,
+        "mode": "dyn_token",
+        "quant_dtype": "fp8",
+        "seed": 20
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0012",
+      "params": {
+        "M": 2,
+        "N": 16,
+        "mode": "static",
+        "quant_dtype": "int8",
+        "seed": 20
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0013",
+      "params": {
+        "M": 2,
+        "N": 16,
+        "mode": "static",
+        "quant_dtype": "fp8",
+        "seed": 20
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0014",
+      "params": {
+        "M": 2,
+        "N": 16,
+        "mode": "dyn_tensor",
+        "quant_dtype": "int8",
+        "seed": 20
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0015",
+      "params": {
+        "M": 2,
+        "N": 16,
+        "mode": "dyn_tensor",
+        "quant_dtype": "fp8",
+        "seed": 20
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0016",
+      "params": {
+        "M": 2,
+        "N": 16,
+        "mode": "dyn_token",
+        "quant_dtype": "int8",
+        "seed": 20
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0017",
+      "params": {
+        "M": 2,
+        "N": 16,
+        "mode": "dyn_token",
+        "quant_dtype": "fp8",
+        "seed": 20
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0018",
+      "params": {
+        "M": 10,
+        "N": 128,
+        "mode": "static",
+        "quant_dtype": "int8",
+        "seed": 20
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0019",
+      "params": {
+        "M": 10,
+        "N": 128,
+        "mode": "static",
+        "quant_dtype": "fp8",
+        "seed": 20
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0020",
+      "params": {
+        "M": 10,
+        "N": 128,
+        "mode": "dyn_tensor",
+        "quant_dtype": "int8",
+        "seed": 20
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0021",
+      "params": {
+        "M": 10,
+        "N": 128,
+        "mode": "dyn_tensor",
+        "quant_dtype": "fp8",
+        "seed": 20
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0022",
+      "params": {
+        "M": 10,
+        "N": 128,
+        "mode": "dyn_token",
+        "quant_dtype": "int8",
+        "seed": 20
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0023",
+      "params": {
+        "M": 10,
+        "N": 128,
+        "mode": "dyn_token",
+        "quant_dtype": "fp8",
+        "seed": 20
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0024",
+      "params": {
+        "M": 193,
+        "N": 75,
+        "mode": "static",
+        "quant_dtype": "int8",
+        "seed": 20
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0025",
+      "params": {
+        "M": 193,
+        "N": 75,
+        "mode": "static",
+        "quant_dtype": "fp8",
+        "seed": 20
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0026",
+      "params": {
+        "M": 193,
+        "N": 75,
+        "mode": "dyn_tensor",
+        "quant_dtype": "int8",
+        "seed": 20
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0027",
+      "params": {
+        "M": 193,
+        "N": 75,
+        "mode": "dyn_tensor",
+        "quant_dtype": "fp8",
+        "seed": 20
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0028",
+      "params": {
+        "M": 193,
+        "N": 75,
+        "mode": "dyn_token",
+        "quant_dtype": "int8",
+        "seed": 20
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0029",
+      "params": {
+        "M": 193,
+        "N": 75,
+        "mode": "dyn_token",
+        "quant_dtype": "fp8",
+        "seed": 20
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0030",
+      "params": {
+        "M": 1024,
+        "N": 128,
+        "mode": "static",
+        "quant_dtype": "int8",
+        "seed": 20
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0031",
+      "params": {
+        "M": 1024,
+        "N": 128,
+        "mode": "static",
+        "quant_dtype": "fp8",
+        "seed": 20
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0032",
+      "params": {
+        "M": 1024,
+        "N": 128,
+        "mode": "dyn_tensor",
+        "quant_dtype": "int8",
+        "seed": 20
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0033",
+      "params": {
+        "M": 1024,
+        "N": 128,
+        "mode": "dyn_tensor",
+        "quant_dtype": "fp8",
+        "seed": 20
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0034",
+      "params": {
+        "M": 1024,
+        "N": 128,
+        "mode": "dyn_token",
+        "quant_dtype": "int8",
+        "seed": 20
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0035",
+      "params": {
+        "M": 1024,
+        "N": 128,
+        "mode": "dyn_token",
+        "quant_dtype": "fp8",
+        "seed": 20
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0036",
+      "params": {
+        "M": 32,
+        "N": 8192,
+        "mode": "static",
+        "quant_dtype": "int8",
+        "seed": 20
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0037",
+      "params": {
+        "M": 32,
+        "N": 8192,
+        "mode": "static",
+        "quant_dtype": "fp8",
+        "seed": 20
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0038",
+      "params": {
+        "M": 32,
+        "N": 8192,
+        "mode": "dyn_tensor",
+        "quant_dtype": "int8",
+        "seed": 20
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0039",
+      "params": {
+        "M": 32,
+        "N": 8192,
+        "mode": "dyn_tensor",
+        "quant_dtype": "fp8",
+        "seed": 20
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0040",
+      "params": {
+        "M": 32,
+        "N": 8192,
+        "mode": "dyn_token",
+        "quant_dtype": "int8",
+        "seed": 20
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0041",
+      "params": {
+        "M": 32,
+        "N": 8192,
+        "mode": "dyn_token",
+        "quant_dtype": "fp8",
+        "seed": 20
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0042",
+      "params": {
+        "M": 400,
+        "N": 400,
+        "mode": "static",
+        "quant_dtype": "int8",
+        "seed": 20
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0043",
+      "params": {
+        "M": 400,
+        "N": 400,
+        "mode": "static",
+        "quant_dtype": "fp8",
+        "seed": 20
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0044",
+      "params": {
+        "M": 400,
+        "N": 400,
+        "mode": "dyn_tensor",
+        "quant_dtype": "int8",
+        "seed": 20
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0045",
+      "params": {
+        "M": 400,
+        "N": 400,
+        "mode": "dyn_tensor",
+        "quant_dtype": "fp8",
+        "seed": 20
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0046",
+      "params": {
+        "M": 400,
+        "N": 400,
+        "mode": "dyn_token",
+        "quant_dtype": "int8",
+        "seed": 20
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "case_0047",
+      "params": {
+        "M": 400,
+        "N": 400,
+        "mode": "dyn_token",
+        "quant_dtype": "fp8",
+        "seed": 20
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    }
+  ]
+}

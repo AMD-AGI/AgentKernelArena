@@ -1,0 +1,218 @@
+"""KernelForge stdout adapter for the public task command protocol.
+
+Only this provider adapter consumes KERNELFORGE_* variables. Task runners see
+their ordinary declared paths and ARENA_EVAL_PHASE, through run_action().
+"""
+from __future__ import annotations
+
+import argparse
+from contextlib import contextmanager
+import json
+import os
+from pathlib import Path
+import statistics
+import tempfile
+import uuid
+from urllib.parse import quote
+
+from src.task_execution import TaskExecutionError, run_action
+from src.task_spec import resolve_task_path
+from agents.forge.task_context import TaskContext, bounded_spec
+from agents.forge.bundles import copy_workspace, install_candidate
+from agents.forge.action_evidence import ActionEvidence, source_binding
+
+
+#: A candidate is measured in the tree the engine is searching, which is also
+#: the tree its agent session is guarded against. Importing a task module there
+#: would leave bytecode beside it, and a task keeps its runner under a directory
+#: name the engine protects wholesale, so those caches read as protected files
+#: appearing mid-session and abort the session that ran the check. Bytecode is a
+#: cache: refusing to write it changes no measurement, only import cost.
+TASK_ENV = {"PYTHONDONTWRITEBYTECODE": "1"}
+
+
+class ActionCheckFailure(RuntimeError):
+    """A completed, protocol-validated check failed; execution errors stay separate."""
+
+    def __init__(self, executed, evidence_path):
+        self.result = executed.result
+        self.commands = executed.commands
+        self.evidence_path = evidence_path
+        detail = " ".join(str(self.result.reason).splitlines())[:1000]
+        super().__init__(f"{self.result.role}.{self.result.action}: {detail}; full evidence: {evidence_path}")
+
+
+def load_plan(path: Path) -> dict:
+    plan = json.loads(Path(path).read_text())
+    if plan.get("version") != 1:
+        raise ValueError("Unsupported Forge bridge plan")
+    return plan
+
+
+def bound_candidate_root(plan: dict, engine_root: Path) -> Path:
+    if plan["workflow"] != "rewrite":
+        return engine_root
+    raw = os.environ.get("KERNELFORGE_REWRITE_CANDIDATE_KERNEL")
+    if not raw:
+        raise ValueError("Rewrite driver received no current candidate binding")
+    # Upstream can carry an absolute master path into a copied lane. Rebind its
+    # relative attempt path to this driver's actual workspace, never the master.
+    path = Path(raw)
+    master = Path(plan["engine_root"])
+    relative = path.relative_to(master) if path.is_absolute() else path
+    if len(relative.parts) < 3 or relative.parts[0] != ".forge_rewrite":
+        raise ValueError("Rewrite candidate is not in an attempt workspace")
+    attempt = resolve_task_path(engine_root, Path(*relative.parts[:2]).as_posix(), must_exist=True)
+    expected = resolve_task_path(attempt, plan["anchor"])
+    if relative.as_posix() != expected.relative_to(engine_root).as_posix():
+        raise ValueError("Rewrite candidate binding differs from the declared anchor")
+    return attempt
+
+
+@contextmanager
+def evaluation_workspace(context: TaskContext, plan: dict, engine_root: Path, role: str):
+    """Measure where the engine already keeps the tree it is searching.
+
+    A mid-search measurement is the engine's own signal, not a verdict: the
+    framework re-runs every candidate action in its own workspace once the
+    campaign delivers. Materializing a private tree per invocation would copy
+    the whole task package, which for an image-backed task is gigabytes, to
+    guard numbers nothing downstream trusts.
+
+    The baseline is the denominator of every number the search produces, so it
+    keeps a private tree built from the framework's frozen snapshot: a candidate
+    that breaks the runner must not also move the anchor it is compared against.
+    A campaign measures it once, not once per candidate.
+    """
+    if role == "baseline":
+        with tempfile.TemporaryDirectory(prefix="baseline-", dir=Path(plan["template"]).parent) as temporary:
+            root = Path(temporary) / "task"
+            copy_workspace(context.baseline_workspace, root)
+            yield root
+        return
+    candidate = bound_candidate_root(plan, engine_root)
+    installed = install_candidate(context.spec, candidate, engine_root,
+                                  reference=Path(plan["template"]))
+    try:
+        yield engine_root
+    finally:
+        # A rewrite keeps its candidate under the producer's attempt directory.
+        # Leaving a copy at the declared path would shadow the next attempt.
+        if candidate != engine_root:
+            for record in installed:
+                (engine_root / record["path"]).unlink(missing_ok=True)
+
+
+def execute(plan: dict, engine_root: Path, *, role: str, action: str):
+    context = TaskContext.load(plan["context"])
+    evaluation_id = uuid.uuid4().hex
+    with evaluation_workspace(context, plan, engine_root, role) as root:
+        phases = ["compile"] if action == "compile" else ["compile", action]
+        if role == "candidate" and action == "performance":
+            phases = ["compile", "correctness", "performance"]
+        result = None
+        for step in phases:
+            deadline = min(plan["deadline_unix"], plan.get("phase_deadline_unix", plan["deadline_unix"]))
+            sources = source_binding(context, root)
+            spec = bounded_spec(context.spec, deadline)
+            evidence = ActionEvidence(plan, context, root, evaluation_id=evaluation_id,
+                                      role=role, action=step, requested_action=action,
+                                      source=sources, spec=spec,
+                                      engine_root=engine_root)
+            try:
+                executed = run_action(spec, root, role=role, action=step,
+                                      phase="candidate_evaluation", manifest=context.manifest,
+                                      extra_env=TASK_ENV)
+            except TaskExecutionError as exc:
+                exc.evidence_path = evidence.finish(error=exc)
+                # Preserve full original message/command streams above; expose a
+                # short single-line message to callers and the native engine.
+                exc.args = (f"{' '.join(str(exc).splitlines())[:1000]}; "
+                            f"full evidence: {exc.evidence_path}",)
+                raise
+            path = evidence.finish(executed=executed)
+            result = executed.result
+            if not result.passed:
+                raise ActionCheckFailure(executed, path)
+        return result
+
+
+def timings(result) -> dict[str, float]:
+    # URL encoding is injective even for spaces, %, and Unicode. Replacing
+    # spaces with underscores would collapse distinct manifest case IDs.
+    return {quote(row["test_case_id"], safe=""): row["execution_time_ms"] for row in result.cases}
+
+
+def emit_timings(result) -> None:
+    values = timings(result)
+    for case, elapsed in values.items():
+        print(f"case_ms: {case} {elapsed:.12g}")
+    # Upstream accepts mean_ms (deprecated spelling), and KEEP uses the mean of
+    # per-case baseline/candidate ratios. Do not falsely label a mean a median.
+    print(f"mean_ms: {statistics.fmean(values.values()):.12g}")
+
+
+def run(plan_path: str | Path, engine_root: str | Path, argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser()
+    modes = parser.add_mutually_exclusive_group()
+    modes.add_argument("--bench-mode", action="store_true")
+    modes.add_argument("--ref-bench-mode", action="store_true")
+    modes.add_argument("--profile-run", action="store_true")
+    modes.add_argument("--compile-only", action="store_true")
+    parser.add_argument("--mode", default="full")
+    # Upstream smoke/stability stages supply these hints. They must not reduce
+    # task-owned samples, cases, or warmups.
+    parser.add_argument("--warmup", type=int)
+    parser.add_argument("--iters", type=int)
+    args = parser.parse_args(argv)
+    if args.profile_run:
+        print('capability: {"profile": "unsupported", "reason": "no public task profiling action"}')
+        return 2
+    role = "baseline" if args.ref_bench_mode else "candidate"
+    action = "performance" if args.bench_mode or args.ref_bench_mode else "compile" if args.compile_only else "correctness"
+    try:
+        result = execute(load_plan(Path(plan_path)), Path(engine_root).resolve(strict=True), role=role, action=action)
+        if action == "performance":
+            emit_timings(result)
+        else:
+            print("allclose: True")
+        return 0
+    except Exception as exc:
+        print("allclose: False")
+        print(f"arena_error: {type(exc).__name__}: {exc}")
+        if isinstance(exc, (TaskExecutionError, ActionCheckFailure)) and exc.commands:
+            command = exc.commands[-1]
+            diagnostic = "".join(
+                value.decode(errors="replace") if isinstance(value, bytes) else value
+                for value in (command.stdout, command.stderr)
+            )[-6000:]
+            # Keep task-produced newlines inside JSON: compiler output must not
+            # become a separate allclose/case_ms/mean_ms line for the engine.
+            print("arena_command_failure: " + json.dumps({
+                "returncode": command.returncode,
+                "diagnostic_tail": diagnostic,
+                "evidence_path": str(getattr(exc, "evidence_path", "")),
+            }))
+        return 1
+
+
+def render_driver(plan_path: Path, arena_root: Path) -> str:
+    return f'''#!/usr/bin/env python3
+# Generated by the Forge adapter; the task supplies no Forge-specific driver.
+# --ref-bench-mode calls the separate baseline; --bench-mode calls the candidate.
+import sys
+from pathlib import Path
+sys.path.insert(0, {str(arena_root)!r})
+from agents.forge.bridge import run_managed as run
+if __name__ == "__main__":
+    raise SystemExit(run({str(plan_path)!r}, Path(__file__).resolve().parent, sys.argv[1:]))
+'''
+
+
+def run_managed(plan_path, engine_root, argv=None):
+    # Each individual check needs cleanup, not only the enclosing campaign.
+    # An upstream stage timeout can kill its bridge while task compilers/GPU
+    # workers have moved into separate process groups.
+    from agents.forge.process_tree import managed_children
+    with managed_children():
+        return run(plan_path, engine_root, argv)

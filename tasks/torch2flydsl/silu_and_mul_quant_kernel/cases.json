@@ -1,0 +1,60 @@
+{
+  "cases": [
+    {
+      "test_case_id": "case_0000",
+      "params": {
+        "m": 32,
+        "n": 4096,
+        "seed": 20260401,
+        "limit": 0.0,
+        "group_size": 128
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0001",
+      "params": {
+        "m": 128,
+        "n": 8192,
+        "seed": 20260401,
+        "limit": 0.0,
+        "group_size": 128
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0002",
+      "params": {
+        "m": 512,
+        "n": 4096,
+        "seed": 20260401,
+        "limit": 0.0,
+        "group_size": 128
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0003",
+      "params": {
+        "m": 1024,
+        "n": 8192,
+        "seed": 20260401,
+        "limit": 0.0,
+        "group_size": 128
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    }
+  ]
+}

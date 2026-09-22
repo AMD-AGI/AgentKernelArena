@@ -1,0 +1,94 @@
+{
+  "cases": [
+    {
+      "test_case_id": "case_0000",
+      "params": {
+        "num_tokens": 16,
+        "num_q_heads": 32,
+        "num_kv_heads": 8,
+        "head_dim": 64,
+        "block_size": 16
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bf16"
+    },
+    {
+      "test_case_id": "case_0001",
+      "params": {
+        "num_tokens": 32,
+        "num_q_heads": 32,
+        "num_kv_heads": 8,
+        "head_dim": 64,
+        "block_size": 16
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bf16"
+    },
+    {
+      "test_case_id": "case_0002",
+      "params": {
+        "num_tokens": 32,
+        "num_q_heads": 32,
+        "num_kv_heads": 8,
+        "head_dim": 128,
+        "block_size": 16
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bf16"
+    },
+    {
+      "test_case_id": "case_0003",
+      "params": {
+        "num_tokens": 64,
+        "num_q_heads": 32,
+        "num_kv_heads": 8,
+        "head_dim": 128,
+        "block_size": 16
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bf16"
+    },
+    {
+      "test_case_id": "case_0004",
+      "params": {
+        "num_tokens": 64,
+        "num_q_heads": 64,
+        "num_kv_heads": 8,
+        "head_dim": 128,
+        "block_size": 16
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bf16"
+    },
+    {
+      "test_case_id": "case_0005",
+      "params": {
+        "num_tokens": 128,
+        "num_q_heads": 64,
+        "num_kv_heads": 8,
+        "head_dim": 128,
+        "block_size": 16
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bf16"
+    }
+  ]
+}

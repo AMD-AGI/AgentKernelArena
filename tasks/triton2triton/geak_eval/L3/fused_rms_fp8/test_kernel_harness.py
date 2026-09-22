@@ -7,6 +7,8 @@ import sys
 import types
 from pathlib import Path
 from _aka_benchmark import benchmark_cuda_graph_or_events_samples
+from _timed_contract import checked_call, checked_benchmark
+import _contract_oracles as oracle
 
 
 def benchmark_cuda_graph_or_events(*args, **kwargs):
@@ -21,54 +23,15 @@ def benchmark_cuda_graph_or_events(*args, **kwargs):
     return median_ms, metadata
 
 def _find_baseline_kernel_dir():
-    """Find preprocess dir (has benchmark_baseline.txt) by walking up from GEAK_WORK_DIR."""
-    work = os.environ.get("GEAK_WORK_DIR", "").strip()
-    if not work:
-        return None
-    d = Path(work).resolve()
-    for _ in range(10):
-        if d is None or not d.exists():
-            break
-        bb = d / "benchmark_baseline.txt"
-        if bb.is_file():
-            return str(d)
-        d = d.parent
+    """Arena's session owns the frozen baseline; external worktrees are not inputs."""
     return None
 
-def _load_baseline_triton(baseline_dir, module_alias, entry_name):
-    """Load kernel from baseline_dir. Returns callable or None."""
-    entry_file = Path(baseline_dir) / "kernel.py"
-    if not entry_file.is_file():
-        return None
-    if baseline_dir not in sys.path:
-        sys.path.insert(0, baseline_dir)
-    spec = importlib.util.spec_from_file_location(module_alias, entry_file)
-    if spec is None or spec.loader is None:
-        return None
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[module_alias] = module
-    try:
-        spec.loader.exec_module(module)
-        return getattr(module, entry_name, None)
-    except Exception:
-        return None
+def _load_baseline_triton(*args, **kwargs):
+    raise RuntimeError("External baseline loading is not part of the v2 task contract")
 
 def _resolve_geak_kernel_dir():
-    candidates = []
-    work_dir = os.environ.get("GEAK_WORK_DIR", "").strip()
-    if work_dir:
-        candidates.append(work_dir)
-    repo_root = os.environ.get("GEAK_REPO_ROOT", "").strip()
-    rel_kernel_dir = '.'
-    if repo_root and rel_kernel_dir:
-        candidates.append(os.path.join(repo_root, rel_kernel_dir))
-    original_kernel_dir = os.path.dirname(os.path.abspath(__file__))
-    if original_kernel_dir:
-        candidates.append(original_kernel_dir)
-    for candidate in candidates:
-        if candidate and os.path.isfile(os.path.join(candidate, "kernel.py")):
-            return candidate
-    return original_kernel_dir or os.getcwd()
+    """Resolve only the local candidate (or the session's frozen task copy)."""
+    return os.path.dirname(os.path.abspath(__file__))
 
 def _ensure_geak_package(module_name):
     parts = module_name.split(".")
@@ -107,6 +70,9 @@ def _register_geak_aliases(kernel_dir):
         return
     for alias in aliases:
         if alias in sys.modules:
+            existing = getattr(sys.modules[alias], "__file__", None)
+            if existing is None or Path(existing).resolve() != Path(entry_file).resolve():
+                raise RuntimeError("Candidate module alias resolved outside the task workspace")
             continue
         _ensure_geak_package(alias)
         spec = importlib.util.spec_from_file_location(alias, entry_file)
@@ -127,16 +93,18 @@ Test harness for fused_fp8_quant kernel (aiter reference).
 
 Modes: --correctness, --profile, --benchmark, --full-benchmark
 
-This file is structurally identical to the test harness embedded in
-kernel.py, except it imports the kernel from the aiter package rather
-than using the inlined implementation.
+The alias bootstrap binds all public wrappers to this task's local kernel.py.
+Protected PyTorch oracles cover all four editable entrypoints.
 """
 import argparse
 import math
 import torch
 import torch.nn.functional as F
 
-from aiter.ops.triton.fused_fp8_quant import fused_rms_fp8_group_quant
+from aiter.ops.triton.fused_fp8_quant import (
+    fused_rms_fp8_group_quant, fused_flatten_fp8_group_quant,
+    fused_reduce_act_mul_fp8_group_quant, fused_reduce_rms_fp8_group_quant,
+)
 import aiter
 
 fp8_dtype = aiter.dtypes.fp8
@@ -278,6 +246,86 @@ def generate_inputs(M, N1, N2, dtype=torch.bfloat16):
 # ============================================================================
 
 
+def _main_contract():
+    precise = {}
+    def reference(saved):
+        # Keep the original rounded-input reference and all of its gates.
+        legacy = run_torch_rms_fp8_group_quant(
+            saved['x1'], saved['w1'], 1e-6, saved['x2'], saved['w2'], 1e-6,
+            saved['res1'], fp8_dtype, 128)
+        precise['outputs'] = oracle.rms(saved, fp8_dtype)
+        return legacy
+    def check(actual, legacy):
+        for output, expected in zip(actual[1:], legacy[1:]):
+            torch.testing.assert_close(output, expected, atol=ATOL, rtol=RTOL)
+        torch.testing.assert_close(upcast(*actual[0], dtype=torch.float32),
+                                   upcast(*legacy[0], dtype=torch.float32), atol=ATOL, rtol=RTOL)
+        # Independently check raw quantized values and scales using FP32
+        # accumulation, rather than the legacy early BF16 residual rounding.
+        oracle.check_quant(actual[0], precise['outputs'][0], atol=ATOL, rtol=RTOL)
+    return reference, check
+
+
+CONTROL_CASES = [
+    {'test_case_id': 'control-rms-optional', 'params': {'variant': 'rms', 'split': 1}},
+    {'test_case_id': 'control-flatten', 'params': {'variant': 'flatten', 'split': 1}},
+    {'test_case_id': 'control-activation-2d', 'params': {'variant': 'activation', 'split': 1}},
+    {'test_case_id': 'control-activation-split3', 'params': {'variant': 'activation', 'split': 3}},
+    {'test_case_id': 'control-reduce-rms-2d', 'params': {'variant': 'reduce_rms', 'split': 1}},
+    {'test_case_id': 'control-reduce-rms-split3', 'params': {'variant': 'reduce_rms', 'split': 3}},
+    {'test_case_id': 'control-reduce-rms-split4', 'params': {'variant': 'reduce_rms', 'split': 4}},
+]
+
+
+def _control_tensor(shape, offset=0):
+    # Deterministic, signed, nonuniform data; no changes to the scored RNG stream.
+    values = torch.arange(math.prod(shape), device='cuda', dtype=torch.float32)
+    return (torch.sin(values * .13 + offset) * .4).reshape(shape).to(torch.bfloat16)
+
+
+def run_contract_controls():
+    for case in CONTROL_CASES:
+        variant, split = case['params']['variant'], case['params']['split']
+        if variant == 'flatten':
+            live = {'x': _control_tensor((3, 2, 128))}
+            invoke = lambda: fused_flatten_fp8_group_quant(live['x'], 128, fp8_dtype)
+            reference = lambda saved: oracle.quantize(saved['x'].reshape(3, 256), fp8_dtype)
+            check = oracle.check_quant
+        elif variant == 'activation':
+            shape = (3, 512) if split == 1 else (split, 3, 512)
+            live = {'x': _control_tensor(shape)}
+            if split > 1:
+                live['x2'] = _control_tensor((split, 3, 64), .7)
+            invoke = lambda: fused_reduce_act_mul_fp8_group_quant(
+                live['x'], activation='silu', x2=live.get('x2'), group_size=128,
+                dtype_quant=fp8_dtype, dtype=torch.bfloat16)
+            reference = lambda saved: oracle.activation_mul(saved, fp8_dtype)
+            check = oracle.check_fused
+        else:
+            shape = (3, 256) if split == 1 else (split, 3, 256)
+            live = {'x1': _control_tensor(shape),
+                    'w1': torch.linspace(-1.5, 2, 256, device='cuda')}
+            if variant == 'rms':
+                invoke = lambda: fused_rms_fp8_group_quant(
+                    live['x1'], live['w1'], 1e-6, group_size=128, dtype_quant=fp8_dtype)
+                reference = lambda saved: oracle.rms(saved, fp8_dtype, show=False)
+            else:
+                live['res1'] = _control_tensor((3, 256), .4)
+                live['x2'] = _control_tensor((3, 128) if split == 1 else (split, 3, 128), .8)
+                live['w2'] = torch.linspace(.2, 1.4, 128, device='cuda')
+                if split > 1:
+                    live['x3'] = _control_tensor((split, 3, 64), 1.2)
+                invoke = lambda: fused_reduce_rms_fp8_group_quant(
+                    live['x1'], live['w1'], 1e-6,
+                    inp2=live['x2'], inp2_weight=live['w2'], inp2_epsilon=1e-6,
+                    inp3=live.get('x3'), res1=live['res1'], group_size=128,
+                    dtype_quant=fp8_dtype, output_unquantized_inp1=True)
+                reference = lambda saved: oracle.rms(saved, fp8_dtype, reduce=True)
+            check = oracle.check_fused
+        checked_call(invoke, inputs=live, reference=reference, check=check)
+        print(case['test_case_id'], 'PASS')
+
+
 def run_correctness(shapes=None, verbose=True):
     if shapes is None:
         shapes = HARNESS_SHAPES
@@ -292,32 +340,15 @@ def run_correctness(shapes=None, verbose=True):
         try:
             x1, w1, x2, w2, res1 = generate_inputs(M, N1, N2, dtype)
 
-            (y1_q_torch, y1_s_torch), y1_torch, y2_torch, y1_res_torch = \
-                run_torch_rms_fp8_group_quant(
-                    x1, w1, 1e-6, x2, w2, 1e-6, res1, fp8_dtype, group_size
-                )
-
-            (y1_q_triton, y1_s_triton), y1_triton, y2_triton, y1_res_triton = \
-                fused_rms_fp8_group_quant(
-                    x1, w1, 1e-6,
-                    inp2=x2, inp2_weight=w2, inp2_epsilon=1e-6,
-                    group_size=group_size,
-                    dtype_quant=fp8_dtype,
-                    res1=res1,
-                    output_unquantized_inp1=True,
-                )
-
-            torch.testing.assert_close(y1_torch, y1_triton, atol=ATOL, rtol=RTOL)
-            torch.testing.assert_close(y2_torch, y2_triton, atol=ATOL, rtol=RTOL)
-            torch.testing.assert_close(y1_res_torch, y1_res_triton, atol=ATOL, rtol=RTOL)
-
-            y1_upcast_torch = upcast(
-                y1_q_torch, y1_s_torch, dtype=torch.float32, group_size=group_size
+            readonly = dict(x1=x1, w1=w1, x2=x2, w2=w2, res1=res1)
+            reference, check = _main_contract()
+            checked_call(
+                lambda: fused_rms_fp8_group_quant(
+                    x1, w1, 1e-6, inp2=x2, inp2_weight=w2, inp2_epsilon=1e-6,
+                    group_size=group_size, dtype_quant=fp8_dtype, res1=res1,
+                    output_unquantized_inp1=True),
+                inputs=readonly, reference=reference, check=check,
             )
-            y1_upcast_triton = upcast(
-                y1_q_triton, y1_s_triton, dtype=torch.float32, group_size=group_size
-            )
-            torch.testing.assert_close(y1_upcast_torch, y1_upcast_triton, atol=ATOL, rtol=RTOL)
 
             results.append({"config": (M, N1, N2), "correct": True})
             if verbose:
@@ -418,8 +449,13 @@ def run_benchmark(shapes=None, warmup=50, iters=200, verbose=True):
                 output_unquantized_inp1=True,
             )
 
-        triton_ms, triton_meta = benchmark_cuda_graph_or_events(
-            run_kernel, warmup=warmup, repetition=iters,
+        reference, check = _main_contract()
+        triton_ms, triton_meta = checked_benchmark(
+            benchmark_cuda_graph_or_events, run_kernel,
+            inputs=dict(x1=x1, w1=w1, x2=x2, w2=w2, res1=res1),
+            reference=reference, check=check,
+            perturb=lambda saved: {**saved, 'x1': -saved['x1'], 'res1': -saved['res1'], 'x2': -saved['x2']},
+            warmup=warmup, repetition=iters,
         )
 
         def run_reference():

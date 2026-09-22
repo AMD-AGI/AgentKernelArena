@@ -51,6 +51,18 @@ assert_before() {
 # Capture the exact argv that the runner would pass to Docker without requiring
 # a daemon, GPU devices, or the benchmark images on this host.
 docker() {
+    if [[ -n "${FAKE_RUNTIME_DIR:-}" ]]; then
+        printf '%s\n' "$1" >> "$FAKE_RUNTIME_DIR/events"
+        case "$1" in
+            info) return "${FAKE_DOCKER_INFO_STATUS:-0}" ;;
+            build)
+                printf '%s\n' "$@" > "$FAKE_RUNTIME_DIR/build-args"
+                [[ "${FAKE_DOCKER_BUILD_STATUS:-0}" == "0" ]] || return 42
+                touch "$FAKE_RUNTIME_DIR/image-present"
+                ;;
+            image) [[ -f "$FAKE_RUNTIME_DIR/image-present" ]] || return 1 ;;
+        esac
+    fi
     if [[ "${1:-}" == "image" && "${2:-}" == "inspect" ]]; then
         local reference="${!#}"
         if [[ "$reference" == "$PINNED_GFX950_IMMUTABLE_IMAGE" ]]; then
@@ -144,7 +156,7 @@ QUALITY_WORKTREE_REL=".quality_loop_worktrees/$QUALITY_TEST_RUN_ID"
 QUALITY_EVAL_ARTIFACT_DIR="$ROOT/.eval-tool-artifacts/quality-loop-$QUALITY_TEST_RUN_ID"
 trap 'rm -rf -- "$TEST_HOME" "$PATH_TEST_PARENT" "$ROOT/$QUALITY_ARTIFACT_REL" "$ROOT/$QUALITY_WORKTREE_REL" "$QUALITY_EVAL_ARTIFACT_DIR" "$ROOT/tasks/.sikl-runner-test-$$"' EXIT
 UNRELATED_GEAK_WORKFLOW_DIR="$TEST_HOME/unrelated-geak-workflow"
-GEAK_SDK_PYTHONPATH="PYTHONPATH=/workspace/.aka-pyuserbase/geak-sdk"
+GEAK_SDK_PYTHONPATH="AKA_GEAK_SDK_PATH=/workspace/.aka-pyuserbase/geak-sdk"
 mkdir -p "$UNRELATED_GEAK_WORKFLOW_DIR"
 touch "$UNRELATED_GEAK_WORKFLOW_DIR/kernel_workflow.js"
 
@@ -228,10 +240,18 @@ chmod +x "$FAKE_BIN/python"
 forwarded_agents="$(PATH="$FAKE_BIN:$PATH" bash "$RUNNER" _container_check_agents cursor)"
 [[ "$forwarded_agents" == "cursor" ]] || fail "container check received '$forwarded_agents', expected cursor"
 
-# The gfx950 default resolves to the pinned image and enables writable caches.
+# The gfx950 default uses the immutable manifest, not the movable dated tag,
+# and retains the verified image's writable caches.
 mapfile -t args < <(run_shell_args AKA_GPU_ARCH=gfx950)
-assert_has "$PINNED_GFX950_IMAGE" "${args[@]}"
+assert_has "$PINNED_GFX950_IMMUTABLE_IMAGE" "${args[@]}"
+assert_not_has "$PINNED_GFX950_IMAGE" "${args[@]}"
 assert_cache_args_present "" "${args[@]}"
+assert_not_has "AITER_ROOT_DIR=/tmp/aiter-root" "${args[@]}"
+
+# An explicit analysis requirement reaches the container instead of being
+# confused with the core graph/event timing prerequisites.
+mapfile -t args < <(run_shell_args AKA_GPU_ARCH=gfx950 AKA_REQUIRED_PROFILERS=rocprof-compute,rocprofv3)
+assert_has "AKA_REQUIRED_PROFILERS=rocprof-compute,rocprofv3" "${args[@]}"
 
 # A worker suffix must isolate both runtime cache directories.
 mapfile -t args < <(run_shell_args AKA_GPU_ARCH=gfx950 AKA_CACHE_SUFFIX=worker/3)
@@ -239,7 +259,18 @@ assert_cache_args_present "-worker_3" "${args[@]}"
 
 # Explicitly selecting the same verified tag has the same behavior.
 mapfile -t args < <(run_shell_args AKA_GPU_ARCH=gfx950 AKA_DOCKER_IMAGE="$PINNED_GFX950_IMAGE")
+assert_has "$PINNED_GFX950_IMAGE" "${args[@]}"
 assert_cache_args_present "" "${args[@]}"
+
+# The qualification image has the same non-root cache requirement. Test both
+# public references and per-worker isolation without promoting it to default.
+for image in \
+    lmsysorg/sglang-rocm:v0.5.19-rocm10-mi35x-20260913 \
+    lmsysorg/sglang-rocm@sha256:106a7adbeec5554b6e66a4bda0b3694af442717b9fe92754a9885520077b6f93; do
+    mapfile -t args < <(run_shell_args AKA_GPU_ARCH=gfx950 AKA_DOCKER_IMAGE="$image" AKA_CACHE_SUFFIX=worker-3)
+    assert_has "$image" "${args[@]}"
+    assert_cache_args_present "-worker-3" "${args[@]}"
+done
 
 # Old and custom gfx950 images retain their existing Docker arguments.
 mapfile -t args < <(run_shell_args AKA_GPU_ARCH=gfx950 AKA_DOCKER_IMAGE="$OLD_GFX950_IMAGE")
@@ -251,6 +282,54 @@ assert_cache_args_absent "${args[@]}"
 mapfile -t args < <(run_shell_args AKA_GPU_ARCH=gfx942)
 assert_has "lmsysorg/sglang:v0.5.12-rocm720-mi30x" "${args[@]}"
 assert_cache_args_absent "${args[@]}"
+assert_not_has "AITER_ROOT_DIR=/tmp/aiter-root" "${args[@]}"
+
+# RDNA4 selects its derived image, keeps the host UID and standard
+# runtime paths, and receives no gfx950-specific FlyDSL cache or tmpfs mount.
+mapfile -t args < <(run_shell_args AKA_GPU_ARCH=gfx1201)
+assert_has "agent-kernel-arena:rdna4-rocm10-v1" "${args[@]}"
+assert_has "$(id -u):$(id -g)" "${args[@]}"
+expected_username="$(id -un 2>/dev/null)" || expected_username="aka-$(id -u)"
+assert_has "USER=$expected_username" "${args[@]}"
+assert_has "LOGNAME=$expected_username" "${args[@]}"
+assert_has "AITER_ROOT_DIR=/tmp/aiter-root" "${args[@]}"
+assert_has "AITER_JIT_DIR=/tmp/aiter-jit" "${args[@]}"
+assert_has "AGENT_KERNEL_ARENA_GPU_ARCH=gfx1201" "${args[@]}"
+assert_has "PYTORCH_ROCM_ARCH=gfx1201" "${args[@]}"
+assert_not_has "FLYDSL_RUNTIME_CACHE_DIR=/tmp/flydsl-runtime-cache" "${args[@]}"
+assert_not_has "/tmp/aiter_configs:rw,uid=$(id -u),gid=$(id -g),mode=1777" "${args[@]}"
+mapfile -t args < <(
+    id() {
+        # GNU id prints a numeric UID and exits nonzero when passwd has no name.
+        if [[ "$*" == "-un" ]]; then command id -u; return 1; fi
+        command id "$@"
+    }
+    export -f id
+    run_shell_args AKA_GPU_ARCH=gfx1201
+)
+assert_has "USER=aka-$(id -u)" "${args[@]}"
+assert_has "LOGNAME=aka-$(id -u)" "${args[@]}"
+mapfile -t args < <(run_shell_args AKA_GPU_ARCH=gfx1201 AKA_CACHE_SUFFIX=worker-0)
+assert_has "AITER_ROOT_DIR=/tmp/aiter-root-worker-0" "${args[@]}"
+assert_has "AITER_JIT_DIR=/tmp/aiter-jit-worker-0" "${args[@]}"
+mapfile -t args < <(run_shell_args AKA_GPU_ARCH=gfx1201 \
+    AKA_DOCKER_IMAGE_GFX1201=example.invalid/rdna:custom)
+assert_has "example.invalid/rdna:custom" "${args[@]}"
+mapfile -t args < <(run_shell_args AKA_GPU_ARCH=gfx1201 \
+    AKA_DOCKER_IMAGE_GFX1201=example.invalid/rdna:custom \
+    AKA_DOCKER_IMAGE=example.invalid/global:override)
+assert_has "example.invalid/global:override" "${args[@]}"
+
+# Explicit prebuild/rebuild is GPU-independent and uses only docker/rdna4 as context.
+mapfile -t args < <(bash "$RUNNER" build-rdna4-image)
+assert_has "build" "${args[@]}"
+assert_has "--pull=false" "${args[@]}"
+assert_has "$ROOT/docker/rdna4/Dockerfile" "${args[@]}"
+assert_has "$ROOT/docker/rdna4" "${args[@]}"
+assert_not_has "$ROOT" "${args[@]}"
+mapfile -t args < <(AKA_DOCKER_IMAGE_GFX1201=example.invalid/rdna:build \
+    bash "$RUNNER" build-rdna4-image)
+assert_has "example.invalid/rdna:build" "${args[@]}"
 
 # Image equality alone is insufficient: the selected architecture must be gfx950.
 mapfile -t args < <(run_shell_args AKA_GPU_ARCH=gfx942 AKA_DOCKER_IMAGE="$PINNED_GFX950_IMAGE")
@@ -474,6 +553,35 @@ assert_not_has "$GEAK_SDK_PYTHONPATH" "${args[@]}"
 assert_not_has "$UNRELATED_GEAK_WORKFLOW_DIR:$UNRELATED_GEAK_WORKFLOW_DIR:ro" "${args[@]}"
 assert_not_has "GEAK_V4_WORKFLOW_DIR=$UNRELATED_GEAK_WORKFLOW_DIR" "${args[@]}"
 
+# An explicit private credential seed replaces only Claude's auth directory;
+# worker isolation still mounts it read-only and never writes back credentials.
+CLAUDE_PRIVATE_AUTH_DIR="$TEST_HOME/private-claude-auth"
+mkdir -p "$CLAUDE_PRIVATE_AUTH_DIR"
+mapfile -t args < <(run_check_args \
+    "$NATIVE_CLAUDE_HOME" "$NATIVE_CLAUDE_CONFIG" \
+    AGENT_HOME_ISOLATION=1 AKA_CLAUDE_AUTH_DIR="$CLAUDE_PRIVATE_AUTH_DIR")
+assert_has "$CLAUDE_PRIVATE_AUTH_DIR:/opt/aka-agent-state/.claude:ro" "${args[@]}"
+assert_not_has "$NATIVE_CLAUDE_HOME/.claude:/opt/aka-agent-state/.claude:ro" "${args[@]}"
+assert_has "$NATIVE_CLAUDE_HOME/.claude.json:/opt/aka-agent-state/.claude.json:ro" "${args[@]}"
+
+# Official setup-token authentication is forwarded by name, never by value.
+# It does not require browser-login state, including the .claude.json file.
+CLAUDE_TOKEN_HOME="$TEST_HOME/claude-token-home"
+mkdir -p "$CLAUDE_TOKEN_HOME/.local/bin" "$CLAUDE_TOKEN_HOME/.local/share/claude/versions"
+touch "$CLAUDE_TOKEN_HOME/.local/share/claude/versions/2.1.0"
+ln -s ../share/claude/versions/2.1.0 "$CLAUDE_TOKEN_HOME/.local/bin/claude"
+mapfile -t args < <(run_check_args \
+    "$CLAUDE_TOKEN_HOME" "$NATIVE_CLAUDE_CONFIG" \
+    AGENT_HOME_ISOLATION=1 CLAUDE_CODE_OAUTH_TOKEN=fixture-token-not-a-secret)
+assert_has "CLAUDE_CODE_OAUTH_TOKEN" "${args[@]}"
+assert_has "claude_code" "${args[@]}"
+assert_not_has "CLAUDE_CODE_OAUTH_TOKEN=fixture-token-not-a-secret" "${args[@]}"
+assert_not_has "$CLAUDE_TOKEN_HOME/.claude:/opt/aka-agent-state/.claude:ro" "${args[@]}"
+mapfile -t args < <(run_check_args \
+    "$NATIVE_CODEX_HOME" "$CODEX_CONFIG" \
+    CLAUDE_CODE_OAUTH_TOKEN=fixture-token-not-a-secret)
+assert_not_has "CLAUDE_CODE_OAUTH_TOKEN" "${args[@]}"
+
 # Omitting --config_name uses the one-task MI300/MI300X Claude quickstart.
 mapfile -t args < <(
     env \
@@ -508,6 +616,83 @@ assert_has "_container_check_agents" "${args[@]}"
 assert_has "claude_code" "${args[@]}"
 assert_not_has "$CLAUDE_HOME/.local/share/claude:$CLAUDE_HOME/.local/share/claude:ro" "${args[@]}"
 assert_not_has "$CLAUDE_HOME/.codex:$CLAUDE_HOME/.codex" "${args[@]}"
+
+# First-use builds happen before any container, then reuse the image across
+# preflight, workers, and subsequent invocations. These are daemon-free tests.
+run_runtime_command() {
+    local mode="$1"
+    shift
+    env HOME="$CLAUDE_HOME" AKA_NODE_PREFIX="$CLAUDE_PREFIX" \
+        AKA_GPU_ARCH=gfx1201 GPU_IDS=0,1 AKA_EVAL_TOOLS= \
+        FAKE_RUNTIME_DIR="$RUNTIME_DIR" "$@" \
+        bash "$RUNNER" "$mode" \
+        --config_name example_configs/quickstart_claude_rdna4.yaml \
+        > "$RUNTIME_DIR/stdout" 2> "$RUNTIME_DIR/stderr"
+}
+
+for runtime_mode in shell smoke check-agents preflight run parallel-run; do
+    RUNTIME_DIR="$TEST_HOME/runtime-$runtime_mode"
+    mkdir -p "$RUNTIME_DIR"
+    run_runtime_command "$runtime_mode" || {
+        cat "$RUNTIME_DIR/stderr" >&2
+        fail "$runtime_mode failed on first use"
+    }
+    mapfile -t events < "$RUNTIME_DIR/events"
+    assert_before build run "${events[@]}"
+    [[ "$(awk '$0 == "build" {n++} END {print n+0}' "$RUNTIME_DIR/events")" == 1 ]] \
+        || fail "$runtime_mode built more than once"
+    mapfile -t args < "$RUNTIME_DIR/build-args"
+    assert_has "--pull=false" "${args[@]}"
+    assert_has "$ROOT/docker/rdna4/Dockerfile" "${args[@]}"
+    assert_has "$ROOT/docker/rdna4" "${args[@]}"
+    assert_has "agent-kernel-arena:rdna4-rocm10-v1" "${args[@]}"
+    assert_not_has "$ROOT" "${args[@]}"
+    assert_not_has "$CLAUDE_HOME" "${args[@]}"
+    if [[ "$runtime_mode" == parallel-run ]]; then
+        [[ "$(awk '$0 == "run" {n++} END {print n+0}' "$RUNTIME_DIR/events")" == 5 ]] \
+            || fail "parallel run did not launch preflight, init, two workers, and postprocess"
+    fi
+    : > "$RUNTIME_DIR/events"
+    run_runtime_command "$runtime_mode" || fail "$runtime_mode failed with a cached image"
+    mapfile -t events < "$RUNTIME_DIR/events"
+    assert_has run "${events[@]}"
+    assert_not_has build "${events[@]}"
+    assert_not_has info "${events[@]}"
+done
+
+# Build/daemon failures must propagate instead of launching a container.
+for failure in FAKE_DOCKER_BUILD_STATUS=42 FAKE_DOCKER_INFO_STATUS=1; do
+    RUNTIME_DIR="$TEST_HOME/runtime-failure-$failure"
+    mkdir -p "$RUNTIME_DIR"
+    if run_runtime_command run "$failure"; then
+        fail "$failure did not stop the run"
+    fi
+    mapfile -t events < "$RUNTIME_DIR/events"
+    assert_not_has run "${events[@]}"
+    [[ ! -f "$RUNTIME_DIR/image-present" ]] || fail "failed setup cached an image"
+    if [[ "$failure" == FAKE_DOCKER_INFO_STATUS=* ]]; then
+        assert_not_has build "${events[@]}"
+    else
+        assert_has build "${events[@]}"
+    fi
+    # A later invocation can recover without a stale success flag.
+    run_runtime_command run || fail "retry after $failure did not recover"
+done
+
+# Missing custom images and CDNA defaults keep the ordinary Docker run/pull
+# path. Even an explicit override equal to the default tag opts out of builds.
+for override in \
+    AKA_DOCKER_IMAGE=example.invalid/rdna:custom \
+    AKA_DOCKER_IMAGE_GFX1201=example.invalid/rdna:custom \
+    AKA_DOCKER_IMAGE=agent-kernel-arena:rdna4-rocm10-v1 \
+    AKA_DOCKER_IMAGE_GFX1201=agent-kernel-arena:rdna4-rocm10-v1 \
+    AKA_GPU_ARCH=gfx942 AKA_GPU_ARCH=gfx950; do
+    RUNTIME_DIR="$TEST_HOME/runtime-override-${override//\//_}"
+    mkdir -p "$RUNTIME_DIR"
+    run_runtime_command shell "$override" || fail "override failed: $override"
+    mapfile -t events < "$RUNTIME_DIR/events"
+    [[ "${events[*]}" == run ]] || fail "override attempted automatic image setup: $override"
+done
 
 # AGENTS=all is an explicit override and expands to all three first-class CLIs.
 ALL_HOME="$TEST_HOME/all-home"
@@ -562,12 +747,45 @@ assert_has "$GEAK_PREFIX:/opt/claude-node:ro" "${args[@]}"
 assert_has "$GEAK_HOME/.claude:$GEAK_HOME/.claude" "${args[@]}"
 assert_has "$GEAK_HOME/.claude.json:$GEAK_HOME/.claude.json" "${args[@]}"
 assert_has "claude_code" "${args[@]}"
-assert_has "$GEAK_WORKFLOW_DIR:$GEAK_WORKFLOW_DIR:ro" "${args[@]}"
+assert_has "${GEAK_WORKFLOW_DIR%/kernel_workflow}:${GEAK_WORKFLOW_DIR%/kernel_workflow}:ro" "${args[@]}"
+assert_has "GEAK_HOME=${GEAK_WORKFLOW_DIR%/kernel_workflow}" "${args[@]}"
 assert_has "GEAK_V4_WORKFLOW_DIR=$GEAK_WORKFLOW_DIR" "${args[@]}"
 # The Claude Agent SDK is installed with `pip install --target` into the mounted
 # user-base (setup-geak); its dir must be forwarded on PYTHONPATH so the venv
 # python in the standard sglang images can import it.
 assert_has "$GEAK_SDK_PYTHONPATH" "${args[@]}"
+
+# Public GEAK and its v2 aliases need the complete read-only checkout, SDK path,
+# and Claude authentication; other agents must not acquire that mount.
+for geak_template in geak geak_v4; do
+    printf 'agent:\n  template: %s\n' "$geak_template" > "$GEAK_CONFIG"
+    mapfile -t args < <(run_check_args \
+        "$GEAK_HOME" "$GEAK_CONFIG" \
+        AKA_NODE_PREFIX="$GEAK_PREFIX" \
+        GEAK_HOME="${GEAK_WORKFLOW_DIR%/kernel_workflow}")
+    assert_has "${GEAK_WORKFLOW_DIR%/kernel_workflow}:${GEAK_WORKFLOW_DIR%/kernel_workflow}:ro" "${args[@]}"
+    assert_has "GEAK_HOME=${GEAK_WORKFLOW_DIR%/kernel_workflow}" "${args[@]}"
+    assert_has "$GEAK_SDK_PYTHONPATH" "${args[@]}"
+    assert_has "claude_code" "${args[@]}"
+done
+printf 'agent:\n  template: geak_v4\n' > "$GEAK_CONFIG"
+
+# Run the actual container bootstrap in a CPU shell. GEAK's dependency prefix
+# must retain an image-owned source path such as AITER's import root.
+for ((bootstrap_index=0; bootstrap_index<${#args[@]}; bootstrap_index++)); do
+    if [[ "${args[$bootstrap_index]}" == "-lc" ]]; then
+        bootstrap_script="${args[$((bootstrap_index+1))]}"
+        break
+    fi
+done
+combined_pythonpath="$(env \
+    AGENT_KERNEL_ARENA_WORKDIR="$ROOT" \
+    AGENT_KERNEL_ARENA_ISOLATED_HOME=0 \
+    AKA_GEAK_SDK_PATH=/runtime/geak-sdk \
+    PYTHONPATH=/runtime/image-aiter \
+    bash -c "$bootstrap_script" _ python3 -c 'import os; print(os.environ["PYTHONPATH"])')"
+[[ "$combined_pythonpath" == /runtime/geak-sdk:/runtime/image-aiter ]] \
+    || fail "GEAK bootstrap lost the image's Python import path"
 
 # The explicit setup command has no run config or required agent CLI, but still
 # needs the GEAK-only dependency path and workflow mount for its container check.
@@ -580,7 +798,7 @@ mapfile -t args < <(
         bash "$RUNNER" setup-geak 2>/dev/null
 )
 assert_has "$GEAK_SDK_PYTHONPATH" "${args[@]}"
-assert_has "$GEAK_WORKFLOW_DIR:$GEAK_WORKFLOW_DIR:ro" "${args[@]}"
+assert_has "${GEAK_WORKFLOW_DIR%/kernel_workflow}:${GEAK_WORKFLOW_DIR%/kernel_workflow}:ro" "${args[@]}"
 assert_has "GEAK_V4_WORKFLOW_DIR=$GEAK_WORKFLOW_DIR" "${args[@]}"
 assert_has "_container_setup_geak" "${args[@]}"
 assert_not_has "ANTHROPIC_AUTH_TOKEN" "${args[@]}"

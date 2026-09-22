@@ -8,6 +8,10 @@ import importlib.util
 
 TASK_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 os.chdir(TASK_DIR)
+if TASK_DIR not in sys.path:
+    sys.path.insert(0, TASK_DIR)
+from scripts.contract_checks import InputSnapshot, check_outputs, validate_timed
+from scripts import semantic_controls
 
 TASK_NAME = "triton2triton/triton_linear_attn_decode"
 SOURCE_FILE = os.path.join(TASK_DIR, "source", "triton_linear_attn_decode.py")
@@ -41,11 +45,15 @@ def _benchmark_cuda_graph_or_events(*args, **kwargs):
     )
 # <<< AKA-GENERATED <<<
 
+_LOADED_MODULES = []
+
+
 def load_module():
     """Dynamically load the source module."""
     spec = importlib.util.spec_from_file_location("triton_kernel", SOURCE_FILE)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
+    _LOADED_MODULES.append(mod)
     return mod
 
 
@@ -103,7 +111,7 @@ def run_compile():
         return False, str(e)
 
 
-def run_correctness():
+def run_correctness(*, case_index=None):
     """Run correctness checks against PyTorch reference."""
     import torch
     try:
@@ -115,6 +123,8 @@ def run_correctness():
     dtype = torch.float16
 
     for i, (B, H, D, E) in enumerate(TEST_SHAPES):
+        if case_index is not None and i != case_index:
+            continue
         try:
             torch.manual_seed(42 + i)
             slope_rate = torch.rand(H, device=device, dtype=torch.float32) * 0.1 + 0.01
@@ -131,12 +141,17 @@ def run_correctness():
             # Reference
             ref_out = reference_linear_attn_decode(q, k, v, kv_caches_ref, slope_rate, slot_idx)
 
+            readonly = InputSnapshot(dict(q=q, k=k, v=v, slope_rate=slope_rate, slot_idx=slot_idx))
             # Triton kernel
             triton_out = mod.linear_attn_decode_forward(
                 q, k, v, kv_caches_triton, slope_rate, slot_idx
             )
             torch.cuda.synchronize()
 
+            readonly.check()
+            check_outputs((triton_out, kv_caches_triton), (ref_out, kv_caches_ref),
+                          atol=1e-2, rtol=1e-2, output_dtypes=(dtype,dtype),
+                          inputs=[e[1] for e in readonly.entries])
             # Compare output
             if not torch.allclose(triton_out.float(), ref_out.float(), atol=1e-2, rtol=1e-2):
                 max_diff = (triton_out.float() - ref_out.float()).abs().max().item()
@@ -184,17 +199,29 @@ def run_performance():
 
             kv_work = kv_caches.clone()
 
+            readonly = InputSnapshot(dict(q=q,k=k,v=v,slope_rate=slope_rate,slot_idx=slot_idx,kv_caches=kv_caches))
+            from _aka_benchmark import TimedRun
+            timed = TimedRun()
             def _bench_fn():
-                mod.linear_attn_decode_forward(
+                output = mod.linear_attn_decode_forward(
                     q, k, v, kv_work, slope_rate, slot_idx
                 )
+                return output, kv_work
 
             elapsed_ms, benchmark_metadata = _benchmark_cuda_graph_or_events(
                 _bench_fn,
                 warmup=WARMUP_ITERATIONS,
                 repetition=BENCHMARK_ITERATIONS,
                 prepare_fn=lambda: kv_work.copy_(kv_caches),
+                timed_run=timed,
             )
+            def expected():
+                cache = kv_caches.float().clone()
+                output = reference_linear_attn_decode(q,k,v,cache,slope_rate,slot_idx)
+                return output, cache
+            benchmark_metadata.update(validate_timed(
+                timed, readonly, expected, lambda: (k.neg_(), kv_caches.neg_()),
+                atol=1e-2, rtol=1e-2, output_dtypes=(dtype,dtype)))
 
             test_cases.append({
                 "test_case_id": f"perf{test_idx + 1}",
@@ -207,8 +234,9 @@ def run_performance():
                     "e_model": E
                 }
             })
-        except Exception:
+        except Exception as exc:
             test_cases.append({
+                "error": f"{type(exc).__name__}: {exc}",
                 "test_case_id": f"perf{test_idx + 1}",
                 "execution_time_ms": -1.0,
                 "params": {
@@ -219,6 +247,14 @@ def run_performance():
                 }
             })
     return test_cases
+
+
+def run_reference_controls():
+    return semantic_controls.reference_controls(sys.modules[__name__])
+
+
+def run_semantic_controls():
+    return semantic_controls.run_controls(load_module(), device="cuda")
 
 
 def main():
@@ -240,6 +276,7 @@ def main():
         sys.exit(0 if ok else 1)
 
     elif args.mode == "correctness":
+        run_semantic_controls()
         ok, err = run_correctness()
         report = {
             "status": "ok" if ok else "fail",

@@ -31,13 +31,12 @@ def _configure() -> None:
     os.environ.setdefault("LOGNAME", "agentkernelarena")
     for key in ("GPU_ARCHS", "PYTORCH_ROCM_ARCH", "AMDGPU_TARGETS", "GPU_TARGETS"):
         os.environ.setdefault(key, "gfx950")
-    # Prefer the workspace-seeded editable copy so the agent's edits take effect;
-    # fall back to the in-image install for standalone/dev runs.
+    # Only the declared workspace copy is a valid candidate or frozen baseline.
     seeded = WORKSPACE / "sglang"
     if (seeded / "__init__.py").is_file():
         sys.path.insert(0, str(WORKSPACE))
     else:
-        sys.path.insert(0, os.environ.get("SGLANG_PYTHON", "/sgl-workspace/sglang/python"))
+        raise FileNotFoundError("Declared SGLang source package was not materialized")
     os.chdir(WORKSPACE)
 
 
@@ -102,7 +101,7 @@ if "_TimedRun" not in globals():
 
 
 def _benchmark_cuda_graph(*args, **kwargs):
-    """Compatibility name used by the task's standalone/forge drivers."""
+    """Compatibility alias for task-local benchmark callers."""
 
     return _benchmark_cuda_graph_or_events(*args, **kwargs)
 
@@ -151,7 +150,7 @@ def _run(inputs: dict):
 
 def _reference(inputs: dict):
     torch = _torch()
-    from sglang.srt.layers.quantization.mxfp8_amd_gfx95 import dequant_mxfp8_to_bf16
+    from reference_mxfp8 import dequant_mxfp8_to_bf16
 
     x = dequant_mxfp8_to_bf16(inputs["x_fp8"], inputs["x_scale"])
     w = dequant_mxfp8_to_bf16(inputs["w_fp8"], inputs["w_scale"])
@@ -162,7 +161,10 @@ def _reference(inputs: dict):
 # Modes
 # --------------------------------------------------------------------------- #
 def _assert_close(case: dict, inputs: dict, got, label: str = "") -> float:
-    err = _relerr(got, _reference(inputs))
+    expected = _reference(inputs)
+    assert got.shape == expected.shape and got.dtype == expected.dtype
+    assert got.device == expected.device and _torch().isfinite(got).all()
+    err = _relerr(got, expected)
     tol = case["params"].get("max_relerr", 0.06)
     assert err < tol, (case["id"], label, err, tol)
     return err
@@ -242,6 +244,7 @@ def run_performance() -> None:
     out = WORKSPACE / "build"
     out.mkdir(parents=True, exist_ok=True)
     (out / "performance_report.json").write_text(json.dumps(rows, indent=2))
+    return rows
 
 
 def main() -> None:

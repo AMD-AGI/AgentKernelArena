@@ -71,9 +71,13 @@ def run_correctness():
     return True, None
 
 
-def _time_kernel(fn, n_warmup=10, n_iter=100):
-    return benchmark_cuda_graph_or_events(
-        fn, warmup=n_warmup, repetition=n_iter,
+def _time_kernel(fn, inputs, expected, n_warmup=10, n_iter=100):
+    from replay_validation import measure
+    from reference_checks import check_timed_output
+    return measure(
+        benchmark_cuda_graph_or_events, fn, inputs,
+        lambda actual: check_timed_output(actual, expected),
+        warmup=n_warmup, repetition=n_iter,
         use_cuda_graph=HIP_GRAPH_ENABLED,
         fallback_reason=HIP_GRAPH_FALLBACK_REASON,
     )
@@ -90,15 +94,19 @@ def run_performance():
         center_xyz = torch.randn(B, M, 3, device="cuda", dtype=torch.float32)
 
         # Perf1: standard layout knn (B, N, 3) query
-        ms_standard, meta_standard = _time_kernel(lambda: knn(k, xyz, center_xyz))
+        expected = cpu_reference(k, xyz.cpu(), center_xyz.cpu())
+        ms_standard, meta_standard = _time_kernel(lambda: knn(k, xyz, center_xyz),
+                                                  (xyz, center_xyz), expected)
 
         # Perf2: transposed layout knn (B, 3, N) query
         xyz_t = xyz.transpose(1, 2).contiguous()
         center_xyz_t = center_xyz.transpose(1, 2).contiguous()
-        ms_transposed, meta_transposed = _time_kernel(lambda: knn(k, xyz_t, center_xyz_t, True))
+        ms_transposed, meta_transposed = _time_kernel(lambda: knn(k, xyz_t, center_xyz_t, True),
+                                                      (xyz_t, center_xyz_t), expected)
 
         # Perf3: self-query knn (center_xyz = xyz)
-        ms_self, meta_self = _time_kernel(lambda: knn(k, xyz, xyz))
+        expected_self = cpu_reference(k, xyz.cpu(), xyz.cpu())
+        ms_self, meta_self = _time_kernel(lambda: knn(k, xyz, xyz), (xyz,), expected_self)
 
         test_cases.append({
             "test_case_id": f"shape_{shape_idx}_standard",

@@ -1,24 +1,37 @@
-source_file_path:
-- hip/hip_16636_SiLU.hip
-target_kernel_functions:
-- forward
-compile_command:
-- python3 eval_tools/compile.py --hip_file hip/hip_16636_SiLU.hip
-correctness_command:
-- python3 eval_tools/correctness_check.py --py_modu_file pytorch_code_module/py_16636_SiLU.py
-  --py_func_file pytorch_code_functional/py_16636_SiLU_func.py --hip_file hip/hip_16636_SiLU.hip
-performance_command:
-- python3 eval_tools/cal_kernel_perf.py --py_modu_file pytorch_code_module/py_16636_SiLU.py
-  --py_func_file pytorch_code_functional/py_16636_SiLU_func.py --hip_file hip/hip_16636_SiLU.hip
-  --ref_hip_file hip/hip_16636_SiLU_ref.hip
-prompt:
-  source_code: null
-  instructions: You are a hip expert and good at gpu kernel implementation. Please
-    implemnt a target HIP kernel code corresponding to pytorch modullle code provided
-    as followings, which includes hip kernel, kernel laucher and python bliding code
-    for the hip launcher.
-  task_type: null
-  cheatsheet: null
-target_file_path: hip/hip_16636_SiLU.hip
-task_type: hip2hip
-task_result_template: null
+schema_version: 2
+description: Optimize SiLU in HIP; preserve all declared input cases and the protected reference contract.
+instructions:
+- README.md
+candidate:
+  language: hip
+  initial_state: implemented
+  editable:
+  - hip/hip_16636_SiLU.hip
+  entrypoints:
+  - file: hip/hip_16636_SiLU.hip
+    kind: function
+    symbol: forward
+baseline:
+  kind: provided
+  language: hip
+  source_files:
+  - pytorch_code_module/py_16636_SiLU.py
+  - pytorch_code_functional/py_16636_SiLU_func.py
+  - hip/hip_16636_SiLU_ref.hip
+evaluation:
+  runner:
+  - python3
+  - eval_tools/evaluate.py
+  - --candidate
+  - hip/hip_16636_SiLU.hip
+  - --module
+  - pytorch_code_module/py_16636_SiLU.py
+  - --functional
+  - pytorch_code_functional/py_16636_SiLU_func.py
+  - --model-class
+  - SiLU
+  - --initial-state
+  - implemented
+  - --baseline-hip
+  - hip/hip_16636_SiLU_ref.hip
+  workloads: workload.json

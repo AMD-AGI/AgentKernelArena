@@ -20,11 +20,15 @@ For every selected, platform-compatible task it:
 4. Runs exactly one Codex optimization iteration and the centralized evaluator.
 5. Starts a separate, read-only Codex session to review correctness evidence and
    case coverage.
-6. Promotes a first-iteration candidate only when three measurements have median
-   speedup at least 5x and all correctness/method/case-count gates pass.
-7. Adds targeted cases only when both the original kernel and candidate pass them.
-8. Commits accepted task changes to one isolated branch and creates at most one
-   draft PR. The workflow never creates GitHub issues.
+6. Promotes a first-iteration candidate only for an implemented initial-candidate
+   baseline, when three measurements have median speedup at least 5x and all
+   correctness/method/case-count gates pass. Provided baselines remain independent.
+7. Proposes targeted cases when enabled and requested by the accepting reviewer.
+   Adopt them only when their file changes are eligible, the original baseline
+   and actual optimized candidate pass them, and fresh task validation passes.
+8. Requires fresh framework-finalized validator PASS evidence for material task
+   changes before applying them, then commits accepted changes to one isolated
+   branch and creates at most one draft PR. The workflow never creates GitHub issues.
 
 ## Prerequisites
 
@@ -82,7 +86,8 @@ make docker-quality-loop \
   QUALITY_LOOP_ARGS="--resume <run-id>"
 ```
 
-The crash-safe `state.yaml` skips terminal tasks. `audit_report.yaml` records every
+The crash-safe `state.yaml` skips terminal tasks only while their validation
+evidence and task fingerprints still match. `audit_report.yaml` records every
 warning, unresolved failure, speedup confirmation, accepted file change, and commit.
 If a run has no accepted changes, it does not open an empty pull request.
 
@@ -98,13 +103,71 @@ If a run has no accepted changes, it does not open an empty pull request.
   checked before evaluation.
 - Reviewer output is schema checked, and modifications beyond its one YAML result
   file invalidate the review.
-- External repository/image worktrees and generated benchmark helpers are never
+- Materialized image source trees and generated benchmark helpers are never
   copied into a task commit.
+- Runtime reports, ROCmBench `*_py.pt` outputs, compiled objects/libraries, and
+  ELF executables are filtered from task changes. The host independently rejects
+  generated outputs before a commit, including paths accepted by an older run's
+  manifest. This leaves local experiment artifacts intact; ordinary tensor/input
+  fixtures are not rejected merely for being binary files.
 - The top-level `tasks` selectors define the complete audit scope. Baseline
   promotion is attempted without a task-type allowlist and fails closed when the
   selected task has no promotable committed source baseline.
-- If equivalence cannot be established against a committed original kernel, the
-  baseline or case change is rejected.
+- Case proposals use the filename allowlist in
+  [`is_case_path`](../../agents/quality_loop/filesystem.py), plus the declared
+  `evaluation.workloads` file. They cannot edit candidate scopes, materialized
+  source destinations or generated benchmark helpers. A file outside this
+  allowlist rejects the whole proposal before the correctness gates. Input
+  generators under other directory names are not automatically eligible.
+- If the declared original baseline or actual optimized candidate fails the
+  proposed cases, the change is rejected. A generation task's original empty
+  candidate is not used as an executable baseline.
 
-See `agents/quality_loop/README.md` and
-`agents/quality_loop/agent_config.yaml` for the complete configuration contract.
+See the [agent guide](../../agents/quality_loop/README.md) and
+[configuration](../../agents/quality_loop/agent_config.yaml) for the complete
+contract, role receipts and external reviewer evidence index.
+
+## Recorded GPU smoke (2026-09-15)
+
+Job `141055`, run `20260915_200935`, completed the ordinary Docker workflow with
+`--no-publish` on one MI355X in 18 minutes 24 seconds (scheduler exit `0:0`). The
+controller was `27f2846189fd8fb1e35e4e92aa669eb7eb0ea7d3`; the native host-created
+task worktree started at `e8ec5d6b4bc9d62b38af59a66a1797da42d3f30f`. The selected
+task files matched the sealed controller packages before execution. This records
+those revisions, not GPU qualification of later changes.
+
+Both tasks retained their original 11 cases. Actual Codex calls used
+`gpt-5.6-terra` with `medium` effort; optimizer/repair/case-enhancer, reviewer and
+validator limits were 1800, 900 and 1200 seconds respectively. The run used the
+ROCm image digest
+`sha256:106a7adbeec5554b6e66a4bda0b3694af442717b9fe92754a9885520077b6f93`.
+These are historical run settings, not new defaults.
+
+| Task | Initial validator | Independent review | Measured candidate outcome |
+| --- | --- | --- | --- |
+| `hip2hip/gpumode/GELU` | Framework-finalized PASS | Accepted | Original candidate retained; 1.001x |
+| `torch2hip/gpumode/14539_GELU` | Framework-finalized PASS | Accepted | New HIP implementation; 0.893x |
+
+The audit reparsed 28 task-action stdout envelopes, verified four session contexts
+and 62 frozen files, and checked two external reviewer indices. Both reviewers'
+completed native tool commands referenced their index. Five backend roles used
+anonymous stdin and retained matching, complete raw streams and terminal events;
+the seven observed native processes also included two initial validator calls.
+Role usage totals exclude those separately launched validators and are not a
+full-run token count or a dollar-cost estimate.
+
+Neither candidate reached the configured 5x threshold, so extra confirmation
+measurements and baseline promotion were not triggered. The Torch-to-HIP reviewer
+requested additional boundary coverage, which triggered one case-enhancer call.
+Its proposal retained the original 11 rows and appended four correctness-only
+cases, but also changed a README, evaluator and input generators outside the case
+allowlist. The controller rejected the proposal before its dual correctness gate
+or fresh validator ran. No enhanced task was accepted; no task changes, commits,
+push, PR or matrix-count increment resulted. This exercises rejection of an
+ineligible proposal, not successful case enhancement or baseline promotion.
+
+The preserved evidence bundle contains `HANDOFF.json`, `final-verification.json`,
+`review-index-verification.json`, the raw receipts, and the rejected proposal.
+The handoff SHA256 is
+`49aad01b200d6388d231430d784fa679936ddc54c831045c630624929e7e3d7a`.
+Earlier smoke rejections remain separate evidence and were not rewritten.

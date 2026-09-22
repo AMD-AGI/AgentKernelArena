@@ -14,7 +14,7 @@ aiter; ``model.py`` MUST NOT.
 
 Gate (tight, bf16 op): both the LayerNorm output and the residual_out must
 match the op within a normalized worst-element bound (max|ref-out| / max|ref| <=
-REL_TOL) AND an element-wise isclose pass-rate (atol=rtol=1e-2) >= PASS_PCT.
+REL_TOL) OR an element-wise isclose pass-rate (atol=rtol=1e-2) >= PASS_PCT.
 
 Modes:
   --compile         import model.py, build the Model, run a CPU smoke pass
@@ -29,24 +29,23 @@ import os
 import sys
 import time
 from pathlib import Path
-from _aka_benchmark import benchmark_cuda_graph_or_events
+from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
+from scripts.replay_checks import require_tensor_contract, require_unchanged
 
-KERNEL_FILE = "kernel.py"
+from task_runtime import candidate_relative_path
+KERNEL_FILE = candidate_relative_path()
+ARENA_PROVIDED_BASELINE = False
 MODEL_FILE = "model.py"
 KERNEL_ENTRY = "flydsl_layernorm2d_with_add"
 
 
 def _resolve_kernel_dir():
-    here = os.path.dirname(os.path.abspath(__file__))
-    if os.path.isfile(os.path.join(here, MODEL_FILE)):
-        return here
-    cwd = os.getcwd()
-    if os.path.isfile(os.path.join(cwd, MODEL_FILE)):
-        return cwd
-    return here
+    return str(__import__("pathlib").Path(__file__).resolve().parent)
 
 
 def _load_module(kernel_dir, filename, alias):
+    if filename == KERNEL_FILE and ARENA_PROVIDED_BASELINE:
+        return None
     entry = os.path.join(kernel_dir, filename)
     if not os.path.isfile(entry):
         return None
@@ -58,6 +57,8 @@ def _load_module(kernel_dir, filename, alias):
     mod = importlib.util.module_from_spec(spec)
     sys.modules[alias] = mod
     spec.loader.exec_module(mod)
+    if filename == KERNEL_FILE:
+        _require_candidate_outputs(mod)
     return mod
 
 
@@ -154,6 +155,49 @@ def run_compile(verbose=True):
     return True
 
 
+def _checked_layernorm_pair(pair, input):
+    import torch
+    if not isinstance(pair, (tuple, list)) or len(pair) != 2:
+        raise AssertionError("LayerNorm with add must return (output, residual_out)")
+    for value in pair:
+        require_tensor_contract(value, input)
+        if not bool(torch.isfinite(value).all()):
+            raise AssertionError("Non-finite LayerNorm output or residual")
+    return pair
+
+
+def _compare_layernorm_output(actual, expected):
+    _checked_layernorm_pair(actual, expected[0])
+    # Preserve the original comparator's operand order, normalization and OR
+    # condition (normalized error or required per-element pass percentage).
+    if not _compare(actual, expected)[0]:
+        raise AssertionError("Numerical mismatch: LayerNorm output or residual")
+
+
+def _verify_layernorm_timed(timed, inputs, originals, expected):
+    if not timed.bound:
+        raise RuntimeError("Benchmark did not expose measured LayerNorm outputs")
+    require_unchanged(inputs, originals)
+    _compare_layernorm_output(timed.outputs, expected)
+    try:
+        inputs[0].neg_()
+        inputs[1].mul_(0.5)
+        inputs[2].mul_(0.5)
+        inputs[3].add_(0.25)
+        changed = tuple(x.clone() for x in inputs)
+        replay_expected = _checked_layernorm_pair(_aiter_op(*inputs), inputs[0])
+        for output in timed.outputs:
+            output.fill_(float("nan"))
+        replayed = timed.rerun()
+        require_unchanged(inputs, changed)
+        _compare_layernorm_output(replayed, replay_expected)
+    finally:
+        for value, original in zip(inputs, originals):
+            value.copy_(original)
+    return {"timed_output_correctness": "PASS", "replay_correctness": "PASS",
+            "replay_inputs_perturbed": True, "replay_output_poisoned": True}
+
+
 def run_correctness(verbose=True):
     import torch
 
@@ -165,6 +209,7 @@ def run_correctness(verbose=True):
     failures = []
     for shape in SHAPES:
         input, residual, weight, bias = _make_inputs(shape)
+        originals = tuple(x.clone() for x in (input, residual, weight, bias))
         model = mmod.Model(*mmod.get_init_inputs()).to("cuda")
         with torch.no_grad():
             ref = model(input, residual, weight, bias)
@@ -174,6 +219,9 @@ def run_correctness(verbose=True):
             )
         torch.cuda.synchronize()
 
+        require_unchanged((input, residual, weight, bias), originals)
+        _checked_layernorm_pair(ref, input)
+        _checked_layernorm_pair(truth, input)
         ok, orel, opct, rrel, rpct = _compare(ref, truth)
         if verbose:
             print(
@@ -194,6 +242,7 @@ def run_correctness(verbose=True):
                     what=KERNEL_ENTRY,
                 )
             except NotImplementedError:
+                raise RuntimeError("Executed candidate is unimplemented; no baseline fallback")
                 has_kernel = False
                 if verbose:
                     print(
@@ -203,6 +252,8 @@ def run_correctness(verbose=True):
                 kout = None
             if kout is not None:
                 torch.cuda.synchronize()
+                require_unchanged((input, residual, weight, bias), originals)
+                _checked_layernorm_pair(kout, input)
                 k_ok, ko, kop, kr, krp = _compare(kout, truth)
                 if verbose:
                     print(
@@ -222,10 +273,12 @@ def run_correctness(verbose=True):
     return True
 
 
-def _mean_ms(fn, warmup, iters):
+def _mean_ms(fn, warmup, iters, *, replay_validate):
+    timed = TimedRun()
     mean_ms, bench_meta = benchmark_cuda_graph_or_events(
-        fn, warmup=warmup, repetition=iters
+        fn, warmup=warmup, repetition=iters, timed_run=timed
     )
+    bench_meta.update(replay_validate(timed))
     _mean_ms.benchmark_metadata = bench_meta
     return mean_ms
 
@@ -244,6 +297,7 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
             kmod.flydsl_layernorm2d_with_add(_pi, _pr, _pw, _pb, EPS)
             del _pi, _pr, _pw, _pb
         except NotImplementedError:
+            raise RuntimeError("Executed candidate is unimplemented; no baseline fallback")
             has_kernel = False
             print(
                 "SKIP: kernel.py FlyDSL target not implemented yet "
@@ -256,13 +310,22 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
     print("-" * 56)
     for idx, shape in enumerate(SHAPES):
         input, residual, weight, bias = _make_inputs(shape)
+        originals = tuple(x.clone() for x in (input, residual, weight, bias))
         model = mmod.Model(*mmod.get_init_inputs()).to("cuda")
         with torch.no_grad():
+            expected = _checked_layernorm_pair(_aiter_op(input, residual, weight, bias), input)
+        require_unchanged((input, residual, weight, bias), originals)
+        def replay_validate(timed):
+            return _verify_layernorm_timed(
+                timed, (input, residual, weight, bias), originals, expected)
+        with torch.no_grad():
             op_ms = _mean_ms(
-                lambda: _aiter_op(input, residual, weight, bias), warmup, iters
+                lambda: _aiter_op(input, residual, weight, bias), warmup, iters,
+                replay_validate=replay_validate,
             )
             ref_ms = _mean_ms(
-                lambda: model(input, residual, weight, bias), warmup, iters
+                lambda: model(input, residual, weight, bias), warmup, iters,
+                replay_validate=replay_validate,
             )
             ref_bench_meta = _mean_ms.benchmark_metadata
             ker_ms = (
@@ -272,6 +335,7 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
                     ),
                     warmup,
                     iters,
+                    replay_validate=replay_validate,
                 )
                 if has_kernel
                 else None
@@ -340,3 +404,110 @@ if __name__ == "__main__":
         sys.exit(0)
     else:
         run_benchmark(warmup=args.warmup, iters=args.iterations)
+
+
+def _require_candidate_outputs(mod):
+    import functools
+    for name in tuple(vars(mod)):
+        target = getattr(mod, name)
+        if name.startswith("flydsl_") and callable(target):
+            @functools.wraps(target)
+            def checked(*args, __target=target, **kwargs):
+                try:
+                    result = __target(*args, **kwargs)
+                except NotImplementedError as exc:
+                    raise RuntimeError("Executed candidate is unimplemented; no baseline fallback") from exc
+                if result is None:
+                    raise RuntimeError("Candidate operator returned None; output is required")
+                return result
+            setattr(mod, name, checked)
+
+
+# V2 direct timing evidence from this invocation.
+def arena_benchmark(warmup=10, iters=100, verbose=True):
+    import torch
+
+    mmod = _load_module(_KERNEL_DIR, MODEL_FILE, "torch_model")
+    assert mmod is not None, "cannot load model.py"
+    kmod = _load_module(_KERNEL_DIR, KERNEL_FILE, "flydsl_kernel")
+    has_kernel = kmod is not None and hasattr(kmod, KERNEL_ENTRY)
+
+    if has_kernel:
+        try:
+            _pi, _pr, _pw, _pb = _make_inputs(SHAPES[0])
+            kmod.flydsl_layernorm2d_with_add(_pi, _pr, _pw, _pb, EPS)
+            del _pi, _pr, _pw, _pb
+        except NotImplementedError:
+            raise RuntimeError("Executed candidate is unimplemented; no baseline fallback")
+            has_kernel = False
+            print(
+                "SKIP: kernel.py FlyDSL target not implemented yet "
+                "(benchmarking reference instead)"
+            )
+        import torch as _t; _t.cuda.empty_cache()
+
+    latencies, report = [], []
+    print(f"{'Config':<20} {'aiter':>10} {'ref':>10} {'kernel':>10}")
+    print("-" * 56)
+    for idx, shape in enumerate(SHAPES):
+        input, residual, weight, bias = _make_inputs(shape)
+        originals = tuple(x.clone() for x in (input, residual, weight, bias))
+        model = mmod.Model(*mmod.get_init_inputs()).to("cuda")
+        with torch.no_grad():
+            expected = _checked_layernorm_pair(_aiter_op(input, residual, weight, bias), input)
+        require_unchanged((input, residual, weight, bias), originals)
+        def replay_validate(timed):
+            return _verify_layernorm_timed(
+                timed, (input, residual, weight, bias), originals, expected)
+        with torch.no_grad():
+            op_ms = _mean_ms(
+                lambda: _aiter_op(input, residual, weight, bias), warmup, iters,
+                replay_validate=replay_validate,
+            )
+            ref_ms = _mean_ms(
+                lambda: model(input, residual, weight, bias), warmup, iters,
+                replay_validate=replay_validate,
+            )
+            ref_bench_meta = _mean_ms.benchmark_metadata
+            ker_ms = (
+                _mean_ms(
+                    lambda: kmod.flydsl_layernorm2d_with_add(
+                        input, residual, weight, bias, EPS
+                    ),
+                    warmup,
+                    iters,
+                    replay_validate=replay_validate,
+                )
+                if has_kernel
+                else None
+            )
+
+        primary_ms = ker_ms if ker_ms is not None else ref_ms
+        bench_meta = _mean_ms.benchmark_metadata
+        latencies.append(primary_ms)
+        report.append({
+            "test_case_id": f"test_case_{idx}",
+            "execution_time_ms": primary_ms,
+            **bench_meta,
+            "reference_benchmark_method": ref_bench_meta["benchmark_method"],
+            "benchmark_method_consistent": bench_meta["benchmark_method"] == ref_bench_meta["benchmark_method"],
+            "shape": [shape["m"], shape["n"]],
+            "params": {"m": shape["m"], "n": shape["n"], "eps": EPS, "dtype": "bf16"},
+            "aiter_ms": op_ms,
+            "reference_ms": ref_ms,
+        })
+        if verbose:
+            ker_s = f"{ker_ms:>8.4f}ms" if ker_ms is not None else f"{'n/a':>10}"
+            print(f"{shape['name']:<20} {op_ms:>8.4f}ms {ref_ms:>8.4f}ms {ker_s}")
+        del input, residual, weight, bias, model
+        torch.cuda.empty_cache()
+
+    geomean = math.exp(sum(math.log(x) for x in latencies) / len(latencies))
+    build_dir = Path(_KERNEL_DIR) / "build"
+    build_dir.mkdir(exist_ok=True)
+    with open(build_dir / "performance_report.json", "w") as f:
+        json.dump(report, f, indent=2)
+
+    print("-" * 56)
+    print(f"Geometric mean latency: {geomean:.4f} ms")
+    return report

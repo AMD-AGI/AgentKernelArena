@@ -2,11 +2,14 @@ import json
 import logging
 from unittest import mock
 
+import pytest
+
 from src.evaluator import evaluate_kernel, write_task_result
 from src.performance import measure_baseline
 from src.testcases import (
     TestCaseResult as CaseResult,
     analyze_benchmark_method_consistency,
+    analyze_workload_consistency,
     calculate_average_speedup,
     load_performance_results,
     match_test_cases,
@@ -115,7 +118,7 @@ def test_duplicate_synthetic_semantic_keys_do_not_greedily_match():
     assert calculate_average_speedup(baseline, optimized) == 0.0
 
 
-def test_singleton_synthetic_cases_keep_index_fallback():
+def test_singleton_synthetic_cases_cannot_hide_changed_shape_with_index_fallback():
     baseline = [_case("test_case_0", 2.0, "cuda_graph", [1])]
     optimized = [_case("test_case_0", 1.0, "cuda_graph", [2])]
     baseline[0].metadata["_synthetic_test_case_id"] = True
@@ -128,7 +131,91 @@ def test_singleton_synthetic_cases_keep_index_fallback():
 
     assert consistent
     assert mismatches == []
+    assert not analyze_workload_consistency(baseline, optimized)[0]
+    assert calculate_average_speedup(baseline, optimized) == 0.0
+
+
+@pytest.mark.parametrize('change', ['shape', 'params', 'dtype', 'missing_params'])
+def test_same_case_id_cannot_hide_workload_changes(change):
+    baseline = [_case('case-a', 20.0, 'cuda_graph', [64, 1024])]
+    optimized = [_case('case-a', 1.0, 'cuda_graph', [64, 1024])]
+    for case in baseline + optimized:
+        case.metadata.update(params={'ctx_len': 1024}, dtype='bf16')
+    if change == 'shape':
+        optimized[0].shape = [64, 16]
+    elif change == 'missing_params':
+        del optimized[0].metadata['params']
+    elif change == 'params':
+        optimized[0].metadata['params'] = {'ctx_len': 16}
+    else:
+        optimized[0].metadata['dtype'] = 'fp8'
+
+    consistent, mismatches = analyze_workload_consistency(baseline, optimized)
+
+    assert not consistent
+    assert mismatches[0]['fields'] == ['params' if change == 'missing_params' else change]
+    assert calculate_average_speedup(baseline, optimized) == 0.0
+
+
+def test_identical_workloads_allow_different_timing_diagnostics():
+    baseline = [_case('a', 2.0, 'cuda_graph', [64, 1024])]
+    optimized = [_case('a', 1.0, 'cuda_graph', [64, 1024])]
+    optimized[0].metadata['benchmark_effective_repeats'] = 32
+    optimized[0].metadata['tflops'] = 10
+
+    assert analyze_workload_consistency(baseline, optimized) == (True, [])
     assert calculate_average_speedup(baseline, optimized) == 2.0
+
+
+def test_nested_workload_metadata_is_preserved_and_checked_after_reload(tmp_path):
+    for name, ctx_len in [('baseline', 1024), ('optimized', 16)]:
+        report = tmp_path / f'{name}.json'
+        report.write_text(json.dumps([{
+            'test_case_id': 'a', 'execution_time_ms': 1.0,
+            'metadata': {'params': {'ctx_len': ctx_len}, 'dtype': 'bf16',
+                         'benchmark_method': 'cuda_graph'},
+        }]))
+        cases = parse_test_cases_from_json(report)
+        save_performance_results(cases, tmp_path, f'{name}.yaml')
+    baseline = load_performance_results(tmp_path, 'baseline.yaml')
+    optimized = load_performance_results(tmp_path, 'optimized.yaml')
+
+    assert baseline[0].metadata['dtype'] == 'bf16'
+    assert baseline[0].metadata['params'] == {'ctx_len': 1024}
+    assert not analyze_workload_consistency(baseline, optimized)[0]
+    assert calculate_average_speedup(baseline, optimized) == 0.0
+
+
+def test_evaluator_reports_workload_mismatch_without_scoring_or_plotting(tmp_path):
+    from src.plotting import plot_performance_comparison
+    import yaml
+
+    baseline = [_case('a', 20.0, 'cuda_graph', [1024])]
+    optimized = [_case('a', 1.0, 'cuda_graph', [16])]
+    with (
+        mock.patch('src.evaluator.evaluate_compilation', return_value=(True, None)),
+        mock.patch('src.evaluator.evaluate_correctness', return_value=(True, None)),
+        mock.patch('src.evaluator.measure_performance', return_value=optimized),
+    ):
+        result = evaluate_kernel(tmp_path, {'task_type': 'triton2triton'}, baseline)
+
+    assert result['pass_correctness']
+    assert result['benchmark_method_consistent']
+    assert not result['workload_consistent']
+    assert result['best_optimized_execution_time'] == 1.0
+    assert result['average_speedup'] == 0.0
+    assert 'workloads differ' in result['speedup_calculation_error_message']
+    write_task_result(tmp_path, result, baseline, 'task', 'any-agent', create_plots=False)
+    written = yaml.safe_load((tmp_path / 'task_result.yaml').read_text())
+    assert written['speedup_ratio'] == 0.0
+    assert written['workload_mismatches'][0]['baseline_workload']['shape'] == [1024]
+    # An explicitly failed workload gate also wins if a caller supplies a
+    # positive ratio or omits the diagnostic message.
+    result.update(average_speedup=20.0, speedup_calculation_error_message=None)
+    write_task_result(tmp_path, result, baseline, 'task', 'any-agent', create_plots=False)
+    assert yaml.safe_load((tmp_path / 'task_result.yaml').read_text())['speedup_ratio'] == 0.0
+    save_performance_results(baseline, tmp_path, 'baseline_perf.yaml')
+    assert plot_performance_comparison(tmp_path) is None
 
 
 def test_candidate_event_fallback_cannot_switch_graph_baseline():

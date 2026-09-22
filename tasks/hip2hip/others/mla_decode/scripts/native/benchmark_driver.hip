@@ -6,6 +6,7 @@
 #define main aka_mla_candidate_main
 #include "../../mla_decode.hip"
 #undef main
+#include "output_validation.hpp"
 
 #include <cstdlib>
 #include <exception>
@@ -62,6 +63,7 @@ int main(int argc, char** argv)
         std::vector<uint8_t> h_kv(kv_e);
         std::vector<bf16> h_golden(o_e);
         std::vector<bf16> h_actual(o_e);
+        std::vector<bf16> h_reference(o_e);
         for(std::size_t i = 0; i < q_e; ++i)
         {
             const int value = static_cast<int>((i * 17U) % 31U) - 15;
@@ -72,13 +74,7 @@ int main(int argc, char** argv)
             const int value = static_cast<int>((i * 13U + 5U) % 29U) - 14;
             h_kv[i] = f32_to_fp8_e4m3fn(static_cast<float>(value) * 0.03125f);
         }
-        for(int b = 0; b < batch; ++b)
-        {
-            for(int t = 0; t < ctx; ++t)
-            {
-                h_r2t[static_cast<std::size_t>(b) * ctx + t] = b * ctx + t;
-            }
-        }
+        mla_routing_inputs(h_r2t, h_bsl, batch, ctx, kv_tokens);
 
         aka_native_perf::throw_on_hip_error(
             hipStreamCreateWithFlags(&stream, hipStreamNonBlocking), "hipStreamCreateWithFlags");
@@ -139,6 +135,27 @@ int main(int argc, char** argv)
             return hipGetLastError();
         };
 
+        host_reference(h_reference, h_q, h_kv, h_r2t, h_bsl, batch, ctx, sm_scale);
+
+        std::vector<bf16> checked_q(q_e);
+        std::vector<uint8_t> checked_kv(kv_e);
+        std::vector<int32_t> checked_r2t(r2t_e), checked_bsl(batch);
+        auto check_inputs = [&](const std::vector<bf16>& expected_q,
+                                const std::vector<uint8_t>& expected_kv,
+                                hipStream_t check_stream) -> std::string
+        {
+            hipError_t status = hipMemcpyAsync(checked_q.data(), d_q, q_e * sizeof(bf16), hipMemcpyDeviceToHost, check_stream);
+            if(status == hipSuccess) status = hipMemcpyAsync(checked_kv.data(), d_kv, kv_e, hipMemcpyDeviceToHost, check_stream);
+            if(status == hipSuccess) status = hipMemcpyAsync(checked_r2t.data(), d_r2t, r2t_e * sizeof(int32_t), hipMemcpyDeviceToHost, check_stream);
+            if(status == hipSuccess) status = hipMemcpyAsync(checked_bsl.data(), d_bsl, batch * sizeof(int32_t), hipMemcpyDeviceToHost, check_stream);
+            if(status == hipSuccess) status = hipStreamSynchronize(check_stream);
+            if(status != hipSuccess) return aka_native_perf::hip_failure("MLA input-state validation", status);
+            if(!mla_same_buffer(checked_q, expected_q) || !mla_same_buffer(checked_kv, expected_kv)
+               || !mla_same_buffer(checked_r2t, h_r2t) || !mla_same_buffer(checked_bsl, h_bsl))
+                return "MLA modified a caller-owned input";
+            return {};
+        };
+
         aka_native_perf::throw_on_hip_error(
             hipMemsetAsync(d_o, 0xFF, o_e * sizeof(bf16), stream),
             "hipMemsetAsync(o golden)");
@@ -153,38 +170,78 @@ int main(int argc, char** argv)
         auto validate = [&](hipGraphExec_t graph_exec,
                             hipStream_t validation_stream) -> std::string
         {
-            hipError_t error
-                = hipMemsetAsync(d_o, 0xFF, o_e * sizeof(bf16), validation_stream);
-            if(error == hipSuccess)
+            auto restore_inputs = [&]() -> bool
             {
-                error = graph_exec != nullptr
-                    ? hipGraphLaunch(graph_exec, validation_stream)
-                    : launch(validation_stream);
-            }
-            if(error == hipSuccess)
+                hipError_t rq = hipMemcpyAsync(d_q, h_q.data(), q_e * sizeof(bf16), hipMemcpyHostToDevice, validation_stream);
+                hipError_t rk = hipMemcpyAsync(d_kv, h_kv.data(), kv_e, hipMemcpyHostToDevice, validation_stream);
+                hipError_t ri = hipMemcpyAsync(d_r2t, h_r2t.data(), r2t_e * sizeof(int32_t), hipMemcpyHostToDevice, validation_stream);
+                hipError_t rl = hipMemcpyAsync(d_bsl, h_bsl.data(), batch * sizeof(int32_t), hipMemcpyHostToDevice, validation_stream);
+                hipError_t sync = hipStreamSynchronize(validation_stream);
+                return rq == hipSuccess && rk == hipSuccess && ri == hipSuccess && rl == hipSuccess && sync == hipSuccess;
+            };
+            return mla_with_restored_inputs([&]() -> std::string
             {
-                error = hipMemcpyAsync(h_actual.data(), d_o, o_e * sizeof(bf16),
-                                       hipMemcpyDeviceToHost, validation_stream);
-            }
-            if(error == hipSuccess)
-            {
-                error = hipStreamSynchronize(validation_stream);
-            }
-            if(error != hipSuccess)
-            {
-                return aka_native_perf::hip_failure("MLA replay validation", error);
-            }
-            for(std::size_t i = 0; i < o_e; ++i)
-            {
-                const float expected = __bfloat162float(h_golden[i]);
-                const float actual = __bfloat162float(h_actual[i]);
-                if(!std::isfinite(actual)
-                   || std::fabs(actual - expected) > 1.0e-2f)
+                // Validate the output left by the actual measured invocation before
+                // changing it, then validate the exact graph after poisoning.
+                hipError_t error = hipMemcpyAsync(h_actual.data(), d_o, o_e * sizeof(bf16),
+                                                  hipMemcpyDeviceToHost, validation_stream);
+                if(error == hipSuccess) error = hipStreamSynchronize(validation_stream);
+                if(error != hipSuccess) return aka_native_perf::hip_failure("MLA measured output", error);
+                auto decode = [](bf16 value) { return __bfloat162float(value); };
+                std::string failure = validate_mla_outputs(h_actual, h_golden, h_reference, decode);
+                if(!failure.empty()) return failure;
+                failure = check_inputs(h_q, h_kv, validation_stream);
+                if(!failure.empty()) return failure;
+                error = hipMemsetAsync(d_o, 0xFF, o_e * sizeof(bf16), validation_stream);
+                if(error == hipSuccess)
                 {
-                    return "output mismatch at element " + std::to_string(i);
+                    error = graph_exec != nullptr
+                        ? hipGraphLaunch(graph_exec, validation_stream)
+                        : launch(validation_stream);
                 }
-            }
-            return {};
+                if(error == hipSuccess)
+                {
+                    error = hipMemcpyAsync(h_actual.data(), d_o, o_e * sizeof(bf16),
+                                           hipMemcpyDeviceToHost, validation_stream);
+                }
+                if(error == hipSuccess)
+                {
+                    error = hipStreamSynchronize(validation_stream);
+                }
+                if(error != hipSuccess)
+                {
+                    return aka_native_perf::hip_failure("MLA replay validation", error);
+                }
+                failure = validate_mla_outputs(h_actual, h_golden, h_reference, decode);
+                if(!failure.empty()) return failure;
+                failure = check_inputs(h_q, h_kv, validation_stream);
+                if(!failure.empty()) return failure;
+
+                // Fresh Q=0 with mapped, token-varying KV has an independent
+                // closed-form mean. This also rejects identity addressing and
+                // reading padded tokens. The enclosing guard restores all inputs.
+                const std::vector<bf16> zero_q(q_e, __float2bfloat16(0.0f));
+                std::vector<uint8_t> control_kv(kv_e);
+                const auto means = mla_routing_known_answer(control_kv, h_r2t, h_bsl, batch, ctx, LK, f32_to_fp8_e4m3fn);
+                std::vector<bf16> expected(o_e);
+                for(int b = 0; b < batch; ++b)
+                    std::fill_n(expected.begin() + std::size_t(b) * NHEAD * LV, NHEAD * LV, __float2bfloat16(means[b]));
+                error = hipMemcpyAsync(d_q, zero_q.data(), q_e * sizeof(bf16), hipMemcpyHostToDevice, validation_stream);
+                if(error == hipSuccess) error = hipMemcpyAsync(d_kv, control_kv.data(), kv_e, hipMemcpyHostToDevice, validation_stream);
+                if(error == hipSuccess) error = hipMemsetAsync(d_o, 0xFF, o_e * sizeof(bf16), validation_stream);
+                if(error == hipSuccess) error = graph_exec != nullptr ? hipGraphLaunch(graph_exec, validation_stream) : launch(validation_stream);
+                if(error == hipSuccess) error = hipMemcpyAsync(h_actual.data(), d_o, o_e * sizeof(bf16), hipMemcpyDeviceToHost, validation_stream);
+                if(error == hipSuccess) error = hipStreamSynchronize(validation_stream);
+                if(error != hipSuccess) failure = aka_native_perf::hip_failure("MLA fresh known answer", error);
+                else
+                {
+                    // Fresh inputs use the original reference gate. The eager/replay
+                    // consistency gate above remains for the original timed inputs.
+                    failure = validate_mla_outputs(h_actual, h_actual, expected, decode);
+                }
+                if(failure.empty()) failure = check_inputs(zero_q, control_kv, validation_stream);
+                return failure;
+            }, restore_inputs);
         };
 
         const auto result = aka_native_perf::benchmark_graph_or_events(
@@ -196,7 +253,7 @@ int main(int argc, char** argv)
             /*max_repeats=*/1000,
             validate);
         const double bytes_per_launch
-            = static_cast<double>(batch) * ctx * LK
+            = static_cast<double>(std::accumulate(h_bsl.begin(), h_bsl.end(), int64_t{0})) * LK
               + static_cast<double>(batch) * NHEAD * (LK + LV) * sizeof(bf16);
         aka_native_perf::print_result_json("mla_decode", result, bytes_per_launch);
 

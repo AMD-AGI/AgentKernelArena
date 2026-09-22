@@ -1,18 +1,28 @@
-source_file_path:
-- src/assign_score_withk_cuda.hip
-target_kernel_functions:
-- assign_score_withk_forward_kernel
-- assign_score_withk_backward_points_kernel
-- assign_score_withk_backward_scores_kernel
-compile_command:
-- python3 scripts/task_runner.py compile
-correctness_command:
-- python3 scripts/task_runner.py correctness
-performance_command:
-- python3 scripts/task_runner.py performance
-task_type: hip2hip
-task_result_template: task_result_template_double_output.yaml
-prompt:
-  source_code: null
-  instructions: null
-  cheatsheet: null
+schema_version: 2
+description: Optimize the native HIP assign_score_withk implementation while preserving its protected
+  reference and full workload.
+instructions:
+- README.md
+candidate:
+  language: hip
+  initial_state: implemented
+  editable:
+  - src/assign_score_withk_cuda.hip
+  entrypoints:
+  - file: src/assign_score_withk_cuda.hip
+    kind: function
+    symbol: assign_score_withk_forward_kernel
+  - file: src/assign_score_withk_cuda.hip
+    kind: function
+    symbol: assign_score_withk_backward_points_kernel
+  - file: src/assign_score_withk_cuda.hip
+    kind: function
+    symbol: assign_score_withk_backward_scores_kernel
+baseline:
+  kind: initial_candidate
+  language: hip
+evaluation:
+  runner:
+  - python3
+  - scripts/evaluate.py
+  workloads: workload.json

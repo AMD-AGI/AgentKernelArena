@@ -1,0 +1,140 @@
+{
+  "cases": [
+    {
+      "test_case_id": "case_0000",
+      "params": {
+        "T": 2048,
+        "D": 128,
+        "is_rms": true,
+        "act": "swish",
+        "has_bias": false,
+        "seed": 42,
+        "dtype": "bfloat16"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bfloat16"
+    },
+    {
+      "test_case_id": "case_0001",
+      "params": {
+        "T": 4096,
+        "D": 128,
+        "is_rms": true,
+        "act": "swish",
+        "has_bias": false,
+        "seed": 43,
+        "dtype": "bfloat16"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bfloat16"
+    },
+    {
+      "test_case_id": "case_0002",
+      "params": {
+        "T": 8192,
+        "D": 256,
+        "is_rms": true,
+        "act": "swish",
+        "has_bias": false,
+        "seed": 44,
+        "dtype": "bfloat16"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bfloat16"
+    },
+    {
+      "test_case_id": "case_0003",
+      "params": {
+        "T": 2048,
+        "D": 512,
+        "is_rms": true,
+        "act": "swish",
+        "has_bias": false,
+        "seed": 45,
+        "dtype": "bfloat16"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bfloat16"
+    },
+    {
+      "test_case_id": "case_0004",
+      "params": {
+        "T": 1024,
+        "D": 1024,
+        "is_rms": true,
+        "act": "swish",
+        "has_bias": false,
+        "seed": 46,
+        "dtype": "bfloat16"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bfloat16"
+    },
+    {
+      "test_case_id": "case_0005",
+      "params": {
+        "T": 2048,
+        "D": 128,
+        "is_rms": true,
+        "act": "sigmoid",
+        "has_bias": false,
+        "seed": 47,
+        "dtype": "bfloat16"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bfloat16"
+    },
+    {
+      "test_case_id": "case_0006",
+      "params": {
+        "T": 2048,
+        "D": 128,
+        "is_rms": false,
+        "act": "swish",
+        "has_bias": true,
+        "seed": 48,
+        "dtype": "bfloat16"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bfloat16"
+    },
+    {
+      "test_case_id": "case_0007",
+      "params": {
+        "T": 2048,
+        "D": 768,
+        "is_rms": false,
+        "act": "swish",
+        "has_bias": true,
+        "seed": 49,
+        "dtype": "bfloat16"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bfloat16"
+    }
+  ]
+}

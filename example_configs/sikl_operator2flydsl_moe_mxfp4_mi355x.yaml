@@ -1,0 +1,17 @@
+# Reimplement an MXFP4 routed-expert MoE operator in FlyDSL. The unified Forge
+# adapter uses the same task contract as other agents. Arena evaluates the
+# task's declared cases against its reference and production AITER baseline;
+# the common exporter produces the SIKL solution from accepted results.
+# See agents/forge/README.md for the pinned engine and authentication setup.
+agent:
+  template: forge
+
+# The schema carries four MoE definitions; the others are mxfp4_moe_e257_i256,
+# mxfp4_moe_e33_i1024 and mxfp4_moe_e65_i1024. Select the whole suite with
+# `- SIKL-task`.
+tasks:
+  - SIKL-task/mxfp4_moe_e257_i128
+
+target_gpu_model: MI355X
+log_directory: logs
+workspace_directory_prefix: workspace

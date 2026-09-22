@@ -1,0 +1,92 @@
+{
+  "cases": [
+    {
+      "test_case_id": "case_0",
+      "params": {
+        "inputs": [
+          {
+            "shape": [
+              32,
+              32,
+              512
+            ],
+            "dtype": "torch.float32",
+            "stride": [
+              16384,
+              512,
+              1
+            ]
+          }
+        ],
+        "model_init_seed": 0,
+        "correctness_seed": 1337
+      }
+    },
+    {
+      "test_case_id": "case_1",
+      "params": {
+        "inputs": [
+          {
+            "shape": [
+              64,
+              64,
+              512
+            ],
+            "dtype": "torch.float32",
+            "stride": [
+              32768,
+              512,
+              1
+            ]
+          }
+        ],
+        "model_init_seed": 0,
+        "correctness_seed": 1338
+      }
+    },
+    {
+      "test_case_id": "case_2",
+      "params": {
+        "inputs": [
+          {
+            "shape": [
+              128,
+              64,
+              512
+            ],
+            "dtype": "torch.float32",
+            "stride": [
+              32768,
+              512,
+              1
+            ]
+          }
+        ],
+        "model_init_seed": 0,
+        "correctness_seed": 1339
+      }
+    },
+    {
+      "test_case_id": "case_3",
+      "params": {
+        "inputs": [
+          {
+            "shape": [
+              128,
+              128,
+              512
+            ],
+            "dtype": "torch.float32",
+            "stride": [
+              65536,
+              512,
+              1
+            ]
+          }
+        ],
+        "model_init_seed": 0,
+        "correctness_seed": 1340
+      }
+    }
+  ]
+}

@@ -5,16 +5,16 @@ from typing import Callable
 from agents import AGENT_REGISTRY
 
 
+AGENT_ALIASES = {"geak_v4": "geak", "forge_operator2flydsl": "forge"}
+
+
 class AgentType(Enum):
     """Enumeration of supported agent types."""
     CURSOR = "cursor"
     CLAUDE_CODE = "claude_code"
     CODEX = "codex"
     TASK_VALIDATOR = "task_validator"
-    GEAK_V4 = "geak_v4"
-    GEAK_V3 = "geak_v3"
-    GEAK_V3_TRITON = "geak_v3_triton"
-    MINI_SWE_TRITON = "mini_swe_triton"
+    GEAK = "geak"
     FORGE = "forge"
 
     @classmethod
@@ -31,11 +31,11 @@ class AgentType(Enum):
         Raises:
             ValueError: If agent_string is not a valid agent type
         """
-        # Normalize the string (lowercase, replace underscores with hyphens for matching)
-        normalized = agent_string.lower().replace('_', '-')
+        normalized = agent_string.lower().replace("-", "_")
+        normalized = AGENT_ALIASES.get(normalized, normalized)
 
         for agent_type in cls:
-            if agent_type.value.replace('_', '-') == normalized:
+            if agent_type.value == normalized:
                 return agent_type
 
         # If no match found, raise error with available options
@@ -67,14 +67,8 @@ def load_agent_launcher(agent_type: AgentType, logger: logging.Logger) -> Callab
             from agents.codex import launch_agent  # noqa: F401
         elif agent_type == AgentType.TASK_VALIDATOR:
             from agents.task_validator import launch_agent  # noqa: F401
-        elif agent_type == AgentType.GEAK_V4:
-            from agents.geak_v4 import launch_agent  # noqa: F401
-        elif agent_type == AgentType.GEAK_V3:
-            from agents.geak_v3 import launch_agent  # noqa: F401
-        elif agent_type == AgentType.GEAK_V3_TRITON:
-            from agents.geak_v3_triton import launch_agent  # noqa: F401
-        elif agent_type == AgentType.MINI_SWE_TRITON:
-            from agents.mini_swe_triton import launch_agent  # noqa: F401
+        elif agent_type == AgentType.GEAK:
+            from agents.geak import launch_agent  # noqa: F401
         elif agent_type == AgentType.FORGE:
             from agents.forge import launch_agent  # noqa: F401
     except ImportError as e:
@@ -112,7 +106,7 @@ def load_post_processing_handler(agent_type: AgentType, logger: logging.Logger) 
         from agents.task_validator.validation_postprocessing import validation_post_processing
         logger.info(f"Using validation_post_processing for agent: {agent_name}")
         return validation_post_processing
-    elif agent_type in [AgentType.CURSOR, AgentType.CLAUDE_CODE, AgentType.CODEX, AgentType.GEAK_V4, AgentType.GEAK_V3, AgentType.GEAK_V3_TRITON, AgentType.MINI_SWE_TRITON, AgentType.FORGE]:
+    elif agent_type in [AgentType.CURSOR, AgentType.CLAUDE_CODE, AgentType.CODEX, AgentType.GEAK, AgentType.FORGE]:
         logger.info(f"Using general_post_processing for agent: {agent_name}")
         return general_post_processing
     else:
@@ -138,7 +132,7 @@ def load_prompt_builder(agent_type: AgentType, logger: logging.Logger) -> Callab
     agent_name = agent_type.value
 
     # Map agents to their prompt builder functions
-    if agent_type in [AgentType.CURSOR, AgentType.CLAUDE_CODE, AgentType.CODEX, AgentType.GEAK_V4]:
+    if agent_type in [AgentType.CURSOR, AgentType.CLAUDE_CODE, AgentType.CODEX]:
         logger.info(f"Using standard prompt_builder for agent: {agent_name}")
         return prompt_builder
     else:

@@ -81,7 +81,7 @@ def test_timed_run_fails_closed_without_cuda(monkeypatch):
 
     monkeypatch.setattr(torch.cuda, "is_available", lambda: False)
 
-    with pytest.raises(RuntimeError, match="requires an observable CUDA-graph replay"):
+    with pytest.raises(RuntimeError, match="CPU wall-clock timing is not a valid"):
         _benchmark_cuda_graph_or_events(
             lambda: None,
             warmup=0,
@@ -90,7 +90,9 @@ def test_timed_run_fails_closed_without_cuda(monkeypatch):
         )
 
 
-def test_timed_run_fails_closed_when_cuda_graph_is_disabled(monkeypatch):
+def test_adapter_timed_run_observes_explicit_gpu_event_output(monkeypatch):
+    from contextlib import nullcontext
+    from types import SimpleNamespace
     import torch
 
     from src.tools.perf.vllm_cuda_graph_block import (
@@ -100,15 +102,19 @@ def test_timed_run_fails_closed_when_cuda_graph_is_disabled(monkeypatch):
 
     monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
     monkeypatch.setattr(torch.cuda, "synchronize", lambda: None)
-
-    with pytest.raises(RuntimeError, match="CUDA-graph timing is disabled"):
-        _benchmark_cuda_graph_or_events(
-            lambda: None,
-            warmup=0,
-            repetition=1,
-            use_cuda_graph=False,
-            timed_run=_TimedRun(),
-        )
+    stream = SimpleNamespace(wait_stream=lambda other: None)
+    monkeypatch.setattr(torch.cuda, "current_stream", lambda: stream)
+    monkeypatch.setattr(torch.cuda, "stream", lambda other: nullcontext())
+    monkeypatch.setattr(torch.cuda, "Event", lambda **kwargs: SimpleNamespace(
+        record=lambda: None, synchronize=lambda: None, elapsed_time=lambda end: .2))
+    output = object()
+    timed = _TimedRun()
+    _, metadata = _benchmark_cuda_graph_or_events(
+        lambda: output, warmup=0, repetition=1, use_cuda_graph=False, timed_run=timed,
+    )
+    assert metadata["benchmark_method"] == "cuda_event_fallback"
+    assert metadata["benchmark_timed_run_kind"] == "eager_callable"
+    assert timed.outputs is output and timed.rerun() is output
 
 
 def test_device_timing_preferred_over_host_time(tmp_path):

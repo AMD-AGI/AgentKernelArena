@@ -1,0 +1,75 @@
+"""Small independent known answers for protected numerical references.
+
+These controls are not workload replacements and produce no benchmark score.
+"""
+import math
+import torch
+
+
+def equal(actual, expected):
+    torch.testing.assert_close(actual.float(), expected.float(), atol=0.004, rtol=0.004)
+
+
+def rejects(check, bad):
+    try:
+        check(bad)
+    except (AssertionError, ValueError):
+        return
+    raise AssertionError("Task comparison accepted the deliberately wrong control")
+
+
+def attention_data():
+    query = torch.tensor([[[math.log(3), 0.], [0., math.log(3)]]])
+    key = torch.tensor([[[[0., 0.]], [[1., 0.]]]])
+    value = torch.tensor([[[[2., 4.]], [[6., 8.]]]])
+    expected = torch.tensor([[[5., 7.], [4., 6.]]])
+    return {"query":query, "key":key, "value":value,
+            "output":torch.empty_like(query), "scale":1., "ctx_len":2,
+            "sliding_window":0}, expected
+
+
+def moe_data(activation):
+    x = torch.tensor([[1., 2.], [-1., 1.]], dtype=torch.bfloat16)
+    w1 = torch.tensor([[[1., 0.], [0., 1.]], [[0., 1.], [1., 0.]]], dtype=torch.bfloat16)
+    w2 = torch.tensor([[[1.], [2.]], [[3.], [-1.]]], dtype=torch.bfloat16)
+    ids = torch.tensor([[0,1],[1,0]])
+    weights = torch.tensor([[0.25,0.75],[0.6,0.4]])
+    expected = torch.zeros(2,2)
+    for t in range(2):
+        for slot in range(2):
+            e=int(ids[t,slot]);a,b=map(float,x[t]);gate,up=(a,b) if e==0 else (b,a)
+            if activation=='gelu_tanh':g=0.5*gate*(1+math.tanh(math.sqrt(2/math.pi)*(gate+0.044715*gate**3)))*up
+            elif activation=='situv2':g=4*math.tanh(gate/4)/(1+math.exp(-gate))*25*math.tanh(up/25)
+            elif activation=='swiglu':g=gate/(1+math.exp(-1.702*gate))*(up+1)
+            else:g=gate/(1+math.exp(-gate))*up
+            # This reference stores stage1 as BF16 before the down projection.
+            # Round the independent scalar answer at the same public boundary.
+            g = float(torch.tensor(g, dtype=torch.bfloat16))
+            expected[t,0]+=g*float(w2[e,0,0])*float(weights[t,slot])
+            expected[t,1]+=g*float(w2[e,1,0])*float(weights[t,slot])
+    inputs={"x":x,"hidden":x,"w1":w1,"w2":w2,"w1_deq":w1,"w2_deq":w2,
+            "topk_ids":ids,"topk_weights":weights,"inter":1,"activation":activation}
+    return inputs,expected.to(torch.bfloat16)
+
+
+def assert_relative_error(h,got,expected,tol):
+    assert h._relerr(got,expected)<tol
+
+
+def check_reference(h):
+    import aiter
+    from aiter.fused_moe import torch_moe_stage1,torch_moe_stage2
+    # Exercise the actual GPT-OSS activation, including its up+1 term.
+    # The former SiLU control did not cover this task's SwiGLU reference path.
+    inputs,expected=moe_data('swiglu')
+    activation=aiter.ActivationType.Swiglu
+    kwargs={"dtype":torch.bfloat16,"activation":activation,"quant_type":aiter.QuantType.No}
+    a=torch_moe_stage1(inputs["x"],inputs["w1"],inputs["w2"],inputs["topk_weights"],inputs["topk_ids"],**kwargs)
+    actual=torch_moe_stage2(a,inputs["w1"],inputs["w2"],inputs["topk_weights"],inputs["topk_ids"],dtype=torch.bfloat16,quant_type=aiter.QuantType.No)
+    equal(actual,expected)
+    # Exercise the actual task predicate, including amplitude. Cosine alone
+    # would accept every positive scaling of this independent known answer.
+    h._assert_ck_close(inputs, actual, expected)
+    for bad in (torch.zeros_like(expected), expected * 2, expected * 0.5):
+        rejects(lambda bad: h._assert_ck_close(inputs, bad, expected), bad)
+    return {"known_answer": "PASS", "negative_control": "PASS", "scored": False}

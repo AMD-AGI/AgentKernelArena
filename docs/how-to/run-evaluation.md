@@ -140,7 +140,7 @@ make docker-parallel-run \
 ```
 
 The Docker parallel path is verified for `cursor`, `claude_code`, `codex`, and
-`task_validator`. Specialized GEAK/mini-swe templates require their own
+`task_validator`. Other integrations require their documented runtime
 dependencies and worker-visible GPU configuration. See
 [Run tasks in parallel across multiple GPUs](parallel-run.md) for scheduling,
 GPU isolation, resume behavior, and failure handling.
@@ -152,7 +152,7 @@ flowchart TD
     A[Load run configuration] --> B[Register agent launcher]
     B --> C[Discover tasks]
     C --> D[Create timestamped workspace per task]
-    D --> E[Measure baseline performance]
+    D --> E[Validate task and initial state; freeze and evaluate baseline]
     E --> F[Launch agent in workspace]
     F --> G[Evaluate: compile, correctness, performance]
     G --> H[Write task_result.yaml + score]
@@ -161,9 +161,11 @@ flowchart TD
 
 For each task, the framework:
 
-1. Copies the task into an isolated, timestamped workspace.
-2. Measures a *baseline* (compiles and times the original kernel; for
-   `torch2hip` tasks it times the PyTorch reference directly).
+1. Copies the task and materializes declared sources in an isolated workspace.
+2. Uses `TaskSession` to validate the manifest and initial state, freeze the
+   declared baseline, and run baseline compile, correctness, and performance.
+   The task config selects a provided or initial-candidate baseline; an
+   unimplemented candidate is allowed only during initial validation.
 3. Launches the configured agent with a generated prompt.
 4. Evaluates the agent's kernel for compilation, correctness, and performance.
 5. Writes a standardized `task_result.yaml` and computes a score.
@@ -171,9 +173,10 @@ For each task, the framework:
 After all tasks finish, a post-processing step aggregates the per-task results
 into a run report.
 
-`task_validator` uses a separate path: it skips baseline measurement and kernel
-scoring, writes `validation_report.yaml` per task, and aggregates a
-`validation_summary.yaml`.
+`task_validator` runs the same initial task/baseline/candidate checks and reviews
+their captured evidence. It performs no optimization or kernel scoring; it
+writes a framework-finalized `validation_report.yaml` per task and aggregates
+a `validation_summary.yaml`.
 
 Run the same configuration again with one agent capability changed and a new
 `--run-suffix` to form a controlled A/B pair. See

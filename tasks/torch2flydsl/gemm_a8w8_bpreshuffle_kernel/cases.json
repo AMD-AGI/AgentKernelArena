@@ -1,0 +1,84 @@
+{
+  "cases": [
+    {
+      "test_case_id": "case_0000",
+      "params": {
+        "m": 16,
+        "n": 5120,
+        "k": 1280,
+        "tile_m": 16,
+        "tile_n": 64,
+        "tile_k": 256,
+        "seed": 20260401
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0001",
+      "params": {
+        "m": 64,
+        "n": 5120,
+        "k": 1280,
+        "tile_m": 32,
+        "tile_n": 64,
+        "tile_k": 256,
+        "seed": 20260401
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0002",
+      "params": {
+        "m": 512,
+        "n": 5120,
+        "k": 1280,
+        "tile_m": 128,
+        "tile_n": 128,
+        "tile_k": 256,
+        "seed": 20260401
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0003",
+      "params": {
+        "m": 1024,
+        "n": 8192,
+        "k": 1024,
+        "tile_m": 128,
+        "tile_n": 128,
+        "tile_k": 128,
+        "seed": 20260401
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0004",
+      "params": {
+        "m": 2048,
+        "n": 5120,
+        "k": 1280,
+        "tile_m": 128,
+        "tile_n": 128,
+        "tile_k": 256,
+        "seed": 20260401
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    }
+  ]
+}

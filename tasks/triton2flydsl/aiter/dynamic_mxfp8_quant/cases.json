@@ -1,0 +1,145 @@
+{
+  "cases": [
+    {
+      "test_case_id": "case_0000",
+      "params": {
+        "shape": [
+          1,
+          32
+        ],
+        "seed": 20
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0001",
+      "params": {
+        "shape": [
+          1,
+          128
+        ],
+        "seed": 20
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0002",
+      "params": {
+        "shape": [
+          8,
+          64
+        ],
+        "seed": 20
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0003",
+      "params": {
+        "shape": [
+          16,
+          128
+        ],
+        "seed": 20
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0004",
+      "params": {
+        "shape": [
+          32,
+          256
+        ],
+        "seed": 20
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0005",
+      "params": {
+        "shape": [
+          64,
+          512
+        ],
+        "seed": 20
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0006",
+      "params": {
+        "shape": [
+          128,
+          1024
+        ],
+        "seed": 20
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0007",
+      "params": {
+        "shape": [
+          137,
+          64
+        ],
+        "seed": 20
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0008",
+      "params": {
+        "shape": [
+          256,
+          32
+        ],
+        "seed": 20
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0009",
+      "params": {
+        "shape": [
+          4,
+          8,
+          128
+        ],
+        "seed": 20
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    }
+  ]
+}

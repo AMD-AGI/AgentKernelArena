@@ -19,6 +19,16 @@ SPEC = json.loads((WORKSPACE / "session_cases.json").read_text())
 OPERATOR = SPEC["operator"]
 CASES = SPEC["cases"]
 
+# Extra semantic coverage; the original three scored cases remain unchanged.
+RAGGED_CASES = [
+    {"id": f"dsv4-ragged-boundaries-sq{sq}", "params": {
+        "num_queries": sq, "num_heads": 64, "head_dim": 512,
+        "nope_head_dim": 448, "rope_head_dim": 64, "num_kv": 4096,
+        "topk": 512, "dtype": "bf16",
+        "row_lengths": [0, 1, 15, 16, 17, 31, 32, 33, 127, 255, 511, 512],
+    }} for sq in (64, 1073)
+]
+
 # Queries processed per reference chunk. Bounds the gathered
 # (chunk, per_q, head_dim) float buffer, which dominates reference memory.
 _REFERENCE_QUERY_CHUNK = 512
@@ -108,7 +118,7 @@ def _make(case: dict) -> dict:
     )
     kv = torch.randn((num_kv, head_dim), device="cuda", dtype=dtype)
 
-    # Ragged CSR sparse selection: each query attends to `per_q` KV positions.
+    # Historical scored CSR selection: every row has the same `per_q` length.
     idx = torch.randint(
         0, num_kv, (num_queries, per_q), device="cuda"
     )
@@ -131,6 +141,22 @@ def _make(case: dict) -> dict:
     }
 
 
+def _make_ragged(case: dict) -> dict:
+    inputs = _make(case)
+    torch = _torch()
+    params = case["params"]
+    lengths = torch.tensor(params["row_lengths"], device="cuda", dtype=torch.int32)
+    lengths = lengths[torch.arange(params["num_queries"], device="cuda") % lengths.numel()]
+    torch.manual_seed(53)
+    slots = torch.randint(0, params["num_kv"],
+                          (params["num_queries"], params["topk"]), device="cuda")
+    slots = slots.sort(dim=1).values
+    mask = torch.arange(params["topk"], device="cuda")[None, :] < lengths[:, None]
+    inputs["indices"] = slots[mask].to(torch.int32).contiguous()
+    inputs["indptr"] = torch.cat((lengths.new_zeros(1), lengths.cumsum(0).to(torch.int32)))
+    return inputs
+
+
 def _run(inputs: dict):
     return inputs["module"]._rocm_sparse_attn_prefill_ragged_triton(
         inputs["q"],
@@ -145,15 +171,11 @@ def _run(inputs: dict):
 
 
 def _reference(inputs: dict):
-    """Sparse MLA attention reference: gather the selected KV, then dense attend.
+    """FP32 gather/softmax oracle supporting nonuniform and empty CSR rows.
 
-    ``_make`` emits a uniform CSR (every query selects the same ``per_q``
-    positions), so this batches into gather + einsum instead of walking queries in
-    Python. The loop it replaces synchronised on ``indptr`` once per query, which
-    is what made a full-shape correctness run impractical.
-
-    Queries are chunked because the gathered KV is ``(chunk, per_q, head_dim)``
-    floats, which reaches tens of GB at the scored shape if done in one go.
+    Group equal row lengths and chunk queries to bound reference memory. The
+    historical uniform cases retain the same gather/einsum arithmetic. Empty
+    rows have zero output, matching the no-attention-sink operator contract.
     """
     torch = _torch()
     q = inputs["q"]  # (sq, H, D) bf16
@@ -162,21 +184,26 @@ def _reference(inputs: dict):
     scale = inputs["scale"]
 
     sq = q.shape[0]
-    widths = (indptr[1:] - indptr[:-1]).unique()
-    assert widths.numel() == 1, "reference expects a uniform CSR from _make"
-    per_q = int(widths.item())
-    sel = inputs["indices"].view(sq, per_q).long()
-
-    out = torch.empty_like(q)
+    lengths = indptr[1:] - indptr[:-1]
+    if (indptr.numel() != sq + 1 or int(indptr[0]) != 0
+            or int(indptr[-1]) != inputs["indices"].numel() or bool((lengths < 0).any())):
+        raise ValueError("Invalid CSR offsets")
+    if bool(((inputs["indices"] < 0) | (inputs["indices"] >= kv.shape[0])).any()):
+        raise ValueError("Task CSR indices must select valid KV rows")
+    out = torch.zeros_like(q)
     chunk = max(1, min(sq, _REFERENCE_QUERY_CHUNK))
-    for start in range(0, sq, chunk):
-        stop = min(start + chunk, sq)
-        kv_sel = kv[sel[start:stop]]  # (c, per_q, D), latent is both K and V
-        scores = (
-            torch.einsum("qhd,qkd->qhk", q[start:stop].float(), kv_sel) * scale
-        )
-        probs = torch.softmax(scores, dim=-1)
-        out[start:stop] = torch.einsum("qhk,qkd->qhd", probs, kv_sel).to(out.dtype)
+    for width in lengths.unique().tolist():
+        if width == 0:
+            continue
+        rows = torch.where(lengths == width)[0]
+        offsets = torch.arange(width, device=q.device)
+        for start in range(0, rows.numel(), chunk):
+            batch = rows[start:start + chunk]
+            positions = indptr[batch, None].long() + offsets[None, :]
+            kv_sel = kv[inputs["indices"][positions].long()]
+            scores = torch.einsum("qhd,qkd->qhk", q[batch].float(), kv_sel) * scale
+            probs = torch.softmax(scores, dim=-1)
+            out[batch] = torch.einsum("qhk,qkd->qhd", probs, kv_sel).to(out.dtype)
     return out
 
 
@@ -285,6 +312,7 @@ def run_performance() -> None:
             bench_meta.get("benchmark_fallback_reason", ""),
         )
     _write_report(rows)
+    return rows
 
 
 def main() -> None:

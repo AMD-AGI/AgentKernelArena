@@ -1,0 +1,159 @@
+{
+  "cases": [
+    {
+      "test_case_id": "case_0",
+      "params": {
+        "inputs": [
+          {
+            "shape": [
+              2048,
+              1537
+            ],
+            "dtype": "torch.float32",
+            "stride": [
+              1537,
+              1
+            ]
+          },
+          {
+            "shape": [
+              1537,
+              1024
+            ],
+            "dtype": "torch.float32",
+            "stride": [
+              1024,
+              1
+            ]
+          }
+        ],
+        "model_init_seed": 0,
+        "correctness_seed": 1337
+      }
+    },
+    {
+      "test_case_id": "case_1",
+      "params": {
+        "inputs": [
+          {
+            "shape": [
+              4099,
+              1537
+            ],
+            "dtype": "torch.float32",
+            "stride": [
+              1537,
+              1
+            ]
+          },
+          {
+            "shape": [
+              1537,
+              2053
+            ],
+            "dtype": "torch.float32",
+            "stride": [
+              2053,
+              1
+            ]
+          }
+        ],
+        "model_init_seed": 0,
+        "correctness_seed": 1338
+      }
+    },
+    {
+      "test_case_id": "case_2",
+      "params": {
+        "inputs": [
+          {
+            "shape": [
+              6151,
+              2049
+            ],
+            "dtype": "torch.float32",
+            "stride": [
+              2049,
+              1
+            ]
+          },
+          {
+            "shape": [
+              2049,
+              4097
+            ],
+            "dtype": "torch.float32",
+            "stride": [
+              4097,
+              1
+            ]
+          }
+        ],
+        "model_init_seed": 0,
+        "correctness_seed": 1339
+      }
+    },
+    {
+      "test_case_id": "case_3",
+      "params": {
+        "inputs": [
+          {
+            "shape": [
+              8205,
+              2949
+            ],
+            "dtype": "torch.float32",
+            "stride": [
+              2949,
+              1
+            ]
+          },
+          {
+            "shape": [
+              2949,
+              5921
+            ],
+            "dtype": "torch.float32",
+            "stride": [
+              5921,
+              1
+            ]
+          }
+        ],
+        "model_init_seed": 0,
+        "correctness_seed": 1340
+      }
+    },
+    {
+      "test_case_id": "case_4",
+      "params": {
+        "inputs": [
+          {
+            "shape": [
+              5921,
+              4096
+            ],
+            "dtype": "torch.float32",
+            "stride": [
+              4096,
+              1
+            ]
+          },
+          {
+            "shape": [
+              4096,
+              3072
+            ],
+            "dtype": "torch.float32",
+            "stride": [
+              3072,
+              1
+            ]
+          }
+        ],
+        "model_init_seed": 0,
+        "correctness_seed": 1341
+      }
+    }
+  ]
+}

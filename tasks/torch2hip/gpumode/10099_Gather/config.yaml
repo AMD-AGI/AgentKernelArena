@@ -1,23 +1,34 @@
-source_file_path:
-- pytorch_code_module/py_10099_Gather.py
-target_kernel_functions:
-- forward
-compile_command:
-- python3 eval_tools/compile.py --hip_file hip/hip_10099_Gather.hip
-correctness_command:
-- python3 eval_tools/correctness_check.py --py_modu_file pytorch_code_module/py_10099_Gather.py
-  --py_func_file pytorch_code_functional/py_10099_Gather_func.py --hip_file hip/hip_10099_Gather.hip
-performance_command:
-- python3 eval_tools/cal_kernel_perf.py --py_modu_file pytorch_code_module/py_10099_Gather.py
-  --py_func_file pytorch_code_functional/py_10099_Gather_func.py --hip_file hip/hip_10099_Gather.hip
-prompt:
-  source_code: null
-  instructions: You are a hip expert and good at gpu kernel implementation. Please
-    implemnt a target HIP kernel code corresponding to pytorch modullle code provided
-    as followings, which includes hip kernel, kernel laucher and python bliding code
-    for the hip launcher.
-  task_type: null
-  cheatsheet: null
-target_file_path: hip/hip_10099_Gather.hip
-task_type: torch2hip
-task_result_template: null
+schema_version: 2
+description: Implement Gather in HIP; preserve all declared input cases and the protected reference contract.
+instructions:
+- README.md
+candidate:
+  language: hip
+  initial_state: unimplemented
+  editable:
+  - hip/hip_10099_Gather.hip
+  entrypoints:
+  - file: hip/hip_10099_Gather.hip
+    kind: function
+    symbol: forward
+baseline:
+  kind: provided
+  language: pytorch
+  source_files:
+  - pytorch_code_module/py_10099_Gather.py
+  - pytorch_code_functional/py_10099_Gather_func.py
+evaluation:
+  runner:
+  - python3
+  - eval_tools/evaluate.py
+  - --candidate
+  - hip/hip_10099_Gather.hip
+  - --module
+  - pytorch_code_module/py_10099_Gather.py
+  - --functional
+  - pytorch_code_functional/py_10099_Gather_func.py
+  - --model-class
+  - Gather
+  - --initial-state
+  - unimplemented
+  workloads: workload.json

@@ -1,23 +1,34 @@
-source_file_path:
-- pytorch_code_module/py_l1n23_Softmax.py
-target_kernel_functions:
-- forward
-compile_command:
-- python3 eval_tools/compile.py --hip_file hip/hip_l1n23_Softmax.hip
-correctness_command:
-- python3 eval_tools/correctness_check.py --py_modu_file pytorch_code_module/py_l1n23_Softmax.py
-  --py_func_file pytorch_code_functional/py_l1n23_Softmax_func.py --hip_file hip/hip_l1n23_Softmax.hip
-performance_command:
-- python3 eval_tools/cal_kernel_perf.py --py_modu_file pytorch_code_module/py_l1n23_Softmax.py
-  --py_func_file pytorch_code_functional/py_l1n23_Softmax_func.py --hip_file hip/hip_l1n23_Softmax.hip
-prompt:
-  source_code: null
-  instructions: You are a HIP expert skilled at GPU kernel implementation. Please
-    implement target HIP kernel code corresponding to the provided PyTorch module,
-    including the HIP kernel, kernel launcher, and Python binding code
-    for the HIP launcher.
-  task_type: null
-  cheatsheet: null
-target_file_path: hip/hip_l1n23_Softmax.hip
-task_type: torch2hip
-task_result_template: null
+schema_version: 2
+description: Implement Softmax in HIP; preserve all declared input cases and the protected reference contract.
+instructions:
+- README.md
+candidate:
+  language: hip
+  initial_state: unimplemented
+  editable:
+  - hip/hip_l1n23_Softmax.hip
+  entrypoints:
+  - file: hip/hip_l1n23_Softmax.hip
+    kind: function
+    symbol: forward
+baseline:
+  kind: provided
+  language: pytorch
+  source_files:
+  - pytorch_code_module/py_l1n23_Softmax.py
+  - pytorch_code_functional/py_l1n23_Softmax_func.py
+evaluation:
+  runner:
+  - python3
+  - eval_tools/evaluate.py
+  - --candidate
+  - hip/hip_l1n23_Softmax.hip
+  - --module
+  - pytorch_code_module/py_l1n23_Softmax.py
+  - --functional
+  - pytorch_code_functional/py_l1n23_Softmax_func.py
+  - --model-class
+  - Softmax
+  - --initial-state
+  - unimplemented
+  workloads: workload.json

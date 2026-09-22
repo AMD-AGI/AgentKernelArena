@@ -133,9 +133,13 @@ def run_correctness():
     return True, None
 
 
-def _time_kernel(fn, n_warmup=10, n_iter=100):
-    return benchmark_cuda_graph_or_events(
-        fn, warmup=n_warmup, repetition=n_iter,
+def _time_kernel(fn, inputs, expected, n_warmup=10, n_iter=100):
+    from replay_validation import measure
+    from reference_checks import close
+    return measure(
+        benchmark_cuda_graph_or_events, fn, inputs,
+        lambda actual: close(actual, expected, gpu=True),
+        warmup=n_warmup, repetition=n_iter,
         use_cuda_graph=HIP_GRAPH_ENABLED,
         fallback_reason=HIP_GRAPH_FALLBACK_REASON,
     )
@@ -157,16 +161,24 @@ def run_performance():
         boxes_rotated[:, :, 6] = torch.rand(B, T, device=boxes.device) * 3.14
 
         # Perf1: points_in_boxes_part with standard boxes
-        ms_part_std, meta_part_std = _time_kernel(lambda: points_in_boxes_part(points, boxes))
+        expected_part_std = cpu_points_in_boxes_part(points.cpu(), boxes.cpu())
+        ms_part_std, meta_part_std = _time_kernel(lambda: points_in_boxes_part(points, boxes),
+                                                 (points, boxes), expected_part_std)
 
         # Perf2: points_in_boxes_part with rotated boxes
-        ms_part_rot, meta_part_rot = _time_kernel(lambda: points_in_boxes_part(points, boxes_rotated))
+        expected_part_rot = cpu_points_in_boxes_part(points.cpu(), boxes_rotated.cpu())
+        ms_part_rot, meta_part_rot = _time_kernel(lambda: points_in_boxes_part(points, boxes_rotated),
+                                                 (points, boxes_rotated), expected_part_rot)
 
         # Perf3: points_in_boxes_all with standard boxes
-        ms_all_std, meta_all_std = _time_kernel(lambda: points_in_boxes_all(points, boxes))
+        expected_all_std = cpu_points_in_boxes_all(points.cpu(), boxes.cpu())
+        ms_all_std, meta_all_std = _time_kernel(lambda: points_in_boxes_all(points, boxes),
+                                               (points, boxes), expected_all_std)
 
         # Perf4: points_in_boxes_all with rotated boxes
-        ms_all_rot, meta_all_rot = _time_kernel(lambda: points_in_boxes_all(points, boxes_rotated))
+        expected_all_rot = cpu_points_in_boxes_all(points.cpu(), boxes_rotated.cpu())
+        ms_all_rot, meta_all_rot = _time_kernel(lambda: points_in_boxes_all(points, boxes_rotated),
+                                               (points, boxes_rotated), expected_all_rot)
 
         test_cases.append({
             "test_case_id": f"shape_{shape_idx}_part_standard",

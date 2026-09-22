@@ -1,0 +1,167 @@
+{
+  "cases": [
+    {
+      "test_case_id": "case_0000",
+      "params": {
+        "ndim": 3,
+        "B": 1,
+        "T": 1024,
+        "H": 16,
+        "reverse": false,
+        "scale": null,
+        "seed": 42
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0001",
+      "params": {
+        "ndim": 3,
+        "B": 1,
+        "T": 4096,
+        "H": 32,
+        "reverse": false,
+        "scale": null,
+        "seed": 43
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0002",
+      "params": {
+        "ndim": 3,
+        "B": 2,
+        "T": 512,
+        "H": 16,
+        "reverse": false,
+        "scale": null,
+        "seed": 44
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0003",
+      "params": {
+        "ndim": 3,
+        "B": 1,
+        "T": 1000,
+        "H": 32,
+        "reverse": false,
+        "scale": null,
+        "seed": 45
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0004",
+      "params": {
+        "ndim": 3,
+        "B": 4,
+        "T": 256,
+        "H": 16,
+        "reverse": false,
+        "scale": null,
+        "seed": 46
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0005",
+      "params": {
+        "ndim": 3,
+        "B": 1,
+        "T": 1024,
+        "H": 16,
+        "reverse": true,
+        "scale": null,
+        "seed": 47
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0006",
+      "params": {
+        "ndim": 3,
+        "B": 1,
+        "T": 1024,
+        "H": 16,
+        "reverse": false,
+        "scale": 0.5,
+        "seed": 48
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0007",
+      "params": {
+        "ndim": 4,
+        "B": 1,
+        "T": 512,
+        "H": 8,
+        "S": 64,
+        "reverse": false,
+        "scale": null,
+        "seed": 49
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0008",
+      "params": {
+        "ndim": 4,
+        "B": 1,
+        "T": 1024,
+        "H": 4,
+        "S": 128,
+        "reverse": false,
+        "scale": null,
+        "seed": 50
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0009",
+      "params": {
+        "ndim": 4,
+        "B": 2,
+        "T": 256,
+        "H": 8,
+        "S": 64,
+        "reverse": true,
+        "scale": null,
+        "seed": 51
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    }
+  ]
+}

@@ -107,7 +107,6 @@ def compile_kernel_sub_for_test(): # Renamed to be specific
 def test_compile_kernel_sub_in_subproc(fresh_triton_cache, request) -> None: # Test name updated for clarity
 
     set_seed()
-    pytest.skip("Skipping ASTSource compile-in-subprocess check on Triton 3.3 due to known API/compiler instability; numerical correctness tests cover kernel behavior.")
     
     try:
         multiprocessing.set_start_method('fork', force=True)

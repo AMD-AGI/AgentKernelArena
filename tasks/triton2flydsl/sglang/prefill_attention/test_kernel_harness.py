@@ -17,13 +17,16 @@ import json
 import time
 import argparse
 import importlib.util
-from _aka_benchmark import benchmark_cuda_graph_or_events
+from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
+from scripts.replay_checks import require_tensor_contract, require_unchanged, verify_timed_run
 
 TASK_DIR = os.path.dirname(os.path.abspath(__file__))
 os.chdir(TASK_DIR)
 
 TASK_NAME = "triton2flydsl/sglang/prefill_attention"
-SOURCE_FILE = os.path.join(TASK_DIR, "prefill_attention.py")
+from task_runtime import candidate_relative_path
+SOURCE_FILE = candidate_relative_path()
+ENTRY = 'context_attention_fwd'
 
 # Varlen prefill: list of per-batch sequence lengths, q heads, kv heads, head_dim,
 # causal flag. GQA group = head // kv_head.
@@ -44,6 +47,7 @@ MAX_OOM_RETRIES = 5
 def load_module():
     spec = importlib.util.spec_from_file_location("prefill_attention_src", SOURCE_FILE)
     mod = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = mod
     spec.loader.exec_module(mod)
     return mod
 
@@ -127,6 +131,41 @@ def run_compile():
         return False, str(e)
 
 
+def _checked_attention_output(out, q):
+    require_tensor_contract(out, q)
+
+
+def _compare_attention_output(actual, expected):
+    import torch
+    require_tensor_contract(actual, expected, dtype=torch.bfloat16)
+    if not bool(torch.isfinite(actual).all() and torch.isfinite(expected).all()):
+        raise AssertionError("Non-finite attention/reference output")
+    diff = (actual.float() - expected.float()).abs().max().item()
+    denom = expected.float().abs().max().item()
+    rel = diff / denom if denom > 0 else diff
+    frac = torch.isclose(actual.float(), expected.float(),
+                         atol=1e-2, rtol=1e-2).float().mean().item()
+    # Preserve the original task's explicit OR rule, including sparse errors.
+    if not (frac >= 0.999 or rel <= 1e-2):
+        raise AssertionError(f"Numerical mismatch: rel={rel}, fraction={frac}")
+
+
+def _attention_replay_validator(q, k, v, bsl, bseq, cfg):
+    inputs = (q, k, v, bsl, bseq)
+    originals = tuple(x.clone() for x in inputs)
+    expected = reference(q, k, v, cfg)
+    def perturb():
+        # V changes output while preserving attention logits, shapes and dtype.
+        v.neg_()
+    def replay_reference():
+        return reference(q, k, v, cfg)
+    def validate(timed):
+        return verify_timed_run(timed, inputs=inputs, originals=originals,
+                                expected=expected, perturb=perturb,
+                                reference=replay_reference, compare=_compare_attention_output)
+    return validate
+
+
 def run_correctness():
     import torch
     try:
@@ -143,9 +182,14 @@ def run_correctness():
         try:
             torch.manual_seed(42 + i)
             q, k, v, o, bsl, bseq, max_len = make_inputs(cfg, "cuda")
+            o.fill_(float("nan"))
+            protected_inputs = (q, k, v, bsl, bseq)
+            originals = tuple(v.clone() for v in protected_inputs)
             _retry_oom(lambda: mod.context_attention_fwd(
                 q, k, v, o, bsl, bseq, max_len, is_causal=cfg["causal"]))
             torch.cuda.synchronize()
+            require_unchanged(protected_inputs, originals)
+            _checked_attention_output(o, q)
             ref = reference(q, k, v, cfg)
             finite = bool(torch.isfinite(o).all().item())
             diff = (o.float() - ref.float()).abs().max().item()
@@ -179,27 +223,32 @@ def run_performance():
         try:
             torch.manual_seed(42 + ti)
             q, k, v, o, bsl, bseq, max_len = make_inputs(cfg, "cuda")
+            o.fill_(float("nan"))
+            replay_validate = _attention_replay_validator(q, k, v, bsl, bseq, cfg)
 
             def fn():
                 mod.context_attention_fwd(
                     q, k, v, o, bsl, bseq, max_len, is_causal=cfg["causal"])
+                return o
 
             _retry_oom(fn)
             for _ in range(WARMUP_ITERATIONS):
                 fn()
             torch.cuda.synchronize()
+            timed = TimedRun()
             elapsed_ms, bench_meta = benchmark_cuda_graph_or_events(
-                fn, warmup=0, repetition=BENCHMARK_ITERATIONS
+                fn, warmup=0, repetition=BENCHMARK_ITERATIONS, timed_run=timed
             )
+            bench_meta.update(replay_validate(timed))
             test_cases.append({"test_case_id": f"perf{ti+1}",
                                "execution_time_ms": elapsed_ms,
                                **bench_meta,
                                "params": params})
-        except Exception:
+        except Exception as error:
             test_cases.append({"test_case_id": f"perf{ti+1}",
                                "execution_time_ms": -1.0,
                                "benchmark_method": "benchmark_failed",
-                               "benchmark_fallback_reason": "performance case failed before timing completed",
+                               "benchmark_fallback_reason": "performance case failed: " + str(error),
                                "params": params})
     return test_cases
 

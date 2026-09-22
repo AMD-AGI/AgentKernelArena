@@ -376,6 +376,11 @@ def invoke_fused_moe_kernel(
     compute_type: tl.dtype,
 ) -> None:
     """Trimmed bf16/fp16 launcher for ``fused_moe_kernel`` (no quant/TMA/bias)."""
+    # Accept the backend-neutral task host ABI.
+    if compute_type is torch.bfloat16:
+        compute_type = tl.bfloat16
+    elif compute_type is torch.float16:
+        compute_type = tl.float16
     assert topk_weights.stride(1) == 1
     assert sorted_token_ids.stride(0) == 1
 

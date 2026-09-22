@@ -24,6 +24,7 @@ from src.evaluator import (
     write_task_result,
 )
 from src.runtime_env import apply_subprocess_python_path
+from src.task_spec import required_gpu_arches
 from src.perf_helper_materialization import materialize_perf_helpers_in_workspace
 from src.harness_guard import snapshot_workspace_harness, verify_workspace_harness
 from src.eval_tools.config import EvalToolsConfig
@@ -277,18 +278,7 @@ def should_run_task_for_platform(
             raw_status,
         )
 
-    required_arch = platform_support.get("required_arch")
-    if not required_arch:
-        return True
-    if not isinstance(required_arch, str):
-        logger.warning(
-            "Task %s has non-string platform_support.required_arch=%r; treating task as runnable",
-            task_name,
-            required_arch,
-        )
-        return True
-
-    required_arch = required_arch.strip()
+    required_arch = required_gpu_arches(platform_support)
     if not required_arch:
         return True
     if not current_gfx_arch:
@@ -299,7 +289,7 @@ def should_run_task_for_platform(
             required_arch,
         )
         return False
-    if required_arch != current_gfx_arch:
+    if current_gfx_arch not in required_arch:
         logger.warning(
             "Skipping task %s before workspace setup: platform_support.required_arch=%s "
             "does not match current GPU arch %s",
@@ -485,6 +475,18 @@ def run_task(
     logger.info("=" * 80)
 
     try:
+        with open(task_config_dir, "r") as handle:
+            declaration = yaml.safe_load(handle) or {}
+        if "schema_version" in declaration:
+            if type(declaration["schema_version"]) is not int or declaration["schema_version"] != 2:
+                raise ValueError(f"Unsupported task schema version: {declaration['schema_version']!r}")
+            from src.task_run import run_task_v2
+
+            return run_task_v2(
+                eval_config=eval_config, agent=agent, agent_launcher=agent_launcher,
+                task_name=task_name, task_config_dir=task_config_dir,
+                run_directory=run_directory, timestamp=timestamp, logger=logger,
+            )
         workspace_path = setup_workspace(
             task_config_dir,
             run_directory,
@@ -545,7 +547,9 @@ def run_task(
                 logger.info("Measuring baseline performance...")
                 baseline_cases = measure_baseline(workspace_path, task_config, logger)
 
-        harness_snapshot = snapshot_workspace_harness(workspace_path)
+        harness_snapshot = snapshot_workspace_harness(
+            workspace_path, task_root=Path(task_config_dir).parent
+        )
 
         logger.info(f"Launching agent: {agent.value}")
         agent_launcher(
@@ -603,6 +607,7 @@ def run_task(
                 tool_artifact_root=tool_artifact_root,
                 gpu_arch=os.environ.get("PYTORCH_ROCM_ARCH"),
             )
+            verify_workspace_harness(harness_snapshot, logger=logger)
             write_task_result(
                 workspace_path,
                 evaluation_results,

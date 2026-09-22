@@ -1,0 +1,183 @@
+{
+  "version": 1,
+  "source": "test_matmul_MXFP.py",
+  "kernel_symbols": [
+    "matmul_kernel",
+    "mxfp_to_bf16_kernel"
+  ],
+  "cases": [
+    {
+      "test_case_id": "test_mxfp_to_bf16_numerical_correctness/44136fa355b3678a1146",
+      "params": {
+        "function": "test_mxfp_to_bf16_numerical_correctness",
+        "arguments": {}
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_pipeline_matmul/5e4d348b62896d006c17",
+      "params": {
+        "function": "test_pipeline_matmul",
+        "arguments": {
+          "scale": true
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_pipeline_matmul/e9a44849c8d6602787c6",
+      "params": {
+        "function": "test_pipeline_matmul",
+        "arguments": {
+          "scale": false
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/896f58b7d1251dbf0037",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "test_cfg_dict": {
+            "K_param": 128,
+            "M": 512,
+            "N": 512,
+            "a_type": null,
+            "b_type": null,
+            "input_dtype": "fp16",
+            "is_scaled": false
+          }
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/8e4e71ac88ed108331b5",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "test_cfg_dict": {
+            "K_param": 128,
+            "M": 512,
+            "N": 512,
+            "a_type": null,
+            "b_type": null,
+            "input_dtype": "fp32",
+            "is_scaled": false
+          }
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/c5cc04c2823e126a5cf0",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "test_cfg_dict": {
+            "K_param": 64,
+            "M": 1024,
+            "N": 1024,
+            "a_type": null,
+            "b_type": null,
+            "input_dtype": "fp16",
+            "is_scaled": false
+          }
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/167d7ff25375a554d889",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "test_cfg_dict": {
+            "K_param": 64,
+            "M": 1024,
+            "N": 1024,
+            "a_type": null,
+            "b_type": null,
+            "input_dtype": "fp32",
+            "is_scaled": false
+          }
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/75e808651ad55cd43262",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "test_cfg_dict": {
+            "K_param": 32,
+            "M": 2048,
+            "N": 1024,
+            "a_type": null,
+            "b_type": null,
+            "input_dtype": "fp16",
+            "is_scaled": false
+          }
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "test_performance/dd9468db9de77f51854f",
+      "params": {
+        "function": "test_performance",
+        "arguments": {
+          "test_cfg_dict": {
+            "K_param": 32,
+            "M": 2048,
+            "N": 1024,
+            "a_type": null,
+            "b_type": null,
+            "input_dtype": "fp32",
+            "is_scaled": false
+          }
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    }
+  ],
+  "migration": {
+    "original_source_sha256": "990a66a0d596a26fb7bbe71e1d43dca55f14b09acbdccb74afbeaf10cf7aaa05",
+    "case_policy": "All original parametrizations retained; runtime skips are failures, not passing or omitted cases."
+  }
+}

@@ -22,6 +22,7 @@ Benchmark iteration count is taken from `--iterations`, or defaults to
 """
 from __future__ import annotations
 from _aka_benchmark import benchmark_cuda_graph_or_events_samples
+from _timed_contract import checked_call, checked_benchmark, assert_output_contract
 
 
 def benchmark_cuda_graph_or_events(*args, **kwargs):
@@ -43,54 +44,15 @@ import types
 from pathlib import Path
 
 def _find_baseline_kernel_dir():
-    """Find preprocess dir (has benchmark_baseline.txt) by walking up from GEAK_WORK_DIR."""
-    work = os.environ.get("GEAK_WORK_DIR", "").strip()
-    if not work:
-        return None
-    d = Path(work).resolve()
-    for _ in range(10):
-        if d is None or not d.exists():
-            break
-        bb = d / "benchmark_baseline.txt"
-        if bb.is_file():
-            return str(d)
-        d = d.parent
+    """Arena's session owns the frozen baseline; external worktrees are not inputs."""
     return None
 
-def _load_baseline_triton(baseline_dir, module_alias, entry_name):
-    """Load kernel from baseline_dir. Returns callable or None."""
-    entry_file = Path(baseline_dir) / "kernel.py"
-    if not entry_file.is_file():
-        return None
-    if baseline_dir not in sys.path:
-        sys.path.insert(0, baseline_dir)
-    spec = importlib.util.spec_from_file_location(module_alias, entry_file)
-    if spec is None or spec.loader is None:
-        return None
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[module_alias] = module
-    try:
-        spec.loader.exec_module(module)
-        return getattr(module, entry_name, None)
-    except Exception:
-        return None
+def _load_baseline_triton(*args, **kwargs):
+    raise RuntimeError("External baseline loading is not part of the v2 task contract")
 
 def _resolve_geak_kernel_dir():
-    candidates = []
-    work_dir = os.environ.get("GEAK_WORK_DIR", "").strip()
-    if work_dir:
-        candidates.append(work_dir)
-    repo_root = os.environ.get("GEAK_REPO_ROOT", "").strip()
-    rel_kernel_dir = '.'
-    if repo_root and rel_kernel_dir:
-        candidates.append(os.path.join(repo_root, rel_kernel_dir))
-    original_kernel_dir = os.path.dirname(os.path.abspath(__file__))
-    if original_kernel_dir:
-        candidates.append(original_kernel_dir)
-    for candidate in candidates:
-        if candidate and os.path.isfile(os.path.join(candidate, "kernel.py")):
-            return candidate
-    return original_kernel_dir or os.getcwd()
+    """Resolve only the local candidate (or the session's frozen task copy)."""
+    return os.path.dirname(os.path.abspath(__file__))
 
 def _ensure_geak_package(module_name):
     parts = module_name.split(".")
@@ -129,6 +91,9 @@ def _register_geak_aliases(kernel_dir):
         return
     for alias in aliases:
         if alias in sys.modules:
+            existing = getattr(sys.modules[alias], "__file__", None)
+            if existing is None or Path(existing).resolve() != Path(entry_file).resolve():
+                raise RuntimeError("Candidate module alias resolved outside the task workspace")
             continue
         _ensure_geak_package(alias)
         spec = importlib.util.spec_from_file_location(alias, entry_file)
@@ -265,8 +230,26 @@ def make_input(batch, hidden, seed=42):
 
 
 def reference_topk(x, k, largest=True):
-    """Torch reference on CPU."""
-    return torch.topk(x.cpu(), k, dim=-1, largest=largest)
+    """Independent CPU selection, returning tensors on the declared device."""
+    values, indices = torch.topk(x.cpu(), k, dim=-1, largest=largest)
+    return values.to(x.device), indices.to(x.device)
+
+
+def check_topk(actual, expected, source):
+    values, indices = actual
+    ref_values, ref_indices = expected
+    hidden = source.shape[-1]
+    # Retain both historical tolerance checks; additionally enforce the exact
+    # selection contract (top-k copies input values, it performs no arithmetic).
+    torch.testing.assert_close(values, ref_values.float(), atol=1e-4 * hidden, rtol=1.3e-6)
+    assert ((indices >= 0) & (indices < hidden)).all(), 'Top-k index out of range'
+    gathered = source.gather(1, indices)
+    torch.testing.assert_close(gathered, source.gather(1, ref_indices).float(),
+                               atol=1e-4 * hidden, rtol=1.3e-6)
+    assert torch.equal(values, gathered), 'Values do not match returned indices'
+    assert torch.equal(values, ref_values), 'Selection is not the exact top-k value multiset/order'
+    ordered_indices = indices.sort(dim=-1).values
+    assert (ordered_indices[:, 1:] != ordered_indices[:, :-1]).all(), 'Duplicate top-k index'
 
 
 def triton_op(x, k):
@@ -280,64 +263,54 @@ def torch_op(x, k):
     return torch.topk(x, k, dim=-1, largest=True, sorted=True)
 
 
+# Unscored known-answer cases: equal maxima, negative inputs, both dispatches,
+# and the public wrapper's noncontiguous-input path.
+CONTROL_CASES = [{'test_case_id': 'control-ties-one-stage', 'shape': [2, 16], 'dtype': 'float32', 'params': {'k': 3, 'strided': False}}, {'test_case_id': 'control-ties-two-stage-strided', 'shape': [2, 16384], 'dtype': 'float32', 'params': {'k': 3, 'strided': True}}]
+
+
+def run_contract_controls():
+    from aiter.ops.triton.topk import topk as triton_topk
+    for case in CONTROL_CASES:
+        batch, hidden = case['shape']
+        backing = torch.full((batch, hidden * 2), -7., device='cuda')
+        x = backing[:, ::2] if case['params']['strided'] else backing[:, :hidden].contiguous()
+        x[:, [1, hidden // 2, hidden - 1]] = 4.
+        expected_values = torch.full((batch, 3), 4., device=x.device)
+        def reference(saved):
+            result = reference_topk(saved['x'], 3)
+            torch.testing.assert_close(result[0], expected_values, rtol=0, atol=0)
+            return result
+        pristine = x.detach().clone()
+        checked_call(lambda: triton_topk(x, 3, largest=True), inputs={'x': x},
+                     reference=reference,
+                     check=lambda a, e: check_topk(a, e, pristine))
+        print('PASS:', case['test_case_id'])
+
+
 # ── Modes ────────────────────────────────────────────────────────────────────
 def run_correctness(shapes, verbose: bool = True) -> dict:
     from aiter.ops.triton.topk import topk as triton_topk
-
-    if verbose:
-        print(f"Running correctness on {len(shapes)} shapes...")
-    
     results, failures = [], []
     for idx, (batch, hidden, k) in enumerate(shapes):
         try:
             x = make_input(batch, hidden, seed=42 + idx)
-            ref_val, ref_idx = reference_topk(x, k, largest=True)
-            res_val, res_idx = triton_topk(x, k, largest=True)
-
-            res_val_cpu = res_val.cpu()
-            res_idx_cpu = res_idx.cpu()
-
-            # Check values match
-            torch.testing.assert_close(
-                res_val_cpu,
-                ref_val.to(torch.float32),
-                atol=1e-4 * hidden,
-                rtol=1.3e-6,
+            pristine = x.detach().clone()
+            checked_call(
+                lambda: triton_topk(x, k, largest=True), inputs=dict(x=x),
+                reference=lambda saved: reference_topk(saved['x'], k),
+                check=lambda actual, expected: check_topk(actual, expected, pristine),
             )
-            # Check indices: gather from input using result indices and compare values
-            gathered_res = torch.gather(x.cpu(), 1, res_idx_cpu)
-            gathered_ref = torch.gather(x.cpu(), 1, ref_idx)
-            torch.testing.assert_close(
-                gathered_res,
-                gathered_ref.to(torch.float32),
-                atol=1e-4 * hidden,
-                rtol=1.3e-6,
-            )
-
-            results.append({"config": (batch, hidden, k), "correct": True})
+            results.append({'config': (batch, hidden, k), 'correct': True})
             if verbose:
-                print(f"  PASS: ({batch}, {hidden}), k={k}")
-
-            del x, res_val, res_idx
+                print(f'PASS: ({batch}, {hidden}), k={k}')
+        except Exception as exc:
+            failures.append({'config': (batch, hidden, k), 'error': str(exc)})
+            if verbose:
+                print(f'FAIL: ({batch}, {hidden}), k={k}: {exc}')
+        finally:
             torch.cuda.empty_cache()
-        except Exception as e:
-            failures.append({"config": (batch, hidden, k), "error": str(e)})
-            if verbose:
-                print(f"  FAIL: ({batch}, {hidden}), k={k} - {str(e)[:50]}")
-
-    if verbose:
-        print("-" * 62)
-        print(
-            f"{'Status:':<22} {'ALL PASS' if not failures else f'FAILED ({len(failures)}/{len(shapes)})'}"
-        )
-
-    return {
-        "correct": len(failures) == 0,
-        "num_correct": len(results),
-        "num_failed": len(failures),
-        "failures": failures,
-        "results": results,
-    }
+    return {'correct': not failures, 'num_correct': len(results),
+            'num_failed': len(failures), 'failures': failures, 'results': results}
 
 
 def run_profile(shapes, warmup: int = 50, iters: int = 200, verbose: bool = True):
@@ -386,8 +359,18 @@ def run_benchmark(shapes, warmup: int = 50, iters: int = 200, verbose: bool = Tr
     for idx, (batch, hidden, k) in enumerate(shapes):
         x = make_input(batch, hidden, seed=42 + idx)
 
-        triton_ms, triton_meta = benchmark_cuda_graph_or_events(
-            lambda: triton_op(x, k), warmup=warmup, repetition=iters,
+        # Capture private expected values before the timed implementation can
+        # touch x. The check closure receives matching original/replay sources.
+        source_for_check = [x.detach().clone()]
+        def reference(saved):
+            source_for_check[0] = saved['x']
+            return reference_topk(saved['x'], k)
+        triton_ms, triton_meta = checked_benchmark(
+            benchmark_cuda_graph_or_events, lambda: triton_op(x, k),
+            inputs=dict(x=x), reference=reference,
+            check=lambda actual, expected: check_topk(actual, expected, source_for_check[0]),
+            perturb=lambda saved: {'x': -saved['x']},
+            warmup=warmup, repetition=iters,
         )
 
         def run_reference():

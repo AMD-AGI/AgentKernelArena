@@ -17,59 +17,37 @@ import sys
 import tempfile
 from pathlib import Path
 from typing import List, Optional, Tuple, Union
-from _aka_benchmark import benchmark_cuda_graph_or_events
+from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
+from scripts.replay_checks import require_tensor_contract, require_unchanged, verify_timed_run
 
 # ============================================================================
 # GEAK bootstrap
 # ============================================================================
 
-KERNEL_FILE = "kernel.py"
+from task_runtime import candidate_relative_path
+KERNEL_FILE = candidate_relative_path()
 
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
-_FLYDSL2_DIR = os.path.abspath(os.path.join(_THIS_DIR, ".."))
+_FLYDSL2_DIR = _THIS_DIR
 if _FLYDSL2_DIR not in sys.path:
     sys.path.insert(0, _FLYDSL2_DIR)
 
 
 def _ensure_writable_flydsl_home():
-    """FlyDSL JIT cache lives under ~/.flydsl; redirect HOME when read-only."""
-    home = os.path.expanduser("~")
-    cache = os.path.join(home, ".flydsl")
-    try:
-        os.makedirs(cache, exist_ok=True)
-        probe = os.path.join(cache, ".write_probe")
-        with open(probe, "w") as f:
-            f.write("ok")
-        os.remove(probe)
-        return
-    except OSError:
-        pass
-    for base in (
-        os.environ.get("GEAK_WORK_DIR", "").strip(),
-        tempfile.gettempdir(),
-        _FLYDSL2_DIR,
-    ):
-        if not base:
-            continue
-        try:
-            new_home = os.path.join(base, ".flydsl_home")
-            os.makedirs(os.path.join(new_home, ".flydsl"), exist_ok=True)
-            os.environ["HOME"] = new_home
-            return
-        except OSError:
-            continue
+    """Runtime cache configuration is owned by the container environment."""
+    return None
 
 
 def _ensure_aiter_env():
     """GEAK aiter-routing gate: must run before any ``import aiter``."""
-    work = os.environ.get("GEAK_WORK_DIR", "").strip() or _THIS_DIR
+    work = _THIS_DIR
     work = os.path.abspath(work)
     if "AITER_META_DIR" not in os.environ:
         os.environ["AITER_META_DIR"] = work
     dev = os.environ.get(
         "HIP_VISIBLE_DEVICES", os.environ.get("CUDA_VISIBLE_DEVICES", "0")
     ).split(",")[0]
-    os.environ.setdefault("AITER_JIT_DIR", os.path.join(work, f"_geak_aiter_jit_gpu{dev}"))
+    os.environ.setdefault("AITER_JIT_DIR", os.path.join(work, f"build/aiter_jit_gpu{dev}"))
 
 
 _ensure_writable_flydsl_home()
@@ -77,30 +55,13 @@ _ensure_aiter_env()
 
 
 def _find_baseline_kernel_dir():
-    work = os.environ.get("GEAK_WORK_DIR", "").strip()
-    if not work:
-        return None
-    d = Path(work).resolve()
-    for _ in range(10):
-        if d is None or not d.exists():
-            break
-        if (d / "benchmark_baseline.txt").is_file():
-            return str(d)
-        d = d.parent
-    return None
+    """The framework supplies a separate frozen workspace for each role."""
+    return str(__import__("pathlib").Path(__file__).resolve().parent)
 
 
 def _resolve_kernel_dir():
-    candidates = []
-    work_dir = os.environ.get("GEAK_WORK_DIR", "").strip()
-    if work_dir:
-        candidates.append(work_dir)
-    original = os.path.dirname(os.path.abspath(__file__))
-    candidates.append(original)
-    for c in candidates:
-        if c and os.path.isfile(os.path.join(c, KERNEL_FILE)):
-            return c
-    return original
+    """The framework supplies a separate frozen workspace for each role."""
+    return str(__import__("pathlib").Path(__file__).resolve().parent)
 
 
 def _load_kernel(kernel_dir, alias="flydsl_kernel"):
@@ -368,11 +329,19 @@ def _build_case(mod, num_heads, batch_size, query_length, quant_mode, seed=123):
         query_output_indptr, key_scale_flat, value_scale_flat,
         sliding_window=SLIDING_WINDOW).to(data_type)
 
+    reference_values = quantized_values
     quantized_values = shuffle_value_cache_layout(quantized_values) if TRANS_V else quantized_values
 
     kv_page_indices, kv_indptr = build_ps_page_data(block_tables_list, context_lengths, BLOCK_SIZE, device)
+    readonly = (query, quantized_keys, quantized_values, context_lengths,
+                kv_page_indices, kv_indptr, key_scale_original, value_scale_original,
+                block_tables, query_output_indptr, key_scale_flat, value_scale_flat,
+                reference_values)
+    originals = tuple(x.detach().clone() for x in readonly)
     ps_metadata = mod.get_pa_metadata(query, quantized_keys, context_lengths, kv_indptr,
                                       num_query_heads, num_kv_heads)
+    # Metadata belongs to the implementation, including its writable scratch.
+    # Do not require a particular private metadata representation.
     max_context_partition_num = mod.get_sw_ps_max_context_partition_num(
         SLIDING_WINDOW, CONTEXT_PARTITION_SIZE, query_length)
     flydsl_output = torch.empty_like(reference_output)
@@ -385,8 +354,40 @@ def _build_case(mod, num_heads, batch_size, query_length, quant_mode, seed=123):
             sliding_window=SLIDING_WINDOW, metadata=ps_metadata, block_tables=block_tables,
             max_context_partition_num=max_context_partition_num,
             exp_sums=None, max_logits=None, temporary_output=None)
+        return flydsl_output
+
+    launch.arena_inputs = readonly
+    launch.arena_originals = originals
+    launch.arena_perturb = lambda: query.neg_()
+    launch.arena_reference = lambda: torch_mha_extend(
+        query, quantized_keys, reference_values, block_tables, context_lengths,
+        query_output_indptr, key_scale_flat, value_scale_flat,
+        sliding_window=SLIDING_WINDOW).to(data_type)
 
     return launch, flydsl_output, reference_output
+
+
+def _validate_pa_contract(launch, out, ref):
+    require_tensor_contract(out, ref)
+    require_unchanged(launch.arena_inputs, launch.arena_originals)
+
+
+def _compare_pa_output(out, ref):
+    """The original PA gate: finite BF16 outputs, max absolute error <= 5e-3."""
+    import torch
+    require_tensor_contract(out, ref)
+    if not bool(torch.isfinite(out).all() and torch.isfinite(ref).all()):
+        raise AssertionError("Non-finite operator/reference output")
+    error = (out.float() - ref.float()).abs().max().item()
+    if error > 5e-3:
+        raise AssertionError(f"Numerical mismatch: max_err={error} > 0.005")
+
+
+def _validate_pa_timing(timed, launch, ref):
+    return verify_timed_run(
+        timed, inputs=launch.arena_inputs, originals=launch.arena_originals,
+        expected=ref, perturb=launch.arena_perturb,
+        reference=launch.arena_reference, compare=_compare_pa_output)
 
 
 # ============================================================================
@@ -414,6 +415,7 @@ def run_correctness(shapes=None, verbose=True):
                                            seed=123 + i)
             launch()
             torch.cuda.synchronize()
+            _validate_pa_contract(launch, out, ref)
             tol = 5e-3
             if not torch.isfinite(out).all():
                 raise AssertionError("candidate output contains NaN or Inf")
@@ -469,19 +471,22 @@ def run_benchmark(shapes=None, warmup=10, iters=100, verbose=True):
             launch, out, ref = _build_case(mod, num_heads, batch_size, query_length, quant_mode,
                                            seed=123 + idx)
         except Exception as e:
-            print(f"  SKIP setup (b={batch_size}, q={query_length}, heads={num_heads}, {quant_mode}): "
-                  f"{str(e)[:100]}")
-            continue
+            raise RuntimeError(
+                f"PA setup failed for (b={batch_size}, q={query_length}, "
+                f"heads={num_heads}, {quant_mode})") from e
 
         for _ in range(warmup):
             launch()
         torch.cuda.synchronize()
 
+        timed = TimedRun()
         kernel_ms, kernel_bench_meta = benchmark_cuda_graph_or_events(
-            launch, warmup=0, repetition=iters
+            launch, warmup=0, repetition=iters, timed_run=timed
         )
+        kernel_bench_meta.update(_validate_pa_timing(timed, launch, ref))
 
-        # Reference timing uses the torch PS reference cost as a stable baseline.
+        # Retain the original secondary timing of this same launch as a diagnostic.
+        # Arena obtains the scored baseline from its separate frozen workspace.
         ref_ms, ref_bench_meta = benchmark_cuda_graph_or_events(
             launch, warmup=0, repetition=max(2, iters // 5)
         )
@@ -579,3 +584,106 @@ if __name__ == "__main__":
         run_benchmark(HARNESS_SHAPES, warmup=args.warmup, iters=args.iterations)
 
     print("=" * 62)
+
+
+# V2 action entrypoint; original timing boundaries and sample counts above apply.
+def arena_benchmark(shapes=None, warmup=10, iters=100, verbose=True):
+    import torch
+
+    if shapes is None:
+        shapes = HARNESS_SHAPES
+
+    mod = _load_kernel(_KERNEL_DIR)
+    if mod is None:
+        raise RuntimeError("Cannot load the declared PA candidate")
+
+    latencies, speedups, report_cases = [], [], []
+
+    print(f"Running benchmark on {len(shapes)} shapes, {warmup} warmup, {iters} iterations...")
+    print(f"{'Config':<40} {'Ref':>10} {'FlyDSL':>10} {'Speedup':>10}")
+    print("-" * 76)
+
+    for idx, (batch_size, query_length, num_heads, quant_mode) in enumerate(shapes):
+        try:
+            launch, out, ref = _build_case(mod, num_heads, batch_size, query_length, quant_mode,
+                                           seed=123 + idx)
+        except Exception as e:
+            raise RuntimeError(
+                f"PA setup failed for (b={batch_size}, q={query_length}, "
+                f"heads={num_heads}, {quant_mode})") from e
+
+        for _ in range(warmup):
+            launch()
+        torch.cuda.synchronize()
+
+        timed = TimedRun()
+        kernel_ms, kernel_bench_meta = benchmark_cuda_graph_or_events(
+            launch, warmup=0, repetition=iters, timed_run=timed
+        )
+        kernel_bench_meta.update(_validate_pa_timing(timed, launch, ref))
+
+        # Retain the original secondary timing of this same launch as a diagnostic.
+        # Arena obtains the scored baseline from its separate frozen workspace.
+        ref_ms, ref_bench_meta = benchmark_cuda_graph_or_events(
+            launch, warmup=0, repetition=max(2, iters // 5)
+        )
+
+        methods_match = kernel_bench_meta["benchmark_method"] == ref_bench_meta["benchmark_method"]
+        speedup = (
+            ref_ms / kernel_ms if methods_match and kernel_ms > 0 else None
+        )
+        speedup_display = (
+            format(speedup, ">8.2f") + "x"
+            if speedup is not None
+            else f"{'N/A':>9}"
+        )
+        latencies.append(kernel_ms)
+        if speedup is not None:
+            speedups.append(speedup)
+
+        report_cases.append({
+            "test_case_id": f"test_case_{idx}",
+            "execution_time_ms": kernel_ms,
+            **kernel_bench_meta,
+            "reference_benchmark_method": ref_bench_meta["benchmark_method"],
+            "benchmark_method_consistent": kernel_bench_meta["benchmark_method"] == ref_bench_meta["benchmark_method"],
+            "shape": [batch_size, query_length, num_heads[0], num_heads[1]],
+            "params": {"batch_size": batch_size, "query_length": query_length,
+                       "num_query_heads": num_heads[0], "num_kv_heads": num_heads[1],
+                       "quant_mode": quant_mode},
+        })
+
+        if verbose:
+            print(
+                f"(b={batch_size:>3}, q={query_length}, heads={num_heads}, {quant_mode})"
+                f" {ref_ms:>8.4f}ms {kernel_ms:>8.4f}ms {speedup_display}",
+                flush=True,
+            )
+        torch.cuda.empty_cache()
+
+    if not latencies:
+        print("FAIL: no benchmark cases succeeded")
+        return report_cases
+
+    geomean_latency = math.exp(sum(math.log(l) for l in latencies) / len(latencies))
+    geomean_speedup = math.exp(sum(math.log(s) for s in speedups) / len(speedups)) if speedups else None
+    geomean_speedup_display = (
+        format(geomean_speedup, ".2f") + "x"
+        if geomean_speedup is not None
+        else "N/A"
+    )
+
+    build_dir = Path(_KERNEL_DIR) / "build"
+    build_dir.mkdir(exist_ok=True)
+    with open(build_dir / "performance_report.json", "w") as f:
+        json.dump(report_cases, f, indent=2)
+
+    print("-" * 76)
+    print(f"{'Geometric mean latency:':<26} {geomean_latency:.4f} ms")
+    print(f"{'Geometric mean speedup:':<26} {geomean_speedup_display}")
+    print(f"GEAK_RESULT_LATENCY_MS={geomean_latency:.4f}", flush=True)
+    if geomean_speedup is not None:
+        print(f"GEAK_RESULT_GEOMEAN_SPEEDUP={geomean_speedup:.4f}", flush=True)
+
+    return report_cases
+    return report_cases

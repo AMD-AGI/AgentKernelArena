@@ -1,0 +1,74 @@
+{
+  "cases": [
+    {
+      "test_case_id": "case_0000",
+      "params": {
+        "M": 256,
+        "K": 2048,
+        "N": 16,
+        "shared": false,
+        "seed": 20260601
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0001",
+      "params": {
+        "M": 1024,
+        "K": 4096,
+        "N": 32,
+        "shared": false,
+        "seed": 20260601
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0002",
+      "params": {
+        "M": 2048,
+        "K": 5120,
+        "N": 128,
+        "shared": false,
+        "seed": 20260601
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0003",
+      "params": {
+        "M": 512,
+        "K": 4096,
+        "N": 64,
+        "shared": true,
+        "seed": 20260601
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0004",
+      "params": {
+        "M": 4096,
+        "K": 1024,
+        "N": 128,
+        "shared": false,
+        "seed": 20260601
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,94 @@
+{
+  "cases": [
+    {
+      "test_case_id": "case_0000",
+      "params": {
+        "B": 2,
+        "max_seq_len": 64,
+        "K": 128,
+        "N": 128,
+        "elementwise": false,
+        "seed": 42
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0001",
+      "params": {
+        "B": 4,
+        "max_seq_len": 128,
+        "K": 256,
+        "N": 256,
+        "elementwise": false,
+        "seed": 43
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0002",
+      "params": {
+        "B": 2,
+        "max_seq_len": 96,
+        "K": 192,
+        "N": 64,
+        "elementwise": true,
+        "seed": 44
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0003",
+      "params": {
+        "B": 3,
+        "max_seq_len": 200,
+        "K": 128,
+        "N": 320,
+        "elementwise": false,
+        "seed": 45
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0004",
+      "params": {
+        "B": 1,
+        "max_seq_len": 512,
+        "K": 256,
+        "N": 128,
+        "elementwise": false,
+        "seed": 46
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0005",
+      "params": {
+        "B": 8,
+        "max_seq_len": 64,
+        "K": 64,
+        "N": 96,
+        "elementwise": true,
+        "seed": 47
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    }
+  ]
+}

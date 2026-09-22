@@ -375,7 +375,10 @@ def run_compile():
         return False, str(e)
 
 
-def run_correctness():
+def run_correctness(*, case_index=None):
+    if case_index is not None and case_index >= 10000:
+        from _upstream_controls import run_control
+        return run_control(case_index - 10000, load_module)
     import torch
     try:
         mod = load_module()
@@ -384,6 +387,8 @@ def run_correctness():
 
     device = "cuda"
     for i, (M, K, num_experts, lora_rank, out_dim, num_loras, top_k) in enumerate(TEST_SHAPES):
+        if case_index is not None and i != case_index:
+            continue
         try:
             (output, qcurr, lora_a, lora_b, topk_weights,
              sorted_token_ids, expert_ids, num_tokens_post_padded,

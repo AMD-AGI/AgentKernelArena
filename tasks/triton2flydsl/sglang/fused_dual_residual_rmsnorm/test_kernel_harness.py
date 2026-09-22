@@ -19,13 +19,16 @@ import json
 import time
 import argparse
 import importlib.util
-from _aka_benchmark import benchmark_cuda_graph_or_events
+from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
+from scripts.replay_checks import require_tensor_contract, require_unchanged, verify_timed_pair
 
 TASK_DIR = os.path.dirname(os.path.abspath(__file__))
 os.chdir(TASK_DIR)
 
 TASK_NAME = "triton2flydsl/sglang/fused_dual_residual_rmsnorm"
-SOURCE_FILE = os.path.join(TASK_DIR, "fused_dual_residual_rmsnorm.py")
+from task_runtime import candidate_relative_path
+SOURCE_FILE = candidate_relative_path()
+ENTRY = 'fused_dual_residual_rmsnorm'
 EPS = 1e-6
 
 # [batch_size, hidden_dim] real transformer norm shapes (Llama/Qwen hidden dims).
@@ -50,6 +53,7 @@ def load_module():
     spec = importlib.util.spec_from_file_location(
         "fused_dual_residual_rmsnorm_src", SOURCE_FILE)
     mod = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = mod
     spec.loader.exec_module(mod)
     return mod
 
@@ -116,6 +120,43 @@ def run_compile():
         return False, str(e)
 
 
+def _checked_state_output(outputs, x):
+    if not isinstance(outputs, (tuple, list)) or len(outputs) != 2:
+        raise AssertionError("Dual RMSNorm must return output and intermediate residual")
+    for out in outputs:
+        require_tensor_contract(out, x)
+
+
+def _compare_state_output(actual, expected, cfg):
+    import torch
+    _checked_state_output(actual, expected[0])
+    tolerance = 1e-4 if cfg["dtype"] == "fp32" else 1e-2
+    for out, ref in zip(actual, expected):
+        if not bool(torch.isfinite(out).all() and torch.isfinite(ref).all()):
+            raise AssertionError("Non-finite dual RMSNorm/reference output")
+        if not torch.allclose(out.float(), ref.float(), atol=tolerance, rtol=tolerance):
+            raise AssertionError(f"Numerical mismatch: dual RMSNorm tolerance={tolerance}")
+
+
+def _state_replay_validator(x, residual, w1, w2, cfg):
+    inputs = (x, residual, w1, w2)
+    originals = tuple(v.clone() for v in inputs)
+    expected = reference(x, residual, w1, w2)
+    def perturb():
+        # Both RMS denominators are unchanged; both results must negate.
+        x.neg_()
+        residual.neg_()
+    def replay_reference():
+        return reference(x, residual, w1, w2)
+    def compare(actual, expected):
+        _compare_state_output(actual, expected, cfg)
+    def validate(timed):
+        return verify_timed_pair(timed, inputs=inputs, originals=originals,
+                                 expected=expected, perturb=perturb,
+                                 reference=replay_reference, compare=compare)
+    return validate
+
+
 def run_correctness():
     import torch
     try:
@@ -131,9 +172,13 @@ def run_correctness():
         try:
             torch.manual_seed(42 + i)
             x, residual, w1, w2 = make_inputs(cfg, "cuda")
+            protected_inputs = (x, residual, w1, w2)
+            originals = tuple(v.clone() for v in protected_inputs)
             o_t, mid_t = _retry_oom(lambda: mod.fused_dual_residual_rmsnorm(
                 x, residual, w1, w2, EPS))
             torch.cuda.synchronize()
+            require_unchanged(protected_inputs, originals)
+            _checked_state_output((o_t, mid_t), x)
             o_r, mid_r = reference(x, residual, w1, w2)
             finite = bool(torch.isfinite(o_t).all().item())
             diff = (o_t.float() - o_r.float()).abs().max().item()
@@ -167,26 +212,29 @@ def run_performance():
         try:
             torch.manual_seed(42 + ti)
             x, residual, w1, w2 = make_inputs(cfg, "cuda")
+            replay_validate = _state_replay_validator(x, residual, w1, w2, cfg)
 
             def fn():
-                mod.fused_dual_residual_rmsnorm(x, residual, w1, w2, EPS)
+                return mod.fused_dual_residual_rmsnorm(x, residual, w1, w2, EPS)
 
             _retry_oom(fn)
             for _ in range(WARMUP_ITERATIONS):
                 fn()
             torch.cuda.synchronize()
+            timed = TimedRun()
             elapsed_ms, bench_meta = benchmark_cuda_graph_or_events(
-                fn, warmup=0, repetition=BENCHMARK_ITERATIONS
+                fn, warmup=0, repetition=BENCHMARK_ITERATIONS, timed_run=timed
             )
+            bench_meta.update(replay_validate(timed))
             test_cases.append({"test_case_id": f"perf{ti+1}",
                                "execution_time_ms": elapsed_ms,
                                **bench_meta,
                                "params": params})
-        except Exception:
+        except Exception as error:
             test_cases.append({"test_case_id": f"perf{ti+1}",
                                "execution_time_ms": -1.0,
                                "benchmark_method": "benchmark_failed",
-                               "benchmark_fallback_reason": "performance case failed before timing completed",
+                               "benchmark_fallback_reason": "performance case failed: " + str(error),
                                "params": params})
     return test_cases
 

@@ -1,0 +1,319 @@
+{
+  "original_cases": {
+    "correctness": [
+      {
+        "id": "kda-decode-packed-k007",
+        "model": "Kimi-K3",
+        "kernel_ids": [
+          "k007"
+        ],
+        "gpu_pct": 2.113,
+        "exact_shape_source": "RECONSTRUCTED -- decode batch from steady-state slice concurrency conc62",
+        "trace_input_shapes": [
+          "mixed_qkv (62, 4608) bf16",
+          "raw_g (1, 62, 12, 128) f32",
+          "raw_beta (1, 62, 12) f32"
+        ],
+        "params": {
+          "mode": "packed_decode",
+          "num_heads": 12,
+          "head_dim": 128,
+          "num_seqs": 62,
+          "seq_len": 1,
+          "min_cosine": 0.999,
+          "max_rel_err": 0.03
+        },
+        "benchmark": {
+          "warmup": 5,
+          "repetition": 30,
+          "target_ms": 1.0,
+          "max_graph_repeats": 200
+        },
+        "seed": 23
+      },
+      {
+        "id": "kda-prefill-chunk-t7211",
+        "model": "Kimi-K3",
+        "kernel_ids": [
+          "chunk_kda_fwd_*",
+          "chunk_gated_delta_rule_fwd_h_*",
+          "kda_gate_chunk_cumsum_*"
+        ],
+        "exact_shape_source": "trace -- aten::fill_ under chunk_kda_fwd_intra, Input Dims (1, 7211, 12, 64)",
+        "trace_input_shapes": [
+          "q/k/v (1, 7211, 12, 128) bf16",
+          "raw_g (1, 7211, 12, 128) f32"
+        ],
+        "params": {
+          "mode": "chunk",
+          "num_heads": 12,
+          "head_dim": 128,
+          "num_seqs": 1,
+          "seq_len": 7211,
+          "min_cosine": 0.999,
+          "max_rel_err": 0.03
+        },
+        "benchmark": {
+          "warmup": 3,
+          "repetition": 20,
+          "target_ms": 2.0,
+          "max_graph_repeats": 20
+        },
+        "seed": 124
+      },
+      {
+        "id": "kda-prefill-chunk-t1080",
+        "model": "Kimi-K3",
+        "kernel_ids": [
+          "chunk_kda_fwd_*"
+        ],
+        "exact_shape_source": "trace -- aten::fill_ under chunk_kda_fwd_intra, Input Dims (1, 1080, 12, 64)",
+        "trace_input_shapes": [
+          "q/k/v (1, 1080, 12, 128) bf16"
+        ],
+        "params": {
+          "mode": "chunk",
+          "num_heads": 12,
+          "head_dim": 128,
+          "num_seqs": 1,
+          "seq_len": 1080,
+          "min_cosine": 0.999,
+          "max_rel_err": 0.03
+        },
+        "benchmark": {
+          "warmup": 3,
+          "repetition": 20,
+          "target_ms": 2.0,
+          "max_graph_repeats": 50
+        },
+        "seed": 225
+      },
+      {
+        "id": "kda-long-chunk-t16384",
+        "model": "Kimi-K3",
+        "kernel_ids": [
+          "chunk_kda_fwd_*"
+        ],
+        "exact_shape_source": "EXTRAPOLATED -- long-context headroom beyond the session's max_model_len 6144",
+        "params": {
+          "mode": "chunk",
+          "num_heads": 12,
+          "head_dim": 128,
+          "num_seqs": 1,
+          "seq_len": 16384,
+          "min_cosine": 0.999,
+          "max_rel_err": 0.03
+        },
+        "benchmark": {
+          "warmup": 2,
+          "repetition": 15,
+          "target_ms": 2.0,
+          "max_graph_repeats": 10
+        },
+        "seed": 326
+      },
+      {
+        "id": "kda-long-chunk-t32768",
+        "model": "Kimi-K3",
+        "kernel_ids": [
+          "chunk_kda_fwd_*"
+        ],
+        "exact_shape_source": "EXTRAPOLATED -- long-context headroom beyond the session's max_model_len 6144",
+        "params": {
+          "mode": "chunk",
+          "num_heads": 12,
+          "head_dim": 128,
+          "num_seqs": 1,
+          "seq_len": 32768,
+          "min_cosine": 0.999,
+          "max_rel_err": 0.03
+        },
+        "benchmark": {
+          "warmup": 2,
+          "repetition": 10,
+          "target_ms": 2.0,
+          "max_graph_repeats": 5
+        },
+        "seed": 427
+      }
+    ],
+    "performance": null
+  },
+  "cases": [
+    {
+      "test_case_id": "kda-decode-packed-k007",
+      "params": {
+        "mode": "packed_decode",
+        "num_heads": 12,
+        "head_dim": 128,
+        "num_seqs": 62,
+        "seq_len": 1,
+        "min_cosine": 0.999,
+        "max_rel_err": 0.03,
+        "seed": 23
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "shape": [
+        "mixed_qkv (62, 4608) bf16",
+        "raw_g (1, 62, 12, 128) f32",
+        "raw_beta (1, 62, 12) f32"
+      ],
+      "dtype": "bfloat16",
+      "metadata": {
+        "model": "Kimi-K3",
+        "kernel_ids": [
+          "k007"
+        ],
+        "gpu_pct": 2.113,
+        "exact_shape_source": "RECONSTRUCTED -- decode batch from steady-state slice concurrency conc62",
+        "benchmark": {
+          "warmup": 5,
+          "repetition": 30,
+          "target_ms": 1.0,
+          "max_graph_repeats": 200
+        },
+        "seed": 23
+      }
+    },
+    {
+      "test_case_id": "kda-prefill-chunk-t7211",
+      "params": {
+        "mode": "chunk",
+        "num_heads": 12,
+        "head_dim": 128,
+        "num_seqs": 1,
+        "seq_len": 7211,
+        "min_cosine": 0.999,
+        "max_rel_err": 0.03,
+        "seed": 124
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "shape": [
+        "q/k/v (1, 7211, 12, 128) bf16",
+        "raw_g (1, 7211, 12, 128) f32"
+      ],
+      "dtype": "bfloat16",
+      "metadata": {
+        "model": "Kimi-K3",
+        "kernel_ids": [
+          "chunk_kda_fwd_*",
+          "chunk_gated_delta_rule_fwd_h_*",
+          "kda_gate_chunk_cumsum_*"
+        ],
+        "exact_shape_source": "trace -- aten::fill_ under chunk_kda_fwd_intra, Input Dims (1, 7211, 12, 64)",
+        "benchmark": {
+          "warmup": 3,
+          "repetition": 20,
+          "target_ms": 2.0,
+          "max_graph_repeats": 20
+        },
+        "seed": 124
+      }
+    },
+    {
+      "test_case_id": "kda-prefill-chunk-t1080",
+      "params": {
+        "mode": "chunk",
+        "num_heads": 12,
+        "head_dim": 128,
+        "num_seqs": 1,
+        "seq_len": 1080,
+        "min_cosine": 0.999,
+        "max_rel_err": 0.03,
+        "seed": 225
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "shape": [
+        "q/k/v (1, 1080, 12, 128) bf16"
+      ],
+      "dtype": "bfloat16",
+      "metadata": {
+        "model": "Kimi-K3",
+        "kernel_ids": [
+          "chunk_kda_fwd_*"
+        ],
+        "exact_shape_source": "trace -- aten::fill_ under chunk_kda_fwd_intra, Input Dims (1, 1080, 12, 64)",
+        "benchmark": {
+          "warmup": 3,
+          "repetition": 20,
+          "target_ms": 2.0,
+          "max_graph_repeats": 50
+        },
+        "seed": 225
+      }
+    },
+    {
+      "test_case_id": "kda-long-chunk-t16384",
+      "params": {
+        "mode": "chunk",
+        "num_heads": 12,
+        "head_dim": 128,
+        "num_seqs": 1,
+        "seq_len": 16384,
+        "min_cosine": 0.999,
+        "max_rel_err": 0.03,
+        "seed": 326
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bfloat16",
+      "metadata": {
+        "model": "Kimi-K3",
+        "kernel_ids": [
+          "chunk_kda_fwd_*"
+        ],
+        "exact_shape_source": "EXTRAPOLATED -- long-context headroom beyond the session's max_model_len 6144",
+        "benchmark": {
+          "warmup": 2,
+          "repetition": 15,
+          "target_ms": 2.0,
+          "max_graph_repeats": 10
+        },
+        "seed": 326
+      }
+    },
+    {
+      "test_case_id": "kda-long-chunk-t32768",
+      "params": {
+        "mode": "chunk",
+        "num_heads": 12,
+        "head_dim": 128,
+        "num_seqs": 1,
+        "seq_len": 32768,
+        "min_cosine": 0.999,
+        "max_rel_err": 0.03,
+        "seed": 427
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bfloat16",
+      "metadata": {
+        "model": "Kimi-K3",
+        "kernel_ids": [
+          "chunk_kda_fwd_*"
+        ],
+        "exact_shape_source": "EXTRAPOLATED -- long-context headroom beyond the session's max_model_len 6144",
+        "benchmark": {
+          "warmup": 2,
+          "repetition": 10,
+          "target_ms": 2.0,
+          "max_graph_repeats": 5
+        },
+        "seed": 427
+      }
+    }
+  ]
+}

@@ -81,6 +81,11 @@ def reference_apply_top_k_top_p(logits, k, p):
 def compare_masked_logits(got, ref, vocab_size, max_mask_mismatch):
     import torch
 
+    if (got.shape, got.dtype, got.device) != (ref.shape, ref.dtype, ref.device):
+        return False, 'output shape/dtype/device mismatch'
+    if torch.isnan(got).any() or torch.isposinf(got).any():
+        return False, 'only negative infinity is a valid masked logit'
+
     got_mask = torch.isfinite(got)
     ref_mask = torch.isfinite(ref)
 
@@ -172,12 +177,14 @@ def prepare_direct_launch(mod, logits, k, p, mask_value=float("-inf")):
         "p_ptr": p_ptr,
     }
 
-def run_correctness():
+def run_correctness(*, case_index=None):
     import torch
     try: mod = load_module()
     except Exception as e: return False, f"Failed to load module: {e}"
     device = "cuda"
     for i, (batch_size, vocab_size) in enumerate(TEST_SHAPES):
+        if case_index is not None and i != case_index:
+            continue
         try:
             torch.manual_seed(42 + i)
             logits = torch.randn(batch_size, vocab_size, device=device, dtype=torch.float32)

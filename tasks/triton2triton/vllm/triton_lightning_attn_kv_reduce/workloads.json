@@ -1,0 +1,155 @@
+{
+  "version": 1,
+  "candidate_symbols": {
+    "source/triton_lightning_attn_kv_reduce.py": [
+      {
+        "name": "_fwd_kv_reduce",
+        "jit": true
+      }
+    ]
+  },
+  "case_table": "TEST_SHAPES",
+  "input_table": [
+    [
+      1,
+      4,
+      64,
+      64,
+      64
+    ],
+    [
+      2,
+      8,
+      128,
+      64,
+      64
+    ],
+    [
+      1,
+      4,
+      256,
+      128,
+      128
+    ],
+    [
+      2,
+      4,
+      128,
+      64,
+      32
+    ],
+    [
+      4,
+      2,
+      64,
+      32,
+      32
+    ]
+  ],
+  "cases": [
+    {
+      "test_case_id": "perf1",
+      "dtype": "float32",
+      "params": {
+        "case_index": 0,
+        "configuration": [
+          1,
+          4,
+          64,
+          64,
+          64
+        ],
+        "configuration_names": "(B, H, N, D, E)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf2",
+      "dtype": "float32",
+      "params": {
+        "case_index": 1,
+        "configuration": [
+          2,
+          8,
+          128,
+          64,
+          64
+        ],
+        "configuration_names": "(B, H, N, D, E)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf3",
+      "dtype": "float32",
+      "params": {
+        "case_index": 2,
+        "configuration": [
+          1,
+          4,
+          256,
+          128,
+          128
+        ],
+        "configuration_names": "(B, H, N, D, E)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf4",
+      "dtype": "float32",
+      "params": {
+        "case_index": 3,
+        "configuration": [
+          2,
+          4,
+          128,
+          64,
+          32
+        ],
+        "configuration_names": "(B, H, N, D, E)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf5",
+      "dtype": "float32",
+      "params": {
+        "case_index": 4,
+        "configuration": [
+          4,
+          2,
+          64,
+          32,
+          32
+        ],
+        "configuration_names": "(B, H, N, D, E)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    }
+  ],
+  "migration": {
+    "original_harness_sha256": "6428e96713b1aa76bbf276db2a11b5d225f52196f0f2a34fad70ffcccd957934",
+    "original_correctness_sha256": "3fcb74a9a30ccdd1f8064e99e5c0c3c26187cf5223105e1a2990e9c98c5041e8"
+  }
+}

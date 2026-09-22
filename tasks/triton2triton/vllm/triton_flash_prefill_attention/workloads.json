@@ -1,0 +1,273 @@
+{
+  "version": 1,
+  "candidate_symbols": {
+    "source/triton_flash_prefill_attention.py": [
+      {
+        "name": "_fwd_kernel",
+        "jit": true
+      }
+    ]
+  },
+  "case_table": "TEST_SHAPES",
+  "input_table": [
+    [
+      2,
+      128,
+      8,
+      8,
+      64
+    ],
+    [
+      4,
+      256,
+      16,
+      4,
+      64
+    ],
+    [
+      2,
+      512,
+      32,
+      8,
+      128
+    ],
+    [
+      1,
+      1024,
+      16,
+      16,
+      64
+    ],
+    [
+      8,
+      64,
+      8,
+      1,
+      64
+    ]
+  ],
+  "cases": [
+    {
+      "test_case_id": "perf1",
+      "dtype": "bool,float16,int32",
+      "params": {
+        "case_index": 0,
+        "configuration": [
+          2,
+          128,
+          8,
+          8,
+          64
+        ],
+        "configuration_names": "(bs, seq_len, nh, nkv, hd)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf2",
+      "dtype": "bool,float16,int32",
+      "params": {
+        "case_index": 1,
+        "configuration": [
+          4,
+          256,
+          16,
+          4,
+          64
+        ],
+        "configuration_names": "(bs, seq_len, nh, nkv, hd)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf3",
+      "dtype": "bool,float16,int32",
+      "params": {
+        "case_index": 2,
+        "configuration": [
+          2,
+          512,
+          32,
+          8,
+          128
+        ],
+        "configuration_names": "(bs, seq_len, nh, nkv, hd)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf4",
+      "dtype": "bool,float16,int32",
+      "params": {
+        "case_index": 3,
+        "configuration": [
+          1,
+          1024,
+          16,
+          16,
+          64
+        ],
+        "configuration_names": "(bs, seq_len, nh, nkv, hd)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf5",
+      "dtype": "bool,float16,int32",
+      "params": {
+        "case_index": 4,
+        "configuration": [
+          8,
+          64,
+          8,
+          1,
+          64
+        ],
+        "configuration_names": "(bs, seq_len, nh, nkv, hd)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "ragged_causal_scale",
+      "dtype": "float16,float32,int32",
+      "params": {
+        "batch": 2,
+        "query_heads": 8,
+        "kv_heads": 2,
+        "head_dim": 64,
+        "seed": 927,
+        "dtypes": {
+          "data": "float16",
+          "statistics": "float32",
+          "routing": "int32"
+        },
+        "contract_case": "ragged_causal_scale",
+        "sequence_lengths": [
+          7,
+          13
+        ],
+        "softmax_scale": 0.17,
+        "is_causal": true,
+        "sliding_window_q": 0,
+        "sliding_window_k": 0,
+        "input_shapes": {
+          "q": [
+            20,
+            8,
+            64
+          ],
+          "k": [
+            20,
+            2,
+            64
+          ],
+          "v": [
+            20,
+            2,
+            64
+          ],
+          "b_start_loc": [
+            2
+          ],
+          "b_seq_len": [
+            2
+          ]
+        },
+        "output_shapes": {
+          "o": [
+            20,
+            8,
+            64
+          ]
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "ragged_bidirectional_windows",
+      "dtype": "float16,float32,int32",
+      "params": {
+        "batch": 2,
+        "query_heads": 8,
+        "kv_heads": 2,
+        "head_dim": 64,
+        "seed": 927,
+        "dtypes": {
+          "data": "float16",
+          "statistics": "float32",
+          "routing": "int32"
+        },
+        "contract_case": "ragged_bidirectional_windows",
+        "sequence_lengths": [
+          7,
+          13
+        ],
+        "softmax_scale": 0.17,
+        "is_causal": false,
+        "sliding_window_q": 3,
+        "sliding_window_k": 5,
+        "input_shapes": {
+          "q": [
+            20,
+            8,
+            64
+          ],
+          "k": [
+            20,
+            2,
+            64
+          ],
+          "v": [
+            20,
+            2,
+            64
+          ],
+          "b_start_loc": [
+            2
+          ],
+          "b_seq_len": [
+            2
+          ]
+        },
+        "output_shapes": {
+          "o": [
+            20,
+            8,
+            64
+          ]
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    }
+  ],
+  "migration": {
+    "original_harness_sha256": "aa0b6c44989cb8b787fa665204f33bcf4d63cb1fdea88ff359ae3a425c6067ff",
+    "original_correctness_sha256": "46d70f8920425afe368b289da9e754c87c1fa65e46383fc5e6c4804c4a0cf596"
+  }
+}

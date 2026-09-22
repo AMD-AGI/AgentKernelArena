@@ -1,0 +1,155 @@
+{
+  "version": 1,
+  "candidate_symbols": {
+    "source/triton_w8a8_block_scaled_mm.py": [
+      {
+        "name": "_w8a8_triton_block_scaled_mm",
+        "jit": true
+      }
+    ]
+  },
+  "case_table": "TEST_SHAPES",
+  "input_table": [
+    [
+      64,
+      128,
+      128,
+      128,
+      128
+    ],
+    [
+      128,
+      256,
+      256,
+      128,
+      128
+    ],
+    [
+      64,
+      128,
+      256,
+      128,
+      128
+    ],
+    [
+      256,
+      512,
+      512,
+      128,
+      128
+    ],
+    [
+      128,
+      256,
+      512,
+      128,
+      128
+    ]
+  ],
+  "cases": [
+    {
+      "test_case_id": "perf1",
+      "dtype": "float16,float32",
+      "params": {
+        "case_index": 0,
+        "configuration": [
+          64,
+          128,
+          128,
+          128,
+          128
+        ],
+        "configuration_names": "(M, N, K, block_n, block_k)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf2",
+      "dtype": "float16,float32",
+      "params": {
+        "case_index": 1,
+        "configuration": [
+          128,
+          256,
+          256,
+          128,
+          128
+        ],
+        "configuration_names": "(M, N, K, block_n, block_k)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf3",
+      "dtype": "float16,float32",
+      "params": {
+        "case_index": 2,
+        "configuration": [
+          64,
+          128,
+          256,
+          128,
+          128
+        ],
+        "configuration_names": "(M, N, K, block_n, block_k)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf4",
+      "dtype": "float16,float32",
+      "params": {
+        "case_index": 3,
+        "configuration": [
+          256,
+          512,
+          512,
+          128,
+          128
+        ],
+        "configuration_names": "(M, N, K, block_n, block_k)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf5",
+      "dtype": "float16,float32",
+      "params": {
+        "case_index": 4,
+        "configuration": [
+          128,
+          256,
+          512,
+          128,
+          128
+        ],
+        "configuration_names": "(M, N, K, block_n, block_k)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    }
+  ],
+  "migration": {
+    "original_harness_sha256": "106b60031e7bf6c3ccf4ac2030e1cb28524c3de97505770653fd3df63a6088bb",
+    "original_correctness_sha256": "722ed1ab8be1e9257e16aa920e98bbce8def5c9150e6e350784603de825c436d"
+  }
+}

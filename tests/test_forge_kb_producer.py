@@ -5,16 +5,28 @@ import importlib.util
 import logging
 import subprocess
 import sys
+import time
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 import yaml
 
+# The module object, so a test can monkeypatch the globals the functions under
+# test resolve against. They live in common.py and are only re-exported through
+# the launcher, so patching the launcher's namespace would have no effect.
+import agents.forge.common  # noqa: F401
 from agents.forge.drivers import arena_task_adapter
+from agents.forge import adapter
+from src.task_spec import load_task_spec
+forge_common = sys.modules["agents.forge.common"]
+
+from agents.forge.common import (
+    _capture_forge_edit_baseline,
+    _verify_forge_edit_scope,
+)
 from agents.forge.launch_agent import (
     _build_forge_command,
-    _capture_forge_edit_baseline,
     _declared_editable_sources,
     _forge_max_hours,
     _infer_backend,
@@ -25,49 +37,12 @@ from agents.forge.launch_agent import (
     _resolve_fellow,
     _resolve_framework,
     _resolve_gpu_type,
-    _resolve_kernel_kind,
-    _verify_forge_edit_scope,
-)
-
-CK_TASK_NAMES = (
-    "mi355x_vllm_ck_a8w8_blockscale_gemm",
-    "mi355x_vllm_ck_cktile_moe_2stage",
-    "mi355x_vllm_ck_moe_2stage",
+    _resolve_kernel_backend,
 )
 
 
 def _value(argv: list[str], option: str) -> str:
     return argv[argv.index(option) + 1]
-
-
-def _load_ck_forge_driver(task_name: str):
-    root = Path(__file__).resolve().parents[1]
-    path = (
-        root
-        / "tasks"
-        / "image_kernel"
-        / task_name
-        / "scripts"
-        / "forge_driver.py"
-    )
-    spec = importlib.util.spec_from_file_location(f"_{task_name}_driver_test", path)
-    assert spec and spec.loader
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-def _load_k3_forge_driver():
-    root = Path(__file__).resolve().parents[1]
-    path = (
-        root
-        / "tasks/image_kernel/mi355x_vllm_aiter_mxfp4_moe_2stage_kimi_k3"
-        / "scripts/forge_driver.py"
-    )
-    spec = importlib.util.spec_from_file_location("_k3_forge_driver_test", path)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
 
 
 def _load_unified_attention_task_runner():
@@ -116,7 +91,7 @@ def _command(tmp_path: Path, **overrides) -> list[str]:
         },
         "gpu_arch": "gfx950",
         "gpu_type": "mi355x",
-        "fellow": "triton-fellow",
+        "kernel_backend": "triton",
         "task_type": "image_kernel",
         "source_files": [tmp_path / "wrapper.py", tmp_path / "kernel.py"],
         "target_functions": ["dispatch", "_device_kernel"],
@@ -178,8 +153,78 @@ def test_configured_backend_resolution_is_forwarded_without_fallback():
         "repository_language": "tilelang",
         "kernel_identity": {"kernel_kind": "tilelang"},
     }
+    # Inference reports what the task declares. Reconciling that against what
+    # KernelForge actually serves belongs to _resolve_kernel_backend, below.
     assert _infer_backend(tilelang) == "tilelang"
     assert _resolve_fellow(tilelang, {}) == "tilelang-fellow"
+
+
+def _backend_registry(monkeypatch, names):
+    monkeypatch.setattr(
+        forge_common, "_installed_kernel_backends", lambda: names
+    )
+
+
+def test_an_unserved_backend_fails_instead_of_becoming_flydsl(monkeypatch):
+    """The whole point of the translation: upstream would not have complained.
+
+    KernelForge maps an unknown --kernel-backend onto flydsl and says nothing, so
+    a typo or an upstream rename produces a run that starts, finishes, and
+    reports a speedup obtained under the wrong expertise prompt. Arena has the
+    registry in-process and can refuse before a GPU-day is spent.
+    """
+    _backend_registry(monkeypatch, {"triton", "flydsl", "hip", "ck"})
+    with pytest.raises(ValueError, match="does not serve the 'trtion' backend"):
+        _resolve_kernel_backend("trtion-fellow", logging.getLogger(__name__))
+
+
+def test_a_served_backend_passes_through_with_the_suffix_stripped(monkeypatch):
+    _backend_registry(monkeypatch, {"triton", "flydsl", "hip", "ck"})
+    logger = logging.getLogger(__name__)
+    assert _resolve_kernel_backend("triton-fellow", logger) == "triton"
+    assert _resolve_kernel_backend("ck-fellow", logger) == "ck"
+
+
+def test_legacy_backend_helper_also_rejects_tilelang_substitution(monkeypatch):
+    _backend_registry(monkeypatch, {"triton", "flydsl", "hip", "ck"})
+    with pytest.raises(ValueError, match="does not serve the 'tilelang' backend"):
+        _resolve_kernel_backend("tilelang-fellow", logging.getLogger(__name__))
+
+
+def test_an_unreadable_registry_does_not_claim_backend_support(monkeypatch):
+    _backend_registry(monkeypatch, None)
+    with pytest.raises(RuntimeError, match="Cannot verify KernelForge's backend registry"):
+        _resolve_kernel_backend("triton-fellow", logging.getLogger(__name__))
+
+
+def test_the_registry_is_read_from_kernelforge_not_copied_here(monkeypatch):
+    """A hardcoded list would drift silently, which is the bug being fixed.
+
+    Both layouts are probed: Hyperloom's src/kernelforge and the pre-merge
+    standalone src/kernel_agents.
+    """
+    modules = {
+        "kernelforge.kernel_backends.constants": SimpleNamespace(
+            KERNEL_BACKENDS=["Triton", "flydsl"]
+        ),
+        "kernel_agents.fellows.constants": SimpleNamespace(
+            FELLOW_BACKENDS=["hip", "intellikit"]
+        ),
+    }
+
+    def fake_import(name):
+        if name not in modules:
+            raise ModuleNotFoundError(name)
+        return modules[name]
+
+    monkeypatch.setattr(importlib, "import_module", fake_import)
+    assert forge_common._installed_kernel_backends() == {"triton", "flydsl"}
+
+    modules.pop("kernelforge.kernel_backends.constants")
+    assert forge_common._installed_kernel_backends() == {"hip", "intellikit"}
+
+    modules.clear()
+    assert forge_common._installed_kernel_backends() is None
 
 
 def test_repository_backend_resolution_requires_explicit_language():
@@ -262,6 +307,23 @@ def test_forge_edit_scope_allows_ignored_runtime_artifacts(tmp_path):
     _verify_forge_edit_scope(str(tmp_path), baseline, [kernel])
 
 
+def test_forge_edit_scope_discards_undeclared_scratch_directory(tmp_path):
+    # The loop gives each lane its own git workspace, and git reports an embedded
+    # repository as one opaque directory entry rather than its files. unlink raises
+    # on that, which is what cost two rewrite runs their score.
+    baseline = _init_scope_test_repo(tmp_path)
+    kernel = tmp_path / "kernel.py"
+    lane = tmp_path / "forge-lanes-abc123" / "1"
+    lane.mkdir(parents=True)
+    subprocess.run(["git", "init", "-q", "."], cwd=lane, check=True)
+    (lane / "candidate.py").write_text("def lane(): return 1\n")
+
+    violations = _verify_forge_edit_scope(str(tmp_path), baseline, [kernel])
+
+    assert not lane.exists()
+    assert violations == []
+
+
 def test_forge_edit_scope_discards_undeclared_untracked_file(tmp_path):
     baseline = _init_scope_test_repo(tmp_path)
     kernel = tmp_path / "kernel.py"
@@ -274,7 +336,7 @@ def test_forge_edit_scope_discards_undeclared_untracked_file(tmp_path):
 
 
 @pytest.mark.parametrize("change_kind", ["tracked", "rename"])
-def test_forge_edit_scope_rejects_undeclared_changes(tmp_path, change_kind):
+def test_forge_edit_scope_reports_undeclared_changes(tmp_path, change_kind):
     baseline = _init_scope_test_repo(tmp_path)
     kernel = tmp_path / "kernel.py"
     helper = tmp_path / "helper.py"
@@ -290,8 +352,11 @@ def test_forge_edit_scope_rejects_undeclared_changes(tmp_path, change_kind):
     else:
         helper.rename(tmp_path / "renamed_helper.py")
 
-    with pytest.raises(RuntimeError, match="outside source_file_path/editable_sources"):
-        _verify_forge_edit_scope(str(tmp_path), baseline, [kernel])
+    # Named for the caller to carry into the report, not raised: a whole campaign
+    # is not worth discarding over a verdict the agent could not see coming.
+    violations = _verify_forge_edit_scope(str(tmp_path), baseline, [kernel])
+
+    assert "helper.py" in violations
 
 
 def test_explicit_source_owner_wins_for_wrapper_anchor():
@@ -354,8 +419,25 @@ def test_gpu_type_uses_normalized_arena_hardware_model():
         _resolve_gpu_type({"target_gpu_model": ""})
 
 
+def _v2_command(tmp_path, spec, *, workflow="optimize"):
+    """Exercise actual adapter argv construction without image/GPU execution."""
+    engine = tmp_path / "engine"
+    engine.mkdir()
+    for scope in spec.candidate.editable:
+        assert scope.scope != "tree", "This image-task fixture expects declared source files"
+        path = engine / scope.path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("")
+    context = SimpleNamespace(spec=spec, workspace=engine)
+    anchor = spec.candidate.entrypoints[0].file if spec.candidate.entrypoints else spec.candidate.editable[0].path
+    plan = dict(workflow=workflow, engine_root=str(engine), anchor=anchor,
+                deadline_unix=time.time() + 3600, result=str(tmp_path / "result.json"),
+                baseline=str(tmp_path / "baseline.json"), program=str(engine / "arena_program.md"))
+    return adapter.build_command(plan, context, adapter._config({}), gpu_arch="gfx950", gpu_type="mi355x")
+
+
 @pytest.mark.parametrize(
-    ("task_name", "logical_operator", "kernel_kind", "source_owner"),
+    ("task_name", "logical_operator", "language", "source_owner"),
     [
         (
             "mi355x_vllm_aiter_mxfp4_moe_2stage_kimi_k3",
@@ -369,17 +451,17 @@ def test_gpu_type_uses_normalized_arena_hardware_model():
             "triton",
             "aiter",
         ),
-        ("mi355x_vllm_ck_moe_2stage", "ck_moe_2stage", "ck", "aiter"),
+        ("mi355x_vllm_ck_moe_2stage", "ck_moe_2stage", "hip", "aiter"),
         (
             "mi355x_vllm_ck_cktile_moe_2stage",
             "cktile_moe_2stage",
-            "ck",
+            "hip",
             "aiter",
         ),
         (
             "mi355x_vllm_ck_a8w8_blockscale_gemm",
             "gemm_a8w8_blockscale_ck",
-            "ck",
+            "hip",
             "aiter",
         ),
         (
@@ -433,24 +515,33 @@ def test_gpu_type_uses_normalized_arena_hardware_model():
     ],
 )
 def test_all_mi355x_tasks_declare_kernel_identity(
+    tmp_path,
     task_name,
     logical_operator,
-    kernel_kind,
+    language,
     source_owner,
 ):
     root = Path(__file__).resolve().parents[1]
     config_path = root / "tasks" / "image_kernel" / task_name / "config.yaml"
-    config = yaml.safe_load(config_path.read_text())
+    spec = load_task_spec(config_path, task_id=f"image_kernel/{task_name}")
+    config = spec.to_mapping()
     identity = config["kernel_identity"]
 
     assert identity["logical_operator"] == logical_operator
-    assert identity["kernel_kind"] == kernel_kind
+    assert spec.candidate.language == language
     assert identity["source_owner"] == source_owner
     assert _logical_operator(config) == logical_operator
-    assert _resolve_kernel_kind(config) == kernel_kind
     assert _resolve_framework(config) == source_owner
-    assert _infer_backend(config) == kernel_kind
-    assert _resolve_fellow(config, {}) == f"{kernel_kind}-fellow"
+    assert _infer_backend(config) == language
+    argv = _v2_command(tmp_path, spec)
+    assert _value(argv, "--operator-name") == logical_operator
+    assert _value(argv, "--framework") == source_owner
+    assert _value(argv, "--kernel-backend") == language
+    assert "--shapes-json" not in argv
+    assert "--workload-key" not in argv
+    assert "--kernel-kind" not in argv
+    # This is command serialization; runtime capability rejection is tested
+    # separately. Serializing TileLang must never silently substitute FlyDSL.
 
 
 def test_unified_attention_metadata():
@@ -462,14 +553,15 @@ def test_unified_attention_metadata():
         / "mi355x_vllm_triton_unified_attention"
         / "config.yaml"
     )
-    config = yaml.safe_load(config_path.read_text())
+    spec = load_task_spec(config_path, task_id="image_kernel/mi355x_vllm_triton_unified_attention")
+    config = spec.to_mapping()
     assert _infer_backend(config) == "triton"
     assert _logical_operator(config) == "unified_attention_with_output"
-    assert _resolve_kernel_kind(config) == "triton"
+    assert spec.candidate.language == "triton"
     assert _resolve_framework(config) == "aiter"
-    assert _declared_editable_sources(config) == [
-        "ops/triton/_triton_kernels/attention/unified_attention.py",
-        "ops/triton/attention/unified_attention.py",
+    assert [scope.path for scope in spec.candidate.editable] == [
+        "aiter/ops/triton/_triton_kernels/attention/unified_attention.py",
+        "aiter/ops/triton/attention/unified_attention.py",
     ]
     assert {
         "unified_attention",
@@ -478,10 +570,12 @@ def test_unified_attention_metadata():
         "kernel_unified_attention_2d",
         "kernel_unified_attention_3d",
         "reduce_segments",
-    }.issubset(config["target_kernel_functions"])
+    } == {entry.symbol for entry in spec.candidate.entrypoints}
+    assert config["evaluation"]["workloads"] == "workloads.json"
+    assert (config_path.parent / config["evaluation"]["workloads"]).is_file()
 
 
-def test_tilelang_backend_is_forwarded_to_forge_without_substitution(tmp_path):
+def test_the_real_tilelang_task_is_explicitly_unsupported_by_pinned_forge(tmp_path):
     root = Path(__file__).resolve().parents[1]
     config_path = (
         root
@@ -490,11 +584,14 @@ def test_tilelang_backend_is_forwarded_to_forge_without_substitution(tmp_path):
         / "mi355x_vllm_tilelang_mhc_fused_post_pre"
         / "config.yaml"
     )
-    config = yaml.safe_load(config_path.read_text())
-    fellow = _resolve_fellow(config, {})
-
-    assert fellow == "tilelang-fellow"
-    assert _value(_command(tmp_path, fellow=fellow), "--fellow") == fellow
+    spec = load_task_spec(config_path, task_id="image_kernel/mi355x_vllm_tilelang_mhc_fused_post_pre")
+    assert spec.candidate.language == "tilelang"
+    with pytest.raises(adapter.ForgeRunError, match="has no tilelang backend"):
+        adapter.require_supported_backend(spec, {"backends": ["hip", "triton", "flydsl", "ck"]})
+    argv = _v2_command(tmp_path, spec)
+    assert _value(argv, "--kernel-backend") == "tilelang"
+    assert "--fellow" not in argv
+    assert "--max-iters" not in argv
 
 
 def test_unified_attention_correctness_covers_2d_and_3d(monkeypatch):
@@ -540,9 +637,8 @@ def test_unified_attention_correctness_covers_2d_and_3d(monkeypatch):
     ]
 
 
-@pytest.mark.parametrize("filename", ["task_runner.py", "standalone_driver.py"])
-def test_paged_attention_correctness_uses_full_scored_dimensions(filename):
-    runner = _load_paged_attention_module(filename)
+def test_paged_attention_correctness_uses_full_scored_dimensions():
+    runner = _load_paged_attention_module("task_runner.py")
 
     dimensions = [runner._scored_dimensions(case) for case in runner.CASES]
     compile_smoke = runner._compile_smoke_case(runner.CASES[0])
@@ -555,132 +651,6 @@ def test_paged_attention_correctness_uses_full_scored_dimensions(filename):
     ] == [64, 128, 192]
     assert runner._scored_dimensions(compile_smoke) == (8, 256)
     assert runner._scored_dimensions(runner.CASES[0]) == (64, 1024)
-
-
-def test_existing_mi355x_forge_drivers_reject_case_selectors():
-    root = Path(__file__).resolve().parents[1]
-    driver_paths = sorted(
-        (root / "tasks" / "image_kernel").glob("mi355x_*/scripts/forge_driver.py")
-    )
-
-    config_paths = sorted(
-        (root / "tasks" / "image_kernel").glob("mi355x_*/config.yaml")
-    )
-    assert len(driver_paths) == len(config_paths)
-    for driver_path in driver_paths:
-        source = driver_path.read_text()
-        assert '"--shape"' not in source
-        assert '"--profile-case"' not in source
-        assert "parse_known_args" not in source
-        assert '"--profile-run"' in source
-        assert "case_ms:" in source
-        assert "mean_ms:" in source
-
-
-@pytest.mark.parametrize("task_name", CK_TASK_NAMES)
-def test_ck_profile_run_launches_only_the_target_operator(task_name, tmp_path):
-    driver = _load_ck_forge_driver(task_name)
-    prepared = []
-    launches = []
-    synchronizations = []
-    torch = SimpleNamespace(
-        cuda=SimpleNamespace(synchronize=lambda: synchronizations.append(True))
-    )
-    cases = [{"id": "first"}, {"id": "profile"}]
-
-    def make(case, correctness=False):
-        prepared.append((case, correctness))
-        return {"case": case}
-
-    task_runner = SimpleNamespace(
-        WORKSPACE=tmp_path,
-        CASES=cases,
-        _torch=lambda: torch,
-        _make=make,
-        _run=lambda inputs: launches.append(inputs),
-    )
-
-    assert driver._run_profile(task_runner) == 0
-    assert prepared == [(cases[-1], False)]
-    assert launches == [{"case": cases[-1]}] * 8
-    assert len(synchronizations) == 2
-
-
-def test_k3_profile_run_uses_cached_inputs_without_preparing(monkeypatch):
-    driver = _load_k3_forge_driver()
-    launches = []
-    fake_torch = SimpleNamespace(
-        cuda=SimpleNamespace(synchronize=lambda: None),
-    )
-    monkeypatch.setitem(sys.modules, "torch", fake_torch)
-    monkeypatch.setattr(
-        driver,
-        "_load_profile_inputs",
-        lambda _task, _case: {"cached": True},
-    )
-
-    def reject_prepare(*_args, **_kwargs):
-        pytest.fail("profile-run must not prepare quantized inputs under counters")
-
-    task = SimpleNamespace(
-        CASES=[
-            {
-                "id": "prefill",
-                "params": {"token": 7211, "topk": 16, "model_dim": 3584},
-            },
-            {
-                "id": "coverage",
-                "correctness_only": True,
-                "params": {"token": 8192, "topk": 16, "model_dim": 3584},
-            },
-        ],
-        _prepare=reject_prepare,
-        _run=lambda inputs: launches.append(inputs),
-    )
-
-    assert driver._run_profile(task) == 0
-    assert launches == [{"cached": True}] * 6
-
-
-def test_k3_benchmark_refreshes_only_profiled_scored_case(monkeypatch):
-    driver = _load_k3_forge_driver()
-    refreshed = []
-    fake_torch = SimpleNamespace(
-        cuda=SimpleNamespace(synchronize=lambda: None),
-    )
-    monkeypatch.setitem(sys.modules, "torch", fake_torch)
-    monkeypatch.setattr(
-        driver,
-        "_save_profile_inputs",
-        lambda _task, case, _inputs: refreshed.append(case["id"]),
-    )
-    cases = [
-        {
-            "id": "decode",
-            "params": {"token": 62, "topk": 16, "model_dim": 3584},
-        },
-        {
-            "id": "prefill",
-            "params": {"token": 7211, "topk": 16, "model_dim": 3584},
-        },
-        {
-            "id": "coverage",
-            "correctness_only": True,
-            "params": {"token": 8192, "topk": 16, "model_dim": 3584},
-        },
-    ]
-    task = SimpleNamespace(
-        CASES=cases,
-        _prepare=lambda case, correctness: {"case_id": case["id"]},
-        _run=lambda _inputs: None,
-        _benchmark_cuda_graph_or_events=lambda _fn, **_kwargs: (
-            1.0,
-            {"benchmark_method": "cuda_graph"},
-        ),
-    )
-
-    assert driver._run_bench(task, warmup=1, iters=1) == 0
-    assert refreshed == ["prefill"]
 
 
 def test_adapter_rejects_incomplete_and_invalid_performance_cases():

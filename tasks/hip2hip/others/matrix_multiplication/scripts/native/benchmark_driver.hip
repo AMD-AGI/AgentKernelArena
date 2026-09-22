@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "hip_graph_benchmark.hpp"
+#include "matrix_reference.hpp"
 
 // Compile the candidate kernel into this protected benchmark translation unit.
 // Renaming its CLI entry point keeps setup/validation code out of timed work.
@@ -82,6 +83,8 @@ int main(int argc, char** argv)
             }
         }
 
+        const auto expected = matrix_reference::product(h_a, h_b, a_rows, a_cols, b_cols);
+
         aka_native_perf::throw_on_hip_error(
             hipStreamCreateWithFlags(&stream, hipStreamNonBlocking), "hipStreamCreateWithFlags");
         aka_native_perf::throw_on_hip_error(hipMalloc(&d_a, a_bytes), "hipMalloc(A)");
@@ -129,41 +132,22 @@ int main(int argc, char** argv)
                 return aka_native_perf::hip_failure("matrix replay validation", error);
             }
 
-            const unsigned int rows[] = {0U, a_rows / 3U, a_rows / 2U, a_rows - 1U};
-            const unsigned int cols[] = {0U, b_cols / 3U, b_cols / 2U, b_cols - 1U};
-            for(const unsigned int row : rows)
-            {
-                for(const unsigned int col : cols)
-                {
-                    double expected = 0.0;
-                    for(unsigned int k = 0; k < a_cols; ++k)
-                    {
-                        expected += static_cast<double>(
-                            h_a[static_cast<std::size_t>(row) * a_cols + k])
-                            * static_cast<double>(
-                                h_b[static_cast<std::size_t>(k) * b_cols + col]);
-                    }
-                    const float actual
-                        = h_c[static_cast<std::size_t>(row) * b_cols + col];
-                    const double tolerance
-                        = 2.0e-3 * std::max(1.0, std::fabs(expected));
-                    if(!std::isfinite(actual)
-                       || std::fabs(static_cast<double>(actual) - expected) > tolerance)
-                    {
-                        std::ostringstream message;
-                        message << "C[" << row << "," << col << "]=" << actual
-                                << ", expected=" << expected;
-                        return message.str();
-                    }
-                }
-            }
-            return {};
+            return matrix_reference::validate(h_c, expected, b_cols);
         };
 
-        const auto result = aka_native_perf::benchmark_graph_or_events(
-            launch, stream, /*warmup=*/10, samples, /*target_ms=*/1.0,
-            /*max_repeats=*/1000, validate);
-        aka_native_perf::print_result_json("matrix_multiplication", result);
+        if(parse_uint(argc, argv, "--check-only", 0) != 0)
+        {
+            const auto error = validate(nullptr, stream);
+            if(!error.empty()) throw std::runtime_error(error);
+            std::cout << "Full reference validation passed" << std::endl;
+        }
+        else
+        {
+            const auto result = aka_native_perf::benchmark_graph_or_events(
+                launch, stream, /*warmup=*/10, samples, /*target_ms=*/1.0,
+                /*max_repeats=*/1000, validate);
+            aka_native_perf::print_result_json("matrix_multiplication", result);
+        }
 
         aka_native_perf::throw_on_hip_error(hipFree(d_a), "hipFree(A)");
         d_a = nullptr;

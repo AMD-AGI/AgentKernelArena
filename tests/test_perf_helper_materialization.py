@@ -57,6 +57,25 @@ def test_materializes_vllm_adapter_and_sibling_helper(tmp_path):
     assert (scripts / AKA_HELPER_FILE_NAME).read_text() == canonical_aka_helper(ROOT)
 
 
+def test_v2_wrapper_preserves_discovery_of_delegated_generated_timing(tmp_path):
+    import yaml
+
+    task = tmp_path / "tasks" / "arbitrary_suite" / "wrapped"
+    scripts = task / "scripts"
+    scripts.mkdir(parents=True)
+    (task / "config.yaml").write_text(yaml.safe_dump({
+        "schema_version": 2, "candidate": {"language": "triton", "editable": ["kernel.py"]},
+        "evaluation": {"runner": ["python3", "public_actions.py"]}}))
+    (task / "public_actions.py").write_text("from scripts import task_runner\n")
+    runner = scripts / "task_runner.py"
+    runner.write_text(f"{MARK_START}\n{VLLM_HELPER_STUB_BLOCK}{MARK_END}\n")
+    counts, problems = audit_task_benchmark_entrypoints(tmp_path)
+    assert counts == {"vllm_adapter": 1} and not problems
+    materialize_perf_helpers_in_workspace(task)
+    assert "from _aka_benchmark import benchmark_cuda_graph_or_events" in runner.read_text()
+    assert (scripts / AKA_HELPER_FILE_NAME).read_text() == canonical_aka_helper(ROOT)
+
+
 def test_file_loaded_vllm_runner_finds_sibling_helper_from_workspace_root(tmp_path):
     scripts = tmp_path / "scripts"
     scripts.mkdir()
@@ -158,6 +177,28 @@ def test_perf_helper_audit_runs_without_site_packages():
     assert "benchmark entrypoints=" in result.stdout
 
 
+def test_v2_runner_override_and_nested_helper_importer(tmp_path):
+    import yaml
+
+    runner = tmp_path / "deep" / "checks" / "evaluate task.py"
+    importer = runner.parent / "internal" / "timing.py"
+    importer.parent.mkdir(parents=True)
+    runner.write_text("# delegates to internal.timing\n")
+    importer.write_text("from _aka_benchmark import benchmark_callable\n")
+    baseline = tmp_path / "baseline.py"
+    baseline.write_text("# independent timing entrypoint\n")
+    candidate = tmp_path / "kernel.py"
+    candidate.write_text("# implementation, not the harness\n")
+    (tmp_path / "config.yaml").write_text(yaml.safe_dump({
+        "schema_version": 2, "candidate": {"language": "hip", "editable": ["kernel.py"]},
+        "evaluation": {"runner": ["python3", "deep/checks/evaluate task.py"],
+                       "baseline": {"performance": {"commands": [["python3", "baseline.py", "--kernel", "kernel.py"]]}}}}))
+    assert configured_performance_entrypoints(tmp_path) == {runner, baseline}
+    generated = materialize_perf_helpers_in_workspace(tmp_path)
+    assert importer.parent / "_aka_benchmark.py" in generated
+    assert not (tmp_path / "_aka_benchmark.py").exists()
+
+
 def test_materializes_native_header_only_when_driver_includes_it(tmp_path):
     fake_root = tmp_path / "repo"
     perf = fake_root / "src/tools/perf"
@@ -241,14 +282,18 @@ def test_every_task_performance_entrypoint_uses_a_supported_family():
     counts, problems = audit_task_benchmark_entrypoints(ROOT)
     config_count = len(list((ROOT / "tasks").rglob("config.yaml")))
 
-    assert config_count == 426
+    assert config_count == 438
     assert problems == []
     assert sum(counts.values()) == config_count
+    # Replay-aware adapters call the canonical sample API directly so their
+    # checks observe the exact invocation measured by the timer. The four MoE
+    # runners now delegate through task-local _contract_checks.py, which imports
+    # the canonical TimedRun API before the generated vLLM stub is inspected.
     assert counts == {
-        "canonical_python": 220,
-        "native_graph_driver": 6,
-        "rocmbench_adapter": 61,
-        "vllm_adapter": 139,
+        "canonical_python": 269,
+        "native_graph_driver": 2,
+        "rocmbench_adapter": 32,
+        "vllm_adapter": 135,
     }
 
 

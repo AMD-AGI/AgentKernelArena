@@ -1,29 +1,30 @@
-task_type: flydsl2flydsl
-source_file_path:
+schema_version: 2
+description: "Optimize the FlyDSL blockscale preshuffle FP8 GEMM for AMD MI300X-class CDNA GPUs\n(per-block\
+  \ scales, MFMA, optional async copy on supported arch).\nYou MUST keep the kernel in FlyDSL \u2014 do\
+  \ NOT rewrite it in HIP, CUDA, or Triton.\nYou MUST NOT add FastLauncher, ctypes dispatch bypass, _call_state_cache\
+  \ extraction,\nor any wrapper that bypasses JitFunction.__call__. Only optimize the GPU kernel\ncomputation\
+  \ itself."
+instructions:
+- README.md
+candidate:
+  language: flydsl
+  initial_state: implemented
+  initial_language: flydsl
+  editable:
   - kernel.py
-harness_path: test_kernel_harness.py
-compile_command:
-  - python3 -c "from kernel import compile_blockscale_preshuffle_gemm; compile_blockscale_preshuffle_gemm(M=256,N=256,K=256,tile_m=32,tile_n=64,tile_k=256,scale_block_k=128,out_dtype='bf16',use_async_copy=False); print('compile ok')"
-correctness_command:
-  - python3 test_kernel_harness.py --correctness
-performance_command:
-  - python3 test_kernel_harness.py --full-benchmark
-target_kernel_functions:
-  - compile_blockscale_preshuffle_gemm
-source_origin:
-  repo: https://github.com/ROCm/FlyDSL
-  path: kernels/blockscale_preshuffle_gemm.py
-  commit: 28a18d328b4882c999864b2df2f8f9fe3fcc8b47
-  date: 2026-06-01  # v0.2.0 (28a18d3)
-prompt:
-  instructions: |
-    Optimize the FlyDSL blockscale preshuffle FP8 GEMM for AMD MI300X-class CDNA GPUs
-    (per-block scales, MFMA, optional async copy on supported arch).
-    You MUST keep the kernel in FlyDSL — do NOT rewrite it in HIP, CUDA, or Triton.
-    You MUST NOT add FastLauncher, ctypes dispatch bypass, _call_state_cache extraction,
-    or any wrapper that bypasses JitFunction.__call__. Only optimize the GPU kernel
-    computation itself.
-
+  entrypoints:
+  - file: kernel.py
+    kind: builder
+    symbol: compile_blockscale_preshuffle_gemm
+baseline:
+  kind: initial_candidate
+  language: flydsl
+  correctness_policy: required
+evaluation:
+  runner:
+  - python3
+  - scripts/evaluate.py
+  workloads: cases.json
+  timeout_s: 3600
 platform_support:
-  runnable_on_gfx942: true
   status: active

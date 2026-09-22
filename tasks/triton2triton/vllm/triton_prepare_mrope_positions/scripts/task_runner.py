@@ -94,7 +94,10 @@ def run_compile():
         return False, str(e)
 
 
-def run_correctness():
+def run_correctness(*, case_index=None):
+    if case_index is not None and case_index >= 10000:
+        from _upstream_controls import run_control
+        return run_control(case_index - 10000, load_module)
     import torch
     try:
         mod = load_module()
@@ -103,6 +106,8 @@ def run_correctness():
 
     device = "cuda"
     for i, (num_reqs, query_len, max_model_len, is_prefill) in enumerate(TEST_SHAPES):
+        if case_index is not None and i != case_index:
+            continue
         try:
             torch.manual_seed(42 + i)
             max_num_reqs = num_reqs + 8
@@ -177,8 +182,9 @@ def run_performance():
                 query_start_loc[r + 1] = query_start_loc[r] + query_len
             total_tokens = int(query_start_loc[-1].item())
 
-            prefill_lens = torch.full((max_num_reqs,), max_model_len, dtype=torch.int32, device=device)
-            num_computed_tokens = torch.zeros(max_num_reqs, dtype=torch.int32, device=device)
+            # Honor the declared prefill/decode case, as correctness does.
+            prefill_lens = torch.full((max_num_reqs,), max_model_len if is_prefill else 10, dtype=torch.int32, device=device)
+            num_computed_tokens = torch.full((max_num_reqs,), 0 if is_prefill else 50, dtype=torch.int32, device=device)
             prefill_mrope_positions = torch.randint(
                 0, max_model_len, (max_num_reqs * 3, max_model_len),
                 dtype=torch.int32, device=device

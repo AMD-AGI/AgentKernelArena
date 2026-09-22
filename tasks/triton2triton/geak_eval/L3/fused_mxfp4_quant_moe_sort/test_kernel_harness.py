@@ -26,8 +26,10 @@ def benchmark_cuda_graph_or_events(*args, **kwargs):
     )
     return median_ms, metadata
 
-# Ensure line-buffered stdout
-sys.stdout.reconfigure(line_buffering=True)
+# Use line buffering for terminal/file streams. Arena captures action logs in
+# StringIO, which has no reconfigure method and already writes synchronously.
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(line_buffering=True)
 
 import torch
 import triton
@@ -95,9 +97,11 @@ def mxfp4_to_f32(x):
 
 
 def e8m0_to_f32(x):
-    x_f32 = 2 ** ((x - 127).to(torch.float32))
-    x_f32[x_f32 == 128] = float("nan")
-    return x_f32
+    """Decode unsigned E8M0: finite biased exponents 0..254, NaN code 255."""
+    codes = x.to(torch.float32)
+    # Convert before subtraction: uint8 arithmetic would wrap below bias 127.
+    values = torch.exp2(codes - 127)
+    return torch.where(codes == 255, float("nan"), values)
 
 
 # from op_tests/triton_tests/quant/test_fused_mxfp4_quant.py

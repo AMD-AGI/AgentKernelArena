@@ -1,0 +1,68 @@
+{
+  "cases": [
+    {
+      "test_case_id": "case_0000",
+      "params": {
+        "b": 2,
+        "height": 16,
+        "width": 16,
+        "h": 8,
+        "d": 128,
+        "seed": 20260401,
+        "rotate_neox": 0
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0001",
+      "params": {
+        "b": 1,
+        "height": 32,
+        "width": 32,
+        "h": 8,
+        "d": 128,
+        "seed": 20260401,
+        "rotate_neox": 0
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0002",
+      "params": {
+        "b": 4,
+        "height": 16,
+        "width": 16,
+        "h": 16,
+        "d": 64,
+        "seed": 20260401,
+        "rotate_neox": 0
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0003",
+      "params": {
+        "b": 2,
+        "height": 24,
+        "width": 24,
+        "h": 4,
+        "d": 128,
+        "seed": 20260401,
+        "rotate_neox": 0
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    }
+  ]
+}

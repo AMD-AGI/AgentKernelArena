@@ -14,6 +14,7 @@ import numpy as np
 from .testcases import (
     TestCaseResult,
     analyze_benchmark_method_consistency,
+    analyze_workload_consistency,
     load_performance_results,
     match_test_cases,
 )
@@ -142,6 +143,16 @@ def plot_performance_comparison(
     
     if not optimized_cases:
         log.warning("No optimized performance data found, skipping plotting")
+        return None
+
+    workload_consistent, workload_mismatches = analyze_workload_consistency(
+        baseline_cases, optimized_cases, logger,
+    )
+    if not workload_consistent:
+        log.warning(
+            "Workloads are not comparable; skipping performance plots: %s",
+            workload_mismatches,
+        )
         return None
 
     method_consistent, method_mismatches = analyze_benchmark_method_consistency(

@@ -13,11 +13,12 @@ Supported and tested hardware, Docker images, software versions, agent CLIs, and
 
 The following hardware configurations are supported and tested.
 
-| AMD Instinct GPU | ROCm version | Notes |
+| AMD GPU | ROCm version | Notes |
 | --- | --- | --- |
 | MI300X | 7.2 (Bundled in the selected SGLang image.) | `target_gpu_model: MI300X` |
 | MI325X | 7.2 (Bundled in the selected SGLang image.) | `target_gpu_model: MI325X` |
 | MI355X | 7.2 (Bundled in the selected SGLang image.) | `target_gpu_model: MI355X` |
+| RDNA4 (`gfx1201`, 16 GB tested) | Pinned in the [RDNA4 recipe](../../docker/rdna4/Dockerfile) | `target_gpu_model: RDNA4`; HIP/Triton task runtime checks, with limits in the [recipe guide](../../docker/rdna4/README.md). |
 
 ## Software requirements
 
@@ -27,15 +28,17 @@ The following software versions are required or verified.
 | --- | --- | --- |
 | Linux | Ubuntu 22.04, Ubuntu 24.04 | |
 | hipcc | Matches ROCm image | Required for HIP tasks. |
-| rocprof-compute | Matches ROCm image | Required for HIP performance profiling. |
+| Profiler tools | Match runtime image | Smoke reports `rocprof-compute` and `rocprofv3` availability. Core graph/event timing needs neither; profiling runs can require specific binaries with `AKA_REQUIRED_PROFILERS`. Availability does not establish candidate analysis. See the [qualification record](runtime-upgrade-qualification.md#profiler-capability-policy). |
 | Docker | Current stable release | Required; serial experiments run through `make docker-run`; multi-GPU experiments run through `make docker-parallel-run`. |
 | SGLang runtime image | `lmsysorg/sglang:v0.5.12-rocm720-mi30x` for `gfx942`; `lmsysorg/sglang-rocm:v0.5.14-rocm720-mi35x-20260705` for `gfx950` | The verified `gfx950` digest is `sha256:b435b508b5aa696abb25c909341ce73e41574c4271cf716bed72418dcea86b78`. Override with `AKA_DOCKER_IMAGE`, `AKA_DOCKER_IMAGE_GFX942`, or `AKA_DOCKER_IMAGE_GFX950`. |
-| Python | Provided by the image (for example, 3.10) | Bundled in the SGLang image. |
+| RDNA4 runtime image | [Digest-pinned base and layout adapter](../../docker/rdna4/Dockerfile) | Default image builds on first use if missing; `make docker-build-rdna4` prebuilds or rebuilds it. Image overrides disable automatic builds; see the [runtime guide](../../docker/rdna4/README.md). |
+| Python for GPU experiments | Provided by the qualified task runtime image | Task-specific qualification applies; older images do not support every retained task. |
+| Python for the full repository CPU/source audit | CPython 3.12 | The complete source set requires 3.12 syntax, and migration AST fingerprints are pinned to this minor version. Use full Git history; see [contributor verification](../../CONTRIBUTING.md#testing-and-verification). |
 | Node.js and npm | Node.js 22 with a current npm | Required on the host only for the alternative npm installation of Claude Code or another npm-installed agent CLI. |
-| PyTorch | ROCm build bundled in the image | Provided by the SGLang Docker image. |
+| PyTorch | ROCm build bundled in the image | Provided by the selected runtime image. |
 | Triton | Bundled with the image's ROCm PyTorch | Required for Triton task categories. |
 | AITER | `0.1.17.dev110+g9127c94a1` in the verified `gfx950` image | Required by AITER-backed task oracles and kernels. |
-| FlyDSL | `0.2.2` in the verified `gfx950` image (or `make docker-setup-flydsl` when absent) | Required for `flydsl2flydsl`, `torch2flydsl`, and `triton2flydsl` tasks. |
+| FlyDSL | `0.2.2` in the verified `gfx950` image (or `make docker-setup-flydsl` when absent) | Required for `flydsl2flydsl`, `torch2flydsl`, `triton2flydsl`, and `operator2flydsl` tasks. |
 
 ## Evaluation-tool sidecars
 
@@ -48,6 +51,7 @@ FlyDSL, and AITER versions in the preceding table remain unchanged.
 | --- | --- | --- |
 | `gfx950` (MI355X) | Runtime-qualified, candidate-dependent | Pinned image/build locks and all six integrated startup controls pass on the current hardware. End-to-end readiness still depends on language, artifact, adapter, and candidate attestation. Waitcheck and ConSan are qualified only for explicitly configured advisory pilots. Trusted single-dispatch Triton/FlyDSL rocJITsu capsule replay is implemented, but automatic evaluator-owned capsule capture and binding to the correctness run remain advisory-only gaps. |
 | `gfx942` (MI300X/MI325X) | Unverified | No equivalent image/adapter/positive-control qualification has completed; the host runner currently rejects evaluation-tool sidecars. |
+| `gfx1201` (RDNA4) | Unverified | Runtime task checks do not qualify evaluation-tool sidecars; the host runner rejects them. |
 
 The runtime base digest and per-tool package/source locks are recorded in
 `docker/eval-tools/images.lock.yaml`. See [Check kernels with evaluation
@@ -71,19 +75,24 @@ The following templates are selectable in the current `AgentType` registry. See
 | `cursor` | Cursor Agent CLI and host login state. |
 | `claude_code` | Native/local or npm-installed Claude Code CLI and host login state. |
 | `codex` | Codex CLI and host login state. |
-| `geak_v3` | GEAK CLI; HIP-oriented integration. |
-| `geak_v3_triton` | GEAK CLI; Triton-oriented integration. |
-| `mini_swe_triton` | mini-swe-agent/GEAK dependencies. |
-| `task_validator` | Claude Code or Codex backend configured in `agents/task_validator/agent_config.yaml`. |
+| `forge` | Pinned KernelForge engine and selected backend/provider; see the [Forge guide](../../agents/forge/README.md). |
+| `geak` | Pinned GEAK checkout, Claude Code Workflow support and SDK; see the [GEAK guide](../../agents/geak/README.md). |
+| `geak_v4` | Registry alias for `geak`; uses the same v2 launcher, configuration and Workflow runtime. |
+| `forge_operator2flydsl` | Compatibility name for `forge`, using the same launcher and configuration. |
+| `task_validator` | Claude Code or Codex backend, with defaults in `agents/task_validator/agent_config.yaml` and run-level `agent` overrides. |
+
+Selectable names are defined in [the registry](../../src/module_registration.py).
+This dependency list does not assert that every agent/model/task combination
+has completed qualification.
 
 ## Model providers
 
-Model/provider support is integration-specific; run configuration files do not
-configure a provider.
+Model/provider support and run-level overrides are integration-specific; there
+is no shared top-level provider field.
 
 | Provider | Notes |
 | --- | --- |
 | OpenAI | Use a selected integration or CLI configured for OpenAI. |
 | Anthropic | Use a selected integration or CLI configured for Anthropic. |
 | OpenRouter or another OpenAI-compatible service | Supported when the selected integration accepts a custom provider/base URL. |
-| Local vLLM | `make vllm` starts an OpenAI-compatible endpoint on port `30001`; configure the selected integration to use it. |
+| Local vLLM | `make vllm` uses a separate serving image to launch an OpenAI-compatible endpoint on port `30001`; configure the selected integration to use it. This serving path is unverified on RDNA4; the [RDNA4 kernel-runtime checks](../../docker/rdna4/README.md#validation-and-limits) do not establish full vLLM serving support. |

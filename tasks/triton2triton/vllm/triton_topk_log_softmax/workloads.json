@@ -1,0 +1,230 @@
+{
+  "version": 1,
+  "candidate_symbols": {
+    "source/triton_topk_log_softmax.py": [
+      {
+        "name": "_topk_log_softmax_kernel",
+        "jit": true
+      }
+    ]
+  },
+  "case_table": "TEST_SHAPES",
+  "input_table": [
+    [
+      4,
+      256,
+      3
+    ],
+    [
+      8,
+      1024,
+      5
+    ],
+    [
+      16,
+      4096,
+      10
+    ],
+    [
+      32,
+      8192,
+      20
+    ],
+    [
+      64,
+      32768,
+      10
+    ]
+  ],
+  "cases": [
+    {
+      "test_case_id": "perf1",
+      "dtype": "float32,int64",
+      "params": {
+        "case_index": 0,
+        "configuration": [
+          4,
+          256,
+          3
+        ],
+        "configuration_names": "(batch, vocab, ntok)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf2",
+      "dtype": "float32,int64",
+      "params": {
+        "case_index": 1,
+        "configuration": [
+          8,
+          1024,
+          5
+        ],
+        "configuration_names": "(batch, vocab, ntok)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf3",
+      "dtype": "float32,int64",
+      "params": {
+        "case_index": 2,
+        "configuration": [
+          16,
+          4096,
+          10
+        ],
+        "configuration_names": "(batch, vocab, ntok)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf4",
+      "dtype": "float32,int64",
+      "params": {
+        "case_index": 3,
+        "configuration": [
+          32,
+          8192,
+          20
+        ],
+        "configuration_names": "(batch, vocab, ntok)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf5",
+      "dtype": "float32,int64",
+      "params": {
+        "case_index": 4,
+        "configuration": [
+          64,
+          32768,
+          10
+        ],
+        "configuration_names": "(batch, vocab, ntok)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control-upstream-1",
+      "params": {
+        "case_index": 10000,
+        "configuration": {
+          "name": "singleton_vocab",
+          "shape": [
+            1,
+            1,
+            1
+          ],
+          "dtype": "float32",
+          "values": "singleton"
+        },
+        "source_revision": "0acf65b3a967ef1025dbfc5fd4b415b259e3bd43"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control-upstream-2",
+      "params": {
+        "case_index": 10001,
+        "configuration": {
+          "name": "non_power_of_two_below_block",
+          "shape": [
+            3,
+            1000,
+            7
+          ],
+          "dtype": "float32",
+          "values": "random"
+        },
+        "source_revision": "0acf65b3a967ef1025dbfc5fd4b415b259e3bd43"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control-upstream-3",
+      "params": {
+        "case_index": 10002,
+        "configuration": {
+          "name": "non_power_of_two_above_block_fp16_edges",
+          "shape": [
+            2,
+            1025,
+            5
+          ],
+          "dtype": "float16",
+          "values": "numerical_edges"
+        },
+        "source_revision": "0acf65b3a967ef1025dbfc5fd4b415b259e3bd43"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    }
+  ],
+  "migration": {
+    "original_harness_sha256": "c123e79073fe38a12161e354f173dadc2a59647967a5620d4acca1cd3bba9356",
+    "original_correctness_sha256": "a2aeacd27aedfa24be0be58df129981a098abb5236c61f82acc8b5e5cdca90be"
+  },
+  "upstream_controls": [
+    {
+      "name": "singleton_vocab",
+      "shape": [
+        1,
+        1,
+        1
+      ],
+      "dtype": "float32",
+      "values": "singleton"
+    },
+    {
+      "name": "non_power_of_two_below_block",
+      "shape": [
+        3,
+        1000,
+        7
+      ],
+      "dtype": "float32",
+      "values": "random"
+    },
+    {
+      "name": "non_power_of_two_above_block_fp16_edges",
+      "shape": [
+        2,
+        1025,
+        5
+      ],
+      "dtype": "float16",
+      "values": "numerical_edges"
+    }
+  ]
+}

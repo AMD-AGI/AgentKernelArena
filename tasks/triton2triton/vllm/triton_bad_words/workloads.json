@@ -1,0 +1,417 @@
+{
+  "version": 1,
+  "candidate_symbols": {
+    "source/triton_bad_words.py": [
+      {
+        "name": "_bad_words_kernel",
+        "jit": true
+      }
+    ]
+  },
+  "case_table": "TEST_SHAPES",
+  "input_table": [
+    [
+      4,
+      256,
+      2
+    ],
+    [
+      8,
+      1024,
+      4
+    ],
+    [
+      16,
+      4096,
+      8
+    ],
+    [
+      32,
+      8192,
+      16
+    ],
+    [
+      64,
+      16384,
+      8
+    ]
+  ],
+  "cases": [
+    {
+      "test_case_id": "perf1",
+      "dtype": "float32,int32",
+      "params": {
+        "case_index": 0,
+        "configuration": [
+          4,
+          256,
+          2
+        ],
+        "configuration_names": "(batch, vocab, nbw)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf2",
+      "dtype": "float32,int32",
+      "params": {
+        "case_index": 1,
+        "configuration": [
+          8,
+          1024,
+          4
+        ],
+        "configuration_names": "(batch, vocab, nbw)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf3",
+      "dtype": "float32,int32",
+      "params": {
+        "case_index": 2,
+        "configuration": [
+          16,
+          4096,
+          8
+        ],
+        "configuration_names": "(batch, vocab, nbw)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf4",
+      "dtype": "float32,int32",
+      "params": {
+        "case_index": 3,
+        "configuration": [
+          32,
+          8192,
+          16
+        ],
+        "configuration_names": "(batch, vocab, nbw)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf5",
+      "dtype": "float32,int32",
+      "params": {
+        "case_index": 4,
+        "configuration": [
+          64,
+          16384,
+          8
+        ],
+        "configuration_names": "(batch, vocab, nbw)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "multi-token/0",
+      "shape": [
+        4,
+        256,
+        2,
+        2
+      ],
+      "dtype": "torch.float32",
+      "params": {
+        "case_index": -1,
+        "additional_case_index": 0,
+        "seed": 1234,
+        "batch": 4,
+        "vocab": 256,
+        "num_bad_words": 2,
+        "word_len": 2,
+        "output_len": 10,
+        "prompt_len": 10
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "multi-token/1",
+      "shape": [
+        8,
+        512,
+        3,
+        2
+      ],
+      "dtype": "torch.float32",
+      "params": {
+        "case_index": -1,
+        "additional_case_index": 1,
+        "seed": 1235,
+        "batch": 8,
+        "vocab": 512,
+        "num_bad_words": 3,
+        "word_len": 2,
+        "output_len": 10,
+        "prompt_len": 10
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "multi-token/2",
+      "shape": [
+        6,
+        1024,
+        3,
+        3
+      ],
+      "dtype": "torch.float32",
+      "params": {
+        "case_index": -1,
+        "additional_case_index": 2,
+        "seed": 1236,
+        "batch": 6,
+        "vocab": 1024,
+        "num_bad_words": 3,
+        "word_len": 3,
+        "output_len": 10,
+        "prompt_len": 10
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "contract_controls",
+      "status": "PASS",
+      "checks": [
+        "correctness"
+      ],
+      "params": {
+        "case_index": 5,
+        "coverage": "Controls cover multi-token bad words using output history plus speculative input positions, matching/nonmatching prefixes and remapped requests."
+      }
+    },
+    {
+      "test_case_id": "perf_prefix_routing",
+      "status": "PASS",
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "params": {
+        "case_index": 6,
+        "variant": "multi_token_prefix_history_and_speculation",
+        "logits": {
+          "generator": "linspace",
+          "start": -2.0,
+          "stop": 2.0,
+          "numel": 32768,
+          "reshape": [
+            32,
+            1024
+          ]
+        },
+        "request_mapping_pattern": [
+          1,
+          1,
+          0,
+          0
+        ],
+        "pattern_repeats": 8,
+        "local_positions_pattern": [
+          0,
+          1,
+          0,
+          1
+        ],
+        "speculative_input_ids_pattern": [
+          6,
+          0,
+          2,
+          0
+        ],
+        "bad_words_by_request": [
+          [
+            [
+              3,
+              4,
+              9
+            ],
+            [
+              2,
+              8
+            ]
+          ],
+          [
+            [
+              5,
+              6,
+              10
+            ],
+            [
+              7,
+              11
+            ]
+          ]
+        ],
+        "prompt_lengths": [
+          2,
+          2
+        ],
+        "total_lengths": [
+          4,
+          3
+        ],
+        "token_history_by_request": [
+          [
+            0,
+            0,
+            3,
+            4,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            5,
+            0,
+            0,
+            0
+          ]
+        ],
+        "max_num_bad_words": 2
+      },
+      "shape": [
+        32,
+        1024
+      ],
+      "dtype": "float32"
+    },
+    {
+      "test_case_id": "control-upstream-1",
+      "params": {
+        "case_index": 10000,
+        "configuration": {
+          "name": "irregular_speculative",
+          "vocab": 96,
+          "mapping": [
+            2,
+            2,
+            0,
+            1,
+            1,
+            1
+          ],
+          "prefix_lengths": [
+            1,
+            2,
+            3,
+            4
+          ]
+        },
+        "source_revision": "0acf65b3a967ef1025dbfc5fd4b415b259e3bd43"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control-upstream-2",
+      "params": {
+        "case_index": 10001,
+        "configuration": {
+          "name": "empty_grids",
+          "calls": [
+            {
+              "logits": [
+                0,
+                32
+              ],
+              "bad_words": 1
+            },
+            {
+              "logits": [
+                2,
+                32
+              ],
+              "bad_words": 0
+            }
+          ]
+        },
+        "source_revision": "0acf65b3a967ef1025dbfc5fd4b415b259e3bd43"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    }
+  ],
+  "migration": {
+    "original_harness_sha256": "d2236c7ab71cc377ca22e321ddbbaf2f851586148a9d316e0eaae54ae6fa9626",
+    "original_correctness_sha256": "328b1df71bcdfbe085ca3898ac77063f8aaeff2c2848858ba4c26afec55aad67",
+    "additional_correctness": "Original targeted cases beyond the main shape table are retained explicitly. case_index=-1 executes the protected additional group without the main shape loop."
+  },
+  "upstream_controls": [
+    {
+      "name": "irregular_speculative",
+      "vocab": 96,
+      "mapping": [
+        2,
+        2,
+        0,
+        1,
+        1,
+        1
+      ],
+      "prefix_lengths": [
+        1,
+        2,
+        3,
+        4
+      ]
+    },
+    {
+      "name": "empty_grids",
+      "calls": [
+        {
+          "logits": [
+            0,
+            32
+          ],
+          "bad_words": 1
+        },
+        {
+          "logits": [
+            2,
+            32
+          ],
+          "bad_words": 0
+        }
+      ]
+    }
+  ]
+}

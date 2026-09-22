@@ -1,0 +1,135 @@
+{
+  "version": 1,
+  "candidate_symbols": {
+    "source/triton_merge_attn_states.py": [
+      {
+        "name": "merge_attn_states_kernel",
+        "jit": true
+      }
+    ]
+  },
+  "case_table": "TEST_SHAPES",
+  "input_table": [
+    [
+      32,
+      8,
+      64
+    ],
+    [
+      128,
+      16,
+      64
+    ],
+    [
+      256,
+      32,
+      128
+    ],
+    [
+      64,
+      8,
+      128
+    ],
+    [
+      512,
+      16,
+      64
+    ]
+  ],
+  "cases": [
+    {
+      "test_case_id": "perf1",
+      "dtype": "float16,float32",
+      "params": {
+        "case_index": 0,
+        "configuration": [
+          32,
+          8,
+          64
+        ],
+        "configuration_names": "(num_tokens, num_heads, head_size)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf2",
+      "dtype": "float16,float32",
+      "params": {
+        "case_index": 1,
+        "configuration": [
+          128,
+          16,
+          64
+        ],
+        "configuration_names": "(num_tokens, num_heads, head_size)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf3",
+      "dtype": "float16,float32",
+      "params": {
+        "case_index": 2,
+        "configuration": [
+          256,
+          32,
+          128
+        ],
+        "configuration_names": "(num_tokens, num_heads, head_size)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf4",
+      "dtype": "float16,float32",
+      "params": {
+        "case_index": 3,
+        "configuration": [
+          64,
+          8,
+          128
+        ],
+        "configuration_names": "(num_tokens, num_heads, head_size)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf5",
+      "dtype": "float16,float32",
+      "params": {
+        "case_index": 4,
+        "configuration": [
+          512,
+          16,
+          64
+        ],
+        "configuration_names": "(num_tokens, num_heads, head_size)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    }
+  ],
+  "migration": {
+    "original_harness_sha256": "b120d11752c6d9e0ce22f42a250f3df7903ea0d16e263863a33cad30882e9e12",
+    "original_correctness_sha256": "982d2c6a0bea097272173a0890467b2e8508518fba8309d3d16ac6201774b0d3"
+  }
+}

@@ -20,13 +20,17 @@ import json
 import time
 import argparse
 import importlib.util
-from _aka_benchmark import benchmark_cuda_graph_or_events
+from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
+from scripts.replay_checks import require_unchanged, require_tensor_contract, verify_timed_run
+
+ENTRY = 'layer_norm_gated_fwd'
 
 TASK_DIR = os.path.dirname(os.path.abspath(__file__))
 os.chdir(TASK_DIR)
 
 TASK_NAME = "triton2flydsl/sglang/fused_norm_gate"
-SOURCE_FILE = os.path.join(TASK_DIR, "fused_norm_gate.py")
+from task_runtime import candidate_relative_path
+SOURCE_FILE = candidate_relative_path()
 EPS = 1e-5
 
 # Test configs: (T, D, is_rms_norm, activation, has_bias). GDN gated RMSNorm is
@@ -45,12 +49,13 @@ TEST_SHAPES = [
 WARMUP_ITERATIONS = 10
 BENCHMARK_ITERATIONS = 100
 MAX_OOM_RETRIES = 5
-DTYPE_NAME = os.environ.get("GDN_DTYPE", "bfloat16")
+DTYPE_NAME = 'bfloat16'  # protected suite dtype
 
 
 def load_module():
     spec = importlib.util.spec_from_file_location("fused_norm_gate_src", SOURCE_FILE)
     mod = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = mod
     spec.loader.exec_module(mod)
     return mod
 
@@ -130,6 +135,41 @@ def run_compile():
         return False, str(e)
 
 
+def _checked_sglang_output(out, x):
+    import torch
+    require_tensor_contract(out, x)
+    if not bool(torch.isfinite(out).all()):
+        raise AssertionError("Non-finite operator output")
+
+
+def _compare_sglang_output(actual, expected):
+    import torch
+    _checked_sglang_output(actual, expected)
+    if not bool(torch.isfinite(expected).all()):
+        raise AssertionError("Non-finite reference output")
+    atol = 1e-4 if actual.dtype == torch.float32 else 2e-2
+    rtol = 1e-4 if actual.dtype == torch.float32 else 1e-2
+    isclose = torch.isclose(actual.float(), expected.float(), atol=atol, rtol=rtol)
+    if (~isclose).float().mean().item() > 0.02:
+        raise AssertionError("Numerical mismatch: original norm-gate error fraction exceeds 0.02")
+
+
+def _sglang_replay_validator(inp, is_rms, act):
+    inputs = tuple(v for v in inp.values() if v is not None)
+    originals = tuple(v.clone() for v in inputs)
+    expected = reference_norm_gate(inp, is_rms, act)
+    def perturb():
+        inp["x"].neg_()
+        inp["g"].mul_(0.5)
+    def reference():
+        return reference_norm_gate(inp, is_rms, act)
+    def validate(timed):
+        return verify_timed_run(timed, inputs=inputs, originals=originals,
+                                expected=expected, perturb=perturb,
+                                reference=reference, compare=_compare_sglang_output)
+    return validate
+
+
 def run_correctness():
     import torch
     try:
@@ -145,10 +185,14 @@ def run_correctness():
         try:
             torch.manual_seed(42 + i)
             inp = make_test_data(T, D, has_bias, "cuda", dtype)
+            protected_inputs = tuple(v for v in inp.values() if v is not None)
+            originals = tuple(v.clone() for v in protected_inputs)
             y_t = _retry_oom(lambda: mod.layer_norm_gated_fwd(
                 x=inp["x"], g=inp["g"], weight=inp["weight"], bias=inp["bias"],
                 activation=act, eps=EPS, residual=None, out_dtype=inp["x"].dtype,
                 is_rms_norm=is_rms)[0])
+            require_unchanged(protected_inputs, originals)
+            _checked_sglang_output(y_t, inp["x"])
             torch.cuda.synchronize()
             y_r = reference_norm_gate(inp, is_rms, act)
             diff = (y_t.float() - y_r.float()).abs().max().item()
@@ -182,9 +226,10 @@ def run_performance():
         try:
             torch.manual_seed(42 + ti)
             inp = make_test_data(T, D, has_bias, "cuda", dtype)
+            replay_validate = _sglang_replay_validator(inp, is_rms, act)
 
             def fn():
-                mod.layer_norm_gated_fwd(
+                return mod.layer_norm_gated_fwd(
                     x=inp["x"], g=inp["g"], weight=inp["weight"], bias=inp["bias"],
                     activation=act, eps=EPS, residual=None, out_dtype=inp["x"].dtype,
                     is_rms_norm=is_rms)[0]
@@ -193,18 +238,20 @@ def run_performance():
             for _ in range(WARMUP_ITERATIONS):
                 fn()
             torch.cuda.synchronize()
+            timed = TimedRun()
             elapsed_ms, bench_meta = benchmark_cuda_graph_or_events(
-                fn, warmup=0, repetition=BENCHMARK_ITERATIONS
+                fn, warmup=0, repetition=BENCHMARK_ITERATIONS, timed_run=timed
             )
+            bench_meta.update(replay_validate(timed))
             test_cases.append({"test_case_id": f"perf{ti+1}",
                                "execution_time_ms": elapsed_ms,
                                **bench_meta,
                                "params": params})
-        except Exception:
+        except Exception as error:
             test_cases.append({"test_case_id": f"perf{ti+1}",
                                "execution_time_ms": -1.0,
                                "benchmark_method": "benchmark_failed",
-                               "benchmark_fallback_reason": "performance case failed before timing completed",
+                               "benchmark_fallback_reason": "performance case failed: " + str(error),
                                "params": params})
     return test_cases
 

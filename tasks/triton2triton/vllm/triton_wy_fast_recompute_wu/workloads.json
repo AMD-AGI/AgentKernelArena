@@ -1,0 +1,95 @@
+{
+  "version": 1,
+  "candidate_symbols": {
+    "source/triton_wy_fast_recompute_wu.py": [
+      {
+        "name": "recompute_w_u_fwd_kernel",
+        "jit": true
+      }
+    ]
+  },
+  "case_table": "SEEDS",
+  "input_table": [
+    42,
+    43,
+    44,
+    45,
+    46
+  ],
+  "cases": [
+    {
+      "test_case_id": "perf1",
+      "dtype": "float32",
+      "params": {
+        "case_index": 0,
+        "configuration": 42,
+        "configuration_names": "seed"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf2",
+      "dtype": "float32",
+      "params": {
+        "case_index": 1,
+        "configuration": 43,
+        "configuration_names": "seed"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf3",
+      "dtype": "float32",
+      "params": {
+        "case_index": 2,
+        "configuration": 44,
+        "configuration_names": "seed"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf4",
+      "dtype": "float32",
+      "params": {
+        "case_index": 3,
+        "configuration": 45,
+        "configuration_names": "seed"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf5",
+      "dtype": "float32",
+      "params": {
+        "case_index": 4,
+        "configuration": 46,
+        "configuration_names": "seed"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    }
+  ],
+  "migration": {
+    "original_harness_sha256": "6c4e0535b326d5addb3255be9a5c081c1b8a901239a9fd697c99a5dbe345f838",
+    "original_correctness_sha256": "9ddb77a075d2660606df2f482a0b4ebdb3253db47a5f04df14322587007e2e75"
+  }
+}

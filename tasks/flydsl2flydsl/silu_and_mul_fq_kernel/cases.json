@@ -1,0 +1,74 @@
+{
+  "cases": [
+    {
+      "test_case_id": "case_0000",
+      "params": {
+        "token_num": 64,
+        "inter_dim": 1024,
+        "topk": 2,
+        "quant_mode": "fp4"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bf16,mxfp4"
+    },
+    {
+      "test_case_id": "case_0001",
+      "params": {
+        "token_num": 128,
+        "inter_dim": 1024,
+        "topk": 2,
+        "quant_mode": "fp4"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bf16,mxfp4"
+    },
+    {
+      "test_case_id": "case_0002",
+      "params": {
+        "token_num": 256,
+        "inter_dim": 1024,
+        "topk": 2,
+        "quant_mode": "fp4"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bf16,mxfp4"
+    },
+    {
+      "test_case_id": "case_0003",
+      "params": {
+        "token_num": 512,
+        "inter_dim": 1024,
+        "topk": 2,
+        "quant_mode": "fp4"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bf16,mxfp4"
+    },
+    {
+      "test_case_id": "case_0004",
+      "params": {
+        "token_num": 1024,
+        "inter_dim": 1024,
+        "topk": 2,
+        "quant_mode": "fp4"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bf16,mxfp4"
+    }
+  ]
+}

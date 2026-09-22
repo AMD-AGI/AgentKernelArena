@@ -1,0 +1,642 @@
+{
+  "version": 1,
+  "candidate_symbols": {
+    "source/triton_penalties.py": [
+      {
+        "name": "_penalties_kernel",
+        "jit": true
+      }
+    ]
+  },
+  "case_table": "TEST_SHAPES",
+  "input_table": [
+    [
+      4,
+      256
+    ],
+    [
+      8,
+      1024
+    ],
+    [
+      16,
+      8192
+    ],
+    [
+      32,
+      16384
+    ],
+    [
+      64,
+      32768
+    ]
+  ],
+  "cases": [
+    {
+      "test_case_id": "perf1",
+      "dtype": "bool,float32,int32",
+      "params": {
+        "case_index": 0,
+        "configuration": [
+          4,
+          256
+        ],
+        "configuration_names": "(batch, vocab)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf2",
+      "dtype": "bool,float32,int32",
+      "params": {
+        "case_index": 1,
+        "configuration": [
+          8,
+          1024
+        ],
+        "configuration_names": "(batch, vocab)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf3",
+      "dtype": "bool,float32,int32",
+      "params": {
+        "case_index": 2,
+        "configuration": [
+          16,
+          8192
+        ],
+        "configuration_names": "(batch, vocab)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf4",
+      "dtype": "bool,float32,int32",
+      "params": {
+        "case_index": 3,
+        "configuration": [
+          32,
+          16384
+        ],
+        "configuration_names": "(batch, vocab)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf5",
+      "dtype": "bool,float32,int32",
+      "params": {
+        "case_index": 4,
+        "configuration": [
+          64,
+          32768
+        ],
+        "configuration_names": "(batch, vocab)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "contract_controls",
+      "status": "PASS",
+      "checks": [
+        "correctness"
+      ],
+      "params": {
+        "case_index": 5,
+        "coverage": "Controls include speculative local positions and token histories, repeated request routing, packed prompt masks and disabled/heterogeneous repetition/frequency/presence penalties. Original scored cases remain non-speculative."
+      }
+    },
+    {
+      "test_case_id": "perf_speculative_penalties",
+      "status": "PASS",
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "params": {
+        "case_index": 6,
+        "variant": "routed_speculative_repetition_frequency_presence",
+        "logits": {
+          "generator": "linspace",
+          "start": -2.0,
+          "stop": 2.0,
+          "numel": 49152,
+          "reshape": [
+            48,
+            1024
+          ]
+        },
+        "request_mapping_pattern": [
+          2,
+          2,
+          0,
+          0,
+          1,
+          1
+        ],
+        "pattern_repeats": 8,
+        "token_ids_pattern": [
+          3,
+          4,
+          5,
+          6,
+          7,
+          8
+        ],
+        "local_positions_pattern": [
+          0,
+          1,
+          0,
+          1,
+          0,
+          1
+        ],
+        "num_speculative_tokens": 1,
+        "repetition_penalties": [
+          1.0,
+          1.2,
+          0.8
+        ],
+        "frequency_penalties": [
+          0.0,
+          0.5,
+          -0.5
+        ],
+        "presence_penalties": [
+          0.0,
+          1.0,
+          -1.0
+        ],
+        "prompt_tokens_by_request": [
+          [
+            2
+          ],
+          [
+            4
+          ],
+          []
+        ],
+        "output_token_counts_by_request": [
+          {
+            "5": 1
+          },
+          {},
+          {
+            "3": 2
+          }
+        ],
+        "prompt_mask_shape": [
+          3,
+          32
+        ],
+        "output_counts_shape": [
+          3,
+          1024
+        ]
+      },
+      "shape": [
+        48,
+        1024
+      ],
+      "dtype": "float32"
+    },
+    {
+      "test_case_id": "control-upstream-1",
+      "params": {
+        "case_index": 10000,
+        "configuration": {
+          "name": "small_vocab_speculative_mapped_penalties_fp16",
+          "vocab": 7,
+          "dtype": "float16",
+          "idx_mapping": [
+            2,
+            2,
+            2,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            3
+          ],
+          "token_ids": [
+            6,
+            5,
+            5,
+            0,
+            2,
+            6,
+            4,
+            0,
+            0,
+            3
+          ],
+          "local_pos": [
+            0,
+            1,
+            2,
+            0,
+            1,
+            2,
+            0,
+            1,
+            2,
+            0
+          ],
+          "num_speculative_tokens": 2,
+          "penalties": [
+            [
+              1.25,
+              0.0,
+              0.0
+            ],
+            [
+              1.0,
+              0.5,
+              0.0
+            ],
+            [
+              1.0,
+              0.0,
+              0.75
+            ],
+            [
+              1.0,
+              0.0,
+              0.0
+            ]
+          ],
+          "prompt_tokens": [
+            [
+              0,
+              3,
+              6
+            ],
+            [
+              1
+            ],
+            [
+              2
+            ],
+            [
+              0,
+              6
+            ]
+          ],
+          "output_counts": [
+            [
+              0,
+              1,
+              2
+            ],
+            [
+              0,
+              5,
+              1
+            ],
+            [
+              1,
+              0,
+              3
+            ],
+            [
+              1,
+              6,
+              1
+            ],
+            [
+              2,
+              2,
+              1
+            ],
+            [
+              3,
+              4,
+              3
+            ]
+          ]
+        },
+        "source_revision": "0acf65b3a967ef1025dbfc5fd4b415b259e3bd43"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control-upstream-2",
+      "params": {
+        "case_index": 10001,
+        "configuration": {
+          "name": "packed_mask_and_tile_tails_bf16",
+          "vocab": 8209,
+          "dtype": "bfloat16",
+          "idx_mapping": [
+            1,
+            0,
+            1
+          ],
+          "token_ids": [
+            8208,
+            8192,
+            31
+          ],
+          "local_pos": [
+            0,
+            0,
+            0
+          ],
+          "num_speculative_tokens": 0,
+          "penalties": [
+            [
+              1.2,
+              0.35,
+              0.15
+            ],
+            [
+              1.3,
+              0.0,
+              0.0
+            ]
+          ],
+          "prompt_tokens": [
+            [
+              0,
+              31,
+              32,
+              8191,
+              8192,
+              8208
+            ],
+            [
+              1,
+              63,
+              8193,
+              8208
+            ]
+          ],
+          "output_counts": [
+            [
+              0,
+              31,
+              1
+            ],
+            [
+              0,
+              8192,
+              2
+            ],
+            [
+              0,
+              8208,
+              3
+            ],
+            [
+              1,
+              0,
+              1
+            ],
+            [
+              1,
+              8191,
+              4
+            ],
+            [
+              1,
+              8193,
+              2
+            ]
+          ]
+        },
+        "source_revision": "0acf65b3a967ef1025dbfc5fd4b415b259e3bd43"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    }
+  ],
+  "migration": {
+    "original_harness_sha256": "50baf1454e555d23aedae8efb2af3a46da22f9e35e2393f2ba5f04cfbd28590d",
+    "original_correctness_sha256": "f5cc6f7a92859de692118e3b80eba1a1daa4b0ffa2442cece656c3f7e3fdc193"
+  },
+  "upstream_controls": [
+    {
+      "name": "small_vocab_speculative_mapped_penalties_fp16",
+      "vocab": 7,
+      "dtype": "float16",
+      "idx_mapping": [
+        2,
+        2,
+        2,
+        0,
+        0,
+        0,
+        1,
+        1,
+        1,
+        3
+      ],
+      "token_ids": [
+        6,
+        5,
+        5,
+        0,
+        2,
+        6,
+        4,
+        0,
+        0,
+        3
+      ],
+      "local_pos": [
+        0,
+        1,
+        2,
+        0,
+        1,
+        2,
+        0,
+        1,
+        2,
+        0
+      ],
+      "num_speculative_tokens": 2,
+      "penalties": [
+        [
+          1.25,
+          0.0,
+          0.0
+        ],
+        [
+          1.0,
+          0.5,
+          0.0
+        ],
+        [
+          1.0,
+          0.0,
+          0.75
+        ],
+        [
+          1.0,
+          0.0,
+          0.0
+        ]
+      ],
+      "prompt_tokens": [
+        [
+          0,
+          3,
+          6
+        ],
+        [
+          1
+        ],
+        [
+          2
+        ],
+        [
+          0,
+          6
+        ]
+      ],
+      "output_counts": [
+        [
+          0,
+          1,
+          2
+        ],
+        [
+          0,
+          5,
+          1
+        ],
+        [
+          1,
+          0,
+          3
+        ],
+        [
+          1,
+          6,
+          1
+        ],
+        [
+          2,
+          2,
+          1
+        ],
+        [
+          3,
+          4,
+          3
+        ]
+      ]
+    },
+    {
+      "name": "packed_mask_and_tile_tails_bf16",
+      "vocab": 8209,
+      "dtype": "bfloat16",
+      "idx_mapping": [
+        1,
+        0,
+        1
+      ],
+      "token_ids": [
+        8208,
+        8192,
+        31
+      ],
+      "local_pos": [
+        0,
+        0,
+        0
+      ],
+      "num_speculative_tokens": 0,
+      "penalties": [
+        [
+          1.2,
+          0.35,
+          0.15
+        ],
+        [
+          1.3,
+          0.0,
+          0.0
+        ]
+      ],
+      "prompt_tokens": [
+        [
+          0,
+          31,
+          32,
+          8191,
+          8192,
+          8208
+        ],
+        [
+          1,
+          63,
+          8193,
+          8208
+        ]
+      ],
+      "output_counts": [
+        [
+          0,
+          31,
+          1
+        ],
+        [
+          0,
+          8192,
+          2
+        ],
+        [
+          0,
+          8208,
+          3
+        ],
+        [
+          1,
+          0,
+          1
+        ],
+        [
+          1,
+          8191,
+          4
+        ],
+        [
+          1,
+          8193,
+          2
+        ]
+      ]
+    }
+  ]
+}

@@ -1,0 +1,74 @@
+{
+  "test_shapes": [
+    [
+      256,
+      256,
+      256
+    ],
+    [
+      512,
+      256,
+      512
+    ],
+    [
+      1024,
+      512,
+      1024
+    ],
+    [
+      2048,
+      1024,
+      1024
+    ],
+    [
+      1024,
+      1024,
+      2048
+    ]
+  ],
+  "candidate_files": [
+    "source/kernel.hpp"
+  ],
+  "cases": [
+    {
+      "test_case_id": "shape_0",
+      "params": {
+        "A_rows": 256,
+        "A_cols": 256,
+        "B_cols": 256
+      }
+    },
+    {
+      "test_case_id": "shape_1",
+      "params": {
+        "A_rows": 512,
+        "A_cols": 256,
+        "B_cols": 512
+      }
+    },
+    {
+      "test_case_id": "shape_2",
+      "params": {
+        "A_rows": 1024,
+        "A_cols": 512,
+        "B_cols": 1024
+      }
+    },
+    {
+      "test_case_id": "shape_3",
+      "params": {
+        "A_rows": 2048,
+        "A_cols": 1024,
+        "B_cols": 1024
+      }
+    },
+    {
+      "test_case_id": "shape_4",
+      "params": {
+        "A_rows": 1024,
+        "A_cols": 1024,
+        "B_cols": 2048
+      }
+    }
+  ]
+}

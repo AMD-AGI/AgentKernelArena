@@ -1,0 +1,82 @@
+# dynamic_quant_fp8: Triton to FlyDSL task contract
+
+The FP8 dynamic per-token reference computes each row's `amax / max_code` scale
+and normalized values in FP64, then rounds once to FP8 and returns the scale in
+FP32. This explicitly corrects a reference rounding-boundary defect: for BF16
+input `-0.4453125` in a row with `amax=2.625`, scale is exactly `3/512` and the
+normalized value is `-76`; nearest-even FP8 is `-80`. The earlier FP32 reciprocal
+path on gfx950 could instead produce `-72`. Independent exact-rational controls
+cover both signs and adjacent values. Static, dynamic-per-tensor and INT8
+reference expressions remain unchanged. This changes no frozen Triton kernel,
+case, input distribution, seed, tolerance or timing boundary; reference work is
+outside measured calls. Full GPU validation remains required after this repair.
+
+The initial implementation is real **Triton**, not an empty FlyDSL starter.
+Arena freezes it in a separate baseline workspace. The required final backend
+is **FlyDSL**. Finishing with the original Triton implementation is not accepted,
+even when it passes the numerical tests. No agent-specific driver is required.
+
+Edit only `candidate.editable` paths in `config.yaml`. Keep the declared callable
+interfaces and all outputs/state changes exercised by the protected harness.
+Names containing `triton` are historical public API names; preserve those names
+while replacing their implementation with FlyDSL. Private GPU function names can
+change unless they are explicitly declared or called by the protected harness.
+
+The final candidate-owned arithmetic must execute FlyDSL GPU kernels. Python and
+PyTorch may prepare layouts, allocate storage and launch kernels. Candidate code
+must not use PyTorch/AITER/Triton/reference/model code as a replacement operator,
+or import task runners or protected reference functions. Do not introduce dynamic
+module loading, external native kernels, subprocess dispatch or launch bypasses.
+The protected harness's existing glue operations and allocation/reset boundaries
+remain identical for baseline and candidate.
+
+`cases.json` contains 48 independent correctness identities and 8
+performance identities, including every original dtype, bias, activation, routing
+and shape variant. Performance variants have correctness coverage. Input generators,
+explicit seeds, numerical gates, output-contract checks, warmups, sample counts,
+state reset and graph/event benchmark calls remain in `test_kernel_harness.py`.
+Where the original suite allowed an environment dtype override, the manifest now
+pins its original default; selecting a different suite requires updating both the
+protected manifest and case definition. The small independent known answers in
+`scripts/reference_controls.py` supplement the complete original GPU suite.
+
+The source and module docstrings retain upstream operator semantics/provenance.
+The task's public actions, from a materialized workspace, are:
+
+```sh
+python3 scripts/evaluate.py validate-task
+python3 scripts/evaluate.py baseline compile
+python3 scripts/evaluate.py baseline correctness
+python3 scripts/evaluate.py baseline performance
+python3 scripts/evaluate.py candidate compile
+python3 scripts/evaluate.py candidate correctness
+python3 scripts/evaluate.py candidate performance
+```
+
+The compile action syntax-checks actual role sources. Correctness performs real
+GPU compilation/launches and the original comparisons. Every action emits one
+`ARENA_EVAL_RESULT=` + `arena-eval-v1` JSON envelope. Failed or incomplete timings
+cannot be scoreable. Arena owns score aggregation and final result files.
+
+The runtime image provides ROCm, Triton (initial baseline) and FlyDSL (candidate),
+plus any operator dependencies stated by the source. Arena must materialize the
+canonical `_aka_benchmark.py` helper before GPU execution. CPU controls/protocol
+checks do not qualify these GPU kernels. Existing legacy reports are historical;
+the parent integration schedules new GPU validation.
+
+
+All 48 original correctness cases remain (eight shapes, three modes, INT8/FP8).
+The original eight benchmark cases remain dynamic per-token FP8 only. Static
+scale is read-only; dynamic output scales and quantized values must populate
+the caller-provided buffers with the declared dtype, shape and input device.
+Original static 0.01 and dynamic 0.1 atol/rtol policies remain unchanged. The
+per-token benchmark keeps its original random input generation and scale stores.
+
+Input tensors are read-only. The initial baseline remains the frozen Triton
+implementation; final candidate computation must use FlyDSL. Candidate-only
+import/call audits do not instrument baseline/reference or timed calls.
+Both roles keep 10 external warmups and 100 graph samples. The harness checks
+actual measured outputs, negates/halves input, poisons code/scale outputs, and
+numerically checks the same graph replay using the original reference/gates.
+Checks and restoration stay outside timing; no capture failure is accepted as
+an unchecked fallback or a clean pass.

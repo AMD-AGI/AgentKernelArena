@@ -1,0 +1,61 @@
+schema_version: 2
+description: Implement gemm_a16w16_nt_n128_k6144 in FlyDSL over every declared case.
+instructions:
+- README.md
+kernel_identity:
+  logical_operator: gemm_a16w16_nt_n128_k6144
+  source_owner: aiter
+candidate:
+  language: flydsl
+  initial_state: unimplemented
+  editable:
+  - kernel.py
+  entrypoints:
+  - file: kernel.py
+    kind: builder
+    symbol: build_gemm_a16w16_nt_n128_k6144_module
+baseline:
+  kind: provided
+  source_files:
+  - aiter_source/aiter/tuned_gemm.py
+  correctness_policy: diagnostic
+  diagnostic_reason: >-
+    MI355X/gfx950 job 139315 on 2026-09-15 executed all 13 baseline cases with
+    image sha256:106a7adbeec5554b6e66a4bda0b3694af442717b9fe92754a9885520077b6f93
+    and AITER 0.1.21.dev48+g4ad998328.d20260913. m_1 passed; the other 12
+    completed with finite numerical mismatches, while output contracts passed.
+    Report SHA256 67803d61ce77601dac7bf509bd111ca5ae3b048cee3dbaafc5d4ab6443025476.
+    See README.md for per-case evidence and runtime limitations. Preserve actual
+    baseline correctness and timed-replay diagnostics; only completed numerical
+    mismatches are accepted. Candidate checks retain the full original gate.
+workspace:
+  sources:
+  - kind: image
+    image_path: /sgl-workspace/aiter/aiter
+    destination: aiter_source/aiter
+    exclude:
+    - jit/build
+    - jit/flydsl_cache
+    - __pycache__
+evaluation:
+  runner:
+  - python3
+  - scripts/evaluate.py
+  workloads: workload.json
+  timeout_s: 3600
+  baseline:
+    correctness:
+      timeout_s: 1800
+  candidate:
+    correctness:
+      timeout_s: 1800
+platform_support:
+  required_arch: gfx950
+  status: active
+exports:
+- format: sikl-solution
+  output: artifacts/solution.json
+  command:
+  - python3
+  - scripts/export_solution.py
+  timeout_s: 60

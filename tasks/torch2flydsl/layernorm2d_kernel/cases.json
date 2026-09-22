@@ -1,0 +1,82 @@
+{
+  "cases": [
+    {
+      "test_case_id": "case_0000",
+      "params": {
+        "m": 1,
+        "n": 4096,
+        "seed": 0,
+        "eps": 1e-05
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0001",
+      "params": {
+        "m": 8,
+        "n": 4096,
+        "seed": 0,
+        "eps": 1e-05
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0002",
+      "params": {
+        "m": 32,
+        "n": 8192,
+        "seed": 0,
+        "eps": 1e-05
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0003",
+      "params": {
+        "m": 128,
+        "n": 8192,
+        "seed": 0,
+        "eps": 1e-05
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0004",
+      "params": {
+        "m": 256,
+        "n": 6144,
+        "seed": 0,
+        "eps": 1e-05
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "case_0005",
+      "params": {
+        "m": 64,
+        "n": 4096,
+        "seed": 0,
+        "eps": 1e-05
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    }
+  ]
+}

@@ -23,13 +23,16 @@ import json
 import time
 import argparse
 import importlib.util
-from _aka_benchmark import benchmark_cuda_graph_or_events
+from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
+from scripts.replay_checks import require_unchanged, verify_timed_pair
 
 TASK_DIR = os.path.dirname(os.path.abspath(__file__))
 os.chdir(TASK_DIR)
 
 TASK_NAME = "triton2flydsl/sglang/gdn_fused_recurrent_decode"
-SOURCE_FILE = os.path.join(TASK_DIR, "gdn_fused_recurrent_decode.py")
+from task_runtime import candidate_relative_path
+SOURCE_FILE = candidate_relative_path()
+ENTRY = 'fused_recurrent_gated_delta_rule_packed_decode'
 
 # Test configs: (B, H, HV, K, V, pool_size) -- real Qwen3.5-35B-A3B GDN decode.
 #   TP=2 serving => H=8,  HV=16, K=128, V=128 ; batch swept around CONC~16.
@@ -50,12 +53,13 @@ WARMUP_ITERATIONS = 10
 BENCHMARK_ITERATIONS = 100
 MAX_OOM_RETRIES = 5
 
-DTYPE_NAME = os.environ.get("GDN_DTYPE", "bfloat16")
+DTYPE_NAME = 'bfloat16'  # protected suite dtype
 
 
 def load_module():
     spec = importlib.util.spec_from_file_location("gdn_decode_src", SOURCE_FILE)
     mod = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = mod
     spec.loader.exec_module(mod)
     return mod
 
@@ -150,6 +154,7 @@ def _run_triton(mod, inp):
     B, HV, V = inp["B"], inp["HV"], inp["V"]
     state = inp["ssm_states"].clone()
     out = inp["mixed_qkv"].new_empty(B, 1, HV, V)
+    out.fill_(float("nan"))
     _retry_oom(lambda: mod.fused_recurrent_gated_delta_rule_packed_decode(
         mixed_qkv=inp["mixed_qkv"], a=inp["a"], b=inp["b"],
         A_log=inp["A_log"], dt_bias=inp["dt_bias"], scale=inp["scale"],
@@ -175,6 +180,66 @@ def run_compile():
         return False, str(e)
 
 
+def _checked_recurrent_output(actual, inp):
+    import torch
+    count = 2
+    if not isinstance(actual, (tuple, list)) or len(actual) != count:
+        raise AssertionError("Missing recurrent operator outputs/state")
+    layout = inp["mixed_qkv"]
+    shapes = ((inp["B"], 1, inp["HV"], inp["V"]), tuple(inp["ssm_states"].shape))
+    for output, shape in zip(actual, shapes):
+        if (not isinstance(output, torch.Tensor) or output.shape != shape
+                or output.dtype != layout.dtype or output.device != layout.device):
+            raise AssertionError("Recurrent output shape/dtype/device contract mismatch")
+        if not bool(torch.isfinite(output).all()):
+            raise AssertionError("Non-finite recurrent output/state")
+
+
+def _require_unused_state(actual, initial, indices):
+    import torch
+    untouched = torch.ones(initial.shape[0], dtype=torch.bool, device=initial.device)
+    untouched[indices] = False
+    require_unchanged((actual[untouched],), (initial[untouched],))
+
+
+def _compare_recurrent_output(actual, expected, inp):
+    import torch
+    _checked_recurrent_output(actual, inp)
+    if not all(bool(torch.isfinite(v).all()) for v in expected):
+        raise AssertionError("Non-finite recurrent reference")
+    dtype = inp["mixed_qkv"].dtype
+    indices = inp["cache_indices"]
+    _require_unused_state(actual[-1], expected[-1], indices)
+    pairs = list(zip(actual[:-1], expected[:-1])) + [(actual[-1][indices], expected[-1][indices])]
+    atol = 1e-4 if dtype == torch.float32 else 2e-2
+    rtol = 1e-4 if dtype == torch.float32 else 1e-2
+    for out, ref in pairs:
+        if not torch.allclose(out.float(), ref.float(), atol=atol, rtol=rtol):
+            raise AssertionError("Numerical mismatch: original decode output/state gate")
+
+
+def _recurrent_replay_validator(inp, initial):
+    import torch
+    reference_inputs = dict(inp, ssm_states=initial)
+    inputs = tuple(v for key, v in inp.items() if isinstance(v, torch.Tensor) and key != "ssm_states") + (initial,)
+    originals = tuple(v.clone() for v in inputs)
+    def reference():
+        return reference_decode(reference_inputs)
+    expected = reference()
+    def perturb():
+        initial.neg_()
+        inp["mixed_qkv"][:, 2 * inp["H"] * inp["K"]:].neg_()
+    def compare(actual, expected):
+        _compare_recurrent_output(actual, expected, reference_inputs)
+    def validate(timed):
+        # The canonical rerun invokes the existing prepare_fn outside timing,
+        # restoring the requested initial state before the exact measured unit.
+        return verify_timed_pair(timed, inputs=inputs, originals=originals,
+                                 expected=expected, perturb=perturb,
+                                 reference=reference, compare=compare)
+    return validate
+
+
 def run_correctness():
     import torch
     try:
@@ -191,7 +256,12 @@ def run_correctness():
         try:
             torch.manual_seed(42 + i)
             inp = make_test_data(B, H, HV, K, V, pool, "cuda", dtype)
+            protected_inputs = tuple(v for v in inp.values() if isinstance(v, torch.Tensor))
+            originals = tuple(v.clone() for v in protected_inputs)
             out_t, state_t = _run_triton(mod, inp)
+            require_unchanged(protected_inputs, originals)
+            _checked_recurrent_output((out_t, state_t), inp)
+            _require_unused_state(state_t, inp["ssm_states"], inp["cache_indices"])
             out_r, state_r = reference_decode(inp)
 
             idxs = inp["cache_indices"]
@@ -232,7 +302,9 @@ def run_performance():
             inp = make_test_data(B, H, HV, K, V, pool, "cuda", dtype)
             state = inp["ssm_states"]
             initial_state = state.clone()
+            replay_validate = _recurrent_replay_validator(inp, initial_state)
             out = inp["mixed_qkv"].new_empty(B, 1, HV, V)
+            out.fill_(float("nan"))
 
             def prepare_fn():
                 state.copy_(initial_state)
@@ -245,6 +317,7 @@ def run_performance():
                     ssm_state_indices=inp["cache_indices"],
                     use_qk_l2norm_in_kernel=True,
                 )
+                return out, state
 
             prepare_fn()
             _retry_oom(fn)
@@ -253,22 +326,24 @@ def run_performance():
                 fn()
             torch.cuda.synchronize()
 
+            timed = TimedRun()
             elapsed_ms, bench_meta = benchmark_cuda_graph_or_events(
                 fn, warmup=0, repetition=BENCHMARK_ITERATIONS,
-                prepare_fn=prepare_fn,
+                prepare_fn=prepare_fn, timed_run=timed,
             )
+            bench_meta.update(replay_validate(timed))
             test_cases.append({
                 "test_case_id": f"perf{ti + 1}",
                 "execution_time_ms": elapsed_ms,
                 **bench_meta,
                 "params": params,
             })
-        except Exception:
+        except Exception as error:
             test_cases.append({
                 "test_case_id": f"perf{ti + 1}",
                 "execution_time_ms": -1.0,
                 "benchmark_method": "benchmark_failed",
-                "benchmark_fallback_reason": "performance case failed before timing completed",
+                "benchmark_fallback_reason": "performance case failed: " + str(error),
                 "params": params,
             })
     return test_cases

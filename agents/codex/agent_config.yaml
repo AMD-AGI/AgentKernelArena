@@ -1,9 +1,9 @@
 max_iterations: 3
 timeout_seconds: 3600
 python_path: null
-# Optional: set explicitly so logs show the exact model used.
-# (gpt-5.3-codex is deprecated; current valid ids: gpt-5.5 / gpt-5.4 / gpt-5.4-mini)
-model: gpt-5.5
-# Reasoning effort maxed out. Passed as `-c model_reasoning_effort=...`.
-# Valid: minimal | low | medium | high | xhigh  (xhigh is the maximum).
+# Verified model and CLI evidence: docs/reference/agent-model-defaults.md.
+# Run config agent.model / agent.effort override these defaults.
+model: gpt-6-astra
+# Preserve the previous effort budget; xhigh is NOT this model's maximum.
+# Astra supports low | medium | high | xhigh | max | ultra in Codex 0.154.0.
 effort: xhigh

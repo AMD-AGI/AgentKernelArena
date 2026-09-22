@@ -86,6 +86,8 @@ def run_correctness():
 
 def run_performance():
     from three_nn_wrapper import three_nn
+    from reference_checks import check_timed_output
+    from replay_validation import measure
 
     test_cases = []
     
@@ -94,8 +96,13 @@ def run_performance():
         target = torch.randn(B, N, 3, device="cuda", dtype=torch.float32)
         source = torch.randn(B, M, 3, device="cuda", dtype=torch.float32)
 
-        elapsed_ms, benchmark_meta = benchmark_cuda_graph_or_events(
-            lambda: three_nn(target, source), warmup=10, repetition=100,
+        target_cpu, source_cpu = target.cpu(), source.cpu()
+        expected = cpu_reference(target_cpu, source_cpu)
+        elapsed_ms, benchmark_meta = measure(
+            benchmark_cuda_graph_or_events, lambda: three_nn(target, source),
+            (target, source),
+            lambda actual: check_timed_output(actual, expected, target_cpu, source_cpu),
+            warmup=10, repetition=100,
             use_cuda_graph=HIP_GRAPH_ENABLED,
             fallback_reason=HIP_GRAPH_FALLBACK_REASON,
         )

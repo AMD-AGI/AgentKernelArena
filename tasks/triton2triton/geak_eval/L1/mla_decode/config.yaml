@@ -1,35 +1,39 @@
-task_type: triton2triton
-source_file_path:
-- kernel.py
-harness_path: test_kernel_harness.py
-aiter_commit: 22122345c03991cb8026947b8df05e02f50d1f88
-compile_command:
-- python3 -c "import ast; ast.parse(open('kernel.py').read())"
-correctness_command:
-- python3 test_kernel_harness.py --correctness
-performance_command:
-- python3 test_kernel_harness.py --full-benchmark
-target_kernel_functions:
-- _decode_grouped_att_m_fwd_rope
-- _decode_softmax_reducev_fwd
-prompt:
-  instructions: >-
-    Optimize the MLA decode attention Triton kernel for AMD MI300X GPU.
-    The kernel implements grouped multi-latent attention with fused RoPE for decode-phase
-    inference.
-
-
-    IMPORTANT ARCHITECTURE NOTE:
-
-    - This kernel has two stages: stage1 (HIP ASM) and stage2 (Triton).
-
-    - The stage1 kernel is hand-written HIP assembly. DO NOT attempt to modify
-    it — it is unreachable from Triton and cannot be improved through this
-    optimization.
-
-    - Focus exclusively on optimizing the stage2 Triton kernel functions
-    (_decode_grouped_att_m_fwd_rope, _decode_softmax_reducev_fwd).
-
-    - The ASM stage1 handles initial QK attention; stage2 handles softmax
-    reduction and value accumulation — optimize stage2's memory access
-    patterns, tiling, and reduction strategy.
+schema_version: 2
+description: Optimize the declared Triton implementation of mla_decode, preserving
+  the protected operator and output contracts.
+candidate:
+  language: triton
+  initial_state: implemented
+  editable:
+  - path: kernel.py
+    scope: symbols
+    symbols:
+    - _decode_grouped_att_m_fwd_rope
+    - _decode_softmax_reducev_fwd
+    allow_new_helpers: true
+  entrypoints:
+  - file: kernel.py
+    kind: function
+    symbol: _decode_grouped_att_m_fwd_rope
+  - file: kernel.py
+    kind: function
+    symbol: _decode_softmax_reducev_fwd
+baseline:
+  kind: initial_candidate
+  language: triton
+evaluation:
+  runner:
+  - python3
+  - _arena_eval.py
+  workloads: workloads.json
+workspace:
+  sources:
+  - kind: image
+    image_path: /sgl-workspace/aiter/aiter/ops/triton
+    destination: dependencies/aiter_triton
+    exclude:
+    - __pycache__
+  setup:
+  - - python3
+    - _aiter_dependency.py
+    - --check

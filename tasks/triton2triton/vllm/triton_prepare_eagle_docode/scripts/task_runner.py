@@ -37,10 +37,11 @@ def _benchmark_cuda_graph_or_events(*args, **kwargs):
 # <<< AKA-GENERATED <<<
 
 def load_module():
-    spec = importlib.util.spec_from_file_location("triton_kernel", SOURCE_FILE)
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod
+    policy_path = os.path.join(TASK_DIR, "_arena_kernel_policy.py")
+    spec = importlib.util.spec_from_file_location("_eagle_kernel_policy", policy_path)
+    policy = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(policy)
+    return policy.load_checked(SOURCE_FILE)
 
 
 def make_inputs(num_reqs, total_tokens, hidden_size, max_model_len, max_num_reqs, device="cpu"):
@@ -125,7 +126,10 @@ def run_compile():
         return False, str(e)
 
 
-def run_correctness():
+def run_correctness(*, case_index=None):
+    if case_index is not None and case_index >= 10000:
+        from _upstream_controls import run_control
+        return run_control(case_index - 10000, load_module)
     import torch
     try:
         mod = load_module()
@@ -134,6 +138,8 @@ def run_correctness():
 
     device = "cuda"
     for i, (nr, tt, hs, mml, mnr) in enumerate(TEST_SHAPES):
+        if case_index is not None and i != case_index:
+            continue
         try:
             inputs_gpu = make_inputs(nr, tt, hs, mml, mnr, device)
             inputs_cpu = make_inputs(nr, tt, hs, mml, mnr, "cpu")

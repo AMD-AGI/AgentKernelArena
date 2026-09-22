@@ -1,0 +1,180 @@
+{
+  "original_cases": {
+    "correctness": [
+      {
+        "id": "gemma4-moe-decode-m64",
+        "model": "gemma-4-26B-A4B-it",
+        "kernel_ids": [
+          "k010"
+        ],
+        "gpu_pct": 12.5,
+        "params": {
+          "phase": "decode",
+          "tokens": 64,
+          "num_experts": 128,
+          "topk": 8,
+          "hidden": 2816,
+          "inter": 352,
+          "activation": "gelu_tanh",
+          "dtype": "bf16"
+        },
+        "trace_input_shapes": [
+          "hidden (64,2816) bf16",
+          "router logits (64,128) fp32",
+          "w13 (128,704,2816) bf16",
+          "w2 (128,2816,352) bf16"
+        ]
+      },
+      {
+        "id": "gemma4-moe-prefill-m1080",
+        "model": "gemma-4-26B-A4B-it",
+        "kernel_ids": [
+          "k012"
+        ],
+        "gpu_pct": 0.926,
+        "params": {
+          "phase": "prefill",
+          "tokens": 1080,
+          "num_experts": 128,
+          "topk": 8,
+          "hidden": 2816,
+          "inter": 352,
+          "activation": "gelu_tanh",
+          "dtype": "bf16"
+        },
+        "trace_input_shapes": [
+          "hidden (1080,2816) bf16",
+          "router logits (1080,128) fp32",
+          "w13 (128,704,2816) bf16",
+          "w2 (128,2816,352) bf16"
+        ]
+      },
+      {
+        "id": "gemma4-moe-prefill-m7218",
+        "model": "gemma-4-26B-A4B-it",
+        "kernel_ids": [
+          "k011"
+        ],
+        "gpu_pct": 3.326,
+        "params": {
+          "phase": "prefill",
+          "tokens": 7218,
+          "num_experts": 128,
+          "topk": 8,
+          "hidden": 2816,
+          "inter": 352,
+          "activation": "gelu_tanh",
+          "dtype": "bf16"
+        },
+        "trace_input_shapes": [
+          "hidden (7218,2816) bf16",
+          "router logits (7218,128) fp32",
+          "w13 (128,704,2816) bf16",
+          "w2 (128,2816,352) bf16"
+        ]
+      }
+    ],
+    "performance": null
+  },
+  "cases": [
+    {
+      "test_case_id": "gemma4-moe-decode-m64",
+      "params": {
+        "phase": "decode",
+        "tokens": 64,
+        "num_experts": 128,
+        "topk": 8,
+        "hidden": 2816,
+        "inter": 352,
+        "activation": "gelu_tanh",
+        "dtype": "bf16",
+        "seed": 31
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "shape": [
+        "hidden (64,2816) bf16",
+        "router logits (64,128) fp32",
+        "w13 (128,704,2816) bf16",
+        "w2 (128,2816,352) bf16"
+      ],
+      "dtype": "bf16",
+      "metadata": {
+        "model": "gemma-4-26B-A4B-it",
+        "kernel_ids": [
+          "k010"
+        ],
+        "gpu_pct": 12.5,
+        "timed_replay_seed": 61
+      }
+    },
+    {
+      "test_case_id": "gemma4-moe-prefill-m1080",
+      "params": {
+        "phase": "prefill",
+        "tokens": 1080,
+        "num_experts": 128,
+        "topk": 8,
+        "hidden": 2816,
+        "inter": 352,
+        "activation": "gelu_tanh",
+        "dtype": "bf16",
+        "seed": 31
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "shape": [
+        "hidden (1080,2816) bf16",
+        "router logits (1080,128) fp32",
+        "w13 (128,704,2816) bf16",
+        "w2 (128,2816,352) bf16"
+      ],
+      "dtype": "bf16",
+      "metadata": {
+        "model": "gemma-4-26B-A4B-it",
+        "kernel_ids": [
+          "k012"
+        ],
+        "gpu_pct": 0.926,
+        "timed_replay_seed": 61
+      }
+    },
+    {
+      "test_case_id": "gemma4-moe-prefill-m7218",
+      "params": {
+        "phase": "prefill",
+        "tokens": 7218,
+        "num_experts": 128,
+        "topk": 8,
+        "hidden": 2816,
+        "inter": 352,
+        "activation": "gelu_tanh",
+        "dtype": "bf16",
+        "seed": 31
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "shape": [
+        "hidden (7218,2816) bf16",
+        "router logits (7218,128) fp32",
+        "w13 (128,704,2816) bf16",
+        "w2 (128,2816,352) bf16"
+      ],
+      "dtype": "bf16",
+      "metadata": {
+        "model": "gemma-4-26B-A4B-it",
+        "kernel_ids": [
+          "k011"
+        ],
+        "gpu_pct": 3.326,
+        "timed_replay_seed": 61
+      }
+    }
+  ]
+}
