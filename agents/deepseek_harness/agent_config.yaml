@@ -2,11 +2,11 @@
 cli_version: 0.1.6-alpha.2
 # DeepSeek V4.1 Flash is advertised by the API as deepseek-flash.
 model: deepseek-flash
-reasoning_effort: high
+reasoning_effort: max
 protocol: chat-completions
 # null uses DEEPSEEK_BASE_URL, then the protocol's official endpoint.
 base_url: null
 max_tokens: 32768
-max_iterations: 3
+max_iterations: 9
 timeout_seconds: 3600
 python_path: null

@@ -87,7 +87,7 @@ def test_launch_passes_full_prompt_isolates_state_and_redacts_key(runtime, monke
     observed = json.loads((workspace / "observed.json").read_text())
     assert calls == [("task/config.yaml", str(workspace), {"target_gpu_model": "MI300"})]
     assert observed["prompt"].startswith(original_prompt)
-    assert "iterate up to 3 versions" in observed["prompt"]
+    assert "iterate up to 9 versions" in observed["prompt"]
     assert f"budget for this agent invocation is {config['timeout_seconds']} seconds" in observed["prompt"]
     assert observed["cwd"] == str(workspace)
     assert observed["argv"][:3] == ["--profile", "headless", "--patch"]
@@ -105,7 +105,7 @@ def test_launch_passes_full_prompt_isolates_state_and_redacts_key(runtime, monke
     rows = {row["id"]: row["config"] for row in patch}
     assert rows["agent-default-model"]["model"] == config["model"]
     assert rows["llm-deepseek"]["apiKeyEnv"] == "DEEPSEEK_API_KEY"
-    assert rows["llm-deepseek"]["reasoningEffort"] == config["reasoning_effort"]
+    assert rows["llm-deepseek"]["reasoningEffort"] == config["reasoning_effort"] == "max"
     assert rows["session-log-deepseek"] == {"enabled": False}
     assert not (workspace / "forbidden").exists()
     assert "private-test-key" not in result + caplog.text

@@ -44,11 +44,11 @@ remains pinned by the integration:
 | --- | --- |
 | `cli_version` | Required installed CLI version; update only after checking compatibility |
 | `model` | Model ID for the upstream `deepseek-official` provider |
-| `reasoning_effort` | `off`, `low`, `high`, or `max` |
+| `reasoning_effort` | `off`, `low`, `high`, or `max`; defaults to `max` |
 | `protocol` | `chat-completions` or `messages`; must match the endpoint |
 | `base_url` | Endpoint override; null uses `DEEPSEEK_BASE_URL`, then upstream's protocol default |
 | `max_tokens` | Per-request output limit, not a total session budget |
-| `max_iterations` | Optimization guidance appended to the prompt, not a hard turn limit |
+| `max_iterations` | Defaults to 9 versions; optimization guidance appended to the prompt, not a hard turn limit |
 | `timeout_seconds` | Positive per-invocation wall-clock budget; included in the prompt and enforced by stopping the process group on expiry |
 | `python_path` | Optional in-container Python interpreter; null uses Arena's interpreter |
 
@@ -113,6 +113,10 @@ with an explicit image override from the
 agent status, correctness, timing, and export results. Earlier HIP GELU and
 Triton RMSNorm observations predate the schema-v2 rebase and do not qualify this
 revision. MI300, RDNA4, and multi-GPU runs remain unverified on hardware.
+
+The recorded schema-v2 GPU checks used `reasoning_effort: high`,
+`max_iterations: 1`, and `timeout_seconds: 1200`. They do not measure the model
+quality or performance of the current `max` / 9-version defaults.
 
 Every invocation creates a fresh `.deepseek_harness-*` directory inside its
 task workspace. It preserves the prompt, credential-free Cordis patch,
