@@ -147,20 +147,72 @@ def test_changed_but_wrong_timed_output_is_rejected(name, monkeypatch):
         monkeypatch.setattr(torch.cuda, 'synchronize', lambda: None)
         inputs = {'a': torch.tensor([[1., 2.]], dtype=torch.bfloat16)}
         output = torch.zeros((1, 2), dtype=torch.bfloat16)
-        monkeypatch.setattr(measure.task_inputs, 'refill_case_inputs', lambda i: i['a'].fill_(2))
+        monkeypatch.setattr(measure.task_inputs, 'redraw_call_varying_inputs', lambda i, seed=0: i['a'].fill_(2))
         monkeypatch.setattr(measure.task_inputs, 'call_kwargs', lambda i: i)
         monkeypatch.setattr(measure.task_reference, 'run', lambda **kw: torch.tensor([[18., 28.]], dtype=torch.bfloat16))
+        rotation = types.SimpleNamespace(hold=lambda: None)
         timed = types.SimpleNamespace(bound=True, outputs=output,
                                      rerun=lambda: output.copy_(inputs['a']))
-        result = measure.verify_timed_invocation(inputs, timed)
+        result = measure.verify_timed_invocation(inputs, timed, rotation)
         assert output.tolist() == [[2., 2.]]  # Finite and different, still wrong.
         assert result['failure_kind'] == 'numerical_mismatch'
         assert result['metadata']['replay_checked']
         timed.rerun = lambda: output.copy_(torch.tensor([[18., 28.]], dtype=torch.bfloat16))
         output.zero_()
-        assert measure.verify_timed_invocation(inputs, timed)['status'] == 'PASS'
+        assert measure.verify_timed_invocation(inputs, timed, rotation)['status'] == 'PASS'
         timed.rerun = lambda: output  # Poison survives an empty replay.
-        assert measure.verify_timed_invocation(inputs, timed)['failure_kind'] == 'output_contract'
+        assert measure.verify_timed_invocation(inputs, timed, rotation)['failure_kind'] == 'output_contract'
+
+
+@pytest.mark.parametrize('name', REPRESENTATIVES)
+def test_input_memoization_is_rejected_and_honest_timing_passes(name, monkeypatch):
+    # A value-keyed cache serves every rotated sample once it has seen them, but
+    # a draw it has never seen is a miss and costs a full recompute. The unseen
+    # check replays the timed unit over such draws and rejects a reported time
+    # that no honest computation on new inputs could have produced.
+    torch = pytest.importorskip('torch')
+    with modules(ROOT / 'tasks/SIKL-task' / name, monkeypatch):
+        measure = importlib.import_module('task_measure')
+        monkeypatch.setattr(torch.cuda, 'synchronize', lambda: None)
+        inputs = {'a': torch.zeros(1)}
+        monkeypatch.setattr(measure.task_inputs, 'load_draw', lambda i, d: None)
+        rotation = types.SimpleNamespace(hold=lambda: None)
+        unseen = [{}, {}, {}, {}]
+
+        # Honest: every replay, seen or unseen, costs about the reported mean.
+        timed = types.SimpleNamespace(rerun_ms=lambda: 0.011)
+        ok = measure.verify_timed_cost(inputs, timed, rotation, unseen, 0.010)
+        assert ok['status'] == 'PASS'
+        assert ok['metadata']['unseen_draw_ms'] == pytest.approx(0.011)
+
+        # Memoized: samples were served from cache far below the miss cost.
+        misses = iter([0.9, 1.1, 0.8, 1.0])
+        timed = types.SimpleNamespace(rerun_ms=lambda: next(misses))
+        bad = measure.verify_timed_cost(inputs, timed, rotation, unseen, 0.010)
+        assert bad['status'] == 'FAIL'
+        assert bad['failure_kind'] == 'timing_input_memoized'
+
+
+@pytest.mark.parametrize('name', REPRESENTATIVES)
+def test_batched_capture_is_rejected(name, monkeypatch):
+    # One logical invocation must be timed per replay. If the benchmark batched
+    # several calls into one capture and divided, a retained computation would be
+    # charged at a fraction of its cost, so a repeat count other than one fails.
+    torch = pytest.importorskip('torch')
+    with modules(ROOT / 'tasks/SIKL-task' / name, monkeypatch):
+        measure = importlib.import_module('task_measure')
+        helper = types.SimpleNamespace(
+            TimedRun=lambda: object(),
+            benchmark_cuda_graph_or_events=lambda *a, **kw: (
+                0.01, {'benchmark_method': 'cuda_graph', 'benchmark_effective_repeats': 8}))
+        monkeypatch.setitem(sys.modules, '_aka_benchmark', helper)
+        monkeypatch.setattr(measure.task_inputs, 'build_case_inputs', lambda c: {})
+        monkeypatch.setattr(measure.task_inputs, 'call_varying_draws', lambda i, seeds: [{} for _ in seeds])
+        monkeypatch.setattr(measure, 'RotatingDraws', lambda i, draws: types.SimpleNamespace(hold=lambda: None))
+        monkeypatch.setattr(measure, 'case_call', lambda *a, **kw: lambda: None)
+        result = measure.time_case({}, role='candidate', launch=lambda: None)
+        assert result['status'] == 'FAIL'
+        assert result['failure_kind'] == 'timing_protocol'
 
 
 @pytest.mark.parametrize('name', REPRESENTATIVES)
@@ -236,9 +288,12 @@ def test_baseline_replay_diagnostic_cannot_exempt_candidate_or_non_numerical_err
     pytest.importorskip('torch')
     with modules(ROOT / 'tasks/SIKL-task' / REPRESENTATIVES[0], monkeypatch):
         measure = importlib.import_module('task_measure')
-        helper = types.SimpleNamespace(TimedRun=lambda: object(), benchmark_cuda_graph_or_events=lambda *a, **kw: (0.1, {'benchmark_method': 'cuda_graph'}))
+        helper = types.SimpleNamespace(TimedRun=lambda: object(), benchmark_cuda_graph_or_events=lambda *a, **kw: (0.1, {'benchmark_method': 'cuda_graph', 'benchmark_effective_repeats': 1}))
         monkeypatch.setitem(sys.modules, '_aka_benchmark', helper)
         monkeypatch.setattr(measure.task_inputs, 'build_case_inputs', lambda c: {})
+        monkeypatch.setattr(measure.task_inputs, 'call_varying_draws', lambda i, seeds: [{} for _ in seeds])
+        monkeypatch.setattr(measure, 'RotatingDraws', lambda i, draws: types.SimpleNamespace(hold=lambda: None))
+        monkeypatch.setattr(measure, 'verify_timed_cost', lambda *a, **kw: {'status': 'PASS', 'metadata': {}})
         monkeypatch.setattr(measure, 'case_call', lambda *a, **kw: lambda: None)
         mismatch = {'status': 'FAIL', 'failure_kind': 'numerical_mismatch', 'reason': 'finite mismatch'}
         monkeypatch.setattr(measure, 'verify_timed_invocation', lambda *a: mismatch)
