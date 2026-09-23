@@ -47,32 +47,6 @@ K = int(WORKLOAD["axes"]["k"])
 TRANS_B = bool(WORKLOAD["trans_b"])
 SEED = int(WORKLOAD["seed"])
 
-# The draw used to re-arm a timed invocation. It only has to differ from SEED:
-# the point is that the values a captured graph replays over are ones no earlier
-# call in this process has seen, not that they come from a second distribution.
-REFILL_SEED = SEED + 1
-
-# The draws the timed samples rotate through, one per replay, and the draws the
-# timed unit is replayed over once each after timing. The two sets are disjoint
-# from each other and from SEED and REFILL_SEED, so an unseen draw is one the
-# implementation cannot have encountered before its timed replay.
-TIMED_DRAWS = 3
-UNSEEN_DRAWS = 4
-TIMED_DRAW_SEEDS: tuple[int, ...] = tuple(
-    range(REFILL_SEED + 1, REFILL_SEED + 1 + TIMED_DRAWS)
-)
-UNSEEN_DRAW_SEEDS: tuple[int, ...] = tuple(
-    range(TIMED_DRAW_SEEDS[-1] + 1, TIMED_DRAW_SEEDS[-1] + 1 + UNSEEN_DRAWS)
-)
-
-# How much slower than the reported mean a replay over an unseen draw may be.
-# The timed samples rotate through a few draws, so an implementation that keeps
-# results keyed on its inputs' values can still serve every sample from memory
-# once it has seen them all; a draw it has never seen is a miss, and that miss
-# is the operator's actual cost. An implementation that computes on every call
-# runs an unseen draw in the time of any other replay.
-UNSEEN_DRAW_MARGIN = 1.5
-
 # The entrypoint is explicit task data; it is not derived from operator identity.
 BUILDER_SYMBOL = task_contract.candidate_entry()["symbol"]
 
@@ -107,9 +81,7 @@ def build_case_inputs(case: dict[str, Any], device: str = "cuda") -> dict[str, A
     return task_initialize.run(inputs, seed=SEED)
 
 
-def refill_case_inputs(
-    inputs: dict[str, Any], seed: int = REFILL_SEED
-) -> dict[str, Any]:
+def refill_case_inputs(inputs: dict[str, Any], seed: int) -> dict[str, Any]:
     """Redraw a case's buffers in place, keeping their storage.
 
     The bundle's callback writes preallocated buffers rather than allocating
@@ -128,12 +100,10 @@ def refill_case_inputs(
 PERSISTENT_INPUTS: tuple[str, ...] = ("b",)
 
 
-def redraw_call_varying_inputs(
-    inputs: dict[str, Any], seed: int = REFILL_SEED
-) -> dict[str, Any]:
+def redraw_call_varying_inputs(inputs: dict[str, Any], seed: int) -> dict[str, Any]:
     """Redraw only what changes between two calls on a live model.
 
-    Re-arming a timed invocation has to move the ground under it without
+    A new draw for a timed invocation has to move the ground under it without
     invalidating work a real deployment would legitimately do once. Packing the
     weight into a kernel's preferred layout on the first call and reusing it is
     that kind of work, so a redraw that also replaced the weight would make an
@@ -152,7 +122,7 @@ def redraw_call_varying_inputs(
 
 
 def call_varying_draws(
-    inputs: dict[str, Any], seeds: tuple[int, ...]
+    inputs: dict[str, Any], seeds: list[int]
 ) -> list[dict[str, torch.Tensor]]:
     """One snapshot of the call-varying operands per seed, drawn by the bundle.
 

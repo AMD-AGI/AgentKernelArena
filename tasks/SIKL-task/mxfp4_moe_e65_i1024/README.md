@@ -56,6 +56,10 @@ The builder receives shape arguments only, once per case, and returns a callable
 launch. Prepare compilation, shape-dependent tile choices and reusable scratch
 in the builder. Every launch must compute the complete operator on the supplied
 current tensor contents; it must not cache answers or alter input tensors.
+State kept across launches may be derived only from the weights (for example a
+one-time re-layout keyed on the weight tensor); it must never be derived from
+activations, routing or outputs. Recognizing inputs seen before and returning a
+stored or partial result games the measurement; it is not an optimization.
 All 13 variable-axis sizes (1 through 4096, powers of two) are scored. Tiling,
 fusion, split reductions and per-shape dispatch are implementation choices.
 
@@ -122,10 +126,19 @@ unchanged workload warmup, repetition and target duration. Preparation and input
 allocation occur outside timing; the timed callable is the complete operator
 invocation, including its device work and output/scratch use. Graph timing is
 preferred; event fallback is recorded and the framework checks that baseline
-and candidate timing methods match. The actual timed invocation is replayed
-with freshly initialized inputs and poisoned outputs, then checked against a
-new reference using the original comparator. Input mutation, nonfinite output,
-missing work or runtime failures cannot be treated as numerical diagnostics.
+and candidate timing methods match. Each sample times one logical invocation;
+calls are never batched into one capture. Before each sample, outside timing,
+the call-varying operands (`hidden_states`, `topk_weights`, `topk_ids`) are
+overwritten in place with one of several draws from the bundle's initializer,
+while the expert weights and scales stay fixed. Draw seeds come from the operating system when
+the case is timed. After the samples, the timed unit runs once over each of
+several further draws it has never read, timed like a sample, and the fastest
+of those may take at most `UNSEEN_DRAW_MARGIN` (in `scripts/task_measure.py`)
+times the reported mean. The outputs of randomly chosen reported samples and
+of every unseen-draw invocation are compared, with the original comparator,
+against the reference on the draw each one consumed, and the weights and loaded
+operands must be unchanged afterwards. Input mutation, nonfinite output, missing
+work or runtime failures cannot be treated as numerical diagnostics.
 No timing from an instrumented sanitizer build may become an official score.
 
 A task does not require any agent-specific driver or environment variable.

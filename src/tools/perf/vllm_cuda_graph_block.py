@@ -69,8 +69,8 @@ class _TimedRun:
     def rerun_ms(self):
         if self._rerun_timed is None:
             raise RuntimeError(
-                "timed run was never bound to a timed replay; only CUDA-graph "
-                "timing exposes one, so this cannot run under event fallback"
+                "timed run was never bound; the benchmark did not reach a "
+                "measurement path"
             )
         self.outputs, elapsed_ms = self._rerun_timed()
         return elapsed_ms
