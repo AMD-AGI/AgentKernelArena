@@ -295,21 +295,31 @@ def test_timed_run_binds_outputs_to_the_exact_measured_graph(monkeypatch):
             return final_graph
         return Graph()
 
+    timed_replays = []
+
     def replay(graph, stream, samples, calls_per_replay, prepare_fn=None):
-        del graph, stream, calls_per_replay, prepare_fn
+        del stream, calls_per_replay, prepare_fn
+        if graph is final_graph:
+            timed_replays.append(samples)
         return [0.25] * samples
 
     class TimedRun:
         def __init__(self):
             self.outputs = None
             self._rerun = None
+            self._rerun_timed = None
 
-        def _bind(self, rerun, outputs=None):
+        def _bind(self, rerun, outputs=None, rerun_timed=None):
             self._rerun = rerun
+            self._rerun_timed = rerun_timed
             self.outputs = outputs
 
         def rerun(self):
             return self._rerun()
+
+        def rerun_ms(self):
+            self.outputs, elapsed_ms = self._rerun_timed()
+            return elapsed_ms
 
     monkeypatch.setattr(helper, "_capture_graph", capture)
     monkeypatch.setattr(helper, "_graph_replay_samples", replay)
@@ -330,6 +340,12 @@ def test_timed_run_binds_outputs_to_the_exact_measured_graph(monkeypatch):
     assert timed.outputs is captured_output
     assert timed.rerun() is captured_output
     assert final_graph.replays == 1
+
+    # The timed rerun is one more sample of the final graph, not a new timer.
+    sampled_before = list(timed_replays)
+    assert timed.rerun_ms() == 0.25
+    assert timed_replays == sampled_before + [1]
+    assert timed.outputs is captured_output
 
 
 def test_hip_source_policy_accepts_current_stream_launch(monkeypatch, tmp_path):

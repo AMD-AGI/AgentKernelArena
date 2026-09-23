@@ -106,30 +106,50 @@ def compare_cases(launches: list | None) -> list[dict[str, Any]]:
     return results
 
 
-def one_invocation_per_replay() -> None:
-    """Select the unbatched capture. There is nothing to prepare.
+class RotatingDraws:
+    """Preparation that loads a different call-varying draw before every replay.
 
-    Left to itself the benchmark captures as many calls as it takes to fill
-    ``target_ms`` and divides the replay by that count. The count is the whole
-    problem: an implementation that answers the first call in a capture and
-    serves the rest from a cache keyed on the inputs' identity leaves exactly
-    one computation in the graph, and the division then reports it at a
-    fraction of its cost while every replay still recomputes that one honestly.
+    A replay executes recorded kernels, and those kernels may themselves decide
+    at run time whether to compute: one that compares its operands against a
+    copy of the last ones it saw and replays a stored output on a match skips
+    the operator on every sample, because every sample reads the same bytes.
+    Loading another draw before each replay makes consecutive samples differ in
+    value while keeping every buffer's storage, which is all a captured graph
+    depends on. The draws come from ``task_inputs.call_varying_draws``, so the
+    weights stay fixed across samples the way a deployment holds them.
 
-    Supplying a preparation callback is how the benchmark is told to capture a
-    single logical invocation, which is the property this task needs; that the
-    callback has nothing to do is incidental. Nothing is redrawn here because
-    nothing would be read: a replay executes recorded kernels, not the
-    implementation, so what a sample measures was settled at capture time.
+    Supplying a preparation callback is also how the benchmark is told to
+    capture a single logical invocation per replay rather than batching as many
+    as fill ``target_ms`` and dividing by the count. ``time_cases`` asserts the
+    count it gets rather than trusting this.
 
-    ``time_cases`` asserts the count it gets rather than trusting this, so the
-    day the benchmark separates batching from preparation the task fails loudly
-    instead of quietly going back to reporting a fraction.
+    ``hold`` makes the next preparation leave the buffers alone, for a caller
+    that has loaded the draw it wants the next replay to consume.
     """
+
+    def __init__(
+        self, inputs: dict[str, Any], draws: list[dict[str, torch.Tensor]]
+    ) -> None:
+        if len(draws) < 2:
+            raise ValueError("rotation needs at least two distinct draws")
+        self._inputs = inputs
+        self._draws = draws
+        self._next = 0
+        self._held = False
+
+    def __call__(self) -> None:
+        if self._held:
+            self._held = False
+            return
+        task_inputs.load_draw(self._inputs, self._draws[self._next])
+        self._next = (self._next + 1) % len(self._draws)
+
+    def hold(self) -> None:
+        self._held = True
 
 
 def verify_timed_invocation(
-    inputs: dict[str, Any], timed: TimedRun, call: Callable
+    inputs: dict[str, Any], timed: TimedRun, call: Callable, rotation: RotatingDraws
 ) -> None:
     """Hold the invocation that was timed to the result it reported.
 
@@ -175,6 +195,7 @@ def verify_timed_invocation(
     task_inputs.redraw_call_varying_inputs(inputs)
     if isinstance(timed.outputs, torch.Tensor):
         timed.outputs.fill_(float("nan"))
+    rotation.hold()
     got = timed.rerun()
     torch.cuda.synchronize()
     if not isinstance(got, torch.Tensor):
@@ -215,6 +236,48 @@ def verify_timed_invocation(
         )
 
 
+def verify_timed_cost(
+    inputs: dict[str, Any],
+    timed: TimedRun,
+    rotation: RotatingDraws,
+    unseen: list[dict[str, torch.Tensor]],
+    execution_time_ms: float,
+) -> float:
+    """Hold the reported time to what the timed unit costs on an unseen draw.
+
+    The rotation defeats a stored result that remembers one draw, not one that
+    remembers every draw the samples cycle through. Such an implementation
+    still has to compute the first time it meets a draw, so the timed unit is
+    replayed once over each of a few draws that were never loaded before, timed
+    the way a sample is, and the fastest of those replays is compared with the
+    reported mean. Taking the fastest keeps noise from failing an honest
+    implementation, while every one of them is a miss for a stored result.
+
+    This has to run directly after the samples, over draws made before them.
+    Anything heavier than loading a draw in between -- redrawing through the
+    bundle rewrites the weight -- evicts operands the samples found in cache,
+    and the replay would then be slower for reasons that have nothing to do
+    with what it computes.
+
+    Returns the fastest unseen-draw replay, in milliseconds.
+    """
+    unseen_ms = []
+    for draw in unseen:
+        task_inputs.load_draw(inputs, draw)
+        rotation.hold()
+        unseen_ms.append(timed.rerun_ms())
+    fastest = min(unseen_ms)
+    bar = execution_time_ms * task_inputs.UNSEEN_DRAW_MARGIN
+    if fastest > bar:
+        raise RuntimeError(
+            f"the timed invocation took {fastest:.6f} ms over a draw it had not "
+            f"seen, against a reported {execution_time_ms:.6f} ms per call and a "
+            f"bar of {bar:.6f} ms. The samples were served faster than the "
+            "operator runs on new inputs, so the reported time is not its cost"
+        )
+    return fastest
+
+
 def time_cases(launches: list | None) -> list[dict[str, Any]]:
     """Time every case under the task's own sampling protocol.
 
@@ -225,13 +288,17 @@ def time_cases(launches: list | None) -> list[dict[str, Any]]:
     for index, case in enumerate(task_inputs.CASES):
         inputs = task_inputs.build_case_inputs(case)
         call = case_call(inputs, None if launches is None else launches[index])
+        rotation = RotatingDraws(
+            inputs, task_inputs.call_varying_draws(inputs, task_inputs.TIMED_DRAW_SEEDS)
+        )
+        unseen = task_inputs.call_varying_draws(inputs, task_inputs.UNSEEN_DRAW_SEEDS)
         timed = TimedRun()
         execution_time_ms, metadata = benchmark_cuda_graph_or_events(
             call,
             warmup=task_inputs.BENCH_WARMUP,
             repetition=task_inputs.BENCH_REPETITION,
             target_ms=task_inputs.BENCH_TARGET_MS,
-            prepare_fn=one_invocation_per_replay,
+            prepare_fn=rotation,
             timed_run=timed,
         )
         repeats = metadata.get("benchmark_effective_repeats")
@@ -242,7 +309,13 @@ def time_cases(launches: list | None) -> list[dict[str, Any]]:
                 "would be charged at a fraction of its cost; this task requires "
                 "one logical invocation per replay"
             )
-        verify_timed_invocation(inputs, timed, call)
+        try:
+            metadata["unseen_draw_ms"] = verify_timed_cost(
+                inputs, timed, rotation, unseen, execution_time_ms
+            )
+            verify_timed_invocation(inputs, timed, call, rotation)
+        except RuntimeError as failure:
+            raise RuntimeError(f"case {case['case_id']}: {failure}") from failure
         samples.append(
             {
                 "case_id": str(case["case_id"]),

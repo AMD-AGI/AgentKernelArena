@@ -793,14 +793,26 @@ class TimedRun:
     event-timing fallback the measured outputs cannot be observed reliably, so a
     benchmark that requests this collector fails closed instead of validating a
     separate post-timing invocation.
+
+    ``rerun_ms`` executes the unit once more and returns its device time,
+    bracketed exactly as a benchmark sample is: preparation first, then the
+    start event, the replay and the end event. A caller can therefore compare
+    one replay over state of its choosing against the reported samples.
     """
 
     def __init__(self) -> None:
         self._rerun: Callable[[], Any] | None = None
+        self._rerun_timed: Callable[[], tuple[Any, float]] | None = None
         self.outputs: Any = None
 
-    def _bind(self, rerun: Callable[[], Any], outputs: Any = None) -> None:
+    def _bind(
+        self,
+        rerun: Callable[[], Any],
+        outputs: Any = None,
+        rerun_timed: Callable[[], tuple[Any, float]] | None = None,
+    ) -> None:
         self._rerun = rerun
+        self._rerun_timed = rerun_timed
         self.outputs = outputs
 
     @property
@@ -812,6 +824,12 @@ class TimedRun:
             raise RuntimeError("timed run was never bound")
         self.outputs = self._rerun()
         return self.outputs
+
+    def rerun_ms(self) -> float:
+        if self._rerun_timed is None:
+            raise RuntimeError("timed run was never bound to a timed replay")
+        self.outputs, elapsed_ms = self._rerun_timed()
+        return elapsed_ms
 
 
 def benchmark_cuda_graph_or_events_samples(
@@ -999,7 +1017,19 @@ def benchmark_cuda_graph_or_events_samples(
                 torch.cuda.synchronize()
                 return captured_output
 
-            timed_run._bind(_replay_once, captured_output)
+            def _replay_once_timed() -> tuple[Any, float]:
+                stream.wait_stream(torch.cuda.current_stream())
+                elapsed_ms = _graph_replay_samples(
+                    graph,
+                    stream,
+                    samples=1,
+                    calls_per_replay=graph_repeats,
+                    prepare_fn=prepare_fn,
+                )[0]
+                torch.cuda.synchronize()
+                return captured_output, elapsed_ms
+
+            timed_run._bind(_replay_once, captured_output, _replay_once_timed)
         return values, metadata
     except _EmptyGraphCapture:
         return _event_fallback(

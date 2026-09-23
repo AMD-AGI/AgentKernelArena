@@ -309,7 +309,7 @@ def test_the_timed_invocation_is_held_to_its_result(task):
     inputs = (task / "scripts" / "task_inputs.py").read_text()
 
     assert "timed_run=timed" in measure
-    assert "verify_timed_invocation(inputs, timed, call)" in measure
+    assert "verify_timed_invocation(inputs, timed, call, rotation)" in measure
     # Requesting the collector also makes an unobservable capture fatal, which
     # is what closes the variant that returns a cached tensor and runs nothing.
     assert "TimedRun" in measure
@@ -329,9 +329,46 @@ def test_one_logical_invocation_is_timed_per_replay(task):
     # separating the two upstream breaks the task instead of the protocol.
     measure = (task / "scripts" / "task_measure.py").read_text()
 
-    assert "prepare_fn=one_invocation_per_replay" in measure
+    assert "prepare_fn=rotation" in measure
     assert 'metadata.get("benchmark_effective_repeats")' in measure
     assert "if repeats != 1:" in measure
+
+
+@pytest.mark.parametrize("task", TASKS, ids=lambda task: task.name)
+def test_consecutive_samples_read_different_values(task):
+    # A captured kernel can compare its operands against a copy of the last ones
+    # it saw and replay a stored output on a match. Every replay of one set of
+    # buffers reads the same bytes, so that kernel skips the operator on every
+    # sample and still recomputes when re-armed over a redraw. Each sample is
+    # therefore prepared with another draw of the call-varying operands, and the
+    # reported time is held to a replay over draws no sample has seen, which is
+    # a miss for any number of remembered draws.
+    measure = (task / "scripts" / "task_measure.py").read_text()
+    inputs = (task / "scripts" / "task_inputs.py").read_text()
+
+    assert "class RotatingDraws" in measure
+    assert "task_inputs.call_varying_draws(inputs, task_inputs.TIMED_DRAW_SEEDS)" in measure
+    assert "task_inputs.call_varying_draws(inputs, task_inputs.UNSEEN_DRAW_SEEDS)" in measure
+    assert "rotation.hold()" in measure
+    assert "timed.rerun_ms()" in measure
+    assert "verify_timed_cost(" in measure
+    assert "UNSEEN_DRAW_MARGIN" in measure
+    assert "def call_varying_draws" in inputs
+    assert "redraw_call_varying_inputs(inputs, seed=seed)" in inputs
+
+
+@pytest.mark.parametrize("task", TASKS, ids=lambda task: task.name)
+def test_unseen_draws_are_unseen(task):
+    module = _task_inputs(task)
+    timed = set(module.TIMED_DRAW_SEEDS)
+    unseen = set(module.UNSEEN_DRAW_SEEDS)
+    earlier = {module.SEED, module.REFILL_SEED}
+
+    assert len(timed) == module.TIMED_DRAWS >= 2
+    assert len(unseen) == module.UNSEEN_DRAWS >= 1
+    assert not timed & unseen
+    assert not (timed | unseen) & earlier
+    assert module.UNSEEN_DRAW_MARGIN > 1.0
 
 
 @pytest.mark.parametrize("task", TASKS, ids=lambda task: task.name)
@@ -363,7 +400,7 @@ def test_re_arming_a_replay_keeps_the_operands_a_caller_owns(task):
     assert "task_inputs.redraw_call_varying_inputs(inputs)" in measure
     assert "def redraw_call_varying_inputs" in inputs
     assert "PERSISTENT_INPUTS" in inputs
-    assert "refill_case_inputs(inputs)" in inputs, (
+    assert "refill_case_inputs(inputs, seed=seed)" in inputs, (
         "the redraw must go through the bundle's callback rather than fill "
         "buffers itself"
     )

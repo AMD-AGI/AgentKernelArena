@@ -103,6 +103,20 @@ SEED = int(WORKLOAD["seed"])
 # the point is that the values a captured graph replays over are ones no earlier
 # call in this process has seen, not that they come from a second distribution.
 REFILL_SEED = SEED + 1
+
+# The draws the timed samples rotate through, one per replay, and the draws the
+# timed unit is replayed over once each after timing. The two sets are disjoint
+# from each other and from SEED and REFILL_SEED, so an unseen draw is one the
+# implementation cannot have encountered before its timed replay.
+TIMED_DRAWS = 3
+UNSEEN_DRAWS = 4
+TIMED_DRAW_SEEDS: tuple[int, ...] = tuple(
+    range(REFILL_SEED + 1, REFILL_SEED + 1 + TIMED_DRAWS)
+)
+UNSEEN_DRAW_SEEDS: tuple[int, ...] = tuple(
+    range(TIMED_DRAW_SEEDS[-1] + 1, TIMED_DRAW_SEEDS[-1] + 1 + UNSEEN_DRAWS)
+)
+
 ACTIVATION = 0
 DOWEIGHT_STAGE1 = False
 
@@ -186,7 +200,9 @@ def build_case_inputs(case: dict[str, Any], device: str = "cuda") -> dict[str, A
     return task_initialize.run(inputs, seed=SEED)
 
 
-def refill_case_inputs(inputs: dict[str, Any]) -> dict[str, Any]:
+def refill_case_inputs(
+    inputs: dict[str, Any], seed: int = REFILL_SEED
+) -> dict[str, Any]:
     """Redraw a case's buffers in place, keeping their storage.
 
     The bundle's callback writes preallocated buffers rather than allocating
@@ -195,7 +211,7 @@ def refill_case_inputs(inputs: dict[str, Any]) -> dict[str, Any]:
     buffers therefore reads the new draw on its next replay, which is what makes
     the timed invocation answerable for a result it cannot have precomputed.
     """
-    return task_initialize.run(inputs, seed=REFILL_SEED)
+    return task_initialize.run(inputs, seed=seed)
 
 
 # The operands a production caller holds fixed while the activations and the
@@ -204,7 +220,9 @@ def refill_case_inputs(inputs: dict[str, Any]) -> dict[str, Any]:
 PERSISTENT_INPUTS: tuple[str, ...] = ("w1", "w1_scale", "w2", "w2_scale")
 
 
-def redraw_call_varying_inputs(inputs: dict[str, Any]) -> dict[str, Any]:
+def redraw_call_varying_inputs(
+    inputs: dict[str, Any], seed: int = REFILL_SEED
+) -> dict[str, Any]:
     """Redraw only what changes between two calls on a live model.
 
     Re-arming a timed invocation has to move the ground under it without
@@ -220,10 +238,43 @@ def redraw_call_varying_inputs(inputs: dict[str, Any]) -> dict[str, Any]:
     fills which buffer in this file, and that copy is what goes stale.
     """
     held = {name: inputs[name].detach().clone() for name in PERSISTENT_INPUTS}
-    refill_case_inputs(inputs)
+    refill_case_inputs(inputs, seed=seed)
     for name, value in held.items():
         inputs[name].copy_(value)
     return inputs
+
+
+def call_varying_draws(
+    inputs: dict[str, Any], seeds: tuple[int, ...]
+) -> list[dict[str, torch.Tensor]]:
+    """One snapshot of the call-varying operands per seed, drawn by the bundle.
+
+    Each snapshot is what ``redraw_call_varying_inputs`` would leave in the
+    call-varying buffers for that seed. The buffers themselves end as they
+    started, so drawing ahead of time does not change what the next call reads.
+    """
+    names = tuple(
+        name
+        for name, value in inputs.items()
+        if isinstance(value, torch.Tensor) and name not in PERSISTENT_INPUTS
+    )
+    current = {name: inputs[name].detach().clone() for name in names}
+    draws = []
+    for seed in seeds:
+        redraw_call_varying_inputs(inputs, seed=seed)
+        draws.append({name: inputs[name].detach().clone() for name in names})
+    load_draw(inputs, current)
+    return draws
+
+
+def load_draw(inputs: dict[str, Any], draw: dict[str, torch.Tensor]) -> None:
+    """Copy a snapshot into the live buffers, keeping their storage.
+
+    A captured graph reads these addresses on every replay, so the copy is what
+    the next replay consumes; the copy is enqueued on the current stream.
+    """
+    for name, value in draw.items():
+        inputs[name].copy_(value)
 
 
 # How much further the timed path may sit from the eager one than the eager one
@@ -235,6 +286,14 @@ def redraw_call_varying_inputs(inputs: dict[str, Any]) -> dict[str, Any]:
 # implementation that does repeat exactly.
 TIMED_PATH_MARGIN = 4.0
 TIMED_PATH_FLOOR = 1e-6
+
+# How much slower than the reported mean a replay over an unseen draw may be.
+# The timed samples rotate through a few draws, so an implementation that keeps
+# results keyed on its inputs' values can still serve every sample from memory
+# once it remembers them all; a draw it has never seen is a miss, and that miss
+# is the operator's actual cost. An implementation that computes on every call
+# runs an unseen draw in the time of any other replay.
+UNSEEN_DRAW_MARGIN = 1.5
 
 
 def result_distance(got: torch.Tensor, other: torch.Tensor) -> float:

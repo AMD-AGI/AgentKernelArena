@@ -45,10 +45,12 @@ class _TimedRun:
 
     def __init__(self):
         self._rerun = None
+        self._rerun_timed = None
         self.outputs = None
 
-    def _bind(self, rerun, outputs=None):
+    def _bind(self, rerun, outputs=None, rerun_timed=None):
         self._rerun = rerun
+        self._rerun_timed = rerun_timed
         self.outputs = outputs
 
     @property
@@ -63,6 +65,12 @@ class _TimedRun:
             )
         self.outputs = self._rerun()
         return self.outputs
+
+    def rerun_ms(self):
+        if self._rerun_timed is None:
+            raise RuntimeError("timed run was never bound to a timed replay")
+        self.outputs, elapsed_ms = self._rerun_timed()
+        return elapsed_ms
 
 
 def _benchmark_cuda_graph_or_events(
