@@ -891,3 +891,55 @@ def test_hip_source_policy_does_not_trust_unrelated_stream_assignment(
         False,
         "hip_source_launch_stream_unverified",
     )
+
+
+def test_graph_after_sample_sees_captured_outputs_after_each_reported_replay(monkeypatch):
+    from contextlib import contextmanager
+    helper = _load_helper(monkeypatch)
+    cuda = helper.torch.cuda
+    trace, seen = [], []
+    output = [0]
+    class Event:
+        def __init__(self, enable_timing): pass
+        def record(self, stream): trace.append("event")
+        def synchronize(self): trace.append("wait_event")
+        def elapsed_time(self, other): return 1.0
+    class Stream:
+        def wait_stream(self, other): pass
+    @contextmanager
+    def stream_context(_stream):
+        yield
+    monkeypatch.setattr(cuda, "Stream", Stream)
+    monkeypatch.setattr(cuda, "current_stream", lambda: None)
+    monkeypatch.setattr(cuda, "stream", stream_context, raising=False)
+    monkeypatch.setattr(cuda, "Event", Event, raising=False)
+    def invoke():
+        output[0] += 1
+        return output
+    class Graph:
+        def replay(self):
+            trace.append("replay")
+            invoke()
+    def capture(fn, repeats, stream, prepare_fn=None, output_holder=None):
+        assert repeats == 1
+        if output_holder is not None:
+            output_holder[:] = [fn()]
+        return Graph()
+    monkeypatch.setattr(helper, "_capture_graph", capture)
+    def after(outputs):
+        assert outputs is output
+        trace.append("after")
+        seen.append(outputs[0])
+    timed = helper.TimedRun()
+    timed.after_sample = after
+    values, meta = helper.benchmark_cuda_graph_or_events_samples(
+        invoke, warmup=1, repetition=3, prepare_fn=lambda: None, timed_run=timed,
+    )
+    assert meta["benchmark_effective_repeats"] == 1 and values == [1.0] * 3
+    # Warmup, two estimate replays, final capture and priming precede the samples.
+    assert seen == [6, 7, 8]
+    last = len(trace) - 1 - trace[::-1].index("replay")
+    assert trace[last:] == ["replay", "event", "wait_event", "after"]
+    timed.rerun_ms()
+    timed.rerun()
+    assert seen == [6, 7, 8]

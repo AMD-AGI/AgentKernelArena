@@ -15,9 +15,12 @@ differently from the way the task is scored.
 from __future__ import annotations
 
 import hashlib
+import importlib
 import importlib.util
 import json
 import sys
+import types
+from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
@@ -300,25 +303,6 @@ def test_driver_and_harness_share_one_measurement_implementation(task):
 
 
 @pytest.mark.parametrize("task", TASKS, ids=lambda task: task.name)
-def test_the_timed_invocation_is_held_to_its_result(task):
-    # A case is timed over one set of buffers, so an implementation can answer
-    # the first call and serve every replay from a cache keyed on their
-    # identity. Correctness cannot see it -- fresh inputs per case are always a
-    # miss -- so the timed unit itself is re-run over a redrawn input and judged.
-    measure = (task / "scripts" / "task_measure.py").read_text()
-    inputs = (task / "scripts" / "task_inputs.py").read_text()
-
-    assert "timed_run=timed" in measure
-    assert "verify_timed_invocation(inputs, timed, call, rotation)" in measure
-    # Requesting the collector also makes an unobservable capture fatal, which
-    # is what closes the variant that returns a cached tensor and runs nothing.
-    assert "TimedRun" in measure
-    assert 'fill_(float("nan"))' in measure
-    assert "def refill_case_inputs" in inputs
-    assert "REFILL_SEED" in inputs
-
-
-@pytest.mark.parametrize("task", TASKS, ids=lambda task: task.name)
 def test_one_logical_invocation_is_timed_per_replay(task):
     # Judging the replay is not enough on its own. The benchmark batches as many
     # calls as fill target_ms into one capture and divides by that count, and an
@@ -335,75 +319,211 @@ def test_one_logical_invocation_is_timed_per_replay(task):
 
 
 @pytest.mark.parametrize("task", TASKS, ids=lambda task: task.name)
-def test_consecutive_samples_read_different_values(task):
-    # A captured kernel can compare its operands against a copy of the last ones
-    # it saw and replay a stored output on a match. Every replay of one set of
-    # buffers reads the same bytes, so that kernel skips the operator on every
-    # sample and still recomputes when re-armed over a redraw. Each sample is
-    # therefore prepared with another draw of the call-varying operands, and the
-    # reported time is held to a replay over draws no sample has seen, which is
-    # a miss for any number of remembered draws.
+def test_the_timed_invocations_themselves_are_checked(task):
+    # A captured kernel can decide on device, per invocation, whether to compute:
+    # keyed on its inputs' values (return a stored result for a draw it has
+    # seen) or on its own output buffer (skip while nobody has touched it, which
+    # a NaN-poisoned re-arm gives away). So no invocation is prepared for
+    # checking: fresh draws rotate through the samples, the outputs of secretly
+    # chosen samples and of invocations over never-read draws are kept and
+    # judged against the reference, and the reported time is held to what those
+    # unseen draws cost. Seeds come from the OS, so no draw can be precomputed.
     measure = (task / "scripts" / "task_measure.py").read_text()
     inputs = (task / "scripts" / "task_inputs.py").read_text()
 
     assert "class RotatingDraws" in measure
-    assert "task_inputs.call_varying_draws(inputs, task_inputs.TIMED_DRAW_SEEDS)" in measure
-    assert "task_inputs.call_varying_draws(inputs, task_inputs.UNSEEN_DRAW_SEEDS)" in measure
-    assert "rotation.hold()" in measure
-    assert "timed.rerun_ms()" in measure
-    assert "verify_timed_cost(" in measure
-    assert "UNSEEN_DRAW_MARGIN" in measure
-    assert "def call_varying_draws" in inputs
-    assert "redraw_call_varying_inputs(inputs, seed=seed)" in inputs
+    assert "timed.after_sample = checks" in measure
+    assert "seeds = fresh_draw_seeds(TIMED_DRAWS + UNSEEN_DRAWS)" in measure
+    assert "secrets.SystemRandom()" in measure
+    assert "run_unseen_draws(timed, rotation, unseen)" in measure
+    assert "verify_timed_outputs(" in measure and "checks.kept + unseen_kept" in measure
+    assert "verify_timed_cost(unseen_ms, execution_time_ms)" in measure
+    assert 'float("nan")' not in measure and ".rerun()" not in measure
+    assert "REFILL_SEED" not in inputs and "SEED + " not in inputs
+    ns: dict = {}
+    for name in ("TIMED_DRAWS", "UNSEEN_DRAWS", "UNSEEN_DRAW_MARGIN", "CHECKED_SAMPLES"):
+        line = next(l for l in measure.splitlines() if l.startswith(f"{name} = "))
+        exec(line, ns)
+    assert ns["TIMED_DRAWS"] >= 2 and ns["UNSEEN_DRAWS"] >= 1 and ns["CHECKED_SAMPLES"] >= 1
+    assert ns["UNSEEN_DRAW_MARGIN"] > 1.0
 
 
 @pytest.mark.parametrize("task", TASKS, ids=lambda task: task.name)
-def test_unseen_draws_are_unseen(task):
-    module = _task_inputs(task)
-    timed = set(module.TIMED_DRAW_SEEDS)
-    unseen = set(module.UNSEEN_DRAW_SEEDS)
-    earlier = {module.SEED, module.REFILL_SEED}
-
-    assert len(timed) == module.TIMED_DRAWS >= 2
-    assert len(unseen) == module.UNSEEN_DRAWS >= 1
-    assert not timed & unseen
-    assert not (timed | unseen) & earlier
-    assert module.UNSEEN_DRAW_MARGIN > 1.0
-
-
-@pytest.mark.parametrize("task", TASKS, ids=lambda task: task.name)
-def test_the_timed_path_is_held_to_the_checked_path(task):
-    # The capture state alone tells an implementation whether it is being timed
-    # or checked, so a path that computes honestly when observed and cheaply
-    # when captured clears both the poison and the bit-for-bit test while
-    # producing nothing. It is held to what the same implementation answers
-    # eagerly over the draw the replay consumed -- against itself, because the
-    # shipped implementation does not clear the bundle's bar at every shape and
-    # a reference criterion here would reject the baseline the task is scored
-    # against.
-    measure = (task / "scripts" / "task_measure.py").read_text()
-
-    assert "eager = call()" in measure
-    assert "task_inputs.result_distance(got, eager)" in measure
-    assert "TIMED_PATH_MARGIN" in measure
-
-
-@pytest.mark.parametrize("task", TASKS, ids=lambda task: task.name)
-def test_re_arming_a_replay_keeps_the_operands_a_caller_owns(task):
+def test_draws_keep_the_operands_a_caller_owns(task):
     # Redrawing the weights too would fail an implementation for laying them out
     # once on the first call, which is what a deployment does and what aiter
     # does at load time. Only the operands that change between two calls on a
     # live model are redrawn, and the draw stays the bundle's callback.
-    measure = (task / "scripts" / "task_measure.py").read_text()
     inputs = (task / "scripts" / "task_inputs.py").read_text()
 
-    assert "task_inputs.redraw_call_varying_inputs(inputs)" in measure
-    assert "def redraw_call_varying_inputs" in inputs
+    assert "def redraw_call_varying_inputs(inputs: dict[str, Any], seed: int)" in inputs
     assert "PERSISTENT_INPUTS" in inputs
     assert "refill_case_inputs(inputs, seed=seed)" in inputs, (
         "the redraw must go through the bundle's callback rather than fill "
         "buffers itself"
     )
+
+
+@contextmanager
+def _task_measure(task: Path, monkeypatch):
+    """Import one task's task_measure, with its siblings, by bare name.
+
+    The benchmark helper is materialized by Arena rather than committed, so a
+    placeholder stands in for the import; each test binds what it needs.
+    """
+    siblings = ("task_measure", "task_inputs", "task_baseline", "task_reference",
+                "task_compare", "task_initialize")
+    monkeypatch.syspath_prepend(str(task / "scripts"))
+    for name in siblings:
+        monkeypatch.delitem(sys.modules, name, raising=False)
+    monkeypatch.setitem(sys.modules, "_aka_benchmark", types.SimpleNamespace(
+        TimedRun=None, benchmark_cuda_graph_or_events=None))
+    try:
+        yield importlib.import_module("task_measure")
+    finally:
+        for name in siblings:
+            sys.modules.pop(name, None)
+
+
+def _simulated_graph_benchmark(kernel):
+    """The canonical helper's contract on CPU: one replay per sample, prepared by
+    ``prepare_fn`` before its start event, ``after_sample`` after its end event,
+    ``rerun_ms`` through the same path. A sample's time is the simulated device
+    cost the kernel reports for that invocation."""
+    def benchmark(fn, *, warmup, repetition, target_ms, prepare_fn, timed_run):
+        del target_ms
+        for _ in range(warmup + 3):  # Warmup, estimate replays and priming.
+            prepare_fn()
+            fn()
+
+        def sample():
+            prepare_fn()
+            return fn(), kernel.cost
+
+        values = []
+        for _ in range(repetition):
+            outputs, cost = sample()
+            values.append(cost)
+            timed_run.after_sample(outputs)
+
+        def rerun_ms():
+            timed_run.outputs, cost = sample()
+            return cost
+
+        timed_run.bound, timed_run.outputs, timed_run.rerun_ms = True, outputs, rerun_ms
+        return sum(values) / len(values), {"benchmark_method": "cuda_graph",
+                                           "benchmark_effective_repeats": 1}
+
+    return benchmark, lambda: types.SimpleNamespace(bound=False, outputs=None)
+
+
+class _Honest:
+    """Computes the operator on every call; one unit of simulated device time."""
+
+    def __init__(self, reference):
+        self.reference, self.cost, self.calls, self.out = reference, None, 0, None
+
+    def compute(self, a, b):
+        self.cost = 1.0
+        self.out = self.reference.run(a=a, b=b)
+        return self.out
+
+    def __call__(self, a, b):
+        self.calls += 1
+        return self.compute(a, b)
+
+
+class _ValueMemo(_Honest):
+    """Returns a stored, correct result for any activation it has seen before."""
+
+    def __init__(self, reference):
+        super().__init__(reference)
+        self.store = {}
+
+    def __call__(self, a, b):
+        key = tuple(a.float().flatten().tolist())
+        if key in self.store:
+            self.cost = 0.1
+            return self.store[key].clone()
+        self.store[key] = self.compute(a, b).clone()
+        return self.store[key]
+
+
+class _StaleUntilDisturbed(_Honest):
+    """Skips while its output buffer still holds what it last wrote.
+
+    A protocol whose only checked invocation follows a NaN poisoning of the
+    outputs sees this kernel compute exactly there and skip everywhere else,
+    including on inputs it has never read."""
+
+    def __init__(self, reference):
+        super().__init__(reference)
+        self.last = None
+
+    def __call__(self, a, b):
+        if self.last is not None and self.out.equal(self.last):
+            self.cost = 0.01
+            return self.out
+        self.compute(a, b)
+        self.last = self.out.clone()
+        return self.out
+
+
+class _SkipsEveryThirdCall(_Honest):
+    """Leaves its previous result in place on every third call."""
+
+    def __call__(self, a, b):
+        self.calls += 1
+        if self.out is not None and self.calls % 3 == 0:
+            self.cost = 0.01
+            return self.out
+        return self.compute(a, b)
+
+
+@pytest.mark.parametrize("kernel_type, failure", [
+    (_Honest, None),
+    (_ValueMemo, "served faster than the operator runs on new inputs"),
+    (_StaleUntilDisturbed, "did not produce the operator's result"),
+    (_SkipsEveryThirdCall, "did not produce the operator's result"),
+])
+def test_time_cases_rejects_known_timed_path_exploits(kernel_type, failure, monkeypatch):
+    """Known exploit behaviours kept as regression fixtures, end to end through
+    ``time_cases`` with the real bundle initializer, reference and comparator."""
+    torch = pytest.importorskip("torch")
+    with _task_measure(SIKL_ROOT / "gemm_a16w16_nt_n32_k6144", monkeypatch) as measure:
+        kernel = kernel_type(measure.task_reference)
+        benchmark, timed_run = _simulated_graph_benchmark(kernel)
+        monkeypatch.setattr(measure, "benchmark_cuda_graph_or_events", benchmark)
+        monkeypatch.setattr(measure, "TimedRun", timed_run)
+        monkeypatch.setattr(torch.cuda, "synchronize", lambda: None)
+        build = measure.task_inputs.build_case_inputs
+        monkeypatch.setattr(measure.task_inputs, "build_case_inputs",
+                            lambda case: build(case, device="cpu"))
+        monkeypatch.setattr(measure.task_inputs, "CASES", measure.task_inputs.CASES[:1])
+        # Consecutive indices include a third call, so the one-in-three skipper
+        # is checked deterministically; production chooses them secretly.
+        monkeypatch.setattr(measure, "choose_checked_samples",
+                            lambda repetition, count: list(range(count)))
+        if failure is None:
+            (sample,) = measure.time_cases([kernel])
+            check = sample["metadata"]["timed_output_check"]
+            assert check["checked_invocations"] == measure.CHECKED_SAMPLES + measure.UNSEEN_DRAWS
+            assert check["numerical_failures"] == 0
+            assert measure.task_inputs.SEED not in (
+                sample["metadata"]["timed_draw_seeds"] + sample["metadata"]["unseen_draw_seeds"])
+        else:
+            with pytest.raises(RuntimeError, match=failure):
+                measure.time_cases([kernel])
+
+
+def test_draw_seeds_and_checked_samples_are_fresh_per_run(monkeypatch):
+    pytest.importorskip("torch")
+    with _task_measure(SIKL_ROOT / "gemm_a16w16_nt_n32_k6144", monkeypatch) as measure:
+        first, second = measure.fresh_draw_seeds(7), measure.fresh_draw_seeds(7)
+        assert len(set(first)) == 7 and measure.task_inputs.SEED not in first
+        assert first != second  # Fixed seeds would let a kernel precompute every draw.
+        chosen = measure.choose_checked_samples(100, measure.CHECKED_SAMPLES)
+        assert len(set(chosen)) == measure.CHECKED_SAMPLES and all(0 <= i < 100 for i in chosen)
 
 
 @pytest.mark.parametrize("task", TASKS, ids=lambda task: task.name)

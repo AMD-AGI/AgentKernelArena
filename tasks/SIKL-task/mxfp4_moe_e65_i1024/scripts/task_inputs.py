@@ -99,24 +99,6 @@ QUANT_GROUP_SIZE = 32
 
 SEED = int(WORKLOAD["seed"])
 
-# The draw used to re-arm a timed invocation. It only has to differ from SEED:
-# the point is that the values a captured graph replays over are ones no earlier
-# call in this process has seen, not that they come from a second distribution.
-REFILL_SEED = SEED + 1
-
-# The draws the timed samples rotate through, one per replay, and the draws the
-# timed unit is replayed over once each after timing. The two sets are disjoint
-# from each other and from SEED and REFILL_SEED, so an unseen draw is one the
-# implementation cannot have encountered before its timed replay.
-TIMED_DRAWS = 3
-UNSEEN_DRAWS = 4
-TIMED_DRAW_SEEDS: tuple[int, ...] = tuple(
-    range(REFILL_SEED + 1, REFILL_SEED + 1 + TIMED_DRAWS)
-)
-UNSEEN_DRAW_SEEDS: tuple[int, ...] = tuple(
-    range(TIMED_DRAW_SEEDS[-1] + 1, TIMED_DRAW_SEEDS[-1] + 1 + UNSEEN_DRAWS)
-)
-
 ACTIVATION = 0
 DOWEIGHT_STAGE1 = False
 
@@ -200,9 +182,7 @@ def build_case_inputs(case: dict[str, Any], device: str = "cuda") -> dict[str, A
     return task_initialize.run(inputs, seed=SEED)
 
 
-def refill_case_inputs(
-    inputs: dict[str, Any], seed: int = REFILL_SEED
-) -> dict[str, Any]:
+def refill_case_inputs(inputs: dict[str, Any], seed: int) -> dict[str, Any]:
     """Redraw a case's buffers in place, keeping their storage.
 
     The bundle's callback writes preallocated buffers rather than allocating
@@ -220,12 +200,10 @@ def refill_case_inputs(
 PERSISTENT_INPUTS: tuple[str, ...] = ("w1", "w1_scale", "w2", "w2_scale")
 
 
-def redraw_call_varying_inputs(
-    inputs: dict[str, Any], seed: int = REFILL_SEED
-) -> dict[str, Any]:
+def redraw_call_varying_inputs(inputs: dict[str, Any], seed: int) -> dict[str, Any]:
     """Redraw only what changes between two calls on a live model.
 
-    Re-arming a timed invocation has to move the ground under it without
+    A new draw for a timed invocation has to move the ground under it without
     invalidating work a real deployment would legitimately do once. Laying the
     expert weights out the way a kernel wants them on the first call and reusing
     them is that kind of work -- aiter preshuffles at load time for the same
@@ -245,7 +223,7 @@ def redraw_call_varying_inputs(
 
 
 def call_varying_draws(
-    inputs: dict[str, Any], seeds: tuple[int, ...]
+    inputs: dict[str, Any], seeds: list[int]
 ) -> list[dict[str, torch.Tensor]]:
     """One snapshot of the call-varying operands per seed, drawn by the bundle.
 
@@ -275,40 +253,6 @@ def load_draw(inputs: dict[str, Any], draw: dict[str, torch.Tensor]) -> None:
     """
     for name, value in draw.items():
         inputs[name].copy_(value)
-
-
-# How much further the timed path may sit from the eager one than the eager one
-# sits from itself, and a floor under that measured spread. The spread is what
-# an implementation's own nondeterminism costs it -- a split reduction over
-# atomics does not repeat bit for bit, and the shipped aiter dispatch does not
-# at several of these shapes -- so it is measured per case rather than assumed.
-# The floor only has to clear the comparison's own arithmetic for an
-# implementation that does repeat exactly.
-TIMED_PATH_MARGIN = 4.0
-TIMED_PATH_FLOOR = 1e-6
-
-# How much slower than the reported mean a replay over an unseen draw may be.
-# The timed samples rotate through a few draws, so an implementation that keeps
-# results keyed on its inputs' values can still serve every sample from memory
-# once it remembers them all; a draw it has never seen is a miss, and that miss
-# is the operator's actual cost. An implementation that computes on every call
-# runs an unseen draw in the time of any other replay.
-UNSEEN_DRAW_MARGIN = 1.5
-
-
-def result_distance(got: torch.Tensor, other: torch.Tensor) -> float:
-    """Largest elementwise gap between two results, against the result's scale.
-
-    Normalized by the whole tensor's magnitude rather than elementwise: a
-    per-element ratio is unbounded wherever the reference is near zero, which
-    says nothing about whether the two runs computed the same thing. Taking the
-    maximum rather than a mean is deliberate -- error concentrated in a few
-    elements is exactly what a path that skips most of the work produces, and
-    for a routed layer that is also what a mistake on one expert looks like.
-    """
-    got_f32, other_f32 = got.float(), other.float()
-    scale = other_f32.abs().max().clamp_min(torch.finfo(torch.float32).tiny)
-    return ((got_f32 - other_f32).abs().max() / scale).item()
 
 
 def call_kwargs(inputs: dict[str, Any]) -> dict[str, Any]:

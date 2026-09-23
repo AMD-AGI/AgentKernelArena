@@ -167,10 +167,12 @@ def _measure_cuda_event(fn, repetition):
 class _TimedRun:
     def __init__(self):
         self._rerun = None
+        self._rerun_timed = None
         self.outputs = None
 
-    def _bind(self, rerun, outputs=None):
+    def _bind(self, rerun, outputs=None, rerun_timed=None):
         self._rerun = rerun
+        self._rerun_timed = rerun_timed
         self.outputs = outputs
 
     @property
@@ -182,6 +184,12 @@ class _TimedRun:
             raise RuntimeError("timed run was never bound")
         self.outputs = self._rerun()
         return self.outputs
+
+    def rerun_ms(self):
+        if self._rerun_timed is None:
+            raise RuntimeError("timed run was never bound")
+        self.outputs, elapsed_ms = self._rerun_timed()
+        return elapsed_ms
 
 
 def _benchmark_cuda_graph(

@@ -31,10 +31,12 @@ class _TimedRun:
 
     def __init__(self):
         self._rerun = None
+        self._rerun_timed = None
         self.outputs = None
 
-    def _bind(self, rerun, outputs=None):
+    def _bind(self, rerun, outputs=None, rerun_timed=None):
         self._rerun = rerun
+        self._rerun_timed = rerun_timed
         self.outputs = outputs
 
     @property
@@ -46,6 +48,12 @@ class _TimedRun:
             raise RuntimeError("timed run was never bound")
         self.outputs = self._rerun()
         return self.outputs
+
+    def rerun_ms(self):
+        if self._rerun_timed is None:
+            raise RuntimeError("timed run was never bound")
+        self.outputs, elapsed_ms = self._rerun_timed()
+        return elapsed_ms
 
 # kernel.py lives next to this harness; Python puts the script dir on sys.path[0].
 _HARNESS_DIR = os.path.dirname(os.path.abspath(__file__))

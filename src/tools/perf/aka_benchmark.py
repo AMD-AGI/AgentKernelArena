@@ -722,6 +722,7 @@ def _graph_replay_samples(
     samples: int,
     calls_per_replay: int,
     prepare_fn: Callable[[], Any] | None = None,
+    after_sample: Callable[[], Any] | None = None,
 ) -> list[float]:
     values: list[float] = []
     for _ in range(samples):
@@ -743,6 +744,8 @@ def _graph_replay_samples(
         values.append(
             _event_elapsed_ms(start_event, end_event) / float(calls_per_replay)
         )
+        if after_sample is not None:
+            after_sample()
     return values
 
 
@@ -798,12 +801,20 @@ class TimedRun:
     bracketed exactly as a benchmark sample is: preparation first, then the
     start event, the replay and the end event. A caller can therefore compare
     one replay over state of its choosing against the reported samples.
+
+    ``after_sample(outputs)`` runs once the end event of each reported sample
+    has completed, outside the timed interval, with the captured outputs that
+    sample wrote. It is never called during warmup, capture, calibration,
+    priming, ``rerun`` or ``rerun_ms``. A task uses it to keep a copy of a
+    sample's outputs and check them after timing, so the invocations whose time
+    is reported are the ones checked. It must only read ``outputs``.
     """
 
     def __init__(self) -> None:
         self._rerun: Callable[[], Any] | None = None
         self._rerun_timed: Callable[[], tuple[Any, float]] | None = None
         self.outputs: Any = None
+        self.after_sample: Callable[[Any], Any] | None = None
 
     def _bind(
         self,
@@ -868,6 +879,9 @@ def benchmark_cuda_graph_or_events_samples(
             "CUDA is unavailable; timed_run requires an observable CUDA-graph "
             "replay and cannot validate a separate post-timing invocation"
         )
+    after_sample = getattr(timed_run, "after_sample", None)
+    if after_sample is not None and not callable(after_sample):
+        raise TypeError("TimedRun.after_sample must be callable or None")
     _require_gpu_timing()
 
     if os.environ.get(_FORCE_EVENT_ENV) == "1":
@@ -963,6 +977,7 @@ def benchmark_cuda_graph_or_events_samples(
         if captured_outputs is not None:
             capture_kwargs["output_holder"] = captured_outputs
         graph = _capture_graph(fn, graph_repeats, stream, **capture_kwargs)
+        captured_output = captured_outputs[0] if captured_outputs else None
         # Prime the final graph executable outside the reported sample set.
         # Some backends perform lazy graph-exec setup on the first replay; if
         # the start event has already reached the head of the stream, that host
@@ -974,12 +989,16 @@ def benchmark_cuda_graph_or_events_samples(
             calls_per_replay=graph_repeats,
             prepare_fn=prepare_fn,
         )
+        observation_kwargs: dict[str, Any] = {}
+        if after_sample is not None:
+            observation_kwargs["after_sample"] = lambda: after_sample(captured_output)
         values = _graph_replay_samples(
             graph,
             stream,
             samples=repetition,
             calls_per_replay=graph_repeats,
             prepare_fn=prepare_fn,
+            **observation_kwargs,
         )
 
         if not values or any(
@@ -1003,8 +1022,6 @@ def benchmark_cuda_graph_or_events_samples(
             }
         )
         if timed_run is not None:
-            captured_output = captured_outputs[0] if captured_outputs else None
-
             def _replay_once() -> Any:
                 # Callers may perturb inputs or poison outputs on the current
                 # stream before requesting validation. Order the capture stream

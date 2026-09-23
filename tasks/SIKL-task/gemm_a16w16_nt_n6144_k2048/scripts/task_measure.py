@@ -18,6 +18,7 @@ therefore builds a case, uses it, and lets it fall out of scope before the next.
 
 from __future__ import annotations
 
+import secrets
 from typing import Any, Callable
 
 import torch
@@ -25,6 +26,7 @@ import torch
 from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
 
 import task_baseline
+import task_compare
 import task_inputs
 import task_reference
 
@@ -89,6 +91,40 @@ def compare_cases(launches: list | None) -> list[dict[str, Any]]:
     return results
 
 
+# The timed samples rotate through TIMED_DRAWS draws of the call-varying
+# operands. After the samples, the timed unit runs once over each of UNSEEN_DRAWS
+# further draws, timed like a sample; the fastest of those may take at most
+# UNSEEN_DRAW_MARGIN times the reported mean. CHECKED_SAMPLES reported samples,
+# chosen at random, and every unseen-draw invocation have their outputs compared
+# with the reference on the draw they consumed.
+TIMED_DRAWS = 3
+UNSEEN_DRAWS = 4
+UNSEEN_DRAW_MARGIN = 1.5
+CHECKED_SAMPLES = 8
+
+
+def fresh_draw_seeds(count: int) -> list[int]:
+    """Distinct seeds from the operating system's entropy source, never SEED.
+
+    The seeds are drawn when the case is timed, so neither the draws a sample
+    reads nor the ones held out for the cost check can be known to the code
+    being measured beforehand; fixed seeds would let an implementation generate
+    the same draws itself and store their results.
+    """
+    rng = secrets.SystemRandom()
+    seeds: list[int] = []
+    while len(seeds) < count:
+        seed = rng.randrange(2**63)
+        if seed != task_inputs.SEED and seed not in seeds:
+            seeds.append(seed)
+    return seeds
+
+
+def choose_checked_samples(repetition: int, count: int) -> list[int]:
+    """Indices of the reported samples whose outputs are checked, chosen secretly."""
+    return sorted(secrets.SystemRandom().sample(range(repetition), min(count, repetition)))
+
+
 class RotatingDraws:
     """Preparation that loads a different call-varying draw before every replay.
 
@@ -106,8 +142,10 @@ class RotatingDraws:
     as fill ``target_ms`` and dividing by the count. ``time_cases`` asserts the
     count it gets rather than trusting this.
 
-    ``hold`` makes the next preparation leave the buffers alone, for a caller
-    that has loaded the draw it wants the next replay to consume.
+    ``serve`` makes the next preparation load a given draw instead of the next
+    one in the rotation, so an invocation over a draw of the caller's choosing
+    goes through the same preparation, on the same stream, as every sample.
+    ``consumed`` is the draw the latest preparation loaded.
     """
 
     def __init__(
@@ -118,139 +156,130 @@ class RotatingDraws:
         self._inputs = inputs
         self._draws = draws
         self._next = 0
-        self._held = False
+        self._served: dict[str, torch.Tensor] | None = None
+        self.consumed: dict[str, torch.Tensor] | None = None
 
     def __call__(self) -> None:
-        if self._held:
-            self._held = False
-            return
-        task_inputs.load_draw(self._inputs, self._draws[self._next])
-        self._next = (self._next + 1) % len(self._draws)
+        if self._served is not None:
+            draw, self._served = self._served, None
+        else:
+            draw = self._draws[self._next]
+            self._next = (self._next + 1) % len(self._draws)
+        task_inputs.load_draw(self._inputs, draw)
+        self.consumed = draw
 
-    def hold(self) -> None:
-        self._held = True
+    def serve(self, draw: dict[str, torch.Tensor]) -> None:
+        self._served = draw
 
 
-def verify_timed_invocation(
-    inputs: dict[str, Any], timed: TimedRun, call: Callable, rotation: RotatingDraws
-) -> None:
-    """Hold the invocation that was timed to the result it reported.
+def host_copy(outputs: Any) -> Any:
+    # A device-to-host copy reads the outputs without writing device memory, so
+    # keeping them evicts little of what the next invocation finds in cache.
+    return outputs.detach().to("cpu") if isinstance(outputs, torch.Tensor) else outputs
 
-    Correctness and timing are separate invocations and an implementation can
-    tell them apart -- the capture state alone is enough -- so the scored path
-    has to be judged on its own rather than inferred from the checked one. It
-    is judged on three things, over a draw it was not captured against:
 
-    it wrote the output, so the poison cannot survive the replay; it did not
-    reproduce the answer it gave for the previous draw, which is what a cache
-    keyed on the inputs' identity would do; and it agrees with this same
-    implementation run eagerly on the draw the replay just consumed, which is
-    what a path that computes honestly when observed and cheaply when captured
-    would not.
+class SampleChecks:
+    """``after_sample`` observer keeping the outputs of the checked samples.
 
-    The third is a comparison against itself, not against the reference, and
-    that distinction is what makes it usable: the shipped implementation does
-    not clear the bundle's bar at every shape, so demanding reference accuracy
-    here would reject the baseline this task is scored against.
-
-    Nor is the bundle's tolerance the right bar for the self-comparison. An
-    implementation need not repeat bit for bit -- a split-k reduction over
-    atomics does not, and the shipped dispatch does not at several of these
-    shapes -- so the bar is what this implementation's own repetition costs it,
-    measured here by running the eager path twice. A timed path no further from
-    the eager one than the eager one is from itself computed the same thing;
-    one that is orders beyond that did not.
-
-    Only the operands that vary between calls are redrawn. Holding the weight
-    fixed is what a deployment does, and a redraw that replaced it would fail
-    an implementation for pre-packing it once.
+    The outputs are copied after the sample has run, so nothing an invocation
+    can observe while it runs tells it whether its result will be checked.
     """
-    if not timed.bound:
-        raise RuntimeError(
-            "the benchmark did not expose the invocation it timed, so nothing "
-            "here can tell whether the scored path computed the operator"
-        )
-    previous = (
-        timed.outputs.detach().clone()
-        if isinstance(timed.outputs, torch.Tensor)
-        else None
-    )
-    task_inputs.redraw_call_varying_inputs(inputs)
-    if isinstance(timed.outputs, torch.Tensor):
-        timed.outputs.fill_(float("nan"))
-    rotation.hold()
-    got = timed.rerun()
-    torch.cuda.synchronize()
-    if not isinstance(got, torch.Tensor):
-        raise RuntimeError(
-            f"the timed invocation returned {type(got).__name__}, so its output "
-            "cannot be inspected for whether the replay produced it"
-        )
-    got = got.detach().clone()
-    if not torch.isfinite(got).all():
-        raise RuntimeError(
-            "the timed invocation left part of its output unwritten: the poison "
-            "survived the replay, so the measured work does not produce the result"
-        )
-    if previous is not None and torch.equal(got, previous):
-        raise RuntimeError(
-            "the timed invocation reproduced its previous output bit for bit "
-            "over a fresh draw, so what was measured is a replay of a cached "
-            "answer rather than the operator"
-        )
-    # Taken after the replay: the buffers hold the draw the graph just read, so
-    # calling the implementation eagerly on them is the answer the timed path
-    # owed. Twice, because the second reading is the bar for the first -- and
-    # cloned, because an implementation is free to return the same output
-    # buffer on every call.
-    eager = call().detach().clone()
-    repeat = call().detach().clone()
-    torch.cuda.synchronize()
-    spread = task_inputs.result_distance(repeat, eager)
-    distance = task_inputs.result_distance(got, eager)
-    bar = max(spread * task_inputs.TIMED_PATH_MARGIN, task_inputs.TIMED_PATH_FLOOR)
-    if distance > bar:
-        raise RuntimeError(
-            "the timed invocation disagrees with this same implementation run "
-            f"eagerly on the draw it replayed over: distance {distance:.6g} "
-            f"against a bar of {bar:.6g} set by its own run-to-run spread "
-            f"{spread:.6g}. What was measured is not the computation the "
-            "correctness run accepted"
-        )
+
+    def __init__(self, rotation: RotatingDraws, indices: list[int]) -> None:
+        self._rotation = rotation
+        self._indices = frozenset(indices)
+        self._index = 0
+        self.kept: list[tuple[dict[str, torch.Tensor], Any]] = []
+
+    def __call__(self, outputs: Any) -> None:
+        if self._index in self._indices:
+            self.kept.append((self._rotation.consumed, host_copy(outputs)))
+        self._index += 1
 
 
-def verify_timed_cost(
+def run_unseen_draws(
+    timed: TimedRun, rotation: RotatingDraws, unseen: list[dict[str, torch.Tensor]]
+) -> tuple[list[float], list[tuple[dict[str, torch.Tensor], Any]]]:
+    """Time the timed unit once over each unseen draw and keep what it wrote.
+
+    Each invocation is prepared by the rotation and timed through the reported
+    sample path, so it differs from a sample only in consuming a draw the
+    implementation has never read. This runs directly after the samples, with
+    nothing heavier than loading a draw and reading back the previous outputs in
+    between; redrawing through the bundle here would rewrite the weight, evict
+    what the samples found in cache and slow these invocations for reasons
+    unrelated to what they compute.
+    """
+    unseen_ms, kept = [], []
+    for draw in unseen:
+        rotation.serve(draw)
+        unseen_ms.append(timed.rerun_ms())
+        kept.append((draw, host_copy(timed.outputs)))
+    return unseen_ms, kept
+
+
+def verify_timed_outputs(
     inputs: dict[str, Any],
-    timed: TimedRun,
-    rotation: RotatingDraws,
-    unseen: list[dict[str, torch.Tensor]],
-    execution_time_ms: float,
-) -> float:
+    kept: list[tuple[dict[str, torch.Tensor], Any]],
+    *,
+    baseline: bool,
+) -> dict[str, Any]:
+    """Judge every kept timed output against the reference on the draw it consumed.
+
+    The kept outputs are those of the checked samples and of every unseen-draw
+    invocation. An unseen draw is new to the implementation, so it has to be
+    computed to be right; a checked sample was chosen without the implementation
+    being able to tell. Each output has to satisfy the comparison's output
+    contract, and a candidate has to pass the bundle's gate -- the same gate
+    ``compare_cases`` applies. The production implementation does not clear
+    that gate at every shape, so its numerical verdict is reported, as in
+    ``compare_cases``, and never applied.
+    """
+    expected_by_draw: dict[int, torch.Tensor] = {}
+    failures = []
+    for draw, got in kept:
+        if id(draw) not in expected_by_draw:
+            task_inputs.load_draw(inputs, draw)
+            expected_by_draw[id(draw)] = task_reference.run(**task_inputs.call_kwargs(inputs))
+        expected = expected_by_draw[id(draw)]
+        if isinstance(got, torch.Tensor):
+            got = got.to(expected.device)
+        try:
+            task_compare.validate_comparison(got, expected)
+        except AssertionError as error:
+            raise RuntimeError(
+                f"a timed invocation broke the output contract: {error}"
+            ) from error
+        passed, detail = task_inputs.verdict(got, expected)
+        if not passed:
+            failures.append(detail)
+    if failures and not baseline:
+        raise RuntimeError(
+            f"{len(failures)}/{len(kept)} checked timed invocations did not produce "
+            f"the operator's result for the draw they consumed; first: {failures[0]}"
+        )
+    return {
+        "checked_invocations": len(kept),
+        "numerical_failures": len(failures),
+        "first_failure": failures[0] if failures else None,
+    }
+
+
+def verify_timed_cost(unseen_ms: list[float], execution_time_ms: float) -> float:
     """Hold the reported time to what the timed unit costs on an unseen draw.
 
     The rotation defeats a stored result that remembers one draw, not one that
     remembers every draw the samples cycle through. Such an implementation
-    still has to compute the first time it meets a draw, so the timed unit is
-    replayed once over each of a few draws that were never loaded before, timed
-    the way a sample is, and the fastest of those replays is compared with the
-    reported mean. Taking the fastest keeps noise from failing an honest
-    implementation, while every one of them is a miss for a stored result.
+    still has to compute the first time it meets a draw, and its output on an
+    unseen draw is checked, so the fastest unseen-draw invocation is what the
+    operator costs on new inputs. Taking the fastest keeps noise from failing
+    an honest implementation, while every one of them is a miss for a stored
+    result.
 
-    This has to run directly after the samples, over draws made before them.
-    Anything heavier than loading a draw in between -- redrawing through the
-    bundle rewrites the weight -- evicts operands the samples found in cache,
-    and the replay would then be slower for reasons that have nothing to do
-    with what it computes.
-
-    Returns the fastest unseen-draw replay, in milliseconds.
+    Returns the fastest unseen-draw invocation, in milliseconds.
     """
-    unseen_ms = []
-    for draw in unseen:
-        task_inputs.load_draw(inputs, draw)
-        rotation.hold()
-        unseen_ms.append(timed.rerun_ms())
     fastest = min(unseen_ms)
-    bar = execution_time_ms * task_inputs.UNSEEN_DRAW_MARGIN
+    bar = execution_time_ms * UNSEEN_DRAW_MARGIN
     if fastest > bar:
         raise RuntimeError(
             f"the timed invocation took {fastest:.6f} ms over a draw it had not "
@@ -259,6 +288,17 @@ def verify_timed_cost(
             "operator runs on new inputs, so the reported time is not its cost"
         )
     return fastest
+
+
+def _byte_snapshot(tensors: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
+    # Byte views also cover packed dtypes whose equality ops may be missing.
+    return {name: value.detach().view(torch.uint8).clone() for name, value in tensors.items()}
+
+
+def _assert_unchanged(inputs: dict[str, Any], snapshot: dict[str, torch.Tensor]) -> None:
+    for name, expected in snapshot.items():
+        if not torch.equal(inputs[name].view(torch.uint8), expected):
+            raise RuntimeError(f"the timed invocation modified its input {name}")
 
 
 def time_cases(launches: list | None) -> list[dict[str, Any]]:
@@ -271,11 +311,17 @@ def time_cases(launches: list | None) -> list[dict[str, Any]]:
     for index, case in enumerate(task_inputs.CASES):
         inputs = task_inputs.build_case_inputs(case)
         call = case_call(inputs, None if launches is None else launches[index])
-        rotation = RotatingDraws(
-            inputs, task_inputs.call_varying_draws(inputs, task_inputs.TIMED_DRAW_SEEDS)
+        seeds = fresh_draw_seeds(TIMED_DRAWS + UNSEEN_DRAWS)
+        timed_seeds, unseen_seeds = seeds[:TIMED_DRAWS], seeds[TIMED_DRAWS:]
+        rotation = RotatingDraws(inputs, task_inputs.call_varying_draws(inputs, timed_seeds))
+        unseen = task_inputs.call_varying_draws(inputs, unseen_seeds)
+        weights = _byte_snapshot(
+            {name: inputs[name] for name in task_inputs.PERSISTENT_INPUTS}
         )
-        unseen = task_inputs.call_varying_draws(inputs, task_inputs.UNSEEN_DRAW_SEEDS)
+        checked = choose_checked_samples(task_inputs.BENCH_REPETITION, CHECKED_SAMPLES)
+        checks = SampleChecks(rotation, checked)
         timed = TimedRun()
+        timed.after_sample = checks
         execution_time_ms, metadata = benchmark_cuda_graph_or_events(
             call,
             warmup=task_inputs.BENCH_WARMUP,
@@ -284,21 +330,34 @@ def time_cases(launches: list | None) -> list[dict[str, Any]]:
             prepare_fn=rotation,
             timed_run=timed,
         )
-        repeats = metadata.get("benchmark_effective_repeats")
-        if repeats != 1:
-            raise RuntimeError(
-                f"the capture batched {repeats} invocations into one replay, so "
-                "each sample reports their average and one retained computation "
-                "would be charged at a fraction of its cost; this task requires "
-                "one logical invocation per replay"
-            )
         try:
-            metadata["unseen_draw_ms"] = verify_timed_cost(
-                inputs, timed, rotation, unseen, execution_time_ms
+            repeats = metadata.get("benchmark_effective_repeats")
+            if repeats != 1:
+                raise RuntimeError(
+                    f"the capture batched {repeats} invocations into one replay, so "
+                    "each sample reports their average and one retained computation "
+                    "would be charged at a fraction of its cost; this task requires "
+                    "one logical invocation per replay"
+                )
+            if not timed.bound:
+                raise RuntimeError(
+                    "the benchmark did not expose the invocation it timed, so nothing "
+                    "here can tell whether the scored path computed the operator"
+                )
+            unseen_ms, unseen_kept = run_unseen_draws(timed, rotation, unseen)
+            torch.cuda.synchronize()
+            _assert_unchanged(inputs, {**weights, **_byte_snapshot(rotation.consumed)})
+            metadata["unseen_draw_ms"] = verify_timed_cost(unseen_ms, execution_time_ms)
+            metadata["timed_output_check"] = verify_timed_outputs(
+                inputs, checks.kept + unseen_kept, baseline=launches is None
             )
-            verify_timed_invocation(inputs, timed, call, rotation)
         except RuntimeError as failure:
             raise RuntimeError(f"case {case['case_id']}: {failure}") from failure
+        metadata.update(
+            timed_draw_seeds=timed_seeds,
+            unseen_draw_seeds=unseen_seeds,
+            checked_samples=checked,
+        )
         samples.append(
             {
                 "case_id": str(case["case_id"]),
