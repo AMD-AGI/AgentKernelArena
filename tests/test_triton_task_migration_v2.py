@@ -1646,6 +1646,7 @@ GEAK_CHECKED_FUNCTIONS = {'L1/mla_decode': {'benchmark_kernel': '27083c2b36ba81b
                                  'run_correctness': '51d7c7674e07e3453bb30e6fa14124e87e92e9d711137ade0537f293e0e50655'},
  'L1/refk_fp8_blockwise_mm': {'_bench_one': 'c58e7e40a4c5aa352a53cdd766816628e43d317cf29946291b1a79d8fad048da',
                               'check_correctness': 'cb98fc10a0e4dfb323a92c1f095b975a17021e56a23e08d0be8cea86fa833ca5'},
+ 'L1/refk_identity': {'_TimedRun': '4b6711096fe64fa2ff4f89dd12b0f6e1ab22827d38395d08f1fae4af7e76116e'},
  'L2/fast_rms_layernorm': {'run_benchmark': '2bcafc1fc6c44b523e33f94c107d35292de71818ecf0be21ed04178887517242',
                            'run_correctness': 'ea64151a0840d28ad89e60a0c7db7cc3c60d6968d03a5c378fedb210670e2f81'},
  'L2/topk': {'reference_topk': '144555aa10fc2129c8eec627cea1949cc5a360035925762bcc1438e6ec205160',

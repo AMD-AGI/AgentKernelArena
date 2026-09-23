@@ -186,8 +186,41 @@ def test_original_callbacks_and_case_sampling_are_unchanged(task):
         assert forbidden not in workload
     inputs = (task / 'scripts/task_inputs.py').read_text()
     assert 'task_initialize.run(inputs, seed=SEED)' in inputs
-    assert 'task_initialize.run(inputs, seed=REFILL_SEED)' in inputs
+    assert 'task_initialize.run(inputs, seed=seed)' in inputs
+    assert 'def refill_case_inputs(inputs: dict[str, Any], seed: int)' in inputs
     assert 'task_compare.run(got, expected)' in inputs
+
+
+@pytest.mark.parametrize('task', TASKS, ids=lambda t: t.name)
+def test_timing_protocol_checks_the_timed_invocations_themselves(task):
+    # A captured kernel can decide on device, per invocation, whether to compute:
+    # keyed on its inputs' values (return a stored result for a draw it has
+    # seen) or on its own output buffer (skip while nobody has touched it). The
+    # protocol therefore rotates fresh draws through the samples, checks the
+    # outputs of secretly chosen samples and of invocations over draws never read
+    # before, and holds the reported time to what those unseen draws cost. The
+    # draws come from seeds the code being measured cannot know in advance.
+    measure = (task / 'scripts/task_measure.py').read_text()
+    inputs = (task / 'scripts/task_inputs.py').read_text()
+    assert 'class RotatingDraws' in measure
+    assert 'prepare_fn=rotation' in measure
+    assert 'timed.after_sample = checks' in measure
+    assert 'seeds = fresh_draw_seeds(TIMED_DRAWS + UNSEEN_DRAWS)' in measure
+    assert 'secrets.SystemRandom()' in measure
+    assert 'run_unseen_draws(timed, rotation, unseen)' in measure
+    assert 'verify_timed_outputs(inputs, checks.kept + unseen_kept)' in measure
+    assert 'if repeats != 1:' in measure
+    # No invocation is singled out for checking by state prepared for it.
+    assert 'float("nan")' not in measure and '.rerun()' not in measure
+    assert 'def redraw_call_varying_inputs(inputs: dict[str, Any], seed: int)' in inputs
+    assert 'PERSISTENT_INPUTS' in inputs
+    assert 'REFILL_SEED' not in inputs and 'SEED + ' not in inputs
+    ns: dict = {}
+    for name in ('TIMED_DRAWS', 'UNSEEN_DRAWS', 'UNSEEN_DRAW_MARGIN', 'CHECKED_SAMPLES'):
+        line = next(l for l in measure.splitlines() if l.startswith(f'{name} = '))
+        exec(line, ns)
+    assert ns['TIMED_DRAWS'] >= 2 and ns['UNSEEN_DRAWS'] >= 1 and ns['CHECKED_SAMPLES'] >= 1
+    assert ns['UNSEEN_DRAW_MARGIN'] > 1.0
 
 
 @pytest.mark.parametrize('task', TASKS, ids=lambda t: t.name)
