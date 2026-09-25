@@ -162,6 +162,10 @@ docker-setup-flydsl:
 docker-setup-geak:
 	@$(DOCKER_RUNNER) setup-geak
 
+.PHONY: docker-setup-apex
+docker-setup-apex:
+	@$(DOCKER_RUNNER) setup-apex
+
 check-docker-runner:
 	@bash tests/test_docker_benchmark.sh
 

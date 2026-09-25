@@ -1,0 +1,7 @@
+# The source pin is maintained in runtime.py (codex/recovery-integration).
+backend: codex
+model: null
+effort: null
+max_iterations: 1
+max_turns: 50
+timeout_seconds: 3600

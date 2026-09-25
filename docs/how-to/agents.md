@@ -23,6 +23,7 @@ The following agents are available.
 | `codex` | OpenAI Codex CLI |
 | `deepseek_harness` | DeepSeek Harness headless CLI ([setup](../../agents/deepseek_harness/README.md)) |
 | `forge` | KernelForge through the shared v2 task interface |
+| `apex` | Apex standalone kernel optimizer ([setup and supported tasks](../../agents/apex/README.md)) |
 | `geak` | GEAK Workflow engine through the shared v2 task interface |
 | `task_validator` | Task quality validator; does not optimize kernels (see [Validate tasks](task-validator.md)) |
 

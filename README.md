@@ -118,6 +118,7 @@ Each run selects one `agent.template`. Repeated runs can compare different agent
 | `cursor` | Cursor Agent CLI integration |
 | `claude_code` | Claude Code CLI integration |
 | `codex` | Codex CLI integration |
+| `apex` | Apex kernel optimizer from its pinned recovery-integration branch ([setup](agents/apex/README.md)) |
 | `deepseek_harness` | DeepSeek Harness headless CLI ([setup](agents/deepseek_harness/README.md)) |
 | `forge` | KernelForge search through the shared task interface; initialize, translate, or optimize as required |
 | `geak` | GEAK multi-agent Workflow engine through the shared v2 task interface |

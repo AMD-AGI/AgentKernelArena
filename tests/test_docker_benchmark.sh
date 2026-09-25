@@ -557,7 +557,6 @@ mapfile -t args < <(run_check_args \
     AKA_NODE_PREFIX="$CODEX_PREFIX")
 assert_has "codex" "${args[@]}"
 assert_not_has "claude_code" "${args[@]}"
-
 # A natively installed Claude CLI is a launcher in ~/.local/bin that resolves
 # into ~/.local/share/claude/versions. Both sides of that symlink must be
 # mounted at the same absolute paths inside the container.
@@ -1022,5 +1021,35 @@ assert_has \
     "${args[@]}"
 assert_has "$EVAL_SCORING_ARTIFACT_NAMESPACE:/workspace/.eval-tool-artifacts:ro" "${args[@]}"
 assert_has "$EVAL_QUALITY_ARTIFACT_DIR:/workspace/.eval-tool-artifacts/quality-test" "${args[@]}"
+
+# Apex uses only its selected backend and a read-only, explicitly supplied source checkout.
+APEX_TEST_ROOT="$TEST_HOME/apex-checkout"
+APEX_TEST_CONFIG="$TEST_HOME/apex.yaml"
+mkdir -p "$APEX_TEST_ROOT/.git"
+printf 'agent:\n  template: apex\n' > "$APEX_TEST_CONFIG"
+mapfile -t args < <(run_check_args "$CODEX_HOME" "$APEX_TEST_CONFIG" \
+    APEX_ROOT="$APEX_TEST_ROOT" AKA_NODE_PREFIX="$CODEX_PREFIX")
+assert_has "$APEX_TEST_ROOT:/opt/arena-apex:ro" "${args[@]}"
+assert_has "APEX_ROOT=/opt/arena-apex" "${args[@]}"
+assert_not_has "--pid=host" "${args[@]}"
+assert_has "AKA_APEX_SDK_PATH=/workspace/.aka-pyuserbase/apex-sdk" "${args[@]}"
+assert_has "codex" "${args[@]}"
+assert_not_has "claude_code" "${args[@]}"
+mapfile -t args < <(run_check_args "$CODEX_HOME" "$APEX_TEST_CONFIG" \
+    APEX_ROOT="$APEX_TEST_ROOT" AKA_NODE_PREFIX="$CODEX_PREFIX" AKA_APEX_ROOT_CONTAINER=1 AKA_APEX_HOST_PID=1)
+assert_has "0:0" "${args[@]}"
+assert_has "--pid=host" "${args[@]}"
+printf 'agent:\n  template: apex\n  backend: cursor\n' > "$APEX_TEST_CONFIG"
+mapfile -t args < <(run_check_args "$CURSOR_HOME" "$APEX_TEST_CONFIG" APEX_ROOT="$APEX_TEST_ROOT")
+assert_has "cursor" "${args[@]}"
+assert_not_has "codex" "${args[@]}"
+mapfile -t args < <(run_check_args "$CODEX_HOME" "$CODEX_CONFIG" \
+    APEX_ROOT="$APEX_TEST_ROOT" AKA_NODE_PREFIX="$CODEX_PREFIX" AKA_APEX_ROOT_CONTAINER=1 AKA_APEX_HOST_PID=1)
+assert_not_has "$APEX_TEST_ROOT:/opt/arena-apex:ro" "${args[@]}"
+assert_not_has "--pid=host" "${args[@]}"
+assert_has "$(id -u):$(id -g)" "${args[@]}"
+if run_check_args "$CURSOR_HOME" "$APEX_TEST_CONFIG" APEX_ROOT="$TEST_HOME/missing-apex" >/dev/null; then
+    fail "Apex ran without its declared checkout"
+fi
 
 echo "PASS: docker_benchmark runtime, agent-selection, and eval-tool isolation tests"
