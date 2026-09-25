@@ -21,6 +21,7 @@ The following agents are available.
 | `cursor` | Cursor Agent CLI |
 | `claude_code` | Anthropic Claude Code CLI |
 | `codex` | OpenAI Codex CLI |
+| `deepseek_harness` | DeepSeek Harness headless CLI ([setup](../../agents/deepseek_harness/README.md)) |
 | `forge` | KernelForge through the shared v2 task interface |
 | `geak` | GEAK Workflow engine through the shared v2 task interface |
 | `task_validator` | Task quality validator; does not optimize kernels (see [Validate tasks](task-validator.md)) |
@@ -75,10 +76,23 @@ make docker-check-agents CONFIG="$CONFIG_PATH"
 ```
 
 Use `AGENTS=<comma-separated names>` for an explicit subset or `AGENTS=all` for
-all three first-class CLIs and login states. GEAK and its v2 aliases resolve to
+the original three CLIs (Cursor, Claude Code, and Codex) and login states. GEAK and its v2 aliases resolve to
 Claude Code for this check; normal runs also check the pinned GEAK engine and
 SDK. Other specialized integrations have their own checks; their README files
 document dependencies and provider configuration.
+
+DeepSeek Harness supports config-selected checks and explicit
+`AGENTS=deepseek_harness`. Install its pinned CLI, export `DEEPSEEK_API_KEY`,
+and select one of the `quickstart_deepseek_harness_*` example configurations.
+Its preflight checks version and credential presence without contacting the
+provider. Each task uses a fresh Harness home and the standard Arena evaluator.
+See [the integration guide](../../agents/deepseek_harness/README.md) for model,
+endpoint, Docker, and session-isolation details.
+
+DeepSeek's run-level overrides and per-invocation budget follow
+[its integration guide](../../agents/deepseek_harness/README.md#install-and-configure).
+It uses `reasoning_effort` rather than the other CLIs' `effort` field. Schema-v2
+agent completion and independent candidate acceptance are reported separately.
 
 `make vllm` starts an OpenAI-compatible local endpoint on port `30001`, but it
 does not automatically reconfigure an agent. Point the selected integration at

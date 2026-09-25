@@ -11,6 +11,11 @@ This topic summarizes the features available in each AgentKernelArena release. F
 
 ## Unreleased
 
+- Added the opt-in `deepseek_harness` agent with a pinned headless CLI,
+  API-key authentication, isolated per-task sessions, and Docker/Slurm
+  quickstarts. See the [integration guide](../../agents/deepseek_harness/README.md)
+  for installation, model settings, and validation limits. `AGENTS=all`
+  continues to check Cursor, Claude Code, and Codex.
 - Removed the unused `geak_v3`, `geak_v3_triton`, and `mini_swe_triton`
   integrations, their configuration files, and their shared parallel-count
   helper. These names, including hyphenated and uppercase spellings, are no

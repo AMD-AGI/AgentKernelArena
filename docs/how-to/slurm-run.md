@@ -24,6 +24,8 @@ and task behavior used by the directly attached GPU-host workflow.
 - `srun` and `sbatch` are available on the login node.
 - The repository and agent login state are on a filesystem visible from the
   compute nodes at the same absolute paths.
+- For DeepSeek Harness, its dedicated Node prefix must also be visible there,
+  and `DEEPSEEK_API_KEY` must be exported in the submitting shell.
 - Docker and the ROCm devices are available after allocation.
 - The current user can use the compute-node Docker daemon.
 - The configured GPU type and runtime image match the allocated hardware.
@@ -174,6 +176,22 @@ updating a seed does not update already-running copies, and Arena does not
 write refreshed credentials back to the user's login. Coordinate renewal or
 use setup-token for runs that outlast the current login lease. Preserve failed
 run evidence and launch a new attempt after authentication is restored.
+
+DeepSeek Harness uses a read-only Node/CLI prefix and an exported API key.
+Follow [its setup guide](../../agents/deepseek_harness/README.md), including
+`AKA_NODE_PREFIX` when the installation is outside the detected path. The
+scheduler inherits the exported variables, and Docker forwards the key by name
+only when DeepSeek is selected. Each task creates its own `DSH_HOME`; the host's
+`~/.dsh` profiles and sessions are not mounted. After setup:
+
+```bash
+CONFIG_PATH=example_configs/quickstart_deepseek_harness_mi355x.yaml
+make slurm-check-agents CONFIG="$CONFIG_PATH"
+make slurm-run CONFIG="$CONFIG_PATH" RUN_ARGS="--run-suffix deepseek_smoke"
+```
+
+Keep the literal API key out of Make arguments, batch scripts, and job logs.
+The check verifies CLI version and key presence; the run exercises API access.
 
 Docker images are cached per compute node. The first job scheduled onto a node
 may spend several minutes pulling the selected SGLang image.

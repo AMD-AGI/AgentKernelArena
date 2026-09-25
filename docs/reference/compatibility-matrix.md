@@ -34,7 +34,7 @@ The following software versions are required or verified.
 | RDNA4 runtime image | [Digest-pinned base and layout adapter](../../docker/rdna4/Dockerfile) | Default image builds on first use if missing; `make docker-build-rdna4` prebuilds or rebuilds it. Image overrides disable automatic builds; see the [runtime guide](../../docker/rdna4/README.md). |
 | Python for GPU experiments | Provided by the qualified task runtime image | Task-specific qualification applies; older images do not support every retained task. |
 | Python for the full repository CPU/source audit | CPython 3.12 | The complete source set requires 3.12 syntax, and migration AST fingerprints are pinned to this minor version. Use full Git history; see [contributor verification](../../CONTRIBUTING.md#testing-and-verification). |
-| Node.js and npm | Node.js 22 with a current npm | Required on the host only for the alternative npm installation of Claude Code or another npm-installed agent CLI. |
+| Node.js and npm | Node.js 22+ for Claude Code's npm installation; Node.js 24 for DeepSeek Harness | Required on the host for npm-installed agent CLIs; DeepSeek uses a dedicated prefix. |
 | PyTorch | ROCm build bundled in the image | Provided by the selected runtime image. |
 | Triton | Bundled with the image's ROCm PyTorch | Required for Triton task categories. |
 | AITER | `0.1.17.dev110+g9127c94a1` in the verified `gfx950` image | Required by AITER-backed task oracles and kernels. |
@@ -75,6 +75,7 @@ The following templates are selectable in the current `AgentType` registry. See
 | `cursor` | Cursor Agent CLI and host login state. |
 | `claude_code` | Native/local or npm-installed Claude Code CLI and host login state. |
 | `codex` | Codex CLI and host login state. |
+| `deepseek_harness` | Dedicated Node.js 24 prefix with the `dsh` version pinned in [agent_config.yaml](../../agents/deepseek_harness/agent_config.yaml), plus `DEEPSEEK_API_KEY`; see [setup](../../agents/deepseek_harness/README.md). |
 | `forge` | Pinned KernelForge engine and selected backend/provider; see the [Forge guide](../../agents/forge/README.md). |
 | `geak` | Pinned GEAK checkout, Claude Code Workflow support and SDK; see the [GEAK guide](../../agents/geak/README.md). |
 | `geak_v4` | Registry alias for `geak`; uses the same v2 launcher, configuration and Workflow runtime. |
@@ -85,6 +86,14 @@ Selectable names are defined in [the registry](../../src/module_registration.py)
 This dependency list does not assert that every agent/model/task combination
 has completed qualification.
 
+DeepSeek Harness qualification is recorded in
+[PR #111](https://github.com/AMD-AGI/AgentKernelArena/pull/111), including the
+schema-v2 SIKL FlyDSL GEMM and HIP quantization image tasks on MI355X through
+Slurm and Docker. Results apply to the recorded task, candidate, and runtime;
+earlier HIP GELU and Triton RMSNorm observations predate the schema-v2 rebase.
+Its MI300 example, RDNA4 execution, and multi-GPU scheduling have not yet been
+validated on hardware.
+
 ## Model providers
 
 Model/provider support and run-level overrides are integration-specific; there
@@ -94,5 +103,6 @@ is no shared top-level provider field.
 | --- | --- |
 | OpenAI | Use a selected integration or CLI configured for OpenAI. |
 | Anthropic | Use a selected integration or CLI configured for Anthropic. |
+| DeepSeek | `deepseek_harness` selects the upstream DeepSeek provider; model, protocol, and optional endpoint override are integration-local settings. |
 | OpenRouter or another OpenAI-compatible service | Supported when the selected integration accepts a custom provider/base URL. |
 | Local vLLM | `make vllm` uses a separate serving image to launch an OpenAI-compatible endpoint on port `30001`; configure the selected integration to use it. This serving path is unverified on RDNA4; the [RDNA4 kernel-runtime checks](../../docker/rdna4/README.md#validation-and-limits) do not establish full vLLM serving support. |

@@ -10,7 +10,8 @@ myst:
 AgentKernelArena runs controlled agent experiments against GPU kernel tasks on
 an AMD GPU. Docker is the supported workflow: each experiment runs inside the
 GPU-architecture-specific runtime image and bind-mounts the required local agent
-CLI plus its login state.
+CLI. Authentication uses the integration's host login state or provider environment
+variables.
 
 ## Prerequisites
 
@@ -29,16 +30,18 @@ The following prerequisites are required before running AgentKernelArena.
   [RDNA4 runtime](../../docker/rdna4/README.md) on first use if it is missing.
 - **Git**
 - **Node.js 22+ and npm**, when using the alternative npm installation of Claude
-  Code or another npm-installed agent CLI.
+  Code or another npm-installed agent CLI. DeepSeek Harness uses a dedicated
+  Node.js 24 prefix; see [its setup guide](../../agents/deepseek_harness/README.md).
 - The selected agent CLI installed and authenticated on the host. The Docker
   runner provisions only the configured agent for a normal run. Codex, Claude
-  Code, and Cursor Agent are the first-class host-CLI integrations. See
+  Code, Cursor Agent, and DeepSeek Harness have host-CLI checks. See
   [Configure agents and models](../how-to/agents.md).
 
 ## Docker runner
 
 From the repository root, use the Docker-first Makefile targets. The runner does
-not copy credentials into an image; it bind-mounts the existing host login state.
+not copy credentials into an image; it mounts the selected integration's host
+login state or forwards its provider environment variables.
 
 ```bash
 git clone https://github.com/AMD-AGI/AgentKernelArena.git
@@ -121,6 +124,11 @@ installation and its alternative npm installation. See the
 [official Claude Code setup guide](https://code.claude.com/docs/en/installation)
 for current installation alternatives.
 
+For DeepSeek Harness, follow the [pinned CLI installation and API-key
+setup](../../agents/deepseek_harness/README.md#install-and-configure). Its Node
+prefix must contain both `bin/node` and `bin/dsh`; select that prefix with
+`AKA_NODE_PREFIX` when necessary. Host `~/.dsh` state is not mounted.
+
 Specialized integrations require additional runtime setup. Review
 [GEAK](../../agents/geak/README.md) or
 [Forge](../../agents/forge/README.md) before selecting one.
@@ -136,6 +144,8 @@ configuration is a longer 60-task Cursor Agent run.
 | `example_configs/quickstart_claude_mi300.yaml` | First Claude Code run on MI300/MI300X (`gfx942`). |
 | `example_configs/quickstart_claude_mi355x.yaml` | First Claude Code run on MI355X (`gfx950`). |
 | `example_configs/quickstart_claude_rdna4.yaml` | First Claude Code run on RDNA4 (`gfx1201`); builds the default runtime on first use if missing. |
+| `example_configs/quickstart_deepseek_harness_mi300.yaml` | First DeepSeek Harness run on MI300/MI300X (`gfx942`). |
+| `example_configs/quickstart_deepseek_harness_mi355x.yaml` | First DeepSeek Harness run on MI355X (`gfx950`). |
 | `example_configs/benchmark_cursor_mi355x.yaml` | Curated 60-task Cursor Agent benchmark on MI355X; requires an installed and authenticated Cursor Agent CLI. |
 
 The default `make docker-run` configuration is the MI300/MI300X quickstart.
@@ -195,6 +205,13 @@ make docker-check-agents AGENTS=all
 ```
 
 `AGENTS=all` is the explicit strict check for Cursor, Claude Code, and Codex.
+DeepSeek Harness is opt-in: select its run config or pass
+`AGENTS=deepseek_harness`. Export `DEEPSEEK_API_KEY` before the check/run; the
+runner forwards it by environment-variable name only for DeepSeek runs.
+Its check verifies CLI version and credential presence without contacting the
+provider. Model and endpoint settings live in
+[`agents/deepseek_harness/agent_config.yaml`](../../agents/deepseek_harness/agent_config.yaml).
+
 Specialized integrations read credentials and provider endpoints from their
 own environment/configuration; their documentation describes the additional
 setup and checks. There is no shared provider field in the root run

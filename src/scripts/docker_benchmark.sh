@@ -77,7 +77,7 @@ Environment overrides:
   AKA_DOCKER_IMAGE_GFX950 Default image for gfx950.
   AKA_DOCKER_IMAGE_GFX1201 RDNA4 image (also the build-rdna4-image output tag).
   AKA_NODE_PREFIX         Host Node prefix containing bin/node and npm-installed agent CLI(s).
-  AKA_AGENTS              Agent CLI(s) to check, comma/space separated; use all for all three.
+  AKA_AGENTS              Agent CLI(s) to check; deepseek_harness is opt-in; all checks the original three.
   AKA_REQUIRED_PROFILERS  Optional comma/space-separated profiler binaries required by
                           this run: rocprof-compute, rocprofv3. Smoke reports both;
                           core graph/event timing does not require either profiler.
@@ -449,7 +449,7 @@ resolve_required_agents() {
 }
 
 # Normalize the user-facing check list and reject specialized integrations that
-# do not use one of the three host CLI mount paths.
+# do not use one of the supported host CLI mount paths.
 normalize_check_agents() {
     local raw="$*"
     raw="${raw//,/ }"
@@ -469,8 +469,11 @@ normalize_check_agents() {
             codex)
                 normalized+=(codex)
                 ;;
+            deepseek_harness)
+                normalized+=(deepseek_harness)
+                ;;
             *)
-                die "docker-check-agents only supports codex, claude_code, cursor, or all; got '$agent'"
+                die "docker-check-agents only supports codex, claude_code, cursor, deepseek_harness, or all; got '$agent'"
                 ;;
         esac
     done
@@ -483,6 +486,18 @@ mount_agent() {
     local agent="$1" strict="${2:-1}"
     local isolate="${AGENT_HOME_ISOLATION:-0}"
     case "$agent" in
+        deepseek_harness)
+            local dsh_node_prefix
+            dsh_node_prefix="$(detect_node_cli_prefix dsh || true)"
+            if [[ -z "$dsh_node_prefix" ]]; then
+                [[ "$strict" == "1" ]] && die "DeepSeek Harness needs bin/node and bin/dsh in one Node prefix; see agents/deepseek_harness/README.md"
+                warn "DeepSeek Harness not found; skipping its CLI mount"
+                return 0
+            fi
+            # Mount only the installation, never the host's ~/.dsh credentials,
+            # profiles, plugins, or past sessions. Each task gets a fresh DSH_HOME.
+            add_mount "$dsh_node_prefix" /opt/dsh-node ro
+            ;;
         codex)
             local node_prefix standalone_root
             standalone_root="$(detect_standalone_codex_root || true)"
@@ -973,6 +988,10 @@ build_docker_args() {
     # Arbitrary host UIDs need not exist in the image's passwd database.
     # Python getpass (used by TorchInductor/AITER) also accepts USER/LOGNAME.
     container_username="$(id -un 2>/dev/null)" || container_username="aka-$HOST_UID"
+    local runtime_path="$container_path"
+    if agent_list_contains "$agents" deepseek_harness; then
+        runtime_path="/opt/dsh-node/bin:$runtime_path"
+    fi
 
     if [[ -n "$cache_suffix" ]]; then
         cache_suffix="${cache_suffix//[^A-Za-z0-9_.-]/_}"
@@ -1017,7 +1036,7 @@ build_docker_args() {
         -e "AKA_REQUIRED_PROFILERS=${AKA_REQUIRED_PROFILERS:-}"
         -e "PYTORCH_ROCM_ARCH=${SELECTED_GPU_ARCH}"
         -e "AGENT_STATE_MOUNT_ROOT=${AGENT_STATE_MOUNT_ROOT}"
-        -e "PATH=${container_path}"
+        -e "PATH=${runtime_path}"
         -w "$CONTAINER_WORKDIR"
     )
 
@@ -1027,6 +1046,17 @@ build_docker_args() {
     # Do not replace the image's PYTHONPATH: it can supply AITER/source imports.
     if [[ "$GEAK_RUNTIME" == "1" ]]; then
         docker_args+=(-e "AKA_GEAK_SDK_PATH=${CONTAINER_WORKDIR}/.aka-pyuserbase/geak-sdk")
+    fi
+
+    # Explicit DeepSeek runs alone receive these provider variables. Pass names,
+    # not secret values, so Docker argv/logs do not expose the API key.
+    if agent_list_contains "$agents" deepseek_harness; then
+        local dsh_env_var
+        for dsh_env_var in DEEPSEEK_API_KEY DEEPSEEK_BASE_URL; do
+            if [[ -n "${!dsh_env_var:-}" ]]; then
+                docker_args+=(-e "$dsh_env_var")
+            fi
+        done
     fi
 
     # These known gfx950 images ship root-owned AITER/FlyDSL caches, and their
@@ -1387,6 +1417,10 @@ if "codex" in agents:
     codex_status = run_checked(["codex", "login", "status"])
     codex_line = next((line for line in codex_status.splitlines() if "Logged in" in line), codex_status.splitlines()[-1])
     print(f"codex_status={codex_line}")
+
+if "deepseek_harness" in agents:
+    from agents.deepseek_harness.launch_agent import check_installation
+    print(check_installation())
 
 if "claude_code" in agents:
     require_cmd("claude")
