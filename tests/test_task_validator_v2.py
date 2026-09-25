@@ -644,3 +644,23 @@ def test_real_task_session_cpu_protocol_round_trip(tmp_path, state, policy, fail
     report = normalized(ctx)
     assert report["overall_status"] == "PASS", report["validation_errors"]
     assert report["checks"]["correctness"]["status"] == ("FAIL" if fail else "PASS")
+
+
+def test_launcher_consumes_controller_request_id_once(tmp_path, monkeypatch):
+    ctx, path, _, run = launch_fixture(tmp_path)
+    seen = []
+    run["_task_validation_controller_request_id"] = "controller-attempt"
+    def backend(*args, **kwargs):
+        request_id = run["_task_validation_request_id"]
+        seen.append(request_id)
+        (Path(ctx["workspace"]) / DRAFT_FILENAME).write_text(
+            yaml.safe_dump(draft(ctx, request_id=request_id)))
+        return launcher.BackendResult(output="CPU review fixture", returncode=0, timed_out=False)
+    monkeypatch.setattr(launcher, "_launch_codex", backend)
+    for _ in range(2):
+        launcher.launch_agent(run, str(path), ctx["workspace"])
+        report = yaml.safe_load((Path(ctx["workspace"]) / "validation_report.yaml").read_text())
+        assert report["overall_status"] == "PASS", report
+        assert "_task_validation_controller_request_id" not in run
+    assert seen[0] == "controller-attempt"
+    assert seen[1] != seen[0]
