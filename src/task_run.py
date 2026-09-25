@@ -217,8 +217,10 @@ def run_task_v2(*, eval_config: dict, agent, agent_launcher, task_name: str,
         from agents.task_validator.report_schema import validation_report_is_complete
         return validation_report_is_complete(workspace), workspace
 
-    agent_result = {"status": "NOT_RUN", "error": None, "duration_s": 0.0}
+    agent_result = {"status": "NOT_RUN", "error": None, "duration_s": 0.0,
+                    "candidate_changed": None}
     if initial.accepted:
+        source_before = session.candidate_source_evidence()
         started = time.monotonic()
         try:
             with _agent_environment(environment):
@@ -228,6 +230,9 @@ def run_task_v2(*, eval_config: dict, agent, agent_launcher, task_name: str,
             agent_result.update(status="FAILED", error=f"{type(exc).__name__}: {exc}")
             logger.warning("Agent execution failed; evaluating retained candidate: %s", exc)
         agent_result["duration_s"] = time.monotonic() - started
+        source_after = session.candidate_source_evidence()
+        if source_before["error"] is None and source_after["error"] is None:
+            agent_result["candidate_changed"] = source_before["sources"] != source_after["sources"]
     _json_file(state / f"agent-{uuid.uuid4().hex}.json", agent_result)
     result = evaluate_task_session(
         session, eval_config={**eval_config, "agent": {**eval_config.get("agent", {}), "template": agent.value}},

@@ -22,9 +22,15 @@ def _outcome_fields(result: Dict[str, Any]) -> Dict[str, Any]:
     """Keep absent legacy outcomes unknown; never infer acceptance from timing."""
     accepted = result.get("candidate_accepted")
     delivery = result.get("delivery_status")
+    execution = result.get("agent_execution")
+    execution = execution if isinstance(execution, dict) else {}
+    status = execution.get("status", result.get("agent_execution_status"))
+    changed = execution.get("candidate_changed", result.get("candidate_changed"))
     return {
         "candidate_accepted": accepted if type(accepted) is bool else None,
         "delivery_status": delivery if delivery in ("COMPLETE", "INCOMPLETE", "NOT_ACCEPTED") else None,
+        "agent_execution_status": status if status in ("COMPLETED", "FAILED", "NOT_RUN") else None,
+        "candidate_changed": changed if type(changed) is bool else None,
     }
 
 
@@ -38,6 +44,13 @@ def _outcome_counts(tasks: List[Dict[str, Any]]) -> Dict[str, int]:
         "delivery_incomplete_count": sum(row["delivery_status"] == "INCOMPLETE" for row in outcomes),
         "delivery_not_accepted_count": sum(row["delivery_status"] == "NOT_ACCEPTED" for row in outcomes),
         "delivery_unknown_count": sum(row["delivery_status"] is None for row in outcomes),
+        "agent_completed_count": sum(row["agent_execution_status"] == "COMPLETED" for row in outcomes),
+        "agent_failed_count": sum(row["agent_execution_status"] == "FAILED" for row in outcomes),
+        "agent_not_run_count": sum(row["agent_execution_status"] == "NOT_RUN" for row in outcomes),
+        "agent_execution_unknown_count": sum(row["agent_execution_status"] is None for row in outcomes),
+        "candidate_changed_count": sum(row["candidate_changed"] is True for row in outcomes),
+        "candidate_unchanged_count": sum(row["candidate_changed"] is False for row in outcomes),
+        "candidate_change_unknown_count": sum(row["candidate_changed"] is None for row in outcomes),
     }
 
 
@@ -106,6 +119,15 @@ def _build_general_report_lines(
         f"  Incomplete:           {outcomes['delivery_incomplete_count']}",
         f"  Not accepted:         {outcomes['delivery_not_accepted_count']}",
         f"  Not reported / N/A:   {outcomes['delivery_unknown_count']}",
+        "Agent execution (separate from candidate acceptance and speedup):",
+        f"  Completed:            {outcomes['agent_completed_count']}",
+        f"  Failed:               {outcomes['agent_failed_count']}",
+        f"  Not run:              {outcomes['agent_not_run_count']}",
+        f"  Not reported / N/A:   {outcomes['agent_execution_unknown_count']}",
+        "Candidate source changes during the agent invocation:",
+        f"  Changed:              {outcomes['candidate_changed_count']}",
+        f"  Unchanged:            {outcomes['candidate_unchanged_count']}",
+        f"  Not established:      {outcomes['candidate_change_unknown_count']}",
     ])
     
     # Add task type breakdowns if available
@@ -175,6 +197,10 @@ def _build_general_report_lines(
             f"{status:<12} {task['task_name']:<40} Score: {task['score']:>6.1f}  Speedup: {task['speedup_ratio']:.2f}x"
             f"  Accepted: {_acceptance_label(outcome['candidate_accepted'])}"
             f"  Delivery: {outcome['delivery_status'] or 'N/A'}"
+        )
+        lines.append(
+            f"         Agent: {outcome['agent_execution_status'] or 'N/A'}"
+            f"  Source changed: {_acceptance_label(outcome['candidate_changed'])}"
         )
         if task["error"]:
             lines.append(f"         Error: {task['error']}")
@@ -674,6 +700,8 @@ def export_task_results_csv(
       - Status (final outcome when available; otherwise numerical status)
       - Candidate Accepted (YES/NO/N/A)
       - Delivery Status
+      - Agent Execution (COMPLETED/FAILED/NOT_RUN/N/A)
+      - Candidate Changed (YES/NO/N/A; file content, not an optimization verdict)
       - Optimization_summary
     """
     if not workspace_paths:
@@ -736,6 +764,8 @@ def export_task_results_csv(
             "Status": status,
             "Candidate Accepted": _acceptance_label(outcome["candidate_accepted"]),
             "Delivery Status": outcome["delivery_status"] or "N/A",
+            "Agent Execution": outcome["agent_execution_status"] or "N/A",
+            "Candidate Changed": _acceptance_label(outcome["candidate_changed"]),
             "Optimization_summary": optimization_summary.strip(),
         })
 
@@ -743,7 +773,8 @@ def export_task_results_csv(
         writer = csv.DictWriter(
             f,
             fieldnames=["Task Name", "Task Type", "Score", "Speedup", "Status",
-                        "Candidate Accepted", "Delivery Status", "Optimization_summary"]
+                        "Candidate Accepted", "Delivery Status", "Agent Execution",
+                        "Candidate Changed", "Optimization_summary"]
         )
         writer.writeheader()
         writer.writerows(rows)
