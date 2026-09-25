@@ -71,6 +71,8 @@ Environment overrides:
   GPU_IDS                 Comma/space separated GPU indices for parallel-run.
   AKA_LOGICAL_GPU         Logical GPU index inside a masked worker container (default: 0).
   AKA_DOCKER_IMAGE        Absolute Docker image override.
+  AKA_DOCKER_PRIVILEGED   1 (default) retains the existing privileged runtime;
+                         0 uses Docker's default capabilities, seccomp, IPC and network.
   AKA_GPU_ARCH            GPU arch override for shell/smoke, or run configs without target_gpu_model.
   AKA_DOCKER_IMAGE_<ARCH> Per-arch image override, e.g. AKA_DOCKER_IMAGE_GFX950=...
   AKA_DOCKER_IMAGE_GFX942 Default image for gfx942.
@@ -1010,13 +1012,15 @@ build_docker_args() {
         docker_args+=(-it)
     fi
 
+    case "${AKA_DOCKER_PRIVILEGED:-1}" in
+        1)
+            docker_args+=(--ipc=host --network=host --privileged
+                --cap-add=SYS_ADMIN --cap-add=SYS_PTRACE --security-opt=seccomp=unconfined)
+            ;;
+        0) ;;
+        *) die "AKA_DOCKER_PRIVILEGED must be 0 or 1" ;;
+    esac
     docker_args+=(
-        --ipc=host
-        --network=host
-        --privileged
-        --cap-add=SYS_ADMIN
-        --cap-add=SYS_PTRACE
-        --security-opt=seccomp=unconfined
         --user "${HOST_UID}:${HOST_GID}"
         -e "HOME=${container_home}"
         -e "USER=${container_username}"

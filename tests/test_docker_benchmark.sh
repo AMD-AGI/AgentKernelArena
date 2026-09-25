@@ -162,6 +162,20 @@ touch "$UNRELATED_GEAK_WORKFLOW_DIR/kernel_workflow.js"
 
 bash -n "$RUNNER"
 
+mapfile -t args < <(run_shell_args AKA_GPU_ARCH=gfx950 AKA_DOCKER_PRIVILEGED=1)
+assert_has --privileged "${args[@]}"
+assert_has --cap-add=SYS_ADMIN "${args[@]}"
+mapfile -t args < <(run_shell_args AKA_GPU_ARCH=gfx950 AKA_DOCKER_PRIVILEGED=0 AKA_VISIBLE_GPU=2)
+for elevated in --privileged --cap-add=SYS_ADMIN --cap-add=SYS_PTRACE \
+    --security-opt=seccomp=unconfined --ipc=host --network=host; do
+    assert_not_has "$elevated" "${args[@]}"
+done
+assert_has 'ROCR_VISIBLE_DEVICES=2' "${args[@]}"
+assert_has "$(id -u):$(id -g)" "${args[@]}"
+if run_shell_args AKA_GPU_ARCH=gfx950 AKA_DOCKER_PRIVILEGED=invalid >/dev/null; then
+    fail "invalid privilege mode was accepted"
+fi
+
 # Sanitizer sidecars accept the scoring runtime only when the selected reference
 # and the known manifest reference resolve to the same immutable local config ID,
 # and launch that ID rather than a mutable tag. An alias to identical content is

@@ -7,6 +7,7 @@ import yaml
 
 from src.postprocessing import general_post_processing
 from src.visualization import build_data
+from src.tools.compare_runs import compare_overall
 
 
 @pytest.mark.parametrize("recover_from_text", [False, True])
@@ -23,7 +24,9 @@ def test_final_outcomes_survive_all_report_formats_without_changing_scores(
         ("hip2hip/legacy", None, None, True, "PASS"),
     ]
     workspaces = []
-    for task_name, accepted, delivery, correct, _ in fixtures:
+    executions = [("COMPLETED", True), ("FAILED", True), ("FAILED", False),
+                  ("NOT_RUN", None), (None, None)]
+    for (task_name, accepted, delivery, correct, _), (execution, changed) in zip(fixtures, executions):
         workspace = run / task_name.replace("/", "_")
         workspace.mkdir(parents=True)
         result = {
@@ -34,6 +37,8 @@ def test_final_outcomes_survive_all_report_formats_without_changing_scores(
         }
         if accepted is not None:
             result.update(candidate_accepted=accepted, delivery_status=delivery)
+        if execution is not None:
+            result["agent_execution"] = {"status": execution, "candidate_changed": changed}
         (workspace / "task_result.yaml").write_text(yaml.safe_dump(result))
         workspaces.append(str(workspace))
 
@@ -49,6 +54,10 @@ def test_final_outcomes_survive_all_report_formats_without_changing_scores(
         "candidate_acceptance_unknown_count": 1, "delivery_complete_count": 1,
         "delivery_incomplete_count": 2, "delivery_not_accepted_count": 1,
         "delivery_unknown_count": 1,
+        "agent_completed_count": 1, "agent_failed_count": 2,
+        "agent_not_run_count": 1, "agent_execution_unknown_count": 1,
+        "candidate_changed_count": 2, "candidate_unchanged_count": 1,
+        "candidate_change_unknown_count": 2,
     }
     for key, count in expected_counts.items():
         assert overall[key] == count
@@ -60,11 +69,13 @@ def test_final_outcomes_survive_all_report_formats_without_changing_scores(
     with csv_path.open() as handle:
         rows = {row["Task Name"]: row for row in csv.DictReader(handle)}
     text_rows = build_data.load_status_map(reports / "overall_report.txt")
-    for name, accepted, delivery, correct, status in fixtures:
+    for (name, accepted, delivery, correct, status), (execution, changed) in zip(fixtures, executions):
         row = rows[name]
         assert row["Status"] == text_rows[name]["status"] == status
         assert row["Candidate Accepted"] == ("N/A" if accepted is None else "YES" if accepted else "NO")
         assert row["Delivery Status"] == (delivery or "N/A")
+        assert row["Agent Execution"] == (execution or "N/A")
+        assert row["Candidate Changed"] == ("N/A" if changed is None else "YES" if changed else "NO")
         assert float(row["Score"]) == text_rows[name]["score_from_report"] == (220 if correct else 20)
         assert text_rows[name]["candidateAccepted"] is accepted
         assert text_rows[name]["deliveryStatus"] == delivery
@@ -83,3 +94,14 @@ def test_final_outcomes_survive_all_report_formats_without_changing_scores(
         assert tasks[name]["candidateAccepted"] is accepted
         assert tasks[name]["deliveryStatus"] == delivery
         assert tasks[name]["score"] == (220 if correct else 20)
+
+
+def test_execution_comparison_keeps_absent_historical_counts_unknown():
+    old = {"overall": {}}
+    new = {"overall": {"agent_failed_count": 2, "candidate_unchanged_count": 1}}
+    lines = compare_overall(old, new)
+    failure = next(line for line in lines if line.startswith("Agent failed"))
+    assert failure.split() == ["Agent", "failed", "N/A", "2", "N/A"]
+    compared = compare_overall(new, {"overall": {"agent_failed_count": 1}})
+    failure = next(line for line in compared if line.startswith("Agent failed"))
+    assert failure.split() == ["Agent", "failed", "2", "1", "-1"]

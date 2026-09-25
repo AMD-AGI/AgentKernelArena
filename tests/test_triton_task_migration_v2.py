@@ -164,6 +164,30 @@ def test_vllm_v2_preserves_all_original_cases_checks_sources_and_helpers(path):
             new = b'        x_reshaped = x.flatten(start_dim=1)'
             assert original.count(old) == 1
             original = original.replace(old, new)
+        if task.name == 'triton_matmul_persistent':
+            # Only repair wrapper layout/device dispatch. Preserve both device
+            # kernels, tuning, scored inputs and numerical gates byte-for-byte.
+            # Dedicated metadata and GPU tests exercise these layout defects.
+            helper = (
+                'def _requires_int64_index(tensor):\n'
+                '    """A small strided view can address more than INT32_MAX elements away."""\n'
+                '    max_offset = sum(\n'
+                '        (int(size) - 1) * abs(int(stride))\n'
+                '        for size, stride in zip(tensor.shape, tensor.stride())\n'
+                '    )\n'
+                '    return max_offset > 2**31 - 1\n\n\n'
+            )
+            original = original.replace(b'@triton.jit\n', helper.encode() + b'@triton.jit\n', 1)
+            original = original.replace(
+                b'    NUM_SMS = torch.cuda.get_device_properties("cuda").multi_processor_count',
+                b'    # The device kernel reads bias at unit stride.\n'
+                b'    if bias is not None and not bias.is_contiguous():\n'
+                b'        bias = bias.contiguous()\n'
+                b'    NUM_SMS = torch.cuda.get_device_properties(a.device).multi_processor_count')
+            for operand in ('a', 'b', 'c'):
+                original = original.replace(
+                    f'{operand.upper()}_LARGE={operand}.numel() > 2**31'.encode(),
+                    f'{operand.upper()}_LARGE=_requires_int64_index({operand})'.encode())
         if task.name == 'triton_pack_bitmatrix':
             old = b'div[:, :, None] == offs[None, None, :], (one << rem)[:, :, None], 0'
             new = (b'mask[:, :, None] & (indices[:, :, None] >= 0) & (div[:, :, None] == offs[None, None, :]),\n'
@@ -7091,9 +7115,17 @@ def test_persistent_matmul_independent_bias_known_answer_and_original_gate(monke
 
 
 @pytest.mark.parametrize('mode',['correct','dtype','shape','device','nan','zero','mutate_a','mutate_b',
-    'mutate_bias','ignore_bias','omit_m_tail','omit_n_tail','omit_k_tail','ignore_strides','omit_late_tiles'])
+    'mutate_bias','ignore_bias','ignore_bias_stride','mutate_bias_padding',
+    'ignore_large_a_stride','ignore_large_b_stride','omit_large_output_tail',
+    'omit_m_tail','omit_n_tail','omit_k_tail','ignore_strides','omit_late_tiles'])
 def test_persistent_matmul_original_fivecase_correctness_bias_strides_and_persistent_tiles(monkeypatch,mode):
     h,checks=_fp8_group_cpu_harness(monkeypatch,'matmul_persistent');calls=[];saved_inputs=[]
+    # CPU tests exercise the same control flow with small allocations; GPU
+    # qualification uses the protected production sizes without overrides.
+    assert checks.LARGE_ADDRESS_STRIDE == 2**31 - 1
+    assert checks.LARGE_OUTPUT_SHAPE[0] * checks.LARGE_OUTPUT_SHAPE[1] > 2**31
+    monkeypatch.setattr(checks, 'LARGE_ADDRESS_STRIDE', 63)
+    monkeypatch.setattr(checks, 'LARGE_OUTPUT_SHAPE', (257, 5))
     def public(a,b,bias=None):
         inputs=(a,b) if bias is None else (a,b,bias)
         calls.append((a.shape,b.shape,a.stride(),b.stride(),bias is not None))
@@ -7101,8 +7133,15 @@ def test_persistent_matmul_original_fivecase_correctness_bias_strides_and_persis
         if mode=='mutate_a':a.zero_()
         if mode=='mutate_b':b.zero_()
         if mode=='mutate_bias' and bias is not None:bias.zero_()
+        if mode=='mutate_bias_padding' and bias is not None and not bias.is_contiguous():
+            bias.as_strided((bias.numel()*2,), (1,))[1::2].zero_()
         result=_persistent_matmul_cpu(a,b,bias)
         if mode=='ignore_bias':result=_persistent_matmul_cpu(a,b)
+        if mode=='ignore_large_a_stride' and a.stride(0)==63:result.zero_()
+        if mode=='ignore_large_b_stride' and b.stride(0)==63:result.zero_()
+        if mode=='omit_large_output_tail' and a.shape==(257,1):result[-1].zero_()
+        if mode=='ignore_bias_stride' and bias is not None:
+            result=_persistent_matmul_cpu(a,b,bias.as_strided(bias.shape,(1,)))
         if mode=='omit_m_tail' and a.shape[0]==129:result[128:].zero_()
         if mode=='omit_n_tail' and b.shape[1]==259:result[:,256:].zero_()
         if mode=='omit_k_tail' and a.shape[1]==67:result=_persistent_matmul_cpu(a[:,:64],b[:64],bias)
@@ -7117,7 +7156,7 @@ def test_persistent_matmul_original_fivecase_correctness_bias_strides_and_persis
     mod=SimpleNamespace(matmul_persistent=public);h.load_module=lambda:mod;checks.install(h)
     ok,reason=h.run_correctness();assert ok is (mode=='correct'),reason
     if mode=='correct':
-        assert [(a,b) for a,b,_,_,_ in calls if a[0] not in (129,1153)]==[(torch.Size((m,k)),torch.Size((k,n))) for m,n,k in h.TEST_SHAPES]
+        assert [(a,b) for a,b,_,_,_ in calls if a[0] not in (2,257,129,1153)]==[(torch.Size((m,k)),torch.Size((k,n))) for m,n,k in h.TEST_SHAPES]
         assert [v for v in calls if v[0][0]==129]==[(torch.Size((129,67)),torch.Size((67,259)),(268,2),(1,134),True)]
         assert [v for v in calls if v[0][0]==1153]==[(torch.Size((1153,16)),torch.Size((16,8449)),(16,1),(8449,1),False)]
     for inputs,saved in saved_inputs:checks.unchanged(inputs,saved)
