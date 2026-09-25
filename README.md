@@ -87,7 +87,7 @@ AgentKernelArena/
 │   ├── torch2flydsl/
 │   ├── triton2flydsl/
 │   ├── flydsl2flydsl/
-│   ├── SIKL-task/                  # Production GEMM and MoE to FlyDSL
+│   ├── Aiter-task/                 # Production GEMM and MoE to FlyDSL
 │   └── image_kernel/               # Kernels from declared in-image source trees
 └── docs/                            # Full documentation
 ```
@@ -147,7 +147,7 @@ for tested CLI/model versions, run-level overrides, and the scope of live checks
 | `triton2flydsl` | Translate a Triton implementation to FlyDSL |
 | `flydsl2flydsl` | Optimize an existing FlyDSL implementation |
 | `image_kernel` | Optimize a kernel from a declared source tree in the runtime image |
-| `SIKL-task` | Reimplement production BF16 GEMM and MXFP4 MoE operators in FlyDSL |
+| `Aiter-task` | Reimplement production BF16 GEMM and MXFP4 MoE operators in FlyDSL |
 
 These names organize task selection; the candidate and evaluation declarations
 determine behavior. Every retained suite uses the unified task contract in
@@ -323,6 +323,10 @@ make docker-parallel-run CONFIG="$CONFIG_PATH" GPU_IDS=0,1,2,3 RUN_ARGS="--resum
 ### Select Task Groups
 
 Task selectors are paths relative to `tasks/`. A selector can name one task or any parent directory.
+
+The `Aiter-task` suite was previously named `SIKL-task`. Update custom selectors
+to `Aiter-task/...`. This rename changes task IDs and report grouping; start a
+new run with the new selectors, since existing runs retain their original IDs.
 
 ```yaml
 tasks:

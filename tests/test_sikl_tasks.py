@@ -12,7 +12,7 @@ import yaml
 from src.task_spec import load_task_spec
 
 ROOT = Path(__file__).resolve().parents[1]
-SIKL_ROOT = ROOT / 'tasks' / 'SIKL-task'
+SIKL_ROOT = ROOT / 'tasks' / 'Aiter-task'
 TASKS = sorted(p.parent for p in SIKL_ROOT.glob('*/config.yaml'))
 VAR_AXIS = {'gemm': 'm', 'moe': 'num_tokens'}
 SHARED_TEMPLATE_FILES = (

@@ -6,9 +6,9 @@
 agent:
   template: forge
 
-# Select all GEMM and MoE tasks with `- SIKL-task`.
+# Select all GEMM and MoE tasks with `- Aiter-task`.
 tasks:
-  - SIKL-task/gemm_a16w16_nt_n6144_k6144
+  - Aiter-task/gemm_a16w16_nt_n6144_k6144
 
 target_gpu_model: MI355X
 log_directory: logs

@@ -19,7 +19,7 @@ from src.task_protocol import (CaseManifest, baseline_correctness_accepted,
 from src.task_spec import load_task_spec
 
 ROOT = Path(__file__).resolve().parents[1]
-TASKS = sorted((ROOT / 'tasks/SIKL-task').glob('*/config.yaml'))
+TASKS = sorted((ROOT / 'tasks/Aiter-task').glob('*/config.yaml'))
 REPRESENTATIVES = ['gemm_a16w16_nt_n32_k6144', 'mxfp4_moe_e65_i1024']
 MODULE_NAMES = ['task_contract', 'task_inputs', 'task_compare', 'task_initialize',
                 'task_reference', 'task_baseline', 'task_measure', 'task_validation', 'evaluate', 'export_solution']
@@ -91,20 +91,20 @@ def test_real_cli_stub_fails_with_complete_case_evidence(config_path, action, mo
     '__import__("task_reference")', 'open("scripts/task_reference.py")',
 ])
 def test_import_members_aliases_and_direct_baseline_paths_rejected(name, source, monkeypatch):
-    with modules(ROOT / 'tasks/SIKL-task' / name, monkeypatch) as contract:
+    with modules(ROOT / 'tasks/Aiter-task' / name, monkeypatch) as contract:
         with pytest.raises(RuntimeError):
             contract.assert_source_independent(source)
 
 
 def test_allowed_host_plumbing_and_flydsl_imports(monkeypatch):
-    with modules(ROOT / 'tasks/SIKL-task' / REPRESENTATIVES[0], monkeypatch) as contract:
+    with modules(ROOT / 'tasks/Aiter-task' / REPRESENTATIVES[0], monkeypatch) as contract:
         contract.assert_source_independent('from functools import lru_cache\nimport torch\nimport flydsl.compiler as flyc\n@lru_cache(None)\ndef build(**axes):\n return lambda a,b: torch.empty_like(a)\n')
 
 
 @pytest.mark.parametrize('name', REPRESENTATIVES)
 def test_initial_state_is_examined_not_echoed(name, tmp_path, monkeypatch):
     task = tmp_path / 'task'
-    shutil.copytree(ROOT / 'tasks/SIKL-task' / name, task)
+    shutil.copytree(ROOT / 'tasks/Aiter-task' / name, task)
     with modules(task, monkeypatch) as contract:
         runner = importlib.import_module('evaluate')
         config = contract.load_config()
@@ -126,7 +126,7 @@ def test_initial_state_is_examined_not_echoed(name, tmp_path, monkeypatch):
 @pytest.mark.parametrize('name', REPRESENTATIVES)
 def test_shape_and_numerical_failures_are_distinct(name, monkeypatch):
     torch = pytest.importorskip('torch')
-    with modules(ROOT / 'tasks/SIKL-task' / name, monkeypatch):
+    with modules(ROOT / 'tasks/Aiter-task' / name, monkeypatch):
         measure = importlib.import_module('task_measure')
         expected = torch.ones((2, 3), dtype=torch.bfloat16)
         assert measure.compare_output(expected.clone(), expected)['status'] == 'PASS'
@@ -142,7 +142,7 @@ def test_shape_and_numerical_failures_are_distinct(name, monkeypatch):
 @pytest.mark.parametrize('name', REPRESENTATIVES)
 def test_changed_but_wrong_timed_output_is_rejected(name, monkeypatch):
     torch = pytest.importorskip('torch')
-    with modules(ROOT / 'tasks/SIKL-task' / name, monkeypatch):
+    with modules(ROOT / 'tasks/Aiter-task' / name, monkeypatch):
         measure = importlib.import_module('task_measure')
         monkeypatch.setattr(torch.cuda, 'synchronize', lambda: None)
         inputs = {'a': torch.tensor([[1., 2.]], dtype=torch.bfloat16)}
@@ -166,7 +166,7 @@ def test_changed_but_wrong_timed_output_is_rejected(name, monkeypatch):
 @pytest.mark.parametrize('name', REPRESENTATIVES)
 def test_input_modification_rejected_and_missing_launch_never_falls_back(name, monkeypatch):
     torch = pytest.importorskip('torch')
-    with modules(ROOT / 'tasks/SIKL-task' / name, monkeypatch):
+    with modules(ROOT / 'tasks/Aiter-task' / name, monkeypatch):
         measure = importlib.import_module('task_measure')
         inputs = {'a': torch.ones(2, 3)}
         snapshot = measure.input_snapshot(inputs)
@@ -183,7 +183,7 @@ def test_all_seven_actions_use_full_identity_and_explicit_role_with_injected_cpu
     """The injected execution backend tests command orchestration, not GPU kernels."""
     pytest.importorskip('torch')
     task = tmp_path / 'task'
-    shutil.copytree(ROOT / 'tasks/SIKL-task/gemm_a16w16_nt_n4096_k2048', task)
+    shutil.copytree(ROOT / 'tasks/Aiter-task/gemm_a16w16_nt_n4096_k2048', task)
     with modules(task, monkeypatch) as contract:
         runner = importlib.import_module('evaluate')
         measure = importlib.import_module('task_measure')
@@ -214,7 +214,7 @@ def test_all_seven_actions_use_full_identity_and_explicit_role_with_injected_cpu
             return {'status': 'PASS'}
         monkeypatch.setattr(measure, 'check_case', checked)
         monkeypatch.setattr(measure, 'time_case', lambda *a, **kw: {'status': 'PASS', 'execution_time_ms': 0.01, 'benchmark_method': 'cuda_graph'})
-        spec = load_task_spec(task / 'config.yaml', task_id='SIKL-task/unit-test')
+        spec = load_task_spec(task / 'config.yaml', task_id='Aiter-task/unit-test')
         for role in ('baseline', 'candidate'):
             for action in ('compile', 'correctness', 'performance'):
                 report = parse_report(runner.run(role, action))
@@ -234,7 +234,7 @@ def test_all_seven_actions_use_full_identity_and_explicit_role_with_injected_cpu
 
 def test_baseline_replay_diagnostic_cannot_exempt_candidate_or_non_numerical_errors(monkeypatch):
     pytest.importorskip('torch')
-    with modules(ROOT / 'tasks/SIKL-task' / REPRESENTATIVES[0], monkeypatch):
+    with modules(ROOT / 'tasks/Aiter-task' / REPRESENTATIVES[0], monkeypatch):
         measure = importlib.import_module('task_measure')
         helper = types.SimpleNamespace(TimedRun=lambda: object(), benchmark_cuda_graph_or_events=lambda *a, **kw: (0.1, {'benchmark_method': 'cuda_graph'}))
         monkeypatch.setitem(sys.modules, '_aka_benchmark', helper)
@@ -253,7 +253,7 @@ def test_baseline_replay_diagnostic_cannot_exempt_candidate_or_non_numerical_err
 
 def test_declared_nested_paths_builder_identity_and_export_are_honored(tmp_path, monkeypatch):
     task = tmp_path / 'task'
-    shutil.copytree(ROOT / 'tasks/SIKL-task' / REPRESENTATIVES[0], task)
+    shutil.copytree(ROOT / 'tasks/Aiter-task' / REPRESENTATIVES[0], task)
     config = yaml.safe_load((task / 'config.yaml').read_text())
     config['candidate']['editable'] = ['source/generated.py']
     config['candidate']['entrypoints'][0].update(file='source/generated.py', symbol='build_unrelated_name')
@@ -294,7 +294,7 @@ def test_declared_nested_paths_builder_identity_and_export_are_honored(tmp_path,
 
 
 def test_nonfinite_diagnostics_are_valid_json_without_changing_verdict(monkeypatch):
-    with modules(ROOT / 'tasks/SIKL-task' / REPRESENTATIVES[1], monkeypatch) as contract:
+    with modules(ROOT / 'tasks/Aiter-task' / REPRESENTATIVES[1], monkeypatch) as contract:
         original = {'status': 'PASS', 'metrics': {'sqnr_db': float('inf')},
                     'metadata': {'sqnr_db_nonfinite': 'positive infinity for exact match'}}
         safe = contract.json_safe(original)
@@ -307,7 +307,7 @@ def test_nonfinite_diagnostics_are_valid_json_without_changing_verdict(monkeypat
 @pytest.mark.parametrize('name', REPRESENTATIVES)
 def test_reference_callback_does_not_accept_invalid_reference_or_nonfinite_output(name, monkeypatch):
     torch = pytest.importorskip('torch')
-    with modules(ROOT / 'tasks/SIKL-task' / name, monkeypatch) as contract:
+    with modules(ROOT / 'tasks/Aiter-task' / name, monkeypatch) as contract:
         measure = importlib.import_module('task_measure')
         expected = torch.zeros((2, 2), dtype=torch.bfloat16)
         exact = measure.compare_output(expected.clone(), expected)
@@ -320,7 +320,7 @@ def test_reference_callback_does_not_accept_invalid_reference_or_nonfinite_outpu
 
 @pytest.mark.parametrize('mutation', ['duplicate_id', 'duplicate_uuid', 'invalid_axis', 'invalid_duration', 'empty_cases'])
 def test_manifest_rejects_malformed_task_data(mutation, monkeypatch):
-    with modules(ROOT / 'tasks/SIKL-task' / REPRESENTATIVES[0], monkeypatch) as contract:
+    with modules(ROOT / 'tasks/Aiter-task' / REPRESENTATIVES[0], monkeypatch) as contract:
         workload = deepcopy(contract.load_workload())
         if mutation == 'duplicate_id':
             workload['cases'][1]['case_id'] = workload['cases'][0]['case_id']
@@ -340,7 +340,7 @@ def test_manifest_rejects_malformed_task_data(mutation, monkeypatch):
 def test_exported_tensor_binding_executes_declared_builder(tmp_path, monkeypatch, name):
     """Exercise the binding with host sentinels, not a claim of FlyDSL execution."""
     task = tmp_path / 'task'
-    shutil.copytree(ROOT / 'tasks/SIKL-task' / name, task)
+    shutil.copytree(ROOT / 'tasks/Aiter-task' / name, task)
     artifact_dir = tmp_path / 'unpacked'
     artifact_dir.mkdir()
     (artifact_dir / 'nested').mkdir()
@@ -381,7 +381,7 @@ def arbitrary_builder(**axes):
 @pytest.mark.parametrize('name', REPRESENTATIVES)
 def test_independent_controls_execute_real_callbacks_on_cpu(name, monkeypatch):
     pytest.importorskip('torch')
-    with modules(ROOT / 'tasks/SIKL-task' / name, monkeypatch):
+    with modules(ROOT / 'tasks/Aiter-task' / name, monkeypatch):
         measure = importlib.import_module('task_measure')
         validation = importlib.import_module('task_validation')
         records = validation.run_controls(measure, device='cpu')
@@ -401,7 +401,7 @@ def test_independent_controls_execute_real_callbacks_on_cpu(name, monkeypatch):
 @pytest.mark.parametrize('fault', ['zero_output', 'wrong_sign'])
 def test_known_answers_reject_corrupted_reference(name, fault, monkeypatch):
     torch = pytest.importorskip('torch')
-    with modules(ROOT / 'tasks/SIKL-task' / name, monkeypatch):
+    with modules(ROOT / 'tasks/Aiter-task' / name, monkeypatch):
         measure = importlib.import_module('task_measure')
         validation = importlib.import_module('task_validation')
         original = measure.task_reference.run
@@ -422,7 +422,7 @@ def test_known_answers_reject_corrupted_reference(name, fault, monkeypatch):
 @pytest.mark.parametrize('fault', ['decoder', 'weight_layout', 'gate_split', 'activation_quantization', 'routing_weights'])
 def test_moe_controls_detect_specific_reference_faults(fault, monkeypatch):
     torch = pytest.importorskip('torch')
-    with modules(ROOT / 'tasks/SIKL-task' / REPRESENTATIVES[1], monkeypatch):
+    with modules(ROOT / 'tasks/Aiter-task' / REPRESENTATIVES[1], monkeypatch):
         measure = importlib.import_module('task_measure')
         validation = importlib.import_module('task_validation')
         reference = measure.task_reference
@@ -448,7 +448,7 @@ def test_moe_controls_detect_specific_reference_faults(fault, monkeypatch):
 @pytest.mark.parametrize('fault', ['always_accept', 'always_reject', 'exact_only'])
 def test_controls_detect_broken_comparator_in_both_directions(name, fault, monkeypatch):
     torch = pytest.importorskip('torch')
-    with modules(ROOT / 'tasks/SIKL-task' / name, monkeypatch):
+    with modules(ROOT / 'tasks/Aiter-task' / name, monkeypatch):
         measure = importlib.import_module('task_measure')
         validation = importlib.import_module('task_validation')
         def broken(actual, expected):
@@ -468,7 +468,7 @@ def test_controls_detect_broken_comparator_in_both_directions(name, fault, monke
 def test_runner_controls_are_mandatory_and_preserve_real_manifest(tmp_path, monkeypatch, broken):
     pytest.importorskip('torch')
     task = tmp_path / 'task'
-    shutil.copytree(ROOT / 'tasks/SIKL-task' / REPRESENTATIVES[1], task)
+    shutil.copytree(ROOT / 'tasks/Aiter-task' / REPRESENTATIVES[1], task)
     with modules(task, monkeypatch) as contract:
         runner = importlib.import_module('evaluate')
         measure = importlib.import_module('task_measure')
@@ -530,7 +530,7 @@ def test_diagnostic_policy_only_names_tasks_with_specific_evidence():
 
 def test_diagnostic_task_still_reports_actual_pass(monkeypatch):
     torch = pytest.importorskip('torch')
-    task = ROOT / 'tasks/SIKL-task/gemm_a16w16_nt_n4096_k2048'
+    task = ROOT / 'tasks/Aiter-task/gemm_a16w16_nt_n4096_k2048'
     with modules(task, monkeypatch) as contract:
         measure = importlib.import_module('task_measure')
         runner = importlib.import_module('evaluate')
@@ -543,5 +543,5 @@ def test_diagnostic_task_still_reports_actual_pass(monkeypatch):
         result = parse_report(runner.report_for('baseline', 'correctness', rows, {}))
         assert result.passed
         assert result.failure_kind is None
-        spec = load_task_spec(task / 'config.yaml', task_id='SIKL-task/' + task.name)
+        spec = load_task_spec(task / 'config.yaml', task_id='Aiter-task/' + task.name)
         assert baseline_correctness_accepted(result, baseline=spec.baseline, phase='task_validation', manifest=manifest(contract))

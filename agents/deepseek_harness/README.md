@@ -105,7 +105,7 @@ make slurm-run CONFIG="$CONFIG_PATH" RUN_ARGS="--run-suffix deepseek_smoke"
 
 See [the Slurm guide](../../docs/how-to/slurm-run.md) for resource selection and
 batch submission. The schema-v2 MI355X checks use the
-[SIKL FlyDSL GEMM task](../../tasks/SIKL-task/gemm_a16w16_nt_n32_k6144/README.md)
+[SIKL FlyDSL GEMM task](../../tasks/Aiter-task/gemm_a16w16_nt_n32_k6144/README.md)
 and [HIP quantization image task](../../tasks/image_kernel/mi355x_vllm_hip_dynamic_per_tensor_quant/README.md),
 with an explicit image override from the
 [runtime qualification record](../../docs/reference/runtime-upgrade-qualification.md).

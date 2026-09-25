@@ -440,7 +440,7 @@ class ValidationLauncherTests(unittest.TestCase):
             {"agent": {}},
         )
         operator2flydsl_prompt = build_validation_prompt(
-            str(repo_root / "tasks/SIKL-task/gemm_a16w16_nt_n6144_k6144/config.yaml"),
+            str(repo_root / "tasks/Aiter-task/gemm_a16w16_nt_n6144_k6144/config.yaml"),
             "/tmp/validator-workspace",
             {"agent": {}},
         )
