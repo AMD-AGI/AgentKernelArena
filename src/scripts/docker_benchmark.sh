@@ -25,6 +25,7 @@ DEFAULT_RUN_CONFIG="example_configs/quickstart_claude_mi300.yaml"
 # separate from REQUIRED_AGENTS because GEAK templates normalize to claude_code
 # before Docker arguments are built.
 GEAK_RUNTIME=0
+APEX_RUNTIME=0
 # quality_loop keeps the repository checkout read-only in the agent container.
 # Only these host-validated, run-specific subdirectories are over-mounted rw.
 QUALITY_LOOP_ARTIFACT_REL=""
@@ -71,6 +72,7 @@ Environment overrides:
   GPU_IDS                 Comma/space separated GPU indices for parallel-run.
   AKA_LOGICAL_GPU         Logical GPU index inside a masked worker container (default: 0).
   AKA_DOCKER_IMAGE        Absolute Docker image override.
+  AKA_DOCKER_PRIVILEGED   0 uses ordinary Docker permissions; default 1 preserves host GPU settings.
   AKA_GPU_ARCH            GPU arch override for shell/smoke, or run configs without target_gpu_model.
   AKA_DOCKER_IMAGE_<ARCH> Per-arch image override, e.g. AKA_DOCKER_IMAGE_GFX950=...
   AKA_DOCKER_IMAGE_GFX942 Default image for gfx942.
@@ -375,11 +377,13 @@ read_agent_template() {
     sed -nE 's/^[[:space:]]+template:[[:space:]]*["'"'"']?([A-Za-z0-9_]+).*/\1/p' "$config" | head -n 1
 }
 
-configure_geak_runtime() {
+configure_agent_runtime() {
     local config="$1"
     GEAK_RUNTIME=0
+    APEX_RUNTIME=0
     case "$(read_agent_template "$config")" in
         geak|geak_v4) GEAK_RUNTIME=1 ;;
+        apex) APEX_RUNTIME=1 ;;
     esac
 }
 
@@ -437,6 +441,17 @@ resolve_required_agents() {
         local run_backend
         run_backend="$(read_run_validator_backend "$config")"
         tmpl="${run_backend:-$(read_validator_backend)}"
+    fi
+    if [[ "$tmpl" == "apex" ]]; then
+        local apex_backend
+        apex_backend="$(read_run_validator_backend "$config")"
+        if [[ -z "$apex_backend" ]]; then
+            apex_backend="$(sed -nE 's/^backend:[[:space:]]*([a-z_]+).*/\1/p' "$HOST_ROOT/agents/apex/agent_config.yaml")"
+        fi
+        case "$apex_backend" in
+            codex|claude|cursor) tmpl="$apex_backend" ;;
+            *) die "Apex backend must be codex, claude or cursor" ;;
+        esac
     fi
     case "$tmpl" in
         claude|claude_code) printf 'claude_code\n' ;;
@@ -1010,13 +1025,15 @@ build_docker_args() {
         docker_args+=(-it)
     fi
 
+    case "${AKA_DOCKER_PRIVILEGED:-1}" in
+        1)
+            docker_args+=(--ipc=host --network=host --privileged
+                --cap-add=SYS_ADMIN --cap-add=SYS_PTRACE --security-opt=seccomp=unconfined)
+            ;;
+        0) ;;
+        *) die "AKA_DOCKER_PRIVILEGED must be 0 or 1" ;;
+    esac
     docker_args+=(
-        --ipc=host
-        --network=host
-        --privileged
-        --cap-add=SYS_ADMIN
-        --cap-add=SYS_PTRACE
-        --security-opt=seccomp=unconfined
         --user "${HOST_UID}:${HOST_GID}"
         -e "HOME=${container_home}"
         -e "USER=${container_username}"
@@ -1222,9 +1239,16 @@ build_docker_args() {
         mount_agent "$_agent" "$strict"
     done
 
-    # Mount the pinned GEAK checkout only for GEAK runs so an exported
-    # host setting does not change the container surface for existing agents.
-    # The v2 adapter also reads git identity and perf_knowledge in its parent.
+    # External optimizer sources are read-only and scoped to the selected agent.
+    if [[ "$APEX_RUNTIME" == "1" ]]; then
+        docker_args+=(--init)
+        [[ -n "${APEX_ROOT:-}" && -d "$APEX_ROOT/.git" ]] \
+            || die "APEX_ROOT must name a standalone pinned Apex checkout (see agents/apex/README.md)"
+        add_mount "$(cd "$APEX_ROOT" && pwd)" /opt/arena-apex ro
+        docker_args+=(-e "APEX_ROOT=/opt/arena-apex"
+            -e "AKA_APEX_SDK_PATH=${CONTAINER_WORKDIR}/.aka-pyuserbase/apex-sdk")
+    fi
+    # GEAK also reads git identity and perf_knowledge in its parent.
     if [[ "$GEAK_RUNTIME" == "1" && ( -n "${GEAK_HOME:-}" || -n "${GEAK_V4_WORKFLOW_DIR:-}" ) ]]; then
         local geak_dir geak_root
         if [[ -n "${GEAK_HOME:-}" ]]; then
@@ -1257,12 +1281,26 @@ build_docker_args() {
     docker_args+=("$SELECTED_IMAGE")
 }
 
-docker_exec() {
+docker_exec() (
     local interactive="${1:-0}"
     shift
     build_docker_args "$interactive"
-    docker "${docker_args[@]}" -lc 'cd "$AGENT_KERNEL_ARENA_WORKDIR" && if [[ -n "${AKA_GEAK_SDK_PATH:-}" ]]; then export PYTHONPATH="${AKA_GEAK_SDK_PATH}${PYTHONPATH:+:$PYTHONPATH}"; fi && if [[ "${AGENT_KERNEL_ARENA_ISOLATED_HOME:-0}" == "1" ]]; then bash src/scripts/docker_benchmark.sh _container_prepare_worker_home; fi && exec "$@"' _ "$@"
-}
+    local container_state
+    container_state="$(mktemp -d)"
+    cleanup_run_container() {
+        local container_id=""
+        [[ ! -f "$container_state/id" ]] || read -r container_id < "$container_state/id" || true
+        if [[ "$container_id" =~ ^[0-9a-f]{64}$ ]]; then
+            docker rm -f "$container_id" >/dev/null 2>&1 || true
+        fi
+        rm -rf -- "$container_state"
+    }
+    trap cleanup_run_container EXIT
+    trap 'exit 130' INT
+    trap 'exit 143' TERM
+    docker "${docker_args[0]}" --cidfile "$container_state/id" "${docker_args[@]:1}" -lc 'cd "$AGENT_KERNEL_ARENA_WORKDIR" && if [[ -n "${AKA_GEAK_SDK_PATH:-}" ]]; then export PYTHONPATH="${AKA_GEAK_SDK_PATH}${PYTHONPATH:+:$PYTHONPATH}"; fi && if [[ -n "${AKA_APEX_SDK_PATH:-}" ]]; then export PYTHONPATH="${AKA_APEX_SDK_PATH}${PYTHONPATH:+:$PYTHONPATH}"; fi && if [[ "${AGENT_KERNEL_ARENA_ISOLATED_HOME:-0}" == "1" ]]; then bash src/scripts/docker_benchmark.sh _container_prepare_worker_home; fi && exec "$@"' _ "$@" <&0 &
+    wait "$!"
+)
 
 extract_config_name() {
     local config="$DEFAULT_RUN_CONFIG"
@@ -1383,6 +1421,9 @@ PY
 }
 
 container_check_agents() {
+    if [[ -n "${AKA_APEX_SDK_PATH:-}" ]]; then
+        python -m agents.apex.runtime --gpu
+    fi
     # Verify only the requested agents (default: all three). Driven by the same
     # agent set as the mounts, so a single-agent run does not require the others.
     local agents="$*"
@@ -1716,7 +1757,7 @@ run_parallel() {
     local config_name
     config_name="$(extract_config_name "$@")"
     select_runtime_for_config "$config_name"
-    configure_geak_runtime "$config_name"
+    configure_agent_runtime "$config_name"
 
     REQUIRED_AGENTS="$(resolve_required_agents "$config_name")"
     AGENTS_STRICT=1
@@ -1799,7 +1840,7 @@ case "${1:-}" in
         shift
         config_name="$(extract_config_name "$@")"
         select_runtime_for_config "$config_name"
-        configure_geak_runtime "$config_name"
+        configure_agent_runtime "$config_name"
         # Only the configured agent's CLI/auth is required for a run.
         REQUIRED_AGENTS="$(resolve_required_agents "$config_name")"
         AGENTS_STRICT=1
@@ -1860,7 +1901,7 @@ case "${1:-}" in
         shift
         config_name="$(extract_config_name "$@")"
         select_runtime_for_config "$config_name"
-        configure_geak_runtime "$config_name"
+        configure_agent_runtime "$config_name"
         REQUIRED_AGENTS="$(resolve_required_agents "$config_name")"
         AGENTS_STRICT=1
         docker_exec 0 bash src/scripts/docker_benchmark.sh _container_preflight "$config_name"
@@ -1881,7 +1922,7 @@ case "${1:-}" in
         if [[ -z "${AKA_AGENTS:-}" ]]; then
             [[ -f "$config_name" ]] || die "config file not found: $config_name"
         fi
-        configure_geak_runtime "$config_name"
+        configure_agent_runtime "$config_name"
         # By default, check only the CLI selected by CONFIG. AKA_AGENTS can
         # request one, several, or `all` explicitly.
         REQUIRED_AGENTS="$(normalize_check_agents "$(resolve_required_agents "$config_name")")"
@@ -1927,6 +1968,17 @@ case "${1:-}" in
         REQUIRED_AGENTS=""
         AGENTS_STRICT=0
         docker_exec 0 bash src/scripts/docker_benchmark.sh _container_setup_geak
+        ;;
+    setup-apex)
+        select_runtime_for_host
+        APEX_RUNTIME=1
+        REQUIRED_AGENTS=""
+        AGENTS_STRICT=0
+        docker_exec 0 bash src/scripts/docker_benchmark.sh _container_setup_apex
+        ;;
+    _container_setup_apex)
+        python -m pip install --upgrade --target "$AKA_APEX_SDK_PATH" -r agents/apex/requirements.txt
+        python -m agents.apex.runtime
         ;;
     _container_setup_flydsl)
         container_setup_flydsl

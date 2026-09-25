@@ -1,0 +1,3 @@
+# Standalone kernel execution only; E2E runtime dependencies are not needed.
+mcp==1.30.0
+PyYAML==6.0.3

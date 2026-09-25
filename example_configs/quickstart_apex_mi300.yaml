@@ -1,0 +1,8 @@
+# One existing Triton operator; Apex defaults live in agents/apex/agent_config.yaml.
+agent:
+  template: apex
+tasks:
+  - triton2triton/vllm/triton_rms_norm
+target_gpu_model: MI300
+log_directory: logs
+workspace_directory_prefix: workspace
