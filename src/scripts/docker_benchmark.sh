@@ -72,6 +72,7 @@ Environment overrides:
   GPU_IDS                 Comma/space separated GPU indices for parallel-run.
   AKA_LOGICAL_GPU         Logical GPU index inside a masked worker container (default: 0).
   AKA_DOCKER_IMAGE        Absolute Docker image override.
+  AKA_DOCKER_PRIVILEGED   0 uses ordinary Docker permissions; default 1 preserves host GPU settings.
   AKA_GPU_ARCH            GPU arch override for shell/smoke, or run configs without target_gpu_model.
   AKA_DOCKER_IMAGE_<ARCH> Per-arch image override, e.g. AKA_DOCKER_IMAGE_GFX950=...
   AKA_DOCKER_IMAGE_GFX942 Default image for gfx942.
@@ -995,14 +996,6 @@ build_docker_args() {
     local agents="${REQUIRED_AGENTS-codex claude_code cursor}"
     local strict="${AGENTS_STRICT:-0}"
     local container_home="${AKA_CONTAINER_HOME:-$HOST_HOME}"
-    local container_user="${HOST_UID}:${HOST_GID}"
-    if [[ "$APEX_RUNTIME" == "1" ]]; then
-        case "${AKA_APEX_ROOT_CONTAINER:-0}" in
-            0) ;;
-            1) container_user="0:0" ;;
-            *) die "AKA_APEX_ROOT_CONTAINER must be 0 or 1" ;;
-        esac
-    fi
     local codex_home="${AKA_CODEX_HOME:-$container_home/.codex}"
     local cache_suffix="${AKA_CACHE_SUFFIX:-}"
     local cache_postfix=""
@@ -1032,14 +1025,16 @@ build_docker_args() {
         docker_args+=(-it)
     fi
 
+    case "${AKA_DOCKER_PRIVILEGED:-1}" in
+        1)
+            docker_args+=(--ipc=host --network=host --privileged
+                --cap-add=SYS_ADMIN --cap-add=SYS_PTRACE --security-opt=seccomp=unconfined)
+            ;;
+        0) ;;
+        *) die "AKA_DOCKER_PRIVILEGED must be 0 or 1" ;;
+    esac
     docker_args+=(
-        --ipc=host
-        --network=host
-        --privileged
-        --cap-add=SYS_ADMIN
-        --cap-add=SYS_PTRACE
-        --security-opt=seccomp=unconfined
-        --user "$container_user"
+        --user "${HOST_UID}:${HOST_GID}"
         -e "HOME=${container_home}"
         -e "USER=${container_username}"
         -e "LOGNAME=${container_username}"
@@ -1246,15 +1241,9 @@ build_docker_args() {
 
     # External optimizer sources are read-only and scoped to the selected agent.
     if [[ "$APEX_RUNTIME" == "1" ]]; then
+        docker_args+=(--init)
         [[ -n "${APEX_ROOT:-}" && -d "$APEX_ROOT/.git" ]] \
             || die "APEX_ROOT must name a standalone pinned Apex checkout (see agents/apex/README.md)"
-        # KFD reports host PIDs. Enable visibility only on hosts whose policy
-        # permits it; the GPU preflight fails if identities cannot be resolved.
-        case "${AKA_APEX_HOST_PID:-0}" in
-            0) ;;
-            1) docker_args+=(--pid=host) ;;
-            *) die "AKA_APEX_HOST_PID must be 0 or 1" ;;
-        esac
         add_mount "$(cd "$APEX_ROOT" && pwd)" /opt/arena-apex ro
         docker_args+=(-e "APEX_ROOT=/opt/arena-apex"
             -e "AKA_APEX_SDK_PATH=${CONTAINER_WORKDIR}/.aka-pyuserbase/apex-sdk")
@@ -1292,12 +1281,26 @@ build_docker_args() {
     docker_args+=("$SELECTED_IMAGE")
 }
 
-docker_exec() {
+docker_exec() (
     local interactive="${1:-0}"
     shift
     build_docker_args "$interactive"
-    docker "${docker_args[@]}" -lc 'cd "$AGENT_KERNEL_ARENA_WORKDIR" && if [[ -n "${AKA_GEAK_SDK_PATH:-}" ]]; then export PYTHONPATH="${AKA_GEAK_SDK_PATH}${PYTHONPATH:+:$PYTHONPATH}"; fi && if [[ -n "${AKA_APEX_SDK_PATH:-}" ]]; then export PYTHONPATH="${AKA_APEX_SDK_PATH}${PYTHONPATH:+:$PYTHONPATH}"; fi && if [[ "${AGENT_KERNEL_ARENA_ISOLATED_HOME:-0}" == "1" ]]; then bash src/scripts/docker_benchmark.sh _container_prepare_worker_home; fi && exec "$@"' _ "$@"
-}
+    local container_state
+    container_state="$(mktemp -d)"
+    cleanup_run_container() {
+        local container_id=""
+        [[ ! -f "$container_state/id" ]] || read -r container_id < "$container_state/id" || true
+        if [[ "$container_id" =~ ^[0-9a-f]{64}$ ]]; then
+            docker rm -f "$container_id" >/dev/null 2>&1 || true
+        fi
+        rm -rf -- "$container_state"
+    }
+    trap cleanup_run_container EXIT
+    trap 'exit 130' INT
+    trap 'exit 143' TERM
+    docker "${docker_args[0]}" --cidfile "$container_state/id" "${docker_args[@]:1}" -lc 'cd "$AGENT_KERNEL_ARENA_WORKDIR" && if [[ -n "${AKA_GEAK_SDK_PATH:-}" ]]; then export PYTHONPATH="${AKA_GEAK_SDK_PATH}${PYTHONPATH:+:$PYTHONPATH}"; fi && if [[ -n "${AKA_APEX_SDK_PATH:-}" ]]; then export PYTHONPATH="${AKA_APEX_SDK_PATH}${PYTHONPATH:+:$PYTHONPATH}"; fi && if [[ "${AGENT_KERNEL_ARENA_ISOLATED_HOME:-0}" == "1" ]]; then bash src/scripts/docker_benchmark.sh _container_prepare_worker_home; fi && exec "$@"' _ "$@" <&0 &
+    wait "$!"
+)
 
 extract_config_name() {
     local config="$DEFAULT_RUN_CONFIG"
@@ -1587,12 +1590,6 @@ PY
 
 container_prepare_worker_home() {
     local state_root="${AGENT_STATE_MOUNT_ROOT:-/opt/aka-agent-state}"
-    local -a copy_state=(cp -a)
-    if [[ -n "${AKA_APEX_SDK_PATH:-}" && "$(id -u)" == "0" ]]; then
-        # A nested user namespace cannot read private files owned by an
-        # unmapped host UID. Only the disposable copy gets the caller's owner.
-        copy_state+=(--no-preserve=ownership)
-    fi
     mkdir -p "$HOME"
 
     if [[ -d "$state_root/.codex" && ! -e "$HOME/.codex" ]]; then
@@ -1605,28 +1602,28 @@ container_prepare_worker_home() {
             local entry
             for entry in "$state_root/.codex"/*; do
                 [[ "$(basename "$entry")" == "packages" ]] && continue
-                "${copy_state[@]}" "$entry" "$HOME/.codex/"
+                cp -a "$entry" "$HOME/.codex/"
             done
         )
         chmod -R u+rwX "$HOME/.codex" 2>/dev/null || true
     fi
 
     if [[ -d "$state_root/.claude" && ! -e "$HOME/.claude" ]]; then
-        "${copy_state[@]}" "$state_root/.claude" "$HOME/.claude"
+        cp -a "$state_root/.claude" "$HOME/.claude"
         chmod -R u+rwX "$HOME/.claude" 2>/dev/null || true
     fi
     if [[ -f "$state_root/.claude.json" && ! -e "$HOME/.claude.json" ]]; then
-        "${copy_state[@]}" "$state_root/.claude.json" "$HOME/.claude.json"
+        cp -a "$state_root/.claude.json" "$HOME/.claude.json"
         chmod u+rw "$HOME/.claude.json" 2>/dev/null || true
     fi
 
     if [[ -d "$state_root/.cursor" && ! -e "$HOME/.cursor" ]]; then
-        "${copy_state[@]}" "$state_root/.cursor" "$HOME/.cursor"
+        cp -a "$state_root/.cursor" "$HOME/.cursor"
         chmod -R u+rwX "$HOME/.cursor" 2>/dev/null || true
     fi
     if [[ -d "$state_root/.config/cursor" && ! -e "$HOME/.config/cursor" ]]; then
         mkdir -p "$HOME/.config"
-        "${copy_state[@]}" "$state_root/.config/cursor" "$HOME/.config/cursor"
+        cp -a "$state_root/.config/cursor" "$HOME/.config/cursor"
         chmod -R u+rwX "$HOME/.config/cursor" 2>/dev/null || true
     fi
 }

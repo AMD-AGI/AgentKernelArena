@@ -4,12 +4,11 @@ from __future__ import annotations
 import argparse
 import os
 from pathlib import Path
-import shutil
 import subprocess
 import sys
 
 
-APEX_REVISION = "c9f5765b10959bc30a80e10455789f5f0158e0ca"
+APEX_REVISION = "cbe5f9965f4f900468cfce94db735ceb33fa1dd8"
 
 
 def runtime_environment() -> dict[str, str]:
@@ -17,8 +16,7 @@ def runtime_environment() -> dict[str, str]:
     if not value:
         raise ValueError("Set APEX_ROOT to the pinned recovery-integration checkout; see agents/apex/README.md")
     root = Path(value).resolve(strict=True)
-    # The explicitly supplied checkout is read-only in Docker and may be owned
-    # by the host user even when the caller selects a root container.
+    # The explicitly supplied checkout is read-only in Docker.
     git = ["git", "-c", f"safe.directory={root}", "-C", str(root)]
     revision = subprocess.run([*git, "rev-parse", "HEAD"],
                               capture_output=True, text=True, check=True, timeout=10).stdout.strip()
@@ -35,13 +33,6 @@ def runtime_environment() -> dict[str, str]:
 
 
 def check_runtime(*, gpu: bool = False) -> None:
-    bwrap = shutil.which("bwrap")
-    if bwrap is None:
-        raise ValueError("Apex requires bubblewrap in the GPU image; see agents/apex/README.md")
-    help_text = subprocess.run([bwrap, "--help"], capture_output=True, text=True,
-                               check=True, timeout=10).stdout
-    if not all(flag in help_text for flag in ("--json-status-fd", "--block-fd", "--unshare-pid")):
-        raise ValueError("The GPU image's bubblewrap lacks required Apex containment capabilities")
     environment = runtime_environment()
     probe = """
 import os
@@ -51,31 +42,15 @@ from apex.execution import SubprocessSupervisor
 import mcp
 result = SubprocessSupervisor().run(
     ['/bin/true'], cwd=Path.cwd(), environment=os.environ,
-    timeout_seconds=10, require_pid_namespace=True,
+    timeout_seconds=10,
 )
 if result.exit_code != 0 or not result.cleanup_succeeded:
-    raise RuntimeError('Apex process namespace preflight failed')
+    raise RuntimeError('Apex process preflight failed')
 """
     if gpu:
         probe += """
-import torch
-from apex.runtime.gpu import resolve_gpu_device_scope
-from apex.runtime.gpu_ownership import RocmSmiGpuOwnershipInspector
-# Launch a real GPU operation, then retain its allocation and context. Merely
-# reserving memory need not create a KFD queue visible to the ownership API.
-allocation = torch.ones(1, device='cuda')
-torch.cuda.synchronize()
-try:
-    receipt = RocmSmiGpuOwnershipInspector().inspect(
-        resolve_gpu_device_scope(), allowed_pids=(os.getpid(),),
-    )
-    if not any(owner.pid == os.getpid() for owner in receipt.allowed_owners):
-        raise RuntimeError('KFD inventory did not identify the GPU preflight process')
-except Exception as error:
-    raise RuntimeError(
-        'Apex GPU ownership preflight failed; the container must resolve KFD '
-        'process identities. See agents/apex/README.md for host requirements.'
-    ) from error
+from apex.runtime.assigned_gpu import probe_assigned_gpus
+probe_assigned_gpus()
 """
     subprocess.run([sys.executable, "-c", probe], env=environment, check=True, timeout=60)
     print(f"Apex recovery-integration revision {APEX_REVISION}")
@@ -83,5 +58,5 @@ except Exception as error:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--gpu", action="store_true", help="Verify live GPU process ownership")
+    parser.add_argument("--gpu", action="store_true", help="Run a small operation on assigned GPUs")
     check_runtime(gpu=parser.parse_args().gpu)

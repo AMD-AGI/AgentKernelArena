@@ -51,6 +51,20 @@ assert_before() {
 # Capture the exact argv that the runner would pass to Docker without requiring
 # a daemon, GPU devices, or the benchmark images on this host.
 docker() {
+    if [[ "${1:-}" == run && -n "${FAKE_CONTAINER_STDIN:-}" ]]; then
+        cat > "$FAKE_CONTAINER_STDIN"
+        return 0
+    fi
+    if [[ -n "${FAKE_CONTAINER_CLEANUP:-}" ]]; then
+        if [[ "${1:-}" == run && "${2:-}" == --cidfile ]]; then
+            printf '%064d\n' 1 > "$3"
+            return 42
+        fi
+        if [[ "${1:-}" == rm ]]; then
+            printf '%s\n' "$*" >> "$FAKE_CONTAINER_CLEANUP"
+            return 0
+        fi
+    fi
     if [[ -n "${FAKE_RUNTIME_DIR:-}" ]]; then
         printf '%s\n' "$1" >> "$FAKE_RUNTIME_DIR/events"
         case "$1" in
@@ -1036,15 +1050,35 @@ assert_has "AKA_APEX_SDK_PATH=/workspace/.aka-pyuserbase/apex-sdk" "${args[@]}"
 assert_has "codex" "${args[@]}"
 assert_not_has "claude_code" "${args[@]}"
 mapfile -t args < <(run_check_args "$CODEX_HOME" "$APEX_TEST_CONFIG" \
-    APEX_ROOT="$APEX_TEST_ROOT" AKA_NODE_PREFIX="$CODEX_PREFIX" AKA_APEX_ROOT_CONTAINER=1 AKA_APEX_HOST_PID=1)
-assert_has "0:0" "${args[@]}"
-assert_has "--pid=host" "${args[@]}"
+    APEX_ROOT="$APEX_TEST_ROOT" AKA_NODE_PREFIX="$CODEX_PREFIX" AKA_DOCKER_PRIVILEGED=0)
+assert_has "$(id -u):$(id -g)" "${args[@]}"
+assert_not_has "--pid=host" "${args[@]}"
+assert_not_has "--privileged" "${args[@]}"
+assert_not_has "--cap-add=SYS_ADMIN" "${args[@]}"
+assert_not_has "--cap-add=SYS_PTRACE" "${args[@]}"
+assert_not_has "--security-opt=seccomp=unconfined" "${args[@]}"
+assert_not_has "--ipc=host" "${args[@]}"
+assert_not_has "--network=host" "${args[@]}"
+assert_has "--init" "${args[@]}"
+assert_has "--cidfile" "${args[@]}"
+if run_check_args "$CODEX_HOME" "$APEX_TEST_CONFIG" \
+    APEX_ROOT="$APEX_TEST_ROOT" AKA_NODE_PREFIX="$CODEX_PREFIX" \
+    FAKE_CONTAINER_CLEANUP="$TEST_HOME/container-cleanup" >/dev/null; then
+    fail "failed container must preserve its exit code"
+fi
+[[ "$(cat "$TEST_HOME/container-cleanup")" == "rm -f $(printf '%064d' 1)" ]] \
+    || fail "runner did not remove its own failed container"
+printf 'container input\n' | run_check_args "$CODEX_HOME" "$APEX_TEST_CONFIG" \
+    APEX_ROOT="$APEX_TEST_ROOT" AKA_NODE_PREFIX="$CODEX_PREFIX" \
+    FAKE_CONTAINER_STDIN="$TEST_HOME/container-input" >/dev/null
+[[ "$(cat "$TEST_HOME/container-input")" == 'container input' ]] \
+    || fail "runner did not preserve container stdin"
 printf 'agent:\n  template: apex\n  backend: cursor\n' > "$APEX_TEST_CONFIG"
 mapfile -t args < <(run_check_args "$CURSOR_HOME" "$APEX_TEST_CONFIG" APEX_ROOT="$APEX_TEST_ROOT")
 assert_has "cursor" "${args[@]}"
 assert_not_has "codex" "${args[@]}"
 mapfile -t args < <(run_check_args "$CODEX_HOME" "$CODEX_CONFIG" \
-    APEX_ROOT="$APEX_TEST_ROOT" AKA_NODE_PREFIX="$CODEX_PREFIX" AKA_APEX_ROOT_CONTAINER=1 AKA_APEX_HOST_PID=1)
+    APEX_ROOT="$APEX_TEST_ROOT" AKA_NODE_PREFIX="$CODEX_PREFIX")
 assert_not_has "$APEX_TEST_ROOT:/opt/arena-apex:ro" "${args[@]}"
 assert_not_has "--pid=host" "${args[@]}"
 assert_has "$(id -u):$(id -g)" "${args[@]}"

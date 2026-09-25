@@ -1,0 +1,13 @@
+# Reduction, elementwise arithmetic and matrix multiplication across two suites.
+agent:
+  template: apex
+  max_iterations: 1
+  max_turns: 30
+  timeout_seconds: 1200
+tasks:
+  - triton2triton/vllm/triton_rms_norm
+  - triton2triton/rocmbench/easy/test_kernel_sub
+  - triton2triton/rocmbench/medium/test_gemm_no_scf
+target_gpu_model: MI355X
+log_directory: logs
+workspace_directory_prefix: workspace

@@ -11,39 +11,13 @@ Prepare a **standalone clone** outside the Arena checkout on the GPU host.
 The runner mounts this directory read-only. Linked Git worktrees are not
 accepted because their Git metadata can live outside the mounted directory.
 
-Apex also requires Linux `bubblewrap` for its upstream process boundary. If the
-qualified scoring image does not include it, build the small derived image in
-[Dockerfile](Dockerfile). Select the base for the physical GPU from
-[Arena's image mapping](../../src/scripts/docker_benchmark.sh), using its
-immutable digest, and retain the resulting image ID for the experiment:
-
-```bash
-docker build --build-arg BASE_IMAGE=<qualified-base-image-at-digest> \
-  -f agents/apex/Dockerfile -t arena-apex-runtime agents/apex
-export AKA_DOCKER_IMAGE="$(docker image inspect --format '{{.Id}}' arena-apex-runtime)"
-```
-
-The build only installs the distribution's `bubblewrap` package and its system
-dependencies; it does not upgrade the scoring Python or ROCm stack. Run the
-following setup and experiment with that image override still exported.
-
-The default container user remains the caller's UID/GID. Hosts that prohibit
-unprivileged user-namespace UID mappings can explicitly set
-`AKA_APEX_ROOT_CONTAINER=1` for Apex runs. This runs the scoring container as
-root, and newly created experiment artifacts will be owned by root. It has no
-effect on other agents. The namespace preflight below must pass with the chosen
-container user before starting a task. With isolated agent homes, private state
-copies are owned by the container user so the nested process can read them;
-the read-only host state keeps its original ownership.
-
-The pinned runtime must also resolve the process IDs reported by KFD. If GPU
-preflight reports a PID visibility mismatch and host policy permits sharing
-the host PID namespace, set `AKA_APEX_HOST_PID=1`.
-This exposes host process metadata to the trusted controller; Apex still gives
-the backend its own verified PID/proc namespace. Both options are opt-in and
-apply only to Apex. If preflight still fails and the platform denies the needed
-visibility, retain the platform policy and stop the run. `docker-check-agents`
-checks live GPU ownership before optimization.
+Apex's standalone kernel path uses ordinary process groups and caller-assigned
+GPUs. It requires neither bubblewrap, root execution nor host PID sharing. Use
+Arena's architecture-matched scoring image directly. For clusters that require
+ordinary container permissions, set `AKA_DOCKER_PRIVILEGED=0`; the default remains
+the existing privileged GPU configuration. The scheduler must reserve the GPUs
+and prevent overlapping jobs. Apex checks GPU access with a real operation,
+without attempting to identify host GPU processes.
 
 ```bash
 git clone --branch codex/recovery-integration --single-branch \
@@ -55,6 +29,7 @@ export APEX_ROOT="$(cd ../apex-runtime && pwd)"
 # Authenticate the selected backend CLI on the host first.
 # Select the architecture matching the physical GPU for setup/smoke.
 export AKA_GPU_ARCH=gfx950
+export AKA_DOCKER_PRIVILEGED=0
 make docker-smoke
 make docker-setup-apex
 make docker-check-agents CONFIG=example_configs/quickstart_apex_mi355x.yaml
@@ -65,12 +40,12 @@ For MI300/MI300X use `gfx942` and `quickstart_apex_mi300.yaml`.
 `docker-setup-apex` installs the small standalone Python dependencies from
 [requirements.txt](requirements.txt) into Arena's persistent container dependency
 directory. It does not install Apex's separate E2E benchmark dependencies.
-Normal preflight checks bubblewrap capabilities, the clean source pin and the
-runtime import, then verifies the upstream process boundary with `/bin/true`.
-It does not download or switch Apex source. Agent preflight additionally runs a
-small GPU operation and requires the pinned runtime to identify that process
-through KFD. Backend CLI capabilities and full GPU lease checks must
-also satisfy the pinned runtime.
+Normal preflight checks the clean source pin, runtime import and ordinary
+subprocess cleanup. Agent preflight additionally runs a small GPU operation.
+It does not download or switch Apex source. The selected backend must support
+the pinned runtime's CLI arguments. For three different workload types, use
+`example_configs/qualification_apex_mi355x.yaml` (normalization, elementwise
+subtraction and matrix multiplication).
 
 ## Configuration
 
@@ -102,7 +77,7 @@ guard. Full task instructions remain in the copied task package.
    source revision, and is never pushed.
 3. The adapter supplies a caller-neutral TaskSpec and binds evaluator authority
    to the exact previewed contract. The upstream optimizer controls search,
-   knowledge, GPU leases and backend invocation.
+   knowledge, assigned-GPU startup checks and backend invocation.
 4. The action bridge runs the task's declared commands through Arena's shared
    action executor, preserving action timeouts, numerical checks, case coverage,
    and candidate-evaluation semantics. Checks run in temporary copies so build
@@ -122,17 +97,20 @@ artifacts, not source files to commit or publish automatically.
 
 ## Execution boundary
 
-The additional source mount is read-only and only enabled for Apex. Optional
-host PID visibility and root container execution require explicit configuration
-as described above. The upstream backend supervisor establishes a separate
-PID/proc namespace for the agent and verifies its cleanup. The adapter
+The additional source mount is read-only and only enabled for Apex. The container
+runs as the caller's UID/GID, with a private PID namespace and an init process to
+reap orphaned children. The upstream supervisor bounds and cleans its ordinary
+process groups. The outer container is the execution boundary; the default
+backend does not start another filesystem/process sandbox inside it. The adapter
 starts the pinned package in a separate process with a deadline and bounded
 output; it cleans up observed descendants and checks returned patches before
 writing the scored workspace. Authentication comes from the existing selected
 backend mount and is not placed in task specifications or command arguments.
-The optimizer still runs in Arena's privileged GPU container. Its private task
+The runner removes its own container on exit or cancellation. Its private task
 copy and process supervision are reproducibility measures, not a hostile-code
-security sandbox. The existing evaluator and harness guard remain authoritative.
+security sandbox. Detached processes are ultimately bounded by the container
+lifetime. GPU metadata explicitly leaves host ownership unverified. The existing
+evaluator and harness guard remain authoritative.
 
 ## Tests
 

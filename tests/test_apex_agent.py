@@ -253,27 +253,6 @@ def test_input_drift_and_concurrent_delivery_are_rejected(case):
     assert (root / "kernel.py").read_text() == "concurrent edit"
 
 
-@pytest.mark.skipif(sys.platform != "linux" or os.getuid() != 0, reason="Requires a root Linux container")
-def test_root_isolated_auth_copy(tmp_path):
-    state = tmp_path / "state"
-    (state / ".codex").mkdir(parents=True)
-    auth = state / ".codex/auth.json"
-    auth.write_text("{}")
-    auth.chmod(0o600)
-    os.chown(auth, 10001, 10001)
-    home = tmp_path / "home"
-    environment = dict(os.environ, HOME=str(home), AKA_AGENT_STATE_MOUNT_ROOT=str(state),
-                       AKA_APEX_SDK_PATH=str(tmp_path / "sdk"))
-    runner = Path(__file__).resolve().parents[1] / "src/scripts/docker_benchmark.sh"
-    subprocess.run(["bash", str(runner), "_container_prepare_worker_home"],
-                   env=environment, check=True, timeout=30)
-    copied = home / ".codex/auth.json"
-    assert auth.stat().st_uid == 10001
-    assert copied.stat().st_uid == os.getuid()
-    assert copied.stat().st_mode & 0o777 == 0o600
-    assert copied.read_bytes() == auth.read_bytes()
-
-
 def test_runtime_rejects_another_branch(tmp_path, monkeypatch):
     from agents.apex import runtime
     monkeypatch.setenv("APEX_ROOT", str(tmp_path))
@@ -282,22 +261,24 @@ def test_runtime_rejects_another_branch(tmp_path, monkeypatch):
         runtime.runtime_environment()
 
 
-def test_missing_containment_dependency_fails_preflight(monkeypatch):
+def test_preflight_uses_ordinary_processes(monkeypatch):
     from agents.apex import runtime
-    monkeypatch.setattr(runtime.shutil, "which", lambda name: None)
-    with pytest.raises(ValueError, match="requires bubblewrap"):
-        runtime.check_runtime()
+    monkeypatch.setattr(runtime, "runtime_environment", lambda: {})
+    calls = []
+    monkeypatch.setattr(runtime.subprocess, "run", lambda argv, **kw: calls.append(argv))
+    runtime.check_runtime(gpu=True)
+    assert len(calls) == 1
+    assert "probe_assigned_gpus" in calls[0][-1]
+    assert "require_pid_namespace=True" not in calls[0][-1]
+    assert "OwnershipInspector" not in calls[0][-1]
 
 
 @pytest.mark.parametrize("gpu", [False, True])
 def test_failed_runtime_probe_is_not_accepted(monkeypatch, gpu):
     from agents.apex import runtime
-    monkeypatch.setattr(runtime.shutil, "which", lambda name: "/usr/bin/bwrap")
     monkeypatch.setattr(runtime, "runtime_environment", lambda: {})
 
     def run(argv, **kwargs):
-        if argv[-1] == "--help":
-            return subprocess.CompletedProcess(argv, 0, "--json-status-fd --block-fd --unshare-pid")
         raise subprocess.CalledProcessError(1, argv)
 
     monkeypatch.setattr(runtime.subprocess, "run", run)
