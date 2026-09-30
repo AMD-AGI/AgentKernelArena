@@ -1,0 +1,937 @@
+{
+  "definition": {
+    "schema_version": 2,
+    "name": "gemm_a8w8_blockwise_scaled_blk128x128_nt_obfloat16_bshuf16x16_aslogical_n1024_k4096",
+    "description": "Optional callbacks (exported as run): initialize(inputs, seed=0) fills preallocated input buffers in place and returns the same dict; compare(actual, expected) returns None on success or raises AssertionError.\nblockwise-scaled fp8 gemm: a (m, k) x b, dequantized per block. AITER 16x16 weight encoding; logical activation-scale values. Value baseline includes output allocation; logical replay also includes scale relayout, so it is not native-stride live latency. Baseline requires matching E4M3FN operands and an isolated process with SIKL_DISABLE_PROXY=1 SIKL_SCHEMA_DUMP=0. Compare uses existing output tolerances: BF16 atol=rtol=1e-2, FP16 atol=rtol=1e-3.",
+    "op_type": "gemm",
+    "tags": [
+      "api:sikl.ops.gemm.gemm.gemm_a8w8_blockwise_scaled",
+      "gemm",
+      "sikl",
+      "a8w8",
+      "blockwise_scaled",
+      "trans_b:True",
+      "a_scale_storage:logical"
+    ],
+    "axes": {
+      "m": {
+        "type": "var",
+        "description": "Rows of the activation; tokens in this call."
+      },
+      "n": {
+        "type": "const",
+        "value": 1024,
+        "description": "Output columns."
+      },
+      "k": {
+        "type": "const",
+        "value": 4096,
+        "description": "Reduction length."
+      },
+      "sn": {
+        "type": "const",
+        "value": 8,
+        "description": "Weight-scale rows, ceil(n / block_n)."
+      },
+      "sk": {
+        "type": "const",
+        "value": 32,
+        "description": "Weight-scale columns, ceil(k / block_k)."
+      }
+    },
+    "inputs": {
+      "a": {
+        "shape": [
+          "m",
+          "k"
+        ],
+        "dtype": "float8_e4m3fn",
+        "description": "fp8 activations."
+      },
+      "b": {
+        "shape": [
+          "n",
+          "k"
+        ],
+        "dtype": "float8_e4m3fn",
+        "description": "AITER shuffle_weight(layout=(16,16)) encoded fp8 weights."
+      },
+      "a_scale": {
+        "shape": [
+          "m",
+          "sk"
+        ],
+        "dtype": "float32",
+        "description": "Logical (m, sk) scale values; live column-major strides need backend fallback."
+      },
+      "b_scale": {
+        "shape": [
+          "sn",
+          "sk"
+        ],
+        "dtype": "float32",
+        "description": "Per-(block_n, block_k) weight scale."
+      }
+    },
+    "outputs": {
+      "out": {
+        "shape": [
+          "m",
+          "n"
+        ],
+        "dtype": "bfloat16",
+        "description": "Blockwise-dequantized product a @ b, plus bias."
+      }
+    },
+    "reference": "from __future__ import annotations\nfrom functools import partial as partial\nimport torch as torch\n\n@torch.no_grad()\ndef _blockwise_scaled_reference(\n    a: torch.Tensor,\n    b: torch.Tensor,\n    a_scale: torch.Tensor,\n    b_scale: torch.Tensor,\n    bias: torch.Tensor | None = None,\n    *,\n    trans_b: bool = True,\n    block_size: tuple[int, int] = (128, 128),\n    out_dtype: str = \"bfloat16\",\n    scale_major_mode: str = \"K\",\n    a_scale_storage: str = \"plain\",\n) -> torch.Tensor:\n    \"\"\"Decode declared values (not arbitrary storage), dequantize, then fp32 GEMM.\n\n    Inverse of aiter.ops.shuffle.shuffle_weight(layout=(16,16)), MIT licensed,\n    source commit 21db2d9edeab6f9315cae49d3d3203c5a44ea928. No AITER import.\n    \"\"\"\n    m, k = a.shape\n    weight = b if trans_b else b.transpose(-1, -2)\n    n = weight.shape[0]\n    block_n, block_k = block_size\n    if a_scale_storage != \"plain\":\n        weight = (\n            weight.reshape(n // 16, k // 32, 2, 16, 16)\n            .permute(0, 3, 1, 2, 4)\n            .reshape(n, k)\n        )\n    if a_scale_storage == \"raw\":\n        a_scale = a_scale.reshape(-1, m).T\n    elif scale_major_mode == \"MN\":\n        a_scale = a_scale.T\n    lhs_scale = a_scale.to(torch.float32).repeat_interleave(block_k, dim=1)[:, :k]\n    lhs = a.to(torch.float32) * lhs_scale\n    weight_scale = b_scale.to(torch.float32)\n    weight_scale = weight_scale.repeat_interleave(block_n, dim=0).repeat_interleave(\n        block_k, dim=1\n    )\n    weight = weight.to(torch.float32) * weight_scale[:n, :k]\n\n    with torch.autocast(a.device.type, enabled=False):\n        out = lhs @ weight.transpose(-1, -2)\n    if bias is not None:\n        out = out + bias.to(torch.float32)\n    return out.to(getattr(torch, out_dtype))\n\n\n_callable = partial(_blockwise_scaled_reference, **{'trans_b': True, 'block_size': (128, 128,), 'scale_major_mode': 'K', 'a_scale_storage': 'logical', 'out_dtype': 'bfloat16'})\n\n\ndef run(*args, **kwargs):\n    return _callable(*args, **kwargs)\n",
+    "initialize": "from __future__ import annotations\nfrom abc import ABC as ABC\nfrom abc import abstractmethod as abstractmethod\nfrom collections.abc import Mapping as Mapping\nfrom dataclasses import dataclass as dataclass\nfrom functools import partial as partial\nimport math as math\nimport torch as torch\n\ndef check_init_buffers(inputs, tensor_names, seed=0) -> torch.Generator:\n    \"\"\"Validate metadata before writes; independent buffers must not overlap.\"\"\"\n    if type(inputs) is not dict:\n        raise ValueError(\"inputs must be a dictionary of canonical input names\")\n    if type(seed) is not int or not 0 <= seed < 2**63:\n        raise ValueError(\"seed must be an integer in [0, 2**63)\")\n    device = None\n    ranges = []\n    for name in tensor_names:\n        tensor = inputs.get(name)\n        if not isinstance(tensor, torch.Tensor) or tensor.layout != torch.strided:\n            raise ValueError(f\"{name}: expected a dense strided Tensor\")\n        if not tensor.is_contiguous() or tensor.device.type not in (\"cpu\", \"cuda\"):\n            raise ValueError(f\"{name}: expected a contiguous CPU/CUDA tensor\")\n        if device is not None and device != tensor.device:\n            raise ValueError(\"all input buffers must use the same device\")\n        device = tensor.device\n        if tensor.numel():\n            start = tensor.data_ptr()\n            end = start + tensor.numel() * tensor.element_size()\n            for other, low, high in ranges:\n                if start < high and low < end:\n                    raise ValueError(f\"input buffers overlap: {other} and {name}\")\n            ranges.append((name, start, end))\n    if device is None:\n        raise ValueError(\"at least one input tensor is required\")\n    return torch.Generator(device=device).manual_seed(seed)\n\n\nclass Initializer(ABC):\n    \"\"\"Initialize one or more buffers, independently of their input names.\"\"\"\n\n    @abstractmethod\n    def validate(self, *tensors: torch.Tensor) -> None:\n        \"\"\"Check parameters and buffer metadata without reading their contents.\"\"\"\n\n    @abstractmethod\n    def initialize(self, *tensors: torch.Tensor, generator: torch.Generator) -> None:\n        \"\"\"Write validated buffers in place; use only the supplied RNG.\"\"\"\n\n    def __call__(self, *tensors, seed=None, generator=None):\n        \"\"\"Return the original tensor, or a tuple for multiple tensor arguments.\"\"\"\n        if generator is not None and seed is not None:\n            raise ValueError(\"specify seed or generator, not both\")\n        buffers = {f\"tensor_{i}\": tensor for i, tensor in enumerate(tensors)}\n        local = check_init_buffers(buffers, tuple(buffers), 0 if seed is None else seed)\n        if generator is not None and generator.device != local.device:\n            raise ValueError(\"generator and tensor must use the same device\")\n        self.validate(*tensors)\n        self.initialize(*tensors, generator=local if generator is None else generator)\n        return tensors[0] if len(tensors) == 1 else tensors\n\n\ndef _finite_parameter(name, value):\n    if (\n        isinstance(value, bool)\n        or not isinstance(value, (int, float))\n        or not math.isfinite(value)\n    ):\n        raise ValueError(f\"{name} must be a finite number\")\n\n\ndef _require_float(tensor):\n    # Packed FP4 and E8M0 describe encodings, not ordinary floating-point data.\n    supported = (torch.float16, torch.bfloat16, torch.float32, torch.float64)\n    fp8 = tuple(\n        getattr(torch, name)\n        for name in (\n            \"float8_e4m3fn\",\n            \"float8_e5m2\",\n            \"float8_e4m3fnuz\",\n            \"float8_e5m2fnuz\",\n        )\n        if hasattr(torch, name)\n    )\n    if tensor.dtype not in supported + fp8:\n        raise ValueError(\n            f\"{tensor.dtype} requires an explicit integer or encoding initializer\"\n        )\n\n\n@dataclass(frozen=True)\nclass ConstantInit(Initializer):\n    value: float = 0.0\n\n    def validate(self, tensor):\n        if not isinstance(self.value, bool):\n            _finite_parameter(\"value\", self.value)\n        if tensor.dtype == torch.bool:\n            if self.value not in (0, 1):\n                raise ValueError(\"boolean constants must be 0 or 1\")\n        elif tensor.is_floating_point():\n            _require_float(tensor)\n            if abs(self.value) > torch.finfo(tensor.dtype).max:\n                raise ValueError(\"constant exceeds dtype range\")\n        else:\n            try:\n                limits = torch.iinfo(tensor.dtype)\n            except TypeError as error:\n                raise ValueError(\n                    \"encoded tensors require a joint initializer\"\n                ) from error\n            if (\n                int(self.value) != self.value\n                or not limits.min <= self.value <= limits.max\n            ):\n                raise ValueError(\"constant must be an integer in the dtype range\")\n\n    def initialize(self, tensor, *, generator):\n        # copy_ also works for the FP8 dtypes without a fill_ kernel.\n        tensor.copy_(\n            torch.full(\n                tensor.shape,\n                self.value,\n                dtype=torch.float64 if tensor.is_floating_point() else tensor.dtype,\n                device=tensor.device,\n            )\n        )\n\n\n@dataclass(frozen=True, init=False, repr=False)\nclass InputInitializer:\n    \"\"\"Bind tensor names to strategies and validate all buffers before in-place writes.\"\"\"\n\n    bindings: tuple[tuple[tuple[str, ...], Initializer], ...]\n\n    def __init__(\n        self,\n        initializers: Mapping[str | tuple[str, ...], Initializer] | None = None,\n        /,\n        **tensors: Initializer,\n    ):\n        if initializers is None:\n            initializers = {}\n        if not isinstance(initializers, Mapping):\n            raise TypeError(\n                \"initializers must be a mapping of input names to strategies\"\n            )\n        bindings, seen = [], set()\n        for target, initializer in (*initializers.items(), *tensors.items()):\n            names = (target,) if isinstance(target, str) else target\n            if (\n                not isinstance(names, tuple)\n                or not names\n                or not all(isinstance(name, str) and name for name in names)\n            ):\n                raise ValueError(\"targets must be a nonempty name or tuple of names\")\n            if not isinstance(initializer, Initializer):\n                raise TypeError(\"strategies must be Initializer instances\")\n            for name in names:\n                if name in seen:\n                    raise ValueError(\n                        f\"an input buffer cannot be initialized twice: {name}\"\n                    )\n                seen.add(name)\n            bindings.append((names, initializer))\n        object.__setattr__(self, \"bindings\", tuple(bindings))\n\n    def __repr__(self):\n        # Keep the positional mapping so callback export reserves no input names.\n        return f\"{type(self).__name__}({dict(self.bindings)!r})\"\n\n    @property\n    def tensor_names(self):\n        return tuple(name for names, _ in self.bindings for name in names)\n\n    def __call__(self, inputs, *, seed=0):\n        rng = check_init_buffers(inputs, self.tensor_names, seed)\n        self.validate(inputs)\n        self.initialize(inputs, generator=rng)\n        return inputs\n\n    def validate(self, inputs):\n        actual_names = {\n            name for name, value in inputs.items() if isinstance(value, torch.Tensor)\n        }\n        if actual_names != set(self.tensor_names):\n            raise ValueError(\n                f\"expected tensor buffers {self.tensor_names}, got {sorted(actual_names)}\"\n            )\n        for names, initializer in self.bindings:\n            initializer.validate(*(inputs[name] for name in names))\n\n    def initialize(self, inputs, *, generator):\n        for names, initializer in self.bindings:\n            initializer.initialize(\n                *(inputs[name] for name in names), generator=generator\n            )\n\n\n@dataclass(frozen=True)\nclass NormalInit(Initializer):\n    \"\"\"Normal activations, sampled natively where torch supports the dtype.\"\"\"\n\n    mean: float = 0.0\n    std: float = 1.0\n\n    def validate(self, tensor):\n        _require_float(tensor)\n        _finite_parameter(\"mean\", self.mean)\n        _finite_parameter(\"std\", self.std)\n        if self.std < 0:\n            raise ValueError(\"std must be nonnegative\")\n        limit = torch.finfo(tensor.dtype).max\n        if abs(self.mean) > limit or self.std > limit:\n            raise ValueError(\"normal parameters exceed the target dtype range\")\n\n    def initialize(self, tensor, *, generator):\n        native = tensor.dtype in (\n            torch.float16,\n            torch.bfloat16,\n            torch.float32,\n            torch.float64,\n        )\n        work = tensor if native else torch.empty_like(tensor, dtype=torch.float32)\n        work.normal_(mean=self.mean, std=self.std, generator=generator)\n        limit = torch.finfo(tensor.dtype).max\n        work.nan_to_num_(nan=0.0, posinf=limit, neginf=-limit).clamp_(-limit, limit)\n        if not native:\n            tensor.copy_(work)\n\n\n@dataclass(frozen=True)\nclass UniformInit(Initializer):\n    low: float = 0.0\n    high: float = 1.0\n\n    def validate(self, tensor):\n        _require_float(tensor)\n        _finite_parameter(\"low\", self.low)\n        _finite_parameter(\"high\", self.high)\n        limit = torch.finfo(tensor.dtype).max\n        if not -limit <= self.low < self.high <= limit or self.high - self.low > limit:\n            raise ValueError(\"uniform bounds must be ordered and representable\")\n\n    def initialize(self, tensor, *, generator):\n        native = tensor.dtype in (\n            torch.float16,\n            torch.bfloat16,\n            torch.float32,\n            torch.float64,\n        )\n        work = tensor if native else torch.empty_like(tensor, dtype=torch.float32)\n        work.uniform_(self.low, self.high, generator=generator)\n        if not native:\n            tensor.copy_(work)\n\n\n_FP8_DTYPES = (torch.float8_e4m3fn, torch.float8_e5m2,)\n\n\ndef _valid_blockwise_scaled_shapes(\n    a, b, a_scale, b_scale, bias, *, block_size, scale_major_mode, trans_b\n):\n    \"\"\"Metadata-only shape contract, also used by the exported initializer.\"\"\"\n    if (\n        type(trans_b) is not bool\n        or not isinstance(block_size, (tuple, list))\n        or len(block_size) != 2\n        or any(type(v) is not int or v <= 0 for v in block_size)\n        or type(scale_major_mode) is not str\n        or scale_major_mode not in (\"K\", \"MN\")\n    ):\n        return False\n    if any(\n        not isinstance(t, torch.Tensor) or t.ndim != 2 for t in (a, b, a_scale, b_scale)\n    ):\n        return False\n    m, k = a.shape\n    n = b.shape[0 if trans_b else 1]\n    if b.shape[1 if trans_b else 0] != k:\n        return False\n    bn, bk = block_size\n    sn, sk = (n + bn - 1) // bn, (k + bk - 1) // bk\n    return (\n        a_scale.shape == ((m, sk) if scale_major_mode == \"K\" else (sk, m))\n        and b_scale.shape == (sn, sk)\n        and (bias is None or (isinstance(bias, torch.Tensor) and bias.shape == (n,)))\n    )\n\n\n@torch.no_grad()\ndef initialize_blockwise_scaled_inputs(\n    inputs,\n    *,\n    seed=0,\n    block_size=(128, 128),\n    scale_major_mode=\"K\",\n    trans_b=True,\n    a_scale_storage=\"plain\",\n):\n    \"\"\"Fill logical values or encoded payloads without replacing buffers/strides.\n\n    Raw and logical preshuffle fixtures share the same logical random matrices\n    and nonuniform positive scales. Blob replay bypasses this initializer.\n    \"\"\"\n    required = {\"a\", \"b\", \"a_scale\", \"b_scale\"}\n    if type(inputs) is not dict or inputs.keys() not in (\n        required,\n        required | {\"bias\"},\n    ):\n        raise ValueError(\"expected a, b, a_scale, b_scale and optionally bias\")\n    check_init_buffers(inputs, tuple(inputs), seed)\n    a, b = inputs[\"a\"], inputs[\"b\"]\n    a_scale, b_scale = inputs[\"a_scale\"], inputs[\"b_scale\"]\n    if not _valid_blockwise_scaled_shapes(\n        a,\n        b,\n        a_scale,\n        b_scale,\n        inputs.get(\"bias\"),\n        block_size=block_size,\n        scale_major_mode=scale_major_mode,\n        trans_b=trans_b,\n    ):\n        raise ValueError(\n            \"invalid blockwise-scaled matrix/scale/bias shapes or tile sizes\"\n        )\n    if (\n        a.dtype not in _FP8_DTYPES\n        or b.dtype not in _FP8_DTYPES\n        or a_scale.dtype != torch.float32\n        or b_scale.dtype != torch.float32\n        or a_scale_storage not in (\"plain\", \"raw\", \"logical\")\n    ):\n        raise ValueError(\"expected FP8 operands, FP32 scales and a known storage mode\")\n    if a_scale_storage != \"plain\" and (\n        not trans_b\n        or tuple(block_size) != (128, 128)\n        or scale_major_mode != \"K\"\n        or \"bias\" in inputs\n        or a.dtype != torch.float8_e4m3fn\n        or b.dtype != a.dtype\n        or min(a.shape[0], b.shape[0], a.shape[1]) <= 0\n        or b.shape[0] % 16\n        or a.shape[1] % 128\n    ):\n        raise ValueError(\"invalid AITER 16x16 preshuffle contract\")\n    strategies: dict[str, Initializer] = {\n        \"a\": NormalInit(),\n        \"b\": NormalInit(),\n        \"a_scale\": UniformInit(0.125, 1.0),\n        \"b_scale\": UniformInit(0.125, 1.0),\n    }\n    if \"bias\" in inputs:\n        strategies[\"bias\"] = ConstantInit(1)\n    InputInitializer(**strategies)(inputs, seed=seed)\n    if a_scale_storage != \"plain\":\n        n, k = b.shape\n        # Forward AITER shuffle_weight(layout=(16,16)), one-byte FP8 operands.\n        b.copy_(\n            b.reshape(n // 16, 16, k // 32, 2, 16)\n            .permute(0, 2, 3, 1, 4)\n            .contiguous()\n            .reshape(n, k)\n        )\n        if a_scale_storage == \"raw\":\n            a_scale.copy_(a_scale.T.contiguous().reshape(a_scale.shape))\n    return inputs\n\n\n_callable = partial(initialize_blockwise_scaled_inputs, **{'trans_b': True, 'block_size': (128, 128,), 'scale_major_mode': 'K', 'a_scale_storage': 'logical'})\n\n\ndef run(*args, **kwargs):\n    return _callable(*args, **kwargs)\n",
+    "compare": "from __future__ import annotations\nfrom abc import ABC as ABC\nfrom abc import abstractmethod as abstractmethod\nfrom dataclasses import dataclass as dataclass\nfrom dataclasses import field as field\nimport math as math\nimport torch as torch\n\n@dataclass(frozen=True)\nclass ComparisonResult:\n    passed: bool\n    metrics: dict[str, float]\n    message: str | None = None\n\n\ndef _exact_result(actual, expected):\n    if expected.dtype == getattr(torch, \"float4_e2m1fn_x2\", None):\n        actual, expected = actual.view(torch.uint8), expected.view(torch.uint8)\n    bad = int((actual != expected).sum().item())\n    ratio = 1 - bad / actual.numel() if actual.numel() else 1.0\n    return ComparisonResult(\n        bad == 0,\n        {\"matched_ratio\": ratio},\n        f\"{bad}/{actual.numel()} elements differ\" if bad else None,\n    )\n\n\ndef validate_comparison(actual, expected, *, allow_packed=False):\n    \"\"\"Invalid references are ValueError; candidate contract failures are AssertionError.\"\"\"\n    if (\n        not isinstance(expected, torch.Tensor)\n        or expected.layout != torch.strided\n        or expected.device.type not in (\"cpu\", \"cuda\")\n        or expected.is_complex()\n        or expected.is_quantized\n    ):\n        raise ValueError(\"invalid reference: expected a dense real CPU/CUDA tensor\")\n    packed = expected.dtype == getattr(torch, \"float4_e2m1fn_x2\", None)\n    if packed and not allow_packed:\n        raise ValueError(\n            \"packed FP4 outputs must be decoded before numerical comparison\"\n        )\n    if (\n        expected.is_floating_point()\n        and not packed\n        and not torch.isfinite(expected.to(torch.float64)).all().item()\n    ):\n        raise ValueError(\"invalid reference: non-finite output\")\n    if not isinstance(actual, torch.Tensor) or actual.layout != torch.strided:\n        raise AssertionError(\"candidate must return one dense Tensor\")\n    if actual.shape != expected.shape:\n        raise AssertionError(f\"shape {actual.shape}, expected {expected.shape}\")\n    if actual.dtype != expected.dtype:\n        raise AssertionError(f\"dtype {actual.dtype}, expected {expected.dtype}\")\n    if actual.device != expected.device:\n        raise AssertionError(f\"device {actual.device}, expected {expected.device}\")\n    if (\n        actual.is_floating_point()\n        and not packed\n        and not torch.isfinite(actual.to(torch.float64)).all().item()\n    ):\n        raise AssertionError(\"candidate contains NaN or Inf\")\n\n\nclass Comparison(ABC):\n    \"\"\"Callable assertion plus a non-raising numerical report for valid tensor pairs.\"\"\"\n\n    allow_packed = False\n\n    @torch.no_grad()\n    def evaluate(self, actual, expected):\n        validate_comparison(actual, expected, allow_packed=self.allow_packed)\n        with torch.autocast(expected.device.type, enabled=False):\n            if not expected.is_floating_point():\n                return _exact_result(actual, expected)\n            return self.measure(actual, expected)\n\n    def __call__(self, actual, expected):\n        result = self.evaluate(actual, expected)\n        if not result.passed:\n            raise AssertionError(\n                result.message or f\"comparison failed: {result.metrics}\"\n            )\n\n    @abstractmethod\n    def measure(self, actual, expected) -> ComparisonResult:\n        \"\"\"Measure tensors already validated by evaluate.\"\"\"\n\n\n@dataclass(frozen=True)\nclass Tolerances:\n    atol: float\n    rtol: float\n    min_cosine_similarity: float\n\n\nclass TolerancePolicy(ABC):\n    @abstractmethod\n    def resolve(self, compute_dtype) -> Tolerances:\n        \"\"\"Resolve a mathematical compute format, which may differ from output dtype.\"\"\"\n\n\n@dataclass(frozen=True)\nclass DTypeTolerancePolicy(TolerancePolicy):\n    \"\"\"Legacy tolerances for elementwise and cosine comparisons.\"\"\"\n\n    def resolve(self, compute_dtype):\n        name = str(getattr(compute_dtype, \"value\", compute_dtype)).removeprefix(\n            \"torch.\"\n        )\n        aliases = {\n            \"fp64\": \"float64\",\n            \"fp32\": \"float32\",\n            \"fp16\": \"float16\",\n            \"bf16\": \"bfloat16\",\n            \"mxfp4\": \"fp4\",\n            \"nvfp4\": \"fp4\",\n            \"float4_e2m1\": \"fp4\",\n            \"float4_e2m1fn_x2\": \"fp4\",\n        }\n        name = aliases.get(name, name)\n        if name in (\n            \"float8_e4m3fn\",\n            \"float8_e5m2\",\n            \"float8_e4m3fnuz\",\n            \"float8_e5m2fnuz\",\n        ):\n            name = \"fp8\"\n        table = {\n            \"float64\": (1e-12, 1e-12, 1 - 1e-12),\n            \"float32\": (1e-5, 1e-5, 1 - 1e-6),\n            \"float16\": (1e-3, 1e-3, 0.9999),\n            \"bfloat16\": (1e-2, 1e-2, 0.999),\n            \"fp8\": (0.125, 0.125, 0.99),\n            \"fp4\": (0.25, 0.25, 0.98),\n        }\n        if name not in table:\n            raise ValueError(\n                f\"no tolerance profile for compute dtype {compute_dtype!r}\"\n            )\n        return Tolerances(*table[name])\n\n\ndef _check_threshold(name, value, *, lower=0, upper=None):\n    if (\n        isinstance(value, bool)\n        or not isinstance(value, (int, float))\n        or not math.isfinite(value)\n        or (lower is not None and value < lower)\n        or (upper is not None and value > upper)\n    ):\n        raise ValueError(f\"invalid {name}: {value!r}\")\n\n\n@dataclass(frozen=True)\nclass DefaultCompare(Comparison):\n    atol: float | None = None\n    rtol: float | None = None\n    compute_dtype: object = None\n    policy: TolerancePolicy = field(default_factory=DTypeTolerancePolicy)\n    mode: str = \"either\"\n    required_matched_ratio: float = 1.0\n\n    def __post_init__(self):\n        if self.mode not in (\"either\", \"additive\"):\n            raise ValueError(\"mode must be 'either' or 'additive'\")\n        _check_threshold(\"required_matched_ratio\", self.required_matched_ratio, upper=1)\n        for name in (\"atol\", \"rtol\"):\n            if getattr(self, name) is not None:\n                _check_threshold(name, getattr(self, name))\n\n    def measure(self, actual, expected):\n        atol, rtol = self.atol, self.rtol\n        if atol is None or rtol is None:\n            defaults = self.policy.resolve(\n                expected.dtype if self.compute_dtype is None else self.compute_dtype\n            )\n            atol = defaults.atol if atol is None else atol\n            rtol = defaults.rtol if rtol is None else rtol\n        _check_threshold(\"atol\", atol)\n        _check_threshold(\"rtol\", rtol)\n        if not expected.numel():\n            return ComparisonResult(\n                True,\n                {\n                    \"max_absolute_error\": 0.0,\n                    \"max_relative_error\": 0.0,\n                    \"matched_ratio\": 1.0,\n                },\n            )\n        dtype = torch.float64 if expected.dtype == torch.float64 else torch.float32\n        x, y = actual.to(dtype), expected.to(dtype)\n        absolute = (x - y).abs()\n        relative = absolute / (y.abs() + 1e-8)\n        matches = (\n            ((absolute <= atol) | (relative <= rtol))\n            if self.mode == \"either\"\n            else (absolute <= atol + rtol * y.abs())\n        )\n        matched = int(matches.sum().item())\n        ratio = matched / matches.numel()\n        metrics = {\n            \"max_absolute_error\": absolute.max().item(),\n            \"max_relative_error\": relative.max().item(),\n            \"matched_ratio\": ratio,\n        }\n        passed = ratio >= self.required_matched_ratio\n        return ComparisonResult(\n            passed,\n            metrics,\n            (\n                None\n                if passed\n                else f\"{matches.numel() - matched}/{matches.numel()} elements fail {self.mode} tolerance (atol={atol}, rtol={rtol}); {metrics}\"\n            ),\n        )\n\n\n@torch.no_grad()\ndef compare_gemm_outputs(actual, expected):\n    \"\"\"The 16-bit GEMM contract owns its output tolerances.\"\"\"\n    tolerance = {torch.bfloat16: 1e-2, torch.float16: 1e-3}.get(\n        getattr(expected, \"dtype\", None)\n    )\n    if tolerance is None:\n        raise ValueError(\"invalid GEMM reference: expected a BF16/FP16 tensor\")\n    return DefaultCompare(atol=tolerance, rtol=tolerance)(actual, expected)\n\n\n_callable = compare_gemm_outputs\n\n\ndef run(*args, **kwargs):\n    return _callable(*args, **kwargs)\n",
+    "constraints": [
+      "sn == (n + 127) // 128",
+      "sk == (k + 127) // 128"
+    ],
+    "check": "def _check_blockwise_scaled_outputs(expected, actual):\n    \"\"\"Keep the legacy bool callback consistent with the exported compare hook.\"\"\"\n    try:\n        compare_gemm_outputs(actual, expected)\n    except (AssertionError, ValueError):\n        return False\n    return True\n"
+  },
+  "rows": [
+    {
+      "definition": "gemm_a8w8_blockwise_scaled_blk128x128_nt_obfloat16_bshuf16x16_aslogical_n1024_k4096",
+      "workload": {
+        "axes": {
+          "m": 1
+        },
+        "inputs": {
+          "a": {
+            "type": "random"
+          },
+          "b": {
+            "type": "random"
+          },
+          "a_scale": {
+            "type": "random"
+          },
+          "b_scale": {
+            "type": "random"
+          }
+        },
+        "uuid": "2058e40e25377c2d"
+      },
+      "solution": null,
+      "evaluation": null
+    },
+    {
+      "definition": "gemm_a8w8_blockwise_scaled_blk128x128_nt_obfloat16_bshuf16x16_aslogical_n1024_k4096",
+      "workload": {
+        "axes": {
+          "m": 2
+        },
+        "inputs": {
+          "a": {
+            "type": "random"
+          },
+          "b": {
+            "type": "random"
+          },
+          "a_scale": {
+            "type": "random"
+          },
+          "b_scale": {
+            "type": "random"
+          }
+        },
+        "uuid": "583bd8ef190a3291"
+      },
+      "solution": null,
+      "evaluation": null
+    },
+    {
+      "definition": "gemm_a8w8_blockwise_scaled_blk128x128_nt_obfloat16_bshuf16x16_aslogical_n1024_k4096",
+      "workload": {
+        "axes": {
+          "m": 4
+        },
+        "inputs": {
+          "a": {
+            "type": "random"
+          },
+          "b": {
+            "type": "random"
+          },
+          "a_scale": {
+            "type": "random"
+          },
+          "b_scale": {
+            "type": "random"
+          }
+        },
+        "uuid": "fb2193848d1a5fd1"
+      },
+      "solution": null,
+      "evaluation": null
+    },
+    {
+      "definition": "gemm_a8w8_blockwise_scaled_blk128x128_nt_obfloat16_bshuf16x16_aslogical_n1024_k4096",
+      "workload": {
+        "axes": {
+          "m": 8
+        },
+        "inputs": {
+          "a": {
+            "type": "random"
+          },
+          "b": {
+            "type": "random"
+          },
+          "a_scale": {
+            "type": "random"
+          },
+          "b_scale": {
+            "type": "random"
+          }
+        },
+        "uuid": "8902e6f8777c2755"
+      },
+      "solution": null,
+      "evaluation": null
+    },
+    {
+      "definition": "gemm_a8w8_blockwise_scaled_blk128x128_nt_obfloat16_bshuf16x16_aslogical_n1024_k4096",
+      "workload": {
+        "axes": {
+          "m": 16
+        },
+        "inputs": {
+          "a": {
+            "type": "random"
+          },
+          "b": {
+            "type": "random"
+          },
+          "a_scale": {
+            "type": "random"
+          },
+          "b_scale": {
+            "type": "random"
+          }
+        },
+        "uuid": "0ef8062bf48f2361"
+      },
+      "solution": null,
+      "evaluation": null
+    },
+    {
+      "definition": "gemm_a8w8_blockwise_scaled_blk128x128_nt_obfloat16_bshuf16x16_aslogical_n1024_k4096",
+      "workload": {
+        "axes": {
+          "m": 32
+        },
+        "inputs": {
+          "a": {
+            "type": "random"
+          },
+          "b": {
+            "type": "random"
+          },
+          "a_scale": {
+            "type": "random"
+          },
+          "b_scale": {
+            "type": "random"
+          }
+        },
+        "uuid": "eb226f54d5cb04a5"
+      },
+      "solution": null,
+      "evaluation": null
+    },
+    {
+      "definition": "gemm_a8w8_blockwise_scaled_blk128x128_nt_obfloat16_bshuf16x16_aslogical_n1024_k4096",
+      "workload": {
+        "axes": {
+          "m": 64
+        },
+        "inputs": {
+          "a": {
+            "type": "random"
+          },
+          "b": {
+            "type": "random"
+          },
+          "a_scale": {
+            "type": "random"
+          },
+          "b_scale": {
+            "type": "random"
+          }
+        },
+        "uuid": "e77ba4f51fa53f71"
+      },
+      "solution": null,
+      "evaluation": null
+    },
+    {
+      "definition": "gemm_a8w8_blockwise_scaled_blk128x128_nt_obfloat16_bshuf16x16_aslogical_n1024_k4096",
+      "workload": {
+        "axes": {
+          "m": 128
+        },
+        "inputs": {
+          "a": {
+            "type": "random"
+          },
+          "b": {
+            "type": "random"
+          },
+          "a_scale": {
+            "type": "random"
+          },
+          "b_scale": {
+            "type": "random"
+          }
+        },
+        "uuid": "7a434095a3c0d8c7"
+      },
+      "solution": null,
+      "evaluation": null
+    },
+    {
+      "definition": "gemm_a8w8_blockwise_scaled_blk128x128_nt_obfloat16_bshuf16x16_aslogical_n1024_k4096",
+      "workload": {
+        "axes": {
+          "m": 256
+        },
+        "inputs": {
+          "a": {
+            "type": "random"
+          },
+          "b": {
+            "type": "random"
+          },
+          "a_scale": {
+            "type": "random"
+          },
+          "b_scale": {
+            "type": "random"
+          }
+        },
+        "uuid": "c72d9a4cab9e5dd4"
+      },
+      "solution": null,
+      "evaluation": null
+    },
+    {
+      "definition": "gemm_a8w8_blockwise_scaled_blk128x128_nt_obfloat16_bshuf16x16_aslogical_n1024_k4096",
+      "workload": {
+        "axes": {
+          "m": 512
+        },
+        "inputs": {
+          "a": {
+            "type": "random"
+          },
+          "b": {
+            "type": "random"
+          },
+          "a_scale": {
+            "type": "random"
+          },
+          "b_scale": {
+            "type": "random"
+          }
+        },
+        "uuid": "b603e11d4f207a2e"
+      },
+      "solution": null,
+      "evaluation": null
+    },
+    {
+      "definition": "gemm_a8w8_blockwise_scaled_blk128x128_nt_obfloat16_bshuf16x16_aslogical_n1024_k4096",
+      "workload": {
+        "axes": {
+          "m": 1024
+        },
+        "inputs": {
+          "a": {
+            "type": "random"
+          },
+          "b": {
+            "type": "random"
+          },
+          "a_scale": {
+            "type": "random"
+          },
+          "b_scale": {
+            "type": "random"
+          }
+        },
+        "uuid": "6ec2ee6f7239a03c"
+      },
+      "solution": null,
+      "evaluation": null
+    },
+    {
+      "definition": "gemm_a8w8_blockwise_scaled_blk128x128_nt_obfloat16_bshuf16x16_aslogical_n1024_k4096",
+      "workload": {
+        "axes": {
+          "m": 2048
+        },
+        "inputs": {
+          "a": {
+            "type": "random"
+          },
+          "b": {
+            "type": "random"
+          },
+          "a_scale": {
+            "type": "random"
+          },
+          "b_scale": {
+            "type": "random"
+          }
+        },
+        "uuid": "e0474de21b9b830d"
+      },
+      "solution": null,
+      "evaluation": null
+    },
+    {
+      "definition": "gemm_a8w8_blockwise_scaled_blk128x128_nt_obfloat16_bshuf16x16_aslogical_n1024_k4096",
+      "workload": {
+        "axes": {
+          "m": 4096
+        },
+        "inputs": {
+          "a": {
+            "type": "random"
+          },
+          "b": {
+            "type": "random"
+          },
+          "a_scale": {
+            "type": "random"
+          },
+          "b_scale": {
+            "type": "random"
+          }
+        },
+        "uuid": "5b2362a9391426ab"
+      },
+      "solution": null,
+      "evaluation": null
+    }
+  ],
+  "baseline_spec": {
+    "language": "python",
+    "target": [
+      {
+        "arch": "gfx950",
+        "hardware_id": "MI355X"
+      }
+    ],
+    "entry_point": "main.py::run",
+    "destination_passing_style": false
+  },
+  "reference_spec": {
+    "language": "python",
+    "target": [
+      {
+        "arch": "gfx950",
+        "hardware_id": "MI355X"
+      }
+    ],
+    "entry_point": "main.py::run",
+    "destination_passing_style": false
+  },
+  "bundle_readme": "# Flash MLA and Top-k: Accuracy and Performance Tests\n\n**Kernels must generalize across valid lengths, not just tensor shapes or the supplied samples.** As the KV cache grows during decode, effective lengths change even when buffer capacities stay fixed.\n\n| Operator | Runtime length values to vary | Capacity stays fixed within a test sweep |\n| --- | --- | --- |\n| `topk_transform_paged` | `seq_lens[b]` | Score width, page-table width, output `k` |\n| `flash_mla_with_kvcache` | `sparse_lens[b]`, plus `extra_sparse_lens[b]` when present | KV pools and sparse-index widths |\n\nThese are **values inside tensors**, not changes to the length tensors' shapes. Length growth alone does not require changing constant axes such as `extra_topk=8256` into variable axes.\n\n## Top-k example\n\nCase: [`topk_transform_paged_paged_k512_page_size64`](definitions/topk_transform_paged/topk_transform_paged_paged_k512_page_size64.json), using its [batch-1 workload](workloads/topk_transform_paged/topk_transform_paged_paged_k512_page_size64.jsonl).\n\nKeep these shapes fixed:\n\n```text\nscores:           [1, 262208]\npage_tables:      [1, 4097]     page_size = 64\nmetadata:         [2, 2]\nout_page_indices: [1, 512]\n```\n\nVary `seq_lens[0]`, for example:\n\n```text\n0, 1, 63, 64, 65, 511, 512, 513,\n1024, 2048, 4096, 8192, 65536, 131072, 262207, 262208\n```\n\nFor a request with current visible token length `N`, this decode path uses `seq_lens = N // 4`. Thus `N = 4096 \u2192 8192 \u2192 16384 \u2192 32768` gives `seq_lens = 1024 \u2192 2048 \u2192 4096 \u2192 8192`, while the output remains 512 slots. **Do not clamp the candidate length to 512.**\n\n- Keep `0 <= seq_lens[b] <= min(width, pages * page_size)`.\n- Build or validate matching `metadata` for every length; never reuse a stale length-specific plan.\n- Vary tie-free scores and legal page mappings. NaN scores are unsupported.\n- Select only from the valid score prefix. Short rows preserve logical order and end with `-1` padding; long-row selections need not be sorted. Use the definition's `compare` callback.\n\n## Flash MLA example\n\nCase: [`flash_mla_with_kvcache_dsv4_fp8_11111_q1_h64_d512_p256_k128_ep2_ek8256`](definitions/flash_mla_with_kvcache/flash_mla_with_kvcache_dsv4_fp8_11111_q1_h64_d512_p256_k128_ep2_ek8256.json), using its [batch-1 workload](workloads/flash_mla_with_kvcache/flash_mla_with_kvcache_dsv4_fp8_11111_q1_h64_d512_p256_k128_ep2_ek8256.jsonl).\n\nKeep these shapes and both KV pool capacities fixed (`pages=2019`, `extra_pages=201836`):\n\n```text\nq:                    [1, 1, 64, 512]\nsparse_indices:       [1, 1, 128]\nextra_sparse_indices: [1, 1, 8256]\n```\n\nIn this C128 case, `sparse_lens = min(N, 128)` and `extra_sparse_lens = max(N // 128, 1)`, within the configured legal capacity:\n\n| Current visible tokens `N` | `sparse_lens[0]` | `extra_sparse_lens[0]` |\n| ---: | ---: | ---: |\n| 4096 | 128 | 32 |\n| 8192 | 128 | 64 |\n| 16384 | 128 | 128 |\n| 32768 | 128 | 256 |\n\nThe main sliding window saturates at 128; the extra prefix continues growing. **8256 is index capacity, not the effective length of every call.**\n\nAlso test legal boundary combinations independently, including both branches empty, either branch empty, and both branches nonempty:\n\n```text\nsparse_lens:       0, 1, 63, 64, 65, 127, 128\nextra_sparse_lens: 0, 1, 2, 31, 32, 33, 127, 128, 129,\n                   511, 512, 513, 1024, 2048, 4096, 8192, 8255, 8256\n```\n\n- Keep `0 <= sparse_lens[b] <= 128` and `0 <= extra_sparse_lens[b] <= 8256`.\n- Apply each length to its index prefix, then ignore negative indices inside that prefix. For short histories, `extra_sparse_lens=1` with index `-1` means no effective extra KV entry.\n- Vary Q, correctly packed KV data, legal indices, negative padding, and sinks. Test that indices outside the selected prefixes cannot affect outputs.\n- Check both BF16 output and FP32 LSE with the definition's `compare` callback: additive `atol=rtol=1e-2` for output and `1e-3` for finite LSE. Fully empty rows require zero output and `+inf` LSE.\n\n## Required test coverage and reporting\n\n- **Accuracy:** use the exported `reference` and operator-specific `compare` callbacks for every tested input. Cover empty, short, intermediate, near-capacity, and full lengths; add values immediately around kernel tile/partition boundaries and random lengths not used during tuning. The lists above are starting points, not an exhaustive whitelist.\n- **Data and batch generalization:** use multiple data seeds per length. Repeat across supported workload batch sizes, including mixed per-row lengths. Reuse buffers across growing-length calls to catch stale length or plan assumptions.\n- **Performance:** benchmark the same length regimes, including irregular lengths and mixed batches\u2014not only full capacity. Validate each measured input first, warm up, and use repeated GPU-timed measurements under identical conditions for candidate and baseline. Keep input generation, reference checks, and metadata construction outside kernel-only timing; report setup cost separately if measured.\n- **Report per case:** batch, length values/distribution, seed, accuracy result, baseline latency, candidate latency, and speedup. Include short-, medium-, and long-length results and regressions, not just a best case or one aggregate speedup. Record hardware, timing method, and repetition count.\n\n**Changing seeds alone is insufficient.** The Top-k initializer selects only `0`, one-quarter, one-half, or full capacity. For batch 1, the MLA initializer always sets both prefixes to full width. Explicitly set the test lengths after initialization and update dependent inputs before checking or timing.\n\nThese are test requirements and example inputs, not measured accuracy or performance results.\n",
+  "policy": {
+    "version": 1,
+    "seed": 29,
+    "rtol": 0.02,
+    "atol": 0.02,
+    "warmup": 20,
+    "repetition": 100,
+    "target_ms": 1.0
+  },
+  "cases": [
+    {
+      "test_case_id": "2058e40e25377c2d",
+      "shape": {
+        "a": [
+          1,
+          4096
+        ],
+        "b": [
+          1024,
+          4096
+        ],
+        "a_scale": [
+          1,
+          32
+        ],
+        "b_scale": [
+          8,
+          32
+        ]
+      },
+      "dtype": "{\"a\": \"float8_e4m3fn\", \"a_scale\": \"float32\", \"b\": \"float8_e4m3fn\", \"b_scale\": \"float32\"}",
+      "params": {
+        "axes": {
+          "n": 1024,
+          "k": 4096,
+          "sn": 8,
+          "sk": 32,
+          "m": 1
+        },
+        "scalars": {}
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "583bd8ef190a3291",
+      "shape": {
+        "a": [
+          2,
+          4096
+        ],
+        "b": [
+          1024,
+          4096
+        ],
+        "a_scale": [
+          2,
+          32
+        ],
+        "b_scale": [
+          8,
+          32
+        ]
+      },
+      "dtype": "{\"a\": \"float8_e4m3fn\", \"a_scale\": \"float32\", \"b\": \"float8_e4m3fn\", \"b_scale\": \"float32\"}",
+      "params": {
+        "axes": {
+          "n": 1024,
+          "k": 4096,
+          "sn": 8,
+          "sk": 32,
+          "m": 2
+        },
+        "scalars": {}
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "fb2193848d1a5fd1",
+      "shape": {
+        "a": [
+          4,
+          4096
+        ],
+        "b": [
+          1024,
+          4096
+        ],
+        "a_scale": [
+          4,
+          32
+        ],
+        "b_scale": [
+          8,
+          32
+        ]
+      },
+      "dtype": "{\"a\": \"float8_e4m3fn\", \"a_scale\": \"float32\", \"b\": \"float8_e4m3fn\", \"b_scale\": \"float32\"}",
+      "params": {
+        "axes": {
+          "n": 1024,
+          "k": 4096,
+          "sn": 8,
+          "sk": 32,
+          "m": 4
+        },
+        "scalars": {}
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "8902e6f8777c2755",
+      "shape": {
+        "a": [
+          8,
+          4096
+        ],
+        "b": [
+          1024,
+          4096
+        ],
+        "a_scale": [
+          8,
+          32
+        ],
+        "b_scale": [
+          8,
+          32
+        ]
+      },
+      "dtype": "{\"a\": \"float8_e4m3fn\", \"a_scale\": \"float32\", \"b\": \"float8_e4m3fn\", \"b_scale\": \"float32\"}",
+      "params": {
+        "axes": {
+          "n": 1024,
+          "k": 4096,
+          "sn": 8,
+          "sk": 32,
+          "m": 8
+        },
+        "scalars": {}
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "0ef8062bf48f2361",
+      "shape": {
+        "a": [
+          16,
+          4096
+        ],
+        "b": [
+          1024,
+          4096
+        ],
+        "a_scale": [
+          16,
+          32
+        ],
+        "b_scale": [
+          8,
+          32
+        ]
+      },
+      "dtype": "{\"a\": \"float8_e4m3fn\", \"a_scale\": \"float32\", \"b\": \"float8_e4m3fn\", \"b_scale\": \"float32\"}",
+      "params": {
+        "axes": {
+          "n": 1024,
+          "k": 4096,
+          "sn": 8,
+          "sk": 32,
+          "m": 16
+        },
+        "scalars": {}
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "eb226f54d5cb04a5",
+      "shape": {
+        "a": [
+          32,
+          4096
+        ],
+        "b": [
+          1024,
+          4096
+        ],
+        "a_scale": [
+          32,
+          32
+        ],
+        "b_scale": [
+          8,
+          32
+        ]
+      },
+      "dtype": "{\"a\": \"float8_e4m3fn\", \"a_scale\": \"float32\", \"b\": \"float8_e4m3fn\", \"b_scale\": \"float32\"}",
+      "params": {
+        "axes": {
+          "n": 1024,
+          "k": 4096,
+          "sn": 8,
+          "sk": 32,
+          "m": 32
+        },
+        "scalars": {}
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "e77ba4f51fa53f71",
+      "shape": {
+        "a": [
+          64,
+          4096
+        ],
+        "b": [
+          1024,
+          4096
+        ],
+        "a_scale": [
+          64,
+          32
+        ],
+        "b_scale": [
+          8,
+          32
+        ]
+      },
+      "dtype": "{\"a\": \"float8_e4m3fn\", \"a_scale\": \"float32\", \"b\": \"float8_e4m3fn\", \"b_scale\": \"float32\"}",
+      "params": {
+        "axes": {
+          "n": 1024,
+          "k": 4096,
+          "sn": 8,
+          "sk": 32,
+          "m": 64
+        },
+        "scalars": {}
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "7a434095a3c0d8c7",
+      "shape": {
+        "a": [
+          128,
+          4096
+        ],
+        "b": [
+          1024,
+          4096
+        ],
+        "a_scale": [
+          128,
+          32
+        ],
+        "b_scale": [
+          8,
+          32
+        ]
+      },
+      "dtype": "{\"a\": \"float8_e4m3fn\", \"a_scale\": \"float32\", \"b\": \"float8_e4m3fn\", \"b_scale\": \"float32\"}",
+      "params": {
+        "axes": {
+          "n": 1024,
+          "k": 4096,
+          "sn": 8,
+          "sk": 32,
+          "m": 128
+        },
+        "scalars": {}
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "c72d9a4cab9e5dd4",
+      "shape": {
+        "a": [
+          256,
+          4096
+        ],
+        "b": [
+          1024,
+          4096
+        ],
+        "a_scale": [
+          256,
+          32
+        ],
+        "b_scale": [
+          8,
+          32
+        ]
+      },
+      "dtype": "{\"a\": \"float8_e4m3fn\", \"a_scale\": \"float32\", \"b\": \"float8_e4m3fn\", \"b_scale\": \"float32\"}",
+      "params": {
+        "axes": {
+          "n": 1024,
+          "k": 4096,
+          "sn": 8,
+          "sk": 32,
+          "m": 256
+        },
+        "scalars": {}
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "b603e11d4f207a2e",
+      "shape": {
+        "a": [
+          512,
+          4096
+        ],
+        "b": [
+          1024,
+          4096
+        ],
+        "a_scale": [
+          512,
+          32
+        ],
+        "b_scale": [
+          8,
+          32
+        ]
+      },
+      "dtype": "{\"a\": \"float8_e4m3fn\", \"a_scale\": \"float32\", \"b\": \"float8_e4m3fn\", \"b_scale\": \"float32\"}",
+      "params": {
+        "axes": {
+          "n": 1024,
+          "k": 4096,
+          "sn": 8,
+          "sk": 32,
+          "m": 512
+        },
+        "scalars": {}
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "6ec2ee6f7239a03c",
+      "shape": {
+        "a": [
+          1024,
+          4096
+        ],
+        "b": [
+          1024,
+          4096
+        ],
+        "a_scale": [
+          1024,
+          32
+        ],
+        "b_scale": [
+          8,
+          32
+        ]
+      },
+      "dtype": "{\"a\": \"float8_e4m3fn\", \"a_scale\": \"float32\", \"b\": \"float8_e4m3fn\", \"b_scale\": \"float32\"}",
+      "params": {
+        "axes": {
+          "n": 1024,
+          "k": 4096,
+          "sn": 8,
+          "sk": 32,
+          "m": 1024
+        },
+        "scalars": {}
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "e0474de21b9b830d",
+      "shape": {
+        "a": [
+          2048,
+          4096
+        ],
+        "b": [
+          1024,
+          4096
+        ],
+        "a_scale": [
+          2048,
+          32
+        ],
+        "b_scale": [
+          8,
+          32
+        ]
+      },
+      "dtype": "{\"a\": \"float8_e4m3fn\", \"a_scale\": \"float32\", \"b\": \"float8_e4m3fn\", \"b_scale\": \"float32\"}",
+      "params": {
+        "axes": {
+          "n": 1024,
+          "k": 4096,
+          "sn": 8,
+          "sk": 32,
+          "m": 2048
+        },
+        "scalars": {}
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "5b2362a9391426ab",
+      "shape": {
+        "a": [
+          4096,
+          4096
+        ],
+        "b": [
+          1024,
+          4096
+        ],
+        "a_scale": [
+          4096,
+          32
+        ],
+        "b_scale": [
+          8,
+          32
+        ]
+      },
+      "dtype": "{\"a\": \"float8_e4m3fn\", \"a_scale\": \"float32\", \"b\": \"float8_e4m3fn\", \"b_scale\": \"float32\"}",
+      "params": {
+        "axes": {
+          "n": 1024,
+          "k": 4096,
+          "sn": 8,
+          "sk": 32,
+          "m": 4096
+        },
+        "scalars": {}
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    }
+  ]
+}

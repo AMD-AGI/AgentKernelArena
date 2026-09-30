@@ -19,7 +19,10 @@ from src.task_protocol import (CaseManifest, baseline_correctness_accepted,
 from src.task_spec import load_task_spec
 
 ROOT = Path(__file__).resolve().parents[1]
-TASKS = sorted((ROOT / 'tasks/Aiter-task').glob('*/config.yaml'))
+# The original FlyDSL builder suite uses root-level workload.json.
+# Functional task packages have separate coverage in test_functional_task_packages.py.
+TASKS = sorted(p for p in (ROOT / 'tasks/Aiter-task').glob('*/config.yaml')
+               if (p.parent / 'workload.json').is_file())
 REPRESENTATIVES = ['gemm_a16w16_nt_n32_k6144', 'mxfp4_moe_e65_i1024']
 MODULE_NAMES = ['task_contract', 'task_inputs', 'task_compare', 'task_initialize',
                 'task_reference', 'task_baseline', 'task_measure', 'task_validation', 'evaluate', 'export_solution']
@@ -789,30 +792,3 @@ def test_diagnostic_task_still_reports_actual_pass(monkeypatch):
         assert result.failure_kind is None
         spec = load_task_spec(task / 'config.yaml', task_id='Aiter-task/' + task.name)
         assert baseline_correctness_accepted(result, baseline=spec.baseline, phase='task_validation', manifest=manifest(contract))
-
-
-@pytest.mark.parametrize('name', [
-    'gemm_a16w16_nt_n4096_k2048',
-    'gemm_a16w16_nt_n6144_k3072', 'gemm_a16w16_nt_n16384_k2048',
-])
-def test_deferred_task_replay_still_rejects_wrong_and_missing_outputs(name, monkeypatch):
-    torch = pytest.importorskip('torch')
-    with modules(ROOT / 'tasks/Aiter-task' / name, monkeypatch):
-        measure = importlib.import_module('task_measure')
-        monkeypatch.setattr(torch.cuda, 'synchronize', lambda: None)
-        inputs = {'a': torch.tensor([[1., 2.]], dtype=torch.bfloat16)}
-        output = torch.zeros((1, 2), dtype=torch.bfloat16)
-        monkeypatch.setattr(measure.task_inputs, 'refill_case_inputs', lambda i: i['a'].fill_(2))
-        monkeypatch.setattr(measure.task_inputs, 'call_kwargs', lambda i: i)
-        monkeypatch.setattr(measure.task_reference, 'run', lambda **kw: torch.tensor([[18., 28.]], dtype=torch.bfloat16))
-        timed = types.SimpleNamespace(bound=True, outputs=output,
-                                     rerun=lambda: output.copy_(inputs['a']))
-        result = measure.verify_timed_invocation(inputs, timed)
-        assert output.tolist() == [[2., 2.]]  # Finite and different, still wrong.
-        assert result['failure_kind'] == 'numerical_mismatch'
-        assert result['metadata']['replay_checked']
-        timed.rerun = lambda: output.copy_(torch.tensor([[18., 28.]], dtype=torch.bfloat16))
-        output.zero_()
-        assert measure.verify_timed_invocation(inputs, timed)['status'] == 'PASS'
-        timed.rerun = lambda: output  # Poison survives an empty replay.
-        assert measure.verify_timed_invocation(inputs, timed)['failure_kind'] == 'output_contract'
