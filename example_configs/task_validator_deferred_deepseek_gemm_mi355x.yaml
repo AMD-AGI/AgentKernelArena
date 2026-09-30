@@ -1,0 +1,13 @@
+agent:
+  template: task_validator
+tasks:
+  - Aiter-task/gemm_a16w16_nt_n1024_k4096
+  - Aiter-task/gemm_a16w16_nt_n2048_k4096
+  - Aiter-task/gemm_a16w16_nt_n256_k4096
+  - Aiter-task/gemm_a16w16_nt_n512_k4096
+  - Aiter-task/gemm_a16w16_nt_n64_k4096
+  - Aiter-task/gemm_a8w8_blockwise_scaled_blk128x128_nt_obfloat16_bshuf16x16_aslogical_n1024_k4096
+  - Aiter-task/gemm_a8w8_blockwise_scaled_blk128x128_nt_obfloat16_bshuf16x16_asraw_n1024_k4096
+target_gpu_model: MI355X
+log_directory: logs
+workspace_directory_prefix: workspace
