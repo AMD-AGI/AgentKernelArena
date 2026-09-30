@@ -86,7 +86,7 @@ AgentKernelArena/
 │   ├── torch2flydsl/
 │   ├── triton2flydsl/
 │   ├── flydsl2flydsl/
-│   ├── SIKL-task/                  # Production GEMM and MoE to FlyDSL
+│   ├── Aiter-task/                  # Production GEMM and MoE to FlyDSL
 │   └── image_kernel/               # Kernels from declared in-image source trees
 └── docs/                            # Full documentation
 ```
@@ -145,7 +145,7 @@ for tested CLI/model versions, run-level overrides, and the scope of live checks
 | `triton2flydsl` | Translate a Triton implementation to FlyDSL |
 | `flydsl2flydsl` | Optimize an existing FlyDSL implementation |
 | `image_kernel` | Optimize a kernel from a declared source tree in the runtime image |
-| `SIKL-task` | Reimplement production BF16 GEMM and MXFP4 MoE operators in FlyDSL |
+| `Aiter-task` | Reimplement production BF16 GEMM and MXFP4 MoE operators in FlyDSL |
 
 These names organize task selection; the candidate and evaluation declarations
 determine behavior. Every retained suite uses the unified task contract in

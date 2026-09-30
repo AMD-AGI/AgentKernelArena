@@ -30,7 +30,7 @@ agent:
   effort: medium
   timeout_seconds: 1200
 tasks:
-  - SIKL-task/gemm_a16w16_nt_n6144_k6144
+  - Aiter-task/gemm_a16w16_nt_n6144_k6144
 target_gpu_model: MI355X
 log_directory: logs
 workspace_directory_prefix: workspace

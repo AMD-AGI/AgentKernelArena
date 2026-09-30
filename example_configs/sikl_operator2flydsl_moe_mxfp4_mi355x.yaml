@@ -8,9 +8,9 @@ agent:
 
 # The schema carries four MoE definitions; the others are mxfp4_moe_e257_i256,
 # mxfp4_moe_e33_i1024 and mxfp4_moe_e65_i1024. Select the whole suite with
-# `- SIKL-task`.
+# `- Aiter-task`.
 tasks:
-  - SIKL-task/mxfp4_moe_e257_i128
+  - Aiter-task/mxfp4_moe_e257_i128
 
 target_gpu_model: MI355X
 log_directory: logs
