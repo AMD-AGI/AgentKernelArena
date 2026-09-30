@@ -14,6 +14,10 @@ describes how to use the arena for A/B testing.
 
 ## Supported agents
 
+To generate tasks from external SIKL data, use the separate
+[`sikl_task_builder` authoring workflow](sikl-task-builder.md). It runs before
+task discovery and produces tasks for the optimization agents listed below.
+
 The following agents are available.
 
 | `agent.template` | Description |

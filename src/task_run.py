@@ -154,7 +154,7 @@ def _run_exports(session: TaskSession, harness, logger: logging.Logger) -> list[
 
 
 def validate_task_session(session: TaskSession, *, eval_config: dict, task_config_dir: str,
-                          agent_launcher) -> dict:
+                          agent_launcher, validation_request_id: str | None = None) -> dict:
     """Provide identical trusted initial evidence to main and quality_loop."""
     from agents.task_validator.report_schema import finalize_report, validation_report_is_complete
 
@@ -164,7 +164,10 @@ def validate_task_session(session: TaskSession, *, eval_config: dict, task_confi
     context_path = session.state_directory / "validation_context.json"
     trusted_context = session.validation_context()
     eval_config.update(_task_id=session.spec.task_id, _task_validation_context=str(context_path))
-    eval_config["_task_validation_request_id"] = uuid.uuid4().hex
+    eval_config["_task_validation_request_id"] = validation_request_id or uuid.uuid4().hex
+    # Consumed once by the launcher. Direct repeated launcher calls still get
+    # fresh IDs, while an outer controller can bind this exact attempt.
+    eval_config["_task_validation_controller_request_id"] = eval_config["_task_validation_request_id"]
     environment = {"ARENA_EVAL_PHASE": "task_validation", "ARENA_VALIDATION_CONTEXT": str(context_path)}
     error = None
     try:

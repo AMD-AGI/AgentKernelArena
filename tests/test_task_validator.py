@@ -323,6 +323,13 @@ class ValidationAggregationTests(unittest.TestCase):
 
 
 class ValidationLauncherTests(unittest.TestCase):
+    def test_explicit_null_uses_backend_default_instead_of_other_provider_model(self) -> None:
+        resolved = _resolve_backend_settings(
+            {"agent": {"backend": "codex", "model": None, "effort": None}},
+            {"backend": "claude_code", "model": "claude-sonnet-5", "effort": "max"},
+        )
+        self.assertEqual(resolved, ("codex", None, None))
+
     def test_run_config_overrides_validator_backend_model_and_effort(self) -> None:
         resolved = _resolve_backend_settings(
             {
