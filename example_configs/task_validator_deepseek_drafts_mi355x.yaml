@@ -20,5 +20,7 @@ tasks:
   - Aiter-task/mhc_fused_post_pre_flat_rmsnorm_c4_d4096
   - Aiter-task/topk_transform_paged_paged_k512_page_size64
 target_gpu_model: MI355X
+# lmsysorg/sglang:v0.5.20-rocm10-mi35x; pin the tested image bytes.
+docker_image: lmsysorg/sglang@sha256:e20849665c105d389ef91d23c0dc73931aaa6f02056dd10e7b43e4f16c79df69
 log_directory: logs
 workspace_directory_prefix: workspace

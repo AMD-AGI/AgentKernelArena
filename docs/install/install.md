@@ -43,6 +43,23 @@ From the repository root, use the Docker-first Makefile targets. The runner does
 not copy credentials into an image; it mounts the selected integration's host
 login state or forwards its provider environment variables.
 
+An optional top-level `docker_image` string in a run YAML selects the image for
+that run. Prefer an immutable `repository@sha256:...` reference. Image selection
+uses this priority: `AKA_DOCKER_IMAGE`, `AKA_DOCKER_IMAGE_<ARCH>`, the config's
+`docker_image`, then the architecture default. Experiment GPU architecture still
+comes from `target_gpu_model` or `AKA_GPU_ARCH`; agent checks use the host GPU or
+`AKA_GPU_ARCH`. Selecting an image does not change the architecture.
+The setting applies to preflight, agent checks, serial runs, parallel workers,
+and quality-loop runs. Shell and smoke commands use environment overrides and
+architecture defaults because they do not select a run config. Config image
+overrides also disable automatic RDNA4 builds. Invalid explicit values fail
+before a container is launched.
+
+The [DeepSeek draft validator config](../../example_configs/task_validator_deepseek_drafts_mi355x.yaml)
+pins its MI355X run to the tested ROCm 10 image. The runner supplies writable
+AITER/FlyDSL caches and AITER configuration storage for that image. The global
+architecture defaults and evaluation-tool image qualification are unchanged.
+
 ```bash
 git clone https://github.com/AMD-AGI/AgentKernelArena.git
 cd AgentKernelArena

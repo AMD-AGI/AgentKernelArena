@@ -7,6 +7,8 @@ GFX950_V0514_MANIFEST_DIGEST="sha256:b435b508b5aa696abb25c909341ce73e41574c4271c
 GFX950_V0514_IMMUTABLE_IMAGE="lmsysorg/sglang-rocm@${GFX950_V0514_MANIFEST_DIGEST}"
 GFX950_V0519_DOCKER_IMAGE="lmsysorg/sglang-rocm:v0.5.19-rocm10-mi35x-20260913"
 GFX950_V0519_IMMUTABLE_IMAGE="lmsysorg/sglang-rocm@sha256:106a7adbeec5554b6e66a4bda0b3694af442717b9fe92754a9885520077b6f93"
+GFX950_V0520_DOCKER_IMAGE="lmsysorg/sglang:v0.5.20-rocm10-mi35x"
+GFX950_V0520_IMMUTABLE_IMAGE="lmsysorg/sglang@sha256:e20849665c105d389ef91d23c0dc73931aaa6f02056dd10e7b43e4f16c79df69"
 # Keep qualification and scoring on the verified bytes, even if the dated tag
 # moves. New runtime candidates remain explicit overrides until qualified.
 DEFAULT_DOCKER_IMAGE_GFX950="${AKA_DOCKER_IMAGE_GFX950:-$GFX950_V0514_IMMUTABLE_IMAGE}"
@@ -19,6 +21,7 @@ HOST_UID="$(id -u)"
 HOST_GID="$(id -g)"
 SELECTED_GPU_ARCH=""
 SELECTED_IMAGE=""
+CONFIG_DOCKER_IMAGE=""
 AGENT_STATE_MOUNT_ROOT="${AKA_AGENT_STATE_MOUNT_ROOT:-/opt/aka-agent-state}"
 DEFAULT_RUN_CONFIG="example_configs/quickstart_claude_mi300.yaml"
 # Set by host-side commands after reading the selected run config. Keep this
@@ -66,6 +69,8 @@ Usage:
 Default run config:
   example_configs/quickstart_claude_mi300.yaml (MI300/MI300X).
   On another GPU, pass --config_name with a matching run configuration.
+  Optional docker_image in the run config pins that run's image. Environment
+  image overrides take precedence over the config, then architecture defaults.
 
 Environment overrides:
   GPU_IDS                 Comma/space separated GPU indices for parallel-run.
@@ -116,12 +121,17 @@ normalize_gpu_arch() {
 
 docker_image_for_arch() {
     local arch="$1"
+    local config_image="${2:-}"
     local arch_upper env_name env_image
     arch_upper="$(printf '%s' "$arch" | tr '[:lower:]' '[:upper:]')"
     env_name="AKA_DOCKER_IMAGE_${arch_upper}"
     env_image="${!env_name:-}"
     if [[ -n "$env_image" ]]; then
         printf '%s\n' "$env_image"
+        return
+    fi
+    if [[ -n "$config_image" ]]; then
+        printf '%s\n' "$config_image"
         return
     fi
 
@@ -144,8 +154,31 @@ uses_gfx950_aiter_cache_overrides() {
         || "$image_reference" == "$GFX950_V0514_IMMUTABLE_IMAGE" \
         || "$image_reference" == "$GFX950_V0519_DOCKER_IMAGE" \
         || "$image_reference" == "$GFX950_V0519_IMMUTABLE_IMAGE" \
+        || "$image_reference" == "$GFX950_V0520_DOCKER_IMAGE" \
+        || "$image_reference" == "$GFX950_V0520_IMMUTABLE_IMAGE" \
         || ( -n "${AKA_SCORING_IMAGE_RUNTIME_REF:-}" \
             && "$SELECTED_IMAGE" == "$AKA_SCORING_IMAGE_RUNTIME_REF" ) ]]
+}
+
+read_config_docker_image() {
+    # Agent-only checks can supply both an explicit agent list and GPU arch
+    # without an on-disk run config, as before this optional field existed.
+    [[ -f "$1" ]] || return 0
+    python3 - "$1" <<'PY'
+import re
+import sys
+import yaml
+
+with open(sys.argv[1], encoding="utf-8") as source:
+    config = yaml.safe_load(source) or {}
+if not isinstance(config, dict):
+    raise SystemExit("Run config must be a mapping")
+if "docker_image" in config:
+    image = config["docker_image"]
+    if not isinstance(image, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._/@:-]*", image):
+        raise SystemExit("docker_image must be a nonempty Docker image reference")
+    print(image)
+PY
 }
 
 read_target_gpu_model() {
@@ -233,21 +266,25 @@ select_runtime() {
     [[ -n "$arch" ]] || die "Could not infer GPU arch; set AKA_GPU_ARCH (for example gfx942, gfx950, or gfx1201)"
 
     SELECTED_GPU_ARCH="$(normalize_gpu_arch "$arch")"
+    CONFIG_DOCKER_IMAGE="${2:-}"
     if [[ -n "${AKA_DOCKER_IMAGE:-}" ]]; then
         SELECTED_IMAGE="$AKA_DOCKER_IMAGE"
     else
-        SELECTED_IMAGE="$(docker_image_for_arch "$SELECTED_GPU_ARCH")"
+        SELECTED_IMAGE="$(docker_image_for_arch "$SELECTED_GPU_ARCH" "$CONFIG_DOCKER_IMAGE")"
     fi
     echo "Docker runtime: arch=${SELECTED_GPU_ARCH} image=${SELECTED_IMAGE}" >&2
 }
 
 select_runtime_for_config() {
     local config="$1"
-    select_runtime "$(resolve_config_gpu_arch "$config")"
+    local image arch
+    image="$(read_config_docker_image "$config")" || die "Invalid runtime image configuration: $config"
+    arch="$(resolve_config_gpu_arch "$config")" || return 1
+    select_runtime "$arch" "$image"
 }
 
 select_runtime_for_host() {
-    select_runtime "$(detect_host_gpu_arch)"
+    select_runtime "$(detect_host_gpu_arch)" "${1:-}"
 }
 
 build_rdna4_image() {
@@ -262,6 +299,7 @@ ensure_runtime_image() {
     # Custom images retain Docker's normal pull/run behavior, even if an
     # override happens to equal our default tag. Never build over an override.
     [[ "$SELECTED_GPU_ARCH" == "gfx1201" \
+        && -z "$CONFIG_DOCKER_IMAGE" \
         && -z "${AKA_DOCKER_IMAGE:-}" \
         && -z "${AKA_DOCKER_IMAGE_GFX1201:-}" ]] || return 0
     if docker image inspect "$SELECTED_IMAGE" >/dev/null 2>&1; then
@@ -1880,11 +1918,12 @@ case "${1:-}" in
         ;;
     check-agents)
         shift
-        select_runtime_for_host
         config_name="$(extract_config_name "$@")"
         if [[ -z "${AKA_AGENTS:-}" ]]; then
             [[ -f "$config_name" ]] || die "config file not found: $config_name"
         fi
+        config_image="$(read_config_docker_image "$config_name")" || die "Invalid runtime image configuration: $config_name"
+        select_runtime_for_host "$config_image"
         configure_geak_runtime "$config_name"
         # By default, check only the CLI selected by CONFIG. AKA_AGENTS can
         # request one, several, or `all` explicitly.

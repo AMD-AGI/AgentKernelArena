@@ -54,17 +54,16 @@ lmsysorg/sglang@sha256:e20849665c105d389ef91d23c0dc73931aaa6f02056dd10e7b43e4f16
 The historical run used writable per-worker AITER and FlyDSL caches, with a
 writable copy of AITER configuration files. PyTorch, AITER, SGLang, and their GPU
 runtime dependencies came from that image. No package upgrade was performed.
-The image and writable-cache setup are part of reproducing these findings.
+The run config now pins this image using `docker_image`, and the runner applies
+the writable-cache setup automatically for both the image tag and digest.
 
 Run the explicit task selection using the repository Docker workflow on MI355X:
 
 ```bash
-AKA_DOCKER_IMAGE=lmsysorg/sglang@sha256:e20849665c105d389ef91d23c0dc73931aaa6f02056dd10e7b43e4f16c79df69 \
-  make docker-run CONFIG=example_configs/task_validator_deepseek_drafts_mi355x.yaml
+make docker-run CONFIG=example_configs/task_validator_deepseek_drafts_mi355x.yaml
 ```
 
-The image override pins the container, but writable-cache setup is still required
-for the historical runtime. See the
+Explicit environment image overrides take precedence over the config. See the
 [Docker workflow](../../../docs/install/install.md) and
 [task-validator guide](../../../docs/how-to/task-validator.md).
 
