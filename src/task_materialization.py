@@ -46,7 +46,11 @@ class _Deadline:
         self.timeout_s = timeout_s
         from .process_control import bounded_timeout
         global_deadline = os.environ.get("ARENA_TASK_DEADLINE")
-        self.end = time.monotonic() + bounded_timeout(timeout_s, float(global_deadline) if global_deadline else None)
+        try:
+            limit = bounded_timeout(timeout_s, float(global_deadline) if global_deadline else None)
+        except TimeoutError as exc:
+            raise MaterializationTimeout("Task wall-clock budget exhausted before materialization") from exc
+        self.end = time.monotonic() + limit
 
     def remaining(self) -> float:
         remaining = self.end - time.monotonic()

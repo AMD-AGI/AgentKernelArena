@@ -314,8 +314,12 @@ def evaluate_kernel(
                 baseline_cases[:] = pairs[-1][0]
                 optimized_cases = pairs[-1][1]
                 limit = (task_config.get("evaluation", {}).get("measurement", {})).get("max_p99_tpot_ms")
-                if limit is not None and any(c.metadata["metrics"]["p99_tpot_ms"] > limit for _, rows in pairs for c in rows):
-                    raise ValueError("Serving latency limit exceeded")
+                if limit is not None:
+                    latencies = [c.metadata.get("metrics", {}).get("p99_tpot_ms") for _, rows in pairs for c in rows]
+                    if any(value is None for value in latencies):
+                        raise ValueError("Serving latency limit declared but a measurement omitted p99_tpot_ms")
+                    if any(value > limit for value in latencies):
+                        raise ValueError("Serving latency limit exceeded")
             else:
                 performance = task_session.candidate_action("performance").result
                 if not performance.passed:
@@ -551,7 +555,7 @@ def evaluate_task_session(session: "TaskSession", *, eval_config: dict,
     if result_metadata:
         # Only supplemental agent evidence is accepted; callers cannot replace
         # acceptance, timings, framework errors, or task/runtime identity.
-        if set(result_metadata) - {"agent_execution"}:
+        if set(result_metadata) - {"agent_execution", "process_sweep"}:
             raise ValueError("Unsupported supplemental evaluation metadata")
         result.update(result_metadata)
     agent_name = eval_config.get("agent", {}).get("template", "unknown")
@@ -649,6 +653,7 @@ def write_task_result(
         'task_schema_version', 'runtime_identity', 'initial_task_validation',
         'baseline_correctness', 'agent_execution', 'framework_error',
         'evaluated_candidate_sources', 'candidate_source_error', 'serving_measurement', 'measurement_kind',
+        'process_sweep',
     ):
         if field in evaluation_results:
             task_result[field] = evaluation_results[field]

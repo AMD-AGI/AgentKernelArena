@@ -17,6 +17,9 @@ def source_policy(*, target_only=False):
         allowed.remove('aiter')
     forbidden = {'open', 'eval', 'exec', 'compile', '__import__', 'getattr', 'setattr',
                  'globals', 'locals', 'vars', 'breakpoint'}
+    # Modules reachable as attributes of allowed packages (torch.os, triton.sys, ...).
+    escape_hatches = {'os', 'sys', 'subprocess', 'importlib', 'ctypes', 'builtins', 'environ',
+                      'shutil', 'pathlib', 'socket', 'signal', 'threading', 'multiprocessing'}
     aliases = {}
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
@@ -41,6 +44,10 @@ def source_policy(*, target_only=False):
             raise ValueError('Kernel source uses a prohibited runtime access')
         if isinstance(node, ast.Attribute) and (node.attr.startswith(('_', 'set_', 'enable_', 'disable_')) or isinstance(node.ctx, (ast.Store, ast.Del))):
             raise ValueError('Kernel source changes runtime attributes or uses reflective access')
+        if isinstance(node, ast.Attribute) and node.attr in escape_hatches:
+            raise ValueError('Kernel source reaches process or filesystem state through a module attribute')
+        if isinstance(node, ast.Subscript) and isinstance(node.ctx, (ast.Store, ast.Del)) and isinstance(node.value, ast.Attribute):
+            raise ValueError('Kernel source mutates state owned by another module')
         if target_only and isinstance(node, ast.Call):
             name = qualified(node.func)
             if name.startswith('torch.') and name not in allocation_and_metadata:

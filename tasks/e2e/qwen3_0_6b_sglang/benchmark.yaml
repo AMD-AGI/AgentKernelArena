@@ -1,5 +1,7 @@
 # Small-model variant of the imported Magpie SGLang serving recipes.
-# Differences: Qwen3 0.6B FP16, TP=1, CONC=8, ISL=128, OSL=128.
+# Differences: Qwen3 0.6B FP16, TP=1, CONC=8, ISL=128, OSL=128, NUM_PROMPTS=2000.
+# 2000 requests give roughly 60 s of steady-state decode at the measured
+# baseline throughput; 80 requests measured about 2.5 s per action.
 benchmark:
   framework: sglang
   model: Qwen/Qwen3-0.6B
@@ -10,7 +12,7 @@ benchmark:
     CONC: 8
     ISL: 128
     OSL: 128
-    NUM_PROMPTS: 80
+    NUM_PROMPTS: 2000
     RANDOM_RANGE_RATIO: 1
     MAX_MODEL_LEN: 4096
     SGLANG_USE_AITER: 1

@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from src.measurement import paired_throughput
+from src.measurement import LIMIT_DEFAULTS, lock_limits, paired_throughput
 from src.run_budget import agent_budget, budget_policy, open_budget, reserve_from_validation
 from src.serving_runtime import gpu_groups, selected_serving_tasks, validate_runtime_lock
 from src.task_protocol import parse_command_result, performance_cases, TaskProtocolError
@@ -56,6 +56,10 @@ def test_explicit_paired_metric_uses_median_and_locks_runtime():
     result = paired_throughput([(base, rows) for rows in candidate])
     assert result['speedup_ratio'] == pytest.approx(1.02)
     assert result['paired_ratios']['serving'] == pytest.approx([1.01,1.02,1.8])
+    spread = result['uncertainty']['serving']
+    assert spread['ratio_min'] == pytest.approx(1.01) and spread['ratio_max'] == pytest.approx(1.8)
+    assert spread['baseline_throughput_cv'] == 0
+    assert spread['candidate_throughput_cv'] > 0.3 and spread['median_within_noise'] is True
     candidate[0][0].metadata['runtime_fingerprint'] = 'other'
     with pytest.raises(ValueError, match='runtime'):
         paired_throughput([(base,candidate[0])])
@@ -120,7 +124,7 @@ def test_small_task_runtime_and_materialization(tmp_path):
                          capture_output=True, text=True)
     manifest = parse_command_result(run.stdout,role='task',action='validate-task',returncode=run.returncode,measurement='serving')
     assert manifest.passed
-    assert manifest.cases[0]['params']['num_requests'] == 80
+    assert manifest.cases[0]['params']['num_requests'] == 2000
     assert manifest.metadata['candidate_state'] == 'implemented'
     (tmp_path/'task/source/rmsnorm.py').write_text('def rms_norm(*args): pass\n')
     invalid = subprocess.run([sys.executable,'scripts/evaluate.py','validate-task'], cwd=tmp_path/'task',
@@ -150,6 +154,9 @@ def test_task_kernel_policy_rejects_environment_and_flag_mutation(tmp_path):
     candidate = tmp_path/'source/rmsnorm.py'
     for text in ['import os\nos.environ["TP"]="2"',
                  'import torch\ntorch.backends.cuda.matmul.allow_tf32=True',
+                 'import torch\ntorch.os.environ["TP"]="2"',
+                 'import torch\ntorch.backends.cudnn.flags[0]=1',
+                 'import triton\ntriton.runtime.driver.active.utils.os.system("id")',
                  'exec("print(1)")']:
         candidate.write_text(text)
         with pytest.raises(ValueError):
@@ -256,3 +263,78 @@ def test_runtime_identity_ignores_only_transport_and_diagnostic_ids():
     calls[0]['runtime_settings']['SGLANG_USE_AITER'] = '1'
     calls[0]['server_settings']['tp_size'] = 2
     assert module.runtime_identity('locked',calls)[0] != initial
+
+
+def test_uncertainty_separates_a_clear_gain_from_noise():
+    def rows(rate):
+        return performance_cases(parse(report(rate)))
+    tight = paired_throughput([(rows(100), rows(110)), (rows(100.5), rows(110.5)), (rows(99.5), rows(109.5))])
+    spread = tight['uncertainty']['serving']
+    assert spread['baseline_throughput_cv'] < 0.01 and spread['candidate_throughput_cv'] < 0.01
+    assert spread['median_within_noise'] is False
+    assert tight['gain_observed_in_all_pairs'] is True
+
+
+def test_lock_limits_default_and_reject_unknown_or_nonpositive_values():
+    assert lock_limits({}) == LIMIT_DEFAULTS
+    assert lock_limits({'limits': {'client_timeout_s': 900}})['client_timeout_s'] == 900
+    for bad in ({'bogus': 1}, {'client_timeout_s': 0}, {'idle_vram_limit_mib': 1.5}, {'minimum_measurement_s': True}):
+        with pytest.raises(ValueError):
+            lock_limits({'limits': bad})
+    lock = json.loads((ROOT/'tasks/e2e/qwen3_0_6b_sglang/runtime.lock.json').read_text())
+    assert lock['limits']['minimum_measurement_s'] == 30
+    lock['limits']['server_startup_timeout_s'] = -5
+    with pytest.raises(ValueError, match='positive integer'):
+        validate_runtime_lock(lock)
+
+
+def test_task_lock_matches_the_committed_workload():
+    import hashlib
+    task = ROOT/'tasks/e2e/qwen3_0_6b_sglang'
+    lock = json.loads((task/'runtime.lock.json').read_text())
+    assert hashlib.sha256((task/'benchmark.yaml').read_bytes()).hexdigest() == lock['workload_sha256']
+    assert hashlib.sha256((task/'source/rmsnorm.py').read_bytes()).hexdigest() == lock['initial_candidate_sha256']
+    import yaml
+    envs = yaml.safe_load((task/'benchmark.yaml').read_text())['benchmark']['envs']
+    # 2000 requests at the qualified ~4100 tokens/s keep the window about twice the 30 s floor.
+    assert envs['NUM_PROMPTS'] * envs['OSL'] / 4100 > 2 * lock['limits']['minimum_measurement_s']
+
+
+def test_serving_task_without_budget_fails_before_workspace_setup(tmp_path, monkeypatch):
+    import logging
+    from src import task_run
+
+    def refuse(*args, **kwargs):
+        raise AssertionError('workspace setup must not start without a budget')
+
+    monkeypatch.setattr(task_run, 'setup_workspace', refuse)
+    with pytest.raises(ValueError, match='budget.task_wall_time_s'):
+        task_run.run_task_v2(eval_config={'agent': {'template': 'codex'}}, agent=SimpleNamespace(value='codex'),
+                             agent_launcher=refuse, task_name='e2e/qwen3_0_6b_sglang',
+                             task_config_dir=str(ROOT/'tasks/e2e/qwen3_0_6b_sglang/config.yaml'),
+                             run_directory=tmp_path, timestamp='t', logger=logging.getLogger('test'))
+    assert not (tmp_path/'.budgets').exists()
+
+
+def test_exhausted_budget_becomes_a_materialization_timeout(monkeypatch):
+    from src.task_materialization import MaterializationTimeout, _Deadline
+    monkeypatch.setenv('ARENA_TASK_DEADLINE', '1')
+    with pytest.raises(MaterializationTimeout, match='budget exhausted'):
+        _Deadline(60)
+
+
+def test_sweep_outcome_blocks_acceptance(tmp_path, monkeypatch):
+    import logging
+    from src import task_run
+    monkeypatch.delenv('AGENT_KERNEL_ARENA_DEDICATED_CONTAINER', raising=False)
+    record = task_run._sweep_before_final_evaluation(
+        dict(evaluation=dict(measurement=dict(kind='serving'))), tmp_path, logging.getLogger('test'))
+    assert record['status'] == 'unavailable' and record['required'] is True
+    assert json.loads((tmp_path/'process_sweep.json').read_text())['status'] == 'unavailable'
+    kernel = task_run._sweep_before_final_evaluation(dict(evaluation={}), tmp_path, logging.getLogger('test'))
+    assert kernel['required'] is False
+    monkeypatch.setenv('AGENT_KERNEL_ARENA_DEDICATED_CONTAINER', '1')
+    monkeypatch.setattr('src.process_control.sweep_foreign_processes',
+                        lambda **kwargs: dict(status='leftovers', terminated=[dict(pid=9, comm='sleep')], survivors=[9]))
+    swept = task_run._sweep_before_final_evaluation(dict(evaluation={}), tmp_path, logging.getLogger('test'))
+    assert swept['status'] == 'leftovers' and swept['survivors'] == [9]

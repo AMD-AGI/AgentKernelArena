@@ -24,7 +24,7 @@ import uuid
 
 import yaml
 
-from .measurement import measurement_kind
+from .measurement import lock_limits, measurement_kind
 from .task_spec import load_task_spec, resolve_task_path
 from .tasks import get_task_config
 
@@ -42,6 +42,7 @@ def validate_runtime_lock(lock: dict) -> None:
         revision = source.get("revision") if isinstance(source, dict) else None
         if not isinstance(revision, str) or not re.fullmatch(r"[0-9a-f]{40}", revision):
             raise ValueError(f"Runtime source {name} requires a fixed 40-character commit revision")
+    lock_limits(lock)
 
 
 def selected_serving_tasks(config_path: Path, root: Path) -> dict:
@@ -162,7 +163,7 @@ class CleanExecutor:
                     raise ValueError("Serving source submission requires explicit file/symbol boundaries")
                 src = resolve_task_path(source, edit.path, must_exist=True)
                 dst = resolve_task_path(directory, edit.path)
-                if not src.is_file() or src.stat().st_size > 16 * 1024 * 1024:
+                if not src.is_file() or src.stat().st_size > lock_limits(lock)["max_candidate_source_bytes"]:
                     raise ValueError("Invalid candidate source file")
                 dst.write_bytes(src.read_bytes())
             verify_workspace_harness(snapshot, discard_added=False)

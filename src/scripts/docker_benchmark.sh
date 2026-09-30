@@ -1158,6 +1158,11 @@ build_docker_args() {
     if [[ -n "${AKA_WORKER_ID:-}" ]]; then
         docker_args+=(-e "AGENT_KERNEL_ARENA_WORKER_ID=${AKA_WORKER_ID}")
     fi
+    if [[ "${AKA_DEDICATED_CONTAINER:-0}" == "1" ]]; then
+        # Lets the framework sweep agent leftovers before final evaluation;
+        # never set for shells or preflight where other processes are legitimate.
+        docker_args+=(-e "AGENT_KERNEL_ARENA_DEDICATED_CONTAINER=1")
+    fi
     if [[ "${AGENT_HOME_ISOLATION:-0}" == "1" ]]; then
         docker_args+=(-e "AGENT_KERNEL_ARENA_ISOLATED_HOME=1")
     fi
@@ -1843,7 +1848,7 @@ run_parallel() {
             trap 'stop_serving_runtime; stop_eval_tool_sidecars' EXIT
             start_serving_runtime "$config_name"
             start_eval_tool_sidecars "$config_name" "${safe_run_name}-worker-${worker_id}"
-            docker_exec 0 python main.py "$@" --parallel-worker --worker-id "$worker_id" --run-name "$run_name"
+            AKA_DEDICATED_CONTAINER=1 docker_exec 0 python main.py "$@" --parallel-worker --worker-id "$worker_id" --run-name "$run_name"
         ) &
         pids+=("$!")
     done
@@ -1887,7 +1892,7 @@ case "${1:-}" in
         trap 'stop_serving_runtime; stop_eval_tool_sidecars' EXIT
         start_serving_runtime "$config_name"
         start_eval_tool_sidecars "$config_name" "run-${BASHPID}"
-        docker_exec 0 python main.py "$@"
+        AKA_DEDICATED_CONTAINER=1 docker_exec 0 python main.py "$@"
         stop_serving_runtime
         stop_eval_tool_sidecars
         trap - EXIT

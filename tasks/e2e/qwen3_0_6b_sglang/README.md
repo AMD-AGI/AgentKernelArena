@@ -29,8 +29,28 @@ are executed; a raw task directory is not directly runnable.
 Correctness compares the kernel outputs with an independent FP32 calculation
 and prefill/decode log probabilities with a Transformers FP32 reference.
 Performance runs the pinned Magpie workload with profiling off and checks full
-request/output-token counts. Final scoring uses three fresh interleaved A/B
+request/output-token counts. Each measurement completes 2,000 requests, about
+60 seconds of steady-state decode at the baseline rate; the lock rejects any
+window shorter than 30 seconds. Final scoring uses three fresh interleaved A/B
 pairs. Throughput improvements are reported independently of agent completion.
+
+## What this task can and cannot show
+
+RMSNorm is a small share of Qwen3-0.6B decode time at concurrency 8. Even a
+kernel that is several times faster changes end-to-end throughput by well under
+one percent, which is the same order as the repeat-to-repeat variation reported
+under `serving_measurement.uncertainty`. This task exists to exercise the
+serving contract end to end; a result near 1.00x is the expected outcome, not
+a failed optimization. Do not read a median ratio inside the recorded noise
+range as a gain.
+
+Every performance action starts from a fresh container with an empty Triton
+cache, so kernel compilation that happens during serving counts against the
+candidate. A kernel specialized on the row count with a `tl.constexpr`
+parameter recompiles for every new batch or prefill size inside the timed
+window. Prefer runtime row arguments and a bounded set of tile
+specializations. The pinned client issues warmup requests before timing, but it
+cannot warm every shape the scheduler will form.
 
 For clean checks during optimization, use `python3 scripts/evaluate.py candidate
 compile`, `candidate correctness`, or `candidate performance`. These commands

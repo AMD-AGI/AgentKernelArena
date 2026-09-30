@@ -1,3 +1,10 @@
+---
+myst:
+    html_meta:
+        "description": "Define fixed-workload serving tasks in AgentKernelArena, prepare pinned runtimes, budget long searches, and read paired throughput results."
+        "keywords": "AgentKernelArena, e2e, serving, SGLang, Magpie, InferenceX, runtime lock, GPU groups, task budget"
+---
+
 # End-to-end kernel optimization
 
 Serving tasks measure model throughput while allowing only kernel source changes.
@@ -76,6 +83,41 @@ checkout. Source archives are checked for path traversal and escaping links;
 scoring runs offline against prepared assets. GPU containers and the agent's
 ordinary repository mounts remain outside a hostile-code security boundary.
 
+### Isolation before final measurement
+
+The optimization agent runs in the ordinary worker container, which shares the
+GPU group and the host network with the clean evaluation containers. Two checks
+keep agent leftovers out of the final A/B:
+
+- Before final evaluation the framework stops every process in the worker
+  container outside its own ancestry and records them in `process_sweep.json`
+  and in `task_result.yaml` under `process_sweep`. The Docker runner marks
+  `run` and parallel worker containers with
+  `AGENT_KERNEL_ARENA_DEDICATED_CONTAINER=1`; the sweep refuses to run anywhere
+  else. A survivor, or a serving task without a sweepable container, makes the
+  candidate not accepted.
+- Before each serving performance action, the clean container checks that no
+  process already holds the measured devices. Used memory above the lock's
+  `idle_vram_limit_mib` fails that action, and the observed values are kept in
+  the action metadata as `gpu_memory_used_before_mib`.
+
+### Runtime limits
+
+The lock's optional `limits` mapping replaces adapter constants. Every value is
+a positive integer; omitted keys use the defaults in `src/measurement.py`:
+
+| Key | Default | Meaning |
+| --- | ---: | --- |
+| `server_startup_timeout_s` | 600 | Wait for the framework server to answer its readiness endpoint. |
+| `client_timeout_s` | 500 | Wall limit for the pinned benchmark client. |
+| `max_candidate_source_bytes` | 16 MiB | Largest editable file the host executor accepts. |
+| `idle_vram_limit_mib` | 2048 | Used device memory tolerated before a performance action starts. |
+| `minimum_measurement_s` | 30 | Shortest accepted client measurement window; a shorter run fails instead of scoring. |
+
+Agent-invoked checks through `scripts/evaluate.py` use the task's declared
+action timeout from `config.yaml`; the host executor caps every request by that
+same declaration.
+
 ## Measurement and results
 
 The schema-v2 action envelope remains `arena-eval-v1`. Only tasks declaring
@@ -89,8 +131,27 @@ geometric mean. Raw pair samples and rank evidence are retained. An optional
 `max_p99_tpot_ms` rejects candidates exceeding a fixed tail-latency threshold.
 The existing score remains 120 plus 100 times the accepted ratio after all gates;
 no missing ratio is reconstructed from average durations. A measured gain is
-not a statistical-significance claim: reports retain all pairs and indicate
-whether every pair improved. Kernel and serving summaries are grouped separately.
+not a statistical-significance claim: reports retain all pairs, indicate
+whether every pair improved, and record per-case `uncertainty` with the ratio
+range, the repeat-to-repeat throughput variation of each side, and whether the
+median ratio lies inside that variation. Kernel and serving summaries are
+grouped separately.
+
+### Expected signal
+
+An end-to-end ratio is bounded by the time share of the editable kernels. In
+the first task, RMSNorm is a small fraction of Qwen3-0.6B decode at concurrency
+8, so even a much faster kernel moves throughput by well under one percent,
+which is the same order as the measured repeat variation. That task exercises
+the contract; it is not a discriminating benchmark. Tasks meant to rank
+kernels should edit an operator that dominates the profile, such as attention
+decode or the main GEMM or MoE path, and should keep the client window long
+enough (`minimum_measurement_s`) that startup and ramp effects do not dominate.
+
+Qualification evidence for the first task is recorded in
+[the e2e qualification record](../reference/e2e-qualification-2026-09-29.md).
+Changing `benchmark.yaml`, the lock, or `config.yaml` changes the task contract
+and requires a fresh validator PASS before the task is treated as qualified.
 
 Qualification requires a fresh framework-finalized task-validator PASS on the
 locked GPU runtime. CPU regression tests alone do not qualify an e2e task.

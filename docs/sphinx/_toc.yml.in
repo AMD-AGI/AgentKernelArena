@@ -35,6 +35,8 @@ subtrees:
       title: Configure agents and models
     - file: how-to/add-task
       title: Add a task
+    - file: how-to/e2e-kernel-tasks
+      title: Optimize kernels through serving throughput
     - file: how-to/task-validator
       title: Validate tasks
     - file: how-to/quality-loop
@@ -55,6 +57,8 @@ subtrees:
       title: Configuration and API reference
     - file: reference/benchmark-methodology
       title: Performance measurement methodology
+    - file: reference/e2e-qualification-2026-09-29
+      title: E2E serving task qualification
     - url: https://rocm.docs.amd.com/projects/hyperloom/en/latest/index.html
       title: Hyperloom
 

@@ -189,23 +189,62 @@ def validate_task_session(session: TaskSession, *, eval_config: dict, task_confi
         framework_error=error, task_schema_version=2)
 
 
-def run_task_v2(**kwargs) -> tuple[bool, Path]:
+def _budget_path(run_directory: Path, task_name: str) -> Path:
+    return run_directory / ".budgets" / (hashlib.sha256(task_name.encode()).hexdigest() + ".json")
+
+
+def run_task_v2(*, eval_config: dict, agent, agent_launcher, task_name: str,
+                task_config_dir: str, run_directory: Path, timestamp: str,
+                logger: logging.Logger) -> tuple[bool, Path]:
+    """Open the persisted task budget, then run the shared v2 lifecycle under it."""
+    from .measurement import measurement_kind
     from .run_budget import budget_policy, open_budget
-    config = kwargs["eval_config"]
-    key = hashlib.sha256(kwargs["task_name"].encode()).hexdigest()
-    path = kwargs["run_directory"] / ".budgets" / (key + ".json")
-    record = open_budget(path, budget_policy(config))
+
+    spec = load_task_spec(Path(task_config_dir), task_id=task_name)
+    policy = budget_policy(eval_config)
+    if policy is None and measurement_kind(spec.to_mapping()) == "serving":
+        # Refuse before any workspace, baseline or model work is spent.
+        raise ValueError("Serving tasks require budget.task_wall_time_s and budget.final_evaluation_reserve_s")
+    record = open_budget(_budget_path(run_directory, task_name), policy)
+    arguments = dict(eval_config=eval_config, agent=agent, agent_launcher=agent_launcher,
+                     task_name=task_name, task_config_dir=task_config_dir, run_directory=run_directory,
+                     timestamp=timestamp, logger=logger, spec=spec, budget_record=record)
     if record is None:
-        return _run_task_v2(**kwargs)
+        return _run_task_v2(**arguments)
     with _agent_environment({"ARENA_TASK_DEADLINE": str(record["deadline_epoch"])}):
-        return _run_task_v2(**kwargs, budget_record=record)
+        return _run_task_v2(**arguments)
+
+
+def _sweep_before_final_evaluation(config: dict, state: Path, logger: logging.Logger) -> dict:
+    """Stop agent leftovers in the dedicated worker container and record the outcome.
+
+    Serving measurements share the GPU and host network with this container, so
+    a surviving agent-started server or script would distort the final A/B.
+    """
+    from .measurement import measurement_kind
+    from .process_control import dedicated_container, sweep_foreign_processes
+
+    if not dedicated_container():
+        record = {"status": "unavailable", "reason": "not running in a dedicated framework container"}
+    else:
+        try:
+            record = sweep_foreign_processes()
+        except (OSError, RuntimeError) as exc:
+            record = {"status": "error", "reason": f"{type(exc).__name__}: {exc}"}
+    record["required"] = measurement_kind(config) == "serving"
+    _json_file(state / "process_sweep.json", record)
+    if record.get("terminated"):
+        logger.warning("Stopped %d leftover process(es) before final evaluation: %s",
+                       len(record["terminated"]), [(row["pid"], row["comm"]) for row in record["terminated"]])
+    if record.get("survivors"):
+        logger.error("Leftover process(es) survived the sweep: %s", record["survivors"])
+    return record
 
 
 def _run_task_v2(*, eval_config: dict, agent, agent_launcher, task_name: str,
                 task_config_dir: str, run_directory: Path, timestamp: str,
-                logger: logging.Logger, budget_record: dict | None = None) -> tuple[bool, Path]:
+                logger: logging.Logger, spec: TaskSpec, budget_record: dict | None) -> tuple[bool, Path]:
     """Preserve agent failures and score the delivered files independently."""
-    spec = load_task_spec(Path(task_config_dir), task_id=task_name)
     config = spec.to_mapping()
     merge_task_tool_config(EvalToolsConfig.from_mapping(eval_config), config)
     workspace = setup_workspace(task_config_dir, run_directory, timestamp, logger, task_name=task_name)
@@ -223,8 +262,7 @@ def _run_task_v2(*, eval_config: dict, agent, agent_launcher, task_name: str,
     if initial.accepted and measurement_kind(config) == "serving":
         from .run_budget import reserve_from_validation
         budget_record = reserve_from_validation(budget_record, session)
-        budget_path = run_directory / ".budgets" / (hashlib.sha256(task_name.encode()).hexdigest() + ".json")
-        _json_file(budget_path, budget_record)
+        _json_file(_budget_path(run_directory, task_name), budget_record)
     harness = session.harness
     agent_config = {**eval_config, "_task_id": task_name,
                     "_task_validation_context": str(state / "validation_context.json")}
@@ -259,12 +297,17 @@ def _run_task_v2(*, eval_config: dict, agent, agent_launcher, task_name: str,
         if source_before["error"] is None and source_after["error"] is None:
             agent_result["candidate_changed"] = source_before["sources"] != source_after["sources"]
     _json_file(state / f"agent-{uuid.uuid4().hex}.json", agent_result)
+    sweep = _sweep_before_final_evaluation(config, state, logger)
     result = evaluate_task_session(
         session, eval_config={**eval_config, "agent": {**eval_config.get("agent", {}), "template": agent.value}},
-        logger=logger, result_metadata={"agent_execution": agent_result})
+        logger=logger, result_metadata={"agent_execution": agent_result, "process_sweep": sweep})
     accepted = all(result.get(key) is True for key in (
         "pass_compilation", "pass_correctness", "pass_tool_gate", "benchmark_method_consistent", "workload_consistent"))
     accepted = accepted and result.get("best_optimized_execution_time", 0) > 0
+    # Leftover processes taint any measurement; serving tasks additionally need
+    # a container the framework could sweep at all.
+    if sweep["status"] == "leftovers" or (sweep["required"] and sweep["status"] != "clean"):
+        accepted = False
     exports = []
     if accepted:
         exports = _run_exports(session, harness, logger)

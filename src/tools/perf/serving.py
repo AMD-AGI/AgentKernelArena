@@ -30,13 +30,26 @@ def digest(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
+PRECISIONS = {'fp16': 'float16', 'bf16': 'bfloat16'}
+
+
+def declared_timeout(role, action):
+    """The task's own action deadline; the host executor caps requests by it anyway."""
+    evaluation = yaml.safe_load((ROOT / 'config.yaml').read_text())['evaluation']
+    default = evaluation.get('timeout_s', 3600)
+    if role == 'task':
+        return evaluation.get('task', {}).get('timeout_s', default)
+    return evaluation.get(role, {}).get(action, {}).get('timeout_s', default)
+
+
 def bridge(args):
     # Agent-invoked checks use the same clean service as formal evaluation.
+    timeout = declared_timeout(args.role, args.action)
     request = dict(task_id=json.loads((ROOT / 'runtime.lock.json').read_text())['task_id'],
                    workspace=str(ROOT), role=args.role, action=args.action,
-                   phase='candidate_evaluation', timeout=1200)
+                   phase='candidate_evaluation', timeout=timeout)
     with socket.socket(socket.AF_UNIX) as client:
-        client.settimeout(1230)
+        client.settimeout(timeout + 30)
         client.connect(os.environ['AKA_SERVING_SOCKET'])
         client.sendall((json.dumps(request) + '\n').encode())
         result = json.loads(client.makefile('rb').readline(64 * 1024 * 1024))
@@ -49,7 +62,9 @@ def bridge(args):
 
 def identity(config):
     env = config['envs']
-    return dict(test_case_id='serving', status='PASS', dtype={'fp16': 'float16', 'bf16': 'bfloat16'}[config['precision']],
+    if config['precision'] not in PRECISIONS:
+        raise ValueError(f"Unsupported serving precision {config['precision']!r}; declare its dtype before use")
+    return dict(test_case_id='serving', status='PASS', dtype=PRECISIONS[config['precision']],
                 shape=[int(env['CONC']), int(env['ISL']), int(env['OSL'])],
                 params=dict(num_requests=int(env['NUM_PROMPTS']),
                             output_tokens_per_request=int(env['OSL']),
@@ -119,10 +134,42 @@ def prepare_client(lock):
     for script in (ROOT / 'runtime/magpie/Magpie/scripts/benchmark').glob('*.sh'):
         shutil.copy2(script, dest / 'benchmarks' / script.name)
     scripts = {str(p.relative_to(dest)): digest(p) for p in (dest / 'benchmarks').glob('*.sh')}
-    expected = lock['benchmark_scripts']
-    if any(scripts.get(name) != value for name, value in expected.items()):
+    if scripts != lock['benchmark_scripts']:
         raise ValueError('Composed benchmark scripts differ from runtime lock')
     return dest
+
+
+def gpu_memory_used_mib():
+    """Query from a child process so no HIP context of ours lingers beside the server."""
+    code = ('import json, torch; print(json.dumps([int((total - free) // 2**20) for free, total in '
+            '(torch.cuda.mem_get_info(index) for index in range(torch.cuda.device_count()))]))')
+    completed = subprocess.run([sys.executable, '-c', code], text=True, capture_output=True, timeout=120)
+    if completed.returncode:
+        raise RuntimeError('GPU idle check failed: ' + completed.stderr[-2000:])
+    return json.loads(completed.stdout.strip().splitlines()[-1])
+
+
+def assert_gpu_idle(limits):
+    """Fail closed when another process already holds the measured device."""
+    used = gpu_memory_used_mib()
+    if not used:
+        raise RuntimeError('No visible GPU for the serving measurement')
+    limit = limits['idle_vram_limit_mib']
+    if any(value > limit for value in used):
+        raise RuntimeError(f'GPU memory in use before measurement: {used} MiB exceeds {limit} MiB; '
+                           'another process holds the device')
+    return used
+
+
+def launch_command(config, port):
+    """Framework-specific server argv and readiness endpoint for the pinned image."""
+    env = config['envs']
+    if config['framework'] == 'sglang':
+        command = [sys.executable, '-m', 'sglang.launch_server', '--model-path', str(ROOT / 'model'),
+                   '--host', '127.0.0.1', '--port', str(port), '--tensor-parallel-size', str(env['TP']),
+                   '--context-length', str(env['MAX_MODEL_LEN']), *shlex.split(env['EXTRA_SGLANG_ARGS'])]
+        return command, 'get_model_info'
+    raise ValueError(f"Unsupported serving framework {config['framework']!r}; add a launcher and hook before use")
 
 
 def benchmark_sources(client, config):
@@ -142,7 +189,7 @@ def benchmark_sources(client, config):
     return sources
 
 
-def start_server(config):
+def start_server(config, limits):
     # The pinned framework derives an auxiliary port as HTTP port + 10000.
     # Keep that derived port in range even on hosts with high ephemeral ports.
     for _ in range(100):
@@ -156,24 +203,22 @@ def start_server(config):
     env = dict(os.environ)
     env.update({key: str(value) for key, value in config['envs'].items()})
     env.update(AKA_INSTALL_KERNEL='1', PYTHONPATH=str(ROOT / 'scripts'), NO_PROXY='127.0.0.1,localhost,0.0.0.0')
-    command = [sys.executable, '-m', 'sglang.launch_server', '--model-path', str(ROOT / 'model'),
-               '--host', '127.0.0.1', '--port', str(port), '--tensor-parallel-size', str(config['envs']['TP']),
-               '--context-length', str(config['envs']['MAX_MODEL_LEN']),
-               *shlex.split(config['envs']['EXTRA_SGLANG_ARGS'])]
+    command, ready_endpoint = launch_command(config, port)
     (ROOT / 'server_command.json').write_text(json.dumps(command))
     log = (ROOT / 'server.log').open('w')
     process = subprocess.Popen(command, env=env, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
     try:
-        deadline = time.monotonic() + 600
+        startup = limits['server_startup_timeout_s']
+        deadline = time.monotonic() + startup
         while time.monotonic() < deadline:
             if process.poll() is not None:
                 raise RuntimeError('Serving process exited: ' + (ROOT / 'server.log').read_text()[-12000:])
             try:
-                request(port, 'get_model_info')
+                request(port, ready_endpoint)
                 return process, port, log
             except (OSError, ValueError):
                 time.sleep(1)
-        raise TimeoutError('Model startup exceeded 600 seconds')
+        raise TimeoutError(f'Model startup exceeded {startup} seconds')
     except BaseException:
         stop_server(process, log)
         raise
@@ -218,7 +263,7 @@ def runtime_identity(lock_digest, calls):
     return fingerprint, settings
 
 
-def evaluate(args, config, lock):
+def evaluate(args, config, lock, limits):
     from checks import source_policy
     final_candidate = args.role == 'candidate' and os.environ.get('ARENA_EVAL_PHASE') == 'candidate_evaluation'
     source_policy(target_only=final_candidate)
@@ -244,8 +289,13 @@ def evaluate(args, config, lock):
     if args.action == 'correctness':
         metadata['operator_cases'] = operator_checks(lock)
         prompts = model_inputs(lock)
-    client = prepare_client(lock) if args.action == 'performance' else None
-    process, port, log = start_server(config)
+    client = None
+    if args.action == 'performance':
+        # Another tenant on the device would distort both roles unequally.
+        metadata['gpu_memory_used_before_mib'] = assert_gpu_idle(limits)
+        metadata['limits'] = dict(limits)
+        client = prepare_client(lock)
+    process, port, log = start_server(config, limits)
     try:
         if args.action == 'correctness':
             output_length = lock['correctness']['output_tokens']
@@ -264,7 +314,7 @@ def evaluate(args, config, lock):
                        MAGPIE_RUN_PHASE='client', PROFILE='0', RUN_EVAL='false',
                        NO_PROXY='127.0.0.1,localhost,0.0.0.0', no_proxy='127.0.0.1,localhost,0.0.0.0')
             completed = subprocess.run(['bash', 'benchmarks/' + config['benchmark_script']], cwd=client,
-                                       env=env, text=True, capture_output=True, timeout=500)
+                                       env=env, text=True, capture_output=True, timeout=limits['client_timeout_s'])
             (ROOT / 'client.log').write_text(completed.stdout + '\n' + completed.stderr)
             if completed.returncode:
                 raise RuntimeError('Benchmark client failed: ' + (ROOT / 'client.log').read_text()[-10000:])
@@ -272,6 +322,9 @@ def evaluate(args, config, lock):
                 metadata['benchmark_sources'] = benchmark_sources(client, config)
                 metadata['client_log'] = (ROOT / 'client.log').read_text()[-24000:]
             measured = json.loads((ROOT / 'inferencex_result.json').read_text())
+            if measured['duration'] < limits['minimum_measurement_s']:
+                raise ValueError(f"Measured window {measured['duration']:.1f}s is shorter than the locked minimum "
+                                 f"{limits['minimum_measurement_s']}s; raise NUM_PROMPTS in the workload")
             for name, count in (('input_lens', int(config['envs']['ISL'])),
                                 ('output_lens', int(config['envs']['OSL']))):
                 if measured.get(name) != [count] * int(config['envs']['NUM_PROMPTS']):
@@ -325,11 +378,12 @@ def main():
         return bridge(args)
     report = dict(protocol='arena-eval-v1', role=args.role, action=args.action, status='PASS', cases=[])
     try:
+        from _aka_measurement import lock_limits
         config = yaml.safe_load((ROOT / 'benchmark.yaml').read_text())['benchmark']
         lock = json.loads((ROOT / 'runtime.lock.json').read_text())
         if digest(ROOT / 'benchmark.yaml') != lock['workload_sha256']:
             raise ValueError('Workload differs from runtime lock')
-        cases, metadata = evaluate(args, config, lock)
+        cases, metadata = evaluate(args, config, lock, lock_limits(lock))
         report.update(cases=cases, metadata=metadata)
     except Exception as exc:
         report.update(status='FAIL', reason=f'{type(exc).__name__}: {exc}')

@@ -226,6 +226,28 @@ fallback for another. The evaluator records method sets, per-case mismatch
 details, and `benchmark_method_consistent` in `task_result.yaml`. All
 `benchmark_*` metadata survives the baseline/optimized YAML round trip.
 
+## Serving wall-clock measurement
+
+Tasks that declare `evaluation.measurement.kind: serving` do not time a kernel.
+Their unit of work is a fixed request set completed by a pinned benchmark
+client against a freshly started model server; the reported
+`benchmark_method` is `serving_wall_clock`, `execution_time_ms` is the client's
+wall duration, and `metrics.output_tokens_per_s` is the scored quantity. The
+protocol rejects a case whose completed requests, output tokens or input tokens
+differ from the manifest, or whose throughput does not equal tokens divided by
+duration. Graph-replay checks do not apply to this timer.
+
+Final evaluation alternates baseline and candidate for at least three fresh
+pairs, each in its own clean container from the trusted task template. The
+per-case ratio is the median of the paired throughput ratios; several cases
+combine by geometric mean. `serving_measurement.uncertainty` keeps the ratio
+range and each side's repeat variation so a small median is not read as a
+gain. Before each performance action the container verifies the device is idle,
+and before final evaluation the worker container is swept of agent leftovers;
+both records are part of the result. Kernel tasks keep the device-timing rules
+above; mixed runs report the two groups separately with no combined average.
+See [the e2e guide](../how-to/e2e-kernel-tasks.md) for the task-side contract.
+
 ## Maintenance checks
 
 Run:

@@ -89,6 +89,26 @@ state. Only the agent selected by the run configuration is provisioned: its host
 CLI and authentication/configuration state are mounted read-only and copied into
 the worker-local home before the agent starts.
 
+## GPU groups for multi-GPU tasks
+
+Serving tasks declare how many GPUs one measurement needs in their runtime lock.
+The run configuration maps the scheduler-provided pool onto workers with
+`resources.gpu_groups`, whose entries are indices into that pool:
+
+```yaml
+resources:
+  gpu_groups: [[0, 1, 2, 3], [4, 5, 6, 7]]
+```
+
+With `GPU_IDS=0,1,2,3,4,5,6,7` this starts two workers with four GPUs each.
+Inside a grouped worker, `ROCR_VISIBLE_DEVICES` lists the host GPUs of the group
+and `HIP_VISIBLE_DEVICES` enumerates them as logical `0..n-1`. Overlapping
+groups, indices outside the pool, and a group size that does not match every
+selected task's lock fail before any container starts. Without `resources`,
+each GPU remains its own worker, so kernel runs are unchanged. See
+[the e2e guide](e2e-kernel-tasks.md) for budgets and the host-side runtime
+that serving tasks also need.
+
 ## Resume a parallel run
 
 Resume works the same way as serial runs. Completed tasks are skipped, and

@@ -7,6 +7,28 @@ import statistics
 DEVICE_METHODS = frozenset({"cuda_graph", "cuda_event_fallback"})
 SERVING_METHOD = "serving_wall_clock"
 
+# Serving runtime limits a task may tighten or relax in its runtime lock. The
+# adapter is materialized beside the task, so this table is the single source
+# for both the host executor and the in-container client.
+LIMIT_DEFAULTS = {
+    "server_startup_timeout_s": 600,
+    "client_timeout_s": 500,
+    "max_candidate_source_bytes": 16 * 1024 * 1024,
+    "idle_vram_limit_mib": 2048,
+    "minimum_measurement_s": 30,
+}
+
+
+def lock_limits(lock: dict) -> dict:
+    """Validated runtime limits with defaults; every value is a positive integer."""
+    declared = lock.get("limits", {})
+    if not isinstance(declared, dict) or set(declared) - set(LIMIT_DEFAULTS):
+        raise ValueError(f"Runtime lock limits accept only {sorted(LIMIT_DEFAULTS)}")
+    for key, value in declared.items():
+        if type(value) is not int or value <= 0:
+            raise ValueError(f"Runtime lock limit {key} must be a positive integer")
+    return {**LIMIT_DEFAULTS, **declared}
+
 
 def measurement_kind(config: dict) -> str:
     return config.get("evaluation", {}).get("measurement", {}).get("kind", "kernel")
@@ -72,4 +94,33 @@ def paired_throughput(pairs: list[tuple[list, list]]) -> dict:
     return {"speedup_ratio": math.exp(sum(math.log(v) for v in medians.values()) / len(medians)),
             "case_ratios": medians, "paired_ratios": samples, "pairs": len(pairs),
             "metric": "output_tokens_per_s", "unit": "tokens/s", "direction": "higher",
-            "gain_observed_in_all_pairs": all(v > 1 for values in samples.values() for v in values)}
+            "gain_observed_in_all_pairs": all(v > 1 for values in samples.values() for v in values),
+            "uncertainty": _uncertainty(pairs, samples)}
+
+
+def _coefficient_of_variation(values: list[float]) -> float:
+    if len(values) < 2:
+        return 0.0
+    mean = statistics.fmean(values)
+    return statistics.stdev(values) / mean if mean else 0.0
+
+
+def _uncertainty(pairs: list[tuple[list, list]], samples: dict[str, list[float]]) -> dict:
+    """Spread of the raw samples, so a median ratio is never read as a proven gain."""
+    result = {}
+    for key, ratios in samples.items():
+        throughput = {"baseline": [], "candidate": []}
+        for baseline, candidate in pairs:
+            for role, rows in (("baseline", baseline), ("candidate", candidate)):
+                case = next(c for c in rows if c.test_case_id == key)
+                throughput[role].append(case.metadata["metrics"]["output_tokens_per_s"])
+        baseline_cv = _coefficient_of_variation(throughput["baseline"])
+        candidate_cv = _coefficient_of_variation(throughput["candidate"])
+        result[key] = {
+            "ratio_min": min(ratios), "ratio_max": max(ratios),
+            "baseline_throughput_cv": baseline_cv, "candidate_throughput_cv": candidate_cv,
+            # A median ratio inside the repeat-to-repeat spread of either side
+            # is indistinguishable from noise with this many pairs.
+            "median_within_noise": abs(statistics.median(ratios) - 1) <= max(baseline_cv, candidate_cv),
+        }
+    return result

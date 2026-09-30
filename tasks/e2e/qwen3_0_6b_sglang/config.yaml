@@ -23,5 +23,5 @@ evaluation:
     kind: serving
     runtime_lock: runtime.lock.json
     pairs: 3
-    max_p99_tpot_ms: 100
+    max_p99_tpot_ms: 10
 instructions: [README.md]
