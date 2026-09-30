@@ -175,7 +175,11 @@ The runner checks tensor/scalar contracts, output validity, input non-mutation, 
 the output of the exact CUDA graph replay used for timing, after poisoning its
 captured output buffers to detect stale results. It then refills inputs in place
 and validates that same replay against a freshly computed reference. Task
-validation checks deterministic inputs, reference self-comparison, and rejection
+validation preserves legal infinities when corrupting finite reference values,
+so the infinity guard cannot conceal a comparison callback that ignores errors.
+FP8 checks and negative-value generation use widened temporary tensors while
+callbacks retain the declared output dtype. Task validation checks deterministic
+inputs, reference self-comparison, and rejection
 of deliberately incorrect finite outputs for every case. Canonical performance
 helpers are materialized by the normal workspace machinery.
 

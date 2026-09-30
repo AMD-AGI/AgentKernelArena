@@ -502,6 +502,21 @@ else: raise AssertionError('legacy finite-output requirement lost')
 # Infinity checks must hold even when the supplied callback omits them.
 compare = load_solution(Path('scripts/compare'), 'main.py::run')
 sys.modules[compare.__module__].run = lambda *args: None
+from scripts import task_runner as runner
+values = runner.make_inputs(d, row, policy, device='cpu')
+try: runner.validate_case(d, row, policy, lambda **kwargs: expected.clone(), values, device='cpu')
+except ValueError as error: assert 'incorrect finite' in str(error)
+else: raise AssertionError('legal infinities concealed a vacuous finite comparison')
+multi_definition = {**d, 'outputs': {'all_inf': d['outputs']['out'], 'mixed': d['outputs']['out']}}
+try:
+    runner.validate_case(multi_definition, row, policy,
+        lambda **kwargs: (torch.full_like(expected, float('inf')), expected.clone()), values, device='cpu')
+except ValueError as error: assert 'incorrect finite' in str(error)
+else: raise AssertionError('all-infinite output concealed the finite comparison of another output')
+sys.modules[compare.__module__].run = compare
+for reference_values in (expected, torch.full_like(expected, float('inf'))):
+    runner.validate_case(d, row, policy, lambda **kwargs: reference_values.clone(), values, device='cpu')
+sys.modules[compare.__module__].run = lambda *args: None
 for bad in [torch.tensor([[0., float('-inf'), 0.]]), -expected,
             torch.tensor([[float('inf'), 0., float('-inf')]]),
             torch.tensor([[float('inf'), float('-inf'), float('inf')]])]:

@@ -35,28 +35,37 @@ def candidate():
     return module.run
 
 
-def wrong_output(expected):
+def wrong_output(expected, preserve_infinities=False):
     if isinstance(expected, dict):
-        return {name: wrong_output(value) for name, value in expected.items()}
+        return {name: wrong_output(value, preserve_infinities) for name, value in expected.items()}
     if isinstance(expected, (tuple, list)):
-        return type(expected)(wrong_output(value) for value in expected)
+        return type(expected)(wrong_output(value, preserve_infinities) for value in expected)
     if expected.is_floating_point():
-        # Finite, same-shape/dtype adversarial values exercise the numerical
-        # rule rather than merely testing the NaN/shape guard.
-        if expected.element_size() == 1:
-            wide = expected.float()
-            limit = min(1000, torch.finfo(expected.dtype).max)
-            wrong = torch.where(wide >= 0, -torch.ones_like(wide), torch.ones_like(wide)) * limit
-            return wrong.to(expected.dtype)
-        return torch.where(expected >= 0, -torch.ones_like(expected), torch.ones_like(expected)) * 1000
+        # Change finite values without overflow in low-precision dtypes. Keep
+        # legal infinities when exercising the callback's finite-value rule.
+        wide = expected.float() if expected.element_size() == 1 else expected
+        limit = min(1000, torch.finfo(expected.dtype).max)
+        wrong = torch.where(wide >= 0, -torch.ones_like(wide), torch.ones_like(wide)) * limit
+        if preserve_infinities:
+            wrong = torch.where(torch.isinf(wide), wide, wrong)
+        return wrong.to(expected.dtype)
     return torch.bitwise_not(expected)
 
 
 def validate_case(definition, row, policy, reference, values, device="cuda"):
     expected = reference(**clone_inputs(values))
     assert_outputs(expected, expected, definition, row, policy, device)
+    tensors = outputs(expected, definition, row, device)
+    # If any output has finite values, a negative check must change those
+    # values while retaining legal infinities across every output container.
+    # An all-infinite result instead exercises the strict infinity-mask guard.
+    preserve_infinities = any(
+        not tensor.is_floating_point()
+        or bool(torch.isfinite(tensor.float() if tensor.element_size() == 1 else tensor).any())
+        for tensor in tensors
+    )
     try:
-        assert_outputs(wrong_output(expected), expected, definition, row, policy, device)
+        assert_outputs(wrong_output(expected, preserve_infinities), expected, definition, row, policy, device)
     except AssertionError:
         pass
     else:
