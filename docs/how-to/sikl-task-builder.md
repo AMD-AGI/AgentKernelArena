@@ -44,6 +44,14 @@ Python modules exporting `run` too. All supplied callback bytes are preserved:
   per UUID and fit the callback's nonnegative 63-bit range.
 - `compare(actual, expected)` returns `None` on success or raises `AssertionError`.
   It owns the numerical rule; the builder's legacy `rtol`/`atol` do not override it.
+  It receives one tensor for a single output, or a mapping keyed by the declared
+  names for multiple outputs. Tuple/list returns follow the definition's output
+  insertion order; dictionary returns are aligned by name. The tensor values
+  and supplied callback source are unchanged.
+  With a comparison callback, infinities must match the independent reference
+  in position and sign (component-wise for complex tensors), and the callback
+  must accept them. NaNs in either result are always rejected. Without a
+  comparison callback, all outputs must remain finite.
 - Solution `spec.target` lists `{arch, hardware_id}` objects. The declared GPU
   architecture must match the selected runtime. Legacy `target_hardware` lists
   remain supported; mixing both forms is rejected.
@@ -163,7 +171,7 @@ python3 -m agents.sikl_task_builder.tools \
 Agent-invoked validation is diagnostic. The controller runs its own validation
 before installation and does not accept agent-supplied report paths or aggregates.
 Numerical policy, cases, original sources and timing code are fixed during a run.
-The runner checks tensor/scalar contracts, finite outputs, input non-mutation, and
+The runner checks tensor/scalar contracts, output validity, input non-mutation, and
 the output of the exact CUDA graph replay used for timing, after poisoning its
 captured output buffers to detect stale results. It then refills inputs in place
 and validates that same replay against a freshly computed reference. Task

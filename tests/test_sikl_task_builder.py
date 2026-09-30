@@ -429,6 +429,107 @@ def test_v2_callbacks_are_exact_and_not_authoring_editable(bundle_v2, tmp_path):
     assert not check_contract(task, cfg, draft)["ok"]
 
 
+def test_comparison_normalizes_output_containers_by_declared_names(bundle_v2, tmp_path):
+    task = inspect_bundle(bundle_v2)[0]
+    output = task.definition["outputs"]["out"]
+    task.definition["outputs"] = {"second": output, "first": output}
+    task.definition["compare"] = (
+        "import torch\ndef run(actual, expected):\n"
+        "    assert list(actual) == list(expected) == ['second', 'first']\n"
+        "    for name in expected:\n"
+        "        torch.testing.assert_close(actual[name], expected[name], rtol=0, atol=0)\n"
+    )
+    draft = tmp_path / "named-outputs"
+    materialize_task(task, Config(str(bundle_v2)), draft)
+    script = '''import json, torch
+from pathlib import Path
+from scripts.task_api import assert_outputs, load_solution
+c = json.loads(Path('scripts/workload.json').read_text())
+d, row, policy = c['definition'], c['rows'][0], c['policy']
+a, b = torch.zeros(1,3), torch.ones(1,3)
+forms = [(a,b), [a,b], {'first':b,'second':a}]
+for actual in forms:
+    for expected in forms:
+        assert_outputs(actual, expected, d, row, policy, 'cpu')
+for bad in [(b,a), {'second':b,'first':a}, (a,), {'wrong':a,'first':b}]:
+    try: assert_outputs(bad, (a,b), d, row, policy, 'cpu')
+    except (AssertionError, ValueError): pass
+    else: raise AssertionError('incorrect output contract accepted')
+# A single named/container output must still reach its callback as a tensor.
+compare = load_solution(Path('scripts/compare'), 'main.py::run')
+import sys
+def single(actual, expected):
+    assert isinstance(actual, torch.Tensor) and isinstance(expected, torch.Tensor)
+    torch.testing.assert_close(actual, expected, rtol=0, atol=0)
+sys.modules[compare.__module__].run = single
+single_definition = {**d, 'outputs': {'out': d['outputs']['second']}}
+for actual in [a, (a,), [a], {'out':a}]:
+    assert_outputs(actual, {'out':a}, single_definition, row, policy, 'cpu')
+'''
+    result = subprocess.run([sys.executable, '-c', script], cwd=draft,
+                            env={**os.environ, 'PYTHONPATH': ''}, text=True, capture_output=True)
+    assert result.returncode == 0, result.stderr
+
+
+def test_callback_infinities_preserve_sign_position_and_nan_guards(bundle_v2, tmp_path):
+    task = inspect_bundle(bundle_v2)[0]
+    task.definition["compare"] = (
+        "import torch\ndef run(actual, expected):\n"
+        "    torch.testing.assert_close(actual, expected, rtol=0, atol=0, equal_nan=False)\n"
+    )
+    draft = tmp_path / "infinity-contract"
+    materialize_task(task, Config(str(bundle_v2)), draft)
+    script = '''import json, torch, sys
+from pathlib import Path
+from scripts.task_api import assert_outputs, load_solution, poison_outputs
+c = json.loads(Path('scripts/workload.json').read_text())
+d, row, policy = c['definition'], c['rows'][0], c['policy']
+expected = torch.tensor([[float('inf'), float('-inf'), 0.0]])
+assert_outputs(expected.clone(), expected, d, row, policy, 'cpu')
+bad_finite = expected.clone(); bad_finite[0,2] = 1
+try: assert_outputs(bad_finite, expected, d, row, policy, 'cpu')
+except AssertionError: pass
+else: raise AssertionError('finite comparison bypassed')
+for definition in [d, {**d, 'compare': None}]:
+    for actual, reference in [(expected * float('nan'), expected), (expected, expected * float('nan'))]:
+        try: assert_outputs(actual, reference, definition, row, policy, 'cpu')
+        except ValueError: pass
+        else: raise AssertionError('NaN accepted')
+try: assert_outputs(expected, expected, {**d, 'compare': None}, row, policy, 'cpu')
+except ValueError: pass
+else: raise AssertionError('legacy finite-output requirement lost')
+# Infinity checks must hold even when the supplied callback omits them.
+compare = load_solution(Path('scripts/compare'), 'main.py::run')
+sys.modules[compare.__module__].run = lambda *args: None
+for bad in [torch.tensor([[0., float('-inf'), 0.]]), -expected,
+            torch.tensor([[float('inf'), 0., float('-inf')]]),
+            torch.tensor([[float('inf'), float('-inf'), float('inf')]])]:
+    try: assert_outputs(bad, expected, d, row, policy, 'cpu')
+    except AssertionError: pass
+    else: raise AssertionError('incorrect infinity masks accepted')
+captured = expected.clone()
+poison_outputs(captured, expected, {}, d, row, 'cpu')
+try: assert_outputs(captured, expected, d, row, policy, 'cpu')
+except ValueError: pass
+else: raise AssertionError('unwritten poisoned output accepted')
+captured.copy_(expected)
+assert_outputs(captured, expected, d, row, policy, 'cpu')
+# Complex outputs were already accepted by the tensor ABI. Check component
+# masks without calling isposinf/isneginf directly on a complex tensor.
+d = {**d, 'outputs': {'out': {**d['outputs']['out'], 'dtype': 'complex64'}}}
+reference = torch.complex(expected, torch.tensor([[0., float('inf'), 2.]]))
+assert_outputs(reference.clone(), reference, d, row, policy, 'cpu')
+assert_outputs(reference.conj(), reference.conj().resolve_conj(), d, row, policy, 'cpu')
+bad = reference.clone(); bad[0,1] = complex(float('-inf'), float('-inf'))
+try: assert_outputs(bad, reference, d, row, policy, 'cpu')
+except AssertionError: pass
+else: raise AssertionError('wrong complex infinity sign accepted')
+'''
+    result = subprocess.run([sys.executable, '-c', script], cwd=draft,
+                            env={**os.environ, 'PYTHONPATH': ''}, text=True, capture_output=True)
+    assert result.returncode == 0, result.stderr
+
+
 @pytest.mark.parametrize("version", [0, 3, True, "2", None])
 def test_unknown_schema_rejected(bundle_v2, version):
     path = bundle_v2 / "definitions/gemm.json"

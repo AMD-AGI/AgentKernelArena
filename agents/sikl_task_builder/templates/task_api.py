@@ -92,8 +92,13 @@ def outputs(value, definition, row, device):
             raise TypeError(f"{name}: output must be a tensor")
         if tensor.dtype != dtype(spec["dtype"]) or tuple(tensor.shape) != shape_of(spec, axes):
             raise ValueError(f"{name}: output shape/dtype differs from definition")
-        if tensor.device.type != torch.device(device).type or not bool(torch.isfinite(tensor).all()):
-            raise ValueError(f"{name}: output must be finite and on the requested device")
+        if tensor.device.type != torch.device(device).type:
+            raise ValueError(f"{name}: output must be on the requested device")
+        if definition.get("compare"):
+            if bool(torch.isnan(tensor).any()):
+                raise ValueError(f"{name}: output must not contain NaN")
+        elif not bool(torch.isfinite(tensor).all()):
+            raise ValueError(f"{name}: output must be finite")
     return result
 
 
@@ -101,8 +106,20 @@ def assert_outputs(got, expected, definition, row, policy, device):
     actual = outputs(got, definition, row, device)
     wanted = outputs(expected, definition, row, device)
     if definition.get("compare"):
+        for a, b in zip(actual, wanted):
+            # Complex outputs need component-wise signs; isposinf/isneginf do
+            # not accept complex tensors, while the existing ABI permits them.
+            a = torch.view_as_real(a.resolve_conj()) if a.is_complex() else a
+            b = torch.view_as_real(b.resolve_conj()) if b.is_complex() else b
+            if (not torch.equal(torch.isposinf(a), torch.isposinf(b))
+                    or not torch.equal(torch.isneginf(a), torch.isneginf(b))):
+                raise AssertionError("Output infinity positions/signs differ from the reference")
         compare = load_solution(Path(__file__).parent / "compare", "main.py::run")
-        if compare(got, expected) is not None:
+        # Callbacks receive the schema ABI, independent of the solution's
+        # tuple/list/dict return container. Preserve declared insertion order.
+        callback_actual = actual[0] if len(actual) == 1 else dict(zip(definition["outputs"], actual))
+        callback_expected = wanted[0] if len(wanted) == 1 else dict(zip(definition["outputs"], wanted))
+        if compare(callback_actual, callback_expected) is not None:
             raise ValueError("compare must return None on success or raise AssertionError")
         return
     for a, b in zip(actual, wanted):
