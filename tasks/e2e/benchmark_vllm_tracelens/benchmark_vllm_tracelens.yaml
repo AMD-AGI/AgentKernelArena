@@ -1,0 +1,63 @@
+# vLLM Benchmark with TraceLens Analysis
+# =======================================
+# Configuration for vLLM benchmarking with TraceLens trace analysis.
+#
+# Usage:
+#   python -m Magpie benchmark --benchmark-config examples/benchmarks/benchmark_vllm_tracelens.yaml
+#
+# Output:
+#   - Torch profiler traces: results/benchmark_vllm_<timestamp>/torch_trace/
+#   - TraceLens CSV reports: results/benchmark_vllm_<timestamp>/tracelens/
+#   - Simple roofline summaries:
+#       results/benchmark_vllm_<timestamp>/tracelens/decode_only_ISL128_OSL128_CONC4_kernel_roofline_simple.csv
+#       results/benchmark_vllm_<timestamp>/tracelens/prefilldecode_ISL128_OSL128_CONC4_kernel_roofline_simple.csv
+#
+# Note: 
+#   - num_prompts = CONC * 10 (hardcoded in script), so CONC=4 gives 40 prompts
+#   - Smaller CONC/ISL/OSL values for faster profiling runs
+
+benchmark:
+  framework: vllm
+  model: deepseek-ai/DeepSeek-R1-0528
+  precision: fp8
+  
+  # Environment variables (optimized for fast profiling)
+  envs:
+    TP: 8                    # Tensor parallelism (adjust based on GPU count)
+    CONC: 4                  # Request concurrency (num_prompts = CONC * 10)
+    ISL: 128                 # Input sequence length
+    OSL: 64                  # Output sequence length
+    RANDOM_RANGE_RATIO: 1    # Fixed length (no randomness)
+    MAX_MODEL_LEN: 4096      # Reduced model length for faster loading
+    GPU_MEM_UTIL: 0.85       # GPU memory utilization (lower to avoid OOM)
+    ENABLE_PROFILE: "true"   # Enable torch profiler
+    
+  # Profiler configuration
+  profiler:
+    # PyTorch profiler - generates JSON traces
+    torch_profiler:
+      enabled: true          # This sets VLLM_TORCH_PROFILER_DIR
+      
+    # System profiler (rocprof-compute / ncu)
+    system_profiler:
+      enabled: false
+      
+    # TraceLens trace analysis - generates reports from torch traces
+    # Commands:
+    #   - TraceLens_split_inference_trace
+    #   - TraceLens_generate_perf_report_pytorch_inference
+    # Set analysis_mode: pytorch for the legacy direct PyTorch report flow.
+    tracelens:
+      enabled: true               # Enable TraceLens analysis
+      analysis_mode: inference    # Default: inference
+      analysis_stages: all        # all | [prefilldecode, decode, prefill]
+      auto_patch_runtime: true    # Build TraceLens-ready Docker image if needed
+      # tracelens_repo_path: /path/to/TraceLens
+      # extension_wheel_path: /secure/path/to/TraceLens_extension.whl
+      export_format: csv          # "csv" or "excel"
+      perf_report_enabled: true   # Single-rank performance report
+      multi_rank_report_enabled: true   # Multi-rank collective report
+      # gpu_arch_config: null     # Optional: GPU arch config for roofline
+      
+  # Shorter timeout for minimal run
+  timeout_seconds: 1200

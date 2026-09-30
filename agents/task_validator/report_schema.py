@@ -170,6 +170,7 @@ def _normalize_benchmark_integrity(
     *,
     measurement_available: bool = True,
     replay_validation_applicable: bool = True,
+    serving: bool = False,
 ) -> str:
     if status == "SKIP":
         return status
@@ -209,10 +210,11 @@ def _normalize_benchmark_integrity(
     else:
         normalized_methods = {m for m in methods if isinstance(m, str)}
         if not all(isinstance(m, str) for m in methods) or not (
-            normalized_methods <= SCOREABLE_BENCHMARK_METHODS
+            normalized_methods <= ({"serving_wall_clock"} if serving else SCOREABLE_BENCHMARK_METHODS)
         ):
             policy_findings.append(
-                "benchmark_integrity: methods must be exactly cuda_graph or cuda_event_fallback"
+                ("benchmark_integrity: method must be serving_wall_clock" if serving else
+                 "benchmark_integrity: methods must be exactly cuda_graph or cuda_event_fallback")
             )
             hard_failure = True
 

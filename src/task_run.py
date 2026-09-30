@@ -108,7 +108,10 @@ def _run_exports(session: TaskSession, harness, logger: logging.Logger) -> list[
                 command = (python,) + command[1:]
             started = time.monotonic()
             try:
-                executed = _run_process(command, session.workspace, env, declaration.get("timeout_s", 60))
+                from .process_control import bounded_timeout
+                deadline = os.environ.get("ARENA_TASK_DEADLINE")
+                limit = bounded_timeout(declaration.get("timeout_s", 60), float(deadline) if deadline else None)
+                executed = _run_process(command, session.workspace, env, limit)
             except subprocess.TimeoutExpired as exc:
                 # _run_process kills the process group and attaches its drained
                 # output to the timeout. Keep the same evidence shape as actions.
@@ -186,9 +189,21 @@ def validate_task_session(session: TaskSession, *, eval_config: dict, task_confi
         framework_error=error, task_schema_version=2)
 
 
-def run_task_v2(*, eval_config: dict, agent, agent_launcher, task_name: str,
+def run_task_v2(**kwargs) -> tuple[bool, Path]:
+    from .run_budget import budget_policy, open_budget
+    config = kwargs["eval_config"]
+    key = hashlib.sha256(kwargs["task_name"].encode()).hexdigest()
+    path = kwargs["run_directory"] / ".budgets" / (key + ".json")
+    record = open_budget(path, budget_policy(config))
+    if record is None:
+        return _run_task_v2(**kwargs)
+    with _agent_environment({"ARENA_TASK_DEADLINE": str(record["deadline_epoch"])}):
+        return _run_task_v2(**kwargs, budget_record=record)
+
+
+def _run_task_v2(*, eval_config: dict, agent, agent_launcher, task_name: str,
                 task_config_dir: str, run_directory: Path, timestamp: str,
-                logger: logging.Logger) -> tuple[bool, Path]:
+                logger: logging.Logger, budget_record: dict | None = None) -> tuple[bool, Path]:
     """Preserve agent failures and score the delivered files independently."""
     spec = load_task_spec(Path(task_config_dir), task_id=task_name)
     config = spec.to_mapping()
@@ -204,6 +219,12 @@ def run_task_v2(*, eval_config: dict, agent, agent_launcher, task_name: str,
         session = TaskSession.create(spec, workspace, state, logger)
     bind_session_runtime(session)
     initial = session.initial_validation or session.validate_initial()
+    from .measurement import measurement_kind
+    if initial.accepted and measurement_kind(config) == "serving":
+        from .run_budget import reserve_from_validation
+        budget_record = reserve_from_validation(budget_record, session)
+        budget_path = run_directory / ".budgets" / (hashlib.sha256(task_name.encode()).hexdigest() + ".json")
+        _json_file(budget_path, budget_record)
     harness = session.harness
     agent_config = {**eval_config, "_task_id": task_name,
                     "_task_validation_context": str(state / "validation_context.json")}
@@ -212,6 +233,8 @@ def run_task_v2(*, eval_config: dict, agent, agent_launcher, task_name: str,
     if initial.accepted:
         environment["ARENA_TASK_CONTEXT"] = str(session.agent_context_path)
     if agent.value == "task_validator":
+        from .run_budget import agent_budget
+        agent_config = agent_budget(agent_config, budget_record)
         validate_task_session(session, eval_config=agent_config, task_config_dir=task_config_dir,
                               agent_launcher=agent_launcher)
         from agents.task_validator.report_schema import validation_report_is_complete
@@ -223,6 +246,8 @@ def run_task_v2(*, eval_config: dict, agent, agent_launcher, task_name: str,
         source_before = session.candidate_source_evidence()
         started = time.monotonic()
         try:
+            from .run_budget import agent_budget
+            agent_config = agent_budget(agent_config, budget_record)
             with _agent_environment(environment):
                 agent_launcher(eval_config=agent_config, task_config_dir=task_config_dir, workspace=str(workspace))
             agent_result["status"] = "COMPLETED"

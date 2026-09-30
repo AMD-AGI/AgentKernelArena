@@ -10,6 +10,7 @@ import subprocess
 import time
 import uuid
 
+from .measurement import measurement_kind
 from .runtime_env import PYTHON_ENV_VAR, build_subprocess_env
 from .task_protocol import (
     ActionResult, CaseManifest, TaskProtocolError, merge_command_results, parse_command_result,
@@ -91,7 +92,11 @@ def run_action(spec: TaskSpec, workspace: Path, *, role: str, action: str,
     env["ARENA_EVAL_PHASE"] = phase
     log = logger or logging.getLogger(__name__)
     invocation_id = uuid.uuid4().hex
-    deadline = time.monotonic() + selected.timeout_s
+    from .process_control import bounded_timeout
+
+    task_deadline = os.environ.get("ARENA_TASK_DEADLINE")
+    limit = bounded_timeout(selected.timeout_s, float(task_deadline) if task_deadline else None)
+    deadline = time.monotonic() + limit
     results = []
     evidence = []
     for command in selected.commands:
@@ -108,17 +113,24 @@ def run_action(spec: TaskSpec, workspace: Path, *, role: str, action: str,
                 argv = (python, "-m", "pytest") + command[1:]
         log.info("Task %s: %s.%s (%s), argv=%r", spec.task_id, role, action, invocation_id, argv)
         try:
-            executed = _run_process(argv, workspace, env, remaining)
+            if measurement_kind(spec.to_mapping()) == "serving":
+                from .serving_runtime import action_client
+                record = action_client(task_id=spec.task_id, workspace=workspace, role=role,
+                                       action=action, phase=phase, timeout=remaining)
+                executed = CommandEvidence(tuple(record["argv"]), record["returncode"],
+                                           record["stdout"], record["stderr"], record["elapsed_s"])
+            else:
+                executed = _run_process(argv, workspace, env, remaining)
         except subprocess.TimeoutExpired as exc:
             evidence.append(CommandEvidence(argv, -signal.SIGKILL, exc.stdout or "", exc.stderr or "", remaining))
             raise TaskExecutionError(f"{role}.{action} exceeded its {selected.timeout_s}s action deadline",
                                      commands=tuple(evidence)) from exc
-        except OSError as exc:
+        except (OSError, RuntimeError) as exc:
             raise TaskExecutionError(f"Cannot execute {role}.{action}: {exc}", commands=tuple(evidence)) from exc
         evidence.append(executed)
         try:
             result = parse_command_result(executed.stdout, role=role, action=action,
-                                          returncode=executed.returncode)
+                                          returncode=executed.returncode, measurement=measurement_kind(spec.to_mapping()))
         except TaskProtocolError as exc:
             raise TaskExecutionError(f"Invalid {role}.{action} evidence: {exc}", commands=tuple(evidence)) from exc
         results.append(result)

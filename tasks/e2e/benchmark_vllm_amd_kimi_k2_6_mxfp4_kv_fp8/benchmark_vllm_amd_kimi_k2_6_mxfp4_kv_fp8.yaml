@@ -1,0 +1,43 @@
+# vLLM Benchmark Configuration for amd/Kimi-K2.6-MXFP4 (fp8 KV cache)
+# ====================================================================
+#
+# Usage (Docker - default):
+#   python -m Magpie benchmark --benchmark-config examples/benchmarks/benchmark_vllm_amd_kimi_k2_6_mxfp4_kv_fp8.yaml
+#
+# Usage (Local - run directly on host, e.g. inside a pod):
+#   python -m Magpie benchmark --benchmark-config examples/benchmarks/benchmark_vllm_amd_kimi_k2_6_mxfp4_kv_fp8.yaml --run-mode local
+#
+# Uses Magpie generic script vllm_mi355x.sh
+
+benchmark:
+  framework: vllm
+  model: amd/Kimi-K2.6-MXFP4
+  precision: mxfp4
+
+  envs:
+    TP: 4
+    CONC: 32
+    ISL: 1024
+    OSL: 1024
+    RANDOM_RANGE_RATIO: 0.8
+    MAX_MODEL_LEN: 131072
+    VLLM_ROCM_USE_AITER: "1"
+    EXTRA_VLLM_ARGS: "--block-size 1 --kv-cache-dtype fp8 --enable-auto-tool-choice --tool-call-parser kimi_k2"
+
+  profiler:
+    torch_profiler:
+      enabled: false
+    system_profiler:
+      enabled: false
+    tracelens:
+      enabled: false
+
+  docker_image: "vllm/vllm-openai-rocm:v0.28.0"
+  # hf_cache_path: ""
+  benchmark_script: "vllm_mi355x.sh"
+  timeout_seconds: 3600
+
+  gap_analysis:
+    enabled: false
+    top_k: 100
+    find_kernel_sources: false

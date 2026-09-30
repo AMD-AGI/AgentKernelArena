@@ -1,0 +1,44 @@
+# SGLang Benchmark Configuration for MiniMaxAI/MiniMax-M3-MXFP8
+# ====================================================
+#
+# Usage (Docker - default):
+#   python -m Magpie benchmark --benchmark-config examples/benchmarks/sglang_mi355x/benchmark_sglang_mini_max_3_mxfp8.yaml
+#
+# Usage (Local - run directly on host, e.g. inside a pod):
+#   python -m Magpie benchmark --benchmark-config examples/benchmarks/sglang_mi355x/benchmark_sglang_mini_max_3_mxfp8.yaml --run-mode local
+
+benchmark:
+  framework: sglang
+  model: MiniMaxAI/MiniMax-M3-MXFP8
+  precision: mxfp8
+  run_mode: docker
+  gpu_arch: gfx950
+
+  # Environment variables
+  envs:
+    TP: 8
+    CONC: 32
+    ISL: 1024
+    OSL: 1024
+    RANDOM_RANGE_RATIO: 0.8
+    SGLANG_USE_AITER: 1
+    EXTRA_SGLANG_ARGS: "--kv-cache-dtype fp8_e4m3"
+
+  # Profiler configuration
+  profiler:
+    torch_profiler:
+      enabled: false
+    system_profiler:
+      enabled: false
+    tracelens:
+      enabled: false
+
+  docker_image: "lmsysorg/sglang-rocm:v0.5.16-rocm724-mi35x-20260805"
+  # hf_cache_path: ""
+  benchmark_script: "sglang_mi355x.sh"
+  timeout_seconds: 10800
+
+  gap_analysis:
+    enabled: false
+    top_k: 100
+    find_kernel_sources: false

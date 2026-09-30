@@ -15,6 +15,7 @@ import os
 from pathlib import Path
 import shutil
 
+from .measurement import measurement_kind
 from .evaluator_utils import _is_unimplemented_target_stub
 from .task_execution import ExecutedAction, TaskExecutionError, run_action
 from .task_protocol import (
@@ -163,6 +164,7 @@ class TaskSession:
                              for item in raw["commands"])
             parsed = merge_command_results(parse_command_result(
                 command.stdout, role=result["role"], action=result["action"], returncode=command.returncode,
+                measurement=measurement_kind(spec.to_mapping()),
             ) for command in commands)
             if parsed.to_mapping() != result:
                 raise TaskExecutionError(f"Saved result contradicts its command evidence: {path.name}")
@@ -370,6 +372,14 @@ class TaskSession:
                 raise TaskExecutionError(f"Missing candidate entrypoint: {entry.file}:{entry.symbol}")
             if _is_unimplemented_target_stub(target):
                 raise TaskExecutionError(f"Unimplemented candidate entrypoint: {entry.file}:{entry.symbol}")
+
+    def baseline_action(self, action: str) -> ExecutedAction:
+        """Fresh final measurement from the verified original source package."""
+        if self.initial_validation is None or not self.initial_validation.accepted:
+            raise TaskExecutionError("Baseline remeasurement requires accepted initial task validation")
+        if action != "performance":
+            raise TaskExecutionError(f"Unsupported baseline remeasurement: {action}")
+        return self._execute("baseline", action, "candidate_evaluation")
 
     def candidate_action(self, action: str) -> ExecutedAction:
         if self.initial_validation is None or not self.initial_validation.accepted:

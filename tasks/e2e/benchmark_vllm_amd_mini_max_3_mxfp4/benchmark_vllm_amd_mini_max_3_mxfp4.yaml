@@ -1,0 +1,61 @@
+# vLLM Benchmark Configuration for amd/MiniMax-M3-MXFP4
+# ======================================================
+#
+# Usage (Docker - default):
+#   python -m Magpie benchmark --benchmark-config examples/benchmarks/benchmark_vllm_amd_mini_max_3_mxfp4.yaml
+#
+# Usage (Local - run directly on host, e.g. inside a pod):
+#   python -m Magpie benchmark --benchmark-config examples/benchmarks/benchmark_vllm_amd_mini_max_3_mxfp4.yaml --run-mode local
+#
+# Serve flags follow the AMD MXFP4 MI355X baseline from:
+#   https://recipes.vllm.ai/MiniMaxAI/MiniMax-M3
+# Uses Magpie generic script vllm_mi355x.sh
+#
+# Validated 2026-09-18 on 8x MI355X (gfx950): TP=8, CONC=32, ISL/OSL=1024
+#   request=2.64 req/s, output=2434 tok/s, total=4860 tok/s
+#   TTFT mean/p99=143/625 ms, TPOT mean/p99=12.7/14.9 ms
+
+benchmark:
+  framework: vllm
+  model: amd/MiniMax-M3-MXFP4
+  precision: mxfp4
+  run_mode: docker
+  gpu_arch: gfx950
+
+  # Environment variables
+  envs:
+    TP: 8
+    CONC: 32
+    ISL: 1024
+    OSL: 1024
+    RANDOM_RANGE_RATIO: 0.8
+    MAX_MODEL_LEN: 2248 # ISL + OSL + 200
+    # M3 MSA requires block-size 128; parsers are minimax_m3 (not m2).
+    EXTRA_VLLM_ARGS: "--no-enable-prefix-caching --block-size 128 --language-model-only --kv-cache-dtype fp8 --attention-backend TRITON_ATTN --moe-backend aiter --tool-call-parser minimax_m3 --reasoning-parser minimax_m3 --enable-auto-tool-choice"
+
+    # AMD / MiniMax-M3 performance flags
+    VLLM_ROCM_USE_AITER: 1
+    VLLM_ROCM_USE_AITER_MOE: 1
+    VLLM_USE_BREAKABLE_CUDAGRAPH: 0
+    VLLM_ENGINE_READY_TIMEOUT_S: 3600
+    VLLM_EXECUTE_MODEL_TIMEOUT_SECONDS: 1800
+
+  profiler:
+    torch_profiler:
+      enabled: false
+    system_profiler:
+      enabled: false
+    tracelens:
+      enabled: false
+
+  # Pin the ROCm image validated for Quark MXFP4 / AITER MoE on gfx950.
+  # Plain vllm/vllm-openai-rocm:nightly may lack the MXFP4 MoE fix.
+  docker_image: "rocm/vllm-dev:vllm-0.23.1-rocm723-mi35x-mori-0625"
+  # hf_cache_path: ""
+  benchmark_script: "vllm_mi355x.sh"
+  timeout_seconds: 10800
+
+  gap_analysis:
+    enabled: false
+    top_k: 100
+    find_kernel_sources: false

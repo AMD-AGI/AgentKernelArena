@@ -113,6 +113,11 @@ def _replay_validation_applicability(evaluated: dict) -> dict:
     if any(row.get("benchmark_method") == "cuda_graph" for row in cases):
         applicability.update(status="required", reason="Captured graph timing occurs in the measured cases.")
         return applicability
+    from src.measurement import measurement_kind, SERVING_METHOD
+    if (measurement_kind(spec.to_mapping()) == "serving"
+            and all(row.get("benchmark_method") == SERVING_METHOD for row in cases)):
+        applicability.update(status="not_applicable", reason="Serving measurement times complete requests, not graph replay.")
+        return applicability
     reasons = set()
     for row in cases:
         metadata = row.get("metadata", {})
@@ -247,6 +252,7 @@ def normalize_v2_report(raw_report: Any, *, expected_task_name: str,
                 measurement_available=not (perf is None and evaluated.get("evidence_valid")
                                            and evaluated.get("task_failures")),
                 replay_validation_applicable=applicability["status"] != "not_applicable",
+                serving=(evaluated.get("spec") is not None and evaluated["spec"].to_mapping().get("evaluation", {}).get("measurement", {}).get("kind") == "serving"),
             )
             if previous == "FAIL":
                 status = "FAIL"

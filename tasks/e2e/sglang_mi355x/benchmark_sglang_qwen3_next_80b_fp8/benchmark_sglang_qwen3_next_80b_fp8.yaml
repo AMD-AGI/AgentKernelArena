@@ -1,0 +1,52 @@
+# SGLang Benchmark Configuration for Qwen/Qwen3-Next-80B-A3B-Instruct-FP8
+# ====================================================
+#
+# Usage (Docker - default):
+#   python -m Magpie benchmark --benchmark-config examples/benchmarks/sglang_mi355x/benchmark_sglang_qwen3_next_80b_fp8.yaml
+#
+# Usage (Local - run directly on host, e.g. inside a pod):
+#   python -m Magpie benchmark --benchmark-config examples/benchmarks/sglang_mi355x/benchmark_sglang_qwen3_next_80b_fp8.yaml --run-mode local
+
+benchmark:
+  framework: sglang
+  model: Qwen/Qwen3-Next-80B-A3B-Instruct-FP8
+  precision: fp8
+  run_mode: docker
+  gpu_arch: gfx950
+
+  # Environment variables
+  envs:
+    TP: 4
+    CONC: 32
+    ISL: 1024
+    OSL: 1024
+    RANDOM_RANGE_RATIO: 0.8
+    SGLANG_USE_AITER: 1
+    EXTRA_SGLANG_ARGS: "--kv-cache-dtype fp8_e4m3"
+    # Accuracy (optional). Quote "true" so the runner sees lowercase true.
+    # Magpie runs lm-eval after the throughput sweep against this server.
+    # RUN_EVAL: "true"
+    # MAGPIE_EVAL_TASKS: gsm8k,mmlu,hellaswag,gpqa_diamond_cot_n_shot,humaneval_instruct
+    # MAGPIE_EVAL_CONCURRENCY: "8 64"
+    # MAGPIE_EVAL_LIMIT: 100
+    # EVAL_MAX_MODEL_LEN: 16384
+    # EVAL_MAX_GEN_TOKS: 1024
+
+  # Profiler configuration
+  profiler:
+    torch_profiler:
+      enabled: false
+    system_profiler:
+      enabled: false
+    tracelens:
+      enabled: false
+
+  docker_image: "lmsysorg/sglang:v0.5.14-rocm720-mi35x"
+  # hf_cache_path: ""
+  benchmark_script: "sglang_mi355x.sh"
+  timeout_seconds: 7200
+
+  gap_analysis:
+    enabled: false
+    top_k: 100
+    find_kernel_sources: false

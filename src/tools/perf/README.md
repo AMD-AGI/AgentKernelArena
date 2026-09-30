@@ -66,3 +66,7 @@ independent reference after timing. The callback must only observe state; it
 must not reset inputs or run the reference. It does not change graph batching.
 Apply the same observation and state policy to baseline and candidate. An
 observer exception rejects the measurement and leaves the collector unbound.
+
+Serving tasks use the same workspace materialization mechanism for the canonical
+client adapter in `src/tools/perf/serving.py`. They declare a separate wall-clock measurement
+contract; this does not change device-timing rules for kernel tasks.

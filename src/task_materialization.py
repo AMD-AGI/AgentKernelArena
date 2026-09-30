@@ -44,7 +44,9 @@ _RECORD_SCHEMA = 1
 class _Deadline:
     def __init__(self, timeout_s: float):
         self.timeout_s = timeout_s
-        self.end = time.monotonic() + timeout_s
+        from .process_control import bounded_timeout
+        global_deadline = os.environ.get("ARENA_TASK_DEADLINE")
+        self.end = time.monotonic() + bounded_timeout(timeout_s, float(global_deadline) if global_deadline else None)
 
     def remaining(self) -> float:
         remaining = self.end - time.monotonic()

@@ -1,0 +1,28 @@
+# Ray Remote Benchmark: DeepSeek-R1-0528 on vLLM
+benchmark:
+  framework: vllm
+  model: /shared_nfs/Llamas/huggingface/DeepSeek-R1-0528
+  precision: fp8
+  run_mode: ray
+  envs:
+    TP: 8
+    CONC: 32
+    ISL: 128
+    OSL: 128
+    RANDOM_RANGE_RATIO: 0.8
+    MAX_MODEL_LEN: 4096 # ISL + OSL + 200
+  profiler:
+    torch_profiler:
+      enabled: false
+    system_profiler:
+      enabled: false
+    tracelens:
+      enabled: false
+  gap_analysis:
+    enabled: false
+  ray_config:
+    cluster_address: "auto"
+    shared_storage_path: "/shared_nfs/magpie"
+    entrypoint_num_cpus: 32
+    install_magpie: false 
+  timeout_seconds: 3600

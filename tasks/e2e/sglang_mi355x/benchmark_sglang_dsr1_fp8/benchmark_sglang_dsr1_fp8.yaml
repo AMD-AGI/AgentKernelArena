@@ -1,0 +1,44 @@
+# SGLang Benchmark Configuration for deepseek-ai/DeepSeek-R1-0528
+# ====================================================
+#
+# Usage (Docker - default):
+#   python -m Magpie benchmark --benchmark-config examples/benchmarks/sglang_mi355x/benchmark_sglang_dsr1_fp8.yaml
+#
+# Usage (Local - run directly on host, e.g. inside a pod):
+#   python -m Magpie benchmark --benchmark-config examples/benchmarks/sglang_mi355x/benchmark_sglang_dsr1_fp8.yaml --run-mode local
+
+benchmark:
+  framework: sglang
+  model: deepseek-ai/DeepSeek-R1-0528
+  precision: fp8
+  run_mode: docker
+  gpu_arch: gfx950
+
+  # Environment variables
+  envs:
+    TP: 8
+    CONC: 32
+    ISL: 1024
+    OSL: 1024
+    RANDOM_RANGE_RATIO: 0.8
+    SGLANG_USE_AITER: 1
+    EXTRA_SGLANG_ARGS: "--kv-cache-dtype fp8_e4m3"
+
+  # Profiler configuration
+  profiler:
+    torch_profiler:
+      enabled: false
+    system_profiler:
+      enabled: false
+    tracelens:
+      enabled: false
+
+  docker_image: "lmsysorg/sglang:v0.5.14-rocm720-mi35x"
+  # hf_cache_path: ""
+  benchmark_script: "sglang_mi355x.sh"
+  timeout_seconds: 7200
+
+  gap_analysis:
+    enabled: false
+    top_k: 100
+    find_kernel_sources: false

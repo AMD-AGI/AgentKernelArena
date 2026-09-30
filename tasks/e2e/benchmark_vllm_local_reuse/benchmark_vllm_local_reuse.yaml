@@ -1,0 +1,59 @@
+# vLLM benchmark with persistent server reuse (local / Magpie built-in scripts)
+# ================================================================================
+#
+# server_lifecycle keeps the vLLM process alive across multiple Magpie invocations
+# on the SAME host + PORT. Typical workflow:
+#   Run 1: cleanup: false → server starts, stays up after benchmark.
+#   Run 2+: cleanup false → benchmarks attach to /health-reachable server only.
+#   Final run: cleanup: true → Magpie terminates the persisted server pid group.
+#
+# Requirements:
+#   - run_mode: local
+#   - benchmark_script: one of Magpie builtins (vllm_mi300x.sh / vllm_mi355x.sh)
+#     Native InferenceX scripts (gptoss_*.sh) do NOT honour MAGPIE_RUN_PHASE.
+#   - profiler.torch_profiler.enabled: false unless cleanup: true each time.
+#
+# Under reuse, timeout_seconds refers to the CLIENT (benchmark_serving.py) slice
+# only — it does NOT stop the detached server afterwards.
+#
+# Final run with cleanup:true (same envs/model as warm runs): see
+#   examples/benchmarks/benchmark_vllm_reuse_cleanup.yaml
+#
+# Usage:
+#   python -m Magpie benchmark --benchmark-config examples/benchmarks/benchmark_vllm_local_reuse.yaml
+
+benchmark:
+  framework: vllm
+  model: MiniMaxAI/MiniMax-M2.5
+  precision: fp8
+  run_mode: local
+
+  timeout_seconds: 3600
+
+  envs:
+    TP: 2
+    PORT: 8888
+    CONC: 4
+    ISL: 8192
+    OSL: 1024
+    RANDOM_RANGE_RATIO: 0.8
+    MAX_MODEL_LEN: 131072
+    EXTRA_VLLM_ARGS: "--no-enable-prefix-caching --block-size 32 --kv-cache-dtype fp8 --attention-backend ROCM_AITER_FA --enable-auto-tool-choice --tool-call-parser minimax_m2 --reasoning-parser minimax_m2_append_think"
+    VLLM_ROCM_USE_AITER: 1
+
+  profiler:
+    torch_profiler:
+      enabled: false
+
+  server_lifecycle:
+    # enabled: true to enable the server lifecycle
+    enabled: true
+    # cleanup: true to terminate the persisted server pid group after benchmark
+    cleanup: false
+    # force_reuse: true to bypass the mismatch errors (metadata mismatch includes tp, port, extra_vllm_args, extra_sglang_args, max_model_len, inferencex_path)
+    force_reuse: false 
+    # pid_dir defaults to ~/.cache/magpie/server/
+    server_ready_timeout_s: 2700
+
+  docker_image: "" # no docker image required for local run
+  benchmark_script: "vllm_mi355x.sh"

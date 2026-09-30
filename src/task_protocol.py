@@ -13,12 +13,14 @@ import math
 from typing import Any, Iterable
 
 from .task_spec import ACTIONS, BaselineSpec
+from .measurement import DEVICE_METHODS, SERVING_METHOD, validate_serving_case
 
 
 RESULT_PREFIX = "ARENA_EVAL_RESULT="
 PROTOCOL = "arena-eval-v1"
 IDENTITY_FIELDS = ("shape", "dtype", "params")
-TIMING_METHODS = {"cuda_graph", "cuda_event_fallback"}
+
+TIMING_METHODS = DEVICE_METHODS
 
 
 class TaskProtocolError(ValueError):
@@ -88,7 +90,7 @@ class ActionResult:
         return obj
 
 
-def parse_command_result(stdout: str, *, role: str, action: str, returncode: int) -> ActionResult:
+def parse_command_result(stdout: str, *, role: str, action: str, returncode: int, measurement: str = "kernel") -> ActionResult:
     """Parse ONLY this completed process's stdout, never an old workspace file."""
     if (role, action) not in ACTIONS:
         _fail(f"Unsupported action: {role}.{action}")
@@ -159,8 +161,14 @@ def parse_command_result(stdout: str, *, role: str, action: str, returncode: int
             if type(latency) not in (int, float) or not math.isfinite(latency) or latency <= 0:
                 _fail(f"case {case_id} requires finite positive execution_time_ms")
             method = row.get("benchmark_method")
-            if not isinstance(method, str) or method not in TIMING_METHODS:
+            allowed = {SERVING_METHOD} if measurement == "serving" else TIMING_METHODS
+            if not isinstance(method, str) or method not in allowed:
                 _fail(f"case {case_id} has unsupported device benchmark_method")
+            if measurement == "serving":
+                try:
+                    validate_serving_case(row)
+                except ValueError as exc:
+                    _fail(str(exc))
     return ActionResult(role, action, obj["status"], tuple(deepcopy(cases)),
                         obj.get("reason"), obj.get("failure_kind"), deepcopy(obj.get("metadata")))
 

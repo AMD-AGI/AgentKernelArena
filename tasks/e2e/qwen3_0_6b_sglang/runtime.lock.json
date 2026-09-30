@@ -1,0 +1,63 @@
+{
+  "version": 1,
+  "image": "lmsysorg/sglang-rocm@sha256:b435b508b5aa696abb25c909341ce73e41574c4271cf716bed72418dcea86b78",
+  "gpu_count": 1,
+  "model": {
+    "id": "Qwen/Qwen3-0.6B",
+    "revision": "c1899de289a04d12100db370d81485cdf75e47ca"
+  },
+  "workload_sha256": "426dc984d1d7e0ba9a80838f0ef9ed3af52ac8c9bc258100f2e6ea740b328c2d",
+  "dependencies": {
+    "magpie": {
+      "repository": "https://github.com/AMD-AGI/Magpie.git",
+      "revision": "f4bed327e434c19ef8daba5868027c590abf032c"
+    },
+    "inferencex": {
+      "repository": "https://github.com/SemiAnalysisAI/InferenceX.git",
+      "revision": "44d6f8ad9a6f39950aab835a4808a19d76670ace",
+      "subdirectory": "inferencex-e2e"
+    }
+  },
+  "minimum_final_evaluation_s": 1200,
+  "correctness": {
+    "seed": 1729,
+    "rtol": 0.02,
+    "atol": 0.02,
+    "model_logprob_atol": 0.1,
+    "model_samples": 8,
+    "output_tokens": 16
+  },
+  "task_id": "e2e/qwen3_0_6b_sglang",
+  "benchmark_scripts": {
+    "benchmarks/atom_mi300x.sh": "b3ea2357aca52e3f555625497cefd13e2131f335c14e83d706e216206ecbd584",
+    "benchmarks/atom_mi355x.sh": "479986d85cf86bdfc5b915684bb2981ebafd62591607c6c9c0e77c53da1dda3e",
+    "benchmarks/benchmark_lib.sh": "f3b8903721800b51da091b78dee1f54213dd35ea9811e57b4abeecfe7a0f0c43",
+    "benchmarks/magpie_bench_remote_compat.sh": "1d12b193725bb5ecd3429d8e168dea1524c993fac3a42b2c701a4d8981493daf",
+    "benchmarks/magpie_r9700_vllm_policy.sh": "b63a1726958ea5cfee57857950b82187a78344cab099a31adff13b2f5d6748d6",
+    "benchmarks/magpie_split_extra_vllm_args.sh": "070e0e831ef78ef1869739eb34332cdde1a36aaed8faf2f213911a082ad032d4",
+    "benchmarks/native_power_collect.sh": "d8e901079995da615017e8ee644d52e42e3083c210c0fa914d4954a5d0f55d01",
+    "benchmarks/native_power_lifecycle.sh": "3e96e61006454ca265ee242ee02209e752ba993f8ebd08be0ed1b2439df56212",
+    "benchmarks/runtime_settings.sh": "ff5378e913ea124505bad6fac291e04ab33923b6f78d9b3315e2ee11991aa85d",
+    "benchmarks/server_cleanup.sh": "db679f3186235bd530609939dc863000fb34151f23a20f17742b61ff2fce5bf2",
+    "benchmarks/sglang_mi300x.sh": "6d6be69e53ec0693387b8e62121471fbaf3ca8dc0984d384f1d9545c5a7d7a5a",
+    "benchmarks/sglang_mi355x.sh": "fa3f4d73ab5f269e61c6b860a8a62da2f4b8af1d089b493e4de2c165e7e5ee48",
+    "benchmarks/sglang_radeon8060s.sh": "55eb79ffeaefdfffcbceda078ed0e90dc155ef24e697b8b36fd50013b0e875dd",
+    "benchmarks/srt_agentic.sh": "8ffd65e2017a12194c20c1c269dbead2e487df901b65835c41ae683a794e26b4",
+    "benchmarks/vllm_gfx12.sh": "dc7c7014c3414b4a5242d5ea291ac8424dbe89aa486b1643dc36ab6aa7b5cbe6",
+    "benchmarks/vllm_gfx12_mm.sh": "d474177c92279f8dcd57b1e1c9872889d417e1a05f685d17cdf9554ebc7212fd",
+    "benchmarks/vllm_mi300x.sh": "cdac8d715beec480e85d0ea27fed0ecbb78b6bcef262733a8a5b21baa5e1256a",
+    "benchmarks/vllm_mi300x_mm.sh": "b9b5cd7b44ec4d5f7d6d04260de2a948949eb7d5b04df552899ca0bcf492a33c",
+    "benchmarks/vllm_mi355x.sh": "7f089c445caa0a587c920035be0905dae53872fd04c91dde82f4a31c65e372f0",
+    "benchmarks/vllm_mi355x_mm.sh": "d8ba12c212da42dfbb85822650dd21bd9e44586f613179400363130fe02a5bad",
+    "benchmarks/vllm_radeon8060s.sh": "9cf50f0f5127040e76e0ec1cec62db783d7957f3c4ecd164307e774283de9a0d",
+    "benchmarks/xdit_bench_common.sh": "b035201ce63b9120b1288d34f1bd336d880838713f07256ec7dfef1e18f38550",
+    "benchmarks/xdit_mi300x.sh": "5917c80e85a6e07bf983e001df37ca58e11c3f7ec67476338a891d7cb75d8736",
+    "benchmarks/xdit_mi355x.sh": "14482cfb098ba19a270aac79bc5e7c2b0f85ad7a9b72654a63d804e7e4ed925f"
+  },
+  "candidate_module": "source/rmsnorm.py",
+  "target_functions": [
+    "rms_norm",
+    "fused_add_rms_norm"
+  ],
+  "initial_candidate_sha256": "25c6c590c7457bd33062a505baac8e246c7da8f7996ca9127dd61c82ae8d6484"
+}

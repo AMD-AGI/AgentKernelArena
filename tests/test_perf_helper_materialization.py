@@ -282,7 +282,7 @@ def test_every_task_performance_entrypoint_uses_a_supported_family():
     counts, problems = audit_task_benchmark_entrypoints(ROOT)
     config_count = len(list((ROOT / "tasks").rglob("config.yaml")))
 
-    assert config_count == 438
+    assert config_count == 439
     assert problems == []
     assert sum(counts.values()) == config_count
     # Replay-aware adapters call the canonical sample API directly so their
@@ -291,6 +291,7 @@ def test_every_task_performance_entrypoint_uses_a_supported_family():
     # the canonical TimedRun API before the generated vLLM stub is inspected.
     assert counts == {
         "canonical_python": 269,
+        "serving_client": 1,
         "native_graph_driver": 2,
         "rocmbench_adapter": 32,
         "vllm_adapter": 135,

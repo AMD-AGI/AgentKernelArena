@@ -1,0 +1,25 @@
+# Small-model variant of the imported Magpie SGLang serving recipes.
+# Differences: Qwen3 0.6B FP16, TP=1, CONC=8, ISL=128, OSL=128.
+benchmark:
+  framework: sglang
+  model: Qwen/Qwen3-0.6B
+  precision: fp16
+  run_mode: local
+  envs:
+    TP: 1
+    CONC: 8
+    ISL: 128
+    OSL: 128
+    NUM_PROMPTS: 80
+    RANDOM_RANGE_RATIO: 1
+    MAX_MODEL_LEN: 4096
+    SGLANG_USE_AITER: 1
+    EXTRA_SGLANG_ARGS: '--disable-radix-cache --dtype float16 --mem-fraction-static 0.2 --max-running-requests 8 --cuda-graph-max-bs 8 --random-seed 1729 --attention-backend triton'
+  gpu_selection: {auto: false}
+  server_lifecycle: {enabled: false}
+  profiler:
+    torch_profiler: {enabled: false}
+    system_profiler: {enabled: false}
+  gap_analysis: {enabled: false, auto_clone_repos: false}
+  benchmark_script: sglang_mi355x.sh
+  timeout_seconds: 1100

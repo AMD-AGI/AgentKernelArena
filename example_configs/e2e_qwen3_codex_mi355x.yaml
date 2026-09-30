@@ -1,0 +1,13 @@
+agent:
+  template: codex
+  max_iterations: 3
+tasks:
+  - e2e/qwen3_0_6b_sglang
+resources:
+  gpu_groups: [[0]]
+budget:
+  task_wall_time_s: 86400
+  final_evaluation_reserve_s: 7200
+target_gpu_model: MI355X
+log_directory: logs
+workspace_directory_prefix: workspace

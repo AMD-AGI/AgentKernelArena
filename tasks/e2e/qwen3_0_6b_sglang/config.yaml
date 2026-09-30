@@ -1,0 +1,27 @@
+schema_version: 2
+description: Improve Qwen3 0.6B serving throughput by changing only RMSNorm GPU implementations under fixed model and workload settings.
+candidate:
+  language: triton
+  initial_language: hip
+  initial_state: implemented
+  editable: [source/rmsnorm.py]
+  entrypoints:
+    - {file: source/rmsnorm.py, kind: function, symbol: rms_norm}
+    - {file: source/rmsnorm.py, kind: function, symbol: fused_add_rms_norm}
+baseline:
+  kind: initial_candidate
+  correctness_policy: required
+platform_support:
+  required_arch: gfx950
+workspace:
+  timeout_s: 600
+evaluation:
+  runner: [python3, scripts/evaluate.py]
+  workloads: benchmark.yaml
+  timeout_s: 1200
+  measurement:
+    kind: serving
+    runtime_lock: runtime.lock.json
+    pairs: 3
+    max_p99_tpot_ms: 100
+instructions: [README.md]
