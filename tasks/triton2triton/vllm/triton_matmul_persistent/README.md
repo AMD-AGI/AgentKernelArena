@@ -37,9 +37,13 @@ The protected checks validate the full FP16 result against pristine FP32 matmul
 (with optional bias added before the FP16 cast), at the original `atol=rtol=1e-2`.
 They require the expected shape, dtype, device and finite values, and preserve all
 read-only operands. Unscored diagnostics cover M129/N259/K67 with strided A/B and
-bias, and M1153/N8449/K16 with 340 original FP16 tiles for grouped scheduling and
-multiple persistent waves on gfx950. These do not replace any scored case or
-certify the greater-than-2^31 index path or unscored dtypes.
+bias (including non-unit stride), and M1153/N8449/K16 with 340 original FP16 tiles for grouped scheduling and
+multiple persistent waves on gfx950. Task-local device checks also use small A/B
+views with an address span beyond signed 32-bit range, and a 65536 x 32769 output
+with K=1 to exercise large output indexing. Every output element is checked
+against an independent FP32 oracle in row chunks. These checks require about
+4 GiB for each large allocation, execute sequentially, and fail on allocation or
+correctness errors. They do not replace any scored case or certify unscored dtypes.
 
 Performance checks use the actual output from the original measured public call.
 After timing, they compare it against pristine inputs, change both A and B,
@@ -47,3 +51,13 @@ poison the captured output and numerically verify the exact `TimedRun` replay.
 Inputs are restored in `finally`, including rejected or exceptional replays.
 Original seeds (correctness 42+i, performance 0), five cases, allocations,
 10 warmups and 100 samples remain unchanged for baseline and candidate.
+
+The starting wrapper selects 64-bit indexing from shape and strides, including
+small logical views whose address span exceeds signed 32-bit range. Noncontiguous
+bias is copied to the unit-stride layout consumed by the device kernel; contiguous
+bias is not copied. Device properties come from the input device. These wrapper
+repairs require a fresh baseline; previously recorded timings are not reused.
+
+The large-address checks run inside this task's protected `_arena_checks.py`
+through the standard correctness action, for both baseline and candidate. They
+remain available after the task is copied into an isolated workspace.

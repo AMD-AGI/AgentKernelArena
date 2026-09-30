@@ -4,6 +4,15 @@ import triton
 import triton.language as tl
 
 
+def _requires_int64_index(tensor):
+    """A small strided view can address more than INT32_MAX elements away."""
+    max_offset = sum(
+        (int(size) - 1) * abs(int(stride))
+        for size, stride in zip(tensor.shape, tensor.stride())
+    )
+    return max_offset > 2**31 - 1
+
+
 @triton.jit
 def _compute_pid(tile_id, num_pid_in_group, num_pid_m, GROUP_SIZE_M, NUM_SMS):
     group_id = tile_id // num_pid_in_group
@@ -114,7 +123,10 @@ def matmul_persistent(
     assert a.shape[1] == b.shape[0], "Incompatible dimensions"
     assert a.dtype == b.dtype, "Incompatible dtypes"
     assert bias is None or bias.dim() == 1, "Bias must be 1D"
-    NUM_SMS = torch.cuda.get_device_properties("cuda").multi_processor_count
+    # The device kernel reads bias at unit stride.
+    if bias is not None and not bias.is_contiguous():
+        bias = bias.contiguous()
+    NUM_SMS = torch.cuda.get_device_properties(a.device).multi_processor_count
     M, K = a.shape
     K, N = b.shape
     dtype = a.dtype
@@ -170,9 +182,9 @@ def matmul_persistent(
         c.stride(0),
         c.stride(1),
         NUM_SMS=NUM_SMS,
-        A_LARGE=a.numel() > 2**31,
-        B_LARGE=b.numel() > 2**31,
-        C_LARGE=c.numel() > 2**31,
+        A_LARGE=_requires_int64_index(a),
+        B_LARGE=_requires_int64_index(b),
+        C_LARGE=_requires_int64_index(c),
         HAS_BIAS=bias is not None,
         **configs[dtype],
     )
