@@ -280,10 +280,61 @@ assert_cache_args_present "" "${args[@]}"
 # public references and per-worker isolation without promoting it to default.
 for image in \
     lmsysorg/sglang-rocm:v0.5.19-rocm10-mi35x-20260913 \
-    lmsysorg/sglang-rocm@sha256:106a7adbeec5554b6e66a4bda0b3694af442717b9fe92754a9885520077b6f93; do
+    lmsysorg/sglang-rocm@sha256:106a7adbeec5554b6e66a4bda0b3694af442717b9fe92754a9885520077b6f93 \
+    lmsysorg/sglang:v0.5.20-rocm10-mi35x \
+    lmsysorg/sglang@sha256:e20849665c105d389ef91d23c0dc73931aaa6f02056dd10e7b43e4f16c79df69; do
     mapfile -t args < <(run_shell_args AKA_GPU_ARCH=gfx950 AKA_DOCKER_IMAGE="$image" AKA_CACHE_SUFFIX=worker-3)
     assert_has "$image" "${args[@]}"
     assert_cache_args_present "-worker-3" "${args[@]}"
+done
+
+# The DeepSeek run config selects ROCm 10 without an environment image override.
+# Check the emitted Docker argv for all config-driven execution modes.
+DEEPSEEK_CONFIG="$ROOT/example_configs/task_validator_deepseek_drafts_mi355x.yaml"
+DEEPSEEK_IMAGE="lmsysorg/sglang@sha256:e20849665c105d389ef91d23c0dc73931aaa6f02056dd10e7b43e4f16c79df69"
+IMAGE_TEST_HOME="$TEST_HOME/image-home"
+IMAGE_TEST_PREFIX="$TEST_HOME/image-node"
+mkdir -p "$IMAGE_TEST_HOME/.claude" "$IMAGE_TEST_PREFIX/bin"
+touch "$IMAGE_TEST_HOME/.claude.json" "$IMAGE_TEST_PREFIX/bin/node" "$IMAGE_TEST_PREFIX/bin/claude"
+for mode in check-agents preflight run parallel-run; do
+    env HOME="$IMAGE_TEST_HOME" AKA_GPU_ARCH=gfx950 AKA_AGENTS=claude_code AKA_NODE_PREFIX="$IMAGE_TEST_PREFIX" GPU_IDS=0,1 \
+        bash "$RUNNER" "$mode" --config_name "$DEEPSEEK_CONFIG" \
+        > "$TEST_HOME/deepseek-$mode.args" 2> "$TEST_HOME/deepseek-$mode.err" || {
+        cat "$TEST_HOME/deepseek-$mode.err" >&2
+        fail "DeepSeek config failed for $mode"
+    }
+    mapfile -t args < "$TEST_HOME/deepseek-$mode.args"
+    assert_has "$DEEPSEEK_IMAGE" "${args[@]}"
+    assert_not_has "$PINNED_GFX950_IMMUTABLE_IMAGE" "${args[@]}"
+    if [[ "$mode" != parallel-run ]]; then
+        assert_cache_args_present "" "${args[@]}"
+    else
+        [[ "$(awk -v image="$DEEPSEEK_IMAGE" '$0 == image {n++} END {print n+0}' \
+            "$TEST_HOME/deepseek-$mode.args")" == 5 ]] \
+            || fail "parallel DeepSeek run did not use ROCm 10 for all five containers"
+    fi
+done
+
+# Global and architecture overrides retain their established priority.
+mapfile -t args < <(run_check_args "$IMAGE_TEST_HOME" "$DEEPSEEK_CONFIG" \
+    AKA_AGENTS=claude_code AKA_NODE_PREFIX="$IMAGE_TEST_PREFIX" AKA_DOCKER_IMAGE_GFX950=example.invalid/arch:override)
+assert_has example.invalid/arch:override "${args[@]}"
+assert_not_has "$DEEPSEEK_IMAGE" "${args[@]}"
+mapfile -t args < <(run_check_args "$IMAGE_TEST_HOME" "$DEEPSEEK_CONFIG" \
+    AKA_AGENTS=claude_code AKA_NODE_PREFIX="$IMAGE_TEST_PREFIX" AKA_DOCKER_IMAGE_GFX950=example.invalid/arch:override \
+    AKA_DOCKER_IMAGE=example.invalid/global:override)
+assert_has example.invalid/global:override "${args[@]}"
+assert_not_has example.invalid/arch:override "${args[@]}"
+assert_not_has "$DEEPSEEK_IMAGE" "${args[@]}"
+
+# Invalid explicit values must fail instead of silently falling back to ROCm 7.2.
+for value in null true 123 '[]' '{}' '""' '"--privileged"' '"image name"'; do
+    printf 'target_gpu_model: MI355X\ndocker_image: %s\n' "$value" > "$TEST_HOME/bad-image.yaml"
+    if run_check_args "$IMAGE_TEST_HOME" "$TEST_HOME/bad-image.yaml" \
+        AKA_AGENTS=claude_code AKA_NODE_PREFIX="$IMAGE_TEST_PREFIX" > "$TEST_HOME/bad-image.args"; then
+        fail "invalid config docker_image was accepted: $value"
+    fi
+    [[ ! -s "$TEST_HOME/bad-image.args" ]] || fail "invalid config launched Docker"
 done
 
 # Old and custom gfx950 images retain their existing Docker arguments.
@@ -675,7 +726,7 @@ run_runtime_command() {
         AKA_GPU_ARCH=gfx1201 GPU_IDS=0,1 AKA_EVAL_TOOLS= \
         FAKE_RUNTIME_DIR="$RUNTIME_DIR" "$@" \
         bash "$RUNNER" "$mode" \
-        --config_name example_configs/quickstart_claude_rdna4.yaml \
+        --config_name "${RUNTIME_TEST_CONFIG:-example_configs/quickstart_claude_rdna4.yaml}" \
         > "$RUNTIME_DIR/stdout" 2> "$RUNTIME_DIR/stderr"
 }
 
@@ -708,6 +759,20 @@ for runtime_mode in shell smoke check-agents preflight run parallel-run; do
     assert_not_has build "${events[@]}"
     assert_not_has info "${events[@]}"
 done
+
+# A config image override also disables automatic RDNA4 builds, including an
+# explicit selection of the usual default name. Do not build over pinned input.
+RUNTIME_TEST_CONFIG="$TEST_HOME/rdna4-config-image.yaml"
+cp example_configs/quickstart_claude_rdna4.yaml "$RUNTIME_TEST_CONFIG"
+printf '\ndocker_image: agent-kernel-arena:rdna4-rocm10-v1\n' >> "$RUNTIME_TEST_CONFIG"
+RUNTIME_DIR="$TEST_HOME/runtime-config-image"
+mkdir -p "$RUNTIME_DIR"
+run_runtime_command run || fail "RDNA4 config image override failed"
+mapfile -t events < "$RUNTIME_DIR/events"
+assert_has run "${events[@]}"
+assert_not_has build "${events[@]}"
+assert_not_has info "${events[@]}"
+unset RUNTIME_TEST_CONFIG
 
 # Build/daemon failures must propagate instead of launching a container.
 for failure in FAKE_DOCKER_BUILD_STATUS=42 FAKE_DOCKER_INFO_STATUS=1; do
