@@ -11,7 +11,7 @@ SHELL := /bin/bash
         check-docker-runner check-slurm-runner check-evaluator check-held-out check-visualization \
         visualization-build visualization-serve visualization-run \
         sync-perf-helpers check-perf-helpers materialize-perf-workspace \
-        materialize-perf-task cleanup-works install-cursor-agent vllm
+        materialize-perf-task cleanup-works install-cursor-agent
 
 help:
 	@echo "AgentKernelArena Experimentation Platform - Makefile Commands"
@@ -20,7 +20,7 @@ help:
 	@echo "make docker-shell        - Enter the runtime image with repo and agent auth mounted"
 	@echo "make docker-check-agents - Verify the first-class host CLI selected by CONFIG"
 	@echo "                         Use CONFIG=... for another config; AGENTS=... overrides it"
-	@echo "                         AGENTS=all explicitly checks all three first-class CLIs"
+	@echo "                         AGENTS=all checks Cursor, Claude Code, and Codex; DeepSeek is opt-in"
 	@echo "make docker-smoke        - Verify Docker Python, ROCm tools, imports, and GPU access"
 	@echo "make docker-build-rdna4  - Prebuild/rebuild gfx1201 runtime (also builds on first use)"
 	@echo "make docker-run CONFIG=example_configs/quickstart_claude_mi300.yaml RUN_ARGS=\"--run-suffix test\" - Run an experiment in Docker"
@@ -215,33 +215,3 @@ cleanup-works:
 install-cursor-agent:
 	@echo "Installing Cursor agent..."
 	@curl https://cursor.com/install -fsSL | bash
-
-# Run the pinned local vLLM endpoint. Agent/provider wiring is integration-specific.
-vllm:
-	@if ss -ltn | grep ':30001 ' > /dev/null; then \
-		echo "vLLM server is already running on port 30001."; \
-	else \
-		docker run -d \
-			--ipc=host \
-			--network=host \
-			--privileged \
-			--cap-add=SYS_ADMIN \
-			--cap-add=SYS_PTRACE \
-			--device=/dev/kfd \
-			--device=/dev/dri \
-			--device=/dev/mem \
-			--group-add=render \
-			--security-opt=seccomp=unconfined \
-			rocm/vllm:rocm6.4.1_vllm_0.10.1_20250909 \
-			vllm serve Qwen/Qwen3-Coder-30B-A3B-Instruct \
-			--served-model-name llamas_team_local_llm \
-			--api-key dummy \
-			--host 0.0.0.0 \
-			--port 30001 \
-			--enable-auto-tool-choice \
-			--tool-call-parser hermes \
-			--trust-remote-code; \
-		echo "Configure a compatible agent integration to use the OpenAI-compatible endpoint at port 30001."; \
-		echo "vLLM server will be running on port 30001, please wait 3 minutes for it to start..."; \
-		echo "You can use docker logs -f container_id to check the server status"; \
-	fi

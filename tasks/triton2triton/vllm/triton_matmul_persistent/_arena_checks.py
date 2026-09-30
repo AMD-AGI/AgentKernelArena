@@ -3,6 +3,8 @@ from contextlib import contextmanager
 import inspect
 
 SYMBOL = 'matmul_persistent'
+LARGE_ADDRESS_STRIDE = 2**31 - 1
+LARGE_OUTPUT_SHAPE = (2**16, 2**15 + 1)
 
 
 def snapshots(values):
@@ -33,6 +35,39 @@ def check_output(value, expected):
     if not torch.isfinite(value).all():
         raise AssertionError('Persistent matmul output must be finite')
     torch.testing.assert_close(value, expected, atol=1e-2, rtol=1e-2)
+
+
+def check_large_addresses(original, verify, dtype, device):
+    """Unscored device checks for both input address spans and a large output."""
+    import torch
+    left = torch.tensor([[1, 2], [3, 4]], dtype=dtype, device=device)
+    right = torch.tensor([[1, 2, 3], [4, 5, 6]], dtype=dtype, device=device)
+    for operand in ('a', 'b'):
+        packed = left if operand == 'a' else right
+        storage = torch.empty(LARGE_ADDRESS_STRIDE + packed.shape[1],
+                              dtype=dtype, device=device)
+        view = storage.as_strided(packed.shape, (LARGE_ADDRESS_STRIDE, 1))
+        view.copy_(packed)
+        verify(view, right) if operand == 'a' else verify(left, view)
+        del view, storage
+
+    # A real >INT32_MAX-element result exercises output pointer arithmetic.
+    # Chunk the independent oracle to avoid a second full-size FP32 matrix.
+    rows, columns = LARGE_OUTPUT_SHAPE
+    a = ((torch.arange(rows, device=device) % 7 - 3) / 4).to(dtype).reshape(rows, 1)
+    b = ((torch.arange(columns, device=device) % 11 - 5) / 8).to(dtype).reshape(1, columns)
+    pristine = snapshots((a, b))
+    try:
+        result = original(a, b)
+        unchanged((a, b), pristine)
+        if not isinstance(result, torch.Tensor) or result.shape != (rows, columns):
+            raise AssertionError('Large persistent matmul output shape is invalid')
+        for start in range(0, rows, 256):
+            expected = reference((pristine[0][start:start + 256], pristine[1]))
+            check_output(result[start:start + 256], expected)
+    finally:
+        for value, saved in zip((a, b), pristine):
+            value.copy_(saved)
 
 
 @contextmanager
@@ -69,14 +104,21 @@ def checked_modules(harness):
                 bi = torch.arange(518*67, device=b.device).reshape(518,67)
                 da = (.25+(ai%5)/16).to(a.dtype)[::2,::2]
                 db = (.125+(bi%7)/16).to(b.dtype)[::2].t()
-                dbias = (2+(torch.arange(259,device=a.device)%11)/8).to(a.dtype)
+                # Distinct interleaved sentinels catch a wrapper that treats a
+                # noncontiguous bias as a packed array.
+                bias_storage = torch.full((518,), -97, dtype=a.dtype, device=a.device)
+                dbias = bias_storage[::2]
+                dbias.copy_((2+(torch.arange(259,device=a.device)%11)/8).to(a.dtype))
+                saved_bias_storage = bias_storage.clone()
                 verify(da, db, dbias)
+                unchanged((bias_storage,), (saved_bias_storage,))
                 # 340 original FP16 tiles cover partial grouped scheduling and
                 # more than one persistent wave on the qualified gfx950 GPU.
                 ai = torch.arange(1153*16,device=a.device).reshape(1153,16)
                 bi = torch.arange(16*8449,device=b.device).reshape(16,8449)
                 verify((.25+(ai%5)/16).to(a.dtype),
                        (.125+(bi%7)/16).to(b.dtype))
+                check_large_addresses(original, verify, a.dtype, a.device)
                 diagnosed = True
             return result
 

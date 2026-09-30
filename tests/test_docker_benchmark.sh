@@ -162,6 +162,20 @@ touch "$UNRELATED_GEAK_WORKFLOW_DIR/kernel_workflow.js"
 
 bash -n "$RUNNER"
 
+mapfile -t args < <(run_shell_args AKA_GPU_ARCH=gfx950 AKA_DOCKER_PRIVILEGED=1)
+assert_has --privileged "${args[@]}"
+assert_has --cap-add=SYS_ADMIN "${args[@]}"
+mapfile -t args < <(run_shell_args AKA_GPU_ARCH=gfx950 AKA_DOCKER_PRIVILEGED=0 AKA_VISIBLE_GPU=2)
+for elevated in --privileged --cap-add=SYS_ADMIN --cap-add=SYS_PTRACE \
+    --security-opt=seccomp=unconfined --ipc=host --network=host; do
+    assert_not_has "$elevated" "${args[@]}"
+done
+assert_has 'ROCR_VISIBLE_DEVICES=2' "${args[@]}"
+assert_has "$(id -u):$(id -g)" "${args[@]}"
+if run_shell_args AKA_GPU_ARCH=gfx950 AKA_DOCKER_PRIVILEGED=invalid >/dev/null; then
+    fail "invalid privilege mode was accepted"
+fi
+
 # Sanitizer sidecars accept the scoring runtime only when the selected reference
 # and the known manifest reference resolve to the same immutable local config ID,
 # and launch that ID rather than a mutable tag. An alias to identical content is
@@ -502,15 +516,50 @@ mapfile -t args < <(run_check_args \
     "$CODEX_HOME" \
     "$CODEX_CONFIG" \
     AKA_NODE_PREFIX="$CODEX_PREFIX" \
+    DEEPSEEK_API_KEY=codex-must-not-receive-deepseek \
+    DEEPSEEK_BASE_URL=https://example.invalid \
     ANTHROPIC_API_KEY=codex-must-not-receive-this \
     GEAK_V4_WORKFLOW_DIR="$UNRELATED_GEAK_WORKFLOW_DIR")
 assert_has "$CODEX_PREFIX:/opt/node:ro" "${args[@]}"
 assert_has "$CODEX_HOME/.codex:$CODEX_HOME/.codex" "${args[@]}"
 assert_has "codex" "${args[@]}"
+assert_not_has "DEEPSEEK_API_KEY" "${args[@]}"
+assert_not_has "DEEPSEEK_BASE_URL" "${args[@]}"
+assert_not_has "$CODEX_PREFIX:/opt/dsh-node:ro" "${args[@]}"
 assert_not_has "ANTHROPIC_API_KEY" "${args[@]}"
 assert_not_has "$GEAK_SDK_PYTHONPATH" "${args[@]}"
 assert_not_has "$UNRELATED_GEAK_WORKFLOW_DIR:$UNRELATED_GEAK_WORKFLOW_DIR:ro" "${args[@]}"
 assert_not_has "GEAK_V4_WORKFLOW_DIR=$UNRELATED_GEAK_WORKFLOW_DIR" "${args[@]}"
+
+# DeepSeek is opt-in and mounts only its npm installation. The key is forwarded
+# by name, and host profiles/auth/history cannot leak into a fresh Arena session.
+DSH_TEST_HOME="$TEST_HOME/dsh-home"
+DSH_PREFIX="$TEST_HOME/dsh-node"
+DSH_CONFIG="$TEST_HOME/dsh-config.yaml"
+mkdir -p "$DSH_TEST_HOME/.dsh" "$DSH_PREFIX/bin"
+touch "$DSH_PREFIX/bin/node" "$DSH_PREFIX/bin/dsh"
+printf 'agent:\n  template: deepseek_harness\n' > "$DSH_CONFIG"
+mapfile -t args < <(run_check_args \
+    "$DSH_TEST_HOME" "$DSH_CONFIG" \
+    AKA_NODE_PREFIX="$DSH_PREFIX" \
+    DEEPSEEK_API_KEY=dsh-test-secret \
+    DEEPSEEK_BASE_URL=https://example.invalid \
+    ANTHROPIC_API_KEY=unrelated-secret)
+assert_has "$DSH_PREFIX:/opt/dsh-node:ro" "${args[@]}"
+assert_has "PATH=/opt/dsh-node/bin:/opt/claude-node/bin:/opt/node/bin:$DSH_TEST_HOME/.local/bin:/opt/venv/bin:/usr/local/bin:/opt/rocm/bin:/usr/local/sbin:/usr/sbin:/usr/bin:/sbin:/bin" "${args[@]}"
+assert_has "deepseek_harness" "${args[@]}"
+assert_has "DEEPSEEK_API_KEY" "${args[@]}"
+assert_has "DEEPSEEK_BASE_URL" "${args[@]}"
+assert_not_has "DEEPSEEK_API_KEY=dsh-test-secret" "${args[@]}"
+assert_not_has "ANTHROPIC_API_KEY" "${args[@]}"
+assert_not_has "$DSH_TEST_HOME/.dsh:$DSH_TEST_HOME/.dsh" "${args[@]}"
+assert_not_has "codex" "${args[@]}"
+assert_not_has "claude_code" "${args[@]}"
+assert_not_has "cursor" "${args[@]}"
+if run_check_args "$DSH_TEST_HOME" "$DSH_CONFIG" \
+    AKA_NODE_PREFIX="$TEST_HOME/missing-dsh" >/dev/null; then
+    fail "DeepSeek check accepted a missing CLI installation"
+fi
 
 # task_validator may override its default backend in the run config. Provision
 # that selected CLI rather than the backend from agent_config.yaml.

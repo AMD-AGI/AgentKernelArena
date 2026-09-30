@@ -74,6 +74,7 @@ def test_complete_pipeline_keeps_baseline_and_evaluates_after_agent_error(tmp_pa
     assert complete and report["candidate_accepted"]
     assert report["score"] == 220
     assert report["agent_execution"]["status"] == "FAILED"
+    assert report["agent_execution"]["candidate_changed"] is True
     assert report["baseline_correctness"]["status"] == "PASS"
     assert report["delivery_status"] == "COMPLETE"
     assert task_run_is_complete(workspace, "suite/protocol_fixture", "codex")
@@ -86,6 +87,23 @@ def test_complete_pipeline_keeps_baseline_and_evaluates_after_agent_error(tmp_pa
     report["score"] = 9999
     (workspace / "task_result.yaml").write_text(yaml.safe_dump(report))
     assert not task_run_is_complete(workspace, "suite/protocol_fixture", "codex")
+
+
+@pytest.mark.parametrize("fail", [False, True])
+def test_unchanged_candidate_is_reported_without_discarding_independent_evaluation(tmp_path, fail):
+    path = package(tmp_path)
+
+    def launcher(**kwargs):
+        # Logs and other non-candidate artifacts do not constitute a submission.
+        (Path(kwargs["workspace"]) / "agent.log").write_text("finished")
+        if fail:
+            raise RuntimeError("No candidate delivered")
+
+    complete, workspace = run(tmp_path, path, launcher)
+    report = read_report(workspace)
+    assert complete and report["candidate_accepted"] and report["score"] == 220
+    assert report["agent_execution"]["status"] == ("FAILED" if fail else "COMPLETED")
+    assert report["agent_execution"]["candidate_changed"] is False
 
 
 def test_empty_candidate_is_valid_initially_but_not_a_successful_submission(tmp_path):
@@ -152,6 +170,7 @@ def test_invalid_initial_task_never_starts_optimization(tmp_path):
     _, workspace = run(tmp_path, path, launcher)
     report = read_report(workspace)
     assert report["agent_execution"]["status"] == "NOT_RUN"
+    assert report["agent_execution"]["candidate_changed"] is None
     assert report["framework_error"].startswith("RuntimeError: Initial task validation failed")
     assert not report["candidate_accepted"]
 
