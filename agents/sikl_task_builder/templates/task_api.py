@@ -111,6 +111,10 @@ def assert_outputs(got, expected, definition, row, policy, device):
             # not accept complex tensors, while the existing ABI permits them.
             a = torch.view_as_real(a.resolve_conj()) if a.is_complex() else a
             b = torch.view_as_real(b.resolve_conj()) if b.is_complex() else b
+            # PyTorch's signed-infinity predicates do not support FP8. Widen
+            # only these checks; callbacks still receive the original tensors.
+            if a.is_floating_point() and a.element_size() == 1:
+                a, b = a.float(), b.float()
             if (not torch.equal(torch.isposinf(a), torch.isposinf(b))
                     or not torch.equal(torch.isneginf(a), torch.isneginf(b))):
                 raise AssertionError("Output infinity positions/signs differ from the reference")

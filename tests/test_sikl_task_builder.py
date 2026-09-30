@@ -482,6 +482,7 @@ def test_callback_infinities_preserve_sign_position_and_nan_guards(bundle_v2, tm
     script = '''import json, torch, sys
 from pathlib import Path
 from scripts.task_api import assert_outputs, load_solution, poison_outputs
+from scripts.task_runner import wrong_output
 c = json.loads(Path('scripts/workload.json').read_text())
 d, row, policy = c['definition'], c['rows'][0], c['policy']
 expected = torch.tensor([[float('inf'), float('-inf'), 0.0]])
@@ -524,6 +525,25 @@ bad = reference.clone(); bad[0,1] = complex(float('-inf'), float('-inf'))
 try: assert_outputs(bad, reference, d, row, policy, 'cpu')
 except AssertionError: pass
 else: raise AssertionError('wrong complex infinity sign accepted')
+# FP8 E5M2 permits infinities, but signed-infinity predicates lack FP8 kernels.
+d = {**d, 'outputs': {'out': {**d['outputs']['out'], 'dtype': 'float8_e5m2'}}}
+def fp8_compare(actual, expected):
+    assert actual.dtype == expected.dtype == torch.float8_e5m2
+    torch.testing.assert_close(actual.float(), expected.float(), rtol=0, atol=0)
+sys.modules[compare.__module__].run = fp8_compare
+reference = expected.to(torch.float8_e5m2)
+assert_outputs(reference.clone(), reference, d, row, policy, 'cpu')
+for kind in (torch.float8_e5m2, torch.float8_e4m3fn):
+    finite = torch.tensor([[0., 1., -1.]]).to(kind)
+    wrong = wrong_output(finite)
+    assert wrong.dtype == kind and torch.isfinite(wrong.float()).all()
+    assert torch.all(wrong.float() != finite.float())
+for bad in [torch.tensor([[float('-inf'), float('-inf'), 0.]]),
+            torch.tensor([[float('inf'), float('-inf'), 1.]]),
+            torch.tensor([[float('inf'), float('-inf'), float('nan')]])]:
+    try: assert_outputs(bad.to(torch.float8_e5m2), reference, d, row, policy, 'cpu')
+    except (AssertionError, ValueError): pass
+    else: raise AssertionError('incorrect FP8 output accepted')
 '''
     result = subprocess.run([sys.executable, '-c', script], cwd=draft,
                             env={**os.environ, 'PYTHONPATH': ''}, text=True, capture_output=True)

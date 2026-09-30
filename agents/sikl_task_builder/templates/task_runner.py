@@ -43,6 +43,11 @@ def wrong_output(expected):
     if expected.is_floating_point():
         # Finite, same-shape/dtype adversarial values exercise the numerical
         # rule rather than merely testing the NaN/shape guard.
+        if expected.element_size() == 1:
+            wide = expected.float()
+            limit = min(1000, torch.finfo(expected.dtype).max)
+            wrong = torch.where(wide >= 0, -torch.ones_like(wide), torch.ones_like(wide)) * limit
+            return wrong.to(expected.dtype)
         return torch.where(expected >= 0, -torch.ones_like(expected), torch.ones_like(expected)) * 1000
     return torch.bitwise_not(expected)
 
