@@ -792,6 +792,7 @@ def test_diagnostic_task_still_reports_actual_pass(monkeypatch):
 
 
 @pytest.mark.parametrize('name', [
+    'gemm_a16w16_nt_n4096_k2048',
     'gemm_a16w16_nt_n6144_k3072', 'gemm_a16w16_nt_n16384_k2048',
 ])
 def test_deferred_task_replay_still_rejects_wrong_and_missing_outputs(name, monkeypatch):

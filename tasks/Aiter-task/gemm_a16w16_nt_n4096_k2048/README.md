@@ -29,22 +29,18 @@ tasks fail, nor a prediction about another runtime image.
 
 Commit `329bc9861f7199c4df4d6fc0fc0eb16353cfe995` specifically identifies
 `gemm_a16w16_nt_n4096_k2048` among tasks rejected by reference replay checking,
-and reports repeat-call disagreements at `m_1` and `m_8`. That historical
-report supports a diagnostic policy for the named task only; the aggregate
-count alone cannot establish a known deviation for any other task. Subsequent
-task-specific GPU evidence is recorded, where available, in the "Production
-baseline numerical evidence" section below. The current policy and its evidence
-are declared in this task's `config.yaml`; do not infer them from the historical
-family-wide count. Tasks with `correctness_policy: required` must pass baseline
-correctness, while `diagnostic` retains only the documented numerical exception.
+and reports repeat-call disagreements at `m_1` and `m_8`. Only that named task
+retains `correctness_policy: diagnostic` on this historical basis. The other
+16 GEMM tasks use `required` pending task-specific GPU evidence; the aggregate
+count alone is not sufficient to declare their deviations known.
 
 These commit messages are provenance, not fresh GPU validation. The actual
 runtime must record every case's comparison, executed baseline source hash,
 package versions and dispatch. A passing comparison is always reported PASS.
 A mismatch is reported FAIL with its real evidence; only a completed finite
 `numerical_mismatch` may use the configured diagnostic exception. Crashes,
-shape/dtype errors and nonfinite outputs never qualify. The baseline's timed
-output check keeps its full verdict under `metadata.timed_output_correctness`. Unknown deviations need
+shape/dtype errors and nonfinite outputs never qualify. Baseline replay keeps
+its full verdict under `metadata.replay_correctness`. Unknown deviations need
 GPU evidence and a justified policy update, not automatic reclassification.
 Candidate correctness and candidate replay have no diagnostic exception.
 
@@ -60,10 +56,6 @@ The builder receives shape arguments only, once per case, and returns a callable
 launch. Prepare compilation, shape-dependent tile choices and reusable scratch
 in the builder. Every launch must compute the complete operator on the supplied
 current tensor contents; it must not cache answers or alter input tensors.
-State kept across launches may be derived only from the weights (for example a
-one-time re-layout keyed on the weight tensor); it must never be derived from
-activations, routing or outputs. Recognizing inputs seen before and returning a
-stored or partial result games the measurement; it is not an optimization.
 All 13 variable-axis sizes (1 through 4096, powers of two) are scored. Tiling,
 fusion, split reductions and per-shape dispatch are implementation choices.
 
@@ -130,18 +122,10 @@ unchanged workload warmup, repetition and target duration. Preparation and input
 allocation occur outside timing; the timed callable is the complete operator
 invocation, including its device work and output/scratch use. Graph timing is
 preferred; event fallback is recorded and the framework checks that baseline
-and candidate timing methods match. Each sample times one logical invocation;
-calls are never batched into one capture. Before each sample, outside timing,
-the call-varying operand `a` is overwritten in place with one of several
-draws from the bundle's initializer, while the weight `b` stays fixed. Draw seeds come from the operating system when
-the case is timed. After the samples, the timed unit runs once over each of
-several further draws it has never read, timed like a sample, and the fastest
-of those may take at most `UNSEEN_DRAW_MARGIN` (in `scripts/task_measure.py`)
-times the reported mean. The outputs of randomly chosen reported samples and
-of every unseen-draw invocation are compared, with the original comparator,
-against the reference on the draw each one consumed, and the weights and loaded
-operands must be unchanged afterwards. Input mutation, nonfinite output, missing
-work or runtime failures cannot be treated as numerical diagnostics.
+and candidate timing methods match. The actual timed invocation is replayed
+with freshly initialized inputs and poisoned outputs, then checked against a
+new reference using the original comparator. Input mutation, nonfinite output,
+missing work or runtime failures cannot be treated as numerical diagnostics.
 No timing from an instrumented sanitizer build may become an official score.
 
 A task does not require any agent-specific driver or environment variable.

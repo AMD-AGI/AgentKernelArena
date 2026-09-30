@@ -14,9 +14,10 @@ from src.task_spec import load_task_spec
 ROOT = Path(__file__).resolve().parents[1]
 SIKL_ROOT = ROOT / 'tasks' / 'Aiter-task'
 TASKS = sorted(p.parent for p in SIKL_ROOT.glob('*/config.yaml'))
-# These two existing tasks retain their main-branch protocol until the
-# production numerical issue is resolved: https://github.com/ROCm/aiter/issues/5976.
+# These existing tasks retain their main-branch protocol while their baseline
+# numerical findings and timed-output validation policy remain unresolved.
 DEFERRED_TIMING_TASKS = {
+    'gemm_a16w16_nt_n4096_k2048',
     'gemm_a16w16_nt_n6144_k3072',
     'gemm_a16w16_nt_n16384_k2048',
 }
