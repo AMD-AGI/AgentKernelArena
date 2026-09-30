@@ -76,6 +76,34 @@ def test_v2_wrapper_preserves_discovery_of_delegated_generated_timing(tmp_path):
     assert (scripts / AKA_HELPER_FILE_NAME).read_text() == canonical_aka_helper(ROOT)
 
 
+def test_materialized_collector_takes_precedence_over_source_fallback(tmp_path):
+    task = ROOT / "tasks/image_kernel/mi355x_sglang_triton_mxfp8_linear"
+    workspace = tmp_path / "workspace"
+    shutil.copytree(task, workspace)
+    materialize_perf_helpers_in_workspace(workspace)
+    runner = workspace / "scripts/task_runner.py"
+    tree = ast.parse(runner.read_text())
+    # Exercise both declarations in their actual source order without importing
+    # GPU dependencies. The fallback must not replace the injected collector.
+    nodes = [node for node in tree.body
+             if (isinstance(node, ast.ClassDef) and node.name == "_TimedRun")
+             or (isinstance(node, ast.If) and any(
+                 isinstance(child, ast.ClassDef) and child.name == "_TimedRun"
+                 for child in node.body))]
+    assert len(nodes) == 2
+    scope = {}
+    exec(compile(ast.Module(body=nodes, type_ignores=[]), str(runner), "exec"), scope)
+    timed = scope["_TimedRun"]()
+    output = object()
+    timed._bind(lambda: output, output, lambda: (output, 0.25))
+    assert timed.bound and timed.rerun() is output
+    assert timed.rerun_ms() == 0.25 and timed.outputs is output
+    timed._bind(None, None)
+    assert not timed.bound
+    with pytest.raises(RuntimeError, match="never bound"):
+        timed.rerun_ms()
+
+
 def test_file_loaded_vllm_runner_finds_sibling_helper_from_workspace_root(tmp_path):
     scripts = tmp_path / "scripts"
     scripts.mkdir()
