@@ -44,7 +44,8 @@ entrypoint and request enough scheduler wall time for the task's budget.
 
 The task's `evaluation.measurement.runtime_lock` is authoritative. It fixes an
 image digest, model revision, GPU count, workload hash, benchmark revisions,
-and the composed Magpie/InferenceX scripts. The host verifies cached file hashes
+and the composed Magpie/InferenceX scripts. Model and dependency revisions must
+be full commit identifiers; moving branches and tags are rejected. The host verifies cached file hashes
 before each action. Conflicting image overrides, mixed images or mixed kernel
 and serving tasks in one experiment fail before execution.
 

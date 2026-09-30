@@ -29,6 +29,21 @@ from .task_spec import load_task_spec, resolve_task_path
 from .tasks import get_task_config
 
 
+def validate_runtime_lock(lock: dict) -> None:
+    if type(lock.get("version")) is not int or lock["version"] != 1:
+        raise ValueError("Unsupported serving runtime lock version")
+    for key in ("gpu_count", "minimum_final_evaluation_s"):
+        if type(lock.get(key)) is not int or lock[key] <= 0:
+            raise ValueError(f"Runtime lock requires a positive integer {key}")
+    dependencies = lock.get("dependencies")
+    if not isinstance(dependencies, dict):
+        raise ValueError("Runtime lock dependencies must be a mapping")
+    for name, source in [("model", lock.get("model")), *dependencies.items()]:
+        revision = source.get("revision") if isinstance(source, dict) else None
+        if not isinstance(revision, str) or not re.fullmatch(r"[0-9a-f]{40}", revision):
+            raise ValueError(f"Runtime source {name} requires a fixed 40-character commit revision")
+
+
 def selected_serving_tasks(config_path: Path, root: Path) -> dict:
     config = yaml.safe_load(config_path.read_text())
     tasks = {}
@@ -42,6 +57,7 @@ def selected_serving_tasks(config_path: Path, root: Path) -> dict:
         spec = load_task_spec(Path(path), task_id=task_id)
         lock_path = resolve_task_path(Path(path).parent, data["evaluation"]["measurement"]["runtime_lock"], must_exist=True)
         lock = json.loads(lock_path.read_text())
+        validate_runtime_lock(lock)
         image = lock.get("image", "")
         if not re.fullmatch(r"[^\s]+@sha256:[0-9a-f]{64}", image):
             raise ValueError("Serving runtime image must use an immutable registry digest")

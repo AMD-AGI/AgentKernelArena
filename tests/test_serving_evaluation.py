@@ -8,7 +8,7 @@ import pytest
 
 from src.measurement import paired_throughput
 from src.run_budget import agent_budget, budget_policy, open_budget, reserve_from_validation
-from src.serving_runtime import gpu_groups, selected_serving_tasks
+from src.serving_runtime import gpu_groups, selected_serving_tasks, validate_runtime_lock
 from src.task_protocol import parse_command_result, performance_cases, TaskProtocolError
 from src.perf_helper_materialization import materialize_perf_helpers_in_workspace
 
@@ -84,6 +84,25 @@ def test_groups_only_address_assigned_gpus():
     for value in ([[0],[0]], [[4]], [[True]], [[]]):
         with pytest.raises(ValueError):
             gpu_groups(dict(resources=dict(gpu_groups=value)), ['2','3','6','7'])
+
+
+@pytest.mark.parametrize('source', ['model', 'magpie', 'inferencex'])
+@pytest.mark.parametrize('revision', ['main', 'v1.0', 'abc1234', None])
+def test_runtime_lock_rejects_floating_or_incomplete_revisions(source, revision):
+    lock = json.loads((ROOT/'tasks/e2e/qwen3_0_6b_sglang/runtime.lock.json').read_text())
+    target = lock['model'] if source == 'model' else lock['dependencies'][source]
+    target['revision'] = revision
+    with pytest.raises(ValueError, match='fixed 40-character commit'):
+        validate_runtime_lock(lock)
+
+
+@pytest.mark.parametrize('key,value', [('version', True), ('version', 2),
+    ('gpu_count', True), ('gpu_count', 0), ('minimum_final_evaluation_s', -1)])
+def test_runtime_lock_rejects_invalid_version_or_resource_limits(key, value):
+    lock = json.loads((ROOT/'tasks/e2e/qwen3_0_6b_sglang/runtime.lock.json').read_text())
+    lock[key] = value
+    with pytest.raises(ValueError):
+        validate_runtime_lock(lock)
 
 
 def test_small_task_runtime_and_materialization(tmp_path):
