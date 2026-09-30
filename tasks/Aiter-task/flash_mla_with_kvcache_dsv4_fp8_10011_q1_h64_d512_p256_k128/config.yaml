@@ -1,0 +1,39 @@
+schema_version: 2
+candidate:
+  language: triton
+  initial_state: implemented
+  initial_language: python
+  editable:
+  - source/implementation/main.py
+  - source/kernel.py
+  entrypoints:
+  - file: source/kernel.py
+    kind: function
+    symbol: run
+baseline:
+  kind: provided
+  language: python
+  source_files:
+  - scripts/baseline/main.py
+evaluation:
+  runner:
+  - python3
+  - scripts/task_runner.py
+  workloads: scripts/workload.json
+  timeout_s: 1800
+platform_support:
+  required_arch: gfx950
+  status: active
+description: Implement flash_mla_with_kvcache_dsv4_fp8_10011_q1_h64_d512_p256_k128
+  in triton with the source/kernel.py run(**kwargs) interface. The initial source
+  is the production baseline, not a completed rewrite. Read scripts/workload.json
+  and the protected reference for the full contract. The supported axis and scalar
+  combinations are exactly those enumerated by the supplied workload rows; tensor
+  values vary according to the task initializer and replay-refill checks. The source
+  definition documents the upstream operator and does not extend this task to unlisted
+  axis or scalar combinations. Implement your own GPU computation; do not delegate
+  it to the protected baseline or a library product. Keep all workload cases, input/output
+  dtypes and semantics. Inputs are functional and may not be mutated. Edit only declared
+  source files.
+instructions:
+- BUNDLE_README.md
