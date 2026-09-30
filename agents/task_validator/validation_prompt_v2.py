@@ -192,6 +192,18 @@ the listed cases alone does not establish those properties.
    inputs, routing/divergence/stateful behavior, aliasing, and output writes.
    Set each boolean review field true/false/null from evidence. The framework fills
    case counts and timing methods. Supply actual Event fallback reasons if used.
+   workload_symmetric reviews the protected harness contract for both roles:
+   trace their case selection, inputs, preparation, allocation and timed work.
+   A framework-confirmed unimplemented candidate does not by itself make that
+   contract unknowable. A shared protected path can establish symmetry without
+   a candidate timing result; explain the source evidence and explicitly retain
+   the limitation that no candidate was executed. Do not infer symmetry merely
+   from passing baseline actions or an empty candidate. If either role's boundary
+   cannot be established, retain null and explain the unresolved evidence.
+   Before writing the draft, reconcile every boolean with its explanation and
+   check status. A required field left null is unresolved (WARN), not a completed
+   PASS review; a false hard integrity field is FAIL. Never invent evidence or
+   replace an unknown with true just to complete the report.
    When every measured case in every executed role explicitly uses event timing,
    document why graph replay is not applicable and leave replay_validation_valid
    null; do not invent a successful graph replay. The framework determines N/A

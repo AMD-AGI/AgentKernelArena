@@ -94,10 +94,6 @@ DeepSeek's run-level overrides and per-invocation budget follow
 It uses `reasoning_effort` rather than the other CLIs' `effort` field. Schema-v2
 agent completion and independent candidate acceptance are reported separately.
 
-`make vllm` starts an OpenAI-compatible local endpoint on port `30001`, but it
-does not automatically reconfigure an agent. Point the selected integration at
-that endpoint using the integration's own provider/base-URL mechanism.
-
 ## A/B testing and ablation studies
 
 AgentKernelArena is designed to test changes to agent behavior: a model, Model

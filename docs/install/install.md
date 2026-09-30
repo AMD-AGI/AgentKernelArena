@@ -217,18 +217,6 @@ own environment/configuration; their documentation describes the additional
 setup and checks. There is no shared provider field in the root run
 configuration.
 
-To run against a self-hosted model instead of a hosted provider, start a local
-vLLM server:
-
-```bash
-make vllm
-```
-
-This launches a `rocm/vllm` container with an OpenAI-compatible endpoint on port
-`30001`. Starting the server does not automatically configure an agent; point
-the selected integration at the endpoint using that integration's base-URL and
-provider settings.
-
 ## Verify the installation
 
 The quickstart run above confirms that the framework, GPU, and agent CLI work

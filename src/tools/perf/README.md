@@ -66,3 +66,17 @@ independent reference after timing. The callback must only observe state; it
 must not reset inputs or run the reference. It does not change graph batching.
 Apply the same observation and state policy to baseline and candidate. An
 observer exception rejects the measurement and leaves the collector unbound.
+
+To check the results of the reported samples themselves, set
+`timed_run.after_sample` to a callback accepting the sample's outputs (the
+captured outputs under CUDA-graph timing, the return value under Event timing).
+The helper invokes it after each reported sample's end event has completed,
+outside the measured interval, and never during warmup, capture, estimation,
+graph priming, `rerun()` or `rerun_ms()`. It must only read the outputs. The
+check happens after the sample has run, so nothing the implementation observes
+while running distinguishes a checked sample from an unchecked one -- unlike a
+separate post-timing invocation whose inputs or outputs were prepared for it.
+
+`timed_run.rerun_ms()` executes the timed unit once more through the reported
+sample path (preparation, start event, invocation, end event) and returns its
+device time, under both timing methods.

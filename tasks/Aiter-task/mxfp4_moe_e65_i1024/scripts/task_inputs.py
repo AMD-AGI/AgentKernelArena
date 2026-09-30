@@ -59,10 +59,6 @@ QUANT_GROUP_SIZE = 32
 
 SEED = int(WORKLOAD["seed"])
 
-# The draw used to re-arm a timed invocation. It only has to differ from SEED:
-# the point is that the values a captured graph replays over are ones no earlier
-# call in this process has seen, not that they come from a second distribution.
-REFILL_SEED = SEED + 1
 ACTIVATION = 0
 DOWEIGHT_STAGE1 = False
 
@@ -141,7 +137,7 @@ def build_case_inputs(case: dict[str, Any], device: str = "cuda") -> dict[str, A
     return task_initialize.run(inputs, seed=SEED)
 
 
-def refill_case_inputs(inputs: dict[str, Any]) -> dict[str, Any]:
+def refill_case_inputs(inputs: dict[str, Any], seed: int) -> dict[str, Any]:
     """Redraw a case's buffers in place, keeping their storage.
 
     The bundle's callback writes preallocated buffers rather than allocating
@@ -150,7 +146,68 @@ def refill_case_inputs(inputs: dict[str, Any]) -> dict[str, Any]:
     buffers therefore reads the new draw on its next replay, which is what makes
     the timed invocation answerable for a result it cannot have precomputed.
     """
-    return task_initialize.run(inputs, seed=REFILL_SEED)
+    return task_initialize.run(inputs, seed=seed)
+
+
+# The operands a production caller holds fixed while the activations and the
+# routing change. The expert weights and their scales are loaded once and the
+# operator is called per batch, so holding them across the timed samples is what
+# lets an implementation lay them out once without being charged for it.
+PERSISTENT_INPUTS: tuple[str, ...] = ("w1", "w1_scale", "w2", "w2_scale")
+
+
+def redraw_call_varying_inputs(inputs: dict[str, Any], seed: int) -> dict[str, Any]:
+    """Redraw only what changes between two calls on a live model.
+
+    A new draw for a timed invocation has to move the ground under it without
+    invalidating work a real deployment would legitimately do once. Laying the
+    expert weights out in a kernel's preferred layout on the first call and
+    reusing it is that kind of work, so a redraw that also replaced them would
+    make an implementation which did it look like one that skipped the operator.
+
+    The draw itself stays the bundle's: the full callback runs, and the operands
+    the caller owns across calls are then restored. Selecting a subset of the
+    bundle's initializers instead would put a second copy of which distribution
+    fills which buffer in this file, and that copy is what goes stale.
+    """
+    held = {name: inputs[name].detach().clone() for name in PERSISTENT_INPUTS}
+    refill_case_inputs(inputs, seed=seed)
+    for name, value in held.items():
+        inputs[name].copy_(value)
+    return inputs
+
+
+def call_varying_draws(
+    inputs: dict[str, Any], seeds: list[int]
+) -> list[dict[str, torch.Tensor]]:
+    """One snapshot of the call-varying operands per seed, drawn by the bundle.
+
+    Each snapshot is what ``redraw_call_varying_inputs`` would leave in the
+    call-varying buffers for that seed. The buffers themselves end as they
+    started, so drawing ahead of time does not change what the next call reads.
+    """
+    names = tuple(
+        name
+        for name, value in inputs.items()
+        if isinstance(value, torch.Tensor) and name not in PERSISTENT_INPUTS
+    )
+    current = {name: inputs[name].detach().clone() for name in names}
+    draws = []
+    for seed in seeds:
+        redraw_call_varying_inputs(inputs, seed=seed)
+        draws.append({name: inputs[name].detach().clone() for name in names})
+    load_draw(inputs, current)
+    return draws
+
+
+def load_draw(inputs: dict[str, Any], draw: dict[str, torch.Tensor]) -> None:
+    """Copy a snapshot into the live buffers, keeping their storage.
+
+    A captured graph reads these addresses on every replay, so the copy is what
+    the next replay consumes; the copy is enqueued on the current stream.
+    """
+    for name, value in draw.items():
+        inputs[name].copy_(value)
 
 
 def call_kwargs(inputs: dict[str, Any]) -> dict[str, Any]:

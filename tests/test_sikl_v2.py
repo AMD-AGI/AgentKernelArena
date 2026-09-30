@@ -140,27 +140,196 @@ def test_shape_and_numerical_failures_are_distinct(name, monkeypatch):
 
 
 @pytest.mark.parametrize('name', REPRESENTATIVES)
-def test_changed_but_wrong_timed_output_is_rejected(name, monkeypatch):
+def test_each_kept_timed_output_is_compared_on_the_draw_it_consumed(name, monkeypatch):
     torch = pytest.importorskip('torch')
     with modules(ROOT / 'tasks/Aiter-task' / name, monkeypatch):
         measure = importlib.import_module('task_measure')
-        monkeypatch.setattr(torch.cuda, 'synchronize', lambda: None)
-        inputs = {'a': torch.tensor([[1., 2.]], dtype=torch.bfloat16)}
-        output = torch.zeros((1, 2), dtype=torch.bfloat16)
-        monkeypatch.setattr(measure.task_inputs, 'refill_case_inputs', lambda i: i['a'].fill_(2))
+        inputs = {'a': torch.zeros((1, 2), dtype=torch.bfloat16)}
         monkeypatch.setattr(measure.task_inputs, 'call_kwargs', lambda i: i)
-        monkeypatch.setattr(measure.task_reference, 'run', lambda **kw: torch.tensor([[18., 28.]], dtype=torch.bfloat16))
-        timed = types.SimpleNamespace(bound=True, outputs=output,
-                                     rerun=lambda: output.copy_(inputs['a']))
-        result = measure.verify_timed_invocation(inputs, timed)
-        assert output.tolist() == [[2., 2.]]  # Finite and different, still wrong.
-        assert result['failure_kind'] == 'numerical_mismatch'
-        assert result['metadata']['replay_checked']
-        timed.rerun = lambda: output.copy_(torch.tensor([[18., 28.]], dtype=torch.bfloat16))
-        output.zero_()
-        assert measure.verify_timed_invocation(inputs, timed)['status'] == 'PASS'
-        timed.rerun = lambda: output  # Poison survives an empty replay.
-        assert measure.verify_timed_invocation(inputs, timed)['failure_kind'] == 'output_contract'
+        # The reference doubles the operand, so each draw has its own answer.
+        monkeypatch.setattr(measure.task_reference, 'run', lambda a: a * 2)
+        first = {'a': torch.tensor([[1., 2.]], dtype=torch.bfloat16)}
+        second = {'a': torch.tensor([[3., 5.]], dtype=torch.bfloat16)}
+        right = lambda draw: draw['a'] * 2
+        ok = measure.verify_timed_outputs(inputs, [(first, right(first)), (second, right(second))])
+        assert ok['status'] == 'PASS' and ok['metadata']['checked_invocations'] == 2
+        # A result from the previous draw is finite and well formed, still wrong.
+        stale = measure.verify_timed_outputs(inputs, [(first, right(first)), (second, right(first))])
+        assert stale['failure_kind'] == 'numerical_mismatch'
+        assert stale['metadata']['failed_invocations'] == 1
+        # A contract failure is never reported as a numerical diagnostic.
+        mixed = measure.verify_timed_outputs(
+            inputs, [(first, right(second)), (second, right(second).float())])
+        assert mixed['failure_kind'] == 'output_contract'
+
+
+def test_unseen_draw_cost_bar(monkeypatch):
+    pytest.importorskip('torch')
+    with modules(ROOT / 'tasks/Aiter-task' / REPRESENTATIVES[0], monkeypatch):
+        measure = importlib.import_module('task_measure')
+        ok = measure.verify_timed_cost([0.012, 0.011, 0.013, 0.012], 0.010)
+        assert ok['status'] == 'PASS'
+        assert ok['metadata']['unseen_draw_ms'] == pytest.approx(0.011)
+        # Samples served from a store run far below what new inputs cost.
+        bad = measure.verify_timed_cost([0.9, 1.1, 0.8, 1.0], 0.010)
+        assert bad['status'] == 'FAIL' and bad['failure_kind'] == 'timing_input_memoized'
+
+
+def test_draw_seeds_and_checked_samples_are_fresh_per_run(monkeypatch):
+    pytest.importorskip('torch')
+    with modules(ROOT / 'tasks/Aiter-task' / REPRESENTATIVES[0], monkeypatch):
+        measure = importlib.import_module('task_measure')
+        first, second = measure.fresh_draw_seeds(7), measure.fresh_draw_seeds(7)
+        assert len(set(first)) == 7 and measure.task_inputs.SEED not in first
+        assert first != second  # Fixed seeds would let a kernel precompute every draw.
+        chosen = measure.choose_checked_samples(100, measure.CHECKED_SAMPLES)
+        assert len(set(chosen)) == measure.CHECKED_SAMPLES and all(0 <= i < 100 for i in chosen)
+        assert measure.choose_checked_samples(3, 8) == [0, 1, 2]
+
+
+def _simulated_graph_helper(kernel):
+    """The canonical helper's contract on CPU: one replay per sample, prepared by
+    ``prepare_fn`` before its start event, ``after_sample`` after its end event,
+    ``rerun_ms`` through the same path. A sample's time is the simulated device
+    cost the kernel reports for that invocation."""
+    def benchmark(fn, *, warmup, repetition, target_ms, prepare_fn, timed_run):
+        del target_ms
+        for _ in range(warmup + 3):  # Warmup, estimate replays and priming.
+            prepare_fn()
+            fn()
+        def sample():
+            prepare_fn()
+            return fn(), kernel.cost
+        values = []
+        for _ in range(repetition):
+            outputs, cost = sample()
+            values.append(cost)
+            timed_run.after_sample(outputs)
+        def rerun_ms():
+            timed_run.outputs, cost = sample()
+            return cost
+        timed_run.bound, timed_run.outputs, timed_run.rerun_ms = True, outputs, rerun_ms
+        return sum(values) / len(values), {'benchmark_method': 'cuda_graph',
+                                           'benchmark_effective_repeats': 1}
+    return types.SimpleNamespace(
+        TimedRun=lambda: types.SimpleNamespace(bound=False, outputs=None),
+        benchmark_cuda_graph_or_events=benchmark)
+
+
+class _Honest:
+    """Computes the operator on every call; one unit of simulated device time."""
+    def __init__(self, reference):
+        self.reference, self.cost, self.calls = reference, None, 0
+        self.out = None
+
+    def compute(self, a, b):
+        self.cost = 1.0
+        self.out = self.reference.run(a=a, b=b)
+        return self.out
+
+    def __call__(self, a, b):
+        self.calls += 1
+        return self.compute(a, b)
+
+
+class _ValueMemo(_Honest):
+    """Returns a stored, correct result for any activation it has seen before."""
+    def __init__(self, reference):
+        super().__init__(reference)
+        self.store = {}
+
+    def __call__(self, a, b):
+        key = tuple(a.float().flatten().tolist())
+        if key in self.store:
+            self.cost = 0.1
+            return self.store[key].clone()
+        self.store[key] = self.compute(a, b).clone()
+        return self.store[key]
+
+
+class _StaleUntilDisturbed(_Honest):
+    """Skips while its output buffer still holds what it last wrote.
+
+    A protocol whose only checked invocation follows a NaN poisoning of the
+    outputs sees this kernel compute exactly there and skip everywhere else,
+    including on inputs it has never read."""
+    def __init__(self, reference):
+        super().__init__(reference)
+        self.last = None
+
+    def __call__(self, a, b):
+        if self.last is not None and self.out.equal(self.last):
+            self.cost = 0.01
+            return self.out
+        self.compute(a, b)
+        self.last = self.out.clone()
+        return self.out
+
+
+class _SkipsEveryThirdCall(_Honest):
+    """Leaves its previous result in place on every third call."""
+    def __call__(self, a, b):
+        self.calls += 1
+        if self.out is not None and self.calls % 3 == 0:
+            self.cost = 0.01
+            return self.out
+        return self.compute(a, b)
+
+
+@pytest.mark.parametrize('kernel_type, status, failure_kind', [
+    (_Honest, 'PASS', None),
+    (_ValueMemo, 'FAIL', 'timing_input_memoized'),
+    (_StaleUntilDisturbed, 'FAIL', 'numerical_mismatch'),
+    (_SkipsEveryThirdCall, 'FAIL', 'numerical_mismatch'),
+])
+def test_protocol_rejects_known_timed_path_exploits_and_accepts_honest_timing(
+        kernel_type, status, failure_kind, monkeypatch):
+    """Known exploit behaviours kept as regression fixtures, end to end through
+    ``time_case`` with the real bundle initializer, reference and comparator."""
+    torch = pytest.importorskip('torch')
+    with modules(ROOT / 'tasks/Aiter-task' / REPRESENTATIVES[0], monkeypatch):
+        measure = importlib.import_module('task_measure')
+        monkeypatch.setattr(torch.cuda, 'synchronize', lambda: None)
+        build = measure.task_inputs.build_case_inputs
+        monkeypatch.setattr(measure.task_inputs, 'build_case_inputs',
+                            lambda case: build(case, device='cpu'))
+        # Consecutive indices include a third call, so the one-in-three skipper
+        # is checked deterministically; production chooses them secretly.
+        monkeypatch.setattr(measure, 'choose_checked_samples',
+                            lambda repetition, count: list(range(count)))
+        kernel = kernel_type(measure.task_reference)
+        monkeypatch.setitem(sys.modules, '_aka_benchmark', _simulated_graph_helper(kernel))
+        case = measure.task_inputs.CASES[0]
+        result = measure.time_case(case, role='candidate', launch=kernel)
+        assert result['status'] == status, result.get('reason')
+        assert result.get('failure_kind') == failure_kind
+        metadata = result['metadata']
+        assert len(metadata['timed_draw_seeds']) == measure.TIMED_DRAWS
+        assert len(metadata['unseen_draw_seeds']) == measure.UNSEEN_DRAWS
+        assert metadata['timed_output_correctness']['metadata']['checked_invocations'] == (
+            measure.CHECKED_SAMPLES + measure.UNSEEN_DRAWS)
+
+
+@pytest.mark.parametrize('name', REPRESENTATIVES)
+def test_batched_capture_is_rejected(name, monkeypatch):
+    # One logical invocation must be timed per replay. If the benchmark batched
+    # several calls into one capture and divided, a retained computation would be
+    # charged at a fraction of its cost, so a repeat count other than one fails.
+    torch = pytest.importorskip('torch')
+    with modules(ROOT / 'tasks/Aiter-task' / name, monkeypatch):
+        measure = importlib.import_module('task_measure')
+        helper = types.SimpleNamespace(
+            TimedRun=lambda: types.SimpleNamespace(bound=True),
+            benchmark_cuda_graph_or_events=lambda *a, **kw: (
+                0.01, {'benchmark_method': 'cuda_graph', 'benchmark_effective_repeats': 8}))
+        monkeypatch.setitem(sys.modules, '_aka_benchmark', helper)
+        monkeypatch.setattr(measure.task_inputs, 'build_case_inputs', lambda c: {})
+        monkeypatch.setattr(measure.task_inputs, 'PERSISTENT_INPUTS', ())
+        monkeypatch.setattr(measure.task_inputs, 'call_varying_draws', lambda i, seeds: [{} for _ in seeds])
+        monkeypatch.setattr(measure, 'case_call', lambda *a, **kw: lambda: None)
+        result = measure.time_case({}, role='candidate', launch=lambda: None)
+        assert result['status'] == 'FAIL'
+        assert result['failure_kind'] == 'timing_protocol'
 
 
 @pytest.mark.parametrize('name', REPRESENTATIVES)
@@ -177,6 +346,75 @@ def test_input_modification_rejected_and_missing_launch_never_falls_back(name, m
             measure.case_call(inputs, role='candidate')
         with pytest.raises(NotImplementedError):
             measure.build_launch(lambda **kw: (_ for _ in ()).throw(NotImplementedError()), measure.task_inputs.CASES[0])
+
+
+@pytest.mark.parametrize('name', [p.parent.name for p in TASKS if p.parent.name.startswith('mxfp4_moe')])
+@pytest.mark.parametrize('mutated', [None, 'hidden_states', 'topk_weights', 'topk_ids',
+                                   'w1', 'w2', 'w1_scale', 'w2_scale'])
+def test_moe_timed_guard_compares_live_buffers_to_independent_snapshots(name, mutated, monkeypatch):
+    """Exercise the real timing/rotation/guard path with small CPU operands.
+
+    Only allocation, random initialization, the operator/reference and GPU
+    scheduling are simulated. This tests input protection, not MoE numerics.
+    """
+    torch = pytest.importorskip('torch')
+    with modules(ROOT / 'tasks/Aiter-task' / name, monkeypatch):
+        measure = importlib.import_module('task_measure')
+        inputs = {
+            'hidden_states': torch.ones((2, 3), dtype=torch.bfloat16),
+            'topk_weights': torch.ones((2, 2)),
+            'topk_ids': torch.zeros((2, 2), dtype=torch.int32),
+            **{key: torch.ones((2, 2), dtype=torch.uint8)
+               for key in measure.task_inputs.PERSISTENT_INPUTS},
+            'activation': 0, 'doweight_stage1': False,
+        }
+        live_addresses = {key: value.data_ptr() for key, value in inputs.items()
+                          if isinstance(value, torch.Tensor)}
+        monkeypatch.setattr(torch.cuda, 'synchronize', lambda: None)
+        monkeypatch.setattr(measure.task_inputs, 'build_case_inputs', lambda case: inputs)
+
+        def redraw(live, seed):
+            for key in ('hidden_states', 'topk_weights', 'topk_ids'):
+                live[key].fill_(seed % 7)
+            return live
+
+        monkeypatch.setattr(measure.task_inputs, 'redraw_call_varying_inputs', redraw)
+        # Keep the real draw cloning and restoration, and verify non-aliasing.
+        make_draws = measure.task_inputs.call_varying_draws
+        saved_draws = []
+
+        def draws(live, seeds):
+            result = make_draws(live, seeds)
+            for draw in result:
+                for key, value in draw.items():
+                    assert value.data_ptr() != live[key].data_ptr()
+            saved_draws.extend((draw, measure.input_snapshot(draw)) for draw in result)
+            return result
+
+        monkeypatch.setattr(measure.task_inputs, 'call_varying_draws', draws)
+        monkeypatch.setattr(measure.task_reference, 'run', lambda **kw: kw['hidden_states'] * 2)
+
+        class Kernel:
+            cost = 1.0
+
+            def __call__(self, hidden_states, *args):
+                output = hidden_states * 2
+                if mutated is not None:
+                    # Never toggle a persistent mutation back on an even call.
+                    inputs[mutated].view(torch.uint8).flatten()[0] = 255
+                return output
+
+        kernel = Kernel()
+        monkeypatch.setitem(sys.modules, '_aka_benchmark', _simulated_graph_helper(kernel))
+        if mutated is None:
+            result = measure.time_case({}, role='candidate', launch=kernel)
+            assert result['status'] == 'PASS', result.get('reason')
+        else:
+            with pytest.raises(RuntimeError, match=f'protected input tensor: {mutated}$'):
+                measure.time_case({}, role='candidate', launch=kernel)
+        assert all(inputs[key].data_ptr() == address for key, address in live_addresses.items())
+        for draw, snapshot in saved_draws:
+            measure.assert_inputs_unchanged(draw, snapshot)
 
 
 def test_all_seven_actions_use_full_identity_and_explicit_role_with_injected_cpu_backend(tmp_path, monkeypatch):
@@ -232,19 +470,25 @@ def test_all_seven_actions_use_full_identity_and_explicit_role_with_injected_cpu
         assert not baseline_correctness_accepted(crashed, baseline=spec.baseline, phase='task_validation', manifest=captured)
 
 
-def test_baseline_replay_diagnostic_cannot_exempt_candidate_or_non_numerical_errors(monkeypatch):
-    pytest.importorskip('torch')
+def test_baseline_timed_output_diagnostic_cannot_exempt_candidate_or_non_numerical_errors(monkeypatch):
+    torch = pytest.importorskip('torch')
     with modules(ROOT / 'tasks/Aiter-task' / REPRESENTATIVES[0], monkeypatch):
         measure = importlib.import_module('task_measure')
-        helper = types.SimpleNamespace(TimedRun=lambda: object(), benchmark_cuda_graph_or_events=lambda *a, **kw: (0.1, {'benchmark_method': 'cuda_graph'}))
+        helper = types.SimpleNamespace(TimedRun=lambda: types.SimpleNamespace(bound=True), benchmark_cuda_graph_or_events=lambda *a, **kw: (0.1, {'benchmark_method': 'cuda_graph', 'benchmark_effective_repeats': 1}))
         monkeypatch.setitem(sys.modules, '_aka_benchmark', helper)
+        monkeypatch.setattr(torch.cuda, 'synchronize', lambda: None)
         monkeypatch.setattr(measure.task_inputs, 'build_case_inputs', lambda c: {})
+        monkeypatch.setattr(measure.task_inputs, 'PERSISTENT_INPUTS', ())
+        monkeypatch.setattr(measure.task_inputs, 'call_varying_draws', lambda i, seeds: [{} for _ in seeds])
+        monkeypatch.setattr(measure, 'RotatingDraws', lambda i, draws: types.SimpleNamespace(consumed={}))
+        monkeypatch.setattr(measure, 'run_unseen_draws', lambda *a: ([0.1] * 4, []))
+        monkeypatch.setattr(measure, 'verify_timed_cost', lambda *a, **kw: {'status': 'PASS', 'metadata': {}})
         monkeypatch.setattr(measure, 'case_call', lambda *a, **kw: lambda: None)
         mismatch = {'status': 'FAIL', 'failure_kind': 'numerical_mismatch', 'reason': 'finite mismatch'}
-        monkeypatch.setattr(measure, 'verify_timed_invocation', lambda *a: mismatch)
+        monkeypatch.setattr(measure, 'verify_timed_outputs', lambda *a: mismatch)
         baseline = measure.time_case({}, role='baseline', baseline_diagnostic=True)
         assert baseline['status'] == 'PASS'
-        assert baseline['metadata']['replay_correctness']['status'] == 'FAIL'
+        assert baseline['metadata']['timed_output_correctness']['status'] == 'FAIL'
         assert measure.time_case({}, role='candidate', launch=lambda: None, baseline_diagnostic=True)['status'] == 'FAIL'
         assert measure.time_case({}, role='baseline', baseline_diagnostic=False)['status'] == 'FAIL'
         mismatch['failure_kind'] = 'output_contract'
@@ -510,7 +754,7 @@ def test_diagnostic_policy_only_names_tasks_with_specific_evidence():
         'gemm_a16w16_nt_n4096_k2048': '329bc9861f7199c4df4d6fc0fc0eb16353cfe995',
         'gemm_a16w16_nt_n128_k6144': '67803d61ce77601dac7bf509bd111ca5ae3b048cee3dbaafc5d4ab6443025476',
         'gemm_a16w16_nt_n16384_k2048': '5ef262308dd994cdb970e68d383a559b9d8b37e1da7b36cbc805933c83838be3',
-        'gemm_a16w16_nt_n256_k6144': 'ab062308fe3266fcf2bfd116160ce593e4909ce2a68c007b8a302abfbf9a2c48',
+        'gemm_a16w16_nt_n256_k6144': 'b435b508b5aa696abb25c909341ce73e41574c4271cf716bed72418dcea86b78',
         'gemm_a16w16_nt_n2624_k6144': 'c7ae7cf39328e1711f19c25f3b61cac2e584763891d395c63d71378f3a13225d',
         'gemm_a16w16_nt_n6144_k2048': '95770d8f910e865b28d493aa234cc3205a61fe4e1709cd84443761619c950e76',
         'gemm_a16w16_nt_n6144_k3072': '9488e7dd33b407bbbbb193b258d812870132d1a31708475bebe7d93f36a6da55',
@@ -545,3 +789,30 @@ def test_diagnostic_task_still_reports_actual_pass(monkeypatch):
         assert result.failure_kind is None
         spec = load_task_spec(task / 'config.yaml', task_id='Aiter-task/' + task.name)
         assert baseline_correctness_accepted(result, baseline=spec.baseline, phase='task_validation', manifest=manifest(contract))
+
+
+@pytest.mark.parametrize('name', [
+    'gemm_a16w16_nt_n4096_k2048',
+    'gemm_a16w16_nt_n6144_k3072', 'gemm_a16w16_nt_n16384_k2048',
+])
+def test_deferred_task_replay_still_rejects_wrong_and_missing_outputs(name, monkeypatch):
+    torch = pytest.importorskip('torch')
+    with modules(ROOT / 'tasks/Aiter-task' / name, monkeypatch):
+        measure = importlib.import_module('task_measure')
+        monkeypatch.setattr(torch.cuda, 'synchronize', lambda: None)
+        inputs = {'a': torch.tensor([[1., 2.]], dtype=torch.bfloat16)}
+        output = torch.zeros((1, 2), dtype=torch.bfloat16)
+        monkeypatch.setattr(measure.task_inputs, 'refill_case_inputs', lambda i: i['a'].fill_(2))
+        monkeypatch.setattr(measure.task_inputs, 'call_kwargs', lambda i: i)
+        monkeypatch.setattr(measure.task_reference, 'run', lambda **kw: torch.tensor([[18., 28.]], dtype=torch.bfloat16))
+        timed = types.SimpleNamespace(bound=True, outputs=output,
+                                     rerun=lambda: output.copy_(inputs['a']))
+        result = measure.verify_timed_invocation(inputs, timed)
+        assert output.tolist() == [[2., 2.]]  # Finite and different, still wrong.
+        assert result['failure_kind'] == 'numerical_mismatch'
+        assert result['metadata']['replay_checked']
+        timed.rerun = lambda: output.copy_(torch.tensor([[18., 28.]], dtype=torch.bfloat16))
+        output.zero_()
+        assert measure.verify_timed_invocation(inputs, timed)['status'] == 'PASS'
+        timed.rerun = lambda: output  # Poison survives an empty replay.
+        assert measure.verify_timed_invocation(inputs, timed)['failure_kind'] == 'output_contract'

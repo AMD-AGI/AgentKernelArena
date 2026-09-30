@@ -170,6 +170,20 @@ def test_missing_positive_review_evidence_fails(tmp_path):
     assert normalized(ctx, raw)["overall_status"] == "FAIL"
 
 
+@pytest.mark.parametrize("state", ["unimplemented", "implemented"])
+@pytest.mark.parametrize("symmetric,status", [(True, "PASS"), (None, "WARN"), (False, "FAIL")])
+def test_workload_symmetry_requires_a_review_even_without_initial_candidate(tmp_path, state, symmetric, status):
+    ctx = context(tmp_path, state=state)
+    raw = draft(ctx)
+    raw["checks"]["benchmark_integrity"]["workload_symmetric"] = symmetric
+    report = normalized(ctx, raw)
+    assert report["checks"]["benchmark_integrity"]["workload_symmetric"] is symmetric
+    assert report["checks"]["benchmark_integrity"]["status"] == status
+    assert report["overall_status"] == status
+    if state == "unimplemented":
+        assert report["candidate_initial_checks"]["performance"]["status"] == "SKIP"
+
+
 def test_claimed_trivial_checker_failure_is_not_hidden_by_pass(tmp_path):
     ctx = context(tmp_path)
     raw = draft(ctx)
