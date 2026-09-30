@@ -1,0 +1,300 @@
+{
+  "repository": "https://github.com/AMD-AGI/Magpie",
+  "revision": "f4bed327e434c19ef8daba5868027c590abf032c",
+  "files": [
+    {
+      "upstream_path": "examples/benchmarks/benchmark_atom_dsr1.yaml",
+      "path": "benchmark_atom_dsr1/benchmark_atom_dsr1.yaml",
+      "sha256": "64c8e144ef63c187bba6c4367d4c9a98463e19c7443d3c1cc2d5f2208f50b796",
+      "status": "imported"
+    },
+    {
+      "upstream_path": "examples/benchmarks/benchmark_inferencex.yaml",
+      "path": "benchmark_inferencex/benchmark_inferencex.yaml",
+      "sha256": "46937bbf2d2e3f2b79592e9aeb745214279c51b1aa5604395f2b5414cea19a92",
+      "status": "imported"
+    },
+    {
+      "upstream_path": "examples/benchmarks/benchmark_sglang_client_only.yaml",
+      "path": "benchmark_sglang_client_only/benchmark_sglang_client_only.yaml",
+      "sha256": "dec3d620f1c8bf7d1e23233d0ed76fd4b6eb4fe7790a1dd9e77a7d63b5146c39",
+      "status": "imported"
+    },
+    {
+      "upstream_path": "examples/benchmarks/benchmark_sglang_deepseek_v4_pro_fp4_mi355x_agentx.yaml",
+      "path": "benchmark_sglang_deepseek_v4_pro_fp4_mi355x_agentx/benchmark_sglang_deepseek_v4_pro_fp4_mi355x_agentx.yaml",
+      "sha256": "34234d00d0241370d77a98018c69f63089a7421ca235a7a9e6feaf33b24d2feb",
+      "status": "imported"
+    },
+    {
+      "upstream_path": "examples/benchmarks/benchmark_sglang_docker_reuse.yaml",
+      "path": "benchmark_sglang_docker_reuse/benchmark_sglang_docker_reuse.yaml",
+      "sha256": "438f39cc82b4e74b7d0bdd44114d66da69557a22ff11be65c3c211521619bd52",
+      "status": "imported"
+    },
+    {
+      "upstream_path": "examples/benchmarks/benchmark_sglang_dsr1.yaml",
+      "path": "benchmark_sglang_dsr1/benchmark_sglang_dsr1.yaml",
+      "sha256": "59f10550ae02feda94f8dd392bdd0b7efa8d0fbae327d660d5d6241ce2399924",
+      "status": "imported"
+    },
+    {
+      "upstream_path": "examples/benchmarks/benchmark_sqlang_amd_dsr1_fp4.yaml",
+      "path": "benchmark_sqlang_amd_dsr1_fp4/benchmark_sqlang_amd_dsr1_fp4.yaml",
+      "sha256": "f992f6cbcb776533d6148a3b0e05c8d8940bc8ce0f108181374054948fa2d384",
+      "status": "imported"
+    },
+    {
+      "upstream_path": "examples/benchmarks/benchmark_vllm_amd_dsv32_mxfp4.yaml",
+      "path": "benchmark_vllm_amd_dsv32_mxfp4/benchmark_vllm_amd_dsv32_mxfp4.yaml",
+      "sha256": "42e36d54b60e96fa994c0fa7dc6d04d65290b07f63473eb9b145ad414f323b0e",
+      "status": "imported"
+    },
+    {
+      "upstream_path": "examples/benchmarks/benchmark_vllm_amd_glm51_mxfp4.yaml",
+      "path": "benchmark_vllm_amd_glm51_mxfp4/benchmark_vllm_amd_glm51_mxfp4.yaml",
+      "sha256": "0cb5fc9eab89f0e4e048f42a75f79fcacdb6b406f9f9fcca993c545f5299edbb",
+      "status": "imported"
+    },
+    {
+      "upstream_path": "examples/benchmarks/benchmark_vllm_amd_glm5_mxfp4.yaml",
+      "path": "benchmark_vllm_amd_glm5_mxfp4/benchmark_vllm_amd_glm5_mxfp4.yaml",
+      "sha256": "9ef2c305c590e1c849eb869ef6f807b2cf8a2d9fc9286b24dae98661a794b22b",
+      "status": "imported"
+    },
+    {
+      "upstream_path": "examples/benchmarks/benchmark_vllm_amd_kimi_k2_6_mxfp4.yaml",
+      "path": "benchmark_vllm_amd_kimi_k2_6_mxfp4/benchmark_vllm_amd_kimi_k2_6_mxfp4.yaml",
+      "sha256": "20e2f5bb47b60da58653b88aa61f503a5db2195135aec616bb62fe6ab5cd57a6",
+      "status": "imported"
+    },
+    {
+      "upstream_path": "examples/benchmarks/benchmark_vllm_amd_kimi_k2_6_mxfp4_kv_fp8.yaml",
+      "path": "benchmark_vllm_amd_kimi_k2_6_mxfp4_kv_fp8/benchmark_vllm_amd_kimi_k2_6_mxfp4_kv_fp8.yaml",
+      "sha256": "dd8d964b90ab3d202a3f6102fd805e49121cae5aedafb0ded33a28c8c6509d55",
+      "status": "imported"
+    },
+    {
+      "upstream_path": "examples/benchmarks/benchmark_vllm_amd_kimi_k2_mxfp4.yaml",
+      "path": "benchmark_vllm_amd_kimi_k2_mxfp4/benchmark_vllm_amd_kimi_k2_mxfp4.yaml",
+      "sha256": "b81f2955f2112834be4c70c877f7df1ef71742e5f7dc9ba27391864653050a07",
+      "status": "imported"
+    },
+    {
+      "upstream_path": "examples/benchmarks/benchmark_vllm_amd_mini_max_25_mxfp4.yaml",
+      "path": "benchmark_vllm_amd_mini_max_25_mxfp4/benchmark_vllm_amd_mini_max_25_mxfp4.yaml",
+      "sha256": "52a95dda1b5e32865aef4155b54a1f3bf54f40b87ffeff303a2e3754308f3a93",
+      "status": "imported"
+    },
+    {
+      "upstream_path": "examples/benchmarks/benchmark_vllm_amd_mini_max_3_mxfp4.yaml",
+      "path": "benchmark_vllm_amd_mini_max_3_mxfp4/benchmark_vllm_amd_mini_max_3_mxfp4.yaml",
+      "sha256": "3cfdade91a5689328b0b04669dad8a2774cb9767eb95960c1bd907957312d725",
+      "status": "imported"
+    },
+    {
+      "upstream_path": "examples/benchmarks/benchmark_vllm_deepseek_v4_pro.yaml",
+      "path": "benchmark_vllm_deepseek_v4_pro/benchmark_vllm_deepseek_v4_pro.yaml",
+      "sha256": "b2f55575415324a959d5c04005a6d4d0b7c711ff7683038269ee629f54b9c698",
+      "status": "imported"
+    },
+    {
+      "upstream_path": "examples/benchmarks/benchmark_vllm_dsr1.yaml",
+      "path": "benchmark_vllm_dsr1/benchmark_vllm_dsr1.yaml",
+      "sha256": "3cff5c292f581af353766bd5af33fdf12bc4465b26b54953fb4ed2c2a09de1fa",
+      "status": "imported"
+    },
+    {
+      "upstream_path": "examples/benchmarks/benchmark_vllm_dsr1_ray.yaml",
+      "path": "benchmark_vllm_dsr1_ray/benchmark_vllm_dsr1_ray.yaml",
+      "sha256": "e7a8fbd5ef1eb4346add0c73459e3a15405c2d2a511c8f5eb0db43575a7f9745",
+      "status": "imported"
+    },
+    {
+      "upstream_path": "examples/benchmarks/benchmark_vllm_dsv32_fp8.yaml",
+      "path": "benchmark_vllm_dsv32_fp8/benchmark_vllm_dsv32_fp8.yaml",
+      "sha256": "4a41bd5318deb07345e053052864914a14c33015b5d1d72779fa8b91a79e51aa",
+      "status": "imported"
+    },
+    {
+      "upstream_path": "examples/benchmarks/benchmark_vllm_glm51_fp8.yaml",
+      "path": "benchmark_vllm_glm51_fp8/benchmark_vllm_glm51_fp8.yaml",
+      "sha256": "b918e3935ce31bce49bb7a0bbe87b71c593eeefaeaa9905ce97ad90655e25916",
+      "status": "imported"
+    },
+    {
+      "upstream_path": "examples/benchmarks/benchmark_vllm_glm5_fp8.yaml",
+      "path": "benchmark_vllm_glm5_fp8/benchmark_vllm_glm5_fp8.yaml",
+      "sha256": "cfe2e9cfc00e252fff2d56cb49e7b8181469a950a48dac6d75219401e8db0dbf",
+      "status": "imported"
+    },
+    {
+      "upstream_path": "examples/benchmarks/benchmark_vllm_gptoss_120b.yaml",
+      "path": "benchmark_vllm_gptoss_120b/benchmark_vllm_gptoss_120b.yaml",
+      "sha256": "4a784dfa2c768cda1200127169cc9577b9fd0e6a600404e3f96eee4bd0a5daf6",
+      "status": "imported"
+    },
+    {
+      "upstream_path": "examples/benchmarks/benchmark_vllm_gptoss_20b.yaml",
+      "path": "benchmark_vllm_gptoss_20b/benchmark_vllm_gptoss_20b.yaml",
+      "sha256": "7d188a9f134ca528b33558edd4647996c696d17c9c590ed1c7610db875d3fd49",
+      "status": "imported"
+    },
+    {
+      "upstream_path": "examples/benchmarks/benchmark_vllm_kimi_k2_6_w4a16_flydsl.yaml",
+      "path": "benchmark_vllm_kimi_k2_6_w4a16_flydsl/benchmark_vllm_kimi_k2_6_w4a16_flydsl.yaml",
+      "sha256": "c5bb006d6b630367215671da0d8e473633687144a9eb698cba225a7fd03c579b",
+      "status": "imported"
+    },
+    {
+      "upstream_path": "examples/benchmarks/benchmark_vllm_kimi_k2_ray.yaml",
+      "path": "benchmark_vllm_kimi_k2_ray/benchmark_vllm_kimi_k2_ray.yaml",
+      "sha256": "bb9f292e7eb6d17133fe658aba6af4e2282422110634b01fb6ab96c4628f341d",
+      "status": "imported"
+    },
+    {
+      "upstream_path": "examples/benchmarks/benchmark_vllm_local_reuse.yaml",
+      "path": "benchmark_vllm_local_reuse/benchmark_vllm_local_reuse.yaml",
+      "sha256": "a36f5c632a9b8f6dc3757f1745498a992da565182a9aca01c1e3ecf73eefd2cd",
+      "status": "imported"
+    },
+    {
+      "upstream_path": "examples/benchmarks/benchmark_vllm_mini_max_25_fp8.yaml",
+      "path": "benchmark_vllm_mini_max_25_fp8/benchmark_vllm_mini_max_25_fp8.yaml",
+      "sha256": "8d19628d60a0e9017b370fba52996600c8aff14cab74144215efbd9cb2f45f9a",
+      "status": "imported"
+    },
+    {
+      "upstream_path": "examples/benchmarks/benchmark_vllm_qwen35_235b_fp8.yaml",
+      "path": "benchmark_vllm_qwen35_235b_fp8/benchmark_vllm_qwen35_235b_fp8.yaml",
+      "sha256": "a871e0fdacc2e07417132a3d4d2cf5f4149bd59aadb693daf14663e48d7caa8b",
+      "status": "imported"
+    },
+    {
+      "upstream_path": "examples/benchmarks/benchmark_vllm_qwen3_next_80b_fp8.yaml",
+      "path": "benchmark_vllm_qwen3_next_80b_fp8/benchmark_vllm_qwen3_next_80b_fp8.yaml",
+      "sha256": "ea77c2b6c98978cad0b288ec2b33694027b20f8c2dadfab0857e6ab992a3c26d",
+      "status": "imported"
+    },
+    {
+      "upstream_path": "examples/benchmarks/benchmark_vllm_qwen3_ray.yaml",
+      "path": "benchmark_vllm_qwen3_ray/benchmark_vllm_qwen3_ray.yaml",
+      "sha256": "a8d02a004f17293ea502a782a7735eb21786bbdeebcaf73acf6e14b771e89cfd",
+      "status": "imported"
+    },
+    {
+      "upstream_path": "examples/benchmarks/benchmark_vllm_r9700_qwen35_9b_mm_max_throughput.yaml",
+      "path": "benchmark_vllm_r9700_qwen35_9b_mm_max_throughput/benchmark_vllm_r9700_qwen35_9b_mm_max_throughput.yaml",
+      "sha256": "16e027e9ef7340d1da2bd9bd85799737db56c8abe21dc8b62fb03c2446d22caa",
+      "status": "imported"
+    },
+    {
+      "upstream_path": "examples/benchmarks/benchmark_vllm_r9700_qwen35_9b_mm_single_user.yaml",
+      "path": "benchmark_vllm_r9700_qwen35_9b_mm_single_user/benchmark_vllm_r9700_qwen35_9b_mm_single_user.yaml",
+      "sha256": "c747f41aa62fe5b5a7a8d9f11efc75cb32e318e8a8d115384a382daf672a627c",
+      "status": "imported"
+    },
+    {
+      "upstream_path": "examples/benchmarks/benchmark_vllm_r9700_qwen35_9b_mm_tracelens.yaml",
+      "path": "benchmark_vllm_r9700_qwen35_9b_mm_tracelens/benchmark_vllm_r9700_qwen35_9b_mm_tracelens.yaml",
+      "sha256": "26dc4cf4b9b70ff191857c98b406161d40fa3aa9db2059babd08f010256d5cea",
+      "status": "imported"
+    },
+    {
+      "upstream_path": "examples/benchmarks/benchmark_vllm_reuse_cleanup.yaml",
+      "path": "benchmark_vllm_reuse_cleanup/benchmark_vllm_reuse_cleanup.yaml",
+      "sha256": "9b3ceaa46a39cceff583203532cbfdad703f41d169af6ead198dd880b8ad5db7",
+      "status": "imported"
+    },
+    {
+      "upstream_path": "examples/benchmarks/benchmark_vllm_tracelens.yaml",
+      "path": "benchmark_vllm_tracelens/benchmark_vllm_tracelens.yaml",
+      "sha256": "15b206a62248528f988e7777257b38af17e8c97b0fa8d50f89ef5b4c05cd259d",
+      "status": "imported"
+    },
+    {
+      "upstream_path": "examples/benchmarks/sglang_mi355x/benchmark_sglang_amd_dsr1_mxfp4.yaml",
+      "path": "sglang_mi355x/benchmark_sglang_amd_dsr1_mxfp4/benchmark_sglang_amd_dsr1_mxfp4.yaml",
+      "sha256": "60ecd3abd76c70aee0eea007eabd48a020c98d6ea5460c7b68e5f5f2465c5d15",
+      "status": "imported"
+    },
+    {
+      "upstream_path": "examples/benchmarks/sglang_mi355x/benchmark_sglang_amd_glm51_mxfp4.yaml",
+      "path": "sglang_mi355x/benchmark_sglang_amd_glm51_mxfp4/benchmark_sglang_amd_glm51_mxfp4.yaml",
+      "sha256": "12323b84ef030c98116de28cbcd175197deb87ee847d0b458cd9a844c9f48312",
+      "status": "imported"
+    },
+    {
+      "upstream_path": "examples/benchmarks/sglang_mi355x/benchmark_sglang_amd_kimi_k2_6_mxfp4.yaml",
+      "path": "sglang_mi355x/benchmark_sglang_amd_kimi_k2_6_mxfp4/benchmark_sglang_amd_kimi_k2_6_mxfp4.yaml",
+      "sha256": "66ffd62c8274dfde6931957c7fa46c18b4e7bc017e37d83c6af143da279e3e05",
+      "status": "imported"
+    },
+    {
+      "upstream_path": "examples/benchmarks/sglang_mi355x/benchmark_sglang_amd_mini_max_25_mxfp4.yaml",
+      "path": "sglang_mi355x/benchmark_sglang_amd_mini_max_25_mxfp4/benchmark_sglang_amd_mini_max_25_mxfp4.yaml",
+      "sha256": "625034607f26be0a0d2e7630e4d9498172c74caf52a5fc21c7a1184b25256bfe",
+      "status": "imported"
+    },
+    {
+      "upstream_path": "examples/benchmarks/sglang_mi355x/benchmark_sglang_amd_qwen35_397b_mxfp4.yaml",
+      "path": "sglang_mi355x/benchmark_sglang_amd_qwen35_397b_mxfp4/benchmark_sglang_amd_qwen35_397b_mxfp4.yaml",
+      "sha256": "f84cc827ba6f2e70799facd131160abfb941fe314d9b0f1482891e9af50e7ce7",
+      "status": "imported"
+    },
+    {
+      "upstream_path": "examples/benchmarks/sglang_mi355x/benchmark_sglang_amd_qwen3_coder_480b_a35b_mxfp4.yaml",
+      "path": "sglang_mi355x/benchmark_sglang_amd_qwen3_coder_480b_a35b_mxfp4/benchmark_sglang_amd_qwen3_coder_480b_a35b_mxfp4.yaml",
+      "sha256": "0e795aac02f5786f5a34ef760ea00527d698a3140842e96449eef53e10059b4c",
+      "status": "imported"
+    },
+    {
+      "upstream_path": "examples/benchmarks/sglang_mi355x/benchmark_sglang_deepseek_v4_pro_mxfp4.yaml",
+      "path": "sglang_mi355x/benchmark_sglang_deepseek_v4_pro_mxfp4/benchmark_sglang_deepseek_v4_pro_mxfp4.yaml",
+      "sha256": "cd09f801b1b8c1e9642966a819af4fa27c81eeacb118766a699fe91535e3a151",
+      "status": "imported"
+    },
+    {
+      "upstream_path": "examples/benchmarks/sglang_mi355x/benchmark_sglang_dsr1_fp8.yaml",
+      "path": "sglang_mi355x/benchmark_sglang_dsr1_fp8/benchmark_sglang_dsr1_fp8.yaml",
+      "sha256": "72c3d9729686785e132b4ca633ea3c0d142a249bfcbd988f3307908056cf44bc",
+      "status": "imported"
+    },
+    {
+      "upstream_path": "examples/benchmarks/sglang_mi355x/benchmark_sglang_glm51_fp8.yaml",
+      "path": "sglang_mi355x/benchmark_sglang_glm51_fp8/benchmark_sglang_glm51_fp8.yaml",
+      "sha256": "df12a8465ad4ee8786d1892096e932153034f6aff36ab8f9605ab0d833ad1a09",
+      "status": "imported"
+    },
+    {
+      "upstream_path": "examples/benchmarks/sglang_mi355x/benchmark_sglang_mini_max_25_fp8.yaml",
+      "path": "sglang_mi355x/benchmark_sglang_mini_max_25_fp8/benchmark_sglang_mini_max_25_fp8.yaml",
+      "sha256": "197f9ffd544969f714207755e74b0e7d4d6bd065fd0ec056c043662d420a6146",
+      "status": "imported"
+    },
+    {
+      "upstream_path": "examples/benchmarks/sglang_mi355x/benchmark_sglang_mini_max_3_mxfp8.yaml",
+      "path": "sglang_mi355x/benchmark_sglang_mini_max_3_mxfp8/benchmark_sglang_mini_max_3_mxfp8.yaml",
+      "sha256": "1d9936130eebad334130adf3e21e7f5acab72adc6db718fb414b25280fed65f4",
+      "status": "imported"
+    },
+    {
+      "upstream_path": "examples/benchmarks/sglang_mi355x/benchmark_sglang_qwen35_397b_fp8.yaml",
+      "path": "sglang_mi355x/benchmark_sglang_qwen35_397b_fp8/benchmark_sglang_qwen35_397b_fp8.yaml",
+      "sha256": "292765cb4571cfc318b9d558709b3350b0988d6dc4a218a46ec03ab0a5123782",
+      "status": "imported"
+    },
+    {
+      "upstream_path": "examples/benchmarks/sglang_mi355x/benchmark_sglang_qwen3_coder_480b_a35b_fp8.yaml",
+      "path": "sglang_mi355x/benchmark_sglang_qwen3_coder_480b_a35b_fp8/benchmark_sglang_qwen3_coder_480b_a35b_fp8.yaml",
+      "sha256": "eddea8945502305b41ba4dda87e867fd73626e738ac78b1e73587927f2539b0c",
+      "status": "imported"
+    },
+    {
+      "upstream_path": "examples/benchmarks/sglang_mi355x/benchmark_sglang_qwen3_next_80b_fp8.yaml",
+      "path": "sglang_mi355x/benchmark_sglang_qwen3_next_80b_fp8/benchmark_sglang_qwen3_next_80b_fp8.yaml",
+      "sha256": "101ff52712a550f03f0cc52c0ab6cd3e17aa5d4b6132b9ef77e41c30e60761f4",
+      "status": "imported"
+    }
+  ]
+}

@@ -1,0 +1,49 @@
+# SGLang Benchmark Configuration Example
+# =======================================
+# This example shows how to benchmark SGLang with DeepSeek-R1 model.
+#
+# Usage:
+#   python -m Magpie benchmark --benchmark-config examples/benchmarks/benchmark_sglang_dsr1.yaml
+#
+# Prerequisites:
+#   - Docker with GPU support
+#   - HuggingFace token (HF_TOKEN) for gated models
+
+benchmark:
+  framework: sglang
+  model: deepseek-ai/DeepSeek-R1-0528
+  precision: fp8
+
+  # Environment variables (passed to Docker container)
+  envs:
+    TP: 8                      # Tensor parallel size
+    CONC: 32                   # Request concurrency
+    ISL: 1024                  # Input sequence length
+    OSL: 1024                  # Output sequence length
+    RANDOM_RANGE_RATIO: 1      # Random range ratio for input/output length
+    MAX_MODEL_LEN: 131072      # Maximum model length
+    ENABLE_PROFILIER: True     # Enable profiler
+
+  # Profiler configuration
+  profiler:
+    # PyTorch profiler (default enabled)
+    torch_profiler:
+      enabled: true
+
+    # System profiler (rocprof-compute for AMD, ncu for NVIDIA)
+    system_profiler:
+      enabled: false
+      profile_args: []  # e.g., ["-b", "1,2,5,10,11,12,14,16,17"] for rocprof-compute
+
+  # Optional: Override automatic image selection
+  # docker_image: "lmsysorg/sglang:v0.5.8-rocm700-mi30x"
+
+  # Optional: InferenceX path
+  # inferencex_path: "/YOUR_INFERENCEX_PATH/"
+
+  # Optional: Specify benchmark script directly
+  benchmark_script: "dsr1_fp8_mi300x.sh"
+
+  # Timeout (seconds)
+  timeout_seconds: 3600
+

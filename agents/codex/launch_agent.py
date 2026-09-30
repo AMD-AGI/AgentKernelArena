@@ -4,7 +4,6 @@ import logging
 import os
 import shlex
 import shutil
-import signal
 import subprocess
 import threading
 from pathlib import Path
@@ -16,6 +15,7 @@ from agents import register_agent
 from agents.prompt_input import prompt_input
 from agents.run_budget import append_run_budget
 from src.module_registration import AgentType, load_prompt_builder
+from src.process_control import stop_process_group as _stop_process
 from src.runtime_env import build_subprocess_env
 
 
@@ -56,21 +56,6 @@ def _build_command(
         cmd.extend(["-c", f'model_reasoning_effort={json.dumps(config["effort"])}'])
     cmd.extend(["--", "-" if prompt is None else prompt])
     return cmd
-
-
-def _stop_process(process: subprocess.Popen) -> None:
-    """Terminate the invocation's process group, including compiler/tool children."""
-    for sig in (signal.SIGTERM, signal.SIGKILL):
-        try:
-            os.killpg(process.pid, sig)
-        except ProcessLookupError:
-            break
-        if sig == signal.SIGTERM:
-            try:
-                process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                pass
-    process.wait()
 
 
 def integrate_agent_config(

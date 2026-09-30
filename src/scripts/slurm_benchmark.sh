@@ -164,6 +164,8 @@ run_inside_allocation() {
             exec bash "$DOCKER_RUNNER" check-agents "$@"
             ;;
         run)
+            export GPU_IDS
+            GPU_IDS="$(IFS=,; echo "${ALLOCATED_GPUS[*]}")"
             export AKA_VISIBLE_GPU="${ALLOCATED_GPUS[0]}"
             exec bash "$DOCKER_RUNNER" run "$@"
             ;;

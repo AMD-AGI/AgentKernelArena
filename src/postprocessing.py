@@ -108,6 +108,12 @@ def _build_general_report_lines(
         f"  P25/P75/P90 Speedup:   {aggregate_result.get('p25_speedup', 0.0):.2f}x / {aggregate_result.get('p75_speedup', 0.0):.2f}x / {aggregate_result.get('p90_speedup', 0.0):.2f}x",
         f"  Valid Speedup Count:   {aggregate_result['valid_speedup_count']}",
     ])
+    if aggregate_result.get("mixed_measurements"):
+        lines = [line for line in lines if not any(label in line for label in
+                 ("Total Score:", "Average Score:", "Speedup", "Valid Speedup"))]
+        lines.append("Performance and score are grouped by measurement; no combined average:")
+        for kind, group in aggregate_result["measurement_groups"].items():
+            lines.append(f"  {kind}: {group['count']} tasks; average speedup {group['average_speedup']:.3f}x; average score {group['average_score']:.2f}")
     outcomes = _outcome_counts(aggregate_result.get("task_details", []))
     lines.extend([
         "Final acceptance (separate from numerical results):",
@@ -544,6 +550,7 @@ def general_post_processing(
 
             # Extract information
             task_info['task_name'] = result_data.get('task_name', task_name)
+            task_info['measurement_kind'] = result_data.get('measurement_kind', 'kernel')
             task_info['pass_compilation'] = result_data.get('pass_compilation', False)
             task_info['pass_correctness'] = result_data.get('pass_correctness', False)
             task_info.update(_outcome_fields(result_data))
@@ -590,6 +597,20 @@ def general_post_processing(
 
         task_details.append(task_info)
 
+    measurement_groups = {}
+    for kind in sorted({task.get('measurement_kind', 'kernel') for task in task_details}):
+        rows = [t for t in task_details if t.get('measurement_kind', 'kernel') == kind]
+        values = [t['speedup_ratio'] for t in rows if t['pass_compilation'] and t['pass_correctness'] and t['speedup_ratio'] > 0]
+        measurement_groups[kind] = dict(count=len(rows), total_score=sum(t['score'] for t in rows),
+                                       average_score=sum(t['score'] for t in rows)/len(rows),
+                                       **_compute_speedup_stats(values))
+    mixed_measurements = len(measurement_groups) > 1
+    if mixed_measurements:
+        # Cross-unit averages are deliberately absent; group summaries are authoritative.
+        speedup_values = []
+        total_score = 0.0
+        speedup_gt_1_count = 0
+
     # Calculate rates
     compilation_pass_rate = (compilation_pass_count / total_tasks * 100) if total_tasks > 0 else 0.0
     correctness_pass_rate = (correctness_pass_count / total_tasks * 100) if total_tasks > 0 else 0.0
@@ -616,6 +637,8 @@ def general_post_processing(
         **speed_stats,
         'valid_speedup_count': len(speedup_values),
 
+        'measurement_groups': measurement_groups,
+        'mixed_measurements': mixed_measurements,
         'task_details': task_details
     }
 
@@ -663,8 +686,14 @@ def general_post_processing(
                 'valid_speedup_count': aggregate_result['valid_speedup_count'],
                 **_outcome_counts(task_details),
             },
+            'measurement_groups': measurement_groups,
+            'mixed_measurements': mixed_measurements,
             'task_types': task_type_breakdown
         }
+        if mixed_measurements:
+            for key in list(json_data['overall']):
+                if 'speedup' in key or key in ('total_score', 'average_score'):
+                    del json_data['overall'][key]
         json_path = reports_directory / "task_type_breakdown.json"
         with open(json_path, "w") as f:
             json.dump(json_data, f, indent=2)
@@ -759,6 +788,7 @@ def export_task_results_csv(
         rows.append({
             "Task Name": task_name,
             "Task Type": task_type,
+            "Measurement": task.get("measurement_kind", "kernel"),
             "Score": f"{float(score):.4f}",
             "Speedup": f"{float(speedup):.4f}",
             "Status": status,
@@ -772,7 +802,7 @@ def export_task_results_csv(
     with open(csv_path, "w", newline="") as f:
         writer = csv.DictWriter(
             f,
-            fieldnames=["Task Name", "Task Type", "Score", "Speedup", "Status",
+            fieldnames=["Task Name", "Task Type", "Measurement", "Score", "Speedup", "Status",
                         "Candidate Accepted", "Delivery Status", "Agent Execution",
                         "Candidate Changed", "Optimization_summary"]
         )

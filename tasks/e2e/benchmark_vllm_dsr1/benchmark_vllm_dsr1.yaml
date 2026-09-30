@@ -1,0 +1,53 @@
+# vLLM Benchmark Configuration Example
+# =====================================
+# This example shows how to benchmark vLLM with DeepSeek-R1 model.
+#
+# Usage:
+#   python -m Magpie benchmark --benchmark-config examples/benchmarks/benchmark_vllm_dsr1.yaml
+#
+# Prerequisites:
+#   - Docker with GPU support
+#   - HuggingFace token (HF_TOKEN) for gated models
+
+benchmark:
+  framework: vllm
+  model: deepseek-ai/DeepSeek-R1-0528
+  precision: fp8
+  run_mode: docker
+  
+  # Environment variables
+  envs:
+    TP: 8
+    CONC: 32
+    ISL: 1024
+    OSL: 1024
+    RANDOM_RANGE_RATIO: 0.8
+    MAX_MODEL_LEN: 4090
+    EXTRA_VLLM_ARGS: "--no-enable-prefix-caching --block-size 1"
+    VLLM_LOGGING_LEVEL: "WARNING" 
+    
+  # Profiler configuration
+  profiler:
+    torch_profiler:
+      enabled: false
+    system_profiler:
+      enabled: false
+      
+  gap_analysis:
+    enabled: false
+    find_kernel_sources: false
+    top_k: 100
+
+  # Optional: Automatically selects idle GPU(s) before launching. Enabled by default;
+  # uncomment to override (see docs/how-to/benchmarking/benchmark.md#automatic-gpu-selection).
+  # gpu_selection:
+  #   auto: true
+  #   min_free_memory_gb: 8.0
+  #   count: null              # null -> use envs.TP
+  #   candidates: [0, 1, 2, 3] # whitelist physical GPU ids (rocm-smi/nvidia-smi)
+
+  # Will auto-clone InferenceX if not specified
+  # inferencex_path: ""
+  benchmark_script: "vllm_mi355x.sh" # pinned to bypass InferenceX script
+
+  timeout_seconds: 3600

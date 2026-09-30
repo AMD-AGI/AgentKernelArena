@@ -245,8 +245,16 @@ def _baseline(value: Any, candidate: CandidateSpec) -> BaselineSpec:
 
 def _actions(value: Any) -> tuple[ActionSpec, ...]:
     obj = _mapping(value, "evaluation", {
-        "runner", "workloads", "timeout_s", "task", "baseline", "candidate",
+        "runner", "workloads", "timeout_s", "task", "baseline", "candidate", "measurement",
     })
+    if "measurement" in obj:
+        m = _mapping(obj["measurement"], "evaluation.measurement", {"kind", "runtime_lock", "pairs", "max_p99_tpot_ms"})
+        _choice(m.get("kind"), ("serving",), "measurement.kind")
+        relative_path(m.get("runtime_lock"), "measurement.runtime_lock")
+        if type(m.get("pairs")) is not int or not 3 <= m["pairs"] <= 20:
+            raise TaskConfigError("Serving measurements require 3 to 20 fixed A/B pairs")
+        if "max_p99_tpot_ms" in m:
+            _timeout(m["max_p99_tpot_ms"], "measurement.max_p99_tpot_ms")
     runner = _argv(obj["runner"], "evaluation.runner") if "runner" in obj else None
     default_timeout = _timeout(obj.get("timeout_s", 3600), "evaluation.timeout_s")
     if "workloads" in obj:

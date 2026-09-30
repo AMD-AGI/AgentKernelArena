@@ -487,6 +487,13 @@ def materialize_perf_helpers_in_workspace(
     for helper in sorted(helper_targets):
         _materialize_file(helper, canonical_python, materialized)
 
+    serving = workspace / "scripts/evaluate.py"
+    if serving.exists() and "_aka_serving" in serving.read_text():
+        _materialize_file(serving.parent / "_aka_serving.py",
+                          (root / "src/tools/perf/serving.py").read_text(), materialized)
+        _materialize_file(serving.parent / "_aka_measurement.py",
+                          (root / "src/measurement.py").read_text(), materialized)
+
     _materialize_native_helper(workspace, root, materialized)
 
     if materialized:

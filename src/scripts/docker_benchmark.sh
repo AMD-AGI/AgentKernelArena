@@ -243,7 +243,60 @@ select_runtime() {
 
 select_runtime_for_config() {
     local config="$1"
-    select_runtime "$(resolve_config_gpu_arch "$config")"
+    local arch locked_image arch_override
+    arch="$(resolve_config_gpu_arch "$config")"
+    select_runtime "$arch"
+    arch_override="AKA_DOCKER_IMAGE_${arch^^}"
+    locked_image="$(cd "$HOST_ROOT" && python3 -m src.serving_runtime image --config "$config")" || return 1
+    if [[ -n "$locked_image" ]]; then
+        [[ -z "${AKA_DOCKER_IMAGE:-}" || "$AKA_DOCKER_IMAGE" == "$locked_image" ]] \
+            || die "Image override conflicts with the serving task runtime lock"
+        [[ -z "${!arch_override:-}" || "${!arch_override}" == "$locked_image" ]] \
+            || die "Architecture image override conflicts with the serving task runtime lock"
+        SELECTED_IMAGE="$locked_image"
+    fi
+}
+
+SERVING_RUNTIME_DIR=""
+SERVING_RUNTIME_PID=""
+
+start_serving_runtime() {
+    local config="$1" image
+    image="$(cd "$HOST_ROOT" && python3 -m src.serving_runtime image --config "$config")" || return 1
+    [[ -n "$image" ]] || return 0
+    SERVING_RUNTIME_DIR="$(mktemp -d /tmp/aka-serving.XXXXXX)"
+    # Artifacts are retained, including failed action evidence.
+    local artifacts="${AKA_SERVING_ARTIFACT_ROOT:-$HOST_HOME/.local/state/aka-serving}/$(basename "$SERVING_RUNTIME_DIR")"
+    mkdir -p "$artifacts"
+    (cd "$HOST_ROOT" && exec python3 -m src.serving_runtime serve --config "$config" \
+        --socket "$SERVING_RUNTIME_DIR/eval.sock" --artifacts "$artifacts" \
+        --devices "${AKA_VISIBLE_GPU:?serving GPU group must be assigned}") >"$artifacts/service.log" 2>&1 &
+    SERVING_RUNTIME_PID=$!
+    local attempt
+    for attempt in {1..100}; do
+        [[ -S "$SERVING_RUNTIME_DIR/eval.sock" ]] && return 0
+        kill -0 "$SERVING_RUNTIME_PID" 2>/dev/null || die "Serving executor failed; see $artifacts/service.log"
+        sleep 0.1
+    done
+    die "Serving executor did not become ready"
+}
+
+stop_serving_runtime() {
+    if [[ -n "$SERVING_RUNTIME_PID" ]]; then
+        kill "$SERVING_RUNTIME_PID" 2>/dev/null || true
+        wait "$SERVING_RUNTIME_PID" 2>/dev/null || true
+        SERVING_RUNTIME_PID=""
+    fi
+}
+
+assign_serial_gpu_group() {
+    local config="$1" image pool groups
+    image="$(cd "$HOST_ROOT" && python3 -m src.serving_runtime image --config "$config")" || return 1
+    [[ -n "$image" ]] || return 0
+    pool="$(resolve_gpu_ids | paste -sd, -)"
+    groups="$(cd "$HOST_ROOT" && python3 -m src.serving_runtime groups --config "$config" --devices "$pool")" || return 1
+    [[ "$groups" != *$'\n'* ]] || die "Serial serving run requires exactly one GPU group"
+    export AKA_VISIBLE_GPU="$groups"
 }
 
 select_runtime_for_host() {
@@ -1044,6 +1097,11 @@ build_docker_args() {
         -w "$CONTAINER_WORKDIR"
     )
 
+    if [[ -n "$SERVING_RUNTIME_DIR" ]]; then
+        docker_args+=(-v "$SERVING_RUNTIME_DIR:/run/aka-serving:ro"
+            -e "AKA_SERVING_SOCKET=/run/aka-serving/eval.sock")
+    fi
+
     # GEAK's claude-agent-sdk is installed with `pip install --target` into
     # this host-mounted dir (see container_setup_geak). Only put it on
     # a GEAK-only path for the container bootstrap to prepend to PYTHONPATH.
@@ -1086,6 +1144,9 @@ build_docker_args() {
 
     if [[ -n "${AKA_VISIBLE_GPU:-}" ]]; then
         local logical_gpu="${AKA_LOGICAL_GPU:-0}"
+        if [[ -z "${AKA_LOGICAL_GPU:-}" && "${AKA_VISIBLE_GPU}" == *,* ]]; then
+            logical_gpu="$(python3 -c 'import sys; print(",".join(str(i) for i in range(len(sys.argv[1].split(",")))))' "$AKA_VISIBLE_GPU")"
+        fi
         docker_args+=(
             -e "AGENT_KERNEL_ARENA_HOST_GPU_ID=${AKA_VISIBLE_GPU}"
             -e "ROCR_VISIBLE_DEVICES=${AKA_VISIBLE_GPU}"
@@ -1699,6 +1760,11 @@ resolve_gpu_ids() {
         return
     fi
 
+    if [[ -n "${ROCR_VISIBLE_DEVICES:-}" ]]; then
+        printf '%s\n' "${ROCR_VISIBLE_DEVICES//,/ }" | tr ' ' '\n' | sed '/^$/d'
+        return
+    fi
+
     if command -v rocm-smi >/dev/null 2>&1; then
         rocm-smi --showid 2>/dev/null \
             | sed -nE 's/.*GPU\[([0-9]+)\].*/\1/p' \
@@ -1736,6 +1802,14 @@ run_parallel() {
     done < <(resolve_gpu_ids)
     [[ "${#gpu_ids[@]}" -gt 0 ]] || die "No GPU IDs available; set GPU_IDS=0,1,..."
 
+    local grouped_pool groups_text
+    grouped_pool="$(IFS=,; echo "${gpu_ids[*]}")"
+    groups_text="$(cd "$HOST_ROOT" && python3 -m src.serving_runtime groups --config "$config_name" --devices "$grouped_pool")" || return 1
+    gpu_ids=()
+    while IFS= read -r gpu_id; do
+        [[ -n "$gpu_id" ]] && gpu_ids+=("$gpu_id")
+    done <<< "$groups_text"
+
     echo "Parallel run: run_name=${run_name} workers=${#gpu_ids[@]} gpu_ids=${gpu_ids[*]}" >&2
 
     (
@@ -1766,7 +1840,8 @@ run_parallel() {
             export AKA_CONTAINER_HOME="/tmp/aka-home-${safe_run_name}-worker-${worker_id}"
             export AKA_CACHE_SUFFIX="${safe_run_name}-worker-${worker_id}"
             export AGENT_HOME_ISOLATION=1
-            trap stop_eval_tool_sidecars EXIT
+            trap 'stop_serving_runtime; stop_eval_tool_sidecars' EXIT
+            start_serving_runtime "$config_name"
             start_eval_tool_sidecars "$config_name" "${safe_run_name}-worker-${worker_id}"
             docker_exec 0 python main.py "$@" --parallel-worker --worker-id "$worker_id" --run-name "$run_name"
         ) &
@@ -1807,10 +1882,13 @@ case "${1:-}" in
         # Only the configured agent's CLI/auth is required for a run.
         REQUIRED_AGENTS="$(resolve_required_agents "$config_name")"
         AGENTS_STRICT=1
+        assign_serial_gpu_group "$config_name"
         docker_exec 0 bash src/scripts/docker_benchmark.sh _container_preflight "$config_name"
-        trap stop_eval_tool_sidecars EXIT
+        trap 'stop_serving_runtime; stop_eval_tool_sidecars' EXIT
+        start_serving_runtime "$config_name"
         start_eval_tool_sidecars "$config_name" "run-${BASHPID}"
         docker_exec 0 python main.py "$@"
+        stop_serving_runtime
         stop_eval_tool_sidecars
         trap - EXIT
         ;;

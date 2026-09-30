@@ -1,0 +1,48 @@
+# vLLM Benchmark Configuration for openai/gpt-oss-120b (FP4, MI355X)
+# ====================================================================
+#
+# Usage (Docker - default):
+#   python -m Magpie benchmark --benchmark-config examples/benchmarks/benchmark_vllm_gptoss_120b.yaml
+#
+# Usage (Local - run directly on host, e.g. inside a pod):
+#   python -m Magpie benchmark --benchmark-config examples/benchmarks/benchmark_vllm_gptoss_120b.yaml --run-mode local
+#
+# Uses Magpie generic script vllm_mi355x.sh
+
+benchmark:
+  framework: vllm
+  model: openai/gpt-oss-120b
+  precision: fp4
+  run_mode: docker
+
+  envs:
+    TP: 8
+    CONC: 32
+    ISL: 1024
+    OSL: 1024
+    RANDOM_RANGE_RATIO: 1
+    MAX_MODEL_LEN: 2248  # ISL + OSL + 200
+    EXTRA_VLLM_ARGS: "--no-enable-prefix-caching --block-size 64"
+
+    # MI355X performance flags (supplements vllm_mi355x.sh defaults)
+    VLLM_ROCM_USE_AITER: 1
+    VLLM_ROCM_USE_AITER_UNIFIED_ATTENTION: 1
+    VLLM_ROCM_USE_AITER_MHA: 0
+
+  profiler:
+    torch_profiler:
+      enabled: true
+    system_profiler:
+      enabled: false
+    tracelens:
+      enabled: false
+
+  docker_image: "vllm/vllm-openai-rocm:v0.19.1"
+  benchmark_script: "vllm_mi355x.sh"
+
+  gap_analysis:
+    enabled: true
+    top_k: 100
+    find_kernel_sources: true
+
+  timeout_seconds: 5400

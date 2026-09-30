@@ -1,0 +1,43 @@
+# Ray Remote Benchmark: Kimi-K2-Thinking-MXFP4 on vLLM (TP=4)
+# ==============================================================
+#
+# Usage (Ray - submit from head node):
+#   python -m Magpie benchmark --benchmark-config examples/benchmarks/benchmark_vllm_kimi_k2_ray.yaml
+#
+# Note: Kimi-K2 MLA has 64 attention heads.  Aiter MLA on ROCm only
+# supports 16 or 128 heads per shard, so only TP=4 (64/4=16) works.
+
+benchmark:
+  framework: vllm
+  model: /shared_nfs/Llamas/huggingface/Kimi-K2-Thinking-MXFP4
+  precision: mxfp4
+  run_mode: ray
+
+  envs:
+    TP: 4
+    CONC: 4
+    ISL: 512
+    OSL: 8
+    RANDOM_RANGE_RATIO: 0.8
+    MAX_MODEL_LEN: 4096
+    EXTRA_VLLM_ARGS: "--block-size 1 --enable-auto-tool-choice --tool-call-parser kimi_k2"
+
+  profiler:
+    torch_profiler:
+      enabled: true
+    system_profiler:
+      enabled: false
+    tracelens:
+      enabled: false
+
+  gap_analysis:
+    enabled: false
+
+  ray_config:
+    # "auto" for head-node, or "ray://<ip>:10001" for remote
+    cluster_address: "auto"
+    shared_storage_path: "/shared_nfs/magpie" #Your shared storage path
+    entrypoint_num_cpus: 32
+    install_magpie: false
+
+  timeout_seconds: 3600

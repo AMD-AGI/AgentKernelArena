@@ -1,0 +1,33 @@
+# SGLang benchmark with Docker server reuse.
+#
+# Run this config repeatedly with different client values (CONC/ISL/OSL).
+# Keep cleanup=false for intermediate runs and set cleanup=true on the final run.
+
+benchmark:
+  framework: sglang
+  model: Qwen/Qwen3-Next-80B-A3B-Instruct-FP8
+  precision: fp8
+  run_mode: docker
+  docker_image: "your-sglang-image:version"
+  benchmark_script: "sglang_mi355x.sh"
+  timeout_seconds: 7200
+
+  envs:
+    TP: 4
+    PORT: 8888
+    CONC: 1
+    ISL: 1024
+    OSL: 1024
+    NUM_PROMPTS: 32
+    RANDOM_RANGE_RATIO: 1
+    EXTRA_SGLANG_ARGS: "--context-length 131072 --disable-radix-cache"
+
+  profiler:
+    torch_profiler:
+      enabled: false
+
+  server_lifecycle:
+    enabled: true
+    cleanup: false
+    force_reuse: false
+    server_ready_timeout_s: 2700
