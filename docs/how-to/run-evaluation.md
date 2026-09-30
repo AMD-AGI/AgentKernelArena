@@ -200,6 +200,14 @@ For a parallel run, use the same `RUN_ARGS` with `docker-parallel-run`:
 make docker-parallel-run CONFIG="$CONFIG_PATH" GPU_IDS=0,1,2,3 RUN_ARGS="--resume-latest"
 ```
 
+On schedulers that prohibit privileged containers, set
+`AKA_DOCKER_PRIVILEGED=0` for the same `make docker-*` commands. This retains the
+assigned GPU visibility and caller UID, but uses Docker's default capabilities,
+seccomp, private IPC and bridge network instead of elevated capabilities and host
+namespaces. Profilers or agents requiring those privileges need separate runtime
+qualification. The default remains the existing privileged mode. This option alone
+does not make mounted repositories or credentials a security sandbox.
+
 ## Read the results
 
 A run produces this layout under the workspace directory:
@@ -233,6 +241,23 @@ speedup_ratio: 1.58
 optimization_summary: "..."
 score: 278.0
 ```
+
+Candidate acceptance, agent execution and source changes describe different
+outcomes. `agent_execution.status` is `COMPLETED`, `FAILED`, or `NOT_RUN`;
+an agent failure does not discard a candidate accepted by independent evaluation.
+These statuses describe launcher return/exception outcomes, not independently
+verified native backend completion.
+`agent_execution.candidate_changed` compares the declared candidate files before
+and after the invocation. It is `null` when the agent did not run or source identity
+could not be established. A change may be only a comment or a failed implementation;
+it is not proof of an optimization gain.
+
+CSV, text and JSON reports include execution and source-change outcomes separately
+from scores. The run comparison includes these counts when present. Historical
+reports without these fields remain unknown rather than being classified as
+successful executions or unchanged submissions. In particular, a failed agent that
+leaves the original kernel can still have a valid candidate and approximately 1x
+timing; that measurement does not establish a successful agent optimization.
 
 The `score` combines compilation, correctness, and speedup and can be consumed
 as a reward by an external policy-search or RL system. See

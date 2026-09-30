@@ -63,6 +63,28 @@ def format_difference(value1: float, value2: float, is_percentage: bool = False)
         return f"{diff:+.3f} ({pct_change:+.1f}%)"
 
 
+def _execution_comparison(stats1: Dict[str, Any], stats2: Dict[str, Any]) -> list:
+    """Historical reports without execution evidence stay unknown, never zero."""
+    lines = []
+    for label, key in (
+        ("Agent completed", "agent_completed_count"),
+        ("Agent failed", "agent_failed_count"),
+        ("Agent not run", "agent_not_run_count"),
+        ("Agent execution unknown", "agent_execution_unknown_count"),
+        ("Candidate source changed", "candidate_changed_count"),
+        ("Candidate source unchanged", "candidate_unchanged_count"),
+        ("Candidate change unknown", "candidate_change_unknown_count"),
+    ):
+        if key not in stats1 and key not in stats2:
+            continue
+        values = [stats.get(key) for stats in (stats1, stats2)]
+        values = [v if type(v) is int and v >= 0 else None for v in values]
+        left, right = (str(v) if v is not None else "N/A" for v in values)
+        difference = f"{values[1] - values[0]:+d}" if None not in values else "N/A"
+        lines.append(f"{label:<40} {left:<15} {right:<15} {difference:<20}")
+    return lines
+
+
 def compare_overall(run1_data: Dict[str, Any], run2_data: Dict[str, Any]) -> list:
     """
     Compare overall statistics between two runs.
@@ -142,6 +164,7 @@ def compare_overall(run1_data: Dict[str, Any], run2_data: Dict[str, Any]) -> lis
         
         lines.append(f"{label:<40} {fmt1:<15} {fmt2:<15} {diff_str:<20} {indicator}")
     
+    lines.extend(_execution_comparison(overall1, overall2))
     lines.append("")
     return lines
 
@@ -256,6 +279,7 @@ def compare_task_types(run1_data: Dict[str, Any], run2_data: Dict[str, Any]) -> 
             else:
                 lines.append(f"  {label:<35} {fmt1:<15} {fmt2:<15} {diff_str:<20} {indicator}")
         
+        lines.extend("  " + line for line in _execution_comparison(stats1, stats2))
         lines.append("")
     
     return lines
