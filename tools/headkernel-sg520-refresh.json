@@ -1,414 +1,80 @@
 {
   "schema_version": 1,
-  "snapshot_utc": "2026-10-05T18:04:26.717092+00:00",
+  "snapshot_utc": "2026-10-05T18:29:55.795621+00:00",
   "status": "incomplete_single_quant_task_validated",
   "runtime_catalog": "tools/headkernel-runtime-targets.json",
   "scope": {"models": ["minimax-m3", "kimi-k3", "deepseek-v4-pro", "glm-5.3-flash"], "excluded_models": ["qwen3.8-2.4t"], "latest_matching_sglang_version": "0.5.20", "alternates_allowed": false},
   "image": {"target": "sglang_v0520", "pull_reference": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96", "manifest_digest": "sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96"},
   "model_status": {
     "deepseek-v4-pro": {"status": "canonical_quant_task_framework_PASS", "last_native_job": 194130, "last_native_result": "PASS; no-op rejected", "oracle_revision": "ceac8edbd432e01c69612c36f0937f6d87e2c411", "last_framework_job": 194224, "last_framework_result": "PASS", "checks_passed": 12, "qualification_scope": "tasks/headkernel_sg520/deepseek-v4-pro__per_group_quant_fp8", "full_model_refresh_complete": false},
-    "minimax-m3": {"status": "full_token_workload_passed_partial_trace", "run_id": "minimax-nvme-194049", "prefill_trace_files": 8, "decode_trace_files": 0, "decode_tasks_qualified": false},
+    "minimax-m3": {"status": "fresh_full_token_workload_and_sampled_profile_PASS", "run_id": "minimax-nvme-194299", "job": 194299, "full_model_profile_collected": true, "prefill_trace_files": 8, "decode_trace_files": 8, "profile_steps_requested_per_stage": 8, "all_graph_replays_captured": false, "tensor_oracle_present": false, "task_validator_PASS": false, "remaining": "Kernel contracts, argument/shape completeness, tensor oracles and task qualification", "trace_review": "docs/reference/headkernel-sg520-minimax.md"},
     "kimi-k3": {"status": "model_staging_verified_run_preempted_during_loading", "job": 194131, "staged_size_approx": "1.56 TB", "model_staging_verified": true, "loading_shards_observed": 18, "loading_shards_total": 96, "full_model_profile_collected": false, "task_validation": "pending"},
-    "glm-5.3-flash": {"status": "six_native_groups_passed_full_profile_native_warmup", "full_model_profile_collected": false, "task_validator_PASS": false, "job": 194223, "staged_size_approx": "328 GB", "model_staging_verified": true, "help_timeout_seconds": 120, "profile_run_id": "glm-flash-fp8-nvme-194223-help120-retry", "profile_phase_observed": "native_warmup", "phase_observation_source": "server.log; STATUS.json still server_starting"}
+    "glm-5.3-flash": {"status": "fresh_full_token_workload_and_sampled_profile_PASS", "run_id": "glm-flash-fp8-native-jit-194292", "job": 194292, "full_model_profile_collected": true, "prefill_trace_files": 8, "decode_trace_files": 8, "profile_steps_requested_per_stage": 8, "all_graph_replays_captured": false, "tensor_oracle_present": false, "task_validator_PASS": false, "remaining": "Kernel contracts, argument/shape completeness, tensor oracles and task qualification", "backport_overlay_count": 18, "stock_image_equivalence": false, "trace_review": "docs/reference/headkernel-sg520-glm.md"}
   },
   "deepseek": {"run_id": "deepseek-sg520-context9218-193529", "workload": {"concurrency": 64, "context_length": 9218, "isl": 8192, "num_prompts": 64, "osl": 1024, "seed": 42, "tp": 8}, "context_reserved_slots": 2, "context_reason": "One slot is reserved by the TP worker and one by the scheduler; 8192+1024+2=9218.", "completed_requests": 64, "input_tokens_total": 524288, "output_tokens_total": 65536, "per_request_input_tokens": 8192, "per_request_output_tokens": 1024, "request_errors": 0, "prefill_steps_each_rank": 8, "prefill_annotation": {"stage": "EXTEND", "batch_size": 1, "tokens": 8192}, "stage_ranks": {"prefill": [0, 1, 2, 3, 4, 5, 6, 7], "decode": [0, 1, 2, 3, 4, 5, 6, 7]}, "complete_trace_files": 16, "trace_hashes_and_read_stability_verified": true, "native_summary_status": "incomplete: original 256 MiB summary bound rejected prefill traces; original status retained", "independent_review": "Complete streaming parse verified all 16 raw traces; ready for sampled trace and shape review only.", "decode_CPU_graph_launches_each_rank": 8, "decode_GPU_correlated_graph_launches_each_rank": 1, "observed_kernel_occurrences": {"prefill": 246400, "decode": 21558}, "counts_scaled_to_full_workload": false, "full_workload_GPU_step_coverage_claimed": false, "traced_tensor_values_or_reference_outputs_present": false},
-  "native_quant": {
-    "operator": "aiter::per_group_quant_hip",
-    "native_child": "aiter::dynamic_per_token_scaled_quant",
-    "ranks": [0, 1, 2, 3, 4, 5, 6, 7],
-    "input_dtype": "bfloat16",
-    "output_dtype": "float8_e4m3fn",
-    "scale_dtype": "float32",
-    "group_size": 128,
-    "transpose_scale": true,
-    "physical_scale_write_order": "scale[group_column * M + row]; preserve separately from allocated [M,N/128] shape and stride",
-    "cases": [
-      {"id": "x8192x1536", "input_shape": [8192, 1536], "input_stride": [1536, 1], "callee_input_view_shape": [98304, 128], "output_shape": [8192, 1536], "scale_allocated_shape": [8192, 12], "scale_allocated_stride": [12, 1], "wrapper_occurrences_each_rank": 728, "wrapper_occurrences_all_ranks": 5824},
-      {"id": "x8192x2048", "input_shape": [8192, 2048], "input_stride": [2048, 1], "callee_input_view_shape": [131072, 128], "output_shape": [8192, 2048], "scale_allocated_shape": [8192, 16], "scale_allocated_stride": [16, 1], "wrapper_occurrences_each_rank": 488, "wrapper_occurrences_all_ranks": 3904},
-      {"id": "x8192x7168", "input_shape": [8192, 7168], "input_stride": [7168, 1], "callee_input_view_shape": [458752, 128], "output_shape": [8192, 7168], "scale_allocated_shape": [8192, 56], "scale_allocated_stride": [56, 1], "wrapper_occurrences_each_rank": 968, "wrapper_occurrences_all_ranks": 7744}
-    ],
-    "separate_group32_e8m0_occurrences_each_rank": 488,
-    "group32_e8m0_is_a_distinct_case_family": true,
-    "decode_quant_GPU_occurrences_each_rank": 212,
-    "decode_quant_argument_shapes": "unavailable from runtime-only graph attribution; do not infer from prefill",
-    "correctness_validation": {"status": "HISTORICAL_PASS_PRE_HARDENING", "cases": 3, "seeds": [0, 1], "legs": ["production_native", "candidate_native"], "passed_rows": 12, "input_kind": "seeded legal values at observed trace dimensions", "candidate_translation_units": 2, "candidate_build_seconds": 17.1, "exit_code": 0, "qualifies_current_source": false},
-    "timing_status": "PASS_final_tested_package",
-    "task_validator_status": "PASS_single_tested_package",
-    "speedup_claim": false,
-    "benchmark_validation": {"status": "HISTORICAL_PASS_PRE_HARDENING", "cases": 3, "paired_samples_per_case": 100, "warmup_iterations": 10, "paired_order": "alternating each iteration", "separate_graphs": true, "graph_outputs_oracle_valid": true, "weighted_mean_ms": {"production_native": 0.02692486682425734, "candidate_native": 0.0273288870296499}, "comparison": "unmodified-source native comparison", "speedup_claim": false, "qualifies_current_source": false},
-    "hardened_validation": {"job": 193855, "native_exit_code": 0, "native_result": "PASS", "no_op_exit_code": 1, "no_op_rejected": true, "qualifies_latest_oracle_ordering": false, "current_oracle_ordering_rerun": "completed under final_native_validation"},
-    "final_native_validation": {"job": 194130, "oracle_revision": "ceac8edbd432e01c69612c36f0937f6d87e2c411", "status": "PASS", "exit_code": 0, "package_sha256": "7346fd54b04df36d3a49a8ced82a612a431e2a80d2a73f3e860f54136d8c07c7", "source_tree_sha256": "24a9e884ee08c75afe1a4fa608381e7858dbcf53f0f971ab30fac33590f593b6", "correctness": {"shapes": 3, "seeds": [0, 1], "legs": ["production_native", "candidate_native"], "checks_passed": 12}, "benchmark_method": "cuda_graph", "warmup_iterations": 10, "benchmark_iterations": 100, "leg_order_policy": "randomized per invocation; sequential isolated workers", "fresh_input_and_poisoned_output_each_replay": true, "weight_sum_per_rank": 2184, "weighted_mean_ms": {"production_native": 0.04494865198261463, "candidate_native": 0.04535074562796361}, "comparison": "same unoptimized source; diagnostics only", "no_op_exit_code": 1, "no_op_rejected": true, "no_op_failure": "AssertionError: invalid dynamic scale", "speedup_claim": false}
-  },
-  "source_upgrade_summary": [
-    {"family": "MiniMax decode score", "delta": "Kernel math/ABI unchanged; ROCm fixed launch config replaces autotune and token-block selection changes."},
-    {"family": "DeepSeek FlyDSL MoE stage 1", "delta": "Adds v2_output_layout and delegates to a new implementation/grid path; migrate the consistent family."},
-    {"family": "DeepSeek Opus MoE stage 2", "delta": "Uses OpusA8W4LaunchConfig with kernel-instance, packed-weight and scale validation; not a drop-in old adapter."},
-    {"family": "Kimi MLA", "delta": "Adds tune_mla and forced_kv_splits plus launch planning; old candidate launchers are not current stock code."},
-    {"family": "Kimi MoE stages 1/2", "delta": "Implementation, compiler/reduction helpers and v2 layout change; three old source paths are absent."},
-    {"family": "GLM fused MoE", "delta": "Public signatures unchanged; implementation changes include HIP topk1 reduction bypass and clamp-path restrictions."}
-  ],
+  "native_quant": {"operator": "aiter::per_group_quant_hip", "native_child": "aiter::dynamic_per_token_scaled_quant", "ranks": [0, 1, 2, 3, 4, 5, 6, 7], "input_dtype": "bfloat16", "output_dtype": "float8_e4m3fn", "scale_dtype": "float32", "group_size": 128, "transpose_scale": true, "physical_scale_write_order": "scale[group_column * M + row]; preserve separately from allocated [M,N/128] shape and stride", "cases": [{"id": "x8192x1536", "input_shape": [8192, 1536], "input_stride": [1536, 1], "callee_input_view_shape": [98304, 128], "output_shape": [8192, 1536], "scale_allocated_shape": [8192, 12], "scale_allocated_stride": [12, 1], "wrapper_occurrences_each_rank": 728, "wrapper_occurrences_all_ranks": 5824}, {"id": "x8192x2048", "input_shape": [8192, 2048], "input_stride": [2048, 1], "callee_input_view_shape": [131072, 128], "output_shape": [8192, 2048], "scale_allocated_shape": [8192, 16], "scale_allocated_stride": [16, 1], "wrapper_occurrences_each_rank": 488, "wrapper_occurrences_all_ranks": 3904}, {"id": "x8192x7168", "input_shape": [8192, 7168], "input_stride": [7168, 1], "callee_input_view_shape": [458752, 128], "output_shape": [8192, 7168], "scale_allocated_shape": [8192, 56], "scale_allocated_stride": [56, 1], "wrapper_occurrences_each_rank": 968, "wrapper_occurrences_all_ranks": 7744}], "separate_group32_e8m0_occurrences_each_rank": 488, "group32_e8m0_is_a_distinct_case_family": true, "decode_quant_GPU_occurrences_each_rank": 212, "decode_quant_argument_shapes": "unavailable from runtime-only graph attribution; do not infer from prefill", "correctness_validation": {"status": "HISTORICAL_PASS_PRE_HARDENING", "cases": 3, "seeds": [0, 1], "legs": ["production_native", "candidate_native"], "passed_rows": 12, "input_kind": "seeded legal values at observed trace dimensions", "candidate_translation_units": 2, "candidate_build_seconds": 17.1, "exit_code": 0, "qualifies_current_source": false}, "timing_status": "PASS_final_tested_package", "task_validator_status": "PASS_single_tested_package", "speedup_claim": false, "benchmark_validation": {"status": "HISTORICAL_PASS_PRE_HARDENING", "cases": 3, "paired_samples_per_case": 100, "warmup_iterations": 10, "paired_order": "alternating each iteration", "separate_graphs": true, "graph_outputs_oracle_valid": true, "weighted_mean_ms": {"production_native": 0.02692486682425734, "candidate_native": 0.0273288870296499}, "comparison": "unmodified-source native comparison", "speedup_claim": false, "qualifies_current_source": false}, "hardened_validation": {"job": 193855, "native_exit_code": 0, "native_result": "PASS", "no_op_exit_code": 1, "no_op_rejected": true, "qualifies_latest_oracle_ordering": false, "current_oracle_ordering_rerun": "completed under final_native_validation"}, "final_native_validation": {"job": 194130, "oracle_revision": "ceac8edbd432e01c69612c36f0937f6d87e2c411", "status": "PASS", "exit_code": 0, "package_sha256": "7346fd54b04df36d3a49a8ced82a612a431e2a80d2a73f3e860f54136d8c07c7", "source_tree_sha256": "24a9e884ee08c75afe1a4fa608381e7858dbcf53f0f971ab30fac33590f593b6", "correctness": {"shapes": 3, "seeds": [0, 1], "legs": ["production_native", "candidate_native"], "checks_passed": 12}, "benchmark_method": "cuda_graph", "warmup_iterations": 10, "benchmark_iterations": 100, "leg_order_policy": "randomized per invocation; sequential isolated workers", "fresh_input_and_poisoned_output_each_replay": true, "weight_sum_per_rank": 2184, "weighted_mean_ms": {"production_native": 0.04494865198261463, "candidate_native": 0.04535074562796361}, "comparison": "same unoptimized source; diagnostics only", "no_op_exit_code": 1, "no_op_rejected": true, "no_op_failure": "AssertionError: invalid dynamic scale", "speedup_claim": false}},
+  "source_upgrade_summary": [{"family": "MiniMax decode score", "delta": "Kernel math/ABI unchanged; ROCm fixed launch config replaces autotune and token-block selection changes."}, {"family": "DeepSeek FlyDSL MoE stage 1", "delta": "Adds v2_output_layout and delegates to a new implementation/grid path; migrate the consistent family."}, {"family": "DeepSeek Opus MoE stage 2", "delta": "Uses OpusA8W4LaunchConfig with kernel-instance, packed-weight and scale validation; not a drop-in old adapter."}, {"family": "Kimi MLA", "delta": "Adds tune_mla and forced_kv_splits plus launch planning; old candidate launchers are not current stock code."}, {"family": "Kimi MoE stages 1/2", "delta": "Implementation, compiler/reduction helpers and v2 layout change; three old source paths are absent."}, {"family": "GLM fused MoE", "delta": "Public signatures unchanged; implementation changes include HIP topk1 reduction bypass and clamp-path restrictions."}],
   "qualification": {"refreshed_repository_tasks": ["tasks/headkernel_sg520/deepseek-v4-pro__per_group_quant_fp8"], "task_validator_PASS": true, "E2E_gain_claim": false, "historical_gains_reused": false, "Qwen_modified": false, "suite_kernel_correctness_PASS": false, "task_validator_scope": "tasks/headkernel_sg520/deepseek-v4-pro__per_group_quant_fp8", "suite_task_validator_PASS": false, "qualified_refreshed_task_count": 1},
   "evidence": {
     "bundle_id": "top5-refresh-20261005",
     "raw_payloads_in_repository": false,
     "artifact_keys_are_external_bundle_identifiers": true,
     "artifacts": [
-      {"key": "trace-intake/deepseek-sg520-context9218-193529/INDEPENDENT-READINESS.json", "sha256": "9a0d2ff221d23ecf39624e6a15bff5b18fe17314d40b42ab00af32f7f2ab2a5d"}, {"key": "trace-intake/deepseek-sg520-context9218-193529/WORKLOAD-GATE.json", "sha256": "c5e0aaa170b975742b0cbe880da9165a94fc3ec80674f824b2fb1256bea0bf20"}, {"key": "trace-intake/deepseek-sg520-context9218-193529/DECODE-COVERAGE.json", "sha256": "a6e59358765bcda97282efc215d90795895e827c58ba26fa3b81bc7dba8ce022"},
-      {"key": "trace-intake/deepseek-sg520-context9218-193529/PER-GROUP-QUANT-TASK-CASES.json", "sha256": "cba7d48caffe05b18493fbbea16a9243fc46a1d43b8f4bcb00d466da63d3f1a4"}, {"key": "trace-intake/deepseek-sg520-context9218-193529/SOURCE-CALLEE-MAP.json", "sha256": "883f004b9aa277cc8d41ab8363b88f11d19fd51bd39aa86917b01e5ca86ef50f"}, {"key": "intake/SOURCE-UPGRADE-DIFF.json", "sha256": "25559b9958b53bf25936b4e187878545a433464758abae8a9fef0c74e2eb7bc9"},
-      {"key": "intake/SOURCE-UPGRADE-DIFF.md", "sha256": "25e19172f4c00766d12e6df4e9d2c7d1c481b5233277edfb4b99e5a88286c5ea"}, {"key": "glm/backport/STATUS.json", "sha256": "fc2097b37b9ef164aba64b07bd9ffb3e220f95174239971e04e05cc5c8ca9512"}, {"key": "runs/deepseek-sg520-context9218-193529/REQUEST.json", "sha256": "2224276c4ba28e8f30c4090bb876a2bef692ce7cdf0438c147224c546d354bc9"},
-      {"key": "gpu-validation/ds-quant-193591/EXIT.json", "sha256": "1168c5efc7869c37f34cd72a03cf4e5ecbeebb161110ecaaacb5d951741ca207"}, {"key": "gpu-validation/ds-quant-193591/check.log", "sha256": "4f0446e19dbf9b7c9989d758dba391148efa5a2367ef6095c5ea973bc20cbe81"}, {"key": "runs/minimax-sg520-localbind-193591/EARLY-RETIREMENT-REASON.json", "sha256": "06098925d8f013f6a4ea3fe65e2fea2bb9aa4ccff4afed0b847c74bf1d8f1a35"},
-      {"key": "portable-evidence/deepseek-sg520-context9218-193529/PUBLICATION-RECEIPT.json", "sha256": "88be442a83040229c00837a3e3b42e8e4e245172bb012b94746a8a50602214e6"}, {"key": "gpu-validation/ds-quant-193591/task/build/performance_report.json", "sha256": "e534d02d7d2dc0675d37cf308decd3e5fd78d383cd42dfd9e0260187edcbcef3"}, {"key": "gpu-validation/ds-quant-193591/task/build/NATIVE-BUILD.json", "sha256": "297a6104287cc4741a116d8c3b9b73752c761626584f45ebffb2e6e48614b69a"}
+      {"key": "trace-intake/deepseek-sg520-context9218-193529/INDEPENDENT-READINESS.json", "sha256": "9a0d2ff221d23ecf39624e6a15bff5b18fe17314d40b42ab00af32f7f2ab2a5d"}, {"key": "trace-intake/deepseek-sg520-context9218-193529/WORKLOAD-GATE.json", "sha256": "c5e0aaa170b975742b0cbe880da9165a94fc3ec80674f824b2fb1256bea0bf20"},
+      {"key": "trace-intake/deepseek-sg520-context9218-193529/DECODE-COVERAGE.json", "sha256": "a6e59358765bcda97282efc215d90795895e827c58ba26fa3b81bc7dba8ce022"}, {"key": "trace-intake/deepseek-sg520-context9218-193529/PER-GROUP-QUANT-TASK-CASES.json", "sha256": "cba7d48caffe05b18493fbbea16a9243fc46a1d43b8f4bcb00d466da63d3f1a4"},
+      {"key": "trace-intake/deepseek-sg520-context9218-193529/SOURCE-CALLEE-MAP.json", "sha256": "883f004b9aa277cc8d41ab8363b88f11d19fd51bd39aa86917b01e5ca86ef50f"}, {"key": "intake/SOURCE-UPGRADE-DIFF.json", "sha256": "25559b9958b53bf25936b4e187878545a433464758abae8a9fef0c74e2eb7bc9"},
+      {"key": "intake/SOURCE-UPGRADE-DIFF.md", "sha256": "25e19172f4c00766d12e6df4e9d2c7d1c481b5233277edfb4b99e5a88286c5ea"}, {"key": "glm/backport/STATUS.json", "sha256": "fc2097b37b9ef164aba64b07bd9ffb3e220f95174239971e04e05cc5c8ca9512"},
+      {"key": "runs/deepseek-sg520-context9218-193529/REQUEST.json", "sha256": "2224276c4ba28e8f30c4090bb876a2bef692ce7cdf0438c147224c546d354bc9"}, {"key": "gpu-validation/ds-quant-193591/EXIT.json", "sha256": "1168c5efc7869c37f34cd72a03cf4e5ecbeebb161110ecaaacb5d951741ca207"},
+      {"key": "gpu-validation/ds-quant-193591/check.log", "sha256": "4f0446e19dbf9b7c9989d758dba391148efa5a2367ef6095c5ea973bc20cbe81"}, {"key": "runs/minimax-sg520-localbind-193591/EARLY-RETIREMENT-REASON.json", "sha256": "06098925d8f013f6a4ea3fe65e2fea2bb9aa4ccff4afed0b847c74bf1d8f1a35"},
+      {"key": "portable-evidence/deepseek-sg520-context9218-193529/PUBLICATION-RECEIPT.json", "sha256": "88be442a83040229c00837a3e3b42e8e4e245172bb012b94746a8a50602214e6"}, {"key": "gpu-validation/ds-quant-193591/task/build/performance_report.json", "sha256": "e534d02d7d2dc0675d37cf308decd3e5fd78d383cd42dfd9e0260187edcbcef3"},
+      {"key": "gpu-validation/ds-quant-193591/task/build/NATIVE-BUILD.json", "sha256": "297a6104287cc4741a116d8c3b9b73752c761626584f45ebffb2e6e48614b69a"}
     ],
     "publication": {"status": "PUBLISHED_AND_READBACK_SHA256_VERIFIED", "remote": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529", "manifest_sha256": "7eadfb9265f81536a61e0b113d2318b9d54683b315836cfa29ad1978bd64a8e0", "payload_files": 21, "remote_objects": 22, "verified_download_bytes": 447262076, "all_readback_SHA256_verified": true, "scope": "16 profiles, five curated trace-review files and manifest; native correctness/timing receipts are separate."}
   },
   "full_refresh_complete": false,
   "legacy_diagnostics": {"classification": "HISTORICAL_REPLAY_DIAGNOSTIC", "job": 194224, "tested": 11, "qualifying": false, "passed_tasks": ["glm-5.3-flash__elementwise_copy_cluster", "minimax-m3__decode_score_kernel", "minimax-m3__gqa_share_sparse_decode_kernel", "minimax-m3__gqa_share_sparse_fwd_kernel"], "failed_tasks": ["kimi-k3__moe_gemm1_stage1", "kimi-k3__moe_gemm2_stage2", "deepseek-v4-pro__moe_stage1_grouped_gemm_silu_flydsl", "kimi-k3__fwd_grouped_kernel_stage1", "deepseek-v4-pro__moe_stage2_down_proj_reduce_opus_a8w4", "glm-5.3-flash__fused_moe_kernel", "deepseek-v4-pro__dsa_sparse_mla_attn"], "source_commit": "4fd1e4d91d86f52aad4da0ed5f18d22192f37065", "all_three_minimax_binding_and_completion_verified": true, "zero_store_negative_exit_code": 1, "zero_store_rejected": true, "duplicate_case_identity_fix_commit": "d425a3e9b7ebd4242a18d3ecccc659d8fac26e5c", "qualifies_duplicate_case_identity_fix": false, "previous_batch": {"job": 193902, "tested": 11, "passed": 4, "failed": 7, "qualifying": false}, "successful_raw_command_exits": 4, "failed_raw_command_exits": 7, "current_parser_rejected_minimax_tasks": 3, "current_parser_rejection": "duplicate explicit timing case identities", "final_scoreable_minimax_reports": 0, "GPU_rerun_after_duplicate_case_identity_fix": false},
-  "framework_validation": {
-    "job": 194224,
-    "overall_status": "PASS",
-    "framework_status": "PASS",
-    "framework_source_commit": "4fd1e4d91d86f52aad4da0ed5f18d22192f37065",
-    "package_sha256": "7346fd54b04df36d3a49a8ced82a612a431e2a80d2a73f3e860f54136d8c07c7",
-    "source_tree_sha256": "24a9e884ee08c75afe1a4fa608381e7858dbcf53f0f971ab30fac33590f593b6",
-    "schema_version": 3,
-    "checks_passed": 12,
-    "warnings": 0,
-    "timeouts": 0,
-    "skips": 0,
-    "raw_performance_cases": 3,
-    "parsed_performance_cases": 3,
-    "report_key": "validator/snapshot-hardened-7/workspace_MI355X_task_validator/run_20261005_175201_sg520_quant_validator/headkernel_sg520_deepseek-v4-pro__per_group_quant_fp8_20261005_175201/validation_report.yaml",
-    "report_sha256": "bb6db318c1c9027065211456a14d3e986842af0bc294464ca610dde1dfbd4702",
-    "qualification_scope": "tasks/headkernel_sg520/deepseek-v4-pro__per_group_quant_fp8",
-    "central_optimized_scoring_claimed": false,
-    "previous_failure": {
-      "job": 194017,
-      "overall_status": "FAIL",
-      "causes": [
-        "AITER cache not writable",
-        "per-shape score cases collapsed"
-      ],
-      "fix_commit": "76cd99768341697d89a5c10e7b082e3856ffcfe2"
-    },
-    "reproduction_config": "example_configs/validate_headkernel_sg520_quant_mi355x.yaml",
-    "reproduction_config_sha256": "149015b8c239091bab10a67974c6f52bc78c896b9815f4bfbb6ee993ffd8aa95"
-  },
-  "minimax_capture": {"run_id": "minimax-nvme-194049", "workload": {"concurrency": 64, "context_length": 9218, "isl": 8192, "num_prompts": 64, "osl": 1024, "seed": 42, "tp": 8}, "full_token_gate_passed": true, "input_lengths": {"8192": 64}, "output_lengths": {"1024": 64}, "request_errors": 0, "trace_files": 8, "rank_coverage": {"prefill": [0, 1, 2, 3, 4, 5, 6, 7], "decode": []}, "stage_coverage_complete": false, "missing_stage": "No DECODE files in retired raw checkpoint; no _decode_score_kernel or _gqa_share_sparse_decode_kernel events in available EXTEND traces.", "prefill_sample_note": "Eight EXTEND CPU steps per rank. Observed steps include bs1,toks8192 and bs2/3,toks16384; global requested concurrency64 is not each trace step batch size.", "tensor_oracle_present": false},
-  "glm_component_validation": {"groups_passed": ["cache", "logits", "mhc", "topk", "transform", "zero_rope"], "count": 6, "evidence_across_component_runs": true, "earlier_failures_preserved": true, "full_model_profile_collected": false, "task_validator_PASS": false},
+  "framework_validation": {"job": 194224, "overall_status": "PASS", "framework_status": "PASS", "framework_source_commit": "4fd1e4d91d86f52aad4da0ed5f18d22192f37065", "package_sha256": "7346fd54b04df36d3a49a8ced82a612a431e2a80d2a73f3e860f54136d8c07c7", "source_tree_sha256": "24a9e884ee08c75afe1a4fa608381e7858dbcf53f0f971ab30fac33590f593b6", "schema_version": 3, "checks_passed": 12, "warnings": 0, "timeouts": 0, "skips": 0, "raw_performance_cases": 3, "parsed_performance_cases": 3, "report_key": "validator/snapshot-hardened-7/workspace_MI355X_task_validator/run_20261005_175201_sg520_quant_validator/headkernel_sg520_deepseek-v4-pro__per_group_quant_fp8_20261005_175201/validation_report.yaml", "report_sha256": "bb6db318c1c9027065211456a14d3e986842af0bc294464ca610dde1dfbd4702", "qualification_scope": "tasks/headkernel_sg520/deepseek-v4-pro__per_group_quant_fp8", "central_optimized_scoring_claimed": false, "previous_failure": {"job": 194017, "overall_status": "FAIL", "causes": ["AITER cache not writable", "per-shape score cases collapsed"], "fix_commit": "76cd99768341697d89a5c10e7b082e3856ffcfe2"}, "reproduction_config": "example_configs/validate_headkernel_sg520_quant_mi355x.yaml", "reproduction_config_sha256": "149015b8c239091bab10a67974c6f52bc78c896b9815f4bfbb6ee993ffd8aa95"},
+  "minimax_capture": {"run_id": "minimax-nvme-194299", "job": 194299, "status": "PASS_fresh_workload_and_sampled_profile", "workload": {"concurrency": 64, "context_length": 9218, "isl": 8192, "num_prompts": 64, "osl": 1024, "seed": 42, "tp": 8}, "completed_requests": 64, "input_tokens_total": 524288, "output_tokens_total": 65536, "input_lengths": {"8192": 64}, "output_lengths": {"1024": 64}, "request_errors": 0, "full_token_gate_passed": true, "fresh_profile_completed": true, "trace_files": 16, "prefill_trace_files": 8, "decode_trace_files": 8, "rank_coverage": {"prefill": [0, 1, 2, 3, 4, 5, 6, 7], "decode": [0, 1, 2, 3, 4, 5, 6, 7]}, "stage_coverage_complete": true, "all_trace_files_parsed": true, "cpu_intake_after_model_retirement": true, "profile_steps_requested_per_stage": 8, "all_graph_replays_captured": false, "all_kernel_live_shapes_and_scalar_args_complete": false, "tensor_oracle_present": false, "ab_comparison": false, "E2E_gain_claim": false, "task_validator_PASS": false, "capture_ready_sha256": "78f7f050c5ab61310e0b034c121bfc1eef2258a94a2934555a61c89f0a2f0181", "sampling_note": "Eight steps requested per stage. Decode begins with the first actual decode batch; captured batch sizes require trace review and need not equal C64.", "native_jit_policy": "stock pinned image native JIT; precompiled baseline preserved; no seed or empty overlay"},
+  "glm_component_validation": {"groups_passed": ["cache", "logits", "mhc", "topk", "transform", "zero_rope"], "count": 6, "evidence_across_component_runs": true, "earlier_failures_preserved": true, "full_model_profile_collected": true, "task_validator_PASS": false, "full_model_profile_evidence": "separate fresh run glm-flash-fp8-native-jit-194292"},
   "validation_evidence": {
     "bundle_id": "top5-validation-20261005",
     "artifacts": [
-      {
-        "key": "legacy/runs/193902-a7fcc1f3e9/RESULT.json",
-        "sha256": "a90f4477821a34276020a52d05a53aa31d106d7fc9b984ca90174a0e9d72e575",
-        "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/legacy/runs/193902-a7fcc1f3e9/RESULT.json",
-        "publication_status": "PUBLISHED_AND_READBACK_SHA256_VERIFIED"
-      },
-      {
-        "key": "gpu-runs/quant-hardened-193855/EXIT.json",
-        "sha256": "f2f3d9e6c1b38701b0e1823be8fd0dfd3964e2c456920de55dbc57c524308d1c",
-        "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/gpu-runs/quant-hardened-193855/EXIT.json",
-        "publication_status": "PUBLISHED_AND_READBACK_SHA256_VERIFIED"
-      },
-      {
-        "key": "gpu-runs/quant-hardened-193855/native.log",
-        "sha256": "9475f838b0c7b5b2cf2116f4d4224d8641d11de3bfd1b8099de3cc9325494574",
-        "publication_status": "EXTERNAL_EVIDENCE_NOT_INCLUDED_IN_THIS_BUNDLE"
-      },
-      {
-        "key": "gpu-runs/quant-noop-193855/EXIT.json",
-        "sha256": "3f4c64f2430bf209102f7a1fd0476cca23a36e07ae425a3f9809ad5214c4485c",
-        "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/gpu-runs/quant-noop-193855/EXIT.json",
-        "publication_status": "PUBLISHED_AND_READBACK_SHA256_VERIFIED"
-      },
-      {
-        "key": "gpu-runs/quant-noop-193855/native.log",
-        "sha256": "ff9c1e5d5b910d9bb0c28dec33e03f89a63176327e2a311fcef70013f8c11a00",
-        "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/gpu-runs/quant-noop-193855/native.log",
-        "publication_status": "PUBLISHED_AND_READBACK_SHA256_VERIFIED"
-      },
-      {
-        "key": "validator/run-194017-1/EXIT.json",
-        "sha256": "550b0ba2c1bcc231577223a89a6352b684c51eda3617d01ffe94186cd8750ab7",
-        "publication_status": "EXTERNAL_EVIDENCE_NOT_INCLUDED_IN_THIS_BUNDLE"
-      },
-      {
-        "key": "validator/run-194017-1/framework.log",
-        "sha256": "9237cdc1d7578b4415edf21883884a0b067677c2651446442ee48d458db0a405",
-        "publication_status": "EXTERNAL_EVIDENCE_NOT_INCLUDED_IN_THIS_BUNDLE"
-      },
-      {
-        "key": "intake/minimax-194049/WORKLOAD-AND-TRACE-REVIEW.json",
-        "sha256": "44a78b3706164b657871b0b59e950785b8ee4af79d4452935277c0d6d8f2519a",
-        "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/intake/minimax-194049/WORKLOAD-AND-TRACE-REVIEW.json",
-        "publication_status": "PUBLISHED_AND_READBACK_SHA256_VERIFIED"
-      },
-      {
-        "key": "glm-native/results-20261005T154401Z-580/topk.json",
-        "sha256": "8fd46ca945b90f769f88a02221d9e3d3098476e1441bb01c79b16a2a7a45c174",
-        "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/glm-native/results-20261005T154401Z-580/topk.json",
-        "publication_status": "PUBLISHED_AND_READBACK_SHA256_VERIFIED"
-      },
-      {
-        "key": "glm-native/results-20261005T154401Z-580/transform.json",
-        "sha256": "bdad5087fc2ae5de9bd2c514406b2c2de89b7cbdea6c9934f61741abfbaf4991",
-        "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/glm-native/results-20261005T154401Z-580/transform.json",
-        "publication_status": "PUBLISHED_AND_READBACK_SHA256_VERIFIED"
-      },
-      {
-        "key": "glm-native/results-20261005T154401Z-580/cache.json",
-        "sha256": "c322447ee6525a072bfb0f46048ff1f27baa7a39d1a9d70d12be75ff05564f5a",
-        "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/glm-native/results-20261005T154401Z-580/cache.json",
-        "publication_status": "PUBLISHED_AND_READBACK_SHA256_VERIFIED"
-      },
-      {
-        "key": "glm-native/results-image-20261005T155107Z-784/logits.json",
-        "sha256": "2077c350ea50e47481f2b31090a8a41dd3aead61fb4fe7e0f8baf7540f3525b4",
-        "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/glm-native/results-image-20261005T155107Z-784/logits.json",
-        "publication_status": "PUBLISHED_AND_READBACK_SHA256_VERIFIED"
-      },
-      {
-        "key": "glm-native/results-oracle-v2-20261005T160901Z-576/zero_rope.json",
-        "sha256": "f62b1b009b732affc9007981f2dec2563a9c2fe6cf09ad86c16863955e03693d",
-        "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/glm-native/results-oracle-v2-20261005T160901Z-576/zero_rope.json",
-        "publication_status": "PUBLISHED_AND_READBACK_SHA256_VERIFIED"
-      },
-      {
-        "key": "glm-native/results-oracle-v2-20261005T160913Z-575/mhc.json",
-        "sha256": "77755fb570b34b476a67dac2ba77713a27855807f4bd3d962eade61a29bf431d",
-        "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/glm-native/results-oracle-v2-20261005T160913Z-575/mhc.json",
-        "publication_status": "PUBLISHED_AND_READBACK_SHA256_VERIFIED"
-      },
-      {
-        "key": "gpu-runs/quant-final-194130/EXIT.json",
-        "sha256": "2b523c21a1c9016f1549044fddb687cfd1a88a69a7290d7a072bfa2e7fd85f3b",
-        "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/gpu-runs/quant-final-194130/EXIT.json",
-        "publication_status": "PUBLISHED_AND_READBACK_SHA256_VERIFIED"
-      },
-      {
-        "key": "gpu-runs/quant-final-194130/native.log",
-        "sha256": "9475f838b0c7b5b2cf2116f4d4224d8641d11de3bfd1b8099de3cc9325494574",
-        "publication_status": "EXTERNAL_EVIDENCE_NOT_INCLUDED_IN_THIS_BUNDLE"
-      },
-      {
-        "key": "gpu-runs/quant-final-194130/task/build/correctness_report.json",
-        "sha256": "6603e974f64aaa1d95217b648d9d69f4fa5bc5372b1437f21c53f62cd8b4f6d2",
-        "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/gpu-runs/quant-final-194130/task/build/correctness_report.json",
-        "publication_status": "PUBLISHED_AND_READBACK_SHA256_VERIFIED"
-      },
-      {
-        "key": "gpu-runs/quant-final-194130/task/build/performance_report.json",
-        "sha256": "f3ae42e0b0afb52c12249a1bb40c79034592e4721410181ea408530f800fec8d",
-        "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/gpu-runs/quant-final-194130/task/build/performance_report.json",
-        "publication_status": "PUBLISHED_AND_READBACK_SHA256_VERIFIED"
-      },
-      {
-        "key": "gpu-runs/quant-final-noop-194130/EXIT.json",
-        "sha256": "c17d61dc34a37fb7b7bd018bd192f613aec2033a9ec4208bbf58eb01e2b3ca0e",
-        "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/gpu-runs/quant-final-noop-194130/EXIT.json",
-        "publication_status": "PUBLISHED_AND_READBACK_SHA256_VERIFIED"
-      },
-      {
-        "key": "gpu-runs/quant-final-noop-194130/task/build/performance_candidate_native.log",
-        "sha256": "478f0fb35196a25ac248a92a110325a72a859f894676af3e96091467a5aea77d",
-        "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/gpu-runs/quant-final-noop-194130/task/build/performance_candidate_native.log",
-        "publication_status": "PUBLISHED_AND_READBACK_SHA256_VERIFIED"
-      },
-      {
-        "key": "legacy/runs/194224-91a10dc618/RESULT.json",
-        "sha256": "a18633fb55973eec5b16997a25e44a1ed7f5f5f963132fb853c81f6580eb6d48",
-        "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/legacy/runs/194224-91a10dc618/RESULT.json",
-        "publication_status": "PUBLISHED_AND_READBACK_SHA256_VERIFIED"
-      },
-      {
-        "key": "legacy/runs/194224-c0a089a3ed/RESULT.json",
-        "sha256": "640eb78b30ff31f7ee7640a3151bd1dc5bcc5833c9b10ad1084e505f65d92e1b",
-        "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/legacy/runs/194224-c0a089a3ed/RESULT.json",
-        "publication_status": "PUBLISHED_AND_READBACK_SHA256_VERIFIED"
-      },
-      {
-        "key": "runs/kimi-nvme-194131/HOST-FAILURE.json",
-        "sha256": "315986db289417285e75cb42b171b01d7cfe667697ec6223644673234c1aeb91",
-        "publication_status": "EXTERNAL_EVIDENCE_NOT_INCLUDED_IN_THIS_BUNDLE"
-      },
-      {
-        "key": "validator/run-194224-1/EXIT.json",
-        "sha256": "fb5c421b50c246ad0af054cf31e65996e2d0a6106c72ac55cc0e147a75fcc0d0",
-        "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/validator/run-194224-1/EXIT.json",
-        "publication_status": "PUBLISHED_AND_READBACK_SHA256_VERIFIED"
-      },
-      {
-        "key": "validator/run-194224-1/framework.log",
-        "sha256": "0c3e6b9ae89927c57b27b069a5d6fbcaca49d28b455eea801a756fc312c91d5b",
-        "publication_status": "EXTERNAL_EVIDENCE_NOT_INCLUDED_IN_THIS_BUNDLE"
-      },
-      {
-        "key": "validator/snapshot-hardened-7/workspace_MI355X_task_validator/run_20261005_175201_sg520_quant_validator/headkernel_sg520_deepseek-v4-pro__per_group_quant_fp8_20261005_175201/validation_report.yaml",
-        "sha256": "bb6db318c1c9027065211456a14d3e986842af0bc294464ca610dde1dfbd4702",
-        "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/validator/snapshot-hardened-7/workspace_MI355X_task_validator/run_20261005_175201_sg520_quant_validator/headkernel_sg520_deepseek-v4-pro__per_group_quant_fp8_20261005_175201/validation_report.yaml",
-        "publication_status": "PUBLISHED_AND_READBACK_SHA256_VERIFIED"
-      },
-      {
-        "key": "validator/snapshot-hardened-7/workspace_MI355X_task_validator/run_20261005_175201_sg520_quant_validator/validation_summary.yaml",
-        "sha256": "9ccc4d35f571807917695cdccca178a2f0dd5c628152a839ac790b6a93aa8e89",
-        "publication_status": "EXTERNAL_EVIDENCE_NOT_INCLUDED_IN_THIS_BUNDLE"
-      },
-      {
-        "key": "legacy/runs/194224-91a10dc618/minimax-m3__decode_score_kernel/task/build/correctness_binding.json",
-        "sha256": "56d4a17cecf1bc2ae4e4c2a7182017b98ec3ad4faf402b8b1c774a7215ce2a79",
-        "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/legacy/runs/194224-91a10dc618/minimax-m3__decode_score_kernel/task/build/correctness_binding.json",
-        "publication_status": "PUBLISHED_AND_READBACK_SHA256_VERIFIED"
-      },
-      {
-        "key": "legacy/runs/194224-91a10dc618/minimax-m3__decode_score_kernel/task/build/correctness_completion.json",
-        "sha256": "7dadfd916d8781dfab5ae1dde4f5472e5ba83b2e579f073698326afb35b7ef8b",
-        "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/legacy/runs/194224-91a10dc618/minimax-m3__decode_score_kernel/task/build/correctness_completion.json",
-        "publication_status": "PUBLISHED_AND_READBACK_SHA256_VERIFIED"
-      },
-      {
-        "key": "legacy/runs/194224-91a10dc618/minimax-m3__gqa_share_sparse_decode_kernel/task/build/correctness_binding.json",
-        "sha256": "f4e78b5902575f26f2456b71bddbc4e2af1caab25a02aecdd4405168dcebb08d",
-        "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/legacy/runs/194224-91a10dc618/minimax-m3__gqa_share_sparse_decode_kernel/task/build/correctness_binding.json",
-        "publication_status": "PUBLISHED_AND_READBACK_SHA256_VERIFIED"
-      },
-      {
-        "key": "legacy/runs/194224-91a10dc618/minimax-m3__gqa_share_sparse_decode_kernel/task/build/correctness_completion.json",
-        "sha256": "9b7596ca5036a926d581f7b1c58b729431a6102a4fcc1e1bec0d5006232c2220",
-        "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/legacy/runs/194224-91a10dc618/minimax-m3__gqa_share_sparse_decode_kernel/task/build/correctness_completion.json",
-        "publication_status": "PUBLISHED_AND_READBACK_SHA256_VERIFIED"
-      },
-      {
-        "key": "legacy/runs/194224-91a10dc618/minimax-m3__gqa_share_sparse_fwd_kernel/task/build/correctness_binding.json",
-        "sha256": "63d9f2e4625e69609be805b5ce52d6ac1946c7ec3eb2916076cbf139c2ceaf88",
-        "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/legacy/runs/194224-91a10dc618/minimax-m3__gqa_share_sparse_fwd_kernel/task/build/correctness_binding.json",
-        "publication_status": "PUBLISHED_AND_READBACK_SHA256_VERIFIED"
-      },
-      {
-        "key": "legacy/runs/194224-91a10dc618/minimax-m3__gqa_share_sparse_fwd_kernel/task/build/correctness_completion.json",
-        "sha256": "588a562f73d53d3a8768e4dec5ff7d3bc789bf1d5733ec0d231acb765faf758b",
-        "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/legacy/runs/194224-91a10dc618/minimax-m3__gqa_share_sparse_fwd_kernel/task/build/correctness_completion.json",
-        "publication_status": "PUBLISHED_AND_READBACK_SHA256_VERIFIED"
-      },
-      {
-        "key": "trusted/reference-194224-1/EXIT.json",
-        "sha256": "37a5a80a039a0206e6fc72015bdca7c0a265f23b01fdd146014a18ff926f7099",
-        "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/trusted/reference-194224-1/EXIT.json",
-        "publication_status": "PUBLISHED_AND_READBACK_SHA256_VERIFIED"
-      },
-      {
-        "key": "trusted/reference-194224-1/measurement/trusted_measurement.json",
-        "sha256": "6b221ceecd978acb30505cae9cf2fd23618a57e8481c64599b8e3d96d7079148",
-        "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/trusted/reference-194224-1/measurement/trusted_measurement.json",
-        "publication_status": "PUBLISHED_AND_READBACK_SHA256_VERIFIED"
-      },
-      {
-        "key": "validator/run-194224-1/FINAL-VERIFICATION.txt",
-        "sha256": "3c275de4e1e347470f00c531681fd26ff94f5bde4e74077683c0597cea83ee26",
-        "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/validator/run-194224-1/FINAL-VERIFICATION.txt",
-        "publication_status": "PUBLISHED_AND_READBACK_SHA256_VERIFIED"
-      },
-      {
-        "key": "trusted/reference-194224-1/measurement/reference_compile.json",
-        "sha256": "43888d47c183600c09464e3ff66e34b801a1e7258c0e3b466531ac9886207eca",
-        "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/trusted/reference-194224-1/measurement/reference_compile.json",
-        "publication_status": "PUBLISHED_AND_READBACK_SHA256_VERIFIED"
-      },
-      {
-        "key": "trusted/reference-194224-1/measurement/reference_correctness.json",
-        "sha256": "9c86dbd5d7922ba34d41480bd6fa7f2930e213481455cf90b91ecc93baa6fc0b",
-        "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/trusted/reference-194224-1/measurement/reference_correctness.json",
-        "publication_status": "PUBLISHED_AND_READBACK_SHA256_VERIFIED"
-      },
-      {
-        "key": "trusted/reference-194224-1/measurement/reference_performance.json",
-        "sha256": "48d7538f3a061044cff4ae186ac933015d6ff6d8a9dd15e204a5fb36e379af28",
-        "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/trusted/reference-194224-1/measurement/reference_performance.json",
-        "publication_status": "PUBLISHED_AND_READBACK_SHA256_VERIFIED"
-      },
-      {
-        "key": "trusted/reference-194224-1/measurement/candidate_compile.json",
-        "sha256": "08394a27d5caa20150fbf9b38bb7f2f55057b8d072ab5ba557479baeace9ca4e",
-        "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/trusted/reference-194224-1/measurement/candidate_compile.json",
-        "publication_status": "PUBLISHED_AND_READBACK_SHA256_VERIFIED"
-      },
-      {
-        "key": "trusted/reference-194224-1/measurement/candidate_correctness.json",
-        "sha256": "a9b5917c52a153b43e7e536ff18f7fb70627e2bc8c9f5a72da1b22e582fbd934",
-        "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/trusted/reference-194224-1/measurement/candidate_correctness.json",
-        "publication_status": "PUBLISHED_AND_READBACK_SHA256_VERIFIED"
-      },
-      {
-        "key": "trusted/reference-194224-1/measurement/candidate_performance.json",
-        "sha256": "d5ac937831b50900107b57188f0508d1844f619f1458acf6ad22ae31f1f50af9",
-        "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/trusted/reference-194224-1/measurement/candidate_performance.json",
-        "publication_status": "PUBLISHED_AND_READBACK_SHA256_VERIFIED"
-      }
+      {"key": "legacy/runs/193902-a7fcc1f3e9/RESULT.json", "sha256": "a90f4477821a34276020a52d05a53aa31d106d7fc9b984ca90174a0e9d72e575", "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/legacy/runs/193902-a7fcc1f3e9/RESULT.json", "publication_status": "PUBLISHED_AND_READBACK_SHA256_VERIFIED"}, {"key": "gpu-runs/quant-hardened-193855/EXIT.json", "sha256": "f2f3d9e6c1b38701b0e1823be8fd0dfd3964e2c456920de55dbc57c524308d1c", "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/gpu-runs/quant-hardened-193855/EXIT.json", "publication_status": "PUBLISHED_AND_READBACK_SHA256_VERIFIED"},
+      {"key": "gpu-runs/quant-hardened-193855/native.log", "sha256": "9475f838b0c7b5b2cf2116f4d4224d8641d11de3bfd1b8099de3cc9325494574", "publication_status": "EXTERNAL_EVIDENCE_NOT_INCLUDED_IN_THIS_BUNDLE"}, {"key": "gpu-runs/quant-noop-193855/EXIT.json", "sha256": "3f4c64f2430bf209102f7a1fd0476cca23a36e07ae425a3f9809ad5214c4485c", "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/gpu-runs/quant-noop-193855/EXIT.json", "publication_status": "PUBLISHED_AND_READBACK_SHA256_VERIFIED"},
+      {"key": "gpu-runs/quant-noop-193855/native.log", "sha256": "ff9c1e5d5b910d9bb0c28dec33e03f89a63176327e2a311fcef70013f8c11a00", "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/gpu-runs/quant-noop-193855/native.log", "publication_status": "PUBLISHED_AND_READBACK_SHA256_VERIFIED"}, {"key": "validator/run-194017-1/EXIT.json", "sha256": "550b0ba2c1bcc231577223a89a6352b684c51eda3617d01ffe94186cd8750ab7", "publication_status": "EXTERNAL_EVIDENCE_NOT_INCLUDED_IN_THIS_BUNDLE"},
+      {"key": "validator/run-194017-1/framework.log", "sha256": "9237cdc1d7578b4415edf21883884a0b067677c2651446442ee48d458db0a405", "publication_status": "EXTERNAL_EVIDENCE_NOT_INCLUDED_IN_THIS_BUNDLE"}, {"key": "intake/minimax-194049/WORKLOAD-AND-TRACE-REVIEW.json", "sha256": "44a78b3706164b657871b0b59e950785b8ee4af79d4452935277c0d6d8f2519a", "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/intake/minimax-194049/WORKLOAD-AND-TRACE-REVIEW.json", "publication_status": "PUBLISHED_AND_READBACK_SHA256_VERIFIED"},
+      {"key": "glm-native/results-20261005T154401Z-580/topk.json", "sha256": "8fd46ca945b90f769f88a02221d9e3d3098476e1441bb01c79b16a2a7a45c174", "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/glm-native/results-20261005T154401Z-580/topk.json", "publication_status": "PUBLISHED_AND_READBACK_SHA256_VERIFIED"}, {"key": "glm-native/results-20261005T154401Z-580/transform.json", "sha256": "bdad5087fc2ae5de9bd2c514406b2c2de89b7cbdea6c9934f61741abfbaf4991", "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/glm-native/results-20261005T154401Z-580/transform.json", "publication_status": "PUBLISHED_AND_READBACK_SHA256_VERIFIED"},
+      {"key": "glm-native/results-20261005T154401Z-580/cache.json", "sha256": "c322447ee6525a072bfb0f46048ff1f27baa7a39d1a9d70d12be75ff05564f5a", "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/glm-native/results-20261005T154401Z-580/cache.json", "publication_status": "PUBLISHED_AND_READBACK_SHA256_VERIFIED"}, {"key": "glm-native/results-image-20261005T155107Z-784/logits.json", "sha256": "2077c350ea50e47481f2b31090a8a41dd3aead61fb4fe7e0f8baf7540f3525b4", "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/glm-native/results-image-20261005T155107Z-784/logits.json", "publication_status": "PUBLISHED_AND_READBACK_SHA256_VERIFIED"},
+      {"key": "glm-native/results-oracle-v2-20261005T160901Z-576/zero_rope.json", "sha256": "f62b1b009b732affc9007981f2dec2563a9c2fe6cf09ad86c16863955e03693d", "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/glm-native/results-oracle-v2-20261005T160901Z-576/zero_rope.json", "publication_status": "PUBLISHED_AND_READBACK_SHA256_VERIFIED"}, {"key": "glm-native/results-oracle-v2-20261005T160913Z-575/mhc.json", "sha256": "77755fb570b34b476a67dac2ba77713a27855807f4bd3d962eade61a29bf431d", "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/glm-native/results-oracle-v2-20261005T160913Z-575/mhc.json", "publication_status": "PUBLISHED_AND_READBACK_SHA256_VERIFIED"},
+      {"key": "gpu-runs/quant-final-194130/EXIT.json", "sha256": "2b523c21a1c9016f1549044fddb687cfd1a88a69a7290d7a072bfa2e7fd85f3b", "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/gpu-runs/quant-final-194130/EXIT.json", "publication_status": "PUBLISHED_AND_READBACK_SHA256_VERIFIED"}, {"key": "gpu-runs/quant-final-194130/native.log", "sha256": "9475f838b0c7b5b2cf2116f4d4224d8641d11de3bfd1b8099de3cc9325494574", "publication_status": "EXTERNAL_EVIDENCE_NOT_INCLUDED_IN_THIS_BUNDLE"},
+      {"key": "gpu-runs/quant-final-194130/task/build/correctness_report.json", "sha256": "6603e974f64aaa1d95217b648d9d69f4fa5bc5372b1437f21c53f62cd8b4f6d2", "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/gpu-runs/quant-final-194130/task/build/correctness_report.json", "publication_status": "PUBLISHED_AND_READBACK_SHA256_VERIFIED"}, {"key": "gpu-runs/quant-final-194130/task/build/performance_report.json", "sha256": "f3ae42e0b0afb52c12249a1bb40c79034592e4721410181ea408530f800fec8d", "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/gpu-runs/quant-final-194130/task/build/performance_report.json", "publication_status": "PUBLISHED_AND_READBACK_SHA256_VERIFIED"},
+      {"key": "gpu-runs/quant-final-noop-194130/EXIT.json", "sha256": "c17d61dc34a37fb7b7bd018bd192f613aec2033a9ec4208bbf58eb01e2b3ca0e", "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/gpu-runs/quant-final-noop-194130/EXIT.json", "publication_status": "PUBLISHED_AND_READBACK_SHA256_VERIFIED"}, {"key": "gpu-runs/quant-final-noop-194130/task/build/performance_candidate_native.log", "sha256": "478f0fb35196a25ac248a92a110325a72a859f894676af3e96091467a5aea77d", "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/gpu-runs/quant-final-noop-194130/task/build/performance_candidate_native.log", "publication_status": "PUBLISHED_AND_READBACK_SHA256_VERIFIED"},
+      {"key": "legacy/runs/194224-91a10dc618/RESULT.json", "sha256": "a18633fb55973eec5b16997a25e44a1ed7f5f5f963132fb853c81f6580eb6d48", "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/legacy/runs/194224-91a10dc618/RESULT.json", "publication_status": "PUBLISHED_AND_READBACK_SHA256_VERIFIED"}, {"key": "legacy/runs/194224-c0a089a3ed/RESULT.json", "sha256": "640eb78b30ff31f7ee7640a3151bd1dc5bcc5833c9b10ad1084e505f65d92e1b", "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/legacy/runs/194224-c0a089a3ed/RESULT.json", "publication_status": "PUBLISHED_AND_READBACK_SHA256_VERIFIED"},
+      {"key": "runs/kimi-nvme-194131/HOST-FAILURE.json", "sha256": "315986db289417285e75cb42b171b01d7cfe667697ec6223644673234c1aeb91", "publication_status": "EXTERNAL_EVIDENCE_NOT_INCLUDED_IN_THIS_BUNDLE"}, {"key": "validator/run-194224-1/EXIT.json", "sha256": "fb5c421b50c246ad0af054cf31e65996e2d0a6106c72ac55cc0e147a75fcc0d0", "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/validator/run-194224-1/EXIT.json", "publication_status": "PUBLISHED_AND_READBACK_SHA256_VERIFIED"},
+      {"key": "validator/run-194224-1/framework.log", "sha256": "0c3e6b9ae89927c57b27b069a5d6fbcaca49d28b455eea801a756fc312c91d5b", "publication_status": "EXTERNAL_EVIDENCE_NOT_INCLUDED_IN_THIS_BUNDLE"}, {"key": "validator/snapshot-hardened-7/workspace_MI355X_task_validator/run_20261005_175201_sg520_quant_validator/headkernel_sg520_deepseek-v4-pro__per_group_quant_fp8_20261005_175201/validation_report.yaml", "sha256": "bb6db318c1c9027065211456a14d3e986842af0bc294464ca610dde1dfbd4702", "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/validator/snapshot-hardened-7/workspace_MI355X_task_validator/run_20261005_175201_sg520_quant_validator/headkernel_sg520_deepseek-v4-pro__per_group_quant_fp8_20261005_175201/validation_report.yaml", "publication_status": "PUBLISHED_AND_READBACK_SHA256_VERIFIED"},
+      {"key": "validator/snapshot-hardened-7/workspace_MI355X_task_validator/run_20261005_175201_sg520_quant_validator/validation_summary.yaml", "sha256": "9ccc4d35f571807917695cdccca178a2f0dd5c628152a839ac790b6a93aa8e89", "publication_status": "EXTERNAL_EVIDENCE_NOT_INCLUDED_IN_THIS_BUNDLE"}, {"key": "legacy/runs/194224-91a10dc618/minimax-m3__decode_score_kernel/task/build/correctness_binding.json", "sha256": "56d4a17cecf1bc2ae4e4c2a7182017b98ec3ad4faf402b8b1c774a7215ce2a79", "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/legacy/runs/194224-91a10dc618/minimax-m3__decode_score_kernel/task/build/correctness_binding.json", "publication_status": "PUBLISHED_AND_READBACK_SHA256_VERIFIED"},
+      {"key": "legacy/runs/194224-91a10dc618/minimax-m3__decode_score_kernel/task/build/correctness_completion.json", "sha256": "7dadfd916d8781dfab5ae1dde4f5472e5ba83b2e579f073698326afb35b7ef8b", "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/legacy/runs/194224-91a10dc618/minimax-m3__decode_score_kernel/task/build/correctness_completion.json", "publication_status": "PUBLISHED_AND_READBACK_SHA256_VERIFIED"}, {"key": "legacy/runs/194224-91a10dc618/minimax-m3__gqa_share_sparse_decode_kernel/task/build/correctness_binding.json", "sha256": "f4e78b5902575f26f2456b71bddbc4e2af1caab25a02aecdd4405168dcebb08d", "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/legacy/runs/194224-91a10dc618/minimax-m3__gqa_share_sparse_decode_kernel/task/build/correctness_binding.json", "publication_status": "PUBLISHED_AND_READBACK_SHA256_VERIFIED"},
+      {"key": "legacy/runs/194224-91a10dc618/minimax-m3__gqa_share_sparse_decode_kernel/task/build/correctness_completion.json", "sha256": "9b7596ca5036a926d581f7b1c58b729431a6102a4fcc1e1bec0d5006232c2220", "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/legacy/runs/194224-91a10dc618/minimax-m3__gqa_share_sparse_decode_kernel/task/build/correctness_completion.json", "publication_status": "PUBLISHED_AND_READBACK_SHA256_VERIFIED"}, {"key": "legacy/runs/194224-91a10dc618/minimax-m3__gqa_share_sparse_fwd_kernel/task/build/correctness_binding.json", "sha256": "63d9f2e4625e69609be805b5ce52d6ac1946c7ec3eb2916076cbf139c2ceaf88", "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/legacy/runs/194224-91a10dc618/minimax-m3__gqa_share_sparse_fwd_kernel/task/build/correctness_binding.json", "publication_status": "PUBLISHED_AND_READBACK_SHA256_VERIFIED"},
+      {"key": "legacy/runs/194224-91a10dc618/minimax-m3__gqa_share_sparse_fwd_kernel/task/build/correctness_completion.json", "sha256": "588a562f73d53d3a8768e4dec5ff7d3bc789bf1d5733ec0d231acb765faf758b", "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/legacy/runs/194224-91a10dc618/minimax-m3__gqa_share_sparse_fwd_kernel/task/build/correctness_completion.json", "publication_status": "PUBLISHED_AND_READBACK_SHA256_VERIFIED"}, {"key": "trusted/reference-194224-1/EXIT.json", "sha256": "37a5a80a039a0206e6fc72015bdca7c0a265f23b01fdd146014a18ff926f7099", "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/trusted/reference-194224-1/EXIT.json", "publication_status": "PUBLISHED_AND_READBACK_SHA256_VERIFIED"},
+      {"key": "trusted/reference-194224-1/measurement/trusted_measurement.json", "sha256": "6b221ceecd978acb30505cae9cf2fd23618a57e8481c64599b8e3d96d7079148", "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/trusted/reference-194224-1/measurement/trusted_measurement.json", "publication_status": "PUBLISHED_AND_READBACK_SHA256_VERIFIED"}, {"key": "validator/run-194224-1/FINAL-VERIFICATION.txt", "sha256": "3c275de4e1e347470f00c531681fd26ff94f5bde4e74077683c0597cea83ee26", "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/validator/run-194224-1/FINAL-VERIFICATION.txt", "publication_status": "PUBLISHED_AND_READBACK_SHA256_VERIFIED"},
+      {"key": "trusted/reference-194224-1/measurement/reference_compile.json", "sha256": "43888d47c183600c09464e3ff66e34b801a1e7258c0e3b466531ac9886207eca", "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/trusted/reference-194224-1/measurement/reference_compile.json", "publication_status": "PUBLISHED_AND_READBACK_SHA256_VERIFIED"}, {"key": "trusted/reference-194224-1/measurement/reference_correctness.json", "sha256": "9c86dbd5d7922ba34d41480bd6fa7f2930e213481455cf90b91ecc93baa6fc0b", "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/trusted/reference-194224-1/measurement/reference_correctness.json", "publication_status": "PUBLISHED_AND_READBACK_SHA256_VERIFIED"},
+      {"key": "trusted/reference-194224-1/measurement/reference_performance.json", "sha256": "48d7538f3a061044cff4ae186ac933015d6ff6d8a9dd15e204a5fb36e379af28", "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/trusted/reference-194224-1/measurement/reference_performance.json", "publication_status": "PUBLISHED_AND_READBACK_SHA256_VERIFIED"}, {"key": "trusted/reference-194224-1/measurement/candidate_compile.json", "sha256": "08394a27d5caa20150fbf9b38bb7f2f55057b8d072ab5ba557479baeace9ca4e", "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/trusted/reference-194224-1/measurement/candidate_compile.json", "publication_status": "PUBLISHED_AND_READBACK_SHA256_VERIFIED"},
+      {"key": "trusted/reference-194224-1/measurement/candidate_correctness.json", "sha256": "a9b5917c52a153b43e7e536ff18f7fb70627e2bc8c9f5a72da1b22e582fbd934", "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/trusted/reference-194224-1/measurement/candidate_correctness.json", "publication_status": "PUBLISHED_AND_READBACK_SHA256_VERIFIED"}, {"key": "trusted/reference-194224-1/measurement/candidate_performance.json", "sha256": "d5ac937831b50900107b57188f0508d1844f619f1458acf6ad22ae31f1f50af9", "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/trusted/reference-194224-1/measurement/candidate_performance.json", "publication_status": "PUBLISHED_AND_READBACK_SHA256_VERIFIED"},
+      {"key": "runs/minimax-nvme-194299/CAPTURE-READY.json", "sha256": "78f7f050c5ab61310e0b034c121bfc1eef2258a94a2934555a61c89f0a2f0181", "publication_status": "published_in_separate_profile_archive", "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/minimax-native-profile-194299/artifacts/runs/minimax-nvme-194299/CAPTURE-READY.json", "size_bytes": 2042}, {"key": "runs/minimax-nvme-194299/PROFILE-SUMMARY.json", "sha256": "c1889875f57f7ce0b4b280ee85c2d06bacbfb5210364c344fb25beea2efcf550", "publication_status": "published_in_separate_profile_archive", "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/minimax-native-profile-194299/artifacts/runs/minimax-nvme-194299/PROFILE-SUMMARY.json", "size_bytes": 17819},
+      {"key": "runs/minimax-nvme-194299/RAW-TRACE-CHECKPOINT.json", "sha256": "cf7c0a909b2ac79dd518dc0a0c321e01b50f3bb70d057c41d64e119767f27ed2", "publication_status": "published_in_separate_profile_archive", "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/minimax-native-profile-194299/artifacts/runs/minimax-nvme-194299/RAW-TRACE-CHECKPOINT.json", "size_bytes": 4038}, {"key": "intake/minimax-194299/WORKLOAD-GATE.json", "sha256": "cd50865f461847353c40f1769a2a5517e3b5a438962b18ead0830bf00ace63ed", "publication_status": "published_in_separate_profile_archive", "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/minimax-native-profile-194299/artifacts/intake/minimax-194299/WORKLOAD-GATE.json", "size_bytes": 2229},
+      {"key": "runs/glm-flash-fp8-native-jit-194292/CAPTURE-READY.json", "sha256": "629b9bbd19660d72e2265fe6b4afc26c6caf1139e0e2ac962475404d93f32e3c", "publication_status": "published_in_separate_profile_archive", "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/glm-native-jit-194292/artifacts/runs/glm-flash-fp8-native-jit-194292/CAPTURE-READY.json", "size_bytes": 2254}, {"key": "runs/glm-flash-fp8-native-jit-194292/PROFILE-SUMMARY.json", "sha256": "7530f09b5a051fb23fa865ef7ca936bbd16b87f23b7fd65112d9c219ce657c5b", "publication_status": "published_in_separate_profile_archive", "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/glm-native-jit-194292/artifacts/runs/glm-flash-fp8-native-jit-194292/PROFILE-SUMMARY.json", "size_bytes": 24532},
+      {"key": "runs/glm-flash-fp8-native-jit-194292/RAW-TRACE-CHECKPOINT.json", "sha256": "a08eb99c8b4f9f778411885c244681ccf9d777eb467357abe32b49c6bb1c52f2", "publication_status": "published_in_separate_profile_archive", "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/glm-native-jit-194292/artifacts/runs/glm-flash-fp8-native-jit-194292/RAW-TRACE-CHECKPOINT.json", "size_bytes": 4580}, {"key": "intake/glm-194292/WORKLOAD-GATE.json", "sha256": "a3b4fe4153fe480223a04fd1ffed7a7584300f77eee04462a4dbc636af9352fd", "publication_status": "published_in_separate_profile_archive", "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/glm-native-jit-194292/artifacts/intake/glm-194292/WORKLOAD-GATE.json", "size_bytes": 2313},
+      {"key": "portable-evidence/minimax-native-profile-194299/PUBLICATION-RECEIPT.json", "sha256": "0416dd82061978d7884952efa2cf47c969cd6c174797f25d74e74369facda9af", "publication_status": "local_publication_receipt"}, {"key": "portable-evidence/glm-native-jit-194292/PUBLICATION-RECEIPT.json", "sha256": "e65feb29705c8998fa1fe8a59b72404de6e99b72758cbec662fa586c8e3f5144", "publication_status": "local_publication_receipt"},
+      {"key": "intake/minimax-194299/CURATED-SUMMARY.json", "sha256": "cbbe3ca1a2aa4a31f541def6a9a96121d45288b3af6cb9f0e589e0af2446b39c", "publication_status": "not_in_current_profile_archives"}, {"key": "intake/minimax-194299/CURATED-SUMMARY.md", "sha256": "a2bdf4d3e2f29dd0b0cdd1983d855d0819c89d85756f86cbb7bca13e7712287d", "publication_status": "not_in_current_profile_archives"},
+      {"key": "intake/minimax-194299/VALIDATION.json", "sha256": "e408fb319c1c0192368275e595bed663e74db636db8b2df545f8d7f3069ae7f5", "publication_status": "not_in_current_profile_archives"}, {"key": "intake/glm-194292/CURATED-SUMMARY.json", "sha256": "4afd2d0a3d8089530e1d4572fa961b5a6e0ab3315593b9c4891796522b65f59c", "publication_status": "not_in_current_profile_archives"},
+      {"key": "intake/glm-194292/CURATED-SUMMARY.md", "sha256": "35db9ea4199b23d755d0c551eb23f8b6113bac7a569d48a6e315904558e1f8b6", "publication_status": "not_in_current_profile_archives"}, {"key": "intake/glm-194292/VALIDATION.json", "sha256": "7d484452bacf54935dc1d29d2067eff6663c5aeeab658489af377cdb68cc6c48", "publication_status": "not_in_current_profile_archives"}
     ],
-    "ongoing_observations": [
-      {
-        "key": "runs/glm-flash-fp8-nvme-194223-help120-retry/server.log",
-        "phase": "native_warmup",
-        "final": false,
-        "full_profile_complete": false
-      }
-    ],
-    "publication": {
-      "status": "PUBLISHED_AND_FULL_READBACK_SHA256_VERIFIED",
-      "remote": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z",
-      "manifest": {
-        "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/MANIFEST.json",
-        "sha256": "83660fc336def213fa374615cea2a96ed3c9687aed798b6f86172837d4bd31be",
-        "size_bytes": 59915
-      },
-      "payload_files": 172,
-      "remote_objects": 173,
-      "payload_bytes": 4948614,
-      "verified_download_bytes": 5008529,
-      "verified_at_utc": "2026-10-05T18:07:26.749056+00:00",
-      "all_readback_SHA256_verified": true,
-      "exact_remote_object_set_verified": true,
-      "qualification_scope": "Only tasks/headkernel_sg520/deepseek-v4-pro__per_group_quant_fp8 is framework-qualified; no four-model or whole-suite PASS.",
-      "pending_scope": "Full GLM profiling and current MiniMax final runs remain pending; publication does not promote their qualification status.",
-      "key_reports": {
-        "framework_PASS": {
-          "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/validator/snapshot-hardened-7/workspace_MI355X_task_validator/run_20261005_175201_sg520_quant_validator/headkernel_sg520_deepseek-v4-pro__per_group_quant_fp8_20261005_175201/validation_report.yaml",
-          "sha256": "bb6db318c1c9027065211456a14d3e986842af0bc294464ca610dde1dfbd4702",
-          "size_bytes": 20331
-        },
-        "trusted_same_source": {
-          "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/trusted/reference-194224-1/measurement/trusted_measurement.json",
-          "sha256": "6b221ceecd978acb30505cae9cf2fd23618a57e8481c64599b8e3d96d7079148",
-          "size_bytes": 4324
-        },
-        "native_correctness": {
-          "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/gpu-runs/quant-final-194130/task/build/correctness_report.json",
-          "sha256": "6603e974f64aaa1d95217b648d9d69f4fa5bc5372b1437f21c53f62cd8b4f6d2",
-          "size_bytes": 4609
-        },
-        "native_graph_benchmark": {
-          "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/gpu-runs/quant-final-194130/task/build/performance_report.json",
-          "sha256": "f3ae42e0b0afb52c12249a1bb40c79034592e4721410181ea408530f800fec8d",
-          "size_bytes": 25027
-        },
-        "native_noop_rejection": {
-          "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/gpu-runs/quant-final-noop-194130/task/build/performance_candidate_native.log",
-          "sha256": "478f0fb35196a25ac248a92a110325a72a859f894676af3e96091467a5aea77d",
-          "size_bytes": 2023
-        }
-      },
-      "download_flags": [
-        "--transfers",
-        "64000",
-        "--progress",
-        "--buffer-size",
-        "0",
-        "--multi-thread-streams",
-        "0",
-        "--checkers",
-        "4"
-      ]
-    }
+    "publication": {"status": "PUBLISHED_AND_FULL_READBACK_SHA256_VERIFIED", "remote": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z", "manifest": {"uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/MANIFEST.json", "sha256": "83660fc336def213fa374615cea2a96ed3c9687aed798b6f86172837d4bd31be", "size_bytes": 59915}, "payload_files": 172, "remote_objects": 173, "payload_bytes": 4948614, "verified_download_bytes": 5008529, "verified_at_utc": "2026-10-05T18:07:26.749056+00:00", "all_readback_SHA256_verified": true, "exact_remote_object_set_verified": true, "qualification_scope": "Only tasks/headkernel_sg520/deepseek-v4-pro__per_group_quant_fp8 is framework-qualified; no four-model or whole-suite PASS.", "pending_scope": "This archive predates the completed MiniMax 194299 and GLM 194292 profiles, whose receipts are separately referenced. Kernel contracts, tensor oracles and task qualification remain pending except the single DeepSeek quant task.", "key_reports": {"framework_PASS": {"uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/validator/snapshot-hardened-7/workspace_MI355X_task_validator/run_20261005_175201_sg520_quant_validator/headkernel_sg520_deepseek-v4-pro__per_group_quant_fp8_20261005_175201/validation_report.yaml", "sha256": "bb6db318c1c9027065211456a14d3e986842af0bc294464ca610dde1dfbd4702", "size_bytes": 20331}, "trusted_same_source": {"uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/trusted/reference-194224-1/measurement/trusted_measurement.json", "sha256": "6b221ceecd978acb30505cae9cf2fd23618a57e8481c64599b8e3d96d7079148", "size_bytes": 4324}, "native_correctness": {"uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/gpu-runs/quant-final-194130/task/build/correctness_report.json", "sha256": "6603e974f64aaa1d95217b648d9d69f4fa5bc5372b1437f21c53f62cd8b4f6d2", "size_bytes": 4609}, "native_graph_benchmark": {"uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/gpu-runs/quant-final-194130/task/build/performance_report.json", "sha256": "f3ae42e0b0afb52c12249a1bb40c79034592e4721410181ea408530f800fec8d", "size_bytes": 25027}, "native_noop_rejection": {"uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/gpu-runs/quant-final-noop-194130/task/build/performance_candidate_native.log", "sha256": "478f0fb35196a25ac248a92a110325a72a859f894676af3e96091467a5aea77d", "size_bytes": 2023}}, "download_flags": ["--transfers", "64000", "--progress", "--buffer-size", "0", "--multi-thread-streams", "0", "--checkers", "4"]},
+    "historical_observations": [{"key": "runs/glm-flash-fp8-nvme-194223-help120-retry/server.log", "phase": "native_warmup", "final": false, "full_profile_complete": false}]
   },
   "task_package": "tasks/headkernel_sg520/deepseek-v4-pro__per_group_quant_fp8",
-  "trusted_measurement": {"run_id": "reference-194224-1", "status": "measured", "exit_code": 0, "phases_passed": 6, "reference_and_candidate_stages": ["compile", "correctness", "performance"], "full_case_coverage": true, "case_count": 3, "arithmetic_mean_speedup": 0.9848393502471442, "reference_source_sha256": "5c9d1e56d978d45ccdc099806267d75aad9074ab837b07cca32b8ae21dcccfec", "candidate_source_sha256": "5c9d1e56d978d45ccdc099806267d75aad9074ab837b07cca32b8ae21dcccfec", "identical_source": true, "trusted_framework_commit": "1867c36ec0f6dcd6c70f13b9a7a673885e212ce3", "task_path_at_execution": "experimental/headkernel_sg520/deepseek-v4-pro__per_group_quant_fp8", "canonical_task_path": "tasks/headkernel_sg520/deepseek-v4-pro__per_group_quant_fp8", "optimized_gain_claim": false, "E2E_gain_claim": false, "framework_task_validator_claim_from_this_receipt": false}
+  "trusted_measurement": {"run_id": "reference-194224-1", "status": "measured", "exit_code": 0, "phases_passed": 6, "reference_and_candidate_stages": ["compile", "correctness", "performance"], "full_case_coverage": true, "case_count": 3, "arithmetic_mean_speedup": 0.9848393502471442, "reference_source_sha256": "5c9d1e56d978d45ccdc099806267d75aad9074ab837b07cca32b8ae21dcccfec", "candidate_source_sha256": "5c9d1e56d978d45ccdc099806267d75aad9074ab837b07cca32b8ae21dcccfec", "identical_source": true, "trusted_framework_commit": "1867c36ec0f6dcd6c70f13b9a7a673885e212ce3", "task_path_at_execution": "experimental/headkernel_sg520/deepseek-v4-pro__per_group_quant_fp8", "canonical_task_path": "tasks/headkernel_sg520/deepseek-v4-pro__per_group_quant_fp8", "optimized_gain_claim": false, "E2E_gain_claim": false, "framework_task_validator_claim_from_this_receipt": false},
+  "historical_minimax_capture": {"run_id": "minimax-nvme-194049", "workload": {"concurrency": 64, "context_length": 9218, "isl": 8192, "num_prompts": 64, "osl": 1024, "seed": 42, "tp": 8}, "full_token_gate_passed": true, "input_lengths": {"8192": 64}, "output_lengths": {"1024": 64}, "request_errors": 0, "trace_files": 8, "rank_coverage": {"prefill": [0, 1, 2, 3, 4, 5, 6, 7], "decode": []}, "stage_coverage_complete": false, "missing_stage": "No DECODE files in retired raw checkpoint; no _decode_score_kernel or _gqa_share_sparse_decode_kernel events in available EXTEND traces.", "prefill_sample_note": "Eight EXTEND CPU steps per rank. Observed steps include bs1,toks8192 and bs2/3,toks16384; global requested concurrency64 is not each trace step batch size.", "tensor_oracle_present": false},
+  "glm_capture": {"run_id": "glm-flash-fp8-native-jit-194292", "job": 194292, "status": "PASS_fresh_workload_and_sampled_profile", "workload": {"concurrency": 64, "context_length": 9218, "isl": 8192, "num_prompts": 64, "osl": 1024, "seed": 42, "tp": 8}, "completed_requests": 64, "input_tokens_total": 524288, "output_tokens_total": 65536, "input_lengths": {"8192": 64}, "output_lengths": {"1024": 64}, "request_errors": 0, "full_token_gate_passed": true, "fresh_profile_completed": true, "trace_files": 16, "prefill_trace_files": 8, "decode_trace_files": 8, "rank_coverage": {"prefill": [0, 1, 2, 3, 4, 5, 6, 7], "decode": [0, 1, 2, 3, 4, 5, 6, 7]}, "stage_coverage_complete": true, "all_trace_files_parsed": true, "cpu_intake_after_model_retirement": true, "profile_steps_requested_per_stage": 8, "all_graph_replays_captured": false, "all_kernel_live_shapes_and_scalar_args_complete": false, "tensor_oracle_present": false, "ab_comparison": false, "E2E_gain_claim": false, "task_validator_PASS": false, "capture_ready_sha256": "629b9bbd19660d72e2265fe6b4afc26c6caf1139e0e2ac962475404d93f32e3c", "sampling_note": "Eight steps requested per stage. Decode begins with the first actual decode batch; captured batch sizes require trace review and need not equal C64.", "backport_overlay_count": 18, "stock_image_equivalence": false, "backport_manifest_sha256": "2e487779d16cd7f5b1c2e3ceaa324b8df33672d9fec567a35fc755dc4b0c243b", "backport_patch_sha256": "cd17e104dbf03cc33f28cd53c1abedd8815a648268d43e4b451790f9af2b8027"},
+  "profile_publications": {"minimax-m3": {"status": "PUBLISHED_AND_FULL_READBACK_SHA256_VERIFIED", "utc": "2026-10-05T18:26:35.022680+00:00", "oci_root": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/minimax-native-profile-194299", "manifest_sha256": "6327d9c7cb072f10c60a4ee32020a5510419bc1edeaf34b2dd75aa737bf05aea", "payload_files": 26, "remote_objects": 27, "payload_bytes": 373270835, "verified_download_bytes": 373279062, "exact_remote_object_set_verified": true, "checkpoint_trace_hashes_verified_after_readback": true, "profile_trace_files": 16, "all_graph_replays_captured": false, "task_validation_claimed": false, "tensor_oracle_claimed": false}, "glm-5.3-flash": {"status": "PUBLISHED_AND_FULL_READBACK_SHA256_VERIFIED", "utc": "2026-10-05T18:26:05.539761+00:00", "oci_root": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/glm-native-jit-194292", "manifest_sha256": "047e532a6ab7449fc23d4a6dbbf62b487a17b0f8ee0603de6a83999d816ef3bb", "payload_files": 51, "remote_objects": 52, "payload_bytes": 330447104, "verified_download_bytes": 330462859, "exact_remote_object_set_verified": true, "checkpoint_trace_hashes_verified_after_readback": true, "profile_trace_files": 16, "all_graph_replays_captured": false, "task_validation_claimed": false, "tensor_oracle_claimed": false}}
 }

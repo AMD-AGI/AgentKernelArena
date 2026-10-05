@@ -54,16 +54,22 @@ The [DeepSeek native-quant task](tasks/headkernel_sg520/deepseek-v4-pro__per_gro
 passed final native checks, all 12 framework validator checks and the trusted
 six-phase measurement on job 194224. The measurement used identical reference
 and candidate source and establishes no gain; the prior validator FAIL remains
-preserved. This is the only qualified refreshed task. The full
-four-model refresh, traced tensor/reference captures and other task validations
-on the pinned image remain pending.
+preserved. This is the only qualified refreshed task. [MiniMax 194299](docs/reference/headkernel-sg520-minimax.md)
+and [GLM 194292](docs/reference/headkernel-sg520-glm.md) now have verified full 64-request 8192/1024 profiles at C64/TP8/context
+9218, with 16 prefill/decode traces each. Sampling requests eight steps per stage
+and does not capture every graph replay. GLM uses 18 backport files over the
+pinned SGLang 0.5.20 image; MiniMax uses stock native JIT. Kernel contracts,
+traced tensor/reference oracles, other task validations and the full four-model
+refresh remain pending.
 
 The [published validation archive](docs/reference/headkernel-sg520-refresh.md#published-validation-evidence)
 contains 172 evidence files plus its manifest (173 objects), all downloaded back
 and SHA-256 verified. Its OCI prefix is
 `oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z`.
-The archive keeps the quant-only PASS separate from legacy diagnostics, GLM
-component checks, incomplete model profiles and ongoing MiniMax final runs.
+The archive keeps the quant-only PASS separate from legacy diagnostics and GLM
+component checks. It predates the completed MiniMax/GLM profiles, whose fresh
+capture receipts and two fully read-back, SHA-256-verified OCI archives are
+recorded separately in the catalog.
 
 The policy and progress records do not change kernel implementations, shapes,
 tensors or historical gain figures, and do not establish a suite-wide PASS or E2E gain.
