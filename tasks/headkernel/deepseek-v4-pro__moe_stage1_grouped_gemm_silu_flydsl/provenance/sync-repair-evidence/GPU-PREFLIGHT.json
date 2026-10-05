@@ -1,0 +1,10 @@
+{
+  "hsa_gpu_uuids": [
+    "GPU-ba900ea0c1c9eaf5"
+  ],
+  "hip_device_count": 1,
+  "hip_pci_bus_ids": [
+    "0003:00:04.0"
+  ],
+  "rocr_visible_devices": "GPU-ba900ea0c1c9eaf5"
+}

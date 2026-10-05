@@ -1,0 +1,3221 @@
+{
+  "all_control_variants_have_payloads": false,
+  "all_output_components_required": true,
+  "baseline_kind": "pinned_image_native_source",
+  "cases": [
+    {
+      "calls_per_sample": 1,
+      "case_id": "deepseek_moe2-46d9a158091ade7c0f211cbd-work-c5cd180a3a906c17",
+      "fixture": {
+        "path": "fixtures/deepseek_moe2-46d9a158091ade7c0f211cbd-work-c5cd180a3a906c17.json",
+        "sha256": "b4799b3218d97bf83a7815819985ed4204ed8e0ab4e5f61a87dfb746fe745c9d"
+      },
+      "occurrences": 3,
+      "provenance_kind": "actual_served_capture",
+      "scalars": {
+        "arguments": {
+          "_kwargs": {},
+          "a2_scale": {
+            "attributes": {},
+            "tensor": "arg.a2_scale"
+          },
+          "bias2": null,
+          "block_m": 64,
+          "expert_mask": null,
+          "inter_dim_pad": 0,
+          "inter_states": {
+            "attributes": {},
+            "tensor": "arg.inter_states"
+          },
+          "kernelName": "opus_moe2_afp8_wfp4_fp8_t64x256x256_sbm64_rbn3584",
+          "launch": {
+            "dataclass": "OpusA8W4LaunchConfig",
+            "fields": {
+              "instance": {
+                "dataclass": "OpusA8W4Stage2Instance",
+                "fields": {
+                  "block_m": 64,
+                  "block_n": 256,
+                  "block_threads": 256,
+                  "cachectl_b": 0,
+                  "cachectl_wscale": 0,
+                  "direct_atomic": false,
+                  "kid": 2013,
+                  "max_tuner_token": null,
+                  "min_blocks_per_cu": 4,
+                  "min_tuner_token": 128,
+                  "mode_default": false,
+                  "name": "opus_moe2_afp8_wfp4_fp8_t64x256x256_sbm64_rbn3584",
+                  "out_mode": 2,
+                  "pace_route_blocks_to_pow2": false,
+                  "pair_slots": 2,
+                  "route_reduce": "rbn3584",
+                  "sort_block_m": 64,
+                  "steady_pair_slots": 1
+                }
+              }
+            }
+          },
+          "model_dim_pad": 0,
+          "num_valid_ids": {
+            "attributes": {},
+            "tensor": "arg.num_valid_ids"
+          },
+          "out": {
+            "attributes": {},
+            "tensor": "arg.out"
+          },
+          "sorted_expert_ids": {
+            "attributes": {},
+            "tensor": "arg.sorted_expert_ids"
+          },
+          "sorted_token_ids": {
+            "attributes": {},
+            "tensor": "arg.sorted_token_ids"
+          },
+          "sorted_weights": {
+            "attributes": {},
+            "tensor": "arg.sorted_weights"
+          },
+          "topk": 6,
+          "topk_ids": null,
+          "w1": {
+            "attributes": {
+              "is_shuffled": true
+            },
+            "tensor": "arg.w1"
+          },
+          "w2": {
+            "attributes": {
+              "is_shuffled": true
+            },
+            "tensor": "arg.w2"
+          },
+          "w2_scale": {
+            "attributes": {},
+            "tensor": "arg.w2_scale"
+          }
+        },
+        "return": {
+          "attributes": {},
+          "tensor": "result"
+        }
+      },
+      "stage": "prefill",
+      "tensors": {
+        "arg.a2_scale": {
+          "device_type": "cuda",
+          "dtype": "float8_e8m0fnu",
+          "role": "input",
+          "shape": [
+            73728,
+            16
+          ],
+          "storage_offset": 0,
+          "strides": [
+            16,
+            1
+          ]
+        },
+        "arg.inter_states": {
+          "device_type": "cuda",
+          "dtype": "float8_e4m3fn",
+          "role": "input",
+          "shape": [
+            8192,
+            6,
+            384
+          ],
+          "storage_offset": 0,
+          "strides": [
+            2304,
+            384,
+            1
+          ]
+        },
+        "arg.num_valid_ids": {
+          "device_type": "cuda",
+          "dtype": "int32",
+          "role": "input",
+          "shape": [
+            2
+          ],
+          "storage_offset": 0,
+          "strides": [
+            1
+          ]
+        },
+        "arg.out": {
+          "device_type": "cuda",
+          "dtype": "bfloat16",
+          "role": "inout",
+          "shape": [
+            8192,
+            7168
+          ],
+          "storage_offset": 0,
+          "strides": [
+            7168,
+            1
+          ]
+        },
+        "arg.sorted_expert_ids": {
+          "device_type": "cuda",
+          "dtype": "int32",
+          "role": "input",
+          "shape": [
+            1152
+          ],
+          "storage_offset": 0,
+          "strides": [
+            1
+          ]
+        },
+        "arg.sorted_token_ids": {
+          "device_type": "cuda",
+          "dtype": "int32",
+          "role": "input",
+          "shape": [
+            73722
+          ],
+          "storage_offset": 0,
+          "strides": [
+            1
+          ]
+        },
+        "arg.sorted_weights": {
+          "device_type": "cuda",
+          "dtype": "float32",
+          "role": "input",
+          "shape": [
+            73722
+          ],
+          "storage_offset": 0,
+          "strides": [
+            1
+          ]
+        },
+        "arg.w1": {
+          "device_type": "cuda",
+          "dtype": "float4_e2m1fn_x2",
+          "role": "input",
+          "shape": [
+            384,
+            768,
+            3584
+          ],
+          "storage_offset": 0,
+          "strides": [
+            2752512,
+            3584,
+            1
+          ]
+        },
+        "arg.w2": {
+          "device_type": "cuda",
+          "dtype": "float4_e2m1fn_x2",
+          "role": "input",
+          "shape": [
+            384,
+            7168,
+            192
+          ],
+          "storage_offset": 0,
+          "strides": [
+            1376256,
+            192,
+            1
+          ]
+        },
+        "arg.w2_scale": {
+          "device_type": "cuda",
+          "dtype": "float8_e8m0fnu",
+          "role": "input",
+          "shape": [
+            2752512,
+            16
+          ],
+          "storage_offset": 0,
+          "strides": [
+            16,
+            1
+          ]
+        },
+        "result": {
+          "device_type": "cuda",
+          "dtype": "bfloat16",
+          "role": "output",
+          "shape": [
+            8192,
+            7168
+          ],
+          "storage_offset": 0,
+          "strides": [
+            7168,
+            1
+          ]
+        }
+      }
+    },
+    {
+      "calls_per_sample": 1,
+      "case_id": "deepseek_moe2-46d9a158091ade7c0f211cbd-work-ee3f0c2bc494c65f",
+      "fixture": {
+        "path": "fixtures/deepseek_moe2-46d9a158091ade7c0f211cbd-work-ee3f0c2bc494c65f.json",
+        "sha256": "184ada24e4c1369f55140c3a0903cba9615540d00fd69a33630562a07cc52976"
+      },
+      "occurrences": 1,
+      "provenance_kind": "actual_served_capture",
+      "scalars": {
+        "arguments": {
+          "_kwargs": {},
+          "a2_scale": {
+            "attributes": {},
+            "tensor": "arg.a2_scale"
+          },
+          "bias2": null,
+          "block_m": 64,
+          "expert_mask": null,
+          "inter_dim_pad": 0,
+          "inter_states": {
+            "attributes": {},
+            "tensor": "arg.inter_states"
+          },
+          "kernelName": "opus_moe2_afp8_wfp4_fp8_t64x256x256_sbm64_rbn3584",
+          "launch": {
+            "dataclass": "OpusA8W4LaunchConfig",
+            "fields": {
+              "instance": {
+                "dataclass": "OpusA8W4Stage2Instance",
+                "fields": {
+                  "block_m": 64,
+                  "block_n": 256,
+                  "block_threads": 256,
+                  "cachectl_b": 0,
+                  "cachectl_wscale": 0,
+                  "direct_atomic": false,
+                  "kid": 2013,
+                  "max_tuner_token": null,
+                  "min_blocks_per_cu": 4,
+                  "min_tuner_token": 128,
+                  "mode_default": false,
+                  "name": "opus_moe2_afp8_wfp4_fp8_t64x256x256_sbm64_rbn3584",
+                  "out_mode": 2,
+                  "pace_route_blocks_to_pow2": false,
+                  "pair_slots": 2,
+                  "route_reduce": "rbn3584",
+                  "sort_block_m": 64,
+                  "steady_pair_slots": 1
+                }
+              }
+            }
+          },
+          "model_dim_pad": 0,
+          "num_valid_ids": {
+            "attributes": {},
+            "tensor": "arg.num_valid_ids"
+          },
+          "out": {
+            "attributes": {},
+            "tensor": "arg.out"
+          },
+          "sorted_expert_ids": {
+            "attributes": {},
+            "tensor": "arg.sorted_expert_ids"
+          },
+          "sorted_token_ids": {
+            "attributes": {},
+            "tensor": "arg.sorted_token_ids"
+          },
+          "sorted_weights": {
+            "attributes": {},
+            "tensor": "arg.sorted_weights"
+          },
+          "topk": 6,
+          "topk_ids": null,
+          "w1": {
+            "attributes": {
+              "is_shuffled": true
+            },
+            "tensor": "arg.w1"
+          },
+          "w2": {
+            "attributes": {
+              "is_shuffled": true
+            },
+            "tensor": "arg.w2"
+          },
+          "w2_scale": {
+            "attributes": {},
+            "tensor": "arg.w2_scale"
+          }
+        },
+        "return": {
+          "attributes": {},
+          "tensor": "result"
+        }
+      },
+      "stage": "prefill",
+      "tensors": {
+        "arg.a2_scale": {
+          "device_type": "cuda",
+          "dtype": "float8_e8m0fnu",
+          "role": "input",
+          "shape": [
+            73728,
+            16
+          ],
+          "storage_offset": 0,
+          "strides": [
+            16,
+            1
+          ]
+        },
+        "arg.inter_states": {
+          "device_type": "cuda",
+          "dtype": "float8_e4m3fn",
+          "role": "input",
+          "shape": [
+            8192,
+            6,
+            384
+          ],
+          "storage_offset": 0,
+          "strides": [
+            2304,
+            384,
+            1
+          ]
+        },
+        "arg.num_valid_ids": {
+          "device_type": "cuda",
+          "dtype": "int32",
+          "role": "input",
+          "shape": [
+            2
+          ],
+          "storage_offset": 0,
+          "strides": [
+            1
+          ]
+        },
+        "arg.out": {
+          "device_type": "cuda",
+          "dtype": "bfloat16",
+          "role": "inout",
+          "shape": [
+            8192,
+            7168
+          ],
+          "storage_offset": 0,
+          "strides": [
+            7168,
+            1
+          ]
+        },
+        "arg.sorted_expert_ids": {
+          "device_type": "cuda",
+          "dtype": "int32",
+          "role": "input",
+          "shape": [
+            1152
+          ],
+          "storage_offset": 0,
+          "strides": [
+            1
+          ]
+        },
+        "arg.sorted_token_ids": {
+          "device_type": "cuda",
+          "dtype": "int32",
+          "role": "input",
+          "shape": [
+            73722
+          ],
+          "storage_offset": 0,
+          "strides": [
+            1
+          ]
+        },
+        "arg.sorted_weights": {
+          "device_type": "cuda",
+          "dtype": "float32",
+          "role": "input",
+          "shape": [
+            73722
+          ],
+          "storage_offset": 0,
+          "strides": [
+            1
+          ]
+        },
+        "arg.w1": {
+          "device_type": "cuda",
+          "dtype": "float4_e2m1fn_x2",
+          "role": "input",
+          "shape": [
+            384,
+            768,
+            3584
+          ],
+          "storage_offset": 0,
+          "strides": [
+            2752512,
+            3584,
+            1
+          ]
+        },
+        "arg.w2": {
+          "device_type": "cuda",
+          "dtype": "float4_e2m1fn_x2",
+          "role": "input",
+          "shape": [
+            384,
+            7168,
+            192
+          ],
+          "storage_offset": 0,
+          "strides": [
+            1376256,
+            192,
+            1
+          ]
+        },
+        "arg.w2_scale": {
+          "device_type": "cuda",
+          "dtype": "float8_e8m0fnu",
+          "role": "input",
+          "shape": [
+            2752512,
+            16
+          ],
+          "storage_offset": 0,
+          "strides": [
+            16,
+            1
+          ]
+        },
+        "result": {
+          "device_type": "cuda",
+          "dtype": "bfloat16",
+          "role": "output",
+          "shape": [
+            8192,
+            7168
+          ],
+          "storage_offset": 0,
+          "strides": [
+            7168,
+            1
+          ]
+        }
+      }
+    },
+    {
+      "calls_per_sample": 1,
+      "case_id": "deepseek_moe2-46d9a158091ade7c0f211cbd",
+      "fixture": {
+        "path": "fixtures/deepseek_moe2-46d9a158091ade7c0f211cbd.json",
+        "sha256": "13ef4db2ef48b81fd720df72e3400c5308dd0b51a3c52fe0e38b2ee52bd59472"
+      },
+      "occurrences": 3904,
+      "provenance_kind": "actual_served_capture",
+      "scalars": {
+        "arguments": {
+          "_kwargs": {},
+          "a2_scale": {
+            "attributes": {},
+            "tensor": "arg.a2_scale"
+          },
+          "bias2": null,
+          "block_m": 64,
+          "expert_mask": null,
+          "inter_dim_pad": 0,
+          "inter_states": {
+            "attributes": {},
+            "tensor": "arg.inter_states"
+          },
+          "kernelName": "opus_moe2_afp8_wfp4_fp8_t64x256x256_sbm64_rbn3584",
+          "launch": {
+            "dataclass": "OpusA8W4LaunchConfig",
+            "fields": {
+              "instance": {
+                "dataclass": "OpusA8W4Stage2Instance",
+                "fields": {
+                  "block_m": 64,
+                  "block_n": 256,
+                  "block_threads": 256,
+                  "cachectl_b": 0,
+                  "cachectl_wscale": 0,
+                  "direct_atomic": false,
+                  "kid": 2013,
+                  "max_tuner_token": null,
+                  "min_blocks_per_cu": 4,
+                  "min_tuner_token": 128,
+                  "mode_default": false,
+                  "name": "opus_moe2_afp8_wfp4_fp8_t64x256x256_sbm64_rbn3584",
+                  "out_mode": 2,
+                  "pace_route_blocks_to_pow2": false,
+                  "pair_slots": 2,
+                  "route_reduce": "rbn3584",
+                  "sort_block_m": 64,
+                  "steady_pair_slots": 1
+                }
+              }
+            }
+          },
+          "model_dim_pad": 0,
+          "num_valid_ids": {
+            "attributes": {},
+            "tensor": "arg.num_valid_ids"
+          },
+          "out": {
+            "attributes": {},
+            "tensor": "arg.out"
+          },
+          "sorted_expert_ids": {
+            "attributes": {},
+            "tensor": "arg.sorted_expert_ids"
+          },
+          "sorted_token_ids": {
+            "attributes": {},
+            "tensor": "arg.sorted_token_ids"
+          },
+          "sorted_weights": {
+            "attributes": {},
+            "tensor": "arg.sorted_weights"
+          },
+          "topk": 6,
+          "topk_ids": null,
+          "w1": {
+            "attributes": {
+              "is_shuffled": true
+            },
+            "tensor": "arg.w1"
+          },
+          "w2": {
+            "attributes": {
+              "is_shuffled": true
+            },
+            "tensor": "arg.w2"
+          },
+          "w2_scale": {
+            "attributes": {},
+            "tensor": "arg.w2_scale"
+          }
+        },
+        "return": {
+          "attributes": {},
+          "tensor": "result"
+        }
+      },
+      "stage": "prefill",
+      "tensors": {
+        "arg.a2_scale": {
+          "device_type": "cuda",
+          "dtype": "float8_e8m0fnu",
+          "role": "input",
+          "shape": [
+            73728,
+            16
+          ],
+          "storage_offset": 0,
+          "strides": [
+            16,
+            1
+          ]
+        },
+        "arg.inter_states": {
+          "device_type": "cuda",
+          "dtype": "float8_e4m3fn",
+          "role": "input",
+          "shape": [
+            8192,
+            6,
+            384
+          ],
+          "storage_offset": 0,
+          "strides": [
+            2304,
+            384,
+            1
+          ]
+        },
+        "arg.num_valid_ids": {
+          "device_type": "cuda",
+          "dtype": "int32",
+          "role": "input",
+          "shape": [
+            2
+          ],
+          "storage_offset": 0,
+          "strides": [
+            1
+          ]
+        },
+        "arg.out": {
+          "device_type": "cuda",
+          "dtype": "bfloat16",
+          "role": "inout",
+          "shape": [
+            8192,
+            7168
+          ],
+          "storage_offset": 0,
+          "strides": [
+            7168,
+            1
+          ]
+        },
+        "arg.sorted_expert_ids": {
+          "device_type": "cuda",
+          "dtype": "int32",
+          "role": "input",
+          "shape": [
+            1152
+          ],
+          "storage_offset": 0,
+          "strides": [
+            1
+          ]
+        },
+        "arg.sorted_token_ids": {
+          "device_type": "cuda",
+          "dtype": "int32",
+          "role": "input",
+          "shape": [
+            73722
+          ],
+          "storage_offset": 0,
+          "strides": [
+            1
+          ]
+        },
+        "arg.sorted_weights": {
+          "device_type": "cuda",
+          "dtype": "float32",
+          "role": "input",
+          "shape": [
+            73722
+          ],
+          "storage_offset": 0,
+          "strides": [
+            1
+          ]
+        },
+        "arg.w1": {
+          "device_type": "cuda",
+          "dtype": "float4_e2m1fn_x2",
+          "role": "input",
+          "shape": [
+            384,
+            768,
+            3584
+          ],
+          "storage_offset": 0,
+          "strides": [
+            2752512,
+            3584,
+            1
+          ]
+        },
+        "arg.w2": {
+          "device_type": "cuda",
+          "dtype": "float4_e2m1fn_x2",
+          "role": "input",
+          "shape": [
+            384,
+            7168,
+            192
+          ],
+          "storage_offset": 0,
+          "strides": [
+            1376256,
+            192,
+            1
+          ]
+        },
+        "arg.w2_scale": {
+          "device_type": "cuda",
+          "dtype": "float8_e8m0fnu",
+          "role": "input",
+          "shape": [
+            2752512,
+            16
+          ],
+          "storage_offset": 0,
+          "strides": [
+            16,
+            1
+          ]
+        },
+        "result": {
+          "device_type": "cuda",
+          "dtype": "bfloat16",
+          "role": "output",
+          "shape": [
+            8192,
+            7168
+          ],
+          "storage_offset": 0,
+          "strides": [
+            7168,
+            1
+          ]
+        }
+      }
+    },
+    {
+      "calls_per_sample": 1,
+      "case_id": "deepseek_moe2-85737162d661689681167e9c-work-1823119e10017f2d",
+      "fixture": {
+        "path": "fixtures/deepseek_moe2-85737162d661689681167e9c-work-1823119e10017f2d.json",
+        "sha256": "66276f5bab07bd0a655156771e801468721340f959da12639467a2f9c6854bef"
+      },
+      "occurrences": 1,
+      "provenance_kind": "actual_served_capture",
+      "scalars": {
+        "arguments": {
+          "_kwargs": {},
+          "a2_scale": {
+            "attributes": {},
+            "tensor": "arg.a2_scale"
+          },
+          "bias2": null,
+          "block_m": 32,
+          "expert_mask": null,
+          "inter_dim_pad": 0,
+          "inter_states": {
+            "attributes": {},
+            "tensor": "arg.inter_states"
+          },
+          "kernelName": "opus_moe2_afp8_wfp4_atomic_t32x128x256_sbm32_occ1_cache_b3_ws2",
+          "launch": {
+            "dataclass": "OpusA8W4LaunchConfig",
+            "fields": {
+              "instance": {
+                "dataclass": "OpusA8W4Stage2Instance",
+                "fields": {
+                  "block_m": 32,
+                  "block_n": 128,
+                  "block_threads": 128,
+                  "cachectl_b": 3,
+                  "cachectl_wscale": 2,
+                  "direct_atomic": true,
+                  "kid": 2005,
+                  "max_tuner_token": 2048,
+                  "min_blocks_per_cu": 1,
+                  "min_tuner_token": 1,
+                  "mode_default": false,
+                  "name": "opus_moe2_afp8_wfp4_atomic_t32x128x256_sbm32_occ1_cache_b3_ws2",
+                  "out_mode": 0,
+                  "pace_route_blocks_to_pow2": false,
+                  "pair_slots": 1,
+                  "route_reduce": null,
+                  "sort_block_m": 32,
+                  "steady_pair_slots": 1
+                }
+              }
+            }
+          },
+          "model_dim_pad": 0,
+          "num_valid_ids": {
+            "attributes": {},
+            "tensor": "arg.num_valid_ids"
+          },
+          "out": {
+            "attributes": {},
+            "tensor": "arg.out"
+          },
+          "sorted_expert_ids": {
+            "attributes": {},
+            "tensor": "arg.sorted_expert_ids"
+          },
+          "sorted_token_ids": {
+            "attributes": {},
+            "tensor": "arg.sorted_token_ids"
+          },
+          "sorted_weights": {
+            "attributes": {},
+            "tensor": "arg.sorted_weights"
+          },
+          "topk": 6,
+          "topk_ids": null,
+          "w1": {
+            "attributes": {
+              "is_shuffled": true
+            },
+            "tensor": "arg.w1"
+          },
+          "w2": {
+            "attributes": {
+              "is_shuffled": true
+            },
+            "tensor": "arg.w2"
+          },
+          "w2_scale": {
+            "attributes": {},
+            "tensor": "arg.w2_scale"
+          }
+        },
+        "return": {
+          "attributes": {},
+          "tensor": "result"
+        }
+      },
+      "stage": "decode",
+      "tensors": {
+        "arg.a2_scale": {
+          "device_type": "cuda",
+          "dtype": "float8_e8m0fnu",
+          "role": "input",
+          "shape": [
+            12800,
+            16
+          ],
+          "storage_offset": 0,
+          "strides": [
+            16,
+            1
+          ]
+        },
+        "arg.inter_states": {
+          "device_type": "cuda",
+          "dtype": "float8_e4m3fn",
+          "role": "input",
+          "shape": [
+            64,
+            6,
+            384
+          ],
+          "storage_offset": 0,
+          "strides": [
+            2304,
+            384,
+            1
+          ]
+        },
+        "arg.num_valid_ids": {
+          "device_type": "cuda",
+          "dtype": "int32",
+          "role": "input",
+          "shape": [
+            2
+          ],
+          "storage_offset": 0,
+          "strides": [
+            1
+          ]
+        },
+        "arg.out": {
+          "device_type": "cuda",
+          "dtype": "bfloat16",
+          "role": "inout",
+          "shape": [
+            64,
+            7168
+          ],
+          "storage_offset": 0,
+          "strides": [
+            7168,
+            1
+          ]
+        },
+        "arg.sorted_expert_ids": {
+          "device_type": "cuda",
+          "dtype": "int32",
+          "role": "input",
+          "shape": [
+            396
+          ],
+          "storage_offset": 0,
+          "strides": [
+            1
+          ]
+        },
+        "arg.sorted_token_ids": {
+          "device_type": "cuda",
+          "dtype": "int32",
+          "role": "input",
+          "shape": [
+            12666
+          ],
+          "storage_offset": 0,
+          "strides": [
+            1
+          ]
+        },
+        "arg.sorted_weights": {
+          "device_type": "cuda",
+          "dtype": "float32",
+          "role": "input",
+          "shape": [
+            12666
+          ],
+          "storage_offset": 0,
+          "strides": [
+            1
+          ]
+        },
+        "arg.w1": {
+          "device_type": "cuda",
+          "dtype": "float4_e2m1fn_x2",
+          "role": "input",
+          "shape": [
+            384,
+            768,
+            3584
+          ],
+          "storage_offset": 0,
+          "strides": [
+            2752512,
+            3584,
+            1
+          ]
+        },
+        "arg.w2": {
+          "device_type": "cuda",
+          "dtype": "float4_e2m1fn_x2",
+          "role": "input",
+          "shape": [
+            384,
+            7168,
+            192
+          ],
+          "storage_offset": 0,
+          "strides": [
+            1376256,
+            192,
+            1
+          ]
+        },
+        "arg.w2_scale": {
+          "device_type": "cuda",
+          "dtype": "float8_e8m0fnu",
+          "role": "input",
+          "shape": [
+            2752512,
+            16
+          ],
+          "storage_offset": 0,
+          "strides": [
+            16,
+            1
+          ]
+        },
+        "result": {
+          "device_type": "cuda",
+          "dtype": "bfloat16",
+          "role": "output",
+          "shape": [
+            64,
+            7168
+          ],
+          "storage_offset": 0,
+          "strides": [
+            7168,
+            1
+          ]
+        }
+      }
+    },
+    {
+      "calls_per_sample": 1,
+      "case_id": "deepseek_moe2-85737162d661689681167e9c-work-a8403d1d6afee320",
+      "fixture": {
+        "path": "fixtures/deepseek_moe2-85737162d661689681167e9c-work-a8403d1d6afee320.json",
+        "sha256": "392e8c0734aac683aac35e6fd1ac3586bbd3cbc823dc34c069d93fcb8a5635f9"
+      },
+      "occurrences": 2,
+      "provenance_kind": "actual_served_capture",
+      "scalars": {
+        "arguments": {
+          "_kwargs": {},
+          "a2_scale": {
+            "attributes": {},
+            "tensor": "arg.a2_scale"
+          },
+          "bias2": null,
+          "block_m": 32,
+          "expert_mask": null,
+          "inter_dim_pad": 0,
+          "inter_states": {
+            "attributes": {},
+            "tensor": "arg.inter_states"
+          },
+          "kernelName": "opus_moe2_afp8_wfp4_atomic_t32x128x256_sbm32_occ1_cache_b3_ws2",
+          "launch": {
+            "dataclass": "OpusA8W4LaunchConfig",
+            "fields": {
+              "instance": {
+                "dataclass": "OpusA8W4Stage2Instance",
+                "fields": {
+                  "block_m": 32,
+                  "block_n": 128,
+                  "block_threads": 128,
+                  "cachectl_b": 3,
+                  "cachectl_wscale": 2,
+                  "direct_atomic": true,
+                  "kid": 2005,
+                  "max_tuner_token": 2048,
+                  "min_blocks_per_cu": 1,
+                  "min_tuner_token": 1,
+                  "mode_default": false,
+                  "name": "opus_moe2_afp8_wfp4_atomic_t32x128x256_sbm32_occ1_cache_b3_ws2",
+                  "out_mode": 0,
+                  "pace_route_blocks_to_pow2": false,
+                  "pair_slots": 1,
+                  "route_reduce": null,
+                  "sort_block_m": 32,
+                  "steady_pair_slots": 1
+                }
+              }
+            }
+          },
+          "model_dim_pad": 0,
+          "num_valid_ids": {
+            "attributes": {},
+            "tensor": "arg.num_valid_ids"
+          },
+          "out": {
+            "attributes": {},
+            "tensor": "arg.out"
+          },
+          "sorted_expert_ids": {
+            "attributes": {},
+            "tensor": "arg.sorted_expert_ids"
+          },
+          "sorted_token_ids": {
+            "attributes": {},
+            "tensor": "arg.sorted_token_ids"
+          },
+          "sorted_weights": {
+            "attributes": {},
+            "tensor": "arg.sorted_weights"
+          },
+          "topk": 6,
+          "topk_ids": null,
+          "w1": {
+            "attributes": {
+              "is_shuffled": true
+            },
+            "tensor": "arg.w1"
+          },
+          "w2": {
+            "attributes": {
+              "is_shuffled": true
+            },
+            "tensor": "arg.w2"
+          },
+          "w2_scale": {
+            "attributes": {},
+            "tensor": "arg.w2_scale"
+          }
+        },
+        "return": {
+          "attributes": {},
+          "tensor": "result"
+        }
+      },
+      "stage": "decode",
+      "tensors": {
+        "arg.a2_scale": {
+          "device_type": "cuda",
+          "dtype": "float8_e8m0fnu",
+          "role": "input",
+          "shape": [
+            12800,
+            16
+          ],
+          "storage_offset": 0,
+          "strides": [
+            16,
+            1
+          ]
+        },
+        "arg.inter_states": {
+          "device_type": "cuda",
+          "dtype": "float8_e4m3fn",
+          "role": "input",
+          "shape": [
+            64,
+            6,
+            384
+          ],
+          "storage_offset": 0,
+          "strides": [
+            2304,
+            384,
+            1
+          ]
+        },
+        "arg.num_valid_ids": {
+          "device_type": "cuda",
+          "dtype": "int32",
+          "role": "input",
+          "shape": [
+            2
+          ],
+          "storage_offset": 0,
+          "strides": [
+            1
+          ]
+        },
+        "arg.out": {
+          "device_type": "cuda",
+          "dtype": "bfloat16",
+          "role": "inout",
+          "shape": [
+            64,
+            7168
+          ],
+          "storage_offset": 0,
+          "strides": [
+            7168,
+            1
+          ]
+        },
+        "arg.sorted_expert_ids": {
+          "device_type": "cuda",
+          "dtype": "int32",
+          "role": "input",
+          "shape": [
+            396
+          ],
+          "storage_offset": 0,
+          "strides": [
+            1
+          ]
+        },
+        "arg.sorted_token_ids": {
+          "device_type": "cuda",
+          "dtype": "int32",
+          "role": "input",
+          "shape": [
+            12666
+          ],
+          "storage_offset": 0,
+          "strides": [
+            1
+          ]
+        },
+        "arg.sorted_weights": {
+          "device_type": "cuda",
+          "dtype": "float32",
+          "role": "input",
+          "shape": [
+            12666
+          ],
+          "storage_offset": 0,
+          "strides": [
+            1
+          ]
+        },
+        "arg.w1": {
+          "device_type": "cuda",
+          "dtype": "float4_e2m1fn_x2",
+          "role": "input",
+          "shape": [
+            384,
+            768,
+            3584
+          ],
+          "storage_offset": 0,
+          "strides": [
+            2752512,
+            3584,
+            1
+          ]
+        },
+        "arg.w2": {
+          "device_type": "cuda",
+          "dtype": "float4_e2m1fn_x2",
+          "role": "input",
+          "shape": [
+            384,
+            7168,
+            192
+          ],
+          "storage_offset": 0,
+          "strides": [
+            1376256,
+            192,
+            1
+          ]
+        },
+        "arg.w2_scale": {
+          "device_type": "cuda",
+          "dtype": "float8_e8m0fnu",
+          "role": "input",
+          "shape": [
+            2752512,
+            16
+          ],
+          "storage_offset": 0,
+          "strides": [
+            16,
+            1
+          ]
+        },
+        "result": {
+          "device_type": "cuda",
+          "dtype": "bfloat16",
+          "role": "output",
+          "shape": [
+            64,
+            7168
+          ],
+          "storage_offset": 0,
+          "strides": [
+            7168,
+            1
+          ]
+        }
+      }
+    },
+    {
+      "calls_per_sample": 1,
+      "case_id": "deepseek_moe2-85737162d661689681167e9c",
+      "fixture": {
+        "path": "fixtures/deepseek_moe2-85737162d661689681167e9c.json",
+        "sha256": "8bb3f424ad9cd395250220cabbe620cf7d500833b6c636a065cb2eb35cbe3a13"
+      },
+      "occurrences": 62464,
+      "provenance_kind": "actual_served_capture",
+      "scalars": {
+        "arguments": {
+          "_kwargs": {},
+          "a2_scale": {
+            "attributes": {},
+            "tensor": "arg.a2_scale"
+          },
+          "bias2": null,
+          "block_m": 32,
+          "expert_mask": null,
+          "inter_dim_pad": 0,
+          "inter_states": {
+            "attributes": {},
+            "tensor": "arg.inter_states"
+          },
+          "kernelName": "opus_moe2_afp8_wfp4_atomic_t32x128x256_sbm32_occ1_cache_b3_ws2",
+          "launch": {
+            "dataclass": "OpusA8W4LaunchConfig",
+            "fields": {
+              "instance": {
+                "dataclass": "OpusA8W4Stage2Instance",
+                "fields": {
+                  "block_m": 32,
+                  "block_n": 128,
+                  "block_threads": 128,
+                  "cachectl_b": 3,
+                  "cachectl_wscale": 2,
+                  "direct_atomic": true,
+                  "kid": 2005,
+                  "max_tuner_token": 2048,
+                  "min_blocks_per_cu": 1,
+                  "min_tuner_token": 1,
+                  "mode_default": false,
+                  "name": "opus_moe2_afp8_wfp4_atomic_t32x128x256_sbm32_occ1_cache_b3_ws2",
+                  "out_mode": 0,
+                  "pace_route_blocks_to_pow2": false,
+                  "pair_slots": 1,
+                  "route_reduce": null,
+                  "sort_block_m": 32,
+                  "steady_pair_slots": 1
+                }
+              }
+            }
+          },
+          "model_dim_pad": 0,
+          "num_valid_ids": {
+            "attributes": {},
+            "tensor": "arg.num_valid_ids"
+          },
+          "out": {
+            "attributes": {},
+            "tensor": "arg.out"
+          },
+          "sorted_expert_ids": {
+            "attributes": {},
+            "tensor": "arg.sorted_expert_ids"
+          },
+          "sorted_token_ids": {
+            "attributes": {},
+            "tensor": "arg.sorted_token_ids"
+          },
+          "sorted_weights": {
+            "attributes": {},
+            "tensor": "arg.sorted_weights"
+          },
+          "topk": 6,
+          "topk_ids": null,
+          "w1": {
+            "attributes": {
+              "is_shuffled": true
+            },
+            "tensor": "arg.w1"
+          },
+          "w2": {
+            "attributes": {
+              "is_shuffled": true
+            },
+            "tensor": "arg.w2"
+          },
+          "w2_scale": {
+            "attributes": {},
+            "tensor": "arg.w2_scale"
+          }
+        },
+        "return": {
+          "attributes": {},
+          "tensor": "result"
+        }
+      },
+      "stage": "decode",
+      "tensors": {
+        "arg.a2_scale": {
+          "device_type": "cuda",
+          "dtype": "float8_e8m0fnu",
+          "role": "input",
+          "shape": [
+            12800,
+            16
+          ],
+          "storage_offset": 0,
+          "strides": [
+            16,
+            1
+          ]
+        },
+        "arg.inter_states": {
+          "device_type": "cuda",
+          "dtype": "float8_e4m3fn",
+          "role": "input",
+          "shape": [
+            64,
+            6,
+            384
+          ],
+          "storage_offset": 0,
+          "strides": [
+            2304,
+            384,
+            1
+          ]
+        },
+        "arg.num_valid_ids": {
+          "device_type": "cuda",
+          "dtype": "int32",
+          "role": "input",
+          "shape": [
+            2
+          ],
+          "storage_offset": 0,
+          "strides": [
+            1
+          ]
+        },
+        "arg.out": {
+          "device_type": "cuda",
+          "dtype": "bfloat16",
+          "role": "inout",
+          "shape": [
+            64,
+            7168
+          ],
+          "storage_offset": 0,
+          "strides": [
+            7168,
+            1
+          ]
+        },
+        "arg.sorted_expert_ids": {
+          "device_type": "cuda",
+          "dtype": "int32",
+          "role": "input",
+          "shape": [
+            396
+          ],
+          "storage_offset": 0,
+          "strides": [
+            1
+          ]
+        },
+        "arg.sorted_token_ids": {
+          "device_type": "cuda",
+          "dtype": "int32",
+          "role": "input",
+          "shape": [
+            12666
+          ],
+          "storage_offset": 0,
+          "strides": [
+            1
+          ]
+        },
+        "arg.sorted_weights": {
+          "device_type": "cuda",
+          "dtype": "float32",
+          "role": "input",
+          "shape": [
+            12666
+          ],
+          "storage_offset": 0,
+          "strides": [
+            1
+          ]
+        },
+        "arg.w1": {
+          "device_type": "cuda",
+          "dtype": "float4_e2m1fn_x2",
+          "role": "input",
+          "shape": [
+            384,
+            768,
+            3584
+          ],
+          "storage_offset": 0,
+          "strides": [
+            2752512,
+            3584,
+            1
+          ]
+        },
+        "arg.w2": {
+          "device_type": "cuda",
+          "dtype": "float4_e2m1fn_x2",
+          "role": "input",
+          "shape": [
+            384,
+            7168,
+            192
+          ],
+          "storage_offset": 0,
+          "strides": [
+            1376256,
+            192,
+            1
+          ]
+        },
+        "arg.w2_scale": {
+          "device_type": "cuda",
+          "dtype": "float8_e8m0fnu",
+          "role": "input",
+          "shape": [
+            2752512,
+            16
+          ],
+          "storage_offset": 0,
+          "strides": [
+            16,
+            1
+          ]
+        },
+        "result": {
+          "device_type": "cuda",
+          "dtype": "bfloat16",
+          "role": "output",
+          "shape": [
+            64,
+            7168
+          ],
+          "storage_offset": 0,
+          "strides": [
+            7168,
+            1
+          ]
+        }
+      }
+    },
+    {
+      "calls_per_sample": 1,
+      "case_id": "generated-n2400-seed42-moe2",
+      "fixture": {
+        "path": "fixtures/generated-n2400-seed42-moe2.json",
+        "sha256": "d6253809071fd2fff7ce096d22f28396d31868ffc7f119e58160f41d3b0c422b"
+      },
+      "generated_scenario": {
+        "graph_replays": 16,
+        "mode": "isolated_native_graph",
+        "num_valid_ids": [
+          2400,
+          64
+        ],
+        "scenario_id": "generated-n2400-seed42",
+        "seed": 42
+      },
+      "native_replay_fixture_sha256": "88e830cb40988b1337bd04250f147211dbe2cc7f1a5ec79083d38c1d9030bb03",
+      "observed_control_occurrences_by_rank": {
+        "6": 1
+      },
+      "occurrence_basis": "one_generated_fixture_not_a_served_launch_count",
+      "occurrences": 1,
+      "provenance_kind": "generated_native_graph_replay",
+      "scalars": {
+        "arguments": {
+          "_kwargs": {},
+          "a2_scale": {
+            "attributes": {},
+            "tensor": "arg.a2_scale"
+          },
+          "bias2": null,
+          "block_m": 32,
+          "expert_mask": null,
+          "inter_dim_pad": 0,
+          "inter_states": {
+            "attributes": {},
+            "tensor": "arg.inter_states"
+          },
+          "kernelName": "opus_moe2_afp8_wfp4_atomic_t32x128x256_sbm32_occ1_cache_b3_ws2",
+          "launch": {
+            "dataclass": "OpusA8W4LaunchConfig",
+            "fields": {
+              "instance": {
+                "dataclass": "OpusA8W4Stage2Instance",
+                "fields": {
+                  "block_m": 32,
+                  "block_n": 128,
+                  "block_threads": 128,
+                  "cachectl_b": 3,
+                  "cachectl_wscale": 2,
+                  "direct_atomic": true,
+                  "kid": 2005,
+                  "max_tuner_token": 2048,
+                  "min_blocks_per_cu": 1,
+                  "min_tuner_token": 1,
+                  "mode_default": false,
+                  "name": "opus_moe2_afp8_wfp4_atomic_t32x128x256_sbm32_occ1_cache_b3_ws2",
+                  "out_mode": 0,
+                  "pace_route_blocks_to_pow2": false,
+                  "pair_slots": 1,
+                  "route_reduce": null,
+                  "sort_block_m": 32,
+                  "steady_pair_slots": 1
+                }
+              }
+            }
+          },
+          "model_dim_pad": 0,
+          "num_valid_ids": {
+            "attributes": {},
+            "tensor": "arg.num_valid_ids"
+          },
+          "out": {
+            "attributes": {},
+            "tensor": "arg.out"
+          },
+          "sorted_expert_ids": {
+            "attributes": {},
+            "tensor": "arg.sorted_expert_ids"
+          },
+          "sorted_token_ids": {
+            "attributes": {},
+            "tensor": "arg.sorted_token_ids"
+          },
+          "sorted_weights": {
+            "attributes": {},
+            "tensor": "arg.sorted_weights"
+          },
+          "topk": 6,
+          "topk_ids": null,
+          "w1": {
+            "attributes": {
+              "is_shuffled": true
+            },
+            "tensor": "arg.w1"
+          },
+          "w2": {
+            "attributes": {
+              "is_shuffled": true
+            },
+            "tensor": "arg.w2"
+          },
+          "w2_scale": {
+            "attributes": {},
+            "tensor": "arg.w2_scale"
+          }
+        },
+        "return": {
+          "attributes": {},
+          "tensor": "result"
+        }
+      },
+      "stage": "decode",
+      "tensors": {
+        "arg.a2_scale": {
+          "device_type": "cuda",
+          "dtype": "float8_e8m0fnu",
+          "role": "input",
+          "shape": [
+            12800,
+            16
+          ],
+          "storage_offset": 0,
+          "strides": [
+            16,
+            1
+          ]
+        },
+        "arg.inter_states": {
+          "device_type": "cuda",
+          "dtype": "float8_e4m3fn",
+          "role": "input",
+          "shape": [
+            64,
+            6,
+            384
+          ],
+          "storage_offset": 0,
+          "strides": [
+            2304,
+            384,
+            1
+          ]
+        },
+        "arg.num_valid_ids": {
+          "device_type": "cuda",
+          "dtype": "int32",
+          "role": "input",
+          "shape": [
+            2
+          ],
+          "storage_offset": 0,
+          "strides": [
+            1
+          ]
+        },
+        "arg.out": {
+          "device_type": "cuda",
+          "dtype": "bfloat16",
+          "role": "inout",
+          "shape": [
+            64,
+            7168
+          ],
+          "storage_offset": 0,
+          "strides": [
+            7168,
+            1
+          ]
+        },
+        "arg.sorted_expert_ids": {
+          "device_type": "cuda",
+          "dtype": "int32",
+          "role": "input",
+          "shape": [
+            396
+          ],
+          "storage_offset": 0,
+          "strides": [
+            1
+          ]
+        },
+        "arg.sorted_token_ids": {
+          "device_type": "cuda",
+          "dtype": "int32",
+          "role": "input",
+          "shape": [
+            12666
+          ],
+          "storage_offset": 0,
+          "strides": [
+            1
+          ]
+        },
+        "arg.sorted_weights": {
+          "device_type": "cuda",
+          "dtype": "float32",
+          "role": "input",
+          "shape": [
+            12666
+          ],
+          "storage_offset": 0,
+          "strides": [
+            1
+          ]
+        },
+        "arg.w1": {
+          "device_type": "cuda",
+          "dtype": "float4_e2m1fn_x2",
+          "role": "input",
+          "shape": [
+            384,
+            768,
+            3584
+          ],
+          "storage_offset": 0,
+          "strides": [
+            2752512,
+            3584,
+            1
+          ]
+        },
+        "arg.w2": {
+          "device_type": "cuda",
+          "dtype": "float4_e2m1fn_x2",
+          "role": "input",
+          "shape": [
+            384,
+            7168,
+            192
+          ],
+          "storage_offset": 0,
+          "strides": [
+            1376256,
+            192,
+            1
+          ]
+        },
+        "arg.w2_scale": {
+          "device_type": "cuda",
+          "dtype": "float8_e8m0fnu",
+          "role": "input",
+          "shape": [
+            2752512,
+            16
+          ],
+          "storage_offset": 0,
+          "strides": [
+            16,
+            1
+          ]
+        },
+        "result": {
+          "device_type": "cuda",
+          "dtype": "bfloat16",
+          "role": "output",
+          "shape": [
+            64,
+            7168
+          ],
+          "storage_offset": 0,
+          "strides": [
+            7168,
+            1
+          ]
+        }
+      }
+    },
+    {
+      "calls_per_sample": 1,
+      "case_id": "generated-n2400-seed43-moe2",
+      "fixture": {
+        "path": "fixtures/generated-n2400-seed43-moe2.json",
+        "sha256": "88b9a8640a4265e6ecbc9b81e41fbd1d58e26be462ee4df5ffc487cb6cd487b6"
+      },
+      "generated_scenario": {
+        "graph_replays": 16,
+        "mode": "isolated_native_graph",
+        "num_valid_ids": [
+          2400,
+          64
+        ],
+        "scenario_id": "generated-n2400-seed43",
+        "seed": 43
+      },
+      "native_replay_fixture_sha256": "eb94ac4fc03b0f503049f91e83822f83b35c76ecd5d0031396ab08fd99013e3a",
+      "observed_control_occurrences_by_rank": {
+        "6": 1
+      },
+      "occurrence_basis": "one_generated_fixture_not_a_served_launch_count",
+      "occurrences": 1,
+      "provenance_kind": "generated_native_graph_replay",
+      "scalars": {
+        "arguments": {
+          "_kwargs": {},
+          "a2_scale": {
+            "attributes": {},
+            "tensor": "arg.a2_scale"
+          },
+          "bias2": null,
+          "block_m": 32,
+          "expert_mask": null,
+          "inter_dim_pad": 0,
+          "inter_states": {
+            "attributes": {},
+            "tensor": "arg.inter_states"
+          },
+          "kernelName": "opus_moe2_afp8_wfp4_atomic_t32x128x256_sbm32_occ1_cache_b3_ws2",
+          "launch": {
+            "dataclass": "OpusA8W4LaunchConfig",
+            "fields": {
+              "instance": {
+                "dataclass": "OpusA8W4Stage2Instance",
+                "fields": {
+                  "block_m": 32,
+                  "block_n": 128,
+                  "block_threads": 128,
+                  "cachectl_b": 3,
+                  "cachectl_wscale": 2,
+                  "direct_atomic": true,
+                  "kid": 2005,
+                  "max_tuner_token": 2048,
+                  "min_blocks_per_cu": 1,
+                  "min_tuner_token": 1,
+                  "mode_default": false,
+                  "name": "opus_moe2_afp8_wfp4_atomic_t32x128x256_sbm32_occ1_cache_b3_ws2",
+                  "out_mode": 0,
+                  "pace_route_blocks_to_pow2": false,
+                  "pair_slots": 1,
+                  "route_reduce": null,
+                  "sort_block_m": 32,
+                  "steady_pair_slots": 1
+                }
+              }
+            }
+          },
+          "model_dim_pad": 0,
+          "num_valid_ids": {
+            "attributes": {},
+            "tensor": "arg.num_valid_ids"
+          },
+          "out": {
+            "attributes": {},
+            "tensor": "arg.out"
+          },
+          "sorted_expert_ids": {
+            "attributes": {},
+            "tensor": "arg.sorted_expert_ids"
+          },
+          "sorted_token_ids": {
+            "attributes": {},
+            "tensor": "arg.sorted_token_ids"
+          },
+          "sorted_weights": {
+            "attributes": {},
+            "tensor": "arg.sorted_weights"
+          },
+          "topk": 6,
+          "topk_ids": null,
+          "w1": {
+            "attributes": {
+              "is_shuffled": true
+            },
+            "tensor": "arg.w1"
+          },
+          "w2": {
+            "attributes": {
+              "is_shuffled": true
+            },
+            "tensor": "arg.w2"
+          },
+          "w2_scale": {
+            "attributes": {},
+            "tensor": "arg.w2_scale"
+          }
+        },
+        "return": {
+          "attributes": {},
+          "tensor": "result"
+        }
+      },
+      "stage": "decode",
+      "tensors": {
+        "arg.a2_scale": {
+          "device_type": "cuda",
+          "dtype": "float8_e8m0fnu",
+          "role": "input",
+          "shape": [
+            12800,
+            16
+          ],
+          "storage_offset": 0,
+          "strides": [
+            16,
+            1
+          ]
+        },
+        "arg.inter_states": {
+          "device_type": "cuda",
+          "dtype": "float8_e4m3fn",
+          "role": "input",
+          "shape": [
+            64,
+            6,
+            384
+          ],
+          "storage_offset": 0,
+          "strides": [
+            2304,
+            384,
+            1
+          ]
+        },
+        "arg.num_valid_ids": {
+          "device_type": "cuda",
+          "dtype": "int32",
+          "role": "input",
+          "shape": [
+            2
+          ],
+          "storage_offset": 0,
+          "strides": [
+            1
+          ]
+        },
+        "arg.out": {
+          "device_type": "cuda",
+          "dtype": "bfloat16",
+          "role": "inout",
+          "shape": [
+            64,
+            7168
+          ],
+          "storage_offset": 0,
+          "strides": [
+            7168,
+            1
+          ]
+        },
+        "arg.sorted_expert_ids": {
+          "device_type": "cuda",
+          "dtype": "int32",
+          "role": "input",
+          "shape": [
+            396
+          ],
+          "storage_offset": 0,
+          "strides": [
+            1
+          ]
+        },
+        "arg.sorted_token_ids": {
+          "device_type": "cuda",
+          "dtype": "int32",
+          "role": "input",
+          "shape": [
+            12666
+          ],
+          "storage_offset": 0,
+          "strides": [
+            1
+          ]
+        },
+        "arg.sorted_weights": {
+          "device_type": "cuda",
+          "dtype": "float32",
+          "role": "input",
+          "shape": [
+            12666
+          ],
+          "storage_offset": 0,
+          "strides": [
+            1
+          ]
+        },
+        "arg.w1": {
+          "device_type": "cuda",
+          "dtype": "float4_e2m1fn_x2",
+          "role": "input",
+          "shape": [
+            384,
+            768,
+            3584
+          ],
+          "storage_offset": 0,
+          "strides": [
+            2752512,
+            3584,
+            1
+          ]
+        },
+        "arg.w2": {
+          "device_type": "cuda",
+          "dtype": "float4_e2m1fn_x2",
+          "role": "input",
+          "shape": [
+            384,
+            7168,
+            192
+          ],
+          "storage_offset": 0,
+          "strides": [
+            1376256,
+            192,
+            1
+          ]
+        },
+        "arg.w2_scale": {
+          "device_type": "cuda",
+          "dtype": "float8_e8m0fnu",
+          "role": "input",
+          "shape": [
+            2752512,
+            16
+          ],
+          "storage_offset": 0,
+          "strides": [
+            16,
+            1
+          ]
+        },
+        "result": {
+          "device_type": "cuda",
+          "dtype": "bfloat16",
+          "role": "output",
+          "shape": [
+            64,
+            7168
+          ],
+          "storage_offset": 0,
+          "strides": [
+            7168,
+            1
+          ]
+        }
+      }
+    },
+    {
+      "calls_per_sample": 1,
+      "case_id": "generated-n2432-seed42-moe2",
+      "fixture": {
+        "path": "fixtures/generated-n2432-seed42-moe2.json",
+        "sha256": "f5585a79b91189bb94436aadf2c57853fa8d817879b6259357065372beb183ff"
+      },
+      "generated_scenario": {
+        "graph_replays": 16,
+        "mode": "isolated_native_graph",
+        "num_valid_ids": [
+          2432,
+          64
+        ],
+        "scenario_id": "generated-n2432-seed42",
+        "seed": 42
+      },
+      "native_replay_fixture_sha256": "634378aa119a4a80417f3b3ce09b4657b08bdce5ac6167f870808b4d8fe3fdc9",
+      "observed_control_occurrences_by_rank": {
+        "3": 1,
+        "5": 1,
+        "7": 1
+      },
+      "occurrence_basis": "one_generated_fixture_not_a_served_launch_count",
+      "occurrences": 1,
+      "provenance_kind": "generated_native_graph_replay",
+      "scalars": {
+        "arguments": {
+          "_kwargs": {},
+          "a2_scale": {
+            "attributes": {},
+            "tensor": "arg.a2_scale"
+          },
+          "bias2": null,
+          "block_m": 32,
+          "expert_mask": null,
+          "inter_dim_pad": 0,
+          "inter_states": {
+            "attributes": {},
+            "tensor": "arg.inter_states"
+          },
+          "kernelName": "opus_moe2_afp8_wfp4_atomic_t32x128x256_sbm32_occ1_cache_b3_ws2",
+          "launch": {
+            "dataclass": "OpusA8W4LaunchConfig",
+            "fields": {
+              "instance": {
+                "dataclass": "OpusA8W4Stage2Instance",
+                "fields": {
+                  "block_m": 32,
+                  "block_n": 128,
+                  "block_threads": 128,
+                  "cachectl_b": 3,
+                  "cachectl_wscale": 2,
+                  "direct_atomic": true,
+                  "kid": 2005,
+                  "max_tuner_token": 2048,
+                  "min_blocks_per_cu": 1,
+                  "min_tuner_token": 1,
+                  "mode_default": false,
+                  "name": "opus_moe2_afp8_wfp4_atomic_t32x128x256_sbm32_occ1_cache_b3_ws2",
+                  "out_mode": 0,
+                  "pace_route_blocks_to_pow2": false,
+                  "pair_slots": 1,
+                  "route_reduce": null,
+                  "sort_block_m": 32,
+                  "steady_pair_slots": 1
+                }
+              }
+            }
+          },
+          "model_dim_pad": 0,
+          "num_valid_ids": {
+            "attributes": {},
+            "tensor": "arg.num_valid_ids"
+          },
+          "out": {
+            "attributes": {},
+            "tensor": "arg.out"
+          },
+          "sorted_expert_ids": {
+            "attributes": {},
+            "tensor": "arg.sorted_expert_ids"
+          },
+          "sorted_token_ids": {
+            "attributes": {},
+            "tensor": "arg.sorted_token_ids"
+          },
+          "sorted_weights": {
+            "attributes": {},
+            "tensor": "arg.sorted_weights"
+          },
+          "topk": 6,
+          "topk_ids": null,
+          "w1": {
+            "attributes": {
+              "is_shuffled": true
+            },
+            "tensor": "arg.w1"
+          },
+          "w2": {
+            "attributes": {
+              "is_shuffled": true
+            },
+            "tensor": "arg.w2"
+          },
+          "w2_scale": {
+            "attributes": {},
+            "tensor": "arg.w2_scale"
+          }
+        },
+        "return": {
+          "attributes": {},
+          "tensor": "result"
+        }
+      },
+      "stage": "decode",
+      "tensors": {
+        "arg.a2_scale": {
+          "device_type": "cuda",
+          "dtype": "float8_e8m0fnu",
+          "role": "input",
+          "shape": [
+            12800,
+            16
+          ],
+          "storage_offset": 0,
+          "strides": [
+            16,
+            1
+          ]
+        },
+        "arg.inter_states": {
+          "device_type": "cuda",
+          "dtype": "float8_e4m3fn",
+          "role": "input",
+          "shape": [
+            64,
+            6,
+            384
+          ],
+          "storage_offset": 0,
+          "strides": [
+            2304,
+            384,
+            1
+          ]
+        },
+        "arg.num_valid_ids": {
+          "device_type": "cuda",
+          "dtype": "int32",
+          "role": "input",
+          "shape": [
+            2
+          ],
+          "storage_offset": 0,
+          "strides": [
+            1
+          ]
+        },
+        "arg.out": {
+          "device_type": "cuda",
+          "dtype": "bfloat16",
+          "role": "inout",
+          "shape": [
+            64,
+            7168
+          ],
+          "storage_offset": 0,
+          "strides": [
+            7168,
+            1
+          ]
+        },
+        "arg.sorted_expert_ids": {
+          "device_type": "cuda",
+          "dtype": "int32",
+          "role": "input",
+          "shape": [
+            396
+          ],
+          "storage_offset": 0,
+          "strides": [
+            1
+          ]
+        },
+        "arg.sorted_token_ids": {
+          "device_type": "cuda",
+          "dtype": "int32",
+          "role": "input",
+          "shape": [
+            12666
+          ],
+          "storage_offset": 0,
+          "strides": [
+            1
+          ]
+        },
+        "arg.sorted_weights": {
+          "device_type": "cuda",
+          "dtype": "float32",
+          "role": "input",
+          "shape": [
+            12666
+          ],
+          "storage_offset": 0,
+          "strides": [
+            1
+          ]
+        },
+        "arg.w1": {
+          "device_type": "cuda",
+          "dtype": "float4_e2m1fn_x2",
+          "role": "input",
+          "shape": [
+            384,
+            768,
+            3584
+          ],
+          "storage_offset": 0,
+          "strides": [
+            2752512,
+            3584,
+            1
+          ]
+        },
+        "arg.w2": {
+          "device_type": "cuda",
+          "dtype": "float4_e2m1fn_x2",
+          "role": "input",
+          "shape": [
+            384,
+            7168,
+            192
+          ],
+          "storage_offset": 0,
+          "strides": [
+            1376256,
+            192,
+            1
+          ]
+        },
+        "arg.w2_scale": {
+          "device_type": "cuda",
+          "dtype": "float8_e8m0fnu",
+          "role": "input",
+          "shape": [
+            2752512,
+            16
+          ],
+          "storage_offset": 0,
+          "strides": [
+            16,
+            1
+          ]
+        },
+        "result": {
+          "device_type": "cuda",
+          "dtype": "bfloat16",
+          "role": "output",
+          "shape": [
+            64,
+            7168
+          ],
+          "storage_offset": 0,
+          "strides": [
+            7168,
+            1
+          ]
+        }
+      }
+    },
+    {
+      "calls_per_sample": 1,
+      "case_id": "generated-n2432-seed43-moe2",
+      "fixture": {
+        "path": "fixtures/generated-n2432-seed43-moe2.json",
+        "sha256": "9f423d8092fb04ab577e86c9f520007f7770bd0add13b101d60dc9ce63aa7fb5"
+      },
+      "generated_scenario": {
+        "graph_replays": 16,
+        "mode": "isolated_native_graph",
+        "num_valid_ids": [
+          2432,
+          64
+        ],
+        "scenario_id": "generated-n2432-seed43",
+        "seed": 43
+      },
+      "native_replay_fixture_sha256": "81b7bc2642912f865cc09c84ac5ff10d5475e232aa6e221387343d68e3665aac",
+      "observed_control_occurrences_by_rank": {
+        "3": 1,
+        "5": 1,
+        "7": 1
+      },
+      "occurrence_basis": "one_generated_fixture_not_a_served_launch_count",
+      "occurrences": 1,
+      "provenance_kind": "generated_native_graph_replay",
+      "scalars": {
+        "arguments": {
+          "_kwargs": {},
+          "a2_scale": {
+            "attributes": {},
+            "tensor": "arg.a2_scale"
+          },
+          "bias2": null,
+          "block_m": 32,
+          "expert_mask": null,
+          "inter_dim_pad": 0,
+          "inter_states": {
+            "attributes": {},
+            "tensor": "arg.inter_states"
+          },
+          "kernelName": "opus_moe2_afp8_wfp4_atomic_t32x128x256_sbm32_occ1_cache_b3_ws2",
+          "launch": {
+            "dataclass": "OpusA8W4LaunchConfig",
+            "fields": {
+              "instance": {
+                "dataclass": "OpusA8W4Stage2Instance",
+                "fields": {
+                  "block_m": 32,
+                  "block_n": 128,
+                  "block_threads": 128,
+                  "cachectl_b": 3,
+                  "cachectl_wscale": 2,
+                  "direct_atomic": true,
+                  "kid": 2005,
+                  "max_tuner_token": 2048,
+                  "min_blocks_per_cu": 1,
+                  "min_tuner_token": 1,
+                  "mode_default": false,
+                  "name": "opus_moe2_afp8_wfp4_atomic_t32x128x256_sbm32_occ1_cache_b3_ws2",
+                  "out_mode": 0,
+                  "pace_route_blocks_to_pow2": false,
+                  "pair_slots": 1,
+                  "route_reduce": null,
+                  "sort_block_m": 32,
+                  "steady_pair_slots": 1
+                }
+              }
+            }
+          },
+          "model_dim_pad": 0,
+          "num_valid_ids": {
+            "attributes": {},
+            "tensor": "arg.num_valid_ids"
+          },
+          "out": {
+            "attributes": {},
+            "tensor": "arg.out"
+          },
+          "sorted_expert_ids": {
+            "attributes": {},
+            "tensor": "arg.sorted_expert_ids"
+          },
+          "sorted_token_ids": {
+            "attributes": {},
+            "tensor": "arg.sorted_token_ids"
+          },
+          "sorted_weights": {
+            "attributes": {},
+            "tensor": "arg.sorted_weights"
+          },
+          "topk": 6,
+          "topk_ids": null,
+          "w1": {
+            "attributes": {
+              "is_shuffled": true
+            },
+            "tensor": "arg.w1"
+          },
+          "w2": {
+            "attributes": {
+              "is_shuffled": true
+            },
+            "tensor": "arg.w2"
+          },
+          "w2_scale": {
+            "attributes": {},
+            "tensor": "arg.w2_scale"
+          }
+        },
+        "return": {
+          "attributes": {},
+          "tensor": "result"
+        }
+      },
+      "stage": "decode",
+      "tensors": {
+        "arg.a2_scale": {
+          "device_type": "cuda",
+          "dtype": "float8_e8m0fnu",
+          "role": "input",
+          "shape": [
+            12800,
+            16
+          ],
+          "storage_offset": 0,
+          "strides": [
+            16,
+            1
+          ]
+        },
+        "arg.inter_states": {
+          "device_type": "cuda",
+          "dtype": "float8_e4m3fn",
+          "role": "input",
+          "shape": [
+            64,
+            6,
+            384
+          ],
+          "storage_offset": 0,
+          "strides": [
+            2304,
+            384,
+            1
+          ]
+        },
+        "arg.num_valid_ids": {
+          "device_type": "cuda",
+          "dtype": "int32",
+          "role": "input",
+          "shape": [
+            2
+          ],
+          "storage_offset": 0,
+          "strides": [
+            1
+          ]
+        },
+        "arg.out": {
+          "device_type": "cuda",
+          "dtype": "bfloat16",
+          "role": "inout",
+          "shape": [
+            64,
+            7168
+          ],
+          "storage_offset": 0,
+          "strides": [
+            7168,
+            1
+          ]
+        },
+        "arg.sorted_expert_ids": {
+          "device_type": "cuda",
+          "dtype": "int32",
+          "role": "input",
+          "shape": [
+            396
+          ],
+          "storage_offset": 0,
+          "strides": [
+            1
+          ]
+        },
+        "arg.sorted_token_ids": {
+          "device_type": "cuda",
+          "dtype": "int32",
+          "role": "input",
+          "shape": [
+            12666
+          ],
+          "storage_offset": 0,
+          "strides": [
+            1
+          ]
+        },
+        "arg.sorted_weights": {
+          "device_type": "cuda",
+          "dtype": "float32",
+          "role": "input",
+          "shape": [
+            12666
+          ],
+          "storage_offset": 0,
+          "strides": [
+            1
+          ]
+        },
+        "arg.w1": {
+          "device_type": "cuda",
+          "dtype": "float4_e2m1fn_x2",
+          "role": "input",
+          "shape": [
+            384,
+            768,
+            3584
+          ],
+          "storage_offset": 0,
+          "strides": [
+            2752512,
+            3584,
+            1
+          ]
+        },
+        "arg.w2": {
+          "device_type": "cuda",
+          "dtype": "float4_e2m1fn_x2",
+          "role": "input",
+          "shape": [
+            384,
+            7168,
+            192
+          ],
+          "storage_offset": 0,
+          "strides": [
+            1376256,
+            192,
+            1
+          ]
+        },
+        "arg.w2_scale": {
+          "device_type": "cuda",
+          "dtype": "float8_e8m0fnu",
+          "role": "input",
+          "shape": [
+            2752512,
+            16
+          ],
+          "storage_offset": 0,
+          "strides": [
+            16,
+            1
+          ]
+        },
+        "result": {
+          "device_type": "cuda",
+          "dtype": "bfloat16",
+          "role": "output",
+          "shape": [
+            64,
+            7168
+          ],
+          "storage_offset": 0,
+          "strides": [
+            7168,
+            1
+          ]
+        }
+      }
+    },
+    {
+      "calls_per_sample": 1,
+      "case_id": "generated-n2496-seed42-moe2",
+      "fixture": {
+        "path": "fixtures/generated-n2496-seed42-moe2.json",
+        "sha256": "e4e9ad4871f37769ebbb083745c8b50afc7bdbfcca12d6c1903c1c9f20cd7326"
+      },
+      "generated_scenario": {
+        "graph_replays": 16,
+        "mode": "isolated_native_graph",
+        "num_valid_ids": [
+          2496,
+          64
+        ],
+        "scenario_id": "generated-n2496-seed42",
+        "seed": 42
+      },
+      "native_replay_fixture_sha256": "f3142188ad0f007b26a38548232b3679f9a436a133ea1c3a839beef94e653299",
+      "observed_control_occurrences_by_rank": {
+        "1": 1,
+        "4": 1
+      },
+      "occurrence_basis": "one_generated_fixture_not_a_served_launch_count",
+      "occurrences": 1,
+      "provenance_kind": "generated_native_graph_replay",
+      "scalars": {
+        "arguments": {
+          "_kwargs": {},
+          "a2_scale": {
+            "attributes": {},
+            "tensor": "arg.a2_scale"
+          },
+          "bias2": null,
+          "block_m": 32,
+          "expert_mask": null,
+          "inter_dim_pad": 0,
+          "inter_states": {
+            "attributes": {},
+            "tensor": "arg.inter_states"
+          },
+          "kernelName": "opus_moe2_afp8_wfp4_atomic_t32x128x256_sbm32_occ1_cache_b3_ws2",
+          "launch": {
+            "dataclass": "OpusA8W4LaunchConfig",
+            "fields": {
+              "instance": {
+                "dataclass": "OpusA8W4Stage2Instance",
+                "fields": {
+                  "block_m": 32,
+                  "block_n": 128,
+                  "block_threads": 128,
+                  "cachectl_b": 3,
+                  "cachectl_wscale": 2,
+                  "direct_atomic": true,
+                  "kid": 2005,
+                  "max_tuner_token": 2048,
+                  "min_blocks_per_cu": 1,
+                  "min_tuner_token": 1,
+                  "mode_default": false,
+                  "name": "opus_moe2_afp8_wfp4_atomic_t32x128x256_sbm32_occ1_cache_b3_ws2",
+                  "out_mode": 0,
+                  "pace_route_blocks_to_pow2": false,
+                  "pair_slots": 1,
+                  "route_reduce": null,
+                  "sort_block_m": 32,
+                  "steady_pair_slots": 1
+                }
+              }
+            }
+          },
+          "model_dim_pad": 0,
+          "num_valid_ids": {
+            "attributes": {},
+            "tensor": "arg.num_valid_ids"
+          },
+          "out": {
+            "attributes": {},
+            "tensor": "arg.out"
+          },
+          "sorted_expert_ids": {
+            "attributes": {},
+            "tensor": "arg.sorted_expert_ids"
+          },
+          "sorted_token_ids": {
+            "attributes": {},
+            "tensor": "arg.sorted_token_ids"
+          },
+          "sorted_weights": {
+            "attributes": {},
+            "tensor": "arg.sorted_weights"
+          },
+          "topk": 6,
+          "topk_ids": null,
+          "w1": {
+            "attributes": {
+              "is_shuffled": true
+            },
+            "tensor": "arg.w1"
+          },
+          "w2": {
+            "attributes": {
+              "is_shuffled": true
+            },
+            "tensor": "arg.w2"
+          },
+          "w2_scale": {
+            "attributes": {},
+            "tensor": "arg.w2_scale"
+          }
+        },
+        "return": {
+          "attributes": {},
+          "tensor": "result"
+        }
+      },
+      "stage": "decode",
+      "tensors": {
+        "arg.a2_scale": {
+          "device_type": "cuda",
+          "dtype": "float8_e8m0fnu",
+          "role": "input",
+          "shape": [
+            12800,
+            16
+          ],
+          "storage_offset": 0,
+          "strides": [
+            16,
+            1
+          ]
+        },
+        "arg.inter_states": {
+          "device_type": "cuda",
+          "dtype": "float8_e4m3fn",
+          "role": "input",
+          "shape": [
+            64,
+            6,
+            384
+          ],
+          "storage_offset": 0,
+          "strides": [
+            2304,
+            384,
+            1
+          ]
+        },
+        "arg.num_valid_ids": {
+          "device_type": "cuda",
+          "dtype": "int32",
+          "role": "input",
+          "shape": [
+            2
+          ],
+          "storage_offset": 0,
+          "strides": [
+            1
+          ]
+        },
+        "arg.out": {
+          "device_type": "cuda",
+          "dtype": "bfloat16",
+          "role": "inout",
+          "shape": [
+            64,
+            7168
+          ],
+          "storage_offset": 0,
+          "strides": [
+            7168,
+            1
+          ]
+        },
+        "arg.sorted_expert_ids": {
+          "device_type": "cuda",
+          "dtype": "int32",
+          "role": "input",
+          "shape": [
+            396
+          ],
+          "storage_offset": 0,
+          "strides": [
+            1
+          ]
+        },
+        "arg.sorted_token_ids": {
+          "device_type": "cuda",
+          "dtype": "int32",
+          "role": "input",
+          "shape": [
+            12666
+          ],
+          "storage_offset": 0,
+          "strides": [
+            1
+          ]
+        },
+        "arg.sorted_weights": {
+          "device_type": "cuda",
+          "dtype": "float32",
+          "role": "input",
+          "shape": [
+            12666
+          ],
+          "storage_offset": 0,
+          "strides": [
+            1
+          ]
+        },
+        "arg.w1": {
+          "device_type": "cuda",
+          "dtype": "float4_e2m1fn_x2",
+          "role": "input",
+          "shape": [
+            384,
+            768,
+            3584
+          ],
+          "storage_offset": 0,
+          "strides": [
+            2752512,
+            3584,
+            1
+          ]
+        },
+        "arg.w2": {
+          "device_type": "cuda",
+          "dtype": "float4_e2m1fn_x2",
+          "role": "input",
+          "shape": [
+            384,
+            7168,
+            192
+          ],
+          "storage_offset": 0,
+          "strides": [
+            1376256,
+            192,
+            1
+          ]
+        },
+        "arg.w2_scale": {
+          "device_type": "cuda",
+          "dtype": "float8_e8m0fnu",
+          "role": "input",
+          "shape": [
+            2752512,
+            16
+          ],
+          "storage_offset": 0,
+          "strides": [
+            16,
+            1
+          ]
+        },
+        "result": {
+          "device_type": "cuda",
+          "dtype": "bfloat16",
+          "role": "output",
+          "shape": [
+            64,
+            7168
+          ],
+          "storage_offset": 0,
+          "strides": [
+            7168,
+            1
+          ]
+        }
+      }
+    },
+    {
+      "calls_per_sample": 1,
+      "case_id": "generated-n2496-seed43-moe2",
+      "fixture": {
+        "path": "fixtures/generated-n2496-seed43-moe2.json",
+        "sha256": "ec35175268757d39bd3af39c83c4bea0fbdc716478f45a85aed0bd16ffea46c6"
+      },
+      "generated_scenario": {
+        "graph_replays": 16,
+        "mode": "isolated_native_graph",
+        "num_valid_ids": [
+          2496,
+          64
+        ],
+        "scenario_id": "generated-n2496-seed43",
+        "seed": 43
+      },
+      "native_replay_fixture_sha256": "94f5ef33fe40051304063e8749a9ff387cb9cc57cb529124853dfd7e7daed5f3",
+      "observed_control_occurrences_by_rank": {
+        "1": 1,
+        "4": 1
+      },
+      "occurrence_basis": "one_generated_fixture_not_a_served_launch_count",
+      "occurrences": 1,
+      "provenance_kind": "generated_native_graph_replay",
+      "scalars": {
+        "arguments": {
+          "_kwargs": {},
+          "a2_scale": {
+            "attributes": {},
+            "tensor": "arg.a2_scale"
+          },
+          "bias2": null,
+          "block_m": 32,
+          "expert_mask": null,
+          "inter_dim_pad": 0,
+          "inter_states": {
+            "attributes": {},
+            "tensor": "arg.inter_states"
+          },
+          "kernelName": "opus_moe2_afp8_wfp4_atomic_t32x128x256_sbm32_occ1_cache_b3_ws2",
+          "launch": {
+            "dataclass": "OpusA8W4LaunchConfig",
+            "fields": {
+              "instance": {
+                "dataclass": "OpusA8W4Stage2Instance",
+                "fields": {
+                  "block_m": 32,
+                  "block_n": 128,
+                  "block_threads": 128,
+                  "cachectl_b": 3,
+                  "cachectl_wscale": 2,
+                  "direct_atomic": true,
+                  "kid": 2005,
+                  "max_tuner_token": 2048,
+                  "min_blocks_per_cu": 1,
+                  "min_tuner_token": 1,
+                  "mode_default": false,
+                  "name": "opus_moe2_afp8_wfp4_atomic_t32x128x256_sbm32_occ1_cache_b3_ws2",
+                  "out_mode": 0,
+                  "pace_route_blocks_to_pow2": false,
+                  "pair_slots": 1,
+                  "route_reduce": null,
+                  "sort_block_m": 32,
+                  "steady_pair_slots": 1
+                }
+              }
+            }
+          },
+          "model_dim_pad": 0,
+          "num_valid_ids": {
+            "attributes": {},
+            "tensor": "arg.num_valid_ids"
+          },
+          "out": {
+            "attributes": {},
+            "tensor": "arg.out"
+          },
+          "sorted_expert_ids": {
+            "attributes": {},
+            "tensor": "arg.sorted_expert_ids"
+          },
+          "sorted_token_ids": {
+            "attributes": {},
+            "tensor": "arg.sorted_token_ids"
+          },
+          "sorted_weights": {
+            "attributes": {},
+            "tensor": "arg.sorted_weights"
+          },
+          "topk": 6,
+          "topk_ids": null,
+          "w1": {
+            "attributes": {
+              "is_shuffled": true
+            },
+            "tensor": "arg.w1"
+          },
+          "w2": {
+            "attributes": {
+              "is_shuffled": true
+            },
+            "tensor": "arg.w2"
+          },
+          "w2_scale": {
+            "attributes": {},
+            "tensor": "arg.w2_scale"
+          }
+        },
+        "return": {
+          "attributes": {},
+          "tensor": "result"
+        }
+      },
+      "stage": "decode",
+      "tensors": {
+        "arg.a2_scale": {
+          "device_type": "cuda",
+          "dtype": "float8_e8m0fnu",
+          "role": "input",
+          "shape": [
+            12800,
+            16
+          ],
+          "storage_offset": 0,
+          "strides": [
+            16,
+            1
+          ]
+        },
+        "arg.inter_states": {
+          "device_type": "cuda",
+          "dtype": "float8_e4m3fn",
+          "role": "input",
+          "shape": [
+            64,
+            6,
+            384
+          ],
+          "storage_offset": 0,
+          "strides": [
+            2304,
+            384,
+            1
+          ]
+        },
+        "arg.num_valid_ids": {
+          "device_type": "cuda",
+          "dtype": "int32",
+          "role": "input",
+          "shape": [
+            2
+          ],
+          "storage_offset": 0,
+          "strides": [
+            1
+          ]
+        },
+        "arg.out": {
+          "device_type": "cuda",
+          "dtype": "bfloat16",
+          "role": "inout",
+          "shape": [
+            64,
+            7168
+          ],
+          "storage_offset": 0,
+          "strides": [
+            7168,
+            1
+          ]
+        },
+        "arg.sorted_expert_ids": {
+          "device_type": "cuda",
+          "dtype": "int32",
+          "role": "input",
+          "shape": [
+            396
+          ],
+          "storage_offset": 0,
+          "strides": [
+            1
+          ]
+        },
+        "arg.sorted_token_ids": {
+          "device_type": "cuda",
+          "dtype": "int32",
+          "role": "input",
+          "shape": [
+            12666
+          ],
+          "storage_offset": 0,
+          "strides": [
+            1
+          ]
+        },
+        "arg.sorted_weights": {
+          "device_type": "cuda",
+          "dtype": "float32",
+          "role": "input",
+          "shape": [
+            12666
+          ],
+          "storage_offset": 0,
+          "strides": [
+            1
+          ]
+        },
+        "arg.w1": {
+          "device_type": "cuda",
+          "dtype": "float4_e2m1fn_x2",
+          "role": "input",
+          "shape": [
+            384,
+            768,
+            3584
+          ],
+          "storage_offset": 0,
+          "strides": [
+            2752512,
+            3584,
+            1
+          ]
+        },
+        "arg.w2": {
+          "device_type": "cuda",
+          "dtype": "float4_e2m1fn_x2",
+          "role": "input",
+          "shape": [
+            384,
+            7168,
+            192
+          ],
+          "storage_offset": 0,
+          "strides": [
+            1376256,
+            192,
+            1
+          ]
+        },
+        "arg.w2_scale": {
+          "device_type": "cuda",
+          "dtype": "float8_e8m0fnu",
+          "role": "input",
+          "shape": [
+            2752512,
+            16
+          ],
+          "storage_offset": 0,
+          "strides": [
+            16,
+            1
+          ]
+        },
+        "result": {
+          "device_type": "cuda",
+          "dtype": "bfloat16",
+          "role": "output",
+          "shape": [
+            64,
+            7168
+          ],
+          "storage_offset": 0,
+          "strides": [
+            7168,
+            1
+          ]
+        }
+      }
+    }
+  ],
+  "coverage_manifest": "provenance/COVERAGE.json",
+  "coverage_sha256": "0325f1f3f3d12904f0a5499960d1c92855b30d168dc64eb1709b7fe4796e33f2",
+  "generated_work_control_supplement": true,
+  "historical_oracle_reused": false,
+  "legacy_required_m": [
+    1,
+    64,
+    256,
+    1920,
+    2048,
+    32768
+  ],
+  "measurement": {
+    "benchmark_iterations": 100,
+    "correctness_seeds": [
+      42,
+      43,
+      44
+    ],
+    "initialize_outputs": "each_replay",
+    "method": "cuda_graph",
+    "negative_controls": [
+      "no_op",
+      "wrong_output"
+    ],
+    "refresh_inputs": "each_replay",
+    "validate_outputs": "each_replay",
+    "warmup_iterations": 10
+  },
+  "native_source_sha256": "74524561e3fa42b2caa20414d575f1994fa373c0b60a78d1f1b8871beee14de1",
+  "observed_case_ids": [
+    "deepseek_moe2-46d9a158091ade7c0f211cbd",
+    "deepseek_moe2-85737162d661689681167e9c"
+  ],
+  "original_served_work_control_gate_passed": false,
+  "random_draws": 3,
+  "required_case_ids": [
+    "deepseek_moe2-46d9a158091ade7c0f211cbd-work-c5cd180a3a906c17",
+    "deepseek_moe2-46d9a158091ade7c0f211cbd-work-ee3f0c2bc494c65f",
+    "deepseek_moe2-46d9a158091ade7c0f211cbd",
+    "deepseek_moe2-85737162d661689681167e9c-work-1823119e10017f2d",
+    "deepseek_moe2-85737162d661689681167e9c-work-a8403d1d6afee320",
+    "deepseek_moe2-85737162d661689681167e9c",
+    "generated-n2400-seed42-moe2",
+    "generated-n2400-seed43-moe2",
+    "generated-n2432-seed42-moe2",
+    "generated-n2432-seed43-moe2",
+    "generated-n2496-seed42-moe2",
+    "generated-n2496-seed43-moe2"
+  ],
+  "required_phases": [
+    "prefill",
+    "decode"
+  ],
+  "run_id": "deepseek-capture-csr-v7-194603",
+  "runtime_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
+  "schema": "deepseek-frozen-current-case-contract-v1",
+  "schema_version": 1,
+  "seam": "moe2",
+  "status": "FROZEN_CAPTURE_AND_GENERATED",
+  "task_GPU_qualification": false,
+  "tensor_fixtures_required": true,
+  "tolerance": 0.05,
+  "unresolved_legacy_m": [
+    1,
+    256,
+    1920,
+    2048,
+    32768
+  ]
+}

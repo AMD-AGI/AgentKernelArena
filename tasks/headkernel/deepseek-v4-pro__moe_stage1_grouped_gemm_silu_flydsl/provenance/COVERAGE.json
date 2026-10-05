@@ -1,0 +1,248 @@
+{
+  "actual_workload": {
+    "completed": 64,
+    "total_input_tokens": 524288,
+    "total_output_tokens": 65536
+  },
+  "all_control_variants_have_payloads": false,
+  "all_rank_structural_gate_passed": true,
+  "baseline_kind": "synchronization_repaired_supplied_reference",
+  "current_input_set_sealed": true,
+  "evidence_sha256": {
+    "NATIVE-CAPTURE-GATE.json": "bc2074ad732c7b01dcc102c609874a23461ffeff8426172c348cbac8b97268d4",
+    "REQUEST.json": "88c8448b79182b01a6e52ef818106debaec01aeb14fbc9fad4551c9b744e949c",
+    "WORK-CONTROL-REVIEW.json": "3ffb5b9ce20236f956faa4e34f51d151c6ddcd6b70e3117dbfa2e72570f026d0",
+    "benchmark.jsonl": "348f302adaa9f3b702ec89272106d650329516a883e5df561a7c0a4e92240af6"
+  },
+  "fixture_records": {
+    "deepseek_moe1-aedfa8cdf4fad913658bc7bd": {
+      "kind": "actual_served_capture",
+      "path": "fixtures/deepseek_moe1-aedfa8cdf4fad913658bc7bd.json",
+      "sha256": "539a7ccadf6e0a05f8f21689b92ade1c2f1da2c173553fd2a4d3b4f2cf8722ab",
+      "stage": "decode"
+    },
+    "deepseek_moe1-aedfa8cdf4fad913658bc7bd-work-1823119e10017f2d": {
+      "kind": "actual_served_capture",
+      "path": "fixtures/deepseek_moe1-aedfa8cdf4fad913658bc7bd-work-1823119e10017f2d.json",
+      "sha256": "a273b50115dbe82b231d262492efe9e6af9cd8bf4c40476f92e40d54bee6362a",
+      "stage": "decode"
+    },
+    "deepseek_moe1-aedfa8cdf4fad913658bc7bd-work-a8403d1d6afee320": {
+      "kind": "actual_served_capture",
+      "path": "fixtures/deepseek_moe1-aedfa8cdf4fad913658bc7bd-work-a8403d1d6afee320.json",
+      "sha256": "65f5c9735a3ff8c1d36259a0d800e0b681f53850c1b5a907b48f65942f021533",
+      "stage": "decode"
+    },
+    "generated-n2400-seed42-moe1": {
+      "kind": "generated_native_graph_replay",
+      "native_replay_fixture_sha256": "2bc8ab5e42e04042bbcdf446e7735f63a599b1ae7faeb58b9a02f8391feb8a2c",
+      "path": "fixtures/generated-n2400-seed42-moe1.json",
+      "sha256": "a7200cdfcfbb3325c08b3d3f866a9083ed9b598c983bc19cffd716efd77442bd",
+      "stage": "decode"
+    },
+    "generated-n2400-seed43-moe1": {
+      "kind": "generated_native_graph_replay",
+      "native_replay_fixture_sha256": "74b8930936336aebf9f149b3b0ba4ed5effdf81649158340a6f49250c914bf84",
+      "path": "fixtures/generated-n2400-seed43-moe1.json",
+      "sha256": "ea45122942d9c41893def89f998ec2635b131af8265f49aa82153bfedbad22b1",
+      "stage": "decode"
+    },
+    "generated-n2432-seed42-moe1": {
+      "kind": "generated_native_graph_replay",
+      "native_replay_fixture_sha256": "3a1516e42954ba8517df5d60579ec665879f84c130a9cbb10cf10bcee4d91158",
+      "path": "fixtures/generated-n2432-seed42-moe1.json",
+      "sha256": "a76ece37c231ea67513d7c1123fc96629259465910330ca71d518c8f98f4f304",
+      "stage": "decode"
+    },
+    "generated-n2432-seed43-moe1": {
+      "kind": "generated_native_graph_replay",
+      "native_replay_fixture_sha256": "53cedb30286ab9dda67a23f4170cf9e787e67336d34483485322d8d382b6c440",
+      "path": "fixtures/generated-n2432-seed43-moe1.json",
+      "sha256": "71b409d53435234292fc39f72a9e2e602fc82e09e9f41c7ab3b40535982946f8",
+      "stage": "decode"
+    },
+    "generated-n2496-seed42-moe1": {
+      "kind": "generated_native_graph_replay",
+      "native_replay_fixture_sha256": "3b4cd50b2c1401724ae12c3744c7a33825ceebb9d262a651716165a2099e26c0",
+      "path": "fixtures/generated-n2496-seed42-moe1.json",
+      "sha256": "3c9e5eec6e481df117300881b6a9f906ce5ed835812b3acd2eb41f110d4bff36",
+      "stage": "decode"
+    },
+    "generated-n2496-seed43-moe1": {
+      "kind": "generated_native_graph_replay",
+      "native_replay_fixture_sha256": "29e06793923302c1dfc44309fe2c247b9682de7078a12e35c795de9b84fab037",
+      "path": "fixtures/generated-n2496-seed43-moe1.json",
+      "sha256": "5b6349ae9e9f196321bca52a5d66c6aa151c6953f251973f25175dceecdebd36",
+      "stage": "decode"
+    }
+  },
+  "framework_validator_PASS": false,
+  "full_token_gate_passed": true,
+  "generated_scope": "Legal generated expert routes at observed missing control values; original rank-0 activations/weights retained and paired outputs recomputed natively.",
+  "generated_supplement_is_actual_other_rank_tensor_capture": false,
+  "observed_structural_case_ids": [
+    "deepseek_moe1-aedfa8cdf4fad913658bc7bd"
+  ],
+  "original_served_work_control_gate_passed": false,
+  "original_terminal_status": {
+    "deadline_unix": 1791240965.004035,
+    "error": "Observed work extreme lacks an actual payload: moe1-8ba9c41fa9ff9eee839f682f/num_valid_ids[0]/min",
+    "error_type": "CaptureError",
+    "observed_unix": 1791240391.5990622,
+    "phase": "incomplete"
+  },
+  "original_work_control_gaps": [
+    {
+      "available_values": [
+        2528,
+        7488,
+        8192
+      ],
+      "group": "moe1-8ba9c41fa9ff9eee839f682f",
+      "metric": "num_valid_ids[0]",
+      "rank": 1,
+      "seam": "moe1",
+      "side": "min",
+      "stage": "decode",
+      "value": 2496
+    },
+    {
+      "available_values": [
+        2528,
+        7488,
+        8192
+      ],
+      "group": "moe1-8ba9c41fa9ff9eee839f682f",
+      "metric": "num_valid_ids[0]",
+      "rank": 3,
+      "seam": "moe1",
+      "side": "min",
+      "stage": "decode",
+      "value": 2432
+    },
+    {
+      "available_values": [
+        2528,
+        7488,
+        8192
+      ],
+      "group": "moe1-8ba9c41fa9ff9eee839f682f",
+      "metric": "num_valid_ids[0]",
+      "rank": 4,
+      "seam": "moe1",
+      "side": "min",
+      "stage": "decode",
+      "value": 2496
+    },
+    {
+      "available_values": [
+        2528,
+        7488,
+        8192
+      ],
+      "group": "moe1-8ba9c41fa9ff9eee839f682f",
+      "metric": "num_valid_ids[0]",
+      "rank": 5,
+      "seam": "moe1",
+      "side": "min",
+      "stage": "decode",
+      "value": 2432
+    },
+    {
+      "available_values": [
+        2528,
+        7488,
+        8192
+      ],
+      "group": "moe1-8ba9c41fa9ff9eee839f682f",
+      "metric": "num_valid_ids[0]",
+      "rank": 6,
+      "seam": "moe1",
+      "side": "min",
+      "stage": "decode",
+      "value": 2400
+    },
+    {
+      "available_values": [
+        2528,
+        7488,
+        8192
+      ],
+      "group": "moe1-8ba9c41fa9ff9eee839f682f",
+      "metric": "num_valid_ids[0]",
+      "rank": 7,
+      "seam": "moe1",
+      "side": "min",
+      "stage": "decode",
+      "value": 2432
+    }
+  ],
+  "rank_manifest_sha256": {
+    "0": "f9b3868d6f9ea8df7f71a0e52b58bd8442d40d8678de93815c94c08ce912ffca",
+    "1": "b66b2f5e4eb06a8a0d7ed4b2e4567e847316f49b605382375dcc04a95d01a832",
+    "2": "af3c657267b13355628191e5be2d83e86296f5db53fb659f9e0e38f31d3fdee6",
+    "3": "f27ecf1c50a5fbfdf65d92e38656a303f1bed8646e120eebf81da290742c804e",
+    "4": "87fb978692a4a88d6c2f014e13cb857a1a7fd47952f5d7b2d326131560b158ac",
+    "5": "7e0dcb5bd8d5fe2ef222a42ba5271faa36001a72d71d4a7bff7a6b4c85183ea5",
+    "6": "cd97c44ea203ac2f6e793ffc6ba6f3b6696fda1593e9252e9d62fdfdf698464d",
+    "7": "5c006225366a1d24b240d4c09aa333930d47600778a0b0d52a7a4ef98a82ee15"
+  },
+  "run_id": "deepseek-capture-csr-v7-194603",
+  "runtime_case_counts_by_rank": {
+    "0": {
+      "deepseek_moe1-aedfa8cdf4fad913658bc7bd": 62464
+    },
+    "1": {
+      "deepseek_moe1-aedfa8cdf4fad913658bc7bd": 62464
+    },
+    "2": {
+      "deepseek_moe1-aedfa8cdf4fad913658bc7bd": 62464
+    },
+    "3": {
+      "deepseek_moe1-aedfa8cdf4fad913658bc7bd": 62464
+    },
+    "4": {
+      "deepseek_moe1-aedfa8cdf4fad913658bc7bd": 62464
+    },
+    "5": {
+      "deepseek_moe1-aedfa8cdf4fad913658bc7bd": 62464
+    },
+    "6": {
+      "deepseek_moe1-aedfa8cdf4fad913658bc7bd": 62464
+    },
+    "7": {
+      "deepseek_moe1-aedfa8cdf4fad913658bc7bd": 62464
+    }
+  },
+  "schema": "deepseek-current-captured-generated-coverage-v1",
+  "seam": "moe1",
+  "supplemental_host_verification_sha256": "3ceb5db6dbabb5a5443517fbc70d887a7b7b3439278623309205da11903cbb9b",
+  "supplemental_metadata_projection": {
+    "actual_tensor_control_values_verified": true,
+    "original_native_replay_artifacts_modified": false,
+    "projector_sha256": "29b152b9655c0738080d5a61ff4f5f8986352b1c4210e9c61b6269af3392a312",
+    "schema": "generated-work-summary-projection-v1",
+    "source": "original supplemental JSON inherits parent work fields; projected metadata labels them as parent history"
+  },
+  "supplemental_native_repeatability": {
+    "repeats": 16,
+    "scenario_count": 6,
+    "seeds": [
+      42,
+      43
+    ]
+  },
+  "supplemental_observed_work_counts": [
+    2400,
+    2432,
+    2496
+  ],
+  "task_GPU_qualification": false,
+  "unresolved_legacy_m": [
+    1,
+    256,
+    1920,
+    2048,
+    32768
+  ]
+}

@@ -1,0 +1,190 @@
+{
+  "current_model_task_qualification": false,
+  "ended_unix": 1791243155.4137335,
+  "gpu_name": "AMD Instinct MI355X",
+  "independent_correctness_passed": false,
+  "missing_rank_tensors_captured": false,
+  "native_implementations": {
+    "moe1": {
+      "binding": {
+        "emitter_source_sha256": "b819545c0be6f94932edd994983c7d3ec6c18a652d4f8c330cad2513372bbe6d",
+        "gpu_binding": "flydsl_stage1",
+        "host_file": "ut/host/native.py",
+        "host_wrapper_frozen": true,
+        "kernel_symbol_suffix": "_aka_b819545c0be6f94932ed",
+        "leg": "candidate",
+        "module": "aiter.ops.flydsl._aka_moe1_candidate",
+        "source_sha256": {
+          "source/mixed_moe_gemm_2stage_common.py": "b819545c0be6f94932edd994983c7d3ec6c18a652d4f8c330cad2513372bbe6d"
+        }
+      },
+      "kind": "separately_staged_source_bound_implementation",
+      "production_wrapper_sha256": "d08339bc94dfabd3529d415857e49d0383f9efe2ef62be9a84916c55c5857e68",
+      "task": "/moe1-task"
+    },
+    "moe2": {
+      "function": "opus_a8w4_stage2_wrapper",
+      "kind": "pinned_image_native",
+      "module": "aiter.ops.opus.moe_stage2_a8w4",
+      "sha256": "74524561e3fa42b2caa20414d575f1994fa373c0b60a78d1f1b8871beee14de1"
+    }
+  },
+  "native_repeatability_is_not_independent_correctness": true,
+  "original_capture_gate_repaired": false,
+  "pending": [
+    "independent source-bound correctness",
+    "source negative controls",
+    "trusted task evaluation",
+    "framework validator"
+  ],
+  "plan_sha256": "91763a1f5b429d3959d2b45787ffefef34eb389631d551e3fe329e31d8897521",
+  "repeats": 16,
+  "runner_sha256": "2d287b6d7050f8e9d26470fb9431a7bfb0ebd4796c383f38899be1a1b065397b",
+  "runtime_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
+  "scenarios": [
+    {
+      "fixtures": [
+        {
+          "family": "moe1",
+          "fixture": "generated-n2400-seed42-moe1.json",
+          "sha256": "2bc8ab5e42e04042bbcdf446e7735f63a599b1ae7faeb58b9a02f8391feb8a2c"
+        },
+        {
+          "family": "moe2",
+          "fixture": "generated-n2400-seed42-moe2.json",
+          "sha256": "88e830cb40988b1337bd04250f147211dbe2cc7f1a5ec79083d38c1d9030bb03"
+        }
+      ],
+      "full_source_bound_correctness": false,
+      "identical_input_repeats_passed": 16,
+      "native_stage1_live_payload_and_scale_checked": true,
+      "native_stage2_all_output_values_checked": true,
+      "num_valid_ids": [
+        2400,
+        64
+      ],
+      "scenario_id": "generated-n2400-seed42"
+    },
+    {
+      "fixtures": [
+        {
+          "family": "moe1",
+          "fixture": "generated-n2400-seed43-moe1.json",
+          "sha256": "74b8930936336aebf9f149b3b0ba4ed5effdf81649158340a6f49250c914bf84"
+        },
+        {
+          "family": "moe2",
+          "fixture": "generated-n2400-seed43-moe2.json",
+          "sha256": "eb94ac4fc03b0f503049f91e83822f83b35c76ecd5d0031396ab08fd99013e3a"
+        }
+      ],
+      "full_source_bound_correctness": false,
+      "identical_input_repeats_passed": 16,
+      "native_stage1_live_payload_and_scale_checked": true,
+      "native_stage2_all_output_values_checked": true,
+      "num_valid_ids": [
+        2400,
+        64
+      ],
+      "scenario_id": "generated-n2400-seed43"
+    },
+    {
+      "fixtures": [
+        {
+          "family": "moe1",
+          "fixture": "generated-n2432-seed42-moe1.json",
+          "sha256": "3a1516e42954ba8517df5d60579ec665879f84c130a9cbb10cf10bcee4d91158"
+        },
+        {
+          "family": "moe2",
+          "fixture": "generated-n2432-seed42-moe2.json",
+          "sha256": "634378aa119a4a80417f3b3ce09b4657b08bdce5ac6167f870808b4d8fe3fdc9"
+        }
+      ],
+      "full_source_bound_correctness": false,
+      "identical_input_repeats_passed": 16,
+      "native_stage1_live_payload_and_scale_checked": true,
+      "native_stage2_all_output_values_checked": true,
+      "num_valid_ids": [
+        2432,
+        64
+      ],
+      "scenario_id": "generated-n2432-seed42"
+    },
+    {
+      "fixtures": [
+        {
+          "family": "moe1",
+          "fixture": "generated-n2432-seed43-moe1.json",
+          "sha256": "53cedb30286ab9dda67a23f4170cf9e787e67336d34483485322d8d382b6c440"
+        },
+        {
+          "family": "moe2",
+          "fixture": "generated-n2432-seed43-moe2.json",
+          "sha256": "81b7bc2642912f865cc09c84ac5ff10d5475e232aa6e221387343d68e3665aac"
+        }
+      ],
+      "full_source_bound_correctness": false,
+      "identical_input_repeats_passed": 16,
+      "native_stage1_live_payload_and_scale_checked": true,
+      "native_stage2_all_output_values_checked": true,
+      "num_valid_ids": [
+        2432,
+        64
+      ],
+      "scenario_id": "generated-n2432-seed43"
+    },
+    {
+      "fixtures": [
+        {
+          "family": "moe1",
+          "fixture": "generated-n2496-seed42-moe1.json",
+          "sha256": "3b4cd50b2c1401724ae12c3744c7a33825ceebb9d262a651716165a2099e26c0"
+        },
+        {
+          "family": "moe2",
+          "fixture": "generated-n2496-seed42-moe2.json",
+          "sha256": "f3142188ad0f007b26a38548232b3679f9a436a133ea1c3a839beef94e653299"
+        }
+      ],
+      "full_source_bound_correctness": false,
+      "identical_input_repeats_passed": 16,
+      "native_stage1_live_payload_and_scale_checked": true,
+      "native_stage2_all_output_values_checked": true,
+      "num_valid_ids": [
+        2496,
+        64
+      ],
+      "scenario_id": "generated-n2496-seed42"
+    },
+    {
+      "fixtures": [
+        {
+          "family": "moe1",
+          "fixture": "generated-n2496-seed43-moe1.json",
+          "sha256": "29e06793923302c1dfc44309fe2c247b9682de7078a12e35c795de9b84fab037"
+        },
+        {
+          "family": "moe2",
+          "fixture": "generated-n2496-seed43-moe2.json",
+          "sha256": "94f5ef33fe40051304063e8749a9ff387cb9cc57cb529124853dfd7e7daed5f3"
+        }
+      ],
+      "full_source_bound_correctness": false,
+      "identical_input_repeats_passed": 16,
+      "native_stage1_live_payload_and_scale_checked": true,
+      "native_stage2_all_output_values_checked": true,
+      "num_valid_ids": [
+        2496,
+        64
+      ],
+      "scenario_id": "generated-n2496-seed43"
+    }
+  ],
+  "schema": "deepseek-supplemental-native-replay-v1",
+  "started_unix": 1791243116.8376646,
+  "status": "NATIVE_REPEATABILITY_PASSED_SUPPLEMENTAL_FIXTURES_GENERATED",
+  "timing_or_performance_claim": false,
+  "torch_hip": "7.2.26015",
+  "torch_version": "2.11.0+rocm7.2"
+}

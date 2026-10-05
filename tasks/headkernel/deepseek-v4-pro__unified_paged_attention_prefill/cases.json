@@ -1,0 +1,407 @@
+{
+  "all_control_variants_have_payloads": false,
+  "all_output_components_required": true,
+  "baseline_kind": "pinned_image_native_source",
+  "cases": [
+    {
+      "calls_per_sample": 1,
+      "case_id": "deepseek_mla_prefill-2800f2114cb8548cf5fdd0ba",
+      "fixture": {
+        "path": "fixtures/deepseek_mla_prefill-2800f2114cb8548cf5fdd0ba.json",
+        "sha256": "5cae361f707cade96836a335d1d4e011add632b3096c77b5fd884a5fe871a442"
+      },
+      "occurrences": 1920,
+      "provenance_kind": "actual_served_capture",
+      "scalars": {
+        "arguments": {
+          "attn_sink": {
+            "attributes": {},
+            "tensor": "arg.attn_sink"
+          },
+          "kv": {
+            "attributes": {},
+            "tensor": "arg.kv"
+          },
+          "kv_indices_extend": {
+            "attributes": {},
+            "tensor": "arg.kv_indices_extend"
+          },
+          "kv_indices_prefix": {
+            "attributes": {},
+            "tensor": "arg.kv_indices_prefix"
+          },
+          "kv_indptr_extend": {
+            "attributes": {},
+            "tensor": "arg.kv_indptr_extend"
+          },
+          "kv_indptr_prefix": {
+            "attributes": {},
+            "tensor": "arg.kv_indptr_prefix"
+          },
+          "q": {
+            "attributes": {},
+            "tensor": "arg.q"
+          },
+          "softmax_scale": 0.04419417382415922,
+          "unified_kv": {
+            "attributes": {},
+            "tensor": "arg.unified_kv"
+          }
+        },
+        "return": {
+          "attributes": {},
+          "tensor": "result"
+        }
+      },
+      "stage": "prefill",
+      "tensors": {
+        "arg.attn_sink": {
+          "device_type": "cuda",
+          "dtype": "float32",
+          "role": "input",
+          "shape": [
+            16
+          ],
+          "storage_offset": 0,
+          "strides": [
+            1
+          ]
+        },
+        "arg.kv": {
+          "device_type": "cuda",
+          "dtype": "bfloat16",
+          "role": "input",
+          "shape": [
+            8192,
+            512
+          ],
+          "storage_offset": 0,
+          "strides": [
+            512,
+            1
+          ]
+        },
+        "arg.kv_indices_extend": {
+          "device_type": "cuda",
+          "dtype": "int32",
+          "role": "input",
+          "shape": [
+            1048576
+          ],
+          "storage_offset": 0,
+          "strides": [
+            1
+          ]
+        },
+        "arg.kv_indices_prefix": {
+          "device_type": "cuda",
+          "dtype": "int32",
+          "role": "input",
+          "shape": [
+            9437184
+          ],
+          "storage_offset": 0,
+          "strides": [
+            1
+          ]
+        },
+        "arg.kv_indptr_extend": {
+          "device_type": "cuda",
+          "dtype": "int32",
+          "role": "input",
+          "shape": [
+            8193
+          ],
+          "storage_offset": 0,
+          "strides": [
+            1
+          ]
+        },
+        "arg.kv_indptr_prefix": {
+          "device_type": "cuda",
+          "dtype": "int32",
+          "role": "input",
+          "shape": [
+            8193
+          ],
+          "storage_offset": 0,
+          "strides": [
+            1
+          ]
+        },
+        "arg.q": {
+          "device_type": "cuda",
+          "dtype": "bfloat16",
+          "role": "input",
+          "shape": [
+            8192,
+            16,
+            512
+          ],
+          "storage_offset": 0,
+          "strides": [
+            32768,
+            512,
+            1
+          ]
+        },
+        "arg.unified_kv": {
+          "device_type": "cuda",
+          "dtype": "bfloat16",
+          "role": "input",
+          "shape": [
+            4121472,
+            512
+          ],
+          "storage_offset": 0,
+          "strides": [
+            512,
+            1
+          ]
+        },
+        "result": {
+          "device_type": "cuda",
+          "dtype": "bfloat16",
+          "role": "output",
+          "shape": [
+            8192,
+            16,
+            512
+          ],
+          "storage_offset": 0,
+          "strides": [
+            8192,
+            512,
+            1
+          ]
+        }
+      }
+    },
+    {
+      "calls_per_sample": 1,
+      "case_id": "deepseek_mla_prefill-fff723d1365f8696979e5779",
+      "fixture": {
+        "path": "fixtures/deepseek_mla_prefill-fff723d1365f8696979e5779.json",
+        "sha256": "26910b0df9a6365e6b1063e6547ef310017550de81f27b2d0752746c783b80d9"
+      },
+      "occurrences": 1984,
+      "provenance_kind": "actual_served_capture",
+      "scalars": {
+        "arguments": {
+          "attn_sink": {
+            "attributes": {},
+            "tensor": "arg.attn_sink"
+          },
+          "kv": {
+            "attributes": {},
+            "tensor": "arg.kv"
+          },
+          "kv_indices_extend": {
+            "attributes": {},
+            "tensor": "arg.kv_indices_extend"
+          },
+          "kv_indices_prefix": {
+            "attributes": {},
+            "tensor": "arg.kv_indices_prefix"
+          },
+          "kv_indptr_extend": {
+            "attributes": {},
+            "tensor": "arg.kv_indptr_extend"
+          },
+          "kv_indptr_prefix": {
+            "attributes": {},
+            "tensor": "arg.kv_indptr_prefix"
+          },
+          "q": {
+            "attributes": {},
+            "tensor": "arg.q"
+          },
+          "softmax_scale": 0.04419417382415922,
+          "unified_kv": {
+            "attributes": {},
+            "tensor": "arg.unified_kv"
+          }
+        },
+        "return": {
+          "attributes": {},
+          "tensor": "result"
+        }
+      },
+      "stage": "prefill",
+      "tensors": {
+        "arg.attn_sink": {
+          "device_type": "cuda",
+          "dtype": "float32",
+          "role": "input",
+          "shape": [
+            16
+          ],
+          "storage_offset": 0,
+          "strides": [
+            1
+          ]
+        },
+        "arg.kv": {
+          "device_type": "cuda",
+          "dtype": "bfloat16",
+          "role": "input",
+          "shape": [
+            8192,
+            512
+          ],
+          "storage_offset": 0,
+          "strides": [
+            512,
+            1
+          ]
+        },
+        "arg.kv_indices_extend": {
+          "device_type": "cuda",
+          "dtype": "int32",
+          "role": "input",
+          "shape": [
+            1048576
+          ],
+          "storage_offset": 0,
+          "strides": [
+            1
+          ]
+        },
+        "arg.kv_indices_prefix": {
+          "device_type": "cuda",
+          "dtype": "int32",
+          "role": "input",
+          "shape": [
+            1572864
+          ],
+          "storage_offset": 0,
+          "strides": [
+            1
+          ]
+        },
+        "arg.kv_indptr_extend": {
+          "device_type": "cuda",
+          "dtype": "int32",
+          "role": "input",
+          "shape": [
+            8193
+          ],
+          "storage_offset": 0,
+          "strides": [
+            1
+          ]
+        },
+        "arg.kv_indptr_prefix": {
+          "device_type": "cuda",
+          "dtype": "int32",
+          "role": "input",
+          "shape": [
+            8193
+          ],
+          "storage_offset": 0,
+          "strides": [
+            1
+          ]
+        },
+        "arg.q": {
+          "device_type": "cuda",
+          "dtype": "bfloat16",
+          "role": "input",
+          "shape": [
+            8192,
+            16,
+            512
+          ],
+          "storage_offset": 0,
+          "strides": [
+            32768,
+            512,
+            1
+          ]
+        },
+        "arg.unified_kv": {
+          "device_type": "cuda",
+          "dtype": "bfloat16",
+          "role": "input",
+          "shape": [
+            136856,
+            512
+          ],
+          "storage_offset": 0,
+          "strides": [
+            512,
+            1
+          ]
+        },
+        "result": {
+          "device_type": "cuda",
+          "dtype": "bfloat16",
+          "role": "output",
+          "shape": [
+            8192,
+            16,
+            512
+          ],
+          "storage_offset": 0,
+          "strides": [
+            8192,
+            512,
+            1
+          ]
+        }
+      }
+    }
+  ],
+  "coverage_manifest": "provenance/COVERAGE.json",
+  "coverage_sha256": "4e83fe9edd17c7d1fb39c992e17875a525bc1be034b680924c06d6ff03fe1a23",
+  "generated_work_control_supplement": false,
+  "historical_oracle_reused": false,
+  "legacy_required_m": [
+    1,
+    64,
+    8192
+  ],
+  "measurement": {
+    "benchmark_iterations": 100,
+    "correctness_seeds": [
+      42,
+      43
+    ],
+    "initialize_outputs": "each_replay",
+    "method": "cuda_graph",
+    "negative_controls": [
+      "no_op",
+      "wrong_output"
+    ],
+    "refresh_inputs": "each_replay",
+    "validate_outputs": "each_replay",
+    "warmup_iterations": 10
+  },
+  "native_source_sha256": "3d914fac43732cdf3fecc63ec7a0239f318def8d518b09a4ff8b663d7299ca33",
+  "observed_case_ids": [
+    "deepseek_mla_prefill-2800f2114cb8548cf5fdd0ba",
+    "deepseek_mla_prefill-fff723d1365f8696979e5779"
+  ],
+  "original_served_work_control_gate_passed": false,
+  "random_draws": 2,
+  "required_case_ids": [
+    "deepseek_mla_prefill-2800f2114cb8548cf5fdd0ba",
+    "deepseek_mla_prefill-fff723d1365f8696979e5779"
+  ],
+  "required_phases": [
+    "prefill"
+  ],
+  "run_id": "deepseek-capture-csr-v7-194603",
+  "runtime_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
+  "schema": "deepseek-frozen-current-case-contract-v1",
+  "schema_version": 1,
+  "seam": "mla_prefill",
+  "status": "FROZEN_CURRENT_CAPTURE",
+  "task_GPU_qualification": false,
+  "tensor_fixtures_required": true,
+  "tolerance": 0.02,
+  "unresolved_legacy_m": [
+    1,
+    64
+  ]
+}

@@ -1,0 +1,119 @@
+{
+  "DeepSeek_GPU_validation": "Six generated scenarios passed sixteen identical-input native repeats each; independent source-bound correctness and framework validation remain pending.",
+  "Kimi_evidence": {
+    "difference_from_DeepSeek_source": "Only three package import statements before the repair",
+    "image_source_sha256": "7c43585c51bfee5506515d0efec908611c93ac8d0583addb437296d442a91a91",
+    "projected_source_sha256_after": "6755f05f732d603541b2d916a8cd3b2df9ac1c570abdc10eb578e0f939417755",
+    "projected_source_sha256_before": "c8a49e74f9579bf94f3b8bbc98e701a5d4248f602b36d1024cfbd38c858ae436",
+    "receipt_sha256": "5325dbaccd7b4d5dce3e4df1958ba97ac90086c3f51d88a9eac4c855487cc138",
+    "scope": "Kimi targeted diagnostic only; does not qualify DeepSeek",
+    "targeted_gpu_validation": {
+      "all_payload_byte_mismatches": 0,
+      "all_scale_mismatches": 0,
+      "captured_cpu_golden_parity": true,
+      "diagnostic_sha256": "644933c9695568263c0f50e6e58a75529f4f90eeba179476c03321a024f9e5b5",
+      "gpu_preflight_sha256": "940d1280f4d89fbb9fdedf979fc94d6d2d86f423546c6d31ead181367f62f08e",
+      "identical_inputs_and_attributes": true,
+      "physical_gpu_preflight": {
+        "hip_device_count": 1,
+        "hip_pci_bus_ids": [
+          "0002:00:01.0"
+        ],
+        "hsa_gpu_uuids": [
+          "GPU-8275e1a99826358b"
+        ],
+        "rocr_visible_devices": "GPU-8275e1a99826358b"
+      },
+      "result_sha256": "1b1abc15b4d884e54cf4903879586ebe084a0eb52f18b602e99e7ecb7970aa39",
+      "returncode": 0,
+      "run": "kimi-sync-repair-v1-194846",
+      "same_leg_output_variation": false,
+      "seed": 734170854,
+      "trials": 16,
+      "valid_rows": 13824
+    }
+  },
+  "baseline_kind": "synchronization_repaired_supplied_reference",
+  "cache_requirement": "Use a fresh empty writable FLYDSL_RUNTIME_CACHE_DIR. Preserve the complete image AITER JIT cache and native module lookup. Source-keyed kernel symbols are supplied by the unchanged protected loader.",
+  "candidate_and_frozen_reference_repaired_equally": true,
+  "canonical_staged_task_integrated": true,
+  "capture_runtime_or_other_kernel_paths_modified": false,
+  "change": "rocdl.s_waitcnt(body_vmcnt_before_barrier) -> rocdl.s_waitcnt(0)",
+  "emitter_AST_sha256_after": "c36a2142692c50c70a4bd36c93a6122e4032f8882f1a70b5624f9986159de40d",
+  "emitter_AST_sha256_before": "cf406603fac744f59ca80e11677cd05e00713c6d8f5ecb3e13a2af341ccda050",
+  "exact_DS_imports_preserved": true,
+  "image_dependency_hashes_changed": false,
+  "image_source_sha256": "7c43585c51bfee5506515d0efec908611c93ac8d0583addb437296d442a91a91",
+  "location": "compile_mixed_moe_gemm1_common._emit_moe_gemm1::moe_gemm1_body::interleaved_half",
+  "math_tolerances_shapes_cases_counts_fixtures_and_host_wrappers_changed": false,
+  "original_task_modified": true,
+  "qualified": false,
+  "reason": "Drain memory operations before the cross-wave barrier and async-LDS ping-pong reuse.",
+  "reference_file": "ut/reference/mixed_moe_gemm_2stage_common.py",
+  "reference_sha256_after": "b819545c0be6f94932edd994983c7d3ec6c18a652d4f8c330cad2513372bbe6d",
+  "repair_id": "async_lds_full_wait_v1",
+  "required_checks": [
+    "independent source-bound correctness on complete current fixtures",
+    "submitted source no-op and wrong-output rejection",
+    "fresh framework task_validator PASS"
+  ],
+  "same_device_emitter_AST_as_Kimi_repair": true,
+  "schema": "deepseek-stage1-verified-synchronization-repair-v1",
+  "source_file": "source/mixed_moe_gemm_2stage_common.py",
+  "source_sha256_after": "b819545c0be6f94932edd994983c7d3ec6c18a652d4f8c330cad2513372bbe6d",
+  "source_sha256_before": "7c43585c51bfee5506515d0efec908611c93ac8d0583addb437296d442a91a91",
+  "status": "NATIVE_SUPPLEMENTAL_REPEATABILITY_PASSED_FRAMEWORK_QUALIFICATION_PENDING",
+  "stock_equivalence_claimed": false,
+  "stock_image_byte_identical": false,
+  "targeted_DeepSeek_GPU_validation": {
+    "emitter_source_sha256": "b819545c0be6f94932edd994983c7d3ec6c18a652d4f8c330cad2513372bbe6d",
+    "framework_task_validator": "pending",
+    "full_source_bound_correctness": false,
+    "gpu_name": "AMD Instinct MI355X",
+    "gpu_preflight": {
+      "hip_device_count": 1,
+      "hip_pci_bus_ids": [
+        "0003:00:04.0"
+      ],
+      "hsa_gpu_uuids": [
+        "GPU-ba900ea0c1c9eaf5"
+      ],
+      "rocr_visible_devices": "GPU-ba900ea0c1c9eaf5"
+    },
+    "missing_rank_tensors_captured": false,
+    "num_valid_ids": [
+      2400,
+      2432,
+      2496
+    ],
+    "original_capture_gate_repaired": false,
+    "receipts": {
+      "GPU-PREFLIGHT.json": {
+        "path": "provenance/sync-repair-evidence/GPU-PREFLIGHT.json",
+        "sha256": "8d3cc1d47bdf463bbc286bc8a839bc81e042c5f81ef5a6e3b096affc50625456"
+      },
+      "HOST-VERIFICATION.json": {
+        "path": "provenance/sync-repair-evidence/HOST-VERIFICATION.json",
+        "sha256": "3ceb5db6dbabb5a5443517fbc70d887a7b7b3439278623309205da11903cbb9b"
+      },
+      "RUN-RESULT.json": {
+        "path": "provenance/sync-repair-evidence/RUN-RESULT.json",
+        "sha256": "f397f3d50d593e6b227b30db0703c80d20b93fe7d2af46efb8f54f2a512bd901"
+      },
+      "SUPPLEMENTAL-RESULT.json": {
+        "path": "provenance/sync-repair-evidence/SUPPLEMENTAL-RESULT.json",
+        "sha256": "d82caae9852369d9908e833c772bf4aa4e8eb88ce01308c12c0787a9e24d9e81"
+      }
+    },
+    "repeats_per_scenario": 16,
+    "returncode": 0,
+    "run": "ds-supplemental-repaired-v7-194846",
+    "scenarios": 6,
+    "scope": "generated supplemental native repeatability only",
+    "seeds": [
+      42,
+      43
+    ]
+  },
+  "upstream_runtime_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96"
+}

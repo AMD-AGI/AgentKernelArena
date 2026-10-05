@@ -1,0 +1,139 @@
+{
+  "classification": "CURRENT_OBSERVED_COMPONENT_SOURCE_PREPARED_NOT_GPU_QUALIFIED",
+  "dependencies": [
+    {
+      "package": "aiter",
+      "path": "ops/opus/__init__.py",
+      "sha256": "d2511ff5344db48bf1d48bd2e62a7fe01b0178a4dae0f69ebf93cfe449adb4ea"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/opus/_arch.py",
+      "sha256": "c12fff714d7382c6ef5d44593a25da3cc9429d47167b0fc14a1f482127108353"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/opus/bmm_op.py",
+      "sha256": "b48ce7241af807192b93c37a7768233d21d70b5a77c26a74a3a309038dff6b47"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/opus/common.py",
+      "sha256": "cc6f942732cdcbf2adeedc9c5d99ba87fa287bea6e08b48f43865a7dc45dd089"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/opus/gemm_op_a16w16.py",
+      "sha256": "2d5be88bbdfbfcf0bfadaec3a33d6499b105cf53e0ee5cb2abedabdab713929c"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/opus/gemm_op_a8w8.py",
+      "sha256": "43cfcebed69c052b77c429bac8469f5cb5d20eb0a2876b6881b5c23c12aa61bc"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/opus/moe_stage1_a8w4.py",
+      "sha256": "5cea2bd316394b05007ff382b758081e3fc9eb3848b3f1c96f01d299b939c367"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/opus/moe_stage2_a8w4.py",
+      "sha256": "74524561e3fa42b2caa20414d575f1994fa373c0b60a78d1f1b8871beee14de1"
+    },
+    {
+      "package": "aiter",
+      "path": "../csrc/opus_moe/gen_instances.py",
+      "sha256": "28c3fd8573b4d4671db3d31eb76a34ca687cd1c7b5b68d132a2c232c2d4b0044"
+    },
+    {
+      "package": "aiter",
+      "path": "../csrc/opus_moe/include/opus_moe.h",
+      "sha256": "d7cf27dd4c39771dee9af2cb3132341c890e72241dc3a7e3348e455c7432c9ce"
+    },
+    {
+      "package": "aiter",
+      "path": "../csrc/opus_moe/opus_moe.cu",
+      "sha256": "fce5f71695760bb1454f176ae51f53a2a816c2f7756e7f82b86bb42adcb4eff9"
+    },
+    {
+      "package": "aiter",
+      "path": "../csrc/opus_moe/opus_moe_common.py",
+      "sha256": "e6ca0074088e75fdd472572b7413adb3677223663c81213a07dadff6b4a54f71"
+    }
+  ],
+  "function": "opus_a8w4_stage1_wrapper",
+  "has_var_kwargs": true,
+  "image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
+  "module": "aiter.ops.opus.moe_stage1_a8w4",
+  "native_source_sha256": "5cea2bd316394b05007ff382b758081e3fc9eb3848b3f1c96f01d299b939c367",
+  "seam": "moe1_prefill",
+  "sglang_version": "0.5.20",
+  "signature": "def opus_a8w4_stage1_wrapper(hidden_states, w1, w2, sorted_token_ids, sorted_expert_ids, num_valid_ids, out, topk, activation, kernelName='', block_m: int=0, w1_scale=None, a1_scale=None, sorted_weights=None, bias1=None, swiglu_limit: float | None=None, situ_beta: float=4.0, situ_linear_beta: float=25.0, inter_dim_pad: int=0, output_sorted: bool=False, **_kwargs):",
+  "signature_parameters": [
+    "hidden_states",
+    "w1",
+    "w2",
+    "sorted_token_ids",
+    "sorted_expert_ids",
+    "num_valid_ids",
+    "out",
+    "topk",
+    "activation",
+    "kernelName",
+    "block_m",
+    "w1_scale",
+    "a1_scale",
+    "sorted_weights",
+    "bias1",
+    "swiglu_limit",
+    "situ_beta",
+    "situ_linear_beta",
+    "inter_dim_pad",
+    "output_sorted"
+  ],
+  "source_sha256": "5cea2bd316394b05007ff382b758081e3fc9eb3848b3f1c96f01d299b939c367",
+  "native_build": {
+    "module": "module_moe_opus",
+    "translation_units": [
+      "pybind/opus_moe_pybind.cu",
+      "opus_moe/opus_moe.cu"
+    ]
+  },
+  "gpu_binding": {
+    "kind": "hip",
+    "exports": {
+      "_opus_moe_stage1_a8w4_fwd_raw": "opus_moe_stage1_a8w4_fwd"
+    }
+  },
+  "gpu_source_status": "READY_FOR_GPU_VALIDATION",
+  "host_source": "ut/host/native.py",
+  "editable_sources": {
+    "source/opus_moe_stage1_a8w4_pipeline_group_split_gfx950.cuh": {
+      "reference": "ut/reference/opus_moe_stage1_a8w4_pipeline_group_split_gfx950.cuh",
+      "language": "hip",
+      "markers": [
+        "static __device__ void process_tile("
+      ],
+      "native_relative": "opus_moe/include/gfx950/a8w4/stage1/opus_moe_stage1_a8w4_pipeline_group_split_gfx950.cuh"
+    },
+    "source/opus_moe_stage1_a8w4_pipeline_pair_kwave_gfx950.cuh": {
+      "reference": "ut/reference/opus_moe_stage1_a8w4_pipeline_pair_kwave_gfx950.cuh",
+      "language": "hip",
+      "markers": [
+        "static __device__ void process_tile("
+      ],
+      "native_relative": "opus_moe/include/gfx950/a8w4/stage1/opus_moe_stage1_a8w4_pipeline_pair_kwave_gfx950.cuh"
+    }
+  },
+  "gpu_source_provenance": [
+    {
+      "image_path": "/sgl-workspace/aiter/csrc/opus_moe/include/gfx950/a8w4/stage1/opus_moe_stage1_a8w4_pipeline_group_split_gfx950.cuh",
+      "sha256": "5935df7775e0a2192f495e651742ccaed23ab3ab971a4ada03beccf18fd74e6c"
+    },
+    {
+      "image_path": "/sgl-workspace/aiter/csrc/opus_moe/include/gfx950/a8w4/stage1/opus_moe_stage1_a8w4_pipeline_pair_kwave_gfx950.cuh",
+      "sha256": "3628f1ce1af8bf0405be32af649a0b175a9a8f6b04b94ac625fea00f0117c30f"
+    }
+  ]
+}

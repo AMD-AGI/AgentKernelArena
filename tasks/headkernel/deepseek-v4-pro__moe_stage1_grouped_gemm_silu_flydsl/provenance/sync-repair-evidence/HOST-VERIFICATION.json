@@ -1,0 +1,62 @@
+{
+  "complete": true,
+  "current_model_task_qualification": false,
+  "fixtures": [
+    {
+      "path": "generated-n2400-seed42-moe1.json",
+      "sha256": "2bc8ab5e42e04042bbcdf446e7735f63a599b1ae7faeb58b9a02f8391feb8a2c"
+    },
+    {
+      "path": "generated-n2400-seed42-moe2.json",
+      "sha256": "88e830cb40988b1337bd04250f147211dbe2cc7f1a5ec79083d38c1d9030bb03"
+    },
+    {
+      "path": "generated-n2400-seed43-moe1.json",
+      "sha256": "74b8930936336aebf9f149b3b0ba4ed5effdf81649158340a6f49250c914bf84"
+    },
+    {
+      "path": "generated-n2400-seed43-moe2.json",
+      "sha256": "eb94ac4fc03b0f503049f91e83822f83b35c76ecd5d0031396ab08fd99013e3a"
+    },
+    {
+      "path": "generated-n2432-seed42-moe1.json",
+      "sha256": "3a1516e42954ba8517df5d60579ec665879f84c130a9cbb10cf10bcee4d91158"
+    },
+    {
+      "path": "generated-n2432-seed42-moe2.json",
+      "sha256": "634378aa119a4a80417f3b3ce09b4657b08bdce5ac6167f870808b4d8fe3fdc9"
+    },
+    {
+      "path": "generated-n2432-seed43-moe1.json",
+      "sha256": "53cedb30286ab9dda67a23f4170cf9e787e67336d34483485322d8d382b6c440"
+    },
+    {
+      "path": "generated-n2432-seed43-moe2.json",
+      "sha256": "81b7bc2642912f865cc09c84ac5ff10d5475e232aa6e221387343d68e3665aac"
+    },
+    {
+      "path": "generated-n2496-seed42-moe1.json",
+      "sha256": "3b4cd50b2c1401724ae12c3744c7a33825ceebb9d262a651716165a2099e26c0"
+    },
+    {
+      "path": "generated-n2496-seed42-moe2.json",
+      "sha256": "f3142188ad0f007b26a38548232b3679f9a436a133ea1c3a839beef94e653299"
+    },
+    {
+      "path": "generated-n2496-seed43-moe1.json",
+      "sha256": "29e06793923302c1dfc44309fe2c247b9682de7078a12e35c795de9b84fab037"
+    },
+    {
+      "path": "generated-n2496-seed43-moe2.json",
+      "sha256": "94f5ef33fe40051304063e8749a9ff387cb9cc57cb529124853dfd7e7daed5f3"
+    }
+  ],
+  "generated_fixture_count": 12,
+  "native_repeatability_passed": true,
+  "ownership_verified": true,
+  "result_sha256": "d82caae9852369d9908e833c772bf4aa4e8eb88ce01308c12c0787a9e24d9e81",
+  "source_map_sha256": "52742c7968aadada409172649742e5eacf9da010e2f10afa3ea74ccdbfc6c461",
+  "source_repaired_reference": true,
+  "stock_baseline": false,
+  "verified_payload_files": 57
+}

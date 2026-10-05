@@ -1,0 +1,45 @@
+source_file_path:
+- source/native.py
+target_kernel_functions:
+- _paged_decode_fused_kernel
+- _paged_decode_split_kernel
+- _paged_decode_reduce_kernel
+compile_command:
+- python3 scripts/task_runner.py compile
+correctness_command:
+- python3 scripts/task_runner.py correctness
+performance_command:
+- python3 scripts/task_runner.py performance
+task_type: triton2triton
+platform_support:
+  required_arch: gfx950
+  status: active
+prompt:
+  instructions: Optimize only the declared GPU implementation bodies. Host wrappers,
+    imports, signatures, launch parameters, compilation and timing are frozen. Preserve
+    every captured case and all storage/scalar semantics. The current native implementation
+    is rebuilt/loaded through protected bindings; source-hash-dependent algorithm
+    selection is forbidden.
+headkernel:
+  model: DeepSeek-V4-Pro
+  sglang_version: 0.5.20
+  docker: docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96
+  qualification_status: sealed_inputs_pending_trusted_GPU_and_framework_validation
+  target_callable: sglang.kernels.ops.attention.dsv4.unified_kv_kernels.paged_decode:sparse_attn_v4_paged_decode
+  source_provenance: provenance/SOURCE.json
+  expected_case_contract: cases.json
+  historical_oracle_reused: false
+  baseline_kind: pinned_image_native_source
+  coverage_provenance: provenance/COVERAGE.json
+  original_served_work_control_gate_passed: false
+harness_protection:
+  reject_new_source_symlinks: true
+trusted_evaluation:
+  schema_version: 1
+  case_manifest: cases.json
+  contract_file: ut/evaluation_contract.py
+  source_guard: ut/source_guard.py
+  reference_sources:
+    source/native.py: ut/baseline/native.py
+  requires_aiter_jit_cache: true
+  fixture_manifest: fixtures/EXTERNAL-MANIFEST.json

@@ -1,0 +1,194 @@
+{
+  "classification": "CURRENT_NATIVE_SOURCE_PREPARED_NOT_GPU_QUALIFIED",
+  "dependencies": [
+    {
+      "package": "aiter",
+      "path": "jit/core.py",
+      "sha256": "97998734a817f5444fa539e1811932f7529db8427a48a5bd73112763dbde768a"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/opus/moe_stage2_a8w4.py",
+      "sha256": "74524561e3fa42b2caa20414d575f1994fa373c0b60a78d1f1b8871beee14de1"
+    },
+    {
+      "package": "aiter",
+      "path": "../csrc/opus_moe/gen_instances.py",
+      "sha256": "28c3fd8573b4d4671db3d31eb76a34ca687cd1c7b5b68d132a2c232c2d4b0044"
+    },
+    {
+      "package": "aiter",
+      "path": "../csrc/opus_moe/include/gfx950/a16w16/opus_moe_pipeline_stage2_gemmstyle_gfx950.cuh",
+      "sha256": "05984248c6341ea65236601e74803d3e136f40cc36003d97cdbac43d76a1ad98"
+    },
+    {
+      "package": "aiter",
+      "path": "../csrc/opus_moe/include/gfx950/a16w16/opus_moe_traits_stage2_gfx950.cuh",
+      "sha256": "f664e6f6713a409febc044499dd1495d9c2c06987900d35dd96ae976238abbec"
+    },
+    {
+      "package": "aiter",
+      "path": "../csrc/opus_moe/include/gfx950/a8w4/opus_moe_pipeline_stage2_a8w4_decode_main_gfx950.cuh",
+      "sha256": "cb5050ee044533b7c8a74f72d230066bd7de680a77109bfa5f7eec73b4893e9c"
+    },
+    {
+      "package": "aiter",
+      "path": "../csrc/opus_moe/include/gfx950/a8w4/opus_moe_pipeline_stage2_a8w4_decode_policy_gfx950.cuh",
+      "sha256": "2da2f1398e2fadabc53c04ba7f939960bb1450ff14e27c0244c12de34065b0a6"
+    },
+    {
+      "package": "aiter",
+      "path": "../csrc/opus_moe/include/gfx950/a8w4/opus_moe_stage2_a8w4_decode_dispatch_gfx950.cuh",
+      "sha256": "e09f978947a389fed2f04d27a559a93b36fcb0cf677f4b8e3fe11e90095f1db3"
+    },
+    {
+      "package": "aiter",
+      "path": "../csrc/opus_moe/include/gfx950/a8w4/opus_moe_traits_stage2_a8w4_decode_gfx950.cuh",
+      "sha256": "c69007e866c85166c6606ce6652177f5f1bbf7b0ef8210be71ca624c4a9d5aa5"
+    },
+    {
+      "package": "aiter",
+      "path": "../csrc/opus_moe/include/gfx950/a8w4/stage1/opus_moe_stage1_a8w4_dispatch_gfx950.cuh",
+      "sha256": "77d3c627ab4c6607e5974a389fccfa7fcae2c0d18cf83e70e5f4d6aec55f9503"
+    },
+    {
+      "package": "aiter",
+      "path": "../csrc/opus_moe/include/gfx950/a8w4/stage1/opus_moe_stage1_a8w4_pipeline_common_gfx950.cuh",
+      "sha256": "e9c01eb78823c497c1d43936edca4cf21a48700b7509098ea45e26ffab256e38"
+    },
+    {
+      "package": "aiter",
+      "path": "../csrc/opus_moe/include/gfx950/a8w4/stage1/opus_moe_stage1_a8w4_pipeline_group_split_gfx950.cuh",
+      "sha256": "5935df7775e0a2192f495e651742ccaed23ab3ab971a4ada03beccf18fd74e6c"
+    },
+    {
+      "package": "aiter",
+      "path": "../csrc/opus_moe/include/gfx950/a8w4/stage1/opus_moe_stage1_a8w4_pipeline_pair_kwave_gfx950.cuh",
+      "sha256": "3628f1ce1af8bf0405be32af649a0b175a9a8f6b04b94ac625fea00f0117c30f"
+    },
+    {
+      "package": "aiter",
+      "path": "../csrc/opus_moe/include/gfx950/a8w4/stage1/opus_moe_stage1_a8w4_traits_gfx950.cuh",
+      "sha256": "619c1cdc51ddf5207210163a90fb8ba4c36a84d11e1b9503c8665cde8f6b7cb6"
+    },
+    {
+      "package": "aiter",
+      "path": "../csrc/opus_moe/include/gfx950/opus_moe_arch_gfx950.cuh",
+      "sha256": "338a6c08aa4d52a8043f56897888ab6f4a5eea1f04ab3524cf5c5f74ce51e290"
+    },
+    {
+      "package": "aiter",
+      "path": "../csrc/opus_moe/include/gfx950/opus_moe_stage2_route_output_reduce_gfx950.cuh",
+      "sha256": "ff4fd99f1e64aab790aa16dc1f8d51217bff3c4b438defbe70c26634eb4f59fe"
+    },
+    {
+      "package": "aiter",
+      "path": "../csrc/opus_moe/include/gfx950/opus_moe_stage2_utils_gfx950.cuh",
+      "sha256": "d70d403b91671cf317476e044ba13b79188da4d8db85b14669a9f00d76646acb"
+    },
+    {
+      "package": "aiter",
+      "path": "../csrc/opus_moe/include/opus_moe.h",
+      "sha256": "d7cf27dd4c39771dee9af2cb3132341c890e72241dc3a7e3348e455c7432c9ce"
+    },
+    {
+      "package": "aiter",
+      "path": "../csrc/opus_moe/include/opus_moe_arch.cuh",
+      "sha256": "60590dd76128696f3ff20757fb65fd03b77fea82ec9bce163b80c9667f738c1a"
+    },
+    {
+      "package": "aiter",
+      "path": "../csrc/opus_moe/include/opus_moe_common.cuh",
+      "sha256": "4a3a98f59c295598cfe229d3164bfa2a8b01bcd2cb944bf745164e61756ca8f2"
+    },
+    {
+      "package": "aiter",
+      "path": "../csrc/opus_moe/include/opus_moe_host_impl.cuh",
+      "sha256": "25c513d0ecd2b78d3a4608687cdd6bfcbc804fb3ffa9fde122c160161965e1f0"
+    },
+    {
+      "package": "aiter",
+      "path": "../csrc/opus_moe/opus_moe.cu",
+      "sha256": "fce5f71695760bb1454f176ae51f53a2a816c2f7756e7f82b86bb42adcb4eff9"
+    },
+    {
+      "package": "aiter",
+      "path": "../csrc/opus_moe/opus_moe_common.py",
+      "sha256": "e6ca0074088e75fdd472572b7413adb3677223663c81213a07dadff6b4a54f71"
+    }
+  ],
+  "function": "opus_a8w4_stage2_wrapper",
+  "has_var_kwargs": true,
+  "image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
+  "module": "aiter.ops.opus.moe_stage2_a8w4",
+  "native_source_sha256": "74524561e3fa42b2caa20414d575f1994fa373c0b60a78d1f1b8871beee14de1",
+  "seam": "moe2",
+  "sglang_version": "0.5.20",
+  "signature": "def opus_a8w4_stage2_wrapper(inter_states, w1, w2, sorted_token_ids, sorted_expert_ids, num_valid_ids, out, topk, *, launch: OpusA8W4LaunchConfig, kernelName='', w2_scale=None, a2_scale=None, sorted_weights=None, bias2=None, inter_dim_pad: int=0, model_dim_pad: int=0, expert_mask=None, topk_ids=None, block_m: int=_DEFAULT_SORT_BLOCK_M, **_kwargs):",
+  "signature_parameters": [
+    "inter_states",
+    "w1",
+    "w2",
+    "sorted_token_ids",
+    "sorted_expert_ids",
+    "num_valid_ids",
+    "out",
+    "topk",
+    "launch",
+    "kernelName",
+    "w2_scale",
+    "a2_scale",
+    "sorted_weights",
+    "bias2",
+    "inter_dim_pad",
+    "model_dim_pad",
+    "expert_mask",
+    "topk_ids",
+    "block_m"
+  ],
+  "source_sha256": "74524561e3fa42b2caa20414d575f1994fa373c0b60a78d1f1b8871beee14de1",
+  "native_build": {
+    "module": "module_moe_opus",
+    "translation_units": [
+      "pybind/opus_moe_pybind.cu",
+      "opus_moe/opus_moe.cu"
+    ]
+  },
+  "gpu_binding": {
+    "kind": "hip",
+    "exports": {
+      "_opus_moe_stage2_a8w4_decode_fwd_raw": "opus_moe_stage2_a8w4_decode_fwd",
+      "_opus_moe_stage2_reduce_token_slot_route_output_fwd_raw": "opus_moe_stage2_reduce_token_slot_route_output_fwd"
+    }
+  },
+  "gpu_source_status": "READY_FOR_GPU_VALIDATION",
+  "host_source": "ut/host/native.py",
+  "editable_sources": {
+    "source/opus_moe_pipeline_stage2_a8w4_decode_main_gfx950.cuh": {
+      "reference": "ut/reference/opus_moe_pipeline_stage2_a8w4_decode_main_gfx950.cuh",
+      "language": "hip",
+      "markers": [
+        "opus_moe_stage2_a8w4_decode_kernel_gfx950(\n"
+      ],
+      "native_relative": "opus_moe/include/gfx950/a8w4/opus_moe_pipeline_stage2_a8w4_decode_main_gfx950.cuh"
+    },
+    "source/opus_moe_stage2_route_output_reduce_gfx950.cuh": {
+      "reference": "ut/reference/opus_moe_stage2_route_output_reduce_gfx950.cuh",
+      "language": "hip",
+      "markers": [
+        "opus_moe_stage2_reduce_token_slot_route_output_kernel_gfx950(opus_moe_stage2_route_reduce_kargs kargs)"
+      ],
+      "native_relative": "opus_moe/include/gfx950/opus_moe_stage2_route_output_reduce_gfx950.cuh"
+    }
+  },
+  "gpu_source_provenance": [
+    {
+      "image_path": "/sgl-workspace/aiter/csrc/opus_moe/include/gfx950/a8w4/opus_moe_pipeline_stage2_a8w4_decode_main_gfx950.cuh",
+      "sha256": "cb5050ee044533b7c8a74f72d230066bd7de680a77109bfa5f7eec73b4893e9c"
+    },
+    {
+      "image_path": "/sgl-workspace/aiter/csrc/opus_moe/include/gfx950/opus_moe_stage2_route_output_reduce_gfx950.cuh",
+      "sha256": "ff4fd99f1e64aab790aa16dc1f8d51217bff3c4b438defbe70c26634eb4f59fe"
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "frozen_files": {
+    "source/native.py": "d08339bc94dfabd3529d415857e49d0383f9efe2ef62be9a84916c55c5857e68",
+    "ut/baseline/native.py": "d08339bc94dfabd3529d415857e49d0383f9efe2ef62be9a84916c55c5857e68",
+    "ut/host/native.py": "d08339bc94dfabd3529d415857e49d0383f9efe2ef62be9a84916c55c5857e68",
+    "ut/native/mixed_moe_gemm_2stage.py": "7ab78bf4195364aad7778532844a4b8c01e9dfe82a728c3322381162b428ac37",
+    "ut/reference/mixed_moe_gemm_2stage_common.py": "b819545c0be6f94932edd994983c7d3ec6c18a652d4f8c330cad2513372bbe6d"
+  },
+  "schema_version": 1,
+  "sources": {
+    "source/mixed_moe_gemm_2stage_common.py": {
+      "language": "flydsl",
+      "reference": "ut/reference/mixed_moe_gemm_2stage_common.py",
+      "targets": [
+        "compile_mixed_moe_gemm1_common._emit_moe_gemm1"
+      ]
+    }
+  }
+}

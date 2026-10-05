@@ -1,0 +1,142 @@
+{
+  "README.md": {
+    "bytes": 3410,
+    "sha256": "d48f91c6864c4ef5d139b365dae66fb0470b2861e15a5994293011a50c8fa3e6",
+    "type": "file"
+  },
+  "cases.json": {
+    "bytes": 1160,
+    "sha256": "680d003d2389f1d81a8c160956ab71ff074ec4348ed33f2a7cf52f01636e791c",
+    "type": "file"
+  },
+  "config.yaml": {
+    "bytes": 1527,
+    "sha256": "b0c3335b2fabb1240bbcde19ab08d235f520abf96166ce19b3cb4ddb0ff34497",
+    "type": "file"
+  },
+  "fixtures": {
+    "type": "directory"
+  },
+  "provenance": {
+    "type": "directory"
+  },
+  "provenance/SOURCE.json": {
+    "bytes": 24703,
+    "sha256": "ce2b33f96880d65f8ae3e3b495cbcad57467c798ae7e69c6843a77652b0f1d5e",
+    "type": "file"
+  },
+  "scripts": {
+    "type": "directory"
+  },
+  "scripts/task_runner.py": {
+    "bytes": 15506,
+    "sha256": "3d3fcf8c4caf7f0a9ca68d9385dfdf4225471d293523ae62f44f106dc6af8b56",
+    "type": "file"
+  },
+  "source": {
+    "type": "directory"
+  },
+  "source/mixed_moe_gemm_2stage_common.py": {
+    "bytes": 254363,
+    "sha256": "7c43585c51bfee5506515d0efec908611c93ac8d0583addb437296d442a91a91",
+    "type": "file"
+  },
+  "source/native.py": {
+    "bytes": 108550,
+    "sha256": "d08339bc94dfabd3529d415857e49d0383f9efe2ef62be9a84916c55c5857e68",
+    "type": "file"
+  },
+  "ut": {
+    "type": "directory"
+  },
+  "ut/__pycache__": {
+    "type": "directory"
+  },
+  "ut/__pycache__/evaluation_contract.cpython-312.pyc": {
+    "bytes": 18691,
+    "sha256": "ecdad43a87fc96455bc1427289809680f92992f6b11fb30244eb514c76e71f93",
+    "type": "file"
+  },
+  "ut/abi.py": {
+    "bytes": 1879,
+    "sha256": "42a972d808111ad562db3bf2811a679b7bdab37f913146b5e173837601c3ed66",
+    "type": "file"
+  },
+  "ut/baseline": {
+    "type": "directory"
+  },
+  "ut/baseline/native.py": {
+    "bytes": 108550,
+    "sha256": "d08339bc94dfabd3529d415857e49d0383f9efe2ef62be9a84916c55c5857e68",
+    "type": "file"
+  },
+  "ut/contract.py": {
+    "bytes": 4404,
+    "sha256": "bea4802d1a5495d7667cd7437af4c8e395324ee238548c75a67ced3462bde630",
+    "type": "file"
+  },
+  "ut/cpp_body_guard.py": {
+    "bytes": 4264,
+    "sha256": "b51f41072d8967244294dbf12184b0d991e8be53e61c8de729cc6a1ce78fc667",
+    "type": "file"
+  },
+  "ut/evaluation_contract.py": {
+    "bytes": 11809,
+    "sha256": "2dffc785afb98cbe46303227281f4efcf0f82380a9de6d9f53fcb8774a43cb75",
+    "type": "file"
+  },
+  "ut/host": {
+    "type": "directory"
+  },
+  "ut/host/native.py": {
+    "bytes": 108550,
+    "sha256": "d08339bc94dfabd3529d415857e49d0383f9efe2ef62be9a84916c55c5857e68",
+    "type": "file"
+  },
+  "ut/native": {
+    "type": "directory"
+  },
+  "ut/native.py": {
+    "bytes": 4972,
+    "sha256": "60331b4f31d3cbbd9d3dca64b0647c91416be66a5152360d809829fc556cc2ac",
+    "type": "file"
+  },
+  "ut/native/mixed_moe_gemm_2stage.py": {
+    "bytes": 3937,
+    "sha256": "7ab78bf4195364aad7778532844a4b8c01e9dfe82a728c3322381162b428ac37",
+    "type": "file"
+  },
+  "ut/native_build.py": {
+    "bytes": 6655,
+    "sha256": "a9240b71eef6138c5626a47a8bcb012e483c3d5b720fbdc648a7b05f2b2ff84e",
+    "type": "file"
+  },
+  "ut/reference": {
+    "type": "directory"
+  },
+  "ut/reference/mixed_moe_gemm_2stage_common.py": {
+    "bytes": 254363,
+    "sha256": "7c43585c51bfee5506515d0efec908611c93ac8d0583addb437296d442a91a91",
+    "type": "file"
+  },
+  "ut/runtime_capture.py": {
+    "bytes": 37378,
+    "sha256": "d3f57cc73b223cc5456097e5d20a372166e007c3294058ebfe1a4ffde27d9789",
+    "type": "file"
+  },
+  "ut/snapshots.py": {
+    "bytes": 7435,
+    "sha256": "1759f6b308f5f1c2a7c2840e7f6960c7659442716dedd55759b1d05ebc7754ad",
+    "type": "file"
+  },
+  "ut/source_guard.py": {
+    "bytes": 9391,
+    "sha256": "69c46d70117a47a0325371c952dccdc50dedff8f52f199d72362ec360fc3b47f",
+    "type": "file"
+  },
+  "ut/source_guard_policy.json": {
+    "bytes": 815,
+    "sha256": "cf255f2d5110c4adbce1d14c3c465b930c6f994507ab68cebe043353fb4a689c",
+    "type": "file"
+  }
+}

@@ -1,69 +1,46 @@
-# deepseek-v4-pro__moe_stage2_down_proj_reduce_opus_a8w4
-# Head kernel from the 2026-09-14 info table, rows: DS-3
-
 source_file_path:
-  - source/geak_opus_moe_stage2_adapter.py
-
+- source/opus_moe_pipeline_stage2_a8w4_decode_main_gfx950.cuh
+- source/opus_moe_stage2_route_output_reduce_gfx950.cuh
 target_kernel_functions:
-  - opus_a8w4_stage2_wrapper
-
+- opus_moe_stage2_a8w4_decode_kernel_gfx950
+- opus_moe_stage2_reduce_token_slot_route_output_kernel_gfx950
 compile_command:
-  - python3 scripts/task_runner.py compile
-
+- python3 scripts/task_runner.py compile
 correctness_command:
-  - python3 scripts/task_runner.py correctness
-
+- python3 scripts/task_runner.py correctness
 performance_command:
-  - python3 scripts/task_runner.py performance
-
-task_type: triton2triton
-
-task_result_template: null
-
+- python3 scripts/task_runner.py performance
+task_type: hip2hip
+platform_support:
+  required_arch: gfx950
+  status: active
 prompt:
-  source_code: null
-  instructions: |
-    Optimize the DeepSeek-V4-Pro head kernel `MoE stage-2 opus_moe_stage2_a8w4_decode_kernel_gfx950` (aiter) for maximum GPU
-    throughput on MI355X (gfx950) while keeping it numerically correct.
-
-    It is 3.7% of de-inflated GPU time in the serving profile
-    (ISL 8192 / OSL 1024 / CONC 64 / TP 8), currently at ~98% HBM (raw 144%, byte model over-counts) of its empirical roofline.
-
-    Edit only:
-      source/geak_opus_moe_stage2_adapter.py
-
-    Entry points that must keep their signatures:
-      opus_a8w4_stage2_wrapper
-
-    The production seam is `aiter.ops.opus.moe_stage2_a8w4_fused_adapter:opus_a8w4_stage2_wrapper`; correctness is judged
-    against a frozen live-server capture, not a re-derived reference, so the kernel
-    must stay faithful to the deployed contract (dtypes, layouts, quantization).
-  cheatsheet: null
-
-# ---------------------------------------------------------------------------
-# Provenance. Not read by the arena schema check; read by scripts/task_runner.py
-# and by anyone auditing where these numbers came from.
+  instructions: Optimize only the declared GPU implementation bodies. Host wrappers,
+    imports, signatures, launch parameters, compilation and timing are frozen. Preserve
+    every captured case and all storage/scalar semantics. The current native implementation
+    is rebuilt/loaded through protected bindings; source-hash-dependent algorithm
+    selection is forbidden.
 headkernel:
-  model: "DeepSeek-V4-Pro"
-  owner: zihao
-  docker: "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.17-rocm720-mi35x-profilerfix"
-  serving: ISL 8192 / OSL 1024 / CONC 64 / TP 8
-  backend: aiter
-  regime: decode+prefill
-  device_symbol: opus_moe_stage2_a8w4_decode_kernel_gfx950
-  target_callable: "aiter.ops.opus.moe_stage2_a8w4_fused_adapter:opus_a8w4_stage2_wrapper"
-  tol: 0.05
-  oracle: "frozen live-capture ut/reference_io.pt"
-  source_package: "Z/DeepSeek-V4-Pro_moe_stage2_down_proj_reduce_opus_a8w4"
-  source_seed: stock
-  # 1 file(s) shipped pre-tuned by a previous GEAK run and were reset to baseline_ref/*.orig; the tuned version is kept at
-  # _prior_solutions/deepseek-v4-pro__moe_stage2_down_proj_reduce_opus_a8w4/
-  info_rows:
-    - row: "DS-3"
-      info_kernel: "MoE stage-2 opus_moe_stage2_a8w4_decode_kernel_gfx950"
-      gpu_pct: 3.7
-      empirical_roofline: "~98% HBM (raw 144%, byte model over-counts)"
-      optimized_roofline: null
-      e2e_uplift: null
-  symbol_locations:
-    opus_a8w4_stage2_wrapper: source/geak_opus_moe_stage2_adapter.py
+  model: DeepSeek-V4-Pro
+  sglang_version: 0.5.20
+  docker: docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96
+  qualification_status: sealed_inputs_pending_trusted_GPU_and_framework_validation
+  target_callable: aiter.ops.opus.moe_stage2_a8w4:opus_a8w4_stage2_wrapper
+  source_provenance: provenance/SOURCE.json
+  expected_case_contract: cases.json
+  historical_oracle_reused: false
+  baseline_kind: pinned_image_native_source
+  coverage_provenance: provenance/COVERAGE.json
+  original_served_work_control_gate_passed: false
+harness_protection:
+  reject_new_source_symlinks: true
+trusted_evaluation:
+  schema_version: 1
+  case_manifest: cases.json
+  contract_file: ut/evaluation_contract.py
+  source_guard: ut/source_guard.py
+  reference_sources:
+    source/opus_moe_pipeline_stage2_a8w4_decode_main_gfx950.cuh: ut/reference/opus_moe_pipeline_stage2_a8w4_decode_main_gfx950.cuh
+    source/opus_moe_stage2_route_output_reduce_gfx950.cuh: ut/reference/opus_moe_stage2_route_output_reduce_gfx950.cuh
+  requires_aiter_jit_cache: true
+  fixture_manifest: fixtures/EXTERNAL-MANIFEST.json

@@ -1,0 +1,20 @@
+{
+  "aggregate_bound_seconds": 900,
+  "current_model_task_qualification": false,
+  "elapsed_seconds": 46.36105680465698,
+  "ended_unix": 1791243158.4694047,
+  "generated_fixture_count": 12,
+  "gpu_index": 7,
+  "host_verification_sha256": "3ceb5db6dbabb5a5443517fbc70d887a7b7b3439278623309205da11903cbb9b",
+  "independent_correctness_passed": false,
+  "input_manifest_sha256": "aeaef0b5954b474bdd9397b9b75b27c7e449dfa8435d2ff7563f717a7907e353",
+  "original_capture_gate_repaired": false,
+  "retirement": {
+    "already_exited": true,
+    "complete": true
+  },
+  "returncode": 0,
+  "source_repaired_reference": true,
+  "status": "NATIVE_SUPPLEMENTAL_REPLAY_PASSED",
+  "stock_baseline": false
+}

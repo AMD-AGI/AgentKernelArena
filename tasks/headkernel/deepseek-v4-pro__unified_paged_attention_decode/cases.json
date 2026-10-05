@@ -1,0 +1,435 @@
+{
+  "all_control_variants_have_payloads": false,
+  "all_output_components_required": true,
+  "baseline_kind": "pinned_image_native_source",
+  "cases": [
+    {
+      "calls_per_sample": 1,
+      "case_id": "deepseek_mla_decode-98f9f736c04a9282790736a9",
+      "fixture": {
+        "path": "fixtures/deepseek_mla_decode-98f9f736c04a9282790736a9.json",
+        "sha256": "6bc548991013d36510ef1f7333cb923909850a506f322118caec6a75588ec3c1"
+      },
+      "occurrences": 30720,
+      "provenance_kind": "actual_served_capture",
+      "scalars": {
+        "arguments": {
+          "attn_sink": {
+            "attributes": {},
+            "tensor": "arg.attn_sink"
+          },
+          "kv_indices": {
+            "attributes": {},
+            "tensor": "arg.kv_indices"
+          },
+          "kv_indptr": {
+            "attributes": {},
+            "tensor": "arg.kv_indptr"
+          },
+          "kv_scales": null,
+          "q": {
+            "attributes": {},
+            "tensor": "arg.q"
+          },
+          "softmax_scale": 0.04419417382415922,
+          "unified_kv": {
+            "attributes": {},
+            "tensor": "arg.unified_kv"
+          }
+        },
+        "return": {
+          "attributes": {},
+          "tensor": "result"
+        }
+      },
+      "stage": "decode",
+      "tensors": {
+        "arg.attn_sink": {
+          "device_type": "cuda",
+          "dtype": "float32",
+          "role": "input",
+          "shape": [
+            16
+          ],
+          "storage_offset": 0,
+          "strides": [
+            1
+          ]
+        },
+        "arg.kv_indices": {
+          "device_type": "cuda",
+          "dtype": "int32",
+          "role": "input",
+          "shape": [
+            73728
+          ],
+          "storage_offset": 0,
+          "strides": [
+            1
+          ]
+        },
+        "arg.kv_indptr": {
+          "device_type": "cuda",
+          "dtype": "int32",
+          "role": "input",
+          "shape": [
+            65
+          ],
+          "storage_offset": 0,
+          "strides": [
+            1
+          ]
+        },
+        "arg.q": {
+          "device_type": "cuda",
+          "dtype": "bfloat16",
+          "role": "input",
+          "shape": [
+            64,
+            16,
+            512
+          ],
+          "storage_offset": 0,
+          "strides": [
+            32768,
+            512,
+            1
+          ]
+        },
+        "arg.unified_kv": {
+          "device_type": "cuda",
+          "dtype": "bfloat16",
+          "role": "input",
+          "shape": [
+            4121472,
+            512
+          ],
+          "storage_offset": 0,
+          "strides": [
+            512,
+            1
+          ]
+        },
+        "result": {
+          "device_type": "cuda",
+          "dtype": "bfloat16",
+          "role": "output",
+          "shape": [
+            64,
+            16,
+            512
+          ],
+          "storage_offset": 0,
+          "strides": [
+            8192,
+            512,
+            1
+          ]
+        }
+      }
+    },
+    {
+      "calls_per_sample": 1,
+      "case_id": "deepseek_mla_decode-ef9a66de43776b4e2e04f22b-work-531ff7069c2236ba",
+      "fixture": {
+        "path": "fixtures/deepseek_mla_decode-ef9a66de43776b4e2e04f22b-work-531ff7069c2236ba.json",
+        "sha256": "36977106e1fbf567dece555e8f387ccfcde3e521a130608c79924d0db05aca9d"
+      },
+      "occurrences": 31,
+      "provenance_kind": "actual_served_capture",
+      "scalars": {
+        "arguments": {
+          "attn_sink": {
+            "attributes": {},
+            "tensor": "arg.attn_sink"
+          },
+          "kv_indices": {
+            "attributes": {},
+            "tensor": "arg.kv_indices"
+          },
+          "kv_indptr": {
+            "attributes": {},
+            "tensor": "arg.kv_indptr"
+          },
+          "kv_scales": null,
+          "q": {
+            "attributes": {},
+            "tensor": "arg.q"
+          },
+          "softmax_scale": 0.04419417382415922,
+          "unified_kv": {
+            "attributes": {},
+            "tensor": "arg.unified_kv"
+          }
+        },
+        "return": {
+          "attributes": {},
+          "tensor": "result"
+        }
+      },
+      "stage": "decode",
+      "tensors": {
+        "arg.attn_sink": {
+          "device_type": "cuda",
+          "dtype": "float32",
+          "role": "input",
+          "shape": [
+            16
+          ],
+          "storage_offset": 0,
+          "strides": [
+            1
+          ]
+        },
+        "arg.kv_indices": {
+          "device_type": "cuda",
+          "dtype": "int32",
+          "role": "input",
+          "shape": [
+            16384
+          ],
+          "storage_offset": 0,
+          "strides": [
+            1
+          ]
+        },
+        "arg.kv_indptr": {
+          "device_type": "cuda",
+          "dtype": "int32",
+          "role": "input",
+          "shape": [
+            65
+          ],
+          "storage_offset": 0,
+          "strides": [
+            1
+          ]
+        },
+        "arg.q": {
+          "device_type": "cuda",
+          "dtype": "bfloat16",
+          "role": "input",
+          "shape": [
+            64,
+            16,
+            512
+          ],
+          "storage_offset": 0,
+          "strides": [
+            32768,
+            512,
+            1
+          ]
+        },
+        "arg.unified_kv": {
+          "device_type": "cuda",
+          "dtype": "bfloat16",
+          "role": "input",
+          "shape": [
+            136856,
+            512
+          ],
+          "storage_offset": 0,
+          "strides": [
+            512,
+            1
+          ]
+        },
+        "result": {
+          "device_type": "cuda",
+          "dtype": "bfloat16",
+          "role": "output",
+          "shape": [
+            64,
+            16,
+            512
+          ],
+          "storage_offset": 0,
+          "strides": [
+            8192,
+            512,
+            1
+          ]
+        }
+      }
+    },
+    {
+      "calls_per_sample": 1,
+      "case_id": "deepseek_mla_decode-ef9a66de43776b4e2e04f22b",
+      "fixture": {
+        "path": "fixtures/deepseek_mla_decode-ef9a66de43776b4e2e04f22b.json",
+        "sha256": "4a01cf2eec36e961f0e5deb9b44953c4e9ef35f318eca2e3761df79ce98b68c1"
+      },
+      "occurrences": 31744,
+      "provenance_kind": "actual_served_capture",
+      "scalars": {
+        "arguments": {
+          "attn_sink": {
+            "attributes": {},
+            "tensor": "arg.attn_sink"
+          },
+          "kv_indices": {
+            "attributes": {},
+            "tensor": "arg.kv_indices"
+          },
+          "kv_indptr": {
+            "attributes": {},
+            "tensor": "arg.kv_indptr"
+          },
+          "kv_scales": null,
+          "q": {
+            "attributes": {},
+            "tensor": "arg.q"
+          },
+          "softmax_scale": 0.04419417382415922,
+          "unified_kv": {
+            "attributes": {},
+            "tensor": "arg.unified_kv"
+          }
+        },
+        "return": {
+          "attributes": {},
+          "tensor": "result"
+        }
+      },
+      "stage": "decode",
+      "tensors": {
+        "arg.attn_sink": {
+          "device_type": "cuda",
+          "dtype": "float32",
+          "role": "input",
+          "shape": [
+            16
+          ],
+          "storage_offset": 0,
+          "strides": [
+            1
+          ]
+        },
+        "arg.kv_indices": {
+          "device_type": "cuda",
+          "dtype": "int32",
+          "role": "input",
+          "shape": [
+            16384
+          ],
+          "storage_offset": 0,
+          "strides": [
+            1
+          ]
+        },
+        "arg.kv_indptr": {
+          "device_type": "cuda",
+          "dtype": "int32",
+          "role": "input",
+          "shape": [
+            65
+          ],
+          "storage_offset": 0,
+          "strides": [
+            1
+          ]
+        },
+        "arg.q": {
+          "device_type": "cuda",
+          "dtype": "bfloat16",
+          "role": "input",
+          "shape": [
+            64,
+            16,
+            512
+          ],
+          "storage_offset": 0,
+          "strides": [
+            32768,
+            512,
+            1
+          ]
+        },
+        "arg.unified_kv": {
+          "device_type": "cuda",
+          "dtype": "bfloat16",
+          "role": "input",
+          "shape": [
+            136856,
+            512
+          ],
+          "storage_offset": 0,
+          "strides": [
+            512,
+            1
+          ]
+        },
+        "result": {
+          "device_type": "cuda",
+          "dtype": "bfloat16",
+          "role": "output",
+          "shape": [
+            64,
+            16,
+            512
+          ],
+          "storage_offset": 0,
+          "strides": [
+            8192,
+            512,
+            1
+          ]
+        }
+      }
+    }
+  ],
+  "coverage_manifest": "provenance/COVERAGE.json",
+  "coverage_sha256": "d2a4088887ea78bb7bef3d8820f8c23bda52bd5b4a42820f7acf9a6db24976ed",
+  "generated_work_control_supplement": false,
+  "historical_oracle_reused": false,
+  "legacy_required_m": [
+    1,
+    64,
+    8192
+  ],
+  "measurement": {
+    "benchmark_iterations": 100,
+    "correctness_seeds": [
+      42,
+      43
+    ],
+    "initialize_outputs": "each_replay",
+    "method": "cuda_graph",
+    "negative_controls": [
+      "no_op",
+      "wrong_output"
+    ],
+    "refresh_inputs": "each_replay",
+    "validate_outputs": "each_replay",
+    "warmup_iterations": 10
+  },
+  "native_source_sha256": "fd1e927877cdefcf8cabcbc6b0e04ef39ea61cd5967a4fbfd6c6e67463f2ccc5",
+  "observed_case_ids": [
+    "deepseek_mla_decode-98f9f736c04a9282790736a9",
+    "deepseek_mla_decode-ef9a66de43776b4e2e04f22b"
+  ],
+  "original_served_work_control_gate_passed": false,
+  "random_draws": 2,
+  "required_case_ids": [
+    "deepseek_mla_decode-98f9f736c04a9282790736a9",
+    "deepseek_mla_decode-ef9a66de43776b4e2e04f22b-work-531ff7069c2236ba",
+    "deepseek_mla_decode-ef9a66de43776b4e2e04f22b"
+  ],
+  "required_phases": [
+    "decode"
+  ],
+  "run_id": "deepseek-capture-csr-v7-194603",
+  "runtime_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
+  "schema": "deepseek-frozen-current-case-contract-v1",
+  "schema_version": 1,
+  "seam": "mla_decode",
+  "status": "FROZEN_CURRENT_CAPTURE",
+  "task_GPU_qualification": false,
+  "tensor_fixtures_required": true,
+  "tolerance": 0.02,
+  "unresolved_legacy_m": [
+    1,
+    8192
+  ]
+}

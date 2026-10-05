@@ -1,0 +1,788 @@
+{
+  "assets": [
+    {
+      "bytes": 1536,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "deepseek/supplemental-v7-inputs/blobs/08393775bd2f5f589c9a1381576b483b99a205dab232dda5eed7205f2ffda330.bin",
+      "path": "fixtures/blobs/08393775bd2f5f589c9a1381576b483b99a205dab232dda5eed7205f2ffda330.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "08393775bd2f5f589c9a1381576b483b99a205dab232dda5eed7205f2ffda330"
+    },
+    {
+      "bytes": 1536,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "deepseek/supplemental-v7-inputs/blobs/0c3691b6b8f17af0dd1c31d9925c915a1712b35de2cd39713b71c3f3c357d25f.bin",
+      "path": "fixtures/blobs/0c3691b6b8f17af0dd1c31d9925c915a1712b35de2cd39713b71c3f3c357d25f.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "0c3691b6b8f17af0dd1c31d9925c915a1712b35de2cd39713b71c3f3c357d25f"
+    },
+    {
+      "bytes": 1584,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "deepseek/supplemental-v7-inputs/blobs/0f7733bffa1ae3aa7ae850bbd8020e9a781966b7f7f43da58f66a0f40dd44f08.bin",
+      "path": "fixtures/blobs/0f7733bffa1ae3aa7ae850bbd8020e9a781966b7f7f43da58f66a0f40dd44f08.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "0f7733bffa1ae3aa7ae850bbd8020e9a781966b7f7f43da58f66a0f40dd44f08"
+    },
+    {
+      "bytes": 1056964608,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "runs/deepseek-capture-csr-v7-194603/native-captures/rank-0/blobs/117be07de98f23b1def608b77627db8c7071eeccf70a2b202d87a28ffbe7883a.bin",
+      "path": "fixtures/blobs/117be07de98f23b1def608b77627db8c7071eeccf70a2b202d87a28ffbe7883a.bin",
+      "roles": [
+        "kernel_weight"
+      ],
+      "sha256": "117be07de98f23b1def608b77627db8c7071eeccf70a2b202d87a28ffbe7883a"
+    },
+    {
+      "bytes": 50664,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "deepseek/supplemental-v7-inputs/blobs/1196de8683d46a5dd903e7f8a89d1802e5ea584d3e1723d1379453f764a756a0.bin",
+      "path": "fixtures/blobs/1196de8683d46a5dd903e7f8a89d1802e5ea584d3e1723d1379453f764a756a0.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "1196de8683d46a5dd903e7f8a89d1802e5ea584d3e1723d1379453f764a756a0"
+    },
+    {
+      "bytes": 2838528,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "runs/deepseek-capture-csr-v7-194603/native-captures/rank-0/blobs/13be5227dbbd4f42e31969f9ebe6d0907d8b00871374b483e7a5abdf2ff4a29a.bin",
+      "path": "fixtures/blobs/13be5227dbbd4f42e31969f9ebe6d0907d8b00871374b483e7a5abdf2ff4a29a.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "13be5227dbbd4f42e31969f9ebe6d0907d8b00871374b483e7a5abdf2ff4a29a"
+    },
+    {
+      "bytes": 50664,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "deepseek/supplemental-v7-inputs/blobs/182fd6fae8f666e086d1afbce7f89e4130c681d1e2a5acf8065bdef0c92f7f52.bin",
+      "path": "fixtures/blobs/182fd6fae8f666e086d1afbce7f89e4130c681d1e2a5acf8065bdef0c92f7f52.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "182fd6fae8f666e086d1afbce7f89e4130c681d1e2a5acf8065bdef0c92f7f52"
+    },
+    {
+      "bytes": 1536,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "deepseek/supplemental-v7-inputs/blobs/185ba6ea373def2136acae9cf2474108fc00d05e93da42cca8748660c4760b8d.bin",
+      "path": "fixtures/blobs/185ba6ea373def2136acae9cf2474108fc00d05e93da42cca8748660c4760b8d.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "185ba6ea373def2136acae9cf2474108fc00d05e93da42cca8748660c4760b8d"
+    },
+    {
+      "bytes": 66060288,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "runs/deepseek-capture-csr-v7-194603/native-captures/rank-0/blobs/1bdc054b49844c2234273d358fa2b5653e269bbf98b0ff9cfaca174e775d75a8.bin",
+      "path": "fixtures/blobs/1bdc054b49844c2234273d358fa2b5653e269bbf98b0ff9cfaca174e775d75a8.bin",
+      "roles": [
+        "kernel_weight_scale"
+      ],
+      "sha256": "1bdc054b49844c2234273d358fa2b5653e269bbf98b0ff9cfaca174e775d75a8"
+    },
+    {
+      "bytes": 50664,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "deepseek/supplemental-v7-inputs/blobs/1c841ecbc6e6558c02a090eb224c9ed21c6d765c09776d9a190a7e7d6509caab.bin",
+      "path": "fixtures/blobs/1c841ecbc6e6558c02a090eb224c9ed21c6d765c09776d9a190a7e7d6509caab.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "1c841ecbc6e6558c02a090eb224c9ed21c6d765c09776d9a190a7e7d6509caab"
+    },
+    {
+      "bytes": 8,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "runs/deepseek-capture-csr-v7-194603/native-captures/rank-0/blobs/1cde86d1d172a023b329ba716cbb8679a5049e26077e8b5c5aa7067fe185bc8c.bin",
+      "path": "fixtures/blobs/1cde86d1d172a023b329ba716cbb8679a5049e26077e8b5c5aa7067fe185bc8c.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "1cde86d1d172a023b329ba716cbb8679a5049e26077e8b5c5aa7067fe185bc8c"
+    },
+    {
+      "bytes": 2838528,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "runs/deepseek-capture-csr-v7-194603/native-captures/rank-0/blobs/1dcb15110196abdc080e270d327002c070dd301fabcab7ddc4c9cec435a1d5f8.bin",
+      "path": "fixtures/blobs/1dcb15110196abdc080e270d327002c070dd301fabcab7ddc4c9cec435a1d5f8.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "1dcb15110196abdc080e270d327002c070dd301fabcab7ddc4c9cec435a1d5f8"
+    },
+    {
+      "bytes": 1584,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "deepseek/supplemental-v7-inputs/blobs/2000c9b118e10063246f30185895795704e6912360bb81d692e8ecc1ef94c1fa.bin",
+      "path": "fixtures/blobs/2000c9b118e10063246f30185895795704e6912360bb81d692e8ecc1ef94c1fa.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "2000c9b118e10063246f30185895795704e6912360bb81d692e8ecc1ef94c1fa"
+    },
+    {
+      "bytes": 147456,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "gpu-runs/ds-supplemental-repaired-v7-194846/execution/output/generated/blobs/202e6c0e4010a98ff13c657db62c6c7dc89ac97e166b806645ddff9672803aa9.bin",
+      "path": "fixtures/blobs/202e6c0e4010a98ff13c657db62c6c7dc89ac97e166b806645ddff9672803aa9.bin",
+      "roles": [
+        "oracle_output"
+      ],
+      "sha256": "202e6c0e4010a98ff13c657db62c6c7dc89ac97e166b806645ddff9672803aa9"
+    },
+    {
+      "bytes": 66060288,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "runs/deepseek-capture-csr-v7-194603/native-captures/rank-0/blobs/221e5747316ccd6650118d11e28679eb81e76fc5b74e58ffa80b734e4651cf37.bin",
+      "path": "fixtures/blobs/221e5747316ccd6650118d11e28679eb81e76fc5b74e58ffa80b734e4651cf37.bin",
+      "roles": [
+        "kernel_weight_scale"
+      ],
+      "sha256": "221e5747316ccd6650118d11e28679eb81e76fc5b74e58ffa80b734e4651cf37"
+    },
+    {
+      "bytes": 1584,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "deepseek/supplemental-v7-inputs/blobs/251da1f46f894d6987a337dcf60da52b5c7f76bfeb3a08b1b96f39ed670ce11d.bin",
+      "path": "fixtures/blobs/251da1f46f894d6987a337dcf60da52b5c7f76bfeb3a08b1b96f39ed670ce11d.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "251da1f46f894d6987a337dcf60da52b5c7f76bfeb3a08b1b96f39ed670ce11d"
+    },
+    {
+      "bytes": 1536,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "runs/deepseek-capture-csr-v7-194603/native-captures/rank-0/blobs/27793a22cb9db147fa635be095b7dc5f97b7253e0b1cb0c7751639d9d96346be.bin",
+      "path": "fixtures/blobs/27793a22cb9db147fa635be095b7dc5f97b7253e0b1cb0c7751639d9d96346be.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "27793a22cb9db147fa635be095b7dc5f97b7253e0b1cb0c7751639d9d96346be"
+    },
+    {
+      "bytes": 2838528,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "deepseek/supplemental-v7-inputs/blobs/2c409ae163b5b2db4b9c92a2e063ba943d52b6ba0991681088d11c384c6493be.bin",
+      "path": "fixtures/blobs/2c409ae163b5b2db4b9c92a2e063ba943d52b6ba0991681088d11c384c6493be.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "2c409ae163b5b2db4b9c92a2e063ba943d52b6ba0991681088d11c384c6493be"
+    },
+    {
+      "bytes": 1536,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "deepseek/supplemental-v7-inputs/blobs/2e254d7df84ba0bed2e42693aabd2b63ce1e132a3c1218c8a1160512db4c7715.bin",
+      "path": "fixtures/blobs/2e254d7df84ba0bed2e42693aabd2b63ce1e132a3c1218c8a1160512db4c7715.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "2e254d7df84ba0bed2e42693aabd2b63ce1e132a3c1218c8a1160512db4c7715"
+    },
+    {
+      "bytes": 204800,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "gpu-runs/ds-supplemental-repaired-v7-194846/execution/output/generated/blobs/30e6584f2c3e522a5a96aee8732d951bb1f49090ddbd65006e53d779b4bf3860.bin",
+      "path": "fixtures/blobs/30e6584f2c3e522a5a96aee8732d951bb1f49090ddbd65006e53d779b4bf3860.bin",
+      "roles": [
+        "oracle_output"
+      ],
+      "sha256": "30e6584f2c3e522a5a96aee8732d951bb1f49090ddbd65006e53d779b4bf3860"
+    },
+    {
+      "bytes": 1536,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "deepseek/supplemental-v7-inputs/blobs/331362a3519313c868a8b9eb5919fe2a5c4e8f8e08af8714b66ef096e72c318e.bin",
+      "path": "fixtures/blobs/331362a3519313c868a8b9eb5919fe2a5c4e8f8e08af8714b66ef096e72c318e.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "331362a3519313c868a8b9eb5919fe2a5c4e8f8e08af8714b66ef096e72c318e"
+    },
+    {
+      "bytes": 204800,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "gpu-runs/ds-supplemental-repaired-v7-194846/execution/output/generated/blobs/3477397f5a9e96b595eba4cb8665e2c9ad26049b400dbf8d99ee317444cf416a.bin",
+      "path": "fixtures/blobs/3477397f5a9e96b595eba4cb8665e2c9ad26049b400dbf8d99ee317444cf416a.bin",
+      "roles": [
+        "oracle_output"
+      ],
+      "sha256": "3477397f5a9e96b595eba4cb8665e2c9ad26049b400dbf8d99ee317444cf416a"
+    },
+    {
+      "bytes": 50664,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "deepseek/supplemental-v7-inputs/blobs/350e56cc3d4f61e48bfd696bc686e9d00295d5dbda7945a42aca7e2b84cce883.bin",
+      "path": "fixtures/blobs/350e56cc3d4f61e48bfd696bc686e9d00295d5dbda7945a42aca7e2b84cce883.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "350e56cc3d4f61e48bfd696bc686e9d00295d5dbda7945a42aca7e2b84cce883"
+    },
+    {
+      "bytes": 66060288,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "runs/deepseek-capture-csr-v7-194603/native-captures/rank-0/blobs/36c277dba2077fa070b38119d31bfa1720eb4b11ac4f84c979489497ce2a2309.bin",
+      "path": "fixtures/blobs/36c277dba2077fa070b38119d31bfa1720eb4b11ac4f84c979489497ce2a2309.bin",
+      "roles": [
+        "kernel_weight_scale"
+      ],
+      "sha256": "36c277dba2077fa070b38119d31bfa1720eb4b11ac4f84c979489497ce2a2309"
+    },
+    {
+      "bytes": 2838528,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "runs/deepseek-capture-csr-v7-194603/native-captures/rank-0/blobs/3f8b845c9590766e3bb7238fcf80174904d8ce005ca420f182d3cceae0124f5f.bin",
+      "path": "fixtures/blobs/3f8b845c9590766e3bb7238fcf80174904d8ce005ca420f182d3cceae0124f5f.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "3f8b845c9590766e3bb7238fcf80174904d8ce005ca420f182d3cceae0124f5f"
+    },
+    {
+      "bytes": 1536,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "runs/deepseek-capture-csr-v7-194603/native-captures/rank-0/blobs/46e6ce2dd797fe735f5d549ee2edc7f5bfe329ecb665bbb062ec6a115045d285.bin",
+      "path": "fixtures/blobs/46e6ce2dd797fe735f5d549ee2edc7f5bfe329ecb665bbb062ec6a115045d285.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "46e6ce2dd797fe735f5d549ee2edc7f5bfe329ecb665bbb062ec6a115045d285"
+    },
+    {
+      "bytes": 50664,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "runs/deepseek-capture-csr-v7-194603/native-captures/rank-0/blobs/47b4ddf4ffeccb339032012287fa7974a747af656eeb506559f2484fd90c5d90.bin",
+      "path": "fixtures/blobs/47b4ddf4ffeccb339032012287fa7974a747af656eeb506559f2484fd90c5d90.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "47b4ddf4ffeccb339032012287fa7974a747af656eeb506559f2484fd90c5d90"
+    },
+    {
+      "bytes": 1584,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "deepseek/supplemental-v7-inputs/blobs/4abea6316342fdcc0f01eee8748fd8cede738b7893f42d01cf5c8e3f80f5549f.bin",
+      "path": "fixtures/blobs/4abea6316342fdcc0f01eee8748fd8cede738b7893f42d01cf5c8e3f80f5549f.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "4abea6316342fdcc0f01eee8748fd8cede738b7893f42d01cf5c8e3f80f5549f"
+    },
+    {
+      "bytes": 147456,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "gpu-runs/ds-supplemental-repaired-v7-194846/execution/output/generated/blobs/4b7e4364112064c5de7b2c88788f7be52bdb5deb90c73505821a9a6d8506fbb6.bin",
+      "path": "fixtures/blobs/4b7e4364112064c5de7b2c88788f7be52bdb5deb90c73505821a9a6d8506fbb6.bin",
+      "roles": [
+        "oracle_output"
+      ],
+      "sha256": "4b7e4364112064c5de7b2c88788f7be52bdb5deb90c73505821a9a6d8506fbb6"
+    },
+    {
+      "bytes": 1584,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "deepseek/supplemental-v7-inputs/blobs/5538ab13daec74895d5743dd49aa7571664cf18673d9aac0f565935919e18573.bin",
+      "path": "fixtures/blobs/5538ab13daec74895d5743dd49aa7571664cf18673d9aac0f565935919e18573.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "5538ab13daec74895d5743dd49aa7571664cf18673d9aac0f565935919e18573"
+    },
+    {
+      "bytes": 147456,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "gpu-runs/ds-supplemental-repaired-v7-194846/execution/output/generated/blobs/5626869e85af4c34c7b26fb8648333f80946fdde561094e9b28b18af37758493.bin",
+      "path": "fixtures/blobs/5626869e85af4c34c7b26fb8648333f80946fdde561094e9b28b18af37758493.bin",
+      "roles": [
+        "oracle_output"
+      ],
+      "sha256": "5626869e85af4c34c7b26fb8648333f80946fdde561094e9b28b18af37758493"
+    },
+    {
+      "bytes": 1056964608,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "runs/deepseek-capture-csr-v7-194603/native-captures/rank-0/blobs/5657dda33893dddfc8cd309715ba9c8f1ba68367281fa1c02f05f6a1f2085da5.bin",
+      "path": "fixtures/blobs/5657dda33893dddfc8cd309715ba9c8f1ba68367281fa1c02f05f6a1f2085da5.bin",
+      "roles": [
+        "kernel_weight"
+      ],
+      "sha256": "5657dda33893dddfc8cd309715ba9c8f1ba68367281fa1c02f05f6a1f2085da5"
+    },
+    {
+      "bytes": 1584,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "deepseek/supplemental-v7-inputs/blobs/581a943db050cf97e2ef23331a223a05e47555aa49a26ea495d314de6578ca2d.bin",
+      "path": "fixtures/blobs/581a943db050cf97e2ef23331a223a05e47555aa49a26ea495d314de6578ca2d.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "581a943db050cf97e2ef23331a223a05e47555aa49a26ea495d314de6578ca2d"
+    },
+    {
+      "bytes": 8,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "deepseek/supplemental-v7-inputs/blobs/6275e14644adb882fc1d8822c02bfd75911130ddfcfb71f76b33ce906069a928.bin",
+      "path": "fixtures/blobs/6275e14644adb882fc1d8822c02bfd75911130ddfcfb71f76b33ce906069a928.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "6275e14644adb882fc1d8822c02bfd75911130ddfcfb71f76b33ce906069a928"
+    },
+    {
+      "bytes": 1536,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "runs/deepseek-capture-csr-v7-194603/native-captures/rank-0/blobs/64cb0eccb41b14b981b84bbd42abaec5e9edc215b0ab69257e5e9a7e7ca94e7e.bin",
+      "path": "fixtures/blobs/64cb0eccb41b14b981b84bbd42abaec5e9edc215b0ab69257e5e9a7e7ca94e7e.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "64cb0eccb41b14b981b84bbd42abaec5e9edc215b0ab69257e5e9a7e7ca94e7e"
+    },
+    {
+      "bytes": 147456,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "runs/deepseek-capture-csr-v7-194603/native-captures/rank-0/blobs/6531aff79c8bbaddd8c6f81eeb9b38c37513c53aea3eeb54a7cc245d2654c167.bin",
+      "path": "fixtures/blobs/6531aff79c8bbaddd8c6f81eeb9b38c37513c53aea3eeb54a7cc245d2654c167.bin",
+      "roles": [
+        "oracle_output"
+      ],
+      "sha256": "6531aff79c8bbaddd8c6f81eeb9b38c37513c53aea3eeb54a7cc245d2654c167"
+    },
+    {
+      "bytes": 2838528,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "deepseek/supplemental-v7-inputs/blobs/687351b0a2a0bc82eb4c468eb4fbf4b2a15a9e0933b0275982bacfda66e3d976.bin",
+      "path": "fixtures/blobs/687351b0a2a0bc82eb4c468eb4fbf4b2a15a9e0933b0275982bacfda66e3d976.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "687351b0a2a0bc82eb4c468eb4fbf4b2a15a9e0933b0275982bacfda66e3d976"
+    },
+    {
+      "bytes": 204800,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "runs/deepseek-capture-csr-v7-194603/native-captures/rank-0/blobs/6962e7c2ab2ec5174fd6864b617be1935f365421286abb845d5006fe8256eeca.bin",
+      "path": "fixtures/blobs/6962e7c2ab2ec5174fd6864b617be1935f365421286abb845d5006fe8256eeca.bin",
+      "roles": [
+        "oracle_output"
+      ],
+      "sha256": "6962e7c2ab2ec5174fd6864b617be1935f365421286abb845d5006fe8256eeca"
+    },
+    {
+      "bytes": 147456,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "gpu-runs/ds-supplemental-repaired-v7-194846/execution/output/generated/blobs/75ee30d71ed5fef5dbc001cad663e2ff0dde503fff61327ab6af7a25749b1cfb.bin",
+      "path": "fixtures/blobs/75ee30d71ed5fef5dbc001cad663e2ff0dde503fff61327ab6af7a25749b1cfb.bin",
+      "roles": [
+        "oracle_output"
+      ],
+      "sha256": "75ee30d71ed5fef5dbc001cad663e2ff0dde503fff61327ab6af7a25749b1cfb"
+    },
+    {
+      "bytes": 50664,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "deepseek/supplemental-v7-inputs/blobs/7b915b252df749f717fff897eb7c8ea39d1ce941b20175e7dcbfd13ced1d1551.bin",
+      "path": "fixtures/blobs/7b915b252df749f717fff897eb7c8ea39d1ce941b20175e7dcbfd13ced1d1551.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "7b915b252df749f717fff897eb7c8ea39d1ce941b20175e7dcbfd13ced1d1551"
+    },
+    {
+      "bytes": 204800,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "gpu-runs/ds-supplemental-repaired-v7-194846/execution/output/generated/blobs/808ccd75c6563622ad4b0671f37334fb559bec559c881fe7b1a1402ed227c4e5.bin",
+      "path": "fixtures/blobs/808ccd75c6563622ad4b0671f37334fb559bec559c881fe7b1a1402ed227c4e5.bin",
+      "roles": [
+        "oracle_output"
+      ],
+      "sha256": "808ccd75c6563622ad4b0671f37334fb559bec559c881fe7b1a1402ed227c4e5"
+    },
+    {
+      "bytes": 204800,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "gpu-runs/ds-supplemental-repaired-v7-194846/execution/output/generated/blobs/87f40f268c29ecbe31d3929c68aaefa03f816cf12e2ee5b327d0753399e31ea6.bin",
+      "path": "fixtures/blobs/87f40f268c29ecbe31d3929c68aaefa03f816cf12e2ee5b327d0753399e31ea6.bin",
+      "roles": [
+        "oracle_output"
+      ],
+      "sha256": "87f40f268c29ecbe31d3929c68aaefa03f816cf12e2ee5b327d0753399e31ea6"
+    },
+    {
+      "bytes": 2838528,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "deepseek/supplemental-v7-inputs/blobs/8a15d0db6fef2e33c56f30976fdc4613b76d7bcbd715f47e73aff5a202990f85.bin",
+      "path": "fixtures/blobs/8a15d0db6fef2e33c56f30976fdc4613b76d7bcbd715f47e73aff5a202990f85.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "8a15d0db6fef2e33c56f30976fdc4613b76d7bcbd715f47e73aff5a202990f85"
+    },
+    {
+      "bytes": 458752,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "runs/deepseek-capture-csr-v7-194603/native-captures/rank-0/blobs/8d472175855afb742dbb19c3a97d79f8b87246ee532b5e7638d0143570fac03a.bin",
+      "path": "fixtures/blobs/8d472175855afb742dbb19c3a97d79f8b87246ee532b5e7638d0143570fac03a.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "8d472175855afb742dbb19c3a97d79f8b87246ee532b5e7638d0143570fac03a"
+    },
+    {
+      "bytes": 458752,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "runs/deepseek-capture-csr-v7-194603/native-captures/rank-0/blobs/8dbee01f71b0fbb3459545d36f275f1462f5b4ebcdfd062467f68ad5d1e2a28f.bin",
+      "path": "fixtures/blobs/8dbee01f71b0fbb3459545d36f275f1462f5b4ebcdfd062467f68ad5d1e2a28f.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "8dbee01f71b0fbb3459545d36f275f1462f5b4ebcdfd062467f68ad5d1e2a28f"
+    },
+    {
+      "bytes": 8,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "deepseek/supplemental-v7-inputs/blobs/90d3ea81cb95f3dc00a2d518b532f1a87e03b20f8ab96505fb50e80d236a9d22.bin",
+      "path": "fixtures/blobs/90d3ea81cb95f3dc00a2d518b532f1a87e03b20f8ab96505fb50e80d236a9d22.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "90d3ea81cb95f3dc00a2d518b532f1a87e03b20f8ab96505fb50e80d236a9d22"
+    },
+    {
+      "bytes": 147456,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "gpu-runs/ds-supplemental-repaired-v7-194846/execution/output/generated/blobs/92a873fc4208fe99f07a3167d33c7a422db7ff8472750260f9acceddd54aa320.bin",
+      "path": "fixtures/blobs/92a873fc4208fe99f07a3167d33c7a422db7ff8472750260f9acceddd54aa320.bin",
+      "roles": [
+        "oracle_output"
+      ],
+      "sha256": "92a873fc4208fe99f07a3167d33c7a422db7ff8472750260f9acceddd54aa320"
+    },
+    {
+      "bytes": 2838528,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "deepseek/supplemental-v7-inputs/blobs/9968c0de1a9095120f79a32089fc1a7e0d270594036fabb94e051541f8fa0139.bin",
+      "path": "fixtures/blobs/9968c0de1a9095120f79a32089fc1a7e0d270594036fabb94e051541f8fa0139.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "9968c0de1a9095120f79a32089fc1a7e0d270594036fabb94e051541f8fa0139"
+    },
+    {
+      "bytes": 8,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "runs/deepseek-capture-csr-v7-194603/native-captures/rank-0/blobs/9a1f36ef4a59172b05059d46e0861ad4faaa51b9fe26484d1acf8325589643b9.bin",
+      "path": "fixtures/blobs/9a1f36ef4a59172b05059d46e0861ad4faaa51b9fe26484d1acf8325589643b9.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "9a1f36ef4a59172b05059d46e0861ad4faaa51b9fe26484d1acf8325589643b9"
+    },
+    {
+      "bytes": 1536,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "deepseek/supplemental-v7-inputs/blobs/9b4fd4d7e2643f76f706b9e80017e0ae5d4670f23393e811fdcc4ce19001170f.bin",
+      "path": "fixtures/blobs/9b4fd4d7e2643f76f706b9e80017e0ae5d4670f23393e811fdcc4ce19001170f.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "9b4fd4d7e2643f76f706b9e80017e0ae5d4670f23393e811fdcc4ce19001170f"
+    },
+    {
+      "bytes": 204800,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "runs/deepseek-capture-csr-v7-194603/native-captures/rank-0/blobs/a152ba7d533b3c120593fbb74e091de7429d5b3f3fd11b88b794ad2295c1cc24.bin",
+      "path": "fixtures/blobs/a152ba7d533b3c120593fbb74e091de7429d5b3f3fd11b88b794ad2295c1cc24.bin",
+      "roles": [
+        "oracle_output"
+      ],
+      "sha256": "a152ba7d533b3c120593fbb74e091de7429d5b3f3fd11b88b794ad2295c1cc24"
+    },
+    {
+      "bytes": 8,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "deepseek/supplemental-v7-inputs/blobs/ab91f4dc00a60ef90eedbf3cd6ac02b0d1ed9177ed03f1dbc7e3b242c066d196.bin",
+      "path": "fixtures/blobs/ab91f4dc00a60ef90eedbf3cd6ac02b0d1ed9177ed03f1dbc7e3b242c066d196.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "ab91f4dc00a60ef90eedbf3cd6ac02b0d1ed9177ed03f1dbc7e3b242c066d196"
+    },
+    {
+      "bytes": 147456,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "gpu-runs/ds-supplemental-repaired-v7-194846/execution/output/generated/blobs/aca3946cc58b51a2978ddbcc31b2371511069180f7cd9d9c54bc3aa65b55e27c.bin",
+      "path": "fixtures/blobs/aca3946cc58b51a2978ddbcc31b2371511069180f7cd9d9c54bc3aa65b55e27c.bin",
+      "roles": [
+        "oracle_output"
+      ],
+      "sha256": "aca3946cc58b51a2978ddbcc31b2371511069180f7cd9d9c54bc3aa65b55e27c"
+    },
+    {
+      "bytes": 204800,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "gpu-runs/ds-supplemental-repaired-v7-194846/execution/output/generated/blobs/aed72ce7ed6102cb309a242be2daffe8f48e7199b23b33424b81ae501b809a07.bin",
+      "path": "fixtures/blobs/aed72ce7ed6102cb309a242be2daffe8f48e7199b23b33424b81ae501b809a07.bin",
+      "roles": [
+        "oracle_output"
+      ],
+      "sha256": "aed72ce7ed6102cb309a242be2daffe8f48e7199b23b33424b81ae501b809a07"
+    },
+    {
+      "bytes": 458752,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "runs/deepseek-capture-csr-v7-194603/native-captures/rank-0/blobs/b07d1b8364a890aa28eaa73390ccca5a0ac97afe4d655ecaf30ff13281cf9f86.bin",
+      "path": "fixtures/blobs/b07d1b8364a890aa28eaa73390ccca5a0ac97afe4d655ecaf30ff13281cf9f86.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "b07d1b8364a890aa28eaa73390ccca5a0ac97afe4d655ecaf30ff13281cf9f86"
+    },
+    {
+      "bytes": 1056964608,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "runs/deepseek-capture-csr-v7-194603/native-captures/rank-0/blobs/b0ba33b1571257d40b098114f4747a08a4be928065290a99709545e3b509d102.bin",
+      "path": "fixtures/blobs/b0ba33b1571257d40b098114f4747a08a4be928065290a99709545e3b509d102.bin",
+      "roles": [
+        "kernel_weight"
+      ],
+      "sha256": "b0ba33b1571257d40b098114f4747a08a4be928065290a99709545e3b509d102"
+    },
+    {
+      "bytes": 204800,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "runs/deepseek-capture-csr-v7-194603/native-captures/rank-0/blobs/b88118e53e3dd2eeb4907249bc8875eff2fb4749a88de59dce8c83ac82087239.bin",
+      "path": "fixtures/blobs/b88118e53e3dd2eeb4907249bc8875eff2fb4749a88de59dce8c83ac82087239.bin",
+      "roles": [
+        "oracle_output"
+      ],
+      "sha256": "b88118e53e3dd2eeb4907249bc8875eff2fb4749a88de59dce8c83ac82087239"
+    },
+    {
+      "bytes": 50664,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "runs/deepseek-capture-csr-v7-194603/native-captures/rank-0/blobs/ba78449cd6bf37f8bde8dc38fcfbe72bd1fc574544d8fff55f5aefe81d62cfc2.bin",
+      "path": "fixtures/blobs/ba78449cd6bf37f8bde8dc38fcfbe72bd1fc574544d8fff55f5aefe81d62cfc2.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "ba78449cd6bf37f8bde8dc38fcfbe72bd1fc574544d8fff55f5aefe81d62cfc2"
+    },
+    {
+      "bytes": 2838528,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "deepseek/supplemental-v7-inputs/blobs/c6cd2fcce101d8976e03719467c994311336b23a8c09d8498cae5265e3129562.bin",
+      "path": "fixtures/blobs/c6cd2fcce101d8976e03719467c994311336b23a8c09d8498cae5265e3129562.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "c6cd2fcce101d8976e03719467c994311336b23a8c09d8498cae5265e3129562"
+    },
+    {
+      "bytes": 50664,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "runs/deepseek-capture-csr-v7-194603/native-captures/rank-0/blobs/c769558ab39d9586f0f458e055a338a001a500d7adb8256d47dfa242e73d5a15.bin",
+      "path": "fixtures/blobs/c769558ab39d9586f0f458e055a338a001a500d7adb8256d47dfa242e73d5a15.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "c769558ab39d9586f0f458e055a338a001a500d7adb8256d47dfa242e73d5a15"
+    },
+    {
+      "bytes": 147456,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "runs/deepseek-capture-csr-v7-194603/native-captures/rank-0/blobs/d28bf2bd1d2d5e650fd669ddff116861bb467e86ec566b6c5b1ad17fa8855a53.bin",
+      "path": "fixtures/blobs/d28bf2bd1d2d5e650fd669ddff116861bb467e86ec566b6c5b1ad17fa8855a53.bin",
+      "roles": [
+        "oracle_output"
+      ],
+      "sha256": "d28bf2bd1d2d5e650fd669ddff116861bb467e86ec566b6c5b1ad17fa8855a53"
+    },
+    {
+      "bytes": 8,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "runs/deepseek-capture-csr-v7-194603/native-captures/rank-0/blobs/d42a99cc2d50139311cdf9b40bb8967be061c86d38f41e0fcfb8dc585469b7e8.bin",
+      "path": "fixtures/blobs/d42a99cc2d50139311cdf9b40bb8967be061c86d38f41e0fcfb8dc585469b7e8.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "d42a99cc2d50139311cdf9b40bb8967be061c86d38f41e0fcfb8dc585469b7e8"
+    },
+    {
+      "bytes": 147456,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "runs/deepseek-capture-csr-v7-194603/native-captures/rank-0/blobs/d4920811d89dd92a36afc29d0b487d71ebc204ae2af0ff36f8d413160046052f.bin",
+      "path": "fixtures/blobs/d4920811d89dd92a36afc29d0b487d71ebc204ae2af0ff36f8d413160046052f.bin",
+      "roles": [
+        "oracle_output"
+      ],
+      "sha256": "d4920811d89dd92a36afc29d0b487d71ebc204ae2af0ff36f8d413160046052f"
+    },
+    {
+      "bytes": 1584,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "runs/deepseek-capture-csr-v7-194603/native-captures/rank-0/blobs/d70966eb9593b2a62ef7794a619adf9832877480ac476e9ecfb5696faae3a905.bin",
+      "path": "fixtures/blobs/d70966eb9593b2a62ef7794a619adf9832877480ac476e9ecfb5696faae3a905.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "d70966eb9593b2a62ef7794a619adf9832877480ac476e9ecfb5696faae3a905"
+    },
+    {
+      "bytes": 2838528,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "deepseek/supplemental-v7-inputs/blobs/de013432b93570a1e2be90b921db95763fd9992443918a22bfddda9c01566307.bin",
+      "path": "fixtures/blobs/de013432b93570a1e2be90b921db95763fd9992443918a22bfddda9c01566307.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "de013432b93570a1e2be90b921db95763fd9992443918a22bfddda9c01566307"
+    },
+    {
+      "bytes": 1584,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "runs/deepseek-capture-csr-v7-194603/native-captures/rank-0/blobs/e3893ef59424b8654ca2fe96fd582c6e63ed5cde3312ee65d136d68e31f54e34.bin",
+      "path": "fixtures/blobs/e3893ef59424b8654ca2fe96fd582c6e63ed5cde3312ee65d136d68e31f54e34.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "e3893ef59424b8654ca2fe96fd582c6e63ed5cde3312ee65d136d68e31f54e34"
+    },
+    {
+      "bytes": 50664,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "deepseek/supplemental-v7-inputs/blobs/e6925add5d5a25374b5aa5ba3893ef7983a9642de8931c3ce4452f8cad064aa0.bin",
+      "path": "fixtures/blobs/e6925add5d5a25374b5aa5ba3893ef7983a9642de8931c3ce4452f8cad064aa0.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "e6925add5d5a25374b5aa5ba3893ef7983a9642de8931c3ce4452f8cad064aa0"
+    },
+    {
+      "bytes": 1584,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "runs/deepseek-capture-csr-v7-194603/native-captures/rank-0/blobs/ed2c480a717376ada0ae3f51f13cb5f6c0070e3718b84c637836da7c7399e8ab.bin",
+      "path": "fixtures/blobs/ed2c480a717376ada0ae3f51f13cb5f6c0070e3718b84c637836da7c7399e8ab.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "ed2c480a717376ada0ae3f51f13cb5f6c0070e3718b84c637836da7c7399e8ab"
+    },
+    {
+      "bytes": 204800,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "gpu-runs/ds-supplemental-repaired-v7-194846/execution/output/generated/blobs/fc02e5b13012c82c0fe260985edebbb31e63b3a9db0bf826427537b0666db185.bin",
+      "path": "fixtures/blobs/fc02e5b13012c82c0fe260985edebbb31e63b3a9db0bf826427537b0666db185.bin",
+      "roles": [
+        "oracle_output"
+      ],
+      "sha256": "fc02e5b13012c82c0fe260985edebbb31e63b3a9db0bf826427537b0666db185"
+    },
+    {
+      "bytes": 8634,
+      "codec": "served-tensor-fixture-v1",
+      "object_key": "runs/deepseek-capture-csr-v7-194603/native-captures/rank-0/deepseek_moe1-aedfa8cdf4fad913658bc7bd-work-1823119e10017f2d.json",
+      "path": "fixtures/deepseek_moe1-aedfa8cdf4fad913658bc7bd-work-1823119e10017f2d.json",
+      "roles": [
+        "case_metadata"
+      ],
+      "sha256": "a273b50115dbe82b231d262492efe9e6af9cd8bf4c40476f92e40d54bee6362a"
+    },
+    {
+      "bytes": 8634,
+      "codec": "served-tensor-fixture-v1",
+      "object_key": "runs/deepseek-capture-csr-v7-194603/native-captures/rank-0/deepseek_moe1-aedfa8cdf4fad913658bc7bd-work-a8403d1d6afee320.json",
+      "path": "fixtures/deepseek_moe1-aedfa8cdf4fad913658bc7bd-work-a8403d1d6afee320.json",
+      "roles": [
+        "case_metadata"
+      ],
+      "sha256": "65f5c9735a3ff8c1d36259a0d800e0b681f53850c1b5a907b48f65942f021533"
+    },
+    {
+      "bytes": 8261,
+      "codec": "served-tensor-fixture-v1",
+      "object_key": "runs/deepseek-capture-csr-v7-194603/native-captures/rank-0/deepseek_moe1-aedfa8cdf4fad913658bc7bd.json",
+      "path": "fixtures/deepseek_moe1-aedfa8cdf4fad913658bc7bd.json",
+      "roles": [
+        "case_metadata"
+      ],
+      "sha256": "539a7ccadf6e0a05f8f21689b92ade1c2f1da2c173553fd2a4d3b4f2cf8722ab"
+    },
+    {
+      "bytes": 14379,
+      "codec": "served-tensor-fixture-v1",
+      "object_key": "deepseek/final-fixture-metadata-v7/generated-n2400-seed42-moe1.json",
+      "path": "fixtures/generated-n2400-seed42-moe1.json",
+      "roles": [
+        "case_metadata"
+      ],
+      "sha256": "a7200cdfcfbb3325c08b3d3f866a9083ed9b598c983bc19cffd716efd77442bd"
+    },
+    {
+      "bytes": 14379,
+      "codec": "served-tensor-fixture-v1",
+      "object_key": "deepseek/final-fixture-metadata-v7/generated-n2400-seed43-moe1.json",
+      "path": "fixtures/generated-n2400-seed43-moe1.json",
+      "roles": [
+        "case_metadata"
+      ],
+      "sha256": "ea45122942d9c41893def89f998ec2635b131af8265f49aa82153bfedbad22b1"
+    },
+    {
+      "bytes": 16335,
+      "codec": "served-tensor-fixture-v1",
+      "object_key": "deepseek/final-fixture-metadata-v7/generated-n2432-seed42-moe1.json",
+      "path": "fixtures/generated-n2432-seed42-moe1.json",
+      "roles": [
+        "case_metadata"
+      ],
+      "sha256": "a76ece37c231ea67513d7c1123fc96629259465910330ca71d518c8f98f4f304"
+    },
+    {
+      "bytes": 16335,
+      "codec": "served-tensor-fixture-v1",
+      "object_key": "deepseek/final-fixture-metadata-v7/generated-n2432-seed43-moe1.json",
+      "path": "fixtures/generated-n2432-seed43-moe1.json",
+      "roles": [
+        "case_metadata"
+      ],
+      "sha256": "71b409d53435234292fc39f72a9e2e602fc82e09e9f41c7ab3b40535982946f8"
+    },
+    {
+      "bytes": 15357,
+      "codec": "served-tensor-fixture-v1",
+      "object_key": "deepseek/final-fixture-metadata-v7/generated-n2496-seed42-moe1.json",
+      "path": "fixtures/generated-n2496-seed42-moe1.json",
+      "roles": [
+        "case_metadata"
+      ],
+      "sha256": "3c9e5eec6e481df117300881b6a9f906ce5ed835812b3acd2eb41f110d4bff36"
+    },
+    {
+      "bytes": 15357,
+      "codec": "served-tensor-fixture-v1",
+      "object_key": "deepseek/final-fixture-metadata-v7/generated-n2496-seed43-moe1.json",
+      "path": "fixtures/generated-n2496-seed43-moe1.json",
+      "roles": [
+        "case_metadata"
+      ],
+      "sha256": "5b6349ae9e9f196321bca52a5d66c6aa151c6953f251973f25175dceecdebd36"
+    }
+  ],
+  "case_manifest_fingerprint": "5df730a28cda3277a3aa810bd9799397e44fec48a4e4c4e8ca76ea535d23598e",
+  "oci_prefix": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261005/deepseek-final-v7-mixed/",
+  "runtime_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
+  "schema": "trusted-external-fixtures-v1"
+}

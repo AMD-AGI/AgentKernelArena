@@ -1,0 +1,103 @@
+{
+  "actual_workload": {
+    "completed": 64,
+    "total_input_tokens": 524288,
+    "total_output_tokens": 65536
+  },
+  "all_control_variants_have_payloads": false,
+  "all_rank_structural_gate_passed": true,
+  "baseline_kind": "pinned_image_native_source",
+  "current_input_set_sealed": true,
+  "evidence_sha256": {
+    "NATIVE-CAPTURE-GATE.json": "bc2074ad732c7b01dcc102c609874a23461ffeff8426172c348cbac8b97268d4",
+    "REQUEST.json": "88c8448b79182b01a6e52ef818106debaec01aeb14fbc9fad4551c9b744e949c",
+    "WORK-CONTROL-REVIEW.json": "3ffb5b9ce20236f956faa4e34f51d151c6ddcd6b70e3117dbfa2e72570f026d0",
+    "benchmark.jsonl": "348f302adaa9f3b702ec89272106d650329516a883e5df561a7c0a4e92240af6"
+  },
+  "fixture_records": {
+    "deepseek_mla_prefill-2800f2114cb8548cf5fdd0ba": {
+      "kind": "actual_served_capture",
+      "path": "fixtures/deepseek_mla_prefill-2800f2114cb8548cf5fdd0ba.json",
+      "sha256": "5cae361f707cade96836a335d1d4e011add632b3096c77b5fd884a5fe871a442",
+      "stage": "prefill"
+    },
+    "deepseek_mla_prefill-fff723d1365f8696979e5779": {
+      "kind": "actual_served_capture",
+      "path": "fixtures/deepseek_mla_prefill-fff723d1365f8696979e5779.json",
+      "sha256": "26910b0df9a6365e6b1063e6547ef310017550de81f27b2d0752746c783b80d9",
+      "stage": "prefill"
+    }
+  },
+  "framework_validator_PASS": false,
+  "full_token_gate_passed": true,
+  "generated_scope": null,
+  "generated_supplement_is_actual_other_rank_tensor_capture": false,
+  "observed_structural_case_ids": [
+    "deepseek_mla_prefill-2800f2114cb8548cf5fdd0ba",
+    "deepseek_mla_prefill-fff723d1365f8696979e5779"
+  ],
+  "original_served_work_control_gate_passed": false,
+  "original_terminal_status": {
+    "deadline_unix": 1791240965.004035,
+    "error": "Observed work extreme lacks an actual payload: moe1-8ba9c41fa9ff9eee839f682f/num_valid_ids[0]/min",
+    "error_type": "CaptureError",
+    "observed_unix": 1791240391.5990622,
+    "phase": "incomplete"
+  },
+  "original_work_control_gaps": [],
+  "rank_manifest_sha256": {
+    "0": "f9b3868d6f9ea8df7f71a0e52b58bd8442d40d8678de93815c94c08ce912ffca",
+    "1": "b66b2f5e4eb06a8a0d7ed4b2e4567e847316f49b605382375dcc04a95d01a832",
+    "2": "af3c657267b13355628191e5be2d83e86296f5db53fb659f9e0e38f31d3fdee6",
+    "3": "f27ecf1c50a5fbfdf65d92e38656a303f1bed8646e120eebf81da290742c804e",
+    "4": "87fb978692a4a88d6c2f014e13cb857a1a7fd47952f5d7b2d326131560b158ac",
+    "5": "7e0dcb5bd8d5fe2ef222a42ba5271faa36001a72d71d4a7bff7a6b4c85183ea5",
+    "6": "cd97c44ea203ac2f6e793ffc6ba6f3b6696fda1593e9252e9d62fdfdf698464d",
+    "7": "5c006225366a1d24b240d4c09aa333930d47600778a0b0d52a7a4ef98a82ee15"
+  },
+  "run_id": "deepseek-capture-csr-v7-194603",
+  "runtime_case_counts_by_rank": {
+    "0": {
+      "deepseek_mla_prefill-2800f2114cb8548cf5fdd0ba": 1920,
+      "deepseek_mla_prefill-fff723d1365f8696979e5779": 1984
+    },
+    "1": {
+      "deepseek_mla_prefill-2800f2114cb8548cf5fdd0ba": 1920,
+      "deepseek_mla_prefill-fff723d1365f8696979e5779": 1984
+    },
+    "2": {
+      "deepseek_mla_prefill-2800f2114cb8548cf5fdd0ba": 1920,
+      "deepseek_mla_prefill-fff723d1365f8696979e5779": 1984
+    },
+    "3": {
+      "deepseek_mla_prefill-2800f2114cb8548cf5fdd0ba": 1920,
+      "deepseek_mla_prefill-fff723d1365f8696979e5779": 1984
+    },
+    "4": {
+      "deepseek_mla_prefill-2800f2114cb8548cf5fdd0ba": 1920,
+      "deepseek_mla_prefill-fff723d1365f8696979e5779": 1984
+    },
+    "5": {
+      "deepseek_mla_prefill-2800f2114cb8548cf5fdd0ba": 1920,
+      "deepseek_mla_prefill-fff723d1365f8696979e5779": 1984
+    },
+    "6": {
+      "deepseek_mla_prefill-2800f2114cb8548cf5fdd0ba": 1920,
+      "deepseek_mla_prefill-fff723d1365f8696979e5779": 1984
+    },
+    "7": {
+      "deepseek_mla_prefill-2800f2114cb8548cf5fdd0ba": 1920,
+      "deepseek_mla_prefill-fff723d1365f8696979e5779": 1984
+    }
+  },
+  "schema": "deepseek-current-captured-generated-coverage-v1",
+  "seam": "mla_prefill",
+  "supplemental_host_verification_sha256": null,
+  "supplemental_native_repeatability": null,
+  "supplemental_observed_work_counts": [],
+  "task_GPU_qualification": false,
+  "unresolved_legacy_m": [
+    1,
+    64
+  ]
+}

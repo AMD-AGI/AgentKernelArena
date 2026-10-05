@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "sources": {
+    "source/native.py": {
+      "reference": "ut/baseline/native.py",
+      "language": "triton",
+      "targets": [
+        "_paged_decode_fused_kernel",
+        "_paged_decode_split_kernel",
+        "_paged_decode_reduce_kernel"
+      ]
+    }
+  },
+  "frozen_files": {
+    "ut/baseline/native.py": "fd1e927877cdefcf8cabcbc6b0e04ef39ea61cd5967a4fbfd6c6e67463f2ccc5"
+  }
+}

@@ -1,0 +1,79 @@
+{
+  "classification": "CURRENT_OBSERVED_COMPONENT_SOURCE_PREPARED_NOT_GPU_QUALIFIED",
+  "dependencies": [
+    {
+      "package": "sglang",
+      "path": "kernels/ops/attention/dsv4/unified_kv_kernels/env_gate.py",
+      "sha256": "6b4c787730a9c88fd19d5a8ec241619af514229af4450ce20472534bc4acab25"
+    },
+    {
+      "package": "sglang",
+      "path": "kernels/ops/attention/dsv4/unified_kv_kernels/layout.py",
+      "sha256": "ac983b65e70e56b38ca3ddaa39c5870750f74aeec7b6a8bd62245936aea8bc01"
+    },
+    {
+      "package": "sglang",
+      "path": "kernels/ops/attention/dsv4/unified_kv_kernels/paged_decode.py",
+      "sha256": "fd1e927877cdefcf8cabcbc6b0e04ef39ea61cd5967a4fbfd6c6e67463f2ccc5"
+    },
+    {
+      "package": "sglang",
+      "path": "kernels/ops/attention/dsv4/unified_kv_kernels/paged_decode_indices.py",
+      "sha256": "f008dfe6cf2332921cc613a24fc835c9746694836242ab776a451d51eb503d45"
+    },
+    {
+      "package": "sglang",
+      "path": "kernels/ops/attention/dsv4/unified_kv_kernels/paged_prefill.py",
+      "sha256": "3d914fac43732cdf3fecc63ec7a0239f318def8d518b09a4ff8b663d7299ca33"
+    },
+    {
+      "package": "sglang",
+      "path": "kernels/ops/attention/dsv4/unified_kv_kernels/runtime.py",
+      "sha256": "1f9189059ed3f851f2d753962f47802c85d0ef2132cea2d9d3482926d69b382c"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/pa_sparse_prefill_opus.py",
+      "sha256": "03428416b381b6673a93d77a82e4e4f87ad6e7158dc327b505c56fc5af1ab43d"
+    },
+    {
+      "package": "aiter",
+      "path": "jit/core.py",
+      "sha256": "97998734a817f5444fa539e1811932f7529db8427a48a5bd73112763dbde768a"
+    }
+  ],
+  "function": "sparse_attn_v4_paged_decode",
+  "has_var_kwargs": false,
+  "image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
+  "module": "sglang.kernels.ops.attention.dsv4.unified_kv_kernels.paged_decode",
+  "native_source_sha256": "fd1e927877cdefcf8cabcbc6b0e04ef39ea61cd5967a4fbfd6c6e67463f2ccc5",
+  "seam": "mla_decode",
+  "sglang_version": "0.5.20",
+  "signature": "def sparse_attn_v4_paged_decode(q: torch.Tensor, unified_kv: torch.Tensor, kv_indices: torch.Tensor, kv_indptr: torch.Tensor, attn_sink: torch.Tensor, softmax_scale: float, kv_scales: torch.Tensor | None=None) -> torch.Tensor:",
+  "signature_parameters": [
+    "q",
+    "unified_kv",
+    "kv_indices",
+    "kv_indptr",
+    "attn_sink",
+    "softmax_scale",
+    "kv_scales"
+  ],
+  "source_sha256": "fd1e927877cdefcf8cabcbc6b0e04ef39ea61cd5967a4fbfd6c6e67463f2ccc5",
+  "gpu_source_status": "READY_FOR_GPU_VALIDATION",
+  "gpu_binding": {
+    "kind": "triton_module"
+  },
+  "editable_sources": {
+    "source/native.py": {
+      "reference": "ut/baseline/native.py",
+      "language": "triton",
+      "targets": [
+        "_paged_decode_fused_kernel",
+        "_paged_decode_split_kernel",
+        "_paged_decode_reduce_kernel"
+      ]
+    }
+  },
+  "gpu_source_provenance": []
+}

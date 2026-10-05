@@ -1,0 +1,11 @@
+--- original/source/mixed_moe_gemm_2stage_common.py
++++ repaired/source/mixed_moe_gemm_2stage_common.py
+@@ -1642,7 +1642,7 @@
+                     if const_expr(heterogeneous_b and use_async_copy):
+                         barrier(vmcnt=0)
+                     else:
+-                        rocdl.s_waitcnt(body_vmcnt_before_barrier)
++                        rocdl.s_waitcnt(0)
+                         barrier()
+                     rocdl.sched_barrier(0)
+ 

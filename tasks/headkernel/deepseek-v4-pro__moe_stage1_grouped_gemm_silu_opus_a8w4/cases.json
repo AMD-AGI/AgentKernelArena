@@ -1,0 +1,730 @@
+{
+  "all_control_variants_have_payloads": false,
+  "all_output_components_required": true,
+  "baseline_kind": "pinned_image_native_source",
+  "cases": [
+    {
+      "calls_per_sample": 1,
+      "case_id": "deepseek_moe1_prefill-29ea221dcf7a6a7000b32591-work-c5cd180a3a906c17",
+      "fixture": {
+        "path": "fixtures/deepseek_moe1_prefill-29ea221dcf7a6a7000b32591-work-c5cd180a3a906c17.json",
+        "sha256": "19c0a46b12ade42755b80c95b23128d82bdf82a19c654c35e43f5e938f675345"
+      },
+      "occurrences": 3,
+      "provenance_kind": "actual_served_capture",
+      "scalars": {
+        "arguments": {
+          "_kwargs": {},
+          "a1_scale": {
+            "attributes": {},
+            "tensor": "arg.a1_scale"
+          },
+          "activation": {
+            "aiter_activation": 0
+          },
+          "bias1": null,
+          "block_m": 64,
+          "hidden_states": {
+            "attributes": {},
+            "tensor": "arg.hidden_states"
+          },
+          "inter_dim_pad": 0,
+          "kernelName": "opus_moe1_afp8_wfp4_bf16_t64x384_gs_qgb3_aff64_k1lead_fp8",
+          "num_valid_ids": {
+            "attributes": {},
+            "tensor": "arg.num_valid_ids"
+          },
+          "out": null,
+          "output_sorted": false,
+          "situ_beta": 4.0,
+          "situ_linear_beta": 25.0,
+          "sorted_expert_ids": {
+            "attributes": {},
+            "tensor": "arg.sorted_expert_ids"
+          },
+          "sorted_token_ids": {
+            "attributes": {},
+            "tensor": "arg.sorted_token_ids"
+          },
+          "sorted_weights": null,
+          "swiglu_limit": 10.0,
+          "topk": 6,
+          "w1": {
+            "attributes": {
+              "is_shuffled": true
+            },
+            "tensor": "arg.w1"
+          },
+          "w1_scale": {
+            "attributes": {},
+            "tensor": "arg.w1_scale"
+          },
+          "w2": {
+            "attributes": {
+              "is_shuffled": true
+            },
+            "tensor": "arg.w2"
+          }
+        },
+        "return": {
+          "container": "tuple",
+          "items": [
+            {
+              "attributes": {},
+              "tensor": "result.0"
+            },
+            {
+              "attributes": {},
+              "tensor": "result.1"
+            }
+          ]
+        }
+      },
+      "stage": "prefill",
+      "tensors": {
+        "arg.a1_scale": {
+          "device_type": "cuda",
+          "dtype": "float8_e8m0fnu",
+          "role": "input",
+          "shape": [
+            73728,
+            224
+          ],
+          "storage_offset": 0,
+          "strides": [
+            224,
+            1
+          ]
+        },
+        "arg.hidden_states": {
+          "device_type": "cuda",
+          "dtype": "float8_e4m3fn",
+          "role": "input",
+          "shape": [
+            8192,
+            7168
+          ],
+          "storage_offset": 0,
+          "strides": [
+            7168,
+            1
+          ]
+        },
+        "arg.num_valid_ids": {
+          "device_type": "cuda",
+          "dtype": "int32",
+          "role": "input",
+          "shape": [
+            2
+          ],
+          "storage_offset": 0,
+          "strides": [
+            1
+          ]
+        },
+        "arg.sorted_expert_ids": {
+          "device_type": "cuda",
+          "dtype": "int32",
+          "role": "input",
+          "shape": [
+            1152
+          ],
+          "storage_offset": 0,
+          "strides": [
+            1
+          ]
+        },
+        "arg.sorted_token_ids": {
+          "device_type": "cuda",
+          "dtype": "int32",
+          "role": "input",
+          "shape": [
+            73722
+          ],
+          "storage_offset": 0,
+          "strides": [
+            1
+          ]
+        },
+        "arg.w1": {
+          "device_type": "cuda",
+          "dtype": "float4_e2m1fn_x2",
+          "role": "input",
+          "shape": [
+            384,
+            768,
+            3584
+          ],
+          "storage_offset": 0,
+          "strides": [
+            2752512,
+            3584,
+            1
+          ]
+        },
+        "arg.w1_scale": {
+          "device_type": "cuda",
+          "dtype": "float8_e8m0fnu",
+          "role": "input",
+          "shape": [
+            294912,
+            224
+          ],
+          "storage_offset": 0,
+          "strides": [
+            224,
+            1
+          ]
+        },
+        "arg.w2": {
+          "device_type": "cuda",
+          "dtype": "float4_e2m1fn_x2",
+          "role": "input",
+          "shape": [
+            384,
+            7168,
+            192
+          ],
+          "storage_offset": 0,
+          "strides": [
+            1376256,
+            192,
+            1
+          ]
+        },
+        "result.0": {
+          "device_type": "cuda",
+          "dtype": "float8_e4m3fn",
+          "role": "output",
+          "shape": [
+            8192,
+            6,
+            384
+          ],
+          "storage_offset": 0,
+          "strides": [
+            2304,
+            384,
+            1
+          ]
+        },
+        "result.1": {
+          "device_type": "cuda",
+          "dtype": "float8_e8m0fnu",
+          "role": "output",
+          "shape": [
+            73728,
+            16
+          ],
+          "storage_offset": 0,
+          "strides": [
+            16,
+            1
+          ]
+        }
+      }
+    },
+    {
+      "calls_per_sample": 1,
+      "case_id": "deepseek_moe1_prefill-29ea221dcf7a6a7000b32591-work-ee3f0c2bc494c65f",
+      "fixture": {
+        "path": "fixtures/deepseek_moe1_prefill-29ea221dcf7a6a7000b32591-work-ee3f0c2bc494c65f.json",
+        "sha256": "0d60a1eab37b94dcfdc07af9aa41c5dce3f58e7f6a902166a0b68dceabda8039"
+      },
+      "occurrences": 1,
+      "provenance_kind": "actual_served_capture",
+      "scalars": {
+        "arguments": {
+          "_kwargs": {},
+          "a1_scale": {
+            "attributes": {},
+            "tensor": "arg.a1_scale"
+          },
+          "activation": {
+            "aiter_activation": 0
+          },
+          "bias1": null,
+          "block_m": 64,
+          "hidden_states": {
+            "attributes": {},
+            "tensor": "arg.hidden_states"
+          },
+          "inter_dim_pad": 0,
+          "kernelName": "opus_moe1_afp8_wfp4_bf16_t64x384_gs_qgb3_aff64_k1lead_fp8",
+          "num_valid_ids": {
+            "attributes": {},
+            "tensor": "arg.num_valid_ids"
+          },
+          "out": null,
+          "output_sorted": false,
+          "situ_beta": 4.0,
+          "situ_linear_beta": 25.0,
+          "sorted_expert_ids": {
+            "attributes": {},
+            "tensor": "arg.sorted_expert_ids"
+          },
+          "sorted_token_ids": {
+            "attributes": {},
+            "tensor": "arg.sorted_token_ids"
+          },
+          "sorted_weights": null,
+          "swiglu_limit": 10.0,
+          "topk": 6,
+          "w1": {
+            "attributes": {
+              "is_shuffled": true
+            },
+            "tensor": "arg.w1"
+          },
+          "w1_scale": {
+            "attributes": {},
+            "tensor": "arg.w1_scale"
+          },
+          "w2": {
+            "attributes": {
+              "is_shuffled": true
+            },
+            "tensor": "arg.w2"
+          }
+        },
+        "return": {
+          "container": "tuple",
+          "items": [
+            {
+              "attributes": {},
+              "tensor": "result.0"
+            },
+            {
+              "attributes": {},
+              "tensor": "result.1"
+            }
+          ]
+        }
+      },
+      "stage": "prefill",
+      "tensors": {
+        "arg.a1_scale": {
+          "device_type": "cuda",
+          "dtype": "float8_e8m0fnu",
+          "role": "input",
+          "shape": [
+            73728,
+            224
+          ],
+          "storage_offset": 0,
+          "strides": [
+            224,
+            1
+          ]
+        },
+        "arg.hidden_states": {
+          "device_type": "cuda",
+          "dtype": "float8_e4m3fn",
+          "role": "input",
+          "shape": [
+            8192,
+            7168
+          ],
+          "storage_offset": 0,
+          "strides": [
+            7168,
+            1
+          ]
+        },
+        "arg.num_valid_ids": {
+          "device_type": "cuda",
+          "dtype": "int32",
+          "role": "input",
+          "shape": [
+            2
+          ],
+          "storage_offset": 0,
+          "strides": [
+            1
+          ]
+        },
+        "arg.sorted_expert_ids": {
+          "device_type": "cuda",
+          "dtype": "int32",
+          "role": "input",
+          "shape": [
+            1152
+          ],
+          "storage_offset": 0,
+          "strides": [
+            1
+          ]
+        },
+        "arg.sorted_token_ids": {
+          "device_type": "cuda",
+          "dtype": "int32",
+          "role": "input",
+          "shape": [
+            73722
+          ],
+          "storage_offset": 0,
+          "strides": [
+            1
+          ]
+        },
+        "arg.w1": {
+          "device_type": "cuda",
+          "dtype": "float4_e2m1fn_x2",
+          "role": "input",
+          "shape": [
+            384,
+            768,
+            3584
+          ],
+          "storage_offset": 0,
+          "strides": [
+            2752512,
+            3584,
+            1
+          ]
+        },
+        "arg.w1_scale": {
+          "device_type": "cuda",
+          "dtype": "float8_e8m0fnu",
+          "role": "input",
+          "shape": [
+            294912,
+            224
+          ],
+          "storage_offset": 0,
+          "strides": [
+            224,
+            1
+          ]
+        },
+        "arg.w2": {
+          "device_type": "cuda",
+          "dtype": "float4_e2m1fn_x2",
+          "role": "input",
+          "shape": [
+            384,
+            7168,
+            192
+          ],
+          "storage_offset": 0,
+          "strides": [
+            1376256,
+            192,
+            1
+          ]
+        },
+        "result.0": {
+          "device_type": "cuda",
+          "dtype": "float8_e4m3fn",
+          "role": "output",
+          "shape": [
+            8192,
+            6,
+            384
+          ],
+          "storage_offset": 0,
+          "strides": [
+            2304,
+            384,
+            1
+          ]
+        },
+        "result.1": {
+          "device_type": "cuda",
+          "dtype": "float8_e8m0fnu",
+          "role": "output",
+          "shape": [
+            73728,
+            16
+          ],
+          "storage_offset": 0,
+          "strides": [
+            16,
+            1
+          ]
+        }
+      }
+    },
+    {
+      "calls_per_sample": 1,
+      "case_id": "deepseek_moe1_prefill-29ea221dcf7a6a7000b32591",
+      "fixture": {
+        "path": "fixtures/deepseek_moe1_prefill-29ea221dcf7a6a7000b32591.json",
+        "sha256": "6d66876297940c92d0d5866d1e9b28bf4bc44cbd02e049362b596f5f4f24075e"
+      },
+      "occurrences": 3904,
+      "provenance_kind": "actual_served_capture",
+      "scalars": {
+        "arguments": {
+          "_kwargs": {},
+          "a1_scale": {
+            "attributes": {},
+            "tensor": "arg.a1_scale"
+          },
+          "activation": {
+            "aiter_activation": 0
+          },
+          "bias1": null,
+          "block_m": 64,
+          "hidden_states": {
+            "attributes": {},
+            "tensor": "arg.hidden_states"
+          },
+          "inter_dim_pad": 0,
+          "kernelName": "opus_moe1_afp8_wfp4_bf16_t64x384_gs_qgb3_aff64_k1lead_fp8",
+          "num_valid_ids": {
+            "attributes": {},
+            "tensor": "arg.num_valid_ids"
+          },
+          "out": null,
+          "output_sorted": false,
+          "situ_beta": 4.0,
+          "situ_linear_beta": 25.0,
+          "sorted_expert_ids": {
+            "attributes": {},
+            "tensor": "arg.sorted_expert_ids"
+          },
+          "sorted_token_ids": {
+            "attributes": {},
+            "tensor": "arg.sorted_token_ids"
+          },
+          "sorted_weights": null,
+          "swiglu_limit": 10.0,
+          "topk": 6,
+          "w1": {
+            "attributes": {
+              "is_shuffled": true
+            },
+            "tensor": "arg.w1"
+          },
+          "w1_scale": {
+            "attributes": {},
+            "tensor": "arg.w1_scale"
+          },
+          "w2": {
+            "attributes": {
+              "is_shuffled": true
+            },
+            "tensor": "arg.w2"
+          }
+        },
+        "return": {
+          "container": "tuple",
+          "items": [
+            {
+              "attributes": {},
+              "tensor": "result.0"
+            },
+            {
+              "attributes": {},
+              "tensor": "result.1"
+            }
+          ]
+        }
+      },
+      "stage": "prefill",
+      "tensors": {
+        "arg.a1_scale": {
+          "device_type": "cuda",
+          "dtype": "float8_e8m0fnu",
+          "role": "input",
+          "shape": [
+            73728,
+            224
+          ],
+          "storage_offset": 0,
+          "strides": [
+            224,
+            1
+          ]
+        },
+        "arg.hidden_states": {
+          "device_type": "cuda",
+          "dtype": "float8_e4m3fn",
+          "role": "input",
+          "shape": [
+            8192,
+            7168
+          ],
+          "storage_offset": 0,
+          "strides": [
+            7168,
+            1
+          ]
+        },
+        "arg.num_valid_ids": {
+          "device_type": "cuda",
+          "dtype": "int32",
+          "role": "input",
+          "shape": [
+            2
+          ],
+          "storage_offset": 0,
+          "strides": [
+            1
+          ]
+        },
+        "arg.sorted_expert_ids": {
+          "device_type": "cuda",
+          "dtype": "int32",
+          "role": "input",
+          "shape": [
+            1152
+          ],
+          "storage_offset": 0,
+          "strides": [
+            1
+          ]
+        },
+        "arg.sorted_token_ids": {
+          "device_type": "cuda",
+          "dtype": "int32",
+          "role": "input",
+          "shape": [
+            73722
+          ],
+          "storage_offset": 0,
+          "strides": [
+            1
+          ]
+        },
+        "arg.w1": {
+          "device_type": "cuda",
+          "dtype": "float4_e2m1fn_x2",
+          "role": "input",
+          "shape": [
+            384,
+            768,
+            3584
+          ],
+          "storage_offset": 0,
+          "strides": [
+            2752512,
+            3584,
+            1
+          ]
+        },
+        "arg.w1_scale": {
+          "device_type": "cuda",
+          "dtype": "float8_e8m0fnu",
+          "role": "input",
+          "shape": [
+            294912,
+            224
+          ],
+          "storage_offset": 0,
+          "strides": [
+            224,
+            1
+          ]
+        },
+        "arg.w2": {
+          "device_type": "cuda",
+          "dtype": "float4_e2m1fn_x2",
+          "role": "input",
+          "shape": [
+            384,
+            7168,
+            192
+          ],
+          "storage_offset": 0,
+          "strides": [
+            1376256,
+            192,
+            1
+          ]
+        },
+        "result.0": {
+          "device_type": "cuda",
+          "dtype": "float8_e4m3fn",
+          "role": "output",
+          "shape": [
+            8192,
+            6,
+            384
+          ],
+          "storage_offset": 0,
+          "strides": [
+            2304,
+            384,
+            1
+          ]
+        },
+        "result.1": {
+          "device_type": "cuda",
+          "dtype": "float8_e8m0fnu",
+          "role": "output",
+          "shape": [
+            73728,
+            16
+          ],
+          "storage_offset": 0,
+          "strides": [
+            16,
+            1
+          ]
+        }
+      }
+    }
+  ],
+  "coverage_manifest": "provenance/COVERAGE.json",
+  "coverage_sha256": "1c6218c9500b6148d3071cd9a460ba44f4cdf4ad6e336c43aa5331dac6a15f1b",
+  "generated_work_control_supplement": false,
+  "historical_oracle_reused": false,
+  "legacy_required_m": [
+    1,
+    64,
+    256,
+    1920,
+    2048,
+    32768
+  ],
+  "measurement": {
+    "benchmark_iterations": 100,
+    "correctness_seeds": [
+      42,
+      43,
+      44
+    ],
+    "initialize_outputs": "each_replay",
+    "method": "cuda_graph",
+    "negative_controls": [
+      "no_op",
+      "wrong_output"
+    ],
+    "refresh_inputs": "each_replay",
+    "validate_outputs": "each_replay",
+    "warmup_iterations": 10
+  },
+  "native_source_sha256": "5cea2bd316394b05007ff382b758081e3fc9eb3848b3f1c96f01d299b939c367",
+  "observed_case_ids": [
+    "deepseek_moe1_prefill-29ea221dcf7a6a7000b32591"
+  ],
+  "original_served_work_control_gate_passed": false,
+  "random_draws": 3,
+  "required_case_ids": [
+    "deepseek_moe1_prefill-29ea221dcf7a6a7000b32591-work-c5cd180a3a906c17",
+    "deepseek_moe1_prefill-29ea221dcf7a6a7000b32591-work-ee3f0c2bc494c65f",
+    "deepseek_moe1_prefill-29ea221dcf7a6a7000b32591"
+  ],
+  "required_phases": [
+    "prefill"
+  ],
+  "run_id": "deepseek-capture-csr-v7-194603",
+  "runtime_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
+  "schema": "deepseek-frozen-current-case-contract-v1",
+  "schema_version": 1,
+  "seam": "moe1_prefill",
+  "status": "FROZEN_CURRENT_CAPTURE",
+  "task_GPU_qualification": false,
+  "tensor_fixtures_required": true,
+  "tolerance": 0.15,
+  "unresolved_legacy_m": [
+    1,
+    64,
+    256,
+    1920,
+    2048,
+    32768
+  ]
+}
