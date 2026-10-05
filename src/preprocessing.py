@@ -468,6 +468,37 @@ def is_task_complete(
     return (task_dir / "task_result.yaml").exists()
 
 
+def _validate_task_symlinks(
+    task_folder: Path, workspace: Path, skip_names: set[str]
+) -> set[Path]:
+    """Require relocatable task links and retain matching links on workspace reuse."""
+    task_folder = task_folder.resolve()
+    workspace = workspace.resolve()
+    existing = set()
+    for path in task_folder.rglob("*"):
+        relative = path.relative_to(task_folder)
+        if relative.parts[0] in skip_names or not path.is_symlink():
+            continue
+        try:
+            target = path.resolve(strict=True)
+            link = path.readlink()
+        except (OSError, RuntimeError) as error:
+            raise ValueError(f"Invalid task symlink: {relative}") from error
+        if link.is_absolute() or not target.is_relative_to(task_folder):
+            raise ValueError(f"Task symlink must stay within the task: {relative} -> {link}")
+        destination = workspace / relative
+        if destination.exists() or destination.is_symlink():
+            expected = workspace / target.relative_to(task_folder)
+            if (
+                not destination.is_symlink()
+                or destination.readlink() != link
+                or destination.resolve() != expected
+            ):
+                raise ValueError(f"Existing workspace task symlink differs: {relative}")
+            existing.add(relative)
+    return existing
+
+
 def setup_workspace(task_config_dir: str, run_directory: Path, timestamp: str, logger: logging.Logger,
                     task_name: str = "") -> Path:
     """
@@ -492,7 +523,7 @@ def setup_workspace(task_config_dir: str, run_directory: Path, timestamp: str, l
         Path to the created workspace directory
     """
     task_config_path = Path(task_config_dir)
-    task_folder = task_config_path.parent
+    task_folder = task_config_path.parent.resolve()
 
     # Load task config
     with open(task_config_path, "r") as f:
@@ -527,19 +558,28 @@ def setup_workspace(task_config_dir: str, run_directory: Path, timestamp: str, l
     else:
         new_folder_name = f"{task_folder.name}_{timestamp}"
     workspace_path = run_directory / new_folder_name
+    skip_names = {repo_subdir} if (image_repo_path and repo_subdir) else set()
+    existing_links = _validate_task_symlinks(task_folder, workspace_path, skip_names)
     workspace_path.mkdir(parents=True, exist_ok=True)
     logger.info(f"Created workspace directory: {workspace_path}")
 
     # 3. Copy the task folder to the workspace. For image_kernel the repo is seeded
     #    directly in step 4, so skip its subdir here — this also avoids copying any
     #    stale per-task cache left by an older version of this code.
-    skip_names = {repo_subdir} if (image_repo_path and repo_subdir) else set()
+    def skip_existing_links(directory, names):
+        relative = Path(directory).relative_to(task_folder)
+        return {name for name in names if relative / name in existing_links}
+
     for item in task_folder.iterdir():
-        if item.name in skip_names:
+        if item.name in skip_names or Path(item.name) in existing_links:
             continue
         dst = workspace_path / item.name
-        if item.is_dir():
-            shutil.copytree(item, dst, dirs_exist_ok=True)
+        if item.is_symlink():
+            shutil.copy2(item, dst, follow_symlinks=False)
+        elif item.is_dir():
+            shutil.copytree(
+                item, dst, dirs_exist_ok=True, symlinks=True, ignore=skip_existing_links
+            )
         else:
             shutil.copy2(item, dst)
     logger.info(f"Copied task folder content from {task_folder} to {workspace_path}")

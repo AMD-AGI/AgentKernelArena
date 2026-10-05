@@ -335,8 +335,8 @@ class QualityLoop:
         candidate_task = task_artifacts / "candidate_task"
         self._reset_path(task_artifacts)
         task_artifacts.mkdir(parents=True)
-        shutil.copytree(canonical_task, original_task)
-        shutil.copytree(canonical_task, candidate_task)
+        shutil.copytree(canonical_task, original_task, symlinks=True)
+        shutil.copytree(canonical_task, candidate_task, symlinks=True)
         original_tree = snapshot_tree(original_task)
         original_validation_status = "FAIL"
 
@@ -745,7 +745,7 @@ class QualityLoop:
             return False
 
         backup = task_artifacts / "candidate_before_cases"
-        shutil.copytree(candidate_task, backup)
+        shutil.copytree(candidate_task, backup, symlinks=True)
         apply_changes(case_workspace, candidate_task, changes)
         restore_committed_perf_stubs(candidate_task)
         if not self._dual_correctness_gate(
@@ -774,7 +774,7 @@ class QualityLoop:
             return False
         original_with_cases = stage_dir / "original_with_cases"
         self._reset_path(stage_dir)
-        shutil.copytree(candidate_task, original_with_cases)
+        shutil.copytree(candidate_task, original_with_cases, symlinks=True)
         for relative in sources:
             destination = original_with_cases / relative
             destination.parent.mkdir(parents=True, exist_ok=True)
@@ -854,7 +854,7 @@ class QualityLoop:
     @classmethod
     def _replace_directory(cls, destination: Path, source: Path) -> None:
         cls._reset_path(destination)
-        shutil.copytree(source, destination)
+        shutil.copytree(source, destination, symlinks=True)
 
     def _write_report(self) -> Path:
         assert self.state is not None and self.artifact_dir is not None

@@ -4,7 +4,9 @@ The original tasks live at `tasks/headkernel/<flat-task-name>/`. The five-model
 selection contains 16 configured tasks and five `NOT_BUILT` placeholders. The
 task files, sources, harnesses and original suite tools are restored from the
 upstream delivery; [HEADKERNELS_UPSTREAM.md](../../HEADKERNELS_UPSTREAM.md) preserves
-its README. The original tools also describe the wider six-model suite, including
+its README. See [portable execution fixes](../../HEADKERNELS.md#portable-execution-fixes)
+for subsequent workspace-alias, candidate-registration and failure-handling
+corrections. The original tools also describe the wider six-model suite, including
 GLM-5.2, which is outside this selection. Their full-suite counts therefore differ.
 
 Verification of copied bytes establishes source identity. It does not establish

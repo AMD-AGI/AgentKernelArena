@@ -31,6 +31,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from src.held_out.injection import apply_all_injections
+from src.harness_guard import verify_task_source_aliases
 from src.evaluator import (
     evaluate_compilation,
     evaluate_correctness,
@@ -250,6 +251,7 @@ def evaluate_single_task(
 
     Returns a result dict for heldout_task_result.yaml.
     """
+    verify_task_source_aliases(original_workspace, task_dir)
     task_id = resolve_task_id(original_workspace) or original_workspace.name
 
     run_result: Dict[str, Any] = {}
@@ -294,8 +296,8 @@ def evaluate_single_task(
     opt_ws = output_workspace / "opt"
     orig_ws = output_workspace / "orig"
 
-    shutil.copytree(original_workspace, opt_ws)
-    shutil.copytree(original_workspace, orig_ws)
+    shutil.copytree(original_workspace, opt_ws, symlinks=True)
+    shutil.copytree(original_workspace, orig_ws, symlinks=True)
     logger.info(f"Created opt/ and orig/ workspaces under {output_workspace}")
 
     _clear_build_artifacts(opt_ws)

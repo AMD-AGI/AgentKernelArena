@@ -545,7 +545,16 @@ def fused_moe_fake(
     return moe_buf
 
 
-@torch_compile_guard(gen_fake=fused_moe_fake)
+def _register_candidate_moe(func):
+    # AITER registers by function name, independent of the defining module.
+    # Preserve its guard/schema/fake implementation under a candidate-owned key.
+    func.__name__ = __name__.replace(".", "_") + "_" + func.__name__
+    if hasattr(torch.ops.aiter, func.__name__):
+        raise RuntimeError("candidate MoE operation already registered: " + func.__name__)
+    return torch_compile_guard(gen_fake=fused_moe_fake)(func)
+
+
+@_register_candidate_moe
 def fused_moe_(
     hidden_states: torch.Tensor,
     w1: torch.Tensor,  # [expert(local_expert:EP), inter_dim*2, dim] N,K

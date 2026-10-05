@@ -8,8 +8,8 @@ as the mean of per-iteration cuda-event device times.
 
 Run by ``scripts/task_runner.py performance`` in a subprocess whose PYTHONPATH
 carries the GEAK candidate overlay, so the callable resolved here is the code in
-``source/``. Exits 4 when the oracle carries no replayable records, which tells
-the runner to fall back to the GEAK harness legs.
+``source/``. Exits 4 only when replay is unsupported and no candidate call was
+attempted; execution, case-builder and malformed-capture errors must not fall back.
 """
 from __future__ import annotations
 
@@ -17,11 +17,16 @@ import argparse
 import ast
 import importlib
 import json
+import math
 import os
 import sys
 
 EXIT_NO_RECORDS = 4
 MAX_CASES = 24          # captures can hold hundreds of near-identical records
+
+
+class UnsupportedReplay(ValueError):
+    """A captured representation has no generic reconstruction implementation."""
 
 
 def resolve(dotted):
@@ -74,7 +79,7 @@ def _literal(spec):
     text = spec.strip()
     try:
         return ast.literal_eval(text)
-    except Exception:
+    except (SyntaxError, ValueError):
         pass
     if text.startswith("<") and ":" in text:                # <QuantType.per_1x32: 3>
         dotted = text[1:text.index(":")].strip()
@@ -83,9 +88,9 @@ def _literal(spec):
             try:
                 obj = importlib.import_module(mod)
                 return getattr(getattr(obj, cls.rpartition(".")[2]), member)
-            except Exception:
+            except (ImportError, AttributeError):
                 continue
-    raise ValueError(f"cannot rebuild {spec!r}")
+    raise UnsupportedReplay(f"cannot rebuild {spec!r}")
 
 
 def unsnap(x, device, torch, shared=None):
@@ -164,6 +169,10 @@ def record_args(rec, device, torch, shared=None):
         kw = rec.get("kw")                   # geak-attn-oracle-v1 spelling
     if raw is None and kw is None:
         return None, None
+    if raw is not None and not isinstance(raw, (list, tuple)):
+        raise ValueError("captured positional arguments must be a list or tuple")
+    if kw is not None and not isinstance(kw, dict):
+        raise ValueError("captured keyword arguments must be a mapping")
     args = unsnap(list(raw or ()), device, torch, shared)
     kwargs = unsnap(dict(kw or {}), device, torch, shared)
     return args, kwargs
@@ -171,6 +180,8 @@ def record_args(rec, device, torch, shared=None):
 
 def time_call(call, torch, warmup, iters):
     """Mean / median / min per-call device milliseconds."""
+    if warmup < 0 or iters < 1:
+        raise ValueError("nonnegative warmup and positive measured counts required")
     for _ in range(warmup):
         call()
     torch.cuda.synchronize()
@@ -183,7 +194,11 @@ def time_call(call, torch, warmup, iters):
         ends[i].record()
     torch.cuda.synchronize()
 
-    samples = sorted(s.elapsed_time(e) for s, e in zip(starts, ends))
+    samples = [s.elapsed_time(e) for s, e in zip(starts, ends)]
+    if any(type(value) not in (int, float) or not math.isfinite(value) or value <= 0
+           for value in samples):
+        raise ValueError("invalid device-event duration")
+    samples.sort()
     n = len(samples)
     median = samples[n // 2] if n % 2 else 0.5 * (samples[n // 2 - 1] + samples[n // 2])
     return {"mean_ms": sum(samples) / n, "median_ms": median, "min_ms": samples[0]}
@@ -213,7 +228,7 @@ def native_cases(ut_dir, meta, torch):
     """
     cases_py = os.path.join(ut_dir, "cases.py")
     harness = os.path.join(ut_dir, "harness_lib.py")
-    if not (os.path.isfile(cases_py) and os.path.isfile(harness)):
+    if not os.path.isfile(cases_py):
         return []
 
     # The UT sets this at module scope, before aiter is imported, so the
@@ -226,19 +241,17 @@ def native_cases(ut_dir, meta, torch):
     sys.path.insert(0, ut_dir)
     try:
         h = _load_module("harness_lib", harness)
+    finally:
         sys.path[:] = [p for p in sys.path if os.path.abspath(p or ".") != ut_dir]
-        sys.modules.pop("unittest", None)
-        cases = _load_module("_hk_cases", cases_py)
-    except Exception as exc:
-        print(f"[native] cannot load ut/cases.py: {type(exc).__name__}: {exc}", file=sys.stderr)
-        return []
+    sys.modules.pop("unittest", None)
+    cases = _load_module("_hk_cases", cases_py)
 
     out = []
     # Spelling A: per-case builder keyed off the meta case map (dense GEMM).
     if hasattr(cases, "timing_case") and hasattr(cases, "candidate_call"):
-        try:
+        if hasattr(cases, "selected_cases"):
             selected = cases.selected_cases(meta, meta.get("ledger_ids") or [])
-        except Exception:
+        else:
             selected = list((cases.case_map(meta) or {}).values())
         for case in selected:
             t = cases.timing_case(case)
@@ -249,6 +262,10 @@ def native_cases(ut_dir, meta, torch):
         for t in cases.timing_cases(h, meta):
             out.append((t["sig"], t.get("regime", ""),
                         (lambda a=t["args"]: cases.call(a))))
+    else:
+        return []
+    if not out:
+        raise ValueError("native case builder returned no timing cases")
     return out
 
 
@@ -281,17 +298,11 @@ def main():
             return EXIT_NO_RECORDS
         cases = []
         for sig, regime, call in native:
-            try:
-                timing = time_call(call, torch, args.warmup, args.iters)
-            except Exception as exc:
-                print(f"[skip] {sig}: {type(exc).__name__}: {exc}", file=sys.stderr)
-                continue
+            timing = time_call(call, torch, args.warmup, args.iters)
             cases.append({"sig": f"{sig}|{regime}" if regime else sig,
                           "params": {"regime": regime, "source": "ut/cases.py live geometry"},
                           **timing})
             torch.cuda.empty_cache()
-        if not cases:
-            return EXIT_NO_RECORDS
         with open(args.out, "w") as fh:
             json.dump({"target": meta_early.get("target_callable"), "timer": "cuda_event",
                        "warmup": args.warmup, "iters": args.iters,
@@ -309,7 +320,12 @@ def main():
     device = "cuda"
 
     blob = torch.load(oracle, map_location="cpu", weights_only=False)
-    if not isinstance(blob, dict) or not blob.get("records"):
+    if not isinstance(blob, dict):
+        raise ValueError("oracle must be a mapping")
+    records = blob.get("records")
+    if records is not None and not isinstance(records, (list, tuple)):
+        raise ValueError("oracle records must be a list or tuple")
+    if not records:
         print("oracle carries no 'records' - synthetic-spec layout, cannot replay",
               file=sys.stderr)
         return EXIT_NO_RECORDS
@@ -322,13 +338,16 @@ def main():
     meta = json.load(open(meta_path)) if os.path.isfile(meta_path) else {}
     target = meta.get("target_callable") or blob.get("target")
     if not target:
-        print("no target callable recorded", file=sys.stderr)
-        return EXIT_NO_RECORDS
+        raise ValueError("no target callable recorded")
     fn = resolve(target)
-    shared = blob.get("shared") or {}
+    shared = blob.get("shared")
+    if shared is None:
+        shared = {}
+    if not isinstance(shared, dict):
+        raise ValueError("oracle shared operands must be a mapping")
 
     cases, seen = [], set()
-    for i, rec in enumerate(blob["records"]):
+    for i, rec in enumerate(records):
         if len(cases) >= MAX_CASES:
             break
         sig = rec.get("sig") or f"record{i}"
@@ -338,23 +357,17 @@ def main():
             continue
         seen.add(key)
 
-        # Rebuilding the arguments is as failure-prone as calling the kernel --
-        # an unhandled encoding used to abort the whole process here rather than
-        # skip one record, which read downstream as "this oracle has no
-        # replayable records at all".
+        # Only a known unsupported representation may be skipped. Corrupt data
+        # and failed candidate invocations invalidate the whole measurement.
         try:
             pos, kw = record_args(rec, device, torch, shared)
-        except Exception as exc:
+        except UnsupportedReplay as exc:
             print(f"[skip] {sig}: cannot rebuild arguments: {type(exc).__name__}: {exc}",
                   file=sys.stderr)
             continue
         if pos is None:
             continue
-        try:
-            timing = time_call(lambda: fn(*pos, **kw), torch, args.warmup, args.iters)
-        except Exception as exc:                       # one bad record must not sink the sweep
-            print(f"[skip] {sig}: {type(exc).__name__}: {exc}", file=sys.stderr)
-            continue
+        timing = time_call(lambda: fn(*pos, **kw), torch, args.warmup, args.iters)
         operands = list(pos) + [kw[k] for k in sorted(kw)]   # some ops are kwargs-only
         shapes = [list(t.shape) for t in operands if hasattr(t, "shape")][:4]
         cases.append({"sig": f"{sig[:60]}|{regime}" if regime else sig[:60],
@@ -364,21 +377,13 @@ def main():
         torch.cuda.empty_cache()
 
     if not cases:
-        # The oracle has records but none of them survived a direct call. That
-        # happens when the op needs setup the generic replay path knows nothing
-        # about -- the DeepSeek MoE stages, for instance, reject a raw kwargs
-        # replay with "tile_n=256 does not divide inter_dim=384" while their own
-        # cases.py builds a valid configuration. Fall back to the package's own
-        # case builder before declaring the oracle unreplayable.
+        # No arguments could be reconstructed; no candidate invocation failed.
+        # Try the package's own builder before declaring replay unsupported.
         print("no record could be replayed directly; trying ut/cases.py",
               file=sys.stderr)
         native = native_cases(args.ut, meta, torch)
         for sig, regime, call in native:
-            try:
-                timing = time_call(call, torch, args.warmup, args.iters)
-            except Exception as exc:
-                print(f"[skip] {sig}: {type(exc).__name__}: {exc}", file=sys.stderr)
-                continue
+            timing = time_call(call, torch, args.warmup, args.iters)
             cases.append({"sig": f"{sig}|{regime}" if regime else sig,
                           "params": {"regime": regime,
                                      "source": "ut/cases.py live geometry"},
@@ -399,4 +404,11 @@ def main():
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        return_code = main()
+    except SystemExit as exc:
+        if exc.code != EXIT_NO_RECORDS:
+            raise
+        print("unexpected exit 4 during benchmark execution; replay is not unsupported", file=sys.stderr)
+        return_code = 1
+    sys.exit(return_code)

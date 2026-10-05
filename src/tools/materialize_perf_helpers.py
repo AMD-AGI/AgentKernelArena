@@ -42,6 +42,7 @@ def _copy_task(task: pathlib.Path, out_root: pathlib.Path, force: bool) -> pathl
     shutil.copytree(
         task,
         dest,
+        symlinks=True,
         ignore=shutil.ignore_patterns("__pycache__", ".pytest_cache"),
     )
     return dest

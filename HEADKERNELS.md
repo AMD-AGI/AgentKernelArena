@@ -1,9 +1,10 @@
 # Upstream head-kernel setup
 
 This branch restores the original `headkernel_ut_0914_full` tasks for the five
-requested model families, as retrieved on 2026-09-22. Task source, unit tests,
-configuration, baseline packages, internal aliases, and the upstream benchmark
-and runner are preserved. The adapted generated-input suite is replaced.
+requested model families, as retrieved on 2026-09-22. Commit `a16f2203` records
+that restoration, including the task sources, unit tests, configuration,
+baseline packages, internal aliases and upstream runners. The adapted
+generated-input suite is replaced. Subsequent portable fixes are described below.
 
 The [reported workload results table](docs/reference/headkernel-reported-results.md)
 records the supplied E2E gains, head-kernel speedups and roofline figures, with
@@ -64,7 +65,36 @@ For example, its older MiniMax missing-geometry warning predates the three files
 present in the retrieved inventory. Preserving an upstream result or statement
 does not turn it into a new verification result.
 
-No new GPU validation was requested or performed for this restoration. File-copy
+No new GPU validation was requested or performed for the original restoration. File-copy
 and setup checks are separate from upstream GPU results. This branch does not
 claim a new framework `task_validator` PASS, universal resistance to benchmark
 cheating, or complete HyperLoom end-to-end equivalence.
+
+## Portable execution fixes
+
+These corrections address shared execution behavior. They do not introduce
+optimized kernel implementations, substitute captured inputs, or change the
+reference math, test shapes, tolerances, warmups, sample counts or timing method.
+
+- **Keep evaluation connected to editable source.** Workspace, quality-loop,
+  held-out and inspection copies preserve relative task symlinks such as
+  `ut/kernel_src/kernel.py -> ../../source/kernel.py`. The harness guard records
+  the original editable-source aliases and rejects missing, detached or
+  redirected aliases. Noneditable support files remain protected. Task packages
+  must contain their symlink targets; old workspaces with detached copies must
+  be recreated from the task rather than treated as valid candidate evaluations.
+- **Separate candidate and production MoE registration.** The Qwen two-stage
+  MoE candidate registers its guarded operation under a module-qualified name,
+  so AITER cannot reuse the production operation's registration for the candidate.
+  Duplicate candidate registration fails explicitly.
+- **Keep benchmark failures visible.** The common runner, copied into all 16
+  configured tasks, permits the existing UT timing fallback only when replay
+  reconstruction is unsupported. Failed candidate calls, failed case builders,
+  timeouts, stale output and invalid or partial measurements cannot become a
+  successful score through fallback. Successful CUDA-event timing retains the
+  original measurement procedure.
+
+Focused regression coverage is in `tests/test_task_source_aliases.py`,
+`tests/test_headkernel_moe_registration.py` and
+`tests/test_headkernel_benchmark_failures.py`. CPU tests establish these control
+paths; they do not establish real GPU correctness, AITER dispatch or performance.
