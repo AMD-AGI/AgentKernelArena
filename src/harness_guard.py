@@ -60,6 +60,7 @@ class WorkspaceSnapshot:
     root: Path
     digests: dict[str, str]
     source_aliases: dict[str, tuple[str, str]] = field(default_factory=dict)
+    symlink_protected_sources: tuple[str, ...] = ()
 
 
 def _is_protected_path(rel: Path) -> bool:
@@ -301,6 +302,51 @@ def _editable_source_aliases(task_root: Path) -> dict[str, tuple[str, str]]:
     return aliases
 
 
+def _symlink_protected_sources(task_root: Path) -> tuple[str, ...]:
+    """Record canonical editable paths for tasks that forbid new source links.
+
+    Shipped relative aliases remain governed by the existing alias contract.
+    Protect their canonical targets so a new link cannot redirect the actual
+    implementation, even when it keeps the original alias text unchanged.
+    """
+    task_root = task_root.resolve()
+    policy = _task_config(task_root).get("harness_protection", {})
+    if (
+        not isinstance(policy, dict)
+        or policy.get("reject_new_source_symlinks") is not True
+    ):
+        return ()
+    sources = _editable_source_paths(task_root)
+    for source in sources:
+        if not source.is_relative_to(task_root) or not source.is_file():
+            raise RuntimeError(
+                "Source symlink protection requires existing task-contained "
+                f"editable sources: {source}"
+            )
+    return tuple(sorted(
+        source.relative_to(task_root).as_posix() for source in sources
+    ))
+
+
+def _verify_source_path_types(root: Path, sources: Iterable[str]) -> None:
+    root = root.resolve()
+    for relative in sources:
+        source = root / relative
+        # Checking every component also catches a regular source directory
+        # replaced by a symlink to an otherwise identical tree.
+        components = [source]
+        components.extend(
+            parent for parent in source.parents
+            if parent != root and root in parent.parents
+        )
+        if any(path.is_symlink() for path in components) or not source.is_file():
+            raise RuntimeError(
+                f"Editable source path changed or missing: {relative}; "
+                "new source symlinks are forbidden by harness_protection. "
+                "Kernel score is rejected."
+            )
+
+
 def _verify_source_aliases(root: Path, aliases: dict[str, tuple[str, str]]) -> None:
     root = root.resolve()
     for relative, (link, target) in aliases.items():
@@ -323,6 +369,7 @@ def _verify_source_aliases(root: Path, aliases: dict[str, tuple[str, str]]) -> N
 def verify_task_source_aliases(root: Path, task_root: Path) -> None:
     """Reject detached source aliases when re-evaluating a prior workspace."""
     _verify_source_aliases(Path(root), _editable_source_aliases(Path(task_root)))
+    _verify_source_path_types(Path(root), _symlink_protected_sources(Path(task_root)))
 
 
 def _protected_digests(root: Path, extra_paths: Iterable[str] = ()) -> dict[str, str]:
@@ -364,6 +411,7 @@ def describe_workspace_harness(root: Path) -> dict[str, object]:
                 editable_entrypoints.items(), key=lambda item: str(item[0])
             )
         },
+        "symlink_protected_sources": list(_symlink_protected_sources(root)),
     }
 
 
@@ -377,10 +425,11 @@ def snapshot_workspace_harness(
     """
 
     root = Path(root)
-    source_aliases = _editable_source_aliases(
-        Path(task_root) if task_root is not None else root
-    )
+    original_root = Path(task_root) if task_root is not None else root
+    source_aliases = _editable_source_aliases(original_root)
+    symlink_protected_sources = _symlink_protected_sources(original_root)
     _verify_source_aliases(root, source_aliases)
+    _verify_source_path_types(root, symlink_protected_sources)
     task_inputs = (
         _task_input_paths(root, Path(task_root)) if task_root is not None else set()
     )
@@ -390,7 +439,10 @@ def snapshot_workspace_harness(
     if missing:
         raise RuntimeError(f"Task inputs missing before agent execution: {missing}")
     digests = _protected_digests(root, task_inputs)
-    return WorkspaceSnapshot(root=root, digests=digests, source_aliases=source_aliases)
+    return WorkspaceSnapshot(
+        root=root, digests=digests, source_aliases=source_aliases,
+        symlink_protected_sources=symlink_protected_sources,
+    )
 
 
 def verify_workspace_harness(snapshot: WorkspaceSnapshot, logger=None) -> None:
@@ -407,6 +459,7 @@ def verify_workspace_harness(snapshot: WorkspaceSnapshot, logger=None) -> None:
     """
 
     _verify_source_aliases(snapshot.root, snapshot.source_aliases)
+    _verify_source_path_types(snapshot.root, snapshot.symlink_protected_sources)
 
     def _scan() -> dict[str, str]:
         # Preserve the editable-body masking used for colocated kernel/harness

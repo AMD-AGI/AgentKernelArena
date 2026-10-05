@@ -164,6 +164,18 @@ in which case the existing scratch-file removal policy applies. Cloned or
 image-seeded dependency trees retain the existing harness-pattern protection;
 this input snapshot is not a blanket source allowlist for those repositories.
 
+Tasks can set `harness_protection.reject_new_source_symlinks: true` to preserve
+the file types of their declared editable sources. The guard rejects replacing
+a regular source or one of its parent directories with a symlink, including
+links to files within the workspace. Relative aliases shipped with the task
+remain supported and retain their existing target checks. This policy is
+recorded in the framework snapshot before optimization and is opt-in.
+
+Before each performance command, the evaluator removes every recognized report
+path, including dangling report symlinks. If a report cannot be removed, or its
+path is a directory, measurement stops without accepting timing from files or
+stdout. A successful command must produce fresh output to obtain a score.
+
 ## Baseline and optimized fairness
 
 The evaluator matches baseline and optimized cases by unique explicit ID first,

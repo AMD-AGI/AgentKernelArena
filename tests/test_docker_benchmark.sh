@@ -246,6 +246,17 @@ assert_has "$PINNED_GFX950_IMAGE" "${args[@]}"
 assert_cache_args_present "" "${args[@]}"
 assert_not_has "AITER_ROOT_DIR=/tmp/aiter-root" "${args[@]}"
 
+# Allocation owners can label every preflight/worker container without changing
+# the standard runner or accepting arbitrary extra Docker arguments.
+LABEL_FILE="$TEST_HOME/allocation.labels"
+printf 'spur_job_id=test-job\naka.owner=test-owner\n' > "$LABEL_FILE"
+mapfile -t args < <(run_shell_args AKA_GPU_ARCH=gfx950 AKA_DOCKER_LABEL_FILE="$LABEL_FILE")
+assert_has "--label-file" "${args[@]}"
+assert_has "$LABEL_FILE" "${args[@]}"
+if run_shell_args AKA_GPU_ARCH=gfx950 AKA_DOCKER_LABEL_FILE="$TEST_HOME/missing.labels" >/dev/null 2>&1; then
+    fail "missing Docker label file unexpectedly passed"
+fi
+
 # A worker suffix must isolate both runtime cache directories.
 mapfile -t args < <(run_shell_args AKA_GPU_ARCH=gfx950 AKA_CACHE_SUFFIX=worker/3)
 assert_cache_args_present "-worker_3" "${args[@]}"

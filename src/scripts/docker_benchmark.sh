@@ -67,6 +67,7 @@ Environment overrides:
   GPU_IDS                 Comma/space separated GPU indices for parallel-run.
   AKA_LOGICAL_GPU         Logical GPU index inside a masked worker container (default: 0).
   AKA_DOCKER_IMAGE        Absolute Docker image override.
+  AKA_DOCKER_LABEL_FILE   Readable Docker label file applied to each run container.
   AKA_GPU_ARCH            GPU arch override for shell/smoke, or run configs without target_gpu_model.
   AKA_DOCKER_IMAGE_<ARCH> Per-arch image override, e.g. AKA_DOCKER_IMAGE_GFX950=...
   AKA_DOCKER_IMAGE_GFX942 Default image for gfx942.
@@ -968,6 +969,11 @@ build_docker_args() {
     ensure_runtime_image
 
     docker_args=(run --rm --entrypoint bash)
+    if [[ -n "${AKA_DOCKER_LABEL_FILE:-}" ]]; then
+        [[ -f "$AKA_DOCKER_LABEL_FILE" && -r "$AKA_DOCKER_LABEL_FILE" ]] \
+            || die "Docker label file is not readable: $AKA_DOCKER_LABEL_FILE"
+        docker_args+=(--label-file "$AKA_DOCKER_LABEL_FILE")
+    fi
     unset _MOUNTED_TARGETS
     declare -gA _MOUNTED_TARGETS=()
     if [[ "$interactive" == "1" && -t 0 ]]; then
@@ -1314,9 +1320,14 @@ PY
 container_check_agents() {
     # Verify only the requested agents (default: all three). Driven by the same
     # agent set as the mounts, so a single-agent run does not require the others.
+    local config_name=""
+    if [[ "${1:-}" == "--config_name" ]]; then
+        config_name="${2:?missing config path}"
+        shift 2
+    fi
     local agents="$*"
     [[ -n "$agents" ]] || agents="codex claude_code cursor"
-    AKA_CHECK_AGENTS="$agents" python - <<'PY'
+    AKA_CHECK_AGENTS="$agents" AKA_CHECK_CONFIG="$config_name" python - <<'PY'
 import json
 import os
 import shutil
@@ -1343,9 +1354,11 @@ def run_checked(cmd: list[str]) -> str:
 
 if "codex" in agents:
     require_cmd("codex")
-    codex_status = run_checked(["codex", "login", "status"])
-    codex_line = next((line for line in codex_status.splitlines() if "Logged in" in line), codex_status.splitlines()[-1])
-    print(f"codex_status={codex_line}")
+    from agents.codex.auth_preflight import CodexAuthError, check_codex_access
+    try:
+        print(check_codex_access(os.environ.get("AKA_CHECK_CONFIG") or None))
+    except CodexAuthError as error:
+        raise SystemExit(str(error)) from None
 
 if "claude_code" in agents:
     require_cmd("claude")
@@ -1380,7 +1393,7 @@ container_preflight() {
     local config_name="${1:-$DEFAULT_RUN_CONFIG}"
     container_smoke
     # Only verify the agent(s) this config actually uses (mounts are scoped the same way).
-    container_check_agents $(resolve_required_agents "$config_name")
+    container_check_agents --config_name "$config_name" $(resolve_required_agents "$config_name")
     # GEAK v4 also needs the Claude Agent SDK and its kernel_workflow checkout.
     if [[ "$(read_agent_template "$config_name")" == geak_v4 ]]; then
         container_setup_geak
@@ -1789,7 +1802,11 @@ case "${1:-}" in
         # request one, several, or `all` explicitly.
         REQUIRED_AGENTS="$(normalize_check_agents "$(resolve_required_agents "$config_name")")"
         AGENTS_STRICT=1
-        docker_exec 0 bash src/scripts/docker_benchmark.sh _container_check_agents $REQUIRED_AGENTS
+        check_config_args=()
+        if [[ -f "$config_name" ]]; then
+            check_config_args=(--config_name "$config_name")
+        fi
+        docker_exec 0 bash src/scripts/docker_benchmark.sh _container_check_agents "${check_config_args[@]}" $REQUIRED_AGENTS
         ;;
     build-rdna4-image)
         build_rdna4_image

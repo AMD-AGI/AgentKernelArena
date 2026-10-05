@@ -59,21 +59,23 @@ def clear_performance_report_files(
     task_type: Optional[str] = None,
     logger: Optional[logging.Logger] = None
 ) -> None:
-    """Remove stale performance report files before running a fresh benchmark."""
+    """Remove stale reports, or refuse measurement if freshness is uncertain."""
     log = logger or logging.getLogger(__name__)
     removed = []
 
     for report_file in performance_report_candidates(workspace, task_type):
-        if not report_file.exists():
-            continue
         try:
-            if report_file.is_file() or report_file.is_symlink():
-                report_file.unlink()
-                removed.append(str(report_file))
-            else:
-                log.warning(f"Skipping stale performance report path that is not a file: {report_file}")
-        except Exception as e:
-            log.warning(f"Failed to remove stale performance report {report_file}: {e}")
+            # Unlink directly so dangling symlinks are removed as well. Checking
+            # exists() first would miss a link whose target appears during the run.
+            report_file.unlink()
+            removed.append(str(report_file))
+        except FileNotFoundError:
+            continue
+        except OSError as exc:
+            raise RuntimeError(
+                f"Cannot establish fresh performance output: failed to remove "
+                f"stale performance report {report_file}: {exc}"
+            ) from exc
 
     if removed:
         log.info(f"Removed {len(removed)} stale performance report file(s)")
@@ -310,7 +312,11 @@ def measure_performance(
         if is_baseline and task_type == 'torch2hip':
             cmd = cmd + " --baseline_only"
 
-        clear_performance_report_files(workspace, task_type, log)
+        try:
+            clear_performance_report_files(workspace, task_type, log)
+        except RuntimeError as exc:
+            log.error("Performance measurement rejected: %s", exc)
+            return []
         success, stdout, stderr = run_command(cmd, workspace, timeout=perf_timeout, logger=log, extra_env=rebuild_env)
         
         # Combine stdout and stderr for parsing

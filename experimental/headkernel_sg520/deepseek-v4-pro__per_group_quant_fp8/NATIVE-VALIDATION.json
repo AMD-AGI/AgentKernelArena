@@ -144,7 +144,7 @@
   },
   "tested_case_manifest_sha256": "d46579316cc4ce027e3ab23d8c7c454221d313626eda7d4fa7378bb9d2532dce",
   "packaging": {
-    "code_and_harness": "byte-identical to the GPU-tested files",
+    "code_and_harness": "Historical pre-hardening GPU evidence. Current source is unchanged; the revised build, oracle and process/report harness require fresh GPU validation.",
     "metadata": "local paths relocated to pinned image paths or verified OCI archive references; recorded source/evidence hashes retained",
     "generated_logs_binaries_and_caches_included": false
   },
@@ -152,6 +152,7 @@
     "Independent native correctness and graph microbenchmark only; not a framework-finalized task_validator PASS.",
     "Counts cover eight sampled prefill steps per rank, not a full-workload extrapolation.",
     "Seeded inputs are not captured activation values.",
-    "Unmodified-source comparison; no optimization or E2E gain is asserted."
+    "Unmodified-source comparison; no optimization or E2E gain is asserted.",
+    "The hardened harness with separate processes, fresh candidate compilation, frozen GPU-body edits and fresh-input graph replays has not yet been GPU validated by this record."
   ]
 }

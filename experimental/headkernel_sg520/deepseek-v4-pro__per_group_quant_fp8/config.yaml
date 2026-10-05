@@ -4,6 +4,11 @@ source_file_path:
   - source/quant_kernels.cu
 target_kernel_functions:
   - dynamic_per_group_scaled_quant_kernel
+harness_protection:
+  reject_new_source_symlinks: true
+platform_support:
+  required_arch: gfx950
+  status: active
 compile_command:
   - python3 scripts/task_runner.py compile
 correctness_command:
@@ -14,8 +19,11 @@ task_result_template: null
 prompt:
   source_code: null
   instructions: |
-    Optimize the native dynamic_per_group_scaled_quant_kernel in source/quant_kernels.cu.
-    Every other file is frozen. Preserve BF16 input, FP8 E4M3FN output, group size 128,
+    Optimize only the body of dynamic_per_group_scaled_quant_kernel in source/quant_kernels.cu.
+    Its signature, the rest of the translation unit, and every other file are frozen.
+    Local device helpers inside the body are allowed; new preprocessor directives,
+    host hooks, includes and changes to the native launcher are forbidden.
+    Preserve BF16 input, FP8 E4M3FN output, group size 128,
     transpose_scale=True, scale=None, num_rows=None, num_rows_factor=1 and FP32 scales.
     Scale storage is column-major at flat offset group*M+row despite its contiguous
     returned shape [M,N/128]. Preserve all three traced cases and their observed weights.

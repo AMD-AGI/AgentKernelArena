@@ -5,6 +5,11 @@ from pathlib import Path
 import re
 
 
+OBSERVED_CASES = (("x8192x1536", (8192, 1536), 728),
+                  ("x8192x2048", (8192, 2048), 488),
+                  ("x8192x7168", (8192, 7168), 968))
+
+
 def load_cases(path, allow_provisional=False):
     manifest = json.loads(Path(path).read_text())
     if not manifest.get("confirmed_corrected_1024") and not allow_provisional:
@@ -12,19 +17,29 @@ def load_cases(path, allow_provisional=False):
     if manifest.get("confirmed_corrected_1024") and not re.fullmatch(r"[a-f0-9]{64}", manifest.get("corrected_trace_sha256") or ""):
         raise ValueError("corrected trace confirmation requires its SHA-256")
     cases = manifest.get("cases")
-    if not isinstance(cases, list) or not cases:
-        raise ValueError("no observed cases")
+    if not isinstance(cases, list) or len(cases) != len(OBSERVED_CASES):
+        raise ValueError("all three observed cases are required")
+    if manifest.get("weight_sum_per_rank") != 2184 or manifest.get("counts_complete_for_sampled_window") is not True:
+        raise ValueError("complete sampled-window weights are required")
+    actual_cases = [(c.get("case_id"), tuple(c.get("shape", [])), c.get("trace_call_count")) for c in cases]
+    if actual_cases != list(OBSERVED_CASES):
+        raise ValueError("case identities, order, shapes and observed weights are frozen")
     for case in cases:
         fixed = {"input_dtype": "bfloat16", "quant_dtype": "float8_e4m3fn", "group_size": 128,
                  "transpose_scale": True, "scale": None, "num_rows": None,
                  "num_rows_factor": 1, "scale_type": "float32", "scale_ub_at_native_call": None}
-        if any(case.get(key) != value for key, value in fixed.items()):
+        if any(key not in case or type(case[key]) is not type(value) or case[key] != value for key, value in fixed.items()):
             raise ValueError("case differs from the traced native ABI")
         m, n = case["shape"]
         if type(m) is not int or type(n) is not int or min(m, n) <= 0 or n % 128:
             raise ValueError("invalid observed shape")
         if case["input_strides"] != [n, 1] or not case.get("sample_event_evidence"):
             raise ValueError("contiguous input layout and source event evidence required")
+        weight = case["trace_call_count"]
+        if type(weight) is not int or case.get("trace_call_counts_per_rank") != {str(rank): weight for rank in range(8)}:
+            raise ValueError("all eight observed rank counts are required")
+        if case.get("scale_allocated_shape") != [m, n // 128] or case.get("scale_allocated_stride") != [n // 128, 1]:
+            raise ValueError("physical scale allocation differs from the traced ABI")
     return manifest, cases
 
 
@@ -83,9 +98,11 @@ def compare(actual, expected, x):
             raise AssertionError("output shape/dtype differs")
         if value.device != x.device or value.stride() != reference_value.stride():
             raise AssertionError("output device/physical layout differs")
-        if value.data_ptr() == x.data_ptr():
+        if value.untyped_storage().data_ptr() == x.untyped_storage().data_ptr():
             raise AssertionError("output aliases the input")
     quantized, scale = actual
+    if quantized.untyped_storage().data_ptr() == scale.untyped_storage().data_ptr():
+        raise AssertionError("outputs alias each other")
     if not torch.isfinite(scale).all() or not (scale > 0).all():
         raise AssertionError("invalid dynamic scale")
     torch.testing.assert_close(scale, expected[1], rtol=2e-7, atol=0)

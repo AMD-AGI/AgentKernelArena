@@ -195,6 +195,22 @@ make docker-check-agents AGENTS=all
 ```
 
 `AGENTS=all` is the explicit strict check for Cursor, Claude Code, and Codex.
+Allocation wrappers can set `AKA_DOCKER_LABEL_FILE` to a readable host file in
+Docker's `key=value` label-file format. The runner applies it to every standard
+preflight and worker container, allowing the wrapper to track and retire only
+its own containers at the allocation deadline.
+
+Codex providers that require OpenAI authentication are checked with
+`codex login status`. A configured custom provider whose
+`requires_openai_auth` is false (the custom-provider default) is checked by a
+real, bounded Codex inference request using the selected model and effort.
+This sends only a fixed connectivity prompt from an empty temporary directory;
+provider headers and CLI diagnostics are withheld from the preflight log.
+Configured credentials alone do not pass this check. Keep provider credentials
+in the normal mounted Codex configuration, not in the experiment YAML. See the
+[official Codex provider configuration reference](https://developers.openai.com/codex/config-reference/)
+for `requires_openai_auth`, `env_key`, and `http_headers`.
+
 Specialized integrations read credentials and provider endpoints from their
 own environment/configuration; their documentation describes the additional
 setup and checks. There is no shared provider field in the root run
