@@ -1,9 +1,11 @@
 """Host-side trust-boundary tests; Docker/GPU execution is mocked explicitly."""
 
 import copy
+import getpass
 import json
 import math
 import os
+import pwd
 import shutil
 import subprocess
 import uuid
@@ -195,8 +197,27 @@ def test_docker_command_has_only_fresh_task_and_build_mounts(tmp_path, monkeypat
     assert not any("docker.sock" in x or ".codex" in x or ".cache" in x for x in command)
     assert not any(value.startswith("AITER_JIT_DIR=") for value in command)
     assert "HOME=/tmp" in command
+    assert "USER=aka-evaluator" in command and "LOGNAME=aka-evaluator" in command
+    assert "TORCHINDUCTOR_CACHE_DIR=/cache/inductor" in command
     assert "/tmp:rw,exec,nosuid,mode=1777,size=8g" in command
     assert command[-4:] == ["registry/image@sha256:" + "a" * 64, "-I", "-B", "/task/scripts/task_runner.py"]
+
+
+def test_runtime_username_does_not_require_image_passwd_entry(tmp_path, monkeypatch):
+    monkeypatch.setattr(Path, "stat", lambda path: SimpleNamespace(st_gid=109))
+    command = trusted.docker_command("image", tmp_path / "task", tmp_path / "build",
+                                     "/dev/dri/renderD128", "unique")
+    for index, argument in enumerate(command[:-1]):
+        if argument == "--env":
+            key, value = command[index + 1].split("=", 1)
+            if key in ("USER", "LOGNAME"):
+                monkeypatch.setenv(key, value)
+
+    def missing_passwd(uid):
+        raise KeyError(f"getpwuid(): uid not found: {uid}")
+
+    monkeypatch.setattr(pwd, "getpwuid", missing_passwd)
+    assert getpass.getuser() == "aka-evaluator"
 
 
 def test_verified_cache_override_does_not_make_runtime_root(tmp_path, monkeypatch):

@@ -193,8 +193,9 @@ def docker_command(image, task, build, render_device, name, jit_cache=None):
         command.extend(["--group-add", str(device.stat().st_gid)])
     for variable in (
         # AITER_JIT_DIR is set below only for a complete, verified image cache.
-        "HOME=/tmp", "XDG_CACHE_HOME=/cache",
-        "TORCH_EXTENSIONS_DIR=/cache/torch", "TRITON_CACHE_DIR=/cache/triton",
+        "HOME=/tmp", "USER=aka-evaluator", "LOGNAME=aka-evaluator", "XDG_CACHE_HOME=/cache",
+        "TORCH_EXTENSIONS_DIR=/cache/torch", "TORCHINDUCTOR_CACHE_DIR=/cache/inductor",
+        "TRITON_CACHE_DIR=/cache/triton",
         "PYTHONDONTWRITEBYTECODE=1", "PYTHONNOUSERSITE=1", "PYTHONPATH=", "LD_PRELOAD=",
         "ROCR_VISIBLE_DEVICES=0", "HIP_VISIBLE_DEVICES=0",
     ):
