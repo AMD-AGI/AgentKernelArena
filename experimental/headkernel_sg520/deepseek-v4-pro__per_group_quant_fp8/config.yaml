@@ -1,0 +1,33 @@
+task_type: hip2hip
+target_file_path: source/quant_kernels.cu
+source_file_path:
+  - source/quant_kernels.cu
+target_kernel_functions:
+  - dynamic_per_group_scaled_quant_kernel
+compile_command:
+  - python3 scripts/task_runner.py compile
+correctness_command:
+  - python3 scripts/task_runner.py correctness
+performance_command:
+  - python3 scripts/task_runner.py performance
+task_result_template: null
+prompt:
+  source_code: null
+  instructions: |
+    Optimize the native dynamic_per_group_scaled_quant_kernel in source/quant_kernels.cu.
+    Every other file is frozen. Preserve BF16 input, FP8 E4M3FN output, group size 128,
+    transpose_scale=True, scale=None, num_rows=None, num_rows_factor=1 and FP32 scales.
+    Scale storage is column-major at flat offset group*M+row despite its contiguous
+    returned shape [M,N/128]. Preserve all three traced cases and their observed weights.
+    The production native kernel is the baseline; candidate source is compiled into
+    a separate native extension. Framework task-validator qualification is pending.
+  cheatsheet: null
+headkernel:
+  model: DeepSeek-V4-Pro
+  docker: docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96
+  source_run: deepseek-sg520-context9218-193529
+  target_callable: aiter.ops.quant:per_group_quant_hip
+  oracle: independent PyTorch FP8 group quantization with physical scale-layout checks
+  source_seed: stock
+  validation_status: pending_framework_task_validator
+  count_scope: eight sampled prefill steps per rank; no full-workload extrapolation

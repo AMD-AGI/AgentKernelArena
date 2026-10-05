@@ -35,13 +35,25 @@ retains its original capture-image declaration. The setup guide lists the
 capture-era public HyperLoom images and their compatibility limits; it records
 the custom Kimi build separately. The
 [current runtime targets](tools/headkernel-runtime-targets.json), supplied on
-2026-10-05, select `lmsysorg/sglang:v0.5.20-rocm724-mi35x` for new SGLang validation,
-with `lmsysorg/sglang-rocm:v0.5.19-rocm720-mi35x-20260913` as the alternate.
-`vllm/vllm-openai-rocm:v0.29.0` is the current vLLM serving target; v0.30 is planned
-without a supplied exact tag. All three current tags have verified registry
-digests. All 16 restored tasks have SGLang capture declarations; their
-compatibility with the new images has not been GPU-validated. Selecting a newer
-image does not refresh the captured kernels, shapes or historical gain figures.
+2026-10-05, define a `refresh_scope` for MiniMax M3, Kimi K3, DeepSeek V4 Pro and
+GLM 5.3 Flash. Refresh and new validation for these four models use **SGLang
+0.5.20 only**, pinned by the catalog's exact manifest digest, and require the
+latest matching HyperLoom run evidence. Their 11 configured task mappings have
+no alternate target. Qwen3.8 2.4T is excluded from this refresh; its five mappings,
+task paths and workloads remain unchanged.
+
+The alternate SGLang and vLLM image entries remain in the catalog as historical
+references, including Qwen's existing alternate mapping. They are not fallback
+targets for this four-model refresh. Registry availability does not establish
+task compatibility.
+
+The existing tasks still contain historical kernels and captures. The
+[SGLang 0.5.20 refresh progress](docs/reference/headkernel-sg520-refresh.md)
+records new sampled trace, shape, native-correctness and timing evidence separately.
+The full four-model refresh, traced tensor/reference captures and framework task
+validation on the pinned image remain pending.
+The policy and progress records do not change kernel implementations, shapes,
+tensors or historical gain figures, and do not claim a framework task-validator PASS.
 
 The original numerical input contract is restored. The 16 configured tasks need
 17 original tensor files totaling 33,139,788,731 bytes: 14 reference archives and

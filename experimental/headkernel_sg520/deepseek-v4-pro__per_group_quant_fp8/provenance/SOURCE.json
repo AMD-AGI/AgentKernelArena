@@ -1,0 +1,42 @@
+{
+  "native_source_files": [
+    {
+      "path": "/sgl-workspace/aiter/csrc/kernels/quant_kernels.cu",
+      "sha256": "5c9d1e56d978d45ccdc099806267d75aad9074ab837b07cca32b8ae21dcccfec"
+    },
+    {
+      "path": "/sgl-workspace/aiter/csrc/pybind/quant_pybind.cu",
+      "sha256": "f0fe65559c092b929cf4d4fecf2ad0c0467030a217712a24a4230d6bc123dc4e"
+    },
+    {
+      "path": "/sgl-workspace/aiter/csrc/kernels/quant_mxfp4.cu",
+      "sha256": "97068b21990cfcb41019a828690d768c35f14f6c1a12ccfb58c4cdcdf58fe626"
+    },
+    {
+      "path": "/sgl-workspace/aiter/csrc/kernels/quant_mxfp6_gemm.cu",
+      "sha256": "41588b751f1b4a175560c426266d07c701f2585d539b5bf9d287782a4af5f40a"
+    },
+    {
+      "path": "/sgl-workspace/aiter/aiter/ops/quant.py",
+      "sha256": "e1357e07e555c8458dc41687ca6bbb89d2dfca3aa9808a759e67fcdf972a7bc5"
+    },
+    {
+      "path": "/sgl-workspace/aiter/aiter/jit/optCompilerConfig.json",
+      "sha256": "06a3c8ec1e6a9013f38327d346946a7e8aeba59d0d36622268bbd4711fc568d3"
+    },
+    {
+      "path": "/sgl-workspace/aiter/aiter/jit/core.py",
+      "sha256": "97998734a817f5444fa539e1811932f7529db8427a48a5bd73112763dbde768a"
+    }
+  ],
+  "abi_body_sha256": "7852f6be455994fcff44d0da120a7f794a317c19433e8240510f3340b58b2179",
+  "wrapper_adaptation": "decorator omitted to avoid re-registering production torch.ops.aiter name; function body and signature unchanged; native dependency injected",
+  "runtime_dependencies": [
+    "exact SG520 AITER build core",
+    "ROCm HIP compiler/rocPRIM",
+    "PyTorch/pybind11",
+    "current AITER CK include tree when enabled"
+  ],
+  "source_math_changes": false,
+  "old_tensors_used": false
+}

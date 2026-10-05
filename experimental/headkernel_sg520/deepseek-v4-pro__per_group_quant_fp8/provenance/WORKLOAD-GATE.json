@@ -1,0 +1,112 @@
+{
+  "observed_unix": 1791210229.6981332,
+  "source_refs": {
+    "REQUEST.json": {
+      "path": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529/curated/WORKLOAD-GATE.json#/source_refs/REQUEST.json",
+      "sha256": "2224276c4ba28e8f30c4090bb876a2bef692ce7cdf0438c147224c546d354bc9",
+      "path_reference_kind": "archived declaration of the original run artifact; sha256 identifies that original artifact"
+    },
+    "benchmark.jsonl": {
+      "path": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529/curated/WORKLOAD-GATE.json#/source_refs/benchmark.jsonl",
+      "sha256": "9c0a4fae5f13d69d0e7051832022a16dd129db29e550a9b4ce5cdba271f98234",
+      "path_reference_kind": "archived declaration of the original run artifact; sha256 identifies that original artifact"
+    },
+    "BENCHMARK-EXIT.json": {
+      "path": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529/curated/WORKLOAD-GATE.json#/source_refs/BENCHMARK-EXIT.json",
+      "sha256": "1e3f6691f455051e8adb15d961e4bf3c7a17e83dd88b2afdd13315cc288250bb",
+      "path_reference_kind": "archived declaration of the original run artifact; sha256 identifies that original artifact"
+    },
+    "STATUS.json": {
+      "path": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529/curated/WORKLOAD-GATE.json#/source_refs/STATUS.json",
+      "sha256": "5f1873bc786845019e009810b4a6f7aa725dbfabadd5e3280ce061c01f944c2b",
+      "path_reference_kind": "archived declaration of the original run artifact; sha256 identifies that original artifact"
+    },
+    "PROFILE-SUMMARY.json": {
+      "path": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529/curated/WORKLOAD-GATE.json#/source_refs/PROFILE-SUMMARY.json",
+      "sha256": "76b3e73d47691112312e9414963046203be355625455c0b6d1b02318d886dc1e",
+      "path_reference_kind": "archived declaration of the original run artifact; sha256 identifies that original artifact"
+    },
+    "PROFILE-START.json": {
+      "path": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529/curated/WORKLOAD-GATE.json#/source_refs/PROFILE-START.json",
+      "sha256": "fe0f2b82ad9204bef332641f8367694cc83288364124fded7e7a782f8914af48",
+      "path_reference_kind": "archived declaration of the original run artifact; sha256 identifies that original artifact"
+    },
+    "PROFILE-STOP.json": {
+      "path": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529/curated/WORKLOAD-GATE.json#/source_refs/PROFILE-STOP.json",
+      "sha256": "0bcf7034088515416a74a16255be8fbbc64d91461236611de1ed1448200e2265",
+      "path_reference_kind": "archived declaration of the original run artifact; sha256 identifies that original artifact"
+    }
+  },
+  "actual_workload": {
+    "completed": 64,
+    "total_input_tokens": 524288,
+    "total_output_tokens": 65536,
+    "max_concurrent_requests": 64
+  },
+  "per_request_distributions": {
+    "input_lens": {
+      "8192": 64
+    },
+    "output_lens": {
+      "1024": 64
+    },
+    "errors": {
+      "": 64
+    }
+  },
+  "full_token_gate_passed": true,
+  "native_status": {
+    "deadline_unix": 1791210326.0,
+    "error": "Incomplete native stage/rank evidence: prefill",
+    "error_type": "RuntimeError",
+    "observed_unix": 1791210147.9049811,
+    "phase": "incomplete"
+  },
+  "native_capture_ready_present": false,
+  "native_prefill_summary_errors": [
+    {
+      "path": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529/profiles/deepseek-sg520-context9218-193529-deepseek-sg520-context9218-193529-TP-0-EXTEND.trace.json.gz",
+      "rank": 0,
+      "error": "uncompressed trace exceeds summary bound"
+    },
+    {
+      "path": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529/profiles/deepseek-sg520-context9218-193529-deepseek-sg520-context9218-193529-TP-1-EXTEND.trace.json.gz",
+      "rank": 1,
+      "error": "uncompressed trace exceeds summary bound"
+    },
+    {
+      "path": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529/profiles/deepseek-sg520-context9218-193529-deepseek-sg520-context9218-193529-TP-2-EXTEND.trace.json.gz",
+      "rank": 2,
+      "error": "uncompressed trace exceeds summary bound"
+    },
+    {
+      "path": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529/profiles/deepseek-sg520-context9218-193529-deepseek-sg520-context9218-193529-TP-3-EXTEND.trace.json.gz",
+      "rank": 3,
+      "error": "uncompressed trace exceeds summary bound"
+    },
+    {
+      "path": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529/profiles/deepseek-sg520-context9218-193529-deepseek-sg520-context9218-193529-TP-4-EXTEND.trace.json.gz",
+      "rank": 4,
+      "error": "uncompressed trace exceeds summary bound"
+    },
+    {
+      "path": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529/profiles/deepseek-sg520-context9218-193529-deepseek-sg520-context9218-193529-TP-5-EXTEND.trace.json.gz",
+      "rank": 5,
+      "error": "uncompressed trace exceeds summary bound"
+    },
+    {
+      "path": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529/profiles/deepseek-sg520-context9218-193529-deepseek-sg520-context9218-193529-TP-6-EXTEND.trace.json.gz",
+      "rank": 6,
+      "error": "uncompressed trace exceeds summary bound"
+    },
+    {
+      "path": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529/profiles/deepseek-sg520-context9218-193529-deepseek-sg520-context9218-193529-TP-7-EXTEND.trace.json.gz",
+      "rank": 7,
+      "error": "uncompressed trace exceeds summary bound"
+    }
+  ],
+  "independent_raw_trace_review": "pending streaming parse, hashes, before/after stat stability and per-rank kernel counts",
+  "scope": "Native sampled stage windows only; total request/token proof does not imply every GPU step was captured",
+  "tensor_oracle_present": false,
+  "original_run_files_changed": false
+}

@@ -1,0 +1,328 @@
+{
+  "schema_version": 1,
+  "source_run": "deepseek-sg520-context9218-193529",
+  "runtime_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
+  "workload_status": "corrected 8192/1024 token gate passed",
+  "confirmed_corrected_1024": true,
+  "complete_case_counts": true,
+  "count_scope": "Eight native CPU EXTEND steps per rank, each annotation bs=1,toks=8192. These are sampled prefill chunks from the64-request,C64,TP8 benchmark; shapes are not scaled to the full workload.",
+  "complete_full_workload_case_counts": false,
+  "counts_complete_for_sampled_window": true,
+  "corrected_trace_sha256": "d07e42e012f714a55ec272127668dc26d4e72c1c16b884fa96777025dd9a7d22",
+  "trace_sha256_by_rank": {
+    "0": "d07e42e012f714a55ec272127668dc26d4e72c1c16b884fa96777025dd9a7d22",
+    "1": "b561032a8f908769206b623d6d7fce102050207854f9526fde47e4fd9cdc41cd",
+    "2": "d4986015513f81b5287632252c08851fe9e4f08d14d09d90e3102bad59aaa700",
+    "3": "e85ba08f9fdec8106b0263b93ec133caecac27c97cc57f2477dc14623e5237c7",
+    "4": "899f805f5c678f800cb9f0b969aaf240fa22c00e20eddb4dfc1d382c0ab842f3",
+    "5": "47216dc6196e92b3b7a689e745b1388c87f226bf4a29ea35670b121f6f232113",
+    "6": "448d184a54ad8220d5867658f793b645fe5eb08cb9882f73ecc53deef45df5d9",
+    "7": "2abc8bb09ab59b8d96d4a035877e4496ee276c64e898912768b0674299524ad5"
+  },
+  "evidence_path": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529/curated/PER-GROUP-QUANT-TASK-CASES.json",
+  "evidence_sha256": "cba7d48caffe05b18493fbbea16a9243fc46a1d43b8f4bcb00d466da63d3f1a4",
+  "weight_basis": "observed wrapper invocations per rank in eight sampled prefill steps; no extrapolation",
+  "weight_sum_per_rank": 2184,
+  "cases": [
+    {
+      "case_id": "x8192x1536",
+      "shape": [
+        8192,
+        1536
+      ],
+      "input_strides": [
+        1536,
+        1
+      ],
+      "input_dtype": "bfloat16",
+      "quant_dtype": "float8_e4m3fn",
+      "group_size": 128,
+      "transpose_scale": true,
+      "scale": null,
+      "num_rows": null,
+      "num_rows_factor": 1,
+      "scale_type": "float32",
+      "scale_ub_at_native_call": null,
+      "input_storage_offset": "not supplied by profiler; generated buffers are fresh aligned allocations",
+      "trace_call_count": 728,
+      "trace_call_counts_per_rank": {
+        "0": 728,
+        "1": 728,
+        "2": 728,
+        "3": 728,
+        "4": 728,
+        "5": 728,
+        "6": 728,
+        "7": 728
+      },
+      "total_observed_wrapper_occurrences": 5824,
+      "sample_event_evidence": [
+        {
+          "rank": 0,
+          "trace_path": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529/profiles/deepseek-sg520-context9218-193529-deepseek-sg520-context9218-193529-TP-0-EXTEND.trace.json.gz",
+          "trace_sha256": "d07e42e012f714a55ec272127668dc26d4e72c1c16b884fa96777025dd9a7d22",
+          "wrapper_event_index": 332,
+          "child_event_index": 336
+        },
+        {
+          "rank": 1,
+          "trace_path": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529/profiles/deepseek-sg520-context9218-193529-deepseek-sg520-context9218-193529-TP-1-EXTEND.trace.json.gz",
+          "trace_sha256": "b561032a8f908769206b623d6d7fce102050207854f9526fde47e4fd9cdc41cd",
+          "wrapper_event_index": 332,
+          "child_event_index": 336
+        },
+        {
+          "rank": 2,
+          "trace_path": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529/profiles/deepseek-sg520-context9218-193529-deepseek-sg520-context9218-193529-TP-2-EXTEND.trace.json.gz",
+          "trace_sha256": "d4986015513f81b5287632252c08851fe9e4f08d14d09d90e3102bad59aaa700",
+          "wrapper_event_index": 332,
+          "child_event_index": 336
+        },
+        {
+          "rank": 3,
+          "trace_path": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529/profiles/deepseek-sg520-context9218-193529-deepseek-sg520-context9218-193529-TP-3-EXTEND.trace.json.gz",
+          "trace_sha256": "e85ba08f9fdec8106b0263b93ec133caecac27c97cc57f2477dc14623e5237c7",
+          "wrapper_event_index": 331,
+          "child_event_index": 335
+        },
+        {
+          "rank": 4,
+          "trace_path": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529/profiles/deepseek-sg520-context9218-193529-deepseek-sg520-context9218-193529-TP-4-EXTEND.trace.json.gz",
+          "trace_sha256": "899f805f5c678f800cb9f0b969aaf240fa22c00e20eddb4dfc1d382c0ab842f3",
+          "wrapper_event_index": 331,
+          "child_event_index": 335
+        },
+        {
+          "rank": 5,
+          "trace_path": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529/profiles/deepseek-sg520-context9218-193529-deepseek-sg520-context9218-193529-TP-5-EXTEND.trace.json.gz",
+          "trace_sha256": "47216dc6196e92b3b7a689e745b1388c87f226bf4a29ea35670b121f6f232113",
+          "wrapper_event_index": 331,
+          "child_event_index": 335
+        },
+        {
+          "rank": 6,
+          "trace_path": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529/profiles/deepseek-sg520-context9218-193529-deepseek-sg520-context9218-193529-TP-6-EXTEND.trace.json.gz",
+          "trace_sha256": "448d184a54ad8220d5867658f793b645fe5eb08cb9882f73ecc53deef45df5d9",
+          "wrapper_event_index": 331,
+          "child_event_index": 335
+        },
+        {
+          "rank": 7,
+          "trace_path": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529/profiles/deepseek-sg520-context9218-193529-deepseek-sg520-context9218-193529-TP-7-EXTEND.trace.json.gz",
+          "trace_sha256": "2abc8bb09ab59b8d96d4a035877e4496ee276c64e898912768b0674299524ad5",
+          "wrapper_event_index": 332,
+          "child_event_index": 336
+        }
+      ],
+      "scale_allocated_shape": [
+        8192,
+        12
+      ],
+      "scale_allocated_stride": [
+        12,
+        1
+      ],
+      "physical_scale_write_order": "scale[group_column * M + row] with group_size128 and transpose_scale=True; see SOURCE-CALLEE-MAP.json"
+    },
+    {
+      "case_id": "x8192x2048",
+      "shape": [
+        8192,
+        2048
+      ],
+      "input_strides": [
+        2048,
+        1
+      ],
+      "input_dtype": "bfloat16",
+      "quant_dtype": "float8_e4m3fn",
+      "group_size": 128,
+      "transpose_scale": true,
+      "scale": null,
+      "num_rows": null,
+      "num_rows_factor": 1,
+      "scale_type": "float32",
+      "scale_ub_at_native_call": null,
+      "input_storage_offset": "not supplied by profiler; generated buffers are fresh aligned allocations",
+      "trace_call_count": 488,
+      "trace_call_counts_per_rank": {
+        "0": 488,
+        "1": 488,
+        "2": 488,
+        "3": 488,
+        "4": 488,
+        "5": 488,
+        "6": 488,
+        "7": 488
+      },
+      "total_observed_wrapper_occurrences": 3904,
+      "sample_event_evidence": [
+        {
+          "rank": 0,
+          "trace_path": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529/profiles/deepseek-sg520-context9218-193529-deepseek-sg520-context9218-193529-TP-0-EXTEND.trace.json.gz",
+          "trace_sha256": "d07e42e012f714a55ec272127668dc26d4e72c1c16b884fa96777025dd9a7d22",
+          "wrapper_event_index": 437,
+          "child_event_index": 441
+        },
+        {
+          "rank": 1,
+          "trace_path": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529/profiles/deepseek-sg520-context9218-193529-deepseek-sg520-context9218-193529-TP-1-EXTEND.trace.json.gz",
+          "trace_sha256": "b561032a8f908769206b623d6d7fce102050207854f9526fde47e4fd9cdc41cd",
+          "wrapper_event_index": 437,
+          "child_event_index": 441
+        },
+        {
+          "rank": 2,
+          "trace_path": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529/profiles/deepseek-sg520-context9218-193529-deepseek-sg520-context9218-193529-TP-2-EXTEND.trace.json.gz",
+          "trace_sha256": "d4986015513f81b5287632252c08851fe9e4f08d14d09d90e3102bad59aaa700",
+          "wrapper_event_index": 437,
+          "child_event_index": 441
+        },
+        {
+          "rank": 3,
+          "trace_path": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529/profiles/deepseek-sg520-context9218-193529-deepseek-sg520-context9218-193529-TP-3-EXTEND.trace.json.gz",
+          "trace_sha256": "e85ba08f9fdec8106b0263b93ec133caecac27c97cc57f2477dc14623e5237c7",
+          "wrapper_event_index": 436,
+          "child_event_index": 440
+        },
+        {
+          "rank": 4,
+          "trace_path": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529/profiles/deepseek-sg520-context9218-193529-deepseek-sg520-context9218-193529-TP-4-EXTEND.trace.json.gz",
+          "trace_sha256": "899f805f5c678f800cb9f0b969aaf240fa22c00e20eddb4dfc1d382c0ab842f3",
+          "wrapper_event_index": 436,
+          "child_event_index": 440
+        },
+        {
+          "rank": 5,
+          "trace_path": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529/profiles/deepseek-sg520-context9218-193529-deepseek-sg520-context9218-193529-TP-5-EXTEND.trace.json.gz",
+          "trace_sha256": "47216dc6196e92b3b7a689e745b1388c87f226bf4a29ea35670b121f6f232113",
+          "wrapper_event_index": 436,
+          "child_event_index": 440
+        },
+        {
+          "rank": 6,
+          "trace_path": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529/profiles/deepseek-sg520-context9218-193529-deepseek-sg520-context9218-193529-TP-6-EXTEND.trace.json.gz",
+          "trace_sha256": "448d184a54ad8220d5867658f793b645fe5eb08cb9882f73ecc53deef45df5d9",
+          "wrapper_event_index": 436,
+          "child_event_index": 440
+        },
+        {
+          "rank": 7,
+          "trace_path": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529/profiles/deepseek-sg520-context9218-193529-deepseek-sg520-context9218-193529-TP-7-EXTEND.trace.json.gz",
+          "trace_sha256": "2abc8bb09ab59b8d96d4a035877e4496ee276c64e898912768b0674299524ad5",
+          "wrapper_event_index": 437,
+          "child_event_index": 441
+        }
+      ],
+      "scale_allocated_shape": [
+        8192,
+        16
+      ],
+      "scale_allocated_stride": [
+        16,
+        1
+      ],
+      "physical_scale_write_order": "scale[group_column * M + row] with group_size128 and transpose_scale=True; see SOURCE-CALLEE-MAP.json"
+    },
+    {
+      "case_id": "x8192x7168",
+      "shape": [
+        8192,
+        7168
+      ],
+      "input_strides": [
+        7168,
+        1
+      ],
+      "input_dtype": "bfloat16",
+      "quant_dtype": "float8_e4m3fn",
+      "group_size": 128,
+      "transpose_scale": true,
+      "scale": null,
+      "num_rows": null,
+      "num_rows_factor": 1,
+      "scale_type": "float32",
+      "scale_ub_at_native_call": null,
+      "input_storage_offset": "not supplied by profiler; generated buffers are fresh aligned allocations",
+      "trace_call_count": 968,
+      "trace_call_counts_per_rank": {
+        "0": 968,
+        "1": 968,
+        "2": 968,
+        "3": 968,
+        "4": 968,
+        "5": 968,
+        "6": 968,
+        "7": 968
+      },
+      "total_observed_wrapper_occurrences": 7744,
+      "sample_event_evidence": [
+        {
+          "rank": 0,
+          "trace_path": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529/profiles/deepseek-sg520-context9218-193529-deepseek-sg520-context9218-193529-TP-0-EXTEND.trace.json.gz",
+          "trace_sha256": "d07e42e012f714a55ec272127668dc26d4e72c1c16b884fa96777025dd9a7d22",
+          "wrapper_event_index": 469,
+          "child_event_index": 473
+        },
+        {
+          "rank": 1,
+          "trace_path": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529/profiles/deepseek-sg520-context9218-193529-deepseek-sg520-context9218-193529-TP-1-EXTEND.trace.json.gz",
+          "trace_sha256": "b561032a8f908769206b623d6d7fce102050207854f9526fde47e4fd9cdc41cd",
+          "wrapper_event_index": 469,
+          "child_event_index": 473
+        },
+        {
+          "rank": 2,
+          "trace_path": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529/profiles/deepseek-sg520-context9218-193529-deepseek-sg520-context9218-193529-TP-2-EXTEND.trace.json.gz",
+          "trace_sha256": "d4986015513f81b5287632252c08851fe9e4f08d14d09d90e3102bad59aaa700",
+          "wrapper_event_index": 469,
+          "child_event_index": 473
+        },
+        {
+          "rank": 3,
+          "trace_path": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529/profiles/deepseek-sg520-context9218-193529-deepseek-sg520-context9218-193529-TP-3-EXTEND.trace.json.gz",
+          "trace_sha256": "e85ba08f9fdec8106b0263b93ec133caecac27c97cc57f2477dc14623e5237c7",
+          "wrapper_event_index": 468,
+          "child_event_index": 472
+        },
+        {
+          "rank": 4,
+          "trace_path": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529/profiles/deepseek-sg520-context9218-193529-deepseek-sg520-context9218-193529-TP-4-EXTEND.trace.json.gz",
+          "trace_sha256": "899f805f5c678f800cb9f0b969aaf240fa22c00e20eddb4dfc1d382c0ab842f3",
+          "wrapper_event_index": 468,
+          "child_event_index": 472
+        },
+        {
+          "rank": 5,
+          "trace_path": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529/profiles/deepseek-sg520-context9218-193529-deepseek-sg520-context9218-193529-TP-5-EXTEND.trace.json.gz",
+          "trace_sha256": "47216dc6196e92b3b7a689e745b1388c87f226bf4a29ea35670b121f6f232113",
+          "wrapper_event_index": 468,
+          "child_event_index": 472
+        },
+        {
+          "rank": 6,
+          "trace_path": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529/profiles/deepseek-sg520-context9218-193529-deepseek-sg520-context9218-193529-TP-6-EXTEND.trace.json.gz",
+          "trace_sha256": "448d184a54ad8220d5867658f793b645fe5eb08cb9882f73ecc53deef45df5d9",
+          "wrapper_event_index": 468,
+          "child_event_index": 472
+        },
+        {
+          "rank": 7,
+          "trace_path": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529/profiles/deepseek-sg520-context9218-193529-deepseek-sg520-context9218-193529-TP-7-EXTEND.trace.json.gz",
+          "trace_sha256": "2abc8bb09ab59b8d96d4a035877e4496ee276c64e898912768b0674299524ad5",
+          "wrapper_event_index": 469,
+          "child_event_index": 473
+        }
+      ],
+      "scale_allocated_shape": [
+        8192,
+        56
+      ],
+      "scale_allocated_stride": [
+        56,
+        1
+      ],
+      "physical_scale_write_order": "scale[group_column * M + row] with group_size128 and transpose_scale=True; see SOURCE-CALLEE-MAP.json"
+    }
+  ]
+}

@@ -16,19 +16,25 @@ historical evidence; preserve new run logs and reports separately.
 
 ## Current workload image targets — 2026-10-05
 
-Use the following user-supplied image targets for new runtime validation. Registry
-manifest and configuration digests were verified on 2026-10-05; all three images
-declare `linux/amd64`. No image layers were downloaded and no GPU validation was
-performed for this update. Tags identify the requested versions; use the digest
-pins in [the current runtime catalog](../../tools/headkernel-runtime-targets.json)
-to keep both sides of a comparison on the same image bytes.
+Refresh and new validation for **MiniMax M3, Kimi K3, DeepSeek V4 Pro and
+GLM 5.3 Flash use SGLang 0.5.20 only**, with the latest matching HyperLoom run
+evidence. Qwen3.8 2.4T is excluded; its five task mappings, paths and workloads
+remain unchanged. The `refresh_scope` in
+[the current runtime catalog](../../tools/headkernel-runtime-targets.json)
+records the allowed models, exact image digest and pending evidence status.
+
+Registry manifest and configuration digests were verified on 2026-10-05; all
+three recorded images declare `linux/amd64`. Registry availability does not
+establish GPU compatibility or refresh the existing captures. The alternate and
+vLLM catalog entries are retained for historical references, including Qwen's
+existing mapping; neither is allowed as a fallback for the four-model refresh.
 
 | Purpose | Requested image | Status |
 | --- | --- | --- |
-| Primary SGLang target | `lmsysorg/sglang:v0.5.20-rocm724-mi35x` | Registry verified; task compatibility pending |
-| Alternate SGLang target | `lmsysorg/sglang-rocm:v0.5.19-rocm720-mi35x-20260913` | Registry verified; task compatibility pending |
-| Current vLLM serving target | `vllm/vllm-openai-rocm:v0.29.0` | Registry verified; no vLLM capture cohort in this restored selection |
-| Planned vLLM upgrade | v0.30 | Exact tag not supplied; no digest or compatibility claim |
+| Only target for the current refresh | `lmsysorg/sglang:v0.5.20-rocm724-mi35x` | Registry verified; refreshed evidence and task compatibility pending |
+| Historical alternate SGLang entry | `lmsysorg/sglang-rocm:v0.5.19-rocm720-mi35x-20260913` | Preserved in the catalog; excluded from the four-model refresh |
+| Recorded vLLM serving entry | `vllm/vllm-openai-rocm:v0.29.0` | Preserved in the catalog; excluded from the four-model refresh |
+| Planned vLLM upgrade | v0.30 | Outside this refresh; exact tag not supplied |
 
 The primary SGLang pull reference is:
 
@@ -36,21 +42,21 @@ The primary SGLang pull reference is:
 docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96
 ```
 
-The catalog maps every configured task to the primary and alternate SGLang
-targets and retains its original capture-image and setup references:
+The catalog maps the 11 configured tasks in scope only to SGLang 0.5.20 and
+retains their original capture-image and setup references. Qwen's five mapping
+objects, including their alternate targets, remain unchanged:
 
 | Captured workload | Configured tasks | New validation target | Setup that still needs verification |
 | --- | ---: | --- | --- |
-| DeepSeek V4 Pro | 3 | Primary SGLang; alternate available | TileLang/FlyDSL dependencies and original MoE replay coverage |
-| GLM5.3 Flash | 2 | Primary SGLang; alternate available | Elementwise capture-version discrepancy; fused-MoE architecture and checkpoint configuration |
-| Kimi K3 | 3 | Primary SGLang; alternate available | Compatibility with the original custom Kimi build and its baseline overlay |
-| MiniMax M3 | 3 | Primary SGLang; alternate available | Original reference archives and timing geometry |
-| Qwen3.8 2.4T | 5 | Primary SGLang; alternate available | Original AITER bindings, candidate registration and dense-GEMM dispatch rows |
+| DeepSeek V4 Pro | 3 | SGLang 0.5.20 only | TileLang/FlyDSL dependencies and original MoE replay coverage |
+| GLM5.3 Flash | 2 | SGLang 0.5.20 only | Elementwise capture-version discrepancy; fused-MoE architecture and checkpoint configuration |
+| Kimi K3 | 3 | SGLang 0.5.20 only | Compatibility with the original custom Kimi build and its baseline overlay |
+| MiniMax M3 | 3 | SGLang 0.5.20 only | Original reference archives and timing geometry |
+| Qwen3.8 2.4T | 5 | Excluded; existing mapping unchanged | Original AITER bindings, candidate registration and dense-GEMM dispatch rows |
 
-All 16 task declarations originate from SGLang. The vLLM serving image is recorded
-for vLLM workloads; it is not a validated replacement for SGLang imports or these
-task bindings. Moving a task to vLLM requires its own framework mapping and GPU
-verification. The five `NOT_BUILT` placeholders are still placeholders.
+All 16 task declarations remain historical SGLang captures. The five `NOT_BUILT`
+placeholders are still placeholders. The vLLM image entries do not authorize
+changing these tasks to a different framework in the current refresh.
 
 Keep the setup assets and per-task environment from the original runtime mapping
 below, and verify their compatibility with the selected target. In particular,
@@ -58,18 +64,22 @@ the GLM patch was authored for an older SGLang checkout: check whether the new
 image already supplies the required architecture and whether the patch applies
 before using it. Do not treat a failed patch check as a successful setup.
 
-Changing the image does not regenerate the source kernels, workload shapes,
-captured tensors, or reported E2E results. A claim that the suite represents a
-new HyperLoom run requires profiling/capture evidence from that run, followed by
-correctness, performance and finalized `task_validator` reports on the selected
-image. The historical image cohorts below remain provenance for the restored
-files, not evidence that the new targets are equivalent.
+The existing kernels, workload shapes, captured tensors and reported E2E results
+have not been refreshed by this policy update. New evidence from the latest
+matching SGLang 0.5.20 runs remains pending. A refreshed task requires that
+profiling/source/capture evidence, followed by correctness, performance and a
+finalized `task_validator` report on the pinned 0.5.20 image. The historical image
+cohorts below remain provenance for the restored files; they are not alternate
+targets for the current four-model refresh. No GPU validation result is claimed
+by this update.
 
 ## Select the original runtime
 
 The original runtime declarations target MI355X / `gfx950`. Each task's
 `headkernel.docker` preserves that source evidence. Current image targets are
-listed above, and capture-era public overrides are recorded below. These task-validator configs preserve
+listed above, and capture-era public overrides are recorded below as historical
+reproduction information. New validation for the four models in scope must use
+the pinned 0.5.20 target. These task-validator configs preserve
 the original image grouping and select only configured tasks:
 
 | Run config | Tasks | Exact original image |
@@ -117,12 +127,14 @@ object is advertised as ready by this guide.
 ## Capture-era public runtime overrides — 2026-09-22
 
 The earlier public runtime choices were the corresponding `rocm/hyperloom` images.
-For the current user-supplied versions, use the target catalog above.
+They remain historical records. For the current four-model refresh and new
+validation, use only the 0.5.20 target selected by `refresh_scope` above.
 Original task `headkernel.docker` values remain unchanged as historical source
 metadata. On 2026-09-22, anonymous Docker Hub manifest reads verified both public
 image digests and their configuration digests; no GPU execution was performed.
-These are authorized public runtime choices, with no claim of byte identity to
-Harbor images.
+These were recorded as public runtime choices for historical reproduction,
+without a claim of byte identity to Harbor images. They do not authorize
+alternate images for the current four-model refresh or new validation.
 
 | Alias | Public tag | Pinned pull reference | Compressed layer bytes |
 | --- | --- | --- | ---: |
@@ -314,7 +326,8 @@ that a full model server or those capture directories are needed for every UT.
 
 After installing the tensor files and setup bundle, select one task and an
 explicit image. This example selects the current SGLang target for a new GLM
-fused-MoE compatibility check; it is not a previously validated command. It fails if the
+fused-MoE compatibility check of the historical task; it does not supply refreshed
+kernels or captures and is not a previously validated command. It fails if the
 original patch does not apply cleanly to the selected public image. A patch
 failure is a compatibility issue to report; do not silently skip it.
 

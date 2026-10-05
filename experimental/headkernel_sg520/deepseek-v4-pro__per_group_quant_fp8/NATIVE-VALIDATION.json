@@ -1,0 +1,157 @@
+{
+  "schema_version": 1,
+  "status": "experimental_native_gpu_checks_passed",
+  "framework_task_validator": "pending",
+  "runtime_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
+  "gpu": "AMD Instinct MI355X",
+  "gpu_arch": "gfx950",
+  "gpu_count": 1,
+  "source_run": "deepseek-sg520-context9218-193529",
+  "profile_archive": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529",
+  "native_correctness": {
+    "exit_code": 0,
+    "case_count": 3,
+    "seeds": [
+      0,
+      1
+    ],
+    "legs": [
+      "production_native",
+      "candidate_native"
+    ],
+    "passed_checks": 12,
+    "negative_controls": "checked before each passing result",
+    "input_kind": "seeded legal values at observed shapes and ABI",
+    "evidence_exit_sha256": "1168c5efc7869c37f34cd72a03cf4e5ecbeebb161110ecaaacb5d951741ca207",
+    "ended_utc": "2026-10-05T14:40:30Z"
+  },
+  "native_engagement": {
+    "production_module": "/sgl-workspace/aiter/aiter/jit/module_quant.so",
+    "candidate_module": "module_quant_aka_candidate_24a9e884ee08c75afe1a",
+    "candidate_extension_sha256": "beafd440b99ab38990571970fdcb80d246420b8803807a11eaf0cc132fb1e237",
+    "candidate_source_tree_sha256": "24a9e884ee08c75afe1a4fa608381e7858dbcf53f0f971ab30fac33590f593b6",
+    "native_build_seconds": 17.1,
+    "compiled_translation_units": [
+      "quant_kernels.cu",
+      "quant_entry_pybind.cu"
+    ],
+    "production_namespace_rebound": false
+  },
+  "graph_benchmark": {
+    "exit_code": 0,
+    "ended_utc": "2026-10-05T14:44:53Z",
+    "method": "separate production/candidate HIP graphs, alternating paired order",
+    "warmup_calls_per_leg_per_case": 10,
+    "measured_replays_per_leg_per_case": 100,
+    "oracle_checked_before_and_after_replays": true,
+    "all_samples_finite_and_positive": true,
+    "case_count": 3,
+    "weight_sum_per_rank": 2184,
+    "count_scope": "Eight native CPU EXTEND steps per rank, each annotation bs=1,toks=8192. These are sampled prefill chunks from the64-request,C64,TP8 benchmark; shapes are not scaled to the full workload.",
+    "weighted_mean_ms": {
+      "production_native": 0.02692486682425734,
+      "candidate_native": 0.0273288870296499
+    },
+    "speedup_claim": null,
+    "evidence_exit_sha256": "66b289495b10ada59316b7f78b6bbfdf754537c3edbcb74932a14f481b2704a0",
+    "evidence_report_sha256": "e534d02d7d2dc0675d37cf308decd3e5fd78d383cd42dfd9e0260187edcbcef3",
+    "cases": [
+      {
+        "case_id": "x8192x1536",
+        "shape": [
+          8192,
+          1536
+        ],
+        "weight_per_rank": 728,
+        "graph_correctness": true,
+        "timings": {
+          "production_native": {
+            "mean_ms": 0.016050999937579035,
+            "min_ms": 0.015560000203549862,
+            "max_ms": 0.02199999988079071
+          },
+          "candidate_native": {
+            "mean_ms": 0.016471769865602254,
+            "min_ms": 0.01568000018596649,
+            "max_ms": 0.041839998215436935
+          }
+        },
+        "sample_counts": {
+          "production_native": 100,
+          "candidate_native": 100
+        }
+      },
+      {
+        "case_id": "x8192x2048",
+        "shape": [
+          8192,
+          2048
+        ],
+        "weight_per_rank": 488,
+        "graph_correctness": true,
+        "timings": {
+          "production_native": {
+            "mean_ms": 0.019425830021500588,
+            "min_ms": 0.018719999119639397,
+            "max_ms": 0.04376000165939331
+          },
+          "candidate_native": {
+            "mean_ms": 0.019979460053145884,
+            "min_ms": 0.0188400000333786,
+            "max_ms": 0.09960100054740906
+          }
+        },
+        "sample_counts": {
+          "production_native": 100,
+          "candidate_native": 100
+        }
+      },
+      {
+        "case_id": "x8192x7168",
+        "shape": [
+          8192,
+          7168
+        ],
+        "weight_per_rank": 968,
+        "graph_correctness": true,
+        "timings": {
+          "production_native": {
+            "mean_ms": 0.03888323981314898,
+            "min_ms": 0.038440000265836716,
+            "max_ms": 0.046160001307725906
+          },
+          "candidate_native": {
+            "mean_ms": 0.0391992399841547,
+            "min_ms": 0.038600001484155655,
+            "max_ms": 0.04208099842071533
+          }
+        },
+        "sample_counts": {
+          "production_native": 100,
+          "candidate_native": 100
+        }
+      }
+    ]
+  },
+  "tested_file_sha256": {
+    "source/quant_kernels.cu": "5c9d1e56d978d45ccdc099806267d75aad9074ab837b07cca32b8ae21dcccfec",
+    "ut/abi_wrapper.py": "a488872d13c00785c225c7a858728751bb2e0f2649735dc5fcbcdcbbe17bc706",
+    "ut/native.py": "84e6990247824404b64856baa13061b43a9bbbd55ab3edbb567d6da281b818af",
+    "ut/oracle.py": "70f4b45e56abe56d36c8853493b2531cecd6f9efabfeaeea5f780d4d755d62b3",
+    "scripts/check.py": "655527fc9331a53cedcd6a08d5e826aabaae6c998fdead4c4fb6cf38d305032f",
+    "scripts/benchmark.py": "2b60d49d7251b8e6a3e6e4b1db8063e4d321d01a70f12982578b4bcf8f782eeb",
+    "scripts/task_runner.py": "f2166ab71ab73810c6049e3fbafb78f31e806be75c0e5905f1d882f8e7987949"
+  },
+  "tested_case_manifest_sha256": "d46579316cc4ce027e3ab23d8c7c454221d313626eda7d4fa7378bb9d2532dce",
+  "packaging": {
+    "code_and_harness": "byte-identical to the GPU-tested files",
+    "metadata": "local paths relocated to pinned image paths or verified OCI archive references; recorded source/evidence hashes retained",
+    "generated_logs_binaries_and_caches_included": false
+  },
+  "limits": [
+    "Independent native correctness and graph microbenchmark only; not a framework-finalized task_validator PASS.",
+    "Counts cover eight sampled prefill steps per rank, not a full-workload extrapolation.",
+    "Seeded inputs are not captured activation values.",
+    "Unmodified-source comparison; no optimization or E2E gain is asserted."
+  ]
+}

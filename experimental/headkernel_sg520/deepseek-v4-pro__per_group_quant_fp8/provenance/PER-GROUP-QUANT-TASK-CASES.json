@@ -1,0 +1,3048 @@
+{
+  "schema": "actual-per-group-quant-case-evidence-v1",
+  "run_id": "deepseek-sg520-context9218-193529",
+  "image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
+  "workload_gate": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529/curated/WORKLOAD-GATE.json",
+  "full_token_gate_passed": true,
+  "source_callee_map": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529/curated/SOURCE-CALLEE-MAP.json",
+  "scope": "Eight native CPU EXTEND steps per rank, each annotation bs=1,toks=8192. These are sampled prefill chunks from the64-request,C64,TP8 benchmark; shapes are not scaled to the full workload.",
+  "cases": [
+    {
+      "case_id": "x8192x1536",
+      "operator": "aiter::per_group_quant_hip",
+      "x_shape": [
+        8192,
+        1536
+      ],
+      "x_dtype_observed": "c10::BFloat16",
+      "x_stride": [
+        1536,
+        1
+      ],
+      "wrapper_input_metadata": {
+        "Input Dims": [
+          [
+            8192,
+            1536
+          ],
+          [],
+          [],
+          [],
+          [],
+          [],
+          [],
+          []
+        ],
+        "Input type": [
+          "c10::BFloat16",
+          "",
+          "Scalar",
+          "Scalar",
+          "Scalar",
+          "",
+          "Scalar",
+          "Scalar"
+        ],
+        "Input Strides": [
+          [
+            1536,
+            1
+          ],
+          [],
+          [],
+          [],
+          [],
+          [],
+          [],
+          []
+        ],
+        "Concrete Inputs": [
+          "",
+          "",
+          "24",
+          "128",
+          "True",
+          "",
+          "1",
+          "6"
+        ]
+      },
+      "observed_scalars": {
+        "scale": "absent",
+        "quant_dtype_recorded": "24",
+        "group_size": 128,
+        "transpose_scale": true,
+        "num_rows": "absent",
+        "num_rows_factor": 1,
+        "scale_type_recorded": "6"
+      },
+      "per_rank_counts": {
+        "0": 728,
+        "1": 728,
+        "2": 728,
+        "3": 728,
+        "4": 728,
+        "5": 728,
+        "6": 728,
+        "7": 728
+      },
+      "per_rank_examples": [
+        {
+          "rank": 0,
+          "trace_path": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529/profiles/deepseek-sg520-context9218-193529-deepseek-sg520-context9218-193529-TP-0-EXTEND.trace.json.gz",
+          "trace_sha256": "d07e42e012f714a55ec272127668dc26d4e72c1c16b884fa96777025dd9a7d22",
+          "wrapper_event_index": 332,
+          "child_event_index": 336,
+          "CPU_step_annotation_indices": [
+            29
+          ],
+          "child_operator": "aiter::dynamic_per_token_scaled_quant",
+          "child_input_metadata": {
+            "Concrete Inputs": [
+              "",
+              "",
+              "",
+              "",
+              "True",
+              "",
+              "1"
+            ],
+            "Input Dims": [
+              [
+                8192,
+                1536
+              ],
+              [
+                98304,
+                128
+              ],
+              [
+                8192,
+                12
+              ],
+              [],
+              [],
+              [],
+              []
+            ],
+            "Input Strides": [
+              [
+                1536,
+                1
+              ],
+              [
+                128,
+                1
+              ],
+              [
+                12,
+                1
+              ],
+              [],
+              [],
+              [],
+              []
+            ],
+            "Input type": [
+              "c10::Float8_e4m3fn",
+              "c10::BFloat16",
+              "float",
+              "",
+              "Scalar",
+              "",
+              "Scalar"
+            ]
+          }
+        },
+        {
+          "rank": 1,
+          "trace_path": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529/profiles/deepseek-sg520-context9218-193529-deepseek-sg520-context9218-193529-TP-1-EXTEND.trace.json.gz",
+          "trace_sha256": "b561032a8f908769206b623d6d7fce102050207854f9526fde47e4fd9cdc41cd",
+          "wrapper_event_index": 332,
+          "child_event_index": 336,
+          "CPU_step_annotation_indices": [
+            29
+          ],
+          "child_operator": "aiter::dynamic_per_token_scaled_quant",
+          "child_input_metadata": {
+            "Concrete Inputs": [
+              "",
+              "",
+              "",
+              "",
+              "True",
+              "",
+              "1"
+            ],
+            "Input Dims": [
+              [
+                8192,
+                1536
+              ],
+              [
+                98304,
+                128
+              ],
+              [
+                8192,
+                12
+              ],
+              [],
+              [],
+              [],
+              []
+            ],
+            "Input Strides": [
+              [
+                1536,
+                1
+              ],
+              [
+                128,
+                1
+              ],
+              [
+                12,
+                1
+              ],
+              [],
+              [],
+              [],
+              []
+            ],
+            "Input type": [
+              "c10::Float8_e4m3fn",
+              "c10::BFloat16",
+              "float",
+              "",
+              "Scalar",
+              "",
+              "Scalar"
+            ]
+          }
+        },
+        {
+          "rank": 2,
+          "trace_path": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529/profiles/deepseek-sg520-context9218-193529-deepseek-sg520-context9218-193529-TP-2-EXTEND.trace.json.gz",
+          "trace_sha256": "d4986015513f81b5287632252c08851fe9e4f08d14d09d90e3102bad59aaa700",
+          "wrapper_event_index": 332,
+          "child_event_index": 336,
+          "CPU_step_annotation_indices": [
+            29
+          ],
+          "child_operator": "aiter::dynamic_per_token_scaled_quant",
+          "child_input_metadata": {
+            "Concrete Inputs": [
+              "",
+              "",
+              "",
+              "",
+              "True",
+              "",
+              "1"
+            ],
+            "Input Dims": [
+              [
+                8192,
+                1536
+              ],
+              [
+                98304,
+                128
+              ],
+              [
+                8192,
+                12
+              ],
+              [],
+              [],
+              [],
+              []
+            ],
+            "Input Strides": [
+              [
+                1536,
+                1
+              ],
+              [
+                128,
+                1
+              ],
+              [
+                12,
+                1
+              ],
+              [],
+              [],
+              [],
+              []
+            ],
+            "Input type": [
+              "c10::Float8_e4m3fn",
+              "c10::BFloat16",
+              "float",
+              "",
+              "Scalar",
+              "",
+              "Scalar"
+            ]
+          }
+        },
+        {
+          "rank": 3,
+          "trace_path": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529/profiles/deepseek-sg520-context9218-193529-deepseek-sg520-context9218-193529-TP-3-EXTEND.trace.json.gz",
+          "trace_sha256": "e85ba08f9fdec8106b0263b93ec133caecac27c97cc57f2477dc14623e5237c7",
+          "wrapper_event_index": 331,
+          "child_event_index": 335,
+          "CPU_step_annotation_indices": [
+            28
+          ],
+          "child_operator": "aiter::dynamic_per_token_scaled_quant",
+          "child_input_metadata": {
+            "Concrete Inputs": [
+              "",
+              "",
+              "",
+              "",
+              "True",
+              "",
+              "1"
+            ],
+            "Input Dims": [
+              [
+                8192,
+                1536
+              ],
+              [
+                98304,
+                128
+              ],
+              [
+                8192,
+                12
+              ],
+              [],
+              [],
+              [],
+              []
+            ],
+            "Input Strides": [
+              [
+                1536,
+                1
+              ],
+              [
+                128,
+                1
+              ],
+              [
+                12,
+                1
+              ],
+              [],
+              [],
+              [],
+              []
+            ],
+            "Input type": [
+              "c10::Float8_e4m3fn",
+              "c10::BFloat16",
+              "float",
+              "",
+              "Scalar",
+              "",
+              "Scalar"
+            ]
+          }
+        },
+        {
+          "rank": 4,
+          "trace_path": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529/profiles/deepseek-sg520-context9218-193529-deepseek-sg520-context9218-193529-TP-4-EXTEND.trace.json.gz",
+          "trace_sha256": "899f805f5c678f800cb9f0b969aaf240fa22c00e20eddb4dfc1d382c0ab842f3",
+          "wrapper_event_index": 331,
+          "child_event_index": 335,
+          "CPU_step_annotation_indices": [
+            28
+          ],
+          "child_operator": "aiter::dynamic_per_token_scaled_quant",
+          "child_input_metadata": {
+            "Concrete Inputs": [
+              "",
+              "",
+              "",
+              "",
+              "True",
+              "",
+              "1"
+            ],
+            "Input Dims": [
+              [
+                8192,
+                1536
+              ],
+              [
+                98304,
+                128
+              ],
+              [
+                8192,
+                12
+              ],
+              [],
+              [],
+              [],
+              []
+            ],
+            "Input Strides": [
+              [
+                1536,
+                1
+              ],
+              [
+                128,
+                1
+              ],
+              [
+                12,
+                1
+              ],
+              [],
+              [],
+              [],
+              []
+            ],
+            "Input type": [
+              "c10::Float8_e4m3fn",
+              "c10::BFloat16",
+              "float",
+              "",
+              "Scalar",
+              "",
+              "Scalar"
+            ]
+          }
+        },
+        {
+          "rank": 5,
+          "trace_path": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529/profiles/deepseek-sg520-context9218-193529-deepseek-sg520-context9218-193529-TP-5-EXTEND.trace.json.gz",
+          "trace_sha256": "47216dc6196e92b3b7a689e745b1388c87f226bf4a29ea35670b121f6f232113",
+          "wrapper_event_index": 331,
+          "child_event_index": 335,
+          "CPU_step_annotation_indices": [
+            28
+          ],
+          "child_operator": "aiter::dynamic_per_token_scaled_quant",
+          "child_input_metadata": {
+            "Concrete Inputs": [
+              "",
+              "",
+              "",
+              "",
+              "True",
+              "",
+              "1"
+            ],
+            "Input Dims": [
+              [
+                8192,
+                1536
+              ],
+              [
+                98304,
+                128
+              ],
+              [
+                8192,
+                12
+              ],
+              [],
+              [],
+              [],
+              []
+            ],
+            "Input Strides": [
+              [
+                1536,
+                1
+              ],
+              [
+                128,
+                1
+              ],
+              [
+                12,
+                1
+              ],
+              [],
+              [],
+              [],
+              []
+            ],
+            "Input type": [
+              "c10::Float8_e4m3fn",
+              "c10::BFloat16",
+              "float",
+              "",
+              "Scalar",
+              "",
+              "Scalar"
+            ]
+          }
+        },
+        {
+          "rank": 6,
+          "trace_path": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529/profiles/deepseek-sg520-context9218-193529-deepseek-sg520-context9218-193529-TP-6-EXTEND.trace.json.gz",
+          "trace_sha256": "448d184a54ad8220d5867658f793b645fe5eb08cb9882f73ecc53deef45df5d9",
+          "wrapper_event_index": 331,
+          "child_event_index": 335,
+          "CPU_step_annotation_indices": [
+            28
+          ],
+          "child_operator": "aiter::dynamic_per_token_scaled_quant",
+          "child_input_metadata": {
+            "Concrete Inputs": [
+              "",
+              "",
+              "",
+              "",
+              "True",
+              "",
+              "1"
+            ],
+            "Input Dims": [
+              [
+                8192,
+                1536
+              ],
+              [
+                98304,
+                128
+              ],
+              [
+                8192,
+                12
+              ],
+              [],
+              [],
+              [],
+              []
+            ],
+            "Input Strides": [
+              [
+                1536,
+                1
+              ],
+              [
+                128,
+                1
+              ],
+              [
+                12,
+                1
+              ],
+              [],
+              [],
+              [],
+              []
+            ],
+            "Input type": [
+              "c10::Float8_e4m3fn",
+              "c10::BFloat16",
+              "float",
+              "",
+              "Scalar",
+              "",
+              "Scalar"
+            ]
+          }
+        },
+        {
+          "rank": 7,
+          "trace_path": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529/profiles/deepseek-sg520-context9218-193529-deepseek-sg520-context9218-193529-TP-7-EXTEND.trace.json.gz",
+          "trace_sha256": "2abc8bb09ab59b8d96d4a035877e4496ee276c64e898912768b0674299524ad5",
+          "wrapper_event_index": 332,
+          "child_event_index": 336,
+          "CPU_step_annotation_indices": [
+            29
+          ],
+          "child_operator": "aiter::dynamic_per_token_scaled_quant",
+          "child_input_metadata": {
+            "Concrete Inputs": [
+              "",
+              "",
+              "",
+              "",
+              "True",
+              "",
+              "1"
+            ],
+            "Input Dims": [
+              [
+                8192,
+                1536
+              ],
+              [
+                98304,
+                128
+              ],
+              [
+                8192,
+                12
+              ],
+              [],
+              [],
+              [],
+              []
+            ],
+            "Input Strides": [
+              [
+                1536,
+                1
+              ],
+              [
+                128,
+                1
+              ],
+              [
+                12,
+                1
+              ],
+              [],
+              [],
+              [],
+              []
+            ],
+            "Input type": [
+              "c10::Float8_e4m3fn",
+              "c10::BFloat16",
+              "float",
+              "",
+              "Scalar",
+              "",
+              "Scalar"
+            ]
+          }
+        }
+      ],
+      "shape_semantics": "CPU wrapper and child-op argument evidence; no tensor values captured",
+      "out_shape": [
+        8192,
+        1536
+      ],
+      "out_dtype_observed": "c10::Float8_e4m3fn",
+      "callee_input_view_shape": [
+        98304,
+        128
+      ],
+      "scale_allocated_shape": [
+        8192,
+        12
+      ],
+      "scale_dtype_observed": "float",
+      "scale_allocated_stride": [
+        12,
+        1
+      ],
+      "total_observed_wrapper_occurrences": 5824,
+      "physical_scale_write_order": "scale[group_column * M + row] with group_size128 and transpose_scale=True; see SOURCE-CALLEE-MAP.json"
+    },
+    {
+      "case_id": "x8192x2048",
+      "operator": "aiter::per_group_quant_hip",
+      "x_shape": [
+        8192,
+        2048
+      ],
+      "x_dtype_observed": "c10::BFloat16",
+      "x_stride": [
+        2048,
+        1
+      ],
+      "wrapper_input_metadata": {
+        "Input Dims": [
+          [
+            8192,
+            2048
+          ],
+          [],
+          [],
+          [],
+          [],
+          [],
+          [],
+          []
+        ],
+        "Input type": [
+          "c10::BFloat16",
+          "",
+          "Scalar",
+          "Scalar",
+          "Scalar",
+          "",
+          "Scalar",
+          "Scalar"
+        ],
+        "Input Strides": [
+          [
+            2048,
+            1
+          ],
+          [],
+          [],
+          [],
+          [],
+          [],
+          [],
+          []
+        ],
+        "Concrete Inputs": [
+          "",
+          "",
+          "24",
+          "128",
+          "True",
+          "",
+          "1",
+          "6"
+        ]
+      },
+      "observed_scalars": {
+        "scale": "absent",
+        "quant_dtype_recorded": "24",
+        "group_size": 128,
+        "transpose_scale": true,
+        "num_rows": "absent",
+        "num_rows_factor": 1,
+        "scale_type_recorded": "6"
+      },
+      "per_rank_counts": {
+        "0": 488,
+        "1": 488,
+        "2": 488,
+        "3": 488,
+        "4": 488,
+        "5": 488,
+        "6": 488,
+        "7": 488
+      },
+      "per_rank_examples": [
+        {
+          "rank": 0,
+          "trace_path": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529/profiles/deepseek-sg520-context9218-193529-deepseek-sg520-context9218-193529-TP-0-EXTEND.trace.json.gz",
+          "trace_sha256": "d07e42e012f714a55ec272127668dc26d4e72c1c16b884fa96777025dd9a7d22",
+          "wrapper_event_index": 437,
+          "child_event_index": 441,
+          "CPU_step_annotation_indices": [
+            29
+          ],
+          "child_operator": "aiter::dynamic_per_token_scaled_quant",
+          "child_input_metadata": {
+            "Concrete Inputs": [
+              "",
+              "",
+              "",
+              "",
+              "True",
+              "",
+              "1"
+            ],
+            "Input Dims": [
+              [
+                8192,
+                2048
+              ],
+              [
+                131072,
+                128
+              ],
+              [
+                8192,
+                16
+              ],
+              [],
+              [],
+              [],
+              []
+            ],
+            "Input Strides": [
+              [
+                2048,
+                1
+              ],
+              [
+                128,
+                1
+              ],
+              [
+                16,
+                1
+              ],
+              [],
+              [],
+              [],
+              []
+            ],
+            "Input type": [
+              "c10::Float8_e4m3fn",
+              "c10::BFloat16",
+              "float",
+              "",
+              "Scalar",
+              "",
+              "Scalar"
+            ]
+          }
+        },
+        {
+          "rank": 1,
+          "trace_path": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529/profiles/deepseek-sg520-context9218-193529-deepseek-sg520-context9218-193529-TP-1-EXTEND.trace.json.gz",
+          "trace_sha256": "b561032a8f908769206b623d6d7fce102050207854f9526fde47e4fd9cdc41cd",
+          "wrapper_event_index": 437,
+          "child_event_index": 441,
+          "CPU_step_annotation_indices": [
+            29
+          ],
+          "child_operator": "aiter::dynamic_per_token_scaled_quant",
+          "child_input_metadata": {
+            "Concrete Inputs": [
+              "",
+              "",
+              "",
+              "",
+              "True",
+              "",
+              "1"
+            ],
+            "Input Dims": [
+              [
+                8192,
+                2048
+              ],
+              [
+                131072,
+                128
+              ],
+              [
+                8192,
+                16
+              ],
+              [],
+              [],
+              [],
+              []
+            ],
+            "Input Strides": [
+              [
+                2048,
+                1
+              ],
+              [
+                128,
+                1
+              ],
+              [
+                16,
+                1
+              ],
+              [],
+              [],
+              [],
+              []
+            ],
+            "Input type": [
+              "c10::Float8_e4m3fn",
+              "c10::BFloat16",
+              "float",
+              "",
+              "Scalar",
+              "",
+              "Scalar"
+            ]
+          }
+        },
+        {
+          "rank": 2,
+          "trace_path": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529/profiles/deepseek-sg520-context9218-193529-deepseek-sg520-context9218-193529-TP-2-EXTEND.trace.json.gz",
+          "trace_sha256": "d4986015513f81b5287632252c08851fe9e4f08d14d09d90e3102bad59aaa700",
+          "wrapper_event_index": 437,
+          "child_event_index": 441,
+          "CPU_step_annotation_indices": [
+            29
+          ],
+          "child_operator": "aiter::dynamic_per_token_scaled_quant",
+          "child_input_metadata": {
+            "Concrete Inputs": [
+              "",
+              "",
+              "",
+              "",
+              "True",
+              "",
+              "1"
+            ],
+            "Input Dims": [
+              [
+                8192,
+                2048
+              ],
+              [
+                131072,
+                128
+              ],
+              [
+                8192,
+                16
+              ],
+              [],
+              [],
+              [],
+              []
+            ],
+            "Input Strides": [
+              [
+                2048,
+                1
+              ],
+              [
+                128,
+                1
+              ],
+              [
+                16,
+                1
+              ],
+              [],
+              [],
+              [],
+              []
+            ],
+            "Input type": [
+              "c10::Float8_e4m3fn",
+              "c10::BFloat16",
+              "float",
+              "",
+              "Scalar",
+              "",
+              "Scalar"
+            ]
+          }
+        },
+        {
+          "rank": 3,
+          "trace_path": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529/profiles/deepseek-sg520-context9218-193529-deepseek-sg520-context9218-193529-TP-3-EXTEND.trace.json.gz",
+          "trace_sha256": "e85ba08f9fdec8106b0263b93ec133caecac27c97cc57f2477dc14623e5237c7",
+          "wrapper_event_index": 436,
+          "child_event_index": 440,
+          "CPU_step_annotation_indices": [
+            28
+          ],
+          "child_operator": "aiter::dynamic_per_token_scaled_quant",
+          "child_input_metadata": {
+            "Concrete Inputs": [
+              "",
+              "",
+              "",
+              "",
+              "True",
+              "",
+              "1"
+            ],
+            "Input Dims": [
+              [
+                8192,
+                2048
+              ],
+              [
+                131072,
+                128
+              ],
+              [
+                8192,
+                16
+              ],
+              [],
+              [],
+              [],
+              []
+            ],
+            "Input Strides": [
+              [
+                2048,
+                1
+              ],
+              [
+                128,
+                1
+              ],
+              [
+                16,
+                1
+              ],
+              [],
+              [],
+              [],
+              []
+            ],
+            "Input type": [
+              "c10::Float8_e4m3fn",
+              "c10::BFloat16",
+              "float",
+              "",
+              "Scalar",
+              "",
+              "Scalar"
+            ]
+          }
+        },
+        {
+          "rank": 4,
+          "trace_path": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529/profiles/deepseek-sg520-context9218-193529-deepseek-sg520-context9218-193529-TP-4-EXTEND.trace.json.gz",
+          "trace_sha256": "899f805f5c678f800cb9f0b969aaf240fa22c00e20eddb4dfc1d382c0ab842f3",
+          "wrapper_event_index": 436,
+          "child_event_index": 440,
+          "CPU_step_annotation_indices": [
+            28
+          ],
+          "child_operator": "aiter::dynamic_per_token_scaled_quant",
+          "child_input_metadata": {
+            "Concrete Inputs": [
+              "",
+              "",
+              "",
+              "",
+              "True",
+              "",
+              "1"
+            ],
+            "Input Dims": [
+              [
+                8192,
+                2048
+              ],
+              [
+                131072,
+                128
+              ],
+              [
+                8192,
+                16
+              ],
+              [],
+              [],
+              [],
+              []
+            ],
+            "Input Strides": [
+              [
+                2048,
+                1
+              ],
+              [
+                128,
+                1
+              ],
+              [
+                16,
+                1
+              ],
+              [],
+              [],
+              [],
+              []
+            ],
+            "Input type": [
+              "c10::Float8_e4m3fn",
+              "c10::BFloat16",
+              "float",
+              "",
+              "Scalar",
+              "",
+              "Scalar"
+            ]
+          }
+        },
+        {
+          "rank": 5,
+          "trace_path": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529/profiles/deepseek-sg520-context9218-193529-deepseek-sg520-context9218-193529-TP-5-EXTEND.trace.json.gz",
+          "trace_sha256": "47216dc6196e92b3b7a689e745b1388c87f226bf4a29ea35670b121f6f232113",
+          "wrapper_event_index": 436,
+          "child_event_index": 440,
+          "CPU_step_annotation_indices": [
+            28
+          ],
+          "child_operator": "aiter::dynamic_per_token_scaled_quant",
+          "child_input_metadata": {
+            "Concrete Inputs": [
+              "",
+              "",
+              "",
+              "",
+              "True",
+              "",
+              "1"
+            ],
+            "Input Dims": [
+              [
+                8192,
+                2048
+              ],
+              [
+                131072,
+                128
+              ],
+              [
+                8192,
+                16
+              ],
+              [],
+              [],
+              [],
+              []
+            ],
+            "Input Strides": [
+              [
+                2048,
+                1
+              ],
+              [
+                128,
+                1
+              ],
+              [
+                16,
+                1
+              ],
+              [],
+              [],
+              [],
+              []
+            ],
+            "Input type": [
+              "c10::Float8_e4m3fn",
+              "c10::BFloat16",
+              "float",
+              "",
+              "Scalar",
+              "",
+              "Scalar"
+            ]
+          }
+        },
+        {
+          "rank": 6,
+          "trace_path": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529/profiles/deepseek-sg520-context9218-193529-deepseek-sg520-context9218-193529-TP-6-EXTEND.trace.json.gz",
+          "trace_sha256": "448d184a54ad8220d5867658f793b645fe5eb08cb9882f73ecc53deef45df5d9",
+          "wrapper_event_index": 436,
+          "child_event_index": 440,
+          "CPU_step_annotation_indices": [
+            28
+          ],
+          "child_operator": "aiter::dynamic_per_token_scaled_quant",
+          "child_input_metadata": {
+            "Concrete Inputs": [
+              "",
+              "",
+              "",
+              "",
+              "True",
+              "",
+              "1"
+            ],
+            "Input Dims": [
+              [
+                8192,
+                2048
+              ],
+              [
+                131072,
+                128
+              ],
+              [
+                8192,
+                16
+              ],
+              [],
+              [],
+              [],
+              []
+            ],
+            "Input Strides": [
+              [
+                2048,
+                1
+              ],
+              [
+                128,
+                1
+              ],
+              [
+                16,
+                1
+              ],
+              [],
+              [],
+              [],
+              []
+            ],
+            "Input type": [
+              "c10::Float8_e4m3fn",
+              "c10::BFloat16",
+              "float",
+              "",
+              "Scalar",
+              "",
+              "Scalar"
+            ]
+          }
+        },
+        {
+          "rank": 7,
+          "trace_path": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529/profiles/deepseek-sg520-context9218-193529-deepseek-sg520-context9218-193529-TP-7-EXTEND.trace.json.gz",
+          "trace_sha256": "2abc8bb09ab59b8d96d4a035877e4496ee276c64e898912768b0674299524ad5",
+          "wrapper_event_index": 437,
+          "child_event_index": 441,
+          "CPU_step_annotation_indices": [
+            29
+          ],
+          "child_operator": "aiter::dynamic_per_token_scaled_quant",
+          "child_input_metadata": {
+            "Concrete Inputs": [
+              "",
+              "",
+              "",
+              "",
+              "True",
+              "",
+              "1"
+            ],
+            "Input Dims": [
+              [
+                8192,
+                2048
+              ],
+              [
+                131072,
+                128
+              ],
+              [
+                8192,
+                16
+              ],
+              [],
+              [],
+              [],
+              []
+            ],
+            "Input Strides": [
+              [
+                2048,
+                1
+              ],
+              [
+                128,
+                1
+              ],
+              [
+                16,
+                1
+              ],
+              [],
+              [],
+              [],
+              []
+            ],
+            "Input type": [
+              "c10::Float8_e4m3fn",
+              "c10::BFloat16",
+              "float",
+              "",
+              "Scalar",
+              "",
+              "Scalar"
+            ]
+          }
+        }
+      ],
+      "shape_semantics": "CPU wrapper and child-op argument evidence; no tensor values captured",
+      "out_shape": [
+        8192,
+        2048
+      ],
+      "out_dtype_observed": "c10::Float8_e4m3fn",
+      "callee_input_view_shape": [
+        131072,
+        128
+      ],
+      "scale_allocated_shape": [
+        8192,
+        16
+      ],
+      "scale_dtype_observed": "float",
+      "scale_allocated_stride": [
+        16,
+        1
+      ],
+      "total_observed_wrapper_occurrences": 3904,
+      "physical_scale_write_order": "scale[group_column * M + row] with group_size128 and transpose_scale=True; see SOURCE-CALLEE-MAP.json"
+    },
+    {
+      "case_id": "x8192x7168",
+      "operator": "aiter::per_group_quant_hip",
+      "x_shape": [
+        8192,
+        7168
+      ],
+      "x_dtype_observed": "c10::BFloat16",
+      "x_stride": [
+        7168,
+        1
+      ],
+      "wrapper_input_metadata": {
+        "Input Dims": [
+          [
+            8192,
+            7168
+          ],
+          [],
+          [],
+          [],
+          [],
+          [],
+          [],
+          []
+        ],
+        "Input type": [
+          "c10::BFloat16",
+          "",
+          "Scalar",
+          "Scalar",
+          "Scalar",
+          "",
+          "Scalar",
+          "Scalar"
+        ],
+        "Input Strides": [
+          [
+            7168,
+            1
+          ],
+          [],
+          [],
+          [],
+          [],
+          [],
+          [],
+          []
+        ],
+        "Concrete Inputs": [
+          "",
+          "",
+          "24",
+          "128",
+          "True",
+          "",
+          "1",
+          "6"
+        ]
+      },
+      "observed_scalars": {
+        "scale": "absent",
+        "quant_dtype_recorded": "24",
+        "group_size": 128,
+        "transpose_scale": true,
+        "num_rows": "absent",
+        "num_rows_factor": 1,
+        "scale_type_recorded": "6"
+      },
+      "per_rank_counts": {
+        "0": 968,
+        "1": 968,
+        "2": 968,
+        "3": 968,
+        "4": 968,
+        "5": 968,
+        "6": 968,
+        "7": 968
+      },
+      "per_rank_examples": [
+        {
+          "rank": 0,
+          "trace_path": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529/profiles/deepseek-sg520-context9218-193529-deepseek-sg520-context9218-193529-TP-0-EXTEND.trace.json.gz",
+          "trace_sha256": "d07e42e012f714a55ec272127668dc26d4e72c1c16b884fa96777025dd9a7d22",
+          "wrapper_event_index": 469,
+          "child_event_index": 473,
+          "CPU_step_annotation_indices": [
+            29
+          ],
+          "child_operator": "aiter::dynamic_per_token_scaled_quant",
+          "child_input_metadata": {
+            "Concrete Inputs": [
+              "",
+              "",
+              "",
+              "",
+              "True",
+              "",
+              "1"
+            ],
+            "Input Dims": [
+              [
+                8192,
+                7168
+              ],
+              [
+                458752,
+                128
+              ],
+              [
+                8192,
+                56
+              ],
+              [],
+              [],
+              [],
+              []
+            ],
+            "Input Strides": [
+              [
+                7168,
+                1
+              ],
+              [
+                128,
+                1
+              ],
+              [
+                56,
+                1
+              ],
+              [],
+              [],
+              [],
+              []
+            ],
+            "Input type": [
+              "c10::Float8_e4m3fn",
+              "c10::BFloat16",
+              "float",
+              "",
+              "Scalar",
+              "",
+              "Scalar"
+            ]
+          }
+        },
+        {
+          "rank": 1,
+          "trace_path": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529/profiles/deepseek-sg520-context9218-193529-deepseek-sg520-context9218-193529-TP-1-EXTEND.trace.json.gz",
+          "trace_sha256": "b561032a8f908769206b623d6d7fce102050207854f9526fde47e4fd9cdc41cd",
+          "wrapper_event_index": 469,
+          "child_event_index": 473,
+          "CPU_step_annotation_indices": [
+            29
+          ],
+          "child_operator": "aiter::dynamic_per_token_scaled_quant",
+          "child_input_metadata": {
+            "Concrete Inputs": [
+              "",
+              "",
+              "",
+              "",
+              "True",
+              "",
+              "1"
+            ],
+            "Input Dims": [
+              [
+                8192,
+                7168
+              ],
+              [
+                458752,
+                128
+              ],
+              [
+                8192,
+                56
+              ],
+              [],
+              [],
+              [],
+              []
+            ],
+            "Input Strides": [
+              [
+                7168,
+                1
+              ],
+              [
+                128,
+                1
+              ],
+              [
+                56,
+                1
+              ],
+              [],
+              [],
+              [],
+              []
+            ],
+            "Input type": [
+              "c10::Float8_e4m3fn",
+              "c10::BFloat16",
+              "float",
+              "",
+              "Scalar",
+              "",
+              "Scalar"
+            ]
+          }
+        },
+        {
+          "rank": 2,
+          "trace_path": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529/profiles/deepseek-sg520-context9218-193529-deepseek-sg520-context9218-193529-TP-2-EXTEND.trace.json.gz",
+          "trace_sha256": "d4986015513f81b5287632252c08851fe9e4f08d14d09d90e3102bad59aaa700",
+          "wrapper_event_index": 469,
+          "child_event_index": 473,
+          "CPU_step_annotation_indices": [
+            29
+          ],
+          "child_operator": "aiter::dynamic_per_token_scaled_quant",
+          "child_input_metadata": {
+            "Concrete Inputs": [
+              "",
+              "",
+              "",
+              "",
+              "True",
+              "",
+              "1"
+            ],
+            "Input Dims": [
+              [
+                8192,
+                7168
+              ],
+              [
+                458752,
+                128
+              ],
+              [
+                8192,
+                56
+              ],
+              [],
+              [],
+              [],
+              []
+            ],
+            "Input Strides": [
+              [
+                7168,
+                1
+              ],
+              [
+                128,
+                1
+              ],
+              [
+                56,
+                1
+              ],
+              [],
+              [],
+              [],
+              []
+            ],
+            "Input type": [
+              "c10::Float8_e4m3fn",
+              "c10::BFloat16",
+              "float",
+              "",
+              "Scalar",
+              "",
+              "Scalar"
+            ]
+          }
+        },
+        {
+          "rank": 3,
+          "trace_path": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529/profiles/deepseek-sg520-context9218-193529-deepseek-sg520-context9218-193529-TP-3-EXTEND.trace.json.gz",
+          "trace_sha256": "e85ba08f9fdec8106b0263b93ec133caecac27c97cc57f2477dc14623e5237c7",
+          "wrapper_event_index": 468,
+          "child_event_index": 472,
+          "CPU_step_annotation_indices": [
+            28
+          ],
+          "child_operator": "aiter::dynamic_per_token_scaled_quant",
+          "child_input_metadata": {
+            "Concrete Inputs": [
+              "",
+              "",
+              "",
+              "",
+              "True",
+              "",
+              "1"
+            ],
+            "Input Dims": [
+              [
+                8192,
+                7168
+              ],
+              [
+                458752,
+                128
+              ],
+              [
+                8192,
+                56
+              ],
+              [],
+              [],
+              [],
+              []
+            ],
+            "Input Strides": [
+              [
+                7168,
+                1
+              ],
+              [
+                128,
+                1
+              ],
+              [
+                56,
+                1
+              ],
+              [],
+              [],
+              [],
+              []
+            ],
+            "Input type": [
+              "c10::Float8_e4m3fn",
+              "c10::BFloat16",
+              "float",
+              "",
+              "Scalar",
+              "",
+              "Scalar"
+            ]
+          }
+        },
+        {
+          "rank": 4,
+          "trace_path": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529/profiles/deepseek-sg520-context9218-193529-deepseek-sg520-context9218-193529-TP-4-EXTEND.trace.json.gz",
+          "trace_sha256": "899f805f5c678f800cb9f0b969aaf240fa22c00e20eddb4dfc1d382c0ab842f3",
+          "wrapper_event_index": 468,
+          "child_event_index": 472,
+          "CPU_step_annotation_indices": [
+            28
+          ],
+          "child_operator": "aiter::dynamic_per_token_scaled_quant",
+          "child_input_metadata": {
+            "Concrete Inputs": [
+              "",
+              "",
+              "",
+              "",
+              "True",
+              "",
+              "1"
+            ],
+            "Input Dims": [
+              [
+                8192,
+                7168
+              ],
+              [
+                458752,
+                128
+              ],
+              [
+                8192,
+                56
+              ],
+              [],
+              [],
+              [],
+              []
+            ],
+            "Input Strides": [
+              [
+                7168,
+                1
+              ],
+              [
+                128,
+                1
+              ],
+              [
+                56,
+                1
+              ],
+              [],
+              [],
+              [],
+              []
+            ],
+            "Input type": [
+              "c10::Float8_e4m3fn",
+              "c10::BFloat16",
+              "float",
+              "",
+              "Scalar",
+              "",
+              "Scalar"
+            ]
+          }
+        },
+        {
+          "rank": 5,
+          "trace_path": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529/profiles/deepseek-sg520-context9218-193529-deepseek-sg520-context9218-193529-TP-5-EXTEND.trace.json.gz",
+          "trace_sha256": "47216dc6196e92b3b7a689e745b1388c87f226bf4a29ea35670b121f6f232113",
+          "wrapper_event_index": 468,
+          "child_event_index": 472,
+          "CPU_step_annotation_indices": [
+            28
+          ],
+          "child_operator": "aiter::dynamic_per_token_scaled_quant",
+          "child_input_metadata": {
+            "Concrete Inputs": [
+              "",
+              "",
+              "",
+              "",
+              "True",
+              "",
+              "1"
+            ],
+            "Input Dims": [
+              [
+                8192,
+                7168
+              ],
+              [
+                458752,
+                128
+              ],
+              [
+                8192,
+                56
+              ],
+              [],
+              [],
+              [],
+              []
+            ],
+            "Input Strides": [
+              [
+                7168,
+                1
+              ],
+              [
+                128,
+                1
+              ],
+              [
+                56,
+                1
+              ],
+              [],
+              [],
+              [],
+              []
+            ],
+            "Input type": [
+              "c10::Float8_e4m3fn",
+              "c10::BFloat16",
+              "float",
+              "",
+              "Scalar",
+              "",
+              "Scalar"
+            ]
+          }
+        },
+        {
+          "rank": 6,
+          "trace_path": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529/profiles/deepseek-sg520-context9218-193529-deepseek-sg520-context9218-193529-TP-6-EXTEND.trace.json.gz",
+          "trace_sha256": "448d184a54ad8220d5867658f793b645fe5eb08cb9882f73ecc53deef45df5d9",
+          "wrapper_event_index": 468,
+          "child_event_index": 472,
+          "CPU_step_annotation_indices": [
+            28
+          ],
+          "child_operator": "aiter::dynamic_per_token_scaled_quant",
+          "child_input_metadata": {
+            "Concrete Inputs": [
+              "",
+              "",
+              "",
+              "",
+              "True",
+              "",
+              "1"
+            ],
+            "Input Dims": [
+              [
+                8192,
+                7168
+              ],
+              [
+                458752,
+                128
+              ],
+              [
+                8192,
+                56
+              ],
+              [],
+              [],
+              [],
+              []
+            ],
+            "Input Strides": [
+              [
+                7168,
+                1
+              ],
+              [
+                128,
+                1
+              ],
+              [
+                56,
+                1
+              ],
+              [],
+              [],
+              [],
+              []
+            ],
+            "Input type": [
+              "c10::Float8_e4m3fn",
+              "c10::BFloat16",
+              "float",
+              "",
+              "Scalar",
+              "",
+              "Scalar"
+            ]
+          }
+        },
+        {
+          "rank": 7,
+          "trace_path": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529/profiles/deepseek-sg520-context9218-193529-deepseek-sg520-context9218-193529-TP-7-EXTEND.trace.json.gz",
+          "trace_sha256": "2abc8bb09ab59b8d96d4a035877e4496ee276c64e898912768b0674299524ad5",
+          "wrapper_event_index": 469,
+          "child_event_index": 473,
+          "CPU_step_annotation_indices": [
+            29
+          ],
+          "child_operator": "aiter::dynamic_per_token_scaled_quant",
+          "child_input_metadata": {
+            "Concrete Inputs": [
+              "",
+              "",
+              "",
+              "",
+              "True",
+              "",
+              "1"
+            ],
+            "Input Dims": [
+              [
+                8192,
+                7168
+              ],
+              [
+                458752,
+                128
+              ],
+              [
+                8192,
+                56
+              ],
+              [],
+              [],
+              [],
+              []
+            ],
+            "Input Strides": [
+              [
+                7168,
+                1
+              ],
+              [
+                128,
+                1
+              ],
+              [
+                56,
+                1
+              ],
+              [],
+              [],
+              [],
+              []
+            ],
+            "Input type": [
+              "c10::Float8_e4m3fn",
+              "c10::BFloat16",
+              "float",
+              "",
+              "Scalar",
+              "",
+              "Scalar"
+            ]
+          }
+        }
+      ],
+      "shape_semantics": "CPU wrapper and child-op argument evidence; no tensor values captured",
+      "out_shape": [
+        8192,
+        7168
+      ],
+      "out_dtype_observed": "c10::Float8_e4m3fn",
+      "callee_input_view_shape": [
+        458752,
+        128
+      ],
+      "scale_allocated_shape": [
+        8192,
+        56
+      ],
+      "scale_dtype_observed": "float",
+      "scale_allocated_stride": [
+        56,
+        1
+      ],
+      "total_observed_wrapper_occurrences": 7744,
+      "physical_scale_write_order": "scale[group_column * M + row] with group_size128 and transpose_scale=True; see SOURCE-CALLEE-MAP.json"
+    }
+  ],
+  "window_evidence": [
+    {
+      "rank": 0,
+      "source_path": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529/profiles/deepseek-sg520-context9218-193529-deepseek-sg520-context9218-193529-TP-0-EXTEND.trace.json.gz",
+      "source_sha256": "d07e42e012f714a55ec272127668dc26d4e72c1c16b884fa96777025dd9a7d22",
+      "CPU_step_annotations": [
+        {
+          "event_index": 29,
+          "pid": "886",
+          "tid": "886",
+          "name": "step[EXTEND bs=1 toks=8192 c_sq=8192 c_sqsq=67108864 c_sqsk=67108864 c_sk=8192]",
+          "ts_us": 353045429680.917,
+          "duration_us": 225766.735
+        },
+        {
+          "event_index": 20207,
+          "pid": "886",
+          "tid": "886",
+          "name": "step[EXTEND bs=1 toks=8192 c_sq=8192 c_sqsq=67108864 c_sqsk=67108864 c_sk=8192]",
+          "ts_us": 353045675529.47,
+          "duration_us": 270092.104
+        },
+        {
+          "event_index": 40338,
+          "pid": "886",
+          "tid": "886",
+          "name": "step[EXTEND bs=1 toks=8192 c_sq=8192 c_sqsq=67108864 c_sqsk=67108864 c_sk=8192]",
+          "ts_us": 353045957942.663,
+          "duration_us": 277953.813
+        },
+        {
+          "event_index": 60469,
+          "pid": "886",
+          "tid": "886",
+          "name": "step[EXTEND bs=1 toks=8192 c_sq=8192 c_sqsq=67108864 c_sqsk=67108864 c_sk=8192]",
+          "ts_us": 353046247376.802,
+          "duration_us": 280018.374
+        },
+        {
+          "event_index": 80600,
+          "pid": "886",
+          "tid": "886",
+          "name": "step[EXTEND bs=1 toks=8192 c_sq=8192 c_sqsq=67108864 c_sqsk=67108864 c_sk=8192]",
+          "ts_us": 353046538467.965,
+          "duration_us": 276281.478
+        },
+        {
+          "event_index": 100731,
+          "pid": "886",
+          "tid": "886",
+          "name": "step[EXTEND bs=1 toks=8192 c_sq=8192 c_sqsq=67108864 c_sqsk=67108864 c_sk=8192]",
+          "ts_us": 353046828919.655,
+          "duration_us": 275199.188
+        },
+        {
+          "event_index": 120862,
+          "pid": "886",
+          "tid": "886",
+          "name": "step[EXTEND bs=1 toks=8192 c_sq=8192 c_sqsq=67108864 c_sqsk=67108864 c_sk=8192]",
+          "ts_us": 353047124741.376,
+          "duration_us": 280823.847
+        },
+        {
+          "event_index": 140993,
+          "pid": "886",
+          "tid": "886",
+          "name": "step[EXTEND bs=1 toks=8192 c_sq=8192 c_sqsq=67108864 c_sqsk=67108864 c_sk=8192]",
+          "ts_us": 353047414466.072,
+          "duration_us": 271630.33
+        }
+      ],
+      "CPU_step_count": 8
+    },
+    {
+      "rank": 1,
+      "source_path": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529/profiles/deepseek-sg520-context9218-193529-deepseek-sg520-context9218-193529-TP-1-EXTEND.trace.json.gz",
+      "source_sha256": "b561032a8f908769206b623d6d7fce102050207854f9526fde47e4fd9cdc41cd",
+      "CPU_step_annotations": [
+        {
+          "event_index": 29,
+          "pid": "887",
+          "tid": "887",
+          "name": "step[EXTEND bs=1 toks=8192 c_sq=8192 c_sqsq=67108864 c_sqsk=67108864 c_sk=8192]",
+          "ts_us": 353045430205.312,
+          "duration_us": 228549.041
+        },
+        {
+          "event_index": 20213,
+          "pid": "887",
+          "tid": "887",
+          "name": "step[EXTEND bs=1 toks=8192 c_sq=8192 c_sqsq=67108864 c_sqsk=67108864 c_sk=8192]",
+          "ts_us": 353045684174.952,
+          "duration_us": 265600.365
+        },
+        {
+          "event_index": 40346,
+          "pid": "887",
+          "tid": "887",
+          "name": "step[EXTEND bs=1 toks=8192 c_sq=8192 c_sqsq=67108864 c_sqsk=67108864 c_sk=8192]",
+          "ts_us": 353045958223.99,
+          "duration_us": 280698.388
+        },
+        {
+          "event_index": 60479,
+          "pid": "887",
+          "tid": "887",
+          "name": "step[EXTEND bs=1 toks=8192 c_sq=8192 c_sqsq=67108864 c_sqsk=67108864 c_sk=8192]",
+          "ts_us": 353046247715.589,
+          "duration_us": 282596.67
+        },
+        {
+          "event_index": 80612,
+          "pid": "887",
+          "tid": "887",
+          "name": "step[EXTEND bs=1 toks=8192 c_sq=8192 c_sqsq=67108864 c_sqsk=67108864 c_sk=8192]",
+          "ts_us": 353046539023.051,
+          "duration_us": 281607.019
+        },
+        {
+          "event_index": 100745,
+          "pid": "887",
+          "tid": "887",
+          "name": "step[EXTEND bs=1 toks=8192 c_sq=8192 c_sqsq=67108864 c_sqsk=67108864 c_sk=8192]",
+          "ts_us": 353046829312.232,
+          "duration_us": 280493.979
+        },
+        {
+          "event_index": 120878,
+          "pid": "887",
+          "tid": "887",
+          "name": "step[EXTEND bs=1 toks=8192 c_sq=8192 c_sqsq=67108864 c_sqsk=67108864 c_sk=8192]",
+          "ts_us": 353047118434.093,
+          "duration_us": 288012.602
+        },
+        {
+          "event_index": 141011,
+          "pid": "887",
+          "tid": "887",
+          "name": "step[EXTEND bs=1 toks=8192 c_sq=8192 c_sqsq=67108864 c_sqsk=67108864 c_sk=8192]",
+          "ts_us": 353047415053.667,
+          "duration_us": 279884.735
+        }
+      ],
+      "CPU_step_count": 8
+    },
+    {
+      "rank": 2,
+      "source_path": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529/profiles/deepseek-sg520-context9218-193529-deepseek-sg520-context9218-193529-TP-2-EXTEND.trace.json.gz",
+      "source_sha256": "d4986015513f81b5287632252c08851fe9e4f08d14d09d90e3102bad59aaa700",
+      "CPU_step_annotations": [
+        {
+          "event_index": 29,
+          "pid": "888",
+          "tid": "888",
+          "name": "step[EXTEND bs=1 toks=8192 c_sq=8192 c_sqsq=67108864 c_sqsk=67108864 c_sk=8192]",
+          "ts_us": 353045430203.948,
+          "duration_us": 222902.341
+        },
+        {
+          "event_index": 20213,
+          "pid": "888",
+          "tid": "888",
+          "name": "step[EXTEND bs=1 toks=8192 c_sq=8192 c_sqsq=67108864 c_sqsk=67108864 c_sk=8192]",
+          "ts_us": 353045681743.83,
+          "duration_us": 267790.284
+        },
+        {
+          "event_index": 40346,
+          "pid": "888",
+          "tid": "888",
+          "name": "step[EXTEND bs=1 toks=8192 c_sq=8192 c_sqsq=67108864 c_sqsk=67108864 c_sk=8192]",
+          "ts_us": 353045958033.417,
+          "duration_us": 280577.199
+        },
+        {
+          "event_index": 60479,
+          "pid": "888",
+          "tid": "888",
+          "name": "step[EXTEND bs=1 toks=8192 c_sq=8192 c_sqsq=67108864 c_sqsk=67108864 c_sk=8192]",
+          "ts_us": 353046247544.205,
+          "duration_us": 281824.868
+        },
+        {
+          "event_index": 80612,
+          "pid": "888",
+          "tid": "888",
+          "name": "step[EXTEND bs=1 toks=8192 c_sq=8192 c_sqsq=67108864 c_sqsk=67108864 c_sk=8192]",
+          "ts_us": 353046537958.585,
+          "duration_us": 269362.401
+        },
+        {
+          "event_index": 100745,
+          "pid": "888",
+          "tid": "888",
+          "name": "step[EXTEND bs=1 toks=8192 c_sq=8192 c_sqsq=67108864 c_sqsk=67108864 c_sk=8192]",
+          "ts_us": 353046825971.947,
+          "duration_us": 290625.728
+        },
+        {
+          "event_index": 120878,
+          "pid": "888",
+          "tid": "888",
+          "name": "step[EXTEND bs=1 toks=8192 c_sq=8192 c_sqsq=67108864 c_sqsk=67108864 c_sk=8192]",
+          "ts_us": 353047125448.355,
+          "duration_us": 280583.199
+        },
+        {
+          "event_index": 141011,
+          "pid": "888",
+          "tid": "888",
+          "name": "step[EXTEND bs=1 toks=8192 c_sq=8192 c_sqsq=67108864 c_sqsk=67108864 c_sk=8192]",
+          "ts_us": 353047414698.945,
+          "duration_us": 277502.537
+        }
+      ],
+      "CPU_step_count": 8
+    },
+    {
+      "rank": 3,
+      "source_path": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529/profiles/deepseek-sg520-context9218-193529-deepseek-sg520-context9218-193529-TP-3-EXTEND.trace.json.gz",
+      "source_sha256": "e85ba08f9fdec8106b0263b93ec133caecac27c97cc57f2477dc14623e5237c7",
+      "CPU_step_annotations": [
+        {
+          "event_index": 28,
+          "pid": "889",
+          "tid": "889",
+          "name": "step[EXTEND bs=1 toks=8192 c_sq=8192 c_sqsq=67108864 c_sqsk=67108864 c_sk=8192]",
+          "ts_us": 353045430171.168,
+          "duration_us": 226929.284
+        },
+        {
+          "event_index": 20212,
+          "pid": "889",
+          "tid": "889",
+          "name": "step[EXTEND bs=1 toks=8192 c_sq=8192 c_sqsq=67108864 c_sqsk=67108864 c_sk=8192]",
+          "ts_us": 353045683535.003,
+          "duration_us": 259419.311
+        },
+        {
+          "event_index": 40345,
+          "pid": "889",
+          "tid": "889",
+          "name": "step[EXTEND bs=1 toks=8192 c_sq=8192 c_sqsq=67108864 c_sqsk=67108864 c_sk=8192]",
+          "ts_us": 353045957876.799,
+          "duration_us": 276343.267
+        },
+        {
+          "event_index": 60478,
+          "pid": "889",
+          "tid": "889",
+          "name": "step[EXTEND bs=1 toks=8192 c_sq=8192 c_sqsq=67108864 c_sqsk=67108864 c_sk=8192]",
+          "ts_us": 353046247556.015,
+          "duration_us": 277461.697
+        },
+        {
+          "event_index": 80611,
+          "pid": "889",
+          "tid": "889",
+          "name": "step[EXTEND bs=1 toks=8192 c_sq=8192 c_sqsq=67108864 c_sqsk=67108864 c_sk=8192]",
+          "ts_us": 353046538798.007,
+          "duration_us": 275365.227
+        },
+        {
+          "event_index": 100744,
+          "pid": "889",
+          "tid": "889",
+          "name": "step[EXTEND bs=1 toks=8192 c_sq=8192 c_sqsq=67108864 c_sqsk=67108864 c_sk=8192]",
+          "ts_us": 353046828988.459,
+          "duration_us": 273517.583
+        },
+        {
+          "event_index": 120877,
+          "pid": "889",
+          "tid": "889",
+          "name": "step[EXTEND bs=1 toks=8192 c_sq=8192 c_sqsq=67108864 c_sqsk=67108864 c_sk=8192]",
+          "ts_us": 353047118145.491,
+          "duration_us": 281297.602
+        },
+        {
+          "event_index": 141010,
+          "pid": "889",
+          "tid": "889",
+          "name": "step[EXTEND bs=1 toks=8192 c_sq=8192 c_sqsq=67108864 c_sqsk=67108864 c_sk=8192]",
+          "ts_us": 353047414742.705,
+          "duration_us": 273201.655
+        }
+      ],
+      "CPU_step_count": 8
+    },
+    {
+      "rank": 4,
+      "source_path": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529/profiles/deepseek-sg520-context9218-193529-deepseek-sg520-context9218-193529-TP-4-EXTEND.trace.json.gz",
+      "source_sha256": "899f805f5c678f800cb9f0b969aaf240fa22c00e20eddb4dfc1d382c0ab842f3",
+      "CPU_step_annotations": [
+        {
+          "event_index": 28,
+          "pid": "890",
+          "tid": "890",
+          "name": "step[EXTEND bs=1 toks=8192 c_sq=8192 c_sqsq=67108864 c_sqsk=67108864 c_sk=8192]",
+          "ts_us": 353045429747.477,
+          "duration_us": 223120.71
+        },
+        {
+          "event_index": 20212,
+          "pid": "890",
+          "tid": "890",
+          "name": "step[EXTEND bs=1 toks=8192 c_sq=8192 c_sqsq=67108864 c_sqsk=67108864 c_sk=8192]",
+          "ts_us": 353045681236.64,
+          "duration_us": 267375.138
+        },
+        {
+          "event_index": 40345,
+          "pid": "890",
+          "tid": "890",
+          "name": "step[EXTEND bs=1 toks=8192 c_sq=8192 c_sqsq=67108864 c_sqsk=67108864 c_sk=8192]",
+          "ts_us": 353045956748.285,
+          "duration_us": 280604.408
+        },
+        {
+          "event_index": 60478,
+          "pid": "890",
+          "tid": "890",
+          "name": "step[EXTEND bs=1 toks=8192 c_sq=8192 c_sqsq=67108864 c_sqsk=67108864 c_sk=8192]",
+          "ts_us": 353046245756.687,
+          "duration_us": 282433.633
+        },
+        {
+          "event_index": 80611,
+          "pid": "890",
+          "tid": "890",
+          "name": "step[EXTEND bs=1 toks=8192 c_sq=8192 c_sqsq=67108864 c_sqsk=67108864 c_sk=8192]",
+          "ts_us": 353046536488.324,
+          "duration_us": 280821.687
+        },
+        {
+          "event_index": 100744,
+          "pid": "890",
+          "tid": "890",
+          "name": "step[EXTEND bs=1 toks=8192 c_sq=8192 c_sqsq=67108864 c_sqsk=67108864 c_sk=8192]",
+          "ts_us": 353046825844.594,
+          "duration_us": 280222.602
+        },
+        {
+          "event_index": 120877,
+          "pid": "890",
+          "tid": "890",
+          "name": "step[EXTEND bs=1 toks=8192 c_sq=8192 c_sqsq=67108864 c_sqsk=67108864 c_sk=8192]",
+          "ts_us": 353047114520.05,
+          "duration_us": 288731.545
+        },
+        {
+          "event_index": 141010,
+          "pid": "890",
+          "tid": "890",
+          "name": "step[EXTEND bs=1 toks=8192 c_sq=8192 c_sqsq=67108864 c_sqsk=67108864 c_sk=8192]",
+          "ts_us": 353047414487.283,
+          "duration_us": 279365.17
+        }
+      ],
+      "CPU_step_count": 8
+    },
+    {
+      "rank": 5,
+      "source_path": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529/profiles/deepseek-sg520-context9218-193529-deepseek-sg520-context9218-193529-TP-5-EXTEND.trace.json.gz",
+      "source_sha256": "47216dc6196e92b3b7a689e745b1388c87f226bf4a29ea35670b121f6f232113",
+      "CPU_step_annotations": [
+        {
+          "event_index": 28,
+          "pid": "891",
+          "tid": "891",
+          "name": "step[EXTEND bs=1 toks=8192 c_sq=8192 c_sqsq=67108864 c_sqsk=67108864 c_sk=8192]",
+          "ts_us": 353045429956.62,
+          "duration_us": 229151.025
+        },
+        {
+          "event_index": 20212,
+          "pid": "891",
+          "tid": "891",
+          "name": "step[EXTEND bs=1 toks=8192 c_sq=8192 c_sqsq=67108864 c_sqsk=67108864 c_sk=8192]",
+          "ts_us": 353045685501.596,
+          "duration_us": 263680.682
+        },
+        {
+          "event_index": 40345,
+          "pid": "891",
+          "tid": "891",
+          "name": "step[EXTEND bs=1 toks=8192 c_sq=8192 c_sqsq=67108864 c_sqsk=67108864 c_sk=8192]",
+          "ts_us": 353045958554.003,
+          "duration_us": 278598.697
+        },
+        {
+          "event_index": 60478,
+          "pid": "891",
+          "tid": "891",
+          "name": "step[EXTEND bs=1 toks=8192 c_sq=8192 c_sqsq=67108864 c_sqsk=67108864 c_sk=8192]",
+          "ts_us": 353046248035.582,
+          "duration_us": 279771.876
+        },
+        {
+          "event_index": 80611,
+          "pid": "891",
+          "tid": "891",
+          "name": "step[EXTEND bs=1 toks=8192 c_sq=8192 c_sqsq=67108864 c_sqsk=67108864 c_sk=8192]",
+          "ts_us": 353046539436.233,
+          "duration_us": 280932.205
+        },
+        {
+          "event_index": 100744,
+          "pid": "891",
+          "tid": "891",
+          "name": "step[EXTEND bs=1 toks=8192 c_sq=8192 c_sqsq=67108864 c_sqsk=67108864 c_sk=8192]",
+          "ts_us": 353046829444.566,
+          "duration_us": 276475.356
+        },
+        {
+          "event_index": 120877,
+          "pid": "891",
+          "tid": "891",
+          "name": "step[EXTEND bs=1 toks=8192 c_sq=8192 c_sqsq=67108864 c_sqsk=67108864 c_sk=8192]",
+          "ts_us": 353047118666.507,
+          "duration_us": 286561.835
+        },
+        {
+          "event_index": 141010,
+          "pid": "891",
+          "tid": "891",
+          "name": "step[EXTEND bs=1 toks=8192 c_sq=8192 c_sqsq=67108864 c_sqsk=67108864 c_sk=8192]",
+          "ts_us": 353047415189.302,
+          "duration_us": 276855.092
+        }
+      ],
+      "CPU_step_count": 8
+    },
+    {
+      "rank": 6,
+      "source_path": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529/profiles/deepseek-sg520-context9218-193529-deepseek-sg520-context9218-193529-TP-6-EXTEND.trace.json.gz",
+      "source_sha256": "448d184a54ad8220d5867658f793b645fe5eb08cb9882f73ecc53deef45df5d9",
+      "CPU_step_annotations": [
+        {
+          "event_index": 28,
+          "pid": "892",
+          "tid": "892",
+          "name": "step[EXTEND bs=1 toks=8192 c_sq=8192 c_sqsq=67108864 c_sqsk=67108864 c_sk=8192]",
+          "ts_us": 353045429923.259,
+          "duration_us": 226819.726
+        },
+        {
+          "event_index": 20212,
+          "pid": "892",
+          "tid": "892",
+          "name": "step[EXTEND bs=1 toks=8192 c_sq=8192 c_sqsq=67108864 c_sqsk=67108864 c_sk=8192]",
+          "ts_us": 353045682340.823,
+          "duration_us": 266105.13
+        },
+        {
+          "event_index": 40345,
+          "pid": "892",
+          "tid": "892",
+          "name": "step[EXTEND bs=1 toks=8192 c_sq=8192 c_sqsq=67108864 c_sqsk=67108864 c_sk=8192]",
+          "ts_us": 353045958286.514,
+          "duration_us": 277421.447
+        },
+        {
+          "event_index": 60478,
+          "pid": "892",
+          "tid": "892",
+          "name": "step[EXTEND bs=1 toks=8192 c_sq=8192 c_sqsq=67108864 c_sqsk=67108864 c_sk=8192]",
+          "ts_us": 353046247480.955,
+          "duration_us": 279728.676
+        },
+        {
+          "event_index": 80611,
+          "pid": "892",
+          "tid": "892",
+          "name": "step[EXTEND bs=1 toks=8192 c_sq=8192 c_sqsq=67108864 c_sqsk=67108864 c_sk=8192]",
+          "ts_us": 353046538030.113,
+          "duration_us": 279091.363
+        },
+        {
+          "event_index": 100744,
+          "pid": "892",
+          "tid": "892",
+          "name": "step[EXTEND bs=1 toks=8192 c_sq=8192 c_sqsq=67108864 c_sqsk=67108864 c_sk=8192]",
+          "ts_us": 353046825866.277,
+          "duration_us": 279813.356
+        },
+        {
+          "event_index": 120877,
+          "pid": "892",
+          "tid": "892",
+          "name": "step[EXTEND bs=1 toks=8192 c_sq=8192 c_sqsq=67108864 c_sqsk=67108864 c_sk=8192]",
+          "ts_us": 353047125341.675,
+          "duration_us": 278454.768
+        },
+        {
+          "event_index": 141010,
+          "pid": "892",
+          "tid": "892",
+          "name": "step[EXTEND bs=1 toks=8192 c_sq=8192 c_sqsq=67108864 c_sqsk=67108864 c_sk=8192]",
+          "ts_us": 353047414633.025,
+          "duration_us": 278355.879
+        }
+      ],
+      "CPU_step_count": 8
+    },
+    {
+      "rank": 7,
+      "source_path": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529/profiles/deepseek-sg520-context9218-193529-deepseek-sg520-context9218-193529-TP-7-EXTEND.trace.json.gz",
+      "source_sha256": "2abc8bb09ab59b8d96d4a035877e4496ee276c64e898912768b0674299524ad5",
+      "CPU_step_annotations": [
+        {
+          "event_index": 29,
+          "pid": "893",
+          "tid": "893",
+          "name": "step[EXTEND bs=1 toks=8192 c_sq=8192 c_sqsq=67108864 c_sqsk=67108864 c_sk=8192]",
+          "ts_us": 353045430751.891,
+          "duration_us": 223641.685
+        },
+        {
+          "event_index": 20213,
+          "pid": "893",
+          "tid": "893",
+          "name": "step[EXTEND bs=1 toks=8192 c_sq=8192 c_sqsq=67108864 c_sqsk=67108864 c_sk=8192]",
+          "ts_us": 353045684305.985,
+          "duration_us": 265053.049
+        },
+        {
+          "event_index": 40346,
+          "pid": "893",
+          "tid": "893",
+          "name": "step[EXTEND bs=1 toks=8192 c_sq=8192 c_sqsq=67108864 c_sqsk=67108864 c_sk=8192]",
+          "ts_us": 353045958378.583,
+          "duration_us": 279985.744
+        },
+        {
+          "event_index": 60479,
+          "pid": "893",
+          "tid": "893",
+          "name": "step[EXTEND bs=1 toks=8192 c_sq=8192 c_sqsq=67108864 c_sqsk=67108864 c_sk=8192]",
+          "ts_us": 353046247776.402,
+          "duration_us": 280206.442
+        },
+        {
+          "event_index": 80612,
+          "pid": "893",
+          "tid": "893",
+          "name": "step[EXTEND bs=1 toks=8192 c_sq=8192 c_sqsq=67108864 c_sqsk=67108864 c_sk=8192]",
+          "ts_us": 353046539338.671,
+          "duration_us": 276424.227
+        },
+        {
+          "event_index": 100745,
+          "pid": "893",
+          "tid": "893",
+          "name": "step[EXTEND bs=1 toks=8192 c_sq=8192 c_sqsq=67108864 c_sqsk=67108864 c_sk=8192]",
+          "ts_us": 353046829565.683,
+          "duration_us": 272799.48
+        },
+        {
+          "event_index": 120878,
+          "pid": "893",
+          "tid": "893",
+          "name": "step[EXTEND bs=1 toks=8192 c_sq=8192 c_sqsq=67108864 c_sqsk=67108864 c_sk=8192]",
+          "ts_us": 353047118448.327,
+          "duration_us": 280523.92
+        },
+        {
+          "event_index": 141011,
+          "pid": "893",
+          "tid": "893",
+          "name": "step[EXTEND bs=1 toks=8192 c_sq=8192 c_sqsq=67108864 c_sqsk=67108864 c_sk=8192]",
+          "ts_us": 353047415064.261,
+          "duration_us": 273071.807
+        }
+      ],
+      "CPU_step_count": 8
+    }
+  ],
+  "separate_e8m0_group32_cases": [
+    {
+      "rank": 0,
+      "operator": "aiter::dynamic_per_group_scaled_quant",
+      "input_metadata": {
+        "Input Dims": [
+          [
+            8192,
+            7168
+          ],
+          [
+            8192,
+            7168
+          ],
+          [
+            8192,
+            224
+          ],
+          [],
+          [],
+          [],
+          []
+        ],
+        "Input type": [
+          "c10::Float8_e4m3fn",
+          "c10::BFloat16",
+          "c10::Float8_e8m0fnu",
+          "Scalar",
+          "Scalar",
+          "",
+          "Scalar"
+        ],
+        "Input Strides": [
+          [
+            7168,
+            1
+          ],
+          [
+            7168,
+            1
+          ],
+          [
+            224,
+            1
+          ],
+          [],
+          [],
+          [],
+          []
+        ],
+        "Concrete Inputs": [
+          "",
+          "",
+          "",
+          "32",
+          "False",
+          "",
+          "1"
+        ]
+      },
+      "occurrences": 488,
+      "example_event_indices": [
+        529,
+        796,
+        1125
+      ],
+      "linked_kernel_occurrences": 488
+    },
+    {
+      "rank": 1,
+      "operator": "aiter::dynamic_per_group_scaled_quant",
+      "input_metadata": {
+        "Input Dims": [
+          [
+            8192,
+            7168
+          ],
+          [
+            8192,
+            7168
+          ],
+          [
+            8192,
+            224
+          ],
+          [],
+          [],
+          [],
+          []
+        ],
+        "Input type": [
+          "c10::Float8_e4m3fn",
+          "c10::BFloat16",
+          "c10::Float8_e8m0fnu",
+          "Scalar",
+          "Scalar",
+          "",
+          "Scalar"
+        ],
+        "Input Strides": [
+          [
+            7168,
+            1
+          ],
+          [
+            7168,
+            1
+          ],
+          [
+            224,
+            1
+          ],
+          [],
+          [],
+          [],
+          []
+        ],
+        "Concrete Inputs": [
+          "",
+          "",
+          "",
+          "32",
+          "False",
+          "",
+          "1"
+        ]
+      },
+      "occurrences": 488,
+      "example_event_indices": [
+        529,
+        796,
+        1125
+      ],
+      "linked_kernel_occurrences": 488
+    },
+    {
+      "rank": 2,
+      "operator": "aiter::dynamic_per_group_scaled_quant",
+      "input_metadata": {
+        "Input Dims": [
+          [
+            8192,
+            7168
+          ],
+          [
+            8192,
+            7168
+          ],
+          [
+            8192,
+            224
+          ],
+          [],
+          [],
+          [],
+          []
+        ],
+        "Input type": [
+          "c10::Float8_e4m3fn",
+          "c10::BFloat16",
+          "c10::Float8_e8m0fnu",
+          "Scalar",
+          "Scalar",
+          "",
+          "Scalar"
+        ],
+        "Input Strides": [
+          [
+            7168,
+            1
+          ],
+          [
+            7168,
+            1
+          ],
+          [
+            224,
+            1
+          ],
+          [],
+          [],
+          [],
+          []
+        ],
+        "Concrete Inputs": [
+          "",
+          "",
+          "",
+          "32",
+          "False",
+          "",
+          "1"
+        ]
+      },
+      "occurrences": 488,
+      "example_event_indices": [
+        529,
+        796,
+        1125
+      ],
+      "linked_kernel_occurrences": 488
+    },
+    {
+      "rank": 3,
+      "operator": "aiter::dynamic_per_group_scaled_quant",
+      "input_metadata": {
+        "Input Dims": [
+          [
+            8192,
+            7168
+          ],
+          [
+            8192,
+            7168
+          ],
+          [
+            8192,
+            224
+          ],
+          [],
+          [],
+          [],
+          []
+        ],
+        "Input type": [
+          "c10::Float8_e4m3fn",
+          "c10::BFloat16",
+          "c10::Float8_e8m0fnu",
+          "Scalar",
+          "Scalar",
+          "",
+          "Scalar"
+        ],
+        "Input Strides": [
+          [
+            7168,
+            1
+          ],
+          [
+            7168,
+            1
+          ],
+          [
+            224,
+            1
+          ],
+          [],
+          [],
+          [],
+          []
+        ],
+        "Concrete Inputs": [
+          "",
+          "",
+          "",
+          "32",
+          "False",
+          "",
+          "1"
+        ]
+      },
+      "occurrences": 488,
+      "example_event_indices": [
+        528,
+        795,
+        1124
+      ],
+      "linked_kernel_occurrences": 488
+    },
+    {
+      "rank": 4,
+      "operator": "aiter::dynamic_per_group_scaled_quant",
+      "input_metadata": {
+        "Input Dims": [
+          [
+            8192,
+            7168
+          ],
+          [
+            8192,
+            7168
+          ],
+          [
+            8192,
+            224
+          ],
+          [],
+          [],
+          [],
+          []
+        ],
+        "Input type": [
+          "c10::Float8_e4m3fn",
+          "c10::BFloat16",
+          "c10::Float8_e8m0fnu",
+          "Scalar",
+          "Scalar",
+          "",
+          "Scalar"
+        ],
+        "Input Strides": [
+          [
+            7168,
+            1
+          ],
+          [
+            7168,
+            1
+          ],
+          [
+            224,
+            1
+          ],
+          [],
+          [],
+          [],
+          []
+        ],
+        "Concrete Inputs": [
+          "",
+          "",
+          "",
+          "32",
+          "False",
+          "",
+          "1"
+        ]
+      },
+      "occurrences": 488,
+      "example_event_indices": [
+        528,
+        795,
+        1124
+      ],
+      "linked_kernel_occurrences": 488
+    },
+    {
+      "rank": 5,
+      "operator": "aiter::dynamic_per_group_scaled_quant",
+      "input_metadata": {
+        "Input Dims": [
+          [
+            8192,
+            7168
+          ],
+          [
+            8192,
+            7168
+          ],
+          [
+            8192,
+            224
+          ],
+          [],
+          [],
+          [],
+          []
+        ],
+        "Input type": [
+          "c10::Float8_e4m3fn",
+          "c10::BFloat16",
+          "c10::Float8_e8m0fnu",
+          "Scalar",
+          "Scalar",
+          "",
+          "Scalar"
+        ],
+        "Input Strides": [
+          [
+            7168,
+            1
+          ],
+          [
+            7168,
+            1
+          ],
+          [
+            224,
+            1
+          ],
+          [],
+          [],
+          [],
+          []
+        ],
+        "Concrete Inputs": [
+          "",
+          "",
+          "",
+          "32",
+          "False",
+          "",
+          "1"
+        ]
+      },
+      "occurrences": 488,
+      "example_event_indices": [
+        528,
+        795,
+        1124
+      ],
+      "linked_kernel_occurrences": 488
+    },
+    {
+      "rank": 6,
+      "operator": "aiter::dynamic_per_group_scaled_quant",
+      "input_metadata": {
+        "Input Dims": [
+          [
+            8192,
+            7168
+          ],
+          [
+            8192,
+            7168
+          ],
+          [
+            8192,
+            224
+          ],
+          [],
+          [],
+          [],
+          []
+        ],
+        "Input type": [
+          "c10::Float8_e4m3fn",
+          "c10::BFloat16",
+          "c10::Float8_e8m0fnu",
+          "Scalar",
+          "Scalar",
+          "",
+          "Scalar"
+        ],
+        "Input Strides": [
+          [
+            7168,
+            1
+          ],
+          [
+            7168,
+            1
+          ],
+          [
+            224,
+            1
+          ],
+          [],
+          [],
+          [],
+          []
+        ],
+        "Concrete Inputs": [
+          "",
+          "",
+          "",
+          "32",
+          "False",
+          "",
+          "1"
+        ]
+      },
+      "occurrences": 488,
+      "example_event_indices": [
+        528,
+        795,
+        1124
+      ],
+      "linked_kernel_occurrences": 488
+    },
+    {
+      "rank": 7,
+      "operator": "aiter::dynamic_per_group_scaled_quant",
+      "input_metadata": {
+        "Input Dims": [
+          [
+            8192,
+            7168
+          ],
+          [
+            8192,
+            7168
+          ],
+          [
+            8192,
+            224
+          ],
+          [],
+          [],
+          [],
+          []
+        ],
+        "Input type": [
+          "c10::Float8_e4m3fn",
+          "c10::BFloat16",
+          "c10::Float8_e8m0fnu",
+          "Scalar",
+          "Scalar",
+          "",
+          "Scalar"
+        ],
+        "Input Strides": [
+          [
+            7168,
+            1
+          ],
+          [
+            7168,
+            1
+          ],
+          [
+            224,
+            1
+          ],
+          [],
+          [],
+          [],
+          []
+        ],
+        "Concrete Inputs": [
+          "",
+          "",
+          "",
+          "32",
+          "False",
+          "",
+          "1"
+        ]
+      },
+      "occurrences": 488,
+      "example_event_indices": [
+        529,
+        796,
+        1125
+      ],
+      "linked_kernel_occurrences": 488
+    }
+  ],
+  "separate_case_note": "The group32 e8m0-scale kernel family remains in the inventory; it must not be merged into the group128 FP32-scale task.",
+  "decode_shape_limit": "212 quant GPU occurrences per rank have runtime-only graph attribution and no per_group quant CPU argument events in the decode trace. Do not invent decode shapes from prefill.",
+  "kernel_tensor_contract_complete": false,
+  "live_values_or_reference_outputs_present": false
+}

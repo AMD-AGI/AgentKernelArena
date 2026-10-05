@@ -1,10 +1,34 @@
 {
   "schema_version": 1,
   "updated_date": "2026-10-05",
-  "description": "User-supplied current workload image targets. Registry availability is verified; compatibility of the restored head-kernel tasks is not GPU-validated.",
+  "description": "Runtime image catalog and scoped refresh policy. New refresh and validation for the four included models use only SGLang 0.5.20; restored captures remain historical and GPU compatibility is unverified.",
   "primary_sglang": "sglang_v0520",
   "alternate_sglang": "sglang_v0519",
   "current_vllm": "vllm_v0290",
+  "refresh_scope": {
+    "operations": [
+      "refresh",
+      "new_validation"
+    ],
+    "models": [
+      "minimax-m3",
+      "kimi-k3",
+      "deepseek-v4-pro",
+      "glm-5.3-flash"
+    ],
+    "excluded_models": [
+      "qwen3.8-2.4t"
+    ],
+    "framework": "sglang",
+    "framework_version": "0.5.20",
+    "target": "sglang_v0520",
+    "manifest_digest": "sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
+    "latest_matching_evidence_only": true,
+    "allow_alternate_targets": false,
+    "status": "pending_refreshed_evidence",
+    "task_evidence": "historical_captures_not_refreshed",
+    "gpu_validation": "not_run"
+  },
   "images": {
     "sglang_v0520": {
       "tag": "docker.io/lmsysorg/sglang:v0.5.20-rocm724-mi35x",
@@ -57,7 +81,6 @@
       "capture_image": "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.17-rocm720-mi35x-profilerfix",
       "framework": "sglang",
       "primary_target": "sglang_v0520",
-      "alternate_target": "sglang_v0519",
       "task_compatibility": "not_validated",
       "environment_and_setup_catalog": "tools/headkernel-public-runtimes.json",
       "environment_and_setup_task_key": "headkernel/deepseek-v4-pro__dsa_sparse_mla_attn"
@@ -68,7 +91,6 @@
       "capture_image": "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.17-rocm720-mi35x-profilerfix",
       "framework": "sglang",
       "primary_target": "sglang_v0520",
-      "alternate_target": "sglang_v0519",
       "task_compatibility": "not_validated",
       "environment_and_setup_catalog": "tools/headkernel-public-runtimes.json",
       "environment_and_setup_task_key": "headkernel/deepseek-v4-pro__moe_stage1_grouped_gemm_silu_flydsl"
@@ -79,7 +101,6 @@
       "capture_image": "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.17-rocm720-mi35x-profilerfix",
       "framework": "sglang",
       "primary_target": "sglang_v0520",
-      "alternate_target": "sglang_v0519",
       "task_compatibility": "not_validated",
       "environment_and_setup_catalog": "tools/headkernel-public-runtimes.json",
       "environment_and_setup_task_key": "headkernel/deepseek-v4-pro__moe_stage2_down_proj_reduce_opus_a8w4"
@@ -90,7 +111,6 @@
       "capture_image": "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.17-rocm720-mi35x-profilerfix",
       "framework": "sglang",
       "primary_target": "sglang_v0520",
-      "alternate_target": "sglang_v0519",
       "task_compatibility": "not_validated",
       "environment_and_setup_catalog": "tools/headkernel-public-runtimes.json",
       "environment_and_setup_task_key": "headkernel/glm-5.3-flash__elementwise_copy_cluster"
@@ -101,7 +121,6 @@
       "capture_image": "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.17-rocm720-mi35x-profilerfix",
       "framework": "sglang",
       "primary_target": "sglang_v0520",
-      "alternate_target": "sglang_v0519",
       "task_compatibility": "not_validated",
       "environment_and_setup_catalog": "tools/headkernel-public-runtimes.json",
       "environment_and_setup_task_key": "headkernel/minimax-m3__decode_score_kernel"
@@ -112,7 +131,6 @@
       "capture_image": "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.17-rocm720-mi35x-profilerfix",
       "framework": "sglang",
       "primary_target": "sglang_v0520",
-      "alternate_target": "sglang_v0519",
       "task_compatibility": "not_validated",
       "environment_and_setup_catalog": "tools/headkernel-public-runtimes.json",
       "environment_and_setup_task_key": "headkernel/minimax-m3__gqa_share_sparse_decode_kernel"
@@ -123,7 +141,6 @@
       "capture_image": "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.17-rocm720-mi35x-profilerfix",
       "framework": "sglang",
       "primary_target": "sglang_v0520",
-      "alternate_target": "sglang_v0519",
       "task_compatibility": "not_validated",
       "environment_and_setup_catalog": "tools/headkernel-public-runtimes.json",
       "environment_and_setup_task_key": "headkernel/minimax-m3__gqa_share_sparse_fwd_kernel"
@@ -134,7 +151,6 @@
       "capture_image": "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.18-rocm720-mi35x-profilerfix",
       "framework": "sglang",
       "primary_target": "sglang_v0520",
-      "alternate_target": "sglang_v0519",
       "task_compatibility": "not_validated",
       "environment_and_setup_catalog": "tools/headkernel-public-runtimes.json",
       "environment_and_setup_task_key": "headkernel/glm-5.3-flash__fused_moe_kernel"
@@ -200,7 +216,6 @@
       "capture_image": "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang-rocm-k3:rocm720-mi35x-k3-20260727-tl312-08011830",
       "framework": "sglang",
       "primary_target": "sglang_v0520",
-      "alternate_target": "sglang_v0519",
       "task_compatibility": "not_validated",
       "environment_and_setup_catalog": "tools/headkernel-public-runtimes.json",
       "environment_and_setup_task_key": "headkernel/kimi-k3__fwd_grouped_kernel_stage1"
@@ -211,7 +226,6 @@
       "capture_image": "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang-rocm-k3:rocm720-mi35x-k3-20260727-tl312-08011830",
       "framework": "sglang",
       "primary_target": "sglang_v0520",
-      "alternate_target": "sglang_v0519",
       "task_compatibility": "not_validated",
       "environment_and_setup_catalog": "tools/headkernel-public-runtimes.json",
       "environment_and_setup_task_key": "headkernel/kimi-k3__moe_gemm1_stage1"
@@ -222,7 +236,6 @@
       "capture_image": "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang-rocm-k3:rocm720-mi35x-k3-20260727-tl312-08011830",
       "framework": "sglang",
       "primary_target": "sglang_v0520",
-      "alternate_target": "sglang_v0519",
       "task_compatibility": "not_validated",
       "environment_and_setup_catalog": "tools/headkernel-public-runtimes.json",
       "environment_and_setup_task_key": "headkernel/kimi-k3__moe_gemm2_stage2"
