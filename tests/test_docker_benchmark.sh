@@ -265,10 +265,21 @@ assert_cache_args_present "-worker_3" "${args[@]}"
 mapfile -t args < <(run_shell_args AKA_GPU_ARCH=gfx950 AKA_DOCKER_IMAGE="$PINNED_GFX950_IMAGE")
 assert_cache_args_present "" "${args[@]}"
 
-# Old and custom gfx950 images retain their existing Docker arguments.
+# Old and custom gfx950 images do not receive the v0.5.14-specific overrides.
 mapfile -t args < <(run_shell_args AKA_GPU_ARCH=gfx950 AKA_DOCKER_IMAGE="$OLD_GFX950_IMAGE")
 assert_cache_args_absent "${args[@]}"
 mapfile -t args < <(run_shell_args AKA_GPU_ARCH=gfx950 AKA_DOCKER_IMAGE_GFX950=example.invalid/custom:latest)
+assert_cache_args_absent "${args[@]}"
+
+# AITER can seed its normal user cache in custom runtimes even when the sparse
+# auth mounts leave HOME's parent root-owned. Keep native module lookup intact.
+SG520_IMAGE="docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96"
+mapfile -t args < <(run_shell_args AKA_GPU_ARCH=gfx950 AKA_DOCKER_IMAGE="$SG520_IMAGE")
+assert_has "$TEST_HOME/.aiter:rw,exec,uid=$(id -u),gid=$(id -g),mode=0700" "${args[@]}"
+assert_cache_args_absent "${args[@]}"
+mapfile -t args < <(run_shell_args AKA_GPU_ARCH=gfx950 AKA_DOCKER_IMAGE="$SG520_IMAGE" AKA_CONTAINER_HOME=/tmp/aka-isolated-worker)
+assert_has "/tmp/aka-isolated-worker/.aiter:rw,exec,uid=$(id -u),gid=$(id -g),mode=0700" "${args[@]}"
+assert_not_has "$TEST_HOME/.aiter:rw,exec,uid=$(id -u),gid=$(id -g),mode=0700" "${args[@]}"
 assert_cache_args_absent "${args[@]}"
 
 # The unchanged gfx942 default does not receive the gfx950-only configuration.

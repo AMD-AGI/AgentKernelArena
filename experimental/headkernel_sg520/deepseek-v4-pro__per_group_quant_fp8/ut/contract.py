@@ -158,16 +158,14 @@ def performance_report(manifest, cases, results, identity):
             "native_builds": {leg: results[leg]["native_build"] for leg in LEGS},
             "worker_pids": {leg: results[leg]["pid"] for leg in LEGS},
             "weight_sum_per_rank": weight_sum, "weighted_mean_ms": weighted, "paired_cases": paired,
-            # The framework averages per-case speedups without frequency
-            # weights. One aggregate score case preserves observed-call weights;
-            # all three constituent measurements remain mandatory above.
-            "test_cases": [{"test_case_id": "observed_prefill_weighted_mean",
-                            "execution_time_ms": weighted["candidate_native"],
-                            "params": {"case_ids": [case["case_id"] for case in cases],
-                                       "shapes": [case["shape"] for case in cases],
-                                       "trace_call_counts": [case["trace_call_count"] for case in cases]},
-                            "metadata": {"benchmark_method": "cuda_graph",
-                                         "aggregation": "observed_call_weighted_mean"}}]}
+            # Arena scoring uses the arithmetic mean of matched per-case
+            # speedup ratios. Observed-call-weighted timings are diagnostics.
+            "test_cases": [{"test_case_id": row["case_id"],
+                            "execution_time_ms": row["timings"]["candidate_native"]["mean_ms"],
+                            "shape": row["shape"],
+                            "params": {"trace_call_count": row["trace_call_count"]},
+                            "metadata": {"benchmark_method": "cuda_graph"}}
+                           for row in paired]}
 
 
 def write_report(path, payload):

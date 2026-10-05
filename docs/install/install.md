@@ -200,6 +200,14 @@ the user's existing home directory for agent installation/authentication mounts.
 This preserves the scheduler process's `HOME`; when unset, the runner continues
 to use the caller's `HOME`. Keep the intended agent CLI on `PATH` as usual.
 
+Each runtime container receives a private writable tmpfs at its existing
+`HOME/.aiter`, owned by the actual container UID/GID with mode `0700`. This lets
+AITER populate its normal cache from the image before imports complete, even
+when only authentication subdirectories are mounted beneath `HOME`. It does
+not redirect `AITER_JIT_DIR` or change precompiled module lookup. Native code
+loading is enabled on this cache mount; existing image-specific cache overrides
+remain scoped to their original runtimes.
+
 Allocation wrappers can set `AKA_DOCKER_LABEL_FILE` to a readable host file in
 Docker's `key=value` label-file format. The runner applies it to every standard
 preflight and worker container, allowing the wrapper to track and retire only

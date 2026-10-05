@@ -188,7 +188,7 @@ def test_both_correctness_seeds_are_mandatory(tmp_path):
         CONTRACT.validate_worker(payload, request, 12345, CASES)
 
 
-def test_score_uses_observed_weights_and_keeps_every_constituent(tmp_path):
+def test_score_has_all_three_cases_and_weights_are_diagnostic(tmp_path):
     _, payload = result_fixture(tmp_path)
     for row, timing in zip(payload["results"], [1.0, 10.0, 100.0]):
         row["timings"] = CONTRACT.sample_statistics([timing] * 100)
@@ -196,10 +196,16 @@ def test_score_uses_observed_weights_and_keeps_every_constituent(tmp_path):
     report = CONTRACT.performance_report(MANIFEST, CASES, results, {})
     assert len(report["paired_cases"]) == 3
     assert report["weight_sum_per_rank"] == 2184
-    assert len(report["test_cases"]) == 1
-    score_case = report["test_cases"][0]
-    assert score_case["execution_time_ms"] == (728 + 488 * 10 + 968 * 100) / 2184
-    assert score_case["params"]["trace_call_counts"] == [728, 488, 968]
+    score_cases = report["test_cases"]
+    assert len(score_cases) == 3
+    assert [case["test_case_id"] for case in score_cases] == [case["case_id"] for case in CASES]
+    assert [case["shape"] for case in score_cases] == [case["shape"] for case in CASES]
+    assert [case["execution_time_ms"] for case in score_cases] == [1.0, 10.0, 100.0]
+    assert [case["params"]["trace_call_count"] for case in score_cases] == [728, 488, 968]
+    assert all(case["metadata"] == {"benchmark_method": "cuda_graph"} for case in score_cases)
+    assert report["weighted_mean_ms"] == {
+        leg: (728 + 488 * 10 + 968 * 100) / 2184 for leg in CONTRACT.LEGS
+    }
 
 
 def test_failed_benchmark_clears_stale_scoreable_report(tmp_path):

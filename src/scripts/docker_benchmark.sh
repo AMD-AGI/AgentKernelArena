@@ -1010,6 +1010,14 @@ build_docker_args() {
         -w "$CONTAINER_WORKDIR"
     )
 
+    # Only agent state is bind-mounted beneath HOME, so its parent may be
+    # root-owned. AITER initializes ~/.aiter during import and seeds it from
+    # the image's complete JIT directory. Supply a writable per-container cache
+    # without overriding AITER_JIT_DIR, which changes prebuilt module lookup.
+    docker_args+=(
+        --tmpfs "${container_home}/.aiter:rw,exec,uid=${HOST_UID},gid=${HOST_GID},mode=0700"
+    )
+
     # geak_v4's claude-agent-sdk is installed with `pip install --target` into
     # this host-mounted dir (see container_setup_geak). Only put it on
     # PYTHONPATH for GEAK runs so its dependency closure cannot shadow the
