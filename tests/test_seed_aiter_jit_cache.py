@@ -64,9 +64,25 @@ def test_root_initializer_has_no_gpu_network_or_agent_auth_mounts(image_package,
     assert "--network=none" in command and "--read-only" in command
     assert "--device" not in command and "--privileged" not in command
     assert "--cap-add=CHOWN" in command and "--cap-add=DAC_OVERRIDE" in command
+    assert "GOMAXPROCS=1" in command
     assert command.count("--mount") == 3
     assert not any("docker.sock" in part or ".codex" in part for part in command)
     assert image in command and proof["complete_parity"] is True
+
+
+def test_bulk_copy_bounds_go_threads_and_buffers(image_package, tmp_path, monkeypatch):
+    original = subprocess.run
+    monkeypatch.setenv("GOMAXPROCS", "128")
+
+    def run(command, **kwargs):
+        assert command[command.index("--transfers") + 1] == "64000"
+        assert "--progress" in command
+        assert command[command.index("--buffer-size") + 1] == "0"
+        assert kwargs["env"]["GOMAXPROCS"] == "1"
+        return original(command, **kwargs)
+
+    monkeypatch.setattr(subprocess, "run", run)
+    seed.copy_cache(image_package / "jit", tmp_path / "bounded-copy")
 
 
 def test_missing_file_after_transfer_rejects_cache_parity(image_package, tmp_path, monkeypatch):

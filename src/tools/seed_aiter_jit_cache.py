@@ -42,11 +42,13 @@ def copy_cache(source, destination, *, rclone="rclone", timeout=1800):
     destination = Path(destination)
     destination.mkdir()
     before = tree_manifest(source)
+    copy_env = os.environ.copy()
+    copy_env["GOMAXPROCS"] = "1"
     subprocess.run([
         rclone, "copy", str(Path(source).resolve()), str(destination.resolve()),
         "--transfers", "64000", "--progress", "--config", os.devnull,
-        "--links", "--create-empty-src-dirs",
-    ], check=True, timeout=timeout)
+        "--buffer-size", "0", "--links", "--create-empty-src-dirs",
+    ], check=True, timeout=timeout, env=copy_env)
     try:
         copied = tree_manifest(destination)
         unchanged = tree_manifest(source) == before
@@ -113,6 +115,7 @@ def seed_image_cache(image, destination, log_path, *, timeout=1800):
         "--mount", f"type=bind,src={helper},dst=/seed_helper.py,readonly",
         "--mount", f"type=bind,src={Path(rclone).resolve()},dst=/seed_rclone,readonly",
         "--tmpfs", "/tmp:rw,nosuid,mode=1777", "--env", "HOME=/tmp",
+        "--env", "GOMAXPROCS=1",
         "--entrypoint", "python3", image, "-I", "-B", "/seed_helper.py",
         "--initialize-inside", "--destination", "/seed", "--uid", str(os.getuid()),
         "--gid", str(os.getgid()), "--rclone", "/seed_rclone",
