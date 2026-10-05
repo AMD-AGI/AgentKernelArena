@@ -27,6 +27,7 @@ from __future__ import annotations
 import argparse
 import ast
 import json
+import math
 import os
 import re
 import subprocess
@@ -40,6 +41,7 @@ CONFIG = os.path.join(TASK_DIR, "config.yaml")
 
 WARMUP_ITERATIONS = 10
 BENCHMARK_ITERATIONS = 100
+EXIT_NO_RECORDS = 4
 
 
 # --------------------------------------------------------------------------- config
@@ -294,10 +296,39 @@ def candidate_overlay():
     return cand
 
 
+def _benchmark_cases(raw):
+    """Reject incomplete or invalid native reports before publishing any case."""
+    if not isinstance(raw, dict):
+        raise ValueError("benchmark report must be a mapping")
+    if raw.get("timer") != "cuda_event":
+        raise ValueError("benchmark report must use cuda_event timing")
+    rows = raw.get("cases")
+    if not isinstance(rows, list) or not rows:
+        raise ValueError("benchmark report has no cases")
+    if any(type(raw.get(key)) is not int or raw[key] != expected
+           for key, expected in (("warmup", WARMUP_ITERATIONS), ("iters", BENCHMARK_ITERATIONS))):
+        raise ValueError("benchmark report has incorrect iteration counts")
+    for row in rows:
+        if (not isinstance(row, dict) or not isinstance(row.get("sig"), str) or not row["sig"]
+                or not isinstance(row.get("params", {}), dict)
+                or any(type(row.get(key)) not in (int, float)
+                       or not math.isfinite(row[key]) or row[key] <= 0
+                       for key in ("mean_ms", "median_ms", "min_ms"))):
+            raise ValueError("benchmark report has an invalid case or timing")
+    return [{
+        "test_case_id": row["sig"], "execution_time_ms": row["mean_ms"],
+        "params": row.get("params", {}), "median_ms": row["median_ms"], "min_ms": row["min_ms"],
+    } for row in rows]
+
+
 def run_performance(cfg, timeout):
     bench = os.path.join(TASK_DIR, "scripts", "_bench.py")
     out_json = os.path.join(BUILD_DIR, "_bench_raw.json")
     os.makedirs(BUILD_DIR, exist_ok=True)
+    try:
+        os.unlink(out_json)
+    except FileNotFoundError:
+        pass
 
     env = dict(os.environ)
     env.setdefault("PYTHONUNBUFFERED", "1")
@@ -342,16 +373,19 @@ def run_performance(cfg, timeout):
     except subprocess.TimeoutExpired:
         proc = None
 
-    if proc is not None and proc.returncode == 0 and os.path.isfile(out_json):
-        raw = json.load(open(out_json))
-        cases = [{
-            "test_case_id": c["sig"],
-            "execution_time_ms": c["mean_ms"],
-            "params": c.get("params", {}),
-            "median_ms": c.get("median_ms"),
-            "min_ms": c.get("min_ms"),
-        } for c in raw.get("cases", [])]
-        if cases:
+    if proc is None:
+        reason = f"_bench.py timed out after {timeout}s"
+    else:
+        reason = (proc.stderr or proc.stdout or "").strip().splitlines()[-3:] or \
+                 [f"_bench.py exit={proc.returncode}"]
+    if proc is not None and proc.returncode == 0:
+        try:
+            with open(out_json) as fh:
+                raw = json.load(fh)
+            cases = _benchmark_cases(raw)
+        except (OSError, ValueError, TypeError) as exc:
+            reason = f"invalid benchmark report: {exc}"
+        else:
             write_report("performance_report.json", {
                 "status": "ok",
                 "methodology": (f"{WARMUP_ITERATIONS} warmup + {BENCHMARK_ITERATIONS} measured "
@@ -366,14 +400,17 @@ def run_performance(cfg, timeout):
             print(f"Performance: measured {len(cases)} test case(s), total time: {total:.4f} ms")
             return cases
 
-    # Fallback: this op's oracle carries no replayable argument records, so use
-    # the GEAK harness's own interleaved median-of-3 legs instead.
-    if proc is None:
-        reason = f"_bench.py timed out after {timeout}s"
-    else:
-        reason = (proc.stderr or proc.stdout or "").strip().splitlines()[-3:] or \
-                 [f"_bench.py exit={proc.returncode}"]
-    return run_performance_via_ut(cfg, timeout, overlay_note, reason)
+    # Only the explicit unsupported-replay result permits another timing path.
+    # Execution failures, partial reports and timeouts must remain failures.
+    if proc is not None and proc.returncode == EXIT_NO_RECORDS and not os.path.exists(out_json):
+        return run_performance_via_ut(cfg, timeout, overlay_note, reason)
+    write_report("performance_report.json", {
+        "status": "fail", "error": "native benchmark failed; no fallback is valid",
+        "failure_reason": reason, "candidate_overlay": overlay_note,
+        "fallback_used": False, "test_cases": [],
+    })
+    print("Performance: FAILED - native benchmark did not produce a valid measurement")
+    return []
 
 
 def _per_case_from_stdout(out):
@@ -433,9 +470,9 @@ def _per_case_from_result_json(started_at):
 
 
 TIMING_LINE = re.compile(
-    r"^timing:(?P<sig>\S+)\s+baseline_ms=(?P<baseline_ms>[\d.eE+-]+)\s+"
-    r"candidate_ms=(?P<optimized_ms>[\d.eE+-]+)"
-    r"(?:\s+speedup=(?P<speedup>[\d.eE+-]+))?(?:\s+reps=(?P<reps>\d+))?")
+    r"^timing:(?P<sig>\S+)\s+baseline_ms=(?P<baseline_ms>\S+)\s+"
+    r"candidate_ms=(?P<optimized_ms>\S+)"
+    r"(?:\s+speedup=(?P<speedup>\S+))?(?:\s+reps=(?P<reps>\S+))?$")
 
 
 def _per_case_from_json_block(out):
@@ -479,14 +516,25 @@ def _per_case_from_json_block(out):
 def _per_case_from_timing_lines(out):
     rows = []
     for line in out.splitlines():
-        m = TIMING_LINE.match(line.strip())
-        if not m:
+        line = line.strip()
+        if not line.startswith("timing:"):
             continue
+        m = TIMING_LINE.fullmatch(line)
+        if not m:
+            raise ValueError(f"malformed fallback timing row: {line}")
         d = m.groupdict()
+        try:
+            baseline = float(d["baseline_ms"])
+            candidate = float(d["optimized_ms"])
+            reps = None if d["reps"] in (None, "None") else int(d["reps"])
+        except ValueError as exc:
+            raise ValueError(f"invalid fallback timing row: {line}") from exc
+        if any(not math.isfinite(value) or value <= 0 for value in (baseline, candidate)):
+            raise ValueError(f"nonpositive or nonfinite fallback timing row: {line}")
         rows.append({"sig": d["sig"],
-                     "baseline_ms": float(d["baseline_ms"]),
-                     "optimized_ms": float(d["optimized_ms"]),
-                     "reps": int(d["reps"]) if d["reps"] else None})
+                     "baseline_ms": baseline,
+                     "optimized_ms": candidate,
+                     "reps": reps})
     return rows
 
 
@@ -520,25 +568,36 @@ def run_performance_via_ut(cfg, timeout, overlay_note, reason):
         print("Performance: FAILED - the unit test did not pass, so nothing was measured")
         return []
 
-    per_case, source = _per_case_from_stdout(out), "GEAK_PER_CASE marker"
-    if not per_case:
-        per_case, source = _per_case_from_json_block(out), "ut stdout per_case JSON block"
-    if not per_case:
-        per_case, source = _per_case_from_timing_lines(out), "ut stdout timing: lines"
-    if not per_case:
-        per_case, source = (_per_case_from_result_json(started_at),
-                            "ut/result.json timing.per_case (rewritten by this run)")
+    try:
+        # Validate every emitted timing row even when a structured representation
+        # is available. An invalid row cannot disappear behind another format.
+        timing_rows = _per_case_from_timing_lines(out)
+        per_case, source = _per_case_from_stdout(out), "GEAK_PER_CASE marker"
+        if not per_case:
+            per_case, source = _per_case_from_json_block(out), "ut stdout per_case JSON block"
+        if not per_case:
+            per_case, source = timing_rows, "ut stdout timing: lines"
+        if not per_case:
+            per_case, source = (_per_case_from_result_json(started_at),
+                                "ut/result.json timing.per_case (rewritten by this run)")
+    except (ValueError, TypeError, AttributeError) as exc:
+        write_report("performance_report.json", {
+            "status": "fail", "error": f"invalid fallback timing report: {exc}",
+            "candidate_overlay": overlay_note, "fallback_reason": reason,
+            "duration_seconds": round(secs, 2), "test_cases": [],
+        })
+        print("Performance: FAILED - invalid fallback timing report")
+        return []
     if not per_case:
         source = "none - the UT reported no per-case timing in any known form"
     # execution_time_ms is the CANDIDATE's time. Falling back to the baseline's
     # would credit an untimed candidate with the reference implementation's
-    # performance -- and a row carrying the -1.0 sentinel is not a measurement at
-    # all, so it is dropped rather than published. A report whose every row was a
-    # sentinel used to come out status "ok" with zero real numbers in it.
+    # performance. Invalid or missing candidate times invalidate the whole
+    # attempted result; no row-level unsupported-measurement contract exists.
     cases, unusable = [], 0
     for c in per_case:
-        t = c.get("optimized_ms")
-        if not (isinstance(t, (int, float)) and t > 0):
+        t = c.get("optimized_ms") if isinstance(c, dict) else None
+        if not (type(t) in (int, float) and math.isfinite(t) and t > 0):
             unusable += 1
             continue
         cases.append({
@@ -549,9 +608,12 @@ def run_performance_via_ut(cfg, timeout, overlay_note, reason):
             "reps": c.get("reps"),
             "speedup_spread": c.get("speedup_spread"),
         })
+    if unusable:
+        cases = []
 
     write_report("performance_report.json", {
         "status": "ok" if cases else "fail",
+        "error": "fallback contains invalid candidate measurements" if unusable else None,
         "methodology": ("GEAK measure_legs fallback: interleaved baseline/candidate pairs in fresh "
                         "subprocesses, median over up to 3 pairs, cuda-event device time with a "
                         "cache flush before each sample. Used because this op's oracle carries no "

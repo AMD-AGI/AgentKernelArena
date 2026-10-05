@@ -470,9 +470,9 @@ def _per_case_from_result_json(started_at):
 
 
 TIMING_LINE = re.compile(
-    r"^timing:(?P<sig>\S+)\s+baseline_ms=(?P<baseline_ms>[\d.eE+-]+)\s+"
-    r"candidate_ms=(?P<optimized_ms>[\d.eE+-]+)"
-    r"(?:\s+speedup=(?P<speedup>[\d.eE+-]+))?(?:\s+reps=(?P<reps>\d+))?")
+    r"^timing:(?P<sig>\S+)\s+baseline_ms=(?P<baseline_ms>\S+)\s+"
+    r"candidate_ms=(?P<optimized_ms>\S+)"
+    r"(?:\s+speedup=(?P<speedup>\S+))?(?:\s+reps=(?P<reps>\S+))?$")
 
 
 def _per_case_from_json_block(out):
@@ -516,14 +516,25 @@ def _per_case_from_json_block(out):
 def _per_case_from_timing_lines(out):
     rows = []
     for line in out.splitlines():
-        m = TIMING_LINE.match(line.strip())
-        if not m:
+        line = line.strip()
+        if not line.startswith("timing:"):
             continue
+        m = TIMING_LINE.fullmatch(line)
+        if not m:
+            raise ValueError(f"malformed fallback timing row: {line}")
         d = m.groupdict()
+        try:
+            baseline = float(d["baseline_ms"])
+            candidate = float(d["optimized_ms"])
+            reps = None if d["reps"] in (None, "None") else int(d["reps"])
+        except ValueError as exc:
+            raise ValueError(f"invalid fallback timing row: {line}") from exc
+        if any(not math.isfinite(value) or value <= 0 for value in (baseline, candidate)):
+            raise ValueError(f"nonpositive or nonfinite fallback timing row: {line}")
         rows.append({"sig": d["sig"],
-                     "baseline_ms": float(d["baseline_ms"]),
-                     "optimized_ms": float(d["optimized_ms"]),
-                     "reps": int(d["reps"]) if d["reps"] else None})
+                     "baseline_ms": baseline,
+                     "optimized_ms": candidate,
+                     "reps": reps})
     return rows
 
 
@@ -557,14 +568,26 @@ def run_performance_via_ut(cfg, timeout, overlay_note, reason):
         print("Performance: FAILED - the unit test did not pass, so nothing was measured")
         return []
 
-    per_case, source = _per_case_from_stdout(out), "GEAK_PER_CASE marker"
-    if not per_case:
-        per_case, source = _per_case_from_json_block(out), "ut stdout per_case JSON block"
-    if not per_case:
-        per_case, source = _per_case_from_timing_lines(out), "ut stdout timing: lines"
-    if not per_case:
-        per_case, source = (_per_case_from_result_json(started_at),
-                            "ut/result.json timing.per_case (rewritten by this run)")
+    try:
+        # Validate every emitted timing row even when a structured representation
+        # is available. An invalid row cannot disappear behind another format.
+        timing_rows = _per_case_from_timing_lines(out)
+        per_case, source = _per_case_from_stdout(out), "GEAK_PER_CASE marker"
+        if not per_case:
+            per_case, source = _per_case_from_json_block(out), "ut stdout per_case JSON block"
+        if not per_case:
+            per_case, source = timing_rows, "ut stdout timing: lines"
+        if not per_case:
+            per_case, source = (_per_case_from_result_json(started_at),
+                                "ut/result.json timing.per_case (rewritten by this run)")
+    except (ValueError, TypeError, AttributeError) as exc:
+        write_report("performance_report.json", {
+            "status": "fail", "error": f"invalid fallback timing report: {exc}",
+            "candidate_overlay": overlay_note, "fallback_reason": reason,
+            "duration_seconds": round(secs, 2), "test_cases": [],
+        })
+        print("Performance: FAILED - invalid fallback timing report")
+        return []
     if not per_case:
         source = "none - the UT reported no per-case timing in any known form"
     # execution_time_ms is the CANDIDATE's time. Falling back to the baseline's

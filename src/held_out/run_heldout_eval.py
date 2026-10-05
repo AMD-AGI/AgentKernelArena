@@ -149,6 +149,29 @@ def resolve_task_id(workspace_dir: Path) -> Optional[str]:
     return None
 
 
+def _restore_destination(workspace: Path, relative: str) -> Path:
+    """Keep restoration inside its copy, including through source aliases."""
+    root = workspace.resolve()
+    relative_path = Path(relative)
+    destination = root / relative_path
+    try:
+        safe = (
+            not relative_path.is_absolute()
+            and ".." not in relative_path.parts
+            and destination.resolve().is_relative_to(root)
+        )
+        component = root
+        for part in relative_path.parts:
+            component = component / part
+            if component.is_symlink() and component.readlink().is_absolute():
+                safe = False
+    except (OSError, RuntimeError):
+        safe = False
+    if not safe:
+        raise ValueError(f"Unsafe held-out kernel restoration path: {relative}")
+    return destination
+
+
 def _restore_original_kernel(
     orig_workspace: Path,
     task_dir: Path,
@@ -171,7 +194,7 @@ def _restore_original_kernel(
     if task_type == "torch2hip":
         target = task_config.get("target_file_path")
         if target:
-            hip_file = orig_workspace / target
+            hip_file = _restore_destination(orig_workspace, target)
             if hip_file.exists():
                 hip_file.unlink()
                 logger.info("Removed agent HIP kernel from orig/: %s", hip_file)
@@ -189,10 +212,16 @@ def _restore_original_kernel(
         if not files_to_copy:
             logger.error("config.yaml has no source_file_path for %s task", task_type)
             return False
+        if isinstance(files_to_copy, str):
+            files_to_copy = [files_to_copy]
 
-    for rel_path in files_to_copy:
+    # Validate every destination before restoring any source. A copied absolute
+    # or escaping link must never write back into the submitted workspace.
+    destinations = [
+        _restore_destination(orig_workspace, relative) for relative in files_to_copy
+    ]
+    for rel_path, dst in zip(files_to_copy, destinations):
         src = task_dir / rel_path
-        dst = orig_workspace / rel_path
         if not src.exists():
             logger.error("Original kernel not found: %s", src)
             return False

@@ -360,13 +360,78 @@ class BenchmarkReportTests(unittest.TestCase):
                 self.assertEqual(report["test_cases"], [])
                 self.assertEqual(report["rows_without_a_candidate_time"], 1)
 
+    def test_fallback_timing_lines_preserve_valid_historical_forms(self):
+        output = "\n".join([
+            "unrelated diagnostic output",
+            "timing:plain baseline_ms=2.0 candidate_ms=1.0",
+            " timing:scientific baseline_ms=2e-3 candidate_ms=+1.0e-3 speedup=2.0 reps=3 ",
+            "timing:optional-none baseline_ms=4.0 candidate_ms=2.0 speedup=None reps=None",
+        ])
+        process = subprocess.CompletedProcess([], 0, output, "")
+        with (mock.patch.object(self.runner, "run_ut", return_value=(process, 0.1)),
+              contextlib.redirect_stdout(io.StringIO())):
+            result = self.runner.run_performance_via_ut({}, 30, "none", "unsupported")
+        self.assertEqual([r["execution_time_ms"] for r in result], [1.0, 0.001, 2.0])
+        self.assertEqual([r["reps"] for r in result], [None, 3, None])
+        self.assertEqual(json.loads(self.report_path.read_text())["status"], "ok")
+
+    def test_fallback_mixed_valid_and_invalid_timing_lines_reject_whole_result(self):
+        good = "timing:good baseline_ms=1.0 candidate_ms=1.0"
+        bad_rows = [
+            "timing:bad baseline_ms=1.0 candidate_ms=" + value
+            for value in ("nan", "NaN", "inf", "-inf", "None", "True", "0", "-1", "1.0oops")
+        ] + [
+            "timing:bad baseline_ms=nan candidate_ms=1.0",
+            "timing:bad baseline_ms=1.0",  # Missing candidate measurement.
+            "timing: baseline_ms=1.0 candidate_ms=1.0",
+            "timing:bad baseline_ms=1.0 candidate_ms=1.0 unexpected",
+            "timing:bad baseline_ms=1.0 candidate_ms=1.0 reps=broken",
+        ]
+        for bad in bad_rows:
+            with self.subTest(row=bad):
+                process = subprocess.CompletedProcess([], 0, good + "\n" + bad, "")
+                with (mock.patch.object(self.runner, "run_ut", return_value=(process, 0.1)),
+                      mock.patch.object(self.runner, "_per_case_from_result_json") as file_fallback,
+                      contextlib.redirect_stdout(io.StringIO())):
+                    result = self.runner.run_performance_via_ut({}, 30, "none", "unsupported")
+                self.assertEqual(result, [])
+                file_fallback.assert_not_called()
+                report = json.loads(self.report_path.read_text())
+                self.assertEqual(report["status"], "fail")
+                self.assertEqual(report["test_cases"], [])
+                self.assertIn("invalid fallback timing report", report["error"])
+
+    def test_structured_fallback_cannot_hide_an_invalid_timing_line(self):
+        rows = [{"sig": "good", "optimized_ms": 1.0}]
+        output = "GEAK_PER_CASE " + json.dumps(rows) + "\ntiming:bad baseline_ms=1.0 candidate_ms=inf"
+        process = subprocess.CompletedProcess([], 0, output, "")
+        with (mock.patch.object(self.runner, "run_ut", return_value=(process, 0.1)),
+              contextlib.redirect_stdout(io.StringIO())):
+            result = self.runner.run_performance_via_ut({}, 30, "none", "unsupported")
+        self.assertEqual(result, [])
+        self.assertEqual(json.loads(self.report_path.read_text())["status"], "fail")
+
+    def test_valid_structured_fallback_formats_remain_supported(self):
+        rows = [{"sig": "first", "optimized_ms": 1.0}, {"sig": "second", "optimized_ms": 2.0}]
+        for output in ("GEAK_PER_CASE=" + json.dumps(rows),
+                       "GEAK_PER_CASE " + json.dumps(rows),
+                       json.dumps({"per_case": rows}, indent=2)):
+            with self.subTest(output=output):
+                process = subprocess.CompletedProcess([], 0, output, "")
+                with (mock.patch.object(self.runner, "run_ut", return_value=(process, 0.1)),
+                      contextlib.redirect_stdout(io.StringIO())):
+                    result = self.runner.run_performance_via_ut({}, 30, "none", "unsupported")
+                self.assertEqual([r["execution_time_ms"] for r in result], [1.0, 2.0])
+
 
 class SuiteCopiesTests(unittest.TestCase):
     def test_all_headkernel_benchmark_and_runner_copies_match(self):
         for filename in ("_bench.py", "task_runner.py"):
             paths = list(TASKS.glob("*/scripts/" + filename))
-            self.assertTrue(paths)
+            self.assertEqual(len(paths), 16)
             self.assertEqual(len({path.read_bytes() for path in paths}), 1, filename)
+            template = TASKS.parents[1] / "tools/templates" / filename
+            self.assertEqual(paths[0].read_bytes(), template.read_bytes(), filename)
 
 
 if __name__ == "__main__":

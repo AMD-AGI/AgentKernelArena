@@ -130,28 +130,47 @@ def is_case_path(relative: str) -> bool:
     )
 
 
+def _change_path(root: Path, relative: str) -> Path:
+    """Validate parents without dereferencing the leaf being changed."""
+    relative_path = Path(relative)
+    path = root / relative_path
+    if (
+        relative_path.is_absolute()
+        or ".." in relative_path.parts
+        or not path.parent.resolve().is_relative_to(root)
+    ):
+        raise ValueError(f"unsafe quality_loop path: {relative}")
+    return path
+
+
 def apply_changes(source: Path, destination: Path, changes: TreeChanges) -> None:
     """Apply an already-validated, root-relative change set."""
     source = source.resolve()
     destination = destination.resolve()
     for relative in changes.added + changes.modified:
-        src = (source / relative).resolve()
-        dst = (destination / relative).resolve()
-        if not src.is_relative_to(source) or not dst.is_relative_to(destination):
-            raise ValueError(f"unsafe quality_loop path: {relative}")
+        src = _change_path(source, relative)
+        dst = _change_path(destination, relative)
         if not src.is_file() and not src.is_symlink():
             raise ValueError(f"changed path is not a file: {relative}")
-        dst.parent.mkdir(parents=True, exist_ok=True)
         if src.is_symlink():
+            link = src.readlink()
+            if (
+                link.is_absolute()
+                or not src.resolve().is_relative_to(source)
+                or not (dst.parent / link).resolve().is_relative_to(destination)
+            ):
+                raise ValueError(f"unsafe quality_loop symlink: {relative}")
+            dst.parent.mkdir(parents=True, exist_ok=True)
             if dst.exists() or dst.is_symlink():
                 dst.unlink()
-            dst.symlink_to(src.readlink())
+            dst.symlink_to(link)
         else:
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            if dst.is_symlink():
+                dst.unlink()
             shutil.copy2(src, dst)
     for relative in changes.deleted:
-        dst = (destination / relative).resolve()
-        if not dst.is_relative_to(destination):
-            raise ValueError(f"unsafe quality_loop deletion: {relative}")
+        dst = _change_path(destination, relative)
         if dst.is_file() or dst.is_symlink():
             dst.unlink()
 
