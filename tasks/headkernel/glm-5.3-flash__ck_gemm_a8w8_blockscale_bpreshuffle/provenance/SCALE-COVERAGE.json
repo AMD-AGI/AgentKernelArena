@@ -1,0 +1,46 @@
+{
+  "generator_revision": 2,
+  "native_checkpoint_scale_samples": [
+    {
+      "tensor": "model.language_model.layers.45.self_attn.q_b_proj.weight_scale_inv",
+      "shape": [
+        128,
+        12
+      ],
+      "dtype": "F32",
+      "data_sha256": "58f7973cd4f6cd70dc2e05ebfc307dd2c0998f41ea12e84267590f1f443463a1",
+      "count": 1536,
+      "minimum": 0.000244140625,
+      "maximum": 0.001953125,
+      "below_minimum_generated_scale": 1536,
+      "power_of_two_count": 1536
+    },
+    {
+      "tensor": "model.language_model.layers.45.self_attn.o_proj.weight_scale_inv",
+      "shape": [
+        32,
+        128
+      ],
+      "dtype": "F32",
+      "data_sha256": "346ca13b45aca744256624a84a5d39740d10be9f2ba31714bd8daf8378b09237",
+      "count": 4096,
+      "minimum": 0.000244140625,
+      "maximum": 0.0078125,
+      "below_minimum_generated_scale": 4096,
+      "power_of_two_count": 4096
+    }
+  ],
+  "all_native_weight_scale_exponents": [
+    -12,
+    -11,
+    -10,
+    -9,
+    -8,
+    -7
+  ],
+  "input_challenges": "FP8 operands span a normal distribution with stddev64 and saturation448; SA spans2^-12 through2^-4; each SB matrix contains every observed native exponent. This keeps low-scale contributions visible above the fixed oracle tolerance.",
+  "live_served_operand_representatives": "pending full native GLM capture; checkpoint observations do not claim live tensor replay",
+  "prior_contract_status": "Earlier GPU passes cover generator_v1 and are preliminary for this revised numerical contract.",
+  "checkpoint_raw_distribution_ref": "CHECKPOINT-FP8-DISTRIBUTION.json",
+  "finite_fp8_bit_patterns_in_every_case": 254
+}

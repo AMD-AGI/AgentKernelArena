@@ -37,16 +37,28 @@ def pack(weight):
 
 def generate(case,seed):
     import torch
+    if case.get('live_fixture') and seed%2:
+        from live_operands import generate_live
+        return generate_live(case,seed)
     m,n,k=(case['scalars'][x] for x in ('M','N','K'));g=torch.Generator(device='cpu').manual_seed(seed)
     a=torch.randn((m,k),generator=g,dtype=torch.float32)/math.sqrt(k)
     b=torch.randn((n,k),generator=g,dtype=torch.float32)
     if m>1:
         a[0].zero_();a[1].fill_(1/math.sqrt(k))
     if case['scalars']['fp8']:
-        aq=(a*16).clamp(-448,448).to(torch.float8_e4m3fn)
-        bq=(b*8).clamp(-448,448).to(torch.float8_e4m3fn)
-        sa=torch.exp2(torch.randint(-5,0,(k//128,m),generator=g).float()).t()
-        sb=torch.exp2(torch.randint(-5,0,(n//128,k//128),generator=g).float())
+        aq=(a*(64*math.sqrt(k))).clamp(-448,448).to(torch.float8_e4m3fn)
+        bq=(b*64).clamp(-448,448).to(torch.float8_e4m3fn)
+        # Include every finite E4M3 bit pattern, including signed zeros and
+        # subnormals, in addition to the distributional magnitude challenges.
+        codes=torch.arange(256,dtype=torch.int32).to(torch.uint8)
+        finite_codes=codes[torch.isfinite(codes.view(torch.float8_e4m3fn).float())]
+        stripe=finite_codes[(torch.arange(k)+seed)%finite_codes.numel()]
+        if m>2:aq.view(torch.uint8)[2].copy_(stripe)
+        bq.view(torch.uint8)[0].copy_(stripe)
+        sa=torch.exp2(torch.randint(-12,-3,(k//128,m),generator=g).float()).t()
+        # Every mandatory shape contains all checkpoint-observed scale exponents.
+        blocks=(n//128)*(k//128)
+        sb=torch.exp2((torch.randperm(blocks,generator=g)%6-12).reshape(n//128,k//128).float())
         ad=aq.float()*sa.repeat_interleave(128,dim=1)
         bd=bq.float()*sb.repeat_interleave(128,dim=0).repeat_interleave(128,dim=1)
         expected=(ad@bd.t()).to(torch.bfloat16)
@@ -103,6 +115,7 @@ def main():
     p=argparse.ArgumentParser();p.add_argument('phase',choices=['compile','correctness','performance']);p.add_argument('--request');a=p.parse_args()
     build=ROOT/'build';build.mkdir(exist_ok=True);path=build/(a.phase+'_report.json');path.unlink(missing_ok=True)
     manifest=validate_manifest(strict_json((ROOT/'cases.json').read_text()))
+    if a.phase!='compile' and any('live_fixture' not in case for case in manifest['cases']):raise RuntimeError('Missing native live operand representatives. Import the completed GLM capture with scripts/import_live_operands.py; generator-only checks are diagnostics.')
     request=strict_json(Path(a.request).read_text()) if a.request else {'schema_version':1,'request_id':secrets.token_hex(24),'phase':a.phase,'manifest_sha256':fingerprint(manifest),'package_sha256':package_hash(),'source_sha256':{'source/kernels.py':source_hash()},'challenge_seed':secrets.randbelow(2**30)}
     if request['phase']!=a.phase or request['manifest_sha256']!=fingerprint(manifest) or request['source_sha256']!={'source/kernels.py':source_hash()}:raise ValueError('Request does not match current cases/source')
     before=package_hash();module=load_source()
@@ -137,5 +150,8 @@ def main():
     if package_hash()!=before:raise ValueError('Protected package changed during evaluation')
     report=finalize_report({'schema_version':1,'status':'ok','request':request,'compiled':True,'cases':results,'compiled_kernels':compiled,'oracle_device':'cpu','runtime_source_sha256':source_hash(),'implementation':'submitted_triton_port','comparison_baseline':'frozen_triton_port','stock_source_equivalence':False},manifest,request)
     temp=path.with_suffix('.tmp');temp.write_text(json.dumps(report,indent=2,allow_nan=False)+'\n');temp.replace(path)
+    if a.phase=='performance':
+        import production_comparison
+        production_comparison.main()
     print(a.phase+': PASS')
 if __name__=='__main__':main()

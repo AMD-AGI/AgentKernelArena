@@ -28,15 +28,14 @@ trusted_evaluation:
   requires_aiter_jit_cache: false
 prompt:
   source_code: null
-  instructions: Optimize only the GPU body of gemm_kernel in source/kernels.py. Preserve its
-    ABI, imports, decorators, launch configuration and all protected files. Complete every case
-    in cases.json; preserve observed multiplicity and exact physical strides. Compute C=A@B
-    for BF16 inputs. B is a transposed strided view with shape(K,N) and strides(1,K); C is contiguous
-    BF16. Both the frozen reference and submitted candidate execute this declared Triton port
-    through the same loader, launch geometry, oracle and timing path. Source hashes never select
-    an algorithm. The port is newly authored and is not original image kernel source. Production-native
-    timings are separate diagnostics and cannot enter the Arena score. No end-to-end serving
-    speedup is claimed.
+  instructions: Optimize only the GPU body of gemm_kernel in source/kernels.py. Preserve its ABI, imports,
+    decorators, launch configuration and all protected files. Complete every case in cases.json; preserve
+    observed multiplicity and exact physical strides. Compute C=A@B for BF16 inputs. B is a transposed
+    strided view with shape(K,N) and strides(1,K); C is contiguous BF16. Both the frozen reference and
+    submitted candidate execute this declared Triton port through the same loader, launch geometry, oracle
+    and timing path. Source hashes never select an algorithm. The port is newly authored and is not original
+    image kernel source. Production-native timings are separate diagnostics and cannot enter the Arena
+    score. No end-to-end serving speedup is claimed.
   cheatsheet: null
 headkernel:
   model: GLM-5.3-Flash
@@ -45,10 +44,11 @@ headkernel:
   target_callable: aten::mm
   source_seed: portable_triton_candidate_scaffold
   native_dispatch: Tensile/hipBLAS dense matmul
-  validation_status: gpu_compile_correctness_performance_pass_framework_pending
-  oracle: independent CPU FP32 matmul from quantized/dequantized operands; no GPU oracle buffers
-    exist
+  validation_status: revised_live_operand_and_matched_native_contract_pending_fresh_gpu_framework
+  oracle: independent CPU FP32 matmul from quantized/dequantized operands; no GPU oracle buffers exist
   count_scope: observed per-rank native prefill window only
   performance_baseline: frozen supplied Triton port; reference and candidate use identical dispatch
-  task_scope: replacement/port implementation optimization for observed operator ABI; not original
-    native image kernel source
+  task_scope: replacement/port implementation optimization for observed operator ABI; not original native
+    image kernel source
+  native_gain_requirement: Protected matched diagnostics must check every native captured ABI and report
+    native_ms/candidate_ms. A local port-vs-port speedup alone is not a native operator or serving speedup.

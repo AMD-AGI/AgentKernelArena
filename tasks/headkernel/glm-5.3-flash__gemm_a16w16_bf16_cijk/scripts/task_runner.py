@@ -37,6 +37,9 @@ def pack(weight):
 
 def generate(case,seed):
     import torch
+    if case.get('live_fixture') and seed%2:
+        from live_operands import generate_live
+        return generate_live(case,seed)
     m,n,k=(case['scalars'][x] for x in ('M','N','K'));g=torch.Generator(device='cpu').manual_seed(seed)
     a=torch.randn((m,k),generator=g,dtype=torch.float32)/math.sqrt(k)
     b=torch.randn((n,k),generator=g,dtype=torch.float32)
@@ -103,6 +106,7 @@ def main():
     p=argparse.ArgumentParser();p.add_argument('phase',choices=['compile','correctness','performance']);p.add_argument('--request');a=p.parse_args()
     build=ROOT/'build';build.mkdir(exist_ok=True);path=build/(a.phase+'_report.json');path.unlink(missing_ok=True)
     manifest=validate_manifest(strict_json((ROOT/'cases.json').read_text()))
+    if a.phase!='compile' and any('live_fixture' not in case for case in manifest['cases']):raise RuntimeError('Missing native live operand representatives. Import the completed GLM capture with scripts/import_live_operands.py; generator-only checks are diagnostics.')
     request=strict_json(Path(a.request).read_text()) if a.request else {'schema_version':1,'request_id':secrets.token_hex(24),'phase':a.phase,'manifest_sha256':fingerprint(manifest),'package_sha256':package_hash(),'source_sha256':{'source/kernels.py':source_hash()},'challenge_seed':secrets.randbelow(2**30)}
     if request['phase']!=a.phase or request['manifest_sha256']!=fingerprint(manifest) or request['source_sha256']!={'source/kernels.py':source_hash()}:raise ValueError('Request does not match current cases/source')
     before=package_hash();module=load_source()
@@ -137,5 +141,8 @@ def main():
     if package_hash()!=before:raise ValueError('Protected package changed during evaluation')
     report=finalize_report({'schema_version':1,'status':'ok','request':request,'compiled':True,'cases':results,'compiled_kernels':compiled,'oracle_device':'cpu','runtime_source_sha256':source_hash(),'implementation':'submitted_triton_port','comparison_baseline':'frozen_triton_port','stock_source_equivalence':False},manifest,request)
     temp=path.with_suffix('.tmp');temp.write_text(json.dumps(report,indent=2,allow_nan=False)+'\n');temp.replace(path)
+    if a.phase=='performance':
+        import production_comparison
+        production_comparison.main()
     print(a.phase+': PASS')
 if __name__=='__main__':main()

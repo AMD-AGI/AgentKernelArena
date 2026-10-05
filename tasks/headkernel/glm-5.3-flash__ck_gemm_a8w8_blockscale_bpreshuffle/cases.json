@@ -1248,6 +1248,41 @@
     ]
   },
   "generation_contract": "Fresh finite operands at actual observed shapes and strides, aligned offset0; raw profiler did not expose storage offsets or tensor values. This is a generated exact-shape operator task, not a live tensor replay.",
-  "score_scope": "Native profiled operator versus submitted Triton port on identical full-ABI current cases; no end-to-end serving gain claim.",
-  "scope": "All observed public blockscale-BP FP8 GEMM prefill shapes; constituent MoE GEMMs excluded."
+  "score_scope": "Frozen supplied Triton port versus submitted Triton port through identical protected dispatch, launch, oracle and timing paths. Production-native timing is a separate diagnostic and never an Arena score input; no end-to-end serving gain claim.",
+  "scope": "All observed public blockscale-BP FP8 GEMM prefill shapes; constituent MoE GEMMs excluded.",
+  "input_value_coverage": {
+    "generator_revision": 2,
+    "weight_scale_exponents": [
+      -12,
+      -11,
+      -10,
+      -9,
+      -8,
+      -7
+    ],
+    "weight_scale_min": 0.000244140625,
+    "weight_scale_max": 0.0078125,
+    "activation_scale_exponents_min_max": [
+      -12,
+      -4
+    ],
+    "fp8_operand_normal_stddev": 64.0,
+    "fp8_saturation_range": [
+      -448.0,
+      448.0
+    ],
+    "every_case_contains_all_native_weight_scale_exponents": true,
+    "captured_live_representatives_required_for_qualification": true,
+    "prior_generator_GPU_results_are_preliminary": true,
+    "finite_fp8_bit_pattern_coverage": 254,
+    "native_raw_weight_RMS_samples": [
+      70.12394292921897,
+      67.45190626376545
+    ]
+  },
+  "live_operand_policy": {
+    "required": true,
+    "status": "pending_native_capture_import",
+    "matched_native_comparison_required": true
+  }
 }

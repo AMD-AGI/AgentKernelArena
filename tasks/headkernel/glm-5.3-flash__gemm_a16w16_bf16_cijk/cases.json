@@ -1199,6 +1199,11 @@
     ]
   },
   "generation_contract": "Fresh finite operands at actual observed shapes and strides, aligned offset0; raw profiler did not expose storage offsets or tensor values. This is a generated exact-shape operator task, not a live tensor replay.",
-  "score_scope": "Native profiled operator versus submitted Triton port on identical full-ABI current cases; no end-to-end serving gain claim.",
-  "scope": "All observed BF16 aten::mm prefill shapes"
+  "score_scope": "Frozen supplied Triton port versus submitted Triton port through identical protected dispatch, launch, oracle and timing paths. Production-native timing is a separate diagnostic and never an Arena score input; no end-to-end serving gain claim.",
+  "scope": "All observed BF16 aten::mm prefill shapes",
+  "live_operand_policy": {
+    "required": true,
+    "status": "pending_native_capture_import",
+    "matched_native_comparison_required": true
+  }
 }
