@@ -4,6 +4,7 @@ import json
 import os
 import shutil
 import subprocess
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -83,6 +84,33 @@ def test_bulk_copy_bounds_go_threads_and_buffers(image_package, tmp_path, monkey
 
     monkeypatch.setattr(subprocess, "run", run)
     seed.copy_cache(image_package / "jit", tmp_path / "bounded-copy")
+
+
+def test_large_cache_uses_bounded_batches_and_preserves_entire_tree(image_package, tmp_path, monkeypatch):
+    source = image_package / "jit"
+    for index in range(257):
+        (source / "flydsl_cache" / f"cache-{index:03d}.pkl").write_bytes(str(index).encode())
+    original = subprocess.run
+    batches = []
+
+    def run(command, **kwargs):
+        names = Path(command[command.index("--files-from-raw") + 1]).read_text().splitlines()
+        batches.append(names)
+        assert 1 <= len(names) <= 128
+        assert command[command.index("--transfers") + 1] == "64000"
+        assert "--progress" in command and "--links" in command
+        assert command[command.index("--buffer-size") + 1] == "0"
+        assert kwargs["env"]["GOMAXPROCS"] == "1"
+        return original(command, **kwargs)
+
+    monkeypatch.setattr(subprocess, "run", run)
+    destination = tmp_path / "batched-copy"
+    seed.copy_cache(source, destination)
+    assert [len(batch) for batch in batches] == [128, 128, 4]
+    assert "alias.so.rclonelink" in batches[0]
+    assert seed.tree_manifest(destination) == seed.tree_manifest(source)
+    assert (destination / "empty").is_dir()
+    assert (destination / "alias.so").is_symlink()
 
 
 def test_missing_file_after_transfer_rejects_cache_parity(image_package, tmp_path, monkeypatch):

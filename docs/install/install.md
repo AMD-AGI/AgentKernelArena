@@ -216,7 +216,11 @@ and assigns the copy to the runtime UID/GID. Its filesystem is read-only except
 for the dedicated cache and temporary storage; it has no network, GPU devices,
 authentication mounts, or broad checkout mount. Set `AKA_RCLONE_BIN` if rclone
 is not on the host PATH. Copies use `GOMAXPROCS=1`, `--transfers 64000`,
-`--progress`, and `--buffer-size 0`. The verified cache replaces the empty
+`--progress`, and `--buffer-size 0`. Each rclone process receives at most 128 files through
+`--files-from-raw`, with symlink virtual names handled explicitly; all declared
+directories are created before copying. This bounds local I/O threads without
+raising the initializer's process limit. The full-tree digest comparison still
+requires every entry after all batches complete. The cache replaces the empty
 tmpfs at `HOME/.aiter`; `AITER_JIT_DIR` and production module lookup remain
 unchanged. Seed failures stop the run, and the temporary copy is retired with
 that container invocation. The initializer receives the same ownership labels.

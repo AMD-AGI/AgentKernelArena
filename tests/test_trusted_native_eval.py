@@ -80,6 +80,7 @@ def test_retest_ignores_agent_reports_caches_and_dirty_trusted_checkout(committe
     (agent / "__pycache__/oracle.pyc").write_bytes(b"poison")
     (task / "ut/oracle.py").write_text("raise RuntimeError('dirty checkout must never load')")
     output = tmp_path / "accepted"
+    scratch = tmp_path / "local-scratch"
     original_check_output = subprocess.check_output
     image = json.loads((task / "cases.json").read_text())["runtime_image"]
 
@@ -92,6 +93,8 @@ def test_retest_ignores_agent_reports_caches_and_dirty_trusted_checkout(committe
 
     def run_mode(image, stage, build, render_device, mode, log_path, timeout, jit_source=None):
         calls.append((stage.name, mode, build))
+        assert stage.parent.parent == scratch
+        assert not stage.is_relative_to(output)
         assert jit_source == stage.parent / "image-jit/jit"
         assert not build.exists()
         assert not stage.is_relative_to(agent)
@@ -104,7 +107,8 @@ def test_retest_ignores_agent_reports_caches_and_dirty_trusted_checkout(committe
     monkeypatch.setattr(trusted, "seed_image_cache", lambda *a, **k: {"complete_parity": True})
     monkeypatch.setattr(trusted, "run_mode", run_mode)
     result = trusted.trusted_retest(repo=repo, commit=commit, task_path=TASK_PATH, candidate=candidate,
-                                   agent_workspace=agent, output=output, render_device="/dev/dri/renderD128")
+                                   agent_workspace=agent, output=output, render_device="/dev/dri/renderD128",
+                                   scratch_dir=scratch)
     assert [(leg, mode) for leg, mode, _ in calls] == [
         (leg, mode) for leg in ("reference", "candidate") for mode in trusted.MODES]
     assert len({build for _, _, build in calls}) == 6
@@ -166,6 +170,10 @@ def test_mutable_commit_name_and_unsafe_output_are_rejected(committed_task, tmp_
         trusted.trusted_retest(repo=repo, commit=commit, task_path=TASK_PATH,
                                candidate=agent / ".." / "external.cu", agent_workspace=agent,
                                output=tmp_path / "out", render_device="/dev/dri/renderD128")
+    with pytest.raises(ValueError, match="scratch directory must be outside"):
+        trusted.trusted_retest(repo=repo, commit=commit, task_path=TASK_PATH, candidate=candidate,
+                               agent_workspace=agent, output=tmp_path / "out", scratch_dir=agent / "scratch",
+                               render_device="/dev/dri/renderD128")
     destination = tmp_path / "existing"
     destination.mkdir()
     (destination / "trusted_measurement.json").write_text("user-owned previous run")
@@ -310,6 +318,9 @@ def test_worker_logs_survive_build_cleanup(tmp_path, monkeypatch, fails):
     assert saved.read_text() == "compiler error details\n"
     manifest = json.loads((saved.parent / "manifest.json").read_text())
     assert manifest["logs"][saved.name]["sha256"] == trusted.sha256(saved.read_bytes())
+    raw_report = saved.parent / "compile_report.json"
+    assert json.loads(raw_report.read_text()) == {"status": "ok"}
+    assert manifest["reports"][raw_report.name]["sha256"] == trusted.sha256(raw_report.read_bytes())
 
 
 def test_diagnostic_copy_failure_preserves_original_container_error(tmp_path, monkeypatch):

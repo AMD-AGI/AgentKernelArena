@@ -209,14 +209,15 @@ def preserve_phase_diagnostics(build, mode, log_path):
     """Keep worker/compiler output after disposable build trees are removed."""
     destination = log_path.with_suffix(".diagnostics")
     destination.mkdir()
-    manifest = {"mode": mode, "logs": {}, "errors": []}
+    manifest = {"mode": mode, "logs": {}, "reports": {}, "errors": []}
     try:
         if log_path.is_file():
             manifest["coordinator_log"] = {
                 "file": log_path.name, "sha256": sha256(read_regular(log_path)),
             }
-        for leg in LEGS:
-            source = build / f"{mode}_{leg}.log"
+        sources = [build / f"{mode}_{leg}.log" for leg in LEGS]
+        sources.append(build / f"{mode}_report.json")
+        for source in sources:
             if not source.exists() and not source.is_symlink():
                 continue
             expected = sha256(read_regular(source))
@@ -228,7 +229,8 @@ def preserve_phase_diagnostics(build, mode, log_path):
             actual = sha256(read_regular(target))
             if actual != expected:
                 raise ValueError("preserved worker log differs from container output")
-            manifest["logs"][source.name] = {"sha256": actual, "bytes": target.stat().st_size}
+            category = "reports" if source.suffix == ".json" else "logs"
+            manifest[category][source.name] = {"sha256": actual, "bytes": target.stat().st_size}
     except Exception as exc:
         manifest["errors"].append(f"{type(exc).__name__}: {exc}")
         raise
@@ -347,18 +349,25 @@ def validate_report(report, mode, identity, cases):
     return measurements
 
 
-def trusted_retest(*, repo, commit, task_path, candidate, agent_workspace, output, render_device, timeout=7200):
+def trusted_retest(*, repo, commit, task_path, candidate, agent_workspace, output, render_device,
+                   timeout=7200, scratch_dir=None):
     repo, agent_workspace = Path(repo).resolve(), Path(agent_workspace).resolve()
     candidate = Path(os.path.abspath(candidate))
     output = Path(os.path.abspath(output))
     _require(candidate.is_relative_to(agent_workspace), "candidate must be in declared agent workspace")
     _require(not repo.is_relative_to(agent_workspace) and not output.resolve().is_relative_to(agent_workspace),
              "trusted repository and output must be outside the agent workspace")
+    scratch_parent = Path(scratch_dir or tempfile.gettempdir()).resolve()
+    _require(not scratch_parent.is_relative_to(agent_workspace), "scratch directory must be outside the agent workspace")
+    scratch_parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     _require(timeout > 0, "container timeout must be positive")
     candidate_bytes = read_regular(candidate)
     output.mkdir(mode=0o700, parents=True, exist_ok=False)
-    with tempfile.TemporaryDirectory(prefix=".native-retest-", dir=output) as temporary:
+    with tempfile.TemporaryDirectory(prefix="aka-native-retest-", dir=scratch_parent) as temporary:
         staging = Path(temporary)
+        info = staging.stat()
+        _require(info.st_uid == os.getuid() and stat.S_IMODE(info.st_mode) == 0o700,
+                 "fresh scratch directory must be private and owned by the invoking UID")
         reference = staging / "reference"
         extract_task(repo, commit, task_path, reference)
         image, manifest = validate_contract(reference)
@@ -422,12 +431,13 @@ def main():
     for name in ("repo", "commit", "task", "candidate", "agent-workspace", "output", "render-device"):
         parser.add_argument("--" + name, required=True)
     parser.add_argument("--timeout", type=int, default=7200, help="timeout per fresh container in seconds")
+    parser.add_argument("--scratch-dir", help="local host scratch root; defaults to the host temporary directory")
     args = parser.parse_args()
     if Path("/.dockerenv").exists():
         parser.error("run from a trusted host, outside the agent container")
     result = trusted_retest(repo=args.repo, commit=args.commit, task_path=args.task, candidate=args.candidate,
                             agent_workspace=args.agent_workspace, output=args.output,
-                            render_device=args.render_device, timeout=args.timeout)
+                            render_device=args.render_device, timeout=args.timeout, scratch_dir=args.scratch_dir)
     print(json.dumps({"measurement": str(Path(args.output) / "trusted_measurement.json"),
                       "arithmetic_mean_speedup": result["arithmetic_mean_speedup"]}))
 

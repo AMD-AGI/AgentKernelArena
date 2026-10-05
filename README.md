@@ -40,6 +40,11 @@ python3 src/tools/trusted_native_eval.py \
   --render-device /dev/dri/renderD128 --output <new-trusted-output-directory>
 ```
 
+Use `--scratch-dir <local-scratch-root>` to place temporary task and cache trees
+on local storage. By default the tool uses the host temporary directory,
+independently of the output location. It creates a fresh private directory owned
+by the invoking UID and rejects scratch paths inside the agent workspace.
+
 The host requires Git, Python with PyYAML, rclone and Docker. The tool takes only
 the regular candidate source file from the agent workspace. It extracts the
 harness and reference from Git, stages task payloads using
@@ -57,7 +62,7 @@ legs use the protected native candidate entrypoint with the reference source
 and submitted source respectively; production-native timings are diagnostics.
 `trusted_measurement.json` records source, image and report hashes and complete
 case coverage; it does not finalize Arena or task-validator reports. Each phase
-also retains worker/compiler logs and a hash manifest in `<phase>.diagnostics`,
+also retains worker/compiler logs, raw phase reports and a hash manifest in `<phase>.diagnostics`,
 including when compilation or evaluation fails. This path
 currently supports only that explicit guarded task contract. The invoking host,
 Git database, Docker daemon and GPU driver remain trusted infrastructure.

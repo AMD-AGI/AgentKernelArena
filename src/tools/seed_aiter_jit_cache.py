@@ -11,6 +11,7 @@ import re
 import shutil
 import stat
 import subprocess
+import tempfile
 import uuid
 from pathlib import Path
 
@@ -44,11 +45,30 @@ def copy_cache(source, destination, *, rclone="rclone", timeout=1800):
     before = tree_manifest(source)
     copy_env = os.environ.copy()
     copy_env["GOMAXPROCS"] = "1"
-    subprocess.run([
-        rclone, "copy", str(Path(source).resolve()), str(destination.resolve()),
-        "--transfers", "64000", "--progress", "--config", os.devnull,
-        "--buffer-size", "0", "--links", "--create-empty-src-dirs",
-    ], check=True, timeout=timeout, env=copy_env)
+    files = []
+    for name, entry in before.items():
+        if "\n" in name or "\r" in name:
+            raise ValueError("JIT cache names cannot contain line breaks")
+        if entry["type"] == "directory":
+            (destination / name).mkdir(parents=True, exist_ok=True)
+        else:
+            # --links exposes symlinks as these virtual transfer filenames.
+            files.append(name + ".rclonelink" if entry["type"] == "symlink" else name)
+    if len(set(files)) != len(files):
+        raise ValueError("JIT cache has conflicting rclone virtual filenames")
+    # Keep the mandated transfer setting while bounding the available jobs.
+    # GOMAXPROCS alone does not prevent blocking file I/O from growing Go's
+    # OS-thread pool when thousands of payload files are offered at once.
+    for start in range(0, len(files), 128):
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", prefix="aka-jit-batch-") as batch:
+            batch.write("\n".join(files[start:start + 128]) + "\n")
+            batch.flush()
+            subprocess.run([
+                rclone, "copy", str(Path(source).resolve()), str(destination.resolve()),
+                "--transfers", "64000", "--progress", "--config", os.devnull,
+                "--buffer-size", "0", "--links", "--no-traverse",
+                "--files-from-raw", batch.name,
+            ], check=True, timeout=timeout, env=copy_env)
     try:
         copied = tree_manifest(destination)
         unchanged = tree_manifest(source) == before

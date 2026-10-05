@@ -7,6 +7,35 @@ import os
 from pathlib import Path
 import stat
 import subprocess
+import tempfile
+
+
+COPY_BATCH_SIZE = 128
+
+
+def copy_batches(source, destination, entries, rclone):
+    """Bound local blocking I/O despite the required 64,000-transfer setting."""
+    destination.mkdir()
+    payloads = []
+    for relative, entry in sorted(entries.items()):
+        if "\n" in relative or "\r" in relative:
+            raise RuntimeError("Cache entry cannot be represented in a raw file list")
+        if entry["kind"] == "directory":
+            (destination / relative).mkdir(parents=True, exist_ok=True)
+        else:
+            # With --links, rclone exposes a symlink as this virtual file name.
+            payloads.append(relative + (".rclonelink" if entry["kind"] == "symlink" else ""))
+    with tempfile.TemporaryDirectory(prefix="aka-aiter-filelists-") as temporary:
+        listing = Path(temporary) / "batch.txt"
+        for offset in range(0, len(payloads), COPY_BATCH_SIZE):
+            batch = payloads[offset:offset + COPY_BATCH_SIZE]
+            listing.write_text("\n".join(batch) + "\n")
+            subprocess.run(
+                [str(rclone), "copy", str(source), str(destination), "--transfers", "64000",
+                 "--progress", "--buffer-size", "0", "--links", "--files-from-raw", str(listing),
+                 "--no-traverse", "--checkers", "1", "--multi-thread-streams", "0"],
+                env={**os.environ, "GOMAXPROCS": "1"}, check=True,
+            )
 
 
 def manifest(root):
@@ -59,11 +88,7 @@ def seed(source, destination, uid, gid, rclone):
     if not expected:
         raise RuntimeError("Refusing an empty image JIT seed")
     try:
-        subprocess.run(
-            [str(rclone), "copy", str(source), str(destination), "--transfers", "64000",
-             "--progress", "--buffer-size", "0", "--links", "--create-empty-src-dirs"],
-            env={**os.environ, "GOMAXPROCS": "1"}, check=True,
-        )
+        copy_batches(source, destination, expected, rclone)
         actual = manifest(destination)
         if actual != expected:
             raise RuntimeError("Seeded AITER cache differs from complete image source")
