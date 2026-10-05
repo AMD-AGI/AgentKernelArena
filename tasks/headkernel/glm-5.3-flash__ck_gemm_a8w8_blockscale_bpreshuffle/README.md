@@ -1,38 +1,13 @@
-# glm-5.3-flash__ck_gemm_a8w8_blockscale_bpreshuffle - NOT_BUILT
+This task implements the actual GLM-5.3-Flash blockscale FP8 BP GEMM contract observed in `glm-flash-fp8-native-jit-194292`. It replaces the old placeholder with 7 explicit current cases, complete tensor strides/dtypes/scalars and recorded per-rank occurrences. It does not reuse historical0.5.18 case buckets.
 
-**GLM-5.3-Flash** - `ck_gemm_..._blockscale_b_` (CK / CKTile via aiter, 5.65% GPU).
+The native profile comes from the digest-pinned SGLang0.5.20 image plus18 reviewed GLM HIP overlays. The native symbols are library kernels; this task exposes a portable Triton implementation of the same operation as an optimization target. The supplied Triton source is a newly authored replacement/port implementation. The frozen reference and submitted candidate both execute that declared Triton implementation through the same loader and fixed launch, including when their files are byte-identical. Source hashes only attest the input and never select an algorithm. The Arena score measures optimization of the supplied port. The production operator can be timed only by `scripts/production_comparison.py`; that report is diagnostic and excluded from scoring. All paths write preallocated output. End-to-end serving gains are not claimed.
 
-This is a placeholder, **not a task**. It carries no `config.yaml`, so the arena
-task scanner will not pick it up and it cannot be run or scored.
+Only `gemm_kernel`'s GPU body is editable. Imports, host calls, decorators, kernel ABI, launch geometry, cases, runner and independent CPU oracle are protected. `ut/evaluation_contract.py` is materialized unchanged from the shared contract. Use the generic trusted six-container evaluator after optimization.
 
-## Why
+Fresh deterministic operands match the observed shapes and physical strides. Storage offsets are explicitly0 for generated aligned buffers; the raw trace did not save offsets or values. FP8 tests independently dequantize packed weights and block scales on CPU. Expected outputs stay on CPU, inputs change every graph replay, output buffers are poisoned, every output and input immutability check runs on every replay, and no-op/corruption controls must fail.
 
-IMAGE-VERIFIED 2026-09-15: a Python dispatcher for this seam EXISTS, which corrects the earlier note that nothing Python defines it. sglang:v0.5.17-rocm720-mi35x-profilerfix (sglang 2948168546, aiter d9e5ef7ce08e) carries /sgl-workspace/aiter/aiter/ops/gemm_op_a8w8.py with gemm_a8w8_blockscale_bpreshuffle:896 plus _ck:316, _cktile:331, _asm:397 and _flydsl:203 variants, and the production entry is sglang srt/layers/quantization/fp8_utils.py:1062. What remains genuinely non-editable is the profiled DEVICE symbol itself - a CK C++ template instantiation (ck::kernel_gemm_xdl_cshuffle_v3_multi_d_blockscale_b_preshuffle) with no Python behind it. So this row is optimizable only at the dispatch/tiling level or by replacing the CK call, not by editing the kernel. The package has 21 cases, no kernel_src and no frozen oracle (meta.oracle = 'synthesized_dequant_fp32'). Measured 1.4451x isolated -> -0.438% e2e.
+All 7 cases are mandatory. Timings use10 warmups and100 fresh-input replays per case; reset, CPU reference and validation lie outside the GPU timing interval. Correctness compares BF16 output against CPU FP32 accumulation at rtol0.01/atol0.02 and rejects nonfinite/unwritten elements.
 
-| field | value |
-|---|---|
-| GPU time share | 5.65% |
-| empirical roofline | 0.029 |
-| optimized roofline | 0.029 |
-| e2e uplift measured | -0.13% |
-| device symbol | `ck_gemm_a8w8_blockscale_bpreshuffle` |
-| production seam | `-` |
-| info rows | G53-3 |
-| upstream UT package | `H/GLM-5.3-Flash_ck_gemm_a8w8_blockscale_bpreshuffle_0913` |
+GPU compilation, numerical validation and framework task-validator qualification are pending. The task is source-complete and must not be labelled qualified until those reports pass.
 
-## To promote it into the suite
-
-1. Get an editable implementation of the seam into `source/`. Read the Why above
-   first - it says whether the source has to be written (the profiled symbol is a
-   prebuilt vendor artifact with no Python behind it) or merely vendored (the
-   package shipped an empty `kernel_src/` but the Triton source exists upstream,
-   and for the `aiter.tuned_gemm` rows a stock copy already ships in this suite at
-   `tasks/headkernel/qwen3.8-2.4t__dense_bf16_gemm_cluster/source/`).
-2. Add `candidate_bind` to the package `meta.json` so the candidate leg actually
-   shadows the production callable - without it both legs resolve to the same code
-   and any measured speedup is noise. For the `aiter.tuned_gemm` rows note that a
-   bare `setattr` on the module is a DEAD rebind: `solMap` is built at import time
-   holding direct function objects, so the dispatcher keeps calling the original.
-3. Re-capture parity against the live server and confirm
-   `selection_validation.ok == true`.
-4. Re-run `tools/build_suite.py`; flip `built` to true in `tools/manifest.json`.
+`python3 ut/test_dispatch.py` verifies with CPU launch spies that the stock source, a whitespace-only edit, and a local-variable rename all use the same declared GPU launch for every mandatory case. This is a dispatch regression, not GPU qualification.

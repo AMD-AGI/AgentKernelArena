@@ -1,0 +1,12 @@
+{
+  "aiter_gemm_module_sha256": null,
+  "runtime_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
+  "source_run": "glm-flash-fp8-native-jit-194292",
+  "preallocated_output": "The scored reference, scored candidate and separate production diagnostic each write preallocated C.",
+  "candidate_source_provenance": "New portable Triton scaffold with frozen CPU reference and GPU-only edit boundary, not original image kernel source.",
+  "diagnostic_only": true,
+  "score_input": false,
+  "production_callable": "torch:mm",
+  "performance_baseline": "frozen supplied Triton port",
+  "dispatch_policy": "Reference and candidate always launch their submitted gemm_kernel. Source equality is never an algorithm selector."
+}

@@ -1,0 +1,729 @@
+{
+  "run_id": "glm-flash-fp8-native-jit-194292",
+  "summary_sha256": "22d51e633aebc987843a97f47648f069a5347022d1f4c365f635db9d531956c0",
+  "image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
+  "profile_case_groups": [
+    {
+      "operator": "aten::mm",
+      "stage": "prefill",
+      "group_id": "96f4bf41269c219377ae5196",
+      "per_rank_counts": {
+        "4": 8,
+        "2": 8,
+        "1": 8,
+        "0": 8,
+        "5": 8,
+        "3": 8,
+        "7": 8,
+        "6": 8
+      },
+      "examples": {
+        "4": {
+          "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-4-EXTEND.trace.json.gz",
+          "trace_sha256": "6df78e0e9af754959d29e16bdcfe6d648ce42a181fd76654f0cade4d0fa75f3d",
+          "event_indices": [
+            13801,
+            28152,
+            42488
+          ]
+        },
+        "2": {
+          "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-2-EXTEND.trace.json.gz",
+          "trace_sha256": "b9d4a2c7fa70bacff07fef46b7ddab3e61202667e9d82f72fdbe239eca3d50ec",
+          "event_indices": [
+            13800,
+            28151,
+            42487
+          ]
+        },
+        "1": {
+          "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-1-EXTEND.trace.json.gz",
+          "trace_sha256": "03a7eb8b3c950d64a31c54953a87b825e1b094030759e9831c5793fc45bd9113",
+          "event_indices": [
+            13800,
+            28151,
+            42487
+          ]
+        },
+        "0": {
+          "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-0-EXTEND.trace.json.gz",
+          "trace_sha256": "b9e8999070cc8bd89c46d31473ed1364d92971a42778510bfd394d8429cfde8c",
+          "event_indices": [
+            13800,
+            28145,
+            42479
+          ]
+        },
+        "5": {
+          "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-5-EXTEND.trace.json.gz",
+          "trace_sha256": "89e550e99ed96b34820df0b2dfa125a62c9aac86eaeb7a8d2cac166ca187a07e",
+          "event_indices": [
+            13801,
+            28152,
+            42488
+          ]
+        },
+        "3": {
+          "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-3-EXTEND.trace.json.gz",
+          "trace_sha256": "df29840744a985274338dd51637ee80814d7c6972ed331713cee8a9ea4be9c3e",
+          "event_indices": [
+            13800,
+            28151,
+            42487
+          ]
+        },
+        "7": {
+          "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-7-EXTEND.trace.json.gz",
+          "trace_sha256": "202f277f4465ee5d3adc202e9df81608ff8fdd86e34377ef753b680075bdc98c",
+          "event_indices": [
+            13800,
+            28151,
+            42487
+          ]
+        },
+        "6": {
+          "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-6-EXTEND.trace.json.gz",
+          "trace_sha256": "5b9eedca7a316cefef1b89d459c901eb5860d2fb614eb48d2b1ce0e215297838",
+          "event_indices": [
+            13801,
+            28152,
+            42488
+          ]
+        }
+      }
+    },
+    {
+      "operator": "aten::mm",
+      "stage": "prefill",
+      "group_id": "0b347fe2dcf5347dc2237fb9",
+      "per_rank_counts": {
+        "4": 544,
+        "2": 544,
+        "1": 544,
+        "0": 544,
+        "5": 544,
+        "3": 544,
+        "7": 544,
+        "6": 544
+      },
+      "examples": {
+        "4": {
+          "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-4-EXTEND.trace.json.gz",
+          "trace_sha256": "6df78e0e9af754959d29e16bdcfe6d648ce42a181fd76654f0cade4d0fa75f3d",
+          "event_indices": [
+            680,
+            694,
+            996
+          ]
+        },
+        "2": {
+          "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-2-EXTEND.trace.json.gz",
+          "trace_sha256": "b9d4a2c7fa70bacff07fef46b7ddab3e61202667e9d82f72fdbe239eca3d50ec",
+          "event_indices": [
+            679,
+            693,
+            995
+          ]
+        },
+        "1": {
+          "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-1-EXTEND.trace.json.gz",
+          "trace_sha256": "03a7eb8b3c950d64a31c54953a87b825e1b094030759e9831c5793fc45bd9113",
+          "event_indices": [
+            679,
+            693,
+            995
+          ]
+        },
+        "0": {
+          "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-0-EXTEND.trace.json.gz",
+          "trace_sha256": "b9e8999070cc8bd89c46d31473ed1364d92971a42778510bfd394d8429cfde8c",
+          "event_indices": [
+            679,
+            693,
+            995
+          ]
+        },
+        "5": {
+          "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-5-EXTEND.trace.json.gz",
+          "trace_sha256": "89e550e99ed96b34820df0b2dfa125a62c9aac86eaeb7a8d2cac166ca187a07e",
+          "event_indices": [
+            680,
+            694,
+            996
+          ]
+        },
+        "3": {
+          "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-3-EXTEND.trace.json.gz",
+          "trace_sha256": "df29840744a985274338dd51637ee80814d7c6972ed331713cee8a9ea4be9c3e",
+          "event_indices": [
+            679,
+            693,
+            995
+          ]
+        },
+        "7": {
+          "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-7-EXTEND.trace.json.gz",
+          "trace_sha256": "202f277f4465ee5d3adc202e9df81608ff8fdd86e34377ef753b680075bdc98c",
+          "event_indices": [
+            679,
+            693,
+            995
+          ]
+        },
+        "6": {
+          "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-6-EXTEND.trace.json.gz",
+          "trace_sha256": "5b9eedca7a316cefef1b89d459c901eb5860d2fb614eb48d2b1ce0e215297838",
+          "event_indices": [
+            680,
+            694,
+            996
+          ]
+        }
+      }
+    },
+    {
+      "operator": "aten::mm",
+      "stage": "prefill",
+      "group_id": "dade3856b936c33172343f58",
+      "per_rank_counts": {
+        "4": 720,
+        "2": 720,
+        "1": 720,
+        "0": 720,
+        "5": 720,
+        "3": 720,
+        "7": 720,
+        "6": 720
+      },
+      "examples": {
+        "4": {
+          "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-4-EXTEND.trace.json.gz",
+          "trace_sha256": "6df78e0e9af754959d29e16bdcfe6d648ce42a181fd76654f0cade4d0fa75f3d",
+          "event_indices": [
+            673,
+            687,
+            989
+          ]
+        },
+        "2": {
+          "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-2-EXTEND.trace.json.gz",
+          "trace_sha256": "b9d4a2c7fa70bacff07fef46b7ddab3e61202667e9d82f72fdbe239eca3d50ec",
+          "event_indices": [
+            672,
+            686,
+            988
+          ]
+        },
+        "1": {
+          "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-1-EXTEND.trace.json.gz",
+          "trace_sha256": "03a7eb8b3c950d64a31c54953a87b825e1b094030759e9831c5793fc45bd9113",
+          "event_indices": [
+            672,
+            686,
+            988
+          ]
+        },
+        "0": {
+          "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-0-EXTEND.trace.json.gz",
+          "trace_sha256": "b9e8999070cc8bd89c46d31473ed1364d92971a42778510bfd394d8429cfde8c",
+          "event_indices": [
+            672,
+            686,
+            988
+          ]
+        },
+        "5": {
+          "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-5-EXTEND.trace.json.gz",
+          "trace_sha256": "89e550e99ed96b34820df0b2dfa125a62c9aac86eaeb7a8d2cac166ca187a07e",
+          "event_indices": [
+            673,
+            687,
+            989
+          ]
+        },
+        "3": {
+          "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-3-EXTEND.trace.json.gz",
+          "trace_sha256": "df29840744a985274338dd51637ee80814d7c6972ed331713cee8a9ea4be9c3e",
+          "event_indices": [
+            672,
+            686,
+            988
+          ]
+        },
+        "7": {
+          "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-7-EXTEND.trace.json.gz",
+          "trace_sha256": "202f277f4465ee5d3adc202e9df81608ff8fdd86e34377ef753b680075bdc98c",
+          "event_indices": [
+            672,
+            686,
+            988
+          ]
+        },
+        "6": {
+          "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-6-EXTEND.trace.json.gz",
+          "trace_sha256": "5b9eedca7a316cefef1b89d459c901eb5860d2fb614eb48d2b1ce0e215297838",
+          "event_indices": [
+            673,
+            687,
+            989
+          ]
+        }
+      }
+    },
+    {
+      "operator": "aten::mm",
+      "stage": "prefill",
+      "group_id": "72b21ff5e9180648b7339217",
+      "per_rank_counts": {
+        "4": 336,
+        "2": 336,
+        "1": 336,
+        "0": 336,
+        "5": 336,
+        "3": 336,
+        "7": 336,
+        "6": 336
+      },
+      "examples": {
+        "4": {
+          "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-4-EXTEND.trace.json.gz",
+          "trace_sha256": "6df78e0e9af754959d29e16bdcfe6d648ce42a181fd76654f0cade4d0fa75f3d",
+          "event_indices": [
+            1738,
+            2022,
+            2306
+          ]
+        },
+        "2": {
+          "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-2-EXTEND.trace.json.gz",
+          "trace_sha256": "b9d4a2c7fa70bacff07fef46b7ddab3e61202667e9d82f72fdbe239eca3d50ec",
+          "event_indices": [
+            1737,
+            2021,
+            2305
+          ]
+        },
+        "1": {
+          "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-1-EXTEND.trace.json.gz",
+          "trace_sha256": "03a7eb8b3c950d64a31c54953a87b825e1b094030759e9831c5793fc45bd9113",
+          "event_indices": [
+            1737,
+            2021,
+            2305
+          ]
+        },
+        "0": {
+          "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-0-EXTEND.trace.json.gz",
+          "trace_sha256": "b9e8999070cc8bd89c46d31473ed1364d92971a42778510bfd394d8429cfde8c",
+          "event_indices": [
+            1737,
+            2021,
+            2305
+          ]
+        },
+        "5": {
+          "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-5-EXTEND.trace.json.gz",
+          "trace_sha256": "89e550e99ed96b34820df0b2dfa125a62c9aac86eaeb7a8d2cac166ca187a07e",
+          "event_indices": [
+            1738,
+            2022,
+            2306
+          ]
+        },
+        "3": {
+          "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-3-EXTEND.trace.json.gz",
+          "trace_sha256": "df29840744a985274338dd51637ee80814d7c6972ed331713cee8a9ea4be9c3e",
+          "event_indices": [
+            1737,
+            2021,
+            2305
+          ]
+        },
+        "7": {
+          "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-7-EXTEND.trace.json.gz",
+          "trace_sha256": "202f277f4465ee5d3adc202e9df81608ff8fdd86e34377ef753b680075bdc98c",
+          "event_indices": [
+            1737,
+            2021,
+            2305
+          ]
+        },
+        "6": {
+          "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-6-EXTEND.trace.json.gz",
+          "trace_sha256": "5b9eedca7a316cefef1b89d459c901eb5860d2fb614eb48d2b1ce0e215297838",
+          "event_indices": [
+            1738,
+            2022,
+            2306
+          ]
+        }
+      }
+    },
+    {
+      "operator": "aten::mm",
+      "stage": "prefill",
+      "group_id": "2dcb382111990da7c3d02487",
+      "per_rank_counts": {
+        "4": 272,
+        "2": 272,
+        "1": 272,
+        "0": 272,
+        "5": 272,
+        "3": 272,
+        "7": 272,
+        "6": 272
+      },
+      "examples": {
+        "4": {
+          "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-4-EXTEND.trace.json.gz",
+          "trace_sha256": "6df78e0e9af754959d29e16bdcfe6d648ce42a181fd76654f0cade4d0fa75f3d",
+          "event_indices": [
+            659,
+            975,
+            1225
+          ]
+        },
+        "2": {
+          "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-2-EXTEND.trace.json.gz",
+          "trace_sha256": "b9d4a2c7fa70bacff07fef46b7ddab3e61202667e9d82f72fdbe239eca3d50ec",
+          "event_indices": [
+            658,
+            974,
+            1224
+          ]
+        },
+        "1": {
+          "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-1-EXTEND.trace.json.gz",
+          "trace_sha256": "03a7eb8b3c950d64a31c54953a87b825e1b094030759e9831c5793fc45bd9113",
+          "event_indices": [
+            658,
+            974,
+            1224
+          ]
+        },
+        "0": {
+          "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-0-EXTEND.trace.json.gz",
+          "trace_sha256": "b9e8999070cc8bd89c46d31473ed1364d92971a42778510bfd394d8429cfde8c",
+          "event_indices": [
+            658,
+            974,
+            1224
+          ]
+        },
+        "5": {
+          "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-5-EXTEND.trace.json.gz",
+          "trace_sha256": "89e550e99ed96b34820df0b2dfa125a62c9aac86eaeb7a8d2cac166ca187a07e",
+          "event_indices": [
+            659,
+            975,
+            1225
+          ]
+        },
+        "3": {
+          "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-3-EXTEND.trace.json.gz",
+          "trace_sha256": "df29840744a985274338dd51637ee80814d7c6972ed331713cee8a9ea4be9c3e",
+          "event_indices": [
+            658,
+            974,
+            1224
+          ]
+        },
+        "7": {
+          "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-7-EXTEND.trace.json.gz",
+          "trace_sha256": "202f277f4465ee5d3adc202e9df81608ff8fdd86e34377ef753b680075bdc98c",
+          "event_indices": [
+            658,
+            974,
+            1224
+          ]
+        },
+        "6": {
+          "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-6-EXTEND.trace.json.gz",
+          "trace_sha256": "5b9eedca7a316cefef1b89d459c901eb5860d2fb614eb48d2b1ce0e215297838",
+          "event_indices": [
+            659,
+            975,
+            1225
+          ]
+        }
+      }
+    },
+    {
+      "operator": "aten::mm",
+      "stage": "prefill",
+      "group_id": "ed420d0941f92b52fce605c8",
+      "per_rank_counts": {
+        "4": 272,
+        "2": 272,
+        "1": 272,
+        "0": 272,
+        "5": 272,
+        "3": 272,
+        "7": 272,
+        "6": 272
+      },
+      "examples": {
+        "4": {
+          "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-4-EXTEND.trace.json.gz",
+          "trace_sha256": "6df78e0e9af754959d29e16bdcfe6d648ce42a181fd76654f0cade4d0fa75f3d",
+          "event_indices": [
+            890,
+            1140,
+            1390
+          ]
+        },
+        "2": {
+          "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-2-EXTEND.trace.json.gz",
+          "trace_sha256": "b9d4a2c7fa70bacff07fef46b7ddab3e61202667e9d82f72fdbe239eca3d50ec",
+          "event_indices": [
+            889,
+            1139,
+            1389
+          ]
+        },
+        "1": {
+          "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-1-EXTEND.trace.json.gz",
+          "trace_sha256": "03a7eb8b3c950d64a31c54953a87b825e1b094030759e9831c5793fc45bd9113",
+          "event_indices": [
+            889,
+            1139,
+            1389
+          ]
+        },
+        "0": {
+          "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-0-EXTEND.trace.json.gz",
+          "trace_sha256": "b9e8999070cc8bd89c46d31473ed1364d92971a42778510bfd394d8429cfde8c",
+          "event_indices": [
+            889,
+            1139,
+            1389
+          ]
+        },
+        "5": {
+          "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-5-EXTEND.trace.json.gz",
+          "trace_sha256": "89e550e99ed96b34820df0b2dfa125a62c9aac86eaeb7a8d2cac166ca187a07e",
+          "event_indices": [
+            890,
+            1140,
+            1390
+          ]
+        },
+        "3": {
+          "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-3-EXTEND.trace.json.gz",
+          "trace_sha256": "df29840744a985274338dd51637ee80814d7c6972ed331713cee8a9ea4be9c3e",
+          "event_indices": [
+            889,
+            1139,
+            1389
+          ]
+        },
+        "7": {
+          "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-7-EXTEND.trace.json.gz",
+          "trace_sha256": "202f277f4465ee5d3adc202e9df81608ff8fdd86e34377ef753b680075bdc98c",
+          "event_indices": [
+            889,
+            1139,
+            1389
+          ]
+        },
+        "6": {
+          "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-6-EXTEND.trace.json.gz",
+          "trace_sha256": "5b9eedca7a316cefef1b89d459c901eb5860d2fb614eb48d2b1ce0e215297838",
+          "event_indices": [
+            890,
+            1140,
+            1390
+          ]
+        }
+      }
+    },
+    {
+      "operator": "aten::mm",
+      "stage": "prefill",
+      "group_id": "c8c369967b50a17e97cdcf89",
+      "per_rank_counts": {
+        "4": 88,
+        "2": 88,
+        "1": 88,
+        "0": 88,
+        "5": 88,
+        "3": 88,
+        "7": 88,
+        "6": 88
+      },
+      "examples": {
+        "4": {
+          "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-4-EXTEND.trace.json.gz",
+          "trace_sha256": "6df78e0e9af754959d29e16bdcfe6d648ce42a181fd76654f0cade4d0fa75f3d",
+          "event_indices": [
+            1516,
+            2688,
+            3860
+          ]
+        },
+        "2": {
+          "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-2-EXTEND.trace.json.gz",
+          "trace_sha256": "b9d4a2c7fa70bacff07fef46b7ddab3e61202667e9d82f72fdbe239eca3d50ec",
+          "event_indices": [
+            1515,
+            2687,
+            3859
+          ]
+        },
+        "1": {
+          "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-1-EXTEND.trace.json.gz",
+          "trace_sha256": "03a7eb8b3c950d64a31c54953a87b825e1b094030759e9831c5793fc45bd9113",
+          "event_indices": [
+            1515,
+            2687,
+            3859
+          ]
+        },
+        "0": {
+          "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-0-EXTEND.trace.json.gz",
+          "trace_sha256": "b9e8999070cc8bd89c46d31473ed1364d92971a42778510bfd394d8429cfde8c",
+          "event_indices": [
+            1515,
+            2687,
+            3859
+          ]
+        },
+        "5": {
+          "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-5-EXTEND.trace.json.gz",
+          "trace_sha256": "89e550e99ed96b34820df0b2dfa125a62c9aac86eaeb7a8d2cac166ca187a07e",
+          "event_indices": [
+            1516,
+            2688,
+            3860
+          ]
+        },
+        "3": {
+          "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-3-EXTEND.trace.json.gz",
+          "trace_sha256": "df29840744a985274338dd51637ee80814d7c6972ed331713cee8a9ea4be9c3e",
+          "event_indices": [
+            1515,
+            2687,
+            3859
+          ]
+        },
+        "7": {
+          "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-7-EXTEND.trace.json.gz",
+          "trace_sha256": "202f277f4465ee5d3adc202e9df81608ff8fdd86e34377ef753b680075bdc98c",
+          "event_indices": [
+            1515,
+            2687,
+            3859
+          ]
+        },
+        "6": {
+          "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-6-EXTEND.trace.json.gz",
+          "trace_sha256": "5b9eedca7a316cefef1b89d459c901eb5860d2fb614eb48d2b1ce0e215297838",
+          "event_indices": [
+            1516,
+            2688,
+            3860
+          ]
+        }
+      }
+    },
+    {
+      "operator": "aten::mm",
+      "stage": "prefill",
+      "group_id": "11df89d3156a14cb55ad7315",
+      "per_rank_counts": {
+        "4": 272,
+        "2": 272,
+        "1": 272,
+        "0": 272,
+        "5": 272,
+        "3": 272,
+        "7": 272,
+        "6": 272
+      },
+      "examples": {
+        "4": {
+          "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-4-EXTEND.trace.json.gz",
+          "trace_sha256": "6df78e0e9af754959d29e16bdcfe6d648ce42a181fd76654f0cade4d0fa75f3d",
+          "event_indices": [
+            666,
+            982,
+            1232
+          ]
+        },
+        "2": {
+          "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-2-EXTEND.trace.json.gz",
+          "trace_sha256": "b9d4a2c7fa70bacff07fef46b7ddab3e61202667e9d82f72fdbe239eca3d50ec",
+          "event_indices": [
+            665,
+            981,
+            1231
+          ]
+        },
+        "1": {
+          "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-1-EXTEND.trace.json.gz",
+          "trace_sha256": "03a7eb8b3c950d64a31c54953a87b825e1b094030759e9831c5793fc45bd9113",
+          "event_indices": [
+            665,
+            981,
+            1231
+          ]
+        },
+        "0": {
+          "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-0-EXTEND.trace.json.gz",
+          "trace_sha256": "b9e8999070cc8bd89c46d31473ed1364d92971a42778510bfd394d8429cfde8c",
+          "event_indices": [
+            665,
+            981,
+            1231
+          ]
+        },
+        "5": {
+          "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-5-EXTEND.trace.json.gz",
+          "trace_sha256": "89e550e99ed96b34820df0b2dfa125a62c9aac86eaeb7a8d2cac166ca187a07e",
+          "event_indices": [
+            666,
+            982,
+            1232
+          ]
+        },
+        "3": {
+          "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-3-EXTEND.trace.json.gz",
+          "trace_sha256": "df29840744a985274338dd51637ee80814d7c6972ed331713cee8a9ea4be9c3e",
+          "event_indices": [
+            665,
+            981,
+            1231
+          ]
+        },
+        "7": {
+          "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-7-EXTEND.trace.json.gz",
+          "trace_sha256": "202f277f4465ee5d3adc202e9df81608ff8fdd86e34377ef753b680075bdc98c",
+          "event_indices": [
+            665,
+            981,
+            1231
+          ]
+        },
+        "6": {
+          "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-6-EXTEND.trace.json.gz",
+          "trace_sha256": "5b9eedca7a316cefef1b89d459c901eb5860d2fb614eb48d2b1ce0e215297838",
+          "event_indices": [
+            666,
+            982,
+            1232
+          ]
+        }
+      }
+    }
+  ],
+  "live_tensor_values_available": false,
+  "actual_serving_workload": {
+    "requests": 64,
+    "isl": 8192,
+    "osl": 1024,
+    "concurrency": 64,
+    "tp": 8,
+    "context": 9218
+  },
+  "source_runtime_patch_sha256": "cd17e104dbf03cc33f28cd53c1abedd8815a648268d43e4b451790f9af2b8027"
+}

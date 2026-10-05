@@ -90,6 +90,12 @@ and build artifacts separate from these inputs. See the
 [benchmark methodology](../reference/benchmark-methodology.md) for the shared
 guard's scope and the function-level boundary in combined kernel/harness files.
 
+For new tasks requiring exact traced-case coverage and a separate trusted-host
+retest, use the opt-in [guarded case contract](guarded-case-contract.md). Its
+portable helper checks tensor ABI, scalar arguments, observed multiplicity,
+fresh replay validation and complete report coverage, and can be packaged
+inside the task without importing the repository framework.
+
 ```yaml
 repo_url: https://github.com/ROCm/rocPRIM.git
 # repo_subdir: rocPRIM        # optional; defaults from repo_url

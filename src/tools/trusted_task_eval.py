@@ -1,0 +1,267 @@
+"""Fresh-container evaluation for tasks implementing the portable case contract.
+
+This leaves the qualified native-quant evaluator unchanged. The invoking host,
+Git database, image and Docker daemon remain trusted infrastructure.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import math
+import os
+import secrets
+import stat
+import subprocess
+import sys
+import tempfile
+import uuid
+from pathlib import Path, PurePosixPath
+
+import yaml
+
+if __package__:
+    from ..task_contract import (
+        canonical,
+        fingerprint,
+        require,
+        strict_json,
+        validate_manifest,
+        validate_report,
+    )
+    from .gpu_binding import command_with_binding, select_gpu, validate_preflight
+    from .seed_aiter_jit_cache import copy_cache, seed_image_cache, tree_manifest
+    from .trusted_native_eval import docker_command, extract_task, read_regular, sha256
+else:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from gpu_binding import command_with_binding, select_gpu, validate_preflight
+    from seed_aiter_jit_cache import copy_cache, seed_image_cache, tree_manifest
+    from trusted_native_eval import docker_command, extract_task, read_regular, sha256
+
+    from task_contract import (
+        canonical,
+        fingerprint,
+        require,
+        strict_json,
+        validate_manifest,
+        validate_report,
+    )
+
+
+PORTABLE_CONTRACT = Path(__file__).resolve().parents[1] / "task_contract.py"
+GPU_BINDING_HELPER = Path(__file__).resolve().with_name("gpu_binding.py")
+PHASES = ("compile", "correctness", "performance")
+
+
+def relative_file(value):
+    require(isinstance(value, str) and bool(value), "task file paths must be nonempty strings")
+    path = PurePosixPath(value)
+    require(not path.is_absolute() and all(part not in ("..", ".git", "build", "__pycache__") for part in path.parts),
+            "task file path escapes the immutable package")
+    return path.as_posix()
+
+
+def package_contract(task):
+    config = yaml.safe_load(read_regular(task / "config.yaml"))
+    require(isinstance(config, dict), "invalid task configuration")
+    descriptor = config.get("trusted_evaluation", {})
+    require(isinstance(descriptor, dict) and type(descriptor.get("schema_version")) is int
+            and descriptor["schema_version"] == 1,
+            "task must opt into trusted_evaluation schema_version 1")
+    require(config.get("harness_protection", {}).get("reject_new_source_symlinks") is True,
+            "trusted tasks must reject new editable-source symlinks")
+    sources = config.get("source_file_path")
+    require(isinstance(sources, list) and sources, "explicit source_file_path list is required")
+    sources = [relative_file(source) for source in sources]
+    require(len(set(sources)) == len(sources), "duplicate editable source path")
+    manifest_path = relative_file(descriptor.get("case_manifest", "cases.json"))
+    helper_path = relative_file(descriptor.get("contract_file", "ut/evaluation_contract.py"))
+    guard_path = relative_file(descriptor.get("source_guard", "ut/source_guard.py"))
+    references = descriptor.get("reference_sources", {})
+    require(isinstance(references, dict) and set(references) == set(sources), "every source needs a frozen reference")
+    references = {source: relative_file(reference) for source, reference in references.items()}
+    reserved = {"config.yaml", "scripts/task_runner.py", manifest_path, helper_path, guard_path, *references.values()}
+    require(not set(sources) & reserved, "editable sources overlap a protected harness/reference file")
+    for phase in PHASES:
+        require(config.get(phase + "_command") == [f"python3 scripts/task_runner.py {phase}"],
+                "trusted tasks must use the protected scripts/task_runner.py entrypoint")
+    require(read_regular(task / helper_path) == read_regular(PORTABLE_CONTRACT), "task contract helper differs from the trusted host version")
+    manifest = validate_manifest(strict_json(read_regular(task / manifest_path)))
+    require(config.get("headkernel", {}).get("docker") == manifest["runtime_image"], "task and cases name different runtime images")
+    needs_cache = descriptor.get("requires_aiter_jit_cache", False)
+    require(type(needs_cache) is bool, "requires_aiter_jit_cache must be boolean")
+    for source, reference in references.items():
+        require(read_regular(task / source) == read_regular(task / reference), "trusted source differs from its frozen reference")
+    return {"sources": sources, "references": references, "manifest": manifest,
+            "guard": guard_path, "needs_cache": needs_cache}
+
+
+def guard_sources(reference, candidate, guard_path):
+    code = (
+        "import pathlib,runpy,sys; "
+        "sys.path.insert(0,str(pathlib.Path(sys.argv[1]).parent)); "
+        "guard=runpy.run_path(sys.argv[1]); "
+        "guard['validate_sources'](pathlib.Path(sys.argv[2]),pathlib.Path(sys.argv[3]))"
+    )
+    subprocess.run([sys.executable, "-I", "-B", "-c", code, str(reference / guard_path),
+                    str(candidate), str(reference)], check=True, timeout=30)
+
+
+def preserve_diagnostics(build, output):
+    output.mkdir()
+    records = {}
+    try:
+        for source in sorted(build.iterdir()):
+            if source.suffix not in (".json", ".log"):
+                continue
+            digest = sha256(read_regular(source))
+            target = output / source.name
+            environment = os.environ.copy()
+            environment["GOMAXPROCS"] = "1"
+            subprocess.run(["rclone", "copyto", str(source), str(target), "--transfers", "64000",
+                            "--progress", "--buffer-size", "0", "--config", os.devnull],
+                           check=True, timeout=300, env=environment)
+            require(sha256(read_regular(target)) == digest, "diagnostic copy differs from phase output")
+            records[source.name] = digest
+    finally:
+        (output / "hashes.json").write_text(json.dumps(records, indent=2) + "\n")
+
+
+def run_phase(image, task, staging, output, leg, request, render_device, timeout, cache_source=None):
+    phase = request["phase"]
+    label = leg + "_" + phase
+    build = staging / (label + "_build")
+    build.mkdir()
+    cache = None
+    if cache_source is not None:
+        cache = staging / (label + "_jit")
+        copy_cache(cache_source, cache, timeout=timeout)
+    request_path = staging / (label + "_request.json")
+    request_path.write_text(canonical(request))
+    gpu_path = staging / (label + "_gpu.json")
+    gpu_path.write_text(canonical(request["gpu"]))
+    name = "aka-task-retest-" + uuid.uuid4().hex
+    command = docker_command(image, task, build, render_device, name, cache)
+    command = command_with_binding(command, image, request["gpu"], GPU_BINDING_HELPER, gpu_path)
+    image_index = command.index(image)
+    command[image_index:image_index] = ["--mount", f"type=bind,src={request_path},dst=/evaluation-request.json,readonly"]
+    command += [phase, "--request", "/evaluation-request.json"]
+    primary = None
+    try:
+        with (output / (label + ".log")).open("xb") as log:
+            subprocess.run(command, stdout=log, stderr=subprocess.STDOUT, check=True, timeout=timeout)
+        validate_preflight(strict_json(read_regular(build / "gpu_preflight.json")), request["gpu"])
+        return strict_json(read_regular(build / (phase + "_report.json")))
+    except BaseException as exc:
+        primary = exc
+        raise
+    finally:
+        failures = []
+        try:
+            subprocess.run(["docker", "rm", "-f", name], stdout=subprocess.DEVNULL,
+                           stderr=subprocess.DEVNULL, check=False, timeout=30)
+        except (OSError, subprocess.SubprocessError) as exc:
+            failures.append(exc)
+        try:
+            preserve_diagnostics(build, output / (label + ".diagnostics"))
+        except (OSError, ValueError, subprocess.SubprocessError) as exc:
+            failures.append(exc)
+        for exc in failures:
+            if primary is None:
+                raise exc
+            primary.add_note("Additional diagnostic/cleanup failure: " + str(exc))
+
+
+def trusted_retest(*, repo, commit, task_path, candidate_workspace, output, render_device, scratch_dir=None, timeout=7200):
+    repo, candidate_workspace = Path(repo).resolve(), Path(candidate_workspace).resolve()
+    output = Path(output).absolute()
+    scratch = Path(scratch_dir or tempfile.gettempdir()).resolve()
+    for path in (repo, output.resolve(), scratch):
+        require(not path.is_relative_to(candidate_workspace), "trusted repository/output/scratch must be outside the agent workspace")
+    require(timeout > 0, "timeout must be positive")
+    scratch.mkdir(parents=True, exist_ok=True)
+    output.mkdir(mode=0o700, parents=True)
+    with tempfile.TemporaryDirectory(prefix="aka-task-retest-", dir=scratch) as temporary:
+        staging = Path(temporary)
+        info = staging.stat()
+        require(info.st_uid == os.getuid() and stat.S_IMODE(info.st_mode) == 0o700, "scratch directory is not private")
+        reference = staging / "reference"
+        extract_task(repo, commit, task_path, reference)
+        contract = package_contract(reference)
+        candidate = staging / "candidate"
+        copy_cache(reference, candidate)
+        # Only these declared regular files are taken from the agent workspace.
+        for source in contract["sources"]:
+            (candidate / source).write_bytes(read_regular(candidate_workspace / source))
+        guard_sources(reference, candidate, contract["guard"])
+        gpu = select_gpu(render_device)
+        manifest = contract["manifest"]
+        image = manifest["runtime_image"]
+        image_record = json.loads(subprocess.check_output(["docker", "image", "inspect", image], text=True))[0]
+        require(any(item.endswith("@" + image.rsplit("@", 1)[1]) for item in image_record.get("RepoDigests", [])),
+                "local image does not attest the requested digest")
+        cache_source = None
+        if contract["needs_cache"]:
+            cache_root = staging / "image-jit"
+            proof = seed_image_cache(image, cache_root, output / "cache_init.log", timeout=timeout)
+            (output / "cache_manifest.json").write_text(canonical(proof))
+            cache_source = cache_root / "jit"
+        results, reports, sources = {}, {}, {}
+        challenge_seed = secrets.randbelow(2**30)
+        for leg, task in (("reference", reference), ("candidate", candidate)):
+            package = fingerprint(tree_manifest(task))
+            sources[leg] = {source: sha256(read_regular(task / source)) for source in contract["sources"]}
+            reports[leg] = {}
+            (task / "build").mkdir()
+            for phase in PHASES:
+                request = {"schema_version": 1, "request_id": secrets.token_hex(24), "phase": phase,
+                           "manifest_sha256": fingerprint(manifest), "package_sha256": package,
+                           "source_sha256": sources[leg], "challenge_seed": challenge_seed, "gpu": gpu}
+                report = run_phase(image, task, staging, output, leg, request, render_device, timeout, cache_source)
+                measured = validate_report(report, manifest, request)
+                # Ignore only the empty bind-mount point added after fingerprinting.
+                current = tree_manifest(task)
+                current.pop("build", None)
+                require(fingerprint(current) == package, "protected staged task files changed")
+                encoded = canonical(report).encode() + b"\n"
+                filename = leg + "_" + phase + ".json"
+                (output / filename).write_bytes(encoded)
+                reports[leg][phase] = {"file": filename, "sha256": sha256(encoded)}
+                if phase == "performance":
+                    results[leg] = measured
+        cases = []
+        for baseline, optimized in zip(results["reference"], results["candidate"]):
+            require(baseline["case_sha256"] == optimized["case_sha256"], "reference/candidate ABI differs")
+            ratio = baseline["execution_time_ms"] / optimized["execution_time_ms"]
+            require(math.isfinite(ratio) and ratio > 0, "invalid speedup ratio")
+            cases.append({"test_case_id": baseline["test_case_id"], "case_sha256": baseline["case_sha256"],
+                          "reference_ms": baseline["execution_time_ms"], "candidate_ms": optimized["execution_time_ms"],
+                          "speedup": ratio})
+        result = {"schema_version": 1, "status": "measured", "trusted_commit": commit, "task_path": task_path,
+                  "image": image, "local_image_id": image_record["Id"], "source_sha256": sources,
+                  "gpu": gpu,
+                  "manifest_sha256": fingerprint(manifest), "full_case_coverage": True, "cases": cases,
+                  "arithmetic_mean_speedup": math.fsum(row["speedup"] for row in cases) / len(cases),
+                  "reports": reports, "framework_task_validator_status": "not_asserted"}
+        (output / "trusted_measurement.json").write_text(json.dumps(result, indent=2, allow_nan=False) + "\n")
+        return result
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    for name in ("repo", "commit", "task", "candidate-workspace", "output", "render-device"):
+        parser.add_argument("--" + name, required=True)
+    parser.add_argument("--scratch-dir")
+    parser.add_argument("--timeout", type=int, default=7200)
+    args = parser.parse_args()
+    if Path("/.dockerenv").exists():
+        parser.error("run from a trusted host outside the agent container")
+    result = trusted_retest(repo=args.repo, commit=args.commit, task_path=args.task,
+                            candidate_workspace=args.candidate_workspace, output=args.output,
+                            render_device=args.render_device, scratch_dir=args.scratch_dir, timeout=args.timeout)
+    print(json.dumps({"measurement": str(Path(args.output) / "trusted_measurement.json"),
+                      "arithmetic_mean_speedup": result["arithmetic_mean_speedup"]}))
+
+
+if __name__ == "__main__":
+    main()

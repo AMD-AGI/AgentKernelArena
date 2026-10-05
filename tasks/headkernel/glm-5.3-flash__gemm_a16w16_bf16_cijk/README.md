@@ -1,38 +1,13 @@
-# glm-5.3-flash__gemm_a16w16_bf16_cijk - NOT_BUILT
+This task implements the actual GLM-5.3-Flash BF16 dense GEMM contract observed in `glm-flash-fp8-native-jit-194292`. It replaces the old placeholder with 8 explicit current cases, complete tensor strides/dtypes/scalars and recorded per-rank occurrences. It does not reuse historical0.5.18 case buckets.
 
-**GLM-5.3-Flash** - `Cijk_..._MT16x16x1024_` (hipBLASLt / Tensile, 6.31% GPU).
+The native profile comes from the digest-pinned SGLang0.5.20 image plus18 reviewed GLM HIP overlays. The native symbols are library kernels; this task exposes a portable Triton implementation of the same operation as an optimization target. The supplied Triton source is a newly authored replacement/port implementation. The frozen reference and submitted candidate both execute that declared Triton implementation through the same loader and fixed launch, including when their files are byte-identical. Source hashes only attest the input and never select an algorithm. The Arena score measures optimization of the supplied port. The production operator can be timed only by `scripts/production_comparison.py`; that report is diagnostic and excluded from scoring. All paths write preallocated output. End-to-end serving gains are not claimed.
 
-This is a placeholder, **not a task**. It carries no `config.yaml`, so the arena
-task scanner will not pick it up and it cannot be run or scored.
+Only `gemm_kernel`'s GPU body is editable. Imports, host calls, decorators, kernel ABI, launch geometry, cases, runner and independent CPU oracle are protected. `ut/evaluation_contract.py` is materialized unchanged from the shared contract. Use the generic trusted six-container evaluator after optimization.
 
-## Why
+Fresh deterministic operands match the observed shapes and physical strides. Storage offsets are explicitly0 for generated aligned buffers; the raw trace did not save offsets or values. FP8 tests independently dequantize packed weights and block scales on CPU. Expected outputs stay on CPU, inputs change every graph replay, output buffers are poisoned, every output and input immutability check runs on every replay, and no-op/corruption controls must fail.
 
-IMAGE-VERIFIED 2026-09-15: the editable source EXISTS in the row's own runtime image. sglang:v0.5.17-rocm720-mi35x-profilerfix (sglang 2948168546, aiter d9e5ef7ce08e) carries /sgl-workspace/aiter/aiter/tuned_gemm.py (23148 bytes, gemm_a16w16:354, torch_gemm:479, class TunedGemm:683, solMap:672) - byte-size and aiter commit identical to the copy already vendored in this suite at tasks/headkernel/qwen3.8-2.4t__dense_bf16_gemm_cluster/source/tuned_gemm_candidate.py, so that copy is version-correct for this row. The package ships 27 cases and the clearest rebind recipe of any open row, but no kernel_src and no frozen oracle (meta.oracle is the string 'synthesized_fp32_matmul'). Remaining work: wire the source in, add candidate_bind (watch the import-time solMap - a bare setattr is a dead rebind), capture an oracle. Tuning it in cycle 0 cost -7.01% e2e, so verify the headroom before investing.
+All 8 cases are mandatory. Timings use10 warmups and100 fresh-input replays per case; reset, CPU reference and validation lie outside the GPU timing interval. Correctness compares BF16 output against CPU FP32 accumulation at rtol0.01/atol0.02 and rejects nonfinite/unwritten elements.
 
-| field | value |
-|---|---|
-| GPU time share | 6.31% |
-| empirical roofline | 0.024 |
-| optimized roofline | 0.024 |
-| e2e uplift measured | -7.01% |
-| device symbol | `Cijk_..._MT16x16x1024_MI / Cijk_..._MT32x32x512_MI1` |
-| production seam | `aiter.tuned_gemm:gemm_a16w16` |
-| info rows | G53-2 |
-| upstream UT package | `H/GLM-5.3-Flash_gemm_a16w16_bf16_Cijk_0913` |
+GPU compilation, correctness and performance passed for all8 cases on MI355X in the first native-image run. Each performance case has100 validated samples. Framework task-validator qualification and submitted-source negative-control retests remain pending; this is not a finalized qualification or a speedup claim.
 
-## To promote it into the suite
-
-1. Get an editable implementation of the seam into `source/`. Read the Why above
-   first - it says whether the source has to be written (the profiled symbol is a
-   prebuilt vendor artifact with no Python behind it) or merely vendored (the
-   package shipped an empty `kernel_src/` but the Triton source exists upstream,
-   and for the `aiter.tuned_gemm` rows a stock copy already ships in this suite at
-   `tasks/headkernel/qwen3.8-2.4t__dense_bf16_gemm_cluster/source/`).
-2. Add `candidate_bind` to the package `meta.json` so the candidate leg actually
-   shadows the production callable - without it both legs resolve to the same code
-   and any measured speedup is noise. For the `aiter.tuned_gemm` rows note that a
-   bare `setattr` on the module is a DEAD rebind: `solMap` is built at import time
-   holding direct function objects, so the dispatcher keeps calling the original.
-3. Re-capture parity against the live server and confirm
-   `selection_validation.ok == true`.
-4. Re-run `tools/build_suite.py`; flip `built` to true in `tools/manifest.json`.
+`python3 ut/test_dispatch.py` verifies with CPU launch spies that the stock source, a whitespace-only edit, and a local-variable rename all use the same declared GPU launch for every mandatory case. This is a dispatch regression, not GPU qualification.

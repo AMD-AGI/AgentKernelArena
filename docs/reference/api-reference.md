@@ -197,6 +197,7 @@ For isolated-kernel tasks (`hip2hip`, `cuda2hip`, `triton2triton`,
 | `compile_timeout` | No | Per-command compilation timeout in seconds (default `3600`) |
 | `correctness_timeout` | No | Per-command correctness timeout in seconds (default `3600`) |
 | `performance_timeout` | No | Per-command performance timeout in seconds (default `3600`) |
+| `trusted_evaluation` | No | Opt-in [guarded case contract](../how-to/guarded-case-contract.md) for exact case ABI and fresh-container host retests |
 | `task_result_template` | No | Legacy compatibility field. The centralized evaluator writes the standard result schema regardless of this value |
 | `platform_support` | No | Optional run-gating metadata; see below |
 | `prompt.source_code` | No | Override the prompt's source-code section |

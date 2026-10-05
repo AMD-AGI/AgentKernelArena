@@ -1,0 +1,1253 @@
+{
+  "schema_version": 1,
+  "runtime_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
+  "source_run": "glm-flash-fp8-native-jit-194292",
+  "source_summary_sha256": "22d51e633aebc987843a97f47648f069a5347022d1f4c365f635db9d531956c0",
+  "source_runtime": "SGLang0.5.20 plus18 GLM compatibility overlays; original native AITER JIT preserved",
+  "cases": [
+    {
+      "case_id": "fp8-m8192-n2048-k1536",
+      "occurrences": 88,
+      "calls_per_sample": 1,
+      "scalars": {
+        "M": 8192,
+        "N": 2048,
+        "K": 1536,
+        "fp8": true,
+        "BM": 32,
+        "BN": 64,
+        "BK": 128
+      },
+      "tensors": {
+        "A": {
+          "role": "input",
+          "shape": [
+            8192,
+            1536
+          ],
+          "strides": [
+            1536,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "float8_e4m3fn",
+          "device_type": "cuda"
+        },
+        "B": {
+          "role": "input",
+          "shape": [
+            2048,
+            1536
+          ],
+          "strides": [
+            1536,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "float8_e4m3fn",
+          "device_type": "cuda"
+        },
+        "C": {
+          "role": "output",
+          "shape": [
+            8192,
+            2048
+          ],
+          "strides": [
+            2048,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        },
+        "SA": {
+          "role": "input",
+          "shape": [
+            8192,
+            12
+          ],
+          "strides": [
+            1,
+            8192
+          ],
+          "storage_offset": 0,
+          "dtype": "float32",
+          "device_type": "cuda"
+        },
+        "SB": {
+          "role": "input",
+          "shape": [
+            16,
+            12
+          ],
+          "strides": [
+            12,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "float32",
+          "device_type": "cuda"
+        }
+      },
+      "evidence": {
+        "operator": "aiter::gemm_a8w8_blockscale_bpreshuffle",
+        "stage": "prefill",
+        "group_id": "ae8522775eb2455bad681c5c",
+        "per_rank_counts": {
+          "4": 88,
+          "2": 88,
+          "1": 88,
+          "0": 88,
+          "5": 88,
+          "3": 88,
+          "7": 88,
+          "6": 88
+        },
+        "examples": {
+          "4": {
+            "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-4-EXTEND.trace.json.gz",
+            "trace_sha256": "6df78e0e9af754959d29e16bdcfe6d648ce42a181fd76654f0cade4d0fa75f3d",
+            "event_indices": [
+              1499,
+              2671,
+              3843
+            ]
+          },
+          "2": {
+            "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-2-EXTEND.trace.json.gz",
+            "trace_sha256": "b9d4a2c7fa70bacff07fef46b7ddab3e61202667e9d82f72fdbe239eca3d50ec",
+            "event_indices": [
+              1498,
+              2670,
+              3842
+            ]
+          },
+          "1": {
+            "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-1-EXTEND.trace.json.gz",
+            "trace_sha256": "03a7eb8b3c950d64a31c54953a87b825e1b094030759e9831c5793fc45bd9113",
+            "event_indices": [
+              1498,
+              2670,
+              3842
+            ]
+          },
+          "0": {
+            "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-0-EXTEND.trace.json.gz",
+            "trace_sha256": "b9e8999070cc8bd89c46d31473ed1364d92971a42778510bfd394d8429cfde8c",
+            "event_indices": [
+              1498,
+              2670,
+              3842
+            ]
+          },
+          "5": {
+            "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-5-EXTEND.trace.json.gz",
+            "trace_sha256": "89e550e99ed96b34820df0b2dfa125a62c9aac86eaeb7a8d2cac166ca187a07e",
+            "event_indices": [
+              1499,
+              2671,
+              3843
+            ]
+          },
+          "3": {
+            "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-3-EXTEND.trace.json.gz",
+            "trace_sha256": "df29840744a985274338dd51637ee80814d7c6972ed331713cee8a9ea4be9c3e",
+            "event_indices": [
+              1498,
+              2670,
+              3842
+            ]
+          },
+          "7": {
+            "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-7-EXTEND.trace.json.gz",
+            "trace_sha256": "202f277f4465ee5d3adc202e9df81608ff8fdd86e34377ef753b680075bdc98c",
+            "event_indices": [
+              1498,
+              2670,
+              3842
+            ]
+          },
+          "6": {
+            "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-6-EXTEND.trace.json.gz",
+            "trace_sha256": "5b9eedca7a316cefef1b89d459c901eb5860d2fb614eb48d2b1ce0e215297838",
+            "event_indices": [
+              1499,
+              2671,
+              3843
+            ]
+          }
+        }
+      }
+    },
+    {
+      "case_id": "fp8-m8192-n2048-k4096",
+      "occurrences": 88,
+      "calls_per_sample": 1,
+      "scalars": {
+        "M": 8192,
+        "N": 2048,
+        "K": 4096,
+        "fp8": true,
+        "BM": 32,
+        "BN": 64,
+        "BK": 128
+      },
+      "tensors": {
+        "A": {
+          "role": "input",
+          "shape": [
+            8192,
+            4096
+          ],
+          "strides": [
+            4096,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "float8_e4m3fn",
+          "device_type": "cuda"
+        },
+        "B": {
+          "role": "input",
+          "shape": [
+            2048,
+            4096
+          ],
+          "strides": [
+            4096,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "float8_e4m3fn",
+          "device_type": "cuda"
+        },
+        "C": {
+          "role": "output",
+          "shape": [
+            8192,
+            2048
+          ],
+          "strides": [
+            2048,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        },
+        "SA": {
+          "role": "input",
+          "shape": [
+            8192,
+            32
+          ],
+          "strides": [
+            1,
+            8192
+          ],
+          "storage_offset": 0,
+          "dtype": "float32",
+          "device_type": "cuda"
+        },
+        "SB": {
+          "role": "input",
+          "shape": [
+            16,
+            32
+          ],
+          "strides": [
+            32,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "float32",
+          "device_type": "cuda"
+        }
+      },
+      "evidence": {
+        "operator": "aiter::gemm_a8w8_blockscale_bpreshuffle",
+        "stage": "prefill",
+        "group_id": "3b82ea2c4c4005d264bf547d",
+        "per_rank_counts": {
+          "4": 88,
+          "2": 88,
+          "1": 88,
+          "0": 88,
+          "5": 88,
+          "3": 88,
+          "7": 88,
+          "6": 88
+        },
+        "examples": {
+          "4": {
+            "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-4-EXTEND.trace.json.gz",
+            "trace_sha256": "6df78e0e9af754959d29e16bdcfe6d648ce42a181fd76654f0cade4d0fa75f3d",
+            "event_indices": [
+              1476,
+              2648,
+              3820
+            ]
+          },
+          "2": {
+            "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-2-EXTEND.trace.json.gz",
+            "trace_sha256": "b9d4a2c7fa70bacff07fef46b7ddab3e61202667e9d82f72fdbe239eca3d50ec",
+            "event_indices": [
+              1475,
+              2647,
+              3819
+            ]
+          },
+          "1": {
+            "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-1-EXTEND.trace.json.gz",
+            "trace_sha256": "03a7eb8b3c950d64a31c54953a87b825e1b094030759e9831c5793fc45bd9113",
+            "event_indices": [
+              1475,
+              2647,
+              3819
+            ]
+          },
+          "0": {
+            "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-0-EXTEND.trace.json.gz",
+            "trace_sha256": "b9e8999070cc8bd89c46d31473ed1364d92971a42778510bfd394d8429cfde8c",
+            "event_indices": [
+              1475,
+              2647,
+              3819
+            ]
+          },
+          "5": {
+            "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-5-EXTEND.trace.json.gz",
+            "trace_sha256": "89e550e99ed96b34820df0b2dfa125a62c9aac86eaeb7a8d2cac166ca187a07e",
+            "event_indices": [
+              1476,
+              2648,
+              3820
+            ]
+          },
+          "3": {
+            "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-3-EXTEND.trace.json.gz",
+            "trace_sha256": "df29840744a985274338dd51637ee80814d7c6972ed331713cee8a9ea4be9c3e",
+            "event_indices": [
+              1475,
+              2647,
+              3819
+            ]
+          },
+          "7": {
+            "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-7-EXTEND.trace.json.gz",
+            "trace_sha256": "202f277f4465ee5d3adc202e9df81608ff8fdd86e34377ef753b680075bdc98c",
+            "event_indices": [
+              1475,
+              2647,
+              3819
+            ]
+          },
+          "6": {
+            "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-6-EXTEND.trace.json.gz",
+            "trace_sha256": "5b9eedca7a316cefef1b89d459c901eb5860d2fb614eb48d2b1ce0e215297838",
+            "event_indices": [
+              1476,
+              2648,
+              3820
+            ]
+          }
+        }
+      }
+    },
+    {
+      "case_id": "fp8-m8192-n3072-k4096",
+      "occurrences": 24,
+      "calls_per_sample": 1,
+      "scalars": {
+        "M": 8192,
+        "N": 3072,
+        "K": 4096,
+        "fp8": true,
+        "BM": 32,
+        "BN": 64,
+        "BK": 128
+      },
+      "tensors": {
+        "A": {
+          "role": "input",
+          "shape": [
+            8192,
+            4096
+          ],
+          "strides": [
+            4096,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "float8_e4m3fn",
+          "device_type": "cuda"
+        },
+        "B": {
+          "role": "input",
+          "shape": [
+            3072,
+            4096
+          ],
+          "strides": [
+            4096,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "float8_e4m3fn",
+          "device_type": "cuda"
+        },
+        "C": {
+          "role": "output",
+          "shape": [
+            8192,
+            3072
+          ],
+          "strides": [
+            3072,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        },
+        "SA": {
+          "role": "input",
+          "shape": [
+            8192,
+            32
+          ],
+          "strides": [
+            1,
+            8192
+          ],
+          "storage_offset": 0,
+          "dtype": "float32",
+          "device_type": "cuda"
+        },
+        "SB": {
+          "role": "input",
+          "shape": [
+            24,
+            32
+          ],
+          "strides": [
+            32,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "float32",
+          "device_type": "cuda"
+        }
+      },
+      "evidence": {
+        "operator": "aiter::gemm_a8w8_blockscale_bpreshuffle",
+        "stage": "prefill",
+        "group_id": "7c3c3ca37a13c1945386dd43",
+        "per_rank_counts": {
+          "4": 24,
+          "2": 24,
+          "1": 24,
+          "0": 24,
+          "5": 24,
+          "3": 24,
+          "7": 24,
+          "6": 24
+        },
+        "examples": {
+          "4": {
+            "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-4-EXTEND.trace.json.gz",
+            "trace_sha256": "6df78e0e9af754959d29e16bdcfe6d648ce42a181fd76654f0cade4d0fa75f3d",
+            "event_indices": [
+              923,
+              1173,
+              1423
+            ]
+          },
+          "2": {
+            "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-2-EXTEND.trace.json.gz",
+            "trace_sha256": "b9d4a2c7fa70bacff07fef46b7ddab3e61202667e9d82f72fdbe239eca3d50ec",
+            "event_indices": [
+              922,
+              1172,
+              1422
+            ]
+          },
+          "1": {
+            "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-1-EXTEND.trace.json.gz",
+            "trace_sha256": "03a7eb8b3c950d64a31c54953a87b825e1b094030759e9831c5793fc45bd9113",
+            "event_indices": [
+              922,
+              1172,
+              1422
+            ]
+          },
+          "0": {
+            "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-0-EXTEND.trace.json.gz",
+            "trace_sha256": "b9e8999070cc8bd89c46d31473ed1364d92971a42778510bfd394d8429cfde8c",
+            "event_indices": [
+              922,
+              1172,
+              1422
+            ]
+          },
+          "5": {
+            "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-5-EXTEND.trace.json.gz",
+            "trace_sha256": "89e550e99ed96b34820df0b2dfa125a62c9aac86eaeb7a8d2cac166ca187a07e",
+            "event_indices": [
+              923,
+              1173,
+              1423
+            ]
+          },
+          "3": {
+            "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-3-EXTEND.trace.json.gz",
+            "trace_sha256": "df29840744a985274338dd51637ee80814d7c6972ed331713cee8a9ea4be9c3e",
+            "event_indices": [
+              922,
+              1172,
+              1422
+            ]
+          },
+          "7": {
+            "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-7-EXTEND.trace.json.gz",
+            "trace_sha256": "202f277f4465ee5d3adc202e9df81608ff8fdd86e34377ef753b680075bdc98c",
+            "event_indices": [
+              922,
+              1172,
+              1422
+            ]
+          },
+          "6": {
+            "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-6-EXTEND.trace.json.gz",
+            "trace_sha256": "5b9eedca7a316cefef1b89d459c901eb5860d2fb614eb48d2b1ce0e215297838",
+            "event_indices": [
+              923,
+              1173,
+              1423
+            ]
+          }
+        }
+      }
+    },
+    {
+      "case_id": "fp8-m8192-n4096-k1536",
+      "occurrences": 24,
+      "calls_per_sample": 1,
+      "scalars": {
+        "M": 8192,
+        "N": 4096,
+        "K": 1536,
+        "fp8": true,
+        "BM": 32,
+        "BN": 64,
+        "BK": 128
+      },
+      "tensors": {
+        "A": {
+          "role": "input",
+          "shape": [
+            8192,
+            1536
+          ],
+          "strides": [
+            1536,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "float8_e4m3fn",
+          "device_type": "cuda"
+        },
+        "B": {
+          "role": "input",
+          "shape": [
+            4096,
+            1536
+          ],
+          "strides": [
+            1536,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "float8_e4m3fn",
+          "device_type": "cuda"
+        },
+        "C": {
+          "role": "output",
+          "shape": [
+            8192,
+            4096
+          ],
+          "strides": [
+            4096,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        },
+        "SA": {
+          "role": "input",
+          "shape": [
+            8192,
+            12
+          ],
+          "strides": [
+            1,
+            8192
+          ],
+          "storage_offset": 0,
+          "dtype": "float32",
+          "device_type": "cuda"
+        },
+        "SB": {
+          "role": "input",
+          "shape": [
+            32,
+            12
+          ],
+          "strides": [
+            12,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "float32",
+          "device_type": "cuda"
+        }
+      },
+      "evidence": {
+        "operator": "aiter::gemm_a8w8_blockscale_bpreshuffle",
+        "stage": "prefill",
+        "group_id": "8ca37b4202d35b68f6e9a902",
+        "per_rank_counts": {
+          "4": 24,
+          "2": 24,
+          "1": 24,
+          "0": 24,
+          "5": 24,
+          "3": 24,
+          "7": 24,
+          "6": 24
+        },
+        "examples": {
+          "4": {
+            "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-4-EXTEND.trace.json.gz",
+            "trace_sha256": "6df78e0e9af754959d29e16bdcfe6d648ce42a181fd76654f0cade4d0fa75f3d",
+            "event_indices": [
+              939,
+              1189,
+              1439
+            ]
+          },
+          "2": {
+            "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-2-EXTEND.trace.json.gz",
+            "trace_sha256": "b9d4a2c7fa70bacff07fef46b7ddab3e61202667e9d82f72fdbe239eca3d50ec",
+            "event_indices": [
+              938,
+              1188,
+              1438
+            ]
+          },
+          "1": {
+            "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-1-EXTEND.trace.json.gz",
+            "trace_sha256": "03a7eb8b3c950d64a31c54953a87b825e1b094030759e9831c5793fc45bd9113",
+            "event_indices": [
+              938,
+              1188,
+              1438
+            ]
+          },
+          "0": {
+            "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-0-EXTEND.trace.json.gz",
+            "trace_sha256": "b9e8999070cc8bd89c46d31473ed1364d92971a42778510bfd394d8429cfde8c",
+            "event_indices": [
+              938,
+              1188,
+              1438
+            ]
+          },
+          "5": {
+            "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-5-EXTEND.trace.json.gz",
+            "trace_sha256": "89e550e99ed96b34820df0b2dfa125a62c9aac86eaeb7a8d2cac166ca187a07e",
+            "event_indices": [
+              939,
+              1189,
+              1439
+            ]
+          },
+          "3": {
+            "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-3-EXTEND.trace.json.gz",
+            "trace_sha256": "df29840744a985274338dd51637ee80814d7c6972ed331713cee8a9ea4be9c3e",
+            "event_indices": [
+              938,
+              1188,
+              1438
+            ]
+          },
+          "7": {
+            "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-7-EXTEND.trace.json.gz",
+            "trace_sha256": "202f277f4465ee5d3adc202e9df81608ff8fdd86e34377ef753b680075bdc98c",
+            "event_indices": [
+              938,
+              1188,
+              1438
+            ]
+          },
+          "6": {
+            "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-6-EXTEND.trace.json.gz",
+            "trace_sha256": "5b9eedca7a316cefef1b89d459c901eb5860d2fb614eb48d2b1ce0e215297838",
+            "event_indices": [
+              939,
+              1189,
+              1439
+            ]
+          }
+        }
+      }
+    },
+    {
+      "case_id": "fp8-m8192-n4096-k2048",
+      "occurrences": 88,
+      "calls_per_sample": 1,
+      "scalars": {
+        "M": 8192,
+        "N": 4096,
+        "K": 2048,
+        "fp8": true,
+        "BM": 32,
+        "BN": 64,
+        "BK": 128
+      },
+      "tensors": {
+        "A": {
+          "role": "input",
+          "shape": [
+            8192,
+            2048
+          ],
+          "strides": [
+            2048,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "float8_e4m3fn",
+          "device_type": "cuda"
+        },
+        "B": {
+          "role": "input",
+          "shape": [
+            4096,
+            2048
+          ],
+          "strides": [
+            2048,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "float8_e4m3fn",
+          "device_type": "cuda"
+        },
+        "C": {
+          "role": "output",
+          "shape": [
+            8192,
+            4096
+          ],
+          "strides": [
+            4096,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        },
+        "SA": {
+          "role": "input",
+          "shape": [
+            8192,
+            16
+          ],
+          "strides": [
+            1,
+            8192
+          ],
+          "storage_offset": 0,
+          "dtype": "float32",
+          "device_type": "cuda"
+        },
+        "SB": {
+          "role": "input",
+          "shape": [
+            32,
+            16
+          ],
+          "strides": [
+            16,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "float32",
+          "device_type": "cuda"
+        }
+      },
+      "evidence": {
+        "operator": "aiter::gemm_a8w8_blockscale_bpreshuffle",
+        "stage": "prefill",
+        "group_id": "cc5dd037113085a523cb0784",
+        "per_rank_counts": {
+          "4": 88,
+          "2": 88,
+          "1": 88,
+          "0": 88,
+          "5": 88,
+          "3": 88,
+          "7": 88,
+          "6": 88
+        },
+        "examples": {
+          "4": {
+            "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-4-EXTEND.trace.json.gz",
+            "trace_sha256": "6df78e0e9af754959d29e16bdcfe6d648ce42a181fd76654f0cade4d0fa75f3d",
+            "event_indices": [
+              1672,
+              2844,
+              4016
+            ]
+          },
+          "2": {
+            "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-2-EXTEND.trace.json.gz",
+            "trace_sha256": "b9d4a2c7fa70bacff07fef46b7ddab3e61202667e9d82f72fdbe239eca3d50ec",
+            "event_indices": [
+              1671,
+              2843,
+              4015
+            ]
+          },
+          "1": {
+            "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-1-EXTEND.trace.json.gz",
+            "trace_sha256": "03a7eb8b3c950d64a31c54953a87b825e1b094030759e9831c5793fc45bd9113",
+            "event_indices": [
+              1671,
+              2843,
+              4015
+            ]
+          },
+          "0": {
+            "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-0-EXTEND.trace.json.gz",
+            "trace_sha256": "b9e8999070cc8bd89c46d31473ed1364d92971a42778510bfd394d8429cfde8c",
+            "event_indices": [
+              1671,
+              2843,
+              4015
+            ]
+          },
+          "5": {
+            "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-5-EXTEND.trace.json.gz",
+            "trace_sha256": "89e550e99ed96b34820df0b2dfa125a62c9aac86eaeb7a8d2cac166ca187a07e",
+            "event_indices": [
+              1672,
+              2844,
+              4016
+            ]
+          },
+          "3": {
+            "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-3-EXTEND.trace.json.gz",
+            "trace_sha256": "df29840744a985274338dd51637ee80814d7c6972ed331713cee8a9ea4be9c3e",
+            "event_indices": [
+              1671,
+              2843,
+              4015
+            ]
+          },
+          "7": {
+            "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-7-EXTEND.trace.json.gz",
+            "trace_sha256": "202f277f4465ee5d3adc202e9df81608ff8fdd86e34377ef753b680075bdc98c",
+            "event_indices": [
+              1671,
+              2843,
+              4015
+            ]
+          },
+          "6": {
+            "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-6-EXTEND.trace.json.gz",
+            "trace_sha256": "5b9eedca7a316cefef1b89d459c901eb5860d2fb614eb48d2b1ce0e215297838",
+            "event_indices": [
+              1672,
+              2844,
+              4016
+            ]
+          }
+        }
+      }
+    },
+    {
+      "case_id": "fp8-m8192-n4096-k256",
+      "occurrences": 336,
+      "calls_per_sample": 1,
+      "scalars": {
+        "M": 8192,
+        "N": 4096,
+        "K": 256,
+        "fp8": true,
+        "BM": 32,
+        "BN": 64,
+        "BK": 128
+      },
+      "tensors": {
+        "A": {
+          "role": "input",
+          "shape": [
+            8192,
+            256
+          ],
+          "strides": [
+            256,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "float8_e4m3fn",
+          "device_type": "cuda"
+        },
+        "B": {
+          "role": "input",
+          "shape": [
+            4096,
+            256
+          ],
+          "strides": [
+            256,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "float8_e4m3fn",
+          "device_type": "cuda"
+        },
+        "C": {
+          "role": "output",
+          "shape": [
+            8192,
+            4096
+          ],
+          "strides": [
+            4096,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        },
+        "SA": {
+          "role": "input",
+          "shape": [
+            8192,
+            2
+          ],
+          "strides": [
+            1,
+            8192
+          ],
+          "storage_offset": 0,
+          "dtype": "float32",
+          "device_type": "cuda"
+        },
+        "SB": {
+          "role": "input",
+          "shape": [
+            32,
+            2
+          ],
+          "strides": [
+            2,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "float32",
+          "device_type": "cuda"
+        }
+      },
+      "evidence": {
+        "operator": "aiter::gemm_a8w8_blockscale_bpreshuffle",
+        "stage": "prefill",
+        "group_id": "02a93f6f749877c6ce3af36c",
+        "per_rank_counts": {
+          "4": 336,
+          "2": 336,
+          "1": 336,
+          "0": 336,
+          "5": 336,
+          "3": 336,
+          "7": 336,
+          "6": 336
+        },
+        "examples": {
+          "4": {
+            "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-4-EXTEND.trace.json.gz",
+            "trace_sha256": "6df78e0e9af754959d29e16bdcfe6d648ce42a181fd76654f0cade4d0fa75f3d",
+            "event_indices": [
+              1725,
+              2009,
+              2293
+            ]
+          },
+          "2": {
+            "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-2-EXTEND.trace.json.gz",
+            "trace_sha256": "b9d4a2c7fa70bacff07fef46b7ddab3e61202667e9d82f72fdbe239eca3d50ec",
+            "event_indices": [
+              1724,
+              2008,
+              2292
+            ]
+          },
+          "1": {
+            "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-1-EXTEND.trace.json.gz",
+            "trace_sha256": "03a7eb8b3c950d64a31c54953a87b825e1b094030759e9831c5793fc45bd9113",
+            "event_indices": [
+              1724,
+              2008,
+              2292
+            ]
+          },
+          "0": {
+            "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-0-EXTEND.trace.json.gz",
+            "trace_sha256": "b9e8999070cc8bd89c46d31473ed1364d92971a42778510bfd394d8429cfde8c",
+            "event_indices": [
+              1724,
+              2008,
+              2292
+            ]
+          },
+          "5": {
+            "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-5-EXTEND.trace.json.gz",
+            "trace_sha256": "89e550e99ed96b34820df0b2dfa125a62c9aac86eaeb7a8d2cac166ca187a07e",
+            "event_indices": [
+              1725,
+              2009,
+              2293
+            ]
+          },
+          "3": {
+            "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-3-EXTEND.trace.json.gz",
+            "trace_sha256": "df29840744a985274338dd51637ee80814d7c6972ed331713cee8a9ea4be9c3e",
+            "event_indices": [
+              1724,
+              2008,
+              2292
+            ]
+          },
+          "7": {
+            "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-7-EXTEND.trace.json.gz",
+            "trace_sha256": "202f277f4465ee5d3adc202e9df81608ff8fdd86e34377ef753b680075bdc98c",
+            "event_indices": [
+              1724,
+              2008,
+              2292
+            ]
+          },
+          "6": {
+            "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-6-EXTEND.trace.json.gz",
+            "trace_sha256": "5b9eedca7a316cefef1b89d459c901eb5860d2fb614eb48d2b1ce0e215297838",
+            "event_indices": [
+              1725,
+              2009,
+              2293
+            ]
+          }
+        }
+      }
+    },
+    {
+      "case_id": "fp8-m8192-n512-k4096",
+      "occurrences": 336,
+      "calls_per_sample": 1,
+      "scalars": {
+        "M": 8192,
+        "N": 512,
+        "K": 4096,
+        "fp8": true,
+        "BM": 32,
+        "BN": 64,
+        "BK": 128
+      },
+      "tensors": {
+        "A": {
+          "role": "input",
+          "shape": [
+            8192,
+            4096
+          ],
+          "strides": [
+            4096,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "float8_e4m3fn",
+          "device_type": "cuda"
+        },
+        "B": {
+          "role": "input",
+          "shape": [
+            512,
+            4096
+          ],
+          "strides": [
+            4096,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "float8_e4m3fn",
+          "device_type": "cuda"
+        },
+        "C": {
+          "role": "output",
+          "shape": [
+            8192,
+            512
+          ],
+          "strides": [
+            512,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        },
+        "SA": {
+          "role": "input",
+          "shape": [
+            8192,
+            32
+          ],
+          "strides": [
+            1,
+            8192
+          ],
+          "storage_offset": 0,
+          "dtype": "float32",
+          "device_type": "cuda"
+        },
+        "SB": {
+          "role": "input",
+          "shape": [
+            4,
+            32
+          ],
+          "strides": [
+            32,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "float32",
+          "device_type": "cuda"
+        }
+      },
+      "evidence": {
+        "operator": "aiter::gemm_a8w8_blockscale_bpreshuffle",
+        "stage": "prefill",
+        "group_id": "d39fc9108b9014eb6092f1b2",
+        "per_rank_counts": {
+          "4": 336,
+          "2": 336,
+          "1": 336,
+          "0": 336,
+          "5": 336,
+          "3": 336,
+          "7": 336,
+          "6": 336
+        },
+        "examples": {
+          "4": {
+            "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-4-EXTEND.trace.json.gz",
+            "trace_sha256": "6df78e0e9af754959d29e16bdcfe6d648ce42a181fd76654f0cade4d0fa75f3d",
+            "event_indices": [
+              1709,
+              1993,
+              2277
+            ]
+          },
+          "2": {
+            "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-2-EXTEND.trace.json.gz",
+            "trace_sha256": "b9d4a2c7fa70bacff07fef46b7ddab3e61202667e9d82f72fdbe239eca3d50ec",
+            "event_indices": [
+              1708,
+              1992,
+              2276
+            ]
+          },
+          "1": {
+            "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-1-EXTEND.trace.json.gz",
+            "trace_sha256": "03a7eb8b3c950d64a31c54953a87b825e1b094030759e9831c5793fc45bd9113",
+            "event_indices": [
+              1708,
+              1992,
+              2276
+            ]
+          },
+          "0": {
+            "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-0-EXTEND.trace.json.gz",
+            "trace_sha256": "b9e8999070cc8bd89c46d31473ed1364d92971a42778510bfd394d8429cfde8c",
+            "event_indices": [
+              1708,
+              1992,
+              2276
+            ]
+          },
+          "5": {
+            "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-5-EXTEND.trace.json.gz",
+            "trace_sha256": "89e550e99ed96b34820df0b2dfa125a62c9aac86eaeb7a8d2cac166ca187a07e",
+            "event_indices": [
+              1709,
+              1993,
+              2277
+            ]
+          },
+          "3": {
+            "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-3-EXTEND.trace.json.gz",
+            "trace_sha256": "df29840744a985274338dd51637ee80814d7c6972ed331713cee8a9ea4be9c3e",
+            "event_indices": [
+              1708,
+              1992,
+              2276
+            ]
+          },
+          "7": {
+            "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-7-EXTEND.trace.json.gz",
+            "trace_sha256": "202f277f4465ee5d3adc202e9df81608ff8fdd86e34377ef753b680075bdc98c",
+            "event_indices": [
+              1708,
+              1992,
+              2276
+            ]
+          },
+          "6": {
+            "trace_file": "glm-flash-fp8-native-jit-194292-glm-flash-fp8-native-jit-194292-TP-6-EXTEND.trace.json.gz",
+            "trace_sha256": "5b9eedca7a316cefef1b89d459c901eb5860d2fb614eb48d2b1ce0e215297838",
+            "event_indices": [
+              1709,
+              1993,
+              2277
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "measurement": {
+    "method": "cuda_graph",
+    "warmup_iterations": 10,
+    "benchmark_iterations": 100,
+    "correctness_seeds": [
+      0,
+      1
+    ],
+    "refresh_inputs": "each_replay",
+    "initialize_outputs": "each_replay",
+    "validate_outputs": "each_replay",
+    "negative_controls": [
+      "no_op",
+      "wrong_output"
+    ]
+  },
+  "generation_contract": "Fresh finite operands at actual observed shapes and strides, aligned offset0; raw profiler did not expose storage offsets or tensor values. This is a generated exact-shape operator task, not a live tensor replay.",
+  "score_scope": "Native profiled operator versus submitted Triton port on identical full-ABI current cases; no end-to-end serving gain claim.",
+  "scope": "All observed public blockscale-BP FP8 GEMM prefill shapes; constituent MoE GEMMs excluded."
+}

@@ -1,0 +1,54 @@
+task_type: instruction2triton
+source_file_path:
+- source/kernels.py
+target_kernel_functions:
+- gemm_kernel
+compile_command:
+- python3 scripts/task_runner.py compile
+correctness_command:
+- python3 scripts/task_runner.py correctness
+performance_command:
+- python3 scripts/task_runner.py performance
+compile_timeout: 1800
+correctness_timeout: 1800
+performance_timeout: 7200
+task_result_template: null
+harness_protection:
+  reject_new_source_symlinks: true
+platform_support:
+  required_arch: gfx950
+  status: active
+trusted_evaluation:
+  schema_version: 1
+  case_manifest: cases.json
+  contract_file: ut/evaluation_contract.py
+  source_guard: ut/source_guard.py
+  reference_sources:
+    source/kernels.py: ut/reference/kernels.py
+  requires_aiter_jit_cache: false
+prompt:
+  source_code: null
+  instructions: Optimize only the GPU body of gemm_kernel in source/kernels.py. Preserve its
+    ABI, imports, decorators, launch configuration and all protected files. Complete every case
+    in cases.json; preserve observed multiplicity and exact physical strides. B is the actual
+    AITER (16,16) FP8 preshuffle layout, SA is column-major with stride(1,M), SB is row-major
+    block128 scales, and C is BF16. Both the frozen reference and submitted candidate execute
+    this declared Triton port through the same loader, launch geometry, oracle and timing path.
+    Source hashes never select an algorithm. The port is newly authored and is not original
+    image kernel source. Production-native timings are separate diagnostics and cannot enter
+    the Arena score. No end-to-end serving speedup is claimed.
+  cheatsheet: null
+headkernel:
+  model: GLM-5.3-Flash
+  docker: docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96
+  source_run: glm-flash-fp8-native-jit-194292
+  target_callable: aiter::gemm_a8w8_blockscale_bpreshuffle
+  source_seed: portable_triton_candidate_scaffold
+  native_dispatch: CK blockscale BP GEMM
+  validation_status: pending_gpu_and_framework
+  oracle: independent CPU FP32 matmul from quantized/dequantized operands; no GPU oracle buffers
+    exist
+  count_scope: observed per-rank native prefill window only
+  performance_baseline: frozen supplied Triton port; reference and candidate use identical dispatch
+  task_scope: replacement/port implementation optimization for observed operator ABI; not original
+    native image kernel source
