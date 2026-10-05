@@ -3462,7 +3462,7 @@
     }
   ],
   "case_manifest_fingerprint": "c7dd775e437346ab985c35f784a5547992988623ec5427b2345e40cd181ac4b4",
-  "oci_prefix": "oci:unpublished/headkernel/minimax/minimax-case-only-v3-194550/",
+  "oci_prefix": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261005/minimax-case-only-v3-194550/",
   "publication_status": "local mirror only; no OCI publication performed",
   "runtime_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
   "schema": "trusted-external-fixtures-v1"
