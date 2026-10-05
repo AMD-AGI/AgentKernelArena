@@ -98,3 +98,9 @@ Focused regression coverage is in `tests/test_task_source_aliases.py`,
 `tests/test_headkernel_moe_registration.py` and
 `tests/test_headkernel_benchmark_failures.py`. CPU tests establish these control
 paths; they do not establish real GPU correctness, AITER dispatch or performance.
+
+Stricter failure handling can expose existing replay incompatibilities that
+previously selected a different timing path, including the DeepSeek MoE tasks.
+This is not a claim that all 16 tasks are newly qualified. Their original
+CUDA-event reports also predate the current validator's graph/fallback metadata
+contract; passing the CPU regressions does not resolve that qualification gap.
