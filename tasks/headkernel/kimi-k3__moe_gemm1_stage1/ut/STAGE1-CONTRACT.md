@@ -1,4 +1,4 @@
-The current stage-1 contract is the sealed `cases.json`, `runtime_adapter.py`, and external asset inventory in `fixtures/EXTERNAL-MANIFEST.json`. Historical BF16 activation metadata and the retained legacy unittest are not this runner's oracle.
+The current stage-1 contract is the sealed `cases.json`, `runtime_adapter.py`, and external asset inventory in `fixtures/EXTERNAL-MANIFEST.json`.
 
 The native callable is the pinned SG520 `aiter.ops.flydsl.moe_kernels:flydsl_moe_stage1`: FP8 E4M3FN activations `[M,3584]`, packed FP4 weights `[896,768,1792]`, E8M0 weight and sorted activation scales, interleaved SiTUv2 with beta 4 and linear beta 25, and FP8 output with E8M0 scales. The exact optional arguments, allocation shapes, strides, offsets and disjoint storage identities are retained. The 64-token decode uses the dense `[64,16,384]` payload; both prefill classes use the native sorted-row output layout.
 

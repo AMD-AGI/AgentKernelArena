@@ -1,73 +1,39 @@
-> SG520 completion preparation: this derivative uses the exact pinned SG520 image and current source closure. Current-image GPU qualification is pending. Historical profiling numbers and oracle descriptions below are retained as provenance. No historical tensor oracle was copied. See `PREPARATION.json`, `SOURCE-PROVENANCE.json` where present, and `ut/source_guard_policy.json`. The guarded contract is packaged, but `cases.json` and the protected reset/oracle replay adapter must be completed from fresh runtime evidence before trusted evaluation.
+# Kimi-K3 FlyDSL A8W4 stage 1
 
-# kimi-k3__moe_gemm1_stage1
+This task optimizes the current SGLang 0.5.20 FlyDSL `flydsl_moe_stage1` callable on MI355X (`gfx950`). It covers both decode and prefill from the verified `kimi-served-194550` workload: 64 requests, ISL 8192, OSL 1024, concurrency 64 and TP 8. The capture and external fixture inventory are sealed. **GPU execution and framework task-validator qualification are pending.**
 
-**Kimi-K3** head kernel - `moe_gemm1_0` (aiter asm (AOT) - fused_moe_2stages stage-1 gate+up - mxfp4 w + bf16 act, prefill).
+The operator consumes FP8 E4M3FN activations, packed FP4 E2M1 weights and tiled E8M0 scales. It fuses gate/up GEMMs, interleaved SiTUv2 with beta 4 and linear beta 25, and FP8 output quantization. The native output includes an FP8 payload and tiled E8M0 scales. [cases.json](cases.json) fixes every shape, stride, storage offset, alias, scalar and observed work distribution.
 
-| field | value |
-|---|---|
-| GPU time share | 6.51% |
-| empirical roofline | 0.254 |
-| optimized roofline | - |
-| e2e uplift measured | - |
-| device symbol | `moe_gemm1_0` |
-| production seam | `aiter.ops.flydsl.moe_kernels:flydsl_moe_stage1` |
-| serving contract | ISL 8192 / OSL 1024 / CONC 64 / TP 8 |
-| image | `harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang-rocm-k3:rocm720-mi35x-k3-20260727-tl312-08011830` |
-| owner | Hongtao |
-| info rows | K3-4 |
+| Stage | Activation shape | Payload shape | Calls per rank | Calls across TP 8 |
+|---|---|---|---:|---:|
+| Decode | `[64, 3584]` | `[64, 16, 384]` | 94,208 | 753,664 |
+| Prefill | `[8192, 3584]` | `[188416, 384]` | 184 | 1,472 |
+| Prefill | `[16384, 3584]` | `[319488, 384]` | 2,852 | 22,816 |
 
-## Layout
+The three structural classes account for 777,952 calls across all ranks. Each frequency is counted once. Numerical control variants contribute to each class's empirical work histogram; they do not create duplicate score cases or duplicate frequencies. Standard Arena scoring uses the arithmetic mean of the three matched per-case speedup ratios.
 
-```
-config.yaml              arena task schema + a headkernel: provenance block
-scripts/task_runner.py   compile | correctness | performance
-scripts/_bench.py        native 10 warmup / 100 measured timing
-source/                  THE EDITABLE KERNEL - change only this
-ut/                      frozen GEAK op package (oracle, harness, overlays)
-ut/kernel_src/           symlinks back into source/ - same bytes, two views
-```
+## Editable source boundary
 
-Edit targets:
+Only `_emit_moe_gemm1` and `moe_gemm1` bodies in [mixed_moe_gemm_2stage_common.py](source/flydsl/kernels/mixed_moe_gemm_2stage_common.py) are editable. [The source policy](ut/source_guard_policy.json) freezes host compilation and launch code, signatures, decorators, imports, other functions and every harness/reference file. The A16W4 and stage-2 branches remain frozen dependencies.
 
-- `flydsl_moe_stage1` in `source/flydsl/moe_kernels.py`
+The guard permits the reviewed DSL operations, arithmetic/control flow and local arithmetic helpers. It rejects arbitrary Python calls, runtime introspection and object/module mutation. [SOURCE-PROVENANCE.json](SOURCE-PROVENANCE.json) records the complete 119-file source projection; the candidate and frozen reference load through private package namespaces with independent closures. The adapter checks the original source hashes against the pinned runtime image.
 
-## Running it
+## Fixtures and correctness
 
-On one GPU from the optimization pool (never the serving set), inside the image above:
+The oracle uses three actual served raw fixtures and an independent frozen native source closure. Both implementations must first agree with captured CPU golden values. Generated trials then refresh legal activation values and routes at empirically observed work amounts, and change packed FP4 weight signs while preserving magnitudes and group scales.
+
+The protected runner saves input-storage truth on CPU, executes the candidate, checks metadata and immutable inputs, captures outputs on CPU, and only then computes the reference. Live FP8 payload values retain tolerance 0.02 with the RMS absolute floor. Live E8M0 scale bytes must match exactly at their physical offsets. The graph benchmark retains 10 warm-up replays and 100 measured replays per case, with fresh inputs, output poisoning and validation on every replay. Correctness includes seeds 0, 1 and 2 plus no-op and wrong-output controls. [STAGE1-CONTRACT.md](ut/STAGE1-CONTRACT.md) explains storage layouts, defined output regions and work generation.
+
+[EXTERNAL-MANIFEST.json](fixtures/EXTERNAL-MANIFEST.json) pins 29 external assets totaling 1,666,534,545 bytes. The source commit contains the inventory and exact case references, not the raw blobs. Use the [trusted fixture materializer](../../../docs/how-to/trusted-fixture-artifacts.md) on the host with a verified local mirror or the explicitly approved pinned OCI prefix. The manifest's OCI prefix is planned until qualification and publication are completed.
+
+After materializing the complete task, run these entrypoints inside the pinned Docker image on an allocated `gfx950` GPU:
 
 ```bash
-cd <task>
 python3 scripts/task_runner.py compile
 python3 scripts/task_runner.py correctness
 python3 scripts/task_runner.py performance
 ```
 
-- **compile** AST-parses `source/` and asserts every target symbol is defined there.
-  No GPU needed.
-- **correctness** runs `ut/unittest.py`: the frozen live-capture oracle
-  (`ut/reference_io.pt`) plus random-value parity against the live baseline leg,
-  at tol `0.02`. Exit 0 pass, 1 correctness fail, 2 environment,
-  3 harness incomplete.
-- **performance** replays the captured argument records from `ut/reference_io.pt`
-  with 10 warmup + 100 measured iterations and reports the mean cuda-event device
-  time. If a record cannot be rebuilt it falls back to the GEAK interleaved
-  median-of-3 legs and says so in `build/performance_report.json`.
-  A run whose unit test did not pass reports no cases at all.
+The compile phase invokes and validates the real specialization for every case. Failure leaves no scoreable success report. Performance emits one separate result for each mandatory structural case. No legacy unit-test or timing fallback is used.
 
-## Starting point
-
-`source/` is the **stock** upstream code, byte-identical to
-`ut/baseline_ref/*.orig`. Nothing has been pre-optimized.
-
-## Provenance
-
-Copied Kimi-K3_moe_gemm1_0 from `/shared_nfs/zihao/headkernel_ut_0831` on 2026-09-14.
-Prior optimization results (`_candidate_best/`, `accepted_overlay/`, tuning sweeps,
-patches) were deliberately **not** copied - a benchmark that ships the answer
-measures nothing. They remain in the upstream package.
-Oracle blobs are hardlinked, not duplicated (1 file(s), 0.10 GB shared with the source package).
-The original package README is preserved at `ut/README.md` and is the authority on
-this op's measurement caveats - read it before trusting a speedup.
-
-**Note.** oracle uses the synthetic {schema,cases,spec} layout, not {target,records} - performance falls back to the GEAK harness. Known upstream aiter nondeterminism: UT gates on a 21-launch elementwise median.
+For submitted-source adversarial checks, `scripts/make_submitted_controls.py --output NEW_DIRECTORY` prepares no-op and zero-payload candidate sources that pass the source boundary. Native correctness must reject both, possibly during the compile phase's captured-golden check. The protected task's actual math and tolerances are shared across stock and submitted-source checks.

@@ -18,10 +18,7 @@
     },
     "source/flydsl/kernels/moe_2stage_a16wmix/gemm1.py": {
       "reference": "ut/reference/source/flydsl/kernels/moe_2stage_a16wmix/gemm1.py",
-      "device_functions": [
-        "_gemm1_body_a16w4",
-        "gemm1_kernel"
-      ]
+      "device_functions": []
     },
     "source/flydsl/kernels/moe_2stage_a16wmix/gemm2.py": {
       "reference": "ut/reference/source/flydsl/kernels/moe_2stage_a16wmix/gemm2.py",
@@ -29,5 +26,6 @@
     }
   },
   "stage": 1,
-  "language": "reference-constrained DSL emission AST"
+  "language": "reference-constrained DSL emission AST",
+  "observed_path": "FP8 activation / FP4 weight / FP8 output stage1 only"
 }

@@ -1,17 +1,18 @@
 {
-  "status": "source preparation; current GPU validator pending",
-  "historical_task": "/home/sapmajum/work/aka-top5-review-20261005/tasks/headkernel/kimi-k3__moe_gemm1_stage1",
+  "status": "current served capture sealed; GPU and framework qualification pending",
   "current_source_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
-  "oracles_copied": false,
-  "fresh_live_capture_required": true,
-  "historical_oracle_sha256": "3d175ea5803d3523001cac000aa5d6c7d54b4a06dfa97999cd8eb22c081b3e31",
-  "guarded_contract": {
-    "helper": "ut/evaluation_contract.py",
-    "source_guard": "ut/source_guard.py",
-    "source_guard_policy": "ut/source_guard_policy.json",
-    "frozen_references": "ut/reference/source",
-    "case_manifest": "pending actual trace multiplicities and call ABI",
-    "protected_runtime_adapter": "pending current tensor oracle intake",
-    "currently_trusted_evaluable": false
-  }
+  "source_run": "kimi-served-194550",
+  "case_manifest": "cases.json",
+  "fixture_manifest": "fixtures/EXTERNAL-MANIFEST.json",
+  "capture_provenance": "provenance/STAGE1-CAPTURE.json",
+  "protected_runtime_adapter": "ut/runtime_adapter.py",
+  "source_guard": "ut/source_guard.py",
+  "source_guard_policy": "ut/source_guard_policy.json",
+  "structural_cases": 3,
+  "observed_calls_per_rank": 97244,
+  "observed_calls_all_ranks": 777952,
+  "external_fixture_assets": 29,
+  "external_fixture_bytes": 1666534545,
+  "gpu_qualified": false,
+  "framework_task_validator": "pending"
 }

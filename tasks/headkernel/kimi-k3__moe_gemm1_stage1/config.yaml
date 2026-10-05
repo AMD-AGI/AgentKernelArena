@@ -1,73 +1,69 @@
-# kimi-k3__moe_gemm1_stage1
-# Head kernel from the 2026-09-14 info table, rows: K3-4
-
+task_type: flydsl2flydsl
+target_file_path: source/flydsl/kernels/mixed_moe_gemm_2stage_common.py
 source_file_path:
   - source/flydsl/moe_kernels.py
   - source/flydsl/kernels/mixed_moe_gemm_2stage.py
   - source/flydsl/kernels/mixed_moe_gemm_2stage_common.py
   - source/flydsl/kernels/moe_2stage_a16wmix/gemm1.py
   - source/flydsl/kernels/moe_2stage_a16wmix/gemm2.py
-
 target_kernel_functions:
-  - flydsl_moe_stage1
-
+  - _emit_moe_gemm1
+  - moe_gemm1
 compile_command:
   - python3 scripts/task_runner.py compile
-
 correctness_command:
   - python3 scripts/task_runner.py correctness
-
 performance_command:
   - python3 scripts/task_runner.py performance
-
-task_type: triton2triton
-
 task_result_template: null
-
+platform_support:
+  required_arch: gfx950
+  status: active
 prompt:
   source_code: null
   instructions: |
-    Optimize Kimi-K3 MoE stage 1 on the pinned gfx950 runtime.
-    Only the stage-specific DSL emission bodies listed in ut/source_guard_policy.json
-    are editable: _emit_moe_gemm1, moe_gemm1, _gemm1_body_a16w4,
-    and gemm1_kernel. Host compile/launch code, signatures, decorators, imports,
-    the other MoE stage and all harness/reference files remain frozen.
-    The guard permits the reviewed DSL operations, arithmetic/control flow and
-    local arithmetic helpers; runtime reflection, arbitrary Python calls and
-    object/module mutation are forbidden.
-    Preserve the complete cases.json ABI, observed frequencies, input/output
-    storage and alias rules, output tolerances and every required case.
-    Current fixture and runtime-adapter qualification is pending; a source-only
-    preparation record is not a GPU or framework validation result.
+    Optimize the current Kimi-K3 FlyDSL A8W4 stage-1 GPU emission on gfx950.
+    Edit only the bodies of _emit_moe_gemm1 and moe_gemm1 in
+    source/flydsl/kernels/mixed_moe_gemm_2stage_common.py, as enforced by
+    ut/source_guard_policy.json. Host compilation and launch code, signatures,
+    decorators, imports, all other source functions and all harness/reference
+    files are frozen. The unrelated A16W4 and stage-2 branches are not targets.
+    Preserve all three cases in cases.json: decode M=64 and prefill M=8192/16384.
+    Inputs are FP8 E4M3FN activations, packed FP4 E2M1 weights and tiled E8M0
+    scales; outputs are FP8 payloads and native tiled E8M0 scales. Preserve
+    SiTUv2 beta=4, linear_beta=25, topk=16, every captured scalar/layout/alias,
+    all empirical work distributions and the complete observed frequencies.
+    The protected oracle uses current raw captured fixtures on CPU and a
+    separate frozen native source closure. Every replay refreshes legal inputs
+    and checks outputs after CPU snapshots. Runtime reflection, arbitrary
+    Python calls, module/object mutation and result/timer edits are forbidden.
+    GPU and framework task-validator qualification are pending.
   cheatsheet: null
-
-# ---------------------------------------------------------------------------
-# Provenance. Not read by the arena schema check; read by scripts/task_runner.py
-# and by anyone auditing where these numbers came from.
 headkernel:
-  model: "Kimi-K3"
-  owner: Hongtao
-  docker: "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96"
+  model: Kimi-K3
+  docker: docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96
+  source_run: kimi-served-194550
   serving: ISL 8192 / OSL 1024 / CONC 64 / TP 8
-  backend: "aiter asm (AOT) - fused_moe_2stages stage-1 gate+up - mxfp4 w + bf16 act"
-  regime: prefill
-  device_symbol: moe_gemm1_0
-  target_callable: "aiter.ops.flydsl.moe_kernels:flydsl_moe_stage1"
+  backend: FlyDSL A8W4 fused stage-1 gate/up, SiTUv2 and FP8 quantization
+  regime:
+    - prefill
+    - decode
+  target_callable: aiter.ops.flydsl.moe_kernels:flydsl_moe_stage1
+  oracle: current raw captured CPU golden fixtures plus independent frozen native source closure
   tol: 0.02
-  oracle: "frozen live-capture ut/reference_io.pt"
-  source_package: "Z/Kimi-K3_moe_gemm1_0"
+  scale_comparison: exact live tiled E8M0 bytes
   source_seed: stock
-  info_rows:
-    - row: "K3-4"
-      info_kernel: moe_gemm1_0
-      gpu_pct: 6.51
-      empirical_roofline: 0.254
-      optimized_roofline: null
-      e2e_uplift: null
+  case_manifest: cases.json
+  observed_calls_per_rank:
+    decode_m64: 94208
+    prefill_m8192: 184
+    prefill_m16384: 2852
+  observed_calls_all_ranks: 777952
+  count_scope: complete marked64-request TP8 workload; each structural class counted once
+  validation_status: pending_gpu_and_framework_task_validator
   symbol_locations:
-    flydsl_moe_stage1: source/flydsl/moe_kernels.py
-
-# Current SG520 guarded qualification is pending fresh cases and runtime adapter.
+    _emit_moe_gemm1: source/flydsl/kernels/mixed_moe_gemm_2stage_common.py
+    moe_gemm1: source/flydsl/kernels/mixed_moe_gemm_2stage_common.py
 harness_protection:
   reject_new_source_symlinks: true
 trusted_evaluation:

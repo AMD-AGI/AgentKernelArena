@@ -181,8 +181,8 @@ def load_package(root, tag):
 
 class Runtime:
     def __init__(self,root,manifest,request):
-        # The retained historical ut/unittest.py must never shadow Python's
-        # unittest package while Torch/FlyDSL import their dependencies.
+        # Resolve Python's standard unittest package independently of task
+        # module search paths while Torch/FlyDSL import their dependencies.
         previous_path=list(sys.path)
         sys.path[:]=[p for p in sys.path if Path(p or '.').resolve()!=(root/'ut').resolve()]
         try:
