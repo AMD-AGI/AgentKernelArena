@@ -241,6 +241,22 @@ in the normal mounted Codex configuration, not in the experiment YAML. See the
 [official Codex provider configuration reference](https://developers.openai.com/codex/config-reference/)
 for `requires_openai_auth`, `env_key`, and `http_headers`.
 
+The custom-provider preflight defaults to a 120-second outer limit. A run may
+set `agent.preflight_timeout_seconds` to an integer from 30 through 300 when
+its provider needs more time for a response or its configured retries. This
+does not change the model, effort, or provider retry policy. Failures expose
+only fixed diagnostic categories, such as `rate_limit` or `transport`, rather
+than raw provider output.
+
+Check provider readiness on a CPU host before reserving GPU time with:
+
+```bash
+python3 -m agents.codex.auth_preflight --config my_experiment.yaml --timeout 300
+```
+
+This makes a real benign inference request. It does not replace or bypass the
+standard Docker preflight that runs when the experiment starts.
+
 Specialized integrations read credentials and provider endpoints from their
 own environment/configuration; their documentation describes the additional
 setup and checks. There is no shared provider field in the root run

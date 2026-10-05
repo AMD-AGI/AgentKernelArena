@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from agents.codex.auth_preflight import CodexAuthError, _model_settings, check_codex_access
+from agents.codex.auth_preflight import CodexAuthError, _failure_signals, _model_settings, _preflight_timeout, check_codex_access
 
 
 class CodexAuthPreflightTests(unittest.TestCase):
@@ -73,6 +73,31 @@ class CodexAuthPreflightTests(unittest.TestCase):
         with patch("agents.codex.auth_preflight._user_config", return_value=self.custom_config(requires_openai_auth="false")):
             with self.assertRaisesRegex(CodexAuthError, "must be boolean"):
                 check_codex_access()
+
+    def test_preflight_timeout_config_is_forwarded_without_model_changes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config = Path(directory) / "run.yaml"
+            config.write_text("agent:\n  template: task_validator\n  model: selected-model\n  effort: max\n  preflight_timeout_seconds: 300\n")
+            with patch("agents.codex.auth_preflight._user_config", return_value=self.custom_config()), \
+                 patch("agents.codex.auth_preflight._run_inference", side_effect=self.successful_inference) as run:
+                check_codex_access(str(config))
+                self.assertEqual(run.call_args.args[2], 300)
+                command = run.call_args.args[0]
+                self.assertEqual(command[command.index("--model") + 1], "selected-model")
+                self.assertIn('model_reasoning_effort="max"', command)
+                self.assertEqual(_preflight_timeout(str(config), 60), 60)
+
+    def test_preflight_timeout_cannot_disable_or_escape_the_bound(self):
+        self.assertEqual(_preflight_timeout(None, None), 120)
+        for value in (0, -1, 29, 301, True, "300", 300.0):
+            with self.subTest(value=value), self.assertRaises(CodexAuthError):
+                _preflight_timeout(None, value)
+
+    def test_failure_categories_never_include_provider_details(self):
+        summary = _failure_signals(b"429 retrying connection to https://SECRET.invalid/?key=SECRET")
+        self.assertEqual(summary, "; diagnostic_signals=rate_limit,transport,retry")
+        self.assertNotIn("SECRET", summary)
+        self.assertEqual(_failure_signals(None, "private provider text"), "; diagnostic_signals=unclassified")
 
     def test_container_call_forwards_config_and_agent_selection(self):
         runner = Path(__file__).parents[1] / "src/scripts/docker_benchmark.sh"

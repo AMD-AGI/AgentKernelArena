@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+import re
 import signal
 import subprocess
 import tempfile
@@ -30,12 +31,12 @@ def _run_inference(command: list[str], directory: str, timeout: int) -> subproce
     ) as process:
         try:
             stdout, stderr = process.communicate(timeout=timeout)
-        except subprocess.TimeoutExpired:
+        except subprocess.TimeoutExpired as error:
             try:
                 os.killpg(process.pid, signal.SIGKILL)
             except ProcessLookupError:
                 pass
-            process.communicate()
+            error.output, error.stderr = process.communicate()
             raise
         return subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
 
@@ -79,12 +80,44 @@ def _model_settings(config_path: str | None, user_config: dict) -> tuple[str | N
     return model, effort
 
 
-def check_codex_access(config_path: str | None = None, *, timeout: int = 120) -> str:
+def _preflight_timeout(config_path: str | None, explicit: int | None) -> int:
+    value = explicit
+    if value is None and config_path:
+        try:
+            run = yaml.safe_load(Path(config_path).read_text()) or {}
+            agent = run.get("agent", {})
+            if isinstance(agent, dict):
+                value = agent.get("preflight_timeout_seconds")
+        except (OSError, ValueError, AttributeError, yaml.YAMLError):
+            raise CodexAuthError("Unable to resolve the Codex preflight timeout.") from None
+    if value is None:
+        value = 120
+    if type(value) is not int or not 30 <= value <= 300:
+        raise CodexAuthError("Codex preflight_timeout_seconds must be an integer from 30 to 300.")
+    return value
+
+
+def _failure_signals(*outputs) -> str:
+    """Expose only fixed diagnostic categories, never provider text or URLs."""
+    text = "\n".join(value.decode(errors="replace") if isinstance(value, bytes) else value or ""
+                     for value in outputs)
+    patterns = {
+        "rate_limit": r"\b429\b|rate.?limit|too many requests",
+        "auth_rejection": r"\b(?:401|403)\b|unauthorized|authentication failed",
+        "transport": r"connection|socket|tls|timed out|timeout",
+        "retry": r"retry|retrying|reconnect",
+    }
+    signals = [name for name, pattern in patterns.items() if re.search(pattern, text, re.I)]
+    return "; diagnostic_signals=" + (",".join(signals) if signals else "unclassified")
+
+
+def check_codex_access(config_path: str | None = None, *, timeout: int | None = None) -> str:
     """Check OpenAI login or prove custom-provider access with real inference.
 
     Provider credential presence is never accepted as proof of access. Raw CLI
     stdout/stderr, config values, URLs, and HTTP diagnostics are not returned.
     """
+    timeout = _preflight_timeout(config_path, timeout)
     config = _user_config()
     provider = config.get("model_provider", "openai")
     if not isinstance(provider, str):
@@ -138,14 +171,18 @@ def check_codex_access(config_path: str | None = None, *, timeout: int = 120) ->
         )
         try:
             result = _run_inference(command, directory, timeout)
-        except subprocess.TimeoutExpired:
-            raise CodexAuthError(f"Codex custom-provider inference timed out after {timeout}s.") from None
+        except subprocess.TimeoutExpired as error:
+            raise CodexAuthError(
+                f"Codex custom-provider inference timed out after {timeout}s"
+                + _failure_signals(error.output, error.stderr)
+            ) from None
         except OSError:
             raise CodexAuthError("Codex custom-provider inference could not start.") from None
         if result.returncode:
             raise CodexAuthError(
                 f"Codex custom-provider inference failed (exit {result.returncode}); "
-                "provider output withheld to protect credentials."
+                "provider output withheld to protect credentials"
+                + _failure_signals(result.stdout, result.stderr)
             )
         try:
             response = output.read_text().strip()
@@ -154,3 +191,16 @@ def check_codex_access(config_path: str | None = None, *, timeout: int = 120) ->
         if response != sentinel:
             raise CodexAuthError("Codex custom-provider inference did not return the expected response.")
     return "codex_status=custom_provider_inference_verified"
+
+
+if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--config", help="Run config whose model, effort, and timeout should be checked")
+    parser.add_argument("--timeout", type=int, help="Explicit 30–300 second limit; default is config or 120")
+    args = parser.parse_args()
+    try:
+        print(check_codex_access(args.config, timeout=args.timeout))
+    except CodexAuthError as error:
+        raise SystemExit(str(error)) from None
