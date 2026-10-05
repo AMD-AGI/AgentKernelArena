@@ -13,6 +13,7 @@ from source_guard import validate_sources
 from evaluation_contract import (canonical, fingerprint, strict_json, validate_manifest,
     observe_case, checked_replays, finalize_report)
 from abi import runtime_abi
+from fixture_admission import validate_fixture_manifest, validate_fixture_record, validate_generated_inputs
 
 
 def write(phase,report):
@@ -139,14 +140,10 @@ def fixture(case,manifest,module):
     if not path.is_relative_to(ROOT.resolve()) or original_path.is_symlink() or sha256(path)!=expected_sha:
         raise RuntimeError('Untrusted or changed fixture')
     record=strict_json(path.read_text())
-    if record['provenance']['run_id']!=manifest['run_id'] or record['source_sha256']!=manifest['native_source_sha256']:
-        raise RuntimeError('Stale fixture source/run identity')
-    if record['served']['stage']=='decode' and record['origin']!='served_graph':
-        raise RuntimeError('Decode fixture must follow actual served graph replay')
-    if record.get('startup_values') is not False: raise RuntimeError('Startup data are not served fixtures')
+    cfg=strict_json((ROOT/'provenance/SOURCE.json').read_text())
+    validate_fixture_record(ROOT,case,manifest,cfg,record)
     tensors=restore_phase(path.parent,record,'inputs',device='cuda',max_storage_bytes=64<<30)
     controls=record['controls']; inputs={}
-    cfg=strict_json((ROOT/'provenance/SOURCE.json').read_text())
     for key in cfg['signature_parameters']:
         if key in tensors: inputs[key]=tensors[key]
         elif key in controls: inputs[key]=restore({'tree':controls[key],'storages':{}},'cuda',module)
@@ -158,7 +155,8 @@ def fixture(case,manifest,module):
             for key,value in controls.get(name+'_attributes',{}).items():
                 attr=tensors[value['tensor_binding']] if isinstance(value,dict) and 'tensor_binding' in value else restore({'tree':value,'storages':{}},'cuda',module)
                 setattr(tensor,key,attr)
-    # Captured golden outputs must never be resident on the GPU when a
+    validate_generated_inputs(case,inputs)
+    # Fixture golden outputs must never be resident on the GPU when a
     # candidate executes. Inputs keep their captured GPU ABI and storage.
     outputs=restore_phase(path.parent,record,'outputs',device='cpu',max_storage_bytes=64<<30)
     golden=(outputs['output'],outputs['lse']) if manifest['seam']=='mla' else (outputs['output'],outputs['scale']) if 'scale' in outputs else outputs['output']
@@ -186,7 +184,7 @@ def main():
     (ROOT/'build').mkdir(exist_ok=True)
     (ROOT/'build'/(a.phase+'_report.json')).unlink(missing_ok=True)
     manifest=strict_json((ROOT/'cases.json').read_text()); validate_manifest(manifest)
-    if manifest.get('status')!='FROZEN_CURRENT_CAPTURE': raise RuntimeError('Current fixtures and expected cases are not sealed')
+    validate_fixture_manifest(ROOT,manifest)
     request=request_for(a.phase,manifest,a.request); validate_sources(ROOT,ROOT)
     report={'schema_version':1,'status':'ok','request':request,'cases':[]}
     import torch

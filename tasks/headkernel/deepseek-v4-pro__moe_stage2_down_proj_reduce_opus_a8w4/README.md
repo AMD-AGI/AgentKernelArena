@@ -9,3 +9,15 @@ Six additional fixtures use separately generated legal expert routing at observe
 Only the GPU implementation bodies declared in config.yaml are editable. Native host wrappers, launch decisions, source guards, fixture codecs, oracle logic, timing, and state resets are protected. The contract retains tolerance 0.02, correctness seeds 42 and 43, 10 warmup iterations, and 100 checked graph measurements per case. All output components and required negative controls remain mandatory.
 
 Tensor data remain external. The trusted host materializes the exact assets in fixtures/EXTERNAL-MANIFEST.json before task execution; the task does not download or regenerate fixture data. Cases keep shapes, strides, storage offsets, aliases, scalar arguments, and packed scale semantics. See cases.json and provenance/COVERAGE.json for explicit historical logical-M gaps. Native repeatability is not independent source-bound correctness or a framework PASS.
+
+Generated fixture admission is explicit in `ut/fixture_admission.py`. The
+`FROZEN_CAPTURE_AND_GENERATED` contract verifies the complete hash-bound coverage
+set, captured parent identity, native implementation, replay parameters, metadata
+projection, and restored work-control values. Generated rows retain
+`generated_native_graph_replay` provenance and a count of one generated fixture;
+they do not become served launches or repair the original capture gate.
+
+Both fixture kinds use the same protected payload hash checks, CPU golden
+snapshots, source-backed reference execution, full numerical comparison, input
+mutation checks, graph timing, and negative controls. Admission alone is not GPU
+correctness or framework qualification.
