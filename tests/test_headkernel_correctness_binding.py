@@ -122,6 +122,10 @@ def test_candidate_and_independent_baseline_execute_in_correct_legs(tmp_path, mo
     assert binding["baseline_environment_restored"] is True
     assert "_cand_overlay" in binding["resolved_source"]
     assert Path(binding["candidate_source"]) == task / "source/candidate.py"
+    completion = report["correctness_completion"]
+    assert completion["status"] == "complete"
+    assert completion["run_id"] == binding["run_id"]
+    assert completion["source_sha256"] == binding["source_sha256"]
 
 
 @pytest.mark.parametrize("name", BOUND_TASKS)
@@ -166,6 +170,48 @@ def test_candidate_exit_zero_before_attestation_is_not_a_pass(tmp_path, monkeypa
     assert report["exit_code"] != 0
     assert report["candidate_binding"]["status"] == "fail"
     assert not (task / "ut/UT-RAN").exists()
+
+
+@pytest.mark.parametrize("name", BOUND_TASKS)
+@pytest.mark.parametrize("exit_body", ["import os; os._exit(0)", "raise SystemExit(0)"])
+def test_candidate_exit_zero_after_binding_is_not_completion(tmp_path, monkeypatch, name, exit_body):
+    runner, task = fixture_runner(tmp_path, monkeypatch, name,
+                                  "def kernel():\n    " + exit_body + "\n")
+    ok, error = runner.run_correctness({}, 20)
+    assert not ok
+    report = json.loads((task / "build/correctness_report.json").read_text())
+    assert report["candidate_binding"]["status"] == "ok"
+    assert report["correctness_completion"]["status"] != "complete"
+    assert report["exit_code"] != 0
+    assert (task / "ut/UT-RAN").exists()
+
+
+def test_successful_ut_system_exit_writes_completion(tmp_path, monkeypatch):
+    runner, task = fixture_runner(tmp_path, monkeypatch, BOUND_TASKS[0])
+    unit = task / "ut/unittest.py"
+    unit.write_text(unit.read_text() + "\nimport sys\nsys.exit(0)\n")
+    ok, error = runner.run_correctness({}, 20)
+    assert ok, error
+    assert json.loads((task / "build/correctness_completion.json").read_text())["status"] == "complete"
+
+
+def test_early_exit_cannot_reuse_previous_completion(tmp_path, monkeypatch):
+    runner, task = fixture_runner(tmp_path, monkeypatch, BOUND_TASKS[0])
+    assert runner.run_correctness({}, 20)[0]
+    old = json.loads((task / "build/correctness_completion.json").read_text())
+    (task / "source/candidate.py").write_text("def kernel():\n    import os\n    os._exit(0)\n")
+    assert not runner.run_correctness({}, 20)[0]
+    assert not (task / "build/correctness_completion.json").exists()
+    current = json.loads((task / "build/correctness_binding.json").read_text())
+    assert old["run_id"] != current["run_id"]
+
+
+def test_candidate_cannot_forge_exit_origin_through_argv(tmp_path, monkeypatch):
+    runner, task = fixture_runner(tmp_path, monkeypatch, BOUND_TASKS[0],
+        "def kernel():\n    import sys\n    sys.argv[0] = __file__\n    raise SystemExit(0)\n")
+    assert not runner.run_correctness({}, 20)[0]
+    receipt = json.loads((task / "build/correctness_completion.json").read_text())
+    assert receipt["status"] == "fail"
 
 
 def test_source_overlay_mismatch_is_rejected(tmp_path, monkeypatch):

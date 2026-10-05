@@ -256,7 +256,33 @@ def _correctness_child(binding):
     # task removes ut/ before importing torch, avoiding its unittest.py name clash.
     sys.argv = [os.path.join(UT_DIR, "unittest.py")]
     sys.path.insert(0, UT_DIR)
-    runpy.run_path(sys.argv[0], run_name="__main__")
+    completion = {"run_id": binding["run_id"], "status": "fail",
+                  "target": binding["target"], "source_sha256": binding["source_sha256"],
+                  "unittest_sha256": binding["unittest_sha256"]}
+    try:
+        runpy.run_path(sys.argv[0], run_name="__main__")
+    except SystemExit as exc:
+        if exc.code not in (None, 0):
+            raise
+        # A kernel raising SystemExit(0) must not impersonate the UT's normal
+        # sys.exit(main()). The originating frame must be the immutable UT.
+        origin = exc.__traceback__
+        while origin.tb_next is not None:
+            origin = origin.tb_next
+        if os.path.realpath(origin.tb_frame.f_code.co_filename) != os.path.realpath(os.path.join(UT_DIR, "unittest.py")):
+            completion["error"] = "early SystemExit(0) did not originate from unittest.py"
+            write_report("correctness_completion.json", completion)
+            return 3
+    if (_source_sha256(binding["source"]) != binding["source_sha256"]
+            or _source_sha256(binding["overlay_source"]) != binding["source_sha256"]
+            or _source_sha256(os.path.join(UT_DIR, "unittest.py")) != binding["unittest_sha256"]):
+        completion["error"] = "candidate or unittest source changed during correctness"
+        write_report("correctness_completion.json", completion)
+        return 3
+    # Written only after the real UT returns or exits successfully. os._exit(0)
+    # bypasses this point and therefore cannot produce an accepted completion.
+    completion["status"] = "complete"
+    write_report("correctness_completion.json", completion)
     return 0
 
 
@@ -265,10 +291,12 @@ def run_ut(timeout):
     t0 = time.monotonic()
     os.makedirs(BUILD_DIR, exist_ok=True)
     binding_report = os.path.join(BUILD_DIR, "correctness_binding.json")
-    try:
-        os.unlink(binding_report)
-    except FileNotFoundError:
-        pass
+    completion_report = os.path.join(BUILD_DIR, "correctness_completion.json")
+    for report in (binding_report, completion_report):
+        try:
+            os.unlink(report)
+        except FileNotFoundError:
+            pass
     with open(os.path.join(UT_DIR, "meta.json")) as handle:
         meta = json.load(handle)
     bind = meta.get("candidate_bind") or {}
@@ -294,6 +322,7 @@ def run_ut(timeout):
                                 if p and os.path.realpath(p) != os.path.realpath(cand))
     binding = {"run_id": uuid.uuid4().hex, "target": meta["target_callable"],
                "source": source, "source_sha256": source_hash,
+               "unittest_sha256": _source_sha256(os.path.join(UT_DIR, "unittest.py")),
                "overlay_source": os.path.realpath(overlay_source),
                "baseline_pythonpath": clean_path}
     env["PYTHONPATH"] = os.pathsep.join([cand] + ([clean_path] if clean_path else []))
@@ -317,6 +346,20 @@ def run_ut(timeout):
         proc.returncode = proc.returncode or 3
         proc.stderr += "\nCandidate binding failed; no correctness result is valid.\n"
     proc.candidate_binding = receipt
+    try:
+        with open(completion_report) as handle:
+            completion = json.load(handle)
+        completed = (completion.get("status") == "complete"
+                     and all(completion.get(key) == binding[key]
+                             for key in ("run_id", "target", "source_sha256", "unittest_sha256"))
+                     and _source_sha256(binding["overlay_source"]) == source_hash
+                     and _source_sha256(os.path.join(UT_DIR, "unittest.py")) == binding["unittest_sha256"])
+    except (OSError, ValueError, AttributeError):
+        completion, completed = {"status": "missing", "error": "no valid post-UT completion receipt"}, False
+    if proc.returncode == 0 and not completed:
+        proc.returncode = 3
+        proc.stderr += "\nUT completion failed; early exit cannot produce a correctness PASS.\n"
+    proc.correctness_completion = completion
     return proc, time.monotonic() - t0
 
 
@@ -372,6 +415,7 @@ def run_correctness(cfg, timeout):
         "exit_code": proc.returncode,
         "exit_meaning": meaning,
         "candidate_binding": getattr(proc, "candidate_binding", None),
+        "correctness_completion": getattr(proc, "correctness_completion", None),
         "ut_verdict_line": verdict,
         "duration_seconds": round(secs, 2),
         "oracle": hk(cfg, "oracle", "frozen live-capture (ut/reference_io.pt)"),
