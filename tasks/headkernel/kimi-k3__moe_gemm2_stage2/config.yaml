@@ -12,6 +12,7 @@ correctness_command:
   - python3 scripts/task_runner.py correctness
 performance_command:
   - python3 scripts/task_runner.py performance
+performance_timeout: 1800
 task_result_template: null
 platform_support:
   required_arch: gfx950

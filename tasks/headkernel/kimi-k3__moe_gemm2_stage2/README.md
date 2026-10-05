@@ -25,3 +25,5 @@ python3 scripts/task_runner.py performance
 ```
 
 Source and metadata CPU checks pass. GPU correctness, timing and a framework-finalized task-validator `PASS` are still required before publication.
+
+The protected loader reads and hashes each raw fixture blob once per case into an immutable CPU byte cache. Tensor construction copies those bytes into separate CPU storage, and each replay restores separate device input storage before fresh routing and activation generation. The callback layer owns each CPU input snapshot, avoiding a redundant full-storage host copy while preserving every immutable-input and oracle check. The declared performance timeout is 1800 seconds because these full-storage checks run outside all 100 timed replays for each of the three cases.

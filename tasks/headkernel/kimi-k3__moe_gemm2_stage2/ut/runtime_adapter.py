@@ -9,6 +9,7 @@ import sys
 from evaluation_contract import canonical, observe_case, strict_json
 from fresh_runner import FreshCallbacks, clear_device_reference, cpu_copy
 from fixture_helpers import checked_path, file_sha, make_routes, raw_storage, weighted_work
+from fixture_cache import CpuFixtureCache
 from native import NativeBindings
 
 IMAGE='docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96'
@@ -18,7 +19,8 @@ PREFILL='_flydsl_v2_stage2_wrapper'
 DECODE='opus_moe_stage2_a8w4_decode_fwd'
 
 
-def restore_phase(root,record,phase,torch):
+def restore_phase(root,record,phase,torch,cache=None):
+    cache=CpuFixtureCache(root) if cache is None else cache
     groups={}
     for alias,group in record['payload'][phase].items():
         # Paged KV gaps are never read. Defined zero bytes in the gaps make
@@ -26,17 +28,11 @@ def restore_phase(root,record,phase,torch):
         data=torch.zeros(group['storage_nbytes'],dtype=torch.uint8,device='cpu')
         covered=[]
         for segment in group['segments']:
-            path=checked_path(root,segment['blob'],segment['sha256'])
-            offset=segment['offset_bytes'];size=segment['bytes'];written=0
+            offset=segment['offset_bytes'];size=segment['bytes']
             if offset<0 or offset+size>data.numel():raise ValueError('Fixture segment exceeds storage')
             if any(offset<b and a<offset+size for a,b in covered):raise ValueError('Overlapping fixture segments')
             covered.append((offset,offset+size))
-            with path.open('rb') as stream:
-                for part in iter(lambda:stream.read(8<<20),b''):
-                    if written+len(part)>size:raise ValueError('Fixture exceeds recorded segment')
-                    data[offset+written:offset+written+len(part)].copy_(torch.frombuffer(bytearray(part),dtype=torch.uint8))
-                    written+=len(part)
-            if written!=size:raise ValueError('Fixture byte size differs')
+            cache.copy_into(segment['blob'],segment['sha256'],size,data[offset:offset+size],torch)
         if sum(b-a for a,b in covered)!=data.numel():
             names={name for name,meta in record[phase].items() if meta and meta['alias']==alias}
             if phase!='inputs' or not names or not names<={'k_buffer','v_buffer'}:
@@ -82,8 +78,9 @@ class Prepared:
             raise ValueError('Fixture is not the exact sealed current native ABI')
         self.controls={k:v for k,v in self.expected['controls'].items() if not k.endswith('_supplied')}
         self.controls.update(self.controls.pop('_kwargs',{}))
-        self.pristine_groups,self.pristine=restore_phase(path.parent,self.record,'inputs',self.torch)
-        self.golden_groups,self.golden=restore_phase(path.parent,self.record,'outputs',self.torch)
+        self._fixture_cache=CpuFixtureCache(path.parent)
+        self.pristine_groups,self.pristine=restore_phase(path.parent,self.record,'inputs',self.torch,self._fixture_cache)
+        self.golden_groups,self.golden=restore_phase(path.parent,self.record,'outputs',self.torch,self._fixture_cache)
         self.groups,self.inputs=self.allocate();self.ref_groups,self.ref_inputs=self.allocate()
         self.output=None;self.calls=Counter();self.draws=[];self.warmed=set()
         self.mutable={meta['alias'] for meta in self.record['outputs'].values() if meta}
@@ -98,8 +95,8 @@ class Prepared:
             reference=self.reference,compare=self.compare,replay=self.invoke_candidate)
         # Compilation happens through this actual native invocation. The only
         # golden present before the candidate is immutable CPU fixture storage.
-        truth=self.snapshot_inputs();self.invoke_candidate();self.torch.cuda.synchronize();self.validate_metadata()
-        actual=cpu_copy(self.output,self.torch);self.assert_immutable(self.snapshot_inputs(),truth)
+        truth=cpu_copy(self.snapshot_inputs(),self.torch);self.invoke_candidate();self.torch.cuda.synchronize();self.validate_metadata()
+        actual=cpu_copy(self.output,self.torch);self.assert_immutable(cpu_copy(self.snapshot_inputs(),self.torch),truth)
         self.compare(actual,self.golden)
         golden=self.reference(truth);expected_cpu=cpu_copy(golden,self.torch)
         clear_device_reference(golden,self.torch);self.torch.cuda.synchronize()
@@ -139,7 +136,9 @@ class Prepared:
         return self.output
 
     def snapshot_inputs(self):
-        return {alias:data.to(device='cpu',copy=True) for alias,data in self.groups.items()}
+        # FreshCallbacks owns the CPU copy. Returning an already copied CPU
+        # tensor here used to duplicate every multi-GB storage snapshot.
+        return dict(self.groups)
 
     def assert_immutable(self,after,before):
         if set(after)!=set(before):raise AssertionError('Input storage set changed')
