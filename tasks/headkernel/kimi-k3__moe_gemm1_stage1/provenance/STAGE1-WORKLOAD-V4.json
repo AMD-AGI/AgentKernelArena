@@ -1,0 +1,41 @@
+{
+  "schema": "kimi-stage1-workload-histogram-refresh-v1",
+  "run_id": "kimi-actual-v4-no-stack-194550",
+  "compatibility_sha256": "355e62a5ab367eb8d0e39fa21f793e1da34724a4dc6534c12b618439775aada2",
+  "audit_sha256": "ebe1775b7f8f454ee021e2f61df2d274be00f85aa6dba5773fe1f70995e03d73",
+  "prior_case_file_sha256": "dc6a7abc018cf5767bc3ffbcde684694a8c0e92754ad1c57c8e1562d53f625ff",
+  "fixture_bytes_and_native_ABI_unchanged": true,
+  "frequency_weights_unchanged": true,
+  "cases": [
+    {
+      "case_id": "flydsl_moe_stage1-struct-9b9cbbf22624300869bf9a90",
+      "v4_case_id": "flydsl_moe_stage1-b8e90790b7414825c49b8ddb",
+      "observed_occurrences": 753664,
+      "valid_row_range": [
+        10368,
+        19648
+      ],
+      "numeric_work_bins": 290
+    },
+    {
+      "case_id": "flydsl_moe_stage1-struct-e74ab9ff67a2bfe85a909093",
+      "v4_case_id": "flydsl_moe_stage1-e80fe14c84757d14cc0896cf",
+      "observed_occurrences": 1472,
+      "valid_row_range": [
+        157312,
+        165056
+      ],
+      "numeric_work_bins": 75
+    },
+    {
+      "case_id": "flydsl_moe_stage1-struct-fc125b5aac5697acb85975ce",
+      "v4_case_id": "flydsl_moe_stage1-4c5658773e7ec1e3db3a6bd6",
+      "observed_occurrences": 22816,
+      "valid_row_range": [
+        280832,
+        295360
+      ],
+      "numeric_work_bins": 138
+    }
+  ]
+}

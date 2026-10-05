@@ -15,3 +15,5 @@ The importer accepts the independently verified handoff and frozen capture mirro
 `make_submitted_controls.py --output NEW_DIRECTORY` creates source-only no-op and zero-payload candidates. Both pass the source boundary and must fail native correctness during compile or correctness qualification. The common runner's compile phase includes actual specialization execution and captured-golden parity, so rejection may occur there before the separate correctness phase.
 
 GPU compile/correctness/performance, submitted-source controls, and framework task-validator qualification remain required.
+
+The current empirical valid-row ranges are 10,368–19,648 for decode, 157,312–165,056 for prefill M8192, and 280,832–295,360 for prefill M16384. The independently verified v4 compatibility update changes only the work distributions; it retains the three structural frequencies, raw fixtures, native source, tensor/scalar ABI and exact scale-byte policy.

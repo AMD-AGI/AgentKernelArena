@@ -96,4 +96,24 @@ class Stage1ContractTests(unittest.TestCase):
             with self.assertRaises(ValueError):adapter.checked_path(root,'link.bin',digest)
 
 
+    def test_captured_tensor_attributes_cannot_be_silently_discarded(self):
+        record={'tensor_attribute_codec_id':None,'inputs':{'a':{'shape':[64,3584]}},'outputs':{'out':None}}
+        adapter.validate_tensor_attributes(record)
+        bad=copy.deepcopy(record);bad['inputs']['a']['attributes']={'is_shuffled':True}
+        with self.assertRaisesRegex(ValueError,'Unexpected captured tensor attributes'):
+            adapter.validate_tensor_attributes(bad)
+        bad=copy.deepcopy(record);bad['tensor_attribute_codec_id']='unreviewed-packing'
+        with self.assertRaisesRegex(ValueError,'no tensor-attribute codec'):
+            adapter.validate_tensor_attributes(bad)
+
+    def test_v4_work_histogram_ranges_and_frequencies(self):
+        expected=[(10368,19648,290),(157312,165056,75),(280832,295360,138)]
+        for case,(minimum,maximum,bins) in zip(self.manifest['cases'],expected):
+            histogram=case['work_distribution']['valid_rows_histogram']
+            self.assertEqual((histogram[0][0],histogram[-1][0],len(histogram)),(minimum,maximum,bins))
+            self.assertEqual(case['work_distribution']['source_run'],'kimi-actual-v4-no-stack-194550')
+            self.assertEqual(sum(count for _,count in histogram),case['occurrences'])
+        self.assertEqual(self.manifest['workload_histogram_update']['run_id'],'kimi-actual-v4-no-stack-194550')
+
+
 if __name__=='__main__':unittest.main()

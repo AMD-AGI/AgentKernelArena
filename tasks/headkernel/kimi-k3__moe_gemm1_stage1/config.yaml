@@ -43,6 +43,7 @@ headkernel:
   model: Kimi-K3
   docker: docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96
   source_run: kimi-served-194550
+  workload_histogram_run: kimi-actual-v4-no-stack-194550
   serving: ISL 8192 / OSL 1024 / CONC 64 / TP 8
   backend: FlyDSL A8W4 fused stage-1 gate/up, SiTUv2 and FP8 quantization
   regime:

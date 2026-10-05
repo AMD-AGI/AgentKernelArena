@@ -10,7 +10,7 @@ The operator consumes FP8 E4M3FN activations, packed FP4 E2M1 weights and tiled 
 | Prefill | `[8192, 3584]` | `[188416, 384]` | 184 | 1,472 |
 | Prefill | `[16384, 3584]` | `[319488, 384]` | 2,852 | 22,816 |
 
-The three structural classes account for 777,952 calls across all ranks. Each frequency is counted once. Numerical control variants contribute to each class's empirical work histogram; they do not create duplicate score cases or duplicate frequencies. Standard Arena scoring uses the arithmetic mean of the three matched per-case speedup ratios.
+The three structural classes account for 777,952 calls across all ranks. Each frequency is counted once. The latest empirical work histograms come from the compatible `kimi-actual-v4-no-stack-194550` workload, recorded in [STAGE1-WORKLOAD-V4.json](provenance/STAGE1-WORKLOAD-V4.json). Numerical control variants contribute to each class's empirical work histogram; they do not create duplicate score cases or duplicate frequencies. Standard Arena scoring uses the arithmetic mean of the three matched per-case speedup ratios.
 
 ## Editable source boundary
 

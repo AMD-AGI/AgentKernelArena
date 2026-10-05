@@ -1,6 +1,6 @@
 {
   "schema": "trusted-external-fixtures-v1",
-  "case_manifest_fingerprint": "10c1745d7c8e9c1d0a281f8c496864edb1791b1b078b7fb112d7580735b4c4c1",
+  "case_manifest_fingerprint": "25a500188450de61ace1cf7e766a3de940a10637d4157fedb1f2fcd3f578f1e4",
   "runtime_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
   "oci_prefix": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261005/kimi-served-194550/",
   "assets": [

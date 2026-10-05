@@ -42,11 +42,21 @@ def checked_path(root, relative, expected=None):
     return path
 
 
+def validate_tensor_attributes(record):
+    if record.get('tensor_attribute_codec_id') is not None:
+        raise ValueError('Stage-1 captured ABI has no tensor-attribute codec')
+    for phase in ('inputs','outputs'):
+        for name,meta in record[phase].items():
+            if meta is not None and meta.get('attributes'):
+                raise ValueError('Unexpected captured tensor attributes: '+phase+'.'+name)
+
+
 def validate_fixture(record):
     if (record.get('schema')!='served-tensor-fixture-v1' or record.get('family')!=FAMILY
             or record.get('source_sha256')!=NATIVE_SOURCE or record.get('startup_values') is not False
             or record['provenance']['image']!=IMAGE or record['provenance']['run_id']!='kimi-served-194550'):
         raise ValueError('Not an exact current served stage-1 fixture')
+    validate_tensor_attributes(record)
     if set(record['inputs'])!=set(DTYPES)|set(NONE_INPUTS) or any(record['inputs'][name] is not None for name in NONE_INPUTS):
         raise ValueError('Native input binding/nullness differs')
     controls=record['controls']
