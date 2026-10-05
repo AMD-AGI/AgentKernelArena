@@ -166,4 +166,83 @@ class Stage1ContractTests(unittest.TestCase):
                 adapter.validate_sync_repairs(root,provenance,mapping)
 
 
+    def test_fresh_callbacks_make_one_owned_snapshot_per_input_boundary(self):
+        from types import SimpleNamespace
+        from unittest.mock import patch
+        from fresh_runner import FreshCallbacks
+        log=[];counts=dict(refresh=0,initialize=0,replay=0,reference=0,measure=0)
+        class Tensor:
+            def __init__(self,value,device='cuda',name='input'):
+                self.value=value;self.device=SimpleNamespace(type=device);self.name=name
+            def detach(self):return self
+            def to(self,*,device,copy):
+                self_test.assertTrue(copy);log.append(('copy',self.name,self.device.type,device))
+                return Tensor(self.value,device,self.name)
+            def untyped_storage(self):return SimpleNamespace(tensor=self,nbytes=lambda:1,data_ptr=lambda:id(self))
+        class Raw:
+            def set_(self,storage,*args):self.tensor=storage.tensor;return self
+            def zero_(self):self.tensor.value=0
+        self_test=self
+        torch=SimpleNamespace(uint8='uint8',empty=lambda *a,**k:Raw(),is_tensor=lambda x:isinstance(x,Tensor),
+            cuda=SimpleNamespace(synchronize=lambda:log.append('sync')))
+        prepared=object.__new__(adapter.Prepared);prepared.torch=torch
+        prepared.inputs={'a':Tensor(7),'out':None};output=Tensor(0,name='output')
+        def refresh(seed):counts['refresh']+=1;prepared.inputs['a'].value=7+seed
+        def initialize():counts['initialize']+=1;output.value=-999
+        def replay():counts['replay']+=1;log.append('replay');output.value=prepared.inputs['a'].value*2
+        def immutable(after,before):
+            self.assertEqual(after['a'].device.type,'cpu');self.assertEqual(before['a'].device.type,'cpu')
+            self.assertEqual(after['a'].value,before['a'].value)
+        def reference(truth):
+            counts['reference']+=1;log.append('reference')
+            self.assertEqual(truth['a'].device.type,'cpu');self.assertIsNot(truth['a'],prepared.inputs['a'])
+            expected=Tensor(truth['a'].value*2,name='golden')
+            # GPU storage can change after observations; CPU truth remains owned.
+            prepared.inputs['a'].value=-1000
+            self.assertNotEqual(truth['a'].value,prepared.inputs['a'].value)
+            return expected
+        def compare(actual,expected):self.assertEqual(actual.value,expected.value)
+        callbacks=FreshCallbacks(refresh_inputs=refresh,initialize_outputs=initialize,
+            snapshot_inputs=prepared.snapshot_inputs,snapshot_outputs=lambda:output,
+            validate_metadata=lambda:None,assert_immutable=immutable,reference=reference,compare=compare,
+            replay=replay,torch_module=torch)
+        def measure(call):
+            counts['measure']+=1;start=len(log);call();self.assertEqual(log[start:],['replay']);return .25
+        callbacks.measure=measure
+        with patch.object(adapter,'raw_storage',side_effect=lambda value,torch:value):
+            result=callbacks.performance_row({'case_id':'synthetic'},dict(method='cuda_graph',warmup_iterations=10,benchmark_iterations=100),
+                observe=lambda:{'case_id':'synthetic'},challenge_seed=101)
+        self.assertEqual(counts,dict(refresh=110,initialize=110,replay=110,reference=110,measure=100))
+        self.assertEqual(result['samples_ms'],[.25]*100)
+        self.assertEqual(log.count(('copy','input','cuda','cpu')),330)
+        self.assertEqual(log.count(('copy','input','cpu','cpu')),110)
+        for index,value in enumerate(log):
+            if value=='reference':self.assertIn(('copy','output','cuda','cpu'),log[max(0,index-5):index])
+
+
+    def test_fast_source_probe_defers_only_candidate_warmup_failures(self):
+        from types import SimpleNamespace
+        from unittest.mock import patch
+        spec=importlib.util.spec_from_file_location('stage1_fast_probe_test',ROOT/'scripts/check_source_binding.py')
+        probe=importlib.util.module_from_spec(spec);spec.loader.exec_module(probe)
+        def compare(self,actual,expected):
+            if actual!=expected:raise AssertionError('wrong value')
+            return True
+        def prepare(case):
+            value=object.__new__(adapter.Prepared)
+            for actual,expected in ((0,1),(1,1),(0,1)):value.compare(actual,expected)
+            value.callbacks=SimpleNamespace(_compare=value.compare)
+            return value
+        with patch.object(adapter.Prepared,'compare',compare):
+            prepared,checks=probe.prepare_for_probe(SimpleNamespace(prepare_case=prepare),{})
+            self.assertEqual([row['correct'] for row in checks],[False,True,False])
+            self.assertFalse(prepared.captured_parity)
+            with self.assertRaisesRegex(AssertionError,'wrong value'):prepared.callbacks._compare(0,1)
+            def bad_reference(case):
+                value=object.__new__(adapter.Prepared);value.compare(0,1);value.compare(0,1)
+            with self.assertRaises(probe.ReferenceCalibrationError):
+                probe.prepare_for_probe(SimpleNamespace(prepare_case=bad_reference),{})
+            self.assertIs(adapter.Prepared.compare,compare)
+
+
 if __name__=='__main__':unittest.main()

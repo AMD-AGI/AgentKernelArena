@@ -299,9 +299,9 @@ class Prepared:
         # Bind both private implementations to actual captured values before any
         # generated trials. Golden fixture tensors remain exclusively on CPU.
         self._restore_original(self.inputs)
-        before=self.snapshot_inputs()
+        before=cpu_copy(self.snapshot_inputs(),self.torch)
         self.invoke_candidate();self.torch.cuda.synchronize();self.validate_metadata()
-        actual=cpu_copy(self.output,self.torch);self.assert_immutable(self.snapshot_inputs(),before)
+        actual=cpu_copy(self.output,self.torch);self.assert_immutable(cpu_copy(self.snapshot_inputs(),self.torch),before)
         self.compare(actual,self.golden)
         expected=self.reference(before);expected_cpu=cpu_copy(expected,self.torch)
         clear_device_reference(expected,self.torch);self.torch.cuda.synchronize()
@@ -400,7 +400,8 @@ class Prepared:
                     raw_storage(value,self.torch).fill_(0xff);self.poisoned.add(value.data_ptr())
 
     def snapshot_inputs(self):
-        return {name:raw_storage(value,self.torch).to(device='cpu',copy=True)
+        # FreshCallbacks owns the single CPU copy; expose complete storage views.
+        return {name:raw_storage(value,self.torch)
                 for name,value in self.inputs.items() if value is not None}
 
     def assert_immutable(self,after,before):
