@@ -1,77 +1,75 @@
-# kimi-k3__moe_gemm2_stage2
-# Head kernel from the 2026-09-14 info table, rows: K3-5
-
+task_type: hip2hip
+target_file_path: source/opus_moe_pipeline_stage2_a8w4_decode_main_gfx950.cuh
 source_file_path:
-  - source/flydsl/moe_kernels.py
-  - source/flydsl/kernels/mixed_moe_gemm_2stage.py
-  - source/flydsl/kernels/gemm_mxscale_gfx1250.py
-  - source/flydsl/kernels/moe_gemm_2stage.py
-  - source/flydsl/kernels/fmha_gfx1250/fmha_kernel.py
-  - source/flydsl/kernels/gemm_fp8fp4_gfx1250.py
-  - source/flydsl/kernels/fused_compress_attn.py
-  - source/flydsl/kernels/fused_compress_attn_gfx1250.py
-  - source/flydsl/kernels/fmha_gfx1250/fmha_core_loop.py
-
+  - source/opus_moe_pipeline_stage2_a8w4_decode_main_gfx950.cuh
+  - source/flydsl/mxmoe_gemm_v2.py
 target_kernel_functions:
-  - flydsl_moe_stage2
-
+  - opus_moe_stage2_a8w4_decode_kernel_gfx950
+  - gemm2_body_v2
 compile_command:
   - python3 scripts/task_runner.py compile
-
 correctness_command:
   - python3 scripts/task_runner.py correctness
-
 performance_command:
   - python3 scripts/task_runner.py performance
-
-task_type: triton2triton
-
 task_result_template: null
-
+platform_support:
+  required_arch: gfx950
+  status: active
 prompt:
   source_code: null
   instructions: |
-    Optimize the Kimi-K3 head kernel `moe_gemm2_0` (aiter asm (AOT) / flydsl opus - fused_moe_2stages stage-2 down - mxfp4 + bf16) for maximum GPU
-    throughput on MI355X (gfx950) while keeping it numerically correct.
-
-    It is 5.47% of de-inflated GPU time in the serving profile
-    (ISL 8192 / OSL 1024 / CONC 64 / TP 8), currently at 0.230 of its empirical roofline.
-
-    Edit only:
-      source/flydsl/moe_kernels.py
-
-    Entry points that must keep their signatures:
-      flydsl_moe_stage2
-
-    The production seam is `aiter.ops.flydsl.moe_kernels:flydsl_moe_stage2`; correctness is judged
-    against a frozen live-server capture, not a re-derived reference, so the kernel
-    must stay faithful to the deployed contract (dtypes, layouts, quantization).
-
-    Note: same synthetic oracle layout as K3-4.
+    Optimize Kimi-K3's actual stage-2 GPU implementations on gfx950.
+    Prefill uses gemm2_body_v2 in source/flydsl/mxmoe_gemm_v2.py;
+    decode uses opus_moe_stage2_a8w4_decode_kernel_gfx950 in the declared
+    HIP header. Only those device bodies are editable. The protected guard
+    freezes imports, signatures, host code, build recipes, launch controls,
+    native reduction, case contracts and every harness/reference file.
+    Preserve all three cases: prefill M=8192 and M=16384 through the native
+    FlyDSL-v2 wrapper and BF16 reduction, and decode M=64 through native Opus
+    kernel 2005. Preserve packed FP4 weights, FP8 activations, native tiled
+    E8M0 scales, topk 16, inter dimension 384, model dimension 3584 and all
+    aliases, strides, storage sizes and empirical valid-row distributions.
+    Decode adds into caller-zeroed BF16 output. Prefill overwrites BF16 output.
+    Each leg binds a private source closure; HIP source is freshly compiled
+    and FlyDSL symbols include the protected source identity. Every replay
+    uses legal fresh routing and inputs and a deferred independent oracle
+    after CPU candidate observations. Preserve tolerance 0.05 and negative
+    controls. Do not alter task counts, timing, results, dispatch or references.
+    GPU and framework task-validator qualification are pending.
   cheatsheet: null
-
-# ---------------------------------------------------------------------------
-# Provenance. Not read by the arena schema check; read by scripts/task_runner.py
-# and by anyone auditing where these numbers came from.
 headkernel:
-  model: "Kimi-K3"
-  owner: Hongtao
-  docker: "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang-rocm-k3:rocm720-mi35x-k3-20260727-tl312-08011830"
+  model: Kimi-K3
+  docker: docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96
+  source_run: kimi-actual-v4-no-stack-194550
   serving: ISL 8192 / OSL 1024 / CONC 64 / TP 8
-  backend: "aiter asm (AOT) / flydsl opus - fused_moe_2stages stage-2 down - mxfp4 + bf16"
-  regime: prefill
-  device_symbol: moe_gemm2_0
-  target_callable: "aiter.ops.flydsl.moe_kernels:flydsl_moe_stage2"
+  backend: FlyDSL-v2 prefill with native reduction; native Opus A8W4 decode
+  regime: [prefill, decode]
+  target_callable:
+    prefill: aiter.fused_moe:_flydsl_v2_stage2_wrapper
+    decode: aiter.ops.opus.moe_stage2_a8w4:opus_moe_stage2_a8w4_decode_fwd
+  oracle: current captured CPU fixtures plus independently bound frozen native implementations
   tol: 0.05
-  oracle: "frozen live-capture ut/reference_io.pt"
-  source_package: "Z/Kimi-K3_moe_gemm2_0"
   source_seed: stock
-  info_rows:
-    - row: "K3-5"
-      info_kernel: moe_gemm2_0
-      gpu_pct: 5.47
-      empirical_roofline: 0.230
-      optimized_roofline: null
-      e2e_uplift: null
+  case_manifest: cases.json
+  observed_calls_per_rank:
+    decode_m64: 94208
+    prefill_m8192: 184
+    prefill_m16384: 2852
+  observed_calls_all_ranks: 777952
+  validation_status: pending_gpu_and_framework_task_validator
   symbol_locations:
-    flydsl_moe_stage2: source/flydsl/moe_kernels.py
+    gemm2_body_v2: source/flydsl/mxmoe_gemm_v2.py
+    opus_moe_stage2_a8w4_decode_kernel_gfx950: source/opus_moe_pipeline_stage2_a8w4_decode_main_gfx950.cuh
+harness_protection:
+  reject_new_source_symlinks: true
+trusted_evaluation:
+  schema_version: 1
+  case_manifest: cases.json
+  fixture_manifest: fixtures/EXTERNAL-MANIFEST.json
+  contract_file: ut/evaluation_contract.py
+  source_guard: ut/source_guard.py
+  requires_aiter_jit_cache: true
+  reference_sources:
+    source/opus_moe_pipeline_stage2_a8w4_decode_main_gfx950.cuh: ut/reference/opus_moe_pipeline_stage2_a8w4_decode_main_gfx950.cuh
+    source/flydsl/mxmoe_gemm_v2.py: ut/reference/flydsl/mxmoe_gemm_v2.py

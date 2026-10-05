@@ -1,0 +1,28 @@
+{
+  "frozen_files": {
+    "cases.json": "400f89a5a5bfff1c453017ed7fefe45aedcbfc99fdb2fc0cb156bc96fe71dcfa",
+    "fixtures/EXTERNAL-MANIFEST.json": "64bafd7c9e69dfc3df20d00f4ef2cac044cce3494bd8cc2efacdad6f0f77ff84",
+    "provenance/FIXTURE-FILES.txt": "4bafaf945746800dc2135099afc603743efaa2933a52d76dccbe45671763c86d",
+    "provenance/SOURCE.json": "6d04a47ae4e50ec11010729065944bf256c447f2ee4af5b66332192060b51240",
+    "provenance/WORK-DISTRIBUTIONS.json": "2ce2aa19c71cca7dc11fc2f9fc6ae63a227fcbe91581bd48cec286482e931432",
+    "scripts/task_runner.py": "26b7e2f4ab97b009d9e1e859fe673ae440a53a2fb6dd5b6215383e68ca9cba32",
+    "ut/cpp_body_guard.py": "b51f41072d8967244294dbf12184b0d991e8be53e61c8de729cc6a1ce78fc667",
+    "ut/evaluation_contract.py": "2dffc785afb98cbe46303227281f4efcf0f82380a9de6d9f53fcb8774a43cb75",
+    "ut/expected_abi.json": "3db1f55d3fda2c9052abb364ca82eb8bde8e079fc12ca6f06e70ac9e43584949",
+    "ut/fixture_helpers.py": "9734926c716ba75e6d5fdf0901922efc924e934cfb5f592f703cd9f25e196a05",
+    "ut/fresh_runner.py": "09d3b41b20e8521f65473c1fc819073f958a605c2dfa11069b296c352d79f848",
+    "ut/native.py": "68d258de7f85635270e2b0cbb47f1ebfb31ba18c5d1898240e0bcbabe9c381a0",
+    "ut/reference/decode_attention.py": "34ca0066e2716e1ffad048ec7cbb3a25af13eeb61e99034a663fed6277bf691a",
+    "ut/runtime_adapter.py": "97783fc02cf7809f104174fd0da2ae75526ac32ba6644f4ea61e75a95fffe777",
+    "ut/source_guard.py": "e64775bea09da5f75040099bcf85128977505c5f24bba8e92c1477289f164bd8"
+  },
+  "sources": {
+    "source/decode_attention.py": {
+      "language": "triton",
+      "reference": "ut/reference/decode_attention.py",
+      "targets": [
+        "_lean_attention_decode_kernel"
+      ]
+    }
+  }
+}

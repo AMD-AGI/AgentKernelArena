@@ -1,71 +1,27 @@
-# kimi-k3__moe_gemm2_stage2
+This task exposes Kimi-K3's actual stage-2 GPU implementations in the pinned SGLang 0.5.20 runtime. Prefill uses FlyDSL-v2 GEMM2 followed by the native BF16 reduction. Decode uses the native Opus A8W4 kernel with explicit kernel ID 2005. The full served workload completed 64 requests at TP8/C64, ISL8192/OSL1024.
 
-**Kimi-K3** head kernel - `moe_gemm2_0` (aiter asm (AOT) / flydsl opus - fused_moe_2stages stage-2 down - mxfp4 + bf16, prefill).
+The editable bodies are `gemm2_body_v2` in [source/flydsl/mxmoe_gemm_v2.py](source/flydsl/mxmoe_gemm_v2.py) and `opus_moe_stage2_a8w4_decode_kernel_gfx950` in [source/opus_moe_pipeline_stage2_a8w4_decode_main_gfx950.cuh](source/opus_moe_pipeline_stage2_a8w4_decode_main_gfx950.cuh). The host wrappers, import graph, signatures, launch controls, build recipe, native reduction and all other code are protected. The HIP source is freshly compiled into a task-owned extension. Each FlyDSL leg uses a distinct private dispatcher and emitter package with a source-bound GPU symbol; neither leg replaces the installed dispatcher module.
 
-| field | value |
-|---|---|
-| GPU time share | 5.47% |
-| empirical roofline | 0.230 |
-| optimized roofline | - |
-| e2e uplift measured | - |
-| device symbol | `moe_gemm2_0` |
-| production seam | `aiter.ops.flydsl.moe_kernels:flydsl_moe_stage2` |
-| serving contract | ISL 8192 / OSL 1024 / CONC 64 / TP 8 |
-| image | `harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang-rocm-k3:rocm720-mi35x-k3-20260727-tl312-08011830` |
-| owner | Hongtao |
-| info rows | K3-5 |
+The three exact cases are:
 
-## Layout
+| Stage | Tokens | Calls per rank | Calls across eight ranks |
+| --- | ---: | ---: | ---: |
+| Prefill | 8192 | 184 | 1472 |
+| Prefill | 16384 | 2852 | 22816 |
+| Decode | 64 | 94208 | 753664 |
 
-```
-config.yaml              arena task schema + a headkernel: provenance block
-scripts/task_runner.py   compile | correctness | performance
-scripts/_bench.py        native 10 warmup / 100 measured timing
-source/                  THE EDITABLE KERNEL - change only this
-ut/                      frozen GEAK op package (oracle, harness, overlays)
-ut/kernel_src/           symlinks back into source/ - same bytes, two views
-```
+All cases preserve packed FP4 model weights, FP8 activations, native tiled E8M0 scales, topk 16, intermediate dimension 384, model dimension 3584, captured physical storage and aliases. Decode accumulates into caller-zeroed BF16 output; prefill overwrites BF16 output. Complete empirical work distributions, including dynamic valid sorted-row counts, remain in [provenance/WORK-DISTRIBUTIONS.json](provenance/WORK-DISTRIBUTIONS.json).
 
-Edit targets:
+The trusted host materializes the exact assets in [fixtures/EXTERNAL-MANIFEST.json](fixtures/EXTERNAL-MANIFEST.json). No tensor blobs belong in the Git task. Every replay creates fresh legal distinct-expert routes at an actually observed valid-row work amount, remaps captured quantized activation payloads and their exact scale layout, and generates normalized routing weights. Model-weight bytes remain readonly.
 
-- `flydsl_moe_stage2` in `source/flydsl/moe_kernels.py`
+Before candidate execution, the harness owns CPU input truth. After execution, it freezes candidate outputs and complete post-input storage on CPU before invoking the separately bound frozen reference. Reference GPU output storage is cleared after its CPU snapshot. Correctness retains the 0.05 RMS-relative tolerance, exact metadata and alias checks, and no-op/wrong-output negative controls. Performance uses 10 warmups and 100 checked single-call CUDA graph replays.
 
-## Running it
-
-On one GPU from the optimization pool (never the serving set), inside the image above:
+In the pinned gfx950 container, after trusted fixture materialization:
 
 ```bash
-cd <task>
 python3 scripts/task_runner.py compile
 python3 scripts/task_runner.py correctness
 python3 scripts/task_runner.py performance
 ```
 
-- **compile** AST-parses `source/` and asserts every target symbol is defined there.
-  No GPU needed.
-- **correctness** runs `ut/unittest.py`: the frozen live-capture oracle
-  (`ut/reference_io.pt`) plus random-value parity against the live baseline leg,
-  at tol `0.05`. Exit 0 pass, 1 correctness fail, 2 environment,
-  3 harness incomplete.
-- **performance** replays the captured argument records from `ut/reference_io.pt`
-  with 10 warmup + 100 measured iterations and reports the mean cuda-event device
-  time. If a record cannot be rebuilt it falls back to the GEAK interleaved
-  median-of-3 legs and says so in `build/performance_report.json`.
-  A run whose unit test did not pass reports no cases at all.
-
-## Starting point
-
-`source/` is the **stock** upstream code, byte-identical to
-`ut/baseline_ref/*.orig`. Nothing has been pre-optimized.
-
-## Provenance
-
-Copied Kimi-K3_moe_gemm2_0 from `/shared_nfs/zihao/headkernel_ut_0831` on 2026-09-14.
-Prior optimization results (`_candidate_best/`, `accepted_overlay/`, tuning sweeps,
-patches) were deliberately **not** copied - a benchmark that ships the answer
-measures nothing. They remain in the upstream package.
-Oracle blobs are hardlinked, not duplicated (1 file(s), 0.18 GB shared with the source package).
-The original package README is preserved at `ut/README.md` and is the authority on
-this op's measurement caveats - read it before trusting a speedup.
-
-**Note.** same synthetic oracle layout as K3-4.
+Source and metadata CPU checks pass. GPU correctness, timing and a framework-finalized task-validator `PASS` are still required before publication.

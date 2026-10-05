@@ -1,1 +1,0 @@
-../../../../source/flydsl/kernels/silu_and_mul_fq.py

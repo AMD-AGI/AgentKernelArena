@@ -1,0 +1,290 @@
+{
+  "_decode_lean_attention_fwd-616b10700cd40ae2986c1283": {
+    "controls": {
+      "NUM_XCDS": 1,
+      "XCD_REMAP": false,
+      "o_supplied": true,
+      "page_size": 1,
+      "sm_scale": 0.07216878364870322,
+      "total_programs": 256,
+      "v_scale": 1.0
+    },
+    "effective_native_launch": {
+      "batch": 64,
+      "block_m": 16,
+      "block_n": 16,
+      "num_rows": 1,
+      "num_stages": 2,
+      "num_warps": 4,
+      "num_xcds": 1,
+      "total_programs": 256,
+      "xcd_remap": false
+    },
+    "family": "_decode_lean_attention_fwd",
+    "inputs": {
+      "Lp": {
+        "alias": "s0",
+        "dtype": "torch.float32",
+        "element_size": 4,
+        "kind": "tensor",
+        "shape": [
+          256,
+          16
+        ],
+        "storage_nbytes": 16384,
+        "storage_offset": 0,
+        "stride": [
+          16,
+          1
+        ]
+      },
+      "Mp": {
+        "alias": "s1",
+        "dtype": "torch.float32",
+        "element_size": 4,
+        "kind": "tensor",
+        "shape": [
+          256,
+          16
+        ],
+        "storage_nbytes": 16384,
+        "storage_offset": 0,
+        "stride": [
+          16,
+          1
+        ]
+      },
+      "Op": {
+        "alias": "s2",
+        "dtype": "torch.float32",
+        "element_size": 4,
+        "kind": "tensor",
+        "shape": [
+          256,
+          16,
+          512
+        ],
+        "storage_nbytes": 8388608,
+        "storage_offset": 0,
+        "stride": [
+          8192,
+          512,
+          1
+        ]
+      },
+      "k_buffer": {
+        "alias": "s3",
+        "dtype": "torch.bfloat16",
+        "element_size": 2,
+        "kind": "tensor",
+        "shape": [
+          1480041,
+          1,
+          576
+        ],
+        "storage_nbytes": 1705007232,
+        "storage_offset": 0,
+        "stride": [
+          576,
+          576,
+          1
+        ]
+      },
+      "kv_indices": {
+        "alias": "s4",
+        "dtype": "torch.int64",
+        "element_size": 8,
+        "kind": "tensor",
+        "shape": [
+          589952
+        ],
+        "storage_nbytes": 4719616,
+        "storage_offset": 0,
+        "stride": [
+          1
+        ]
+      },
+      "kv_indptr": {
+        "alias": "s5",
+        "dtype": "torch.int32",
+        "element_size": 4,
+        "kind": "tensor",
+        "shape": [
+          65
+        ],
+        "storage_nbytes": 260,
+        "storage_offset": 0,
+        "stride": [
+          1
+        ]
+      },
+      "locks": {
+        "alias": "s6",
+        "dtype": "torch.int32",
+        "element_size": 4,
+        "kind": "tensor",
+        "shape": [
+          256
+        ],
+        "storage_nbytes": 1024,
+        "storage_offset": 0,
+        "stride": [
+          1
+        ]
+      },
+      "o": {
+        "alias": "s7",
+        "dtype": "torch.bfloat16",
+        "element_size": 2,
+        "kind": "tensor",
+        "shape": [
+          64,
+          12,
+          512
+        ],
+        "storage_nbytes": 786432,
+        "storage_offset": 0,
+        "stride": [
+          6144,
+          512,
+          1
+        ]
+      },
+      "q": {
+        "alias": "s8",
+        "dtype": "torch.bfloat16",
+        "element_size": 2,
+        "kind": "tensor",
+        "shape": [
+          64,
+          12,
+          576
+        ],
+        "storage_nbytes": 884736,
+        "storage_offset": 0,
+        "stride": [
+          6912,
+          576,
+          1
+        ]
+      },
+      "v_buffer": {
+        "alias": "s3",
+        "dtype": "torch.bfloat16",
+        "element_size": 2,
+        "kind": "tensor",
+        "shape": [
+          1480041,
+          1,
+          512
+        ],
+        "storage_nbytes": 1705007232,
+        "storage_offset": 0,
+        "stride": [
+          576,
+          576,
+          1
+        ]
+      }
+    },
+    "mode": "graph",
+    "outputs": {
+      "Lp": {
+        "alias": "s0",
+        "dtype": "torch.float32",
+        "element_size": 4,
+        "kind": "tensor",
+        "shape": [
+          256,
+          16
+        ],
+        "storage_nbytes": 16384,
+        "storage_offset": 0,
+        "stride": [
+          16,
+          1
+        ]
+      },
+      "Mp": {
+        "alias": "s1",
+        "dtype": "torch.float32",
+        "element_size": 4,
+        "kind": "tensor",
+        "shape": [
+          256,
+          16
+        ],
+        "storage_nbytes": 16384,
+        "storage_offset": 0,
+        "stride": [
+          16,
+          1
+        ]
+      },
+      "Op": {
+        "alias": "s2",
+        "dtype": "torch.float32",
+        "element_size": 4,
+        "kind": "tensor",
+        "shape": [
+          256,
+          16,
+          512
+        ],
+        "storage_nbytes": 8388608,
+        "storage_offset": 0,
+        "stride": [
+          8192,
+          512,
+          1
+        ]
+      },
+      "locks": {
+        "alias": "s6",
+        "dtype": "torch.int32",
+        "element_size": 4,
+        "kind": "tensor",
+        "shape": [
+          256
+        ],
+        "storage_nbytes": 1024,
+        "storage_offset": 0,
+        "stride": [
+          1
+        ]
+      },
+      "o": {
+        "alias": "s7",
+        "dtype": "torch.bfloat16",
+        "element_size": 2,
+        "kind": "tensor",
+        "shape": [
+          64,
+          12,
+          512
+        ],
+        "storage_nbytes": 786432,
+        "storage_offset": 0,
+        "stride": [
+          6144,
+          512,
+          1
+        ]
+      }
+    },
+    "source": "34ca0066e2716e1ffad048ec7cbb3a25af13eeb61e99034a663fed6277bf691a",
+    "stage": "decode",
+    "tensor_attribute_codec_id": null,
+    "tensor_control_codec_id": "kimi-native-work-classes-v2-actual-dispatch",
+    "tensor_controls": {
+      "work_signature": {
+        "block_n": 16,
+        "family": "_decode_lean_attention_fwd",
+        "num_rows": 1,
+        "persistent_programs": 256,
+        "policy": "kimi-native-work-classes-v2-actual-dispatch",
+        "schedule": "native dynamic KV tiles on fixed persistent grid"
+      }
+    }
+  }
+}

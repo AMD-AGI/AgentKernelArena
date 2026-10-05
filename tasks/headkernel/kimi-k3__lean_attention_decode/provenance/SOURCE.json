@@ -1,0 +1,34 @@
+{
+  "dependencies": [
+    {
+      "package": "sglang",
+      "path": "kernels/ops/attention/decode_attention.py",
+      "sha256": "34ca0066e2716e1ffad048ec7cbb3a25af13eeb61e99034a663fed6277bf691a"
+    },
+    {
+      "package": "sglang",
+      "path": "kernels/ops/attention/score_mod.py",
+      "sha256": "127e2e6466bbfac3c2189cc4f2a9d7751fd819b30d25de65378d66ae63bbafa6"
+    },
+    {
+      "package": "sglang",
+      "path": "srt/environ.py",
+      "sha256": "c57c6ea499a47ed0bc80b299d2a6b224662bccb290af9083838b2b40aaa2adc0"
+    },
+    {
+      "package": "sglang",
+      "path": "srt/utils/common.py",
+      "sha256": "52eedc9338c5d2565434d265858b5d47bcc67156d38353a5b218e91df7620e45"
+    }
+  ],
+  "editable_sources": {
+    "source/decode_attention.py": {
+      "language": "triton",
+      "reference": "ut/reference/decode_attention.py",
+      "targets": [
+        "_lean_attention_decode_kernel"
+      ]
+    }
+  },
+  "image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96"
+}

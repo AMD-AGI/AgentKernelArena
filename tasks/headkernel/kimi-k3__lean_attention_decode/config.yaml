@@ -1,0 +1,63 @@
+task_type: triton2triton
+target_file_path: source/decode_attention.py
+source_file_path:
+  - source/decode_attention.py
+target_kernel_functions:
+  - _lean_attention_decode_kernel
+compile_command:
+  - python3 scripts/task_runner.py compile
+correctness_command:
+  - python3 scripts/task_runner.py correctness
+performance_command:
+  - python3 scripts/task_runner.py performance
+task_result_template: null
+platform_support:
+  required_arch: gfx950
+  status: active
+prompt:
+  source_code: null
+  instructions: |
+    Optimize Kimi-K3's native Lean attention decode GPU body on gfx950.
+    Edit only _lean_attention_decode_kernel in source/decode_attention.py.
+    The protected source guard freezes the launcher, helpers, imports,
+    decorators, signatures, host controls and every harness/reference file.
+    Preserve the captured batch of 64, 12 query heads, Q/K dimension 576,
+    V dimension 512, page size 1 and persistent grid of 256 programs.
+    K and V share latent storage. Preserve exact strides, storage sizes,
+    offsets, all aliases, output and scratch state, and the complete observed
+    sequence-length distribution from 8193 through 9216.
+    Every replay refreshes legal inputs, initializes outputs, freezes candidate
+    observations on CPU, and then executes a separate frozen native reference.
+    Preserve the 0.02 RMS-relative tolerance and both negative controls.
+    Runtime reflection, arbitrary Python calls, module mutation and edits to
+    case counts, measurement, results or protected reference code are forbidden.
+    GPU and framework task-validator qualification are pending.
+  cheatsheet: null
+headkernel:
+  model: Kimi-K3
+  docker: docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96
+  source_run: kimi-actual-v4-no-stack-194550
+  serving: ISL 8192 / OSL 1024 / CONC 64 / TP 8
+  backend: native Triton Lean attention persistent decode
+  regime: [decode]
+  target_callable: sglang.kernels.ops.attention.decode_attention:_decode_lean_attention_fwd
+  oracle: current captured CPU fixture and independently loaded frozen native source
+  tol: 0.02
+  source_seed: stock
+  case_manifest: cases.json
+  observed_calls_per_rank: 24576
+  observed_calls_all_ranks: 196608
+  validation_status: pending_gpu_and_framework_task_validator
+  symbol_locations:
+    _lean_attention_decode_kernel: source/decode_attention.py
+harness_protection:
+  reject_new_source_symlinks: true
+trusted_evaluation:
+  schema_version: 1
+  case_manifest: cases.json
+  fixture_manifest: fixtures/EXTERNAL-MANIFEST.json
+  contract_file: ut/evaluation_contract.py
+  source_guard: ut/source_guard.py
+  requires_aiter_jit_cache: true
+  reference_sources:
+    source/decode_attention.py: ut/reference/decode_attention.py

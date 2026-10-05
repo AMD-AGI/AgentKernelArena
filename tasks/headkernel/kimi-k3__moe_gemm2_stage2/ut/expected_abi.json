@@ -1,0 +1,658 @@
+{
+  "_flydsl_v2_stage2_wrapper-8a742b60351430cedf5b54b4": {
+    "controls": {
+      "_kwargs": {},
+      "block_m": 64,
+      "inter_dim": 384,
+      "inter_dim_pad": 0,
+      "kernelName": "flydsl_moe2_layout_afp8_wfp4_bf16_t64x256x128_reduce_sbm64_sp3201",
+      "model_dim": 3584,
+      "model_dim_pad": 0,
+      "num_experts": 896,
+      "out_supplied": true,
+      "topk": 16
+    },
+    "family": "_flydsl_v2_stage2_wrapper",
+    "inputs": {
+      "a2_scale": {
+        "alias": "s0",
+        "dtype": "torch.float8_e8m0fnu",
+        "element_size": 1,
+        "kind": "tensor",
+        "shape": [
+          188416,
+          16
+        ],
+        "storage_nbytes": 3014656,
+        "storage_offset": 0,
+        "stride": [
+          16,
+          1
+        ]
+      },
+      "bias2": null,
+      "expert_mask": null,
+      "inter_states": {
+        "alias": "s1",
+        "dtype": "torch.float8_e4m3fn",
+        "element_size": 1,
+        "kind": "tensor",
+        "shape": [
+          188416,
+          384
+        ],
+        "storage_nbytes": 72351744,
+        "storage_offset": 0,
+        "stride": [
+          384,
+          1
+        ]
+      },
+      "num_valid_ids": {
+        "alias": "s2",
+        "dtype": "torch.int32",
+        "element_size": 4,
+        "kind": "tensor",
+        "shape": [
+          2
+        ],
+        "storage_nbytes": 8,
+        "storage_offset": 0,
+        "stride": [
+          1
+        ]
+      },
+      "out": {
+        "alias": "s3",
+        "dtype": "torch.bfloat16",
+        "element_size": 2,
+        "kind": "tensor",
+        "shape": [
+          8192,
+          3584
+        ],
+        "storage_nbytes": 58720256,
+        "storage_offset": 0,
+        "stride": [
+          3584,
+          1
+        ]
+      },
+      "sorted_expert_ids": {
+        "alias": "s4",
+        "dtype": "torch.int32",
+        "element_size": 4,
+        "kind": "tensor",
+        "shape": [
+          2944
+        ],
+        "storage_nbytes": 11776,
+        "storage_offset": 0,
+        "stride": [
+          1
+        ]
+      },
+      "sorted_token_ids": {
+        "alias": "s5",
+        "dtype": "torch.int32",
+        "element_size": 4,
+        "kind": "tensor",
+        "shape": [
+          188400
+        ],
+        "storage_nbytes": 753600,
+        "storage_offset": 0,
+        "stride": [
+          1
+        ]
+      },
+      "sorted_weights": {
+        "alias": "s6",
+        "dtype": "torch.float32",
+        "element_size": 4,
+        "kind": "tensor",
+        "shape": [
+          188400
+        ],
+        "storage_nbytes": 753600,
+        "storage_offset": 0,
+        "stride": [
+          1
+        ]
+      },
+      "topk_ids": null,
+      "topk_weights": null,
+      "w1": {
+        "alias": "s7",
+        "dtype": "torch.float4_e2m1fn_x2",
+        "element_size": 1,
+        "kind": "tensor",
+        "shape": [
+          896,
+          768,
+          1792
+        ],
+        "storage_nbytes": 1233125376,
+        "storage_offset": 0,
+        "stride": [
+          1376256,
+          1792,
+          1
+        ]
+      },
+      "w2": {
+        "alias": "s8",
+        "dtype": "torch.float4_e2m1fn_x2",
+        "element_size": 1,
+        "kind": "tensor",
+        "shape": [
+          896,
+          3584,
+          192
+        ],
+        "storage_nbytes": 616562688,
+        "storage_offset": 0,
+        "stride": [
+          688128,
+          192,
+          1
+        ]
+      },
+      "w2_scale": {
+        "alias": "s9",
+        "dtype": "torch.float8_e8m0fnu",
+        "element_size": 1,
+        "kind": "tensor",
+        "shape": [
+          3211264,
+          16
+        ],
+        "storage_nbytes": 51380224,
+        "storage_offset": 0,
+        "stride": [
+          16,
+          1
+        ]
+      }
+    },
+    "mode": "eager",
+    "outputs": {
+      "out": {
+        "alias": "s3",
+        "dtype": "torch.bfloat16",
+        "element_size": 2,
+        "kind": "tensor",
+        "shape": [
+          8192,
+          3584
+        ],
+        "storage_nbytes": 58720256,
+        "storage_offset": 0,
+        "stride": [
+          3584,
+          1
+        ]
+      },
+      "return": {
+        "alias": "s3",
+        "dtype": "torch.bfloat16",
+        "element_size": 2,
+        "kind": "tensor",
+        "shape": [
+          8192,
+          3584
+        ],
+        "storage_nbytes": 58720256,
+        "storage_offset": 0,
+        "stride": [
+          3584,
+          1
+        ]
+      },
+      "return_scale": null
+    },
+    "source": "181dfc53206adca3faec707f7f6e054fa6cbf56ba2d671a8d01266c4dc6f8ff1",
+    "stage": "prefill",
+    "tensor_attribute_codec_id": null,
+    "tensor_control_codec_id": "kimi-native-work-classes-v2-actual-dispatch",
+    "tensor_controls": {
+      "work_signature": {
+        "family": "_flydsl_v2_stage2_wrapper",
+        "m_block_input_capacity": 2944,
+        "policy": "kimi-native-work-classes-v2-actual-dispatch",
+        "schedule": "native configured tile grid with dynamic valid-row mask",
+        "tile_m": 64
+      }
+    }
+  },
+  "_flydsl_v2_stage2_wrapper-c0a3c25f25667f565998b9d7": {
+    "controls": {
+      "_kwargs": {},
+      "block_m": 64,
+      "inter_dim": 384,
+      "inter_dim_pad": 0,
+      "kernelName": "flydsl_moe2_layout_afp8_wfp4_bf16_t64x256x128_reduce_sbm64_sp3201",
+      "model_dim": 3584,
+      "model_dim_pad": 0,
+      "num_experts": 896,
+      "out_supplied": true,
+      "topk": 16
+    },
+    "family": "_flydsl_v2_stage2_wrapper",
+    "inputs": {
+      "a2_scale": {
+        "alias": "s0",
+        "dtype": "torch.float8_e8m0fnu",
+        "element_size": 1,
+        "kind": "tensor",
+        "shape": [
+          319488,
+          16
+        ],
+        "storage_nbytes": 5111808,
+        "storage_offset": 0,
+        "stride": [
+          16,
+          1
+        ]
+      },
+      "bias2": null,
+      "expert_mask": null,
+      "inter_states": {
+        "alias": "s1",
+        "dtype": "torch.float8_e4m3fn",
+        "element_size": 1,
+        "kind": "tensor",
+        "shape": [
+          319488,
+          384
+        ],
+        "storage_nbytes": 122683392,
+        "storage_offset": 0,
+        "stride": [
+          384,
+          1
+        ]
+      },
+      "num_valid_ids": {
+        "alias": "s2",
+        "dtype": "torch.int32",
+        "element_size": 4,
+        "kind": "tensor",
+        "shape": [
+          2
+        ],
+        "storage_nbytes": 8,
+        "storage_offset": 0,
+        "stride": [
+          1
+        ]
+      },
+      "out": {
+        "alias": "s3",
+        "dtype": "torch.bfloat16",
+        "element_size": 2,
+        "kind": "tensor",
+        "shape": [
+          16384,
+          3584
+        ],
+        "storage_nbytes": 117440512,
+        "storage_offset": 0,
+        "stride": [
+          3584,
+          1
+        ]
+      },
+      "sorted_expert_ids": {
+        "alias": "s4",
+        "dtype": "torch.int32",
+        "element_size": 4,
+        "kind": "tensor",
+        "shape": [
+          4992
+        ],
+        "storage_nbytes": 19968,
+        "storage_offset": 0,
+        "stride": [
+          1
+        ]
+      },
+      "sorted_token_ids": {
+        "alias": "s5",
+        "dtype": "torch.int32",
+        "element_size": 4,
+        "kind": "tensor",
+        "shape": [
+          319472
+        ],
+        "storage_nbytes": 1277888,
+        "storage_offset": 0,
+        "stride": [
+          1
+        ]
+      },
+      "sorted_weights": {
+        "alias": "s6",
+        "dtype": "torch.float32",
+        "element_size": 4,
+        "kind": "tensor",
+        "shape": [
+          319472
+        ],
+        "storage_nbytes": 1277888,
+        "storage_offset": 0,
+        "stride": [
+          1
+        ]
+      },
+      "topk_ids": null,
+      "topk_weights": null,
+      "w1": {
+        "alias": "s7",
+        "dtype": "torch.float4_e2m1fn_x2",
+        "element_size": 1,
+        "kind": "tensor",
+        "shape": [
+          896,
+          768,
+          1792
+        ],
+        "storage_nbytes": 1233125376,
+        "storage_offset": 0,
+        "stride": [
+          1376256,
+          1792,
+          1
+        ]
+      },
+      "w2": {
+        "alias": "s8",
+        "dtype": "torch.float4_e2m1fn_x2",
+        "element_size": 1,
+        "kind": "tensor",
+        "shape": [
+          896,
+          3584,
+          192
+        ],
+        "storage_nbytes": 616562688,
+        "storage_offset": 0,
+        "stride": [
+          688128,
+          192,
+          1
+        ]
+      },
+      "w2_scale": {
+        "alias": "s9",
+        "dtype": "torch.float8_e8m0fnu",
+        "element_size": 1,
+        "kind": "tensor",
+        "shape": [
+          3211264,
+          16
+        ],
+        "storage_nbytes": 51380224,
+        "storage_offset": 0,
+        "stride": [
+          16,
+          1
+        ]
+      }
+    },
+    "mode": "eager",
+    "outputs": {
+      "out": {
+        "alias": "s3",
+        "dtype": "torch.bfloat16",
+        "element_size": 2,
+        "kind": "tensor",
+        "shape": [
+          16384,
+          3584
+        ],
+        "storage_nbytes": 117440512,
+        "storage_offset": 0,
+        "stride": [
+          3584,
+          1
+        ]
+      },
+      "return": {
+        "alias": "s3",
+        "dtype": "torch.bfloat16",
+        "element_size": 2,
+        "kind": "tensor",
+        "shape": [
+          16384,
+          3584
+        ],
+        "storage_nbytes": 117440512,
+        "storage_offset": 0,
+        "stride": [
+          3584,
+          1
+        ]
+      },
+      "return_scale": null
+    },
+    "source": "181dfc53206adca3faec707f7f6e054fa6cbf56ba2d671a8d01266c4dc6f8ff1",
+    "stage": "prefill",
+    "tensor_attribute_codec_id": null,
+    "tensor_control_codec_id": "kimi-native-work-classes-v2-actual-dispatch",
+    "tensor_controls": {
+      "work_signature": {
+        "family": "_flydsl_v2_stage2_wrapper",
+        "m_block_input_capacity": 4992,
+        "policy": "kimi-native-work-classes-v2-actual-dispatch",
+        "schedule": "native configured tile grid with dynamic valid-row mask",
+        "tile_m": 64
+      }
+    }
+  },
+  "opus_moe_stage2_a8w4_decode_fwd-0f46fd2697d1606082fa577a": {
+    "controls": {
+      "block_m": 32,
+      "inter_dim_pad": 0,
+      "kernel_id": 2005,
+      "out_supplied": true,
+      "return_per_slot": false,
+      "route_out_dtype": null,
+      "token_num": 64,
+      "topk": 16
+    },
+    "family": "opus_moe_stage2_a8w4_decode_fwd",
+    "inputs": {
+      "a2_scale": {
+        "alias": "s0",
+        "dtype": "torch.float8_e8m0fnu",
+        "element_size": 1,
+        "kind": "tensor",
+        "shape": [
+          29696,
+          16
+        ],
+        "storage_nbytes": 475136,
+        "storage_offset": 0,
+        "stride": [
+          16,
+          1
+        ]
+      },
+      "inter_states": {
+        "alias": "s1",
+        "dtype": "torch.float8_e4m3fn",
+        "element_size": 1,
+        "kind": "tensor",
+        "shape": [
+          64,
+          16,
+          384
+        ],
+        "storage_nbytes": 393216,
+        "storage_offset": 0,
+        "stride": [
+          6144,
+          384,
+          1
+        ]
+      },
+      "num_valid_ids": {
+        "alias": "s2",
+        "dtype": "torch.int32",
+        "element_size": 4,
+        "kind": "tensor",
+        "shape": [
+          2
+        ],
+        "storage_nbytes": 8,
+        "storage_offset": 0,
+        "stride": [
+          1
+        ]
+      },
+      "out": {
+        "alias": "s3",
+        "dtype": "torch.bfloat16",
+        "element_size": 2,
+        "kind": "tensor",
+        "shape": [
+          64,
+          3584
+        ],
+        "storage_nbytes": 458752,
+        "storage_offset": 0,
+        "stride": [
+          3584,
+          1
+        ]
+      },
+      "sorted_expert_ids": {
+        "alias": "s4",
+        "dtype": "torch.int32",
+        "element_size": 4,
+        "kind": "tensor",
+        "shape": [
+          928
+        ],
+        "storage_nbytes": 3712,
+        "storage_offset": 0,
+        "stride": [
+          1
+        ]
+      },
+      "sorted_token_ids": {
+        "alias": "s5",
+        "dtype": "torch.int32",
+        "element_size": 4,
+        "kind": "tensor",
+        "shape": [
+          29680
+        ],
+        "storage_nbytes": 118720,
+        "storage_offset": 0,
+        "stride": [
+          1
+        ]
+      },
+      "sorted_weights": {
+        "alias": "s6",
+        "dtype": "torch.float32",
+        "element_size": 4,
+        "kind": "tensor",
+        "shape": [
+          29680
+        ],
+        "storage_nbytes": 118720,
+        "storage_offset": 0,
+        "stride": [
+          1
+        ]
+      },
+      "w2": {
+        "alias": "s7",
+        "dtype": "torch.float4_e2m1fn_x2",
+        "element_size": 1,
+        "kind": "tensor",
+        "shape": [
+          896,
+          3584,
+          192
+        ],
+        "storage_nbytes": 616562688,
+        "storage_offset": 0,
+        "stride": [
+          688128,
+          192,
+          1
+        ]
+      },
+      "w2_scale": {
+        "alias": "s8",
+        "dtype": "torch.float8_e8m0fnu",
+        "element_size": 1,
+        "kind": "tensor",
+        "shape": [
+          3211264,
+          16
+        ],
+        "storage_nbytes": 51380224,
+        "storage_offset": 0,
+        "stride": [
+          16,
+          1
+        ]
+      }
+    },
+    "mode": "graph",
+    "outputs": {
+      "out": {
+        "alias": "s3",
+        "dtype": "torch.bfloat16",
+        "element_size": 2,
+        "kind": "tensor",
+        "shape": [
+          64,
+          3584
+        ],
+        "storage_nbytes": 458752,
+        "storage_offset": 0,
+        "stride": [
+          3584,
+          1
+        ]
+      },
+      "return": {
+        "alias": "s3",
+        "dtype": "torch.bfloat16",
+        "element_size": 2,
+        "kind": "tensor",
+        "shape": [
+          64,
+          3584
+        ],
+        "storage_nbytes": 458752,
+        "storage_offset": 0,
+        "stride": [
+          3584,
+          1
+        ]
+      },
+      "return_scale": null
+    },
+    "source": "74524561e3fa42b2caa20414d575f1994fa373c0b60a78d1f1b8871beee14de1",
+    "stage": "decode",
+    "tensor_attribute_codec_id": null,
+    "tensor_control_codec_id": "kimi-native-work-classes-v2-actual-dispatch",
+    "tensor_controls": {
+      "work_signature": {
+        "family": "opus_moe_stage2_a8w4_decode_fwd",
+        "m_block_input_capacity": 928,
+        "policy": "kimi-native-work-classes-v2-actual-dispatch",
+        "schedule": "native configured tile grid with dynamic valid-row mask",
+        "tile_m": 32
+      }
+    }
+  }
+}
