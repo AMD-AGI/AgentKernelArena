@@ -1,0 +1,62 @@
+{
+  "status": "BOUNDED_GPU_DIAGNOSTIC_PASS_ONLY",
+  "source_sha256": "6d7af2e807164efcd25ea23511dd199d687de565213582a6b4f57748e2124c42",
+  "runtime_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
+  "hardware": "AMD MI355X gfx950; allocation194603, GPU6",
+  "case": "Synthetic native owner-smoke fixture, M64,H4096,I256,E288,topk8; fresh numerical activation seeds0and1",
+  "native_dispatch": {
+    "run_1stage": true,
+    "xbf16": false,
+    "ksplit": 0,
+    "block_m": 32,
+    "use_nt": true,
+    "q_type": "per_1x128",
+    "kernel": "fmoe_bf16_blockscaleFp8_g1u1_vs_silu_1tg_ps_32x256.co"
+  },
+  "rows": [
+    {
+      "seed": 0,
+      "verified_arrays": 17,
+      "verified_bytes": 12254376,
+      "all_float_intermediates_finite": true,
+      "all_scales_positive": true,
+      "q1_native_byte_equal": true,
+      "s1_native_bit_equal": true,
+      "candidate_native_max_abs": 0.0078125,
+      "candidate_native_rmse": 0.001053079147823155,
+      "native_repeat_max_abs": 0.015625,
+      "output_tolerance_failures": 0,
+      "native_repeat_tolerance_failures": 0
+    },
+    {
+      "seed": 1,
+      "verified_arrays": 17,
+      "verified_bytes": 12254376,
+      "all_float_intermediates_finite": true,
+      "all_scales_positive": true,
+      "q1_native_byte_equal": true,
+      "s1_native_bit_equal": true,
+      "candidate_native_max_abs": 0.015625,
+      "candidate_native_rmse": 0.001065172953531146,
+      "native_repeat_max_abs": 0.015625,
+      "output_tolerance_failures": 0,
+      "native_repeat_tolerance_failures": 0
+    }
+  ],
+  "report_artifact": {
+    "artifact_root": "top5-completion-20261005",
+    "relative_path": "gpu-runs/glm-moe-quant-rn-v1-194603/execution/output/MOE-PORT-QUANT-RN.json",
+    "sha256": "9cbd937abe6b9bef9b30843769630a13bfbef723da9ce01e3503cfb7f45524a7"
+  },
+  "tolerance": {
+    "rtol": 0.02,
+    "atol": 0.02
+  },
+  "scope_limits": [
+    "Not a completed64-request model capture",
+    "No prefill8192orreal-tail-case qualification yet",
+    "Native fused gate/up and q2intermediates are not exposed; only native q1/s1and final outputs were compared",
+    "No performance or speedup claim",
+    "Framework task-validator and trusted full-case replay remain pending"
+  ]
+}

@@ -1,0 +1,1 @@
+Whole-MoE replacement source and protected fixture importer are present. Exact current served input/output fixtures are required before cases.json exists and any evaluation can run. GPU and framework qualification remain mandatory.

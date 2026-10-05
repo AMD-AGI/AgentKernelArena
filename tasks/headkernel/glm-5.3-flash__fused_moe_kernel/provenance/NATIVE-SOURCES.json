@@ -1,0 +1,40 @@
+{
+  "runtime_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
+  "source_run": "glm-flash-fp8-native-jit-194292",
+  "sort_module_sha256": "9de9541dc750c642b5a329d012d1c9a7c3246e5e9bb7ddb4d53387aca7cf5b9d",
+  "files": {
+    "aiter/fused_moe.py": "181dfc53206adca3faec707f7f6e054fa6cbf56ba2d671a8d01266c4dc6f8ff1",
+    "aiter/ops/moe_sorting_opus.py": "9de9541dc750c642b5a329d012d1c9a7c3246e5e9bb7ddb4d53387aca7cf5b9d",
+    "aiter/ops/shuffle.py": "38f41cd233c529cba6d18f0654c267c3279df75d50295263ffa3f0df8f427b0b",
+    "csrc/include/moe_sorting_opus.h": "2630b120ab621157e66fb91dab39efa0abefadc0a06aeaa74541ed9388d4729f",
+    "csrc/py_itfs_cu/asm_fmoe.cu": "68cbc814cfcdf79dc074cf6f40c34b15e1a34ef8625e57ff2d5ebf213398e04c",
+    "hsa/gfx950/fmoe/silu/fmoe_bf16_blockscaleFp8_g1u1_silu.csv": "d5a0c607e1d83dce43784713e9eb4e05dbf770d27aeb3a00fdc40f5ce40793c3"
+  },
+  "native_source_availability": "The extracted image contains the C++ dispatch wrapper and code-object CSV for the observed symbol. No editable GPU body for that code object was located. New port must not be labelled stock/native source.",
+  "packed_sorted_id": "Low24bits token ID, high8bits top-k slot: MOE_SORTING_MOCK_ID in csrc/include/moe_sorting_opus.h.",
+  "packed_weight": "AITER shuffle_weight(...,(16,16)), separated gate/up. Physical address formula matches 16-row,32-column FP8 permutation.",
+  "count_evidence": {
+    "prefill": 336,
+    "decode": 42,
+    "rank_scope": "per-rank explicitly observed kernels; one linked graph only in decode; do not extrapolate8graph launches"
+  },
+  "historical_mapping": "Historical SGLang Triton fused_moe_kernel is absent from this run and is replaced by the whole AITER callable contract.",
+  "vendored_shuffle_reference": {
+    "path": "ut/native_shuffle_reference.py",
+    "source_path": "aiter/ops/shuffle.py",
+    "source_file_sha256": "38f41cd233c529cba6d18f0654c267c3279df75d50295263ffa3f0df8f427b0b",
+    "source_lines": [
+      137,
+      198
+    ],
+    "function_sha256": "c0974706cab2794cbd5bcceb60b1a836f9c84008f6e96f9da690a41a1d2109fc",
+    "purpose": "Independent CPU round-trip checks of the physical packed-weight codec; never a MoE numerical oracle"
+  },
+  "input_quantization_rounding": {
+    "source": "csrc/kernels/quant_kernels.cu",
+    "source_sha256": "5c9d1e56d978d45ccdc099806267d75aad9074ab837b07cca32b8ae21dcccfec",
+    "native_expression": "scale=max(amax,1e-10f)*float32(1/448); quant_input=x*(1.0f/scale)",
+    "port_expression": "Same multiplication order and float32 constant, using tl.div_rn for reciprocal",
+    "GPU_byte_parity": "PASS on bounded M64fresh-input seeds0and1: zero q1byte mismatches and zero s1scale mismatches against actual native input quantization. See DIAGNOSTIC-EVIDENCE.json; full workload qualification pending."
+  }
+}

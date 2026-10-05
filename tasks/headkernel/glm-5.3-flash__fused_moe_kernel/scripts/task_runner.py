@@ -1,837 +1,171 @@
-#!/usr/bin/env python3
-"""AgentKernelArena task runner for a head-kernel benchmark task.
-
-Shared by the eight candidate-bound non-Qwen tasks; task-specific details come
-from ``config.yaml``. Three modes, the standard arena contract:
-
-    python3 scripts/task_runner.py compile
-    python3 scripts/task_runner.py correctness
-    python3 scripts/task_runner.py performance
-
-compile      AST-parses every ``source_file_path`` and asserts each
-             ``target_kernel_functions`` entry is *defined* there (a real symbol
-             table lookup, not a text search).
-correctness  Delegates to the frozen GEAK op unittest under ``ut/`` -- captured
-             oracle plus random-value parity against the live baseline leg, with
-             whatever extra contracts that op needs (physical stride, graph
-             replay, elementwise-median repair).
-performance  Times the op with the arena's methodology: 10 warmup + 100 measured
-             iterations, reported as the mean. Falls back to the GEAK
-             interleaved median-of-3 when the op's oracle does not carry
-             replayable argument records (recorded in the report either way).
-
-Exit 0 pass, non-zero fail. Reports land in ``build/``.
-"""
-from __future__ import annotations
-
+"""Protected whole-MoE port evaluation. Native fixtures/oracles remain on CPU."""
 import argparse
-import ast
 import hashlib
 import importlib
-import inspect
+import importlib.util
 import json
 import math
-import os
-import re
-import runpy
-import subprocess
+from pathlib import Path
+import secrets
 import sys
-import time
-import uuid
-
-TASK_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-BUILD_DIR = os.path.join(TASK_DIR, "build")
-UT_DIR = os.path.join(TASK_DIR, "ut")
-CONFIG = os.path.join(TASK_DIR, "config.yaml")
-
-WARMUP_ITERATIONS = 10
-BENCHMARK_ITERATIONS = 100
-EXIT_NO_RECORDS = 4
+ROOT=Path(__file__).resolve().parents[1]
+sys.path.insert(0,str(ROOT/'ut'))
+sys.path.insert(0,str(ROOT/'scripts'))
+from evaluation_contract import fingerprint,strict_json,validate_manifest,observe_case,checked_replays,finalize_report
+from source_guard import validate_sources
+from fixture_codec import restore_phase,file_sha,fresh_numeric_fixture
+from native_enums import restore_native_enum
 
 
-# --------------------------------------------------------------------------- config
-def load_config():
-    with open(CONFIG) as fh:
-        text = fh.read()
-    try:
-        import yaml
-        return yaml.safe_load(text)
-    except Exception:
-        pass
-    # Minimal fallback parser for the schema this suite uses, so the task still
-    # runs in an image without pyyaml. It handles the top level plus ONE nested
-    # level under `headkernel:`, because the runner reads preserve_symbols, tol
-    # and oracle out of that block; skipping it used to silently disable the
-    # preserve_symbols check and blank the correctness report's oracle fields.
-    cfg, key, indent = {}, None, 0
-    block, bkey, bindent = None, None, None
-    for raw in text.splitlines():
-        if not raw.strip() or raw.lstrip().startswith("#"):
-            continue
-        stripped = raw.strip()
-        m = re.match(r"^(\s*)([A-Za-z_][\w.]*):\s*(.*)$", raw)
-        pad = len(raw) - len(raw.lstrip())
-
-        if block is not None and (stripped.startswith("- ") or (m and pad > indent)):
-            if stripped.startswith("- "):
-                if bkey is not None and bindent is not None and pad > bindent:
-                    block.setdefault(bkey, []).append(stripped[2:].strip().strip("'\""))
-                continue
-            name, val = m.group(2), m.group(3).strip()
-            if bindent is not None and pad > bindent:
-                continue                       # two levels deep - not read by the runner
-            bkey, bindent = name, pad
-            block[name] = val.strip("'\"") if val else []
-            continue
-
-        if stripped.startswith("- ") and key:
-            cfg.setdefault(key, []).append(stripped[2:].strip().strip("'\""))
-            continue
-        if not m:
-            continue
-        name, val = m.group(2), m.group(3).strip()
-        if pad > indent and key:
-            continue                           # prompt: and other nested blocks
-        indent, key = pad, name
-        if name == "headkernel" and not val:
-            block, bkey, bindent = {}, None, None
-            cfg[name] = block
-            continue
-        block = None
-        cfg[name] = val.strip("'\"") if val else []
-    return cfg
+def source_hash():return hashlib.sha256((ROOT/'source/kernels.py').read_bytes()).hexdigest()
+def package_hash():
+    h=hashlib.sha256()
+    for path in sorted(ROOT.rglob('*')):
+        if path.is_file() and not any(x in path.relative_to(ROOT).parts for x in ('build','__pycache__')) and path.suffix!='.pyc':
+            if path.is_symlink():raise ValueError('Protected package contains a symlink')
+            h.update(str(path.relative_to(ROOT)).encode()+b'\0')
+            # Raw fixture blobs are separately streamed and verified at restoration.
+            h.update(file_sha(path).encode())
+    return h.hexdigest()
 
 
-def hk(cfg, field, default=None):
-    """Read a field from the task's ``headkernel:`` provenance block."""
-    block = cfg.get("headkernel")
-    if isinstance(block, dict):
-        return block.get(field, default)
-    return default
+def load_source():
+    validate_sources(ROOT,ROOT)
+    spec=importlib.util.spec_from_file_location('guarded_moe_source',ROOT/'source/kernels.py')
+    module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
+    return module
 
 
-def write_report(name, payload):
-    os.makedirs(BUILD_DIR, exist_ok=True)
-    with open(os.path.join(BUILD_DIR, name), "w") as fh:
-        json.dump(payload, fh, indent=2, default=str)
+def build_state(case,module,fixture_root=None,diagnostic=None):
+    import torch
+    origin=ROOT if fixture_root is None else Path(fixture_root).resolve()
+    fixture_path=(origin/case['fixture']['path']).resolve()
+    if not fixture_path.is_relative_to(origin) or file_sha(fixture_path)!=case['fixture']['sha256']:raise ValueError('Fixture metadata changed')
+    fixture=strict_json(fixture_path.read_text());cpu=restore_phase(fixture_path.parent,fixture,'inputs');captured_output=restore_phase(fixture_path.parent,fixture,'outputs')['result']
+    if captured_output.device.type!='cpu':raise ValueError('Captured output evidence must remain on CPU')
+    # The importer froze the source signature, actual controls and packed layouts.
+    import import_fixtures
+    import_fixtures.validate_controls(fixture['controls'])
+    tensors=restore_phase(fixture_path.parent,fixture,'inputs',device='cuda')
+    output_spec=case['tensors']['result']
+    tensors['result']=torch.empty_strided(output_spec['shape'],output_spec['strides'],dtype=torch.bfloat16,device='cuda')
+    m,h=tensors['hidden_states'].shape;e,_,i=tensors['w2'].shape;topk=tensors['topk_ids'].shape[1]
+    sort_module=importlib.import_module('aiter.ops.moe_sorting_opus')
+    provenance=strict_json((ROOT/'provenance/NATIVE-SOURCES.json').read_text())
+    if file_sha(sort_module.__file__)!=provenance['sort_module_sha256']:raise ValueError('Native frozen sorting module differs from pinned image')
+    native_module=importlib.import_module('aiter.fused_moe')
+    if file_sha(native_module.__file__)!=provenance['files']['aiter/fused_moe.py']:raise ValueError('Native reference source differs from pinned image')
+    from aiter import ActivationType,QuantType
+    native_controls=dict(fixture['controls']);native_controls.pop('tensor_attributes')
+    for name,cls in [('activation',ActivationType),('quant_type',QuantType)]:
+        value=native_controls[name]
+        native_controls[name]=restore_native_enum(value,cls.__qualname__,cls) if isinstance(value,dict) else cls(value)
+    if isinstance(native_controls.get('dtype'),dict):native_controls['dtype']=getattr(torch,native_controls['dtype']['name'])
+
+    padded=m*topk+e*32-topk;blocks=math.ceil(padded/32)
+    def empty(shape,dtype):return torch.empty(shape,dtype=dtype,device='cuda')
+    q1=empty((m,h),torch.float8_e4m3fn);s1=empty((m,h//128),torch.float32)
+    g=empty((m*topk,2*i),torch.float32);q2=empty((m*topk,i),torch.float8_e4m3fn);s2=empty((m*topk,i//128),torch.float32)
+    partial=empty((m*topk,h),torch.float32)
+    ids=empty((padded,),torch.int32);weights=empty((padded,),torch.float32);experts=empty((blocks,),torch.int32);valid=empty((2,),torch.int32)
+    ws_size=sort_module.moe_sorting_opus_get_workspace_size(m,e,topk,0)
+    workspace=empty((ws_size,),torch.uint8) if ws_size else None
+    def invoke():
+        # Whole pipeline: native routing sort, input quant, two matrix products,
+        # activation/intermediate quant and weighted expert reduction.
+        sort_module.moe_sorting_opus_fwd(tensors['topk_ids'],tensors['topk_weight'],ids,weights,experts,valid,tensors['result'],e,32,None,None,workspace,0,None,None,None)
+        kernels=[]
+        kernels.append(module.quantize_input[(m,h//128)](tensors['hidden_states'],q1,s1,m,h,num_warps=4))
+        kernels.append(module.stage1[(blocks,math.ceil(2*i/64))](q1,s1,tensors['w1'],tensors['w1_scale'],ids,experts,valid,g,m,h,i,topk,32,64,128,num_warps=4))
+        kernels.append(module.activate_quantize[(m*topk,i//128)](g,q2,s2,m,i,topk,num_warps=4))
+        kernels.append(module.stage2[(blocks,math.ceil(h/64))](q2,s2,tensors['w2'],tensors['w2_scale'],ids,experts,valid,partial,m,h,i,topk,32,64,128,num_warps=4))
+        kernels.append(module.reduce_routes[(m,math.ceil(h/256))](partial,tensors['topk_weight'],tensors['result'],m,h,topk,num_warps=4))
+        return kernels
+    def observe():
+        controls=dict(fixture['controls']);controls['port_launch']={'BM':32,'BN':64,'BK':128,'input_quant_block':128,'intermediate_quant_block':128,'output_reduce_block':256}
+        return observe_case(case,tensors,controls)
+    def reset(seed):
+        truth=fresh_numeric_fixture(cpu,seed)
+        for name in ('hidden_states','topk_ids','topk_weight'):tensors[name].copy_(truth['inputs'][name])
+        return truth
+    def initialize():
+        tensors['result'].fill_(float('nan'));g.fill_(float('nan'));partial.fill_(float('nan'))
+        q1.fill_(float('nan'));q2.fill_(float('nan'));s1.fill_(float('nan'));s2.fill_(float('nan'))
+    def verify(truth):
+        # Snapshot all candidate observations first. No native golden output for
+        # the fresh activation values exists on the GPU before this point.
+        torch.cuda.synchronize();actual=tensors['result'].detach().cpu().clone()
+        observed_inputs={name:tensors[name].detach().cpu().clone() for name in truth['inputs']}
+        if not torch.isfinite(actual.float()).all():raise AssertionError('Nonfinite or unwritten whole-MoE output')
+        for name,before in truth['inputs'].items():
+            after=observed_inputs[name]
+            if not torch.equal(after.contiguous().view(torch.uint8),before.contiguous().view(torch.uint8)):raise AssertionError('Input mutation: '+name)
+        arguments={name:tensors[name] for name in truth['inputs']};arguments.update(native_controls)
+        native_output=native_module.fused_moe(**arguments)
+        expected=native_output.detach().cpu().clone()
+        del native_output
+        if diagnostic is not None:
+            repeated_native=native_module.fused_moe(**arguments).detach().cpu().clone()
+            from aiter.ops.quant import get_hip_quant
+            native_q1,native_scale=get_hip_quant(QuantType.per_1x128)(tensors['hidden_states'],quant_dtype=torch.float8_e4m3fn,transpose_scale=True)
+            native_scale=torch.as_strided(native_scale,native_scale.shape,(1,m))
+            snapshots={'candidate':actual,'native':expected,'native_repeat':repeated_native,'hidden_states':observed_inputs['hidden_states'],'topk_ids':observed_inputs['topk_ids'],'topk_weight':observed_inputs['topk_weight']}
+            for name,value in {'q1':q1,'s1':s1,'gate_up':g,'q2':q2,'s2':s2,'route_partials':partial,'sorted_ids':ids,'sorted_experts':experts,'valid_ids':valid,'native_q1':native_q1,'native_s1':native_scale}.items():snapshots[name]=value.detach().cpu().clone()
+            diagnostic(truth['seed'],snapshots)
+            del native_q1,native_scale,snapshots
+        torch.testing.assert_close(actual,expected,rtol=0.02,atol=0.02)
+    observe();return tensors,invoke,observe,reset,initialize,verify
 
 
-# --------------------------------------------------------------------------- compile
-def defined_symbols(path):
-    """Top-level names bound by a Python module, via the AST -- not a grep."""
-    try:
-        tree = ast.parse(open(path, encoding="utf-8", errors="ignore").read(), filename=path)
-    except SyntaxError as exc:
-        raise
-    names = set()
-    for node in ast.walk(tree):
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-            names.add(node.name)
-        elif isinstance(node, ast.Assign):
-            for tgt in node.targets:
-                if isinstance(tgt, ast.Name):
-                    names.add(tgt.id)
-        elif isinstance(node, (ast.Import, ast.ImportFrom)):
-            for alias in node.names:
-                names.add(alias.asname or alias.name.split(".")[0])
-    return names
+def negative_controls(tensors,initialize,verify,reference):
+    initialize();controls={}
+    try:verify(reference)
+    except AssertionError:controls['no_op']=True
+    else:raise AssertionError('No-op accepted')
+    tensors['result'].fill_(12345.0)
+    try:verify(reference)
+    except AssertionError:controls['wrong_output']=True
+    else:raise AssertionError('Wrong output accepted')
+    return controls
 
 
-def run_compile(cfg):
-    sources = cfg.get("source_file_path") or []
-    targets = cfg.get("target_kernel_functions") or []
-    found, missing, parsed = {}, [], []
-    all_names = set()
-
-    for rel in sources:
-        path = os.path.join(TASK_DIR, rel)
-        if not os.path.isfile(path):
-            return False, f"source file missing: {rel}"
-        try:
-            names = defined_symbols(path)
-        except SyntaxError as exc:
-            return False, f"{rel}: syntax error at line {exc.lineno}: {exc.msg}"
-        parsed.append(rel)
-        all_names |= names
-        for t in targets:
-            if t in names:
-                found.setdefault(t, rel)
-
-    for t in targets:
-        if t not in found:
-            missing.append(t)
-
-    # Some packages wire their two-leg UT through an extra symbol in the same
-    # file (e.g. the fused-MoE overlay resolves its frozen baseline through
-    # `baseline_callable`). Deleting it turns a working kernel into an opaque
-    # correctness FAIL on the GPU, so catch it here, without one.
-    preserve = hk(cfg, "preserve_symbols") or []
-    dropped = [s for s in preserve if s not in all_names]
-
-    # Some load-bearing lines are not a def or a class and so are invisible to the
-    # symbol table -- e.g. the GLM-5.2 MoE package appends
-    # `fused_moe_.__module__ = __name__`, without which the harness's leg-identity
-    # probe cannot tell the two legs apart and refuses to measure at all.
-    preserve_txt = hk(cfg, "preserve_text") or []
-    if preserve_txt:
-        blob = "".join(open(os.path.join(TASK_DIR, rel), encoding="utf-8", errors="ignore").read()
-                       for rel in sources if os.path.isfile(os.path.join(TASK_DIR, rel)))
-        dropped += [t for t in preserve_txt if t not in blob]
-
-    write_report("compile_report.json", {
-        "status": "ok" if not (missing or dropped) else "fail",
-        "error": None if not (missing or dropped) else
-                 f"target symbols not defined in source: {missing}"
-                 if missing else
-                 f"harness symbols removed from source: {dropped}",
-        "parsed_sources": parsed,
-        "symbols_found": found,
-        "symbols_missing": missing,
-        "harness_symbols_required": list(preserve) + list(preserve_txt),
-        "harness_symbols_missing": dropped,
-    })
-    if missing:
-        return False, f"target symbols not defined in source: {missing}"
-    if dropped:
-        return False, (f"these symbols must survive in source/ - the UT resolves its "
-                       f"frozen baseline through them: {dropped}")
-    return True, None
-
-
-# --------------------------------------------------------------------------- correctness
-def _ut_command(binding):
-    return [sys.executable, "-u", os.path.abspath(__file__),
-            "_correctness_child", json.dumps(binding)]
-
-
-def _source_sha256(path):
-    with open(path, "rb") as source:
-        return hashlib.sha256(source.read()).hexdigest()
-
-
-def _correctness_child(binding):
-    """Attest the installed candidate, then run the immutable UT in this process.
-
-    Python has already loaded the selected overlay's sitecustomize. Restore the
-    original environment before imports or UT execution: baseline_random_outputs
-    and measure_legs prepend their own overlays in fresh subprocesses and must
-    not inherit the candidate path. The current interpreter keeps its installed
-    candidate module/function and its import path.
-    """
-    baseline_path = binding["baseline_pythonpath"]
-    if baseline_path:
-        os.environ["PYTHONPATH"] = baseline_path
-    else:
-        os.environ.pop("PYTHONPATH", None)
-    receipt = {"run_id": binding["run_id"], "status": "fail",
-               "target": binding["target"], "source_sha256": binding["source_sha256"],
-               "baseline_environment_restored": True}
-    try:
-        module, attr = binding["target"].split(":", 1)
-        function = importlib.import_module(module)
-        for part in attr.split("."):
-            function = getattr(function, part)
-        # torch.no_grad and similar transparent decorators retain __wrapped__.
-        # Checking only __module__ would credit a stale/rebound production object.
-        function = inspect.unwrap(function)
-        code = getattr(function, "__code__", None)
-        if code is None:
-            raise RuntimeError("candidate target has no attestable Python implementation")
-        resolved = os.path.realpath(code.co_filename)
-        expected = os.path.realpath(binding["overlay_source"])
-        if resolved != expected:
-            raise RuntimeError(f"candidate target resolved to {resolved}, expected {expected}")
-        if (_source_sha256(resolved) != binding["source_sha256"]
-                or _source_sha256(binding["source"]) != binding["source_sha256"]):
-            raise RuntimeError("candidate overlay/source differs from this run's source bytes")
-        receipt.update(status="ok", resolved_source=resolved,
-                       candidate_source=os.path.realpath(binding["source"]))
-    except Exception as exc:
-        receipt["error"] = f"{type(exc).__name__}: {exc}"
-        write_report("correctness_binding.json", receipt)
-        print("Candidate binding: FAIL - " + receipt["error"], file=sys.stderr)
-        return 3
-    write_report("correctness_binding.json", receipt)
-    # Match script execution while keeping this same attested interpreter. The
-    # task removes ut/ before importing torch, avoiding its unittest.py name clash.
-    sys.argv = [os.path.join(UT_DIR, "unittest.py")]
-    sys.path.insert(0, UT_DIR)
-    completion = {"run_id": binding["run_id"], "status": "fail",
-                  "target": binding["target"], "source_sha256": binding["source_sha256"],
-                  "unittest_sha256": binding["unittest_sha256"]}
-    try:
-        runpy.run_path(sys.argv[0], run_name="__main__")
-    except SystemExit as exc:
-        if exc.code not in (None, 0):
-            raise
-        # A kernel raising SystemExit(0) must not impersonate the UT's normal
-        # sys.exit(main()). The originating frame must be the immutable UT.
-        origin = exc.__traceback__
-        while origin.tb_next is not None:
-            origin = origin.tb_next
-        if os.path.realpath(origin.tb_frame.f_code.co_filename) != os.path.realpath(os.path.join(UT_DIR, "unittest.py")):
-            completion["error"] = "early SystemExit(0) did not originate from unittest.py"
-            write_report("correctness_completion.json", completion)
-            return 3
-    if (_source_sha256(binding["source"]) != binding["source_sha256"]
-            or _source_sha256(binding["overlay_source"]) != binding["source_sha256"]
-            or _source_sha256(os.path.join(UT_DIR, "unittest.py")) != binding["unittest_sha256"]):
-        completion["error"] = "candidate or unittest source changed during correctness"
-        write_report("correctness_completion.json", completion)
-        return 3
-    # Written only after the real UT returns or exits successfully. os._exit(0)
-    # bypasses this point and therefore cannot produce an accepted completion.
-    completion["status"] = "complete"
-    write_report("correctness_completion.json", completion)
-    return 0
-
-
-def run_ut(timeout):
-    """Run the unchanged UT with an attested candidate and independent baseline."""
-    t0 = time.monotonic()
-    os.makedirs(BUILD_DIR, exist_ok=True)
-    binding_report = os.path.join(BUILD_DIR, "correctness_binding.json")
-    completion_report = os.path.join(BUILD_DIR, "correctness_completion.json")
-    for report in (binding_report, completion_report):
-        try:
-            os.unlink(report)
-        except FileNotFoundError:
-            pass
-    with open(os.path.join(UT_DIR, "meta.json")) as handle:
-        meta = json.load(handle)
-    bind = meta.get("candidate_bind") or {}
-    if not bind.get("file") or bind.get("kind") not in ("module", "rebind"):
-        raise ValueError("correctness requires a complete candidate_bind declaration")
-    source = os.path.realpath(os.path.join(UT_DIR, bind["file"]))
-    if os.path.commonpath([source, os.path.realpath(TASK_DIR)]) != os.path.realpath(TASK_DIR):
-        raise ValueError("candidate source escapes the isolated task")
-    source_hash = _source_sha256(source)
-    cand = candidate_overlay()
-    if not cand:
-        raise RuntimeError("candidate overlay unavailable; refusing baseline-only correctness")
-    overlay_source = (os.path.join(cand, "_patched", bind["module"] + ".py")
-                      if bind["kind"] == "module"
-                      else os.path.join(cand, os.path.basename(bind["file"])))
-    if _source_sha256(overlay_source) != source_hash:
-        raise RuntimeError("candidate overlay does not contain this run's source")
-    env = dict(os.environ)
-    env.setdefault("PYTHONUNBUFFERED", "1")
-    # Remove even a pre-existing copy of this candidate path before preserving
-    # the caller's other imports for explicit baseline subprocesses.
-    clean_path = os.pathsep.join(p for p in env.get("PYTHONPATH", "").split(os.pathsep)
-                                if p and os.path.realpath(p) != os.path.realpath(cand))
-    binding = {"run_id": uuid.uuid4().hex, "target": meta["target_callable"],
-               "source": source, "source_sha256": source_hash,
-               "unittest_sha256": _source_sha256(os.path.join(UT_DIR, "unittest.py")),
-               "overlay_source": os.path.realpath(overlay_source),
-               "baseline_pythonpath": clean_path}
-    env["PYTHONPATH"] = os.pathsep.join([cand] + ([clean_path] if clean_path else []))
-    remaining = timeout - (time.monotonic() - t0)
-    if remaining <= 0:
-        raise subprocess.TimeoutExpired(_ut_command(binding), timeout)
-    proc = subprocess.run(_ut_command(binding), cwd=TASK_DIR, env=env, capture_output=True,
-                          text=True, timeout=remaining)
-    try:
-        with open(binding_report) as handle:
-            receipt = json.load(handle)
-        valid = (receipt.get("status") == "ok" and receipt.get("run_id") == binding["run_id"]
-                 and receipt.get("target") == binding["target"]
-                 and receipt.get("source_sha256") == source_hash
-                 and receipt.get("resolved_source") == binding["overlay_source"]
-                 and receipt.get("baseline_environment_restored") is True
-                 and _source_sha256(source) == source_hash)
-    except (OSError, ValueError, AttributeError):
-        receipt, valid = {"status": "fail", "error": "no valid candidate binding receipt"}, False
-    if not valid:
-        proc.returncode = proc.returncode or 3
-        proc.stderr += "\nCandidate binding failed; no correctness result is valid.\n"
-    proc.candidate_binding = receipt
-    try:
-        with open(completion_report) as handle:
-            completion = json.load(handle)
-        completed = (completion.get("status") == "complete"
-                     and all(completion.get(key) == binding[key]
-                             for key in ("run_id", "target", "source_sha256", "unittest_sha256"))
-                     and _source_sha256(binding["overlay_source"]) == source_hash
-                     and _source_sha256(os.path.join(UT_DIR, "unittest.py")) == binding["unittest_sha256"])
-    except (OSError, ValueError, AttributeError):
-        completion, completed = {"status": "missing", "error": "no valid post-UT completion receipt"}, False
-    if proc.returncode == 0 and not completed:
-        proc.returncode = 3
-        proc.stderr += "\nUT completion failed; early exit cannot produce a correctness PASS.\n"
-    proc.correctness_completion = completion
-    return proc, time.monotonic() - t0
-
-
-def run_correctness(cfg, timeout):
-    if not os.path.isfile(os.path.join(UT_DIR, "unittest.py")):
-        return False, "ut/unittest.py missing - this task has no correctness oracle"
-    try:
-        proc, secs = run_ut(timeout)
-    except subprocess.TimeoutExpired:
-        write_report("correctness_report.json",
-                     {"status": "fail", "error": f"unittest.py timed out after {timeout}s"})
-        return False, f"unittest.py timed out after {timeout}s"
-    except (OSError, ValueError, RuntimeError, ImportError, KeyError) as exc:
-        error = f"candidate binding setup failed: {type(exc).__name__}: {exc}"
-        write_report("correctness_report.json", {"status": "fail", "error": error,
-                                                "candidate_binding": {"status": "fail"}})
-        return False, error
-
-    out = proc.stdout + proc.stderr
-    # The GEAK driver's exit code IS the contract (0 pass, 1 correctness FAIL,
-    # 2 environment, 3 harness incomplete). Do not additionally require a bare
-    # "PASS" line: packages spell the verdict differently ("PASS",
-    # "RESULT PASS (oracle=True random_parity=True)", or only the
-    # GEAK_WEIGHTED_SPEEDUP block), and demanding one spelling reports a passing
-    # kernel as a failure.
-    ok = proc.returncode == 0
-    # Per-case verdict lines. Packages spell these several ways: "[correct:...]",
-    # "[oracle       ] FAIL err=...", "[sequence     ] PASS err=...", plus the
-    # GEAK summary markers. Matching only "[correct:" meant a failing run recorded
-    # zero checks and the report showed nothing but unrelated aiter chatter, which
-    # made a real correctness FAIL impossible to diagnose from the archive.
-    checks = [ln for ln in out.splitlines()
-              if ln.startswith(("RESULT ", "GEAK_WEIGHTED_SPEEDUP", "GEAK_GEOMEAN_SPEEDUP",
-                                "CORRECTNESS"))
-              or (ln.startswith("[") and ("PASS" in ln or "FAIL" in ln or "err=" in ln))]
-    verdict = next((ln for ln in reversed(out.splitlines())
-                    if ln.strip() in ("PASS", "FAIL") or ln.startswith("RESULT ")), "")
-    exit_meaning = {0: "pass", 1: "correctness FAIL", 2: "environment",
-                    3: "harness incomplete (regenerate the UT)"}
-    meaning = exit_meaning.get(proc.returncode, "killed by signal")
-    # A UT that compared nothing did not fail a comparison. Some packages leave a
-    # call outside their try/except (GLM-5.3's baseline_random_outputs is one), so
-    # an environment problem escapes as a bare traceback and Python exits 1, which
-    # the table above would label "correctness FAIL". Zero checks plus a traceback
-    # is the signature of a run that never got as far as checking anything.
-    if (proc.returncode == 1 and not checks
-            and ("Traceback (most recent call last)" in out or "Error:" in out)):
-        meaning = "environment (uncaught harness exception - the UT compared nothing)"
-    write_report("correctness_report.json", {
-        "status": "ok" if ok else "fail",
-        "error": None if ok else
-                 f"ut/unittest.py exit={proc.returncode} ({meaning})",
-        "exit_code": proc.returncode,
-        "exit_meaning": meaning,
-        "candidate_binding": getattr(proc, "candidate_binding", None),
-        "correctness_completion": getattr(proc, "correctness_completion", None),
-        "ut_verdict_line": verdict,
-        "duration_seconds": round(secs, 2),
-        "oracle": hk(cfg, "oracle", "frozen live-capture (ut/reference_io.pt)"),
-        "tolerance": hk(cfg, "tol"),
-        "num_checks": len(checks),
-        "checks": checks[:64],
-        # Keep enough context to diagnose a failure from the archive alone. 20 lines
-        # was routinely all aiter dispatch chatter with the verdict scrolled off.
-        "stdout_tail": out.strip().splitlines()[-120:],
-    })
-    if not ok:
-        return False, f"ut/unittest.py exit={proc.returncode}: {out.strip().splitlines()[-3:]}"
-    return True, None
-
-
-# --------------------------------------------------------------------------- performance
-def candidate_overlay():
-    """Build the GEAK candidate overlay so the timed callable resolves to source/.
-
-    Returns the overlay dir, or None when this op has no rebind seam (then the
-    live stack is timed directly, which is also what its own UT does).
-    """
-    meta_path = os.path.join(UT_DIR, "meta.json")
-    if not os.path.isfile(meta_path):
-        return None
-    meta = json.load(open(meta_path))
-    if not (meta.get("candidate_bind") or {}).get("file"):
-        return None
-    import importlib.util
-    spec = importlib.util.spec_from_file_location(
-        "geak_harness_lib", os.path.join(UT_DIR, "harness_lib.py"))
-    h = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(h)
-    _base, cand = h.build_candidate_overlay(UT_DIR, meta)
-    return cand
-
-
-def _benchmark_cases(raw):
-    """Reject incomplete or invalid native reports before publishing any case."""
-    if not isinstance(raw, dict):
-        raise ValueError("benchmark report must be a mapping")
-    if raw.get("timer") != "cuda_event":
-        raise ValueError("benchmark report must use cuda_event timing")
-    rows = raw.get("cases")
-    if not isinstance(rows, list) or not rows:
-        raise ValueError("benchmark report has no cases")
-    if any(type(raw.get(key)) is not int or raw[key] != expected
-           for key, expected in (("warmup", WARMUP_ITERATIONS), ("iters", BENCHMARK_ITERATIONS))):
-        raise ValueError("benchmark report has incorrect iteration counts")
-    seen_ids = set()
-    for row in rows:
-        if (not isinstance(row, dict) or not isinstance(row.get("sig"), str) or not row["sig"]
-                or not isinstance(row.get("params", {}), dict)
-                or any(type(row.get(key)) not in (int, float)
-                       or not math.isfinite(row[key]) or row[key] <= 0
-                       for key in ("mean_ms", "median_ms", "min_ms"))):
-            raise ValueError("benchmark report has an invalid case or timing")
-        if row["sig"] in seen_ids:
-            raise ValueError(f"benchmark report has duplicate case ID: {row['sig']!r}")
-        seen_ids.add(row["sig"])
-    return [{
-        "test_case_id": row["sig"], "execution_time_ms": row["mean_ms"],
-        "params": row.get("params", {}), "median_ms": row["median_ms"], "min_ms": row["min_ms"],
-    } for row in rows]
-
-
-def run_performance(cfg, timeout):
-    bench = os.path.join(TASK_DIR, "scripts", "_bench.py")
-    out_json = os.path.join(BUILD_DIR, "_bench_raw.json")
-    os.makedirs(BUILD_DIR, exist_ok=True)
-    try:
-        os.unlink(out_json)
-    except FileNotFoundError:
-        pass
-
-    env = dict(os.environ)
-    env.setdefault("PYTHONUNBUFFERED", "1")
-    overlay_note = "none (timed against the live stack, as the op's own UT does)"
-    meta_path = os.path.join(UT_DIR, "meta.json")
-    wants_overlay = False
-    if os.path.isfile(meta_path):
-        try:
-            wants_overlay = bool((json.load(open(meta_path)).get("candidate_bind") or {}).get("file"))
-        except Exception:
-            wants_overlay = False
-    try:
-        cand = candidate_overlay()
-        if cand:
-            env["PYTHONPATH"] = os.pathsep.join(
-                [cand] + ([env["PYTHONPATH"]] if env.get("PYTHONPATH") else []))
-            overlay_note = os.path.relpath(cand, TASK_DIR)
-    except Exception as exc:
-        cand = None
-        overlay_note = f"overlay build FAILED ({exc!r})"
-    if wants_overlay and not cand:
-        # This op is only reachable through a rebind. Without the overlay the
-        # timed callable is the unmodified production stack, so any number we
-        # printed would describe code the optimizer never touched.
-        write_report("performance_report.json", {
-            "status": "fail",
-            "error": f"this task rebinds its seam through a candidate overlay, and the overlay "
-                     f"could not be built ({overlay_note}). Timing would measure the production "
-                     f"stack, not source/.",
-            "candidate_overlay": overlay_note,
-            "test_cases": [],
-        })
-        print("Performance: FAILED - candidate overlay unavailable, refusing to time the "
-              "production stack")
-        return []
-
-    cmd = [sys.executable, "-u", bench, "--ut", UT_DIR, "--out", out_json,
-           "--warmup", str(WARMUP_ITERATIONS), "--iters", str(BENCHMARK_ITERATIONS)]
-    try:
-        proc = subprocess.run(cmd, cwd=TASK_DIR, env=env, capture_output=True,
-                              text=True, timeout=timeout)
-    except subprocess.TimeoutExpired:
-        proc = None
-
-    if proc is None:
-        reason = f"_bench.py timed out after {timeout}s"
-    else:
-        reason = (proc.stderr or proc.stdout or "").strip().splitlines()[-3:] or \
-                 [f"_bench.py exit={proc.returncode}"]
-    if proc is not None and proc.returncode == 0:
-        try:
-            with open(out_json) as fh:
-                raw = json.load(fh)
-            cases = _benchmark_cases(raw)
-        except (OSError, ValueError, TypeError) as exc:
-            reason = f"invalid benchmark report: {exc}"
-        else:
-            write_report("performance_report.json", {
-                "status": "ok",
-                "methodology": (f"{WARMUP_ITERATIONS} warmup + {BENCHMARK_ITERATIONS} measured "
-                                f"iterations per case, cuda-event device time, reported as the mean"),
-                "warmup_iterations": WARMUP_ITERATIONS,
-                "benchmark_iterations": BENCHMARK_ITERATIONS,
-                "candidate_overlay": overlay_note,
-                "timer": raw.get("timer"),
-                "test_cases": cases,
-            })
-            total = sum(c["execution_time_ms"] for c in cases if c["execution_time_ms"] > 0)
-            print(f"Performance: measured {len(cases)} test case(s), total time: {total:.4f} ms")
-            return cases
-
-    # Only the explicit unsupported-replay result permits another timing path.
-    # Execution failures, partial reports and timeouts must remain failures.
-    if proc is not None and proc.returncode == EXIT_NO_RECORDS and not os.path.exists(out_json):
-        return run_performance_via_ut(cfg, timeout, overlay_note, reason)
-    write_report("performance_report.json", {
-        "status": "fail", "error": "native benchmark failed; no fallback is valid",
-        "failure_reason": reason, "candidate_overlay": overlay_note,
-        "fallback_used": False, "test_cases": [],
-    })
-    print("Performance: FAILED - native benchmark did not produce a valid measurement")
-    return []
-
-
-def _per_case_from_stdout(out):
-    """Harvest the GEAK harness's per-case timing block.
-
-    Packages spell the marker two ways -- ``GEAK_PER_CASE=<json>`` and
-    ``GEAK_PER_CASE <json>``. Most of the UTs in this suite use the space form,
-    so an ``=``-only parse silently reported them as "no test cases measured"
-    and failed the performance leg of a task whose UT had passed.
-    """
-    per_case = []
-    for line in out.splitlines():
-        head, sep, payload = line.partition("=")
-        if head.strip() == "GEAK_PER_CASE" and sep:
-            pass                                  # GEAK_PER_CASE=<json>
-        elif line.startswith("GEAK_PER_CASE "):
-            payload = line[len("GEAK_PER_CASE "):]   # GEAK_PER_CASE <json>
-        else:
-            continue                              # not this marker (GEAK_PER_CASE_TOTAL=...)
-        try:
-            parsed = json.loads(payload.strip())
-        except Exception:
-            continue
-        if isinstance(parsed, list) and all(isinstance(r, dict) for r in parsed):
-            per_case = parsed                     # a scalar or a string is not a case list
-    return per_case
-
-
-def _per_case_from_result_json(started_at):
-    """The callable UTs write ut/result.json with the same per-case schema.
-
-    ``started_at`` is the wall clock from just before this run's UT was invoked.
-    The suite SHIPS each package's capture-time result.json, which records a full
-    prior PASS including per-case baseline_ms/optimized_ms from the packager's own
-    GPU run days ago. Reading it unconditionally would republish those numbers as
-    this run's measurement whenever the UT died before rewriting the file -- a
-    fabricated result, reported with status "ok". So only accept the file if this
-    run actually rewrote it.
-    """
-    path = os.path.join(UT_DIR, "result.json")
-    if not os.path.isfile(path):
-        return []
-    if os.path.getmtime(path) < started_at:
-        print(f"[perf] ignoring {os.path.relpath(path, TASK_DIR)}: not rewritten by this run "
-              f"(shipped from the upstream capture)", file=sys.stderr)
-        return []
-    try:
-        blob = json.load(open(path))
-    except Exception:
-        return []
-    timing = blob.get("timing") or {}
-    for spot in (timing.get("per_case"),
-                 (timing.get("aggregate") or {}).get("per_case")):
-        if isinstance(spot, list) and spot:
-            return spot
-    return []
-
-
-TIMING_LINE = re.compile(
-    r"^timing:(?P<sig>\S+)\s+baseline_ms=(?P<baseline_ms>\S+)\s+"
-    r"candidate_ms=(?P<optimized_ms>\S+)"
-    r"(?:\s+speedup=(?P<speedup>\S+))?(?:\s+reps=(?P<reps>\S+))?$")
-
-
-def _per_case_from_json_block(out):
-    """Some UTs print no marker at all -- they pretty-print the whole result.
-
-    The three DeepSeek UTs end with
-    ``print(json.dumps({"per_case": [...], "geomean": ...}, indent=2))``, so the
-    numbers are sitting in the captured output in a form none of the marker
-    parsers can see. Scan for a balanced JSON object containing "per_case".
-    """
-    text, out_rows = out, []
-    start = 0
-    while True:
-        i = text.find('"per_case"', start)
-        if i < 0:
-            return out_rows
-        start = i + 1
-        obj = text.rfind("{", 0, i)
-        if obj < 0:
-            continue
-        depth, end = 0, None
-        for j in range(obj, len(text)):
-            if text[j] == "{":
-                depth += 1
-            elif text[j] == "}":
-                depth -= 1
-                if depth == 0:
-                    end = j + 1
-                    break
-        if end is None:
-            continue
-        try:
-            rows = json.loads(text[obj:end]).get("per_case")
-        except Exception:
-            continue
-        if isinstance(rows, list) and all(isinstance(r, dict) for r in rows) and rows:
-            out_rows = rows
-    return out_rows
-
-
-def _per_case_from_timing_lines(out):
-    rows = []
-    for line in out.splitlines():
-        line = line.strip()
-        if not line.startswith("timing:"):
-            continue
-        m = TIMING_LINE.fullmatch(line)
-        if not m:
-            raise ValueError(f"malformed fallback timing row: {line}")
-        d = m.groupdict()
-        try:
-            baseline = float(d["baseline_ms"])
-            candidate = float(d["optimized_ms"])
-            reps = None if d["reps"] in (None, "None") else int(d["reps"])
-        except ValueError as exc:
-            raise ValueError(f"invalid fallback timing row: {line}") from exc
-        if any(not math.isfinite(value) or value <= 0 for value in (baseline, candidate)):
-            raise ValueError(f"nonpositive or nonfinite fallback timing row: {line}")
-        rows.append({"sig": d["sig"],
-                     "baseline_ms": baseline,
-                     "optimized_ms": candidate,
-                     "reps": reps})
-    return rows
-
-
-def run_performance_via_ut(cfg, timeout, overlay_note, reason):
-    started_at = time.time()
-    try:
-        proc, secs = run_ut(timeout)
-    except subprocess.TimeoutExpired:
-        write_report("performance_report.json",
-                     {"status": "fail", "error": f"timed out after {timeout}s", "test_cases": []})
-        print("Performance: FAILED - no test cases measured")
-        return []
-    except (OSError, ValueError, RuntimeError, ImportError, KeyError) as exc:
-        write_report("performance_report.json", {
-            "status": "fail", "error": f"candidate binding setup failed: {exc}",
-            "candidate_overlay": overlay_note, "fallback_reason": reason,
-            "test_cases": [],
-        })
-        print("Performance: FAILED - candidate correctness binding unavailable")
-        return []
-
-    out = proc.stdout + proc.stderr
-    if proc.returncode != 0:
-        # A UT that did not pass did not measure anything either. Reporting
-        # numbers scraped from a failed run - or worse, from the shipped
-        # capture-time result.json it never overwrote - would be fabrication.
-        write_report("performance_report.json", {
-            "status": "fail",
-            "error": f"ut/unittest.py exit={proc.returncode}; no measurement is valid from a "
-                     f"run that did not pass",
-            "candidate_overlay": overlay_note,
-            "fallback_reason": reason,
-            "duration_seconds": round(secs, 2),
-            # Keep enough context to diagnose a failure from the archive alone. 20 lines
-        # was routinely all aiter dispatch chatter with the verdict scrolled off.
-        "stdout_tail": out.strip().splitlines()[-120:],
-            "test_cases": [],
-        })
-        print("Performance: FAILED - the unit test did not pass, so nothing was measured")
-        return []
-
-    try:
-        # Validate every emitted timing row even when a structured representation
-        # is available. An invalid row cannot disappear behind another format.
-        timing_rows = _per_case_from_timing_lines(out)
-        per_case, source = _per_case_from_stdout(out), "GEAK_PER_CASE marker"
-        if not per_case:
-            per_case, source = _per_case_from_json_block(out), "ut stdout per_case JSON block"
-        if not per_case:
-            per_case, source = timing_rows, "ut stdout timing: lines"
-        if not per_case:
-            per_case, source = (_per_case_from_result_json(started_at),
-                                "ut/result.json timing.per_case (rewritten by this run)")
-    except (ValueError, TypeError, AttributeError) as exc:
-        write_report("performance_report.json", {
-            "status": "fail", "error": f"invalid fallback timing report: {exc}",
-            "candidate_overlay": overlay_note, "fallback_reason": reason,
-            "duration_seconds": round(secs, 2), "test_cases": [],
-        })
-        print("Performance: FAILED - invalid fallback timing report")
-        return []
-    if not per_case:
-        source = "none - the UT reported no per-case timing in any known form"
-    # execution_time_ms is the CANDIDATE's time. Falling back to the baseline's
-    # would credit an untimed candidate with the reference implementation's
-    # performance. Invalid or missing candidate times invalidate the whole
-    # attempted result; no row-level unsupported-measurement contract exists.
-    cases, unusable = [], 0
-    for c in per_case:
-        t = c.get("optimized_ms") if isinstance(c, dict) else None
-        if not (type(t) in (int, float) and math.isfinite(t) and t > 0):
-            unusable += 1
-            continue
-        cases.append({
-            "test_case_id": c.get("sig"),
-            "execution_time_ms": t,
-            "params": {"regime": c.get("regime"), "m": c.get("m")},
-            "baseline_ms": c.get("baseline_ms"),
-            "reps": c.get("reps"),
-            "speedup_spread": c.get("speedup_spread"),
-        })
-    if unusable:
-        cases = []
-
-    write_report("performance_report.json", {
-        "status": "ok" if cases else "fail",
-        "error": "fallback contains invalid candidate measurements" if unusable else None,
-        "methodology": ("GEAK measure_legs fallback: interleaved baseline/candidate pairs in fresh "
-                        "subprocesses, median over up to 3 pairs, cuda-event device time with a "
-                        "cache flush before each sample. Used because this op's oracle carries no "
-                        "replayable argument records."),
-        "methodology_is_arena_default": False,
-        "fallback_reason": reason,
-        "per_case_source": source,
-        "candidate_overlay": overlay_note,
-        "duration_seconds": round(secs, 2),
-        "rows_without_a_candidate_time": unusable,
-        "test_cases": cases,
-    })
-    if cases:
-        total = sum(c["execution_time_ms"] for c in cases if c["execution_time_ms"] > 0)
-        print(f"Performance: measured {len(cases)} test case(s), total time: {total:.4f} ms")
-    else:
-        print("Performance: FAILED - no test cases measured")
-    return cases
-
-
-# --------------------------------------------------------------------------- main
 def main():
-    ap = argparse.ArgumentParser(description="AgentKernelArena head-kernel task runner")
-    ap.add_argument("mode", choices=["compile", "correctness", "performance"])
-    ap.add_argument("--timeout", type=int, default=int(os.environ.get("HK_TASK_TIMEOUT", "1800")))
-    args = ap.parse_args()
-
-    os.makedirs(BUILD_DIR, exist_ok=True)
-    cfg = load_config()
-
-    if args.mode == "compile":
-        ok, err = run_compile(cfg)
-        print(f"Compilation: {'PASS' if ok else 'FAIL'}")
-        if err:
-            print(f"Error: {err}")
-        sys.exit(0 if ok else 1)
-
-    if args.mode == "correctness":
-        ok, err = run_correctness(cfg, args.timeout)
-        print(f"Correctness: {'PASS' if ok else 'FAIL'}")
-        if err:
-            print(f"Error: {err}")
-        sys.exit(0 if ok else 1)
-
-    cases = run_performance(cfg, args.timeout)
-    sys.exit(0 if cases else 1)
-
-
-if __name__ == "__main__":
-    if len(sys.argv) == 3 and sys.argv[1] == "_correctness_child":
-        sys.exit(_correctness_child(json.loads(sys.argv[2])))
-    main()
+    ap=argparse.ArgumentParser();ap.add_argument('phase',choices=['compile','correctness','performance']);ap.add_argument('--request');args=ap.parse_args()
+    path=ROOT/'build'/(args.phase+'_report.json');path.parent.mkdir(exist_ok=True);path.unlink(missing_ok=True)
+    if not (ROOT/'cases.json').is_file():raise RuntimeError('Whole-MoE native served fixtures not imported. Run scripts/import_fixtures.py with the completed GLM capture manifest.')
+    manifest=validate_manifest(strict_json((ROOT/'cases.json').read_text()))
+    request=strict_json(Path(args.request).read_text()) if args.request else {'schema_version':1,'request_id':secrets.token_hex(24),'phase':args.phase,'manifest_sha256':fingerprint(manifest),'package_sha256':package_hash(),'source_sha256':{'source/kernels.py':source_hash()},'challenge_seed':secrets.randbelow(2**30)}
+    if request['phase']!=args.phase or request['manifest_sha256']!=fingerprint(manifest) or request['source_sha256']!={'source/kernels.py':source_hash()}:raise ValueError('Request source/case/phase mismatch')
+    before=package_hash();module=load_source();import torch
+    if not torch.cuda.is_available() or 'gfx950' not in torch.cuda.get_device_properties(0).gcnArchName:raise RuntimeError('Requires gfx950 ROCm')
+    torch.set_num_threads(16)
+    results=[];compiled=[];policy=manifest['measurement']
+    for case in manifest['cases']:
+        tensors,invoke,observe,reset,initialize,verify=build_state(case,module)
+        reference=reset(policy['correctness_seeds'][0]);initialize();kernels=invoke();torch.cuda.synchronize();verify(reference)
+        compiled.append({'case_id':case['case_id'],'kernels':[{'name':k.name,'hash':k.hash} for k in kernels]})
+        if args.phase=='correctness':
+            for seed in policy['correctness_seeds']:
+                reference=reset(seed);initialize();invoke();torch.cuda.synchronize();verify(reference)
+                controls=negative_controls(tensors,initialize,verify,reference)
+            results.append({'case':observe(),'correct':True,'seeds':policy['correctness_seeds'],'negative_controls':controls})
+        elif args.phase=='performance':
+            stream=torch.cuda.Stream();stream.wait_stream(torch.cuda.current_stream())
+            with torch.cuda.stream(stream):
+                for _ in range(3):invoke()
+            torch.cuda.current_stream().wait_stream(stream)
+            graph=torch.cuda.CUDAGraph()
+            with torch.cuda.graph(graph):
+                for _ in range(case['calls_per_sample']):invoke()
+            def measure(call):
+                begin=torch.cuda.Event(enable_timing=True);end=torch.cuda.Event(enable_timing=True)
+                begin.record();call();end.record();end.synchronize();return begin.elapsed_time(end)
+            results.append(checked_replays(case,policy,reset_inputs=reset,initialize_outputs=initialize,replay=graph.replay,verify=verify,measure=measure,observe=observe,seed=request['challenge_seed']))
+    if package_hash()!=before:raise ValueError('Task package changed during evaluation')
+    report=finalize_report({'schema_version':1,'status':'ok','request':request,'compiled':True,'cases':results,'compiled_kernels':compiled,'oracle_device':'cpu','reference_policy':'fresh_numeric_inputs_native_reference_after_candidate_CPU_snapshot','implementation':'whole_moe_replacement_port','comparison_baseline':'frozen_same_port','original_native_kernel_source':False},manifest,request)
+    temp=path.with_suffix('.tmp');temp.write_text(json.dumps(report,indent=2,allow_nan=False)+'\n');temp.replace(path)
+    if args.phase=='performance':
+        import production_comparison
+        production_comparison.main()
+    print(args.phase+': PASS')
+if __name__=='__main__':main()

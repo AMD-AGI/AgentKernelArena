@@ -1,72 +1,17 @@
-# glm-5.3-flash__fused_moe_kernel
+The current GLM-5.3-Flash run uses whole AITER fused MoE with FP8 blockscale weights. The historical SGLang Triton `fused_moe_kernel` does not appear in run `glm-flash-fp8-native-jit-194292`. This task is now an explicitly labelled replacement port for `aiter.fused_moe:fused_moe`.
 
-**GLM-5.3-Flash** head kernel - `fused_moe_kernel` (Triton - sglang srt/layers/moe/moe_runner/triton_utils.fused_moe, decode).
+The original image supplies a precompiled fused GPU code object. Its dispatch and layout sources are pinned in `provenance/NATIVE-SOURCES.json`; an editable body for the observed code object was not found in the extracted source. The new Triton implementation is therefore a port, not a stock-source optimization task. The Arena reference and candidate both run the same complete port pipeline. Production-native timings cannot serve as its score baseline.
 
-| field | value |
-|---|---|
-| GPU time share | 23.32% |
-| empirical roofline | 0.980 |
-| optimized roofline | - |
-| e2e uplift measured | 3.48% |
-| device symbol | `fused_moe_kernel` |
-| production seam | `sglang.srt.layers.moe.moe_runner.triton_utils.fused_moe:fused_experts_impl` |
-| serving contract | ISL 8192 / OSL 1024 / CONC 64 / TP 8 |
-| image | `harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.18-rocm720-mi35x-profilerfix` |
-| owner | Hongtaom |
-| info rows | G53-1 |
+The protected runner includes native Opus routing sort, input FP8 quantization, gate/up matrix multiplication with physical shuffled weights, SiLU and intermediate FP8 quantization, down projection and weighted expert reduction. Only the five GPU function bodies are editable. Every host operation, launch setting, fixture, scalar and oracle is frozen.
 
-## Layout
+The original native profile establishes prefill M8192 and decode M64, H4096, I256,288 experts and top-k8. Its per-rank observed counts are336 prefill and42 decode; the decode evidence covers one explicitly linked graph and is not extrapolated. The full-workload importer retains every supported captured MoE case, including structural tail variants, and uses its actual per-rank notification count. Full input values and outputs are still required from the new served capture. `scripts/import_fixtures.py` checks the completed native capture, every public scalar and tensor layout, copies raw blobs with hashes, and builds `cases.json`. It fails on missing core stages or an unsupported ABI. No synthetic routing or historical fixture is substituted.
 
-```
-config.yaml              arena task schema + a headkernel: provenance block
-scripts/task_runner.py   compile | correctness | performance
-scripts/_bench.py        native 10 warmup / 100 measured timing
-source/                  THE EDITABLE KERNEL - change only this
-ut/                      frozen GEAK op package (oracle, harness, overlays)
-ut/kernel_src/           symlinks back into source/ - same bytes, two views
-```
+The selected native one-stage path does not forward public `swiglu_limit=10.0` into its fused code-object call. The port currently follows that unclamped SiLU path; actual captured output agreement is required before qualification. The bounded M64GPU diagnostic now passes at unchanged rtol0.02/atol0.02 for two fresh numerical input seeds. Candidate input quantization and scales match actual native bytes exactly; final-output maximum errors are0.0078125and0.015625. Native-repeat variation also reaches0.015625within tolerance. This is diagnostic evidence only; real prefill/tail cases, full-workload replay and framework qualification remain pending. See `provenance/DIAGNOSTIC-EVIDENCE.json`.
 
-Edit targets:
+For each replay the runner permutes actual routing rows and creates fresh numerical hidden activations with per-row multipliers and per-element RMS-scaled noise. The captured weights and routing remain the starting data. The CPU input truth is fixed before the candidate runs. Verification snapshots candidate outputs and every immutable input to CPU first, then computes the pinned native MoE reference and compares the CPU observations. No current native golden output exists on GPU before candidate snapshots. Pure output/intermediate poisoning, input checks and fresh references apply to every10 warmups and100 measured replays. Fixed-output lookup or row-permutation-only solutions cannot satisfy this replay contract.
 
-- `fused_experts_impl` in `source/fused_moe.py`
-- `fused_experts` in `source/fused_moe.py`
+Run `python3 scripts/import_fixtures.py CAPTURE_MANIFEST` after capture. Then run the compile, correctness and performance commands in `config.yaml`, followed by the generic trusted-host retest and framework task-validator. This package is not qualified while `NOT_BUILT` remains or GPU/framework reports are missing.
 
-## Running it
+Every performance phase also compares the complete candidate port with the pinned native `aiter.fused_moe` on each exact captured case, using identical token permutations, output checks and timing policy. Native output/workspace allocations occur during graph construction; no extra copy is included in its timed graph. `native_production_comparison.json` reports raw samples, native parity and `native_mean_ms/candidate_mean_ms`. The Arena score still measures local port optimization. A port gain alone does not establish native improvement; only a native ratio above1 supports that isolated claim, and serving speedup requires a model rerun.
 
-On one GPU from the optimization pool (never the serving set), inside the image above:
-
-```bash
-cd <task>
-python3 scripts/task_runner.py compile
-python3 scripts/task_runner.py correctness
-python3 scripts/task_runner.py performance
-```
-
-- **compile** AST-parses `source/` and asserts every target symbol is defined there.
-  No GPU needed.
-- **correctness** runs `ut/unittest.py`: the frozen live-capture oracle
-  (`ut/reference_io.pt`) plus random-value parity against the live baseline leg,
-  at tol `0.02`. Exit 0 pass, 1 correctness fail, 2 environment,
-  3 harness incomplete.
-- **performance** replays the captured argument records from `ut/reference_io.pt`
-  with 10 warmup + 100 measured iterations and reports the mean cuda-event device
-  time. If a record cannot be rebuilt it falls back to the GEAK interleaved
-  median-of-3 legs and says so in `build/performance_report.json`.
-  A run whose unit test did not pass reports no cases at all.
-
-## Starting point
-
-`source/` is the **stock** upstream code, byte-identical to
-`ut/baseline_ref/*.orig`. Nothing has been pre-optimized.
-
-## Provenance
-
-Copied GLM-5.3-Flash_fused_moe_kernel from `/shared_nfs/hongtaom/headkernel_ut_0913` on 2026-09-14.
-Prior optimization results (`_candidate_best/`, `accepted_overlay/`, tuning sweeps,
-patches) were deliberately **not** copied - a benchmark that ships the answer
-measures nothing. They remain in the upstream package.
-Oracle blobs are hardlinked, not duplicated (1 file(s), 1.04 GB shared with the source package).
-The original package README is preserved at `ut/README.md` and is the authority on
-this op's measurement caveats - read it before trusting a speedup.
-
-**Note.** TWO blockers, in firing order. (1) IMAGE: runs only on sglang:v0.5.18-rocm720-mi35x-profilerfix - the stack it was captured on per its own ut/README.md. Under the model-level v0.5.17 pin it dies first at ut/sglang_bootstrap.py:39 with AttributeError: 'RuntimeContext' object has no attribute 'is_config_namespace_published', which is a 0.5.18+ API. This row now carries a docker override. (2) ARCH PATCH: with the right image but no patch it dies next at sglang_bootstrap.py:43 with ValueError: model type 'glm5_next' not recognized - it is the only package that boots sglang's ServerArgs against the real checkpoint, and the stock image registers no glm5_next architecture. Apply /shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/patches/glm53-flash/001_glm5_next_arch_enablement.patch to /sgl-workspace/sglang before running. Both were verified green together on 2026-09-13 by the package owner. NOTE also that an uncaught harness exception here surfaces as exit=1, which the runner labels 'correctness FAIL' - it is an environment failure; ut/unittest.py:47 lacks the try/except its neighbours have.
+After importing the finalized real capture, keep data out of the source commit and use the repository trusted-fixture contract: commit `fixtures/EXTERNAL-MANIFEST.json` plus `cases.json` references, with `trusted_evaluation.fixture_manifest` pointing at that manifest. Case metadata stays `served-tensor-fixture-v1`; raw bytes stay `raw-storage-segment-v1`. The original frozen rank0capture can serve as the local mirror because object keys may differ from the task-relative renamed case files. Use trusted host `--stage-only` for the framework validator input and `--fixture-local-mirror` for fresh retests. Neither the bounded diagnostic nor fixture staging qualifies the task.
