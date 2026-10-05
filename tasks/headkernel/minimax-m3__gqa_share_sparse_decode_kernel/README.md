@@ -1,75 +1,59 @@
 # minimax-m3__gqa_share_sparse_decode_kernel
 
-**MiniMax-M3-MXFP4** head kernel - `gqa_share_sparse_decode_kernel` (Triton, decode).
+This task optimizes the body of `_gqa_share_sparse_decode_kernel` in [`source/topk_sparse.py`](source/topk_sparse.py) from the exact SGLang image pinned in [`config.yaml`](config.yaml). The AST source guard freezes imports, decorators, signatures, host wrappers, allocation policy, downstream kernels and helpers. The task requires ROCm `gfx950` and the image's complete native AITER JIT cache.
 
-| field | value |
-|---|---|
-| GPU time share | 7.63% |
-| empirical roofline | 78% |
-| optimized roofline | 86% |
-| e2e uplift measured | +2.69% |
-| device symbol | `_gqa_share_sparse_decode_kernel` |
-| production seam | `sglang.srt.layers.attention.minimax_sparse_ops.minimax_sparse:flash_decode_with_gqa_share_sparse` |
-| serving contract | ISL 8192 / OSL 1024 / CONC 64 / TP 8 |
-| image | `harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.17-rocm720-mi35x-profilerfix` |
-| owner | chaox |
-| info rows | MM-3 |
+The final package contains **24 structural variants**, including **8 alternate compiler configurations certified by native GPU replay with captured operands**. Full task qualification is pending an authentic framework-finalized `task_validator` PASS. Supplemental correctness receipts establish compiler-configuration parity; they contain no timing or task-qualification claim.
 
-## Layout
+## Served workload and provenance
 
-```
-config.yaml              arena task schema + a headkernel: provenance block
-scripts/task_runner.py   compile | correctness | performance
-scripts/_bench.py        native 10 warmup / 100 measured timing
-source/                  THE EDITABLE KERNEL - change only this
-ut/                      frozen GEAK op package (oracle, harness, overlays)
-ut/kernel_src/           symlinks back into source/ - same bytes, two views
-```
+The source run `minimax-case-only-v3-194550` completed 64 requests with ISL8192, OSL1024, concurrency 64, TP8, context length 9218 and seed 42. All eight ranks have explicit sealed `manifest.profile-stop.json` receipts, despite the stop HTTP route returning 500. No Torch profiler was started and no fresh raw traces are claimed.
 
-Edit targets:
+Across the three MiniMax tasks, all **80 observed structural variants** and **1,424,072 calls** are retained. Rank0 directly captured 52 native configurations. The other 28 configurations differ only in recorded compiler `num_warps` or `num_stages`; their tensor ABI, launch grid, constexpr values, scalars and complete proportional work distributions match uniquely paired rank0 cases. Actual GPU replay checked all 39 retained states for those variants against captured outputs, original native configurations, independent numerical math and target native configurations at tolerance 0.02.
 
-- `_gqa_share_sparse_decode_kernel` in `source/topk_sparse.py`
-- `flash_decode_with_gqa_share_sparse` in `source/topk_sparse.py`
+[`provenance/COVERAGE.json`](provenance/COVERAGE.json) distinguishes direct captures from native replay with captured operands and binds the original all-rank manifests, exact audits, source schemas, original fixture hashes, supplemental reports and full state coverage. The original strict global capture verifier still cannot certify missing exact fixture keys; its code and the source captures were not changed. The supplemented certificate covers all observed variants without claiming that another rank's floating tensors were captured.
 
-## Running it
+[`cases.json`](cases.json) retains every physical tensor shape, stride, storage offset, alias group, original storage capacity, scalar value/type, launch configuration, full work distribution and all-rank occurrence count. Tensor geometry determines physical query rows; a logical CPU batch annotation does not substitute for that geometry. Startup graph buffers and historical captures cannot fill gaps. Every used graph has at least two actual served replay notifications.
 
-On one GPU from the optimization pool (never the serving set), inside the image above:
+## External fixtures
+
+[`fixtures/EXTERNAL-MANIFEST.json`](fixtures/EXTERNAL-MANIFEST.json) pins the portable metadata bundles and unchanged raw tensor blobs by size and SHA256. Each bundle embeds the byte-exact original first/min/max fixture JSON and declares its raw-storage closure. Raw data stays outside Git. A verified local mirror supplies these assets; the committed OCI prefix is reserved and unpublished.
+
+Use the repository [trusted fixture materializer](../../../docs/how-to/trusted-fixture-artifacts.md) with the exact trusted commit, an explicit scratch directory and a verified local mirror. Its `--stage-only` output provides the complete task to framework validation. A Git-only checkout deliberately fails when fixtures are absent.
+
+## Fresh inputs and correctness
+
+The runner reconstructs original storage capacities and aliased physical views. Before every replay it refreshes Q, K, V and sink values. Alternating seeds correlate the standard-normal sink with the first query so sink omission remains detectable at long context. Fresh page translations, request-row translations and legal sparse-block permutations preserve sequence lengths, top-k counts, duplicate multiplicity, sorted right padding, partial last blocks and causal-boundary work.
+
+The independent FP32 reference gathers actual paged K/V rows and computes attention over selected sparse blocks. It preserves GQA sharing, repeated selected blocks, ragged causal positions, sink logits, and Q/K/V scales. Floating outputs use the unchanged mixed bound `0.02 * RMS(reference) + 0.02 * abs(reference)` with explicit nonfinite checks. Every checked replay runs both independent math and frozen native parity at the recorded launch configuration.
+
+Pure outputs are poisoned before replay. Immutable CPU snapshots cover all input storage, including padding. Candidate outputs are snapshotted before expected outputs are computed on GPU. Correctness restores every retained actual first/min/max state and checks captured output parity, then checks three fresh seeds `[0, 1, 2]`. No-op and wrong-output controls must fail.
+
+## Evaluation
+
+From a fully materialized task inside the pinned GPU image:
 
 ```bash
-cd <task>
 python3 scripts/task_runner.py compile
 python3 scripts/task_runner.py correctness
 python3 scripts/task_runner.py performance
 ```
 
-- **compile** AST-parses `source/` and asserts every target symbol is defined there.
-  No GPU needed.
-- **correctness** runs `ut/unittest.py`: the frozen live-capture oracle
-  (`ut/reference_io.pt`) plus random-value parity against the live baseline leg,
-  at tol `0.02`. Exit 0 pass, 1 correctness fail, 2 environment,
-  3 harness incomplete.
-- **performance** replays the captured argument records from `ut/reference_io.pt`
-  with 10 warmup + 100 measured iterations and reports the mean cuda-event device
-  time. If a record cannot be rebuilt it falls back to the GEAK interleaved
-  median-of-3 legs and says so in `build/performance_report.json`.
-  A run whose unit test did not pass reports no cases at all.
+Compilation executes the original wrapper and captures a real GPU graph for every case. The isolated task module selects the original recorded autotuner configuration and checks actual grid, constexpr, warps and stages. Production SGLang modules are never rebound.
 
-## Starting point
+Performance runs **10 warmups and 100 measured graph replays per case**. Every iteration resets inputs, poisons outputs and checks independent math, frozen native parity and input immutability. Reset and validation remain outside synchronized device-event timing. Each timed graph contains one complete original wrapper invocation with its frozen downstream work.
 
-`source/` is seeded from the **stock** pre-optimization code
-(`baseline_ref/*.orig` in the upstream package). The package itself shipped a
-kernel_src that a previous GEAK run had already tuned (1 file(s)); that version is kept out of the task at
-`_prior_solutions/minimax-m3__gqa_share_sparse_decode_kernel/` so this benchmark starts where every other task in
-the suite starts.
+The protected runner uses the canonical `ut/evaluation_contract.py`, accepts a trusted `--request`, and finalizes reports only after exact case coverage and source/package identities are rechecked. Reports live under `build/`. The shared framework scores the arithmetic mean of matched per-case speedup ratios; occurrence counts remain provenance.
 
-## Provenance
+Qualification requires positive compile/correctness/performance, actual no-op and wrong-output GPU source rejection through this loader, and a fresh framework-finalized `validation_report.yaml` with `overall_status: PASS`. CPU tests, supplemental receipts and staging receipts do not replace this gate.
 
-Copied MiniMax-M3-MXFP4_gqa_share_sparse_decode_kernel from `/shared_nfs/zihao/headkernel_ut_0831` on 2026-09-14.
-Prior optimization results (`_candidate_best/`, `accepted_overlay/`, tuning sweeps,
-patches) were deliberately **not** copied - a benchmark that ships the answer
-measures nothing. They remain in the upstream package.
-Oracle blobs are hardlinked, not duplicated (1 file(s), 7.25 GB shared with the source package).
-The original package README is preserved at `ut/README.md` and is the authority on
-this op's measurement caveats - read it before trusting a speedup.
+## Protected implementation
 
-**Note.** RESOLVED 2026-09-16: the missing ut/timing_geometry.pt was located in the ORIGINAL GEAK capture directory named in the package's own ut/README.md, and its sha256 matches the value ut/meta.json records exactly - so this is the authentic artifact, not a reconstruction. build_suite.py now copies it in via the manifest's extra_files. Correction to an earlier note in this file: _geo() is NOT on the frozen-oracle comparison path - unittest.py completes the recorded-oracle check first and only then reaches the geometry, so the earlier claim that the leg died 'before any comparison' was wrong.
+- `ut/served_contract.py`, `ut/minimax_work.py`: full case and work-distribution validation.
+- `ut/minimax_coverage.py`: captured-versus-native-replay coverage proof validation.
+- `ut/minimax_fixtures.py`: portable raw fixture loading and original-byte verification.
+- `ut/minimax_data.py`: physical storage reconstruction, input refresh and immutability.
+- `ut/minimax_reference.py`, `ut/reference/`: independent math and exact frozen native source.
+- `ut/minimax_native.py`, `ut/source_guard.py`: runtime source pins, isolated launches and editable-body enforcement.
+- `scripts/task_runner.py`: compilation, correctness and checked timing.
+
+The superseded legacy overlays and historical geometry fallbacks were removed. Their tracked history remains provenance and is not used for evaluation.

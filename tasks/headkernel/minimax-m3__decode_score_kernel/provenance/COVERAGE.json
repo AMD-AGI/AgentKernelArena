@@ -1,0 +1,5940 @@
+{
+  "actual_blob_files_verified": 632,
+  "actual_control_tensors_verified": 211,
+  "actual_fixture_files_verified": 87,
+  "all_rank_manifests": [
+    {
+      "artifact_key": "rank-0-pid-909/manifest.profile-stop.json",
+      "control_audit_events": 178009,
+      "control_audit_sha256": "7bb5636ca41697cc979175eda4913cced310f1d9caee39291d6ac84856a8f53e",
+      "sha256": "ea4e281d8d15029f36a0c6c3fd8f101a11b96b51ffeb1a63f63215ad64ce6d2a"
+    },
+    {
+      "artifact_key": "rank-1-pid-1039/manifest.profile-stop.json",
+      "control_audit_events": 178009,
+      "control_audit_sha256": "655bb183de0bdafd1ebef21d395ccfe91f18006ee16d0cdcbc46519e6c94e17a",
+      "sha256": "4b5eac368fba006dc2db288cdf07790a33455e99a098cad49ae29eda7cb02a9d"
+    },
+    {
+      "artifact_key": "rank-2-pid-1191/manifest.profile-stop.json",
+      "control_audit_events": 178009,
+      "control_audit_sha256": "e5e18ba3c2fad8db1a38de080421cba00052613aff263dffa9e00398f8183586",
+      "sha256": "a426a3523300ad3bfea48af7bf0820d95b770d94b56b2396391fe8ec17bbe09c"
+    },
+    {
+      "artifact_key": "rank-3-pid-1345/manifest.profile-stop.json",
+      "control_audit_events": 178009,
+      "control_audit_sha256": "82ef0b945f0b12a1731679a38561dfe82c55d4636822005eb2454a66b1c9b3d3",
+      "sha256": "c985eaf6ad469a80c427e1ceb53d5fba99dd5001b517ef0a7fe76dae3cb5f50a"
+    },
+    {
+      "artifact_key": "rank-4-pid-1502/manifest.profile-stop.json",
+      "control_audit_events": 178009,
+      "control_audit_sha256": "8e7036d425a68f2b620b2fd5838988fd39d89eec0016cfe230c9cf48db642e28",
+      "sha256": "46c7c58b7b245ff76706c10436622ec039594cc6f74790c9d2091f17174dc5f9"
+    },
+    {
+      "artifact_key": "rank-5-pid-1683/manifest.profile-stop.json",
+      "control_audit_events": 178009,
+      "control_audit_sha256": "307f28fc2ade70a522a89aa711b7236660c41f287c7abf3e6dee19ae0cce9f82",
+      "sha256": "caa88b5a38a2dddd448e6eb2bd49a9819677686bf6814a21198fc210bef2711e"
+    },
+    {
+      "artifact_key": "rank-6-pid-1872/manifest.profile-stop.json",
+      "control_audit_events": 178009,
+      "control_audit_sha256": "c2c7709195bbb80629f10364d7e78668be53422c583f76521c25b3b39ef7eeef",
+      "sha256": "68f51d3a20bc1e1adf78456aa43d65267390fb34a033cead032285c55bd17d18"
+    },
+    {
+      "artifact_key": "rank-7-pid-2059/manifest.profile-stop.json",
+      "control_audit_events": 178009,
+      "control_audit_sha256": "5528da2d1e61c2f25962325791732b88fe9e984a03989bc23251268f7913fe99",
+      "sha256": "0f206ecfc23aac5975785217967bacc25c98d0fd3aa814595e12c2dd5087421d"
+    }
+  ],
+  "all_rank_metadata_verified": true,
+  "benchmark_detail_sha256": "dd13a14f59245e2f4c7b25794901b791a760e262176d0e4f6b32856242098a59",
+  "direct_captured_variants": 52,
+  "exact_audits_and_tensor_controls_verified": true,
+  "exact_capture_fixture_coverage": false,
+  "importer_sha256": "5a0ce838dfcc6c0f06c0aff1a76d7cdbd61b6ea21c62ed3e55c5d2dba757188e",
+  "input_manifest_sha256": "24e18859b392273edb36cd5632423724971b2e46ef2a41a19234cd919a1808ab",
+  "ordinary_global_capture_verifier": "does not pass: 28 exact native-config fixture keys absent; original verifier and capture files unchanged",
+  "owner_stop_evidence": "all eight explicit sealed manifest.profile-stop.json files; stop HTTP route returned 500",
+  "owner_stop_route_result": {
+    "error": "HTTP Error 500: Internal Server Error",
+    "owner_seals_required": true,
+    "torch_profiler_started": false
+  },
+  "raw_traces_collected": false,
+  "retirement_receipt_sha256": "0e1a9550d45f340bbf37ff85e6f3ca8bf38cd0e35622b8e83e2ffbc2082f9e73",
+  "run_id": "minimax-case-only-v3-194550",
+  "runtime_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
+  "schema": "minimax-supplemented-coverage-v1",
+  "sealing_source_sha256": "6692c589d13e1d1c3ba350ed79dcb3cea9072f4487b099d5f8423f1392e0dae4",
+  "status": "PASS",
+  "supplemental_driver_sha256": "680cd2fa9330d103a1ed15c6ffbc442d1bfcfc4e9794edff6edf4334b7ef7a8b",
+  "supplemental_native_replay_variants": 28,
+  "supplemental_observed_calls": 412338,
+  "supplemental_report_sha256": {
+    "sparse_decode": "cedafea23992e1a61a2c85f7575d1726f43d2cd9f8b837058329ba36b496217b",
+    "sparse_prefill": "bcdeb724a8c7d312e12f7d039f183670ce4f322f73f7aacac1b391f059e56d99"
+  },
+  "task_kind": "decode_score",
+  "task_validator_status": "not run at coverage sealing",
+  "timing_claims": false,
+  "total_observed_calls": 1424072,
+  "total_variants": 80,
+  "variants": {
+    "decode_score-1e2dbe55bab571fca9089966": {
+      "occurrences": 29696,
+      "provenance": "direct captured native configuration",
+      "schema": {
+        "active_requests": 63,
+        "active_tokens": 63,
+        "case_projection_id": "minimax-block-and-causal-work-v3",
+        "controls": {
+          "environment": {
+            "SGLANG_OPT_USE_MINIMAX_DECODE_TOPK_RADIX": "1"
+          },
+          "launches": [
+            {
+              "compiled": {
+                "num_stages": 1,
+                "num_warps": 4,
+                "shared": 32768
+              },
+              "constexpr": {
+                "IS_FP8": false,
+                "NUM_KV_CHUNKS": 64,
+                "SCORE_TYPE": "max",
+                "SKIP_TRIVIAL_TOPK_SCORE": true
+              },
+              "grid": [
+                4096,
+                1
+              ],
+              "kernel": "_decode_score_kernel"
+            }
+          ],
+          "operator_scalars": {
+            "block_size": 128,
+            "disable_index_value": true,
+            "init_blocks": 0,
+            "k_scale": null,
+            "local_blocks": 1,
+            "max_seqlen": 9218,
+            "page_size": 1,
+            "q_scale": null,
+            "score_type": "max",
+            "sink": null,
+            "sm_scale": null,
+            "topk": 16,
+            "use_dense_main_attn": false,
+            "use_tma": true,
+            "v_cache": null,
+            "v_scale": null
+          }
+        },
+        "extrema_score_id": "minimax-max-total-seqlen-topk-v3",
+        "family": "decode_score",
+        "inputs": {
+          "capture_kv_units": {
+            "alias": "s0",
+            "dtype": "torch.int64",
+            "element_size": 8,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "mutable",
+              "optional": false,
+              "paged": null
+            },
+            "shape": [
+              64,
+              9222
+            ],
+            "storage_nbytes": 4721664,
+            "storage_offset": 0,
+            "stride": [
+              9222,
+              1
+            ]
+          },
+          "capture_req_rows": {
+            "alias": "s1",
+            "dtype": "torch.int64",
+            "element_size": 8,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "mutable",
+              "optional": false,
+              "paged": null
+            },
+            "shape": [
+              64
+            ],
+            "storage_nbytes": 512,
+            "storage_offset": 0,
+            "stride": [
+              1
+            ]
+          },
+          "k_cache": {
+            "alias": "s2",
+            "dtype": "torch.bfloat16",
+            "element_size": 2,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "paged",
+              "optional": false,
+              "paged": {
+                "access_contract": "only_indexed_units",
+                "index_divisor": 1,
+                "indices": "capture_kv_units",
+                "invalid_indices": [
+                  -1
+                ],
+                "max_index_entries": 590208,
+                "storage_offset_bytes": 0,
+                "unit_bytes": 256,
+                "unit_count": 4914444,
+                "unit_name": "physical_token_row",
+                "unit_stride_bytes": 256
+              }
+            },
+            "shape": [
+              4914444,
+              1,
+              128
+            ],
+            "storage_nbytes": 1258097664,
+            "storage_offset": 0,
+            "stride": [
+              128,
+              128,
+              1
+            ]
+          },
+          "q": {
+            "alias": "s3",
+            "dtype": "torch.bfloat16",
+            "element_size": 2,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "mutable",
+              "optional": false,
+              "paged": null
+            },
+            "shape": [
+              64,
+              1,
+              128
+            ],
+            "storage_nbytes": 16384,
+            "storage_offset": 0,
+            "stride": [
+              128,
+              128,
+              1
+            ]
+          },
+          "req_to_token": {
+            "alias": "s4",
+            "dtype": "torch.int32",
+            "element_size": 4,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "paged",
+              "optional": false,
+              "paged": {
+                "access_contract": "only_indexed_units",
+                "index_divisor": 1,
+                "indices": "capture_req_rows",
+                "invalid_indices": [
+                  -1
+                ],
+                "max_index_entries": 64,
+                "storage_offset_bytes": 0,
+                "unit_bytes": 36888,
+                "unit_count": 65,
+                "unit_name": "request_paging_row",
+                "unit_stride_bytes": 36888
+              }
+            },
+            "shape": [
+              65,
+              9222
+            ],
+            "storage_nbytes": 2397720,
+            "storage_offset": 0,
+            "stride": [
+              9222,
+              1
+            ]
+          },
+          "seq_lens": {
+            "alias": "s5",
+            "dtype": "torch.int64",
+            "element_size": 8,
+            "kind": "tensor",
+            "role": {
+              "case_control": true,
+              "footprint": "view_span",
+              "kind": "mutable",
+              "optional": false,
+              "paged": null
+            },
+            "shape": [
+              64
+            ],
+            "storage_nbytes": 512,
+            "storage_offset": 0,
+            "stride": [
+              1
+            ]
+          },
+          "slot_ids": {
+            "alias": "s6",
+            "dtype": "torch.int64",
+            "element_size": 8,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "mutable",
+              "optional": false,
+              "paged": null
+            },
+            "shape": [
+              64
+            ],
+            "storage_nbytes": 512,
+            "storage_offset": 0,
+            "stride": [
+              1
+            ]
+          }
+        },
+        "mode": "graph",
+        "outputs": {
+          "result.0": null,
+          "result.1": {
+            "alias": "s7",
+            "dtype": "torch.int32",
+            "element_size": 4,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "mutable",
+              "optional": true,
+              "paged": null
+            },
+            "shape": [
+              1,
+              64,
+              16
+            ],
+            "storage_nbytes": 4096,
+            "storage_offset": 0,
+            "stride": [
+              1024,
+              16,
+              1
+            ]
+          },
+          "result.2": null
+        },
+        "source": "98c574e5c292c5fcfe8d2c4f7f3c1b480ba32be703ef12bf765e9549a65bc71c",
+        "stage": "decode",
+        "tensor_attribute_codec_id": null,
+        "tensor_control_codec_id": "minimax-work-controls-rle-v1",
+        "tensor_controls": {
+          "inputs.seq_lens": {
+            "runs": [
+              [
+                71,
+                63
+              ],
+              [
+                1,
+                1
+              ]
+            ],
+            "shape": [
+              64
+            ],
+            "units": "sequence_blocks_ceil"
+          }
+        }
+      },
+      "states": [
+        {
+          "fixture_sha256": "e09d629975475c4527db3b4ea51fc32274ebb0fc064c605393c7e78f7d9074ce",
+          "graph_id": "909-graph-1",
+          "representative_labels": [
+            "first",
+            "min"
+          ],
+          "served": true,
+          "served_context": {
+            "active_requests": 63,
+            "active_tokens": 63,
+            "replay_id": "909-801",
+            "run_id": "minimax-case-only-v3-194550",
+            "stage": "decode",
+            "tp_rank": 0,
+            "workload_marker": "capture"
+          },
+          "source_artifact_key": "rank-0-pid-909/decode_score-1e2dbe55bab571fca9089966.json",
+          "startup_values": false,
+          "state_id": "state-e09d629975475c4527db3b4ea51fc32274ebb0fc064c605393c7e78f7d9074ce",
+          "tensor_controls": {
+            "inputs.seq_lens": {
+              "runs": [
+                [
+                  8961,
+                  63
+                ],
+                [
+                  1,
+                  1
+                ]
+              ],
+              "shape": [
+                64
+              ]
+            }
+          }
+        },
+        {
+          "fixture_sha256": "1e9653f639c4426690055e7a94980e41114ce56f8e5ad0bdb6e3adb666cea1ca",
+          "graph_id": "909-graph-1",
+          "representative_labels": [
+            "max"
+          ],
+          "served": true,
+          "served_context": {
+            "active_requests": 63,
+            "active_tokens": 63,
+            "replay_id": "909-928",
+            "run_id": "minimax-case-only-v3-194550",
+            "stage": "decode",
+            "tp_rank": 0,
+            "workload_marker": "capture"
+          },
+          "source_artifact_key": "rank-0-pid-909/decode_score-1e2dbe55bab571fca9089966.representative-max.json",
+          "startup_values": false,
+          "state_id": "state-1e9653f639c4426690055e7a94980e41114ce56f8e5ad0bdb6e3adb666cea1ca",
+          "tensor_controls": {
+            "inputs.seq_lens": {
+              "runs": [
+                [
+                  9088,
+                  63
+                ],
+                [
+                  1,
+                  1
+                ]
+              ],
+              "shape": [
+                64
+              ]
+            }
+          }
+        }
+      ],
+      "work_distribution_sha256": "334195dc57baa9e88ca6ae961bcca7fe45c376203853ebf57e66dfc1fddc3d34"
+    },
+    "decode_score-20b2a453f253c56d89e4f2d6": {
+      "occurrences": 29696,
+      "provenance": "direct captured native configuration",
+      "schema": {
+        "active_requests": 1,
+        "active_tokens": 1,
+        "case_projection_id": "minimax-block-and-causal-work-v3",
+        "controls": {
+          "environment": {
+            "SGLANG_OPT_USE_MINIMAX_DECODE_TOPK_RADIX": "1"
+          },
+          "launches": [
+            {
+              "compiled": {
+                "num_stages": 1,
+                "num_warps": 4,
+                "shared": 131072
+              },
+              "constexpr": {
+                "IS_FP8": false,
+                "NUM_KV_CHUNKS": 256,
+                "SCORE_TYPE": "max",
+                "SKIP_TRIVIAL_TOPK_SCORE": true
+              },
+              "grid": [
+                256,
+                1
+              ],
+              "kernel": "_decode_score_kernel"
+            }
+          ],
+          "operator_scalars": {
+            "block_size": 128,
+            "disable_index_value": true,
+            "init_blocks": 0,
+            "k_scale": null,
+            "local_blocks": 1,
+            "max_seqlen": 9218,
+            "page_size": 1,
+            "q_scale": null,
+            "score_type": "max",
+            "sink": null,
+            "sm_scale": null,
+            "topk": 16,
+            "use_dense_main_attn": false,
+            "use_tma": true,
+            "v_cache": null,
+            "v_scale": null
+          }
+        },
+        "extrema_score_id": "minimax-max-total-seqlen-topk-v3",
+        "family": "decode_score",
+        "inputs": {
+          "capture_kv_units": {
+            "alias": "s0",
+            "dtype": "torch.int64",
+            "element_size": 8,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "mutable",
+              "optional": false,
+              "paged": null
+            },
+            "shape": [
+              1,
+              9222
+            ],
+            "storage_nbytes": 73776,
+            "storage_offset": 0,
+            "stride": [
+              9222,
+              1
+            ]
+          },
+          "capture_req_rows": {
+            "alias": "s1",
+            "dtype": "torch.int64",
+            "element_size": 8,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "mutable",
+              "optional": false,
+              "paged": null
+            },
+            "shape": [
+              1
+            ],
+            "storage_nbytes": 8,
+            "storage_offset": 0,
+            "stride": [
+              1
+            ]
+          },
+          "k_cache": {
+            "alias": "s2",
+            "dtype": "torch.bfloat16",
+            "element_size": 2,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "paged",
+              "optional": false,
+              "paged": {
+                "access_contract": "only_indexed_units",
+                "index_divisor": 1,
+                "indices": "capture_kv_units",
+                "invalid_indices": [
+                  -1
+                ],
+                "max_index_entries": 9222,
+                "storage_offset_bytes": 0,
+                "unit_bytes": 256,
+                "unit_count": 4914444,
+                "unit_name": "physical_token_row",
+                "unit_stride_bytes": 256
+              }
+            },
+            "shape": [
+              4914444,
+              1,
+              128
+            ],
+            "storage_nbytes": 1258097664,
+            "storage_offset": 0,
+            "stride": [
+              128,
+              128,
+              1
+            ]
+          },
+          "q": {
+            "alias": "s3",
+            "dtype": "torch.bfloat16",
+            "element_size": 2,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "mutable",
+              "optional": false,
+              "paged": null
+            },
+            "shape": [
+              1,
+              1,
+              128
+            ],
+            "storage_nbytes": 256,
+            "storage_offset": 0,
+            "stride": [
+              128,
+              128,
+              1
+            ]
+          },
+          "req_to_token": {
+            "alias": "s4",
+            "dtype": "torch.int32",
+            "element_size": 4,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "paged",
+              "optional": false,
+              "paged": {
+                "access_contract": "only_indexed_units",
+                "index_divisor": 1,
+                "indices": "capture_req_rows",
+                "invalid_indices": [
+                  -1
+                ],
+                "max_index_entries": 1,
+                "storage_offset_bytes": 0,
+                "unit_bytes": 36888,
+                "unit_count": 65,
+                "unit_name": "request_paging_row",
+                "unit_stride_bytes": 36888
+              }
+            },
+            "shape": [
+              65,
+              9222
+            ],
+            "storage_nbytes": 2397720,
+            "storage_offset": 0,
+            "stride": [
+              9222,
+              1
+            ]
+          },
+          "seq_lens": {
+            "alias": "s5",
+            "dtype": "torch.int64",
+            "element_size": 8,
+            "kind": "tensor",
+            "role": {
+              "case_control": true,
+              "footprint": "view_span",
+              "kind": "mutable",
+              "optional": false,
+              "paged": null
+            },
+            "shape": [
+              1
+            ],
+            "storage_nbytes": 512,
+            "storage_offset": 0,
+            "stride": [
+              1
+            ]
+          },
+          "slot_ids": {
+            "alias": "s6",
+            "dtype": "torch.int64",
+            "element_size": 8,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "mutable",
+              "optional": false,
+              "paged": null
+            },
+            "shape": [
+              1
+            ],
+            "storage_nbytes": 512,
+            "storage_offset": 0,
+            "stride": [
+              1
+            ]
+          }
+        },
+        "mode": "graph",
+        "outputs": {
+          "result.0": null,
+          "result.1": {
+            "alias": "s7",
+            "dtype": "torch.int32",
+            "element_size": 4,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "mutable",
+              "optional": true,
+              "paged": null
+            },
+            "shape": [
+              1,
+              1,
+              16
+            ],
+            "storage_nbytes": 64,
+            "storage_offset": 0,
+            "stride": [
+              16,
+              16,
+              1
+            ]
+          },
+          "result.2": null
+        },
+        "source": "98c574e5c292c5fcfe8d2c4f7f3c1b480ba32be703ef12bf765e9549a65bc71c",
+        "stage": "decode",
+        "tensor_attribute_codec_id": null,
+        "tensor_control_codec_id": "minimax-work-controls-rle-v1",
+        "tensor_controls": {
+          "inputs.seq_lens": {
+            "runs": [
+              [
+                69,
+                1
+              ]
+            ],
+            "shape": [
+              1
+            ],
+            "units": "sequence_blocks_ceil"
+          }
+        }
+      },
+      "states": [
+        {
+          "fixture_sha256": "2d854915d5d4924e9a89ca85b483b4c28be312c64a92f0fc90ee7c9636164a11",
+          "graph_id": "909-graph-12",
+          "representative_labels": [
+            "first",
+            "min"
+          ],
+          "served": true,
+          "served_context": {
+            "active_requests": 1,
+            "active_tokens": 1,
+            "replay_id": "909-1570",
+            "run_id": "minimax-case-only-v3-194550",
+            "stage": "decode",
+            "tp_rank": 0,
+            "workload_marker": "capture"
+          },
+          "source_artifact_key": "rank-0-pid-909/decode_score-20b2a453f253c56d89e4f2d6.json",
+          "startup_values": false,
+          "state_id": "state-2d854915d5d4924e9a89ca85b483b4c28be312c64a92f0fc90ee7c9636164a11",
+          "tensor_controls": {
+            "inputs.seq_lens": {
+              "runs": [
+                [
+                  8705,
+                  1
+                ]
+              ],
+              "shape": [
+                1
+              ]
+            }
+          }
+        },
+        {
+          "fixture_sha256": "492e06a1091460dc68254037b5e9285431fd9e4110ce49582bbf5e7fa0dc82b6",
+          "graph_id": "909-graph-12",
+          "representative_labels": [
+            "max"
+          ],
+          "served": true,
+          "served_context": {
+            "active_requests": 1,
+            "active_tokens": 1,
+            "replay_id": "909-1697",
+            "run_id": "minimax-case-only-v3-194550",
+            "stage": "decode",
+            "tp_rank": 0,
+            "workload_marker": "capture"
+          },
+          "source_artifact_key": "rank-0-pid-909/decode_score-20b2a453f253c56d89e4f2d6.representative-max.json",
+          "startup_values": false,
+          "state_id": "state-492e06a1091460dc68254037b5e9285431fd9e4110ce49582bbf5e7fa0dc82b6",
+          "tensor_controls": {
+            "inputs.seq_lens": {
+              "runs": [
+                [
+                  8832,
+                  1
+                ]
+              ],
+              "shape": [
+                1
+              ]
+            }
+          }
+        }
+      ],
+      "work_distribution_sha256": "b153287cf51d050df4f511bbcd3159c248e1de8dc8f7d8d9c5e8ccdec32bcc1f"
+    },
+    "decode_score-2f5a11de0f3b75d22c65b7ef": {
+      "occurrences": 29696,
+      "provenance": "direct captured native configuration",
+      "schema": {
+        "active_requests": 63,
+        "active_tokens": 63,
+        "case_projection_id": "minimax-block-and-causal-work-v3",
+        "controls": {
+          "environment": {
+            "SGLANG_OPT_USE_MINIMAX_DECODE_TOPK_RADIX": "1"
+          },
+          "launches": [
+            {
+              "compiled": {
+                "num_stages": 1,
+                "num_warps": 4,
+                "shared": 32768
+              },
+              "constexpr": {
+                "IS_FP8": false,
+                "NUM_KV_CHUNKS": 64,
+                "SCORE_TYPE": "max",
+                "SKIP_TRIVIAL_TOPK_SCORE": true
+              },
+              "grid": [
+                4096,
+                1
+              ],
+              "kernel": "_decode_score_kernel"
+            }
+          ],
+          "operator_scalars": {
+            "block_size": 128,
+            "disable_index_value": true,
+            "init_blocks": 0,
+            "k_scale": null,
+            "local_blocks": 1,
+            "max_seqlen": 9218,
+            "page_size": 1,
+            "q_scale": null,
+            "score_type": "max",
+            "sink": null,
+            "sm_scale": null,
+            "topk": 16,
+            "use_dense_main_attn": false,
+            "use_tma": true,
+            "v_cache": null,
+            "v_scale": null
+          }
+        },
+        "extrema_score_id": "minimax-max-total-seqlen-topk-v3",
+        "family": "decode_score",
+        "inputs": {
+          "capture_kv_units": {
+            "alias": "s0",
+            "dtype": "torch.int64",
+            "element_size": 8,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "mutable",
+              "optional": false,
+              "paged": null
+            },
+            "shape": [
+              64,
+              9222
+            ],
+            "storage_nbytes": 4721664,
+            "storage_offset": 0,
+            "stride": [
+              9222,
+              1
+            ]
+          },
+          "capture_req_rows": {
+            "alias": "s1",
+            "dtype": "torch.int64",
+            "element_size": 8,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "mutable",
+              "optional": false,
+              "paged": null
+            },
+            "shape": [
+              64
+            ],
+            "storage_nbytes": 512,
+            "storage_offset": 0,
+            "stride": [
+              1
+            ]
+          },
+          "k_cache": {
+            "alias": "s2",
+            "dtype": "torch.bfloat16",
+            "element_size": 2,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "paged",
+              "optional": false,
+              "paged": {
+                "access_contract": "only_indexed_units",
+                "index_divisor": 1,
+                "indices": "capture_kv_units",
+                "invalid_indices": [
+                  -1
+                ],
+                "max_index_entries": 590208,
+                "storage_offset_bytes": 0,
+                "unit_bytes": 256,
+                "unit_count": 4914444,
+                "unit_name": "physical_token_row",
+                "unit_stride_bytes": 256
+              }
+            },
+            "shape": [
+              4914444,
+              1,
+              128
+            ],
+            "storage_nbytes": 1258097664,
+            "storage_offset": 0,
+            "stride": [
+              128,
+              128,
+              1
+            ]
+          },
+          "q": {
+            "alias": "s3",
+            "dtype": "torch.bfloat16",
+            "element_size": 2,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "mutable",
+              "optional": false,
+              "paged": null
+            },
+            "shape": [
+              64,
+              1,
+              128
+            ],
+            "storage_nbytes": 16384,
+            "storage_offset": 0,
+            "stride": [
+              128,
+              128,
+              1
+            ]
+          },
+          "req_to_token": {
+            "alias": "s4",
+            "dtype": "torch.int32",
+            "element_size": 4,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "paged",
+              "optional": false,
+              "paged": {
+                "access_contract": "only_indexed_units",
+                "index_divisor": 1,
+                "indices": "capture_req_rows",
+                "invalid_indices": [
+                  -1
+                ],
+                "max_index_entries": 64,
+                "storage_offset_bytes": 0,
+                "unit_bytes": 36888,
+                "unit_count": 65,
+                "unit_name": "request_paging_row",
+                "unit_stride_bytes": 36888
+              }
+            },
+            "shape": [
+              65,
+              9222
+            ],
+            "storage_nbytes": 2397720,
+            "storage_offset": 0,
+            "stride": [
+              9222,
+              1
+            ]
+          },
+          "seq_lens": {
+            "alias": "s5",
+            "dtype": "torch.int64",
+            "element_size": 8,
+            "kind": "tensor",
+            "role": {
+              "case_control": true,
+              "footprint": "view_span",
+              "kind": "mutable",
+              "optional": false,
+              "paged": null
+            },
+            "shape": [
+              64
+            ],
+            "storage_nbytes": 512,
+            "storage_offset": 0,
+            "stride": [
+              1
+            ]
+          },
+          "slot_ids": {
+            "alias": "s6",
+            "dtype": "torch.int64",
+            "element_size": 8,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "mutable",
+              "optional": false,
+              "paged": null
+            },
+            "shape": [
+              64
+            ],
+            "storage_nbytes": 512,
+            "storage_offset": 0,
+            "stride": [
+              1
+            ]
+          }
+        },
+        "mode": "graph",
+        "outputs": {
+          "result.0": null,
+          "result.1": {
+            "alias": "s7",
+            "dtype": "torch.int32",
+            "element_size": 4,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "mutable",
+              "optional": true,
+              "paged": null
+            },
+            "shape": [
+              1,
+              64,
+              16
+            ],
+            "storage_nbytes": 4096,
+            "storage_offset": 0,
+            "stride": [
+              1024,
+              16,
+              1
+            ]
+          },
+          "result.2": null
+        },
+        "source": "98c574e5c292c5fcfe8d2c4f7f3c1b480ba32be703ef12bf765e9549a65bc71c",
+        "stage": "decode",
+        "tensor_attribute_codec_id": null,
+        "tensor_control_codec_id": "minimax-work-controls-rle-v1",
+        "tensor_controls": {
+          "inputs.seq_lens": {
+            "runs": [
+              [
+                69,
+                63
+              ],
+              [
+                1,
+                1
+              ]
+            ],
+            "shape": [
+              64
+            ],
+            "units": "sequence_blocks_ceil"
+          }
+        }
+      },
+      "states": [
+        {
+          "fixture_sha256": "069f2b8abc2bcb7e246ca6f2b3d9e54dc3046f5b774d8da5b941656623114f4c",
+          "graph_id": "909-graph-1",
+          "representative_labels": [
+            "first",
+            "min"
+          ],
+          "served": true,
+          "served_context": {
+            "active_requests": 63,
+            "active_tokens": 63,
+            "replay_id": "909-545",
+            "run_id": "minimax-case-only-v3-194550",
+            "stage": "decode",
+            "tp_rank": 0,
+            "workload_marker": "capture"
+          },
+          "source_artifact_key": "rank-0-pid-909/decode_score-2f5a11de0f3b75d22c65b7ef.json",
+          "startup_values": false,
+          "state_id": "state-069f2b8abc2bcb7e246ca6f2b3d9e54dc3046f5b774d8da5b941656623114f4c",
+          "tensor_controls": {
+            "inputs.seq_lens": {
+              "runs": [
+                [
+                  8705,
+                  63
+                ],
+                [
+                  1,
+                  1
+                ]
+              ],
+              "shape": [
+                64
+              ]
+            }
+          }
+        },
+        {
+          "fixture_sha256": "2a3b310f5c3d164fbae0ca25bbcb3509eebd087037bc37c979189c48aa1f8529",
+          "graph_id": "909-graph-1",
+          "representative_labels": [
+            "max"
+          ],
+          "served": true,
+          "served_context": {
+            "active_requests": 63,
+            "active_tokens": 63,
+            "replay_id": "909-672",
+            "run_id": "minimax-case-only-v3-194550",
+            "stage": "decode",
+            "tp_rank": 0,
+            "workload_marker": "capture"
+          },
+          "source_artifact_key": "rank-0-pid-909/decode_score-2f5a11de0f3b75d22c65b7ef.representative-max.json",
+          "startup_values": false,
+          "state_id": "state-2a3b310f5c3d164fbae0ca25bbcb3509eebd087037bc37c979189c48aa1f8529",
+          "tensor_controls": {
+            "inputs.seq_lens": {
+              "runs": [
+                [
+                  8832,
+                  63
+                ],
+                [
+                  1,
+                  1
+                ]
+              ],
+              "shape": [
+                64
+              ]
+            }
+          }
+        }
+      ],
+      "work_distribution_sha256": "a4bf949914edb7cf6198ec923c77d263971445a12d1c25a7fc66a7ce7f130bd0"
+    },
+    "decode_score-3163e018cc94728231cb07a1": {
+      "occurrences": 29696,
+      "provenance": "direct captured native configuration",
+      "schema": {
+        "active_requests": 1,
+        "active_tokens": 1,
+        "case_projection_id": "minimax-block-and-causal-work-v3",
+        "controls": {
+          "environment": {
+            "SGLANG_OPT_USE_MINIMAX_DECODE_TOPK_RADIX": "1"
+          },
+          "launches": [
+            {
+              "compiled": {
+                "num_stages": 1,
+                "num_warps": 4,
+                "shared": 131072
+              },
+              "constexpr": {
+                "IS_FP8": false,
+                "NUM_KV_CHUNKS": 256,
+                "SCORE_TYPE": "max",
+                "SKIP_TRIVIAL_TOPK_SCORE": true
+              },
+              "grid": [
+                256,
+                1
+              ],
+              "kernel": "_decode_score_kernel"
+            }
+          ],
+          "operator_scalars": {
+            "block_size": 128,
+            "disable_index_value": true,
+            "init_blocks": 0,
+            "k_scale": null,
+            "local_blocks": 1,
+            "max_seqlen": 9218,
+            "page_size": 1,
+            "q_scale": null,
+            "score_type": "max",
+            "sink": null,
+            "sm_scale": null,
+            "topk": 16,
+            "use_dense_main_attn": false,
+            "use_tma": true,
+            "v_cache": null,
+            "v_scale": null
+          }
+        },
+        "extrema_score_id": "minimax-max-total-seqlen-topk-v3",
+        "family": "decode_score",
+        "inputs": {
+          "capture_kv_units": {
+            "alias": "s0",
+            "dtype": "torch.int64",
+            "element_size": 8,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "mutable",
+              "optional": false,
+              "paged": null
+            },
+            "shape": [
+              1,
+              9222
+            ],
+            "storage_nbytes": 73776,
+            "storage_offset": 0,
+            "stride": [
+              9222,
+              1
+            ]
+          },
+          "capture_req_rows": {
+            "alias": "s1",
+            "dtype": "torch.int64",
+            "element_size": 8,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "mutable",
+              "optional": false,
+              "paged": null
+            },
+            "shape": [
+              1
+            ],
+            "storage_nbytes": 8,
+            "storage_offset": 0,
+            "stride": [
+              1
+            ]
+          },
+          "k_cache": {
+            "alias": "s2",
+            "dtype": "torch.bfloat16",
+            "element_size": 2,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "paged",
+              "optional": false,
+              "paged": {
+                "access_contract": "only_indexed_units",
+                "index_divisor": 1,
+                "indices": "capture_kv_units",
+                "invalid_indices": [
+                  -1
+                ],
+                "max_index_entries": 9222,
+                "storage_offset_bytes": 0,
+                "unit_bytes": 256,
+                "unit_count": 4914444,
+                "unit_name": "physical_token_row",
+                "unit_stride_bytes": 256
+              }
+            },
+            "shape": [
+              4914444,
+              1,
+              128
+            ],
+            "storage_nbytes": 1258097664,
+            "storage_offset": 0,
+            "stride": [
+              128,
+              128,
+              1
+            ]
+          },
+          "q": {
+            "alias": "s3",
+            "dtype": "torch.bfloat16",
+            "element_size": 2,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "mutable",
+              "optional": false,
+              "paged": null
+            },
+            "shape": [
+              1,
+              1,
+              128
+            ],
+            "storage_nbytes": 256,
+            "storage_offset": 0,
+            "stride": [
+              128,
+              128,
+              1
+            ]
+          },
+          "req_to_token": {
+            "alias": "s4",
+            "dtype": "torch.int32",
+            "element_size": 4,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "paged",
+              "optional": false,
+              "paged": {
+                "access_contract": "only_indexed_units",
+                "index_divisor": 1,
+                "indices": "capture_req_rows",
+                "invalid_indices": [
+                  -1
+                ],
+                "max_index_entries": 1,
+                "storage_offset_bytes": 0,
+                "unit_bytes": 36888,
+                "unit_count": 65,
+                "unit_name": "request_paging_row",
+                "unit_stride_bytes": 36888
+              }
+            },
+            "shape": [
+              65,
+              9222
+            ],
+            "storage_nbytes": 2397720,
+            "storage_offset": 0,
+            "stride": [
+              9222,
+              1
+            ]
+          },
+          "seq_lens": {
+            "alias": "s5",
+            "dtype": "torch.int64",
+            "element_size": 8,
+            "kind": "tensor",
+            "role": {
+              "case_control": true,
+              "footprint": "view_span",
+              "kind": "mutable",
+              "optional": false,
+              "paged": null
+            },
+            "shape": [
+              1
+            ],
+            "storage_nbytes": 512,
+            "storage_offset": 0,
+            "stride": [
+              1
+            ]
+          },
+          "slot_ids": {
+            "alias": "s6",
+            "dtype": "torch.int64",
+            "element_size": 8,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "mutable",
+              "optional": false,
+              "paged": null
+            },
+            "shape": [
+              1
+            ],
+            "storage_nbytes": 512,
+            "storage_offset": 0,
+            "stride": [
+              1
+            ]
+          }
+        },
+        "mode": "graph",
+        "outputs": {
+          "result.0": null,
+          "result.1": {
+            "alias": "s7",
+            "dtype": "torch.int32",
+            "element_size": 4,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "mutable",
+              "optional": true,
+              "paged": null
+            },
+            "shape": [
+              1,
+              1,
+              16
+            ],
+            "storage_nbytes": 64,
+            "storage_offset": 0,
+            "stride": [
+              16,
+              16,
+              1
+            ]
+          },
+          "result.2": null
+        },
+        "source": "98c574e5c292c5fcfe8d2c4f7f3c1b480ba32be703ef12bf765e9549a65bc71c",
+        "stage": "decode",
+        "tensor_attribute_codec_id": null,
+        "tensor_control_codec_id": "minimax-work-controls-rle-v1",
+        "tensor_controls": {
+          "inputs.seq_lens": {
+            "runs": [
+              [
+                66,
+                1
+              ]
+            ],
+            "shape": [
+              1
+            ],
+            "units": "sequence_blocks_ceil"
+          }
+        }
+      },
+      "states": [
+        {
+          "fixture_sha256": "29a66fffd8def0d9dd5d2e6053a7430146e7187f4344f77b2defb24d95a15184",
+          "graph_id": "909-graph-12",
+          "representative_labels": [
+            "first",
+            "min"
+          ],
+          "served": true,
+          "served_context": {
+            "active_requests": 1,
+            "active_tokens": 1,
+            "replay_id": "909-1186",
+            "run_id": "minimax-case-only-v3-194550",
+            "stage": "decode",
+            "tp_rank": 0,
+            "workload_marker": "capture"
+          },
+          "source_artifact_key": "rank-0-pid-909/decode_score-3163e018cc94728231cb07a1.json",
+          "startup_values": false,
+          "state_id": "state-29a66fffd8def0d9dd5d2e6053a7430146e7187f4344f77b2defb24d95a15184",
+          "tensor_controls": {
+            "inputs.seq_lens": {
+              "runs": [
+                [
+                  8321,
+                  1
+                ]
+              ],
+              "shape": [
+                1
+              ]
+            }
+          }
+        },
+        {
+          "fixture_sha256": "caf3c1f13ef8367687ed25cc7ec3a470d875cd00e4d66474649a987417199406",
+          "graph_id": "909-graph-12",
+          "representative_labels": [
+            "max"
+          ],
+          "served": true,
+          "served_context": {
+            "active_requests": 1,
+            "active_tokens": 1,
+            "replay_id": "909-1313",
+            "run_id": "minimax-case-only-v3-194550",
+            "stage": "decode",
+            "tp_rank": 0,
+            "workload_marker": "capture"
+          },
+          "source_artifact_key": "rank-0-pid-909/decode_score-3163e018cc94728231cb07a1.representative-max.json",
+          "startup_values": false,
+          "state_id": "state-caf3c1f13ef8367687ed25cc7ec3a470d875cd00e4d66474649a987417199406",
+          "tensor_controls": {
+            "inputs.seq_lens": {
+              "runs": [
+                [
+                  8448,
+                  1
+                ]
+              ],
+              "shape": [
+                1
+              ]
+            }
+          }
+        }
+      ],
+      "work_distribution_sha256": "e50f7724edf90caf4b6ff64416db8d14645cf668847d2274c1c80b42b411d3d3"
+    },
+    "decode_score-4803fa0107dfd0abd21baed4": {
+      "occurrences": 29696,
+      "provenance": "direct captured native configuration",
+      "schema": {
+        "active_requests": 1,
+        "active_tokens": 1,
+        "case_projection_id": "minimax-block-and-causal-work-v3",
+        "controls": {
+          "environment": {
+            "SGLANG_OPT_USE_MINIMAX_DECODE_TOPK_RADIX": "1"
+          },
+          "launches": [
+            {
+              "compiled": {
+                "num_stages": 1,
+                "num_warps": 4,
+                "shared": 131072
+              },
+              "constexpr": {
+                "IS_FP8": false,
+                "NUM_KV_CHUNKS": 256,
+                "SCORE_TYPE": "max",
+                "SKIP_TRIVIAL_TOPK_SCORE": true
+              },
+              "grid": [
+                256,
+                1
+              ],
+              "kernel": "_decode_score_kernel"
+            }
+          ],
+          "operator_scalars": {
+            "block_size": 128,
+            "disable_index_value": true,
+            "init_blocks": 0,
+            "k_scale": null,
+            "local_blocks": 1,
+            "max_seqlen": 9218,
+            "page_size": 1,
+            "q_scale": null,
+            "score_type": "max",
+            "sink": null,
+            "sm_scale": null,
+            "topk": 16,
+            "use_dense_main_attn": false,
+            "use_tma": true,
+            "v_cache": null,
+            "v_scale": null
+          }
+        },
+        "extrema_score_id": "minimax-max-total-seqlen-topk-v3",
+        "family": "decode_score",
+        "inputs": {
+          "capture_kv_units": {
+            "alias": "s0",
+            "dtype": "torch.int64",
+            "element_size": 8,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "mutable",
+              "optional": false,
+              "paged": null
+            },
+            "shape": [
+              1,
+              9222
+            ],
+            "storage_nbytes": 73776,
+            "storage_offset": 0,
+            "stride": [
+              9222,
+              1
+            ]
+          },
+          "capture_req_rows": {
+            "alias": "s1",
+            "dtype": "torch.int64",
+            "element_size": 8,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "mutable",
+              "optional": false,
+              "paged": null
+            },
+            "shape": [
+              1
+            ],
+            "storage_nbytes": 8,
+            "storage_offset": 0,
+            "stride": [
+              1
+            ]
+          },
+          "k_cache": {
+            "alias": "s2",
+            "dtype": "torch.bfloat16",
+            "element_size": 2,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "paged",
+              "optional": false,
+              "paged": {
+                "access_contract": "only_indexed_units",
+                "index_divisor": 1,
+                "indices": "capture_kv_units",
+                "invalid_indices": [
+                  -1
+                ],
+                "max_index_entries": 9222,
+                "storage_offset_bytes": 0,
+                "unit_bytes": 256,
+                "unit_count": 4914444,
+                "unit_name": "physical_token_row",
+                "unit_stride_bytes": 256
+              }
+            },
+            "shape": [
+              4914444,
+              1,
+              128
+            ],
+            "storage_nbytes": 1258097664,
+            "storage_offset": 0,
+            "stride": [
+              128,
+              128,
+              1
+            ]
+          },
+          "q": {
+            "alias": "s3",
+            "dtype": "torch.bfloat16",
+            "element_size": 2,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "mutable",
+              "optional": false,
+              "paged": null
+            },
+            "shape": [
+              1,
+              1,
+              128
+            ],
+            "storage_nbytes": 256,
+            "storage_offset": 0,
+            "stride": [
+              128,
+              128,
+              1
+            ]
+          },
+          "req_to_token": {
+            "alias": "s4",
+            "dtype": "torch.int32",
+            "element_size": 4,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "paged",
+              "optional": false,
+              "paged": {
+                "access_contract": "only_indexed_units",
+                "index_divisor": 1,
+                "indices": "capture_req_rows",
+                "invalid_indices": [
+                  -1
+                ],
+                "max_index_entries": 1,
+                "storage_offset_bytes": 0,
+                "unit_bytes": 36888,
+                "unit_count": 65,
+                "unit_name": "request_paging_row",
+                "unit_stride_bytes": 36888
+              }
+            },
+            "shape": [
+              65,
+              9222
+            ],
+            "storage_nbytes": 2397720,
+            "storage_offset": 0,
+            "stride": [
+              9222,
+              1
+            ]
+          },
+          "seq_lens": {
+            "alias": "s5",
+            "dtype": "torch.int64",
+            "element_size": 8,
+            "kind": "tensor",
+            "role": {
+              "case_control": true,
+              "footprint": "view_span",
+              "kind": "mutable",
+              "optional": false,
+              "paged": null
+            },
+            "shape": [
+              1
+            ],
+            "storage_nbytes": 512,
+            "storage_offset": 0,
+            "stride": [
+              1
+            ]
+          },
+          "slot_ids": {
+            "alias": "s6",
+            "dtype": "torch.int64",
+            "element_size": 8,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "mutable",
+              "optional": false,
+              "paged": null
+            },
+            "shape": [
+              1
+            ],
+            "storage_nbytes": 512,
+            "storage_offset": 0,
+            "stride": [
+              1
+            ]
+          }
+        },
+        "mode": "graph",
+        "outputs": {
+          "result.0": null,
+          "result.1": {
+            "alias": "s7",
+            "dtype": "torch.int32",
+            "element_size": 4,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "mutable",
+              "optional": true,
+              "paged": null
+            },
+            "shape": [
+              1,
+              1,
+              16
+            ],
+            "storage_nbytes": 64,
+            "storage_offset": 0,
+            "stride": [
+              16,
+              16,
+              1
+            ]
+          },
+          "result.2": null
+        },
+        "source": "98c574e5c292c5fcfe8d2c4f7f3c1b480ba32be703ef12bf765e9549a65bc71c",
+        "stage": "decode",
+        "tensor_attribute_codec_id": null,
+        "tensor_control_codec_id": "minimax-work-controls-rle-v1",
+        "tensor_controls": {
+          "inputs.seq_lens": {
+            "runs": [
+              [
+                72,
+                1
+              ]
+            ],
+            "shape": [
+              1
+            ],
+            "units": "sequence_blocks_ceil"
+          }
+        }
+      },
+      "states": [
+        {
+          "fixture_sha256": "24a3ee777b1ff38dc27f74f3c587b33da709972d7c473c85bf2e52af58683ec9",
+          "graph_id": "909-graph-12",
+          "representative_labels": [
+            "first",
+            "min"
+          ],
+          "served": true,
+          "served_context": {
+            "active_requests": 1,
+            "active_tokens": 1,
+            "replay_id": "909-1954",
+            "run_id": "minimax-case-only-v3-194550",
+            "stage": "decode",
+            "tp_rank": 0,
+            "workload_marker": "capture"
+          },
+          "source_artifact_key": "rank-0-pid-909/decode_score-4803fa0107dfd0abd21baed4.json",
+          "startup_values": false,
+          "state_id": "state-24a3ee777b1ff38dc27f74f3c587b33da709972d7c473c85bf2e52af58683ec9",
+          "tensor_controls": {
+            "inputs.seq_lens": {
+              "runs": [
+                [
+                  9089,
+                  1
+                ]
+              ],
+              "shape": [
+                1
+              ]
+            }
+          }
+        },
+        {
+          "fixture_sha256": "65c15bf833f7457b170a25496ea14dd5e2e794bf7c8611aedefd944204561803",
+          "graph_id": "909-graph-12",
+          "representative_labels": [
+            "max"
+          ],
+          "served": true,
+          "served_context": {
+            "active_requests": 1,
+            "active_tokens": 1,
+            "replay_id": "909-2081",
+            "run_id": "minimax-case-only-v3-194550",
+            "stage": "decode",
+            "tp_rank": 0,
+            "workload_marker": "capture"
+          },
+          "source_artifact_key": "rank-0-pid-909/decode_score-4803fa0107dfd0abd21baed4.representative-max.json",
+          "startup_values": false,
+          "state_id": "state-65c15bf833f7457b170a25496ea14dd5e2e794bf7c8611aedefd944204561803",
+          "tensor_controls": {
+            "inputs.seq_lens": {
+              "runs": [
+                [
+                  9216,
+                  1
+                ]
+              ],
+              "shape": [
+                1
+              ]
+            }
+          }
+        }
+      ],
+      "work_distribution_sha256": "7eefe532d03e83ae13973f0f1d6dec1947959a897347e7b642c8693d880be1b8"
+    },
+    "decode_score-6528abcf5849b7ecdbd74834": {
+      "occurrences": 29696,
+      "provenance": "direct captured native configuration",
+      "schema": {
+        "active_requests": 1,
+        "active_tokens": 1,
+        "case_projection_id": "minimax-block-and-causal-work-v3",
+        "controls": {
+          "environment": {
+            "SGLANG_OPT_USE_MINIMAX_DECODE_TOPK_RADIX": "1"
+          },
+          "launches": [
+            {
+              "compiled": {
+                "num_stages": 1,
+                "num_warps": 4,
+                "shared": 131072
+              },
+              "constexpr": {
+                "IS_FP8": false,
+                "NUM_KV_CHUNKS": 256,
+                "SCORE_TYPE": "max",
+                "SKIP_TRIVIAL_TOPK_SCORE": true
+              },
+              "grid": [
+                256,
+                1
+              ],
+              "kernel": "_decode_score_kernel"
+            }
+          ],
+          "operator_scalars": {
+            "block_size": 128,
+            "disable_index_value": true,
+            "init_blocks": 0,
+            "k_scale": null,
+            "local_blocks": 1,
+            "max_seqlen": 9218,
+            "page_size": 1,
+            "q_scale": null,
+            "score_type": "max",
+            "sink": null,
+            "sm_scale": null,
+            "topk": 16,
+            "use_dense_main_attn": false,
+            "use_tma": true,
+            "v_cache": null,
+            "v_scale": null
+          }
+        },
+        "extrema_score_id": "minimax-max-total-seqlen-topk-v3",
+        "family": "decode_score",
+        "inputs": {
+          "capture_kv_units": {
+            "alias": "s0",
+            "dtype": "torch.int64",
+            "element_size": 8,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "mutable",
+              "optional": false,
+              "paged": null
+            },
+            "shape": [
+              1,
+              9222
+            ],
+            "storage_nbytes": 73776,
+            "storage_offset": 0,
+            "stride": [
+              9222,
+              1
+            ]
+          },
+          "capture_req_rows": {
+            "alias": "s1",
+            "dtype": "torch.int64",
+            "element_size": 8,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "mutable",
+              "optional": false,
+              "paged": null
+            },
+            "shape": [
+              1
+            ],
+            "storage_nbytes": 8,
+            "storage_offset": 0,
+            "stride": [
+              1
+            ]
+          },
+          "k_cache": {
+            "alias": "s2",
+            "dtype": "torch.bfloat16",
+            "element_size": 2,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "paged",
+              "optional": false,
+              "paged": {
+                "access_contract": "only_indexed_units",
+                "index_divisor": 1,
+                "indices": "capture_kv_units",
+                "invalid_indices": [
+                  -1
+                ],
+                "max_index_entries": 9222,
+                "storage_offset_bytes": 0,
+                "unit_bytes": 256,
+                "unit_count": 4914444,
+                "unit_name": "physical_token_row",
+                "unit_stride_bytes": 256
+              }
+            },
+            "shape": [
+              4914444,
+              1,
+              128
+            ],
+            "storage_nbytes": 1258097664,
+            "storage_offset": 0,
+            "stride": [
+              128,
+              128,
+              1
+            ]
+          },
+          "q": {
+            "alias": "s3",
+            "dtype": "torch.bfloat16",
+            "element_size": 2,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "mutable",
+              "optional": false,
+              "paged": null
+            },
+            "shape": [
+              1,
+              1,
+              128
+            ],
+            "storage_nbytes": 256,
+            "storage_offset": 0,
+            "stride": [
+              128,
+              128,
+              1
+            ]
+          },
+          "req_to_token": {
+            "alias": "s4",
+            "dtype": "torch.int32",
+            "element_size": 4,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "paged",
+              "optional": false,
+              "paged": {
+                "access_contract": "only_indexed_units",
+                "index_divisor": 1,
+                "indices": "capture_req_rows",
+                "invalid_indices": [
+                  -1
+                ],
+                "max_index_entries": 1,
+                "storage_offset_bytes": 0,
+                "unit_bytes": 36888,
+                "unit_count": 65,
+                "unit_name": "request_paging_row",
+                "unit_stride_bytes": 36888
+              }
+            },
+            "shape": [
+              65,
+              9222
+            ],
+            "storage_nbytes": 2397720,
+            "storage_offset": 0,
+            "stride": [
+              9222,
+              1
+            ]
+          },
+          "seq_lens": {
+            "alias": "s5",
+            "dtype": "torch.int64",
+            "element_size": 8,
+            "kind": "tensor",
+            "role": {
+              "case_control": true,
+              "footprint": "view_span",
+              "kind": "mutable",
+              "optional": false,
+              "paged": null
+            },
+            "shape": [
+              1
+            ],
+            "storage_nbytes": 512,
+            "storage_offset": 0,
+            "stride": [
+              1
+            ]
+          },
+          "slot_ids": {
+            "alias": "s6",
+            "dtype": "torch.int64",
+            "element_size": 8,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "mutable",
+              "optional": false,
+              "paged": null
+            },
+            "shape": [
+              1
+            ],
+            "storage_nbytes": 512,
+            "storage_offset": 0,
+            "stride": [
+              1
+            ]
+          }
+        },
+        "mode": "graph",
+        "outputs": {
+          "result.0": null,
+          "result.1": {
+            "alias": "s7",
+            "dtype": "torch.int32",
+            "element_size": 4,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "mutable",
+              "optional": true,
+              "paged": null
+            },
+            "shape": [
+              1,
+              1,
+              16
+            ],
+            "storage_nbytes": 64,
+            "storage_offset": 0,
+            "stride": [
+              16,
+              16,
+              1
+            ]
+          },
+          "result.2": null
+        },
+        "source": "98c574e5c292c5fcfe8d2c4f7f3c1b480ba32be703ef12bf765e9549a65bc71c",
+        "stage": "decode",
+        "tensor_attribute_codec_id": null,
+        "tensor_control_codec_id": "minimax-work-controls-rle-v1",
+        "tensor_controls": {
+          "inputs.seq_lens": {
+            "runs": [
+              [
+                68,
+                1
+              ]
+            ],
+            "shape": [
+              1
+            ],
+            "units": "sequence_blocks_ceil"
+          }
+        }
+      },
+      "states": [
+        {
+          "fixture_sha256": "edf8bc57f2646baac60425a0b92b3063d0a74587c7a44ad95e1eb337e436f676",
+          "graph_id": "909-graph-12",
+          "representative_labels": [
+            "first",
+            "min"
+          ],
+          "served": true,
+          "served_context": {
+            "active_requests": 1,
+            "active_tokens": 1,
+            "replay_id": "909-1442",
+            "run_id": "minimax-case-only-v3-194550",
+            "stage": "decode",
+            "tp_rank": 0,
+            "workload_marker": "capture"
+          },
+          "source_artifact_key": "rank-0-pid-909/decode_score-6528abcf5849b7ecdbd74834.json",
+          "startup_values": false,
+          "state_id": "state-edf8bc57f2646baac60425a0b92b3063d0a74587c7a44ad95e1eb337e436f676",
+          "tensor_controls": {
+            "inputs.seq_lens": {
+              "runs": [
+                [
+                  8577,
+                  1
+                ]
+              ],
+              "shape": [
+                1
+              ]
+            }
+          }
+        },
+        {
+          "fixture_sha256": "fffea4879f75629f927651b59f38d9d55d1af5e1a33af6976380370f3469ae6b",
+          "graph_id": "909-graph-12",
+          "representative_labels": [
+            "max"
+          ],
+          "served": true,
+          "served_context": {
+            "active_requests": 1,
+            "active_tokens": 1,
+            "replay_id": "909-1569",
+            "run_id": "minimax-case-only-v3-194550",
+            "stage": "decode",
+            "tp_rank": 0,
+            "workload_marker": "capture"
+          },
+          "source_artifact_key": "rank-0-pid-909/decode_score-6528abcf5849b7ecdbd74834.representative-max.json",
+          "startup_values": false,
+          "state_id": "state-fffea4879f75629f927651b59f38d9d55d1af5e1a33af6976380370f3469ae6b",
+          "tensor_controls": {
+            "inputs.seq_lens": {
+              "runs": [
+                [
+                  8704,
+                  1
+                ]
+              ],
+              "shape": [
+                1
+              ]
+            }
+          }
+        }
+      ],
+      "work_distribution_sha256": "f68102cee63646837916db0f5b0e687c8159450fc85932804da6a2b7208b04a3"
+    },
+    "decode_score-6d75d16894e490f69d3e4c4a": {
+      "occurrences": 29696,
+      "provenance": "direct captured native configuration",
+      "schema": {
+        "active_requests": 63,
+        "active_tokens": 63,
+        "case_projection_id": "minimax-block-and-causal-work-v3",
+        "controls": {
+          "environment": {
+            "SGLANG_OPT_USE_MINIMAX_DECODE_TOPK_RADIX": "1"
+          },
+          "launches": [
+            {
+              "compiled": {
+                "num_stages": 1,
+                "num_warps": 4,
+                "shared": 32768
+              },
+              "constexpr": {
+                "IS_FP8": false,
+                "NUM_KV_CHUNKS": 64,
+                "SCORE_TYPE": "max",
+                "SKIP_TRIVIAL_TOPK_SCORE": true
+              },
+              "grid": [
+                4096,
+                1
+              ],
+              "kernel": "_decode_score_kernel"
+            }
+          ],
+          "operator_scalars": {
+            "block_size": 128,
+            "disable_index_value": true,
+            "init_blocks": 0,
+            "k_scale": null,
+            "local_blocks": 1,
+            "max_seqlen": 9218,
+            "page_size": 1,
+            "q_scale": null,
+            "score_type": "max",
+            "sink": null,
+            "sm_scale": null,
+            "topk": 16,
+            "use_dense_main_attn": false,
+            "use_tma": true,
+            "v_cache": null,
+            "v_scale": null
+          }
+        },
+        "extrema_score_id": "minimax-max-total-seqlen-topk-v3",
+        "family": "decode_score",
+        "inputs": {
+          "capture_kv_units": {
+            "alias": "s0",
+            "dtype": "torch.int64",
+            "element_size": 8,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "mutable",
+              "optional": false,
+              "paged": null
+            },
+            "shape": [
+              64,
+              9222
+            ],
+            "storage_nbytes": 4721664,
+            "storage_offset": 0,
+            "stride": [
+              9222,
+              1
+            ]
+          },
+          "capture_req_rows": {
+            "alias": "s1",
+            "dtype": "torch.int64",
+            "element_size": 8,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "mutable",
+              "optional": false,
+              "paged": null
+            },
+            "shape": [
+              64
+            ],
+            "storage_nbytes": 512,
+            "storage_offset": 0,
+            "stride": [
+              1
+            ]
+          },
+          "k_cache": {
+            "alias": "s2",
+            "dtype": "torch.bfloat16",
+            "element_size": 2,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "paged",
+              "optional": false,
+              "paged": {
+                "access_contract": "only_indexed_units",
+                "index_divisor": 1,
+                "indices": "capture_kv_units",
+                "invalid_indices": [
+                  -1
+                ],
+                "max_index_entries": 590208,
+                "storage_offset_bytes": 0,
+                "unit_bytes": 256,
+                "unit_count": 4914444,
+                "unit_name": "physical_token_row",
+                "unit_stride_bytes": 256
+              }
+            },
+            "shape": [
+              4914444,
+              1,
+              128
+            ],
+            "storage_nbytes": 1258097664,
+            "storage_offset": 0,
+            "stride": [
+              128,
+              128,
+              1
+            ]
+          },
+          "q": {
+            "alias": "s3",
+            "dtype": "torch.bfloat16",
+            "element_size": 2,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "mutable",
+              "optional": false,
+              "paged": null
+            },
+            "shape": [
+              64,
+              1,
+              128
+            ],
+            "storage_nbytes": 16384,
+            "storage_offset": 0,
+            "stride": [
+              128,
+              128,
+              1
+            ]
+          },
+          "req_to_token": {
+            "alias": "s4",
+            "dtype": "torch.int32",
+            "element_size": 4,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "paged",
+              "optional": false,
+              "paged": {
+                "access_contract": "only_indexed_units",
+                "index_divisor": 1,
+                "indices": "capture_req_rows",
+                "invalid_indices": [
+                  -1
+                ],
+                "max_index_entries": 64,
+                "storage_offset_bytes": 0,
+                "unit_bytes": 36888,
+                "unit_count": 65,
+                "unit_name": "request_paging_row",
+                "unit_stride_bytes": 36888
+              }
+            },
+            "shape": [
+              65,
+              9222
+            ],
+            "storage_nbytes": 2397720,
+            "storage_offset": 0,
+            "stride": [
+              9222,
+              1
+            ]
+          },
+          "seq_lens": {
+            "alias": "s5",
+            "dtype": "torch.int64",
+            "element_size": 8,
+            "kind": "tensor",
+            "role": {
+              "case_control": true,
+              "footprint": "view_span",
+              "kind": "mutable",
+              "optional": false,
+              "paged": null
+            },
+            "shape": [
+              64
+            ],
+            "storage_nbytes": 512,
+            "storage_offset": 0,
+            "stride": [
+              1
+            ]
+          },
+          "slot_ids": {
+            "alias": "s6",
+            "dtype": "torch.int64",
+            "element_size": 8,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "mutable",
+              "optional": false,
+              "paged": null
+            },
+            "shape": [
+              64
+            ],
+            "storage_nbytes": 512,
+            "storage_offset": 0,
+            "stride": [
+              1
+            ]
+          }
+        },
+        "mode": "graph",
+        "outputs": {
+          "result.0": null,
+          "result.1": {
+            "alias": "s7",
+            "dtype": "torch.int32",
+            "element_size": 4,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "mutable",
+              "optional": true,
+              "paged": null
+            },
+            "shape": [
+              1,
+              64,
+              16
+            ],
+            "storage_nbytes": 4096,
+            "storage_offset": 0,
+            "stride": [
+              1024,
+              16,
+              1
+            ]
+          },
+          "result.2": null
+        },
+        "source": "98c574e5c292c5fcfe8d2c4f7f3c1b480ba32be703ef12bf765e9549a65bc71c",
+        "stage": "decode",
+        "tensor_attribute_codec_id": null,
+        "tensor_control_codec_id": "minimax-work-controls-rle-v1",
+        "tensor_controls": {
+          "inputs.seq_lens": {
+            "runs": [
+              [
+                65,
+                63
+              ],
+              [
+                1,
+                1
+              ]
+            ],
+            "shape": [
+              64
+            ],
+            "units": "sequence_blocks_ceil"
+          }
+        }
+      },
+      "states": [
+        {
+          "fixture_sha256": "cb8df0684c0b884f575a0045847ff15fb314aed6d480e27dd62826dbd240dea2",
+          "graph_id": "909-graph-1",
+          "representative_labels": [
+            "first",
+            "min"
+          ],
+          "served": true,
+          "served_context": {
+            "active_requests": 63,
+            "active_tokens": 63,
+            "replay_id": "909-33",
+            "run_id": "minimax-case-only-v3-194550",
+            "stage": "decode",
+            "tp_rank": 0,
+            "workload_marker": "capture"
+          },
+          "source_artifact_key": "rank-0-pid-909/decode_score-6d75d16894e490f69d3e4c4a.json",
+          "startup_values": false,
+          "state_id": "state-cb8df0684c0b884f575a0045847ff15fb314aed6d480e27dd62826dbd240dea2",
+          "tensor_controls": {
+            "inputs.seq_lens": {
+              "runs": [
+                [
+                  8193,
+                  63
+                ],
+                [
+                  1,
+                  1
+                ]
+              ],
+              "shape": [
+                64
+              ]
+            }
+          }
+        },
+        {
+          "fixture_sha256": "febd3fa7ce9d01ed86780eec32dcd1d76bc7550516a4400ab52b4594e9eb3a5c",
+          "graph_id": "909-graph-1",
+          "representative_labels": [
+            "max"
+          ],
+          "served": true,
+          "served_context": {
+            "active_requests": 63,
+            "active_tokens": 63,
+            "replay_id": "909-160",
+            "run_id": "minimax-case-only-v3-194550",
+            "stage": "decode",
+            "tp_rank": 0,
+            "workload_marker": "capture"
+          },
+          "source_artifact_key": "rank-0-pid-909/decode_score-6d75d16894e490f69d3e4c4a.representative-max.json",
+          "startup_values": false,
+          "state_id": "state-febd3fa7ce9d01ed86780eec32dcd1d76bc7550516a4400ab52b4594e9eb3a5c",
+          "tensor_controls": {
+            "inputs.seq_lens": {
+              "runs": [
+                [
+                  8320,
+                  63
+                ],
+                [
+                  1,
+                  1
+                ]
+              ],
+              "shape": [
+                64
+              ]
+            }
+          }
+        }
+      ],
+      "work_distribution_sha256": "337f2cc3f519d56583202c5b1ca48792e59d9d1be9900618c717f8a19db1114d"
+    },
+    "decode_score-7a82aa6a11047fea23855d23": {
+      "occurrences": 29696,
+      "provenance": "direct captured native configuration",
+      "schema": {
+        "active_requests": 63,
+        "active_tokens": 63,
+        "case_projection_id": "minimax-block-and-causal-work-v3",
+        "controls": {
+          "environment": {
+            "SGLANG_OPT_USE_MINIMAX_DECODE_TOPK_RADIX": "1"
+          },
+          "launches": [
+            {
+              "compiled": {
+                "num_stages": 1,
+                "num_warps": 4,
+                "shared": 32768
+              },
+              "constexpr": {
+                "IS_FP8": false,
+                "NUM_KV_CHUNKS": 64,
+                "SCORE_TYPE": "max",
+                "SKIP_TRIVIAL_TOPK_SCORE": true
+              },
+              "grid": [
+                4096,
+                1
+              ],
+              "kernel": "_decode_score_kernel"
+            }
+          ],
+          "operator_scalars": {
+            "block_size": 128,
+            "disable_index_value": true,
+            "init_blocks": 0,
+            "k_scale": null,
+            "local_blocks": 1,
+            "max_seqlen": 9218,
+            "page_size": 1,
+            "q_scale": null,
+            "score_type": "max",
+            "sink": null,
+            "sm_scale": null,
+            "topk": 16,
+            "use_dense_main_attn": false,
+            "use_tma": true,
+            "v_cache": null,
+            "v_scale": null
+          }
+        },
+        "extrema_score_id": "minimax-max-total-seqlen-topk-v3",
+        "family": "decode_score",
+        "inputs": {
+          "capture_kv_units": {
+            "alias": "s0",
+            "dtype": "torch.int64",
+            "element_size": 8,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "mutable",
+              "optional": false,
+              "paged": null
+            },
+            "shape": [
+              64,
+              9222
+            ],
+            "storage_nbytes": 4721664,
+            "storage_offset": 0,
+            "stride": [
+              9222,
+              1
+            ]
+          },
+          "capture_req_rows": {
+            "alias": "s1",
+            "dtype": "torch.int64",
+            "element_size": 8,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "mutable",
+              "optional": false,
+              "paged": null
+            },
+            "shape": [
+              64
+            ],
+            "storage_nbytes": 512,
+            "storage_offset": 0,
+            "stride": [
+              1
+            ]
+          },
+          "k_cache": {
+            "alias": "s2",
+            "dtype": "torch.bfloat16",
+            "element_size": 2,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "paged",
+              "optional": false,
+              "paged": {
+                "access_contract": "only_indexed_units",
+                "index_divisor": 1,
+                "indices": "capture_kv_units",
+                "invalid_indices": [
+                  -1
+                ],
+                "max_index_entries": 590208,
+                "storage_offset_bytes": 0,
+                "unit_bytes": 256,
+                "unit_count": 4914444,
+                "unit_name": "physical_token_row",
+                "unit_stride_bytes": 256
+              }
+            },
+            "shape": [
+              4914444,
+              1,
+              128
+            ],
+            "storage_nbytes": 1258097664,
+            "storage_offset": 0,
+            "stride": [
+              128,
+              128,
+              1
+            ]
+          },
+          "q": {
+            "alias": "s3",
+            "dtype": "torch.bfloat16",
+            "element_size": 2,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "mutable",
+              "optional": false,
+              "paged": null
+            },
+            "shape": [
+              64,
+              1,
+              128
+            ],
+            "storage_nbytes": 16384,
+            "storage_offset": 0,
+            "stride": [
+              128,
+              128,
+              1
+            ]
+          },
+          "req_to_token": {
+            "alias": "s4",
+            "dtype": "torch.int32",
+            "element_size": 4,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "paged",
+              "optional": false,
+              "paged": {
+                "access_contract": "only_indexed_units",
+                "index_divisor": 1,
+                "indices": "capture_req_rows",
+                "invalid_indices": [
+                  -1
+                ],
+                "max_index_entries": 64,
+                "storage_offset_bytes": 0,
+                "unit_bytes": 36888,
+                "unit_count": 65,
+                "unit_name": "request_paging_row",
+                "unit_stride_bytes": 36888
+              }
+            },
+            "shape": [
+              65,
+              9222
+            ],
+            "storage_nbytes": 2397720,
+            "storage_offset": 0,
+            "stride": [
+              9222,
+              1
+            ]
+          },
+          "seq_lens": {
+            "alias": "s5",
+            "dtype": "torch.int64",
+            "element_size": 8,
+            "kind": "tensor",
+            "role": {
+              "case_control": true,
+              "footprint": "view_span",
+              "kind": "mutable",
+              "optional": false,
+              "paged": null
+            },
+            "shape": [
+              64
+            ],
+            "storage_nbytes": 512,
+            "storage_offset": 0,
+            "stride": [
+              1
+            ]
+          },
+          "slot_ids": {
+            "alias": "s6",
+            "dtype": "torch.int64",
+            "element_size": 8,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "mutable",
+              "optional": false,
+              "paged": null
+            },
+            "shape": [
+              64
+            ],
+            "storage_nbytes": 512,
+            "storage_offset": 0,
+            "stride": [
+              1
+            ]
+          }
+        },
+        "mode": "graph",
+        "outputs": {
+          "result.0": null,
+          "result.1": {
+            "alias": "s7",
+            "dtype": "torch.int32",
+            "element_size": 4,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "mutable",
+              "optional": true,
+              "paged": null
+            },
+            "shape": [
+              1,
+              64,
+              16
+            ],
+            "storage_nbytes": 4096,
+            "storage_offset": 0,
+            "stride": [
+              1024,
+              16,
+              1
+            ]
+          },
+          "result.2": null
+        },
+        "source": "98c574e5c292c5fcfe8d2c4f7f3c1b480ba32be703ef12bf765e9549a65bc71c",
+        "stage": "decode",
+        "tensor_attribute_codec_id": null,
+        "tensor_control_codec_id": "minimax-work-controls-rle-v1",
+        "tensor_controls": {
+          "inputs.seq_lens": {
+            "runs": [
+              [
+                67,
+                63
+              ],
+              [
+                1,
+                1
+              ]
+            ],
+            "shape": [
+              64
+            ],
+            "units": "sequence_blocks_ceil"
+          }
+        }
+      },
+      "states": [
+        {
+          "fixture_sha256": "6b0279ddad7dbfb5778d4b8fdf44e0c0a9348cbe9f9a6a983e6265283383ebb9",
+          "graph_id": "909-graph-1",
+          "representative_labels": [
+            "first",
+            "min"
+          ],
+          "served": true,
+          "served_context": {
+            "active_requests": 63,
+            "active_tokens": 63,
+            "replay_id": "909-289",
+            "run_id": "minimax-case-only-v3-194550",
+            "stage": "decode",
+            "tp_rank": 0,
+            "workload_marker": "capture"
+          },
+          "source_artifact_key": "rank-0-pid-909/decode_score-7a82aa6a11047fea23855d23.json",
+          "startup_values": false,
+          "state_id": "state-6b0279ddad7dbfb5778d4b8fdf44e0c0a9348cbe9f9a6a983e6265283383ebb9",
+          "tensor_controls": {
+            "inputs.seq_lens": {
+              "runs": [
+                [
+                  8449,
+                  63
+                ],
+                [
+                  1,
+                  1
+                ]
+              ],
+              "shape": [
+                64
+              ]
+            }
+          }
+        },
+        {
+          "fixture_sha256": "2f3ce9d8f9453d4eab9617d012bc3ca5be67ad95a0bb96915024619c27690d34",
+          "graph_id": "909-graph-1",
+          "representative_labels": [
+            "max"
+          ],
+          "served": true,
+          "served_context": {
+            "active_requests": 63,
+            "active_tokens": 63,
+            "replay_id": "909-416",
+            "run_id": "minimax-case-only-v3-194550",
+            "stage": "decode",
+            "tp_rank": 0,
+            "workload_marker": "capture"
+          },
+          "source_artifact_key": "rank-0-pid-909/decode_score-7a82aa6a11047fea23855d23.representative-max.json",
+          "startup_values": false,
+          "state_id": "state-2f3ce9d8f9453d4eab9617d012bc3ca5be67ad95a0bb96915024619c27690d34",
+          "tensor_controls": {
+            "inputs.seq_lens": {
+              "runs": [
+                [
+                  8576,
+                  63
+                ],
+                [
+                  1,
+                  1
+                ]
+              ],
+              "shape": [
+                64
+              ]
+            }
+          }
+        }
+      ],
+      "work_distribution_sha256": "f762abe5123312a969ba2e9831a784d83f02a79ce1b1ecdd78ee2d1217bbd86c"
+    },
+    "decode_score-8efc9817bc95aa1b13982599": {
+      "occurrences": 29696,
+      "provenance": "direct captured native configuration",
+      "schema": {
+        "active_requests": 1,
+        "active_tokens": 1,
+        "case_projection_id": "minimax-block-and-causal-work-v3",
+        "controls": {
+          "environment": {
+            "SGLANG_OPT_USE_MINIMAX_DECODE_TOPK_RADIX": "1"
+          },
+          "launches": [
+            {
+              "compiled": {
+                "num_stages": 1,
+                "num_warps": 4,
+                "shared": 131072
+              },
+              "constexpr": {
+                "IS_FP8": false,
+                "NUM_KV_CHUNKS": 256,
+                "SCORE_TYPE": "max",
+                "SKIP_TRIVIAL_TOPK_SCORE": true
+              },
+              "grid": [
+                256,
+                1
+              ],
+              "kernel": "_decode_score_kernel"
+            }
+          ],
+          "operator_scalars": {
+            "block_size": 128,
+            "disable_index_value": true,
+            "init_blocks": 0,
+            "k_scale": null,
+            "local_blocks": 1,
+            "max_seqlen": 9218,
+            "page_size": 1,
+            "q_scale": null,
+            "score_type": "max",
+            "sink": null,
+            "sm_scale": null,
+            "topk": 16,
+            "use_dense_main_attn": false,
+            "use_tma": true,
+            "v_cache": null,
+            "v_scale": null
+          }
+        },
+        "extrema_score_id": "minimax-max-total-seqlen-topk-v3",
+        "family": "decode_score",
+        "inputs": {
+          "capture_kv_units": {
+            "alias": "s0",
+            "dtype": "torch.int64",
+            "element_size": 8,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "mutable",
+              "optional": false,
+              "paged": null
+            },
+            "shape": [
+              1,
+              9222
+            ],
+            "storage_nbytes": 73776,
+            "storage_offset": 0,
+            "stride": [
+              9222,
+              1
+            ]
+          },
+          "capture_req_rows": {
+            "alias": "s1",
+            "dtype": "torch.int64",
+            "element_size": 8,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "mutable",
+              "optional": false,
+              "paged": null
+            },
+            "shape": [
+              1
+            ],
+            "storage_nbytes": 8,
+            "storage_offset": 0,
+            "stride": [
+              1
+            ]
+          },
+          "k_cache": {
+            "alias": "s2",
+            "dtype": "torch.bfloat16",
+            "element_size": 2,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "paged",
+              "optional": false,
+              "paged": {
+                "access_contract": "only_indexed_units",
+                "index_divisor": 1,
+                "indices": "capture_kv_units",
+                "invalid_indices": [
+                  -1
+                ],
+                "max_index_entries": 9222,
+                "storage_offset_bytes": 0,
+                "unit_bytes": 256,
+                "unit_count": 4914444,
+                "unit_name": "physical_token_row",
+                "unit_stride_bytes": 256
+              }
+            },
+            "shape": [
+              4914444,
+              1,
+              128
+            ],
+            "storage_nbytes": 1258097664,
+            "storage_offset": 0,
+            "stride": [
+              128,
+              128,
+              1
+            ]
+          },
+          "q": {
+            "alias": "s3",
+            "dtype": "torch.bfloat16",
+            "element_size": 2,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "mutable",
+              "optional": false,
+              "paged": null
+            },
+            "shape": [
+              1,
+              1,
+              128
+            ],
+            "storage_nbytes": 256,
+            "storage_offset": 0,
+            "stride": [
+              128,
+              128,
+              1
+            ]
+          },
+          "req_to_token": {
+            "alias": "s4",
+            "dtype": "torch.int32",
+            "element_size": 4,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "paged",
+              "optional": false,
+              "paged": {
+                "access_contract": "only_indexed_units",
+                "index_divisor": 1,
+                "indices": "capture_req_rows",
+                "invalid_indices": [
+                  -1
+                ],
+                "max_index_entries": 1,
+                "storage_offset_bytes": 0,
+                "unit_bytes": 36888,
+                "unit_count": 65,
+                "unit_name": "request_paging_row",
+                "unit_stride_bytes": 36888
+              }
+            },
+            "shape": [
+              65,
+              9222
+            ],
+            "storage_nbytes": 2397720,
+            "storage_offset": 0,
+            "stride": [
+              9222,
+              1
+            ]
+          },
+          "seq_lens": {
+            "alias": "s5",
+            "dtype": "torch.int64",
+            "element_size": 8,
+            "kind": "tensor",
+            "role": {
+              "case_control": true,
+              "footprint": "view_span",
+              "kind": "mutable",
+              "optional": false,
+              "paged": null
+            },
+            "shape": [
+              1
+            ],
+            "storage_nbytes": 512,
+            "storage_offset": 0,
+            "stride": [
+              1
+            ]
+          },
+          "slot_ids": {
+            "alias": "s6",
+            "dtype": "torch.int64",
+            "element_size": 8,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "mutable",
+              "optional": false,
+              "paged": null
+            },
+            "shape": [
+              1
+            ],
+            "storage_nbytes": 512,
+            "storage_offset": 0,
+            "stride": [
+              1
+            ]
+          }
+        },
+        "mode": "graph",
+        "outputs": {
+          "result.0": null,
+          "result.1": {
+            "alias": "s7",
+            "dtype": "torch.int32",
+            "element_size": 4,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "mutable",
+              "optional": true,
+              "paged": null
+            },
+            "shape": [
+              1,
+              1,
+              16
+            ],
+            "storage_nbytes": 64,
+            "storage_offset": 0,
+            "stride": [
+              16,
+              16,
+              1
+            ]
+          },
+          "result.2": null
+        },
+        "source": "98c574e5c292c5fcfe8d2c4f7f3c1b480ba32be703ef12bf765e9549a65bc71c",
+        "stage": "decode",
+        "tensor_attribute_codec_id": null,
+        "tensor_control_codec_id": "minimax-work-controls-rle-v1",
+        "tensor_controls": {
+          "inputs.seq_lens": {
+            "runs": [
+              [
+                65,
+                1
+              ]
+            ],
+            "shape": [
+              1
+            ],
+            "units": "sequence_blocks_ceil"
+          }
+        }
+      },
+      "states": [
+        {
+          "fixture_sha256": "0783c55ba06efeca9f08b70590b87243f47cd62621b5ad0047f30066b0f9f168",
+          "graph_id": "909-graph-12",
+          "representative_labels": [
+            "first",
+            "min"
+          ],
+          "served": true,
+          "served_context": {
+            "active_requests": 1,
+            "active_tokens": 1,
+            "replay_id": "909-1058",
+            "run_id": "minimax-case-only-v3-194550",
+            "stage": "decode",
+            "tp_rank": 0,
+            "workload_marker": "capture"
+          },
+          "source_artifact_key": "rank-0-pid-909/decode_score-8efc9817bc95aa1b13982599.json",
+          "startup_values": false,
+          "state_id": "state-0783c55ba06efeca9f08b70590b87243f47cd62621b5ad0047f30066b0f9f168",
+          "tensor_controls": {
+            "inputs.seq_lens": {
+              "runs": [
+                [
+                  8193,
+                  1
+                ]
+              ],
+              "shape": [
+                1
+              ]
+            }
+          }
+        },
+        {
+          "fixture_sha256": "4647cf0a939476bd40d1eb85848c11402eec26243069e7c16d964d1e9fb84396",
+          "graph_id": "909-graph-12",
+          "representative_labels": [
+            "max"
+          ],
+          "served": true,
+          "served_context": {
+            "active_requests": 1,
+            "active_tokens": 1,
+            "replay_id": "909-1185",
+            "run_id": "minimax-case-only-v3-194550",
+            "stage": "decode",
+            "tp_rank": 0,
+            "workload_marker": "capture"
+          },
+          "source_artifact_key": "rank-0-pid-909/decode_score-8efc9817bc95aa1b13982599.representative-max.json",
+          "startup_values": false,
+          "state_id": "state-4647cf0a939476bd40d1eb85848c11402eec26243069e7c16d964d1e9fb84396",
+          "tensor_controls": {
+            "inputs.seq_lens": {
+              "runs": [
+                [
+                  8320,
+                  1
+                ]
+              ],
+              "shape": [
+                1
+              ]
+            }
+          }
+        }
+      ],
+      "work_distribution_sha256": "a43050f98d39119fc34d1b58beb27f1679c11add5f77b53ab057438f5a0ae163"
+    },
+    "decode_score-8fd5f00e7e6a82e6819b8e26": {
+      "occurrences": 29696,
+      "provenance": "direct captured native configuration",
+      "schema": {
+        "active_requests": 1,
+        "active_tokens": 1,
+        "case_projection_id": "minimax-block-and-causal-work-v3",
+        "controls": {
+          "environment": {
+            "SGLANG_OPT_USE_MINIMAX_DECODE_TOPK_RADIX": "1"
+          },
+          "launches": [
+            {
+              "compiled": {
+                "num_stages": 1,
+                "num_warps": 4,
+                "shared": 131072
+              },
+              "constexpr": {
+                "IS_FP8": false,
+                "NUM_KV_CHUNKS": 256,
+                "SCORE_TYPE": "max",
+                "SKIP_TRIVIAL_TOPK_SCORE": true
+              },
+              "grid": [
+                256,
+                1
+              ],
+              "kernel": "_decode_score_kernel"
+            }
+          ],
+          "operator_scalars": {
+            "block_size": 128,
+            "disable_index_value": true,
+            "init_blocks": 0,
+            "k_scale": null,
+            "local_blocks": 1,
+            "max_seqlen": 9218,
+            "page_size": 1,
+            "q_scale": null,
+            "score_type": "max",
+            "sink": null,
+            "sm_scale": null,
+            "topk": 16,
+            "use_dense_main_attn": false,
+            "use_tma": true,
+            "v_cache": null,
+            "v_scale": null
+          }
+        },
+        "extrema_score_id": "minimax-max-total-seqlen-topk-v3",
+        "family": "decode_score",
+        "inputs": {
+          "capture_kv_units": {
+            "alias": "s0",
+            "dtype": "torch.int64",
+            "element_size": 8,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "mutable",
+              "optional": false,
+              "paged": null
+            },
+            "shape": [
+              1,
+              9222
+            ],
+            "storage_nbytes": 73776,
+            "storage_offset": 0,
+            "stride": [
+              9222,
+              1
+            ]
+          },
+          "capture_req_rows": {
+            "alias": "s1",
+            "dtype": "torch.int64",
+            "element_size": 8,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "mutable",
+              "optional": false,
+              "paged": null
+            },
+            "shape": [
+              1
+            ],
+            "storage_nbytes": 8,
+            "storage_offset": 0,
+            "stride": [
+              1
+            ]
+          },
+          "k_cache": {
+            "alias": "s2",
+            "dtype": "torch.bfloat16",
+            "element_size": 2,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "paged",
+              "optional": false,
+              "paged": {
+                "access_contract": "only_indexed_units",
+                "index_divisor": 1,
+                "indices": "capture_kv_units",
+                "invalid_indices": [
+                  -1
+                ],
+                "max_index_entries": 9222,
+                "storage_offset_bytes": 0,
+                "unit_bytes": 256,
+                "unit_count": 4914444,
+                "unit_name": "physical_token_row",
+                "unit_stride_bytes": 256
+              }
+            },
+            "shape": [
+              4914444,
+              1,
+              128
+            ],
+            "storage_nbytes": 1258097664,
+            "storage_offset": 0,
+            "stride": [
+              128,
+              128,
+              1
+            ]
+          },
+          "q": {
+            "alias": "s3",
+            "dtype": "torch.bfloat16",
+            "element_size": 2,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "mutable",
+              "optional": false,
+              "paged": null
+            },
+            "shape": [
+              1,
+              1,
+              128
+            ],
+            "storage_nbytes": 256,
+            "storage_offset": 0,
+            "stride": [
+              128,
+              128,
+              1
+            ]
+          },
+          "req_to_token": {
+            "alias": "s4",
+            "dtype": "torch.int32",
+            "element_size": 4,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "paged",
+              "optional": false,
+              "paged": {
+                "access_contract": "only_indexed_units",
+                "index_divisor": 1,
+                "indices": "capture_req_rows",
+                "invalid_indices": [
+                  -1
+                ],
+                "max_index_entries": 1,
+                "storage_offset_bytes": 0,
+                "unit_bytes": 36888,
+                "unit_count": 65,
+                "unit_name": "request_paging_row",
+                "unit_stride_bytes": 36888
+              }
+            },
+            "shape": [
+              65,
+              9222
+            ],
+            "storage_nbytes": 2397720,
+            "storage_offset": 0,
+            "stride": [
+              9222,
+              1
+            ]
+          },
+          "seq_lens": {
+            "alias": "s5",
+            "dtype": "torch.int64",
+            "element_size": 8,
+            "kind": "tensor",
+            "role": {
+              "case_control": true,
+              "footprint": "view_span",
+              "kind": "mutable",
+              "optional": false,
+              "paged": null
+            },
+            "shape": [
+              1
+            ],
+            "storage_nbytes": 512,
+            "storage_offset": 0,
+            "stride": [
+              1
+            ]
+          },
+          "slot_ids": {
+            "alias": "s6",
+            "dtype": "torch.int64",
+            "element_size": 8,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "mutable",
+              "optional": false,
+              "paged": null
+            },
+            "shape": [
+              1
+            ],
+            "storage_nbytes": 512,
+            "storage_offset": 0,
+            "stride": [
+              1
+            ]
+          }
+        },
+        "mode": "graph",
+        "outputs": {
+          "result.0": null,
+          "result.1": {
+            "alias": "s7",
+            "dtype": "torch.int32",
+            "element_size": 4,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "mutable",
+              "optional": true,
+              "paged": null
+            },
+            "shape": [
+              1,
+              1,
+              16
+            ],
+            "storage_nbytes": 64,
+            "storage_offset": 0,
+            "stride": [
+              16,
+              16,
+              1
+            ]
+          },
+          "result.2": null
+        },
+        "source": "98c574e5c292c5fcfe8d2c4f7f3c1b480ba32be703ef12bf765e9549a65bc71c",
+        "stage": "decode",
+        "tensor_attribute_codec_id": null,
+        "tensor_control_codec_id": "minimax-work-controls-rle-v1",
+        "tensor_controls": {
+          "inputs.seq_lens": {
+            "runs": [
+              [
+                70,
+                1
+              ]
+            ],
+            "shape": [
+              1
+            ],
+            "units": "sequence_blocks_ceil"
+          }
+        }
+      },
+      "states": [
+        {
+          "fixture_sha256": "f94d936bf1b905a5543fd3525694d06c7fca38b3c8c83283191e1efc1a580dab",
+          "graph_id": "909-graph-12",
+          "representative_labels": [
+            "first",
+            "min"
+          ],
+          "served": true,
+          "served_context": {
+            "active_requests": 1,
+            "active_tokens": 1,
+            "replay_id": "909-1698",
+            "run_id": "minimax-case-only-v3-194550",
+            "stage": "decode",
+            "tp_rank": 0,
+            "workload_marker": "capture"
+          },
+          "source_artifact_key": "rank-0-pid-909/decode_score-8fd5f00e7e6a82e6819b8e26.json",
+          "startup_values": false,
+          "state_id": "state-f94d936bf1b905a5543fd3525694d06c7fca38b3c8c83283191e1efc1a580dab",
+          "tensor_controls": {
+            "inputs.seq_lens": {
+              "runs": [
+                [
+                  8833,
+                  1
+                ]
+              ],
+              "shape": [
+                1
+              ]
+            }
+          }
+        },
+        {
+          "fixture_sha256": "84ae770d14754a1dd19778e44459aaad0469790f0a168eb80252023e59a6d7ee",
+          "graph_id": "909-graph-12",
+          "representative_labels": [
+            "max"
+          ],
+          "served": true,
+          "served_context": {
+            "active_requests": 1,
+            "active_tokens": 1,
+            "replay_id": "909-1825",
+            "run_id": "minimax-case-only-v3-194550",
+            "stage": "decode",
+            "tp_rank": 0,
+            "workload_marker": "capture"
+          },
+          "source_artifact_key": "rank-0-pid-909/decode_score-8fd5f00e7e6a82e6819b8e26.representative-max.json",
+          "startup_values": false,
+          "state_id": "state-84ae770d14754a1dd19778e44459aaad0469790f0a168eb80252023e59a6d7ee",
+          "tensor_controls": {
+            "inputs.seq_lens": {
+              "runs": [
+                [
+                  8960,
+                  1
+                ]
+              ],
+              "shape": [
+                1
+              ]
+            }
+          }
+        }
+      ],
+      "work_distribution_sha256": "ebc74d71a90018ab9f63ea20447eecaf144d98eaef4248aacf90a095f9a39f87"
+    },
+    "decode_score-95683042cd30521720eff33e": {
+      "occurrences": 29696,
+      "provenance": "direct captured native configuration",
+      "schema": {
+        "active_requests": 63,
+        "active_tokens": 63,
+        "case_projection_id": "minimax-block-and-causal-work-v3",
+        "controls": {
+          "environment": {
+            "SGLANG_OPT_USE_MINIMAX_DECODE_TOPK_RADIX": "1"
+          },
+          "launches": [
+            {
+              "compiled": {
+                "num_stages": 1,
+                "num_warps": 4,
+                "shared": 32768
+              },
+              "constexpr": {
+                "IS_FP8": false,
+                "NUM_KV_CHUNKS": 64,
+                "SCORE_TYPE": "max",
+                "SKIP_TRIVIAL_TOPK_SCORE": true
+              },
+              "grid": [
+                4096,
+                1
+              ],
+              "kernel": "_decode_score_kernel"
+            }
+          ],
+          "operator_scalars": {
+            "block_size": 128,
+            "disable_index_value": true,
+            "init_blocks": 0,
+            "k_scale": null,
+            "local_blocks": 1,
+            "max_seqlen": 9218,
+            "page_size": 1,
+            "q_scale": null,
+            "score_type": "max",
+            "sink": null,
+            "sm_scale": null,
+            "topk": 16,
+            "use_dense_main_attn": false,
+            "use_tma": true,
+            "v_cache": null,
+            "v_scale": null
+          }
+        },
+        "extrema_score_id": "minimax-max-total-seqlen-topk-v3",
+        "family": "decode_score",
+        "inputs": {
+          "capture_kv_units": {
+            "alias": "s0",
+            "dtype": "torch.int64",
+            "element_size": 8,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "mutable",
+              "optional": false,
+              "paged": null
+            },
+            "shape": [
+              64,
+              9222
+            ],
+            "storage_nbytes": 4721664,
+            "storage_offset": 0,
+            "stride": [
+              9222,
+              1
+            ]
+          },
+          "capture_req_rows": {
+            "alias": "s1",
+            "dtype": "torch.int64",
+            "element_size": 8,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "mutable",
+              "optional": false,
+              "paged": null
+            },
+            "shape": [
+              64
+            ],
+            "storage_nbytes": 512,
+            "storage_offset": 0,
+            "stride": [
+              1
+            ]
+          },
+          "k_cache": {
+            "alias": "s2",
+            "dtype": "torch.bfloat16",
+            "element_size": 2,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "paged",
+              "optional": false,
+              "paged": {
+                "access_contract": "only_indexed_units",
+                "index_divisor": 1,
+                "indices": "capture_kv_units",
+                "invalid_indices": [
+                  -1
+                ],
+                "max_index_entries": 590208,
+                "storage_offset_bytes": 0,
+                "unit_bytes": 256,
+                "unit_count": 4914444,
+                "unit_name": "physical_token_row",
+                "unit_stride_bytes": 256
+              }
+            },
+            "shape": [
+              4914444,
+              1,
+              128
+            ],
+            "storage_nbytes": 1258097664,
+            "storage_offset": 0,
+            "stride": [
+              128,
+              128,
+              1
+            ]
+          },
+          "q": {
+            "alias": "s3",
+            "dtype": "torch.bfloat16",
+            "element_size": 2,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "mutable",
+              "optional": false,
+              "paged": null
+            },
+            "shape": [
+              64,
+              1,
+              128
+            ],
+            "storage_nbytes": 16384,
+            "storage_offset": 0,
+            "stride": [
+              128,
+              128,
+              1
+            ]
+          },
+          "req_to_token": {
+            "alias": "s4",
+            "dtype": "torch.int32",
+            "element_size": 4,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "paged",
+              "optional": false,
+              "paged": {
+                "access_contract": "only_indexed_units",
+                "index_divisor": 1,
+                "indices": "capture_req_rows",
+                "invalid_indices": [
+                  -1
+                ],
+                "max_index_entries": 64,
+                "storage_offset_bytes": 0,
+                "unit_bytes": 36888,
+                "unit_count": 65,
+                "unit_name": "request_paging_row",
+                "unit_stride_bytes": 36888
+              }
+            },
+            "shape": [
+              65,
+              9222
+            ],
+            "storage_nbytes": 2397720,
+            "storage_offset": 0,
+            "stride": [
+              9222,
+              1
+            ]
+          },
+          "seq_lens": {
+            "alias": "s5",
+            "dtype": "torch.int64",
+            "element_size": 8,
+            "kind": "tensor",
+            "role": {
+              "case_control": true,
+              "footprint": "view_span",
+              "kind": "mutable",
+              "optional": false,
+              "paged": null
+            },
+            "shape": [
+              64
+            ],
+            "storage_nbytes": 512,
+            "storage_offset": 0,
+            "stride": [
+              1
+            ]
+          },
+          "slot_ids": {
+            "alias": "s6",
+            "dtype": "torch.int64",
+            "element_size": 8,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "mutable",
+              "optional": false,
+              "paged": null
+            },
+            "shape": [
+              64
+            ],
+            "storage_nbytes": 512,
+            "storage_offset": 0,
+            "stride": [
+              1
+            ]
+          }
+        },
+        "mode": "graph",
+        "outputs": {
+          "result.0": null,
+          "result.1": {
+            "alias": "s7",
+            "dtype": "torch.int32",
+            "element_size": 4,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "mutable",
+              "optional": true,
+              "paged": null
+            },
+            "shape": [
+              1,
+              64,
+              16
+            ],
+            "storage_nbytes": 4096,
+            "storage_offset": 0,
+            "stride": [
+              1024,
+              16,
+              1
+            ]
+          },
+          "result.2": null
+        },
+        "source": "98c574e5c292c5fcfe8d2c4f7f3c1b480ba32be703ef12bf765e9549a65bc71c",
+        "stage": "decode",
+        "tensor_attribute_codec_id": null,
+        "tensor_control_codec_id": "minimax-work-controls-rle-v1",
+        "tensor_controls": {
+          "inputs.seq_lens": {
+            "runs": [
+              [
+                70,
+                63
+              ],
+              [
+                1,
+                1
+              ]
+            ],
+            "shape": [
+              64
+            ],
+            "units": "sequence_blocks_ceil"
+          }
+        }
+      },
+      "states": [
+        {
+          "fixture_sha256": "eed08530d9ec9ab66183f39ac1ad99451356339c80b30abf9552194b105e4fb0",
+          "graph_id": "909-graph-1",
+          "representative_labels": [
+            "first",
+            "min"
+          ],
+          "served": true,
+          "served_context": {
+            "active_requests": 63,
+            "active_tokens": 63,
+            "replay_id": "909-673",
+            "run_id": "minimax-case-only-v3-194550",
+            "stage": "decode",
+            "tp_rank": 0,
+            "workload_marker": "capture"
+          },
+          "source_artifact_key": "rank-0-pid-909/decode_score-95683042cd30521720eff33e.json",
+          "startup_values": false,
+          "state_id": "state-eed08530d9ec9ab66183f39ac1ad99451356339c80b30abf9552194b105e4fb0",
+          "tensor_controls": {
+            "inputs.seq_lens": {
+              "runs": [
+                [
+                  8833,
+                  63
+                ],
+                [
+                  1,
+                  1
+                ]
+              ],
+              "shape": [
+                64
+              ]
+            }
+          }
+        },
+        {
+          "fixture_sha256": "13d66cbe84c5ea1cc7f4aaef9f1113d9fd6aab343c096a85e1375eda14deb317",
+          "graph_id": "909-graph-1",
+          "representative_labels": [
+            "max"
+          ],
+          "served": true,
+          "served_context": {
+            "active_requests": 63,
+            "active_tokens": 63,
+            "replay_id": "909-800",
+            "run_id": "minimax-case-only-v3-194550",
+            "stage": "decode",
+            "tp_rank": 0,
+            "workload_marker": "capture"
+          },
+          "source_artifact_key": "rank-0-pid-909/decode_score-95683042cd30521720eff33e.representative-max.json",
+          "startup_values": false,
+          "state_id": "state-13d66cbe84c5ea1cc7f4aaef9f1113d9fd6aab343c096a85e1375eda14deb317",
+          "tensor_controls": {
+            "inputs.seq_lens": {
+              "runs": [
+                [
+                  8960,
+                  63
+                ],
+                [
+                  1,
+                  1
+                ]
+              ],
+              "shape": [
+                64
+              ]
+            }
+          }
+        }
+      ],
+      "work_distribution_sha256": "fb310fc4350178dbd2d2e5e161da809d5caa2ea336fd546474f1a8ac5b081796"
+    },
+    "decode_score-a0a3384308c94f3de589374c": {
+      "occurrences": 29696,
+      "provenance": "direct captured native configuration",
+      "schema": {
+        "active_requests": 1,
+        "active_tokens": 1,
+        "case_projection_id": "minimax-block-and-causal-work-v3",
+        "controls": {
+          "environment": {
+            "SGLANG_OPT_USE_MINIMAX_DECODE_TOPK_RADIX": "1"
+          },
+          "launches": [
+            {
+              "compiled": {
+                "num_stages": 1,
+                "num_warps": 4,
+                "shared": 131072
+              },
+              "constexpr": {
+                "IS_FP8": false,
+                "NUM_KV_CHUNKS": 256,
+                "SCORE_TYPE": "max",
+                "SKIP_TRIVIAL_TOPK_SCORE": true
+              },
+              "grid": [
+                256,
+                1
+              ],
+              "kernel": "_decode_score_kernel"
+            }
+          ],
+          "operator_scalars": {
+            "block_size": 128,
+            "disable_index_value": true,
+            "init_blocks": 0,
+            "k_scale": null,
+            "local_blocks": 1,
+            "max_seqlen": 9218,
+            "page_size": 1,
+            "q_scale": null,
+            "score_type": "max",
+            "sink": null,
+            "sm_scale": null,
+            "topk": 16,
+            "use_dense_main_attn": false,
+            "use_tma": true,
+            "v_cache": null,
+            "v_scale": null
+          }
+        },
+        "extrema_score_id": "minimax-max-total-seqlen-topk-v3",
+        "family": "decode_score",
+        "inputs": {
+          "capture_kv_units": {
+            "alias": "s0",
+            "dtype": "torch.int64",
+            "element_size": 8,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "mutable",
+              "optional": false,
+              "paged": null
+            },
+            "shape": [
+              1,
+              9222
+            ],
+            "storage_nbytes": 73776,
+            "storage_offset": 0,
+            "stride": [
+              9222,
+              1
+            ]
+          },
+          "capture_req_rows": {
+            "alias": "s1",
+            "dtype": "torch.int64",
+            "element_size": 8,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "mutable",
+              "optional": false,
+              "paged": null
+            },
+            "shape": [
+              1
+            ],
+            "storage_nbytes": 8,
+            "storage_offset": 0,
+            "stride": [
+              1
+            ]
+          },
+          "k_cache": {
+            "alias": "s2",
+            "dtype": "torch.bfloat16",
+            "element_size": 2,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "paged",
+              "optional": false,
+              "paged": {
+                "access_contract": "only_indexed_units",
+                "index_divisor": 1,
+                "indices": "capture_kv_units",
+                "invalid_indices": [
+                  -1
+                ],
+                "max_index_entries": 9222,
+                "storage_offset_bytes": 0,
+                "unit_bytes": 256,
+                "unit_count": 4914444,
+                "unit_name": "physical_token_row",
+                "unit_stride_bytes": 256
+              }
+            },
+            "shape": [
+              4914444,
+              1,
+              128
+            ],
+            "storage_nbytes": 1258097664,
+            "storage_offset": 0,
+            "stride": [
+              128,
+              128,
+              1
+            ]
+          },
+          "q": {
+            "alias": "s3",
+            "dtype": "torch.bfloat16",
+            "element_size": 2,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "mutable",
+              "optional": false,
+              "paged": null
+            },
+            "shape": [
+              1,
+              1,
+              128
+            ],
+            "storage_nbytes": 256,
+            "storage_offset": 0,
+            "stride": [
+              128,
+              128,
+              1
+            ]
+          },
+          "req_to_token": {
+            "alias": "s4",
+            "dtype": "torch.int32",
+            "element_size": 4,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "paged",
+              "optional": false,
+              "paged": {
+                "access_contract": "only_indexed_units",
+                "index_divisor": 1,
+                "indices": "capture_req_rows",
+                "invalid_indices": [
+                  -1
+                ],
+                "max_index_entries": 1,
+                "storage_offset_bytes": 0,
+                "unit_bytes": 36888,
+                "unit_count": 65,
+                "unit_name": "request_paging_row",
+                "unit_stride_bytes": 36888
+              }
+            },
+            "shape": [
+              65,
+              9222
+            ],
+            "storage_nbytes": 2397720,
+            "storage_offset": 0,
+            "stride": [
+              9222,
+              1
+            ]
+          },
+          "seq_lens": {
+            "alias": "s5",
+            "dtype": "torch.int64",
+            "element_size": 8,
+            "kind": "tensor",
+            "role": {
+              "case_control": true,
+              "footprint": "view_span",
+              "kind": "mutable",
+              "optional": false,
+              "paged": null
+            },
+            "shape": [
+              1
+            ],
+            "storage_nbytes": 512,
+            "storage_offset": 0,
+            "stride": [
+              1
+            ]
+          },
+          "slot_ids": {
+            "alias": "s6",
+            "dtype": "torch.int64",
+            "element_size": 8,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "mutable",
+              "optional": false,
+              "paged": null
+            },
+            "shape": [
+              1
+            ],
+            "storage_nbytes": 512,
+            "storage_offset": 0,
+            "stride": [
+              1
+            ]
+          }
+        },
+        "mode": "graph",
+        "outputs": {
+          "result.0": null,
+          "result.1": {
+            "alias": "s7",
+            "dtype": "torch.int32",
+            "element_size": 4,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "mutable",
+              "optional": true,
+              "paged": null
+            },
+            "shape": [
+              1,
+              1,
+              16
+            ],
+            "storage_nbytes": 64,
+            "storage_offset": 0,
+            "stride": [
+              16,
+              16,
+              1
+            ]
+          },
+          "result.2": null
+        },
+        "source": "98c574e5c292c5fcfe8d2c4f7f3c1b480ba32be703ef12bf765e9549a65bc71c",
+        "stage": "decode",
+        "tensor_attribute_codec_id": null,
+        "tensor_control_codec_id": "minimax-work-controls-rle-v1",
+        "tensor_controls": {
+          "inputs.seq_lens": {
+            "runs": [
+              [
+                67,
+                1
+              ]
+            ],
+            "shape": [
+              1
+            ],
+            "units": "sequence_blocks_ceil"
+          }
+        }
+      },
+      "states": [
+        {
+          "fixture_sha256": "1f3796376a9579cebf0d9702d8eae9d1f9923482f6093aad745725cc4741f75e",
+          "graph_id": "909-graph-12",
+          "representative_labels": [
+            "first",
+            "min"
+          ],
+          "served": true,
+          "served_context": {
+            "active_requests": 1,
+            "active_tokens": 1,
+            "replay_id": "909-1314",
+            "run_id": "minimax-case-only-v3-194550",
+            "stage": "decode",
+            "tp_rank": 0,
+            "workload_marker": "capture"
+          },
+          "source_artifact_key": "rank-0-pid-909/decode_score-a0a3384308c94f3de589374c.json",
+          "startup_values": false,
+          "state_id": "state-1f3796376a9579cebf0d9702d8eae9d1f9923482f6093aad745725cc4741f75e",
+          "tensor_controls": {
+            "inputs.seq_lens": {
+              "runs": [
+                [
+                  8449,
+                  1
+                ]
+              ],
+              "shape": [
+                1
+              ]
+            }
+          }
+        },
+        {
+          "fixture_sha256": "d881a9820baf4183ff08749bfab056c18803cbbeb4ebda815944bf64d6918847",
+          "graph_id": "909-graph-12",
+          "representative_labels": [
+            "max"
+          ],
+          "served": true,
+          "served_context": {
+            "active_requests": 1,
+            "active_tokens": 1,
+            "replay_id": "909-1441",
+            "run_id": "minimax-case-only-v3-194550",
+            "stage": "decode",
+            "tp_rank": 0,
+            "workload_marker": "capture"
+          },
+          "source_artifact_key": "rank-0-pid-909/decode_score-a0a3384308c94f3de589374c.representative-max.json",
+          "startup_values": false,
+          "state_id": "state-d881a9820baf4183ff08749bfab056c18803cbbeb4ebda815944bf64d6918847",
+          "tensor_controls": {
+            "inputs.seq_lens": {
+              "runs": [
+                [
+                  8576,
+                  1
+                ]
+              ],
+              "shape": [
+                1
+              ]
+            }
+          }
+        }
+      ],
+      "work_distribution_sha256": "e10e34be6fe751ea6bc55e556dc7aedf009b5ad97945f53cb5be34380fb575df"
+    },
+    "decode_score-bb70343f3062aee597c11e35": {
+      "occurrences": 29696,
+      "provenance": "direct captured native configuration",
+      "schema": {
+        "active_requests": 1,
+        "active_tokens": 1,
+        "case_projection_id": "minimax-block-and-causal-work-v3",
+        "controls": {
+          "environment": {
+            "SGLANG_OPT_USE_MINIMAX_DECODE_TOPK_RADIX": "1"
+          },
+          "launches": [
+            {
+              "compiled": {
+                "num_stages": 1,
+                "num_warps": 4,
+                "shared": 131072
+              },
+              "constexpr": {
+                "IS_FP8": false,
+                "NUM_KV_CHUNKS": 256,
+                "SCORE_TYPE": "max",
+                "SKIP_TRIVIAL_TOPK_SCORE": true
+              },
+              "grid": [
+                256,
+                1
+              ],
+              "kernel": "_decode_score_kernel"
+            }
+          ],
+          "operator_scalars": {
+            "block_size": 128,
+            "disable_index_value": true,
+            "init_blocks": 0,
+            "k_scale": null,
+            "local_blocks": 1,
+            "max_seqlen": 9218,
+            "page_size": 1,
+            "q_scale": null,
+            "score_type": "max",
+            "sink": null,
+            "sm_scale": null,
+            "topk": 16,
+            "use_dense_main_attn": false,
+            "use_tma": true,
+            "v_cache": null,
+            "v_scale": null
+          }
+        },
+        "extrema_score_id": "minimax-max-total-seqlen-topk-v3",
+        "family": "decode_score",
+        "inputs": {
+          "capture_kv_units": {
+            "alias": "s0",
+            "dtype": "torch.int64",
+            "element_size": 8,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "mutable",
+              "optional": false,
+              "paged": null
+            },
+            "shape": [
+              1,
+              9222
+            ],
+            "storage_nbytes": 73776,
+            "storage_offset": 0,
+            "stride": [
+              9222,
+              1
+            ]
+          },
+          "capture_req_rows": {
+            "alias": "s1",
+            "dtype": "torch.int64",
+            "element_size": 8,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "mutable",
+              "optional": false,
+              "paged": null
+            },
+            "shape": [
+              1
+            ],
+            "storage_nbytes": 8,
+            "storage_offset": 0,
+            "stride": [
+              1
+            ]
+          },
+          "k_cache": {
+            "alias": "s2",
+            "dtype": "torch.bfloat16",
+            "element_size": 2,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "paged",
+              "optional": false,
+              "paged": {
+                "access_contract": "only_indexed_units",
+                "index_divisor": 1,
+                "indices": "capture_kv_units",
+                "invalid_indices": [
+                  -1
+                ],
+                "max_index_entries": 9222,
+                "storage_offset_bytes": 0,
+                "unit_bytes": 256,
+                "unit_count": 4914444,
+                "unit_name": "physical_token_row",
+                "unit_stride_bytes": 256
+              }
+            },
+            "shape": [
+              4914444,
+              1,
+              128
+            ],
+            "storage_nbytes": 1258097664,
+            "storage_offset": 0,
+            "stride": [
+              128,
+              128,
+              1
+            ]
+          },
+          "q": {
+            "alias": "s3",
+            "dtype": "torch.bfloat16",
+            "element_size": 2,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "mutable",
+              "optional": false,
+              "paged": null
+            },
+            "shape": [
+              1,
+              1,
+              128
+            ],
+            "storage_nbytes": 256,
+            "storage_offset": 0,
+            "stride": [
+              128,
+              128,
+              1
+            ]
+          },
+          "req_to_token": {
+            "alias": "s4",
+            "dtype": "torch.int32",
+            "element_size": 4,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "paged",
+              "optional": false,
+              "paged": {
+                "access_contract": "only_indexed_units",
+                "index_divisor": 1,
+                "indices": "capture_req_rows",
+                "invalid_indices": [
+                  -1
+                ],
+                "max_index_entries": 1,
+                "storage_offset_bytes": 0,
+                "unit_bytes": 36888,
+                "unit_count": 65,
+                "unit_name": "request_paging_row",
+                "unit_stride_bytes": 36888
+              }
+            },
+            "shape": [
+              65,
+              9222
+            ],
+            "storage_nbytes": 2397720,
+            "storage_offset": 0,
+            "stride": [
+              9222,
+              1
+            ]
+          },
+          "seq_lens": {
+            "alias": "s5",
+            "dtype": "torch.int64",
+            "element_size": 8,
+            "kind": "tensor",
+            "role": {
+              "case_control": true,
+              "footprint": "view_span",
+              "kind": "mutable",
+              "optional": false,
+              "paged": null
+            },
+            "shape": [
+              1
+            ],
+            "storage_nbytes": 512,
+            "storage_offset": 0,
+            "stride": [
+              1
+            ]
+          },
+          "slot_ids": {
+            "alias": "s6",
+            "dtype": "torch.int64",
+            "element_size": 8,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "mutable",
+              "optional": false,
+              "paged": null
+            },
+            "shape": [
+              1
+            ],
+            "storage_nbytes": 512,
+            "storage_offset": 0,
+            "stride": [
+              1
+            ]
+          }
+        },
+        "mode": "graph",
+        "outputs": {
+          "result.0": null,
+          "result.1": {
+            "alias": "s7",
+            "dtype": "torch.int32",
+            "element_size": 4,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "mutable",
+              "optional": true,
+              "paged": null
+            },
+            "shape": [
+              1,
+              1,
+              16
+            ],
+            "storage_nbytes": 64,
+            "storage_offset": 0,
+            "stride": [
+              16,
+              16,
+              1
+            ]
+          },
+          "result.2": null
+        },
+        "source": "98c574e5c292c5fcfe8d2c4f7f3c1b480ba32be703ef12bf765e9549a65bc71c",
+        "stage": "decode",
+        "tensor_attribute_codec_id": null,
+        "tensor_control_codec_id": "minimax-work-controls-rle-v1",
+        "tensor_controls": {
+          "inputs.seq_lens": {
+            "runs": [
+              [
+                71,
+                1
+              ]
+            ],
+            "shape": [
+              1
+            ],
+            "units": "sequence_blocks_ceil"
+          }
+        }
+      },
+      "states": [
+        {
+          "fixture_sha256": "a2b582c8d60d8d1e7dfaadbc27ea663ec16e7c40c88dd9bf24d7e83672c3dfe6",
+          "graph_id": "909-graph-12",
+          "representative_labels": [
+            "first",
+            "min"
+          ],
+          "served": true,
+          "served_context": {
+            "active_requests": 1,
+            "active_tokens": 1,
+            "replay_id": "909-1826",
+            "run_id": "minimax-case-only-v3-194550",
+            "stage": "decode",
+            "tp_rank": 0,
+            "workload_marker": "capture"
+          },
+          "source_artifact_key": "rank-0-pid-909/decode_score-bb70343f3062aee597c11e35.json",
+          "startup_values": false,
+          "state_id": "state-a2b582c8d60d8d1e7dfaadbc27ea663ec16e7c40c88dd9bf24d7e83672c3dfe6",
+          "tensor_controls": {
+            "inputs.seq_lens": {
+              "runs": [
+                [
+                  8961,
+                  1
+                ]
+              ],
+              "shape": [
+                1
+              ]
+            }
+          }
+        },
+        {
+          "fixture_sha256": "ff757510639a6efedbae415bb6a62b17695379fdf7936812c740b7afc8c13735",
+          "graph_id": "909-graph-12",
+          "representative_labels": [
+            "max"
+          ],
+          "served": true,
+          "served_context": {
+            "active_requests": 1,
+            "active_tokens": 1,
+            "replay_id": "909-1953",
+            "run_id": "minimax-case-only-v3-194550",
+            "stage": "decode",
+            "tp_rank": 0,
+            "workload_marker": "capture"
+          },
+          "source_artifact_key": "rank-0-pid-909/decode_score-bb70343f3062aee597c11e35.representative-max.json",
+          "startup_values": false,
+          "state_id": "state-ff757510639a6efedbae415bb6a62b17695379fdf7936812c740b7afc8c13735",
+          "tensor_controls": {
+            "inputs.seq_lens": {
+              "runs": [
+                [
+                  9088,
+                  1
+                ]
+              ],
+              "shape": [
+                1
+              ]
+            }
+          }
+        }
+      ],
+      "work_distribution_sha256": "a9141dba6f93682044b5e54e5c513261c94740388294e30d6c667adec76959d1"
+    },
+    "decode_score-c12eaa19b17b074a7239d234": {
+      "occurrences": 29696,
+      "provenance": "direct captured native configuration",
+      "schema": {
+        "active_requests": 63,
+        "active_tokens": 63,
+        "case_projection_id": "minimax-block-and-causal-work-v3",
+        "controls": {
+          "environment": {
+            "SGLANG_OPT_USE_MINIMAX_DECODE_TOPK_RADIX": "1"
+          },
+          "launches": [
+            {
+              "compiled": {
+                "num_stages": 1,
+                "num_warps": 4,
+                "shared": 32768
+              },
+              "constexpr": {
+                "IS_FP8": false,
+                "NUM_KV_CHUNKS": 64,
+                "SCORE_TYPE": "max",
+                "SKIP_TRIVIAL_TOPK_SCORE": true
+              },
+              "grid": [
+                4096,
+                1
+              ],
+              "kernel": "_decode_score_kernel"
+            }
+          ],
+          "operator_scalars": {
+            "block_size": 128,
+            "disable_index_value": true,
+            "init_blocks": 0,
+            "k_scale": null,
+            "local_blocks": 1,
+            "max_seqlen": 9218,
+            "page_size": 1,
+            "q_scale": null,
+            "score_type": "max",
+            "sink": null,
+            "sm_scale": null,
+            "topk": 16,
+            "use_dense_main_attn": false,
+            "use_tma": true,
+            "v_cache": null,
+            "v_scale": null
+          }
+        },
+        "extrema_score_id": "minimax-max-total-seqlen-topk-v3",
+        "family": "decode_score",
+        "inputs": {
+          "capture_kv_units": {
+            "alias": "s0",
+            "dtype": "torch.int64",
+            "element_size": 8,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "mutable",
+              "optional": false,
+              "paged": null
+            },
+            "shape": [
+              64,
+              9222
+            ],
+            "storage_nbytes": 4721664,
+            "storage_offset": 0,
+            "stride": [
+              9222,
+              1
+            ]
+          },
+          "capture_req_rows": {
+            "alias": "s1",
+            "dtype": "torch.int64",
+            "element_size": 8,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "mutable",
+              "optional": false,
+              "paged": null
+            },
+            "shape": [
+              64
+            ],
+            "storage_nbytes": 512,
+            "storage_offset": 0,
+            "stride": [
+              1
+            ]
+          },
+          "k_cache": {
+            "alias": "s2",
+            "dtype": "torch.bfloat16",
+            "element_size": 2,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "paged",
+              "optional": false,
+              "paged": {
+                "access_contract": "only_indexed_units",
+                "index_divisor": 1,
+                "indices": "capture_kv_units",
+                "invalid_indices": [
+                  -1
+                ],
+                "max_index_entries": 590208,
+                "storage_offset_bytes": 0,
+                "unit_bytes": 256,
+                "unit_count": 4914444,
+                "unit_name": "physical_token_row",
+                "unit_stride_bytes": 256
+              }
+            },
+            "shape": [
+              4914444,
+              1,
+              128
+            ],
+            "storage_nbytes": 1258097664,
+            "storage_offset": 0,
+            "stride": [
+              128,
+              128,
+              1
+            ]
+          },
+          "q": {
+            "alias": "s3",
+            "dtype": "torch.bfloat16",
+            "element_size": 2,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "mutable",
+              "optional": false,
+              "paged": null
+            },
+            "shape": [
+              64,
+              1,
+              128
+            ],
+            "storage_nbytes": 16384,
+            "storage_offset": 0,
+            "stride": [
+              128,
+              128,
+              1
+            ]
+          },
+          "req_to_token": {
+            "alias": "s4",
+            "dtype": "torch.int32",
+            "element_size": 4,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "paged",
+              "optional": false,
+              "paged": {
+                "access_contract": "only_indexed_units",
+                "index_divisor": 1,
+                "indices": "capture_req_rows",
+                "invalid_indices": [
+                  -1
+                ],
+                "max_index_entries": 64,
+                "storage_offset_bytes": 0,
+                "unit_bytes": 36888,
+                "unit_count": 65,
+                "unit_name": "request_paging_row",
+                "unit_stride_bytes": 36888
+              }
+            },
+            "shape": [
+              65,
+              9222
+            ],
+            "storage_nbytes": 2397720,
+            "storage_offset": 0,
+            "stride": [
+              9222,
+              1
+            ]
+          },
+          "seq_lens": {
+            "alias": "s5",
+            "dtype": "torch.int64",
+            "element_size": 8,
+            "kind": "tensor",
+            "role": {
+              "case_control": true,
+              "footprint": "view_span",
+              "kind": "mutable",
+              "optional": false,
+              "paged": null
+            },
+            "shape": [
+              64
+            ],
+            "storage_nbytes": 512,
+            "storage_offset": 0,
+            "stride": [
+              1
+            ]
+          },
+          "slot_ids": {
+            "alias": "s6",
+            "dtype": "torch.int64",
+            "element_size": 8,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "mutable",
+              "optional": false,
+              "paged": null
+            },
+            "shape": [
+              64
+            ],
+            "storage_nbytes": 512,
+            "storage_offset": 0,
+            "stride": [
+              1
+            ]
+          }
+        },
+        "mode": "graph",
+        "outputs": {
+          "result.0": null,
+          "result.1": {
+            "alias": "s7",
+            "dtype": "torch.int32",
+            "element_size": 4,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "mutable",
+              "optional": true,
+              "paged": null
+            },
+            "shape": [
+              1,
+              64,
+              16
+            ],
+            "storage_nbytes": 4096,
+            "storage_offset": 0,
+            "stride": [
+              1024,
+              16,
+              1
+            ]
+          },
+          "result.2": null
+        },
+        "source": "98c574e5c292c5fcfe8d2c4f7f3c1b480ba32be703ef12bf765e9549a65bc71c",
+        "stage": "decode",
+        "tensor_attribute_codec_id": null,
+        "tensor_control_codec_id": "minimax-work-controls-rle-v1",
+        "tensor_controls": {
+          "inputs.seq_lens": {
+            "runs": [
+              [
+                68,
+                63
+              ],
+              [
+                1,
+                1
+              ]
+            ],
+            "shape": [
+              64
+            ],
+            "units": "sequence_blocks_ceil"
+          }
+        }
+      },
+      "states": [
+        {
+          "fixture_sha256": "ec8c2c5a8fe6d70f998d09f3b5d9eb908e861af5128cda9e4e520ffea18ce95d",
+          "graph_id": "909-graph-1",
+          "representative_labels": [
+            "first",
+            "min"
+          ],
+          "served": true,
+          "served_context": {
+            "active_requests": 63,
+            "active_tokens": 63,
+            "replay_id": "909-417",
+            "run_id": "minimax-case-only-v3-194550",
+            "stage": "decode",
+            "tp_rank": 0,
+            "workload_marker": "capture"
+          },
+          "source_artifact_key": "rank-0-pid-909/decode_score-c12eaa19b17b074a7239d234.json",
+          "startup_values": false,
+          "state_id": "state-ec8c2c5a8fe6d70f998d09f3b5d9eb908e861af5128cda9e4e520ffea18ce95d",
+          "tensor_controls": {
+            "inputs.seq_lens": {
+              "runs": [
+                [
+                  8577,
+                  63
+                ],
+                [
+                  1,
+                  1
+                ]
+              ],
+              "shape": [
+                64
+              ]
+            }
+          }
+        },
+        {
+          "fixture_sha256": "83730c1d8d0e0f9152ccce5f1167e25e365f136d0ffd4e2de44ce8bbbea0ec3f",
+          "graph_id": "909-graph-1",
+          "representative_labels": [
+            "max"
+          ],
+          "served": true,
+          "served_context": {
+            "active_requests": 63,
+            "active_tokens": 63,
+            "replay_id": "909-544",
+            "run_id": "minimax-case-only-v3-194550",
+            "stage": "decode",
+            "tp_rank": 0,
+            "workload_marker": "capture"
+          },
+          "source_artifact_key": "rank-0-pid-909/decode_score-c12eaa19b17b074a7239d234.representative-max.json",
+          "startup_values": false,
+          "state_id": "state-83730c1d8d0e0f9152ccce5f1167e25e365f136d0ffd4e2de44ce8bbbea0ec3f",
+          "tensor_controls": {
+            "inputs.seq_lens": {
+              "runs": [
+                [
+                  8704,
+                  63
+                ],
+                [
+                  1,
+                  1
+                ]
+              ],
+              "shape": [
+                64
+              ]
+            }
+          }
+        }
+      ],
+      "work_distribution_sha256": "add9fc8a22f469e4d8d34a2d594004a41c2fe7cd3819815c00e7f96b1baff172"
+    },
+    "decode_score-c5299cbe7206c5554b97c7d9": {
+      "occurrences": 29696,
+      "provenance": "direct captured native configuration",
+      "schema": {
+        "active_requests": 63,
+        "active_tokens": 63,
+        "case_projection_id": "minimax-block-and-causal-work-v3",
+        "controls": {
+          "environment": {
+            "SGLANG_OPT_USE_MINIMAX_DECODE_TOPK_RADIX": "1"
+          },
+          "launches": [
+            {
+              "compiled": {
+                "num_stages": 1,
+                "num_warps": 4,
+                "shared": 32768
+              },
+              "constexpr": {
+                "IS_FP8": false,
+                "NUM_KV_CHUNKS": 64,
+                "SCORE_TYPE": "max",
+                "SKIP_TRIVIAL_TOPK_SCORE": true
+              },
+              "grid": [
+                4096,
+                1
+              ],
+              "kernel": "_decode_score_kernel"
+            }
+          ],
+          "operator_scalars": {
+            "block_size": 128,
+            "disable_index_value": true,
+            "init_blocks": 0,
+            "k_scale": null,
+            "local_blocks": 1,
+            "max_seqlen": 9218,
+            "page_size": 1,
+            "q_scale": null,
+            "score_type": "max",
+            "sink": null,
+            "sm_scale": null,
+            "topk": 16,
+            "use_dense_main_attn": false,
+            "use_tma": true,
+            "v_cache": null,
+            "v_scale": null
+          }
+        },
+        "extrema_score_id": "minimax-max-total-seqlen-topk-v3",
+        "family": "decode_score",
+        "inputs": {
+          "capture_kv_units": {
+            "alias": "s0",
+            "dtype": "torch.int64",
+            "element_size": 8,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "mutable",
+              "optional": false,
+              "paged": null
+            },
+            "shape": [
+              64,
+              9222
+            ],
+            "storage_nbytes": 4721664,
+            "storage_offset": 0,
+            "stride": [
+              9222,
+              1
+            ]
+          },
+          "capture_req_rows": {
+            "alias": "s1",
+            "dtype": "torch.int64",
+            "element_size": 8,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "mutable",
+              "optional": false,
+              "paged": null
+            },
+            "shape": [
+              64
+            ],
+            "storage_nbytes": 512,
+            "storage_offset": 0,
+            "stride": [
+              1
+            ]
+          },
+          "k_cache": {
+            "alias": "s2",
+            "dtype": "torch.bfloat16",
+            "element_size": 2,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "paged",
+              "optional": false,
+              "paged": {
+                "access_contract": "only_indexed_units",
+                "index_divisor": 1,
+                "indices": "capture_kv_units",
+                "invalid_indices": [
+                  -1
+                ],
+                "max_index_entries": 590208,
+                "storage_offset_bytes": 0,
+                "unit_bytes": 256,
+                "unit_count": 4914444,
+                "unit_name": "physical_token_row",
+                "unit_stride_bytes": 256
+              }
+            },
+            "shape": [
+              4914444,
+              1,
+              128
+            ],
+            "storage_nbytes": 1258097664,
+            "storage_offset": 0,
+            "stride": [
+              128,
+              128,
+              1
+            ]
+          },
+          "q": {
+            "alias": "s3",
+            "dtype": "torch.bfloat16",
+            "element_size": 2,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "mutable",
+              "optional": false,
+              "paged": null
+            },
+            "shape": [
+              64,
+              1,
+              128
+            ],
+            "storage_nbytes": 16384,
+            "storage_offset": 0,
+            "stride": [
+              128,
+              128,
+              1
+            ]
+          },
+          "req_to_token": {
+            "alias": "s4",
+            "dtype": "torch.int32",
+            "element_size": 4,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "paged",
+              "optional": false,
+              "paged": {
+                "access_contract": "only_indexed_units",
+                "index_divisor": 1,
+                "indices": "capture_req_rows",
+                "invalid_indices": [
+                  -1
+                ],
+                "max_index_entries": 64,
+                "storage_offset_bytes": 0,
+                "unit_bytes": 36888,
+                "unit_count": 65,
+                "unit_name": "request_paging_row",
+                "unit_stride_bytes": 36888
+              }
+            },
+            "shape": [
+              65,
+              9222
+            ],
+            "storage_nbytes": 2397720,
+            "storage_offset": 0,
+            "stride": [
+              9222,
+              1
+            ]
+          },
+          "seq_lens": {
+            "alias": "s5",
+            "dtype": "torch.int64",
+            "element_size": 8,
+            "kind": "tensor",
+            "role": {
+              "case_control": true,
+              "footprint": "view_span",
+              "kind": "mutable",
+              "optional": false,
+              "paged": null
+            },
+            "shape": [
+              64
+            ],
+            "storage_nbytes": 512,
+            "storage_offset": 0,
+            "stride": [
+              1
+            ]
+          },
+          "slot_ids": {
+            "alias": "s6",
+            "dtype": "torch.int64",
+            "element_size": 8,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "mutable",
+              "optional": false,
+              "paged": null
+            },
+            "shape": [
+              64
+            ],
+            "storage_nbytes": 512,
+            "storage_offset": 0,
+            "stride": [
+              1
+            ]
+          }
+        },
+        "mode": "graph",
+        "outputs": {
+          "result.0": null,
+          "result.1": {
+            "alias": "s7",
+            "dtype": "torch.int32",
+            "element_size": 4,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "mutable",
+              "optional": true,
+              "paged": null
+            },
+            "shape": [
+              1,
+              64,
+              16
+            ],
+            "storage_nbytes": 4096,
+            "storage_offset": 0,
+            "stride": [
+              1024,
+              16,
+              1
+            ]
+          },
+          "result.2": null
+        },
+        "source": "98c574e5c292c5fcfe8d2c4f7f3c1b480ba32be703ef12bf765e9549a65bc71c",
+        "stage": "decode",
+        "tensor_attribute_codec_id": null,
+        "tensor_control_codec_id": "minimax-work-controls-rle-v1",
+        "tensor_controls": {
+          "inputs.seq_lens": {
+            "runs": [
+              [
+                72,
+                63
+              ],
+              [
+                1,
+                1
+              ]
+            ],
+            "shape": [
+              64
+            ],
+            "units": "sequence_blocks_ceil"
+          }
+        }
+      },
+      "states": [
+        {
+          "fixture_sha256": "17473be69c52dec49da6d76e6d6e66219982948ee06f51753e24c05cd45d48ae",
+          "graph_id": "909-graph-1",
+          "representative_labels": [
+            "first",
+            "min"
+          ],
+          "served": true,
+          "served_context": {
+            "active_requests": 63,
+            "active_tokens": 63,
+            "replay_id": "909-929",
+            "run_id": "minimax-case-only-v3-194550",
+            "stage": "decode",
+            "tp_rank": 0,
+            "workload_marker": "capture"
+          },
+          "source_artifact_key": "rank-0-pid-909/decode_score-c5299cbe7206c5554b97c7d9.json",
+          "startup_values": false,
+          "state_id": "state-17473be69c52dec49da6d76e6d6e66219982948ee06f51753e24c05cd45d48ae",
+          "tensor_controls": {
+            "inputs.seq_lens": {
+              "runs": [
+                [
+                  9089,
+                  63
+                ],
+                [
+                  1,
+                  1
+                ]
+              ],
+              "shape": [
+                64
+              ]
+            }
+          }
+        },
+        {
+          "fixture_sha256": "cb1c416f099beef9613bc93ccfe95e8df1de3f47f6aa66df58b77d4d726f382c",
+          "graph_id": "909-graph-1",
+          "representative_labels": [
+            "max"
+          ],
+          "served": true,
+          "served_context": {
+            "active_requests": 63,
+            "active_tokens": 63,
+            "replay_id": "909-1056",
+            "run_id": "minimax-case-only-v3-194550",
+            "stage": "decode",
+            "tp_rank": 0,
+            "workload_marker": "capture"
+          },
+          "source_artifact_key": "rank-0-pid-909/decode_score-c5299cbe7206c5554b97c7d9.representative-max.json",
+          "startup_values": false,
+          "state_id": "state-cb1c416f099beef9613bc93ccfe95e8df1de3f47f6aa66df58b77d4d726f382c",
+          "tensor_controls": {
+            "inputs.seq_lens": {
+              "runs": [
+                [
+                  9216,
+                  63
+                ],
+                [
+                  1,
+                  1
+                ]
+              ],
+              "shape": [
+                64
+              ]
+            }
+          }
+        }
+      ],
+      "work_distribution_sha256": "89a0587f9a2aa85da06bb1f3135f9ea48e52d67e74095854600250179069f443"
+    },
+    "decode_score-e730fd7af2bd6dabc0c6e956": {
+      "occurrences": 29696,
+      "provenance": "direct captured native configuration",
+      "schema": {
+        "active_requests": 63,
+        "active_tokens": 63,
+        "case_projection_id": "minimax-block-and-causal-work-v3",
+        "controls": {
+          "environment": {
+            "SGLANG_OPT_USE_MINIMAX_DECODE_TOPK_RADIX": "1"
+          },
+          "launches": [
+            {
+              "compiled": {
+                "num_stages": 1,
+                "num_warps": 4,
+                "shared": 32768
+              },
+              "constexpr": {
+                "IS_FP8": false,
+                "NUM_KV_CHUNKS": 64,
+                "SCORE_TYPE": "max",
+                "SKIP_TRIVIAL_TOPK_SCORE": true
+              },
+              "grid": [
+                4096,
+                1
+              ],
+              "kernel": "_decode_score_kernel"
+            }
+          ],
+          "operator_scalars": {
+            "block_size": 128,
+            "disable_index_value": true,
+            "init_blocks": 0,
+            "k_scale": null,
+            "local_blocks": 1,
+            "max_seqlen": 9218,
+            "page_size": 1,
+            "q_scale": null,
+            "score_type": "max",
+            "sink": null,
+            "sm_scale": null,
+            "topk": 16,
+            "use_dense_main_attn": false,
+            "use_tma": true,
+            "v_cache": null,
+            "v_scale": null
+          }
+        },
+        "extrema_score_id": "minimax-max-total-seqlen-topk-v3",
+        "family": "decode_score",
+        "inputs": {
+          "capture_kv_units": {
+            "alias": "s0",
+            "dtype": "torch.int64",
+            "element_size": 8,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "mutable",
+              "optional": false,
+              "paged": null
+            },
+            "shape": [
+              64,
+              9222
+            ],
+            "storage_nbytes": 4721664,
+            "storage_offset": 0,
+            "stride": [
+              9222,
+              1
+            ]
+          },
+          "capture_req_rows": {
+            "alias": "s1",
+            "dtype": "torch.int64",
+            "element_size": 8,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "mutable",
+              "optional": false,
+              "paged": null
+            },
+            "shape": [
+              64
+            ],
+            "storage_nbytes": 512,
+            "storage_offset": 0,
+            "stride": [
+              1
+            ]
+          },
+          "k_cache": {
+            "alias": "s2",
+            "dtype": "torch.bfloat16",
+            "element_size": 2,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "paged",
+              "optional": false,
+              "paged": {
+                "access_contract": "only_indexed_units",
+                "index_divisor": 1,
+                "indices": "capture_kv_units",
+                "invalid_indices": [
+                  -1
+                ],
+                "max_index_entries": 590208,
+                "storage_offset_bytes": 0,
+                "unit_bytes": 256,
+                "unit_count": 4914444,
+                "unit_name": "physical_token_row",
+                "unit_stride_bytes": 256
+              }
+            },
+            "shape": [
+              4914444,
+              1,
+              128
+            ],
+            "storage_nbytes": 1258097664,
+            "storage_offset": 0,
+            "stride": [
+              128,
+              128,
+              1
+            ]
+          },
+          "q": {
+            "alias": "s3",
+            "dtype": "torch.bfloat16",
+            "element_size": 2,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "mutable",
+              "optional": false,
+              "paged": null
+            },
+            "shape": [
+              64,
+              1,
+              128
+            ],
+            "storage_nbytes": 16384,
+            "storage_offset": 0,
+            "stride": [
+              128,
+              128,
+              1
+            ]
+          },
+          "req_to_token": {
+            "alias": "s4",
+            "dtype": "torch.int32",
+            "element_size": 4,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "paged",
+              "optional": false,
+              "paged": {
+                "access_contract": "only_indexed_units",
+                "index_divisor": 1,
+                "indices": "capture_req_rows",
+                "invalid_indices": [
+                  -1
+                ],
+                "max_index_entries": 64,
+                "storage_offset_bytes": 0,
+                "unit_bytes": 36888,
+                "unit_count": 65,
+                "unit_name": "request_paging_row",
+                "unit_stride_bytes": 36888
+              }
+            },
+            "shape": [
+              65,
+              9222
+            ],
+            "storage_nbytes": 2397720,
+            "storage_offset": 0,
+            "stride": [
+              9222,
+              1
+            ]
+          },
+          "seq_lens": {
+            "alias": "s5",
+            "dtype": "torch.int64",
+            "element_size": 8,
+            "kind": "tensor",
+            "role": {
+              "case_control": true,
+              "footprint": "view_span",
+              "kind": "mutable",
+              "optional": false,
+              "paged": null
+            },
+            "shape": [
+              64
+            ],
+            "storage_nbytes": 512,
+            "storage_offset": 0,
+            "stride": [
+              1
+            ]
+          },
+          "slot_ids": {
+            "alias": "s6",
+            "dtype": "torch.int64",
+            "element_size": 8,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "mutable",
+              "optional": false,
+              "paged": null
+            },
+            "shape": [
+              64
+            ],
+            "storage_nbytes": 512,
+            "storage_offset": 0,
+            "stride": [
+              1
+            ]
+          }
+        },
+        "mode": "graph",
+        "outputs": {
+          "result.0": null,
+          "result.1": {
+            "alias": "s7",
+            "dtype": "torch.int32",
+            "element_size": 4,
+            "kind": "tensor",
+            "role": {
+              "case_control": false,
+              "footprint": "view_span",
+              "kind": "mutable",
+              "optional": true,
+              "paged": null
+            },
+            "shape": [
+              1,
+              64,
+              16
+            ],
+            "storage_nbytes": 4096,
+            "storage_offset": 0,
+            "stride": [
+              1024,
+              16,
+              1
+            ]
+          },
+          "result.2": null
+        },
+        "source": "98c574e5c292c5fcfe8d2c4f7f3c1b480ba32be703ef12bf765e9549a65bc71c",
+        "stage": "decode",
+        "tensor_attribute_codec_id": null,
+        "tensor_control_codec_id": "minimax-work-controls-rle-v1",
+        "tensor_controls": {
+          "inputs.seq_lens": {
+            "runs": [
+              [
+                66,
+                63
+              ],
+              [
+                1,
+                1
+              ]
+            ],
+            "shape": [
+              64
+            ],
+            "units": "sequence_blocks_ceil"
+          }
+        }
+      },
+      "states": [
+        {
+          "fixture_sha256": "5dfa040745bcd3c54d857bb81bbd3a51d3a851ec28b07134f696ffb3c9885b0e",
+          "graph_id": "909-graph-1",
+          "representative_labels": [
+            "first",
+            "min"
+          ],
+          "served": true,
+          "served_context": {
+            "active_requests": 63,
+            "active_tokens": 63,
+            "replay_id": "909-161",
+            "run_id": "minimax-case-only-v3-194550",
+            "stage": "decode",
+            "tp_rank": 0,
+            "workload_marker": "capture"
+          },
+          "source_artifact_key": "rank-0-pid-909/decode_score-e730fd7af2bd6dabc0c6e956.json",
+          "startup_values": false,
+          "state_id": "state-5dfa040745bcd3c54d857bb81bbd3a51d3a851ec28b07134f696ffb3c9885b0e",
+          "tensor_controls": {
+            "inputs.seq_lens": {
+              "runs": [
+                [
+                  8321,
+                  63
+                ],
+                [
+                  1,
+                  1
+                ]
+              ],
+              "shape": [
+                64
+              ]
+            }
+          }
+        },
+        {
+          "fixture_sha256": "9a4166407807dbf9fee37b03ac5c207260fe1785a5484402685150896bc97193",
+          "graph_id": "909-graph-1",
+          "representative_labels": [
+            "max"
+          ],
+          "served": true,
+          "served_context": {
+            "active_requests": 63,
+            "active_tokens": 63,
+            "replay_id": "909-288",
+            "run_id": "minimax-case-only-v3-194550",
+            "stage": "decode",
+            "tp_rank": 0,
+            "workload_marker": "capture"
+          },
+          "source_artifact_key": "rank-0-pid-909/decode_score-e730fd7af2bd6dabc0c6e956.representative-max.json",
+          "startup_values": false,
+          "state_id": "state-9a4166407807dbf9fee37b03ac5c207260fe1785a5484402685150896bc97193",
+          "tensor_controls": {
+            "inputs.seq_lens": {
+              "runs": [
+                [
+                  8448,
+                  63
+                ],
+                [
+                  1,
+                  1
+                ]
+              ],
+              "shape": [
+                64
+              ]
+            }
+          }
+        }
+      ],
+      "work_distribution_sha256": "611f5fd2110585459cc8e25496dfb784bb0ac42ba84e253522ff6d812a3817a1"
+    }
+  },
+  "workload": {
+    "concurrency": 64,
+    "context_length": 9218,
+    "isl": 8192,
+    "num_prompts": 64,
+    "osl": 1024,
+    "seed": 42,
+    "tp": 8
+  },
+  "workload_receipt_sha256": "aacdb22357d8600e735994f9bd7c60f3cf50cb7ed7f7565db99b4087b4d22ff6"
+}

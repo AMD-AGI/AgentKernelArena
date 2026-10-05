@@ -1,0 +1,2899 @@
+{
+  "assets": [
+    {
+      "bytes": 49533,
+      "codec": "served-tensor-fixture-v1",
+      "object_key": "bundles/sparse_decode/minimax-02e57e9f590e79a1e6ae5a3a4e051a34254d041aa539b4e06ce77fded0097cb5.json",
+      "path": "fixtures/minimax-02e57e9f590e79a1e6ae5a3a4e051a34254d041aa539b4e06ce77fded0097cb5.json",
+      "roles": [
+        "case_metadata"
+      ],
+      "sha256": "706caa936f1f10f02210ab1ebe3795a26b6a0ecbb876f699df1ddf657c02174c"
+    },
+    {
+      "bytes": 49533,
+      "codec": "served-tensor-fixture-v1",
+      "object_key": "bundles/sparse_decode/minimax-0457b51e8479670c0b4c1c956c79ab236ee1868521084a81c955dd03a528a3e2.json",
+      "path": "fixtures/minimax-0457b51e8479670c0b4c1c956c79ab236ee1868521084a81c955dd03a528a3e2.json",
+      "roles": [
+        "case_metadata"
+      ],
+      "sha256": "b10f2f0b4436a4e87c0ab19bb7ac3b6a114c6c90bd29668f218f2f441adf2b77"
+    },
+    {
+      "bytes": 46742,
+      "codec": "served-tensor-fixture-v1",
+      "object_key": "bundles/sparse_decode/minimax-073b4cd3905a667321d70c7a02e7b436c73e2f6c3d07cbff15db57473fddb96e.json",
+      "path": "fixtures/minimax-073b4cd3905a667321d70c7a02e7b436c73e2f6c3d07cbff15db57473fddb96e.json",
+      "roles": [
+        "case_metadata"
+      ],
+      "sha256": "286e8c5a86f3d40157c3f3e1d096d51f1ce04be3f63840a0b5271a0a55b3e990"
+    },
+    {
+      "bytes": 49533,
+      "codec": "served-tensor-fixture-v1",
+      "object_key": "bundles/sparse_decode/minimax-2c27072180c41436711acd4472a6de61ff1791a8bdad9db951e4409242f0ab24.json",
+      "path": "fixtures/minimax-2c27072180c41436711acd4472a6de61ff1791a8bdad9db951e4409242f0ab24.json",
+      "roles": [
+        "case_metadata"
+      ],
+      "sha256": "e9be00c3ff21a46fe8e51aeaf99fcfd32c82a2ebcabef9f78a385426d64120b2"
+    },
+    {
+      "bytes": 49533,
+      "codec": "served-tensor-fixture-v1",
+      "object_key": "bundles/sparse_decode/minimax-31bb0558f1f9652888f60c8964719e813d21a97a701b6c3aa657bc92ff1c8648.json",
+      "path": "fixtures/minimax-31bb0558f1f9652888f60c8964719e813d21a97a701b6c3aa657bc92ff1c8648.json",
+      "roles": [
+        "case_metadata"
+      ],
+      "sha256": "f42550e70df4bfc7b5d25501cd0e61cb5b128db11896f0c4256178fcce55c731"
+    },
+    {
+      "bytes": 49533,
+      "codec": "served-tensor-fixture-v1",
+      "object_key": "bundles/sparse_decode/minimax-32701b947c78c947ab2963be3456db8c95faf0b1027bb3ecac04a6c2fa4c6bb4.json",
+      "path": "fixtures/minimax-32701b947c78c947ab2963be3456db8c95faf0b1027bb3ecac04a6c2fa4c6bb4.json",
+      "roles": [
+        "case_metadata"
+      ],
+      "sha256": "347bf7a00390a4e0566bdb6f825e23837c06f36ecdc0eb6f2d119b94fce8af72"
+    },
+    {
+      "bytes": 46741,
+      "codec": "served-tensor-fixture-v1",
+      "object_key": "bundles/sparse_decode/minimax-33633f776269dd6a58f429004e944393411b5d8eb7a96e0380b85bfadb3ad7fa.json",
+      "path": "fixtures/minimax-33633f776269dd6a58f429004e944393411b5d8eb7a96e0380b85bfadb3ad7fa.json",
+      "roles": [
+        "case_metadata"
+      ],
+      "sha256": "2ecea9ac090fcfe1dd93d04efe72adf5a1598aa9fdade80ab4b9457007564899"
+    },
+    {
+      "bytes": 49533,
+      "codec": "served-tensor-fixture-v1",
+      "object_key": "bundles/sparse_decode/minimax-3489a7e94d733ad53594e4fe747d2990a03d5084a7de6e04cd508c098b0d613a.json",
+      "path": "fixtures/minimax-3489a7e94d733ad53594e4fe747d2990a03d5084a7de6e04cd508c098b0d613a.json",
+      "roles": [
+        "case_metadata"
+      ],
+      "sha256": "def4baf5392edc171b5b9a08fd57c91f83b280f2b7cf68f0379f04373765bf36"
+    },
+    {
+      "bytes": 49533,
+      "codec": "served-tensor-fixture-v1",
+      "object_key": "bundles/sparse_decode/minimax-36369a6117ef58ef8e700d299f83c697e7bc1f3e6358a120d45a146648096372.json",
+      "path": "fixtures/minimax-36369a6117ef58ef8e700d299f83c697e7bc1f3e6358a120d45a146648096372.json",
+      "roles": [
+        "case_metadata"
+      ],
+      "sha256": "6c4c630401c1f93994b1c1adcfd6e156aed8e2fbba4ec557c29e4b4e1cc626b0"
+    },
+    {
+      "bytes": 49533,
+      "codec": "served-tensor-fixture-v1",
+      "object_key": "bundles/sparse_decode/minimax-37f87fa9be02f4859c7aaa2d8108e261874d3a3522f70cff045e954c84fbb8ab.json",
+      "path": "fixtures/minimax-37f87fa9be02f4859c7aaa2d8108e261874d3a3522f70cff045e954c84fbb8ab.json",
+      "roles": [
+        "case_metadata"
+      ],
+      "sha256": "c883419183e3a7ec975843be21b2c1acba65209fda7180ad67169b700ef137f2"
+    },
+    {
+      "bytes": 49533,
+      "codec": "served-tensor-fixture-v1",
+      "object_key": "bundles/sparse_decode/minimax-389566a169839444886d9a83f8038fc60dd2bd87fc6f5bb9e350d0fad99cd2fe.json",
+      "path": "fixtures/minimax-389566a169839444886d9a83f8038fc60dd2bd87fc6f5bb9e350d0fad99cd2fe.json",
+      "roles": [
+        "case_metadata"
+      ],
+      "sha256": "272e3230db2e13f5143e99b483b728c96676e02c42b4dd81a3f217d1bdcfe24f"
+    },
+    {
+      "bytes": 49533,
+      "codec": "served-tensor-fixture-v1",
+      "object_key": "bundles/sparse_decode/minimax-3f723fd13e0dd0688d15cc53e0232d281372610ff70070d67d8b8d83bf63f956.json",
+      "path": "fixtures/minimax-3f723fd13e0dd0688d15cc53e0232d281372610ff70070d67d8b8d83bf63f956.json",
+      "roles": [
+        "case_metadata"
+      ],
+      "sha256": "9d553ccc1f937ee48c05de6fbdd3d5ba7dba01e9ba0ce8d845116cfa904e9f97"
+    },
+    {
+      "bytes": 49533,
+      "codec": "served-tensor-fixture-v1",
+      "object_key": "bundles/sparse_decode/minimax-56856aa9fdfd010ec1a2bde74c9b0c9ddc879ca0590c2081c35a08b800e8e299.json",
+      "path": "fixtures/minimax-56856aa9fdfd010ec1a2bde74c9b0c9ddc879ca0590c2081c35a08b800e8e299.json",
+      "roles": [
+        "case_metadata"
+      ],
+      "sha256": "e806ca3147dcbb890607cd035da6063dad09e2475d50db0472160dd470596a08"
+    },
+    {
+      "bytes": 49533,
+      "codec": "served-tensor-fixture-v1",
+      "object_key": "bundles/sparse_decode/minimax-57f7fc45d5a470d154d7de3896fff54b29f9c64c9a15b707afddf964c8000698.json",
+      "path": "fixtures/minimax-57f7fc45d5a470d154d7de3896fff54b29f9c64c9a15b707afddf964c8000698.json",
+      "roles": [
+        "case_metadata"
+      ],
+      "sha256": "1bd9a0646462b732c32832241a51c469848e1b4d3e5c58e333e9a870bc94bb28"
+    },
+    {
+      "bytes": 49533,
+      "codec": "served-tensor-fixture-v1",
+      "object_key": "bundles/sparse_decode/minimax-5c94b3159e8f7bc0d6f576dfcdf5cb153d2a2abacff45d5457cafab965f5588f.json",
+      "path": "fixtures/minimax-5c94b3159e8f7bc0d6f576dfcdf5cb153d2a2abacff45d5457cafab965f5588f.json",
+      "roles": [
+        "case_metadata"
+      ],
+      "sha256": "d8b617904d4d1adcfb7552ca3f463355931c486c8d9f76c2cb5180d679d32f80"
+    },
+    {
+      "bytes": 46740,
+      "codec": "served-tensor-fixture-v1",
+      "object_key": "bundles/sparse_decode/minimax-6277ec77a86f86823e37d15d0c0f94939fb32a214513b2e1d81c861083a13e5a.json",
+      "path": "fixtures/minimax-6277ec77a86f86823e37d15d0c0f94939fb32a214513b2e1d81c861083a13e5a.json",
+      "roles": [
+        "case_metadata"
+      ],
+      "sha256": "8593d2b4e0e0bab6e8e004af7051dd7eb915e386da70a66e245c1f7fe64e7f07"
+    },
+    {
+      "bytes": 46741,
+      "codec": "served-tensor-fixture-v1",
+      "object_key": "bundles/sparse_decode/minimax-6e4fb52b8572ffb2fc05680f41e6aef65b809802a9e484892beab5ff3e327f3a.json",
+      "path": "fixtures/minimax-6e4fb52b8572ffb2fc05680f41e6aef65b809802a9e484892beab5ff3e327f3a.json",
+      "roles": [
+        "case_metadata"
+      ],
+      "sha256": "606c08273b94dd603d43fe82ea37395874c5d4006ca6bdaf42a8b5109717e9fb"
+    },
+    {
+      "bytes": 46741,
+      "codec": "served-tensor-fixture-v1",
+      "object_key": "bundles/sparse_decode/minimax-7b34e0206844e0873351bc27452a4d07c9680eeeff35584b01b489f9a1186247.json",
+      "path": "fixtures/minimax-7b34e0206844e0873351bc27452a4d07c9680eeeff35584b01b489f9a1186247.json",
+      "roles": [
+        "case_metadata"
+      ],
+      "sha256": "d36eab835e75500598f19db7a0b71865f40796849a735e336b0c0fe1c3e52c49"
+    },
+    {
+      "bytes": 49533,
+      "codec": "served-tensor-fixture-v1",
+      "object_key": "bundles/sparse_decode/minimax-bd5ab8f046368089a74a794340f7bc8c44748f7ddddfbfe59463381376fd4340.json",
+      "path": "fixtures/minimax-bd5ab8f046368089a74a794340f7bc8c44748f7ddddfbfe59463381376fd4340.json",
+      "roles": [
+        "case_metadata"
+      ],
+      "sha256": "331d356eccc733e794f9af2b6bbf033daec3e2afaa10b1ebcf5c5775d0df86f2"
+    },
+    {
+      "bytes": 46741,
+      "codec": "served-tensor-fixture-v1",
+      "object_key": "bundles/sparse_decode/minimax-c509e93eb60fb243c145a5f40c47c77bc33aa0e93de3c522ebffd29359a9b516.json",
+      "path": "fixtures/minimax-c509e93eb60fb243c145a5f40c47c77bc33aa0e93de3c522ebffd29359a9b516.json",
+      "roles": [
+        "case_metadata"
+      ],
+      "sha256": "bae23b9bc31f97729917a7ec1a129cf9c802b9732ba47910c44ad69520a914d7"
+    },
+    {
+      "bytes": 49533,
+      "codec": "served-tensor-fixture-v1",
+      "object_key": "bundles/sparse_decode/minimax-cc74ed29af43794e460d0fe53ca85a09c3144823b46f31c00959a0ecc09c0b1b.json",
+      "path": "fixtures/minimax-cc74ed29af43794e460d0fe53ca85a09c3144823b46f31c00959a0ecc09c0b1b.json",
+      "roles": [
+        "case_metadata"
+      ],
+      "sha256": "de5d00de0e98b34a6370f3a1904918ee55d42c9c27ce0122cbc373fe720e68be"
+    },
+    {
+      "bytes": 49533,
+      "codec": "served-tensor-fixture-v1",
+      "object_key": "bundles/sparse_decode/minimax-f1e152bbc10960ae0e2a565461135545910ea4afdac6fb0b3c990670bb5ebad5.json",
+      "path": "fixtures/minimax-f1e152bbc10960ae0e2a565461135545910ea4afdac6fb0b3c990670bb5ebad5.json",
+      "roles": [
+        "case_metadata"
+      ],
+      "sha256": "cf868cfd1df918c49567ff5468cb46c2bf9717d01a8d595ef19cc138e1a75e49"
+    },
+    {
+      "bytes": 46741,
+      "codec": "served-tensor-fixture-v1",
+      "object_key": "bundles/sparse_decode/minimax-f48175c39e7631ff4c4c1c1d4df34d7140f3d5788c0cd84f9a5c3816b9c89710.json",
+      "path": "fixtures/minimax-f48175c39e7631ff4c4c1c1d4df34d7140f3d5788c0cd84f9a5c3816b9c89710.json",
+      "roles": [
+        "case_metadata"
+      ],
+      "sha256": "653f325bedfc3c30f78f6810da4b03a3012ace62379360e3642f660f96d881b2"
+    },
+    {
+      "bytes": 46741,
+      "codec": "served-tensor-fixture-v1",
+      "object_key": "bundles/sparse_decode/minimax-f9e712026e07b9f02439eab6f9d11ef7d1a200eaef195a7e87d5bcaf1120bfd5.json",
+      "path": "fixtures/minimax-f9e712026e07b9f02439eab6f9d11ef7d1a200eaef195a7e87d5bcaf1120bfd5.json",
+      "roles": [
+        "case_metadata"
+      ],
+      "sha256": "d507bcd69f962de79ee0969f60e7998a764848a837ca6f6649f7fc81b4353114"
+    },
+    {
+      "bytes": 36888,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/02b4d9d52e3d288ccc6d48b9874b79103698615a86294a0789d5c2a335371dca.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/02b4d9d52e3d288ccc6d48b9874b79103698615a86294a0789d5c2a335371dca.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "02b4d9d52e3d288ccc6d48b9874b79103698615a86294a0789d5c2a335371dca"
+    },
+    {
+      "bytes": 4721664,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/02fe535483873d0bab4bd636a37ebbf1263e254e735aacf98f883d2198bd9c51.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/02fe535483873d0bab4bd636a37ebbf1263e254e735aacf98f883d2198bd9c51.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "02fe535483873d0bab4bd636a37ebbf1263e254e735aacf98f883d2198bd9c51"
+    },
+    {
+      "bytes": 2048,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/03f13145c331bcdb35fd91e14ca02193b979132f09225e2db8d2c569a9d14453.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/03f13145c331bcdb35fd91e14ca02193b979132f09225e2db8d2c569a9d14453.bin",
+      "roles": [
+        "oracle_output"
+      ],
+      "sha256": "03f13145c331bcdb35fd91e14ca02193b979132f09225e2db8d2c569a9d14453"
+    },
+    {
+      "bytes": 8,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/055e52209186da95f005154b1033a98fd758c5bfbcb852635284e6043c3d119b.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/055e52209186da95f005154b1033a98fd758c5bfbcb852635284e6043c3d119b.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "055e52209186da95f005154b1033a98fd758c5bfbcb852635284e6043c3d119b"
+    },
+    {
+      "bytes": 131072,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/0790ba45d8de3f9c06ba63810650254979e9ae3a9ec4104da5a5980ac415c3b8.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/0790ba45d8de3f9c06ba63810650254979e9ae3a9ec4104da5a5980ac415c3b8.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "0790ba45d8de3f9c06ba63810650254979e9ae3a9ec4104da5a5980ac415c3b8"
+    },
+    {
+      "bytes": 132132096,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/0891353b44459e30c6cb1df5b63f557da27316c4931e6a8f724e2c5c77d54ac4.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/0891353b44459e30c6cb1df5b63f557da27316c4931e6a8f724e2c5c77d54ac4.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "0891353b44459e30c6cb1df5b63f557da27316c4931e6a8f724e2c5c77d54ac4"
+    },
+    {
+      "bytes": 2325760,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/09815c3e2804c0548e5e280735e5b94e7498fba21e0f1466aca3abf60e777401.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/09815c3e2804c0548e5e280735e5b94e7498fba21e0f1466aca3abf60e777401.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "09815c3e2804c0548e5e280735e5b94e7498fba21e0f1466aca3abf60e777401"
+    },
+    {
+      "bytes": 512,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/0cadd1a9e4e6479a98c7c7d53b20c78e2a08b357a8d68688570a6a1ab63e2a16.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/0cadd1a9e4e6479a98c7c7d53b20c78e2a08b357a8d68688570a6a1ab63e2a16.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "0cadd1a9e4e6479a98c7c7d53b20c78e2a08b357a8d68688570a6a1ab63e2a16"
+    },
+    {
+      "bytes": 4721664,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/0cef23f632ec7849bfc7d214ff4242c07e543c1fa333aab918a6aaccca395f0a.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/0cef23f632ec7849bfc7d214ff4242c07e543c1fa333aab918a6aaccca395f0a.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "0cef23f632ec7849bfc7d214ff4242c07e543c1fa333aab918a6aaccca395f0a"
+    },
+    {
+      "bytes": 36888,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/0d7b8c9a55f0380248f55f47dffe405836da0e0067b294954421f4182a523468.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/0d7b8c9a55f0380248f55f47dffe405836da0e0067b294954421f4182a523468.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "0d7b8c9a55f0380248f55f47dffe405836da0e0067b294954421f4182a523468"
+    },
+    {
+      "bytes": 2323944,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/0db78a699674de4e67b0c208fdbfdf46819c75307a6c3eb3796c386699db68b7.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/0db78a699674de4e67b0c208fdbfdf46819c75307a6c3eb3796c386699db68b7.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "0db78a699674de4e67b0c208fdbfdf46819c75307a6c3eb3796c386699db68b7"
+    },
+    {
+      "bytes": 134196480,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/0dc925b68f60db35ec2074acb5746c0420b0184e47be19661af0cfd8ca99d84a.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/0dc925b68f60db35ec2074acb5746c0420b0184e47be19661af0cfd8ca99d84a.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "0dc925b68f60db35ec2074acb5746c0420b0184e47be19661af0cfd8ca99d84a"
+    },
+    {
+      "bytes": 512,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/1148f907bbb152043f85564564037047acdd68fa931d17a2046f9ed759219340.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/1148f907bbb152043f85564564037047acdd68fa931d17a2046f9ed759219340.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "1148f907bbb152043f85564564037047acdd68fa931d17a2046f9ed759219340"
+    },
+    {
+      "bytes": 2292992,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/11748908d15e9742f73b3f51de995b5c77fe3b72391785b20250ef46229245d2.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/11748908d15e9742f73b3f51de995b5c77fe3b72391785b20250ef46229245d2.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "11748908d15e9742f73b3f51de995b5c77fe3b72391785b20250ef46229245d2"
+    },
+    {
+      "bytes": 2048,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/145c99923a123ec3e8ee06b9bd971ff9e6a71b67e4c790f0d9b60a564b11fdda.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/145c99923a123ec3e8ee06b9bd971ff9e6a71b67e4c790f0d9b60a564b11fdda.bin",
+      "roles": [
+        "oracle_output"
+      ],
+      "sha256": "145c99923a123ec3e8ee06b9bd971ff9e6a71b67e4c790f0d9b60a564b11fdda"
+    },
+    {
+      "bytes": 8,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/14c75cf07bdb6add8b38a5186d8d578e25ed424fca30f3b4238e97b525c7c4aa.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/14c75cf07bdb6add8b38a5186d8d578e25ed424fca30f3b4238e97b525c7c4aa.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "14c75cf07bdb6add8b38a5186d8d578e25ed424fca30f3b4238e97b525c7c4aa"
+    },
+    {
+      "bytes": 2323944,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/15d04fb907376d8bb1655fe3178b77fad265040e759a43f882e5c0f574ad4412.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/15d04fb907376d8bb1655fe3178b77fad265040e759a43f882e5c0f574ad4412.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "15d04fb907376d8bb1655fe3178b77fad265040e759a43f882e5c0f574ad4412"
+    },
+    {
+      "bytes": 2048,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/16062bd43d1ec0e3818c1f04864406724a114b51d6731bcbf5b7b71a7047ab27.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/16062bd43d1ec0e3818c1f04864406724a114b51d6731bcbf5b7b71a7047ab27.bin",
+      "roles": [
+        "oracle_output"
+      ],
+      "sha256": "16062bd43d1ec0e3818c1f04864406724a114b51d6731bcbf5b7b71a7047ab27"
+    },
+    {
+      "bytes": 4721664,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/17ab417ce0e6f75d1aaab215efbd7f7d9651deabd9f49beb9c61b743e8f1419f.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/17ab417ce0e6f75d1aaab215efbd7f7d9651deabd9f49beb9c61b743e8f1419f.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "17ab417ce0e6f75d1aaab215efbd7f7d9651deabd9f49beb9c61b743e8f1419f"
+    },
+    {
+      "bytes": 146566656,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/186ad5309c326a00f804c2a654f77721547936701fe11a86723ecf0ee22ad957.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/186ad5309c326a00f804c2a654f77721547936701fe11a86723ecf0ee22ad957.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "186ad5309c326a00f804c2a654f77721547936701fe11a86723ecf0ee22ad957"
+    },
+    {
+      "bytes": 144518400,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/1887894cf4baa96e7e8420e0d84c9854d38165353a389451810fd721178c130a.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/1887894cf4baa96e7e8420e0d84c9854d38165353a389451810fd721178c130a.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "1887894cf4baa96e7e8420e0d84c9854d38165353a389451810fd721178c130a"
+    },
+    {
+      "bytes": 131072,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/1927467661acf2cc33378bde66ef08ea96cc68458a1d3baf7de04275b1e02e7c.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/1927467661acf2cc33378bde66ef08ea96cc68458a1d3baf7de04275b1e02e7c.bin",
+      "roles": [
+        "oracle_output"
+      ],
+      "sha256": "1927467661acf2cc33378bde66ef08ea96cc68458a1d3baf7de04275b1e02e7c"
+    },
+    {
+      "bytes": 131072,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/192d095cbb9cbd39b2b8eb69f907efe873cf8b37dd9883091662e6e234e105af.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/192d095cbb9cbd39b2b8eb69f907efe873cf8b37dd9883091662e6e234e105af.bin",
+      "roles": [
+        "oracle_output"
+      ],
+      "sha256": "192d095cbb9cbd39b2b8eb69f907efe873cf8b37dd9883091662e6e234e105af"
+    },
+    {
+      "bytes": 64,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/19a9cea2be5d41e643b9f9de636e9f03c6188e7609dc383dc84823f34dc60c5c.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/19a9cea2be5d41e643b9f9de636e9f03c6188e7609dc383dc84823f34dc60c5c.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "19a9cea2be5d41e643b9f9de636e9f03c6188e7609dc383dc84823f34dc60c5c"
+    },
+    {
+      "bytes": 2260480,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/19b06ca839b77dbd6c2d9750994b2123d3a31eb26608435a414c8e8ec1f608a6.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/19b06ca839b77dbd6c2d9750994b2123d3a31eb26608435a414c8e8ec1f608a6.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "19b06ca839b77dbd6c2d9750994b2123d3a31eb26608435a414c8e8ec1f608a6"
+    },
+    {
+      "bytes": 2293248,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/1b27d0d8aa8c5a3e39ce797e717e8d6d806c61cb834dfc5d6a4a82ee90600f45.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/1b27d0d8aa8c5a3e39ce797e717e8d6d806c61cb834dfc5d6a4a82ee90600f45.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "1b27d0d8aa8c5a3e39ce797e717e8d6d806c61cb834dfc5d6a4a82ee90600f45"
+    },
+    {
+      "bytes": 136260864,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/1b3c3445242de7d21806d0b14ce864d37caab3bf9286899ba1ca7216bee4d611.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/1b3c3445242de7d21806d0b14ce864d37caab3bf9286899ba1ca7216bee4d611.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "1b3c3445242de7d21806d0b14ce864d37caab3bf9286899ba1ca7216bee4d611"
+    },
+    {
+      "bytes": 8,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/1d5871f5a07452d9c4b3043dbbbaeb878a75125772f0e455501d78123ce6510b.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/1d5871f5a07452d9c4b3043dbbbaeb878a75125772f0e455501d78123ce6510b.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "1d5871f5a07452d9c4b3043dbbbaeb878a75125772f0e455501d78123ce6510b"
+    },
+    {
+      "bytes": 36888,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/1e7af21c26af7354c22092f298ff8779bfba1a54feedb1d760c1107af7555834.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/1e7af21c26af7354c22092f298ff8779bfba1a54feedb1d760c1107af7555834.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "1e7af21c26af7354c22092f298ff8779bfba1a54feedb1d760c1107af7555834"
+    },
+    {
+      "bytes": 4096,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/1f9c112862915de534952f8338c981c74d5a78ce73d7798d1107571835958397.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/1f9c112862915de534952f8338c981c74d5a78ce73d7798d1107571835958397.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "1f9c112862915de534952f8338c981c74d5a78ce73d7798d1107571835958397"
+    },
+    {
+      "bytes": 2129152,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/20b34366b5609f1da0204397603bb29de11b3d6642877d87f346e6f60eed1284.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/20b34366b5609f1da0204397603bb29de11b3d6642877d87f346e6f60eed1284.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "20b34366b5609f1da0204397603bb29de11b3d6642877d87f346e6f60eed1284"
+    },
+    {
+      "bytes": 8,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/21af1564abf3fef6d9a67d04c0f5f91dbbabda16d523f005acf9f9a97c119aa2.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/21af1564abf3fef6d9a67d04c0f5f91dbbabda16d523f005acf9f9a97c119aa2.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "21af1564abf3fef6d9a67d04c0f5f91dbbabda16d523f005acf9f9a97c119aa2"
+    },
+    {
+      "bytes": 4721664,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/23ed6d6cf7dddd8d2485ca41758c5ccf5ffc4256ce83cf9ae1ba04d2d3e9c53e.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/23ed6d6cf7dddd8d2485ca41758c5ccf5ffc4256ce83cf9ae1ba04d2d3e9c53e.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "23ed6d6cf7dddd8d2485ca41758c5ccf5ffc4256ce83cf9ae1ba04d2d3e9c53e"
+    },
+    {
+      "bytes": 256,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/2400196ca5fbd2641263b993db27c288b79419c2f05926ad85a6d46957dcf07b.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/2400196ca5fbd2641263b993db27c288b79419c2f05926ad85a6d46957dcf07b.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "2400196ca5fbd2641263b993db27c288b79419c2f05926ad85a6d46957dcf07b"
+    },
+    {
+      "bytes": 2323944,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/2411383d6c211411f537888cf3871ed673362e566ca09cfae453d0ef6e6c39af.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/2411383d6c211411f537888cf3871ed673362e566ca09cfae453d0ef6e6c39af.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "2411383d6c211411f537888cf3871ed673362e566ca09cfae453d0ef6e6c39af"
+    },
+    {
+      "bytes": 64,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/262304bde0aff7d16fe4125b26e20dbc70982d5c3da102f274b92e3325f03987.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/262304bde0aff7d16fe4125b26e20dbc70982d5c3da102f274b92e3325f03987.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "262304bde0aff7d16fe4125b26e20dbc70982d5c3da102f274b92e3325f03987"
+    },
+    {
+      "bytes": 2048,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/262ec412dea5cbc5b1e70f548c944e7511be88e1accc51a294854ce1267828cb.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/262ec412dea5cbc5b1e70f548c944e7511be88e1accc51a294854ce1267828cb.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "262ec412dea5cbc5b1e70f548c944e7511be88e1accc51a294854ce1267828cb"
+    },
+    {
+      "bytes": 4721664,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/27649736cd3d63e7038b109bdafb00253df4779b5f713cd9ab645871d8d931dd.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/27649736cd3d63e7038b109bdafb00253df4779b5f713cd9ab645871d8d931dd.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "27649736cd3d63e7038b109bdafb00253df4779b5f713cd9ab645871d8d931dd"
+    },
+    {
+      "bytes": 131072,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/27ba468d2deb45948661694d07bad023a6977e6f221e1c0332c556bcdd4c36e3.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/27ba468d2deb45948661694d07bad023a6977e6f221e1c0332c556bcdd4c36e3.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "27ba468d2deb45948661694d07bad023a6977e6f221e1c0332c556bcdd4c36e3"
+    },
+    {
+      "bytes": 8,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/2a17aa3e85eb683989d30f2086b9f89943efc2f42989f9bc60da4df400ae0077.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/2a17aa3e85eb683989d30f2086b9f89943efc2f42989f9bc60da4df400ae0077.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "2a17aa3e85eb683989d30f2086b9f89943efc2f42989f9bc60da4df400ae0077"
+    },
+    {
+      "bytes": 142437888,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/2ad29d0b42a5d8327fe9c5877e1ce8abd9927e81ad87cf51d8934ce493939bde.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/2ad29d0b42a5d8327fe9c5877e1ce8abd9927e81ad87cf51d8934ce493939bde.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "2ad29d0b42a5d8327fe9c5877e1ce8abd9927e81ad87cf51d8934ce493939bde"
+    },
+    {
+      "bytes": 36888,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/2bfe6a279856be6fa881fe2d2c0f35c5d373a51ad3cbad8e14103170c29adc20.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/2bfe6a279856be6fa881fe2d2c0f35c5d373a51ad3cbad8e14103170c29adc20.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "2bfe6a279856be6fa881fe2d2c0f35c5d373a51ad3cbad8e14103170c29adc20"
+    },
+    {
+      "bytes": 2326016,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/2c18f60139d874ac61c5ebac47b71573bb815f51c1923460da171cd7055f2982.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/2c18f60139d874ac61c5ebac47b71573bb815f51c1923460da171cd7055f2982.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "2c18f60139d874ac61c5ebac47b71573bb815f51c1923460da171cd7055f2982"
+    },
+    {
+      "bytes": 73776,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/2c2787a48d4864c25bb560482f56db184ddd9fb6bb33149a87545d35bb1d8b2f.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/2c2787a48d4864c25bb560482f56db184ddd9fb6bb33149a87545d35bb1d8b2f.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "2c2787a48d4864c25bb560482f56db184ddd9fb6bb33149a87545d35bb1d8b2f"
+    },
+    {
+      "bytes": 131072,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/2d94be5b056d1d0af9a73a8cc809d4acb342c7d290af68a536deb22a8b30a186.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/2d94be5b056d1d0af9a73a8cc809d4acb342c7d290af68a536deb22a8b30a186.bin",
+      "roles": [
+        "oracle_output"
+      ],
+      "sha256": "2d94be5b056d1d0af9a73a8cc809d4acb342c7d290af68a536deb22a8b30a186"
+    },
+    {
+      "bytes": 512,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/2ddaabfb96018ea8222a06957461c8f54512008014e15988aa85f35a47d0cf50.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/2ddaabfb96018ea8222a06957461c8f54512008014e15988aa85f35a47d0cf50.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "2ddaabfb96018ea8222a06957461c8f54512008014e15988aa85f35a47d0cf50"
+    },
+    {
+      "bytes": 512,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/2fe034001beefcd2ada46bec12ee74cb9dc124f8a170e592c7cf9f5b03f0afe7.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/2fe034001beefcd2ada46bec12ee74cb9dc124f8a170e592c7cf9f5b03f0afe7.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "2fe034001beefcd2ada46bec12ee74cb9dc124f8a170e592c7cf9f5b03f0afe7"
+    },
+    {
+      "bytes": 512,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/30373281decaf9383427a24ae4bbb205d82e7ed3abe45eea4c52323d2bf44dca.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/30373281decaf9383427a24ae4bbb205d82e7ed3abe45eea4c52323d2bf44dca.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "30373281decaf9383427a24ae4bbb205d82e7ed3abe45eea4c52323d2bf44dca"
+    },
+    {
+      "bytes": 2048,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/3510201fada5d11477379f2861b1170721e33beaed56564fa8acae3b9549eb1b.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/3510201fada5d11477379f2861b1170721e33beaed56564fa8acae3b9549eb1b.bin",
+      "roles": [
+        "oracle_output"
+      ],
+      "sha256": "3510201fada5d11477379f2861b1170721e33beaed56564fa8acae3b9549eb1b"
+    },
+    {
+      "bytes": 131072,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/35e001a08ea03093d2245605f02b061899839c8624550b1f7353067dbf6308f8.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/35e001a08ea03093d2245605f02b061899839c8624550b1f7353067dbf6308f8.bin",
+      "roles": [
+        "oracle_output"
+      ],
+      "sha256": "35e001a08ea03093d2245605f02b061899839c8624550b1f7353067dbf6308f8"
+    },
+    {
+      "bytes": 134196480,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/35e98ae5b14c64e8c757e114d5168db0734b912e61701d97a48ec6d363df9b6b.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/35e98ae5b14c64e8c757e114d5168db0734b912e61701d97a48ec6d363df9b6b.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "35e98ae5b14c64e8c757e114d5168db0734b912e61701d97a48ec6d363df9b6b"
+    },
+    {
+      "bytes": 36888,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/37dee39bf05d7dfc7b83a232409136cfe8ff903b52a505b24a8541c5e23a5a41.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/37dee39bf05d7dfc7b83a232409136cfe8ff903b52a505b24a8541c5e23a5a41.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "37dee39bf05d7dfc7b83a232409136cfe8ff903b52a505b24a8541c5e23a5a41"
+    },
+    {
+      "bytes": 36888,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/37ee6eec1708c22b914b1192f1125db7aa9a1819b021b6c16821625fc265127a.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/37ee6eec1708c22b914b1192f1125db7aa9a1819b021b6c16821625fc265127a.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "37ee6eec1708c22b914b1192f1125db7aa9a1819b021b6c16821625fc265127a"
+    },
+    {
+      "bytes": 131072,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/3aa626b0ef50b64496c16460fa7a64485deae73596a1fffa1f5afbc7b0ff9116.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/3aa626b0ef50b64496c16460fa7a64485deae73596a1fffa1f5afbc7b0ff9116.bin",
+      "roles": [
+        "oracle_output"
+      ],
+      "sha256": "3aa626b0ef50b64496c16460fa7a64485deae73596a1fffa1f5afbc7b0ff9116"
+    },
+    {
+      "bytes": 2323944,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/3afb134ebe8ffe493f4de642cef8af7ad01fd25b9ca985c65fdf26f7bca4c0e0.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/3afb134ebe8ffe493f4de642cef8af7ad01fd25b9ca985c65fdf26f7bca4c0e0.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "3afb134ebe8ffe493f4de642cef8af7ad01fd25b9ca985c65fdf26f7bca4c0e0"
+    },
+    {
+      "bytes": 512,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/3b5b77796178c23ac893703f70da7db6b3655d8280575e19a1ec22701783f5ec.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/3b5b77796178c23ac893703f70da7db6b3655d8280575e19a1ec22701783f5ec.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "3b5b77796178c23ac893703f70da7db6b3655d8280575e19a1ec22701783f5ec"
+    },
+    {
+      "bytes": 131072,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/3bd7ef41b83ee5acf0bbbfdeca85df038cc59a583fb6de27462c858421014d63.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/3bd7ef41b83ee5acf0bbbfdeca85df038cc59a583fb6de27462c858421014d63.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "3bd7ef41b83ee5acf0bbbfdeca85df038cc59a583fb6de27462c858421014d63"
+    },
+    {
+      "bytes": 136244736,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/3cc56a75e83acd7d90b9a23e518adcbeab895c8fc029badb9f223dda4d026af8.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/3cc56a75e83acd7d90b9a23e518adcbeab895c8fc029badb9f223dda4d026af8.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "3cc56a75e83acd7d90b9a23e518adcbeab895c8fc029badb9f223dda4d026af8"
+    },
+    {
+      "bytes": 512,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/3db9b67868bd87810bdef6d015e5e9752a7f64814df88299a673c4ed9c88e4b8.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/3db9b67868bd87810bdef6d015e5e9752a7f64814df88299a673c4ed9c88e4b8.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "3db9b67868bd87810bdef6d015e5e9752a7f64814df88299a673c4ed9c88e4b8"
+    },
+    {
+      "bytes": 512,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/3e4785f63667de3e2b6a4e0156eb4837090cf8384b545058ca2ac1d9af6e9f15.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/3e4785f63667de3e2b6a4e0156eb4837090cf8384b545058ca2ac1d9af6e9f15.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "3e4785f63667de3e2b6a4e0156eb4837090cf8384b545058ca2ac1d9af6e9f15"
+    },
+    {
+      "bytes": 2323944,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/3e49020cfa83d1f5cf20aa1033a819dc86055bd648237cdd27d55dcfb48fe431.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/3e49020cfa83d1f5cf20aa1033a819dc86055bd648237cdd27d55dcfb48fe431.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "3e49020cfa83d1f5cf20aa1033a819dc86055bd648237cdd27d55dcfb48fe431"
+    },
+    {
+      "bytes": 2048,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/3eab38c142bff5a6d62dfa7c7fbe6df958d8fbbc51d47bcb4e6bace0ff645b4c.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/3eab38c142bff5a6d62dfa7c7fbe6df958d8fbbc51d47bcb4e6bace0ff645b4c.bin",
+      "roles": [
+        "oracle_output"
+      ],
+      "sha256": "3eab38c142bff5a6d62dfa7c7fbe6df958d8fbbc51d47bcb4e6bace0ff645b4c"
+    },
+    {
+      "bytes": 131072,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/3f7b1459d1bbfb14bfcb03e7442a8e763c34736662667034bcf4f43e66299dd9.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/3f7b1459d1bbfb14bfcb03e7442a8e763c34736662667034bcf4f43e66299dd9.bin",
+      "roles": [
+        "oracle_output"
+      ],
+      "sha256": "3f7b1459d1bbfb14bfcb03e7442a8e763c34736662667034bcf4f43e66299dd9"
+    },
+    {
+      "bytes": 2358528,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/3fd72b81530062157cc933be3b3967d0c415bde32f59632664bce23450caed2d.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/3fd72b81530062157cc933be3b3967d0c415bde32f59632664bce23450caed2d.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "3fd72b81530062157cc933be3b3967d0c415bde32f59632664bce23450caed2d"
+    },
+    {
+      "bytes": 4096,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/40f78376d9bc1fa18eedbe8c0f61507adcfe4b93a86d6ccf554b64a9c67a0c8f.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/40f78376d9bc1fa18eedbe8c0f61507adcfe4b93a86d6ccf554b64a9c67a0c8f.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "40f78376d9bc1fa18eedbe8c0f61507adcfe4b93a86d6ccf554b64a9c67a0c8f"
+    },
+    {
+      "bytes": 73776,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/4145e74fe244694b119c9e4583aa4121b2ae2ee1847d7e4e6852e2df200b78e2.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/4145e74fe244694b119c9e4583aa4121b2ae2ee1847d7e4e6852e2df200b78e2.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "4145e74fe244694b119c9e4583aa4121b2ae2ee1847d7e4e6852e2df200b78e2"
+    },
+    {
+      "bytes": 131072,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/42637ccac1688bd76351c268605272f49f858510889c5bfd3ea03f98895e7539.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/42637ccac1688bd76351c268605272f49f858510889c5bfd3ea03f98895e7539.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "42637ccac1688bd76351c268605272f49f858510889c5bfd3ea03f98895e7539"
+    },
+    {
+      "bytes": 2358528,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/432db8cbf37443ba36e81c3bb5bdc443d12b690ac0d90963ff3f05522de3b427.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/432db8cbf37443ba36e81c3bb5bdc443d12b690ac0d90963ff3f05522de3b427.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "432db8cbf37443ba36e81c3bb5bdc443d12b690ac0d90963ff3f05522de3b427"
+    },
+    {
+      "bytes": 8,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/437fd01d60f3ab53d3134fb2f079b60a137791c223db6e29074947b1de3c1192.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/437fd01d60f3ab53d3134fb2f079b60a137791c223db6e29074947b1de3c1192.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "437fd01d60f3ab53d3134fb2f079b60a137791c223db6e29074947b1de3c1192"
+    },
+    {
+      "bytes": 36888,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/43f3b47ebe5f6e91dc0209441f63eafc64ab0145b661ee4133175b9528af7688.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/43f3b47ebe5f6e91dc0209441f63eafc64ab0145b661ee4133175b9528af7688.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "43f3b47ebe5f6e91dc0209441f63eafc64ab0145b661ee4133175b9528af7688"
+    },
+    {
+      "bytes": 2048,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/44c9a2c3c21b2b29f00fe4425e8cb6b4b21360f49fd4ba28734f173d7752afce.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/44c9a2c3c21b2b29f00fe4425e8cb6b4b21360f49fd4ba28734f173d7752afce.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "44c9a2c3c21b2b29f00fe4425e8cb6b4b21360f49fd4ba28734f173d7752afce"
+    },
+    {
+      "bytes": 144502272,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/44d3cf38f9c993c83e4b2f328d5c42a00aefe089f7831feca54e2a30e3b40259.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/44d3cf38f9c993c83e4b2f328d5c42a00aefe089f7831feca54e2a30e3b40259.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "44d3cf38f9c993c83e4b2f328d5c42a00aefe089f7831feca54e2a30e3b40259"
+    },
+    {
+      "bytes": 131072,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/4571b71b9631c31cb3fb21e6d2f93bdd805454d9c758e3226b300c1b2d1745d9.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/4571b71b9631c31cb3fb21e6d2f93bdd805454d9c758e3226b300c1b2d1745d9.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "4571b71b9631c31cb3fb21e6d2f93bdd805454d9c758e3226b300c1b2d1745d9"
+    },
+    {
+      "bytes": 2161920,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/45bf810d65a0bed528b8b76c430b7d36fde1d8a8d281a9353c1c9519a4aa0754.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/45bf810d65a0bed528b8b76c430b7d36fde1d8a8d281a9353c1c9519a4aa0754.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "45bf810d65a0bed528b8b76c430b7d36fde1d8a8d281a9353c1c9519a4aa0754"
+    },
+    {
+      "bytes": 2048,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/47766d19664ec1266a66dfe0e089fef52aedce3f4b45826d3b2d547b1aa7c8a6.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/47766d19664ec1266a66dfe0e089fef52aedce3f4b45826d3b2d547b1aa7c8a6.bin",
+      "roles": [
+        "oracle_output"
+      ],
+      "sha256": "47766d19664ec1266a66dfe0e089fef52aedce3f4b45826d3b2d547b1aa7c8a6"
+    },
+    {
+      "bytes": 4096,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/485a7ba86cfd31f2f49390a72b2603fca297dd0b1434272c9064232fb84fc457.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/485a7ba86cfd31f2f49390a72b2603fca297dd0b1434272c9064232fb84fc457.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "485a7ba86cfd31f2f49390a72b2603fca297dd0b1434272c9064232fb84fc457"
+    },
+    {
+      "bytes": 36888,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/4bdee1c17eac39e989894249999b4a145736a05674bbc5f3a71d4de1e9df5738.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/4bdee1c17eac39e989894249999b4a145736a05674bbc5f3a71d4de1e9df5738.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "4bdee1c17eac39e989894249999b4a145736a05674bbc5f3a71d4de1e9df5738"
+    },
+    {
+      "bytes": 4721664,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/4c3f7fa7c1178b6229c09ac01747750fa620b1fc994e0f53810c86f3710bf42b.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/4c3f7fa7c1178b6229c09ac01747750fa620b1fc994e0f53810c86f3710bf42b.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "4c3f7fa7c1178b6229c09ac01747750fa620b1fc994e0f53810c86f3710bf42b"
+    },
+    {
+      "bytes": 512,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/4d36028769c7152052f82a64e6895b327503fced365e17cf7ee968848a113e82.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/4d36028769c7152052f82a64e6895b327503fced365e17cf7ee968848a113e82.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "4d36028769c7152052f82a64e6895b327503fced365e17cf7ee968848a113e82"
+    },
+    {
+      "bytes": 2129408,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/4e2e4b693774d71eaacf432e46b44b75d6c861fb9255814aabe2d3b0d756fb41.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/4e2e4b693774d71eaacf432e46b44b75d6c861fb9255814aabe2d3b0d756fb41.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "4e2e4b693774d71eaacf432e46b44b75d6c861fb9255814aabe2d3b0d756fb41"
+    },
+    {
+      "bytes": 64,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/4fd7e743626f76f281f1df15b9bc262947f90f2a9864161b1043966c406cdb30.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/4fd7e743626f76f281f1df15b9bc262947f90f2a9864161b1043966c406cdb30.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "4fd7e743626f76f281f1df15b9bc262947f90f2a9864161b1043966c406cdb30"
+    },
+    {
+      "bytes": 64,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/4ff85d94f605a79d64e0c189fde3f97b32eab96cc36086dfd95569c229155b5a.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/4ff85d94f605a79d64e0c189fde3f97b32eab96cc36086dfd95569c229155b5a.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "4ff85d94f605a79d64e0c189fde3f97b32eab96cc36086dfd95569c229155b5a"
+    },
+    {
+      "bytes": 144518400,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/500b76dc5259c31eabaa4a4c9a60b2b72d2e6ff3f01bd84779044c067deb3793.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/500b76dc5259c31eabaa4a4c9a60b2b72d2e6ff3f01bd84779044c067deb3793.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "500b76dc5259c31eabaa4a4c9a60b2b72d2e6ff3f01bd84779044c067deb3793"
+    },
+    {
+      "bytes": 8,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/50c7f71ae8b3b4970814c682a8b0be98f42abb1ee36226fbe29013ff63da34b9.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/50c7f71ae8b3b4970814c682a8b0be98f42abb1ee36226fbe29013ff63da34b9.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "50c7f71ae8b3b4970814c682a8b0be98f42abb1ee36226fbe29013ff63da34b9"
+    },
+    {
+      "bytes": 131072,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/51a1298131f2ecdee690c1e197d21541dd932dda66fbac41350d3dc9b262658a.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/51a1298131f2ecdee690c1e197d21541dd932dda66fbac41350d3dc9b262658a.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "51a1298131f2ecdee690c1e197d21541dd932dda66fbac41350d3dc9b262658a"
+    },
+    {
+      "bytes": 64,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/520c098671125c18e7308d81a65a672539f6ae0d10e7bf1c641e41775c389747.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/520c098671125c18e7308d81a65a672539f6ae0d10e7bf1c641e41775c389747.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "520c098671125c18e7308d81a65a672539f6ae0d10e7bf1c641e41775c389747"
+    },
+    {
+      "bytes": 73776,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/54b485ea260c76e2522e0b452e959cbc303243436cc43b3cabd1c812d519d721.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/54b485ea260c76e2522e0b452e959cbc303243436cc43b3cabd1c812d519d721.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "54b485ea260c76e2522e0b452e959cbc303243436cc43b3cabd1c812d519d721"
+    },
+    {
+      "bytes": 131072,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/558c9cb4a1403e188b47f46ca803c97526903934f7111655882bc7ed75bd9213.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/558c9cb4a1403e188b47f46ca803c97526903934f7111655882bc7ed75bd9213.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "558c9cb4a1403e188b47f46ca803c97526903934f7111655882bc7ed75bd9213"
+    },
+    {
+      "bytes": 131072,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/562d0aa359c91ffaf6beb09e05ad8020189c25c7e156995db98ae32bfc145957.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/562d0aa359c91ffaf6beb09e05ad8020189c25c7e156995db98ae32bfc145957.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "562d0aa359c91ffaf6beb09e05ad8020189c25c7e156995db98ae32bfc145957"
+    },
+    {
+      "bytes": 36888,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/578186023a2c8c0198871774a6a82d17c5fa7aba6837be8854093a51f3892201.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/578186023a2c8c0198871774a6a82d17c5fa7aba6837be8854093a51f3892201.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "578186023a2c8c0198871774a6a82d17c5fa7aba6837be8854093a51f3892201"
+    },
+    {
+      "bytes": 131072,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/5939c0e644d1ecef90438080f7b3a46f9131bf5637c10144d1fbf8a07dc8b0a1.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/5939c0e644d1ecef90438080f7b3a46f9131bf5637c10144d1fbf8a07dc8b0a1.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "5939c0e644d1ecef90438080f7b3a46f9131bf5637c10144d1fbf8a07dc8b0a1"
+    },
+    {
+      "bytes": 131072,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/597ff9e87a891839bbe564d45506ec96674bbb3a43232cc2487544d0f0e3f5e2.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/597ff9e87a891839bbe564d45506ec96674bbb3a43232cc2487544d0f0e3f5e2.bin",
+      "roles": [
+        "oracle_output"
+      ],
+      "sha256": "597ff9e87a891839bbe564d45506ec96674bbb3a43232cc2487544d0f0e3f5e2"
+    },
+    {
+      "bytes": 131072,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/59ea5cd9a58d57b518f4770b3eec9d0807a2e7b74e5040c054c50a78e527ac3e.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/59ea5cd9a58d57b518f4770b3eec9d0807a2e7b74e5040c054c50a78e527ac3e.bin",
+      "roles": [
+        "oracle_output"
+      ],
+      "sha256": "59ea5cd9a58d57b518f4770b3eec9d0807a2e7b74e5040c054c50a78e527ac3e"
+    },
+    {
+      "bytes": 64,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/59f67f7b3f79276012346814442e4ce271531a3f631fa82b91586f284a943878.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/59f67f7b3f79276012346814442e4ce271531a3f631fa82b91586f284a943878.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "59f67f7b3f79276012346814442e4ce271531a3f631fa82b91586f284a943878"
+    },
+    {
+      "bytes": 2048,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/5a98ec93d19167a84603ef8f517a35afe8d2a182e6fffcc1bc9a434e11ce0360.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/5a98ec93d19167a84603ef8f517a35afe8d2a182e6fffcc1bc9a434e11ce0360.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "5a98ec93d19167a84603ef8f517a35afe8d2a182e6fffcc1bc9a434e11ce0360"
+    },
+    {
+      "bytes": 4721664,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/5bdc71e2eb749e05083b43da2031bedb9fce93e92e15f1283e8d24650d4e18b2.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/5bdc71e2eb749e05083b43da2031bedb9fce93e92e15f1283e8d24650d4e18b2.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "5bdc71e2eb749e05083b43da2031bedb9fce93e92e15f1283e8d24650d4e18b2"
+    },
+    {
+      "bytes": 2048,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/5c5d6ccaa7020ec7cb5e4519927117c097a09142de2271628d6abd095d73d02a.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/5c5d6ccaa7020ec7cb5e4519927117c097a09142de2271628d6abd095d73d02a.bin",
+      "roles": [
+        "oracle_output"
+      ],
+      "sha256": "5c5d6ccaa7020ec7cb5e4519927117c097a09142de2271628d6abd095d73d02a"
+    },
+    {
+      "bytes": 8,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/5eb6da0e0e522104c6d50b0748e6893762f7f2c00a7163a46ccbb535bfd61a0d.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/5eb6da0e0e522104c6d50b0748e6893762f7f2c00a7163a46ccbb535bfd61a0d.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "5eb6da0e0e522104c6d50b0748e6893762f7f2c00a7163a46ccbb535bfd61a0d"
+    },
+    {
+      "bytes": 142454016,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/5efd7eb47a8268361a6a98fa4a9c5c34d9efec11a66f10ddbc96203dab43ad40.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/5efd7eb47a8268361a6a98fa4a9c5c34d9efec11a66f10ddbc96203dab43ad40.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "5efd7eb47a8268361a6a98fa4a9c5c34d9efec11a66f10ddbc96203dab43ad40"
+    },
+    {
+      "bytes": 512,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/5efef2bf48060cfc7fdee7dabf80f91e661b4993098b8a2fde6166afbf82efe8.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/5efef2bf48060cfc7fdee7dabf80f91e661b4993098b8a2fde6166afbf82efe8.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "5efef2bf48060cfc7fdee7dabf80f91e661b4993098b8a2fde6166afbf82efe8"
+    },
+    {
+      "bytes": 36888,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/5f03c887aee8f200380f91b2e2aa01632bda9d2aae047523162ec655c34ecaf0.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/5f03c887aee8f200380f91b2e2aa01632bda9d2aae047523162ec655c34ecaf0.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "5f03c887aee8f200380f91b2e2aa01632bda9d2aae047523162ec655c34ecaf0"
+    },
+    {
+      "bytes": 142454016,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/6054dff55a46d1c22807bf8177b68a21c1a0bcce55c3911d42728d43da7b32fc.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/6054dff55a46d1c22807bf8177b68a21c1a0bcce55c3911d42728d43da7b32fc.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "6054dff55a46d1c22807bf8177b68a21c1a0bcce55c3911d42728d43da7b32fc"
+    },
+    {
+      "bytes": 73776,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/61870e8b97c8e2c5de86b07a32957efea71a0146b7f028d72ba7b0bbd6d7097b.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/61870e8b97c8e2c5de86b07a32957efea71a0146b7f028d72ba7b0bbd6d7097b.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "61870e8b97c8e2c5de86b07a32957efea71a0146b7f028d72ba7b0bbd6d7097b"
+    },
+    {
+      "bytes": 4721664,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/6337ad2c2d33a6bc6209fa7f7b85befe43a218b0b412fb0a7ca67ca41e0c3361.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/6337ad2c2d33a6bc6209fa7f7b85befe43a218b0b412fb0a7ca67ca41e0c3361.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "6337ad2c2d33a6bc6209fa7f7b85befe43a218b0b412fb0a7ca67ca41e0c3361"
+    },
+    {
+      "bytes": 36888,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/636428564c8950625877d242c6c35efded82125ed10cd280831adc5498b9dedd.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/636428564c8950625877d242c6c35efded82125ed10cd280831adc5498b9dedd.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "636428564c8950625877d242c6c35efded82125ed10cd280831adc5498b9dedd"
+    },
+    {
+      "bytes": 140389632,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/66cfee653c7b321616ea8be1fd66d86c9409f94db73faacb7bfa6e10cf85bbdd.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/66cfee653c7b321616ea8be1fd66d86c9409f94db73faacb7bfa6e10cf85bbdd.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "66cfee653c7b321616ea8be1fd66d86c9409f94db73faacb7bfa6e10cf85bbdd"
+    },
+    {
+      "bytes": 132132096,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/6812072f748cf12cf8b7a841773331744539ba7d089779ee009c3cf7549fa419.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/6812072f748cf12cf8b7a841773331744539ba7d089779ee009c3cf7549fa419.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "6812072f748cf12cf8b7a841773331744539ba7d089779ee009c3cf7549fa419"
+    },
+    {
+      "bytes": 4721664,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/69005945988a2303a612cc93fdd1d53ed6b7c91eebfe0cf6b87864230f3613d2.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/69005945988a2303a612cc93fdd1d53ed6b7c91eebfe0cf6b87864230f3613d2.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "69005945988a2303a612cc93fdd1d53ed6b7c91eebfe0cf6b87864230f3613d2"
+    },
+    {
+      "bytes": 8,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/69acf6349d9b51d52ca769ff5bd34ff8a3cad1b680b07d723beaa7daa1892ef4.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/69acf6349d9b51d52ca769ff5bd34ff8a3cad1b680b07d723beaa7daa1892ef4.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "69acf6349d9b51d52ca769ff5bd34ff8a3cad1b680b07d723beaa7daa1892ef4"
+    },
+    {
+      "bytes": 2048,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/69c5c377d54a203c665c077f2ead9d3b945a35ca64b35f0d2845328a7f069a1e.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/69c5c377d54a203c665c077f2ead9d3b945a35ca64b35f0d2845328a7f069a1e.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "69c5c377d54a203c665c077f2ead9d3b945a35ca64b35f0d2845328a7f069a1e"
+    },
+    {
+      "bytes": 2325760,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/6a1569d8760f5cf4a1a14fc1930fb0e799e8a2fc34f14a6c57cac5440246ea21.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/6a1569d8760f5cf4a1a14fc1930fb0e799e8a2fc34f14a6c57cac5440246ea21.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "6a1569d8760f5cf4a1a14fc1930fb0e799e8a2fc34f14a6c57cac5440246ea21"
+    },
+    {
+      "bytes": 136244736,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/6d92e6e9bbc7bbc6ac65a878a0aae0f55dac37d4f7560307c225094e9f8fdca9.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/6d92e6e9bbc7bbc6ac65a878a0aae0f55dac37d4f7560307c225094e9f8fdca9.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "6d92e6e9bbc7bbc6ac65a878a0aae0f55dac37d4f7560307c225094e9f8fdca9"
+    },
+    {
+      "bytes": 4096,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/6fa5a007fc784f2b3ca29d580a526d78ad766a8c934f39d0c42ca9ebc010efe1.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/6fa5a007fc784f2b3ca29d580a526d78ad766a8c934f39d0c42ca9ebc010efe1.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "6fa5a007fc784f2b3ca29d580a526d78ad766a8c934f39d0c42ca9ebc010efe1"
+    },
+    {
+      "bytes": 4096,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/6fefd8b6a1a1196f386c69eea57d78bb26bfdb3891774b1b30aca185a3182df3.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/6fefd8b6a1a1196f386c69eea57d78bb26bfdb3891774b1b30aca185a3182df3.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "6fefd8b6a1a1196f386c69eea57d78bb26bfdb3891774b1b30aca185a3182df3"
+    },
+    {
+      "bytes": 73776,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/70d0390a46253f2ded081ebb1ceb30f02a8b5aa00876005a8f3fd7065c86903c.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/70d0390a46253f2ded081ebb1ceb30f02a8b5aa00876005a8f3fd7065c86903c.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "70d0390a46253f2ded081ebb1ceb30f02a8b5aa00876005a8f3fd7065c86903c"
+    },
+    {
+      "bytes": 64,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/73f5f4a95f1214f8f1855b12d6fcd3d45ed8c5913ee42a8db46715af27cc854f.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/73f5f4a95f1214f8f1855b12d6fcd3d45ed8c5913ee42a8db46715af27cc854f.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "73f5f4a95f1214f8f1855b12d6fcd3d45ed8c5913ee42a8db46715af27cc854f"
+    },
+    {
+      "bytes": 131072,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/7448c3e4e7d6d268744930e292cb1701bda77bd435f0523419cee5f76f3e9b62.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/7448c3e4e7d6d268744930e292cb1701bda77bd435f0523419cee5f76f3e9b62.bin",
+      "roles": [
+        "oracle_output"
+      ],
+      "sha256": "7448c3e4e7d6d268744930e292cb1701bda77bd435f0523419cee5f76f3e9b62"
+    },
+    {
+      "bytes": 4096,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/76256d3620b4e451d0a46acfa0e61cbb45736f793bfea7810a3aea519110f839.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/76256d3620b4e451d0a46acfa0e61cbb45736f793bfea7810a3aea519110f839.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "76256d3620b4e451d0a46acfa0e61cbb45736f793bfea7810a3aea519110f839"
+    },
+    {
+      "bytes": 512,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/76335282d7e4c79cd2630474a26acc723371a74071df340bbc49d2a26157d24b.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/76335282d7e4c79cd2630474a26acc723371a74071df340bbc49d2a26157d24b.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "76335282d7e4c79cd2630474a26acc723371a74071df340bbc49d2a26157d24b"
+    },
+    {
+      "bytes": 8,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/76970217e7bca60cbf06c5e79ea4f6e65695228e3588c43dc0b647c4d28715f9.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/76970217e7bca60cbf06c5e79ea4f6e65695228e3588c43dc0b647c4d28715f9.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "76970217e7bca60cbf06c5e79ea4f6e65695228e3588c43dc0b647c4d28715f9"
+    },
+    {
+      "bytes": 148631040,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/76dbaf56c6180fd4d953f720fa2df2af92df6449e07eebb5b8228f122fb2c228.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/76dbaf56c6180fd4d953f720fa2df2af92df6449e07eebb5b8228f122fb2c228.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "76dbaf56c6180fd4d953f720fa2df2af92df6449e07eebb5b8228f122fb2c228"
+    },
+    {
+      "bytes": 138325248,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/76e176e71dac48c1de452a8c628b5674baf9fffa6e12755863a2da20120b91a6.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/76e176e71dac48c1de452a8c628b5674baf9fffa6e12755863a2da20120b91a6.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "76e176e71dac48c1de452a8c628b5674baf9fffa6e12755863a2da20120b91a6"
+    },
+    {
+      "bytes": 2323944,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/7748dd03ee1cfa3fea10984abca1d660762965a6bbc63fcae2440dc52f1a855b.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/7748dd03ee1cfa3fea10984abca1d660762965a6bbc63fcae2440dc52f1a855b.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "7748dd03ee1cfa3fea10984abca1d660762965a6bbc63fcae2440dc52f1a855b"
+    },
+    {
+      "bytes": 36888,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/786ce2e034e6e579679a08a9026400089deac1c46691c3e92830a626473e5b3c.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/786ce2e034e6e579679a08a9026400089deac1c46691c3e92830a626473e5b3c.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "786ce2e034e6e579679a08a9026400089deac1c46691c3e92830a626473e5b3c"
+    },
+    {
+      "bytes": 2048,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/794e8ea0dfdf7d373cda41c38a08ad1958b8c072f4debefc32904ea39893ccbd.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/794e8ea0dfdf7d373cda41c38a08ad1958b8c072f4debefc32904ea39893ccbd.bin",
+      "roles": [
+        "oracle_output"
+      ],
+      "sha256": "794e8ea0dfdf7d373cda41c38a08ad1958b8c072f4debefc32904ea39893ccbd"
+    },
+    {
+      "bytes": 140373504,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/79f52b9d30d90283f606f7f3b8ee1efc6e1ebe7623881c40ded0efcc467d6fd7.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/79f52b9d30d90283f606f7f3b8ee1efc6e1ebe7623881c40ded0efcc467d6fd7.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "79f52b9d30d90283f606f7f3b8ee1efc6e1ebe7623881c40ded0efcc467d6fd7"
+    },
+    {
+      "bytes": 2227712,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/7acf4e72617928090bac67f705011f19ad85d333a957765cd720f7b023261e29.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/7acf4e72617928090bac67f705011f19ad85d333a957765cd720f7b023261e29.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "7acf4e72617928090bac67f705011f19ad85d333a957765cd720f7b023261e29"
+    },
+    {
+      "bytes": 2194944,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/7b813f406554cb5f28744f62fa6a4208dc0e10120a1db39fc4bc4412065bbd60.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/7b813f406554cb5f28744f62fa6a4208dc0e10120a1db39fc4bc4412065bbd60.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "7b813f406554cb5f28744f62fa6a4208dc0e10120a1db39fc4bc4412065bbd60"
+    },
+    {
+      "bytes": 4096,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/7c274c8fb22bb191b894c0801ee15f7c87de5ee545de8aedcbf552ef3d19c533.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/7c274c8fb22bb191b894c0801ee15f7c87de5ee545de8aedcbf552ef3d19c533.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "7c274c8fb22bb191b894c0801ee15f7c87de5ee545de8aedcbf552ef3d19c533"
+    },
+    {
+      "bytes": 2260480,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/7ddea5d9f8e984f33a67b2e7f3fcb71d4b5a3c20fe1f82f0a2b7ed87c824105e.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/7ddea5d9f8e984f33a67b2e7f3fcb71d4b5a3c20fe1f82f0a2b7ed87c824105e.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "7ddea5d9f8e984f33a67b2e7f3fcb71d4b5a3c20fe1f82f0a2b7ed87c824105e"
+    },
+    {
+      "bytes": 2194944,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/7dfff55fb85a8aa4f4754d16214b039689b5e8e56ed5be6a0990e56bfdd51ed4.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/7dfff55fb85a8aa4f4754d16214b039689b5e8e56ed5be6a0990e56bfdd51ed4.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "7dfff55fb85a8aa4f4754d16214b039689b5e8e56ed5be6a0990e56bfdd51ed4"
+    },
+    {
+      "bytes": 4721664,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/7e9a7241515a13a249564955fc927aa25e5b709f11d37e05e62f44b6396199fd.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/7e9a7241515a13a249564955fc927aa25e5b709f11d37e05e62f44b6396199fd.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "7e9a7241515a13a249564955fc927aa25e5b709f11d37e05e62f44b6396199fd"
+    },
+    {
+      "bytes": 2048,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/7f5198c3e19963696e62f1cee615393bb81ae58a249a4774e41083817fbb6f2e.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/7f5198c3e19963696e62f1cee615393bb81ae58a249a4774e41083817fbb6f2e.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "7f5198c3e19963696e62f1cee615393bb81ae58a249a4774e41083817fbb6f2e"
+    },
+    {
+      "bytes": 2048,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/80e2f70b8bbcb16a7d8de7ae6bba0775d0de83e29a3e1f1da41df2805f4903fa.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/80e2f70b8bbcb16a7d8de7ae6bba0775d0de83e29a3e1f1da41df2805f4903fa.bin",
+      "roles": [
+        "oracle_output"
+      ],
+      "sha256": "80e2f70b8bbcb16a7d8de7ae6bba0775d0de83e29a3e1f1da41df2805f4903fa"
+    },
+    {
+      "bytes": 146582784,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/825c92131e686c51b4ec971f4384bf931dc65e2333506062418dad3933555856.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/825c92131e686c51b4ec971f4384bf931dc65e2333506062418dad3933555856.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "825c92131e686c51b4ec971f4384bf931dc65e2333506062418dad3933555856"
+    },
+    {
+      "bytes": 64,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/82752763947f5e0efd04c807f98b07de1aec638b5d768098475693db8f15f62e.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/82752763947f5e0efd04c807f98b07de1aec638b5d768098475693db8f15f62e.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "82752763947f5e0efd04c807f98b07de1aec638b5d768098475693db8f15f62e"
+    },
+    {
+      "bytes": 2323944,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/837ba60e1d5929479916d481f1caa212e1975cbdbe2e8264d788370ff0e4605e.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/837ba60e1d5929479916d481f1caa212e1975cbdbe2e8264d788370ff0e4605e.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "837ba60e1d5929479916d481f1caa212e1975cbdbe2e8264d788370ff0e4605e"
+    },
+    {
+      "bytes": 144502272,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/8408a3dba58b40089d21b1b03cf6e6a97ef68df12ceeb5fccfd4c859aca7bf83.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/8408a3dba58b40089d21b1b03cf6e6a97ef68df12ceeb5fccfd4c859aca7bf83.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "8408a3dba58b40089d21b1b03cf6e6a97ef68df12ceeb5fccfd4c859aca7bf83"
+    },
+    {
+      "bytes": 148631040,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/844bbf7cdbe925521366a1e31bb2ead0e1f623eba0b4443dab0b150c955d0b85.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/844bbf7cdbe925521366a1e31bb2ead0e1f623eba0b4443dab0b150c955d0b85.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "844bbf7cdbe925521366a1e31bb2ead0e1f623eba0b4443dab0b150c955d0b85"
+    },
+    {
+      "bytes": 512,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/84cb51f32b3fee679d8ea55c295b9d532d3198ba44b4aa3333f48dda8a0cbf88.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/84cb51f32b3fee679d8ea55c295b9d532d3198ba44b4aa3333f48dda8a0cbf88.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "84cb51f32b3fee679d8ea55c295b9d532d3198ba44b4aa3333f48dda8a0cbf88"
+    },
+    {
+      "bytes": 64,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/85db00d747222dbb642eb335d8c9472f0adc81f56453d47c498da9538c405008.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/85db00d747222dbb642eb335d8c9472f0adc81f56453d47c498da9538c405008.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "85db00d747222dbb642eb335d8c9472f0adc81f56453d47c498da9538c405008"
+    },
+    {
+      "bytes": 4721664,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/86950586a1d3be4d0ebf68c7b55a6236d57cb042cd7fd5ead199cad3466d6cfa.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/86950586a1d3be4d0ebf68c7b55a6236d57cb042cd7fd5ead199cad3466d6cfa.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "86950586a1d3be4d0ebf68c7b55a6236d57cb042cd7fd5ead199cad3466d6cfa"
+    },
+    {
+      "bytes": 2048,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/86998862bc95fafa51e0b1597b21a3de9b6fab9e857efe0e331cafd3a22a844f.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/86998862bc95fafa51e0b1597b21a3de9b6fab9e857efe0e331cafd3a22a844f.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "86998862bc95fafa51e0b1597b21a3de9b6fab9e857efe0e331cafd3a22a844f"
+    },
+    {
+      "bytes": 146582784,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/87d10e340447caa36819316df5514e2e677617e43e633dad247e6e9a38e1d5e9.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/87d10e340447caa36819316df5514e2e677617e43e633dad247e6e9a38e1d5e9.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "87d10e340447caa36819316df5514e2e677617e43e633dad247e6e9a38e1d5e9"
+    },
+    {
+      "bytes": 512,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/881931a01d651b542b625a3807db761c4e7f54abd215ef5ae4d3ca0a8797c0a7.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/881931a01d651b542b625a3807db761c4e7f54abd215ef5ae4d3ca0a8797c0a7.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "881931a01d651b542b625a3807db761c4e7f54abd215ef5ae4d3ca0a8797c0a7"
+    },
+    {
+      "bytes": 2048,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/88c1cf6133d4522c0f940b5bc31c88d0b10a9673bf6f4e0006ea6d628577a337.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/88c1cf6133d4522c0f940b5bc31c88d0b10a9673bf6f4e0006ea6d628577a337.bin",
+      "roles": [
+        "oracle_output"
+      ],
+      "sha256": "88c1cf6133d4522c0f940b5bc31c88d0b10a9673bf6f4e0006ea6d628577a337"
+    },
+    {
+      "bytes": 2323944,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/88eeba4e567f9364abd071868094bd899f99742df389ebfb24fc5a1e91259f9f.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/88eeba4e567f9364abd071868094bd899f99742df389ebfb24fc5a1e91259f9f.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "88eeba4e567f9364abd071868094bd899f99742df389ebfb24fc5a1e91259f9f"
+    },
+    {
+      "bytes": 73776,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/8a4283c94a875503b0f272bf33077f2113a33795175491239be9d44ea619e093.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/8a4283c94a875503b0f272bf33077f2113a33795175491239be9d44ea619e093.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "8a4283c94a875503b0f272bf33077f2113a33795175491239be9d44ea619e093"
+    },
+    {
+      "bytes": 146566656,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/8bb5e0445215dcb1f35818d0a6a469f7d24496b7005be573dd6e0ef07d1a25e9.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/8bb5e0445215dcb1f35818d0a6a469f7d24496b7005be573dd6e0ef07d1a25e9.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "8bb5e0445215dcb1f35818d0a6a469f7d24496b7005be573dd6e0ef07d1a25e9"
+    },
+    {
+      "bytes": 36888,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/8e7e0f5cf205e8e3eeed4b49fa4d11caec1ab0a7bd6489082ed4ccd976bb294a.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/8e7e0f5cf205e8e3eeed4b49fa4d11caec1ab0a7bd6489082ed4ccd976bb294a.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "8e7e0f5cf205e8e3eeed4b49fa4d11caec1ab0a7bd6489082ed4ccd976bb294a"
+    },
+    {
+      "bytes": 512,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/8f351ddc86342e71bce73f03e7f62dcc8913ac2ba194069b4c726f5cfd9f995e.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/8f351ddc86342e71bce73f03e7f62dcc8913ac2ba194069b4c726f5cfd9f995e.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "8f351ddc86342e71bce73f03e7f62dcc8913ac2ba194069b4c726f5cfd9f995e"
+    },
+    {
+      "bytes": 2293248,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/94278e6b50c41be39e926e1b692f313f735235b2c8b8abb911d493ad8f879924.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/94278e6b50c41be39e926e1b692f313f735235b2c8b8abb911d493ad8f879924.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "94278e6b50c41be39e926e1b692f313f735235b2c8b8abb911d493ad8f879924"
+    },
+    {
+      "bytes": 131072,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/96695ef76b190c247cd1bedf2af85e3d231948769c209c8570c0e1ba79b29343.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/96695ef76b190c247cd1bedf2af85e3d231948769c209c8570c0e1ba79b29343.bin",
+      "roles": [
+        "oracle_output"
+      ],
+      "sha256": "96695ef76b190c247cd1bedf2af85e3d231948769c209c8570c0e1ba79b29343"
+    },
+    {
+      "bytes": 2048,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/969434f64256f695bb1bcd35803eb560233d27212ff55b0a58a0f065f8b04330.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/969434f64256f695bb1bcd35803eb560233d27212ff55b0a58a0f065f8b04330.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "969434f64256f695bb1bcd35803eb560233d27212ff55b0a58a0f065f8b04330"
+    },
+    {
+      "bytes": 2323944,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/97881c9c0b79eee778c38da03f566b01fee29910c421d4190834432b3990c3d2.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/97881c9c0b79eee778c38da03f566b01fee29910c421d4190834432b3990c3d2.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "97881c9c0b79eee778c38da03f566b01fee29910c421d4190834432b3990c3d2"
+    },
+    {
+      "bytes": 64,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/97cc17bfc744d319322a20e4e4bcfff89c320160c74b432baa1927d44eb1b7ab.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/97cc17bfc744d319322a20e4e4bcfff89c320160c74b432baa1927d44eb1b7ab.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "97cc17bfc744d319322a20e4e4bcfff89c320160c74b432baa1927d44eb1b7ab"
+    },
+    {
+      "bytes": 131072,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/9846caab5a4c52a516916fdc310f00fa0ebcbce6b2369b112ad2615ed7941683.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/9846caab5a4c52a516916fdc310f00fa0ebcbce6b2369b112ad2615ed7941683.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "9846caab5a4c52a516916fdc310f00fa0ebcbce6b2369b112ad2615ed7941683"
+    },
+    {
+      "bytes": 73776,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/9bd85658bc557c51b4d4a237552c0e080222f2615b6d50a16d1f43438453a2b9.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/9bd85658bc557c51b4d4a237552c0e080222f2615b6d50a16d1f43438453a2b9.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "9bd85658bc557c51b4d4a237552c0e080222f2615b6d50a16d1f43438453a2b9"
+    },
+    {
+      "bytes": 8,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/9c34cf40a69718ddd9f1a9dfb50a08aaea948233bfcf6765a35127fa0009762c.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/9c34cf40a69718ddd9f1a9dfb50a08aaea948233bfcf6765a35127fa0009762c.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "9c34cf40a69718ddd9f1a9dfb50a08aaea948233bfcf6765a35127fa0009762c"
+    },
+    {
+      "bytes": 138309120,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/9f7ae6e75e5fa98ae0cded2c48e23f0d0595ed72d19107d5ef1c1233abe7bb1f.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/9f7ae6e75e5fa98ae0cded2c48e23f0d0595ed72d19107d5ef1c1233abe7bb1f.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "9f7ae6e75e5fa98ae0cded2c48e23f0d0595ed72d19107d5ef1c1233abe7bb1f"
+    },
+    {
+      "bytes": 512,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/9f7dab4f9ab14cfcfe05f144b1fe663bad63fa4798b6913d00d7ee6c0d774378.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/9f7dab4f9ab14cfcfe05f144b1fe663bad63fa4798b6913d00d7ee6c0d774378.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "9f7dab4f9ab14cfcfe05f144b1fe663bad63fa4798b6913d00d7ee6c0d774378"
+    },
+    {
+      "bytes": 131072,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/a0852a2d88040434a2138f70e757f080ee3e42274e36df1bc427b49293e19e9a.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/a0852a2d88040434a2138f70e757f080ee3e42274e36df1bc427b49293e19e9a.bin",
+      "roles": [
+        "oracle_output"
+      ],
+      "sha256": "a0852a2d88040434a2138f70e757f080ee3e42274e36df1bc427b49293e19e9a"
+    },
+    {
+      "bytes": 36888,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/a22ca3f0d6bc9c3a9a6b95e9ee5ed9068429bacccba6208fb509c50280071e62.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/a22ca3f0d6bc9c3a9a6b95e9ee5ed9068429bacccba6208fb509c50280071e62.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "a22ca3f0d6bc9c3a9a6b95e9ee5ed9068429bacccba6208fb509c50280071e62"
+    },
+    {
+      "bytes": 73776,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/a249ed7bd3cbbaf0405e4d00818c3e8045dce35c16dafeb3bc54c2046f9abf9c.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/a249ed7bd3cbbaf0405e4d00818c3e8045dce35c16dafeb3bc54c2046f9abf9c.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "a249ed7bd3cbbaf0405e4d00818c3e8045dce35c16dafeb3bc54c2046f9abf9c"
+    },
+    {
+      "bytes": 512,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/a389522cba587571eabb2e7397235e2b4742d0d686409bb77a0720468aa5adcc.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/a389522cba587571eabb2e7397235e2b4742d0d686409bb77a0720468aa5adcc.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "a389522cba587571eabb2e7397235e2b4742d0d686409bb77a0720468aa5adcc"
+    },
+    {
+      "bytes": 73776,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/a5e9b5d513464932ceefbe4cc04af0395eea396dba43b831daf1acc786c26a5a.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/a5e9b5d513464932ceefbe4cc04af0395eea396dba43b831daf1acc786c26a5a.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "a5e9b5d513464932ceefbe4cc04af0395eea396dba43b831daf1acc786c26a5a"
+    },
+    {
+      "bytes": 512,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/a7de9439b396956d8130cc1e20187d4b95f034fc2521948cf609a95bca51afd5.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/a7de9439b396956d8130cc1e20187d4b95f034fc2521948cf609a95bca51afd5.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "a7de9439b396956d8130cc1e20187d4b95f034fc2521948cf609a95bca51afd5"
+    },
+    {
+      "bytes": 131072,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/a803756b7715566acefa76d7dafa1648f7dbb535d1a8cca7127b9458a01fe6b4.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/a803756b7715566acefa76d7dafa1648f7dbb535d1a8cca7127b9458a01fe6b4.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "a803756b7715566acefa76d7dafa1648f7dbb535d1a8cca7127b9458a01fe6b4"
+    },
+    {
+      "bytes": 8,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/a80faacb243b1f6a573ff91779da3d096efd4bad2601f078abb0e31ded8de644.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/a80faacb243b1f6a573ff91779da3d096efd4bad2601f078abb0e31ded8de644.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "a80faacb243b1f6a573ff91779da3d096efd4bad2601f078abb0e31ded8de644"
+    },
+    {
+      "bytes": 138325248,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/a9276baabb360e55f98c4f3e78bfdf55e50dafc40ef3a93bdbc831b16666c98e.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/a9276baabb360e55f98c4f3e78bfdf55e50dafc40ef3a93bdbc831b16666c98e.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "a9276baabb360e55f98c4f3e78bfdf55e50dafc40ef3a93bdbc831b16666c98e"
+    },
+    {
+      "bytes": 2048,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/a9b0109b3a316a8091c06df66ccdca8945acb9b6b0367e7dbc5278bb72336940.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/a9b0109b3a316a8091c06df66ccdca8945acb9b6b0367e7dbc5278bb72336940.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "a9b0109b3a316a8091c06df66ccdca8945acb9b6b0367e7dbc5278bb72336940"
+    },
+    {
+      "bytes": 142437888,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/a9bf7f3f24b38ad1b0f4b7df1666c893a3cd93485c2668d8840d67e9fa69924f.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/a9bf7f3f24b38ad1b0f4b7df1666c893a3cd93485c2668d8840d67e9fa69924f.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "a9bf7f3f24b38ad1b0f4b7df1666c893a3cd93485c2668d8840d67e9fa69924f"
+    },
+    {
+      "bytes": 4721664,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/a9faf068b8cd193e5d5a9a6d9bd4e27c5a28a72cd0c0d5cfa9059422a5018f19.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/a9faf068b8cd193e5d5a9a6d9bd4e27c5a28a72cd0c0d5cfa9059422a5018f19.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "a9faf068b8cd193e5d5a9a6d9bd4e27c5a28a72cd0c0d5cfa9059422a5018f19"
+    },
+    {
+      "bytes": 138309120,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/abde167d72b38a1b5dd2737acc8597df9556c253155e8104e28d4016dbd9c95c.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/abde167d72b38a1b5dd2737acc8597df9556c253155e8104e28d4016dbd9c95c.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "abde167d72b38a1b5dd2737acc8597df9556c253155e8104e28d4016dbd9c95c"
+    },
+    {
+      "bytes": 4721664,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/ae52d59a1f5a68a797c72f6da111744ac05b9844e1025c52a309fabacb90f2af.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/ae52d59a1f5a68a797c72f6da111744ac05b9844e1025c52a309fabacb90f2af.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "ae52d59a1f5a68a797c72f6da111744ac05b9844e1025c52a309fabacb90f2af"
+    },
+    {
+      "bytes": 2323944,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/ae6a8200b62e51a7fd8965e6038a0c01a18184bbd03483f9fc1ecde36cd81aea.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/ae6a8200b62e51a7fd8965e6038a0c01a18184bbd03483f9fc1ecde36cd81aea.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "ae6a8200b62e51a7fd8965e6038a0c01a18184bbd03483f9fc1ecde36cd81aea"
+    },
+    {
+      "bytes": 140373504,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/aeb18107c26b9efa25409dcef9e3a118d5fbff1381b58bb6be3655e3577832be.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/aeb18107c26b9efa25409dcef9e3a118d5fbff1381b58bb6be3655e3577832be.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "aeb18107c26b9efa25409dcef9e3a118d5fbff1381b58bb6be3655e3577832be"
+    },
+    {
+      "bytes": 2048,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/aec3c0da56af265a6b286b6c23d813900c0d88aa85fa652a7abd80c8e78d05c8.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/aec3c0da56af265a6b286b6c23d813900c0d88aa85fa652a7abd80c8e78d05c8.bin",
+      "roles": [
+        "oracle_output"
+      ],
+      "sha256": "aec3c0da56af265a6b286b6c23d813900c0d88aa85fa652a7abd80c8e78d05c8"
+    },
+    {
+      "bytes": 64,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/b4dc462fd424f974b3f727483fbb0b98cdb2f2d0672bc9e1401c411fcbf2494a.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/b4dc462fd424f974b3f727483fbb0b98cdb2f2d0672bc9e1401c411fcbf2494a.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "b4dc462fd424f974b3f727483fbb0b98cdb2f2d0672bc9e1401c411fcbf2494a"
+    },
+    {
+      "bytes": 4721664,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/b5a28aa9896f9f741688f1b67b66ebc2703ff73ae82b0f8b367b983ec8fc32ae.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/b5a28aa9896f9f741688f1b67b66ebc2703ff73ae82b0f8b367b983ec8fc32ae.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "b5a28aa9896f9f741688f1b67b66ebc2703ff73ae82b0f8b367b983ec8fc32ae"
+    },
+    {
+      "bytes": 2194688,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/b61d6bfd9107db48dd10da7995d11e5f462dcd87d85ed6d0eae693b9fac0ec6d.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/b61d6bfd9107db48dd10da7995d11e5f462dcd87d85ed6d0eae693b9fac0ec6d.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "b61d6bfd9107db48dd10da7995d11e5f462dcd87d85ed6d0eae693b9fac0ec6d"
+    },
+    {
+      "bytes": 73776,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/b6b3da58cc41e24492f4ae15643e8a9ed741130ea806124462997fa36d82563a.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/b6b3da58cc41e24492f4ae15643e8a9ed741130ea806124462997fa36d82563a.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "b6b3da58cc41e24492f4ae15643e8a9ed741130ea806124462997fa36d82563a"
+    },
+    {
+      "bytes": 140389632,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/b847e578473c96552a85ed1eac3cba61f0ee13415b842cee47699fce1d307684.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/b847e578473c96552a85ed1eac3cba61f0ee13415b842cee47699fce1d307684.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "b847e578473c96552a85ed1eac3cba61f0ee13415b842cee47699fce1d307684"
+    },
+    {
+      "bytes": 512,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/bae246362d3721ad602dcc36a360e4680b1eae82df54337fb93674899b683ff7.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/bae246362d3721ad602dcc36a360e4680b1eae82df54337fb93674899b683ff7.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "bae246362d3721ad602dcc36a360e4680b1eae82df54337fb93674899b683ff7"
+    },
+    {
+      "bytes": 2162176,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/bb13e55f58d5e827ec2932b39c2668eb7123935c31931931a657a339cd56574a.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/bb13e55f58d5e827ec2932b39c2668eb7123935c31931931a657a339cd56574a.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "bb13e55f58d5e827ec2932b39c2668eb7123935c31931931a657a339cd56574a"
+    },
+    {
+      "bytes": 4096,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/bbb58b70a71a9889968247fd72efcb5c7a9ed5184ce1382e04211f14b1a59ed0.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/bbb58b70a71a9889968247fd72efcb5c7a9ed5184ce1382e04211f14b1a59ed0.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "bbb58b70a71a9889968247fd72efcb5c7a9ed5184ce1382e04211f14b1a59ed0"
+    },
+    {
+      "bytes": 2260224,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/bbf0315f76549c6ca8a0047a0eead7f82c8ccaeb86a0033271c36c8142850e04.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/bbf0315f76549c6ca8a0047a0eead7f82c8ccaeb86a0033271c36c8142850e04.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "bbf0315f76549c6ca8a0047a0eead7f82c8ccaeb86a0033271c36c8142850e04"
+    },
+    {
+      "bytes": 4721664,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/bd067812101f910f3bcd3acf4fa84050c78358132b41347b7cc51927ea29ea85.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/bd067812101f910f3bcd3acf4fa84050c78358132b41347b7cc51927ea29ea85.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "bd067812101f910f3bcd3acf4fa84050c78358132b41347b7cc51927ea29ea85"
+    },
+    {
+      "bytes": 2048,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/be7558b618a1ff599ea1e131296838a3b2ad60b0866664ef4f7fead58a382efd.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/be7558b618a1ff599ea1e131296838a3b2ad60b0866664ef4f7fead58a382efd.bin",
+      "roles": [
+        "oracle_output"
+      ],
+      "sha256": "be7558b618a1ff599ea1e131296838a3b2ad60b0866664ef4f7fead58a382efd"
+    },
+    {
+      "bytes": 64,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/be9fa2d533b5c9624f17b55ba689cd57163bdfc04824788cd86461b2e5293f5b.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/be9fa2d533b5c9624f17b55ba689cd57163bdfc04824788cd86461b2e5293f5b.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "be9fa2d533b5c9624f17b55ba689cd57163bdfc04824788cd86461b2e5293f5b"
+    },
+    {
+      "bytes": 2048,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/bf0781e9e13046ecb57f50a5ee44120e898994a242d30b95cc57e340cc2cc238.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/bf0781e9e13046ecb57f50a5ee44120e898994a242d30b95cc57e340cc2cc238.bin",
+      "roles": [
+        "oracle_output"
+      ],
+      "sha256": "bf0781e9e13046ecb57f50a5ee44120e898994a242d30b95cc57e340cc2cc238"
+    },
+    {
+      "bytes": 131072,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/c13ee00357f5fed1d2ecb27a0391d19945a380de6178323b2d5fdb9c15103810.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/c13ee00357f5fed1d2ecb27a0391d19945a380de6178323b2d5fdb9c15103810.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "c13ee00357f5fed1d2ecb27a0391d19945a380de6178323b2d5fdb9c15103810"
+    },
+    {
+      "bytes": 512,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/c1d46a0cb3e68aae37be54b60a94ce6717e0ac2146d1a0edf83a52b9d0f9c31b.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/c1d46a0cb3e68aae37be54b60a94ce6717e0ac2146d1a0edf83a52b9d0f9c31b.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "c1d46a0cb3e68aae37be54b60a94ce6717e0ac2146d1a0edf83a52b9d0f9c31b"
+    },
+    {
+      "bytes": 4096,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/c41838d34cd100eef3821ddc929526624df976279f0aa1bce08516388b342d19.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/c41838d34cd100eef3821ddc929526624df976279f0aa1bce08516388b342d19.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "c41838d34cd100eef3821ddc929526624df976279f0aa1bce08516388b342d19"
+    },
+    {
+      "bytes": 2048,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/c79faccd900d473d3926c3a90bfaf8b6091997630c6fff4afd186bfe964df345.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/c79faccd900d473d3926c3a90bfaf8b6091997630c6fff4afd186bfe964df345.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "c79faccd900d473d3926c3a90bfaf8b6091997630c6fff4afd186bfe964df345"
+    },
+    {
+      "bytes": 131072,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/c824f74ba7e65057bb60230c9a646b810b332893ad06cf88135b033c27f190f0.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/c824f74ba7e65057bb60230c9a646b810b332893ad06cf88135b033c27f190f0.bin",
+      "roles": [
+        "oracle_output"
+      ],
+      "sha256": "c824f74ba7e65057bb60230c9a646b810b332893ad06cf88135b033c27f190f0"
+    },
+    {
+      "bytes": 4096,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/ca52d1c99efb4052343c52faf33754b0a7ab27bf216a89346be295002deea57a.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/ca52d1c99efb4052343c52faf33754b0a7ab27bf216a89346be295002deea57a.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "ca52d1c99efb4052343c52faf33754b0a7ab27bf216a89346be295002deea57a"
+    },
+    {
+      "bytes": 73776,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/ca5a7047fbaf68473a88e7efbf2af22f6689c80214d2c415d34643e781f66338.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/ca5a7047fbaf68473a88e7efbf2af22f6689c80214d2c415d34643e781f66338.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "ca5a7047fbaf68473a88e7efbf2af22f6689c80214d2c415d34643e781f66338"
+    },
+    {
+      "bytes": 2048,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/cb1931befdd515638b27bdf9e8551ec42a99a5830da326464bdb1da6c007da56.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/cb1931befdd515638b27bdf9e8551ec42a99a5830da326464bdb1da6c007da56.bin",
+      "roles": [
+        "oracle_output"
+      ],
+      "sha256": "cb1931befdd515638b27bdf9e8551ec42a99a5830da326464bdb1da6c007da56"
+    },
+    {
+      "bytes": 73776,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/cb3cf4fcd8f30cfdcf21d22d68bc6fc9160b446cecb33a41bdce1029b07584a4.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/cb3cf4fcd8f30cfdcf21d22d68bc6fc9160b446cecb33a41bdce1029b07584a4.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "cb3cf4fcd8f30cfdcf21d22d68bc6fc9160b446cecb33a41bdce1029b07584a4"
+    },
+    {
+      "bytes": 2292992,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/cb54d505d7efd13a6e1e95c397f8921fa7fb2c9253de32ad9c80a17fddb44c2c.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/cb54d505d7efd13a6e1e95c397f8921fa7fb2c9253de32ad9c80a17fddb44c2c.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "cb54d505d7efd13a6e1e95c397f8921fa7fb2c9253de32ad9c80a17fddb44c2c"
+    },
+    {
+      "bytes": 2048,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/cc0e8fa7e644aaffe787eaa36378de5ab98f7dee3f455fbddf25db689d9f3bae.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/cc0e8fa7e644aaffe787eaa36378de5ab98f7dee3f455fbddf25db689d9f3bae.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "cc0e8fa7e644aaffe787eaa36378de5ab98f7dee3f455fbddf25db689d9f3bae"
+    },
+    {
+      "bytes": 256,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/cd1180f2e0bad441fd93443bd0e132883fae7905c434d7c18df0d38d2c239fbf.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/cd1180f2e0bad441fd93443bd0e132883fae7905c434d7c18df0d38d2c239fbf.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "cd1180f2e0bad441fd93443bd0e132883fae7905c434d7c18df0d38d2c239fbf"
+    },
+    {
+      "bytes": 2048,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/cd96c7743f5dab6946160eeb72bb5532462bc136d3ae900f69a5bcb66f41bfec.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/cd96c7743f5dab6946160eeb72bb5532462bc136d3ae900f69a5bcb66f41bfec.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "cd96c7743f5dab6946160eeb72bb5532462bc136d3ae900f69a5bcb66f41bfec"
+    },
+    {
+      "bytes": 8,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/ce589eafdda0fec29d4b64a7308fa451ea3ccb3ca4fc0b64d303e01dd4994592.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/ce589eafdda0fec29d4b64a7308fa451ea3ccb3ca4fc0b64d303e01dd4994592.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "ce589eafdda0fec29d4b64a7308fa451ea3ccb3ca4fc0b64d303e01dd4994592"
+    },
+    {
+      "bytes": 4721664,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/ce6cfe1cfac24d04572bc8fd213e9b426279769b0cbd759aa009cb85e4262b39.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/ce6cfe1cfac24d04572bc8fd213e9b426279769b0cbd759aa009cb85e4262b39.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "ce6cfe1cfac24d04572bc8fd213e9b426279769b0cbd759aa009cb85e4262b39"
+    },
+    {
+      "bytes": 2227712,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/cf628dbd7dae67c1730a8d07c7965b40c66d8b58bb5f6c3dc24a212b1c49ea47.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/cf628dbd7dae67c1730a8d07c7965b40c66d8b58bb5f6c3dc24a212b1c49ea47.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "cf628dbd7dae67c1730a8d07c7965b40c66d8b58bb5f6c3dc24a212b1c49ea47"
+    },
+    {
+      "bytes": 131072,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/cfc9c83700aec3a9fb772adf99a5bcc6a427de5e66ef7bcafbe89b9ec3cf6bbe.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/cfc9c83700aec3a9fb772adf99a5bcc6a427de5e66ef7bcafbe89b9ec3cf6bbe.bin",
+      "roles": [
+        "oracle_output"
+      ],
+      "sha256": "cfc9c83700aec3a9fb772adf99a5bcc6a427de5e66ef7bcafbe89b9ec3cf6bbe"
+    },
+    {
+      "bytes": 2048,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/cff5924330f8f53136003d9f71cd75d053c2d67edd8371fea5aed617ee869dc3.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/cff5924330f8f53136003d9f71cd75d053c2d67edd8371fea5aed617ee869dc3.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "cff5924330f8f53136003d9f71cd75d053c2d67edd8371fea5aed617ee869dc3"
+    },
+    {
+      "bytes": 2096640,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/d0a8ba7b9482ba8d6df990973ee76d843483259a6350de09d5c5ed5b4dc0a43a.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/d0a8ba7b9482ba8d6df990973ee76d843483259a6350de09d5c5ed5b4dc0a43a.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "d0a8ba7b9482ba8d6df990973ee76d843483259a6350de09d5c5ed5b4dc0a43a"
+    },
+    {
+      "bytes": 36888,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/d26b89d2077af78c21c4ae0345c8912e29b24ef2d9c271bce11d37ac4b5fb0da.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/d26b89d2077af78c21c4ae0345c8912e29b24ef2d9c271bce11d37ac4b5fb0da.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "d26b89d2077af78c21c4ae0345c8912e29b24ef2d9c271bce11d37ac4b5fb0da"
+    },
+    {
+      "bytes": 64,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/d2755806281a894d90cb12d229d577444171dd8c0c8bc98fddfe0a63e751e25a.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/d2755806281a894d90cb12d229d577444171dd8c0c8bc98fddfe0a63e751e25a.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "d2755806281a894d90cb12d229d577444171dd8c0c8bc98fddfe0a63e751e25a"
+    },
+    {
+      "bytes": 2096640,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/d2ed3cbc3d53886340799aa99af42316ff5ddd4ab82fb2981e97a09c07a6757f.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/d2ed3cbc3d53886340799aa99af42316ff5ddd4ab82fb2981e97a09c07a6757f.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "d2ed3cbc3d53886340799aa99af42316ff5ddd4ab82fb2981e97a09c07a6757f"
+    },
+    {
+      "bytes": 2048,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/d3016eec39693654365d0085858e4533830c165a94ef38763dd1b73044ba3b1b.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/d3016eec39693654365d0085858e4533830c165a94ef38763dd1b73044ba3b1b.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "d3016eec39693654365d0085858e4533830c165a94ef38763dd1b73044ba3b1b"
+    },
+    {
+      "bytes": 36888,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/d387d881fde3563e6bfe33915e936c3ad16abe68825dd3074577ec0a3ebaf7af.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/d387d881fde3563e6bfe33915e936c3ad16abe68825dd3074577ec0a3ebaf7af.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "d387d881fde3563e6bfe33915e936c3ad16abe68825dd3074577ec0a3ebaf7af"
+    },
+    {
+      "bytes": 4096,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/d3ed02b78ade7f0e92943acdb5d436ef8bd48ed499bc5eea2235d71c79229313.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/d3ed02b78ade7f0e92943acdb5d436ef8bd48ed499bc5eea2235d71c79229313.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "d3ed02b78ade7f0e92943acdb5d436ef8bd48ed499bc5eea2235d71c79229313"
+    },
+    {
+      "bytes": 4096,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/d51b1b1aeaf845b9f6c2c8d16a1dfdceefe2530654110196b1e60ae587ebf388.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/d51b1b1aeaf845b9f6c2c8d16a1dfdceefe2530654110196b1e60ae587ebf388.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "d51b1b1aeaf845b9f6c2c8d16a1dfdceefe2530654110196b1e60ae587ebf388"
+    },
+    {
+      "bytes": 2260224,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/d595bf6557a38b752171f0ee24bdb404549a9209f91779c7e79861f8cb60ac0d.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/d595bf6557a38b752171f0ee24bdb404549a9209f91779c7e79861f8cb60ac0d.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "d595bf6557a38b752171f0ee24bdb404549a9209f91779c7e79861f8cb60ac0d"
+    },
+    {
+      "bytes": 2323944,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/d7db9708dc320b9f772172530678ebaf36d4d284bf943ba1cd735334c2adbf87.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/d7db9708dc320b9f772172530678ebaf36d4d284bf943ba1cd735334c2adbf87.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "d7db9708dc320b9f772172530678ebaf36d4d284bf943ba1cd735334c2adbf87"
+    },
+    {
+      "bytes": 2048,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/d7e3a093ca93a199ce576c8a0dee78a3f8bb68dbbfdac3406bb6ec42d5b266af.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/d7e3a093ca93a199ce576c8a0dee78a3f8bb68dbbfdac3406bb6ec42d5b266af.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "d7e3a093ca93a199ce576c8a0dee78a3f8bb68dbbfdac3406bb6ec42d5b266af"
+    },
+    {
+      "bytes": 131072,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/d86ca7a3e3ceba3515228c83082fb08aba13e77d45130ad5eabbbc2c4393d54d.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/d86ca7a3e3ceba3515228c83082fb08aba13e77d45130ad5eabbbc2c4393d54d.bin",
+      "roles": [
+        "oracle_output"
+      ],
+      "sha256": "d86ca7a3e3ceba3515228c83082fb08aba13e77d45130ad5eabbbc2c4393d54d"
+    },
+    {
+      "bytes": 8,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/d86e8112f3c4c4442126f8e9f44f16867da487f29052bf91b810457db34209a4.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/d86e8112f3c4c4442126f8e9f44f16867da487f29052bf91b810457db34209a4.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "d86e8112f3c4c4442126f8e9f44f16867da487f29052bf91b810457db34209a4"
+    },
+    {
+      "bytes": 2227456,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/d9fedb3b01ce38ea0418ff559605b4b4e09799ecdc6ca2163a63a07380746a31.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/d9fedb3b01ce38ea0418ff559605b4b4e09799ecdc6ca2163a63a07380746a31.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "d9fedb3b01ce38ea0418ff559605b4b4e09799ecdc6ca2163a63a07380746a31"
+    },
+    {
+      "bytes": 2129152,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/da631832c5720dbb606fe967a259fa9b136294777a728c366d147e0e289cd368.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/da631832c5720dbb606fe967a259fa9b136294777a728c366d147e0e289cd368.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "da631832c5720dbb606fe967a259fa9b136294777a728c366d147e0e289cd368"
+    },
+    {
+      "bytes": 2048,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/dc0828e0073c1659f115770461a891e6b06b584248d607227ab018d354e71db7.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/dc0828e0073c1659f115770461a891e6b06b584248d607227ab018d354e71db7.bin",
+      "roles": [
+        "oracle_output"
+      ],
+      "sha256": "dc0828e0073c1659f115770461a891e6b06b584248d607227ab018d354e71db7"
+    },
+    {
+      "bytes": 131072,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/dce83d09ef86c2c019343b8a458924fc67e4b05d8be2ec78af7c480302377205.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/dce83d09ef86c2c019343b8a458924fc67e4b05d8be2ec78af7c480302377205.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "dce83d09ef86c2c019343b8a458924fc67e4b05d8be2ec78af7c480302377205"
+    },
+    {
+      "bytes": 64,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/ddac855f744c342defc474490977a8185acc5ae4145ff517dbe37cf928c87505.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/ddac855f744c342defc474490977a8185acc5ae4145ff517dbe37cf928c87505.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "ddac855f744c342defc474490977a8185acc5ae4145ff517dbe37cf928c87505"
+    },
+    {
+      "bytes": 136260864,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/ddb28293aa6bcdd139578e3f9d5859e0372e0a85bb9a2f717e19aef4d37cdf59.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/ddb28293aa6bcdd139578e3f9d5859e0372e0a85bb9a2f717e19aef4d37cdf59.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "ddb28293aa6bcdd139578e3f9d5859e0372e0a85bb9a2f717e19aef4d37cdf59"
+    },
+    {
+      "bytes": 131072,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/de3e6fba6e5ea9c8f5321fefbb2fdf8176bc8ba644e18240b89cb52fd384c656.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/de3e6fba6e5ea9c8f5321fefbb2fdf8176bc8ba644e18240b89cb52fd384c656.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "de3e6fba6e5ea9c8f5321fefbb2fdf8176bc8ba644e18240b89cb52fd384c656"
+    },
+    {
+      "bytes": 131072,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/e0c0be0880430fc8b83ba8b580fd95eb7d7e88554dbe880207be65ecefaca415.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/e0c0be0880430fc8b83ba8b580fd95eb7d7e88554dbe880207be65ecefaca415.bin",
+      "roles": [
+        "oracle_output"
+      ],
+      "sha256": "e0c0be0880430fc8b83ba8b580fd95eb7d7e88554dbe880207be65ecefaca415"
+    },
+    {
+      "bytes": 2323944,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/e157fc036f5da9c9ac5165dd57e6af893cedbffc70c9b250a539c61716e83705.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/e157fc036f5da9c9ac5165dd57e6af893cedbffc70c9b250a539c61716e83705.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "e157fc036f5da9c9ac5165dd57e6af893cedbffc70c9b250a539c61716e83705"
+    },
+    {
+      "bytes": 8,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/e1c3192925d7eb42bd9861585eba38d231736117ca42e2b4968146a00d41f51b.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/e1c3192925d7eb42bd9861585eba38d231736117ca42e2b4968146a00d41f51b.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "e1c3192925d7eb42bd9861585eba38d231736117ca42e2b4968146a00d41f51b"
+    },
+    {
+      "bytes": 134180352,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/e25f9dfcfd69efe98c8811a4a636eaf15009a13dd69e0b3b3b95ec5b6609abdd.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/e25f9dfcfd69efe98c8811a4a636eaf15009a13dd69e0b3b3b95ec5b6609abdd.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "e25f9dfcfd69efe98c8811a4a636eaf15009a13dd69e0b3b3b95ec5b6609abdd"
+    },
+    {
+      "bytes": 73776,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/e2faff17d54626d8ef4e56235bf626c13fbf10579a64c7894aae0f9cbff7d2eb.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/e2faff17d54626d8ef4e56235bf626c13fbf10579a64c7894aae0f9cbff7d2eb.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "e2faff17d54626d8ef4e56235bf626c13fbf10579a64c7894aae0f9cbff7d2eb"
+    },
+    {
+      "bytes": 36888,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/e30e28bf2c21df401371d48bbeb7ddca0b8175a96e438d123f458348017cd380.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/e30e28bf2c21df401371d48bbeb7ddca0b8175a96e438d123f458348017cd380.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "e30e28bf2c21df401371d48bbeb7ddca0b8175a96e438d123f458348017cd380"
+    },
+    {
+      "bytes": 73776,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/e622daaabb4efece41d3ff8a145f05140ca8182c48676fd4cade8d36b9e224c3.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/e622daaabb4efece41d3ff8a145f05140ca8182c48676fd4cade8d36b9e224c3.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "e622daaabb4efece41d3ff8a145f05140ca8182c48676fd4cade8d36b9e224c3"
+    },
+    {
+      "bytes": 2227456,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/e682f3bc3533dc3333100a8b5f346fd32a8486860904ea19c4015574fcf61a1a.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/e682f3bc3533dc3333100a8b5f346fd32a8486860904ea19c4015574fcf61a1a.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "e682f3bc3533dc3333100a8b5f346fd32a8486860904ea19c4015574fcf61a1a"
+    },
+    {
+      "bytes": 2326016,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/e69b2f87ead1381aef67b7e8ed680211682b35f5c5aed82e0a1d2db91b5cf9d9.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/e69b2f87ead1381aef67b7e8ed680211682b35f5c5aed82e0a1d2db91b5cf9d9.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "e69b2f87ead1381aef67b7e8ed680211682b35f5c5aed82e0a1d2db91b5cf9d9"
+    },
+    {
+      "bytes": 4096,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/e6e2ded0fe528fb8bb3912da62337daa0ca70d7575314537763ff65b0ad65e54.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/e6e2ded0fe528fb8bb3912da62337daa0ca70d7575314537763ff65b0ad65e54.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "e6e2ded0fe528fb8bb3912da62337daa0ca70d7575314537763ff65b0ad65e54"
+    },
+    {
+      "bytes": 64,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/e87bd2f2c2b7ef2e7d2fa58b73fa7846b66ff023fd1feb9890fce216550d8649.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/e87bd2f2c2b7ef2e7d2fa58b73fa7846b66ff023fd1feb9890fce216550d8649.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "e87bd2f2c2b7ef2e7d2fa58b73fa7846b66ff023fd1feb9890fce216550d8649"
+    },
+    {
+      "bytes": 131072,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/e88f1d0e3d90c1fc0de7fc1430b35888475ac0585bb034ea3e1db6674692e1ac.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/e88f1d0e3d90c1fc0de7fc1430b35888475ac0585bb034ea3e1db6674692e1ac.bin",
+      "roles": [
+        "oracle_output"
+      ],
+      "sha256": "e88f1d0e3d90c1fc0de7fc1430b35888475ac0585bb034ea3e1db6674692e1ac"
+    },
+    {
+      "bytes": 2323944,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/ea421542207aa93c8b98c2918a59b1545d4bba33260760e769aefa1134c5bee3.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/ea421542207aa93c8b98c2918a59b1545d4bba33260760e769aefa1134c5bee3.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "ea421542207aa93c8b98c2918a59b1545d4bba33260760e769aefa1134c5bee3"
+    },
+    {
+      "bytes": 4096,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/eaedd4d58c69bd619c74841c3e9c9f86a76c35f8ba1c8d30c5c54bb417361347.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/eaedd4d58c69bd619c74841c3e9c9f86a76c35f8ba1c8d30c5c54bb417361347.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "eaedd4d58c69bd619c74841c3e9c9f86a76c35f8ba1c8d30c5c54bb417361347"
+    },
+    {
+      "bytes": 131072,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/edf9144ae661ee5aa464d93e2fff9c0d9f3c0bb9abacfc1ed607fe1af248f78f.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/edf9144ae661ee5aa464d93e2fff9c0d9f3c0bb9abacfc1ed607fe1af248f78f.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "edf9144ae661ee5aa464d93e2fff9c0d9f3c0bb9abacfc1ed607fe1af248f78f"
+    },
+    {
+      "bytes": 8,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/edfaec0360dded0f47fa6dc647f7189344088584a1c030eec14c28094bde0db4.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/edfaec0360dded0f47fa6dc647f7189344088584a1c030eec14c28094bde0db4.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "edfaec0360dded0f47fa6dc647f7189344088584a1c030eec14c28094bde0db4"
+    },
+    {
+      "bytes": 64,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/ef84636d255a2dca88ebd880e1494d541db201c6f8027d0214c2a42ed2c1f2dd.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/ef84636d255a2dca88ebd880e1494d541db201c6f8027d0214c2a42ed2c1f2dd.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "ef84636d255a2dca88ebd880e1494d541db201c6f8027d0214c2a42ed2c1f2dd"
+    },
+    {
+      "bytes": 512,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/efb6b813b18bb8bdf20c3fba5aaa56bcdf2a036bb36821a0dde6be9859a4eab8.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/efb6b813b18bb8bdf20c3fba5aaa56bcdf2a036bb36821a0dde6be9859a4eab8.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "efb6b813b18bb8bdf20c3fba5aaa56bcdf2a036bb36821a0dde6be9859a4eab8"
+    },
+    {
+      "bytes": 2048,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/f16532ebdb51aa43957f0020a3a16ce3d66373e1d4b31241f08cdbcb9635687f.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/f16532ebdb51aa43957f0020a3a16ce3d66373e1d4b31241f08cdbcb9635687f.bin",
+      "roles": [
+        "oracle_output"
+      ],
+      "sha256": "f16532ebdb51aa43957f0020a3a16ce3d66373e1d4b31241f08cdbcb9635687f"
+    },
+    {
+      "bytes": 2162176,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/f2bb48a81eeaa61f939d6f9fba05d58149353265e8eb435fedc2391e44448cf9.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/f2bb48a81eeaa61f939d6f9fba05d58149353265e8eb435fedc2391e44448cf9.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "f2bb48a81eeaa61f939d6f9fba05d58149353265e8eb435fedc2391e44448cf9"
+    },
+    {
+      "bytes": 2323944,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/f3d948e161cb67e1d16a8ac0da6ccbe2dc3b1cc3e3398245b253d41eae839a59.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/f3d948e161cb67e1d16a8ac0da6ccbe2dc3b1cc3e3398245b253d41eae839a59.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "f3d948e161cb67e1d16a8ac0da6ccbe2dc3b1cc3e3398245b253d41eae839a59"
+    },
+    {
+      "bytes": 2161920,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/f3df0648b487e2ffc2fb8f9c4ec4443a82b0ec386f8100ad596bfdedc5070ef5.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/f3df0648b487e2ffc2fb8f9c4ec4443a82b0ec386f8100ad596bfdedc5070ef5.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "f3df0648b487e2ffc2fb8f9c4ec4443a82b0ec386f8100ad596bfdedc5070ef5"
+    },
+    {
+      "bytes": 8,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/f3f22015885f39ccd5edd27b4b0259a72f88fed891098e54c0d1b0221f471e25.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/f3f22015885f39ccd5edd27b4b0259a72f88fed891098e54c0d1b0221f471e25.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "f3f22015885f39ccd5edd27b4b0259a72f88fed891098e54c0d1b0221f471e25"
+    },
+    {
+      "bytes": 8,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/f43b58208c64f99dfb3030d91ab4b4368c6bd70e6667832ed59e8bc4ea9e9cc4.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/f43b58208c64f99dfb3030d91ab4b4368c6bd70e6667832ed59e8bc4ea9e9cc4.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "f43b58208c64f99dfb3030d91ab4b4368c6bd70e6667832ed59e8bc4ea9e9cc4"
+    },
+    {
+      "bytes": 131072,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/f4b5fe570ce439af8d54299bc7596b230629dc21cb6e7579b60cc1ecf3c7d3f1.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/f4b5fe570ce439af8d54299bc7596b230629dc21cb6e7579b60cc1ecf3c7d3f1.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "f4b5fe570ce439af8d54299bc7596b230629dc21cb6e7579b60cc1ecf3c7d3f1"
+    },
+    {
+      "bytes": 2048,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/f5b1852c3499ca5448f165af8cc5ba228fcec2ab0c5574f6b7eaff56744fcdac.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/f5b1852c3499ca5448f165af8cc5ba228fcec2ab0c5574f6b7eaff56744fcdac.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "f5b1852c3499ca5448f165af8cc5ba228fcec2ab0c5574f6b7eaff56744fcdac"
+    },
+    {
+      "bytes": 134180352,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/f740a334749dc75867e0298b8237ea3eefe3e5ef5f8910b873489a73d237c67f.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/f740a334749dc75867e0298b8237ea3eefe3e5ef5f8910b873489a73d237c67f.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "f740a334749dc75867e0298b8237ea3eefe3e5ef5f8910b873489a73d237c67f"
+    },
+    {
+      "bytes": 73776,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/f836167be16f7a0ccb78f17bd7ac33644291b7f6075578add33f9536526bf870.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/f836167be16f7a0ccb78f17bd7ac33644291b7f6075578add33f9536526bf870.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "f836167be16f7a0ccb78f17bd7ac33644291b7f6075578add33f9536526bf870"
+    },
+    {
+      "bytes": 73776,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/f881fb81394763ee4a767e70e80b1ac9cfe3d2dee023e9e1776ffe0dfd8a8fe7.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/f881fb81394763ee4a767e70e80b1ac9cfe3d2dee023e9e1776ffe0dfd8a8fe7.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "f881fb81394763ee4a767e70e80b1ac9cfe3d2dee023e9e1776ffe0dfd8a8fe7"
+    },
+    {
+      "bytes": 2194688,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/f8dab76d9657ec4598d62b6066af1e88d8dcd2172a18a0fc2f5ea77227bd32df.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/f8dab76d9657ec4598d62b6066af1e88d8dcd2172a18a0fc2f5ea77227bd32df.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "f8dab76d9657ec4598d62b6066af1e88d8dcd2172a18a0fc2f5ea77227bd32df"
+    },
+    {
+      "bytes": 2323944,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/fa55b3466c2147ee38687ab182bbe14e7f021b3babc8a21a5bea60c71447f147.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/fa55b3466c2147ee38687ab182bbe14e7f021b3babc8a21a5bea60c71447f147.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "fa55b3466c2147ee38687ab182bbe14e7f021b3babc8a21a5bea60c71447f147"
+    },
+    {
+      "bytes": 2048,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/fb1d9fc914b30ba8053c266d23ce15be801967c8779bb19bde4ffc93076fbdd6.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/fb1d9fc914b30ba8053c266d23ce15be801967c8779bb19bde4ffc93076fbdd6.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "fb1d9fc914b30ba8053c266d23ce15be801967c8779bb19bde4ffc93076fbdd6"
+    },
+    {
+      "bytes": 4096,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/fb7d78730732a55a5e243b00dec57ae5722acf7b3d4e64725676dbb7046fc152.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/fb7d78730732a55a5e243b00dec57ae5722acf7b3d4e64725676dbb7046fc152.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "fb7d78730732a55a5e243b00dec57ae5722acf7b3d4e64725676dbb7046fc152"
+    },
+    {
+      "bytes": 2323944,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/fcafc67a9f56b5280776db4fcd5a7018cbb61f6789406c453a5a9c282fc87df6.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/fcafc67a9f56b5280776db4fcd5a7018cbb61f6789406c453a5a9c282fc87df6.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "fcafc67a9f56b5280776db4fcd5a7018cbb61f6789406c453a5a9c282fc87df6"
+    },
+    {
+      "bytes": 4096,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/fcef07a89a94627c84631170cd75651dd22efaf894cfc0627fe81c0f20aee363.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/fcef07a89a94627c84631170cd75651dd22efaf894cfc0627fe81c0f20aee363.bin",
+      "roles": [
+        "runtime_control"
+      ],
+      "sha256": "fcef07a89a94627c84631170cd75651dd22efaf894cfc0627fe81c0f20aee363"
+    },
+    {
+      "bytes": 2129408,
+      "codec": "raw-storage-segment-v1",
+      "object_key": "rank-0-pid-909/blobs/ff2641bf05bc238962580b5f4dd92584d2e320e257dcb4d68f590d575161b4ea.bin",
+      "path": "fixtures/rank-0-pid-909/blobs/ff2641bf05bc238962580b5f4dd92584d2e320e257dcb4d68f590d575161b4ea.bin",
+      "roles": [
+        "activation"
+      ],
+      "sha256": "ff2641bf05bc238962580b5f4dd92584d2e320e257dcb4d68f590d575161b4ea"
+    }
+  ],
+  "case_manifest_fingerprint": "3c5a75be3cdd761a0aafd1de67137a3f7adfb8d6566a82a3735b31a50cf44398",
+  "oci_prefix": "oci:unpublished/headkernel/minimax/minimax-case-only-v3-194550/",
+  "publication_status": "local mirror only; no OCI publication performed",
+  "runtime_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
+  "schema": "trusted-external-fixtures-v1"
+}

@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "kind": "sparse_prefill",
+  "runtime_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
+  "module": "sglang.kernels.ops.attention.minimax_sparse.prefill.topk_sparse",
+  "wrapper": "flash_prefill_with_gqa_share_sparse",
+  "kernels": [
+    "_gqa_share_sparse_fwd_kernel"
+  ],
+  "arguments": [
+    "q",
+    "k_cache",
+    "v_cache",
+    "sink",
+    "req_to_token",
+    "slot_ids",
+    "topk_idx",
+    "block_size_q",
+    "block_size_k",
+    "cu_seqlens",
+    "seq_lens",
+    "prefix_lens",
+    "max_seqlen_q",
+    "sm_scale",
+    "use_tma",
+    "cu_seqblocks_q",
+    "max_seqblock_q",
+    "q_scale",
+    "k_scale",
+    "v_scale"
+  ],
+  "source_file": "source/topk_sparse.py",
+  "reference_file": "ut/reference/topk_sparse.py",
+  "source_sha256": "1bc59d10771c5f4ecf98b0addd50e7de88cc7aeeddb9121532ccd259458c3688",
+  "runtime_helpers": {
+    "sglang.kernels.ops.attention.minimax_sparse.common.utils": "7dd6ffa28fcc14374cc2d7006c884217300b344fe544e56d8bbc662c1a9af3bc"
+  },
+  "max_replay_storage_bytes": 137438953472,
+  "tolerance": 0.02,
+  "case_source": "complete all-rank V4 work metadata; actual rank-0 first/min/max operands; alternate recorded compiler configurations certified by supplemental native GPU replay",
+  "legacy_tensor_fallback": false,
+  "fixture_format": "minimax-representatives-v1",
+  "work_projection_source_sha256": "689c83d8f6a1ce653ae3483e5c0e93db06f599958acb64c0406c021e43b06228",
+  "work_projection_id": "minimax-block-and-causal-work-v3",
+  "compile_config_policy": "recorded original num_warps/num_stages for every structural launch variant"
+}
