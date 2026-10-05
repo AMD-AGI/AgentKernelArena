@@ -8,6 +8,11 @@ candidate workspace still supplies only the declared source files. Evaluation
 containers retain their read-only task/image mounts, disabled network, and no
 credential mounts. The dedicated native-quant evaluator is unchanged.
 
+When a task requests a complete AITER JIT cache, each native evaluation phase
+points `FLYDSL_RUNTIME_CACHE_DIR` at that private copy's `flydsl_cache` directory.
+This preserves the copied compiled entries and lets FlyDSL create lock files
+without writing to the image's root-owned cache.
+
 This extends the [guarded case contract](guarded-case-contract.md). It does not
 execute a task's importer, regenerate operands, change cases, qualify a capture,
 or publish artifacts. Captured kernel weights, scales, activations, controls,

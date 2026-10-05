@@ -1019,6 +1019,10 @@ build_docker_args() {
     # without overriding AITER_JIT_DIR, which changes prebuilt module lookup.
     if [[ -n "$AITER_CACHE_HOST_DIR" ]]; then
         add_mount "$AITER_CACHE_HOST_DIR" "${container_home}/.aiter"
+        # AITER otherwise selects the image's root-owned FlyDSL cache during
+        # import. Use the verified complete copy for its writable lock/pickle
+        # cache, while leaving native module lookup (AITER_JIT_DIR) unchanged.
+        docker_args+=(-e "FLYDSL_RUNTIME_CACHE_DIR=${container_home}/.aiter/jit/flydsl_cache")
     else
         docker_args+=(
             --tmpfs "${container_home}/.aiter:rw,exec,uid=${HOST_UID},gid=${HOST_GID},mode=0700"

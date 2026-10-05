@@ -222,7 +222,10 @@ directories are created before copying. This bounds local I/O threads without
 raising the initializer's process limit. The full-tree digest comparison still
 requires every entry after all batches complete. The cache replaces the empty
 tmpfs at `HOME/.aiter`; `AITER_JIT_DIR` and production module lookup remain
-unchanged. Seed failures stop the run, and the temporary copy is retired with
+unchanged. Seeded runtimes set `FLYDSL_RUNTIME_CACHE_DIR` to the verified
+`HOME/.aiter/jit/flydsl_cache` copy before importing AITER, so FlyDSL creates its
+locks and compiled cache entries with the runtime user's permissions instead
+of attempting writes to the image's root-owned cache. Seed failures stop the run, and the temporary copy is retired with
 that container invocation. The initializer receives the same ownership labels.
 
 Allocation wrappers can set `AKA_DOCKER_LABEL_FILE` to a readable host file in

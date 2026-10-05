@@ -51,6 +51,18 @@ assert_before() {
 # Capture the exact argv that the runner would pass to Docker without requiring
 # a daemon, GPU devices, or the benchmark images on this host.
 docker() {
+    if [[ "${FAKE_AITER_SEED:-0}" == "1" ]]; then
+        local seed_arg seed_mount="" is_seed=0
+        for seed_arg in "$@"; do
+            [[ "$seed_arg" != "/opt/seed_aiter_cache.py" ]] || is_seed=1
+            [[ "$seed_arg" != *:/seed ]] || seed_mount="${seed_arg%:/seed}"
+        done
+        if [[ "$is_seed" == "1" ]]; then
+            [[ -n "$seed_mount" ]] || fail "fake AITER initializer lacks its cache mount"
+            mkdir -p "$seed_mount/jit/flydsl_cache"
+            printf '{}\n' > "$seed_mount/SEED-MANIFEST.json"
+        fi
+    fi
     if [[ -n "${FAKE_RUNTIME_DIR:-}" ]]; then
         printf '%s\n' "$1" >> "$FAKE_RUNTIME_DIR/events"
         case "$1" in
@@ -530,6 +542,20 @@ assert_not_has "ANTHROPIC_API_KEY" "${args[@]}"
 assert_not_has "$GEAK_SDK_PYTHONPATH" "${args[@]}"
 assert_not_has "$UNRELATED_GEAK_WORKFLOW_DIR:$UNRELATED_GEAK_WORKFLOW_DIR:ro" "${args[@]}"
 assert_not_has "GEAK_V4_WORKFLOW_DIR=$UNRELATED_GEAK_WORKFLOW_DIR" "${args[@]}"
+
+# A seeded runtime must select its writable, verified FlyDSL cache before
+# importing AITER; AITER's image default can contain root-owned lock files.
+FAKE_RCLONE="$TEST_HOME/seed-rclone"
+printf '#!/bin/sh\nexit 0\n' > "$FAKE_RCLONE"
+chmod +x "$FAKE_RCLONE"
+mapfile -t args < <(run_check_args \
+    "$CODEX_HOME" "$CODEX_CONFIG" \
+    AKA_NODE_PREFIX="$CODEX_PREFIX" AKA_DOCKER_IMAGE="$SG520_IMAGE" \
+    AKA_AITER_JIT_SOURCE=/sgl-workspace/aiter/aiter/jit \
+    AKA_RCLONE_BIN="$FAKE_RCLONE" FAKE_AITER_SEED=1)
+assert_has "FLYDSL_RUNTIME_CACHE_DIR=$CODEX_HOME/.aiter/jit/flydsl_cache" "${args[@]}"
+assert_not_has "AITER_JIT_DIR=/tmp/aiter-jit" "${args[@]}"
+assert_not_has "FLYDSL_RUNTIME_CACHE_DIR=/sgl-workspace/aiter/aiter/jit/flydsl_cache" "${args[@]}"
 
 # Scheduler launchers may retain their own HOME. Select the user's existing
 # agent installation/auth home explicitly without modifying that caller HOME.
