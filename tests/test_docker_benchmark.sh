@@ -282,6 +282,21 @@ assert_has "/tmp/aka-isolated-worker/.aiter:rw,exec,uid=$(id -u),gid=$(id -g),mo
 assert_not_has "$TEST_HOME/.aiter:rw,exec,uid=$(id -u),gid=$(id -g),mode=0700" "${args[@]}"
 assert_cache_args_absent "${args[@]}"
 
+# Root cache initialization has no GPU, network, auth, or broad checkout mount.
+mapfile -t seed_args < <(AKA_DOCKER_LABEL_FILE="$LABEL_FILE" bash "$RUNNER" _print_aiter_seed_args \
+    "$SG520_IMAGE" "$TEST_HOME/cache-seed" /example/rclone /sgl-workspace/aiter/aiter/jit)
+assert_has "--network=none" "${seed_args[@]}"
+assert_has "--read-only" "${seed_args[@]}"
+assert_has "0:0" "${seed_args[@]}"
+assert_has "--cap-drop=ALL" "${seed_args[@]}"
+assert_has "$LABEL_FILE" "${seed_args[@]}"
+assert_has "$TEST_HOME/cache-seed:/seed" "${seed_args[@]}"
+assert_has "$SG520_IMAGE" "${seed_args[@]}"
+assert_not_has "--privileged" "${seed_args[@]}"
+assert_not_has "--device=/dev/kfd" "${seed_args[@]}"
+assert_not_has "$TEST_HOME/.codex:$TEST_HOME/.codex" "${seed_args[@]}"
+assert_not_has "$ROOT:/workspace" "${seed_args[@]}"
+
 # The unchanged gfx942 default does not receive the gfx950-only configuration.
 mapfile -t args < <(run_shell_args AKA_GPU_ARCH=gfx942)
 assert_has "lmsysorg/sglang:v0.5.12-rocm720-mi30x" "${args[@]}"

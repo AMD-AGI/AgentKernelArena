@@ -38,6 +38,7 @@ EVAL_TOOL_SELECTED=""
 eval_tool_docker_args=()
 eval_tool_container_names=()
 eval_tool_ids=()
+AITER_CACHE_HOST_DIR=""
 
 # /opt/venv/bin is placed before /usr/local/bin and /usr/bin so that a bare
 # `python3` / `pytest` resolves to the torch-enabled venv interpreter rather than
@@ -69,6 +70,8 @@ Environment overrides:
   AKA_DOCKER_IMAGE        Absolute Docker image override.
   AKA_DOCKER_LABEL_FILE   Readable Docker label file applied to each run container.
   AKA_HOST_HOME           Host agent CLI/auth home (defaults to the caller's HOME).
+  AKA_AITER_JIT_SOURCE    Opt-in absolute image JIT directory to seed completely as root before each runtime.
+  AKA_RCLONE_BIN          Host rclone binary for cache seeding (default: rclone on PATH).
   AKA_GPU_ARCH            GPU arch override for shell/smoke, or run configs without target_gpu_model.
   AKA_DOCKER_IMAGE_<ARCH> Per-arch image override, e.g. AKA_DOCKER_IMAGE_GFX950=...
   AKA_DOCKER_IMAGE_GFX942 Default image for gfx942.
@@ -1014,9 +1017,13 @@ build_docker_args() {
     # root-owned. AITER initializes ~/.aiter during import and seeds it from
     # the image's complete JIT directory. Supply a writable per-container cache
     # without overriding AITER_JIT_DIR, which changes prebuilt module lookup.
-    docker_args+=(
-        --tmpfs "${container_home}/.aiter:rw,exec,uid=${HOST_UID},gid=${HOST_GID},mode=0700"
-    )
+    if [[ -n "$AITER_CACHE_HOST_DIR" ]]; then
+        add_mount "$AITER_CACHE_HOST_DIR" "${container_home}/.aiter"
+    else
+        docker_args+=(
+            --tmpfs "${container_home}/.aiter:rw,exec,uid=${HOST_UID},gid=${HOST_GID},mode=0700"
+        )
+    fi
 
     # geak_v4's claude-agent-sdk is installed with `pip install --target` into
     # this host-mounted dir (see container_setup_geak). Only put it on
@@ -1215,12 +1222,43 @@ build_docker_args() {
     docker_args+=("$SELECTED_IMAGE")
 }
 
-docker_exec() {
+build_aiter_seed_args() {
+    local cache_dir="$1" rclone_bin="$2" source="$3"
+    [[ "$source" == /* && "$source" != "/" ]] || die "AKA_AITER_JIT_SOURCE must be an absolute image directory"
+    aiter_seed_args=(run --rm --network=none --read-only --user 0:0
+        --cap-drop=ALL --cap-add=DAC_OVERRIDE --cap-add=CHOWN --cap-add=FOWNER
+        --security-opt=no-new-privileges --pids-limit=512
+        --tmpfs /tmp:rw,nosuid,nodev
+        -v "$cache_dir:/seed"
+        -v "$rclone_bin:/opt/aka-rclone:ro"
+        -v "$HOST_ROOT/src/scripts/seed_aiter_cache.py:/opt/seed_aiter_cache.py:ro")
+    if [[ -n "${AKA_DOCKER_LABEL_FILE:-}" ]]; then
+        aiter_seed_args+=(--label-file "$AKA_DOCKER_LABEL_FILE")
+    fi
+    aiter_seed_args+=(--entrypoint python3 "$SELECTED_IMAGE" /opt/seed_aiter_cache.py
+        --source "$source" --destination /seed/jit --uid "$HOST_UID" --gid "$HOST_GID"
+        --rclone /opt/aka-rclone)
+}
+
+docker_exec() (
     local interactive="${1:-0}"
     shift
+    if [[ -n "${AKA_AITER_JIT_SOURCE:-}" ]]; then
+        local rclone_bin
+        rclone_bin="${AKA_RCLONE_BIN:-$(command -v rclone || true)}"
+        [[ -x "$rclone_bin" ]] || die "AITER cache seeding requires an executable host rclone binary"
+        rclone_bin="$(readlink -f "$rclone_bin")"
+        [[ -n "$SELECTED_IMAGE" ]] || select_runtime_for_host
+        ensure_runtime_image
+        AITER_CACHE_HOST_DIR="$(mktemp -d /tmp/aka-aiter-seed.XXXXXX)"
+        trap 'rm -rf -- "$AITER_CACHE_HOST_DIR"' EXIT
+        build_aiter_seed_args "$AITER_CACHE_HOST_DIR" "$rclone_bin" "$AKA_AITER_JIT_SOURCE"
+        docker "${aiter_seed_args[@]}"
+        [[ -f "$AITER_CACHE_HOST_DIR/SEED-MANIFEST.json" ]] || die "Root initializer did not verify the complete JIT cache"
+    fi
     build_docker_args "$interactive"
     docker "${docker_args[@]}" -lc 'cd "$AGENT_KERNEL_ARENA_WORKDIR" && if [[ "${AGENT_KERNEL_ARENA_ISOLATED_HOME:-0}" == "1" ]]; then bash src/scripts/docker_benchmark.sh _container_prepare_worker_home; fi && exec "$@"' _ "$@"
-}
+)
 
 extract_config_name() {
     local config="$DEFAULT_RUN_CONFIG"
@@ -1884,6 +1922,14 @@ case "${1:-}" in
             || die "_print_eval_tool_docker_args expects TOOL IMAGE NAME SOCKET SCRATCH ARTIFACT [RUNTIME_REF [PASSWD_FILE]]"
         build_eval_tool_docker_args "$@"
         printf '%s\n' "${eval_tool_docker_args[@]}"
+        ;;
+    _print_aiter_seed_args)
+        shift
+        [[ "$#" -eq 4 ]] || die "_print_aiter_seed_args expects IMAGE CACHE_DIR RCLONE_BIN IMAGE_SOURCE"
+        SELECTED_IMAGE="$1"
+        shift
+        build_aiter_seed_args "$@"
+        printf '%s\n' "${aiter_seed_args[@]}"
         ;;
     _verify_eval_tool_scoring_image)
         shift

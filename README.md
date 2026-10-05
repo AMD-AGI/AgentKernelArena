@@ -46,14 +46,19 @@ harness and reference from Git, stages task payloads using
 `rclone copy --transfers 64000 --progress`, checks the source boundary on
 the host, and runs each compile, correctness and performance phase in a fresh
 container with a read-only image and task mount, fresh caches, no network and
-no agent authentication mounts. It preserves the image's complete AITER JIT
-fallback and supplies a fresh writable HOME for the default user cache; candidate
+no agent authentication mounts. A separate root initializer without GPU access
+copies every image AITER JIT file, including restricted FlyDSL caches and
+precompiled modules, verifies byte parity, and transfers ownership to the host
+UID. Each evaluation phase receives its own verified complete cache and runs
+unprivileged; `AITER_JIT_DIR` is set only after that parity check. Candidate
 builds remain isolated by the task. It computes the arithmetic mean of the three
 matched per-case speedup ratios from fresh device samples. Both comparison
 legs use the protected native candidate entrypoint with the reference source
 and submitted source respectively; production-native timings are diagnostics.
 `trusted_measurement.json` records source, image and report hashes and complete
-case coverage; it does not finalize Arena or task-validator reports. This path
+case coverage; it does not finalize Arena or task-validator reports. Each phase
+also retains worker/compiler logs and a hash manifest in `<phase>.diagnostics`,
+including when compilation or evaluation fails. This path
 currently supports only that explicit guarded task contract. The invoking host,
 Git database, Docker daemon and GPU driver remain trusted infrastructure.
 

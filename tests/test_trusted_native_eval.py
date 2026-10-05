@@ -90,8 +90,9 @@ def test_retest_ignores_agent_reports_caches_and_dirty_trusted_checkout(committe
 
     calls = []
 
-    def run_mode(image, stage, build, render_device, mode, log_path, timeout):
+    def run_mode(image, stage, build, render_device, mode, log_path, timeout, jit_source=None):
         calls.append((stage.name, mode, build))
+        assert jit_source == stage.parent / "image-jit/jit"
         assert not build.exists()
         assert not stage.is_relative_to(agent)
         assert not (stage / "sitecustomize.py").exists()
@@ -100,6 +101,7 @@ def test_retest_ignores_agent_reports_caches_and_dirty_trusted_checkout(committe
         return report(mode, trusted.identities(stage), cases, 4.0 if stage.name == "reference" else 2.0)
 
     monkeypatch.setattr(subprocess, "check_output", check_output)
+    monkeypatch.setattr(trusted, "seed_image_cache", lambda *a, **k: {"complete_parity": True})
     monkeypatch.setattr(trusted, "run_mode", run_mode)
     result = trusted.trusted_retest(repo=repo, commit=commit, task_path=TASK_PATH, candidate=candidate,
                                    agent_workspace=agent, output=output, render_device="/dev/dri/renderD128")
@@ -189,6 +191,16 @@ def test_docker_command_has_only_fresh_task_and_build_mounts(tmp_path, monkeypat
     assert command[-4:] == ["registry/image@sha256:" + "a" * 64, "-I", "-B", "/task/scripts/task_runner.py"]
 
 
+def test_verified_cache_override_does_not_make_runtime_root(tmp_path, monkeypatch):
+    monkeypatch.setattr(Path, "stat", lambda path: SimpleNamespace(st_gid=109))
+    command = trusted.docker_command("image", tmp_path / "task", tmp_path / "build",
+                                     "/dev/dri/renderD128", "unique", tmp_path / "complete-cache")
+    assert "AITER_JIT_DIR=/aiter-jit" in command
+    assert f"type=bind,src={tmp_path / 'complete-cache'},dst=/aiter-jit" in command
+    assert command[command.index("--user") + 1] == f"{os.getuid()}:{os.getgid()}"
+    assert "--cap-add=CHOWN" not in command
+
+
 def test_payload_copy_uses_required_rclone_flags_and_fails_on_partial_copy(tmp_path, monkeypatch):
     source, destination = tmp_path / "reference", tmp_path / "candidate"
     source.mkdir()
@@ -263,3 +275,58 @@ def test_container_failure_cannot_publish_success(tmp_path, monkeypatch):
         trusted.run_mode("image", task, build, "/dev/dri/renderD128", "compile", tmp_path / "log", 30)
     assert calls[-1][:3] == ["docker", "rm", "-f"]
     assert not (tmp_path / "trusted_measurement.json").exists()
+
+
+@pytest.mark.parametrize("fails", [False, True])
+def test_worker_logs_survive_build_cleanup(tmp_path, monkeypatch, fails):
+    task, build = tmp_path / "task", tmp_path / "build"
+    task.mkdir()
+    log_path = tmp_path / "reference_compile.log"
+    original_run = subprocess.run
+    monkeypatch.setattr(trusted, "docker_command", lambda *a: ["docker", "run"])
+
+    def run(command, **kwargs):
+        if command[:2] == ["docker", "run"]:
+            (build / "compile_candidate_native.log").write_text("compiler error details\n")
+            (build / "compile_report.json").write_text('{"status": "ok"}')
+            if fails:
+                raise subprocess.CalledProcessError(7, command)
+            return None
+        if command[:2] == ["docker", "rm"]:
+            return None
+        assert command[0:2] == ["rclone", "copyto"]
+        assert command[4:7] == ["--transfers", "64000", "--progress"]
+        return original_run(command, **kwargs)
+
+    monkeypatch.setattr(subprocess, "run", run)
+    if fails:
+        with pytest.raises(subprocess.CalledProcessError) as error:
+            trusted.run_mode("image", task, build, "/dev/dri/renderD128", "compile", log_path, 30)
+        assert error.value.returncode == 7
+    else:
+        assert trusted.run_mode("image", task, build, "/dev/dri/renderD128", "compile", log_path, 30) == {"status": "ok"}
+    shutil.rmtree(build)
+    saved = tmp_path / "reference_compile.diagnostics/compile_candidate_native.log"
+    assert saved.read_text() == "compiler error details\n"
+    manifest = json.loads((saved.parent / "manifest.json").read_text())
+    assert manifest["logs"][saved.name]["sha256"] == trusted.sha256(saved.read_bytes())
+
+
+def test_diagnostic_copy_failure_preserves_original_container_error(tmp_path, monkeypatch):
+    task, build = tmp_path / "task", tmp_path / "build"
+    task.mkdir()
+    monkeypatch.setattr(trusted, "docker_command", lambda *a: ["docker", "run"])
+
+    def run(command, **kwargs):
+        if command[:2] == ["docker", "run"]:
+            (build / "compile_candidate_native.log").write_text("compiler failed")
+            raise subprocess.CalledProcessError(7, command)
+        if command[0] == "rclone":
+            raise subprocess.CalledProcessError(9, command)
+
+    monkeypatch.setattr(subprocess, "run", run)
+    with pytest.raises(subprocess.CalledProcessError) as error:
+        trusted.run_mode("image", task, build, "/dev/dri/renderD128", "compile", tmp_path / "phase.log", 30)
+    assert error.value.returncode == 7
+    assert "Additional cleanup/diagnostic failure" in error.value.__notes__[0]
+    assert json.loads((tmp_path / "phase.diagnostics/manifest.json").read_text())["errors"]

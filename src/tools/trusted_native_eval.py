@@ -24,6 +24,11 @@ from pathlib import Path, PurePosixPath
 
 import yaml
 
+if __package__:
+    from .seed_aiter_jit_cache import copy_cache, seed_image_cache
+else:
+    from seed_aiter_jit_cache import copy_cache, seed_image_cache
+
 SOURCE = "source/quant_kernels.cu"
 MODES = ("compile", "correctness", "performance")
 LEGS = ("production_native", "candidate_native")
@@ -166,10 +171,10 @@ def identities(task):
     return {"package_sha256": package.hexdigest(), "source_tree_sha256": native.hexdigest()}
 
 
-def docker_command(image, task, build, render_device, name):
+def docker_command(image, task, build, render_device, name, jit_cache=None):
     if not re.fullmatch(r"/dev/dri/renderD[0-9]+", str(render_device)):
         raise ValueError("one explicit /dev/dri/renderD<number> device is required")
-    for path in (task, build):
+    for path in (task, build, *([jit_cache] if jit_cache is not None else [])):
         if "," in str(path):
             raise ValueError("Docker bind paths cannot contain commas")
     command = [
@@ -187,31 +192,83 @@ def docker_command(image, task, build, render_device, name):
     for device in (Path("/dev/kfd"), Path(render_device)):
         command.extend(["--group-add", str(device.stat().st_gid)])
     for variable in (
-        # Keep the image's complete AITER JIT fallback. A blanket override to
-        # an empty directory hides precompiled production modules. AITER's
-        # default user cache can write below this fresh per-container HOME;
-        # the task itself scopes candidate builds to its separate build tree.
+        # AITER_JIT_DIR is set below only for a complete, verified image cache.
         "HOME=/tmp", "XDG_CACHE_HOME=/cache",
         "TORCH_EXTENSIONS_DIR=/cache/torch", "TRITON_CACHE_DIR=/cache/triton",
         "PYTHONDONTWRITEBYTECODE=1", "PYTHONNOUSERSITE=1", "PYTHONPATH=", "LD_PRELOAD=",
         "ROCR_VISIBLE_DEVICES=0", "HIP_VISIBLE_DEVICES=0",
     ):
         command.extend(["--env", variable])
+    if jit_cache is not None:
+        command.extend(["--mount", f"type=bind,src={jit_cache},dst=/aiter-jit",
+                        "--env", "AITER_JIT_DIR=/aiter-jit"])
     return command + [image, "-I", "-B", "/task/scripts/task_runner.py"]
 
 
-def run_mode(image, task, build, render_device, mode, log_path, timeout):
+def preserve_phase_diagnostics(build, mode, log_path):
+    """Keep worker/compiler output after disposable build trees are removed."""
+    destination = log_path.with_suffix(".diagnostics")
+    destination.mkdir()
+    manifest = {"mode": mode, "logs": {}, "errors": []}
+    try:
+        if log_path.is_file():
+            manifest["coordinator_log"] = {
+                "file": log_path.name, "sha256": sha256(read_regular(log_path)),
+            }
+        for leg in LEGS:
+            source = build / f"{mode}_{leg}.log"
+            if not source.exists() and not source.is_symlink():
+                continue
+            expected = sha256(read_regular(source))
+            target = destination / source.name
+            subprocess.run([
+                "rclone", "copyto", str(source.resolve()), str(target.resolve()),
+                "--transfers", "64000", "--progress", "--config", os.devnull,
+            ], check=True, timeout=300)
+            actual = sha256(read_regular(target))
+            if actual != expected:
+                raise ValueError("preserved worker log differs from container output")
+            manifest["logs"][source.name] = {"sha256": actual, "bytes": target.stat().st_size}
+    except Exception as exc:
+        manifest["errors"].append(f"{type(exc).__name__}: {exc}")
+        raise
+    finally:
+        (destination / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+
+
+def run_mode(image, task, build, render_device, mode, log_path, timeout, jit_source=None):
     build.mkdir()
     name = "aka-trusted-" + uuid.uuid4().hex
-    command = docker_command(image, task, build, render_device, name) + [mode]
+    jit_cache = None
+    if jit_source is not None:
+        jit_cache = build.parent / (build.name + "_jit")
+        copy_cache(jit_source, jit_cache, timeout=timeout)
+    command = docker_command(image, task, build, render_device, name, jit_cache) + [mode]
+    primary_error = None
     try:
         with log_path.open("xb") as log:
             subprocess.run(command, stdout=log, stderr=subprocess.STDOUT, check=True, timeout=timeout)
         return json.loads(read_regular(build / (mode + "_report.json")))
+    except BaseException as exc:
+        primary_error = exc
+        raise
     finally:
         # Also remove a container left running after a host timeout/interruption.
-        subprocess.run(["docker", "rm", "-f", name], stdout=subprocess.DEVNULL,
-                       stderr=subprocess.DEVNULL, timeout=30, check=False)
+        errors = []
+        try:
+            subprocess.run(["docker", "rm", "-f", name], stdout=subprocess.DEVNULL,
+                           stderr=subprocess.DEVNULL, timeout=30, check=False)
+        except (OSError, subprocess.SubprocessError) as exc:
+            errors.append(exc)
+        try:
+            preserve_phase_diagnostics(build, mode, log_path)
+        except (OSError, ValueError, subprocess.SubprocessError) as exc:
+            errors.append(exc)
+        for exc in errors:
+            if primary_error is not None:
+                primary_error.add_note(f"Additional cleanup/diagnostic failure: {type(exc).__name__}: {exc}")
+            else:
+                raise exc
 
 
 def _require(condition, message):
@@ -316,6 +373,10 @@ def trusted_retest(*, repo, commit, task_path, candidate, agent_workspace, outpu
         digest = image.rsplit("@", 1)[1]
         _require(any(d.endswith("@" + digest) for d in inspected.get("RepoDigests", [])),
                  "local image does not attest requested registry digest")
+        seed = staging / "image-jit"
+        cache_manifest = seed_image_cache(image, seed, output / "cache_init.log", timeout=timeout)
+        cache_bytes = json.dumps(cache_manifest, sort_keys=True, indent=2).encode() + b"\n"
+        (output / "cache_manifest.json").write_bytes(cache_bytes)
         cases = manifest["cases"]
         measurements, reports, run_ids = {}, {}, set()
         for leg, task in (("reference", reference), ("candidate", edited)):
@@ -323,7 +384,8 @@ def trusted_retest(*, repo, commit, task_path, candidate, agent_workspace, outpu
             reports[leg] = {}
             for mode in MODES:
                 payload = run_mode(image, task, staging / (leg + "_" + mode), render_device,
-                                   mode, output / (leg + "_" + mode + ".log"), timeout)
+                                   mode, output / (leg + "_" + mode + ".log"), timeout,
+                                   jit_source=seed / "jit")
                 measured = validate_report(payload, mode, identity, cases)
                 _require(payload["run_id"] not in run_ids, "replayed report run ID")
                 run_ids.add(payload["run_id"])
@@ -345,6 +407,7 @@ def trusted_retest(*, repo, commit, task_path, candidate, agent_workspace, outpu
                                                        "candidate_run": optimized["production_native"]}})
         result = {"schema_version": 1, "status": "measured", "task_path": task_path, "trusted_commit": commit,
                   "image": image, "local_image_id": inspected["Id"], "render_device": str(render_device),
+                  "image_cache_manifest": {"file": "cache_manifest.json", "sha256": sha256(cache_bytes)},
                   "reference_source_sha256": baseline_hash, "candidate_source_sha256": sha256(candidate_bytes),
                   "full_case_coverage": True, "case_count": len(cases), "cases": rows,
                   "arithmetic_mean_speedup": math.fsum(row["speedup"] for row in rows) / len(rows),

@@ -208,6 +208,19 @@ not redirect `AITER_JIT_DIR` or change precompiled module lookup. Native code
 loading is enabled on this cache mount; existing image-specific cache overrides
 remain scoped to their original runtimes.
 
+If the image JIT tree contains files readable only by root, set
+`AKA_AITER_JIT_SOURCE` to that absolute image directory. Before each standard
+preflight/worker container, a separate root initializer copies the entire tree
+with rclone, verifies every file's SHA-256 and all directory/symlink entries,
+and assigns the copy to the runtime UID/GID. Its filesystem is read-only except
+for the dedicated cache and temporary storage; it has no network, GPU devices,
+authentication mounts, or broad checkout mount. Set `AKA_RCLONE_BIN` if rclone
+is not on the host PATH. Copies use `GOMAXPROCS=1`, `--transfers 64000`,
+`--progress`, and `--buffer-size 0`. The verified cache replaces the empty
+tmpfs at `HOME/.aiter`; `AITER_JIT_DIR` and production module lookup remain
+unchanged. Seed failures stop the run, and the temporary copy is retired with
+that container invocation. The initializer receives the same ownership labels.
+
 Allocation wrappers can set `AKA_DOCKER_LABEL_FILE` to a readable host file in
 Docker's `key=value` label-file format. The runner applies it to every standard
 preflight and worker container, allowing the wrapper to track and retire only
