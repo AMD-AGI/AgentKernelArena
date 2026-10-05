@@ -26,6 +26,37 @@ The platform provides:
 
 AgentKernelArena supplies an environment and objective reward signals; it does not currently include an RL trainer, replay buffer, or policy-update loop. Its per-task workspaces provide reproducibility and concurrent-run separation, not a security sandbox: agent processes run permissively inside a privileged container and can access mounted repository and authentication state.
 
+For accepting speedups from the experimental SG520 DeepSeek native quant task,
+use the [trusted host retest tool](src/tools/trusted_native_eval.py) after stopping
+the optimization worker. Run it from a trusted host checkout with an explicit
+full Git commit, an already available digest-pinned image, one render device,
+and a new output directory outside the agent workspace:
+
+```bash
+python3 src/tools/trusted_native_eval.py \
+  --repo . --commit <full-trusted-commit> \
+  --task experimental/headkernel_sg520/deepseek-v4-pro__per_group_quant_fp8 \
+  --agent-workspace <agent-workspace> --candidate <agent-workspace>/source/quant_kernels.cu \
+  --render-device /dev/dri/renderD128 --output <new-trusted-output-directory>
+```
+
+The host requires Git, Python with PyYAML, rclone and Docker. The tool takes only
+the regular candidate source file from the agent workspace. It extracts the
+harness and reference from Git, stages task payloads using
+`rclone copy --transfers 64000 --progress`, checks the source boundary on
+the host, and runs each compile, correctness and performance phase in a fresh
+container with a read-only image and task mount, fresh caches, no network and
+no agent authentication mounts. It preserves the image's complete AITER JIT
+fallback and supplies a fresh writable HOME for the default user cache; candidate
+builds remain isolated by the task. It computes the arithmetic mean of the three
+matched per-case speedup ratios from fresh device samples. Both comparison
+legs use the protected native candidate entrypoint with the reference source
+and submitted source respectively; production-native timings are diagnostics.
+`trusted_measurement.json` records source, image and report hashes and complete
+case coverage; it does not finalize Arena or task-validator reports. This path
+currently supports only that explicit guarded task contract. The invoking host,
+Git database, Docker daemon and GPU driver remain trusted infrastructure.
+
 ## A/B Testing Workflow
 
 Run the same configuration twice with a distinct suffix. Change only the capability under test between the two runs.

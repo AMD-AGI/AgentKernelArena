@@ -220,8 +220,17 @@ def test_failed_benchmark_clears_stale_scoreable_report(tmp_path):
 
 
 class Buffer:
-    def __init__(self, value, log, name):
+    def __init__(self, value, log, name, device="cuda"):
         self.value, self.log, self.name = value, log, name
+        self.device = device
+
+    def detach(self):
+        return self
+
+    def to(self, *, device, copy):
+        assert copy is True
+        self.log.append(("copy_to", self.name, device))
+        return Buffer(self.value, self.log, self.name, device=device)
 
     def copy_(self, other):
         self.log.append("copy_input")
@@ -235,7 +244,7 @@ class Buffer:
         self.value = value
 
 
-@pytest.mark.parametrize("kind", ["fresh", "no_op", "cached", "partial", "mutate_input"])
+@pytest.mark.parametrize("kind", ["fresh", "no_op", "cached", "partial", "mutate_input", "mutate_input_and_fresh"])
 def test_replay_requires_current_input_and_both_outputs(kind):
     log = []
     x, fresh = Buffer(1, log, "input"), Buffer(7, log, "fresh")
@@ -249,11 +258,24 @@ def test_replay_requires_current_input_and_both_outputs(kind):
         result[0].value = value * 2
         if kind != "partial":
             result[1].value = value * 3
-        if kind == "mutate_input":
+        if kind in ("mutate_input", "mutate_input_and_fresh"):
             x.value = -1
+        if kind == "mutate_input_and_fresh":
+            fresh.value = -1
+
+    def reference(input_):
+        log.append("reference")
+        assert input_.value == 7
+        assert ("copy_to", "quant", "cpu") in log
+        assert ("copy_to", "scale", "cpu") in log
+        assert ("copy_to", "input", "cpu") in log
+        return (Buffer(input_.value * 2, log, "expected_quant"),
+                Buffer(input_.value * 3, log, "expected_scale"))
 
     def compare(actual, expected, input_):
-        assert (actual[0].value, actual[1].value) == expected
+        log.append("compare")
+        assert actual[0].device == actual[1].device == input_.device == "cpu"
+        assert (actual[0].value, actual[1].value) == (expected[0].value, expected[1].value)
 
     def event(*, enable_timing):
         assert enable_timing
@@ -261,15 +283,85 @@ def test_replay_requires_current_input_and_both_outputs(kind):
 
     torch = SimpleNamespace(uint8="uint8", equal=lambda a, b: a.value == b.value,
                             cuda=SimpleNamespace(Event=event, synchronize=lambda: log.append("sync")))
-    with mock.patch.object(WORKER, "compare", compare):
+    with (mock.patch.object(WORKER, "compare", compare),
+          mock.patch.object(WORKER, "reference", reference),
+          mock.patch.object(WORKER, "validate_output_metadata", side_effect=lambda actual, input_: log.append("metadata"))):
         if kind == "fresh":
             assert WORKER.replay_with_fresh_input(SimpleNamespace(replay=replay), result, x,
-                                                 fresh, (14, 21), torch) == 0.25
-            assert log == ["copy_input", "poison_quant", "poison_scale", "event", "replay", "event", "sync"]
+                                                 fresh, torch) == 0.25
+            assert log[:10] == [("copy_to", "fresh", "cpu"), "copy_input", "poison_quant",
+                                "poison_scale", "event", "replay", "event", "sync", "metadata",
+                                ("copy_to", "quant", "cpu")]
+            assert log.index("reference") > log.index(("copy_to", "input", "cpu"))
+            assert log.index("compare") > log.index("reference")
         else:
             with pytest.raises(AssertionError):
                 WORKER.replay_with_fresh_input(SimpleNamespace(replay=replay), result, x,
-                                              fresh, (14, 21), torch)
+                                              fresh, torch)
+
+
+def test_validation_owns_cpu_snapshots_before_reference_can_change_gpu_storage():
+    log = []
+    x = Buffer(7, log, "input")
+    before_cpu = WORKER.cpu_snapshot(x)
+    result = (Buffer(14, log, "quant"), Buffer(21, log, "scale"))
+
+    def reference(input_):
+        assert input_.value == 7
+        log.append("reference")
+        # CPU snapshots must survive later changes to every GPU allocation.
+        x.value, result[0].value, result[1].value = 99, 99, 99
+        return (Buffer(14, log, "expected_quant"), Buffer(21, log, "expected_scale"))
+
+    def compare(actual, expected, input_):
+        assert input_.device == "cpu" and input_.value == 7
+        assert [value.device for value in actual] == ["cpu", "cpu"]
+        assert [value.value for value in actual] == [value.value for value in expected] == [14, 21]
+
+    with (mock.patch.object(WORKER, "reference", reference),
+          mock.patch.object(WORKER, "compare", compare),
+          mock.patch.object(WORKER, "validate_output_metadata", side_effect=lambda actual, input_: log.append("metadata"))):
+        WORKER.validate_completed(result, x, before_cpu, SimpleNamespace(equal=lambda a, b: a.value == b.value))
+    assert before_cpu.value == 7
+    assert log.index("metadata") < log.index(("copy_to", "quant", "cpu")) < log.index("reference")
+    assert log.index(("copy_to", "scale", "cpu")) < log.index("reference")
+    assert log.index(("copy_to", "input", "cpu"), 1) < log.index("reference")
+
+
+def test_invalid_gpu_metadata_is_rejected_before_output_copy_or_oracle():
+    with (mock.patch.object(WORKER, "validate_output_metadata", side_effect=AssertionError("alias")),
+          mock.patch.object(WORKER, "cpu_snapshot") as snapshot,
+          mock.patch.object(WORKER, "reference") as reference,
+          pytest.raises(AssertionError, match="alias")):
+        WORKER.validate_completed(object(), object(), object(), object())
+    snapshot.assert_not_called()
+    reference.assert_not_called()
+
+
+def test_correctness_saves_host_truth_before_each_seed_and_syncs_before_validation():
+    log = []
+    torch = SimpleNamespace(cuda=SimpleNamespace(synchronize=lambda: log.append("sync")))
+
+    def invoke(function, x):
+        log.append("invoke")
+        assert log[-2] == ("copy_to", "input", "cpu")
+        return "actual"
+
+    def validate(actual, x, before_cpu, torch, *, negative_controls):
+        assert log[-1] == "sync"
+        assert before_cpu.device == "cpu" and before_cpu is not x
+        assert before_cpu.value == x.value
+        assert negative_controls is True
+        log.append("validate")
+
+    with (mock.patch.dict(sys.modules, {"torch": torch}),
+          mock.patch.object(WORKER, "generate", side_effect=lambda case, seed, device: Buffer(seed, log, "input")),
+          mock.patch.object(WORKER, "invoke", invoke),
+          mock.patch.object(WORKER, "validate_completed", validate),
+          mock.patch.object(WORKER, "reference") as reference):
+        assert WORKER.correctness(object(), CASES[0]) == {"seeds": [0, 1], "negative_controls": True}
+    reference.assert_not_called()
+    assert log.count("invoke") == log.count("validate") == 2
 
 
 def test_candidate_always_compiles_before_loading_a_unique_extension(tmp_path):

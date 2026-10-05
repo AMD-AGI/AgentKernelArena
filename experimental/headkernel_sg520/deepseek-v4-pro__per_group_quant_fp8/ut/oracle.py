@@ -88,21 +88,32 @@ def reference(x):
     return quantized, physical_scale
 
 
-def compare(actual, expected, x):
+def validate_output_metadata(actual, x):
+    """Check the native ABI before copying outputs or computing any oracle."""
     import torch
 
     if not isinstance(actual, tuple) or len(actual) != 2:
         raise AssertionError("expected (quantized, scales)")
-    for value, reference_value in zip(actual, expected):
-        if value.shape != reference_value.shape or value.dtype != reference_value.dtype:
+    m, n = x.shape
+    specifications = (((m, n), torch.float8_e4m3fn, (n, 1)),
+                      ((m, n // 128), torch.float32, (n // 128, 1)))
+    for value, (shape, dtype, strides) in zip(actual, specifications):
+        if tuple(value.shape) != shape or value.dtype != dtype:
             raise AssertionError("output shape/dtype differs")
-        if value.device != x.device or value.stride() != reference_value.stride():
+        if value.device != x.device or value.stride() != strides:
             raise AssertionError("output device/physical layout differs")
         if value.untyped_storage().data_ptr() == x.untyped_storage().data_ptr():
             raise AssertionError("output aliases the input")
     quantized, scale = actual
     if quantized.untyped_storage().data_ptr() == scale.untyped_storage().data_ptr():
         raise AssertionError("outputs alias each other")
+
+
+def compare(actual, expected, x):
+    import torch
+
+    validate_output_metadata(actual, x)
+    quantized, scale = actual
     if not torch.isfinite(scale).all() or not (scale > 0).all():
         raise AssertionError("invalid dynamic scale")
     torch.testing.assert_close(scale, expected[1], rtol=2e-7, atol=0)

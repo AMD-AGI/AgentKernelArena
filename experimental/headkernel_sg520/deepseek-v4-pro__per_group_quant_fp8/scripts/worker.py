@@ -9,7 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "ut"))
 from contract import ITERATIONS, SEEDS, WARMUP, package_identity, sample_statistics, write_report
 from native import baseline, build_proof, candidate, source_identity
-from oracle import compare, generate, invoke, load_cases, reference
+from oracle import compare, generate, invoke, load_cases, reference, validate_output_metadata
 
 
 def check_negative_controls(actual, expected, x):
@@ -30,24 +30,43 @@ def check_negative_controls(actual, expected, x):
             flat[0] = saved
 
 
+def cpu_snapshot(tensor):
+    """Own the saved bytes independently of all candidate-visible GPU storage."""
+    return tensor.detach().to(device="cpu", copy=True)
+
+
+def validate_completed(actual, x, before_cpu, torch, *, negative_controls=False):
+    """Called only after native work synchronizes; snapshot before the oracle."""
+    validate_output_metadata(actual, x)
+    actual_cpu = tuple(cpu_snapshot(value) for value in actual)
+    after_cpu = cpu_snapshot(x)
+    if not torch.equal(after_cpu, before_cpu):
+        raise AssertionError("native kernel modified its input")
+    # No current expected output exists while the candidate runs. Use the
+    # independent host input, and capture actual outputs before these GPU ops.
+    oracle_input = before_cpu.to(device=x.device, copy=True)
+    expected_gpu = reference(oracle_input)
+    expected_cpu = tuple(cpu_snapshot(value) for value in expected_gpu)
+    compare(actual_cpu, expected_cpu, before_cpu)
+    if negative_controls:
+        check_negative_controls(actual_cpu, expected_cpu, before_cpu)
+
+
 def correctness(function, case):
     import torch
 
     for seed in SEEDS:
         x = generate(case, seed, "cuda")
-        before = x.clone()
-        expected = reference(before)
+        before_cpu = cpu_snapshot(x)
         actual = invoke(function, x)
         torch.cuda.synchronize()
-        if not torch.equal(x, before):
-            raise AssertionError("native kernel modified its input")
-        compare(actual, expected, x)
-        check_negative_controls(actual, expected, x)
+        validate_completed(actual, x, before_cpu, torch, negative_controls=True)
     return {"seeds": list(SEEDS), "negative_controls": True}
 
 
-def replay_with_fresh_input(graph, result, x, fresh, expected, torch):
+def replay_with_fresh_input(graph, result, x, fresh, torch):
     """Copies and output poisoning are outside the device timing interval."""
+    before_cpu = cpu_snapshot(fresh)
     x.copy_(fresh)
     result[0].view(torch.uint8).fill_(255)
     result[1].fill_(float("nan"))
@@ -57,9 +76,7 @@ def replay_with_fresh_input(graph, result, x, fresh, expected, torch):
     graph.replay()
     end.record()
     torch.cuda.synchronize()
-    if not torch.equal(x, fresh):
-        raise AssertionError("graph replay modified the input")
-    compare(result, expected, x)
+    validate_completed(result, x, before_cpu, torch)
     return start.elapsed_time(end)
 
 
@@ -67,8 +84,7 @@ def performance(function, case, seed):
     import torch
 
     x = generate(case, seed, "cuda")
-    before = x.clone()
-    expected = reference(before)
+    before_cpu = cpu_snapshot(x)
     warm_stream = torch.cuda.Stream()
     warm_stream.wait_stream(torch.cuda.current_stream())
     with torch.cuda.stream(warm_stream):
@@ -80,15 +96,12 @@ def performance(function, case, seed):
         result = invoke(function, x)
     graph.replay()
     torch.cuda.synchronize()
-    if not torch.equal(x, before):
-        raise AssertionError("graph capture or warmup modified the input")
-    compare(result, expected, x)
-    del before, expected
+    validate_completed(result, x, before_cpu, torch)
+    del before_cpu
     samples = []
     for iteration in range(ITERATIONS):
         fresh = generate(case, seed + iteration + 1, "cuda")
-        expected = reference(fresh)
-        samples.append(replay_with_fresh_input(graph, result, x, fresh, expected, torch))
+        samples.append(replay_with_fresh_input(graph, result, x, fresh, torch))
     return {"benchmark_method": "cuda_graph", "warmup_iterations": WARMUP,
             "fresh_input_replays": ITERATIONS, "poisoned_output_replays": ITERATIONS,
             "oracle_checks": ITERATIONS + 1, "timings": sample_statistics(samples)}
