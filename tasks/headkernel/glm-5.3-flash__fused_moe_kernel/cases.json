@@ -1,0 +1,455 @@
+{
+  "schema_version": 1,
+  "runtime_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
+  "source_run": "glm-final-capture-v4-194841",
+  "cases": [
+    {
+      "case_id": "whole-moe-decode-m64-2ac7c8e8f382db31ac853f50",
+      "occurrences": 43008,
+      "calls_per_sample": 1,
+      "scalars": {
+        "a1_scale": null,
+        "a2_scale": null,
+        "activation": {
+          "codec": "aiter-core-enum-v1",
+          "kind": "enum",
+          "name": "Silu",
+          "type": "aiter.jit.module_aiter_core:ActivationType",
+          "value": 0
+        },
+        "beta": null,
+        "bias1": null,
+        "bias2": null,
+        "block_size_M": null,
+        "doweight_stage1": false,
+        "dtype": null,
+        "expert_mask": null,
+        "gate_mode": "separated",
+        "hidden_pad": 0,
+        "intermediate_pad": 0,
+        "linear_beta": null,
+        "moe_sorting_dispatch_policy": 0,
+        "num_local_tokens": null,
+        "quant_type": {
+          "codec": "aiter-core-enum-v1",
+          "kind": "enum",
+          "name": "per_128x128",
+          "type": "aiter.jit.module_aiter_core:QuantType",
+          "value": 5
+        },
+        "shared_expert_id": -1,
+        "shared_w1": null,
+        "shared_w1_scale": null,
+        "shared_w2": null,
+        "shared_w2_scale": null,
+        "splitk": 0,
+        "stage2_scatter": null,
+        "swiglu_limit": 10.0,
+        "tensor_attributes": {
+          "hidden_states": {},
+          "topk_ids": {},
+          "topk_weight": {},
+          "w1": {
+            "is_shuffled": true
+          },
+          "w1_scale": {},
+          "w2": {
+            "is_shuffled": true
+          },
+          "w2_scale": {}
+        },
+        "port_launch": {
+          "BM": 32,
+          "BN": 64,
+          "BK": 128,
+          "input_quant_block": 128,
+          "intermediate_quant_block": 128,
+          "output_reduce_block": 256
+        }
+      },
+      "tensors": {
+        "hidden_states": {
+          "role": "input",
+          "shape": [
+            64,
+            4096
+          ],
+          "strides": [
+            4096,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        },
+        "topk_ids": {
+          "role": "input",
+          "shape": [
+            64,
+            8
+          ],
+          "strides": [
+            8,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "int32",
+          "device_type": "cuda"
+        },
+        "topk_weight": {
+          "role": "input",
+          "shape": [
+            64,
+            8
+          ],
+          "strides": [
+            8,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "float32",
+          "device_type": "cuda"
+        },
+        "w1": {
+          "role": "input",
+          "shape": [
+            288,
+            512,
+            4096
+          ],
+          "strides": [
+            2097152,
+            4096,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "float8_e4m3fn",
+          "device_type": "cuda"
+        },
+        "w1_scale": {
+          "role": "input",
+          "shape": [
+            288,
+            4,
+            32
+          ],
+          "strides": [
+            128,
+            32,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "float32",
+          "device_type": "cuda"
+        },
+        "w2": {
+          "role": "input",
+          "shape": [
+            288,
+            4096,
+            256
+          ],
+          "strides": [
+            1048576,
+            256,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "float8_e4m3fn",
+          "device_type": "cuda"
+        },
+        "w2_scale": {
+          "role": "input",
+          "shape": [
+            288,
+            32,
+            2
+          ],
+          "strides": [
+            64,
+            2,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "float32",
+          "device_type": "cuda"
+        },
+        "result": {
+          "role": "output",
+          "shape": [
+            64,
+            4096
+          ],
+          "strides": [
+            4096,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        }
+      },
+      "fixture": {
+        "path": "fixtures/whole-moe-decode-m64-2ac7c8e8f382db31ac853f50.json",
+        "sha256": "57d4455c8fe63267059fea38d7391efb47e755c1a4e84f6f30d11348195ffebf",
+        "native_capture_run": "glm-final-capture-v4-194841"
+      },
+      "served_geometry": {
+        "active_requests": 64,
+        "active_tokens": 64,
+        "replay_id": "graph-replay-0",
+        "run_id": "glm-final-capture-v4-194841",
+        "stage": "decode",
+        "tp_rank": 0,
+        "workload_marker": "served-workload:glm-final-capture-v4-194841"
+      },
+      "frequency_evidence": {
+        "run_id": "glm-final-capture-v4-194841",
+        "case_key": "fmoe-2ac7c8e8f382db31ac853f50",
+        "scope": "actual per-rank notifications across the complete root-marked64-request workload; includes after Torch profiler auto-stop",
+        "operator": "aiter.fused_moe:fused_moe"
+      },
+      "original_profile_evidence": {
+        "run_id": "glm-flash-fp8-native-jit-194292",
+        "observed_core_counts_per_rank": {
+          "prefill_m8192": 336,
+          "decode_m64_one_linked_graph": 42
+        },
+        "timing_from_instrumented_capture_used": false
+      }
+    },
+    {
+      "case_id": "whole-moe-prefill-m8192-96e9c56377cc1062a8f1499f",
+      "occurrences": 2688,
+      "calls_per_sample": 1,
+      "scalars": {
+        "a1_scale": null,
+        "a2_scale": null,
+        "activation": {
+          "codec": "aiter-core-enum-v1",
+          "kind": "enum",
+          "name": "Silu",
+          "type": "aiter.jit.module_aiter_core:ActivationType",
+          "value": 0
+        },
+        "beta": null,
+        "bias1": null,
+        "bias2": null,
+        "block_size_M": null,
+        "doweight_stage1": false,
+        "dtype": null,
+        "expert_mask": null,
+        "gate_mode": "separated",
+        "hidden_pad": 0,
+        "intermediate_pad": 0,
+        "linear_beta": null,
+        "moe_sorting_dispatch_policy": 0,
+        "num_local_tokens": null,
+        "quant_type": {
+          "codec": "aiter-core-enum-v1",
+          "kind": "enum",
+          "name": "per_128x128",
+          "type": "aiter.jit.module_aiter_core:QuantType",
+          "value": 5
+        },
+        "shared_expert_id": -1,
+        "shared_w1": null,
+        "shared_w1_scale": null,
+        "shared_w2": null,
+        "shared_w2_scale": null,
+        "splitk": 0,
+        "stage2_scatter": null,
+        "swiglu_limit": 10.0,
+        "tensor_attributes": {
+          "hidden_states": {},
+          "topk_ids": {},
+          "topk_weight": {},
+          "w1": {
+            "is_shuffled": true
+          },
+          "w1_scale": {},
+          "w2": {
+            "is_shuffled": true
+          },
+          "w2_scale": {}
+        },
+        "port_launch": {
+          "BM": 32,
+          "BN": 64,
+          "BK": 128,
+          "input_quant_block": 128,
+          "intermediate_quant_block": 128,
+          "output_reduce_block": 256
+        }
+      },
+      "tensors": {
+        "hidden_states": {
+          "role": "input",
+          "shape": [
+            8192,
+            4096
+          ],
+          "strides": [
+            4096,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        },
+        "topk_ids": {
+          "role": "input",
+          "shape": [
+            8192,
+            8
+          ],
+          "strides": [
+            8,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "int32",
+          "device_type": "cuda"
+        },
+        "topk_weight": {
+          "role": "input",
+          "shape": [
+            8192,
+            8
+          ],
+          "strides": [
+            8,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "float32",
+          "device_type": "cuda"
+        },
+        "w1": {
+          "role": "input",
+          "shape": [
+            288,
+            512,
+            4096
+          ],
+          "strides": [
+            2097152,
+            4096,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "float8_e4m3fn",
+          "device_type": "cuda"
+        },
+        "w1_scale": {
+          "role": "input",
+          "shape": [
+            288,
+            4,
+            32
+          ],
+          "strides": [
+            128,
+            32,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "float32",
+          "device_type": "cuda"
+        },
+        "w2": {
+          "role": "input",
+          "shape": [
+            288,
+            4096,
+            256
+          ],
+          "strides": [
+            1048576,
+            256,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "float8_e4m3fn",
+          "device_type": "cuda"
+        },
+        "w2_scale": {
+          "role": "input",
+          "shape": [
+            288,
+            32,
+            2
+          ],
+          "strides": [
+            64,
+            2,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "float32",
+          "device_type": "cuda"
+        },
+        "result": {
+          "role": "output",
+          "shape": [
+            8192,
+            4096
+          ],
+          "strides": [
+            4096,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        }
+      },
+      "fixture": {
+        "path": "fixtures/whole-moe-prefill-m8192-96e9c56377cc1062a8f1499f.json",
+        "sha256": "449e4fffd5bba3fe8a258ccd0266c0030d449df89425a29023751c6e4c9ef2b7",
+        "native_capture_run": "glm-final-capture-v4-194841"
+      },
+      "served_geometry": {
+        "active_requests": 1,
+        "active_tokens": 8192,
+        "replay_id": "eager-75357",
+        "run_id": "glm-final-capture-v4-194841",
+        "stage": "prefill",
+        "tp_rank": 0,
+        "workload_marker": "served-workload:glm-final-capture-v4-194841"
+      },
+      "frequency_evidence": {
+        "run_id": "glm-final-capture-v4-194841",
+        "case_key": "fmoe-96e9c56377cc1062a8f1499f",
+        "scope": "actual per-rank notifications across the complete root-marked64-request workload; includes after Torch profiler auto-stop",
+        "operator": "aiter.fused_moe:fused_moe"
+      },
+      "original_profile_evidence": {
+        "run_id": "glm-flash-fp8-native-jit-194292",
+        "observed_core_counts_per_rank": {
+          "prefill_m8192": 336,
+          "decode_m64_one_linked_graph": 42
+        },
+        "timing_from_instrumented_capture_used": false
+      }
+    }
+  ],
+  "measurement": {
+    "method": "cuda_graph",
+    "warmup_iterations": 10,
+    "benchmark_iterations": 100,
+    "correctness_seeds": [
+      0,
+      1
+    ],
+    "refresh_inputs": "each_replay",
+    "initialize_outputs": "each_replay",
+    "validate_outputs": "each_replay",
+    "negative_controls": [
+      "no_op",
+      "wrong_output"
+    ]
+  },
+  "refresh_semantics": "Every replay permutes real routing rows and creates new numerical hidden activations using fresh per-row multipliers and per-element noise around the captured distribution. CPU input truth is fixed before candidate execution; a native reference is computed only after candidate output/input snapshots are on CPU.",
+  "coverage": "Every notified whole-MoE case has its own fixture-backed mandatory case; core prefill8192/decode64 required, tail and alternate valid structural cases retained."
+}

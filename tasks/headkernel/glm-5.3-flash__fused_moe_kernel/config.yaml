@@ -30,6 +30,7 @@ trusted_evaluation:
   reference_sources:
     source/kernels.py: ut/reference/kernels.py
   requires_aiter_jit_cache: true
+  fixture_manifest: fixtures/EXTERNAL-MANIFEST.json
 prompt:
   source_code: null
   instructions: 'Optimize only the five GPU function bodies in source/kernels.py. This is a newly authored
@@ -45,12 +46,12 @@ prompt:
 headkernel:
   model: GLM-5.3-Flash
   docker: docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96
-  source_run: glm-flash-fp8-native-jit-194292
+  source_run: glm-final-capture-v4-194841
   target_callable: aiter.fused_moe:fused_moe
   device_symbol: aiter::fmoe_bf16_blockscaleFp8_g1u1_vs_silu_1tg_ps_32x256
   source_seed: new_whole_operator_replacement_port
   original_native_kernel_source: false
-  validation_status: bounded_gpu_diagnostic_pass_pending_real_capture_and_framework
+  validation_status: final_real_capture_imported_pending_fresh_gpu_framework
   oracle: Fresh numeric CPU input truth. Candidate output/input snapshots reach CPU before the pinned
     native MoE reference executes. Current golden output is not available before candidate observation.
   performance_baseline: frozen same whole-MoE port

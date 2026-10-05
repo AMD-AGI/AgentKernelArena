@@ -1,0 +1,148 @@
+{
+  "schema": "trusted-external-fixtures-v1",
+  "case_manifest_fingerprint": "9abb559b58bcb3f233d3b2a486c199181dc53035160eee43d4ec42ddc12015aa",
+  "runtime_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
+  "oci_prefix": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261005/glm-final-capture-v4-194841/",
+  "assets": [
+    {
+      "path": "fixtures/blobs/1d924888f23dfb08e811f2abf5b9828a5924fc7c5d38ab124aec9943ce5331b8.bin",
+      "object_key": "blobs/1d924888f23dfb08e811f2abf5b9828a5924fc7c5d38ab124aec9943ce5331b8.bin",
+      "bytes": 301989888,
+      "sha256": "1d924888f23dfb08e811f2abf5b9828a5924fc7c5d38ab124aec9943ce5331b8",
+      "codec": "raw-storage-segment-v1",
+      "roles": [
+        "kernel_weight"
+      ]
+    },
+    {
+      "path": "fixtures/blobs/7ba8328d9f863c60f8a16e091806a68d5e966fdbb9a060518a59d10b08b8a702.bin",
+      "object_key": "blobs/7ba8328d9f863c60f8a16e091806a68d5e966fdbb9a060518a59d10b08b8a702.bin",
+      "bytes": 2048,
+      "sha256": "7ba8328d9f863c60f8a16e091806a68d5e966fdbb9a060518a59d10b08b8a702",
+      "codec": "raw-storage-segment-v1",
+      "roles": [
+        "runtime_control"
+      ]
+    },
+    {
+      "path": "fixtures/blobs/7c25a849913b2a5b504ec87bc4469629f103754edcf869123f93aadce3281e62.bin",
+      "object_key": "blobs/7c25a849913b2a5b504ec87bc4469629f103754edcf869123f93aadce3281e62.bin",
+      "bytes": 524288,
+      "sha256": "7c25a849913b2a5b504ec87bc4469629f103754edcf869123f93aadce3281e62",
+      "codec": "raw-storage-segment-v1",
+      "roles": [
+        "oracle_output"
+      ]
+    },
+    {
+      "path": "fixtures/blobs/7e8e866721fb33477430295913fb9ffdf4e0b62e3bf09d56d093eded955e1c72.bin",
+      "object_key": "blobs/7e8e866721fb33477430295913fb9ffdf4e0b62e3bf09d56d093eded955e1c72.bin",
+      "bytes": 603979776,
+      "sha256": "7e8e866721fb33477430295913fb9ffdf4e0b62e3bf09d56d093eded955e1c72",
+      "codec": "raw-storage-segment-v1",
+      "roles": [
+        "kernel_weight"
+      ]
+    },
+    {
+      "path": "fixtures/blobs/999d9b58c6bcbb8597c23b07542afe30da8d17c049bae639448d742977ce859e.bin",
+      "object_key": "blobs/999d9b58c6bcbb8597c23b07542afe30da8d17c049bae639448d742977ce859e.bin",
+      "bytes": 67108864,
+      "sha256": "999d9b58c6bcbb8597c23b07542afe30da8d17c049bae639448d742977ce859e",
+      "codec": "raw-storage-segment-v1",
+      "roles": [
+        "activation"
+      ]
+    },
+    {
+      "path": "fixtures/blobs/9c45e49101ade03d63dbc0dd5bb845fc4af237feed3b88f77cb0afdca3f63d6c.bin",
+      "object_key": "blobs/9c45e49101ade03d63dbc0dd5bb845fc4af237feed3b88f77cb0afdca3f63d6c.bin",
+      "bytes": 67108864,
+      "sha256": "9c45e49101ade03d63dbc0dd5bb845fc4af237feed3b88f77cb0afdca3f63d6c",
+      "codec": "raw-storage-segment-v1",
+      "roles": [
+        "oracle_output"
+      ]
+    },
+    {
+      "path": "fixtures/blobs/b0c69ef3e520c2b1175c22183235c60842f7277455227f64038492ca27a2d01f.bin",
+      "object_key": "blobs/b0c69ef3e520c2b1175c22183235c60842f7277455227f64038492ca27a2d01f.bin",
+      "bytes": 2048,
+      "sha256": "b0c69ef3e520c2b1175c22183235c60842f7277455227f64038492ca27a2d01f",
+      "codec": "raw-storage-segment-v1",
+      "roles": [
+        "runtime_control"
+      ]
+    },
+    {
+      "path": "fixtures/blobs/b11b1f9bdb4201fea31850b2092cc376b50c8eb874ce8a343ab3376898b6e122.bin",
+      "object_key": "blobs/b11b1f9bdb4201fea31850b2092cc376b50c8eb874ce8a343ab3376898b6e122.bin",
+      "bytes": 524288,
+      "sha256": "b11b1f9bdb4201fea31850b2092cc376b50c8eb874ce8a343ab3376898b6e122",
+      "codec": "raw-storage-segment-v1",
+      "roles": [
+        "activation"
+      ]
+    },
+    {
+      "path": "fixtures/blobs/b70ed1380c95552a7dbf32ca54d05c212c84ba05270394493c416989b309781a.bin",
+      "object_key": "blobs/b70ed1380c95552a7dbf32ca54d05c212c84ba05270394493c416989b309781a.bin",
+      "bytes": 147456,
+      "sha256": "b70ed1380c95552a7dbf32ca54d05c212c84ba05270394493c416989b309781a",
+      "codec": "raw-storage-segment-v1",
+      "roles": [
+        "kernel_weight_scale"
+      ]
+    },
+    {
+      "path": "fixtures/blobs/b7416269a2471c632962246e254211940a451fc4a7c618c1937123ef24b9ccbd.bin",
+      "object_key": "blobs/b7416269a2471c632962246e254211940a451fc4a7c618c1937123ef24b9ccbd.bin",
+      "bytes": 262144,
+      "sha256": "b7416269a2471c632962246e254211940a451fc4a7c618c1937123ef24b9ccbd",
+      "codec": "raw-storage-segment-v1",
+      "roles": [
+        "runtime_control"
+      ]
+    },
+    {
+      "path": "fixtures/blobs/d6f35452799bb6af7535b645b4fb5251f63193b698b1da18ba048cdb62297481.bin",
+      "object_key": "blobs/d6f35452799bb6af7535b645b4fb5251f63193b698b1da18ba048cdb62297481.bin",
+      "bytes": 262144,
+      "sha256": "d6f35452799bb6af7535b645b4fb5251f63193b698b1da18ba048cdb62297481",
+      "codec": "raw-storage-segment-v1",
+      "roles": [
+        "runtime_control"
+      ]
+    },
+    {
+      "path": "fixtures/blobs/f2628af5c7aeceffc6a4017456025f0520ab770936ab7b89fb6bb12093232b49.bin",
+      "object_key": "blobs/f2628af5c7aeceffc6a4017456025f0520ab770936ab7b89fb6bb12093232b49.bin",
+      "bytes": 73728,
+      "sha256": "f2628af5c7aeceffc6a4017456025f0520ab770936ab7b89fb6bb12093232b49",
+      "codec": "raw-storage-segment-v1",
+      "roles": [
+        "kernel_weight_scale"
+      ]
+    },
+    {
+      "path": "fixtures/whole-moe-decode-m64-2ac7c8e8f382db31ac853f50.json",
+      "object_key": "fmoe-2ac7c8e8f382db31ac853f50.json",
+      "bytes": 6890,
+      "sha256": "57d4455c8fe63267059fea38d7391efb47e755c1a4e84f6f30d11348195ffebf",
+      "codec": "served-tensor-fixture-v1",
+      "roles": [
+        "case_metadata"
+      ]
+    },
+    {
+      "path": "fixtures/whole-moe-prefill-m8192-96e9c56377cc1062a8f1499f.json",
+      "object_key": "fmoe-96e9c56377cc1062a8f1499f.json",
+      "bytes": 6899,
+      "sha256": "449e4fffd5bba3fe8a258ccd0266c0030d449df89425a29023751c6e4c9ef2b7",
+      "codec": "served-tensor-fixture-v1",
+      "roles": [
+        "case_metadata"
+      ]
+    }
+  ]
+}
