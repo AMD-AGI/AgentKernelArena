@@ -465,6 +465,7 @@ def _benchmark_cases(raw):
     if any(type(raw.get(key)) is not int or raw[key] != expected
            for key, expected in (("warmup", WARMUP_ITERATIONS), ("iters", BENCHMARK_ITERATIONS))):
         raise ValueError("benchmark report has incorrect iteration counts")
+    seen_ids = set()
     for row in rows:
         if (not isinstance(row, dict) or not isinstance(row.get("sig"), str) or not row["sig"]
                 or not isinstance(row.get("params", {}), dict)
@@ -472,6 +473,9 @@ def _benchmark_cases(raw):
                        or not math.isfinite(row[key]) or row[key] <= 0
                        for key in ("mean_ms", "median_ms", "min_ms"))):
             raise ValueError("benchmark report has an invalid case or timing")
+        if row["sig"] in seen_ids:
+            raise ValueError(f"benchmark report has duplicate case ID: {row['sig']!r}")
+        seen_ids.add(row["sig"])
     return [{
         "test_case_id": row["sig"], "execution_time_ms": row["mean_ms"],
         "params": row.get("params", {}), "median_ms": row["median_ms"], "min_ms": row["min_ms"],
