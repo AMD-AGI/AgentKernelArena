@@ -1,10 +1,12 @@
 """Load complete native Python modules with the original package context."""
+import ast
 import hashlib
 import importlib
 import importlib.util
 import json
 from pathlib import Path
 import sys
+import uuid
 
 
 def sha256(path):
@@ -14,13 +16,44 @@ def sha256(path):
     return h.hexdigest()
 
 
-def load_file(path, qualified_name):
+def private_torch_op_tree(source, targets, identity):
+    """Give only selected frozen wrappers a private registration name.
+
+    AITER's guard keys torch.ops.aiter by function name, not module identity.
+    Re-exporting the decorated wrapper under its public module attribute keeps
+    the native body/signature/decorator unchanged while isolating its globals.
+    """
+    tree=ast.parse(source);found={};body=[]
+    for node in tree.body:
+        if isinstance(node,ast.FunctionDef) and node.name in targets:
+            public=node.name
+            decorators=[item for item in node.decorator_list if isinstance(item,ast.Call)
+                        and isinstance(item.func,ast.Name) and item.func.id=='torch_compile_guard']
+            if len(decorators)!=1:raise RuntimeError('Expected one frozen torch_compile_guard decorator')
+            private='_aka_'+identity+'_'+public
+            node.name=private;found[public]='aiter::'+private
+            body.append(node)
+            body.append(ast.Assign(targets=[ast.Name(id=public,ctx=ast.Store())],value=ast.Name(id=private,ctx=ast.Load())))
+        else:body.append(node)
+    if set(found)!=set(targets):raise RuntimeError('Missing frozen private torch-op wrapper')
+    tree.body=body
+    return ast.fix_missing_locations(tree),found
+
+
+def load_file(path, qualified_name, *, private_torch_ops=()):
     parent = qualified_name.rpartition('.')[0]
     if parent: importlib.import_module(parent)
     spec = importlib.util.spec_from_file_location(qualified_name, path)
     module = importlib.util.module_from_spec(spec)
     sys.modules[qualified_name] = module
-    try: spec.loader.exec_module(module)
+    try:
+        if private_torch_ops:
+            identity=qualified_name.rpartition('.')[2]+'_'+uuid.uuid4().hex
+            tree,operators=private_torch_op_tree(path.read_text(),private_torch_ops,identity)
+            exec(compile(tree,str(path),'exec'),module.__dict__)
+            module._aka_private_torch_ops=operators
+            module._aka_private_backend_sha256=sha256(path)
+        else:spec.loader.exec_module(module)
     except BaseException:
         sys.modules.pop(qualified_name, None)
         raise
@@ -63,7 +96,10 @@ def load_native(root, leg):
             target=module
             if cfg['gpu_binding'].get('backend_source'):
                 backend=cfg['gpu_binding']['backend_source']
-                target=load_file(root/backend,'aiter.ops._aka_ds_prefill_'+leg)
+                target=load_file(root/backend,'aiter.ops._aka_ds_prefill_'+leg,
+                                 private_torch_ops=('pa_sparse_prefill_opus',))
+                proof['private_torch_ops']=target._aka_private_torch_ops
+                proof['private_backend_sha256']=target._aka_private_backend_sha256
                 if not module._HAS_OPUS:raise RuntimeError('Current prefill contract requires the Opus path')
                 module.pa_sparse_prefill_opus=target.pa_sparse_prefill_opus
             for python_name,native_name in cfg['gpu_binding']['exports'].items():

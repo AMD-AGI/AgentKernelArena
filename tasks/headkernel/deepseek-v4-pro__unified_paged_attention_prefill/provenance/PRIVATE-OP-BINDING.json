@@ -1,0 +1,26 @@
+{
+  "schema": "ds-mla-prefill-private-op-ready-v1",
+  "status": "CANONICAL_CPU_VALIDATED_GPU_RETEST_REQUIRED",
+  "previous_native_sha256": "60331b4f31d3cbbd9d3dca64b0647c91416be66a5152360d809829fc556cc2ac",
+  "scope": "Only the MLA prefill backend alias path opts into fresh per-load/per-leg custom-op naming. Other loaders retain original execution. Native body, signature, fake function and decorator arguments are preserved.",
+  "runtime_proof_fields": [
+    "private_torch_ops",
+    "private_backend_sha256",
+    "module_name",
+    "extension_sha256"
+  ],
+  "cpu_tests": {
+    "passed": 3,
+    "torch": "2.8.0+cpu",
+    "actual_image_guard_executed": true,
+    "stock_output": 8,
+    "old_same_name_alias_output": 8,
+    "fixed_candidate_output": 107,
+    "fixed_reference_output": 207,
+    "stock_operator_unchanged": true
+  },
+  "GPU_actions": false,
+  "native_loader": "ut/native.py",
+  "native_loader_sha256": "58a6ed8fdfcbd13ce61ea4a903e2cb8077e44858ab6d61cceaeab8b779db2ac1",
+  "task_GPU_qualification": false
+}
