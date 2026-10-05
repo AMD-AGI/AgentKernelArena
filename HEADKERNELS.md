@@ -32,8 +32,16 @@ do not qualify the restored setup.
 Read the [setup guide](docs/how-to/headkernel-upstream-runtime.md) and the
 [verbatim upstream README](HEADKERNELS_UPSTREAM.md). Each task's `config.yaml`
 retains its original capture-image declaration. The setup guide lists the
-corresponding public HyperLoom images and their compatibility limits; it records
-the custom Kimi build separately.
+capture-era public HyperLoom images and their compatibility limits; it records
+the custom Kimi build separately. The
+[current runtime targets](tools/headkernel-runtime-targets.json), supplied on
+2026-10-05, select `lmsysorg/sglang:v0.5.20-rocm724-mi35x` for new SGLang validation,
+with `lmsysorg/sglang-rocm:v0.5.19-rocm720-mi35x-20260913` as the alternate.
+`vllm/vllm-openai-rocm:v0.29.0` is the current vLLM serving target; v0.30 is planned
+without a supplied exact tag. All three current tags have verified registry
+digests. All 16 restored tasks have SGLang capture declarations; their
+compatibility with the new images has not been GPU-validated. Selecting a newer
+image does not refresh the captured kernels, shapes or historical gain figures.
 
 The original numerical input contract is restored. The 16 configured tasks need
 17 original tensor files totaling 33,139,788,731 bytes: 14 reference archives and
@@ -83,6 +91,10 @@ reference math, test shapes, tolerances, warmups, sample counts or timing method
   redirected aliases. Noneditable support files remain protected. Task packages
   must contain their symlink targets; old workspaces with detached copies must
   be recreated from the task rather than treated as valid candidate evaluations.
+  Held-out baseline restoration validates every destination before writing, so
+  a copied absolute or escaping source link cannot overwrite the submitted
+  candidate. Quality-loop changes operate on the link itself when adding,
+  replacing or deleting an alias, preserving its referenced kernel file.
 - **Separate candidate and production MoE registration.** The Qwen two-stage
   MoE candidate registers its guarded operation under a module-qualified name,
   so AITER cannot reuse the production operation's registration for the candidate.
@@ -92,11 +104,16 @@ reference math, test shapes, tolerances, warmups, sample counts or timing method
   reconstruction is unsupported. Failed candidate calls, failed case builders,
   timeouts, stale output and invalid or partial measurements cannot become a
   successful score through fallback. Successful CUDA-event timing retains the
-  original measurement procedure.
+  original measurement procedure. The follow-up parser also rejects malformed
+  or nonfinite `timing:` lines when valid rows or structured output are present;
+  it does not silently drop the bad rows. Generator templates match all 16
+  runner/benchmark copies, with a regression check preventing old runner behavior
+  from being regenerated.
 
 Focused regression coverage is in `tests/test_task_source_aliases.py`,
 `tests/test_headkernel_moe_registration.py` and
-`tests/test_headkernel_benchmark_failures.py`. CPU tests establish these control
+`tests/test_headkernel_benchmark_failures.py`, with copy/restoration regressions
+in `tests/test_source_alias_copy_safety.py`. CPU tests establish these control
 paths; they do not establish real GPU correctness, AITER dispatch or performance.
 
 Stricter failure handling can expose existing replay incompatibilities that
@@ -104,3 +121,7 @@ previously selected a different timing path, including the DeepSeek MoE tasks.
 This is not a claim that all 16 tasks are newly qualified. Their original
 CUDA-event reports also predate the current validator's graph/fallback metadata
 contract; passing the CPU regressions does not resolve that qualification gap.
+The existing `make check-perf-helpers` check also reports the 16 legacy
+headkernel performance entrypoints as unrecognized. The current image catalog
+and these execution fixes do not establish that this integration check or GPU
+task qualification has passed.

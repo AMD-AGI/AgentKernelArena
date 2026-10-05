@@ -1,0 +1,245 @@
+{
+  "schema_version": 1,
+  "updated_date": "2026-10-05",
+  "description": "User-supplied current workload image targets. Registry availability is verified; compatibility of the restored head-kernel tasks is not GPU-validated.",
+  "primary_sglang": "sglang_v0520",
+  "alternate_sglang": "sglang_v0519",
+  "current_vllm": "vllm_v0290",
+  "images": {
+    "sglang_v0520": {
+      "tag": "docker.io/lmsysorg/sglang:v0.5.20-rocm724-mi35x",
+      "pull_reference": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
+      "manifest_digest": "sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
+      "config_digest": "sha256:559fb441c9eb54cc77932bee7da8bbbf481b39c62c9a7d089741cf02c1234a47",
+      "platform": "linux/amd64",
+      "registry_metadata_verified_utc": "2026-10-05T11:45:56.197670+00:00",
+      "compressed_layer_bytes": 25886835324,
+      "registry_manifest_url": "https://registry-1.docker.io/v2/lmsysorg/sglang/manifests/v0.5.20-rocm724-mi35x",
+      "gpu_validation": "not_run",
+      "capture_image_equivalence": "not_established"
+    },
+    "sglang_v0519": {
+      "tag": "docker.io/lmsysorg/sglang-rocm:v0.5.19-rocm720-mi35x-20260913",
+      "pull_reference": "docker.io/lmsysorg/sglang-rocm@sha256:d1a7c4cae3870711a5548cfe38e0b33db4c61c8977b04f66b7ab9b3bc1769a64",
+      "manifest_digest": "sha256:d1a7c4cae3870711a5548cfe38e0b33db4c61c8977b04f66b7ab9b3bc1769a64",
+      "config_digest": "sha256:bc5204407a06ed523eb6fde6539b3ead4b1eec1d75cd9ff9dd252b4c6f9a9223",
+      "platform": "linux/amd64",
+      "registry_metadata_verified_utc": "2026-10-05T11:45:56.166706+00:00",
+      "compressed_layer_bytes": 23774905694,
+      "registry_manifest_url": "https://registry-1.docker.io/v2/lmsysorg/sglang-rocm/manifests/v0.5.19-rocm720-mi35x-20260913",
+      "gpu_validation": "not_run",
+      "capture_image_equivalence": "not_established"
+    },
+    "vllm_v0290": {
+      "tag": "docker.io/vllm/vllm-openai-rocm:v0.29.0",
+      "pull_reference": "docker.io/vllm/vllm-openai-rocm@sha256:e5e47f6aaab675c252c381f0dac237b31b10d87bb74d092b07fb4065efd7f5a1",
+      "manifest_digest": "sha256:e5e47f6aaab675c252c381f0dac237b31b10d87bb74d092b07fb4065efd7f5a1",
+      "config_digest": "sha256:c95cfe741c14d1d14562bbb1156e32a4375072fb9b2bf98bdb0a5165c55b506c",
+      "platform": "linux/amd64",
+      "registry_metadata_verified_utc": "2026-10-05T11:45:56.060047+00:00",
+      "compressed_layer_bytes": 11493961137,
+      "registry_manifest_url": "https://registry-1.docker.io/v2/vllm/vllm-openai-rocm/manifests/v0.29.0",
+      "gpu_validation": "not_run",
+      "capture_image_equivalence": "not_established"
+    }
+  },
+  "planned_vllm": {
+    "version": "0.30",
+    "status": "planned",
+    "tag": null,
+    "pull_reference": null,
+    "reason": "Exact image tag not supplied; no registry query or migration performed."
+  },
+  "tasks": [
+    {
+      "task": "headkernel/deepseek-v4-pro__dsa_sparse_mla_attn",
+      "capture_config": "tasks/headkernel/deepseek-v4-pro__dsa_sparse_mla_attn/config.yaml",
+      "capture_image": "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.17-rocm720-mi35x-profilerfix",
+      "framework": "sglang",
+      "primary_target": "sglang_v0520",
+      "alternate_target": "sglang_v0519",
+      "task_compatibility": "not_validated",
+      "environment_and_setup_catalog": "tools/headkernel-public-runtimes.json",
+      "environment_and_setup_task_key": "headkernel/deepseek-v4-pro__dsa_sparse_mla_attn"
+    },
+    {
+      "task": "headkernel/deepseek-v4-pro__moe_stage1_grouped_gemm_silu_flydsl",
+      "capture_config": "tasks/headkernel/deepseek-v4-pro__moe_stage1_grouped_gemm_silu_flydsl/config.yaml",
+      "capture_image": "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.17-rocm720-mi35x-profilerfix",
+      "framework": "sglang",
+      "primary_target": "sglang_v0520",
+      "alternate_target": "sglang_v0519",
+      "task_compatibility": "not_validated",
+      "environment_and_setup_catalog": "tools/headkernel-public-runtimes.json",
+      "environment_and_setup_task_key": "headkernel/deepseek-v4-pro__moe_stage1_grouped_gemm_silu_flydsl"
+    },
+    {
+      "task": "headkernel/deepseek-v4-pro__moe_stage2_down_proj_reduce_opus_a8w4",
+      "capture_config": "tasks/headkernel/deepseek-v4-pro__moe_stage2_down_proj_reduce_opus_a8w4/config.yaml",
+      "capture_image": "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.17-rocm720-mi35x-profilerfix",
+      "framework": "sglang",
+      "primary_target": "sglang_v0520",
+      "alternate_target": "sglang_v0519",
+      "task_compatibility": "not_validated",
+      "environment_and_setup_catalog": "tools/headkernel-public-runtimes.json",
+      "environment_and_setup_task_key": "headkernel/deepseek-v4-pro__moe_stage2_down_proj_reduce_opus_a8w4"
+    },
+    {
+      "task": "headkernel/glm-5.3-flash__elementwise_copy_cluster",
+      "capture_config": "tasks/headkernel/glm-5.3-flash__elementwise_copy_cluster/config.yaml",
+      "capture_image": "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.17-rocm720-mi35x-profilerfix",
+      "framework": "sglang",
+      "primary_target": "sglang_v0520",
+      "alternate_target": "sglang_v0519",
+      "task_compatibility": "not_validated",
+      "environment_and_setup_catalog": "tools/headkernel-public-runtimes.json",
+      "environment_and_setup_task_key": "headkernel/glm-5.3-flash__elementwise_copy_cluster"
+    },
+    {
+      "task": "headkernel/minimax-m3__decode_score_kernel",
+      "capture_config": "tasks/headkernel/minimax-m3__decode_score_kernel/config.yaml",
+      "capture_image": "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.17-rocm720-mi35x-profilerfix",
+      "framework": "sglang",
+      "primary_target": "sglang_v0520",
+      "alternate_target": "sglang_v0519",
+      "task_compatibility": "not_validated",
+      "environment_and_setup_catalog": "tools/headkernel-public-runtimes.json",
+      "environment_and_setup_task_key": "headkernel/minimax-m3__decode_score_kernel"
+    },
+    {
+      "task": "headkernel/minimax-m3__gqa_share_sparse_decode_kernel",
+      "capture_config": "tasks/headkernel/minimax-m3__gqa_share_sparse_decode_kernel/config.yaml",
+      "capture_image": "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.17-rocm720-mi35x-profilerfix",
+      "framework": "sglang",
+      "primary_target": "sglang_v0520",
+      "alternate_target": "sglang_v0519",
+      "task_compatibility": "not_validated",
+      "environment_and_setup_catalog": "tools/headkernel-public-runtimes.json",
+      "environment_and_setup_task_key": "headkernel/minimax-m3__gqa_share_sparse_decode_kernel"
+    },
+    {
+      "task": "headkernel/minimax-m3__gqa_share_sparse_fwd_kernel",
+      "capture_config": "tasks/headkernel/minimax-m3__gqa_share_sparse_fwd_kernel/config.yaml",
+      "capture_image": "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.17-rocm720-mi35x-profilerfix",
+      "framework": "sglang",
+      "primary_target": "sglang_v0520",
+      "alternate_target": "sglang_v0519",
+      "task_compatibility": "not_validated",
+      "environment_and_setup_catalog": "tools/headkernel-public-runtimes.json",
+      "environment_and_setup_task_key": "headkernel/minimax-m3__gqa_share_sparse_fwd_kernel"
+    },
+    {
+      "task": "headkernel/glm-5.3-flash__fused_moe_kernel",
+      "capture_config": "tasks/headkernel/glm-5.3-flash__fused_moe_kernel/config.yaml",
+      "capture_image": "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.18-rocm720-mi35x-profilerfix",
+      "framework": "sglang",
+      "primary_target": "sglang_v0520",
+      "alternate_target": "sglang_v0519",
+      "task_compatibility": "not_validated",
+      "environment_and_setup_catalog": "tools/headkernel-public-runtimes.json",
+      "environment_and_setup_task_key": "headkernel/glm-5.3-flash__fused_moe_kernel"
+    },
+    {
+      "task": "headkernel/qwen3.8-2.4t__dense_bf16_gemm_cluster",
+      "capture_config": "tasks/headkernel/qwen3.8-2.4t__dense_bf16_gemm_cluster/config.yaml",
+      "capture_image": "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.18-rocm720-mi35x-profilerfix",
+      "framework": "sglang",
+      "primary_target": "sglang_v0520",
+      "alternate_target": "sglang_v0519",
+      "task_compatibility": "not_validated",
+      "environment_and_setup_catalog": "tools/headkernel-public-runtimes.json",
+      "environment_and_setup_task_key": "headkernel/qwen3.8-2.4t__dense_bf16_gemm_cluster"
+    },
+    {
+      "task": "headkernel/qwen3.8-2.4t__fused_moe_2stage_mxfp4",
+      "capture_config": "tasks/headkernel/qwen3.8-2.4t__fused_moe_2stage_mxfp4/config.yaml",
+      "capture_image": "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.18-rocm720-mi35x-profilerfix",
+      "framework": "sglang",
+      "primary_target": "sglang_v0520",
+      "alternate_target": "sglang_v0519",
+      "task_compatibility": "not_validated",
+      "environment_and_setup_catalog": "tools/headkernel-public-runtimes.json",
+      "environment_and_setup_task_key": "headkernel/qwen3.8-2.4t__fused_moe_2stage_mxfp4"
+    },
+    {
+      "task": "headkernel/qwen3.8-2.4t__fused_recurrent_gated_delta_rule_decode",
+      "capture_config": "tasks/headkernel/qwen3.8-2.4t__fused_recurrent_gated_delta_rule_decode/config.yaml",
+      "capture_image": "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.18-rocm720-mi35x-profilerfix",
+      "framework": "sglang",
+      "primary_target": "sglang_v0520",
+      "alternate_target": "sglang_v0519",
+      "task_compatibility": "not_validated",
+      "environment_and_setup_catalog": "tools/headkernel-public-runtimes.json",
+      "environment_and_setup_task_key": "headkernel/qwen3.8-2.4t__fused_recurrent_gated_delta_rule_decode"
+    },
+    {
+      "task": "headkernel/qwen3.8-2.4t__gemma_fused_add_rmsnorm",
+      "capture_config": "tasks/headkernel/qwen3.8-2.4t__gemma_fused_add_rmsnorm/config.yaml",
+      "capture_image": "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.18-rocm720-mi35x-profilerfix",
+      "framework": "sglang",
+      "primary_target": "sglang_v0520",
+      "alternate_target": "sglang_v0519",
+      "task_compatibility": "not_validated",
+      "environment_and_setup_catalog": "tools/headkernel-public-runtimes.json",
+      "environment_and_setup_task_key": "headkernel/qwen3.8-2.4t__gemma_fused_add_rmsnorm"
+    },
+    {
+      "task": "headkernel/qwen3.8-2.4t__paged_attention_decode",
+      "capture_config": "tasks/headkernel/qwen3.8-2.4t__paged_attention_decode/config.yaml",
+      "capture_image": "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.18-rocm720-mi35x-profilerfix",
+      "framework": "sglang",
+      "primary_target": "sglang_v0520",
+      "alternate_target": "sglang_v0519",
+      "task_compatibility": "not_validated",
+      "environment_and_setup_catalog": "tools/headkernel-public-runtimes.json",
+      "environment_and_setup_task_key": "headkernel/qwen3.8-2.4t__paged_attention_decode"
+    },
+    {
+      "task": "headkernel/kimi-k3__fwd_grouped_kernel_stage1",
+      "capture_config": "tasks/headkernel/kimi-k3__fwd_grouped_kernel_stage1/config.yaml",
+      "capture_image": "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang-rocm-k3:rocm720-mi35x-k3-20260727-tl312-08011830",
+      "framework": "sglang",
+      "primary_target": "sglang_v0520",
+      "alternate_target": "sglang_v0519",
+      "task_compatibility": "not_validated",
+      "environment_and_setup_catalog": "tools/headkernel-public-runtimes.json",
+      "environment_and_setup_task_key": "headkernel/kimi-k3__fwd_grouped_kernel_stage1"
+    },
+    {
+      "task": "headkernel/kimi-k3__moe_gemm1_stage1",
+      "capture_config": "tasks/headkernel/kimi-k3__moe_gemm1_stage1/config.yaml",
+      "capture_image": "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang-rocm-k3:rocm720-mi35x-k3-20260727-tl312-08011830",
+      "framework": "sglang",
+      "primary_target": "sglang_v0520",
+      "alternate_target": "sglang_v0519",
+      "task_compatibility": "not_validated",
+      "environment_and_setup_catalog": "tools/headkernel-public-runtimes.json",
+      "environment_and_setup_task_key": "headkernel/kimi-k3__moe_gemm1_stage1"
+    },
+    {
+      "task": "headkernel/kimi-k3__moe_gemm2_stage2",
+      "capture_config": "tasks/headkernel/kimi-k3__moe_gemm2_stage2/config.yaml",
+      "capture_image": "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang-rocm-k3:rocm720-mi35x-k3-20260727-tl312-08011830",
+      "framework": "sglang",
+      "primary_target": "sglang_v0520",
+      "alternate_target": "sglang_v0519",
+      "task_compatibility": "not_validated",
+      "environment_and_setup_catalog": "tools/headkernel-public-runtimes.json",
+      "environment_and_setup_task_key": "headkernel/kimi-k3__moe_gemm2_stage2"
+    }
+  ],
+  "vllm_task_mapping": {
+    "configured_tasks": [],
+    "status": "no_vllm_capture_cohort_in_restored_selection",
+    "qualification": "The vLLM image is a user-supplied serving target, not a substitute for SGLang task dependencies. Mapping requires framework-specific import, binding and GPU validation."
+  },
+  "provenance": {
+    "original_task_configs": "preserved",
+    "kernel_math_shapes_tolerances": "unchanged",
+    "capture_era_public_runtime_catalog": "tools/headkernel-public-runtimes.json",
+    "reported_results": "tools/headkernel-reported-results.json",
+    "image_layers_downloaded": 0,
+    "gpu_validation_performed": false,
+    "task_validator_pass": false
+  }
+}

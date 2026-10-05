@@ -14,11 +14,62 @@ GPU correctness, performance, or a new framework `task_validator` PASS. No GPU
 validation was run for this restoration. Historical upstream verdicts remain
 historical evidence; preserve new run logs and reports separately.
 
+## Current workload image targets — 2026-10-05
+
+Use the following user-supplied image targets for new runtime validation. Registry
+manifest and configuration digests were verified on 2026-10-05; all three images
+declare `linux/amd64`. No image layers were downloaded and no GPU validation was
+performed for this update. Tags identify the requested versions; use the digest
+pins in [the current runtime catalog](../../tools/headkernel-runtime-targets.json)
+to keep both sides of a comparison on the same image bytes.
+
+| Purpose | Requested image | Status |
+| --- | --- | --- |
+| Primary SGLang target | `lmsysorg/sglang:v0.5.20-rocm724-mi35x` | Registry verified; task compatibility pending |
+| Alternate SGLang target | `lmsysorg/sglang-rocm:v0.5.19-rocm720-mi35x-20260913` | Registry verified; task compatibility pending |
+| Current vLLM serving target | `vllm/vllm-openai-rocm:v0.29.0` | Registry verified; no vLLM capture cohort in this restored selection |
+| Planned vLLM upgrade | v0.30 | Exact tag not supplied; no digest or compatibility claim |
+
+The primary SGLang pull reference is:
+
+```text
+docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96
+```
+
+The catalog maps every configured task to the primary and alternate SGLang
+targets and retains its original capture-image and setup references:
+
+| Captured workload | Configured tasks | New validation target | Setup that still needs verification |
+| --- | ---: | --- | --- |
+| DeepSeek V4 Pro | 3 | Primary SGLang; alternate available | TileLang/FlyDSL dependencies and original MoE replay coverage |
+| GLM5.3 Flash | 2 | Primary SGLang; alternate available | Elementwise capture-version discrepancy; fused-MoE architecture and checkpoint configuration |
+| Kimi K3 | 3 | Primary SGLang; alternate available | Compatibility with the original custom Kimi build and its baseline overlay |
+| MiniMax M3 | 3 | Primary SGLang; alternate available | Original reference archives and timing geometry |
+| Qwen3.8 2.4T | 5 | Primary SGLang; alternate available | Original AITER bindings, candidate registration and dense-GEMM dispatch rows |
+
+All 16 task declarations originate from SGLang. The vLLM serving image is recorded
+for vLLM workloads; it is not a validated replacement for SGLang imports or these
+task bindings. Moving a task to vLLM requires its own framework mapping and GPU
+verification. The five `NOT_BUILT` placeholders are still placeholders.
+
+Keep the setup assets and per-task environment from the original runtime mapping
+below, and verify their compatibility with the selected target. In particular,
+the GLM patch was authored for an older SGLang checkout: check whether the new
+image already supplies the required architecture and whether the patch applies
+before using it. Do not treat a failed patch check as a successful setup.
+
+Changing the image does not regenerate the source kernels, workload shapes,
+captured tensors, or reported E2E results. A claim that the suite represents a
+new HyperLoom run requires profiling/capture evidence from that run, followed by
+correctness, performance and finalized `task_validator` reports on the selected
+image. The historical image cohorts below remain provenance for the restored
+files, not evidence that the new targets are equivalent.
+
 ## Select the original runtime
 
 The original runtime declarations target MI355X / `gfx950`. Each task's
-`headkernel.docker` preserves that source evidence. The authorized public overrides
-are documented immediately below. These task-validator configs preserve
+`headkernel.docker` preserves that source evidence. Current image targets are
+listed above, and capture-era public overrides are recorded below. These task-validator configs preserve
 the original image grouping and select only configured tasks:
 
 | Run config | Tasks | Exact original image |
@@ -63,9 +114,10 @@ Hash each completed archive before transferring it with `rclone`. Loading an
 archive on another node must reproduce the recorded image ID. No OCI image
 object is advertised as ready by this guide.
 
-## Authorized public runtime overrides
+## Capture-era public runtime overrides — 2026-09-22
 
-The current runtime choice is the corresponding public `rocm/hyperloom` image.
+The earlier public runtime choices were the corresponding `rocm/hyperloom` images.
+For the current user-supplied versions, use the target catalog above.
 Original task `headkernel.docker` values remain unchanged as historical source
 metadata. On 2026-09-22, anonymous Docker Hub manifest reads verified both public
 image digests and their configuration digests; no GPU execution was performed.
@@ -260,14 +312,15 @@ that a full model server or those capture directories are needed for every UT.
 
 ## Direct Docker command with the public runtime
 
-After installing the tensor files and setup bundle, select one task and its
-public runtime from the table. This example runs GLM fused MoE and fails if the
+After installing the tensor files and setup bundle, select one task and an
+explicit image. This example selects the current SGLang target for a new GLM
+fused-MoE compatibility check; it is not a previously validated command. It fails if the
 original patch does not apply cleanly to the selected public image. A patch
 failure is a compatibility issue to report; do not silently skip it.
 
 ```bash
 TASK=tasks/headkernel/glm-5.3-flash__fused_moe_kernel
-IMAGE=docker.io/rocm/hyperloom@sha256:da36f56f24cb2897a56be52dd43774c1a75b1500308ed7db3ba32fb8db4d259c
+IMAGE=docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96
 GPU=0
 mkdir -p .upstream-assets/cache/{triton,flydsl,comgr,tilelang,torch_ext}
 docker run --rm -i -u 0 --entrypoint /bin/bash \
@@ -320,10 +373,11 @@ relabeling them as environment-independent correctness verdicts.
 
 The standard framework accepts the cohort configs above with its existing
 `make docker-run CONFIG=...` interface and `AKA_DOCKER_IMAGE` override. For
-example, its image-selection syntax for the first cohort is:
+example, its image-selection syntax for a new validation of the first capture
+cohort on the current SGLang target is:
 
 ```bash
-AKA_DOCKER_IMAGE=docker.io/rocm/hyperloom@sha256:1f5464829559b086eb66f9b803cb9c7a817438c43edff2d5ef59b46a186745f6 \
+AKA_DOCKER_IMAGE=docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96 \
   make docker-run CONFIG=example_configs/upstream_headkernel_sglang_v0517_mi355x.yaml
 ```
 

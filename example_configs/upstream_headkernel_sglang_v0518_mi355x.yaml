@@ -1,3 +1,5 @@
+# Current requested runtime targets: tools/headkernel-runtime-targets.json
+# Values below record capture-era public candidates, not the current target.
 # Public runtime override: AKA_DOCKER_IMAGE=docker.io/rocm/hyperloom@sha256:da36f56f24cb2897a56be52dd43774c1a75b1500308ed7db3ba32fb8db4d259c
 # Public tag: docker.io/rocm/hyperloom:sglang-v0.5.18-rocm7.2.0-mi350x
 # Environment: TVM_FFI_DISABLE_TORCH_C_DLPACK=1; see runtime guide for caches/mounts.

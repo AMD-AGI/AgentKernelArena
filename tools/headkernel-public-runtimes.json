@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "description": "User-authorized public runtime overrides. Original task configs remain source evidence. No GPU validation or equality to Harbor images is claimed.",
+  "description": "Capture-era public runtime overrides recorded on 2026-09-22. Original task configs remain source evidence. Current user-supplied targets are in tools/headkernel-runtime-targets.json; neither catalog establishes GPU compatibility or equality to Harbor images.",
   "observed_date": "2026-09-22",
   "images": {
     "sglang_v0517": {
@@ -351,5 +351,6 @@
       "external_patch": null,
       "setup_mount": ".upstream-assets/setup/shared_nfs:/shared_nfs:ro"
     }
-  ]
+  ],
+  "current_targets_manifest": "tools/headkernel-runtime-targets.json"
 }
