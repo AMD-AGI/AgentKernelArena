@@ -1,0 +1,30 @@
+{
+  "model": "GLM-5.3-Flash",
+  "owner": "Hongtaom",
+  "docker": "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.17-rocm720-mi35x-profilerfix",
+  "serving": "ISL 8192 / OSL 1024 / CONC 64 / TP 8",
+  "backend": "ATen direct_copy_kernel_cuda",
+  "regime": "decode",
+  "device_symbol": "elementwise_kernel_manual_unroll<128,4,...direct_copy_kernel_cuda...>",
+  "target_callable": "sglang.srt.layers.quantization.fp8_utils:materialize_bpreshuffle_fp8_scale",
+  "tol": "1e-06",
+  "oracle": "frozen live-capture ut/reference_io.pt",
+  "source_package": "H/GLM-5.3-Flash_elementwise_copy_cluster_0913",
+  "source_seed": "prior-candidate",
+  "info_rows": [
+    {
+      "row": "G53-5",
+      "info_kernel": "elementwise_kernel_manual_unroll",
+      "gpu_pct": 3.24,
+      "empirical_roofline": 0.0006,
+      "optimized_roofline": 0.0009,
+      "e2e_uplift": null
+    }
+  ],
+  "symbol_locations": {
+    "materialize_bpreshuffle_fp8_scale": "source/bpreshuffle_scale_impl.py"
+  },
+  "current_mapping_status": "NOT_ESTABLISHED_CURRENT_PENDING_NATIVE_CAPTURE",
+  "current_source_run": "glm-flash-fp8-native-jit-194292",
+  "validation_status": "historical_contract_only_not_current_qualified"
+}

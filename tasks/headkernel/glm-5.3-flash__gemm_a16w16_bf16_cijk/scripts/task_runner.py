@@ -54,8 +54,9 @@ def generate(case,seed):
         bd=bq.float()*sb.repeat_interleave(128,dim=0).repeat_interleave(128,dim=1)
         expected=(ad@bd.t()).to(torch.bfloat16)
         return {'A':aq,'B':pack(bq),'SA':sa,'SB':sb},expected
-    a=a.to(torch.bfloat16);b=b.to(torch.bfloat16)
-    expected=(a.float()@b.float().t()).to(torch.bfloat16)
+    dtype=getattr(torch,case['tensors']['A']['dtype'])
+    a=a.to(dtype);b=b.to(dtype)
+    expected=(a.float()@b.float().t()).to(dtype)
     return {'A':a,'B':b.t()},expected
 
 

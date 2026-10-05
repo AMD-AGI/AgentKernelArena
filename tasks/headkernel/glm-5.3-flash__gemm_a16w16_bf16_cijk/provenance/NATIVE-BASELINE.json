@@ -1,12 +1,21 @@
 {
   "aiter_gemm_module_sha256": null,
   "runtime_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
-  "source_run": "glm-flash-fp8-native-jit-194292",
-  "preallocated_output": "The scored reference, scored candidate and separate production diagnostic each write preallocated C.",
+  "source_run": "glm-final-capture-v4-194841",
+  "preallocated_output": "Each graph retains its own output allocated during capture. Native APIs use their actual out=None allocation behavior; no output-copy kernel is added to timing.",
   "candidate_source_provenance": "New portable Triton scaffold with frozen CPU reference and GPU-only edit boundary, not original image kernel source.",
   "diagnostic_only": true,
   "score_input": false,
-  "production_callable": "torch:mm",
   "performance_baseline": "frozen supplied Triton port",
-  "dispatch_policy": "Reference and candidate always launch their submitted gemm_kernel. Source equality is never an algorithm selector."
+  "dispatch_policy": "Reference and candidate always launch their submitted gemm_kernel. Source equality is never an algorithm selector.",
+  "source_hashes_by_family": {
+    "bf16_gemm": "1fafc9782b43f8c6e198e1d39ce83e01ea3b5892f8b5e1a26c4a5eeb74252b51",
+    "aten_bf16_mm": "858756c0f22052de641bfde6c0c93bfacfb7c16094a9e1ead7e1802c3ca043c4",
+    "fp8_gemm": "b13774cc7a62a829e1fbb209b5f702dfa0bac36d0b8273ef8997466b1e8d7d44"
+  },
+  "production_callable_by_family": {
+    "bf16_gemm": "aiter.tuned_gemm:gemm_a16w16",
+    "aten_bf16_mm": "torch:mm",
+    "fp8_gemm": "aiter.ops.gemm_op_a8w8:gemm_a8w8_blockscale_bpreshuffle"
+  }
 }

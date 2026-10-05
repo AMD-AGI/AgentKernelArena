@@ -22,5 +22,5 @@ def gemm_kernel(A, B, SA, SB, C, M: tl.constexpr, N: tl.constexpr, K: tl.constex
             acc += delta * sa[:, None] * sb[None, :]
         else:
             bb = tl.load(B + kk[:, None] + cols[None, :] * K, (cols[None, :] < N) & (kk[:, None] < K), 0)
-            acc += tl.dot(aa, bb)
+            acc += tl.dot(aa, bb, allow_tf32=False)
     tl.store(C + rows[:, None] * N + cols[None, :], acc, (rows[:, None] < M) & (cols[None, :] < N))

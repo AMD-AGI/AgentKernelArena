@@ -1,71 +1,34 @@
-# glm-5.3-flash__elementwise_copy_cluster
-# Head kernel from the 2026-09-14 info table, rows: G53-5
-
 source_file_path:
-  - source/bpreshuffle_scale_impl.py
-
+- source/bpreshuffle_scale_impl.py
 target_kernel_functions:
-  - materialize_bpreshuffle_fp8_scale
-
+- materialize_bpreshuffle_fp8_scale
 compile_command:
-  - python3 scripts/task_runner.py compile
-
+- python3 scripts/current_dispatch_gate.py compile
 correctness_command:
-  - python3 scripts/task_runner.py correctness
-
+- python3 scripts/current_dispatch_gate.py correctness
 performance_command:
-  - python3 scripts/task_runner.py performance
-
+- python3 scripts/current_dispatch_gate.py performance
 task_type: triton2triton
-
 task_result_template: null
-
 prompt:
   source_code: null
-  instructions: |
-    Optimize the GLM-5.3-Flash head kernel `elementwise_kernel_manual_unroll` (ATen direct_copy_kernel_cuda) for maximum GPU
-    throughput on MI355X (gfx950) while keeping it numerically correct.
-
-    It is 3.24% of de-inflated GPU time in the serving profile
-    (ISL 8192 / OSL 1024 / CONC 64 / TP 8), currently at 0.0006 of its empirical roofline.
-
-    Edit only:
-      source/bpreshuffle_scale_impl.py
-
-    Entry points that must keep their signatures:
-      materialize_bpreshuffle_fp8_scale
-
-    The production seam is `sglang.srt.layers.quantization.fp8_utils:materialize_bpreshuffle_fp8_scale`; correctness is judged
-    against a frozen live-server capture, not a re-derived reference, so the kernel
-    must stay faithful to the deployed contract (dtypes, layouts, quantization).
-
-    Note: 1.4253x isolated, e2e never measured. Correctness is two-part: values AND transposed-contiguous physical stride.
+  instructions: This package retains a historical scale-copy implementation. It is not qualified as a
+    current GLM head task. Current run194292 does not establish this specific copy family; source emits
+    transposed scales directly for M>=2 and uses a zero-copy stride view. Await the source-pinned native
+    capture mapping before running an optimization. Do not substitute unrelated activation copies or report
+    historical speedups as current results.
   cheatsheet: null
-
-# ---------------------------------------------------------------------------
-# Provenance. Not read by the arena schema check; read by scripts/task_runner.py
-# and by anyone auditing where these numbers came from.
 headkernel:
-  model: "GLM-5.3-Flash"
-  owner: Hongtaom
-  docker: "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.17-rocm720-mi35x-profilerfix"
-  serving: ISL 8192 / OSL 1024 / CONC 64 / TP 8
-  backend: ATen direct_copy_kernel_cuda
-  regime: decode
-  device_symbol: "elementwise_kernel_manual_unroll<128,4,...direct_copy_kernel_cuda...>"
-  target_callable: "sglang.srt.layers.quantization.fp8_utils:materialize_bpreshuffle_fp8_scale"
-  tol: "1e-06"
-  oracle: "frozen live-capture ut/reference_io.pt"
-  source_package: "H/GLM-5.3-Flash_elementwise_copy_cluster_0913"
-  source_seed: "prior-candidate"
-  # 1 file(s) have no stock counterpart - they ARE the candidate seam (a new module the seam rebinds to), so the
-  # starting point is a prior candidate, not upstream code. Baseline speedup is measured against the live stack, not against this file.
-  info_rows:
-    - row: "G53-5"
-      info_kernel: elementwise_kernel_manual_unroll
-      gpu_pct: 3.24
-      empirical_roofline: 0.0006
-      optimized_roofline: 0.0009
-      e2e_uplift: null
-  symbol_locations:
-    materialize_bpreshuffle_fp8_scale: source/bpreshuffle_scale_impl.py
+  model: GLM-5.3-Flash
+  docker: docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96
+  source_run: glm-final-capture-v4-194841
+  target_callable: sglang.srt.layers.quantization.fp8_utils:materialize_bpreshuffle_fp8_scale
+  source_seed: historical_source_retained_for_mapping_only
+  current_mapping_status: NOT_OBSERVED_CURRENT
+  validation_status: retired_not_observed_current_no_score
+  historical_metadata: provenance/HISTORICAL-CONTRACT.json
+platform_support:
+  required_arch: gfx950
+  status: skip
+  skip_reason: 'Retired historical scale-copy head: completed current native capture shows only producer-layout
+    views/alias-only materialize calls and zero actual materialized copy cases on all8ranks.'

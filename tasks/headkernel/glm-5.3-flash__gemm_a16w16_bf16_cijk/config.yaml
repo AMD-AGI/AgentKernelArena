@@ -25,7 +25,8 @@ trusted_evaluation:
   source_guard: ut/source_guard.py
   reference_sources:
     source/kernels.py: ut/reference/kernels.py
-  requires_aiter_jit_cache: false
+  requires_aiter_jit_cache: true
+  fixture_manifest: fixtures/EXTERNAL-MANIFEST.json
 prompt:
   source_code: null
   instructions: Optimize only the GPU body of gemm_kernel in source/kernels.py. Preserve its ABI, imports,
@@ -35,18 +36,19 @@ prompt:
     submitted candidate execute this declared Triton port through the same loader, launch geometry, oracle
     and timing path. Source hashes never select an algorithm. The port is newly authored and is not original
     image kernel source. Production-native timings are separate diagnostics and cannot enter the Arena
-    score. No end-to-end serving speedup is claimed.
+    score. No end-to-end serving speedup is claimed. The final dense contract includes both bfloat16 and
+    float32 actual records; preserve each declared dtype.
   cheatsheet: null
 headkernel:
   model: GLM-5.3-Flash
   docker: docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96
-  source_run: glm-flash-fp8-native-jit-194292
-  target_callable: aten::mm
+  source_run: glm-final-capture-v4-194841
+  target_callable: aiter.tuned_gemm:gemm_a16w16 and torch:mm
   source_seed: portable_triton_candidate_scaffold
-  native_dispatch: Tensile/hipBLAS dense matmul
-  validation_status: revised_live_operand_and_matched_native_contract_pending_fresh_gpu_framework
+  native_dispatch: Pinned AITER dense dispatcher for wrapper records; direct ATen mm for direct records
+  validation_status: final_complete_real_capture_contract_pending_fresh_gpu_framework
   oracle: independent CPU FP32 matmul from quantized/dequantized operands; no GPU oracle buffers exist
-  count_scope: observed per-rank native prefill window only
+  count_scope: actual per-rank notifications across complete64-request served prefill and decode workload
   performance_baseline: frozen supplied Triton port; reference and candidate use identical dispatch
   task_scope: replacement/port implementation optimization for observed operator ABI; not original native
     image kernel source

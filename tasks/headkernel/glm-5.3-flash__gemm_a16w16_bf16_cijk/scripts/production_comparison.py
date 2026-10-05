@@ -18,15 +18,26 @@ def main():
     for case in manifest['cases']:
         tensors,port,observe,initialize,verify,reset,reference=task.build_state(case,1,module)
         def reset_live(seed):return reset(seed*2+1)
-        if case['scalars']['fp8']:
-            if native is None:
-                native_module=importlib.import_module('aiter.ops.gemm_op_a8w8')
-                provenance=task.strict_json((task.ROOT/'provenance/NATIVE-BASELINE.json').read_text())
-                if hashlib.sha256(Path(native_module.__file__).read_bytes()).hexdigest()!=provenance['aiter_gemm_module_sha256']:raise ValueError('Production source differs from pinned image')
-                native=native_module.gemm_a8w8_blockscale_bpreshuffle
-            def production():return native(tensors['A'],tensors['B'],tensors['SA'],tensors['SB'],dtype=torch.bfloat16,out=tensors['C'])
-        else:
-            def production():return torch.mm(tensors['A'],tensors['B'],out=tensors['C'])
+        family=case['live_fixture']['capture_family'];provenance=task.strict_json((task.ROOT/'provenance/NATIVE-BASELINE.json').read_text())
+        if family=='fp8_gemm':
+            native_module=importlib.import_module('aiter.ops.gemm_op_a8w8')
+            if hashlib.sha256(Path(native_module.__file__).read_bytes()).hexdigest()!=provenance['source_hashes_by_family'][family]:raise ValueError('Production source differs from pinned image')
+            tensors['B'].is_shuffled=True
+            def production():
+                tensors['C']=native_module.gemm_a8w8_blockscale_bpreshuffle(tensors['A'],tensors['B'],tensors['SA'],tensors['SB'],dtype=torch.bfloat16,out=None)
+                return tensors['C']
+        elif family=='bf16_gemm':
+            native_module=importlib.import_module('aiter.tuned_gemm')
+            if hashlib.sha256(Path(native_module.__file__).read_bytes()).hexdigest()!=provenance['source_hashes_by_family'][family]:raise ValueError('Production source differs from pinned image')
+            def production():
+                tensors['C']=native_module.gemm_a16w16(tensors['A'],tensors['B'].t(),bias=None,otype=tensors['A'].dtype,scale_a=None,scale_b=None,scale_c=None)
+                return tensors['C']
+        elif family=='aten_bf16_mm':
+            if hashlib.sha256(str(torch.ops.aten.mm.default._schema).encode()).hexdigest()!=provenance['source_hashes_by_family'][family]:raise ValueError('Pinned ATen schema changed')
+            def production():
+                tensors['C']=torch.mm(tensors['A'],tensors['B'])
+                return tensors['C']
+        else:raise ValueError('No native production callable for observed family')
         legs={}
         for label,invoke in [('candidate_port',port),('native_production',production)]:
             reference=reset_live(challenge);initialize();invoke();torch.cuda.synchronize();verify(reference)
@@ -44,11 +55,11 @@ def main():
         means={label:sum(row['samples_ms'])/len(row['samples_ms']) for label,row in legs.items()}
         ratio=means['native_production']/means['candidate_port']
         comparisons.append({'case_id':case['case_id'],'live_fixture':case['live_fixture'],'native_output_parity':True,
-            'identical_captured_ABI_and_permutation_sequence':True,'mean_ms':means,'speedup_vs_native':ratio,
+            'identical_captured_ABI_and_fresh_numeric_challenge_sequence':True,'mean_ms':means,'speedup_vs_native':ratio,
             'candidate_faster_than_native':ratio>1.0,'legs':legs})
     if task.package_hash()!=before:raise ValueError('Task changed during native comparison')
     record={'schema_version':1,'status':'ok','diagnostic_only':True,'score_input':False,'source_sha256':task.source_hash(),
-        'manifest_sha256':task.fingerprint(manifest),'comparison':'native_mean_ms / candidate_port_mean_ms on the same captured operands and preallocated output',
+        'manifest_sha256':task.fingerprint(manifest),'comparison':'native_mean_ms / candidate_port_mean_ms on identical fresh numerical challenges derived from the actual captured operands; each graph retains its own capture-time output, with no added output copy',
         'case_count':len(comparisons),'cases':comparisons,'all_cases_have_native_parity':True,
         'all_cases_faster_than_native':all(row['candidate_faster_than_native'] for row in comparisons),
         'claim_scope':'Arena port-vs-port speedup measures local optimization only. A ratio greater than1 here is measured isolated native-operator improvement; serving gain still requires end-to-end validation.'}
