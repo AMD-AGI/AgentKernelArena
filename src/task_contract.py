@@ -117,9 +117,12 @@ def observe_case(expected, tensors, scalars):
 def checked_replays(case, policy, *, reset_inputs, initialize_outputs, replay, verify, measure, observe, seed):
     """Run resets and oracle checks outside each single graph replay timing.
 
-    ``reset_inputs(seed)`` must copy fresh inputs and compute an independent
-    reference before the candidate executes. ``verify(reference)`` must check
-    outputs and immutable inputs, raising on failure. ``measure(call)`` must
+    ``reset_inputs(seed)`` must copy fresh inputs and return CPU-owned truth:
+    either CPU reference outputs or an input snapshot for a deferred reference.
+    It must not leave the current candidate's golden outputs on the GPU.
+    ``verify(truth)`` must snapshot candidate outputs and immutable inputs to
+    CPU before computing any GPU reference, then compare those observations
+    against the CPU truth/reference and raise on failure. ``measure(call)`` must
     invoke ``call`` exactly once and return synchronized device milliseconds.
     The task's negative controls must demonstrate that its callbacks reject a
     no-op replay and corrupted outputs. All callbacks are protected harness.

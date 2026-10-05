@@ -158,3 +158,52 @@ def test_correctness_requires_every_control_and_seed(manifest):
     report["cases"][0]["negative_controls"]["no_op"] = False
     with pytest.raises(ValueError, match="negative controls"):
         contract.validate_report(report, manifest, request)
+
+
+@pytest.mark.parametrize("wrong_output", [False, True])
+def test_replay_token_can_be_cpu_input_truth_for_a_deferred_reference(manifest, wrong_output):
+    events = []
+    state = {}
+
+    def reset(seed):
+        events.append("reset")
+        state["input"] = seed
+        return {"input_cpu": seed}
+
+    def initialize():
+        state["output"] = None
+
+    def replay():
+        events.append("candidate")
+        state["output"] = -1 if wrong_output else state["input"] * 2
+
+    def reference(truth):
+        events.append("reference")
+        value = truth["input_cpu"] * 2
+        state["output"] = value  # A late reference cannot repair the saved observation.
+        return value
+
+    def verify(truth):
+        events.append("snapshot")
+        observed = dict(state)
+        expected = reference(truth)
+        if observed["input"] != truth["input_cpu"] or observed["output"] != expected:
+            raise ValueError("saved candidate observation differs")
+
+    def measure(call):
+        call()
+        return 0.5
+
+    def run():
+        return contract.checked_replays(manifest["cases"][0], manifest["measurement"], seed=3,
+                                        reset_inputs=reset, initialize_outputs=initialize, replay=replay,
+                                        verify=verify, measure=measure, observe=lambda: manifest["cases"][0])
+
+    if wrong_output:
+        with pytest.raises(ValueError, match="saved candidate observation"):
+            run()
+        assert events == ["reset", "candidate", "snapshot", "reference"]
+    else:
+        result = run()
+        assert result["samples_ms"] == [0.5] * 4
+        assert events == ["reset", "candidate", "snapshot", "reference"] * 6
