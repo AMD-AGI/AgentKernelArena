@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """AgentKernelArena task runner for a head-kernel benchmark task.
 
-Byte-identical in every task of this suite; everything task-specific comes from
-``config.yaml``. Three modes, the standard arena contract:
+Shared by the eight candidate-bound non-Qwen tasks; task-specific details come
+from ``config.yaml``. Three modes, the standard arena contract:
 
     python3 scripts/task_runner.py compile
     python3 scripts/task_runner.py correctness
@@ -26,13 +26,18 @@ from __future__ import annotations
 
 import argparse
 import ast
+import hashlib
+import importlib
+import inspect
 import json
 import math
 import os
 import re
+import runpy
 import subprocess
 import sys
 import time
+import uuid
 
 TASK_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BUILD_DIR = os.path.join(TASK_DIR, "build")
@@ -194,23 +199,125 @@ def run_compile(cfg):
 
 
 # --------------------------------------------------------------------------- correctness
-def _ut_command():
-    return [sys.executable, "-u", os.path.join(UT_DIR, "unittest.py")]
+def _ut_command(binding):
+    return [sys.executable, "-u", os.path.abspath(__file__),
+            "_correctness_child", json.dumps(binding)]
+
+
+def _source_sha256(path):
+    with open(path, "rb") as source:
+        return hashlib.sha256(source.read()).hexdigest()
+
+
+def _correctness_child(binding):
+    """Attest the installed candidate, then run the immutable UT in this process.
+
+    Python has already loaded the selected overlay's sitecustomize. Restore the
+    original environment before imports or UT execution: baseline_random_outputs
+    and measure_legs prepend their own overlays in fresh subprocesses and must
+    not inherit the candidate path. The current interpreter keeps its installed
+    candidate module/function and its import path.
+    """
+    baseline_path = binding["baseline_pythonpath"]
+    if baseline_path:
+        os.environ["PYTHONPATH"] = baseline_path
+    else:
+        os.environ.pop("PYTHONPATH", None)
+    receipt = {"run_id": binding["run_id"], "status": "fail",
+               "target": binding["target"], "source_sha256": binding["source_sha256"],
+               "baseline_environment_restored": True}
+    try:
+        module, attr = binding["target"].split(":", 1)
+        function = importlib.import_module(module)
+        for part in attr.split("."):
+            function = getattr(function, part)
+        # torch.no_grad and similar transparent decorators retain __wrapped__.
+        # Checking only __module__ would credit a stale/rebound production object.
+        function = inspect.unwrap(function)
+        code = getattr(function, "__code__", None)
+        if code is None:
+            raise RuntimeError("candidate target has no attestable Python implementation")
+        resolved = os.path.realpath(code.co_filename)
+        expected = os.path.realpath(binding["overlay_source"])
+        if resolved != expected:
+            raise RuntimeError(f"candidate target resolved to {resolved}, expected {expected}")
+        if (_source_sha256(resolved) != binding["source_sha256"]
+                or _source_sha256(binding["source"]) != binding["source_sha256"]):
+            raise RuntimeError("candidate overlay/source differs from this run's source bytes")
+        receipt.update(status="ok", resolved_source=resolved,
+                       candidate_source=os.path.realpath(binding["source"]))
+    except Exception as exc:
+        receipt["error"] = f"{type(exc).__name__}: {exc}"
+        write_report("correctness_binding.json", receipt)
+        print("Candidate binding: FAIL - " + receipt["error"], file=sys.stderr)
+        return 3
+    write_report("correctness_binding.json", receipt)
+    # Match script execution while keeping this same attested interpreter. The
+    # task removes ut/ before importing torch, avoiding its unittest.py name clash.
+    sys.argv = [os.path.join(UT_DIR, "unittest.py")]
+    sys.path.insert(0, UT_DIR)
+    runpy.run_path(sys.argv[0], run_name="__main__")
+    return 0
 
 
 def run_ut(timeout):
-    """Run the frozen GEAK unittest in its own directory.
-
-    It manages its own overlays: the baseline leg must resolve to the live
-    serving stack and the candidate leg to ``ut/kernel_src/`` (symlinked to
-    ``source/``), so nothing is injected on PYTHONPATH here.
-    """
+    """Run the unchanged UT with an attested candidate and independent baseline."""
+    t0 = time.monotonic()
+    os.makedirs(BUILD_DIR, exist_ok=True)
+    binding_report = os.path.join(BUILD_DIR, "correctness_binding.json")
+    try:
+        os.unlink(binding_report)
+    except FileNotFoundError:
+        pass
+    with open(os.path.join(UT_DIR, "meta.json")) as handle:
+        meta = json.load(handle)
+    bind = meta.get("candidate_bind") or {}
+    if not bind.get("file") or bind.get("kind") not in ("module", "rebind"):
+        raise ValueError("correctness requires a complete candidate_bind declaration")
+    source = os.path.realpath(os.path.join(UT_DIR, bind["file"]))
+    if os.path.commonpath([source, os.path.realpath(TASK_DIR)]) != os.path.realpath(TASK_DIR):
+        raise ValueError("candidate source escapes the isolated task")
+    source_hash = _source_sha256(source)
+    cand = candidate_overlay()
+    if not cand:
+        raise RuntimeError("candidate overlay unavailable; refusing baseline-only correctness")
+    overlay_source = (os.path.join(cand, "_patched", bind["module"] + ".py")
+                      if bind["kind"] == "module"
+                      else os.path.join(cand, os.path.basename(bind["file"])))
+    if _source_sha256(overlay_source) != source_hash:
+        raise RuntimeError("candidate overlay does not contain this run's source")
     env = dict(os.environ)
     env.setdefault("PYTHONUNBUFFERED", "1")
-    t0 = time.time()
-    proc = subprocess.run(_ut_command(), cwd=UT_DIR, env=env, capture_output=True,
-                          text=True, timeout=timeout)
-    return proc, time.time() - t0
+    # Remove even a pre-existing copy of this candidate path before preserving
+    # the caller's other imports for explicit baseline subprocesses.
+    clean_path = os.pathsep.join(p for p in env.get("PYTHONPATH", "").split(os.pathsep)
+                                if p and os.path.realpath(p) != os.path.realpath(cand))
+    binding = {"run_id": uuid.uuid4().hex, "target": meta["target_callable"],
+               "source": source, "source_sha256": source_hash,
+               "overlay_source": os.path.realpath(overlay_source),
+               "baseline_pythonpath": clean_path}
+    env["PYTHONPATH"] = os.pathsep.join([cand] + ([clean_path] if clean_path else []))
+    remaining = timeout - (time.monotonic() - t0)
+    if remaining <= 0:
+        raise subprocess.TimeoutExpired(_ut_command(binding), timeout)
+    proc = subprocess.run(_ut_command(binding), cwd=TASK_DIR, env=env, capture_output=True,
+                          text=True, timeout=remaining)
+    try:
+        with open(binding_report) as handle:
+            receipt = json.load(handle)
+        valid = (receipt.get("status") == "ok" and receipt.get("run_id") == binding["run_id"]
+                 and receipt.get("target") == binding["target"]
+                 and receipt.get("source_sha256") == source_hash
+                 and receipt.get("resolved_source") == binding["overlay_source"]
+                 and receipt.get("baseline_environment_restored") is True
+                 and _source_sha256(source) == source_hash)
+    except (OSError, ValueError, AttributeError):
+        receipt, valid = {"status": "fail", "error": "no valid candidate binding receipt"}, False
+    if not valid:
+        proc.returncode = proc.returncode or 3
+        proc.stderr += "\nCandidate binding failed; no correctness result is valid.\n"
+    proc.candidate_binding = receipt
+    return proc, time.monotonic() - t0
 
 
 def run_correctness(cfg, timeout):
@@ -222,6 +329,11 @@ def run_correctness(cfg, timeout):
         write_report("correctness_report.json",
                      {"status": "fail", "error": f"unittest.py timed out after {timeout}s"})
         return False, f"unittest.py timed out after {timeout}s"
+    except (OSError, ValueError, RuntimeError, ImportError, KeyError) as exc:
+        error = f"candidate binding setup failed: {type(exc).__name__}: {exc}"
+        write_report("correctness_report.json", {"status": "fail", "error": error,
+                                                "candidate_binding": {"status": "fail"}})
+        return False, error
 
     out = proc.stdout + proc.stderr
     # The GEAK driver's exit code IS the contract (0 pass, 1 correctness FAIL,
@@ -259,6 +371,7 @@ def run_correctness(cfg, timeout):
                  f"ut/unittest.py exit={proc.returncode} ({meaning})",
         "exit_code": proc.returncode,
         "exit_meaning": meaning,
+        "candidate_binding": getattr(proc, "candidate_binding", None),
         "ut_verdict_line": verdict,
         "duration_seconds": round(secs, 2),
         "oracle": hk(cfg, "oracle", "frozen live-capture (ut/reference_io.pt)"),
@@ -547,6 +660,14 @@ def run_performance_via_ut(cfg, timeout, overlay_note, reason):
                      {"status": "fail", "error": f"timed out after {timeout}s", "test_cases": []})
         print("Performance: FAILED - no test cases measured")
         return []
+    except (OSError, ValueError, RuntimeError, ImportError, KeyError) as exc:
+        write_report("performance_report.json", {
+            "status": "fail", "error": f"candidate binding setup failed: {exc}",
+            "candidate_overlay": overlay_note, "fallback_reason": reason,
+            "test_cases": [],
+        })
+        print("Performance: FAILED - candidate correctness binding unavailable")
+        return []
 
     out = proc.stdout + proc.stderr
     if proc.returncode != 0:
@@ -663,4 +784,6 @@ def main():
 
 
 if __name__ == "__main__":
+    if len(sys.argv) == 3 and sys.argv[1] == "_correctness_child":
+        sys.exit(_correctness_child(json.loads(sys.argv[2])))
     main()

@@ -429,8 +429,18 @@ class SuiteCopiesTests(unittest.TestCase):
         for filename in ("_bench.py", "task_runner.py"):
             paths = list(TASKS.glob("*/scripts/" + filename))
             self.assertEqual(len(paths), 16)
-            self.assertEqual(len({path.read_bytes() for path in paths}), 1, filename)
             template = TASKS.parents[1] / "tools/templates" / filename
+            if filename == "task_runner.py":
+                # The requested correctness fix is limited to the eight bound
+                # non-Qwen tasks. Keep Qwen and the three Kimi runners unchanged.
+                bound = [path for path in paths
+                         if not path.parent.parent.name.startswith("qwen")
+                         and (json.loads((path.parent.parent / "ut/meta.json").read_text())
+                              .get("candidate_bind") or {}).get("file")]
+                self.assertEqual(len(bound), 8)
+                self.assertEqual(len({path.read_bytes() for path in bound}), 1)
+                paths = [path for path in paths if path not in bound]
+            self.assertEqual(len({path.read_bytes() for path in paths}), 1, filename)
             self.assertEqual(paths[0].read_bytes(), template.read_bytes(), filename)
 
 
