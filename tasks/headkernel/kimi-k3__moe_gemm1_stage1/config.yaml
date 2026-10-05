@@ -4,13 +4,9 @@
 source_file_path:
   - source/flydsl/moe_kernels.py
   - source/flydsl/kernels/mixed_moe_gemm_2stage.py
-  - source/flydsl/kernels/gemm_mxscale_gfx1250.py
-  - source/flydsl/kernels/moe_gemm_2stage.py
-  - source/flydsl/kernels/fmha_gfx1250/fmha_kernel.py
-  - source/flydsl/kernels/gemm_fp8fp4_gfx1250.py
-  - source/flydsl/kernels/fused_compress_attn.py
-  - source/flydsl/kernels/fused_compress_attn_gfx1250.py
-  - source/flydsl/kernels/fmha_gfx1250/fmha_core_loop.py
+  - source/flydsl/kernels/mixed_moe_gemm_2stage_common.py
+  - source/flydsl/kernels/moe_2stage_a16wmix/gemm1.py
+  - source/flydsl/kernels/moe_2stage_a16wmix/gemm2.py
 
 target_kernel_functions:
   - flydsl_moe_stage1
@@ -31,23 +27,18 @@ task_result_template: null
 prompt:
   source_code: null
   instructions: |
-    Optimize the Kimi-K3 head kernel `moe_gemm1_0` (aiter asm (AOT) - fused_moe_2stages stage-1 gate+up - mxfp4 w + bf16 act) for maximum GPU
-    throughput on MI355X (gfx950) while keeping it numerically correct.
-
-    It is 6.51% of de-inflated GPU time in the serving profile
-    (ISL 8192 / OSL 1024 / CONC 64 / TP 8), currently at 0.254 of its empirical roofline.
-
-    Edit only:
-      source/flydsl/moe_kernels.py
-
-    Entry points that must keep their signatures:
-      flydsl_moe_stage1
-
-    The production seam is `aiter.ops.flydsl.moe_kernels:flydsl_moe_stage1`; correctness is judged
-    against a frozen live-server capture, not a re-derived reference, so the kernel
-    must stay faithful to the deployed contract (dtypes, layouts, quantization).
-
-    Note: oracle uses the synthetic {schema,cases,spec} layout, not {target,records} - performance falls back to the GEAK harness. Known upstream aiter nondeterminism: UT gates on a 21-launch elementwise median.
+    Optimize Kimi-K3 MoE stage 1 on the pinned gfx950 runtime.
+    Only the stage-specific DSL emission bodies listed in ut/source_guard_policy.json
+    are editable: _emit_moe_gemm1, moe_gemm1, _gemm1_body_a16w4,
+    and gemm1_kernel. Host compile/launch code, signatures, decorators, imports,
+    the other MoE stage and all harness/reference files remain frozen.
+    The guard permits the reviewed DSL operations, arithmetic/control flow and
+    local arithmetic helpers; runtime reflection, arbitrary Python calls and
+    object/module mutation are forbidden.
+    Preserve the complete cases.json ABI, observed frequencies, input/output
+    storage and alias rules, output tolerances and every required case.
+    Current fixture and runtime-adapter qualification is pending; a source-only
+    preparation record is not a GPU or framework validation result.
   cheatsheet: null
 
 # ---------------------------------------------------------------------------
@@ -56,7 +47,7 @@ prompt:
 headkernel:
   model: "Kimi-K3"
   owner: Hongtao
-  docker: "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang-rocm-k3:rocm720-mi35x-k3-20260727-tl312-08011830"
+  docker: "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96"
   serving: ISL 8192 / OSL 1024 / CONC 64 / TP 8
   backend: "aiter asm (AOT) - fused_moe_2stages stage-1 gate+up - mxfp4 w + bf16 act"
   regime: prefill
@@ -75,3 +66,20 @@ headkernel:
       e2e_uplift: null
   symbol_locations:
     flydsl_moe_stage1: source/flydsl/moe_kernels.py
+
+# Current SG520 guarded qualification is pending fresh cases and runtime adapter.
+harness_protection:
+  reject_new_source_symlinks: true
+trusted_evaluation:
+  schema_version: 1
+  case_manifest: cases.json
+  fixture_manifest: fixtures/EXTERNAL-MANIFEST.json
+  contract_file: ut/evaluation_contract.py
+  source_guard: ut/source_guard.py
+  requires_aiter_jit_cache: true
+  reference_sources:
+    source/flydsl/moe_kernels.py: ut/reference/source/flydsl/moe_kernels.py
+    source/flydsl/kernels/mixed_moe_gemm_2stage.py: ut/reference/source/flydsl/kernels/mixed_moe_gemm_2stage.py
+    source/flydsl/kernels/mixed_moe_gemm_2stage_common.py: ut/reference/source/flydsl/kernels/mixed_moe_gemm_2stage_common.py
+    source/flydsl/kernels/moe_2stage_a16wmix/gemm1.py: ut/reference/source/flydsl/kernels/moe_2stage_a16wmix/gemm1.py
+    source/flydsl/kernels/moe_2stage_a16wmix/gemm2.py: ut/reference/source/flydsl/kernels/moe_2stage_a16wmix/gemm2.py

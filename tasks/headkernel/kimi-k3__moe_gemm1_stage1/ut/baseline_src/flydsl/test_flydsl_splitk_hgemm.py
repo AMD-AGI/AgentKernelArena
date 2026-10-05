@@ -13,7 +13,7 @@ from __future__ import annotations
 import pytest
 import torch
 
-from aiter.ops.flydsl.utils import is_flydsl_available
+from .utils import is_flydsl_available
 from aiter.ops.shuffle import shuffle_weight
 
 if not torch.cuda.is_available():
@@ -24,7 +24,7 @@ if not is_flydsl_available():
     )
 
 try:
-    from aiter.ops.flydsl.gemm_kernels import (
+    from .gemm_kernels import (
         flydsl_hgemm,
     )
 except ImportError as exc:
@@ -239,7 +239,7 @@ def main() -> int:
                     pct_close,
                 )
             )
-        except Exception:
+        except Exception:  # noqa: BLE001
             import traceback
 
             traceback.print_exc()

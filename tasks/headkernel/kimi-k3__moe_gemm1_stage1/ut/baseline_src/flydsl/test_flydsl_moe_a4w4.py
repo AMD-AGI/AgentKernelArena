@@ -22,8 +22,9 @@ import argparse
 import sys
 
 import torch
+
 import aiter
-from aiter import dtypes, QuantType, ActivationType
+from aiter import ActivationType, QuantType, dtypes
 from aiter.fused_moe import (
     fused_topk,
     moe_sorting,
@@ -146,42 +147,42 @@ def _generate_a4w4_data(
         block_size=block_m,
     )
 
-    return dict(
+    return {
         # References
-        ref_stage1=ref1,
-        ref_stage2=ref2,
+        "ref_stage1": ref1,
+        "ref_stage2": ref2,
         # Quantised tensors
-        a1_qt=a1_qt,
-        a1_scale=a1_scale,
-        a1_scale_sort=a1_scale_sort,
-        a2_qt=a2_qt,
-        a2_scale=a2_scale,
-        a2_scale_sort=a2_scale_sort,
-        w1_qt=w1_qt,
-        w1_qt_shuf=w1_qt_shuf,
-        w1_scale=w1_scale,
-        w1_scale_shuf=w1_scale_shuf,
-        w2_qt=w2_qt,
-        w2_qt_shuf=w2_qt_shuf,
-        w2_scale=w2_scale,
-        w2_scale_shuf=w2_scale_shuf,
+        "a1_qt": a1_qt,
+        "a1_scale": a1_scale,
+        "a1_scale_sort": a1_scale_sort,
+        "a2_qt": a2_qt,
+        "a2_scale": a2_scale,
+        "a2_scale_sort": a2_scale_sort,
+        "w1_qt": w1_qt,
+        "w1_qt_shuf": w1_qt_shuf,
+        "w1_scale": w1_scale,
+        "w1_scale_shuf": w1_scale_shuf,
+        "w2_qt": w2_qt,
+        "w2_qt_shuf": w2_qt_shuf,
+        "w2_scale": w2_scale,
+        "w2_scale_shuf": w2_scale_shuf,
         # Sorting results
-        sorted_ids=sorted_ids,
-        sorted_weights=sorted_weights,
-        sorted_weights_s1=sorted_weights_s1,
-        sorted_weights_s2=sorted_weights_s2,
-        sorted_expert_ids=sorted_expert_ids,
-        num_valid_ids=num_valid_ids,
+        "sorted_ids": sorted_ids,
+        "sorted_weights": sorted_weights,
+        "sorted_weights_s1": sorted_weights_s1,
+        "sorted_weights_s2": sorted_weights_s2,
+        "sorted_expert_ids": sorted_expert_ids,
+        "num_valid_ids": num_valid_ids,
         # Shape info
-        topk_weights=topk_weights,
-        topk_ids=topk_ids,
-        dtype=dtype,
-        token=token,
-        model_dim=model_dim,
-        inter_dim=inter_dim,
-        E=E,
-        topk=topk,
-    )
+        "topk_weights": topk_weights,
+        "topk_ids": topk_ids,
+        "dtype": dtype,
+        "token": token,
+        "model_dim": model_dim,
+        "inter_dim": inter_dim,
+        "E": E,
+        "topk": topk,
+    }
 
 
 def _check_result(ref_out, test_out, label, atol=1.0, rtol=0.05, pass_pct=95.0):
@@ -215,7 +216,7 @@ def test_flydsl_stage1_a4w4(
     atol: float = 1.0,
     rtol: float = 0.05,
 ):
-    from aiter.ops.flydsl.moe_kernels import flydsl_moe_stage1
+    from .moe_kernels import flydsl_moe_stage1
 
     print(f"\n{'='*70}")
     print(
@@ -274,7 +275,7 @@ def test_flydsl_stage2_a4w4(
     atol: float = 1.0,
     rtol: float = 0.05,
 ):
-    from aiter.ops.flydsl.moe_kernels import flydsl_moe_stage2
+    from .moe_kernels import flydsl_moe_stage2
 
     print(f"\n{'='*70}")
     print(
@@ -329,7 +330,7 @@ def test_flydsl_stage2_a4w4_return_per_slot(
     atol: float = 1.0,
     rtol: float = 0.05,
 ):
-    from aiter.ops.flydsl.moe_kernels import flydsl_moe_stage2
+    from .moe_kernels import flydsl_moe_stage2
 
     print(f"\n{'='*70}")
     print(
@@ -396,7 +397,7 @@ def test_flydsl_e2e_a4w4(
     rtol: float = 0.05,
 ):
     """End-to-end test: FlyDSL stage1 output -> quantise -> FlyDSL stage2."""
-    from aiter.ops.flydsl.moe_kernels import flydsl_moe_stage1, flydsl_moe_stage2
+    from .moe_kernels import flydsl_moe_stage1, flydsl_moe_stage2
 
     print(f"\n{'='*70}")
     print(
@@ -516,7 +517,7 @@ def main():
     parser.add_argument("--rtol", type=float, default=0.05)
     args = parser.parse_args()
 
-    from aiter.ops.flydsl.utils import is_flydsl_available
+    from .utils import is_flydsl_available
 
     if not is_flydsl_available():
         print("[SKIP] FlyDSL is not available. Install flydsl package first.")
@@ -547,7 +548,7 @@ def main():
                             pct,
                         )
                     )
-                except Exception:
+                except Exception:  # noqa: BLE001
                     import traceback
 
                     traceback.print_exc()
@@ -576,7 +577,7 @@ def main():
                                 pct,
                             )
                         )
-                    except Exception:
+                    except Exception:  # noqa: BLE001
                         import traceback
 
                         traceback.print_exc()
@@ -605,7 +606,7 @@ def main():
                                 pct,
                             )
                         )
-                    except Exception:
+                    except Exception:  # noqa: BLE001
                         import traceback
 
                         traceback.print_exc()
@@ -641,7 +642,7 @@ def main():
                                 pct,
                             )
                         )
-                    except Exception:
+                    except Exception:  # noqa: BLE001
                         import traceback
 
                         traceback.print_exc()

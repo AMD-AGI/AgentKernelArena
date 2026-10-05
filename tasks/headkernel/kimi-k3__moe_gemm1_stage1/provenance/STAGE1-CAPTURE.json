@@ -1,0 +1,45 @@
+{
+  "schema": "kimi-stage1-capture-seal-v1",
+  "run_id": "kimi-served-194550",
+  "owner_handoff_sha256": "7066ef3c6a946eeec44bee6cf5000fe8be708d615d74391047984b6fcaf407c2",
+  "independent_audit_sha256": "3dff9950149c11875fbdc3b973a33e4ea1f4d0684cbb96192db82d31af7a0527",
+  "rank_manifests": {
+    "0": {
+      "object_key": "tp-0/workload/manifest.json",
+      "sha256": "a6abfa5d161bc201867f533af776b6e6ebd4978573a3aec1c206711d7fd35d46"
+    },
+    "1": {
+      "object_key": "tp-1/workload/manifest.json",
+      "sha256": "9c96f899ca065925856190edb614a298e6908d5e3f712028e13bb1a29ee3c27b"
+    },
+    "2": {
+      "object_key": "tp-2/workload/manifest.json",
+      "sha256": "14e459f5c71b28aa2aea15a5aea7e66571ed8f625890b92465f6f1dda1877c5b"
+    },
+    "3": {
+      "object_key": "tp-3/workload/manifest.json",
+      "sha256": "04124006e7dce6491fa37682dadb7073cdd4a979120476e6d0a83652a52453f6"
+    },
+    "4": {
+      "object_key": "tp-4/workload/manifest.json",
+      "sha256": "4983ce06b02c1204111a9505d5e7438c559dc6a18c1a3b996e517b8878c1ad9f"
+    },
+    "5": {
+      "object_key": "tp-5/workload/manifest.json",
+      "sha256": "bab84239d1d634bf6483b05e757a10f27691683710fad56151ca35cedf0b8c17"
+    },
+    "6": {
+      "object_key": "tp-6/workload/manifest.json",
+      "sha256": "f2297641b6fff5d20ba5994935b251100e344ff726bb45c973de12ab767066d0"
+    },
+    "7": {
+      "object_key": "tp-7/workload/manifest.json",
+      "sha256": "4fddf767b2c4e1520a7b5c3be2bc43d47fc0d14298c9d158a2fd8fc146e77e0c"
+    }
+  },
+  "structural_classes": 3,
+  "all_rank_total_calls": 777952,
+  "asset_count": 29,
+  "asset_bytes": 1666534545,
+  "gpu_qualified": false
+}

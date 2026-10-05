@@ -1,0 +1,2705 @@
+{
+  "schema_version": 1,
+  "status": "FROZEN_CURRENT_CAPTURE",
+  "runtime_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
+  "run_id": "kimi-served-194550",
+  "native_source_sha256": "d08339bc94dfabd3529d415857e49d0383f9efe2ef62be9a84916c55c5857e68",
+  "family": "flydsl_moe_stage1",
+  "cases": [
+    {
+      "case_id": "flydsl_moe_stage1-struct-9b9cbbf22624300869bf9a90",
+      "occurrences": 753664,
+      "calls_per_sample": 1,
+      "tensors": {
+        "inputs.a": {
+          "role": "input",
+          "shape": [
+            64,
+            3584
+          ],
+          "strides": [
+            3584,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "float8_e4m3fn",
+          "device_type": "cuda"
+        },
+        "inputs.a1_scale": {
+          "role": "input",
+          "shape": [
+            29696,
+            112
+          ],
+          "strides": [
+            112,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "float8_e8m0fnu",
+          "device_type": "cuda"
+        },
+        "inputs.num_valid_ids": {
+          "role": "input",
+          "shape": [
+            2
+          ],
+          "strides": [
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "int32",
+          "device_type": "cuda"
+        },
+        "inputs.sorted_expert_ids": {
+          "role": "input",
+          "shape": [
+            928
+          ],
+          "strides": [
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "int32",
+          "device_type": "cuda"
+        },
+        "inputs.sorted_token_ids": {
+          "role": "input",
+          "shape": [
+            29680
+          ],
+          "strides": [
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "int32",
+          "device_type": "cuda"
+        },
+        "inputs.topk_ids": {
+          "role": "input",
+          "shape": [
+            64,
+            16
+          ],
+          "strides": [
+            16,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "int32",
+          "device_type": "cuda"
+        },
+        "inputs.w1": {
+          "role": "input",
+          "shape": [
+            896,
+            768,
+            1792
+          ],
+          "strides": [
+            1376256,
+            1792,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "float4_e2m1fn_x2",
+          "device_type": "cuda"
+        },
+        "inputs.w1_scale": {
+          "role": "input",
+          "shape": [
+            688128,
+            112
+          ],
+          "strides": [
+            112,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "float8_e8m0fnu",
+          "device_type": "cuda"
+        },
+        "outputs.return": {
+          "role": "output",
+          "shape": [
+            64,
+            16,
+            384
+          ],
+          "strides": [
+            6144,
+            384,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "float8_e4m3fn",
+          "device_type": "cuda"
+        },
+        "outputs.return_scale": {
+          "role": "output",
+          "shape": [
+            29696,
+            16
+          ],
+          "strides": [
+            16,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "float8_e8m0fnu",
+          "device_type": "cuda"
+        }
+      },
+      "scalars": {
+        "arguments": {
+          "a_dtype": "fp8",
+          "a_scale_one": false,
+          "act": "situv2",
+          "b_dtype": "fp4",
+          "b_nt": 2,
+          "gate_mode": "interleave",
+          "inter_dim_pad": 0,
+          "k_batch": 1,
+          "k_batch_intra_block": null,
+          "k_wave": 1,
+          "model_dim_pad": 0,
+          "out_dtype": "fp8",
+          "out_supplied": false,
+          "persist_m": 0,
+          "situ_beta": 4.0,
+          "situ_linear_beta": 25.0,
+          "swiglu_limit": null,
+          "tile_k": 256,
+          "tile_m": 32,
+          "tile_n": 128,
+          "topk": 16,
+          "use_async_copy": true,
+          "v2_output_layout": false,
+          "waves_per_eu": 4,
+          "xcd_swizzle": 0
+        },
+        "none_inputs": [
+          "bias",
+          "out",
+          "sorted_weights"
+        ],
+        "none_outputs": [
+          "out"
+        ]
+      },
+      "fixture": {
+        "path": "fixtures/flydsl_moe_stage1-3f7074979c7b196f3eff785b.json",
+        "sha256": "36c036ee8c1476a8cbebcd5cdf49a0a6378b5645319a8a57492bc6de2253a5f3"
+      },
+      "stage": "decode",
+      "per_rank_counts": {
+        "0": 94208,
+        "1": 94208,
+        "2": 94208,
+        "3": 94208,
+        "4": 94208,
+        "5": 94208,
+        "6": 94208,
+        "7": 94208
+      },
+      "frequency_scope": "actual complete TP0-7 workload; each structural frequency counted once",
+      "work_distribution": {
+        "valid_rows_histogram": [
+          [
+            10432,
+            8
+          ],
+          [
+            10496,
+            24
+          ],
+          [
+            10528,
+            8
+          ],
+          [
+            10560,
+            8
+          ],
+          [
+            10592,
+            24
+          ],
+          [
+            10624,
+            16
+          ],
+          [
+            10656,
+            64
+          ],
+          [
+            10688,
+            48
+          ],
+          [
+            10720,
+            96
+          ],
+          [
+            10752,
+            48
+          ],
+          [
+            10784,
+            120
+          ],
+          [
+            10816,
+            136
+          ],
+          [
+            10848,
+            144
+          ],
+          [
+            10880,
+            168
+          ],
+          [
+            10912,
+            176
+          ],
+          [
+            10944,
+            176
+          ],
+          [
+            10976,
+            200
+          ],
+          [
+            11008,
+            272
+          ],
+          [
+            11040,
+            240
+          ],
+          [
+            11072,
+            328
+          ],
+          [
+            11104,
+            264
+          ],
+          [
+            11136,
+            240
+          ],
+          [
+            11168,
+            240
+          ],
+          [
+            11200,
+            360
+          ],
+          [
+            11232,
+            376
+          ],
+          [
+            11264,
+            320
+          ],
+          [
+            11296,
+            384
+          ],
+          [
+            11328,
+            264
+          ],
+          [
+            11360,
+            344
+          ],
+          [
+            11392,
+            336
+          ],
+          [
+            11424,
+            368
+          ],
+          [
+            11456,
+            312
+          ],
+          [
+            11488,
+            296
+          ],
+          [
+            11520,
+            280
+          ],
+          [
+            11552,
+            360
+          ],
+          [
+            11584,
+            344
+          ],
+          [
+            11616,
+            280
+          ],
+          [
+            11648,
+            312
+          ],
+          [
+            11680,
+            368
+          ],
+          [
+            11712,
+            320
+          ],
+          [
+            11744,
+            288
+          ],
+          [
+            11776,
+            344
+          ],
+          [
+            11808,
+            464
+          ],
+          [
+            11840,
+            400
+          ],
+          [
+            11872,
+            504
+          ],
+          [
+            11904,
+            424
+          ],
+          [
+            11936,
+            472
+          ],
+          [
+            11968,
+            488
+          ],
+          [
+            12000,
+            624
+          ],
+          [
+            12032,
+            648
+          ],
+          [
+            12064,
+            632
+          ],
+          [
+            12096,
+            720
+          ],
+          [
+            12128,
+            720
+          ],
+          [
+            12160,
+            848
+          ],
+          [
+            12192,
+            1072
+          ],
+          [
+            12224,
+            1000
+          ],
+          [
+            12256,
+            904
+          ],
+          [
+            12288,
+            992
+          ],
+          [
+            12320,
+            1032
+          ],
+          [
+            12352,
+            1176
+          ],
+          [
+            12384,
+            1216
+          ],
+          [
+            12416,
+            1136
+          ],
+          [
+            12448,
+            1344
+          ],
+          [
+            12480,
+            1680
+          ],
+          [
+            12512,
+            1344
+          ],
+          [
+            12544,
+            1584
+          ],
+          [
+            12576,
+            1520
+          ],
+          [
+            12608,
+            1688
+          ],
+          [
+            12640,
+            1688
+          ],
+          [
+            12672,
+            1400
+          ],
+          [
+            12704,
+            1808
+          ],
+          [
+            12736,
+            1496
+          ],
+          [
+            12768,
+            1800
+          ],
+          [
+            12800,
+            1848
+          ],
+          [
+            12832,
+            1872
+          ],
+          [
+            12864,
+            2088
+          ],
+          [
+            12896,
+            2360
+          ],
+          [
+            12928,
+            2104
+          ],
+          [
+            12960,
+            2416
+          ],
+          [
+            12992,
+            2200
+          ],
+          [
+            13024,
+            2432
+          ],
+          [
+            13056,
+            2424
+          ],
+          [
+            13088,
+            2728
+          ],
+          [
+            13120,
+            2544
+          ],
+          [
+            13152,
+            2672
+          ],
+          [
+            13184,
+            2720
+          ],
+          [
+            13216,
+            2840
+          ],
+          [
+            13248,
+            2904
+          ],
+          [
+            13280,
+            2928
+          ],
+          [
+            13312,
+            2920
+          ],
+          [
+            13344,
+            2864
+          ],
+          [
+            13376,
+            2936
+          ],
+          [
+            13408,
+            3248
+          ],
+          [
+            13440,
+            3080
+          ],
+          [
+            13472,
+            3488
+          ],
+          [
+            13504,
+            3256
+          ],
+          [
+            13536,
+            3320
+          ],
+          [
+            13568,
+            3528
+          ],
+          [
+            13600,
+            3416
+          ],
+          [
+            13632,
+            3776
+          ],
+          [
+            13664,
+            3384
+          ],
+          [
+            13696,
+            3672
+          ],
+          [
+            13728,
+            3664
+          ],
+          [
+            13760,
+            3672
+          ],
+          [
+            13792,
+            3896
+          ],
+          [
+            13824,
+            4144
+          ],
+          [
+            13856,
+            3952
+          ],
+          [
+            13888,
+            4152
+          ],
+          [
+            13920,
+            4352
+          ],
+          [
+            13952,
+            4192
+          ],
+          [
+            13984,
+            4264
+          ],
+          [
+            14016,
+            4480
+          ],
+          [
+            14048,
+            4400
+          ],
+          [
+            14080,
+            4664
+          ],
+          [
+            14112,
+            5040
+          ],
+          [
+            14144,
+            4752
+          ],
+          [
+            14176,
+            4704
+          ],
+          [
+            14208,
+            5304
+          ],
+          [
+            14240,
+            5128
+          ],
+          [
+            14272,
+            5008
+          ],
+          [
+            14304,
+            5088
+          ],
+          [
+            14336,
+            5104
+          ],
+          [
+            14368,
+            5240
+          ],
+          [
+            14400,
+            5336
+          ],
+          [
+            14432,
+            5752
+          ],
+          [
+            14464,
+            5528
+          ],
+          [
+            14496,
+            5416
+          ],
+          [
+            14528,
+            5592
+          ],
+          [
+            14560,
+            6088
+          ],
+          [
+            14592,
+            5800
+          ],
+          [
+            14624,
+            6096
+          ],
+          [
+            14656,
+            6160
+          ],
+          [
+            14688,
+            5744
+          ],
+          [
+            14720,
+            6072
+          ],
+          [
+            14752,
+            6352
+          ],
+          [
+            14784,
+            6008
+          ],
+          [
+            14816,
+            6264
+          ],
+          [
+            14848,
+            5992
+          ],
+          [
+            14880,
+            6448
+          ],
+          [
+            14912,
+            6248
+          ],
+          [
+            14944,
+            6352
+          ],
+          [
+            14976,
+            6416
+          ],
+          [
+            15008,
+            6512
+          ],
+          [
+            15040,
+            6368
+          ],
+          [
+            15072,
+            6192
+          ],
+          [
+            15104,
+            6456
+          ],
+          [
+            15136,
+            6312
+          ],
+          [
+            15168,
+            6288
+          ],
+          [
+            15200,
+            6256
+          ],
+          [
+            15232,
+            6232
+          ],
+          [
+            15264,
+            6128
+          ],
+          [
+            15296,
+            6264
+          ],
+          [
+            15328,
+            6024
+          ],
+          [
+            15360,
+            6264
+          ],
+          [
+            15392,
+            6016
+          ],
+          [
+            15424,
+            6040
+          ],
+          [
+            15456,
+            6720
+          ],
+          [
+            15488,
+            5792
+          ],
+          [
+            15520,
+            5968
+          ],
+          [
+            15552,
+            5680
+          ],
+          [
+            15584,
+            6240
+          ],
+          [
+            15616,
+            6024
+          ],
+          [
+            15648,
+            5584
+          ],
+          [
+            15680,
+            6232
+          ],
+          [
+            15712,
+            6176
+          ],
+          [
+            15744,
+            6168
+          ],
+          [
+            15776,
+            6096
+          ],
+          [
+            15808,
+            6408
+          ],
+          [
+            15840,
+            6104
+          ],
+          [
+            15872,
+            5912
+          ],
+          [
+            15904,
+            6560
+          ],
+          [
+            15936,
+            6560
+          ],
+          [
+            15968,
+            6344
+          ],
+          [
+            16000,
+            6224
+          ],
+          [
+            16032,
+            6464
+          ],
+          [
+            16064,
+            6160
+          ],
+          [
+            16096,
+            5984
+          ],
+          [
+            16128,
+            6608
+          ],
+          [
+            16160,
+            6320
+          ],
+          [
+            16192,
+            6744
+          ],
+          [
+            16224,
+            6040
+          ],
+          [
+            16256,
+            6384
+          ],
+          [
+            16288,
+            5984
+          ],
+          [
+            16320,
+            5872
+          ],
+          [
+            16352,
+            6184
+          ],
+          [
+            16384,
+            5496
+          ],
+          [
+            16416,
+            5784
+          ],
+          [
+            16448,
+            5952
+          ],
+          [
+            16480,
+            5656
+          ],
+          [
+            16512,
+            5208
+          ],
+          [
+            16544,
+            5536
+          ],
+          [
+            16576,
+            5200
+          ],
+          [
+            16608,
+            5392
+          ],
+          [
+            16640,
+            5320
+          ],
+          [
+            16672,
+            5096
+          ],
+          [
+            16704,
+            5112
+          ],
+          [
+            16736,
+            4968
+          ],
+          [
+            16768,
+            5000
+          ],
+          [
+            16800,
+            4688
+          ],
+          [
+            16832,
+            4712
+          ],
+          [
+            16864,
+            4152
+          ],
+          [
+            16896,
+            4336
+          ],
+          [
+            16928,
+            3912
+          ],
+          [
+            16960,
+            4016
+          ],
+          [
+            16992,
+            3848
+          ],
+          [
+            17024,
+            3440
+          ],
+          [
+            17056,
+            3696
+          ],
+          [
+            17088,
+            3120
+          ],
+          [
+            17120,
+            3000
+          ],
+          [
+            17152,
+            2824
+          ],
+          [
+            17184,
+            2720
+          ],
+          [
+            17216,
+            2448
+          ],
+          [
+            17248,
+            2408
+          ],
+          [
+            17280,
+            2232
+          ],
+          [
+            17312,
+            1960
+          ],
+          [
+            17344,
+            1832
+          ],
+          [
+            17376,
+            1768
+          ],
+          [
+            17408,
+            1704
+          ],
+          [
+            17440,
+            1496
+          ],
+          [
+            17472,
+            1448
+          ],
+          [
+            17504,
+            1088
+          ],
+          [
+            17536,
+            1048
+          ],
+          [
+            17568,
+            952
+          ],
+          [
+            17600,
+            952
+          ],
+          [
+            17632,
+            776
+          ],
+          [
+            17664,
+            672
+          ],
+          [
+            17696,
+            632
+          ],
+          [
+            17728,
+            552
+          ],
+          [
+            17760,
+            464
+          ],
+          [
+            17792,
+            480
+          ],
+          [
+            17824,
+            424
+          ],
+          [
+            17856,
+            336
+          ],
+          [
+            17888,
+            336
+          ],
+          [
+            17920,
+            336
+          ],
+          [
+            17952,
+            248
+          ],
+          [
+            17984,
+            360
+          ],
+          [
+            18016,
+            216
+          ],
+          [
+            18048,
+            264
+          ],
+          [
+            18080,
+            168
+          ],
+          [
+            18112,
+            112
+          ],
+          [
+            18144,
+            192
+          ],
+          [
+            18176,
+            224
+          ],
+          [
+            18208,
+            144
+          ],
+          [
+            18240,
+            224
+          ],
+          [
+            18272,
+            208
+          ],
+          [
+            18304,
+            176
+          ],
+          [
+            18336,
+            240
+          ],
+          [
+            18368,
+            192
+          ],
+          [
+            18400,
+            216
+          ],
+          [
+            18432,
+            264
+          ],
+          [
+            18464,
+            320
+          ],
+          [
+            18496,
+            224
+          ],
+          [
+            18528,
+            288
+          ],
+          [
+            18560,
+            248
+          ],
+          [
+            18592,
+            328
+          ],
+          [
+            18624,
+            256
+          ],
+          [
+            18656,
+            200
+          ],
+          [
+            18688,
+            304
+          ],
+          [
+            18720,
+            240
+          ],
+          [
+            18752,
+            296
+          ],
+          [
+            18784,
+            280
+          ],
+          [
+            18816,
+            320
+          ],
+          [
+            18848,
+            272
+          ],
+          [
+            18880,
+            224
+          ],
+          [
+            18912,
+            200
+          ],
+          [
+            18944,
+            184
+          ],
+          [
+            18976,
+            232
+          ],
+          [
+            19008,
+            216
+          ],
+          [
+            19040,
+            152
+          ],
+          [
+            19072,
+            160
+          ],
+          [
+            19104,
+            72
+          ],
+          [
+            19136,
+            144
+          ],
+          [
+            19168,
+            72
+          ],
+          [
+            19200,
+            64
+          ],
+          [
+            19232,
+            56
+          ],
+          [
+            19264,
+            56
+          ],
+          [
+            19296,
+            88
+          ],
+          [
+            19328,
+            96
+          ],
+          [
+            19360,
+            40
+          ],
+          [
+            19392,
+            24
+          ],
+          [
+            19424,
+            80
+          ],
+          [
+            19488,
+            40
+          ],
+          [
+            19520,
+            8
+          ],
+          [
+            19552,
+            8
+          ],
+          [
+            19584,
+            16
+          ],
+          [
+            19616,
+            8
+          ],
+          [
+            19648,
+            16
+          ],
+          [
+            19744,
+            8
+          ]
+        ],
+        "exact_numeric_cases": 288,
+        "sampling": "seeded empirical draw of observed valid-row amounts, followed by legal fresh top-16 routing"
+      },
+      "physical_aliases": {
+        "inputs.a": "s0",
+        "inputs.a1_scale": "s1",
+        "inputs.num_valid_ids": "s2",
+        "inputs.sorted_expert_ids": "s3",
+        "inputs.sorted_token_ids": "s4",
+        "inputs.topk_ids": "s5",
+        "inputs.w1": "s6",
+        "inputs.w1_scale": "s7",
+        "outputs.return": "s8",
+        "outputs.return_scale": "s9"
+      }
+    },
+    {
+      "case_id": "flydsl_moe_stage1-struct-e74ab9ff67a2bfe85a909093",
+      "occurrences": 1472,
+      "calls_per_sample": 1,
+      "tensors": {
+        "inputs.a": {
+          "role": "input",
+          "shape": [
+            8192,
+            3584
+          ],
+          "strides": [
+            3584,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "float8_e4m3fn",
+          "device_type": "cuda"
+        },
+        "inputs.a1_scale": {
+          "role": "input",
+          "shape": [
+            188416,
+            112
+          ],
+          "strides": [
+            112,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "float8_e8m0fnu",
+          "device_type": "cuda"
+        },
+        "inputs.num_valid_ids": {
+          "role": "input",
+          "shape": [
+            2
+          ],
+          "strides": [
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "int32",
+          "device_type": "cuda"
+        },
+        "inputs.sorted_expert_ids": {
+          "role": "input",
+          "shape": [
+            2944
+          ],
+          "strides": [
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "int32",
+          "device_type": "cuda"
+        },
+        "inputs.sorted_token_ids": {
+          "role": "input",
+          "shape": [
+            188400
+          ],
+          "strides": [
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "int32",
+          "device_type": "cuda"
+        },
+        "inputs.topk_ids": {
+          "role": "input",
+          "shape": [
+            8192,
+            16
+          ],
+          "strides": [
+            16,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "int32",
+          "device_type": "cuda"
+        },
+        "inputs.w1": {
+          "role": "input",
+          "shape": [
+            896,
+            768,
+            1792
+          ],
+          "strides": [
+            1376256,
+            1792,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "float4_e2m1fn_x2",
+          "device_type": "cuda"
+        },
+        "inputs.w1_scale": {
+          "role": "input",
+          "shape": [
+            688128,
+            112
+          ],
+          "strides": [
+            112,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "float8_e8m0fnu",
+          "device_type": "cuda"
+        },
+        "outputs.return": {
+          "role": "output",
+          "shape": [
+            188416,
+            384
+          ],
+          "strides": [
+            384,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "float8_e4m3fn",
+          "device_type": "cuda"
+        },
+        "outputs.return_scale": {
+          "role": "output",
+          "shape": [
+            188416,
+            16
+          ],
+          "strides": [
+            16,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "float8_e8m0fnu",
+          "device_type": "cuda"
+        }
+      },
+      "scalars": {
+        "arguments": {
+          "a_dtype": "fp8",
+          "a_scale_one": false,
+          "act": "situv2",
+          "b_dtype": "fp4",
+          "b_nt": 0,
+          "gate_mode": "interleave",
+          "inter_dim_pad": 0,
+          "k_batch": 1,
+          "k_batch_intra_block": null,
+          "k_wave": 1,
+          "model_dim_pad": 0,
+          "out_dtype": "fp8",
+          "out_supplied": false,
+          "persist_m": 0,
+          "situ_beta": 4.0,
+          "situ_linear_beta": 25.0,
+          "swiglu_limit": null,
+          "tile_k": 256,
+          "tile_m": 64,
+          "tile_n": 128,
+          "topk": 16,
+          "use_async_copy": true,
+          "v2_output_layout": true,
+          "waves_per_eu": 2,
+          "xcd_swizzle": 4
+        },
+        "none_inputs": [
+          "bias",
+          "out",
+          "sorted_weights"
+        ],
+        "none_outputs": [
+          "out"
+        ]
+      },
+      "fixture": {
+        "path": "fixtures/flydsl_moe_stage1-1c1b9d1fb04353e59aa7ebe6.json",
+        "sha256": "91c59f0fa9a34697e3555ed0129500be7fe04819b471aff0e25fcf696bd8e5b4"
+      },
+      "stage": "prefill",
+      "per_rank_counts": {
+        "0": 184,
+        "1": 184,
+        "2": 184,
+        "3": 184,
+        "4": 184,
+        "5": 184,
+        "6": 184,
+        "7": 184
+      },
+      "frequency_scope": "actual complete TP0-7 workload; each structural frequency counted once",
+      "work_distribution": {
+        "valid_rows_histogram": [
+          [
+            157696,
+            8
+          ],
+          [
+            157888,
+            8
+          ],
+          [
+            158592,
+            8
+          ],
+          [
+            158656,
+            8
+          ],
+          [
+            158848,
+            8
+          ],
+          [
+            159040,
+            8
+          ],
+          [
+            159488,
+            8
+          ],
+          [
+            159552,
+            8
+          ],
+          [
+            159680,
+            8
+          ],
+          [
+            159936,
+            8
+          ],
+          [
+            160192,
+            32
+          ],
+          [
+            160256,
+            8
+          ],
+          [
+            160320,
+            16
+          ],
+          [
+            160384,
+            8
+          ],
+          [
+            160448,
+            24
+          ],
+          [
+            160512,
+            8
+          ],
+          [
+            160576,
+            16
+          ],
+          [
+            160640,
+            8
+          ],
+          [
+            160704,
+            16
+          ],
+          [
+            160768,
+            24
+          ],
+          [
+            160896,
+            16
+          ],
+          [
+            160960,
+            24
+          ],
+          [
+            161024,
+            24
+          ],
+          [
+            161088,
+            8
+          ],
+          [
+            161152,
+            64
+          ],
+          [
+            161216,
+            16
+          ],
+          [
+            161280,
+            24
+          ],
+          [
+            161344,
+            16
+          ],
+          [
+            161408,
+            16
+          ],
+          [
+            161472,
+            64
+          ],
+          [
+            161536,
+            24
+          ],
+          [
+            161600,
+            32
+          ],
+          [
+            161664,
+            32
+          ],
+          [
+            161728,
+            40
+          ],
+          [
+            161792,
+            16
+          ],
+          [
+            161856,
+            24
+          ],
+          [
+            161920,
+            32
+          ],
+          [
+            161984,
+            48
+          ],
+          [
+            162048,
+            24
+          ],
+          [
+            162112,
+            16
+          ],
+          [
+            162176,
+            32
+          ],
+          [
+            162240,
+            32
+          ],
+          [
+            162304,
+            40
+          ],
+          [
+            162368,
+            16
+          ],
+          [
+            162432,
+            16
+          ],
+          [
+            162496,
+            32
+          ],
+          [
+            162560,
+            24
+          ],
+          [
+            162624,
+            40
+          ],
+          [
+            162752,
+            8
+          ],
+          [
+            162816,
+            8
+          ],
+          [
+            162880,
+            48
+          ],
+          [
+            162944,
+            16
+          ],
+          [
+            163008,
+            16
+          ],
+          [
+            163072,
+            56
+          ],
+          [
+            163136,
+            16
+          ],
+          [
+            163200,
+            8
+          ],
+          [
+            163264,
+            24
+          ],
+          [
+            163328,
+            24
+          ],
+          [
+            163392,
+            16
+          ],
+          [
+            163520,
+            16
+          ],
+          [
+            163584,
+            16
+          ],
+          [
+            163648,
+            24
+          ],
+          [
+            163712,
+            16
+          ],
+          [
+            163776,
+            16
+          ],
+          [
+            163840,
+            16
+          ],
+          [
+            163968,
+            8
+          ],
+          [
+            164032,
+            16
+          ],
+          [
+            164160,
+            8
+          ],
+          [
+            164224,
+            16
+          ],
+          [
+            164416,
+            8
+          ],
+          [
+            164480,
+            8
+          ],
+          [
+            164544,
+            8
+          ],
+          [
+            164928,
+            8
+          ],
+          [
+            165248,
+            8
+          ],
+          [
+            165632,
+            8
+          ]
+        ],
+        "exact_numeric_cases": 75,
+        "sampling": "seeded empirical draw of observed valid-row amounts, followed by legal fresh top-16 routing"
+      },
+      "physical_aliases": {
+        "inputs.a": "s0",
+        "inputs.a1_scale": "s1",
+        "inputs.num_valid_ids": "s2",
+        "inputs.sorted_expert_ids": "s3",
+        "inputs.sorted_token_ids": "s4",
+        "inputs.topk_ids": "s5",
+        "inputs.w1": "s6",
+        "inputs.w1_scale": "s7",
+        "outputs.return": "s8",
+        "outputs.return_scale": "s9"
+      }
+    },
+    {
+      "case_id": "flydsl_moe_stage1-struct-fc125b5aac5697acb85975ce",
+      "occurrences": 22816,
+      "calls_per_sample": 1,
+      "tensors": {
+        "inputs.a": {
+          "role": "input",
+          "shape": [
+            16384,
+            3584
+          ],
+          "strides": [
+            3584,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "float8_e4m3fn",
+          "device_type": "cuda"
+        },
+        "inputs.a1_scale": {
+          "role": "input",
+          "shape": [
+            319488,
+            112
+          ],
+          "strides": [
+            112,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "float8_e8m0fnu",
+          "device_type": "cuda"
+        },
+        "inputs.num_valid_ids": {
+          "role": "input",
+          "shape": [
+            2
+          ],
+          "strides": [
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "int32",
+          "device_type": "cuda"
+        },
+        "inputs.sorted_expert_ids": {
+          "role": "input",
+          "shape": [
+            4992
+          ],
+          "strides": [
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "int32",
+          "device_type": "cuda"
+        },
+        "inputs.sorted_token_ids": {
+          "role": "input",
+          "shape": [
+            319472
+          ],
+          "strides": [
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "int32",
+          "device_type": "cuda"
+        },
+        "inputs.topk_ids": {
+          "role": "input",
+          "shape": [
+            16384,
+            16
+          ],
+          "strides": [
+            16,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "int32",
+          "device_type": "cuda"
+        },
+        "inputs.w1": {
+          "role": "input",
+          "shape": [
+            896,
+            768,
+            1792
+          ],
+          "strides": [
+            1376256,
+            1792,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "float4_e2m1fn_x2",
+          "device_type": "cuda"
+        },
+        "inputs.w1_scale": {
+          "role": "input",
+          "shape": [
+            688128,
+            112
+          ],
+          "strides": [
+            112,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "float8_e8m0fnu",
+          "device_type": "cuda"
+        },
+        "outputs.return": {
+          "role": "output",
+          "shape": [
+            319488,
+            384
+          ],
+          "strides": [
+            384,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "float8_e4m3fn",
+          "device_type": "cuda"
+        },
+        "outputs.return_scale": {
+          "role": "output",
+          "shape": [
+            319488,
+            16
+          ],
+          "strides": [
+            16,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "float8_e8m0fnu",
+          "device_type": "cuda"
+        }
+      },
+      "scalars": {
+        "arguments": {
+          "a_dtype": "fp8",
+          "a_scale_one": false,
+          "act": "situv2",
+          "b_dtype": "fp4",
+          "b_nt": 0,
+          "gate_mode": "interleave",
+          "inter_dim_pad": 0,
+          "k_batch": 1,
+          "k_batch_intra_block": null,
+          "k_wave": 1,
+          "model_dim_pad": 0,
+          "out_dtype": "fp8",
+          "out_supplied": false,
+          "persist_m": 0,
+          "situ_beta": 4.0,
+          "situ_linear_beta": 25.0,
+          "swiglu_limit": null,
+          "tile_k": 256,
+          "tile_m": 64,
+          "tile_n": 128,
+          "topk": 16,
+          "use_async_copy": true,
+          "v2_output_layout": true,
+          "waves_per_eu": 2,
+          "xcd_swizzle": 4
+        },
+        "none_inputs": [
+          "bias",
+          "out",
+          "sorted_weights"
+        ],
+        "none_outputs": [
+          "out"
+        ]
+      },
+      "fixture": {
+        "path": "fixtures/flydsl_moe_stage1-30bb2530cb18b86041ed103f.json",
+        "sha256": "16ad9f1acaf11c95da4f6eec4416dee466eb07011565f62aeccc75662f8b7b62"
+      },
+      "stage": "prefill",
+      "per_rank_counts": {
+        "0": 2852,
+        "1": 2852,
+        "2": 2852,
+        "3": 2852,
+        "4": 2852,
+        "5": 2852,
+        "6": 2852,
+        "7": 2852
+      },
+      "frequency_scope": "actual complete TP0-7 workload; each structural frequency counted once",
+      "work_distribution": {
+        "valid_rows_histogram": [
+          [
+            281024,
+            8
+          ],
+          [
+            281984,
+            8
+          ],
+          [
+            282624,
+            8
+          ],
+          [
+            282880,
+            8
+          ],
+          [
+            282944,
+            8
+          ],
+          [
+            283136,
+            8
+          ],
+          [
+            283456,
+            8
+          ],
+          [
+            283648,
+            8
+          ],
+          [
+            283712,
+            8
+          ],
+          [
+            284032,
+            8
+          ],
+          [
+            284480,
+            8
+          ],
+          [
+            284736,
+            8
+          ],
+          [
+            285248,
+            8
+          ],
+          [
+            285440,
+            8
+          ],
+          [
+            285632,
+            8
+          ],
+          [
+            285696,
+            8
+          ],
+          [
+            286272,
+            16
+          ],
+          [
+            286464,
+            8
+          ],
+          [
+            286656,
+            8
+          ],
+          [
+            286720,
+            8
+          ],
+          [
+            286784,
+            16
+          ],
+          [
+            286848,
+            8
+          ],
+          [
+            286912,
+            8
+          ],
+          [
+            287040,
+            8
+          ],
+          [
+            287232,
+            8
+          ],
+          [
+            287296,
+            8
+          ],
+          [
+            287360,
+            16
+          ],
+          [
+            287424,
+            16
+          ],
+          [
+            287488,
+            8
+          ],
+          [
+            287552,
+            16
+          ],
+          [
+            287616,
+            8
+          ],
+          [
+            287680,
+            16
+          ],
+          [
+            287744,
+            8
+          ],
+          [
+            287808,
+            16
+          ],
+          [
+            287936,
+            16
+          ],
+          [
+            288128,
+            16
+          ],
+          [
+            288256,
+            24
+          ],
+          [
+            288512,
+            24
+          ],
+          [
+            288576,
+            8
+          ],
+          [
+            288640,
+            8
+          ],
+          [
+            288704,
+            8
+          ],
+          [
+            288768,
+            24
+          ],
+          [
+            288960,
+            24
+          ],
+          [
+            289024,
+            16
+          ],
+          [
+            289088,
+            16
+          ],
+          [
+            289152,
+            16
+          ],
+          [
+            289216,
+            32
+          ],
+          [
+            289280,
+            8
+          ],
+          [
+            289344,
+            8
+          ],
+          [
+            289408,
+            24
+          ],
+          [
+            289472,
+            24
+          ],
+          [
+            289536,
+            32
+          ],
+          [
+            289600,
+            8
+          ],
+          [
+            289664,
+            56
+          ],
+          [
+            289728,
+            56
+          ],
+          [
+            289792,
+            112
+          ],
+          [
+            289856,
+            48
+          ],
+          [
+            289920,
+            112
+          ],
+          [
+            289984,
+            192
+          ],
+          [
+            290048,
+            112
+          ],
+          [
+            290112,
+            168
+          ],
+          [
+            290176,
+            184
+          ],
+          [
+            290240,
+            160
+          ],
+          [
+            290304,
+            200
+          ],
+          [
+            290368,
+            184
+          ],
+          [
+            290432,
+            272
+          ],
+          [
+            290496,
+            320
+          ],
+          [
+            290560,
+            280
+          ],
+          [
+            290624,
+            304
+          ],
+          [
+            290688,
+            256
+          ],
+          [
+            290752,
+            328
+          ],
+          [
+            290816,
+            384
+          ],
+          [
+            290880,
+            408
+          ],
+          [
+            290944,
+            376
+          ],
+          [
+            291008,
+            336
+          ],
+          [
+            291072,
+            456
+          ],
+          [
+            291136,
+            496
+          ],
+          [
+            291200,
+            656
+          ],
+          [
+            291264,
+            496
+          ],
+          [
+            291328,
+            480
+          ],
+          [
+            291392,
+            560
+          ],
+          [
+            291456,
+            560
+          ],
+          [
+            291520,
+            544
+          ],
+          [
+            291584,
+            464
+          ],
+          [
+            291648,
+            376
+          ],
+          [
+            291712,
+            488
+          ],
+          [
+            291776,
+            488
+          ],
+          [
+            291840,
+            560
+          ],
+          [
+            291904,
+            440
+          ],
+          [
+            291968,
+            376
+          ],
+          [
+            292032,
+            408
+          ],
+          [
+            292096,
+            488
+          ],
+          [
+            292160,
+            384
+          ],
+          [
+            292224,
+            432
+          ],
+          [
+            292288,
+            400
+          ],
+          [
+            292352,
+            512
+          ],
+          [
+            292416,
+            384
+          ],
+          [
+            292480,
+            336
+          ],
+          [
+            292544,
+            344
+          ],
+          [
+            292608,
+            400
+          ],
+          [
+            292672,
+            304
+          ],
+          [
+            292736,
+            352
+          ],
+          [
+            292800,
+            304
+          ],
+          [
+            292864,
+            336
+          ],
+          [
+            292928,
+            352
+          ],
+          [
+            292992,
+            288
+          ],
+          [
+            293056,
+            328
+          ],
+          [
+            293120,
+            256
+          ],
+          [
+            293184,
+            240
+          ],
+          [
+            293248,
+            208
+          ],
+          [
+            293312,
+            312
+          ],
+          [
+            293376,
+            208
+          ],
+          [
+            293440,
+            240
+          ],
+          [
+            293504,
+            288
+          ],
+          [
+            293568,
+            160
+          ],
+          [
+            293632,
+            168
+          ],
+          [
+            293696,
+            160
+          ],
+          [
+            293760,
+            176
+          ],
+          [
+            293824,
+            168
+          ],
+          [
+            293888,
+            152
+          ],
+          [
+            293952,
+            136
+          ],
+          [
+            294016,
+            80
+          ],
+          [
+            294080,
+            72
+          ],
+          [
+            294144,
+            72
+          ],
+          [
+            294208,
+            56
+          ],
+          [
+            294272,
+            48
+          ],
+          [
+            294336,
+            48
+          ],
+          [
+            294400,
+            48
+          ],
+          [
+            294464,
+            24
+          ],
+          [
+            294528,
+            16
+          ],
+          [
+            294592,
+            16
+          ],
+          [
+            294656,
+            8
+          ],
+          [
+            294720,
+            16
+          ],
+          [
+            294784,
+            24
+          ],
+          [
+            294848,
+            8
+          ],
+          [
+            294912,
+            8
+          ],
+          [
+            294976,
+            24
+          ],
+          [
+            295040,
+            8
+          ],
+          [
+            295104,
+            8
+          ],
+          [
+            295232,
+            8
+          ],
+          [
+            295296,
+            16
+          ],
+          [
+            295360,
+            16
+          ],
+          [
+            295680,
+            8
+          ],
+          [
+            296000,
+            8
+          ]
+        ],
+        "exact_numeric_cases": 144,
+        "sampling": "seeded empirical draw of observed valid-row amounts, followed by legal fresh top-16 routing"
+      },
+      "physical_aliases": {
+        "inputs.a": "s0",
+        "inputs.a1_scale": "s1",
+        "inputs.num_valid_ids": "s2",
+        "inputs.sorted_expert_ids": "s3",
+        "inputs.sorted_token_ids": "s4",
+        "inputs.topk_ids": "s5",
+        "inputs.w1": "s6",
+        "inputs.w1_scale": "s7",
+        "outputs.return": "s8",
+        "outputs.return_scale": "s9"
+      }
+    }
+  ],
+  "measurement": {
+    "method": "cuda_graph",
+    "warmup_iterations": 10,
+    "benchmark_iterations": 100,
+    "correctness_seeds": [
+      0,
+      1,
+      2
+    ],
+    "refresh_inputs": "each_replay",
+    "initialize_outputs": "each_replay",
+    "validate_outputs": "each_replay",
+    "negative_controls": [
+      "no_op",
+      "wrong_output"
+    ]
+  },
+  "tolerance": 0.02,
+  "scale_comparison": "exact live tiled E8M0 bytes",
+  "refresh_semantics": "Fresh FP8 activation signs/token permutation, legal top-16 routes at empirically observed padded work, and packed FP4 weight sign changes; original per-group magnitudes/scales and native physical layouts remain valid.",
+  "frequency_policy": "Three structural score cases only; numerical representatives and generated validation draws do not duplicate workload counts.",
+  "native_captured_golden_parity": "mandatory CPU fixture parity for candidate and independent private reference before generated trials",
+  "qualification": "capture sealed; GPU and framework task qualification remain required"
+}

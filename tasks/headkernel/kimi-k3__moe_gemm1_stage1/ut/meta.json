@@ -810,5 +810,11 @@
         }
       }
     }
+  },
+  "sg520_preparation": {
+    "source_closure": "exact image-native FlyDSL source copied independently into baseline_src and source",
+    "historical_a16w4_contract": true,
+    "current_a8w4_contract_requires_fresh_capture": true,
+    "gpu_validator_pass": false
   }
 }

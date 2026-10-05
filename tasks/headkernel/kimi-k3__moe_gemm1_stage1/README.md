@@ -1,3 +1,5 @@
+> SG520 completion preparation: this derivative uses the exact pinned SG520 image and current source closure. Current-image GPU qualification is pending. Historical profiling numbers and oracle descriptions below are retained as provenance. No historical tensor oracle was copied. See `PREPARATION.json`, `SOURCE-PROVENANCE.json` where present, and `ut/source_guard_policy.json`. The guarded contract is packaged, but `cases.json` and the protected reset/oracle replay adapter must be completed from fresh runtime evidence before trusted evaluation.
+
 # kimi-k3__moe_gemm1_stage1
 
 **Kimi-K3** head kernel - `moe_gemm1_0` (aiter asm (AOT) - fused_moe_2stages stage-1 gate+up - mxfp4 w + bf16 act, prefill).

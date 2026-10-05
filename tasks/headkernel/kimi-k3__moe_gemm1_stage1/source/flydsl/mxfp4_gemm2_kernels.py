@@ -6,7 +6,7 @@ import functools
 
 import torch
 
-from aiter.ops.flydsl import moe_kernels as _moe_kernels
+from . import moe_kernels as _moe_kernels
 
 _SUPPORTED = {
     (16, False, "atomic"),
