@@ -116,4 +116,54 @@ class Stage1ContractTests(unittest.TestCase):
         self.assertEqual(self.manifest['workload_histogram_update']['run_id'],'kimi-actual-v4-no-stack-194550')
 
 
+    def test_runtime_guard_and_generic_evaluator_share_one_reference(self):
+        import yaml
+        config=yaml.safe_load((ROOT/'config.yaml').read_text())
+        policy=json.loads((ROOT/'ut/source_guard_policy.json').read_text())
+        provenance=json.loads((ROOT/'SOURCE-PROVENANCE.json').read_text())
+        reference,mapping=adapter.resolve_reference_bindings(config,policy,provenance)
+        self.assertEqual(reference,'ut/baseline_src/flydsl')
+        self.assertFalse((ROOT/'ut/reference').exists())
+        self.assertTrue(all(path.startswith(reference+'/') for path in mapping.values()))
+        self.assertEqual(adapter.reference_contract(ROOT)[0],ROOT/reference)
+        for name,path in mapping.items():self.assertEqual((ROOT/name).read_bytes(),(ROOT/path).read_bytes())
+        broken=copy.deepcopy(config)
+        broken['trusted_evaluation']['reference_sources'][next(iter(mapping))]='ut/another_reference.py'
+        with self.assertRaisesRegex(ValueError,'must share the same frozen reference'):
+            adapter.resolve_reference_bindings(broken,policy,provenance)
+
+    def test_sync_repair_pins_original_image_and_exact_local_change(self):
+        import yaml
+        config=yaml.safe_load((ROOT/'config.yaml').read_text())
+        policy=json.loads((ROOT/'ut/source_guard_policy.json').read_text())
+        provenance=json.loads((ROOT/'SOURCE-PROVENANCE.json').read_text())
+        _,mapping=adapter.resolve_reference_bindings(config,policy,provenance)
+        repair=adapter.validate_sync_repairs(ROOT,provenance,mapping)[0]
+        self.assertEqual(repair['image_source_sha256'],'7c43585c51bfee5506515d0efec908611c93ac8d0583addb437296d442a91a91')
+        self.assertEqual(repair['projected_sha256_before'],'c8a49e74f9579bf94f3b8bbc98e701a5d4248f602b36d1024cfbd38c858ae436')
+        self.assertEqual(repair['projected_sha256_after'],'6755f05f732d603541b2d916a8cd3b2df9ac1c570abdc10eb578e0f939417755')
+        broken=copy.deepcopy(provenance);broken['synchronization_repairs'][0]['image_source_sha256']='f'*64
+        with self.assertRaisesRegex(ValueError,'image/reference source mapping'):
+            adapter.validate_sync_repairs(ROOT,broken,mapping)
+        broken=copy.deepcopy(provenance);broken['synchronization_repairs'][0]['before_context']+='\n# undeclared change'
+        with self.assertRaisesRegex(ValueError,'changes beyond the declared'):
+            adapter.validate_sync_repairs(ROOT,broken,mapping)
+
+    def test_modified_reference_cannot_hide_behind_updated_final_hash(self):
+        import hashlib,yaml
+        config=yaml.safe_load((ROOT/'config.yaml').read_text())
+        policy=json.loads((ROOT/'ut/source_guard_policy.json').read_text())
+        provenance=json.loads((ROOT/'SOURCE-PROVENANCE.json').read_text())
+        _,mapping=adapter.resolve_reference_bindings(config,policy,provenance)
+        repair=provenance['synchronization_repairs'][0]
+        with tempfile.TemporaryDirectory() as temporary:
+            root=Path(temporary);target=root/repair['reference'];target.parent.mkdir(parents=True)
+            changed=(ROOT/repair['reference']).read_text()+'\n_undeclared_host_change = 1\n'
+            target.write_text(changed);checksum=hashlib.sha256(changed.encode()).hexdigest()
+            repair['projected_sha256_after']=checksum
+            next(row for row in provenance['files'] if row['file']==repair['file'])['sha256']=checksum
+            with self.assertRaisesRegex(ValueError,'changes beyond the declared'):
+                adapter.validate_sync_repairs(root,provenance,mapping)
+
+
 if __name__=='__main__':unittest.main()

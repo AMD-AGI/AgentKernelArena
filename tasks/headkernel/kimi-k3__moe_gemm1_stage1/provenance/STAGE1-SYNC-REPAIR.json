@@ -1,0 +1,42 @@
+{
+  "schema": "kimi-stage1-verified-synchronization-repair-v1",
+  "repair_id": "async_lds_full_wait_v1",
+  "baseline_kind": "synchronization_repaired_supplied_reference",
+  "stock_image_byte_identical": false,
+  "upstream_runtime_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
+  "image_source_sha256": "7c43585c51bfee5506515d0efec908611c93ac8d0583addb437296d442a91a91",
+  "projected_sha256_before": "c8a49e74f9579bf94f3b8bbc98e701a5d4248f602b36d1024cfbd38c858ae436",
+  "projected_sha256_after": "6755f05f732d603541b2d916a8cd3b2df9ac1c570abdc10eb578e0f939417755",
+  "change": "rocdl.s_waitcnt(body_vmcnt_before_barrier) -> rocdl.s_waitcnt(0)",
+  "location": "source/flydsl/kernels/mixed_moe_gemm_2stage_common.py::_emit_moe_gemm1::moe_gemm1_body::interleaved_half",
+  "reason": "Drain memory operations before the cross-wave barrier and async-LDS ping-pong reuse; partial waits produced unstable4-row by16-column fragments.",
+  "original_failure_evidence": "provenance/STAGE1-NATIVE-INSTABILITY.json",
+  "targeted_gpu_validation": {
+    "run": "kimi-sync-repair-v1-194846",
+    "returncode": 0,
+    "trials": 16,
+    "seed": 734170854,
+    "valid_rows": 13824,
+    "all_scale_mismatches": 0,
+    "all_payload_byte_mismatches": 0,
+    "same_leg_output_variation": false,
+    "identical_inputs_and_attributes": true,
+    "captured_cpu_golden_parity": true,
+    "physical_gpu_preflight": {
+      "hsa_gpu_uuids": [
+        "GPU-8275e1a99826358b"
+      ],
+      "hip_device_count": 1,
+      "hip_pci_bus_ids": [
+        "0002:00:01.0"
+      ],
+      "rocr_visible_devices": "GPU-8275e1a99826358b"
+    },
+    "result_sha256": "1b1abc15b4d884e54cf4903879586ebe084a0eb52f18b602e99e7ecb7970aa39",
+    "diagnostic_sha256": "644933c9695568263c0f50e6e58a75529f4f90eeba179476c03321a024f9e5b5",
+    "gpu_preflight_sha256": "940d1280f4d89fbb9fdedf979fc94d6d2d86f423546c6d31ead181367f62f08e"
+  },
+  "math_tolerances_cases_frequencies_and_fixture_bytes_unchanged": true,
+  "full_three_case_gpu_qualification": "pending",
+  "framework_task_validator": "pending"
+}

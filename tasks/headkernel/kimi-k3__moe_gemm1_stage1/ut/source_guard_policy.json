@@ -2,30 +2,31 @@
   "schema_version": 1,
   "sources": {
     "source/flydsl/moe_kernels.py": {
-      "reference": "ut/reference/source/flydsl/moe_kernels.py",
+      "reference": "ut/baseline_src/flydsl/moe_kernels.py",
       "device_functions": []
     },
     "source/flydsl/kernels/mixed_moe_gemm_2stage.py": {
-      "reference": "ut/reference/source/flydsl/kernels/mixed_moe_gemm_2stage.py",
+      "reference": "ut/baseline_src/flydsl/kernels/mixed_moe_gemm_2stage.py",
       "device_functions": []
     },
     "source/flydsl/kernels/mixed_moe_gemm_2stage_common.py": {
-      "reference": "ut/reference/source/flydsl/kernels/mixed_moe_gemm_2stage_common.py",
+      "reference": "ut/baseline_src/flydsl/kernels/mixed_moe_gemm_2stage_common.py",
       "device_functions": [
         "_emit_moe_gemm1",
         "moe_gemm1"
       ]
     },
     "source/flydsl/kernels/moe_2stage_a16wmix/gemm1.py": {
-      "reference": "ut/reference/source/flydsl/kernels/moe_2stage_a16wmix/gemm1.py",
+      "reference": "ut/baseline_src/flydsl/kernels/moe_2stage_a16wmix/gemm1.py",
       "device_functions": []
     },
     "source/flydsl/kernels/moe_2stage_a16wmix/gemm2.py": {
-      "reference": "ut/reference/source/flydsl/kernels/moe_2stage_a16wmix/gemm2.py",
+      "reference": "ut/baseline_src/flydsl/kernels/moe_2stage_a16wmix/gemm2.py",
       "device_functions": []
     }
   },
   "stage": 1,
   "language": "reference-constrained DSL emission AST",
-  "observed_path": "FP8 activation / FP4 weight / FP8 output stage1 only"
+  "observed_path": "FP8 activation / FP4 weight / FP8 output stage1 only",
+  "native_reference_root": "ut/baseline_src/flydsl"
 }

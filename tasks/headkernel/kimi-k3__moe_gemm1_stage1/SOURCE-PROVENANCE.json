@@ -1,7 +1,7 @@
 {
   "image_source_projection_requires_runtime_hash_check": true,
   "candidate_baseline_independent_package_imports": true,
-  "math_AST_unchanged_except_importfrom_scope": true,
+  "math_AST_unchanged_except_importfrom_scope": false,
   "files": [
     {
       "file": "source/flydsl/__init__.py",
@@ -412,9 +412,10 @@
     {
       "file": "source/flydsl/kernels/mixed_moe_gemm_2stage_common.py",
       "source_sha256": "7c43585c51bfee5506515d0efec908611c93ac8d0583addb437296d442a91a91",
-      "sha256": "c8a49e74f9579bf94f3b8bbc98e701a5d4248f602b36d1024cfbd38c858ae436",
-      "only_import_scope_changed": true,
-      "source_image_path": "aiter/ops/flydsl/kernels/mixed_moe_gemm_2stage_common.py"
+      "sha256": "6755f05f732d603541b2d916a8cd3b2df9ac1c570abdc10eb578e0f939417755",
+      "only_import_scope_changed": false,
+      "source_image_path": "aiter/ops/flydsl/kernels/mixed_moe_gemm_2stage_common.py",
+      "synchronization_repair_id": "async_lds_full_wait_v1"
     },
     {
       "file": "source/flydsl/kernels/mla_reduce.py",
@@ -837,5 +838,22 @@
       "source_image_path": "aiter/ops/flydsl/kernels/mqa_logits/pa_mqa_logits_fp4_prefill.py"
     }
   ],
-  "file_scope": "One entry per projected source file; the corresponding ut/baseline_src/flydsl file is checked against the same projected sha256."
+  "file_scope": "One entry per projected source file; the corresponding ut/baseline_src/flydsl file is checked against the same projected sha256.",
+  "algorithm_and_numeric_tolerances_unchanged": true,
+  "baseline_kind": "synchronization_repaired_supplied_reference",
+  "native_reference_root": "ut/baseline_src/flydsl",
+  "synchronization_repairs": [
+    {
+      "id": "async_lds_full_wait_v1",
+      "file": "source/flydsl/kernels/mixed_moe_gemm_2stage_common.py",
+      "reference": "ut/baseline_src/flydsl/kernels/mixed_moe_gemm_2stage_common.py",
+      "image_source_sha256": "7c43585c51bfee5506515d0efec908611c93ac8d0583addb437296d442a91a91",
+      "projected_sha256_before": "c8a49e74f9579bf94f3b8bbc98e701a5d4248f602b36d1024cfbd38c858ae436",
+      "projected_sha256_after": "6755f05f732d603541b2d916a8cd3b2df9ac1c570abdc10eb578e0f939417755",
+      "before_context": "                    else:\n                        rocdl.s_waitcnt(body_vmcnt_before_barrier)\n                        barrier()\n                    rocdl.sched_barrier(0)",
+      "after_context": "                    else:\n                        rocdl.s_waitcnt(0)\n                        barrier()\n                    rocdl.sched_barrier(0)",
+      "occurrences": 1,
+      "evidence": "provenance/STAGE1-SYNC-REPAIR.json"
+    }
+  ]
 }

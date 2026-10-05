@@ -1,6 +1,8 @@
 # Kimi-K3 FlyDSL A8W4 stage 1
 
-This task optimizes the current SGLang 0.5.20 FlyDSL `flydsl_moe_stage1` callable on MI355X (`gfx950`). It covers both decode and prefill from the verified `kimi-served-194550` workload: 64 requests, ISL 8192, OSL 1024, concurrency 64 and TP 8. The capture and external fixture inventory are sealed. **GPU execution and framework task-validator qualification are pending.**
+This task optimizes the SGLang 0.5.20 FlyDSL `flydsl_moe_stage1` implementation with the declared async-LDS synchronization repair on MI355X (`gfx950`). It covers both decode and prefill from the verified `kimi-served-194550` workload: 64 requests, ISL 8192, OSL 1024, concurrency 64 and TP 8. The capture and external fixture inventory are sealed. **The targeted 16-trial decode reproduction passes with the repair; full three-case GPU and framework qualification are pending.**
+
+The supplied baseline includes a correctness repair: the partial memory wait before the async-LDS ping-pong barrier is replaced with `rocdl.s_waitcnt(0)`. Original native outputs varied in aligned fragments and violated even the unchanged dequantized 0.02 tolerance. The repaired candidate and frozen reference produced identical outputs in all 16 targeted trials. This baseline is not byte-identical to the stock image. [The repair provenance](provenance/STAGE1-SYNC-REPAIR.json) pins original image, projected source and repaired source hashes; the runtime verifies the original image and the exact declared patch separately.
 
 The operator consumes FP8 E4M3FN activations, packed FP4 E2M1 weights and tiled E8M0 scales. It fuses gate/up GEMMs, interleaved SiTUv2 with beta 4 and linear beta 25, and FP8 output quantization. The native output includes an FP8 payload and tiled E8M0 scales. [cases.json](cases.json) fixes every shape, stride, storage offset, alias, scalar and observed work distribution.
 
@@ -16,7 +18,7 @@ The three structural classes account for 777,952 calls across all ranks. Each fr
 
 Only `_emit_moe_gemm1` and `moe_gemm1` bodies in [mixed_moe_gemm_2stage_common.py](source/flydsl/kernels/mixed_moe_gemm_2stage_common.py) are editable. [The source policy](ut/source_guard_policy.json) freezes host compilation and launch code, signatures, decorators, imports, other functions and every harness/reference file. The A16W4 and stage-2 branches remain frozen dependencies.
 
-The guard permits the reviewed DSL operations, arithmetic/control flow and local arithmetic helpers. It rejects arbitrary Python calls, runtime introspection and object/module mutation. [SOURCE-PROVENANCE.json](SOURCE-PROVENANCE.json) records the complete 119-file source projection; the candidate and frozen reference load through private package namespaces with independent closures. The adapter checks the original source hashes against the pinned runtime image.
+The guard permits the reviewed DSL operations, arithmetic/control flow and local arithmetic helpers. It rejects arbitrary Python calls, runtime introspection and object/module mutation. [SOURCE-PROVENANCE.json](SOURCE-PROVENANCE.json) records the complete 119-file source projection; the candidate and frozen reference load through private package namespaces with independent closures. The runtime, source guard and generic evaluator all use the same frozen `ut/baseline_src/flydsl/` tree. The adapter checks the original source hashes against the pinned runtime image.
 
 ## Fixtures and correctness
 

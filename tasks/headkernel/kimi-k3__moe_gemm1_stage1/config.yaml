@@ -23,6 +23,8 @@ prompt:
   source_code: null
   instructions: |
     Optimize the current Kimi-K3 FlyDSL A8W4 stage-1 GPU emission on gfx950.
+    The supplied baseline includes the declared async-LDS full-wait correctness
+    repair; it is not stock-image byte-identical. Preserve race-free behavior.
     Edit only the bodies of _emit_moe_gemm1 and moe_gemm1 in
     source/flydsl/kernels/mixed_moe_gemm_2stage_common.py, as enforced by
     ut/source_guard_policy.json. Host compilation and launch code, signatures,
@@ -53,7 +55,8 @@ headkernel:
   oracle: current raw captured CPU golden fixtures plus independent frozen native source closure
   tol: 0.02
   scale_comparison: exact live tiled E8M0 bytes
-  source_seed: stock
+  source_seed: synchronization_repaired_supplied_reference
+  synchronization_repair: provenance/STAGE1-SYNC-REPAIR.json
   case_manifest: cases.json
   observed_calls_per_rank:
     decode_m64: 94208
@@ -61,7 +64,7 @@ headkernel:
     prefill_m16384: 2852
   observed_calls_all_ranks: 777952
   count_scope: complete marked64-request TP8 workload; each structural class counted once
-  validation_status: pending_gpu_and_framework_task_validator
+  validation_status: pending_full_revalidation_after_sync_repair
   symbol_locations:
     _emit_moe_gemm1: source/flydsl/kernels/mixed_moe_gemm_2stage_common.py
     moe_gemm1: source/flydsl/kernels/mixed_moe_gemm_2stage_common.py
@@ -75,8 +78,8 @@ trusted_evaluation:
   source_guard: ut/source_guard.py
   requires_aiter_jit_cache: true
   reference_sources:
-    source/flydsl/moe_kernels.py: ut/reference/source/flydsl/moe_kernels.py
-    source/flydsl/kernels/mixed_moe_gemm_2stage.py: ut/reference/source/flydsl/kernels/mixed_moe_gemm_2stage.py
-    source/flydsl/kernels/mixed_moe_gemm_2stage_common.py: ut/reference/source/flydsl/kernels/mixed_moe_gemm_2stage_common.py
-    source/flydsl/kernels/moe_2stage_a16wmix/gemm1.py: ut/reference/source/flydsl/kernels/moe_2stage_a16wmix/gemm1.py
-    source/flydsl/kernels/moe_2stage_a16wmix/gemm2.py: ut/reference/source/flydsl/kernels/moe_2stage_a16wmix/gemm2.py
+    source/flydsl/moe_kernels.py: ut/baseline_src/flydsl/moe_kernels.py
+    source/flydsl/kernels/mixed_moe_gemm_2stage.py: ut/baseline_src/flydsl/kernels/mixed_moe_gemm_2stage.py
+    source/flydsl/kernels/mixed_moe_gemm_2stage_common.py: ut/baseline_src/flydsl/kernels/mixed_moe_gemm_2stage_common.py
+    source/flydsl/kernels/moe_2stage_a16wmix/gemm1.py: ut/baseline_src/flydsl/kernels/moe_2stage_a16wmix/gemm1.py
+    source/flydsl/kernels/moe_2stage_a16wmix/gemm2.py: ut/baseline_src/flydsl/kernels/moe_2stage_a16wmix/gemm2.py

@@ -189,8 +189,69 @@ def load_package(root, tag):
     return package,function
 
 
+def resolve_reference_bindings(config,policy,provenance):
+    """Use one frozen closure for the native runtime and generic evaluator."""
+    reference_root=policy.get('native_reference_root')
+    if reference_root!='ut/baseline_src/flydsl' or provenance.get('native_reference_root')!=reference_root:
+        raise ValueError('The native reference root differs from the frozen source policy')
+    sources=config.get('source_file_path',[])
+    if len(sources)!=len(set(sources)) or set(sources)!=set(policy['sources']):
+        raise ValueError('Configured candidate sources differ from the frozen source policy')
+    expected={name:(Path(reference_root)/Path(name).relative_to('source/flydsl')).as_posix() for name in sources}
+    configured=config.get('trusted_evaluation',{}).get('reference_sources')
+    guarded={name:entry['reference'] for name,entry in policy['sources'].items()}
+    if configured!=expected or guarded!=expected:
+        raise ValueError('Runtime, guard and generic evaluator must share the same frozen reference files')
+    return reference_root,expected
+
+
+def validate_sync_repairs(root,provenance,references):
+    """Check the exact local patch while retaining original image-source pins."""
+    entries={entry['file']:entry for entry in provenance['files']}
+    if len(entries)!=len(provenance['files']):raise ValueError('Duplicate source provenance entries')
+    repairs=provenance.get('synchronization_repairs',[])
+    if not repairs or provenance.get('baseline_kind')!='synchronization_repaired_supplied_reference':
+        raise ValueError('The synchronized reference requires an explicit source-pinned repair')
+    seen=set()
+    for repair in repairs:
+        name=repair['file'];entry=entries[name]
+        if repair['id'] in seen or repair.get('occurrences')!=1:raise ValueError('Duplicate or ambiguous synchronization repair')
+        seen.add(repair['id'])
+        if (repair['reference']!=references.get(name)
+                or repair['image_source_sha256']!=entry['source_sha256']
+                or repair['projected_sha256_after']!=entry['sha256']
+                or entry.get('synchronization_repair_id')!=repair['id']):
+            raise ValueError('Synchronization repair does not match the image/reference source mapping')
+        path=checked_path(root,repair['reference'],repair['projected_sha256_after'])
+        patched=path.read_text()
+        if patched.count(repair['after_context'])!=1:raise ValueError('Synchronization repair context changed')
+        restored=patched.replace(repair['after_context'],repair['before_context'],1)
+        if hashlib.sha256(restored.encode()).hexdigest()!=repair['projected_sha256_before']:
+            raise ValueError('Frozen reference contains changes beyond the declared synchronization repair')
+        evidence=strict_json(checked_path(root,repair['evidence']).read_text())
+        if (evidence.get('repair_id')!=repair['id']
+                or evidence.get('projected_sha256_before')!=repair['projected_sha256_before']
+                or evidence.get('projected_sha256_after')!=repair['projected_sha256_after']):
+            raise ValueError('Synchronization repair evidence identifies different source bytes')
+    return repairs
+
+
+def reference_contract(root):
+    import yaml
+    config=yaml.safe_load((root/'config.yaml').read_text())
+    policy=strict_json((root/'ut/source_guard_policy.json').read_text())
+    provenance=strict_json((root/'SOURCE-PROVENANCE.json').read_text())
+    relative,references=resolve_reference_bindings(config,policy,provenance)
+    validate_sync_repairs(root,provenance,references)
+    reference_root=root/relative
+    if reference_root.is_symlink() or reference_root.resolve()!=reference_root.absolute():
+        raise ValueError('Frozen reference closure must be a regular task-local directory')
+    return reference_root,provenance
+
+
 class Runtime:
     def __init__(self,root,manifest,request):
+        reference_root,provenance=reference_contract(root)
         # Resolve Python's standard unittest package independently of task
         # module search paths while Torch/FlyDSL import their dependencies.
         previous_path=list(sys.path)
@@ -203,17 +264,17 @@ class Runtime:
             sys.path[:]=previous_path
         self.torch=torch;self.root=root;self.manifest=manifest;self.request=request
         if file_sha(Path(installed.__file__))!=NATIVE_SOURCE:raise RuntimeError('Installed AITER source differs from the served capture')
-        provenance=strict_json((root/'SOURCE-PROVENANCE.json').read_text())
         editable=set(request['source_sha256']); installed_root=Path(installed.__file__).parent
         for entry in provenance['files']:
             relative=Path(entry['file']).relative_to('source/flydsl')
             if file_sha(installed_root/relative)!=entry['source_sha256']:raise RuntimeError('Installed FlyDSL dependency differs: '+str(relative))
-            checked_path(root,'ut/baseline_src/flydsl/'+str(relative),entry['sha256'])
+            checked_path(root,str(reference_root.relative_to(root)/relative),entry['sha256'])
             if entry['file'] not in editable:checked_path(root,entry['file'],entry['sha256'])
         identity=hashlib.sha256(canonical(request['source_sha256']).encode()).hexdigest()[:16]
         self.candidate_package,self.candidate=load_package(root/'source/flydsl','_kimi_candidate_'+identity)
-        self.reference_package,self.reference=load_package(root/'ut/baseline_src/flydsl','_kimi_reference_'+identity)
-        self.identity=identity
+        self.reference_package,self.reference=load_package(reference_root,'_kimi_reference_'+identity)
+        self.identity=identity;self.reference_root=reference_root
+        self.baseline_kind=provenance['baseline_kind']
     def prepare_case(self,case):return Prepared(self,case)
 
 
@@ -408,7 +469,9 @@ class Prepared:
                 'independent_reference_invoked':self.calls['reference']>0,'captured_cpu_golden_parity':self.captured_parity,
                 'candidate_callable':self.runtime.candidate.__module__+':flydsl_moe_stage1',
                 'reference_callable':self.runtime.reference.__module__+':flydsl_moe_stage1',
-                'native_source_sha256':NATIVE_SOURCE,'work_log':self.case['case_id']+'_work.json'}
+                'native_source_sha256':NATIVE_SOURCE,'baseline_kind':self.runtime.baseline_kind,
+                'frozen_reference_root':str(self.runtime.reference_root.relative_to(self.root)),
+                'work_log':self.case['case_id']+'_work.json'}
 
 
 def create_runtime(root,manifest,request):return Runtime(Path(root),manifest,request)

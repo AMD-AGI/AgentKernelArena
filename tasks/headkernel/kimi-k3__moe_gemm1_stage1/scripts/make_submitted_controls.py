@@ -29,7 +29,8 @@ def create(destination):
         (candidate/relative).write_text(source)
         validate_sources(candidate,ROOT)
     record={'controls':['no_op','wrong_output'],'source_boundary_passed':True,
-            'expected_gpu_result':'correctness rejection; no scoreable performance',
+            'expected_gpu_result':'native correctness rejection during compile or correctness; no scoreable performance',
+            'baseline_kind':'synchronization_repaired_supplied_reference',
             'gpu_execution_performed':False,'wrong_output_mutation':'multiply FP8 payload values by zero; leave inputs and scales unchanged'}
     (destination/'CONTROL-MANIFEST.json').write_text(json.dumps(record,indent=2)+'\n')
     return record
