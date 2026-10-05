@@ -155,3 +155,109 @@ def test_materialized_helper_is_self_contained_and_edits_are_rejected(packaged_t
         materialize(task, check=True)
     with pytest.raises(ValueError, match="differs from the trusted host"):
         trusted.package_contract(task)
+
+
+@pytest.fixture
+def packaged_fixture_task(packaged_task, tmp_path):
+    import hashlib
+    from src.task_contract import fingerprint
+
+    repo, task, _commit, candidate, manifest = packaged_task
+    mirror = tmp_path / "fixture-mirror"
+    (mirror / "objects").mkdir(parents=True)
+    raw = b"captured kernel operand and expected output"
+    blob_sha = hashlib.sha256(raw).hexdigest()
+    fixture = {"schema": "served-tensor-fixture-v1", "payload": {"inputs": {"weight": {
+        "storage_nbytes": len(raw), "segments": [{"blob": "blob.bin", "sha256": blob_sha,
+        "bytes": len(raw), "offset_bytes": 0}]}}}}
+    encoded = json.dumps(fixture).encode()
+    fixture_sha = hashlib.sha256(encoded).hexdigest()
+    (mirror / "objects/case.json").write_bytes(encoded)
+    (mirror / "objects/data.bin").write_bytes(raw)
+    for case in manifest["cases"]:
+        case["live_fixture"] = {"path": "fixtures/case.json", "sha256": fixture_sha}
+    (task / "cases.json").write_text(json.dumps(manifest))
+    config = yaml.safe_load((task / "config.yaml").read_text())
+    config["trusted_evaluation"]["fixture_manifest"] = "fixtures/EXTERNAL-MANIFEST.json"
+    (task / "config.yaml").write_text(yaml.safe_dump(config))
+    (task / "fixtures").mkdir()
+    assets = {"schema": "trusted-external-fixtures-v1", "case_manifest_fingerprint": fingerprint(manifest),
+              "runtime_image": manifest["runtime_image"], "oci_prefix": "oci:test/bucket/fixture-release/", "assets": [
+                  {"path": "fixtures/case.json", "object_key": "objects/case.json", "sha256": fixture_sha,
+                   "bytes": len(encoded), "codec": "served-tensor-fixture-v1", "roles": ["case_metadata"]},
+                  {"path": "fixtures/blob.bin", "object_key": "objects/data.bin", "sha256": blob_sha,
+                   "bytes": len(raw), "codec": "raw-storage-segment-v1", "roles": ["kernel_weight", "oracle_output"]}]}
+    (task / "fixtures/EXTERNAL-MANIFEST.json").write_text(json.dumps(assets))
+    for args in (["add", "."], ["-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "-qm", "pin fixture data"]):
+        subprocess.run(["git", "-C", str(repo), *args], check=True)
+    commit = subprocess.check_output(["git", "-C", str(repo), "rev-parse", "HEAD"], text=True).strip()
+    return repo, task, commit, candidate, manifest, mirror, raw
+
+
+def test_fixture_data_precedes_both_leg_hashes_and_ignores_agent_payloads(packaged_fixture_task, tmp_path, monkeypatch):
+    from src.task_contract import fingerprint
+    from src.tools.seed_aiter_jit_cache import tree_manifest
+
+    repo, task, commit, candidate, manifest, mirror, raw = packaged_fixture_task
+    (candidate / "fixtures").mkdir()
+    (candidate / "fixtures/blob.bin").write_bytes(b"agent fixture must never enter either leg")
+    (candidate / "config.yaml").write_text("trusted_evaluation: {fixture_manifest: evil.json}")
+    # Dirty trusted working-tree data also cannot replace the committed artifact manifest.
+    (task / "fixtures/EXTERNAL-MANIFEST.json").write_text("{}")
+    original = subprocess.check_output
+    monkeypatch.setattr(subprocess, "check_output", lambda cmd, **kw: json.dumps([
+        {"RepoDigests": [manifest["runtime_image"]], "Id": "sha256:" + "b" * 64}])
+        if cmd[:3] == ["docker", "image", "inspect"] else original(cmd, **kw))
+    monkeypatch.setattr(trusted, "select_gpu", lambda render: {"render_device": render})
+    seen = []
+
+    def phase(image, staged, staging, output, leg, request, *args):
+        assert (staged / "fixtures/blob.bin").read_bytes() == raw
+        assert "evil.json" not in (staged / "config.yaml").read_text()
+        inventory = tree_manifest(staged)
+        inventory.pop("build", None)
+        assert request["package_sha256"] == fingerprint(inventory)
+        assert "fixtures/blob.bin" in inventory
+        assert (output / "fixtures_receipt.json").exists()
+        seen.append(leg)
+        return phase_report(request, manifest, 4.0 if leg == "reference" else 2.0)
+
+    monkeypatch.setattr(trusted, "run_phase", phase)
+    output = tmp_path / "fixture-evaluation"
+    result = trusted.trusted_retest(repo=repo, commit=commit, task_path="tasks/example", candidate_workspace=candidate,
+                                   output=output, render_device="/dev/dri/renderD128", scratch_dir=tmp_path / "scratch",
+                                   fixture_local_mirror=mirror)
+    assert seen == ["reference"] * 3 + ["candidate"] * 3
+    assert result["arithmetic_mean_speedup"] == 2
+    assert result["fixtures"]["sha256"] == trusted.sha256((output / "fixtures_receipt.json").read_bytes())
+
+
+def test_missing_fixture_stops_before_gpu_or_docker(packaged_fixture_task, tmp_path, monkeypatch):
+    repo, _task, commit, candidate, _manifest, mirror, _raw = packaged_fixture_task
+    (mirror / "objects/data.bin").unlink()
+    monkeypatch.setattr(trusted, "select_gpu", lambda *a: pytest.fail("GPU selected before fixture verification"))
+    monkeypatch.setattr(trusted, "run_phase", lambda *a: pytest.fail("task ran before fixture verification"))
+    original = subprocess.check_output
+
+    def check(command, **kwargs):
+        assert command[0] != "docker"
+        return original(command, **kwargs)
+
+    monkeypatch.setattr(subprocess, "check_output", check)
+    with pytest.raises(OSError):
+        trusted.trusted_retest(repo=repo, commit=commit, task_path="tasks/example", candidate_workspace=candidate,
+                               output=tmp_path / "rejected", render_device="/dev/dri/renderD128",
+                               scratch_dir=tmp_path / "scratch", fixture_local_mirror=mirror)
+
+
+def test_stage_only_prepares_original_fixture_task_without_gpu(packaged_fixture_task, tmp_path, monkeypatch):
+    repo, _task, commit, _candidate, _manifest, mirror, raw = packaged_fixture_task
+    monkeypatch.setattr(trusted, "select_gpu", lambda *a: pytest.fail("stage-only selected GPU"))
+    monkeypatch.setattr(trusted, "run_phase", lambda *a: pytest.fail("stage-only ran task"))
+    output = tmp_path / "validator-stage"
+    result = trusted.stage_trusted_task(repo=repo, commit=commit, task_path="tasks/example", output=output,
+                                       scratch_dir=tmp_path / "scratch", fixture_local_mirror=mirror)
+    assert result["status"] == "staged_not_evaluated"
+    assert (output / "task/fixtures/blob.bin").read_bytes() == raw
+    assert (output / "task/source/kernel.py").read_text() == "VALUE = 1\n"
+    assert (output / "staging_receipt.json").exists()

@@ -32,11 +32,13 @@ if __package__:
     from .gpu_binding import command_with_binding, select_gpu, validate_preflight
     from .seed_aiter_jit_cache import copy_cache, seed_image_cache, tree_manifest
     from .trusted_native_eval import docker_command, extract_task, read_regular, sha256
+    from .trusted_fixtures import DEFAULT_MAX_BYTES, DEFAULT_MAX_FILES, load_fixture_manifest, materialize_fixtures
 else:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from gpu_binding import command_with_binding, select_gpu, validate_preflight
     from seed_aiter_jit_cache import copy_cache, seed_image_cache, tree_manifest
     from trusted_native_eval import docker_command, extract_task, read_regular, sha256
+    from trusted_fixtures import DEFAULT_MAX_BYTES, DEFAULT_MAX_FILES, load_fixture_manifest, materialize_fixtures
 
     from task_contract import (
         canonical,
@@ -92,8 +94,30 @@ def package_contract(task):
     require(type(needs_cache) is bool, "requires_aiter_jit_cache must be boolean")
     for source, reference in references.items():
         require(read_regular(task / source) == read_regular(task / reference), "trusted source differs from its frozen reference")
+    fixtures = None
+    if "fixture_manifest" in descriptor:
+        fixtures = load_fixture_manifest(task, descriptor["fixture_manifest"], manifest, reserved | set(sources))
     return {"sources": sources, "references": references, "manifest": manifest,
-            "guard": guard_path, "needs_cache": needs_cache}
+            "guard": guard_path, "needs_cache": needs_cache, "fixtures": fixtures}
+
+
+def prepare_reference(*, repo, commit, task_path, reference, staging, candidate_workspace,
+                      output, scratch_explicit, fixture_local_mirror=None, fixture_oci_prefix=None,
+                      fixture_max_files=DEFAULT_MAX_FILES, fixture_max_bytes=DEFAULT_MAX_BYTES, timeout=1800):
+    extract_task(repo, commit, task_path, reference)
+    contract = package_contract(reference)
+    fixture_receipt = None
+    if contract["fixtures"] is not None:
+        require(scratch_explicit, "external fixtures require an explicit --scratch-dir with sufficient disk space")
+        proof = materialize_fixtures(
+            reference, contract["fixtures"], contract["manifest"], candidate_workspace=candidate_workspace,
+            staging=staging, local_mirror=fixture_local_mirror, allowed_oci_prefix=fixture_oci_prefix,
+            max_files=fixture_max_files, max_bytes=fixture_max_bytes, timeout=timeout)
+        proof.update(trusted_commit=commit, task_path=task_path)
+        encoded = canonical(proof).encode() + b"\n"
+        (output / "fixtures_receipt.json").write_bytes(encoded)
+        fixture_receipt = {"file": "fixtures_receipt.json", "sha256": sha256(encoded)}
+    return contract, fixture_receipt
 
 
 def guard_sources(reference, candidate, guard_path):
@@ -172,7 +196,9 @@ def run_phase(image, task, staging, output, leg, request, render_device, timeout
             primary.add_note("Additional diagnostic/cleanup failure: " + str(exc))
 
 
-def trusted_retest(*, repo, commit, task_path, candidate_workspace, output, render_device, scratch_dir=None, timeout=7200):
+def trusted_retest(*, repo, commit, task_path, candidate_workspace, output, render_device, scratch_dir=None, timeout=7200,
+                   fixture_local_mirror=None, fixture_oci_prefix=None,
+                   fixture_max_files=DEFAULT_MAX_FILES, fixture_max_bytes=DEFAULT_MAX_BYTES):
     repo, candidate_workspace = Path(repo).resolve(), Path(candidate_workspace).resolve()
     output = Path(output).absolute()
     scratch = Path(scratch_dir or tempfile.gettempdir()).resolve()
@@ -186,8 +212,11 @@ def trusted_retest(*, repo, commit, task_path, candidate_workspace, output, rend
         info = staging.stat()
         require(info.st_uid == os.getuid() and stat.S_IMODE(info.st_mode) == 0o700, "scratch directory is not private")
         reference = staging / "reference"
-        extract_task(repo, commit, task_path, reference)
-        contract = package_contract(reference)
+        contract, fixture_receipt = prepare_reference(
+            repo=repo, commit=commit, task_path=task_path, reference=reference, staging=staging,
+            candidate_workspace=candidate_workspace, output=output, scratch_explicit=scratch_dir is not None,
+            fixture_local_mirror=fixture_local_mirror, fixture_oci_prefix=fixture_oci_prefix,
+            fixture_max_files=fixture_max_files, fixture_max_bytes=fixture_max_bytes, timeout=timeout)
         candidate = staging / "candidate"
         copy_cache(reference, candidate)
         # Only these declared regular files are taken from the agent workspace.
@@ -243,22 +272,65 @@ def trusted_retest(*, repo, commit, task_path, candidate_workspace, output, rend
                   "manifest_sha256": fingerprint(manifest), "full_case_coverage": True, "cases": cases,
                   "arithmetic_mean_speedup": math.fsum(row["speedup"] for row in cases) / len(cases),
                   "reports": reports, "framework_task_validator_status": "not_asserted"}
+        if fixture_receipt is not None:
+            result["fixtures"] = fixture_receipt
         (output / "trusted_measurement.json").write_text(json.dumps(result, indent=2, allow_nan=False) + "\n")
+        return result
+
+
+def stage_trusted_task(*, repo, commit, task_path, output, scratch_dir, fixture_local_mirror=None,
+                       fixture_oci_prefix=None, fixture_max_files=DEFAULT_MAX_FILES,
+                       fixture_max_bytes=DEFAULT_MAX_BYTES, timeout=1800):
+    """Prepare a verified original task for a validator; no GPU or agent ingress."""
+    repo, output, scratch = Path(repo).resolve(), Path(output).absolute(), Path(scratch_dir).resolve()
+    scratch.mkdir(parents=True, exist_ok=True)
+    output.mkdir(parents=True, mode=0o700)
+    with tempfile.TemporaryDirectory(prefix="aka-task-stage-", dir=scratch) as temporary:
+        staging = Path(temporary)
+        reference = staging / "reference"
+        _contract, receipt = prepare_reference(
+            repo=repo, commit=commit, task_path=task_path, reference=reference, staging=staging,
+            candidate_workspace=staging / "unused-candidate", output=output, scratch_explicit=True,
+            fixture_local_mirror=fixture_local_mirror, fixture_oci_prefix=fixture_oci_prefix,
+            fixture_max_files=fixture_max_files, fixture_max_bytes=fixture_max_bytes, timeout=timeout)
+        copy_cache(reference, output / "task", timeout=timeout)
+        result = {"schema_version": 1, "status": "staged_not_evaluated", "trusted_commit": commit,
+                  "task_path": task_path, "package_sha256": fingerprint(tree_manifest(output / "task")),
+                  "fixtures": receipt}
+        (output / "staging_receipt.json").write_text(canonical(result) + "\n")
         return result
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    for name in ("repo", "commit", "task", "candidate-workspace", "output", "render-device"):
+    for name in ("repo", "commit", "task", "output"):
         parser.add_argument("--" + name, required=True)
+    parser.add_argument("--candidate-workspace")
+    parser.add_argument("--render-device")
+    parser.add_argument("--stage-only", action="store_true", help="prepare a verified original task for a validator without GPU execution")
     parser.add_argument("--scratch-dir")
+    parser.add_argument("--fixture-local-mirror", help="trusted local mirror laid out by manifest object_key")
+    parser.add_argument("--fixture-oci-prefix", help="host-approved exact OCI prefix for fixture download")
+    parser.add_argument("--fixture-max-files", type=int, default=DEFAULT_MAX_FILES)
+    parser.add_argument("--fixture-max-bytes", type=int, default=DEFAULT_MAX_BYTES)
     parser.add_argument("--timeout", type=int, default=7200)
     args = parser.parse_args()
     if Path("/.dockerenv").exists():
         parser.error("run from a trusted host outside the agent container")
+    fixtures = dict(fixture_local_mirror=args.fixture_local_mirror, fixture_oci_prefix=args.fixture_oci_prefix,
+                    fixture_max_files=args.fixture_max_files, fixture_max_bytes=args.fixture_max_bytes)
+    if args.stage_only:
+        if not args.scratch_dir or args.candidate_workspace or args.render_device:
+            parser.error("--stage-only requires --scratch-dir and accepts no candidate workspace or GPU device")
+        result = stage_trusted_task(repo=args.repo, commit=args.commit, task_path=args.task, output=args.output,
+                                   scratch_dir=args.scratch_dir, timeout=args.timeout, **fixtures)
+        print(json.dumps(result))
+        return
+    if not args.candidate_workspace or not args.render_device:
+        parser.error("retesting requires --candidate-workspace and --render-device")
     result = trusted_retest(repo=args.repo, commit=args.commit, task_path=args.task,
                             candidate_workspace=args.candidate_workspace, output=args.output,
-                            render_device=args.render_device, scratch_dir=args.scratch_dir, timeout=args.timeout)
+                            render_device=args.render_device, scratch_dir=args.scratch_dir, timeout=args.timeout, **fixtures)
     print(json.dumps({"measurement": str(Path(args.output) / "trusted_measurement.json"),
                       "arithmetic_mean_speedup": result["arithmetic_mean_speedup"]}))
 
