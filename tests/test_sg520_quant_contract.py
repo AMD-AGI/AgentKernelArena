@@ -15,7 +15,7 @@ from unittest import mock
 import pytest
 
 
-TASK = Path(__file__).resolve().parents[1] / "experimental/headkernel_sg520/deepseek-v4-pro__per_group_quant_fp8"
+TASK = Path(__file__).resolve().parents[1] / "tasks/headkernel_sg520/deepseek-v4-pro__per_group_quant_fp8"
 
 
 def module(name, relative):

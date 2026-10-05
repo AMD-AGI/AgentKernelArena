@@ -24,7 +24,7 @@ from src.performance import (
 SOURCE = "source/quant_kernels.cu"
 PERF_CONFIG = {"task_type": "hip2hip", "performance_command": ["benchmark"]}
 QUANT_TASK = Path(__file__).resolve().parents[1] / (
-    "experimental/headkernel_sg520/deepseek-v4-pro__per_group_quant_fp8"
+    "tasks/headkernel_sg520/deepseek-v4-pro__per_group_quant_fp8"
 )
 
 

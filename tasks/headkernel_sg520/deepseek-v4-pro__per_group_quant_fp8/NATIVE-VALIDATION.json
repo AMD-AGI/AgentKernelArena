@@ -1,0 +1,643 @@
+{
+  "schema_version": 1,
+  "status": "framework_qualified_native_task",
+  "tested_revision": "ceac8edbd432e01c69612c36f0937f6d87e2c411",
+  "tested_package_sha256": "7346fd54b04df36d3a49a8ced82a612a431e2a80d2a73f3e860f54136d8c07c7",
+  "framework_task_validator": "PASS",
+  "framework_qualification": "Clean framework-finalized schema-v3 PASS; all 12 checks passed with no warnings or skips.",
+  "runtime_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
+  "gpu": "AMD Instinct MI355X",
+  "gpu_arch": "gfx950",
+  "gpu_count": 1,
+  "source_run": "deepseek-sg520-context9218-193529",
+  "profile_archive": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529",
+  "native_run": {
+    "id": "quant-final-194130",
+    "exit_code": 0,
+    "ended_utc": "2026-10-05T17:28:33.65433474Z",
+    "framework_validation": false,
+    "input_manifest_sha256": "7dfe610352b7261fd8a72495b60073f93ec101d27a58b0f53915e9e5a96cce0f",
+    "exit_sha256": "2b523c21a1c9016f1549044fddb687cfd1a88a69a7290d7a072bfa2e7fd85f3b",
+    "container_final_sha256": "3460d1cd1fd2c1fb2f9889fa6074fa3ee7976f5e886c00ee016d24457865e45c"
+  },
+  "native_compile": {
+    "status": "PASS",
+    "report_sha256": "6e992c027d5a2db06f2de2fffaa46c530f1af5289a1dc7f6ffc1d9ed3f0f7695",
+    "isolated_native_processes": true,
+    "workers": {
+      "production_native": {
+        "pid": 8,
+        "native_build": {
+          "leg": "production_native",
+          "extension_sha256": "b618a85f702171b1b205503fd6ba7e8d20a15be0db078985c65fe531e72bc5e3",
+          "production_namespace_rebound": false
+        }
+      },
+      "candidate_native": {
+        "pid": 102,
+        "native_build": {
+          "leg": "candidate_native",
+          "candidate_module": "module_quant_aka_candidate_24a9e884ee08c75afe1a_cb0eb082c411416b9fc76c0be7faae71",
+          "extension_sha256": "17501d43a0eb0943cdbd3a3a178ad7bc82ded0972fc5a8fc934dc92b15b3091d",
+          "source_tree_sha256": "24a9e884ee08c75afe1a4fa608381e7858dbcf53f0f971ab30fac33590f593b6",
+          "build_recipe": "current AITER module_quant flags, current candidate source and frozen observed export",
+          "fresh_compilation": true,
+          "production_namespace_rebound": false
+        }
+      }
+    },
+    "report_uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/gpu-runs/quant-final-194130/task/build/compile_report.json"
+  },
+  "native_correctness": {
+    "status": "PASS",
+    "exit_code": 0,
+    "case_count": 3,
+    "seeds": [
+      0,
+      1
+    ],
+    "legs": [
+      "production_native",
+      "candidate_native"
+    ],
+    "passed_checks": 12,
+    "isolated_native_processes": true,
+    "negative_controls": "separate FP8-byte and scale corruptions rejected for every case/seed",
+    "input_immutable": true,
+    "input_kind": "seeded legal values at observed shapes and ABI; CPU snapshots and independent PyTorch reference",
+    "report_sha256": "6603e974f64aaa1d95217b648d9d69f4fa5bc5372b1437f21c53f62cd8b4f6d2",
+    "workers": {
+      "candidate_native": {
+        "pid": 535,
+        "native_build": {
+          "leg": "candidate_native",
+          "candidate_module": "module_quant_aka_candidate_24a9e884ee08c75afe1a_a0c1ac23fba14b63b96adca0e04fe60b",
+          "extension_sha256": "983bf3b840b0220ad32663dd374eb8fc1726427fa67ddedd68464de8e8e85162",
+          "source_tree_sha256": "24a9e884ee08c75afe1a4fa608381e7858dbcf53f0f971ab30fac33590f593b6",
+          "build_recipe": "current AITER module_quant flags, current candidate source and frozen observed export",
+          "fresh_compilation": true,
+          "production_namespace_rebound": false
+        },
+        "case_results": [
+          {
+            "case_id": "x8192x1536",
+            "shape": [
+              8192,
+              1536
+            ],
+            "trace_call_count": 728,
+            "correct": true,
+            "input_immutable": true,
+            "seeds": [
+              0,
+              1
+            ],
+            "negative_controls": true
+          },
+          {
+            "case_id": "x8192x2048",
+            "shape": [
+              8192,
+              2048
+            ],
+            "trace_call_count": 488,
+            "correct": true,
+            "input_immutable": true,
+            "seeds": [
+              0,
+              1
+            ],
+            "negative_controls": true
+          },
+          {
+            "case_id": "x8192x7168",
+            "shape": [
+              8192,
+              7168
+            ],
+            "trace_call_count": 968,
+            "correct": true,
+            "input_immutable": true,
+            "seeds": [
+              0,
+              1
+            ],
+            "negative_controls": true
+          }
+        ]
+      },
+      "production_native": {
+        "pid": 1083,
+        "native_build": {
+          "leg": "production_native",
+          "extension_sha256": "b618a85f702171b1b205503fd6ba7e8d20a15be0db078985c65fe531e72bc5e3",
+          "production_namespace_rebound": false
+        },
+        "case_results": [
+          {
+            "case_id": "x8192x1536",
+            "shape": [
+              8192,
+              1536
+            ],
+            "trace_call_count": 728,
+            "correct": true,
+            "input_immutable": true,
+            "seeds": [
+              0,
+              1
+            ],
+            "negative_controls": true
+          },
+          {
+            "case_id": "x8192x2048",
+            "shape": [
+              8192,
+              2048
+            ],
+            "trace_call_count": 488,
+            "correct": true,
+            "input_immutable": true,
+            "seeds": [
+              0,
+              1
+            ],
+            "negative_controls": true
+          },
+          {
+            "case_id": "x8192x7168",
+            "shape": [
+              8192,
+              7168
+            ],
+            "trace_call_count": 968,
+            "correct": true,
+            "input_immutable": true,
+            "seeds": [
+              0,
+              1
+            ],
+            "negative_controls": true
+          }
+        ]
+      }
+    },
+    "report_uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/gpu-runs/quant-final-194130/task/build/correctness_report.json"
+  },
+  "native_engagement": {
+    "production_module": "/sgl-workspace/aiter/aiter/jit/module_quant.so",
+    "production_extension_sha256": "b618a85f702171b1b205503fd6ba7e8d20a15be0db078985c65fe531e72bc5e3",
+    "candidate_module": "module_quant_aka_candidate_24a9e884ee08c75afe1a_533a2923064f4c65bf39db6618da176a",
+    "candidate_extension_sha256": "a3630b3fb6537b536045f3cecc871e0b8b5222f4552527dec9b1c4674149d425",
+    "candidate_source_tree_sha256": "24a9e884ee08c75afe1a4fa608381e7858dbcf53f0f971ab30fac33590f593b6",
+    "fresh_candidate_compilation_in_each_worker": true,
+    "compiled_translation_units": [
+      "quant_kernels.cu",
+      "quant_entry_pybind.cu"
+    ],
+    "production_namespace_rebound": false
+  },
+  "graph_benchmark": {
+    "status": "PASS",
+    "exit_code": 0,
+    "report_sha256": "f3ae42e0b0afb52c12249a1bb40c79034592e4721410181ea408530f800fec8d",
+    "ended_utc": "2026-10-05T17:28:33.65433474Z",
+    "method": "separate native worker processes and graphs; fresh inputs and poisoned outputs for every replay",
+    "isolated_native_processes": true,
+    "leg_order_policy": "randomized per invocation; sequential isolated workers",
+    "observed_leg_order": [
+      "production_native",
+      "candidate_native"
+    ],
+    "worker_pids": {
+      "production_native": 1291,
+      "candidate_native": 1497
+    },
+    "warmup_calls_per_leg_per_case": 10,
+    "measured_replays_per_leg_per_case": 100,
+    "fresh_input_replays_per_leg_per_case": 100,
+    "poisoned_output_replays_per_leg_per_case": 100,
+    "oracle_checks_per_leg_per_case": 101,
+    "input_preparation_and_oracle_outside_device_timing": true,
+    "all_samples_finite_and_positive": true,
+    "case_count": 3,
+    "weight_sum_per_rank": 2184,
+    "count_scope": "Eight native CPU EXTEND steps per rank, each annotation bs=1,toks=8192. These are sampled prefill chunks from the64-request,C64,TP8 benchmark; shapes are not scaled to the full workload.",
+    "weighted_mean_ms": {
+      "production_native": 0.04494865198261463,
+      "candidate_native": 0.04535074562796361
+    },
+    "weighted_mean_role": "observed-call-weighted diagnostic, not the standard Arena score",
+    "standard_arena_score_aggregation": "arithmetic mean of the three matched baseline/candidate speedup ratios",
+    "speedup_claim": null,
+    "cases": [
+      {
+        "case_id": "x8192x1536",
+        "shape": [
+          8192,
+          1536
+        ],
+        "weight_per_rank": 728,
+        "graph_correctness": true,
+        "timings": {
+          "production_native": {
+            "mean_ms": 0.025505669973790647,
+            "min_ms": 0.020640000700950623,
+            "max_ms": 0.07159999758005142
+          },
+          "candidate_native": {
+            "mean_ms": 0.028901610039174557,
+            "min_ms": 0.021239999681711197,
+            "max_ms": 0.054999999701976776
+          }
+        },
+        "sample_counts": {
+          "production_native": 100,
+          "candidate_native": 100
+        }
+      },
+      {
+        "case_id": "x8192x2048",
+        "shape": [
+          8192,
+          2048
+        ],
+        "weight_per_rank": 488,
+        "graph_correctness": true,
+        "timings": {
+          "production_native": {
+            "mean_ms": 0.03230803992599249,
+            "min_ms": 0.024159999564290047,
+            "max_ms": 0.04495999962091446
+          },
+          "candidate_native": {
+            "mean_ms": 0.03338163012638688,
+            "min_ms": 0.022439999505877495,
+            "max_ms": 0.05820000171661377
+          }
+        },
+        "sample_counts": {
+          "production_native": 100,
+          "candidate_native": 100
+        }
+      },
+      {
+        "case_id": "x8192x7168",
+        "shape": [
+          8192,
+          7168
+        ],
+        "weight_per_rank": 968,
+        "graph_correctness": true,
+        "timings": {
+          "production_native": {
+            "mean_ms": 0.0659435999020934,
+            "min_ms": 0.055720001459121704,
+            "max_ms": 0.07716000080108643
+          },
+          "candidate_native": {
+            "mean_ms": 0.06375560004264116,
+            "min_ms": 0.056759998202323914,
+            "max_ms": 0.07624000310897827
+          }
+        },
+        "sample_counts": {
+          "production_native": 100,
+          "candidate_native": 100
+        }
+      }
+    ],
+    "report_uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/gpu-runs/quant-final-194130/task/build/performance_report.json"
+  },
+  "no_op_probe": {
+    "status": "REJECTED_BY_ORACLE",
+    "run_id": "quant-final-noop-194130",
+    "ended_utc": "2026-10-05T17:29:46.181576911Z",
+    "exit_code": 1,
+    "change": "dynamic_per_group_scaled_quant_kernel body replaced with return;",
+    "fresh_candidate_compilation": true,
+    "candidate_module": "module_quant_aka_candidate_fc895e879083fb5dfab9_7eb0dd59729e4cf6a7ac08dc00937371",
+    "candidate_extension_sha256": "fafb5b2689d7649be0cc990a9a266d747c3eb5d974b430c0a6d9ddd63a667c7f",
+    "candidate_source_tree_sha256": "fc895e879083fb5dfab94c28b1d604c9fdec82b33ead3300e6a9ba03663ca1f3",
+    "rejection": "AssertionError: invalid dynamic scale",
+    "rejection_stage": "initial graph replay validation before measured samples",
+    "performance_report_published": false,
+    "task_result_published": false,
+    "score_published": false,
+    "framework_validation": false,
+    "exit_sha256": "c17d61dc34a37fb7b7bd018bd192f613aec2033a9ec4208bbf58eb01e2b3ca0e",
+    "native_build_sha256": "e82121798f534e5f0628dae7495fb328605f98025333c8f8cf0e15299bf5323e",
+    "worker_log_sha256": "478f0fb35196a25ac248a92a110325a72a859f894676af3e96091467a5aea77d",
+    "exit_uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/gpu-runs/quant-final-noop-194130/EXIT.json",
+    "worker_log_uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/gpu-runs/quant-final-noop-194130/task/build/performance_candidate_native.log"
+  },
+  "framework_attempt": {
+    "run_id": "run-194224-1",
+    "status": "PASS",
+    "framework_finalized_report": true,
+    "validation_schema_version": 3,
+    "validation_timestamp": "2026-10-05T17:59:49.308347+00:00",
+    "report_sha256": "bb6db318c1c9027065211456a14d3e986842af0bc294464ca610dde1dfbd4702",
+    "checked_commit": "4fd1e4d91d86f52aad4da0ed5f18d22192f37065",
+    "task_package_sha256": "7346fd54b04df36d3a49a8ced82a612a431e2a80d2a73f3e860f54136d8c07c7",
+    "check_count": 12,
+    "checks": {
+      "config_schema": "PASS",
+      "source_files_exist": "PASS",
+      "target_symbols_found": "PASS",
+      "compilation": "PASS",
+      "correctness": "PASS",
+      "performance": "PASS",
+      "correctness_implementation_review": "PASS",
+      "self_contained": "PASS",
+      "gpu_hang_check": "PASS",
+      "result_template_compatibility": "PASS",
+      "benchmark_integrity": "PASS",
+      "harness_integrity": "PASS"
+    },
+    "validation_warnings": [],
+    "validation_errors": [],
+    "commands": {
+      "correctness": {
+        "exit_code": 0,
+        "duration_seconds": 32.77,
+        "report_sha256": "18c91a0d952d9844b01b3826468f088244aa1837380207ca3bbec8e872fbbb56"
+      },
+      "performance": {
+        "exit_code": 0,
+        "duration_seconds": 74.374,
+        "report_sha256": "6e5aa8147c55f8e8c7b21a7486077e5d346070f52794d1748f11919610d27532"
+      },
+      "compilation": {
+        "exit_code": 0,
+        "duration_seconds": 30.959,
+        "report_sha256": "9b7ad299850d80d294a01707f218a99412d20c646a690d5dfabe220a59354bec"
+      }
+    },
+    "source_verification_sha256": "3c275de4e1e347470f00c531681fd26ff94f5bde4e74077683c0597cea83ee26",
+    "image_record_sha256": "ded94e43f8c18f347a9c446d0257c0cd73a264ab299f77fb854935562dc46fa0",
+    "framework_exit_sha256": "fb5c421b50c246ad0af054cf31e65996e2d0a6106c72ac55cc0e147a75fcc0d0",
+    "environment_resolution": "Private AITER image-cache seeding resolved the earlier unprivileged cache-copy failure; the new finalized report is clean PASS.",
+    "coverage": {
+      "correctness_checks": 12,
+      "case_count": 3,
+      "seeds": [
+        0,
+        1
+      ],
+      "raw_performance_cases": 3,
+      "parsed_performance_cases": 3,
+      "warmup_calls_per_case_per_leg": 10,
+      "measured_replays_per_case_per_leg": 100
+    },
+    "report_uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/validator/snapshot-hardened-7/workspace_MI355X_task_validator/run_20261005_175201_sg520_quant_validator/headkernel_sg520_deepseek-v4-pro__per_group_quant_fp8_20261005_175201/validation_report.yaml",
+    "final_verification_uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/validator/run-194224-1/FINAL-VERIFICATION.txt",
+    "image_uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/validator/run-194224-1/IMAGE.json",
+    "reproduction_config": {
+      "path": "example_configs/validate_headkernel_sg520_quant_mi355x.yaml",
+      "sha256": "149015b8c239091bab10a67974c6f52bc78c896b9815f4bfbb6ee993ffd8aa95",
+      "byte_identical_to_successful_run_config": true,
+      "runtime_environment": {
+        "AKA_DOCKER_IMAGE": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
+        "AKA_AITER_JIT_SOURCE": "/sgl-workspace/aiter/aiter/jit",
+        "AKA_RCLONE_BIN": "host rclone executable"
+      }
+    }
+  },
+  "tested_file_sha256": {
+    "scripts/benchmark.py": "b431a33762e462a8832343b2e9b95185dc71b4ff836d4e97c5a84a3f315dad74",
+    "scripts/check.py": "af97ec77f40fdafed63e4029ad54528a84c25978f716c743fcc6469778112af5",
+    "scripts/task_runner.py": "e3d6b0bbc584250c4224d0e952a40046865a3e54f9872dc35824ba501e26ee54",
+    "scripts/worker.py": "8655a24e8b307a7ebfb71d2acfab066820340cba4a5d96d2a83e8cb4b1421f30",
+    "source/quant_kernels.cu": "5c9d1e56d978d45ccdc099806267d75aad9074ab837b07cca32b8ae21dcccfec",
+    "ut/abi_wrapper.py": "a488872d13c00785c225c7a858728751bb2e0f2649735dc5fcbcdcbbe17bc706",
+    "ut/contract.py": "c2298ef88cdad5d939be68ffdcdd61aa5136e71a5482641016cf9be0ae059f1a",
+    "ut/native.py": "0ac3814fcd7ec2cdf8d644bfa6c249a607dd8f4247bd430f640c90a24c7ffd4a",
+    "ut/oracle.py": "c3fe7e42a7a9bae62ffc32c3899993560f7f8d4c764725b7aca3e5d4f41ec00e",
+    "ut/source_guard.py": "b61c9c0c7cf09fde324b010b9eeb36142b55b3753f3170b5cc56b3c7526e551f",
+    "ut/native/quant_entry_pybind.cu": "ebb90ee38bedaabf0b36c4fc0de0aafc69693c2938230dfd3d2517c5d43b3104",
+    "ut/native/quant_kernels.reference.cu": "5c9d1e56d978d45ccdc099806267d75aad9074ab837b07cca32b8ae21dcccfec",
+    "config.yaml": "276d66d14d61eb64775f042e1fedfe5fc48a48fff8dd8acb94ff7f15198824c1",
+    "cases.json": "cac2446dc0182743d2dc38d1758d0464feb598de51cb5a9a72eeda027754f517"
+  },
+  "tested_case_manifest_sha256": "cac2446dc0182743d2dc38d1758d0464feb598de51cb5a9a72eeda027754f517",
+  "packaging": {
+    "code_and_harness": "Canonical task has the same package identity as the clean framework PASS and trusted six-phase run. Promotion changes directory placement and external README/validation metadata only.",
+    "metadata": "portable source/evidence references retained; no raw generated logs or binaries bundled",
+    "generated_logs_binaries_and_caches_included": false
+  },
+  "limits": [
+    "The framework-finalized validator report establishes PASS for this exact task package and source boundary.",
+    "The native no-op probe was compiled and rejected by the independent oracle without a performance report or score.",
+    "The trusted six-phase result used identical reference and candidate source; its ratio is an acceptance-path control, not an optimization claim.",
+    "Counts cover eight sampled prefill steps per rank, not a full-workload extrapolation.",
+    "Seeded inputs are not captured activation values; no E2E gain is asserted."
+  ],
+  "framework_attempt_history": [
+    {
+      "run_id": "run-194130-1",
+      "status": "FAIL",
+      "framework_finalized_report": true,
+      "report_sha256": "14eab6dc0803f42c80024b33c4230f1c5765e1017297aedb91d8cdd3693c49c2",
+      "compilation_exit_code": 1,
+      "compilation_duration_seconds": 5.825,
+      "failure_stage": "AITER import before native compilation",
+      "execution_context": "unprivileged framework validator",
+      "failure": "Permission denied while copying installed AITER JIT/flydsl cache files into the user JIT cache",
+      "investigated_image_permissions": "root-owned mode-0600 image JIT cache files",
+      "correctness_status": "SKIP: dependency_failed",
+      "performance_status": "SKIP: dependency_failed",
+      "cache_fix_status": "in progress",
+      "rerun_status": "pending",
+      "native_checks_do_not_replace_this_gate": true
+    }
+  ],
+  "canonical_task_path": "tasks/headkernel_sg520/deepseek-v4-pro__per_group_quant_fp8",
+  "validated_task_revision": "4fd1e4d91d86f52aad4da0ed5f18d22192f37065",
+  "trusted_evaluation": {
+    "run_id": "reference-194224-1",
+    "status": "PASS",
+    "phase_count": 6,
+    "reports": {
+      "reference": {
+        "compile": {
+          "status": "PASS",
+          "file": "reference_compile.json",
+          "sha256": "43888d47c183600c09464e3ff66e34b801a1e7258c0e3b466531ac9886207eca",
+          "package_sha256": "7346fd54b04df36d3a49a8ced82a612a431e2a80d2a73f3e860f54136d8c07c7",
+          "source_tree_sha256": "24a9e884ee08c75afe1a4fa608381e7858dbcf53f0f971ab30fac33590f593b6",
+          "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/trusted/reference-194224-1/measurement/reference_compile.json"
+        },
+        "correctness": {
+          "status": "PASS",
+          "file": "reference_correctness.json",
+          "sha256": "9c86dbd5d7922ba34d41480bd6fa7f2930e213481455cf90b91ecc93baa6fc0b",
+          "package_sha256": "7346fd54b04df36d3a49a8ced82a612a431e2a80d2a73f3e860f54136d8c07c7",
+          "source_tree_sha256": "24a9e884ee08c75afe1a4fa608381e7858dbcf53f0f971ab30fac33590f593b6",
+          "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/trusted/reference-194224-1/measurement/reference_correctness.json"
+        },
+        "performance": {
+          "status": "PASS",
+          "file": "reference_performance.json",
+          "sha256": "48d7538f3a061044cff4ae186ac933015d6ff6d8a9dd15e204a5fb36e379af28",
+          "package_sha256": "7346fd54b04df36d3a49a8ced82a612a431e2a80d2a73f3e860f54136d8c07c7",
+          "source_tree_sha256": "24a9e884ee08c75afe1a4fa608381e7858dbcf53f0f971ab30fac33590f593b6",
+          "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/trusted/reference-194224-1/measurement/reference_performance.json"
+        }
+      },
+      "candidate": {
+        "compile": {
+          "status": "PASS",
+          "file": "candidate_compile.json",
+          "sha256": "08394a27d5caa20150fbf9b38bb7f2f55057b8d072ab5ba557479baeace9ca4e",
+          "package_sha256": "7346fd54b04df36d3a49a8ced82a612a431e2a80d2a73f3e860f54136d8c07c7",
+          "source_tree_sha256": "24a9e884ee08c75afe1a4fa608381e7858dbcf53f0f971ab30fac33590f593b6",
+          "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/trusted/reference-194224-1/measurement/candidate_compile.json"
+        },
+        "correctness": {
+          "status": "PASS",
+          "file": "candidate_correctness.json",
+          "sha256": "a9b5917c52a153b43e7e536ff18f7fb70627e2bc8c9f5a72da1b22e582fbd934",
+          "package_sha256": "7346fd54b04df36d3a49a8ced82a612a431e2a80d2a73f3e860f54136d8c07c7",
+          "source_tree_sha256": "24a9e884ee08c75afe1a4fa608381e7858dbcf53f0f971ab30fac33590f593b6",
+          "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/trusted/reference-194224-1/measurement/candidate_correctness.json"
+        },
+        "performance": {
+          "status": "PASS",
+          "file": "candidate_performance.json",
+          "sha256": "d5ac937831b50900107b57188f0508d1844f619f1458acf6ad22ae31f1f50af9",
+          "package_sha256": "7346fd54b04df36d3a49a8ced82a612a431e2a80d2a73f3e860f54136d8c07c7",
+          "source_tree_sha256": "24a9e884ee08c75afe1a4fa608381e7858dbcf53f0f971ab30fac33590f593b6",
+          "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/trusted/reference-194224-1/measurement/candidate_performance.json"
+        }
+      }
+    },
+    "trusted_tool_commit": "1867c36ec0f6dcd6c70f13b9a7a673885e212ce3",
+    "image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
+    "local_image_id": "sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
+    "same_source_control": true,
+    "reference_source_sha256": "5c9d1e56d978d45ccdc099806267d75aad9074ab837b07cca32b8ae21dcccfec",
+    "candidate_source_sha256": "5c9d1e56d978d45ccdc099806267d75aad9074ab837b07cca32b8ae21dcccfec",
+    "full_case_coverage": true,
+    "case_count": 3,
+    "arithmetic_mean_ratio": 0.9848393502471442,
+    "optimization_claim": false,
+    "comparison": "same protected candidate_native entrypoint with reference then candidate source",
+    "cases": [
+      {
+        "test_case_id": "x8192x1536",
+        "shape": [
+          8192,
+          1536
+        ],
+        "reference_ms": 0.025188679993152618,
+        "candidate_ms": 0.024677059985697268,
+        "speedup": 1.0207326159498693,
+        "production_diagnostic_ms": {
+          "reference_run": 0.02447466991841793,
+          "candidate_run": 0.023581730015575886
+        }
+      },
+      {
+        "test_case_id": "x8192x2048",
+        "shape": [
+          8192,
+          2048
+        ],
+        "reference_ms": 0.028586640041321516,
+        "candidate_ms": 0.02912221010774374,
+        "speedup": 0.9816095665665219,
+        "production_diagnostic_ms": {
+          "reference_run": 0.0272958199493587,
+          "candidate_run": 0.02756210995838046
+        }
+      },
+      {
+        "test_case_id": "x8192x7168",
+        "shape": [
+          8192,
+          7168
+        ],
+        "reference_ms": 0.06565027013421058,
+        "candidate_ms": 0.06894763071089983,
+        "speedup": 0.9521758682250415,
+        "production_diagnostic_ms": {
+          "reference_run": 0.06678963020443916,
+          "candidate_run": 0.06561600022017956
+        }
+      }
+    ],
+    "exit_sha256": "37a5a80a039a0206e6fc72015bdca7c0a265f23b01fdd146014a18ff926f7099",
+    "measurement_sha256": "6b221ceecd978acb30505cae9cf2fd23618a57e8481c64599b8e3d96d7079148",
+    "cache_manifest_sha256": "17de59dd4fd3d6346581a6f728f7bceffa877ca89798b1802533deea3b0b512d",
+    "qualification_role": "Independent trusted same-source acceptance-path check; framework qualification is established separately by run-194224-1.",
+    "measurement_uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/trusted/reference-194224-1/measurement/trusted_measurement.json",
+    "exit_uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/trusted/reference-194224-1/EXIT.json",
+    "accepted_agent_speedups_require_trusted_host_retest_after_optimizer_stops": true
+  },
+  "promotion": {
+    "from_experimental": true,
+    "method": "git mv",
+    "source_and_harness_and_config_changed": false,
+    "package_sha256_before_and_after": "7346fd54b04df36d3a49a8ced82a612a431e2a80d2a73f3e860f54136d8c07c7",
+    "canonical_task_path": "tasks/headkernel_sg520/deepseek-v4-pro__per_group_quant_fp8",
+    "validation_publication_prefix": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z",
+    "validation_publication_status": "PUBLISHED_AND_FULL_READBACK_SHA256_VERIFIED"
+  },
+  "validation_archive": {
+    "status": "PUBLISHED_AND_FULL_READBACK_SHA256_VERIFIED",
+    "remote": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z",
+    "manifest": {
+      "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/MANIFEST.json",
+      "sha256": "83660fc336def213fa374615cea2a96ed3c9687aed798b6f86172837d4bd31be",
+      "size_bytes": 59915
+    },
+    "payload_files": 172,
+    "remote_objects": 173,
+    "payload_bytes": 4948614,
+    "verified_download_bytes": 5008529,
+    "verified_at_utc": "2026-10-05T18:07:26.749056+00:00",
+    "all_readback_SHA256_verified": true,
+    "exact_remote_object_set_verified": true,
+    "qualification_scope": "Only tasks/headkernel_sg520/deepseek-v4-pro__per_group_quant_fp8 is framework-qualified; no four-model or whole-suite PASS.",
+    "pending_scope": "Full GLM profiling and current MiniMax final runs remain pending; publication does not promote their qualification status.",
+    "key_reports": {
+      "framework_PASS": {
+        "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/validator/snapshot-hardened-7/workspace_MI355X_task_validator/run_20261005_175201_sg520_quant_validator/headkernel_sg520_deepseek-v4-pro__per_group_quant_fp8_20261005_175201/validation_report.yaml",
+        "sha256": "bb6db318c1c9027065211456a14d3e986842af0bc294464ca610dde1dfbd4702",
+        "size_bytes": 20331
+      },
+      "trusted_same_source": {
+        "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/trusted/reference-194224-1/measurement/trusted_measurement.json",
+        "sha256": "6b221ceecd978acb30505cae9cf2fd23618a57e8481c64599b8e3d96d7079148",
+        "size_bytes": 4324
+      },
+      "native_correctness": {
+        "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/gpu-runs/quant-final-194130/task/build/correctness_report.json",
+        "sha256": "6603e974f64aaa1d95217b648d9d69f4fa5bc5372b1437f21c53f62cd8b4f6d2",
+        "size_bytes": 4609
+      },
+      "native_graph_benchmark": {
+        "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/gpu-runs/quant-final-194130/task/build/performance_report.json",
+        "sha256": "f3ae42e0b0afb52c12249a1bb40c79034592e4721410181ea408530f800fec8d",
+        "size_bytes": 25027
+      },
+      "native_noop_rejection": {
+        "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/gpu-runs/quant-final-noop-194130/task/build/performance_candidate_native.log",
+        "sha256": "478f0fb35196a25ac248a92a110325a72a859f894676af3e96091467a5aea77d",
+        "size_bytes": 2023
+      }
+    },
+    "download_flags": [
+      "--transfers",
+      "64000",
+      "--progress",
+      "--buffer-size",
+      "0",
+      "--multi-thread-streams",
+      "0",
+      "--checkers",
+      "4"
+    ]
+  }
+}

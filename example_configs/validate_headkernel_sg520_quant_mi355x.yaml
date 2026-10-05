@@ -1,0 +1,15 @@
+# Copy into example_configs/ after staging the exact task snapshot under tasks/.
+# The selected model matches the existing local Codex configuration; max is the requested effort.
+# Provider and credential values remain in the normal mounted ~/.codex directory.
+agent:
+  template: task_validator
+  backend: codex
+  model: gpt-6-astra
+  effort: max
+
+tasks:
+  - headkernel_sg520/deepseek-v4-pro__per_group_quant_fp8
+
+target_gpu_model: MI355X
+log_directory: logs
+workspace_directory_prefix: workspace

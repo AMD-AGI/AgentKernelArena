@@ -49,11 +49,24 @@ task compatibility.
 
 The existing tasks still contain historical kernels and captures. The
 [SGLang 0.5.20 refresh progress](docs/reference/headkernel-sg520-refresh.md)
-records new sampled trace, shape, native-correctness and timing evidence separately.
-The full four-model refresh, traced tensor/reference captures and framework task
-validation on the pinned image remain pending.
+records sampled traces, revision-scoped native checks and historical diagnostics.
+The [DeepSeek native-quant task](tasks/headkernel_sg520/deepseek-v4-pro__per_group_quant_fp8/README.md)
+passed final native checks, all 12 framework validator checks and the trusted
+six-phase measurement on job 194224. The measurement used identical reference
+and candidate source and establishes no gain; the prior validator FAIL remains
+preserved. This is the only qualified refreshed task. The full
+four-model refresh, traced tensor/reference captures and other task validations
+on the pinned image remain pending.
+
+The [published validation archive](docs/reference/headkernel-sg520-refresh.md#published-validation-evidence)
+contains 172 evidence files plus its manifest (173 objects), all downloaded back
+and SHA-256 verified. Its OCI prefix is
+`oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z`.
+The archive keeps the quant-only PASS separate from legacy diagnostics, GLM
+component checks, incomplete model profiles and ongoing MiniMax final runs.
+
 The policy and progress records do not change kernel implementations, shapes,
-tensors or historical gain figures, and do not claim a framework task-validator PASS.
+tensors or historical gain figures, and do not establish a suite-wide PASS or E2E gain.
 
 The original numerical input contract is restored. The 16 configured tasks need
 17 original tensor files totaling 33,139,788,731 bytes: 14 reference archives and
@@ -85,10 +98,10 @@ For example, its older MiniMax missing-geometry warning predates the three files
 present in the retrieved inventory. Preserving an upstream result or statement
 does not turn it into a new verification result.
 
-No new GPU validation was requested or performed for the original restoration. File-copy
-and setup checks are separate from upstream GPU results. This branch does not
-claim a new framework `task_validator` PASS, universal resistance to benchmark
-cheating, or complete HyperLoom end-to-end equivalence.
+The original restoration did not include new GPU validation. File-copy and setup
+checks remain separate from upstream GPU results and the later quant-only PASS.
+Neither establishes universal resistance to benchmark cheating or complete
+HyperLoom end-to-end equivalence.
 
 ## Portable execution fixes
 

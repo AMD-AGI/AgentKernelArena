@@ -16,7 +16,7 @@ import pytest
 
 from src.tools import trusted_native_eval as trusted
 
-TASK_PATH = "experimental/headkernel_sg520/deepseek-v4-pro__per_group_quant_fp8"
+TASK_PATH = "tasks/headkernel_sg520/deepseek-v4-pro__per_group_quant_fp8"
 REAL_TASK = Path(__file__).resolve().parents[1] / TASK_PATH
 
 

@@ -26,7 +26,7 @@ The platform provides:
 
 AgentKernelArena supplies an environment and objective reward signals; it does not currently include an RL trainer, replay buffer, or policy-update loop. Its per-task workspaces provide reproducibility and concurrent-run separation, not a security sandbox: agent processes run permissively inside a privileged container and can access mounted repository and authentication state.
 
-For accepting speedups from the experimental SG520 DeepSeek native quant task,
+For accepting speedups from the SG520 DeepSeek native quant task,
 use the [trusted host retest tool](src/tools/trusted_native_eval.py) after stopping
 the optimization worker. Run it from a trusted host checkout with an explicit
 full Git commit, an already available digest-pinned image, one render device,
@@ -35,7 +35,7 @@ and a new output directory outside the agent workspace:
 ```bash
 python3 src/tools/trusted_native_eval.py \
   --repo . --commit <full-trusted-commit> \
-  --task experimental/headkernel_sg520/deepseek-v4-pro__per_group_quant_fp8 \
+  --task tasks/headkernel_sg520/deepseek-v4-pro__per_group_quant_fp8 \
   --agent-workspace <agent-workspace> --candidate <agent-workspace>/source/quant_kernels.cu \
   --render-device /dev/dri/renderD128 --output <new-trusted-output-directory>
 ```
