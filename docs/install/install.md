@@ -195,6 +195,11 @@ make docker-check-agents AGENTS=all
 ```
 
 `AGENTS=all` is the explicit strict check for Cursor, Claude Code, and Codex.
+If a scheduler launches commands with its own `HOME`, set `AKA_HOST_HOME` to
+the user's existing home directory for agent installation/authentication mounts.
+This preserves the scheduler process's `HOME`; when unset, the runner continues
+to use the caller's `HOME`. Keep the intended agent CLI on `PATH` as usual.
+
 Allocation wrappers can set `AKA_DOCKER_LABEL_FILE` to a readable host file in
 Docker's `key=value` label-file format. The runner applies it to every standard
 preflight and worker container, allowing the wrapper to track and retire only

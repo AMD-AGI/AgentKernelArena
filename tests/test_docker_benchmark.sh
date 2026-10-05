@@ -505,6 +505,20 @@ assert_not_has "$GEAK_SDK_PYTHONPATH" "${args[@]}"
 assert_not_has "$UNRELATED_GEAK_WORKFLOW_DIR:$UNRELATED_GEAK_WORKFLOW_DIR:ro" "${args[@]}"
 assert_not_has "GEAK_V4_WORKFLOW_DIR=$UNRELATED_GEAK_WORKFLOW_DIR" "${args[@]}"
 
+# Scheduler launchers may retain their own HOME. Select the user's existing
+# agent installation/auth home explicitly without modifying that caller HOME.
+SCHEDULER_LAUNCH_HOME="$TEST_HOME/scheduler-home"
+mkdir -p "$SCHEDULER_LAUNCH_HOME"
+mapfile -t args < <(run_check_args \
+    "$SCHEDULER_LAUNCH_HOME" \
+    "$CODEX_CONFIG" \
+    AKA_HOST_HOME="$CODEX_HOME" \
+    AKA_NODE_PREFIX="$CODEX_PREFIX")
+assert_has "$CODEX_HOME/.codex:$CODEX_HOME/.codex" "${args[@]}"
+assert_has "HOME=$CODEX_HOME" "${args[@]}"
+assert_has "CODEX_HOME=$CODEX_HOME/.codex" "${args[@]}"
+assert_not_has "$SCHEDULER_LAUNCH_HOME/.codex:$SCHEDULER_LAUNCH_HOME/.codex" "${args[@]}"
+
 # task_validator may override its default backend in the run config. Provision
 # that selected CLI rather than the backend from agent_config.yaml.
 VALIDATOR_CODEX_CONFIG="$TEST_HOME/validator-codex-config.yaml"
