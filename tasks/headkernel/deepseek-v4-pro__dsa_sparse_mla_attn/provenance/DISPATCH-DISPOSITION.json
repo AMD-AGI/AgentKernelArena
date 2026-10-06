@@ -1,0 +1,110 @@
+{
+  "task_id": "deepseek-v4-pro__dsa_sparse_mla_attn",
+  "disposition": "SUPERSEDED_FOR_CURRENT_WORKLOAD",
+  "repository_task": "tasks/headkernel/deepseek-v4-pro__dsa_sparse_mla_attn",
+  "owner_draft": "deepseek/tasks/deepseek-v4-pro__dsa_sparse_mla_attn",
+  "replacement_tasks": [
+    "deepseek-v4-pro__unified_paged_attention_prefill",
+    "deepseek-v4-pro__unified_paged_attention_decode"
+  ],
+  "replacement_paths": [
+    "tasks/headkernel/deepseek-v4-pro__unified_paged_attention_prefill",
+    "tasks/headkernel/deepseek-v4-pro__unified_paged_attention_decode"
+  ],
+  "runtime_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
+  "run_id": "deepseek-capture-csr-v7-194603",
+  "dispatch_evidence": "The captured HIP recipe sets SGLANG_HACK_FLASHMLA_BACKEND=unified_kv_triton. The pinned backend returns through _forward_unified_kv before legacy attention; actual unified prefill/decode calls are present on every TP rank.",
+  "observed_counts_by_rank": {
+    "deepseek-v4-pro__unified_paged_attention_prefill": {
+      "0": {
+        "deepseek_mla_prefill-2800f2114cb8548cf5fdd0ba": 1920,
+        "deepseek_mla_prefill-fff723d1365f8696979e5779": 1984
+      },
+      "1": {
+        "deepseek_mla_prefill-2800f2114cb8548cf5fdd0ba": 1920,
+        "deepseek_mla_prefill-fff723d1365f8696979e5779": 1984
+      },
+      "2": {
+        "deepseek_mla_prefill-2800f2114cb8548cf5fdd0ba": 1920,
+        "deepseek_mla_prefill-fff723d1365f8696979e5779": 1984
+      },
+      "3": {
+        "deepseek_mla_prefill-2800f2114cb8548cf5fdd0ba": 1920,
+        "deepseek_mla_prefill-fff723d1365f8696979e5779": 1984
+      },
+      "4": {
+        "deepseek_mla_prefill-2800f2114cb8548cf5fdd0ba": 1920,
+        "deepseek_mla_prefill-fff723d1365f8696979e5779": 1984
+      },
+      "5": {
+        "deepseek_mla_prefill-2800f2114cb8548cf5fdd0ba": 1920,
+        "deepseek_mla_prefill-fff723d1365f8696979e5779": 1984
+      },
+      "6": {
+        "deepseek_mla_prefill-2800f2114cb8548cf5fdd0ba": 1920,
+        "deepseek_mla_prefill-fff723d1365f8696979e5779": 1984
+      },
+      "7": {
+        "deepseek_mla_prefill-2800f2114cb8548cf5fdd0ba": 1920,
+        "deepseek_mla_prefill-fff723d1365f8696979e5779": 1984
+      }
+    },
+    "deepseek-v4-pro__unified_paged_attention_decode": {
+      "0": {
+        "deepseek_mla_decode-98f9f736c04a9282790736a9": 30720,
+        "deepseek_mla_decode-ef9a66de43776b4e2e04f22b": 31744
+      },
+      "1": {
+        "deepseek_mla_decode-98f9f736c04a9282790736a9": 30720,
+        "deepseek_mla_decode-ef9a66de43776b4e2e04f22b": 31744
+      },
+      "2": {
+        "deepseek_mla_decode-98f9f736c04a9282790736a9": 30720,
+        "deepseek_mla_decode-ef9a66de43776b4e2e04f22b": 31744
+      },
+      "3": {
+        "deepseek_mla_decode-98f9f736c04a9282790736a9": 30720,
+        "deepseek_mla_decode-ef9a66de43776b4e2e04f22b": 31744
+      },
+      "4": {
+        "deepseek_mla_decode-98f9f736c04a9282790736a9": 30720,
+        "deepseek_mla_decode-ef9a66de43776b4e2e04f22b": 31744
+      },
+      "5": {
+        "deepseek_mla_decode-98f9f736c04a9282790736a9": 30720,
+        "deepseek_mla_decode-ef9a66de43776b4e2e04f22b": 31744
+      },
+      "6": {
+        "deepseek_mla_decode-98f9f736c04a9282790736a9": 30720,
+        "deepseek_mla_decode-ef9a66de43776b4e2e04f22b": 31744
+      },
+      "7": {
+        "deepseek_mla_decode-98f9f736c04a9282790736a9": 30720,
+        "deepseek_mla_decode-ef9a66de43776b4e2e04f22b": 31744
+      }
+    }
+  },
+  "evidence": [
+    {
+      "bundle": "completion",
+      "key": "runs/deepseek-capture-csr-v7-194603/REQUEST.json",
+      "sha256": "88c8448b79182b01a6e52ef818106debaec01aeb14fbc9fad4551c9b744e949c"
+    },
+    {
+      "bundle": "completion",
+      "key": "deepseek/DISPATCH-REVIEW.json",
+      "sha256": "b6ce11f0fd08676040a854e349ee9bb51abde5b2c0500f4b153d4612c7887b60"
+    },
+    {
+      "bundle": "repository",
+      "key": "tasks/headkernel/deepseek-v4-pro__unified_paged_attention_prefill/provenance/COVERAGE.json",
+      "sha256": "4e83fe9edd17c7d1fb39c992e17875a525bc1be034b680924c06d6ff03fe1a23"
+    },
+    {
+      "bundle": "repository",
+      "key": "tasks/headkernel/deepseek-v4-pro__unified_paged_attention_decode/provenance/COVERAGE.json",
+      "sha256": "d2a4088887ea78bb7bef3d8820f8c23bda52bd5b4a42820f7acf9a6db24976ed"
+    }
+  ],
+  "qualification_claim": false
+}

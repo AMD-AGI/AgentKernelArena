@@ -1,3 +1,5 @@
+This historical attention target is inactive for the recorded SG0.5.20 workload. Current serving dispatch uses [deepseek-v4-pro__unified_paged_attention_prefill](../deepseek-v4-pro__unified_paged_attention_prefill/README.md), [deepseek-v4-pro__unified_paged_attention_decode](../deepseek-v4-pro__unified_paged_attention_decode/README.md). The runtime evidence and exact replacement identifiers are in `provenance/DISPATCH-DISPOSITION.json`. This change preserves the historical kernel and does not claim that the replacement tasks have completed qualification.
+
 # deepseek-v4-pro__dsa_sparse_mla_attn
 
 **DeepSeek-V4-Pro** head kernel - `MLA` (tilelang, decode).

@@ -1,0 +1,253 @@
+{
+  "schema": "headkernel-superseded-attention-discovery-v1",
+  "ready": false,
+  "scope": "Current SG0.5.20 workload:64 requests,ISL8192,OSL1024,C64,TP8,context9218. Dispatch disposition is not replacement-task qualification.",
+  "records": [
+    {
+      "task_id": "deepseek-v4-pro__dsa_sparse_mla_attn",
+      "disposition": "SUPERSEDED_FOR_CURRENT_WORKLOAD",
+      "repository_task": "tasks/headkernel/deepseek-v4-pro__dsa_sparse_mla_attn",
+      "owner_draft": "deepseek/tasks/deepseek-v4-pro__dsa_sparse_mla_attn",
+      "replacement_tasks": [
+        "deepseek-v4-pro__unified_paged_attention_prefill",
+        "deepseek-v4-pro__unified_paged_attention_decode"
+      ],
+      "replacement_paths": [
+        "tasks/headkernel/deepseek-v4-pro__unified_paged_attention_prefill",
+        "tasks/headkernel/deepseek-v4-pro__unified_paged_attention_decode"
+      ],
+      "runtime_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
+      "run_id": "deepseek-capture-csr-v7-194603",
+      "dispatch_evidence": "The captured HIP recipe sets SGLANG_HACK_FLASHMLA_BACKEND=unified_kv_triton. The pinned backend returns through _forward_unified_kv before legacy attention; actual unified prefill/decode calls are present on every TP rank.",
+      "observed_counts_by_rank": {
+        "deepseek-v4-pro__unified_paged_attention_prefill": {
+          "0": {
+            "deepseek_mla_prefill-2800f2114cb8548cf5fdd0ba": 1920,
+            "deepseek_mla_prefill-fff723d1365f8696979e5779": 1984
+          },
+          "1": {
+            "deepseek_mla_prefill-2800f2114cb8548cf5fdd0ba": 1920,
+            "deepseek_mla_prefill-fff723d1365f8696979e5779": 1984
+          },
+          "2": {
+            "deepseek_mla_prefill-2800f2114cb8548cf5fdd0ba": 1920,
+            "deepseek_mla_prefill-fff723d1365f8696979e5779": 1984
+          },
+          "3": {
+            "deepseek_mla_prefill-2800f2114cb8548cf5fdd0ba": 1920,
+            "deepseek_mla_prefill-fff723d1365f8696979e5779": 1984
+          },
+          "4": {
+            "deepseek_mla_prefill-2800f2114cb8548cf5fdd0ba": 1920,
+            "deepseek_mla_prefill-fff723d1365f8696979e5779": 1984
+          },
+          "5": {
+            "deepseek_mla_prefill-2800f2114cb8548cf5fdd0ba": 1920,
+            "deepseek_mla_prefill-fff723d1365f8696979e5779": 1984
+          },
+          "6": {
+            "deepseek_mla_prefill-2800f2114cb8548cf5fdd0ba": 1920,
+            "deepseek_mla_prefill-fff723d1365f8696979e5779": 1984
+          },
+          "7": {
+            "deepseek_mla_prefill-2800f2114cb8548cf5fdd0ba": 1920,
+            "deepseek_mla_prefill-fff723d1365f8696979e5779": 1984
+          }
+        },
+        "deepseek-v4-pro__unified_paged_attention_decode": {
+          "0": {
+            "deepseek_mla_decode-98f9f736c04a9282790736a9": 30720,
+            "deepseek_mla_decode-ef9a66de43776b4e2e04f22b": 31744
+          },
+          "1": {
+            "deepseek_mla_decode-98f9f736c04a9282790736a9": 30720,
+            "deepseek_mla_decode-ef9a66de43776b4e2e04f22b": 31744
+          },
+          "2": {
+            "deepseek_mla_decode-98f9f736c04a9282790736a9": 30720,
+            "deepseek_mla_decode-ef9a66de43776b4e2e04f22b": 31744
+          },
+          "3": {
+            "deepseek_mla_decode-98f9f736c04a9282790736a9": 30720,
+            "deepseek_mla_decode-ef9a66de43776b4e2e04f22b": 31744
+          },
+          "4": {
+            "deepseek_mla_decode-98f9f736c04a9282790736a9": 30720,
+            "deepseek_mla_decode-ef9a66de43776b4e2e04f22b": 31744
+          },
+          "5": {
+            "deepseek_mla_decode-98f9f736c04a9282790736a9": 30720,
+            "deepseek_mla_decode-ef9a66de43776b4e2e04f22b": 31744
+          },
+          "6": {
+            "deepseek_mla_decode-98f9f736c04a9282790736a9": 30720,
+            "deepseek_mla_decode-ef9a66de43776b4e2e04f22b": 31744
+          },
+          "7": {
+            "deepseek_mla_decode-98f9f736c04a9282790736a9": 30720,
+            "deepseek_mla_decode-ef9a66de43776b4e2e04f22b": 31744
+          }
+        }
+      },
+      "evidence": [
+        {
+          "bundle": "completion",
+          "key": "runs/deepseek-capture-csr-v7-194603/REQUEST.json",
+          "sha256": "88c8448b79182b01a6e52ef818106debaec01aeb14fbc9fad4551c9b744e949c"
+        },
+        {
+          "bundle": "completion",
+          "key": "deepseek/DISPATCH-REVIEW.json",
+          "sha256": "b6ce11f0fd08676040a854e349ee9bb51abde5b2c0500f4b153d4612c7887b60"
+        },
+        {
+          "bundle": "repository",
+          "key": "tasks/headkernel/deepseek-v4-pro__unified_paged_attention_prefill/provenance/COVERAGE.json",
+          "sha256": "4e83fe9edd17c7d1fb39c992e17875a525bc1be034b680924c06d6ff03fe1a23"
+        },
+        {
+          "bundle": "repository",
+          "key": "tasks/headkernel/deepseek-v4-pro__unified_paged_attention_decode/provenance/COVERAGE.json",
+          "sha256": "d2a4088887ea78bb7bef3d8820f8c23bda52bd5b4a42820f7acf9a6db24976ed"
+        }
+      ],
+      "qualification_claim": false
+    },
+    {
+      "task_id": "kimi-k3__fwd_grouped_kernel_stage1",
+      "disposition": "SUPERSEDED_FOR_CURRENT_WORKLOAD",
+      "repository_task": null,
+      "owner_draft": "kimi/tasks/kimi-k3__fwd_grouped_kernel_stage1",
+      "replacement_tasks": [
+        "kimi-k3__lean_attention_decode"
+      ],
+      "replacement_paths": [
+        "tasks/headkernel/kimi-k3__lean_attention_decode"
+      ],
+      "runtime_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
+      "run_id": "kimi-actual-v4-no-stack-194550",
+      "dispatch_evidence": "All eight ranks recorded24576 actual Lean decode calls at batch64 and zero served grouped-attention cases. Grouped capture hooks are positively present in startup graph buckets bs1/bs2/bs4; their absence from served cases is not missing instrumentation. The native Lean branch returns before the grouped path.",
+      "observed_lean_calls_by_rank": {
+        "0": 24576,
+        "1": 24576,
+        "2": 24576,
+        "3": 24576,
+        "4": 24576,
+        "5": 24576,
+        "6": 24576,
+        "7": 24576
+      },
+      "grouped_startup_buckets_by_rank": {
+        "0": [
+          "bs1",
+          "bs2",
+          "bs4"
+        ],
+        "1": [
+          "bs1",
+          "bs2",
+          "bs4"
+        ],
+        "2": [
+          "bs1",
+          "bs2",
+          "bs4"
+        ],
+        "3": [
+          "bs1",
+          "bs2",
+          "bs4"
+        ],
+        "4": [
+          "bs1",
+          "bs2",
+          "bs4"
+        ],
+        "5": [
+          "bs1",
+          "bs2",
+          "bs4"
+        ],
+        "6": [
+          "bs1",
+          "bs2",
+          "bs4"
+        ],
+        "7": [
+          "bs1",
+          "bs2",
+          "bs4"
+        ]
+      },
+      "grouped_served_calls_by_rank": {
+        "0": 0,
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0,
+        "5": 0,
+        "6": 0,
+        "7": 0
+      },
+      "scope_limit": "Grouped attention remains a valid native low-batch branch. Only this workload-specific historical draft is inactive; generic vLLM grouped attention and current Kimi MoE stage1 are unchanged.",
+      "evidence": [
+        {
+          "bundle": "completion",
+          "key": "intake/kimi-v4-194550-final/SUMMARY.json",
+          "sha256": "d0b4332e280d5381b02f4677d775f9ddc52a7f01a5e418ba01c583e1d67a980a"
+        },
+        {
+          "bundle": "completion",
+          "key": "intake/kimi-v4-194550-final/VALIDATION.json",
+          "sha256": "ca20cb580afe99b8f958c8eb0d916a9d6a323259de479d55b8263b7d54a13894"
+        },
+        {
+          "bundle": "completion",
+          "key": "kimi/capture-v4-194550-frozen/tp-0/complete/manifest.json",
+          "sha256": "6c3dcf6114c2972cf4a39ff68cda5ae3ee63e652e086e34b962bd522004c14a3"
+        },
+        {
+          "bundle": "completion",
+          "key": "kimi/capture-v4-194550-frozen/tp-1/complete/manifest.json",
+          "sha256": "01f8bd980834f74851ff407688c099bc8bd6498ce445e446e94924196c2914ad"
+        },
+        {
+          "bundle": "completion",
+          "key": "kimi/capture-v4-194550-frozen/tp-2/complete/manifest.json",
+          "sha256": "fce03581ad1113b5d92e5cc316d68cf23cbd955aca8300e146dc537c81e8f467"
+        },
+        {
+          "bundle": "completion",
+          "key": "kimi/capture-v4-194550-frozen/tp-3/complete/manifest.json",
+          "sha256": "18ee88c1de4da937397ef4624e2b2fda6d5b8a6dad741b820056e93dd401dbf9"
+        },
+        {
+          "bundle": "completion",
+          "key": "kimi/capture-v4-194550-frozen/tp-4/complete/manifest.json",
+          "sha256": "3d2b9b54c90bd8e11fb4173697fbc8618d69b741fea77ea2988757c694e9e9fb"
+        },
+        {
+          "bundle": "completion",
+          "key": "kimi/capture-v4-194550-frozen/tp-5/complete/manifest.json",
+          "sha256": "9ef4276b0462f9949ebc650ac1f8ab75117d4a258c2bfb037ab9747ad3e098b8"
+        },
+        {
+          "bundle": "completion",
+          "key": "kimi/capture-v4-194550-frozen/tp-6/complete/manifest.json",
+          "sha256": "437b8597526e5d54d5d1b964f653dd459b2292d3e4487d47b62ec8960584de3f"
+        },
+        {
+          "bundle": "completion",
+          "key": "kimi/capture-v4-194550-frozen/tp-7/complete/manifest.json",
+          "sha256": "d907baa42ba0f9f436d9ebeb1764831c762a93a40b67fe5ba9967ead1d1509c2"
+        }
+      ],
+      "qualification_claim": false
+    }
+  ],
+  "required_current_heads_not_retired": [
+    "kimi-k3__dense_bf16_gemm_cijk",
+    "kimi-k3__score_combine_mix_fused",
+    "minimax-m3__gemm_afp4wfp4_kernel"
+  ]
+}
