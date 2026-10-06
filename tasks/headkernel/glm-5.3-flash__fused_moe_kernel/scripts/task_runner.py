@@ -18,7 +18,7 @@ from native_enums import restore_native_enum
 
 
 def source_hash():return hashlib.sha256((ROOT/'source/kernels.py').read_bytes()).hexdigest()
-def package_hash():
+def package_hash(files=None):
     h=hashlib.sha256()
     for path in sorted(ROOT.rglob('*')):
         relative=path.relative_to(ROOT)
@@ -32,8 +32,32 @@ def package_hash():
         if path.is_file():
             h.update(relative.as_posix().encode()+b'\0')
             # Raw fixture blobs are separately streamed and verified at restoration.
-            h.update(file_sha(path).encode())
+            digest=file_sha(path);h.update(digest.encode())
+            if files is not None:files[relative.as_posix()]={'sha256':digest,'size_bytes':path.stat().st_size}
     return h.hexdigest()
+
+
+def package_snapshot():
+    files={}
+    return {'sha256':package_hash(files),'files':files}
+
+
+def check_package_unchanged(before,phase):
+    after=package_snapshot()
+    if after['sha256']==before['sha256']:return
+    old=before['files'];new=after['files']
+    diagnostic={'schema_version':1,'phase':phase,'before':before,'after':after,
+                'added':sorted(new.keys()-old.keys()),'removed':sorted(old.keys()-new.keys()),
+                'changed':sorted(name for name in old.keys()&new.keys() if old[name]['sha256']!=new[name]['sha256'])}
+    path=ROOT/'build'/('package_hash_mismatch_'+phase+'_'+secrets.token_hex(12)+'.json')
+    message='Task package changed during evaluation'
+    try:
+        path.parent.mkdir(exist_ok=True)
+        with path.open('x') as stream:json.dump(diagnostic,stream,indent=2,sort_keys=True);stream.write('\n')
+        message+='; diagnostic: '+path.relative_to(ROOT).as_posix()
+    except OSError as error:
+        message+='; could not write hash diagnostic: '+str(error)
+    raise ValueError(message)
 
 
 def load_source():
@@ -143,7 +167,7 @@ def main():
     manifest=validate_manifest(strict_json((ROOT/'cases.json').read_text()))
     request=strict_json(Path(args.request).read_text()) if args.request else {'schema_version':1,'request_id':secrets.token_hex(24),'phase':args.phase,'manifest_sha256':fingerprint(manifest),'package_sha256':package_hash(),'source_sha256':{'source/kernels.py':source_hash()},'challenge_seed':secrets.randbelow(2**30)}
     if request['phase']!=args.phase or request['manifest_sha256']!=fingerprint(manifest) or request['source_sha256']!={'source/kernels.py':source_hash()}:raise ValueError('Request source/case/phase mismatch')
-    before=package_hash();module=load_source();import torch
+    before=package_snapshot();module=load_source();import torch
     if not torch.cuda.is_available() or 'gfx950' not in torch.cuda.get_device_properties(0).gcnArchName:raise RuntimeError('Requires gfx950 ROCm')
     torch.set_num_threads(16)
     results=[];compiled=[];policy=manifest['measurement']
@@ -168,7 +192,7 @@ def main():
                 begin=torch.cuda.Event(enable_timing=True);end=torch.cuda.Event(enable_timing=True)
                 begin.record();call();end.record();end.synchronize();return begin.elapsed_time(end)
             results.append(checked_replays(case,policy,reset_inputs=reset,initialize_outputs=initialize,replay=graph.replay,verify=verify,measure=measure,observe=observe,seed=request['challenge_seed']))
-    if package_hash()!=before:raise ValueError('Task package changed during evaluation')
+    check_package_unchanged(before,args.phase)
     report=finalize_report({'schema_version':1,'status':'ok','request':request,'compiled':True,'cases':results,'compiled_kernels':compiled,'oracle_device':'cpu','reference_policy':'fresh_numeric_inputs_native_reference_after_candidate_CPU_snapshot','implementation':'whole_moe_replacement_port','comparison_baseline':'frozen_same_port','original_native_kernel_source':False},manifest,request)
     temp=path.with_suffix('.tmp');temp.write_text(json.dumps(report,indent=2,allow_nan=False)+'\n');temp.replace(path)
     if args.phase=='performance':
