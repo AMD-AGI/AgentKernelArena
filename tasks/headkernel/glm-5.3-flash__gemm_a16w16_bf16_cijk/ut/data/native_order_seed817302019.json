@@ -1,0 +1,1045 @@
+{
+  "case_id": "bfloat16-decode-m64-n128-k4096-bf16_gemm-e80c844c6141cb495f6bb866",
+  "seed": 817302019,
+  "pair": [
+    27,
+    53
+  ],
+  "partials": [
+    [
+      48541,
+      48680
+    ],
+    [
+      15894,
+      48643
+    ],
+    [
+      15905,
+      48626
+    ],
+    [
+      48435,
+      48691
+    ],
+    [
+      15720,
+      48677
+    ],
+    [
+      15126,
+      48626
+    ],
+    [
+      48604,
+      48680
+    ],
+    [
+      15775,
+      48755
+    ],
+    [
+      15641,
+      48724
+    ],
+    [
+      15692,
+      48706
+    ],
+    [
+      15897,
+      48589
+    ],
+    [
+      48476,
+      48723
+    ],
+    [
+      15856,
+      48747
+    ],
+    [
+      48560,
+      48735
+    ],
+    [
+      48533,
+      48665
+    ],
+    [
+      15797,
+      48608
+    ]
+  ],
+  "CPU_reference_values": [
+    0.443359375,
+    -2.671875
+  ],
+  "outcomes": [
+    {
+      "bits": [
+        16093,
+        49192
+      ],
+      "old_search_reachable": false,
+      "original_pointwise_failed_lanes": [
+        1
+      ]
+    },
+    {
+      "bits": [
+        16094,
+        49192
+      ],
+      "old_search_reachable": false,
+      "original_pointwise_failed_lanes": [
+        1
+      ]
+    },
+    {
+      "bits": [
+        16095,
+        49192
+      ],
+      "old_search_reachable": false,
+      "original_pointwise_failed_lanes": [
+        1
+      ]
+    },
+    {
+      "bits": [
+        16096,
+        49192
+      ],
+      "old_search_reachable": false,
+      "original_pointwise_failed_lanes": [
+        1
+      ]
+    },
+    {
+      "bits": [
+        16097,
+        49192
+      ],
+      "old_search_reachable": true,
+      "original_pointwise_failed_lanes": [
+        1
+      ]
+    },
+    {
+      "bits": [
+        16098,
+        49192
+      ],
+      "old_search_reachable": true,
+      "original_pointwise_failed_lanes": [
+        1
+      ]
+    },
+    {
+      "bits": [
+        16099,
+        49192
+      ],
+      "old_search_reachable": false,
+      "original_pointwise_failed_lanes": [
+        1
+      ]
+    },
+    {
+      "bits": [
+        16100,
+        49192
+      ],
+      "old_search_reachable": false,
+      "original_pointwise_failed_lanes": [
+        1
+      ]
+    },
+    {
+      "bits": [
+        16101,
+        49192
+      ],
+      "old_search_reachable": false,
+      "original_pointwise_failed_lanes": [
+        1
+      ]
+    },
+    {
+      "bits": [
+        16102,
+        49192
+      ],
+      "old_search_reachable": false,
+      "original_pointwise_failed_lanes": [
+        1
+      ]
+    },
+    {
+      "bits": [
+        16103,
+        49192
+      ],
+      "old_search_reachable": false,
+      "original_pointwise_failed_lanes": [
+        1
+      ]
+    },
+    {
+      "bits": [
+        16104,
+        49192
+      ],
+      "old_search_reachable": false,
+      "original_pointwise_failed_lanes": [
+        1
+      ]
+    },
+    {
+      "bits": [
+        16105,
+        49192
+      ],
+      "old_search_reachable": false,
+      "original_pointwise_failed_lanes": [
+        1
+      ]
+    },
+    {
+      "bits": [
+        16092,
+        49193
+      ],
+      "old_search_reachable": false,
+      "original_pointwise_failed_lanes": []
+    },
+    {
+      "bits": [
+        16093,
+        49193
+      ],
+      "old_search_reachable": false,
+      "original_pointwise_failed_lanes": []
+    },
+    {
+      "bits": [
+        16094,
+        49193
+      ],
+      "old_search_reachable": true,
+      "original_pointwise_failed_lanes": []
+    },
+    {
+      "bits": [
+        16095,
+        49193
+      ],
+      "old_search_reachable": true,
+      "original_pointwise_failed_lanes": []
+    },
+    {
+      "bits": [
+        16096,
+        49193
+      ],
+      "old_search_reachable": true,
+      "original_pointwise_failed_lanes": []
+    },
+    {
+      "bits": [
+        16097,
+        49193
+      ],
+      "old_search_reachable": true,
+      "original_pointwise_failed_lanes": []
+    },
+    {
+      "bits": [
+        16098,
+        49193
+      ],
+      "old_search_reachable": true,
+      "original_pointwise_failed_lanes": []
+    },
+    {
+      "bits": [
+        16099,
+        49193
+      ],
+      "old_search_reachable": true,
+      "original_pointwise_failed_lanes": []
+    },
+    {
+      "bits": [
+        16100,
+        49193
+      ],
+      "old_search_reachable": true,
+      "original_pointwise_failed_lanes": []
+    },
+    {
+      "bits": [
+        16101,
+        49193
+      ],
+      "old_search_reachable": true,
+      "original_pointwise_failed_lanes": []
+    },
+    {
+      "bits": [
+        16102,
+        49193
+      ],
+      "old_search_reachable": true,
+      "original_pointwise_failed_lanes": []
+    },
+    {
+      "bits": [
+        16103,
+        49193
+      ],
+      "old_search_reachable": true,
+      "original_pointwise_failed_lanes": []
+    },
+    {
+      "bits": [
+        16104,
+        49193
+      ],
+      "old_search_reachable": false,
+      "original_pointwise_failed_lanes": []
+    },
+    {
+      "bits": [
+        16105,
+        49193
+      ],
+      "old_search_reachable": false,
+      "original_pointwise_failed_lanes": []
+    },
+    {
+      "bits": [
+        16106,
+        49193
+      ],
+      "old_search_reachable": false,
+      "original_pointwise_failed_lanes": []
+    },
+    {
+      "bits": [
+        16090,
+        49194
+      ],
+      "old_search_reachable": false,
+      "original_pointwise_failed_lanes": []
+    },
+    {
+      "bits": [
+        16091,
+        49194
+      ],
+      "old_search_reachable": false,
+      "original_pointwise_failed_lanes": []
+    },
+    {
+      "bits": [
+        16092,
+        49194
+      ],
+      "old_search_reachable": false,
+      "original_pointwise_failed_lanes": []
+    },
+    {
+      "bits": [
+        16093,
+        49194
+      ],
+      "old_search_reachable": true,
+      "original_pointwise_failed_lanes": []
+    },
+    {
+      "bits": [
+        16094,
+        49194
+      ],
+      "old_search_reachable": true,
+      "original_pointwise_failed_lanes": []
+    },
+    {
+      "bits": [
+        16095,
+        49194
+      ],
+      "old_search_reachable": true,
+      "original_pointwise_failed_lanes": []
+    },
+    {
+      "bits": [
+        16096,
+        49194
+      ],
+      "old_search_reachable": true,
+      "original_pointwise_failed_lanes": []
+    },
+    {
+      "bits": [
+        16097,
+        49194
+      ],
+      "old_search_reachable": true,
+      "original_pointwise_failed_lanes": []
+    },
+    {
+      "bits": [
+        16098,
+        49194
+      ],
+      "old_search_reachable": true,
+      "original_pointwise_failed_lanes": []
+    },
+    {
+      "bits": [
+        16099,
+        49194
+      ],
+      "old_search_reachable": true,
+      "original_pointwise_failed_lanes": []
+    },
+    {
+      "bits": [
+        16100,
+        49194
+      ],
+      "old_search_reachable": true,
+      "original_pointwise_failed_lanes": []
+    },
+    {
+      "bits": [
+        16101,
+        49194
+      ],
+      "old_search_reachable": true,
+      "original_pointwise_failed_lanes": []
+    },
+    {
+      "bits": [
+        16102,
+        49194
+      ],
+      "old_search_reachable": true,
+      "original_pointwise_failed_lanes": []
+    },
+    {
+      "bits": [
+        16103,
+        49194
+      ],
+      "old_search_reachable": true,
+      "original_pointwise_failed_lanes": []
+    },
+    {
+      "bits": [
+        16104,
+        49194
+      ],
+      "old_search_reachable": true,
+      "original_pointwise_failed_lanes": []
+    },
+    {
+      "bits": [
+        16105,
+        49194
+      ],
+      "old_search_reachable": false,
+      "original_pointwise_failed_lanes": []
+    },
+    {
+      "bits": [
+        16106,
+        49194
+      ],
+      "old_search_reachable": false,
+      "original_pointwise_failed_lanes": []
+    },
+    {
+      "bits": [
+        16107,
+        49194
+      ],
+      "old_search_reachable": false,
+      "original_pointwise_failed_lanes": []
+    },
+    {
+      "bits": [
+        16090,
+        49195
+      ],
+      "old_search_reachable": false,
+      "original_pointwise_failed_lanes": []
+    },
+    {
+      "bits": [
+        16091,
+        49195
+      ],
+      "old_search_reachable": false,
+      "original_pointwise_failed_lanes": []
+    },
+    {
+      "bits": [
+        16092,
+        49195
+      ],
+      "old_search_reachable": false,
+      "original_pointwise_failed_lanes": []
+    },
+    {
+      "bits": [
+        16093,
+        49195
+      ],
+      "old_search_reachable": false,
+      "original_pointwise_failed_lanes": []
+    },
+    {
+      "bits": [
+        16094,
+        49195
+      ],
+      "old_search_reachable": true,
+      "original_pointwise_failed_lanes": []
+    },
+    {
+      "bits": [
+        16095,
+        49195
+      ],
+      "old_search_reachable": true,
+      "original_pointwise_failed_lanes": []
+    },
+    {
+      "bits": [
+        16096,
+        49195
+      ],
+      "old_search_reachable": true,
+      "original_pointwise_failed_lanes": []
+    },
+    {
+      "bits": [
+        16097,
+        49195
+      ],
+      "old_search_reachable": true,
+      "original_pointwise_failed_lanes": []
+    },
+    {
+      "bits": [
+        16098,
+        49195
+      ],
+      "old_search_reachable": true,
+      "original_pointwise_failed_lanes": []
+    },
+    {
+      "bits": [
+        16099,
+        49195
+      ],
+      "old_search_reachable": true,
+      "original_pointwise_failed_lanes": []
+    },
+    {
+      "bits": [
+        16100,
+        49195
+      ],
+      "old_search_reachable": true,
+      "original_pointwise_failed_lanes": []
+    },
+    {
+      "bits": [
+        16101,
+        49195
+      ],
+      "old_search_reachable": true,
+      "original_pointwise_failed_lanes": []
+    },
+    {
+      "bits": [
+        16102,
+        49195
+      ],
+      "old_search_reachable": true,
+      "original_pointwise_failed_lanes": []
+    },
+    {
+      "bits": [
+        16103,
+        49195
+      ],
+      "old_search_reachable": true,
+      "original_pointwise_failed_lanes": []
+    },
+    {
+      "bits": [
+        16104,
+        49195
+      ],
+      "old_search_reachable": true,
+      "original_pointwise_failed_lanes": []
+    },
+    {
+      "bits": [
+        16105,
+        49195
+      ],
+      "old_search_reachable": false,
+      "original_pointwise_failed_lanes": []
+    },
+    {
+      "bits": [
+        16106,
+        49195
+      ],
+      "old_search_reachable": false,
+      "original_pointwise_failed_lanes": []
+    },
+    {
+      "bits": [
+        16107,
+        49195
+      ],
+      "old_search_reachable": false,
+      "original_pointwise_failed_lanes": []
+    },
+    {
+      "bits": [
+        16090,
+        49196
+      ],
+      "old_search_reachable": false,
+      "original_pointwise_failed_lanes": []
+    },
+    {
+      "bits": [
+        16091,
+        49196
+      ],
+      "old_search_reachable": false,
+      "original_pointwise_failed_lanes": []
+    },
+    {
+      "bits": [
+        16092,
+        49196
+      ],
+      "old_search_reachable": false,
+      "original_pointwise_failed_lanes": []
+    },
+    {
+      "bits": [
+        16093,
+        49196
+      ],
+      "old_search_reachable": false,
+      "original_pointwise_failed_lanes": []
+    },
+    {
+      "bits": [
+        16094,
+        49196
+      ],
+      "old_search_reachable": true,
+      "original_pointwise_failed_lanes": []
+    },
+    {
+      "bits": [
+        16095,
+        49196
+      ],
+      "old_search_reachable": true,
+      "original_pointwise_failed_lanes": []
+    },
+    {
+      "bits": [
+        16096,
+        49196
+      ],
+      "old_search_reachable": true,
+      "original_pointwise_failed_lanes": []
+    },
+    {
+      "bits": [
+        16097,
+        49196
+      ],
+      "old_search_reachable": true,
+      "original_pointwise_failed_lanes": []
+    },
+    {
+      "bits": [
+        16098,
+        49196
+      ],
+      "old_search_reachable": true,
+      "original_pointwise_failed_lanes": []
+    },
+    {
+      "bits": [
+        16099,
+        49196
+      ],
+      "old_search_reachable": true,
+      "original_pointwise_failed_lanes": []
+    },
+    {
+      "bits": [
+        16100,
+        49196
+      ],
+      "old_search_reachable": true,
+      "original_pointwise_failed_lanes": []
+    },
+    {
+      "bits": [
+        16101,
+        49196
+      ],
+      "old_search_reachable": true,
+      "original_pointwise_failed_lanes": []
+    },
+    {
+      "bits": [
+        16102,
+        49196
+      ],
+      "old_search_reachable": true,
+      "original_pointwise_failed_lanes": []
+    },
+    {
+      "bits": [
+        16103,
+        49196
+      ],
+      "old_search_reachable": true,
+      "original_pointwise_failed_lanes": []
+    },
+    {
+      "bits": [
+        16104,
+        49196
+      ],
+      "old_search_reachable": true,
+      "original_pointwise_failed_lanes": []
+    },
+    {
+      "bits": [
+        16105,
+        49196
+      ],
+      "old_search_reachable": false,
+      "original_pointwise_failed_lanes": []
+    },
+    {
+      "bits": [
+        16106,
+        49196
+      ],
+      "old_search_reachable": false,
+      "original_pointwise_failed_lanes": []
+    },
+    {
+      "bits": [
+        16107,
+        49196
+      ],
+      "old_search_reachable": false,
+      "original_pointwise_failed_lanes": []
+    },
+    {
+      "bits": [
+        16091,
+        49197
+      ],
+      "old_search_reachable": false,
+      "original_pointwise_failed_lanes": []
+    },
+    {
+      "bits": [
+        16092,
+        49197
+      ],
+      "old_search_reachable": false,
+      "original_pointwise_failed_lanes": []
+    },
+    {
+      "bits": [
+        16093,
+        49197
+      ],
+      "old_search_reachable": false,
+      "original_pointwise_failed_lanes": []
+    },
+    {
+      "bits": [
+        16094,
+        49197
+      ],
+      "old_search_reachable": false,
+      "original_pointwise_failed_lanes": []
+    },
+    {
+      "bits": [
+        16095,
+        49197
+      ],
+      "old_search_reachable": false,
+      "original_pointwise_failed_lanes": []
+    },
+    {
+      "bits": [
+        16096,
+        49197
+      ],
+      "old_search_reachable": true,
+      "original_pointwise_failed_lanes": []
+    },
+    {
+      "bits": [
+        16097,
+        49197
+      ],
+      "old_search_reachable": true,
+      "original_pointwise_failed_lanes": []
+    },
+    {
+      "bits": [
+        16098,
+        49197
+      ],
+      "old_search_reachable": true,
+      "original_pointwise_failed_lanes": []
+    },
+    {
+      "bits": [
+        16099,
+        49197
+      ],
+      "old_search_reachable": true,
+      "original_pointwise_failed_lanes": []
+    },
+    {
+      "bits": [
+        16100,
+        49197
+      ],
+      "old_search_reachable": true,
+      "original_pointwise_failed_lanes": []
+    },
+    {
+      "bits": [
+        16101,
+        49197
+      ],
+      "old_search_reachable": true,
+      "original_pointwise_failed_lanes": []
+    },
+    {
+      "bits": [
+        16102,
+        49197
+      ],
+      "old_search_reachable": true,
+      "original_pointwise_failed_lanes": []
+    },
+    {
+      "bits": [
+        16103,
+        49197
+      ],
+      "old_search_reachable": false,
+      "original_pointwise_failed_lanes": []
+    },
+    {
+      "bits": [
+        16104,
+        49197
+      ],
+      "old_search_reachable": false,
+      "original_pointwise_failed_lanes": []
+    },
+    {
+      "bits": [
+        16105,
+        49197
+      ],
+      "old_search_reachable": false,
+      "original_pointwise_failed_lanes": []
+    },
+    {
+      "bits": [
+        16106,
+        49197
+      ],
+      "old_search_reachable": false,
+      "original_pointwise_failed_lanes": []
+    },
+    {
+      "bits": [
+        16107,
+        49197
+      ],
+      "old_search_reachable": false,
+      "original_pointwise_failed_lanes": []
+    },
+    {
+      "bits": [
+        16092,
+        49198
+      ],
+      "old_search_reachable": false,
+      "original_pointwise_failed_lanes": [
+        1
+      ]
+    },
+    {
+      "bits": [
+        16093,
+        49198
+      ],
+      "old_search_reachable": false,
+      "original_pointwise_failed_lanes": [
+        1
+      ]
+    },
+    {
+      "bits": [
+        16094,
+        49198
+      ],
+      "old_search_reachable": false,
+      "original_pointwise_failed_lanes": [
+        1
+      ]
+    },
+    {
+      "bits": [
+        16095,
+        49198
+      ],
+      "old_search_reachable": false,
+      "original_pointwise_failed_lanes": [
+        1
+      ]
+    },
+    {
+      "bits": [
+        16096,
+        49198
+      ],
+      "old_search_reachable": false,
+      "original_pointwise_failed_lanes": [
+        1
+      ]
+    },
+    {
+      "bits": [
+        16097,
+        49198
+      ],
+      "old_search_reachable": false,
+      "original_pointwise_failed_lanes": [
+        1
+      ]
+    },
+    {
+      "bits": [
+        16098,
+        49198
+      ],
+      "old_search_reachable": true,
+      "original_pointwise_failed_lanes": [
+        1
+      ]
+    },
+    {
+      "bits": [
+        16099,
+        49198
+      ],
+      "old_search_reachable": false,
+      "original_pointwise_failed_lanes": [
+        1
+      ]
+    },
+    {
+      "bits": [
+        16100,
+        49198
+      ],
+      "old_search_reachable": false,
+      "original_pointwise_failed_lanes": [
+        1
+      ]
+    },
+    {
+      "bits": [
+        16101,
+        49198
+      ],
+      "old_search_reachable": false,
+      "original_pointwise_failed_lanes": [
+        1
+      ]
+    },
+    {
+      "bits": [
+        16102,
+        49198
+      ],
+      "old_search_reachable": false,
+      "original_pointwise_failed_lanes": [
+        1
+      ]
+    },
+    {
+      "bits": [
+        16103,
+        49198
+      ],
+      "old_search_reachable": false,
+      "original_pointwise_failed_lanes": [
+        1
+      ]
+    },
+    {
+      "bits": [
+        16104,
+        49198
+      ],
+      "old_search_reachable": false,
+      "original_pointwise_failed_lanes": [
+        1
+      ]
+    },
+    {
+      "bits": [
+        16105,
+        49198
+      ],
+      "old_search_reachable": false,
+      "original_pointwise_failed_lanes": [
+        1
+      ]
+    }
+  ],
+  "invalid_shared_pair_bits": [
+    16090,
+    49192
+  ],
+  "source": "Exhaustive independent C++ subset/state enumeration, all113witnesses replayed with PyTorch.",
+  "analysis_sha256": "3cbaec066b268b43027d32dd528c1f69e885555f87415a3caf13cc7d4b4d9b44",
+  "native_partial_rounding_limit": "Nine differences elsewhere were observed; no target-partial difference. This vector does not claim global exactness of the partial model."
+}

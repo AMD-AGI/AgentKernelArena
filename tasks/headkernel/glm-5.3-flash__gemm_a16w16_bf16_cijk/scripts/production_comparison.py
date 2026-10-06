@@ -90,6 +90,6 @@ def main(request=None):
     try:return compare(request=request)
     except BaseException as error:
         path=task.ROOT/'build/native_production_failure.json';path.parent.mkdir(exist_ok=True)
-        path.write_text(json.dumps({**CONTEXT,'error_type':type(error).__name__,'error':str(error)},indent=2)+'\n')
+        path.write_text(json.dumps({**CONTEXT,'error_type':type(error).__name__,'error':str(error),'native_precision_evidence':getattr(error,'native_precision_evidence',None)},indent=2)+'\n')
         raise
 if __name__=='__main__':main()

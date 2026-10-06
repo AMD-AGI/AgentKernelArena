@@ -13,7 +13,7 @@
     "atomic_updates": "0x52d0..0x5340 global_atomic_pk_add_bf16 after LDS layout transpose; one shared arrival order per adjacent BF16 pair; round to nearest even after each atomic update.",
     "initialization": "0x2ca0..0x2d18: split0 waits for semaphore and clears output before release."
   },
-  "acceptance": "Original rtol0.01/atol0.02 first on every native element. Each failing pair must equal an explicit legal order of16 input-derived partials bit for bit. Deterministic bounded order search rejects on exhaustion; no tolerance expansion or interval acceptance.",
+  "acceptance": "Original rtol0.01/atol0.02 first on every native element. Each failing pair must equal an explicit shared legal order of16 input-derived BF16 partials bit for bit. The existing fast order search is followed by deterministic exact inverse subset reachability. Every fallback witness is independently replayed before acceptance. No tolerance expansion or interval-based acceptance.",
   "candidate_float32": {
     "rtol": 1.3e-06,
     "atol": 1e-05,
@@ -57,5 +57,27 @@
       "elapsed_probe_seconds": 9.586138075217605,
       "limitation": "The earlier rare native threshold failure was not reproduced; largest-error pairs exercised the exact model independently. Full20-case framework qualification remains pending."
     }
+  },
+  "exact_order_fallback": {
+    "algorithm": "Exact monotone scalar subset bounds plus exhaustive inverse paired reachability over the finite BF16 addition lattice.",
+    "case_seed817302019": {
+      "legal_outcomes": 113,
+      "old_fast_search_outcomes": 54,
+      "missed_legal_outcomes": 59,
+      "missed_legal_outcomes_outside_pointwise_threshold": 24
+    },
+    "GPU_target_partial_and_RNE_controls": "All32target partials match isolated native contributions; all8atomic rounding controls matchRNE.",
+    "original_failed_output_limit": "The original failed GPU values were unavailable; replay did not reproduce a strict failure. Finite search incompleteness is independently proved on those exact inputs.",
+    "native_partial_model_not_globally_exact": {
+      "different_partial_elements_elsewhere": 9,
+      "total_partial_elements": 131072,
+      "detail": "Near-halfway or cancellation discrepancies outside the target pair remain explicit; no GPU-derived partial substitution or wider error acceptance is introduced."
+    },
+    "failure_evidence": "Observed failed pair bits,16partial pair bits,and CPU reference pair bits are retained in native_production_failure.json.",
+    "protected_helper": {
+      "path": "ut/native_order_exact.py",
+      "sha256": "1f3759ed5a00d047a03d673a45f1429909023b60f693be5ab716067b117984ca"
+    },
+    "CPU_regression": "All113 independently enumerated outcomes accepted with explicit shared witnesses, including24 missed outcomes beyond the old pointwise threshold. A jointly unreachable pair is rejected and preserves observed/partial bits."
   }
 }

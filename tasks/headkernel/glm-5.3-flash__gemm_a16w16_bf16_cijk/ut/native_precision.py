@@ -2,7 +2,8 @@
 
 The pinned ASM rounds each256-term FP32 partial with bits+0x8000, then
 atomically adds packed BF16 pairs. A failing pair must equal one explicit
-legal order bit for bit. Exhausting the bounded search rejects the result.
+legal order bit for bit. A fast search falls back to exact inverse reachability;
+results without an explicit shared-order witness are rejected.
 """
 from functools import lru_cache
 import hashlib
@@ -79,6 +80,23 @@ def asm_partials(inputs):
     return torch.stack([round_asm_partial(A[:,start:start+256]@B[start:start+256]) for start in range(0,4096,256)])
 
 
+class NativeOrderProofError(AssertionError):
+    def __init__(self,evidence):
+        self.native_precision_evidence=evidence
+        positions=[[p['row'],p['pair_column']] for p in evidence['failed_pairs']]
+        super().__init__('No exact legal ASM atomic order proved for native pairs: '+str(positions))
+
+
+def proof_failure(selected,target,positions,pending,visited,reason):
+    import torch
+    pairs=[]
+    for index in pending.tolist():
+        pairs.append({'row':int(positions[index,0]),'pair_column':int(positions[index,1]),
+            'observed_bf16_bits':[int(x)&65535 for x in target[index].tolist()],
+            'partial_bf16_bits':[[int(x)&65535 for x in row] for row in selected[:,index].to(torch.bfloat16).contiguous().view(torch.int16).tolist()]})
+    return NativeOrderProofError({'schema':'native-ASM-exact-order-failure-v1','fast_orders_examined':visited,'reason':reason,'failed_pairs':pairs})
+
+
 def exact_pair_orders(parts,observed,positions,*,max_orders=65536):
     import torch
     if parts.shape[0]!=16 or observed.dtype!=torch.bfloat16 or observed.shape[1]%2:raise AssertionError('Expected16 native packed BF16 partials')
@@ -92,8 +110,33 @@ def exact_pair_orders(parts,observed,positions,*,max_orders=65536):
         exact=(acc.contiguous().view(torch.int16)==target[pending]).all(dim=1)
         for index in pending[exact].tolist():witnesses[index]=order
         pending=pending[~exact];visited+=1
-    if pending.numel():raise AssertionError('No exact legal ASM atomic order proved for native pairs: '+str(positions[pending].tolist()[:16]))
-    return {'orders_examined':visited,'pairs_proved_exactly':len(positions),
+    fallback=[]
+    if pending.numel():
+        from native_order_exact import ExactPairOrders
+        groups={}
+        for index in pending.tolist():
+            bits=selected[:,index].to(torch.bfloat16).contiguous().view(torch.int16)
+            key=tuple(int(x)&65535 for x in bits.flatten().tolist())
+            groups.setdefault(key,[]).append(index)
+        unproved=[]
+        for key,indices in groups.items():
+            try:model=ExactPairOrders([key[i:i+2] for i in range(0,32,2)])
+            except Exception as error:
+                raise proof_failure(selected,target,positions,pending,visited,'Exact model construction failed: '+str(error)) from error
+            for index in indices:
+                target_bits=[int(x)&65535 for x in target[index].tolist()]
+                order=model.solve(target_bits)
+                if order is None:unproved.append(index);continue
+                # Independently replay every returned witness with the same
+                # BF16 operations as the original proof, before accepting it.
+                if sorted(order)!=list(range(16)):raise AssertionError('Invalid exact-order witness')
+                accum=torch.zeros((2,),dtype=torch.bfloat16,device='cpu')
+                for split in order:accum=(accum.float()+selected[split,index]).to(torch.bfloat16)
+                if not bool((accum.contiguous().view(torch.int16)==target[index]).all()):raise AssertionError('Exact-order witness failed independent replay')
+                witnesses[index]=order
+            fallback.append({'method':'exact_inverse_subset_reachability','witnesses_independently_replayed':True,'pairs':len(indices),'states_examined':model.visited,'unreachable_states_cached':len(model.failed)})
+        if unproved:raise proof_failure(selected,target,positions,torch.tensor(unproved),visited,'Unreachable under exact16-partial shared-order RNE model')
+    return {'exact_fallback':fallback,'orders_examined':visited,'pairs_proved_exactly':len(positions),
         'witnesses':[{'row':int(positions[i,0]),'pair_column':int(positions[i,1]),'arrival_order':witnesses[i]} for i in range(len(positions))]}
 
 
@@ -111,6 +154,12 @@ def calibrate(case,inputs,actual,expected,*,dispatch=None,check_sources=True):
     dispatch=dispatch_for(inputs) if dispatch is None else dispatch
     if dispatch.get('libtype')!='asm' or dispatch.get('kernelName')!=KERNEL or dispatch.get('splitK')!=16:raise AssertionError('Unsupported native precision dispatch')
     positions=bad.reshape(bad.shape[0],-1,2).any(dim=2).nonzero()
-    proof=exact_pair_orders(asm_partials(inputs),actual,positions)
+    try:proof=exact_pair_orders(asm_partials(inputs),actual,positions)
+    except NativeOrderProofError as error:
+        error.native_precision_evidence['case_id']=case['case_id']
+        for pair in error.native_precision_evidence['failed_pairs']:
+            row,col=pair['row'],2*pair['pair_column']
+            pair['CPU_reference_bf16_bits']=[int(x)&65535 for x in expected[row,col:col+2].contiguous().view(torch.int16).tolist()]
+        raise
     record.update(exact_exception_pairs=len(positions),native_dispatch=dispatch,proof=proof)
     return record
