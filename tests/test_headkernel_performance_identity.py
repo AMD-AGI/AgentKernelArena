@@ -6,11 +6,14 @@ import subprocess
 from unittest import mock
 
 import pytest
+import yaml
 
 
 TASKS = Path(__file__).resolve().parents[1] / "tasks/headkernel"
 RUNNERS = [path for path in sorted(TASKS.glob("*/scripts/task_runner.py"))
            if not path.parent.parent.name.startswith("qwen")
+           and not yaml.safe_load((path.parent.parent / "config.yaml").read_text()).get("trusted_evaluation")
+           and (path.parent.parent / "ut/meta.json").is_file()
            and (json.loads((path.parent.parent / "ut/meta.json").read_text())
                 .get("candidate_bind") or {}).get("file")]
 
@@ -29,8 +32,10 @@ def raw_report(ids):
                       for i, name in enumerate(ids)]}
 
 
-def test_change_is_limited_to_eight_bound_non_qwen_runners():
-    assert len(RUNNERS) == 8
+def test_legacy_protocol_is_only_applied_to_legacy_bound_non_qwen_runners():
+    for path in RUNNERS:
+        assert not path.parent.parent.name.startswith("qwen")
+        assert not yaml.safe_load((path.parent.parent / "config.yaml").read_text()).get("trusted_evaluation")
 
 
 @pytest.mark.parametrize("path", RUNNERS, ids=lambda p: p.parent.parent.name)

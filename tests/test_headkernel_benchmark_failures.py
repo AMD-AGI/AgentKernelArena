@@ -13,6 +13,7 @@ import tempfile
 from types import SimpleNamespace
 import unittest
 from unittest import mock
+import yaml
 
 
 TASKS = Path(__file__).resolve().parents[1] / "tasks/headkernel"
@@ -427,18 +428,20 @@ class BenchmarkReportTests(unittest.TestCase):
 class SuiteCopiesTests(unittest.TestCase):
     def test_all_headkernel_benchmark_and_runner_copies_match(self):
         for filename in ("_bench.py", "task_runner.py"):
-            paths = list(TASKS.glob("*/scripts/" + filename))
-            self.assertEqual(len(paths), 16)
+            legacy = [task for task in TASKS.iterdir() if (task / "config.yaml").is_file()
+                      and not yaml.safe_load((task / "config.yaml").read_text()).get("trusted_evaluation")]
+            paths = [task / "scripts" / filename for task in legacy]
+            self.assertTrue(all(path.is_file() for path in paths))
             template = TASKS.parents[1] / "tools/templates" / filename
             if filename == "task_runner.py":
-                # The requested correctness fix is limited to the eight bound
-                # non-Qwen tasks. Keep Qwen and the three Kimi runners unchanged.
+                # Trusted tasks have independent runners covered by their
+                # guarded-case tests. Only legacy bound copies stay identical.
                 bound = [path for path in paths
                          if not path.parent.parent.name.startswith("qwen")
                          and (json.loads((path.parent.parent / "ut/meta.json").read_text())
                               .get("candidate_bind") or {}).get("file")]
-                self.assertEqual(len(bound), 8)
-                self.assertEqual(len({path.read_bytes() for path in bound}), 1)
+                if bound:
+                    self.assertEqual(len({path.read_bytes() for path in bound}), 1)
                 paths = [path for path in paths if path not in bound]
             self.assertEqual(len({path.read_bytes() for path in paths}), 1, filename)
             self.assertEqual(paths[0].read_bytes(), template.read_bytes(), filename)

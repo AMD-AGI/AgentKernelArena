@@ -138,9 +138,10 @@ scalar arguments or call multiplicity.
 
 For performance, `checked_replays` accepts protected callbacks:
 
-- `reset_inputs(seed)` copies fresh input values and computes an independent
-  reference before the candidate executes. Restore every mutable input/state
-  used by the kernel.
+- `reset_inputs(seed)` copies fresh input values and restores every mutable
+  input/state used by the kernel. Return CPU-owned truth: either CPU reference
+  outputs or an input snapshot for a deferred reference. Do not compute or keep
+  the current golden output on the GPU before the candidate executes.
 - `initialize_outputs()` poisons pure outputs or restores the required initial
   state of output/inout buffers. A no-op must be rejected by the oracle.
 - `observe()` describes the actual complete case through `observe_case`.
@@ -148,7 +149,10 @@ For performance, `checked_replays` accepts protected callbacks:
 - `measure(call)` invokes `call` exactly once and returns synchronized device
   milliseconds. Reset, reference calculation and oracle checks remain outside
   this timing interval.
-- `verify(reference)` raises on wrong output or illegal input mutation.
+- `verify(truth)` first snapshots candidate outputs and immutable input storage
+  to CPU. When the independent reference needs the GPU, compute it only after
+  those observations are frozen, using the CPU input snapshot. Compare the
+  frozen observations and raise on wrong output or illegal input mutation.
 
 The helper executes resets and validation for warmups and every measured replay.
 It rejects timers that omit or repeat the replay and returns a performance row

@@ -1,4 +1,8 @@
-"""CPU behavior tests for the eight scoped runners, using real child interpreters."""
+"""CPU behavior tests for remaining legacy bound runners and child interpreters.
+
+Opted-in trusted_evaluation tasks use test_task_contract and their task-specific
+source/oracle tests; they no longer implement this legacy overlay protocol.
+"""
 import ast
 import importlib.util
 import json
@@ -6,6 +10,7 @@ import os
 from pathlib import Path
 
 import pytest
+import yaml
 
 
 TASKS = Path(__file__).resolve().parents[1] / "tasks/headkernel"
@@ -19,6 +24,9 @@ BOUND_TASKS = (
     "minimax-m3__gqa_share_sparse_decode_kernel",
     "minimax-m3__gqa_share_sparse_fwd_kernel",
 )
+BOUND_TASKS = tuple(name for name in BOUND_TASKS
+                    if not yaml.safe_load((TASKS/name/"config.yaml").read_text()).get("trusted_evaluation"))
+pytestmark = pytest.mark.skipif(not BOUND_TASKS, reason="all scoped tasks use the guarded-case protocol")
 
 
 def fixture_runner(tmp_path, monkeypatch, name, candidate="def kernel(): return 41\n"):
@@ -139,7 +147,7 @@ def test_wrong_candidate_cannot_receive_baseline_correctness_pass(tmp_path, monk
     assert (task / "ut/UT-RAN").exists()
 
 
-@pytest.mark.parametrize("name", [BOUND_TASKS[0], BOUND_TASKS[1]])
+@pytest.mark.parametrize("name", BOUND_TASKS[:2])
 def test_swallowed_overlay_import_error_fails_before_ut(tmp_path, monkeypatch, name):
     runner, task = fixture_runner(tmp_path, monkeypatch, name, "raise RuntimeError('broken candidate import')\n")
     ok, error = runner.run_correctness({}, 20)
@@ -162,7 +170,7 @@ def test_removed_binding_cannot_reuse_an_earlier_pass(tmp_path, monkeypatch):
 
 
 def test_candidate_exit_zero_before_attestation_is_not_a_pass(tmp_path, monkeypatch):
-    runner, task = fixture_runner(tmp_path, monkeypatch, BOUND_TASKS[1],
+    runner, task = fixture_runner(tmp_path, monkeypatch, BOUND_TASKS[0],
                                   "import os\nos._exit(0)\n")
     ok, error = runner.run_correctness({}, 20)
     assert not ok
