@@ -124,6 +124,19 @@
           "700146943b964c266daa7c8a8362e9bd0d0d902c1913c841fa9bb15182829766"
         ]
       }
+    },
+    {
+      "family": "portable_case_contract",
+      "description": "Captured BF16 decode split/reduce dispatch is checked before canonical graph replay and independent output validation.",
+      "entrypoint": "scripts/task_runner.py",
+      "entrypoint_sha256": [
+        "76daf405b421eb3ab6b825148147a23cd642ce85512e84a881c115f07472e9ef"
+      ],
+      "files_sha256": {
+        "ut/dispatch_contract.py": [
+          "17c6b6eecc96d07b4500ba266aacb716a2984365ebd4117a2fb601309444f881"
+        ]
+      }
     }
   ]
 }

@@ -1,0 +1,108 @@
+{
+  "schema": "captured-editable-dispatch-v1",
+  "case_manifest_sha256": "feba83237fe94a96d3314e4f84810397a482336d84a8ff29c8e92dfda3ce34d3",
+  "case_manifest_fingerprint": "5718322934e7cb3042f3d18681d73a700ef403ec2e26b6f6f387d20b252dd832",
+  "native_source_sha256": "fd1e927877cdefcf8cabcbc6b0e04ef39ea61cd5967a4fbfd6c6e67463f2ccc5",
+  "source_capture_run_id": "deepseek-capture-csr-v7-194603",
+  "all_current_cases_preserved": true,
+  "new_cases_added": false,
+  "native_implementation_bytes_changed": false,
+  "cases": [
+    {
+      "case_id": "deepseek_mla_decode-98f9f736c04a9282790736a9",
+      "fixture": {
+        "path": "fixtures/deepseek_mla_decode-98f9f736c04a9282790736a9.json",
+        "sha256": "6bc548991013d36510ef1f7333cb923909850a506f322118caec6a75588ec3c1"
+      },
+      "occurrences": 30720,
+      "query_shape": [
+        64,
+        16,
+        512
+      ],
+      "query_dtype": "bfloat16",
+      "kv_dtype": "bfloat16",
+      "kv_scales": null,
+      "T": 64,
+      "H": 16,
+      "D": 512,
+      "block_h": 16,
+      "observed_num_cu": 256,
+      "kv_splits": 4,
+      "selected_targets": [
+        "_paged_decode_split_kernel",
+        "_paged_decode_reduce_kernel"
+      ]
+    },
+    {
+      "case_id": "deepseek_mla_decode-ef9a66de43776b4e2e04f22b-work-531ff7069c2236ba",
+      "fixture": {
+        "path": "fixtures/deepseek_mla_decode-ef9a66de43776b4e2e04f22b-work-531ff7069c2236ba.json",
+        "sha256": "36977106e1fbf567dece555e8f387ccfcde3e521a130608c79924d0db05aca9d"
+      },
+      "occurrences": 31,
+      "query_shape": [
+        64,
+        16,
+        512
+      ],
+      "query_dtype": "bfloat16",
+      "kv_dtype": "bfloat16",
+      "kv_scales": null,
+      "T": 64,
+      "H": 16,
+      "D": 512,
+      "block_h": 16,
+      "observed_num_cu": 256,
+      "kv_splits": 4,
+      "selected_targets": [
+        "_paged_decode_split_kernel",
+        "_paged_decode_reduce_kernel"
+      ]
+    },
+    {
+      "case_id": "deepseek_mla_decode-ef9a66de43776b4e2e04f22b",
+      "fixture": {
+        "path": "fixtures/deepseek_mla_decode-ef9a66de43776b4e2e04f22b.json",
+        "sha256": "4a01cf2eec36e961f0e5deb9b44953c4e9ef35f318eca2e3761df79ce98b68c1"
+      },
+      "occurrences": 31744,
+      "query_shape": [
+        64,
+        16,
+        512
+      ],
+      "query_dtype": "bfloat16",
+      "kv_dtype": "bfloat16",
+      "kv_scales": null,
+      "T": 64,
+      "H": 16,
+      "D": 512,
+      "block_h": 16,
+      "observed_num_cu": 256,
+      "kv_splits": 4,
+      "selected_targets": [
+        "_paged_decode_split_kernel",
+        "_paged_decode_reduce_kernel"
+      ]
+    }
+  ],
+  "editable_targets": [
+    "_paged_decode_split_kernel",
+    "_paged_decode_reduce_kernel"
+  ],
+  "frozen_unused_target": "_paged_decode_fused_kernel",
+  "reason": "Every captured BF16 query has T=64 and H=16 with kv_scales=None. The frozen HIP heuristic uses block_h=16 and floor_power_of_two((1.5*256)/64)=4, selecting split followed by reduce; fused requires kv_splits=1.",
+  "dispatch_sources": {
+    "source/native.py": "fd1e927877cdefcf8cabcbc6b0e04ef39ea61cd5967a4fbfd6c6e67463f2ccc5",
+    "ut/baseline/native.py": "fd1e927877cdefcf8cabcbc6b0e04ef39ea61cd5967a4fbfd6c6e67463f2ccc5"
+  },
+  "unqualified_coverage": {
+    "legacy_logical_m": [
+      1,
+      8192
+    ],
+    "fp8_kv": true
+  },
+  "CPU_proof": "tests/test_deepseek_mla_decode_dispatch.py executes the unchanged native wrapper with recording kernel launch objects; this is dispatch evidence, not GPU qualification."
+}

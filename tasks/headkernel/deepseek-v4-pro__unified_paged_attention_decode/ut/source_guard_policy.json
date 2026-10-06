@@ -5,7 +5,6 @@
       "reference": "ut/baseline/native.py",
       "language": "triton",
       "targets": [
-        "_paged_decode_fused_kernel",
         "_paged_decode_split_kernel",
         "_paged_decode_reduce_kernel"
       ]

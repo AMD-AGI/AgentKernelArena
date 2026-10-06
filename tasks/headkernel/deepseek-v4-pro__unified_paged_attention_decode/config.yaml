@@ -1,7 +1,6 @@
 source_file_path:
 - source/native.py
 target_kernel_functions:
-- _paged_decode_fused_kernel
 - _paged_decode_split_kernel
 - _paged_decode_reduce_kernel
 compile_command:
@@ -10,6 +9,7 @@ correctness_command:
 - python3 scripts/task_runner.py correctness
 performance_command:
 - python3 scripts/task_runner.py performance
+performance_timeout: 3600
 task_type: triton2triton
 platform_support:
   required_arch: gfx950
@@ -19,7 +19,8 @@ prompt:
     imports, signatures, launch parameters, compilation and timing are frozen. Preserve
     every captured case and all storage/scalar semantics. The current native implementation
     is rebuilt/loaded through protected bindings; source-hash-dependent algorithm
-    selection is forbidden.
+    selection is forbidden. Only the captured split/reduce dispatch bodies are editable;
+    the packaged fused kernel remains frozen. See provenance/EDITABLE-DISPATCH.json.
 headkernel:
   model: DeepSeek-V4-Pro
   sglang_version: 0.5.20

@@ -13,6 +13,7 @@ from source_guard import validate_sources
 from evaluation_contract import (canonical, fingerprint, strict_json, validate_manifest,
     observe_case, checked_replays, finalize_report)
 from abi import runtime_abi
+from dispatch_contract import validate_dispatch, validate_runtime_dispatch
 
 
 def write(phase,report):
@@ -186,6 +187,7 @@ def main():
     (ROOT/'build').mkdir(exist_ok=True)
     (ROOT/'build'/(a.phase+'_report.json')).unlink(missing_ok=True)
     manifest=strict_json((ROOT/'cases.json').read_text()); validate_manifest(manifest)
+    validate_dispatch(manifest)
     if manifest.get('status')!='FROZEN_CURRENT_CAPTURE': raise RuntimeError('Current fixtures and expected cases are not sealed')
     request=request_for(a.phase,manifest,a.request); validate_sources(ROOT,ROOT)
     report={'schema_version':1,'status':'ok','request':request,'cases':[]}
@@ -200,6 +202,9 @@ def main():
     for case in manifest['cases']:
         if case['calls_per_sample']!=1: raise RuntimeError('This seam graph represents one native call per replay')
         inputs,golden=fixture(case,manifest,module); reference_inputs,_=fixture(case,manifest,reference_module)
+        dispatch=validate_runtime_dispatch(module,inputs)
+        if validate_runtime_dispatch(reference_module,reference_inputs)!=dispatch:
+            raise RuntimeError('Candidate and reference dispatch controls differ')
         pristine_inputs=storage_snapshots(inputs)
         initial_out=cpu_clone(inputs.get('out'))
         primary='q' if manifest['seam'].startswith('mla') else 'a' if manifest['seam']=='moe1' else 'hidden_states' if manifest['seam']=='moe1_prefill' else 'inter_states'
@@ -212,7 +217,7 @@ def main():
         reference_output=engage_specialization(reference_fn,reference_inputs,golden,tol,'reference-served-fixture')
         del reference_output
         compiled.append({'case_id':case['case_id'],'candidate_binding':identity,
-                         'reference_binding':reference_identity,'invoked_and_synchronized':True})
+                         'reference_binding':reference_identity,'dispatch':dispatch,'invoked_and_synchronized':True})
         if a.phase=='compile':
             del inputs,reference_inputs,golden,output,pristine_inputs,initial_out
             torch.cuda.empty_cache()
