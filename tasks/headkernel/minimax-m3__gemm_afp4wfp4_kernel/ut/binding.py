@@ -34,14 +34,15 @@ def bind_globals(wrapper, kernel):
     return wrapper.gemm_afp4wfp4
 
 
-def load_leg(root, leg, *, use_splitk_bf16=False):
+def load_leg(root, leg, *, use_splitk_bf16=False, candidate_workspace=None):
     root = Path(root).resolve()
     if leg not in {"candidate", "reference"}:
         raise ValueError("unknown source leg")
     if type(use_splitk_bf16) is not bool:
         raise ValueError("split-K partial dtype control must be boolean")
     provenance = json.loads((root / "SOURCE-PROVENANCE.json").read_text())
-    validate_sources(root, root)
+    candidate_root = Path(candidate_workspace).resolve() if candidate_workspace else root
+    validate_sources(candidate_root, root)
     wrapper_path = root / "ut/native/wrapper.py"
     if hashlib.sha256(wrapper_path.read_bytes()).hexdigest() != provenance["sources"]["ut/native/wrapper.py"]["sha256"]:
         raise ValueError("frozen native wrapper changed")
@@ -49,7 +50,7 @@ def load_leg(root, leg, *, use_splitk_bf16=False):
         module = importlib.import_module(name)
         if hashlib.sha256(Path(module.__file__).read_bytes()).hexdigest() != expected:
             raise ValueError("pinned runtime dependency changed: " + name)
-    source = root / ("source/kernel.py" if leg == "candidate" else "ut/reference/kernel.py")
+    source = candidate_root / "source/kernel.py" if leg == "candidate" else root / "ut/reference/kernel.py"
     name = "_aka_minimax_fp4_" + leg + "_" + uuid.uuid4().hex
     spec = importlib.util.spec_from_file_location(name, source)
     kernel = importlib.util.module_from_spec(spec)

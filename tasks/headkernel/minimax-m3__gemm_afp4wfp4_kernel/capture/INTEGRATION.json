@@ -74,5 +74,38 @@
     "actual packed activation and weight payloads",
     "captured output calibration",
     "GPU numerical tolerance and task qualification"
-  ]
+  ],
+  "native_smoke": {
+    "preparer": "scripts/prepare_native_smoke.py",
+    "entrypoint": "scripts/native_smoke.py",
+    "status": "PREPARED_NOT_GPU_EXECUTED",
+    "evidence": "Exact-value original Quark eager and changed-input graph capture; private reference/candidate eager/graph callbacks; both source-only negatives rejected numerically after valid reference calibration.",
+    "root_launch": "Prepare a fresh task/common snapshot plus exact-image Docker command with a trusted GPU expectation and gpu_binding.py. Parent owns admission, launch, timeout and cleanup.",
+    "scoreable": false,
+    "performance_samples": 0,
+    "synthetic": true
+  },
+  "importer": {
+    "entrypoint": "scripts/import_capture.py",
+    "common_required": "pinned capture/v4",
+    "receipt_schema": "minimax-fp4-full-workload-receipt-v1",
+    "required_receipt_fields": {
+      "schema": "minimax-fp4-full-workload-receipt-v1",
+      "complete": true,
+      "scope": "full_served_workload",
+      "run_id": "ACTUAL_RUN_ID",
+      "image": "PINNED_IMAGE",
+      "expected_requests": "actual positive count",
+      "successful_requests": "must equal expected_requests",
+      "draining_completed": true,
+      "ranks": {
+        "0..7": {
+          "path": "relative path to each sealed rank manifest",
+          "sha256": "exact manifest digest"
+        }
+      }
+    },
+    "oracle_policy": "Explicit reviewed JSON with metric=mixed_rms, tolerance>0 and <=0.02, and nonempty basis; every native captured output must independently calibrate before candidate checks.",
+    "output": "A new bundle with cases.json, raw fixtures, provenance receipts, and CAPTURE-ADMISSION.json; no config activation or GPU qualification."
+  }
 }

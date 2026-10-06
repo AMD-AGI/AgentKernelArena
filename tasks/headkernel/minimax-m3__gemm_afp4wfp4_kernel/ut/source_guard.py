@@ -109,10 +109,19 @@ def _protected_tree(path, targets):
 
 
 def validate_sources(candidate_root, reference_root):
-    candidate_root, reference_root = Path(candidate_root), Path(reference_root)
+    candidate_root, reference_root = Path(candidate_root).resolve(), Path(reference_root).resolve()
     definition = json.loads((reference_root / "task_definition.json").read_text())
+    for name in ("source_file", "reference_file"):
+        relative = Path(definition[name])
+        _require(not relative.is_absolute() and ".." not in relative.parts, "source paths must be package-relative")
     candidate = candidate_root / definition["source_file"]
     reference = reference_root / definition["reference_file"]
+    for path, root in ((candidate, candidate_root), (reference, reference_root)):
+        _require(path.resolve().is_relative_to(root.resolve()), "source path escapes its package")
+        cursor = path
+        while cursor != root:
+            _require(not cursor.is_symlink(), "source path components must not be symlinks")
+            cursor = cursor.parent
     _require(candidate.is_file() and not candidate.is_symlink(), "candidate must be a regular source file")
     _require(reference.is_file() and not reference.is_symlink(), "frozen source must be a regular file")
     _require(hashlib.sha256(reference.read_bytes()).hexdigest() == definition["source_sha256"],

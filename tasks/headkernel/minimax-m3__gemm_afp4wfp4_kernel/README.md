@@ -7,8 +7,9 @@ counts, not full-workload frequencies. Prefill uses BM256/BN256/BK256 and decode
 BM32/BN32/BK512; those tile sizes do not establish matrix shapes. Exact profile
 receipts and the recipe-parity result are in `provenance/OBSERVED-PRESENCE.json`.
 
-This directory now contains a CPU-tested draft. It has no `config.yaml`, case
-manifest, operand fixtures, timing report, or task-validator result. The original
+This directory now contains a CPU-tested draft with a protected importer, runner
+and native smoke entrypoint. It has no `config.yaml`, actual case manifest,
+operand fixtures, timing report, or task-validator result. The original
 `NOT_BUILT` marker below remains as historical evidence of the unfinished head.
 Do not count the three existing MiniMax attention tasks as coverage of this
 separate dense GEMM.
@@ -39,6 +40,13 @@ separate dense GEMM.
   `torch.ops.aiter.gemm_afp4wfp4_`. This adaptation is explicit provenance and has
   not yet been checked on a GPU. Supply the captured reduction mode and config;
   do not infer them from tile names.
+- `scripts/task_runner.py` refuses missing or unadmitted capture before GPU
+  initialization. Each admitted case first checks captured outputs against the
+  independent CPU packed-value oracle. Replays use fresh row permutations and
+  FP4 sign changes with the corresponding scales, preserve CPU-only truth and
+  complete storage, poison outputs, and compare after execution. Graph timing
+  retains 10 warmups and 100 checked samples. Padding and input mutation checks
+  remain outside the timed interval.
 - `scripts/make_source_controls.py NEW_DIRECTORY` prepares guarded source-only
   no-op and zero-output candidates. Their numerical rejection still requires
   a valid native reference and actual eager/graph execution.
@@ -63,16 +71,68 @@ changing, the existing three attention-family adapters.
 
 Before task activation, obtain complete prefill/decode matrix/layout/control
 coverage and exact full-workload all-rank counts, verify output/alias/storage
-receipts, and admit actual fixture payloads. Then add a protected runner and
-scoreable manifest, prove submitted-source eager/graph controls, and run native
+receipts, and admit actual fixture payloads. Then activate the protected runner
+and scoreable manifest, prove submitted-source eager/graph controls, and run native
 and framework qualification. Missing capture is never filled with guessed
-shapes, weights, call distributions, or successful reports.
+shapes, weights, call distributions, or successful reports. The protected runner
+and importer are prepared; activating the task configuration and its numerical
+policy still requires those actual cases and calibration.
+
+## Native smoke and capture admission
+
+The capture owner can prepare a fresh, reviewable smoke snapshot and Docker
+command without launching anything:
+
+```bash
+python3 scripts/prepare_native_smoke.py --output NEW_SMOKE_DIRECTORY \
+  --common SHARED_CAPTURE_V4 --binding-helper TRUSTED_GPU_BINDING_HELPER \
+  --expectation CURRENT_GPU_EXPECTATION_JSON
+```
+
+The parent owns GPU admission and execution of the resulting `PLAN.json`
+command, its timeout and cleanup. The command uses the exact pinned image,
+read-only task/common snapshots, fresh Triton cache, and the trusted same-process
+GPU preflight. `native_smoke.py` calls the already registered original Quark
+custom op, checks an exact eager result, captures/replays a real graph with
+changed packed inputs, then tests private reference/candidate callbacks and
+both submitted-source negatives in eager and graph modes. The M64/N64/K512
+operands are explicitly synthetic diagnostic data. Smoke reports are
+non-scoreable and contain zero performance samples; the workload importer
+rejects synthetic fixtures. No native smoke PASS has yet been obtained.
+
+For actual capture, the owner supplies the full-workload receipt schema defined
+in `capture/INTEGRATION.json`, including all eight sealed rank manifest hashes,
+successful request completion and draining. Import into a new directory:
+
+```bash
+python3 scripts/import_capture.py --common SHARED_CAPTURE_V4 \
+  --receipt FULL_WORKLOAD_OWNER_RECEIPT --oracle-policy REVIEWED_ORACLE_POLICY \
+  --output NEW_DATASET
+python3 scripts/task_runner.py compile --dataset NEW_DATASET
+python3 scripts/task_runner.py correctness --dataset NEW_DATASET
+python3 scripts/task_runner.py performance --dataset NEW_DATASET
+```
+
+The oracle policy is explicit JSON with `metric: mixed_rms`, a positive
+`tolerance` no larger than 0.02, and a nonempty review `basis`. It has no default
+or automatic relaxation. Every captured output must calibrate against the
+independent packed-value oracle before a candidate can pass. The importer
+verifies raw segment hashes and complete storage, native launch controls,
+cross-rank case identities and exact observed frequencies, and retains portable
+provenance receipts. It does not activate `config.yaml` or mark qualification.
+
+`scripts/check_source_binding.py` accepts an admitted dataset, exact case ID,
+seed, eager/graph mode, and source-only candidate workspace. It first calibrates
+the frozen reference in the requested mode. A numerical bad-source rejection
+exits 1; invalid references and setup/compile failures exit 2 and never count as
+successful rejection. Valid stock source exits 0. These diagnostic reports also
+contain zero performance samples and cannot establish model-level completion.
 
 CPU checks:
 
 ```bash
 python3 scripts/check_draft.py
-python3 -m pytest -q tests/test_draft.py
+python3 -m pytest -q tests
 ```
 
 ## Historical unbuilt inventory

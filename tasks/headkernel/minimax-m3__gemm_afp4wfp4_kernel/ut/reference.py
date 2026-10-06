@@ -63,3 +63,32 @@ def matmul(x, w, x_scales, w_scales, *, splitk_block_size=None):
     pieces = [[[math.fsum(aa[t] * bb[t] for t in range(start, min(start + block, k)))
                 for bb in b] for aa in a] for start in range(0, k, block)]
     return pieces[0] if splitk_block_size is None else pieces
+
+
+def tensor_reference(inputs, controls):
+    """Vectorized independent CPU oracle, with explicit split-K output casting."""
+    import torch
+    if any(value is not None and value.device.type != "cpu" for value in inputs.values()):
+        raise ValueError("independent reference inputs must be CPU-owned")
+    def decode(packed, scales):
+        rows, k_bytes = packed.shape
+        active = scales[:rows, :k_bytes // 16]
+        if torch.any(active == 255):
+            raise ValueError("live E8M0 scale 255 is NaN")
+        table = torch.tensor(FP4, dtype=torch.float64)
+        values = torch.stack((table[(packed & 15).long()], table[(packed >> 4).long()]), dim=-1).reshape(rows, 2 * k_bytes)
+        return values * torch.exp2(active.double() - 127).repeat_interleave(32, dim=1)
+    a, b = decode(inputs["x"], inputs["x_scales"]), decode(inputs["w"], inputs["w_scales"])
+    config = controls["resolved_config"]
+    splits = config["NUM_KSPLIT"]
+    block = config["SPLITK_BLOCK_SIZE"]
+    dtype_name = controls["output_dtype"].removeprefix("torch.")
+    dtype = getattr(torch, dtype_name)
+    if splits == 1:
+        return (a @ b.T).to(dtype)
+    partial_dtype = dtype if controls["use_splitk_bf16"] else torch.float32
+    partials = torch.stack([(a[:, start:min(start + block, a.shape[1])] @ b[:, start:min(start + block, b.shape[1])].T).to(partial_dtype)
+                            for start in range(0, splits * block, block)])
+    if controls["skip_reduce"]:
+        return partials
+    return partials.float().sum(dim=0).to(dtype)
