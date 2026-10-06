@@ -156,6 +156,68 @@ def test_host_effects_rejected(modules, tmp_path, body):
         modules["source_guard"].validate_sources(tmp_path, TASKS[0])
 
 
+@pytest.mark.parametrize("task", TASKS, ids=lambda p: p.name)
+@pytest.mark.parametrize("body", [
+    'tl.core.builtins.exec("raise RuntimeError(\'guard_escape_compile_probe\')")',
+    'min = tl.core.builtins.exec\nmin("raise RuntimeError(\'guard_escape_compile_probe\')")',
+    "tl = torch\ntl.cuda.synchronize()",
+    "namespace = tl.core\nreturn",
+    "namespace = tl\nreturn",
+    "callback = tl.max\nreturn",
+    "compiler_function = tl.max.fn\nreturn",
+    "namespace = torch\nreturn",
+    "tl.core.reshape(0)",
+    "tl.static_print('fake pass')",
+])
+def test_host_namespace_escapes_rejected(modules, tmp_path, task, body):
+    candidate_with_body(tmp_path, task, body)
+    with pytest.raises(ValueError):
+        modules["source_guard"].validate_sources(tmp_path, task)
+
+
+@pytest.mark.parametrize("name", ["tl", "range", "min", "max", "int", "float", "abs", "len"])
+@pytest.mark.parametrize("binding", [
+    "{name} = 0", "{name}: tl.constexpr = 0", "{name} += 1", "({name}, other) = (0, 1)",
+    "*{name}, other = (0, 1)", "for {name} in range(1):\n    pass",
+    "values = [0 for {name} in range(1)]", "if ({name} := 0):\n    pass", "del {name}",
+])
+def test_callable_and_namespace_bindings_are_frozen(modules, tmp_path, name, binding):
+    candidate_with_body(tmp_path, TASKS[0], binding.format(name=name))
+    with pytest.raises(ValueError):
+        modules["source_guard"].validate_sources(tmp_path, TASKS[0])
+
+
+@pytest.mark.parametrize("body", [
+    "torch = 0\nreturn", "namespace = torch\ntorch = 0", "exec = 0\nreturn",
+    "callback = min\nreturn", "callback = q_ptr.to\nreturn",
+    "tl.float32 = 0", "q_ptr.dtype = tl.float32", "q_ptr.dtype.element_ty = tl.float32",
+    "metadata = q_ptr.device", "tl.constexpr(0)",
+    "match q_ptr:\n    case tl:\n        pass",
+])
+def test_global_aliases_callable_inspection_and_mutation_rejected(modules, tmp_path, body):
+    candidate_with_body(tmp_path, TASKS[0], body)
+    with pytest.raises(ValueError):
+        modules["source_guard"].validate_sources(tmp_path, TASKS[0])
+
+
+def test_public_dsl_tensor_methods_and_metadata_remain_editable(modules, tmp_path):
+    candidate_with_body(tmp_path, TASKS[0], "\n".join([
+        "width: tl.constexpr = 16",
+        "offsets = tl.arange(0, width)",
+        "values = tl.load(q_ptr + offsets, mask=offsets < head_dim, other=0)",
+        "values = values.to(tl.float32).reshape((4, 4)).trans(1, 0)",
+        "values = values.astype(tl.float16)",
+        "dtype = score_ptr.dtype.element_ty",
+        "shape = values.shape",
+        "values = values.to(dtype)",
+        "for idx in range(min(1, max(1, len(shape)))):",
+        "    values = tl.maximum(values, float('-inf')) + abs(int(0))",
+        "tl.static_assert(width == 16)",
+        "return",
+    ]))
+    assert modules["source_guard"].validate_sources(tmp_path, TASKS[0])
+
+
 @pytest.mark.parametrize("edit", [lambda s: "import os\n"+s,
     lambda s: s.replace("def flash_decode_with_topk_idx(", "def changed_wrapper("),
     lambda s: s.replace("num_warps=4, num_stages=1", "num_warps=8, num_stages=1")])
