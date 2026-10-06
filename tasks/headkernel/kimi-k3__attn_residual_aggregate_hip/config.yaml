@@ -10,7 +10,9 @@ correctness_command:
   - python3 scripts/task_runner.py correctness
 performance_command:
   - python3 scripts/task_runner.py performance
-performance_timeout: 3600
+compile_timeout: 1800
+correctness_timeout: 3600
+performance_timeout: 21600
 platform_support:
   required_arch: gfx950
   status: active

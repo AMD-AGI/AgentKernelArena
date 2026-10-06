@@ -9,6 +9,7 @@ from evaluation_contract import canonical, observe_case, strict_json
 from fresh_runner import FreshCallbacks, OwnedCPUOutputs, clear_device_reference, cpu_copy
 from native import bindings
 from reference_math import reference as mathematical_reference, write_intervals
+from cpu_policy import configure_cpu_threads
 
 FAMILY='attn_res_hip'
 NATIVE_SOURCE='95ebe877ec7176f869e5d19997c92b0c57079b32430da8e264ea13809aacc51b'
@@ -40,7 +41,8 @@ class Runtime:
             import unittest.mock
             import torch
         finally:sys.path[:]=previous
-        self.torch=torch;self.native=bindings(self.root)
+        self.torch=torch;self.cpu_thread_policy=configure_cpu_threads(torch,self.root/'build')
+        self.native=bindings(self.root)
         self.expected=strict_json((self.root/'ut/expected_abi.json').read_text())
     def prepare_case(self,case):return Prepared(self,case)
 
@@ -212,6 +214,7 @@ class Prepared:
 
     def native_engagement(self):
         return {'source_sha256':self.runtime.request['source_sha256'],'candidate_invoked':self.calls['candidate']>0,
+            'cpu_thread_policy':self.runtime.cpu_thread_policy,
             'independent_reference_invoked':self.calls['mathematical_reference']>0,'independent_native_reference_invoked':self.calls['native_reference']>0,
             'current_native_token_sample_parity':self.sample_parity,'captured_sample_rows':self.rows,
             'full_shape_outputs_checked':True,'fixture_is_full_tensor_dump':False,
