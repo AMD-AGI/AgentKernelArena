@@ -99,10 +99,10 @@
       "trusted_retest_tool": "src/tools/trusted_task_eval.py",
       "environment_and_setup_guide": "docs/how-to/headkernel-upstream-runtime.md",
       "fixture_oci_prefix": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261005/deepseek-final-v7-mixed/",
-      "fixture_manifest_sha256": "f53a3547587a265a68606d93f98c1e2e5dc00c4fde88dce6b7da82dc9d27e5cd",
+      "fixture_manifest_sha256": "0617e9b23418654662b7cfe3763a5b8d78c26d18f441e75fd5859416257b0993",
       "fixture_asset_count": 78,
       "fixture_declared_bytes": 3399769775,
-      "fixture_publication_status": "task_manifest_declared; publication and qualification are separate gates"
+      "fixture_publication_status": "raw_assets_full_readback_verified; current_task_unqualified"
     },
     {
       "task": "headkernel/deepseek-v4-pro__moe_stage1_grouped_gemm_silu_opus_a8w4",
@@ -124,10 +124,10 @@
       "trusted_retest_tool": "src/tools/trusted_task_eval.py",
       "environment_and_setup_guide": "docs/how-to/headkernel-upstream-runtime.md",
       "fixture_oci_prefix": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261005/deepseek-final-v7-mixed/",
-      "fixture_manifest_sha256": "c7d0f7d2067abc160407d714e8619cd7937d6d443d6dff40855046c89996b507",
+      "fixture_manifest_sha256": "c53439331acba660d59e3b4d6d1b0a4ff0e2fa798ef7d501b4ce667200295d77",
       "fixture_asset_count": 30,
       "fixture_declared_bytes": 3589806040,
-      "fixture_publication_status": "task_manifest_declared; publication and qualification are separate gates"
+      "fixture_publication_status": "raw_assets_full_readback_verified; current_task_unqualified"
     },
     {
       "task": "headkernel/deepseek-v4-pro__moe_stage2_down_proj_reduce_opus_a8w4",
@@ -149,10 +149,10 @@
       "trusted_retest_tool": "src/tools/trusted_task_eval.py",
       "environment_and_setup_guide": "docs/how-to/headkernel-upstream-runtime.md",
       "fixture_oci_prefix": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261005/deepseek-final-v7-mixed/",
-      "fixture_manifest_sha256": "319556dac9b9e7050bfc632c705f167bfd5096c92913be1dc2f41d5ed65325dd",
-      "fixture_asset_count": 109,
-      "fixture_declared_bytes": 7297962783,
-      "fixture_publication_status": "task_manifest_declared; publication and qualification are separate gates"
+      "fixture_manifest_sha256": "a3e0b8dc9faab1b34000f8a1017ade13a1e4e4e9f22c15ebdd602a9920ceca33",
+      "fixture_asset_count": 118,
+      "fixture_declared_bytes": 7508634634,
+      "fixture_publication_status": "raw_assets_full_readback_verified; current_task_unqualified"
     },
     {
       "task": "headkernel/deepseek-v4-pro__unified_paged_attention_decode",
@@ -211,10 +211,10 @@
       "capture_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
       "framework": "sglang",
       "primary_target": "sglang_v0520",
-      "task_compatibility": "pending_final_qualification",
-      "ready": false,
-      "framework_qualified": false,
-      "trusted_retest_qualified": false,
+      "task_compatibility": "qualified_current_task",
+      "ready": true,
+      "framework_qualified": true,
+      "trusted_retest_qualified": true,
       "workload": "sg520_64x8192x1024_c64_tp8",
       "source_run": "glm-final-capture-v4-194841",
       "target_callable": "aiter::gemm_a8w8_blockscale_bpreshuffle",
@@ -227,7 +227,27 @@
       "fixture_manifest_sha256": "2741f29e821aa2f5ffbc079afa6fe2f0d2175fd69a5e619c11f4fc51319f9529",
       "fixture_asset_count": 70,
       "fixture_declared_bytes": 522116267,
-      "fixture_publication_status": "task_manifest_declared; publication and qualification are separate gates"
+      "fixture_publication_status": "full_readback_verified",
+      "qualification_scope": "Current14-case correctness and native-primary measurement qualification; no production improvement or whole-suite readiness.",
+      "qualified_evidence": {
+        "oci_prefix": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261005/qualified-task-evidence/glm-5.3-flash__ck_gemm_a8w8_blockscale_bpreshuffle/42448aad-670cd1870ed0/",
+        "manifest_sha256": "6113bdde7c57be172809433e4e42a1b439114c37d052a436be54fa789f0ef95e",
+        "source_commit": "42448aad4cc48aa4a635d1763edcd54275184b48",
+        "task_git_tree": "4f4506eb9006c745da5e3a23c047779bfe3a8b74",
+        "framework_commit": "42448aad4cc48aa4a635d1763edcd54275184b48",
+        "trusted_commit": "42448aad4cc48aa4a635d1763edcd54275184b48",
+        "case_count": 14,
+        "framework_checks_passed": 12,
+        "trusted_phases_passed": 6,
+        "primary_baseline": "native_production",
+        "secondary_baseline": "frozen_port",
+        "native_speedup_ratio": 0.32515109525911207,
+        "port_to_port_speedup_ratio": 1.017613135002193,
+        "production_kernel_improvement": false,
+        "all_suite_ready": false,
+        "framework_report": "framework/validation_report.yaml",
+        "framework_marker": "framework/.validation_complete"
+      }
     },
     {
       "task": "headkernel/glm-5.3-flash__fused_moe_kernel",
