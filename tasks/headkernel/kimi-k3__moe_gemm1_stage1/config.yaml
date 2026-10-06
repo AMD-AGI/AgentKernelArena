@@ -84,3 +84,8 @@ trusted_evaluation:
     source/flydsl/kernels/mixed_moe_gemm_2stage_common.py: ut/baseline_src/flydsl/kernels/mixed_moe_gemm_2stage_common.py
     source/flydsl/kernels/moe_2stage_a16wmix/gemm1.py: ut/baseline_src/flydsl/kernels/moe_2stage_a16wmix/gemm1.py
     source/flydsl/kernels/moe_2stage_a16wmix/gemm2.py: ut/baseline_src/flydsl/kernels/moe_2stage_a16wmix/gemm2.py
+
+scoring_baseline:
+  schema_version: 2
+  kind: protected_reference
+  native_source_manifest: provenance/PAIRED-REFERENCE.json

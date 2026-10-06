@@ -12,6 +12,7 @@ sys.path.insert(0, str(ROOT/'ut'))
 from evaluation_contract import canonical, finalize_report, fingerprint, strict_json, validate_manifest
 from fresh_runner import FreshCallbacks
 from source_guard import validate_sources
+from paired_reference import attach_comparison, bindings, paired_performance
 
 
 def digest(path):
@@ -109,20 +110,27 @@ def main():
                     or engagement.get('candidate_invoked') is not True
                     or engagement.get('independent_reference_invoked') is not True):
                 raise ValueError('Current candidate and independent native reference were not engaged')
+            if args.phase == 'performance':
+                provenance = strict_json((ROOT/'provenance/PAIRED-REFERENCE.json').read_text())
+                bound = bindings(prepared, provenance)
+                engagement.update(candidate_binding=bound['candidate'], reference_binding=bound['reference'],
+                                  invoked_and_synchronized=True)
             compiled.append({'case_id': case['case_id'], **engagement})
             if args.phase == 'compile':
                 continue
-            graph = capture(prepared, callbacks, request['challenge_seed'], torch)
             if args.phase == 'correctness':
+                graph = capture(prepared, callbacks, request['challenge_seed'], torch)
                 row = callbacks.correctness_row(case, policy, observe=prepared.observe,
                     corrupt_outputs=prepared.corrupt_outputs, challenge_seed=request['challenge_seed'])
+                del graph
             else:
-                row = callbacks.performance_row(case, policy, observe=prepared.observe,
-                    challenge_seed=request['challenge_seed'])
+                row = paired_performance(prepared, manifest, request)
             report['cases'].append(row)
-            del graph, prepared, callbacks
+            del prepared, callbacks
         report.update(compiled=True, compiled_specializations=compiled,
                       oracle_order='CPU input truth before candidate; CPU output and post-input snapshots before reference')
+        if args.phase == 'performance':
+            report = attach_comparison(ROOT, report, manifest, request)
         report = finalize_report(report, manifest, request)
         temporary = output.with_suffix('.tmp')
         temporary.write_text(canonical(report)+'\n')

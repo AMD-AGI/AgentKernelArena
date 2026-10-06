@@ -61,3 +61,8 @@ trusted_evaluation:
   requires_aiter_jit_cache: true
   reference_sources:
     source/decode_attention.py: ut/reference/decode_attention.py
+
+scoring_baseline:
+  schema_version: 2
+  kind: native_production
+  native_source_manifest: provenance/PAIRED-REFERENCE.json

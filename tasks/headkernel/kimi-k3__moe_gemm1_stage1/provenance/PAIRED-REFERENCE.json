@@ -1,0 +1,62 @@
+{
+  "all_observed_settings_timed": false,
+  "baseline_kind": "protected_reference",
+  "comparison": "candidate graph and deferred protected-reference graph on the same private CPU-owned inputs",
+  "full_routing_or_address_histories_recovered": false,
+  "gpu_binding": "private_native_source_closure_verified_v1",
+  "independent_trusted_host_retest_required": true,
+  "input_receipt_contracts": {
+    "flydsl_moe_stage1-struct-9b9cbbf22624300869bf9a90": {
+      "kind": "task_local_paired_inputs_v1"
+    },
+    "flydsl_moe_stage1-struct-e74ab9ff67a2bfe85a909093": {
+      "kind": "task_local_paired_inputs_v1"
+    },
+    "flydsl_moe_stage1-struct-fc125b5aac5697acb85975ce": {
+      "kind": "task_local_paired_inputs_v1"
+    }
+  },
+  "input_signature_fields": {
+    "flydsl_moe_stage1-struct-9b9cbbf22624300869bf9a90": [
+      "input_seed",
+      "work_value",
+      "actual_control_hashes",
+      "private_cpu_storage_bytes"
+    ],
+    "flydsl_moe_stage1-struct-e74ab9ff67a2bfe85a909093": [
+      "input_seed",
+      "work_value",
+      "actual_control_hashes",
+      "private_cpu_storage_bytes"
+    ],
+    "flydsl_moe_stage1-struct-fc125b5aac5697acb85975ce": [
+      "input_seed",
+      "work_value",
+      "actual_control_hashes",
+      "private_cpu_storage_bytes"
+    ]
+  },
+  "paired_input_validator": {
+    "files_sha256": {
+      "ut/paired_input_validation.py": "986dd393b21ec9861ee740f8455b466899f327d40ac2ac5b030755afb542b07b",
+      "ut/routing.py": "1cba38a338922fc2c09c7ee7d3f72e245f10b38f5f2570a017324af22017939d"
+    },
+    "function": "validate_paired_input_receipts",
+    "schema": "task-local-paired-input-validator-v1",
+    "validator": "ut/paired_input_validation.py"
+  },
+  "reference_implementation": "synchronization_repaired_supplied_reference",
+  "reference_source_sha256": {
+    "source/flydsl/kernels/mixed_moe_gemm_2stage.py": "ca2ff7ed9031fb04e47dc07ec496cb283fca4c05ec9d7730a1c9150b264c6040",
+    "source/flydsl/kernels/mixed_moe_gemm_2stage_common.py": "6755f05f732d603541b2d916a8cd3b2df9ac1c570abdc10eb578e0f939417755",
+    "source/flydsl/kernels/moe_2stage_a16wmix/gemm1.py": "711ce2cf1aefa9fd48914494410f6a12f2e47783ece2f65f75200f7b871bd842",
+    "source/flydsl/kernels/moe_2stage_a16wmix/gemm2.py": "4b7b80d2363a7a43802a7ec44ed3111e312420b8eea33985cfe2b0d84d0c986f",
+    "source/flydsl/moe_kernels.py": "0476a7416971958fcbe83d3e9e2b208c1d1ea24e59e7664944f209db95c83169"
+  },
+  "runtime_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
+  "schema": "paired-reference-provenance-v1",
+  "work_registry": {
+    "path": "provenance/PAIRED-WORK-REGISTRY.json",
+    "sha256": "f72e132a56727f4bf0da5219e729f95d4bfa1a1d258f47e632571cf81edbc9d3"
+  }
+}

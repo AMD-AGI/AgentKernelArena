@@ -420,6 +420,25 @@
           "1500339aab61a1dfba9136f2990d5d0c584643dae571541dff52bb45c434b1e2"
         ]
       }
+    },
+    {
+      "family": "portable_case_contract",
+      "description": "Kimi candidate graph timing with same-invocation deferred protected-reference timing and exact observed-work receipts.",
+      "entrypoint": "scripts/task_runner.py",
+      "entrypoint_sha256": [
+        "c348895e91b60a6c61b449748ca75e0af450b8736e7d9266a48739c222974fef"
+      ],
+      "files_sha256": {
+        "ut/fresh_runner.py": [
+          "09d3b41b20e8521f65473c1fc819073f958a605c2dfa11069b296c352d79f848"
+        ],
+        "ut/paired_reference.py": [
+          "53552e03c29eef6f05026b748122e36a5e2f0a0820291a9717b03a09ee250e81"
+        ],
+        "ut/paired_input_validation.py": [
+          "986dd393b21ec9861ee740f8455b466899f327d40ac2ac5b030755afb542b07b"
+        ]
+      }
     }
   ]
 }

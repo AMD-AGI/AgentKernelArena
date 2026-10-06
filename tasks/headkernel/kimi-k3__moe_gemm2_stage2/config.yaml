@@ -74,3 +74,8 @@ trusted_evaluation:
   reference_sources:
     source/opus_moe_pipeline_stage2_a8w4_decode_main_gfx950.cuh: ut/reference/opus_moe_pipeline_stage2_a8w4_decode_main_gfx950.cuh
     source/flydsl/mxmoe_gemm_v2.py: ut/reference/flydsl/mxmoe_gemm_v2.py
+
+scoring_baseline:
+  schema_version: 2
+  kind: native_production
+  native_source_manifest: provenance/PAIRED-REFERENCE.json

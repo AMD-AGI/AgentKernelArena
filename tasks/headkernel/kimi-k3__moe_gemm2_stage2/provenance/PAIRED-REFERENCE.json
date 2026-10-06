@@ -1,0 +1,59 @@
+{
+  "all_observed_settings_timed": false,
+  "baseline_kind": "native_production",
+  "comparison": "candidate graph and deferred protected-reference graph on the same private CPU-owned inputs",
+  "full_routing_or_address_histories_recovered": false,
+  "gpu_binding": "private_native_source_closure_verified_v1",
+  "independent_trusted_host_retest_required": true,
+  "input_receipt_contracts": {
+    "_flydsl_v2_stage2_wrapper-8a742b60351430cedf5b54b4": {
+      "kind": "task_local_paired_inputs_v1"
+    },
+    "_flydsl_v2_stage2_wrapper-c0a3c25f25667f565998b9d7": {
+      "kind": "task_local_paired_inputs_v1"
+    },
+    "opus_moe_stage2_a8w4_decode_fwd-0f46fd2697d1606082fa577a": {
+      "kind": "task_local_paired_inputs_v1"
+    }
+  },
+  "input_signature_fields": {
+    "_flydsl_v2_stage2_wrapper-8a742b60351430cedf5b54b4": [
+      "input_seed",
+      "work_value",
+      "actual_control_hashes",
+      "private_cpu_storage_bytes"
+    ],
+    "_flydsl_v2_stage2_wrapper-c0a3c25f25667f565998b9d7": [
+      "input_seed",
+      "work_value",
+      "actual_control_hashes",
+      "private_cpu_storage_bytes"
+    ],
+    "opus_moe_stage2_a8w4_decode_fwd-0f46fd2697d1606082fa577a": [
+      "input_seed",
+      "work_value",
+      "actual_control_hashes",
+      "private_cpu_storage_bytes"
+    ]
+  },
+  "paired_input_validator": {
+    "files_sha256": {
+      "ut/paired_input_validation.py": "986dd393b21ec9861ee740f8455b466899f327d40ac2ac5b030755afb542b07b",
+      "ut/routing.py": "1cba38a338922fc2c09c7ee7d3f72e245f10b38f5f2570a017324af22017939d"
+    },
+    "function": "validate_paired_input_receipts",
+    "schema": "task-local-paired-input-validator-v1",
+    "validator": "ut/paired_input_validation.py"
+  },
+  "reference_implementation": "pinned_image_native_source",
+  "reference_source_sha256": {
+    "source/flydsl/mxmoe_gemm_v2.py": "25a045055b9d3a8f083c9e48e7a0d594109abf466da1b159d16c8e99ae257c77",
+    "source/opus_moe_pipeline_stage2_a8w4_decode_main_gfx950.cuh": "cb5050ee044533b7c8a74f72d230066bd7de680a77109bfa5f7eec73b4893e9c"
+  },
+  "runtime_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
+  "schema": "paired-reference-provenance-v1",
+  "work_registry": {
+    "path": "provenance/PAIRED-WORK-REGISTRY.json",
+    "sha256": "338c537d2b3167eafeb2b8c23486bcd2320e17bd0b4d239ad43470d63f230ca4"
+  }
+}
