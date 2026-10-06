@@ -29,6 +29,26 @@ The resulting task remains self-contained and does not import `src`.
    configured task performance entrypoint.
 3. If marker or stub structure changes, run `make sync-perf-helpers`.
 
+## Task-local protocols
+
+Some tasks ship protected timing implementations instead of requesting generated
+helpers. `custom_protocols.json` registers the reviewed entrypoint hashes and
+their timing-helper hashes. The audit requires the exact performance command
+and regular files within the task; a task name or a matching filename alone does
+not qualify. Portable case protocols additionally require byte parity with
+`src/task_contract.py` and a valid `cases.json`. The registry covers direct
+`checked_replays` callers, the `FreshCallbacks` adapter, legacy head-kernel
+event/GEAK timing, and isolated native graph workers. A known entrypoint that
+always emits a blocked report and exits nonzero is counted separately as
+`blocked_entrypoint`; recognizing it does not make the task scoreable.
+
+Review changes to these task-local runners and timing helpers before updating
+their registry hashes, and run their focused contract tests. The sync command
+never refreshes those hashes or rewrites those runners. Recognition is a static
+implementation check, not GPU correctness, runtime source binding, or task
+qualification. Existing legacy protocols keep their original methodology and
+validation status. The task-validator and measurement gates still apply.
+
 Do not commit `_aka_benchmark.py` or `hip_graph_benchmark.hpp` copies under
 `tasks/`, and do not hand-edit generated helper regions. Use
 `make materialize-perf-workspace WORKSPACE=...` for an existing copied

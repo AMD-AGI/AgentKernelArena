@@ -11,7 +11,7 @@ Run this script after adding tasks or changing marker/stub structure:
     python src/tools/sync_perf_helpers.py            # apply
     python src/tools/sync_perf_helpers.py --check     # verify source stubs (CI-friendly)
 
-Four supported benchmark entrypoint families:
+Supported benchmark entrypoint families:
   1. Every */rocmbench/**/performance_utils_pytest.py should be the committed
      stub from src.perf_helper_materialization. setup_workspace() replaces it.
   2. Every triton2triton/vllm/*/scripts/task_runner.py should contain the
@@ -21,6 +21,8 @@ Four supported benchmark entrypoint families:
      copies the canonical module beside the configured entrypoint.
   4. Native HIP benchmark drivers include ``hip_graph_benchmark.hpp``;
      setup_workspace() copies the canonical header beside the driver.
+  5. Registered task-local protocols retain their own protected timing code;
+     this audit verifies their harness hashes and portable case contracts.
 """
 import argparse
 import pathlib
@@ -41,6 +43,7 @@ from src.perf_helper_materialization import (  # noqa: E402
     rocmbench_targets,
     vllm_targets,
 )
+from src.tools.custom_perf_protocols import custom_protocol_family  # noqa: E402
 
 
 def audit_task_benchmark_entrypoints(root: pathlib.Path) -> tuple[dict[str, int], list[str]]:
@@ -72,6 +75,13 @@ def audit_task_benchmark_entrypoints(root: pathlib.Path) -> tuple[dict[str, int]
 
         if family is None and (task / "performance_utils_pytest.py").is_file():
             family = "rocmbench_adapter"
+
+        if family is None:
+            try:
+                family = custom_protocol_family(task, entrypoints)
+            except (OSError, ValueError, KeyError, TypeError) as exc:
+                problems.append(f"{task.relative_to(root)}: invalid custom performance protocol: {exc}")
+                continue
 
         if family is None:
             relative = task.relative_to(root)

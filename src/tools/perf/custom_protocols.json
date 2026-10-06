@@ -1,0 +1,78 @@
+{
+  "schema_version": 1,
+  "protocols": [
+    {
+      "family": "portable_case_contract",
+      "description": "Task-local timers call canonical checked_replays and finalize_report.",
+      "entrypoint": "scripts/task_runner.py",
+      "entrypoint_sha256": [
+        "3d3fcf8c4caf7f0a9ca68d9385dfdf4225471d293523ae62f44f106dc6af8b56",
+        "6bfa216084b7b63744aa1b25ed2a567722bb268b8ea93df1a6a70fd79e1e2dac",
+        "b3afbfc7c55530991ad4f0264eca4df66f3e21a6dad1f0bb057a9add8ff6ad07",
+        "cfaf92dc2a91b1901055688325144d5ddb035d2c8513f5997216214ba9fd1db1",
+        "d79eac67d7948fa06dd207100a16e3ecdcf119b2328e981d3d18cef8fa7a2766",
+        "e308f2e4b1d59eff5c53b1ec20eda6695b111e515c3e9f13533ddadc0c75d891"
+      ],
+      "files_sha256": {}
+    },
+    {
+      "family": "portable_case_contract",
+      "description": "FreshCallbacks delegates each timed replay and oracle check to the canonical contract.",
+      "entrypoint": "scripts/task_runner.py",
+      "entrypoint_sha256": [
+        "26b7e2f4ab97b009d9e1e859fe673ae440a53a2fb6dd5b6215383e68ca9cba32"
+      ],
+      "files_sha256": {
+        "ut/fresh_runner.py": [
+          "09d3b41b20e8521f65473c1fc819073f958a605c2dfa11069b296c352d79f848"
+        ]
+      }
+    },
+    {
+      "family": "legacy_headkernel",
+      "description": "Legacy runner uses the task-local event timer or its explicit GEAK fallback; recognition does not upgrade its methodology or qualification.",
+      "entrypoint": "scripts/task_runner.py",
+      "entrypoint_sha256": [
+        "30b267c28419c03a55571e87e4a125161d86926ebf28577287c14a72b25b1630",
+        "44b9311111588a4c66c5f31df03951c578b05c62af39f96a67717a833ddf6865"
+      ],
+      "files_sha256": {
+        "scripts/_bench.py": [
+          "aafe92b3f7c809f96a87930f5dd8e60e1c2d161fdf57debb5a2a1bcd2cc94419"
+        ],
+        "ut/harness_lib.py": [
+          "e77451bed3e280100819641a45f53a5d11a219a4fbc56dd504b92c47f9af402f",
+          "fe8e18f4cba1313cc5033ae47950fb6154f6680e050d77436f7c5bb4095fd7f2"
+        ]
+      }
+    },
+    {
+      "family": "isolated_native_graph",
+      "description": "Separate native workers time graph replays and validate complete per-case samples.",
+      "entrypoint": "scripts/task_runner.py",
+      "entrypoint_sha256": [
+        "e3d6b0bbc584250c4224d0e952a40046865a3e54f9872dc35824ba501e26ee54"
+      ],
+      "files_sha256": {
+        "scripts/benchmark.py": [
+          "b431a33762e462a8832343b2e9b95185dc71b4ff836d4e97c5a84a3f315dad74"
+        ],
+        "scripts/worker.py": [
+          "8655a24e8b307a7ebfb71d2acfab066820340cba4a5d96d2a83e8cb4b1421f30"
+        ],
+        "ut/contract.py": [
+          "c2298ef88cdad5d939be68ffdcdd61aa5136e71a5482641016cf9be0ae059f1a"
+        ]
+      }
+    },
+    {
+      "family": "blocked_entrypoint",
+      "description": "This entrypoint emits an empty blocked report and exits nonzero; it is not a scoreable benchmark.",
+      "entrypoint": "scripts/current_dispatch_gate.py",
+      "entrypoint_sha256": [
+        "0f6f0a2424fd24c6d99ecfbaa55e34d22d27735ebe6ec8b058fa60c7b90f1fae"
+      ],
+      "files_sha256": {}
+    }
+  ]
+}
