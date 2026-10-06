@@ -18,6 +18,34 @@ def candidate_close(actual,expected):
 
 
 class CandidateScaleTests(unittest.TestCase):
+    def test_actual_verifier_integrates_with_canonical_checked_replays(self):
+        contract_spec=importlib.util.spec_from_file_location('fp8_replay_contract',ROOT/'ut/evaluation_contract.py')
+        contract=importlib.util.module_from_spec(contract_spec);contract_spec.loader.exec_module(contract)
+        tree=ast.parse((ROOT/'scripts/task_runner.py').read_text())
+        node=next(node for node in ast.walk(tree) if isinstance(node,ast.FunctionDef) and node.name=='verify')
+        tensors={'A':torch.ones(4,dtype=torch.bfloat16),'C':torch.empty(4,dtype=torch.bfloat16)}
+        namespace={'torch':torch,'tensors':tensors}
+        exec(compile(ast.fix_missing_locations(ast.Module(body=[node],type_ignores=[])),'actual_verifier','exec'),namespace)
+        verifier=namespace['verify'];state={};case={'case_id':'cpu-callback-contract','calls_per_sample':1}
+        policy={'method':'cuda_graph','warmup_iterations':2,'benchmark_iterations':3}
+        def reset(seed):
+            tensors['A'].fill_(seed+1)
+            state['expected']=(tensors['A']*1e-4).clone()
+            return state['expected'],{'A':tensors['A'].clone()}
+        def initialize():tensors['C'].fill_(float('nan'))
+        def replay():tensors['C'].copy_(state['expected'])
+        def measure(call):call();return 0.5  # CPU callback-contract test, not device timing evidence.
+        with patch.object(torch.cuda,'synchronize',lambda:None):
+            with patch.object(precision,'require_candidate_accuracy',wraps=precision.require_candidate_accuracy) as accuracy:
+                result=contract.checked_replays(case,policy,reset_inputs=reset,initialize_outputs=initialize,
+                    replay=replay,verify=verifier,measure=measure,observe=lambda:case,seed=0)
+                self.assertEqual(result['samples_ms'],[0.5]*3)
+                self.assertEqual(accuracy.call_count,5)
+                self.assertIsNone(verifier((state['expected'],{'A':tensors['A'].clone()})))
+            with self.assertRaisesRegex(AssertionError,'Scale-relative'):
+                contract.checked_replays(case,policy,reset_inputs=reset,initialize_outputs=initialize,
+                    replay=lambda:tensors['C'].zero_(),verify=verifier,measure=measure,observe=lambda:case,seed=0)
+
     def test_scale_disproportionate_errors_fail_without_a_case_specific_rule(self):
         for scale in (2.0**-8,1.0,2.0**8):
             expected=torch.full((4,4),1e-4*scale,dtype=torch.bfloat16)

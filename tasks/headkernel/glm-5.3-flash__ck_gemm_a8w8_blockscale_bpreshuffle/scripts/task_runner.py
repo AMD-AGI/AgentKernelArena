@@ -100,7 +100,8 @@ def build_state(case,seed,module):
         torch.testing.assert_close(actual,expected,rtol=0.01,atol=0.02)
         if not native:
             from candidate_precision import require_candidate_accuracy
-            return require_candidate_accuracy(actual,expected)
+            require_candidate_accuracy(actual,expected)
+        return None
     def reset(seed):
         values,expected=generate(case,seed)
         for name,value in values.items():tensors[name].copy_(value)

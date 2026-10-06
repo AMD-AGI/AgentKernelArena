@@ -236,7 +236,8 @@
       "description": "FP8 candidate outputs retain pointwise checks and add CPU FP64 relativeL2<=2/255; native calibration remains separate, and matched native/port raw comparisons feed primary-native scoring.",
       "entrypoint": "scripts/task_runner.py",
       "entrypoint_sha256": [
-        "5adf7ea0942e4702211c0860bce47560b076229e4d511a2f966f67b0997a49cc"
+        "5adf7ea0942e4702211c0860bce47560b076229e4d511a2f966f67b0997a49cc",
+        "85d89700176b7b49d2243a5057ef855249e416d4e0e33497d16c14a5caf38294"
       ],
       "files_sha256": {
         "scripts/production_comparison.py": [
