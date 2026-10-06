@@ -72,7 +72,7 @@ def compare(request=None):
     record={'schema_version':1,'schema':'native-production-comparison-v1','status':'ok','diagnostic_only':request is None,'score_input':request is not None,'source_sha256':task.source_hash(),
         'source_hashes':{'source/kernels.py':task.source_hash()},'request':request,'runtime_image':manifest['runtime_image'],
         'baseline_kind':'native_production','native_source_manifest_sha256':hashlib.sha256((task.ROOT/'provenance/NATIVE-BASELINE.json').read_bytes()).hexdigest(),
-        'manifest_sha256':task.fingerprint(manifest),'comparison':'native_mean_ms / candidate_port_mean_ms on identical fresh numerical challenges derived from the actual captured operands; each graph retains its own capture-time output, with no added output copy',
+        'manifest_sha256':task.fingerprint(manifest),'challenge_seed':challenge,'comparison':'native_mean_ms / candidate_port_mean_ms on identical fresh numerical challenges derived from the actual captured operands; each graph retains its own capture-time output, with no added output copy',
         'case_count':len(comparisons),'cases':comparisons,'all_cases_have_native_parity':True,
         'all_cases_faster_than_native':all(row['candidate_faster_than_native'] for row in comparisons),
         'claim_scope':'Primary scoring uses protected matched native-production/candidate timings. Frozen-port optimization remains a secondary metric. A native ratio above1 is isolated operator improvement; no serving gain is asserted.'}

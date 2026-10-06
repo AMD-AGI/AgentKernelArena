@@ -17,6 +17,7 @@ _NATIVE_BASELINE_METADATA_KEYS = (
     'baseline_kind', 'case_sha256', 'native_ms', 'candidate_ms', 'port_measurement_ms',
     'native_request_id', 'native_source_manifest_sha256',
     'native_source_hashes', 'native_manifest_sha256',
+    'native_comparison_challenge_seed',
 )
 
 _DEVICE_TIME_KEYS = [

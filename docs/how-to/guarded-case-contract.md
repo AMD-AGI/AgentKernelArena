@@ -93,6 +93,13 @@ revalidates every leg with the case contract and derives timings from raw sample
 Absent or mismatched evidence rejects scoring; it never falls back to a port
 baseline. No implementation is selected by source hash.
 
+The comparison record's `challenge_seed` is the comparator's actual private base
+seed for its existing matched replay sequence. It may differ from the enclosing
+`request.challenge_seed`, which identifies the parent performance evaluation.
+Scoring evidence preserves both the initial and candidate comparison seeds;
+missing or invalid private seeds are rejected rather than replaced by the parent
+seed.
+
 Arena results and trusted retests report native/candidate as the primary ratio,
 and keep frozen-port/candidate-port improvement as `port_to_port_speedup_ratio`.
 The aggregate `production_kernel_improvement` flag requires a primary ratio

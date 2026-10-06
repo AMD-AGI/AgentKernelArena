@@ -45,7 +45,7 @@ def example(*, source_hash='a' * 64, request_id='fresh', port_ms=4.0, native_ms=
         'baseline_kind': 'native_production', 'score_input': True, 'diagnostic_only': False,
         'request': copy.deepcopy(request), 'source_hashes': request['source_sha256'], 'source_sha256': source_hash,
         'manifest_sha256': fingerprint(manifest), 'runtime_image': manifest['runtime_image'],
-        'native_source_manifest_sha256': 'd' * 64,
+        'native_source_manifest_sha256': 'd' * 64, 'challenge_seed': 731,
         'cases': [{'case_id': case['case_id'], 'native_output_parity': True,
                    'identical_captured_ABI_and_fresh_numeric_challenge_sequence': True,
                    'speedup_vs_native': 999999, 'candidate_faster_than_native': True,
@@ -68,6 +68,8 @@ def test_twice_faster_port_still_slower_than_production_does_not_earn_a_producti
     assert summary['production_kernel_improvement'] is False
     assert summary['all_cases_faster_than_native'] is False
     assert summary['regressed_case_ids'] == ['decode', 'prefill']
+    assert summary['native_scoring_evidence']['candidate_comparison_challenge_seed'] == 731
+    assert summary['native_scoring_evidence']['reference_port_comparison_challenge_seed'] == 731
     assert score(True, True, 1, 2, speedup_ratio=summary['native_speedup_ratio'],
                  benchmark_method_consistent=True) == 170
 
@@ -140,6 +142,7 @@ def test_normal_arena_result_and_saved_series_use_native_primary(tmp_path, monke
     from src.testcases import load_performance_results
     restored = load_performance_results(tmp_path / 'build', 'initial_native_baseline_perf.yaml')
     assert metric_summary(restored, after)['port_to_port_speedup_ratio'] == 2
+    assert restored[0].metadata['native_comparison_challenge_seed'] == 731
 
 
 def test_native_evidence_is_mandatory_in_normal_performance_path(tmp_path, monkeypatch):
@@ -204,7 +207,7 @@ def test_actual_comparator_report_producers_bind_scoreable_evidence(tmp_path, na
         package_hash=lambda: 'unchanged', strict_json=json.loads, fingerprint=fingerprint,
         file_sha=lambda path: hashlib.sha256(Path(path).read_bytes()).hexdigest())
     namespace = {'task': fake_task, 'request': request, 'manifest': manifest, 'comparisons': comparisons,
-                 'before': 'unchanged', 'hashlib': hashlib, 'json': json, 'challenge': 42,
+                 'before': 'unchanged', 'hashlib': hashlib, 'json': json, 'challenge': 731,
                  'receipts': SimpleNamespace(path=receipts)}
     exec(compile(ast.Module(body=function.body[start:], type_ignores=[]), '<actual-native-report-producer>', 'exec'), namespace)
     config = {'source_file_path': ['source/kernels.py'], 'trusted_evaluation': {'schema_version': 1},
@@ -213,6 +216,17 @@ def test_actual_comparator_report_producers_bind_scoreable_evidence(tmp_path, na
     measured = load_native_measurements(tmp_path, config, request=request)
     assert measured['native'][0]['execution_time_ms'] == 1
     assert measured['candidate'][0]['execution_time_ms'] == 4
+    raw = json.loads((tmp_path / 'build/native_production_comparison.json').read_text())
+    assert raw['challenge_seed'] == measured['comparison_challenge_seed'] == 731
+    assert raw['request']['challenge_seed'] == 42
+
+
+@pytest.mark.parametrize('invalid_seed', [None, True, -1, '731'])
+def test_private_comparison_seed_is_required_and_not_replaced_by_parent_seed(invalid_seed):
+    report, manifest, request = example()
+    report['native_production_comparison']['challenge_seed'] = invalid_seed
+    with pytest.raises(ValueError, match='actual private challenge seed'):
+        validate_native_measurements(report, manifest, request, request['source_sha256'], 'd' * 64)
 
 
 def test_dense_failure_wrapper_forwards_the_enclosing_request():

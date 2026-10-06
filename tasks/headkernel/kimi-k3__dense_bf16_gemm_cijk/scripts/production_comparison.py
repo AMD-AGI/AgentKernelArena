@@ -68,7 +68,7 @@ def main(request=None):
     record={'schema_version':1,'schema':'native-production-comparison-v1','status':'ok','diagnostic_only':request is None,'score_input':request is not None,'source_sha256':task.source_hash(),
         'source_hashes':{'source/kernels.py':task.source_hash()},'request':request,'runtime_image':manifest['runtime_image'],
         'baseline_kind':'native_production','native_source_manifest_sha256':hashlib.sha256((task.ROOT/'provenance/NATIVE-BASELINE.json').read_bytes()).hexdigest(),
-        'manifest_sha256':task.fingerprint(manifest),'native_conformance_policy':'Every native output element uses unchanged mathematical bounds; each exception pair requires exact input-derived native BF16 arithmetic proof. This is not pointwise candidate/native equality.',
+        'manifest_sha256':task.fingerprint(manifest),'challenge_seed':challenge,'native_conformance_policy':'Every native output element uses unchanged mathematical bounds; each exception pair requires exact input-derived native BF16 arithmetic proof. This is not pointwise candidate/native equality.',
         'comparison':'native_mean_ms / candidate_port_mean_ms on identical fresh numerical challenges derived from the actual captured operands; each graph retains its own capture-time output, with no added output copy',
         'case_count':len(comparisons),'cases':comparisons,'all_cases_have_native_conformance':True,
         'all_cases_faster_than_native':all(row['candidate_faster_than_native'] for row in comparisons),

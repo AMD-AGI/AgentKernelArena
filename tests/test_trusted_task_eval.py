@@ -188,7 +188,7 @@ def test_native_baseline_retest_keeps_port_gain_secondary(packaged_task, tmp_pat
                       'diagnostic_only': False, 'score_input': True, 'baseline_kind': 'native_production',
                       'request': copy.deepcopy(request), 'source_hashes': request['source_sha256'],
                       'source_sha256': next(iter(request['source_sha256'].values())),
-                      'manifest_sha256': trusted.fingerprint(manifest), 'runtime_image': image,
+                      'manifest_sha256': trusted.fingerprint(manifest), 'runtime_image': image, 'challenge_seed': 731,
                       'native_source_manifest_sha256': hashlib.sha256((staged / 'provenance/NATIVE.json').read_bytes()).hexdigest(),
                       'cases': [{'case_id': row['case']['case_id'], 'native_output_parity': True,
                                  'identical_captured_ABI_and_fresh_numeric_challenge_sequence': True,
@@ -217,6 +217,7 @@ def test_native_baseline_retest_keeps_port_gain_secondary(packaged_task, tmp_pat
         assert result['baseline_kind'] == 'native_production'
         assert result['production_kernel_improvement'] is False
         assert result['all_cases_faster_than_native'] is False
+        assert result['native_scoring_evidence']['candidate_comparison_challenge_seed'] == 731
         assert len(result['regressed_case_ids']) == 2
         assert all(row['reference_ms'] == 1 and row['candidate_ms'] == 2 for row in result['cases'])
 

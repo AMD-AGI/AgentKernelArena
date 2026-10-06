@@ -56,6 +56,8 @@ def validate_native_measurements(report, manifest, request, source_hashes, nativ
             and native.get('runtime_image') == manifest['runtime_image']
             and native.get('native_source_manifest_sha256') == native_source_manifest_sha256,
             'Stale native comparison source, request, cases, image or provenance')
+    require(type(native.get('challenge_seed')) is int and native['challenge_seed'] >= 0,
+            'Native comparison must record its actual private challenge seed')
     rows = native.get('cases')
     require(isinstance(rows, list) and all(isinstance(row, dict) for row in rows),
             'Malformed native comparison cases')
@@ -75,6 +77,7 @@ def validate_native_measurements(report, manifest, request, source_hashes, nativ
                                         'cases': [row['legs'][leg] for row in rows]}, manifest, request)
     return {'port': port, 'native': measured['native_production'], 'candidate': measured['candidate_port'],
             'request_id': request['request_id'], 'source_sha256': source_hashes,
+            'comparison_challenge_seed': native['challenge_seed'],
             'manifest_sha256': fingerprint(manifest), 'native_source_manifest_sha256': native_source_manifest_sha256}
 
 
@@ -103,6 +106,7 @@ def as_test_cases(measured, *, is_baseline=False):
                       'native_ms': native['execution_time_ms'], 'candidate_ms': candidate['execution_time_ms'],
                       'port_measurement_ms': port['execution_time_ms'],
                       'native_request_id': measured['request_id'],
+                      'native_comparison_challenge_seed': measured['comparison_challenge_seed'],
                       'native_source_hashes': measured['source_sha256'],
                       'native_manifest_sha256': measured['manifest_sha256'],
                       'native_source_manifest_sha256': measured['native_source_manifest_sha256']}))
@@ -164,8 +168,10 @@ def metric_summary(baseline_cases, candidate_cases):
             'native_baseline_cases': rows,
             'native_scoring_evidence': {
                 'candidate_request_id': candidate_proof['native_request_id'],
+                'candidate_comparison_challenge_seed': candidate_proof['native_comparison_challenge_seed'],
                 'candidate_source_sha256': candidate_proof['native_source_hashes'],
                 'reference_port_request_id': reference_proof['native_request_id'],
+                'reference_port_comparison_challenge_seed': reference_proof['native_comparison_challenge_seed'],
                 'reference_port_source_sha256': reference_proof['native_source_hashes'],
                 'manifest_sha256': candidate_proof['native_manifest_sha256'],
                 'native_source_manifest_sha256': candidate_proof['native_source_manifest_sha256'],
