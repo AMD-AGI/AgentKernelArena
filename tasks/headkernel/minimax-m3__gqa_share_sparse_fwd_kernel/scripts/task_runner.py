@@ -8,12 +8,22 @@ import json
 import os
 from pathlib import Path
 import secrets
+import time
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "ut"))
 from evaluation_contract import checked_replays, finalize_report, fingerprint, observe_case, require, strict_json
 from served_contract import load_cases, sha
 from source_guard import validate_sources
+
+
+def configure_cpu_threads():
+    """Bound host tensor work when multiple GPU validators share one CPU node."""
+    import torch
+    previous = torch.get_num_threads()
+    torch.set_num_threads(min(previous, 8))
+    return {"intraop_threads_before": previous, "intraop_threads": torch.get_num_threads(),
+            "scope": "CPU geometry and snapshot comparisons; native graph and oracles unchanged"}
 
 
 def tree_identity():
@@ -169,6 +179,8 @@ def main():
     (ROOT / "build").mkdir(exist_ok=True)
     report_path = ROOT / "build" / (args.phase + "_report.json")
     report_path.unlink(missing_ok=True)
+    cpu_runtime = configure_cpu_threads()
+    (ROOT / "build" / ("cpu_runtime_" + args.phase + ".json")).write_text(json.dumps(cpu_runtime) + "\n")
     manifest, definition = load_cases(ROOT)
     validate_sources(ROOT, ROOT)
     package = tree_identity()
@@ -189,16 +201,21 @@ def main():
     operator = Operator(ROOT, definition)
     rows = []
     for case in manifest["cases"]:
+        started = time.monotonic()
+        print(json.dumps({"phase": args.phase, "case_id": case["case_id"], "event": "start"}), flush=True)
         evaluation = CaseEvaluation(case, definition, operator)
         if args.phase == "correctness":
             rows.append(evaluation.correctness(manifest["measurement"]))
         elif args.phase == "performance":
             rows.append(evaluation.performance(manifest["measurement"], request["challenge_seed"]))
         del evaluation
+        print(json.dumps({"phase": args.phase, "case_id": case["case_id"], "event": "complete",
+                          "wall_seconds": time.monotonic() - started}), flush=True)
     require(tree_identity() == package and sha(ROOT / definition["source_file"]) == sources[definition["source_file"]],
             "source or protected package changed during evaluation")
     report = {"schema_version": 1, "status": "ok", "request": request, "cases": rows,
               "kernel_engagement": operator.proof(), "task_validator_status": "pending",
+              "cpu_runtime": cpu_runtime,
               "capture_scope": manifest["capture"], "speedup_claim": False}
     if args.phase == "compile":
         report["compiled"] = True

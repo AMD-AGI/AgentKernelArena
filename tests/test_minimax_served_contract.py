@@ -655,3 +655,17 @@ def test_raw_bundle_retains_byte_exact_source_and_full_physical_abi(modules, tmp
     path.write_text(json.dumps(bundle)); case["fixture"]["sha256"] = codec.file_hash(path)
     with pytest.raises(ValueError, match="original served fixture bytes"):
         codec.load_bundle(tmp_path, case, definition)
+
+
+def test_cpu_runtime_limit_preserves_existing_small_limit(monkeypatch):
+    tree = ast.parse((TASKS[0]/"scripts/task_runner.py").read_text())
+    fn = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "configure_cpu_threads")
+    namespace = {}
+    exec(compile(ast.Module(body=[fn], type_ignores=[]), '<cpu-runtime-limit>', 'exec'), namespace)
+    from types import SimpleNamespace
+    for before, after in [(112, 8), (8, 8), (4, 4)]:
+        value = [before]
+        fake = SimpleNamespace(get_num_threads=lambda: value[0], set_num_threads=lambda n: value.__setitem__(0, n))
+        monkeypatch.setitem(sys.modules, 'torch', fake)
+        result = namespace['configure_cpu_threads']()
+        assert result['intraop_threads_before'] == before and result['intraop_threads'] == after
