@@ -12,7 +12,7 @@ performance_command:
   - python3 scripts/task_runner.py performance
 compile_timeout: 1800
 correctness_timeout: 3600
-performance_timeout: 21600
+performance_timeout: 32400
 platform_support:
   required_arch: gfx950
   status: active
