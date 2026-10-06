@@ -67,6 +67,15 @@ Task-level `compile_timeout`, `correctness_timeout`, and `performance_timeout`
 override these defaults. The validator backend timeout is automatically raised
 enough to cover those commands plus static review.
 
+Codex receives its complete UTF-8 prompt through a temporary-file-backed stdin
+descriptor (`codex exec -`), so large prompts cannot exceed the operating system's
+argument-size limit or block a pipe writer before output readers start. When the
+authoritative harness inventory exceeds 32 KiB, the prompt includes critical
+paths and a SHA256/count reference to `.validator_audit/harness_inventory.json`.
+The sidecar contains the complete guard facts. Validators query relevant entries
+after checking that digest; the framework finalizer independently restores the
+complete protected-path list in the final report. Small inventories remain inline.
+
 ## Validation Checks
 
 | # | Check | What It Verifies |

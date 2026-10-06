@@ -5,6 +5,7 @@ import logging
 import os
 import sys
 import threading
+import tempfile
 import shlex
 import json
 from dataclasses import dataclass
@@ -196,23 +197,27 @@ def _launch_codex(
         cmd.extend(["--model", str(model)])
     if effort:
         cmd.extend(["-c", f'model_reasoning_effort="{effort}"'])
-    cmd.append(prompt)
+    cmd.append("-")  # Codex reads the exact prompt from stdin, outside argv limits.
 
     logger.info(f"Validator Codex model: {model if model else '<codex CLI default/config>'}")
     logger.info(f"Validator Codex effort: {effort if effort else '<codex config default>'}")
     logger.info(f"Running command: {' '.join(shlex.quote(p) for p in cmd[:8])} ...")
 
-    process = subprocess.Popen(
-        cmd,
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        cwd=workspace,
-        bufsize=1,
-    )
-    if process.stdin:
-        process.stdin.close()
+    # A regular temporary file avoids both execve's per-argument limit and a
+    # pipe writer blocking before stdout/stderr readers and the timeout start.
+    # Popen duplicates the descriptor; the child retains it after this closes.
+    with tempfile.TemporaryFile(mode="w+b") as prompt_input:
+        prompt_input.write(prompt.encode("utf-8"))
+        prompt_input.seek(0)
+        process = subprocess.Popen(
+            cmd,
+            stdin=prompt_input,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            cwd=workspace,
+            bufsize=1,
+        )
 
     stdout_lines: list[str] = []
     stderr_lines: list[str] = []

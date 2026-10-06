@@ -1,12 +1,19 @@
+import hashlib
+import json
 import logging
+import os
+import sys
+import time
 import tempfile
 import unittest
 from datetime import datetime, timezone
 from pathlib import Path
+from unittest.mock import patch
 
 import yaml
 
 from agents.task_validator.launch_agent import (
+    _launch_codex,
     _resolve_backend_settings,
     _resolve_validation_timeouts,
 )
@@ -18,7 +25,7 @@ from agents.task_validator.report_schema import (
     validation_report_is_complete,
 )
 from agents.task_validator.validation_postprocessing import validation_post_processing
-from agents.task_validator.validation_prompt import build_validation_prompt
+from agents.task_validator.validation_prompt import build_validation_prompt, _trusted_framework_facts
 
 
 def _valid_raw_report(task_name: str = "hip2hip/example") -> dict:
@@ -450,6 +457,134 @@ class ValidationLauncherTests(unittest.TestCase):
         self.assertNotIn("torch2flydsl starter policy", torch2hip_prompt)
         self.assertNotIn("torch2hip generation placeholder policy", hip2hip_prompt)
         self.assertNotIn("torch2flydsl starter policy", hip2hip_prompt)
+
+
+class ValidationPromptTransportTests(unittest.TestCase):
+    def test_real_exec_receives_large_unicode_prompt_on_regular_stdin(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            executable = root / "codex"
+            executable.write_text("#!" + sys.executable + "\n" + r"""
+import hashlib, json, os, signal, stat, sys
+signal.alarm(8)  # Bound a regression that blocks a pipe writer before readers start.
+sys.stdout.write('stdout-before-stdin:' + 'x' * 131072 + '\n')
+sys.stdout.flush()
+sys.stderr.write('stderr-before-stdin:' + 'y' * 131072 + '\n')
+sys.stderr.flush()
+prompt = sys.stdin.buffer.read()
+receipt = {'bytes': len(prompt), 'sha256': hashlib.sha256(prompt).hexdigest(),
+           'regular_stdin': stat.S_ISREG(os.fstat(0).st_mode), 'argv': sys.argv[1:]}
+print(json.dumps({'type': 'item.completed', 'item': {'type': 'agent_message',
+                  'text': 'PROMPT_RECEIPT ' + json.dumps(receipt)}}))
+""")
+            executable.chmod(0o755)
+            prompt = "Complete validator input \u03bb \U0001f9ea\n" * 100000
+            with patch.dict(os.environ, {"PATH": directory + os.pathsep + os.environ.get("PATH", "")}):
+                result = _launch_codex(prompt, directory, 5, logging.getLogger(__name__),
+                                       model="gpt-5.6-sol", effort="max")
+            self.assertEqual(result.returncode, 0)
+            self.assertFalse(result.timed_out)
+            line = next(line for line in result.output.splitlines() if line.startswith("assistant: PROMPT_RECEIPT "))
+            receipt = json.loads(line.removeprefix("assistant: PROMPT_RECEIPT "))
+            self.assertGreater(receipt["bytes"], 2 * 1024 * 1024)
+            self.assertEqual(receipt["sha256"], hashlib.sha256(prompt.encode("utf-8")).hexdigest())
+            self.assertTrue(receipt["regular_stdin"])
+            self.assertEqual(receipt["argv"], ["exec", "--json", "--dangerously-bypass-approvals-and-sandbox",
+                "--skip-git-repo-check", "-c", "features.memories=false", "--cd", directory,
+                "--model", "gpt-5.6-sol", "-c", 'model_reasoning_effort="max"', "-"])
+            self.assertIn("stderr-before-stdin:", result.output)
+
+    def test_large_prompt_timeout_does_not_depend_on_child_reading_stdin(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            executable = Path(directory) / "codex"
+            executable.write_text("#!" + sys.executable + "\nimport time\ntime.sleep(30)\n")
+            executable.chmod(0o755)
+            started = time.monotonic()
+            with patch.dict(os.environ, {"PATH": directory + os.pathsep + os.environ.get("PATH", "")}):
+                result = _launch_codex("x" * (2 * 1024 * 1024), directory, 1, logging.getLogger(__name__))
+            self.assertTrue(result.timed_out)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertLess(time.monotonic() - started, 5)
+
+
+class ValidationGuardInventoryTests(unittest.TestCase):
+    def _workspace(self, root: Path, count: int) -> None:
+        config = {"task_type": "hip2hip", "source_file_path": ["source/kernel.py"],
+                  "target_kernel_functions": ["kernel"],
+                  "performance_command": ["python3 scripts/task_runner.py performance"],
+                  "trusted_evaluation": {"schema_version": 1, "case_manifest": "cases.json",
+                    "contract_file": "ut/evaluation_contract.py", "source_guard": "ut/source_guard.py",
+                    "reference_sources": {"source/kernel.py": "ut/reference/kernel.py"},
+                    "fixture_manifest": "fixtures/EXTERNAL-MANIFEST.json"}}
+        (root / "config.yaml").write_text(yaml.safe_dump(config))
+        for relative in ("source/kernel.py", "scripts/task_runner.py", "ut/evaluation_contract.py",
+                         "ut/source_guard.py", "ut/reference/kernel.py"):
+            path = root / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("def kernel():\n    pass\n")
+        (root / "cases.json").write_text("{}\n")
+        (root / "fixtures").mkdir()
+        (root / "fixtures/EXTERNAL-MANIFEST.json").write_text("{}\n")
+        for index in range(count):
+            (root / "fixtures" / (f"{index:05d}-" + "a" * 80 + ".bin")).write_bytes(b"original")
+
+    def test_small_guard_facts_remain_inline_and_unchanged(self) -> None:
+        from src.harness_guard import describe_workspace_harness
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self._workspace(root, 1)
+            expected = describe_workspace_harness(root)
+            actual = yaml.safe_load(_trusted_framework_facts(directory, "hip2hip"))["harness_guard"]
+            self.assertEqual(actual, expected)
+            self.assertFalse((root / ".validator_audit").exists())
+
+    def test_large_inventory_is_bounded_but_guard_and_final_report_stay_complete(self) -> None:
+        from src.harness_guard import describe_workspace_harness, snapshot_workspace_harness, verify_workspace_harness
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self._workspace(root, 600)
+            original = describe_workspace_harness(root)
+            snapshot = snapshot_workspace_harness(root)
+            prompt = build_validation_prompt(str(root / "config.yaml"), directory, {"agent": {}})
+            facts = yaml.safe_load(_trusted_framework_facts(directory, "hip2hip"))["harness_guard"]
+            inventory = root / facts["full_inventory"]["path"]
+            payload = inventory.read_bytes()
+            self.assertEqual(hashlib.sha256(payload).hexdigest(), facts["full_inventory"]["sha256"])
+            self.assertEqual(len(payload), facts["full_inventory"]["bytes"])
+            self.assertEqual(json.loads(payload)["harness_guard"], original)
+            self.assertEqual(facts["protected_path_count"], len(original["protected_paths"]))
+            self.assertFalse(facts["protected_paths_complete"])
+            self.assertLessEqual(len(facts["protected_paths"]), 64)
+            self.assertLess(len(prompt.encode("utf-8")), 100000)
+            for critical in ("config.yaml", "cases.json", "scripts/task_runner.py", "ut/source_guard.py",
+                             "ut/evaluation_contract.py", "ut/reference/kernel.py", "fixtures/EXTERNAL-MANIFEST.json"):
+                self.assertIn(critical, facts["protected_paths"])
+            self.assertIn("Do not print the full inventory", prompt)
+            self.assertEqual(describe_workspace_harness(root), original)
+            verify_workspace_harness(snapshot)
+            self.assertEqual(inventory.read_bytes(), payload)  # Stable path/content across prompt builds.
+            # The finalizer computes full guard coverage itself, even if a sidecar
+            # or the agent's abbreviated report contains an incomplete inventory.
+            inventory.write_text("{}\n")
+            raw = _valid_raw_report()
+            raw["checks"]["harness_integrity"]["protected_paths"] = facts["protected_paths"]
+            (root / "validation_report.yaml").write_text(yaml.safe_dump(raw))
+            report = finalize_report(root, expected_task_name="hip2hip/example")
+            self.assertEqual(report["checks"]["harness_integrity"]["protected_paths"], original["protected_paths"])
+            self.assertTrue(validation_report_is_complete(root))
+            omitted = next(name for name in original["protected_paths"] if name not in facts["protected_paths"])
+            (root / omitted).write_bytes(b"tampered")
+            with self.assertRaises(RuntimeError):
+                verify_workspace_harness(snapshot)
+
+    def test_inventory_refuses_symlinked_audit_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as directory, tempfile.TemporaryDirectory() as outside:
+            root = Path(directory)
+            self._workspace(root, 600)
+            (root / ".validator_audit").symlink_to(outside, target_is_directory=True)
+            with self.assertRaisesRegex(ValueError, "symlinks"):
+                _trusted_framework_facts(directory, "hip2hip")
+            self.assertEqual(list(Path(outside).iterdir()), [])
 
 
 if __name__ == "__main__":

@@ -8,7 +8,10 @@ perform reviews that cannot be expressed as simple schema checks.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import os
+import tempfile
 import sys
 from pathlib import Path
 from typing import Any
@@ -186,10 +189,97 @@ candidate performance is `SKIP/starter_stub`.
     return ""
 
 
+_MAX_INLINE_GUARD_BYTES = 32768
+_GUARD_INVENTORY_PATH = Path(".validator_audit/harness_inventory.json")
+
+
+def _bounded_strings(values, *, count=64, byte_limit=8192):
+    result, size = [], 0
+    for value in values:
+        cost = len(json.dumps(value, ensure_ascii=False).encode("utf-8"))
+        if len(result) >= count or size + cost > byte_limit:
+            break
+        result.append(value)
+        size += cost
+    return result
+
+
+def _prompt_guard_facts(workspace: Path, guard: dict[str, Any]) -> dict[str, Any]:
+    """Bound the prompt representation without changing the effective guard."""
+    payload = json.dumps({"schema_version": 1,
+                          "protected_path_count": len(guard["protected_paths"]),
+                          "harness_guard": guard}, sort_keys=True, ensure_ascii=False,
+                         separators=(",", ":")).encode("utf-8") + b"\n"
+    if len(payload) <= _MAX_INLINE_GUARD_BYTES:
+        return guard
+
+    root = workspace.resolve()
+    inventory = root / _GUARD_INVENTORY_PATH
+    if inventory.parent.is_symlink() or inventory.is_symlink():
+        raise ValueError("Validator inventory paths must not be symlinks")
+    inventory.parent.mkdir(parents=True, exist_ok=True)
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(dir=inventory.parent, prefix=".harness_inventory.",
+                                         mode="wb", delete=False) as stream:
+            temporary = Path(stream.name)
+            stream.write(payload)
+        temporary.replace(inventory)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+
+    config, _ = _load_task_config(root / "config.yaml")
+    named = {"config.yaml", "config.yml", "cases.json", "README.md"}
+    descriptor = config.get("trusted_evaluation")
+    if isinstance(descriptor, dict):
+        for key in ("case_manifest", "contract_file", "source_guard", "fixture_manifest"):
+            value = descriptor.get(key)
+            if isinstance(value, str):
+                named.add(value)
+        references = descriptor.get("reference_sources")
+        if isinstance(references, dict):
+            named.update(value for value in references.values() if isinstance(value, str))
+    named.update(guard["editable_entrypoint_targets"])
+    protected = guard["protected_paths"]
+    primary = [name for name in protected if name in named]
+    nearby = [name for name in protected if name not in named
+              and Path(name).parts[0] in {"script", "scripts", "test", "tests", "ut"}
+              and len(Path(name).parts) <= 3]
+    paths = _bounded_strings(primary + nearby)
+    targets, target_bytes = {}, 0
+    for name, symbols in guard["editable_entrypoint_targets"].items():
+        selected = _bounded_strings(symbols, count=16, byte_limit=2048)
+        cost = len(json.dumps({name: selected}, ensure_ascii=False).encode("utf-8"))
+        if len(targets) >= 16 or target_bytes + cost > 8192:
+            break
+        targets[name] = selected
+        target_bytes += cost
+    symlinks = _bounded_strings(guard["symlink_protected_sources"], count=32, byte_limit=4096)
+    return {
+        "enforced_during_optimization": guard["enforced_during_optimization"],
+        "protected_paths": paths,
+        "protected_paths_complete": len(paths) == len(protected),
+        "protected_path_count": len(protected),
+        "editable_entrypoint_targets": targets,
+        "editable_entrypoint_targets_complete": targets == guard["editable_entrypoint_targets"],
+        "symlink_protected_sources": symlinks,
+        "symlink_protected_sources_complete": symlinks == guard["symlink_protected_sources"],
+        "full_inventory": {
+            "path": _GUARD_INVENTORY_PATH.as_posix(),
+            "sha256": hashlib.sha256(payload).hexdigest(),
+            "bytes": len(payload),
+            "protected_path_count": len(protected),
+            "usage": "Verify this digest and query relevant entries; do not print the entire inventory. "
+                     "The framework finalizer independently restores complete protected_paths in the report.",
+        },
+    }
+
+
 def _trusted_framework_facts(workspace: str, task_type: Any) -> str:
     """Describe evaluator invariants that are not visible inside a task package."""
 
-    guard = describe_workspace_harness(Path(workspace))
+    guard = _prompt_guard_facts(Path(workspace), describe_workspace_harness(Path(workspace)))
     baseline_policy = (
         "torch2hip uses its framework-managed PyTorch baseline; the task performance "
         "command validates that baseline with --baseline_only before generation."
@@ -480,9 +570,14 @@ empty list. Other families still require an explicit source declaration.
 
 The trusted framework block lists the effective protected paths and co-located editable
 targets. Treat that list as proof that framework guard coverage is enforced, set
-`guard_coverage_reviewed: true`, and copy its `protected_paths`. Do not require a
-task-local digest or manifest. `editable_targets_preserved` still requires checking
-that the task declarations leave the intended implementation surface editable.
+`guard_coverage_reviewed: true`, and copy its `protected_paths`. For large inventories,
+`full_inventory` names a framework-written JSON sidecar and its SHA256, byte size, and
+complete path count; the inline paths are a bounded selection of critical files.
+Verify that digest before targeted lookups. Do not print the full inventory or expand
+it into your report: the framework finalizer independently restores the complete
+protected path set. Do not search for another task-local digest or manifest.
+`editable_targets_preserved` still requires checking that the task declarations leave
+the intended implementation surface editable, including any targets in the sidecar.
 
 ## Report rules
 
