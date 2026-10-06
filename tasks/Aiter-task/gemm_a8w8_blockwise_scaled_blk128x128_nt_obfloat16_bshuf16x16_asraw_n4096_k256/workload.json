@@ -1,0 +1,133 @@
+{
+  "definition": "gemm_a8w8_blockwise_scaled_blk128x128_nt_obfloat16_bshuf16x16_asraw_n4096_k256",
+  "op_type": "gemm_a8w8",
+  "axes": {
+    "n": 4096,
+    "k": 256,
+    "sn": 32,
+    "sk": 2
+  },
+  "variable_axis": "m",
+  "constraints": [
+    "sn == (n + 127) // 128",
+    "sk == (k + 127) // 128"
+  ],
+  "inputs": {
+    "a": {
+      "shape": [
+        "m",
+        "k"
+      ],
+      "dtype": "float8_e4m3fn"
+    },
+    "b": {
+      "shape": [
+        "n",
+        "k"
+      ],
+      "dtype": "float8_e4m3fn"
+    },
+    "a_scale": {
+      "shape": [
+        "m",
+        "sk"
+      ],
+      "dtype": "float32"
+    },
+    "b_scale": {
+      "shape": [
+        "sn",
+        "sk"
+      ],
+      "dtype": "float32"
+    }
+  },
+  "outputs": {
+    "out": {
+      "shape": [
+        "m",
+        "n"
+      ],
+      "dtype": "bfloat16"
+    }
+  },
+  "block_size": [
+    128,
+    128
+  ],
+  "a_scale_storage": "raw",
+  "seed": 0,
+  "bench": {
+    "warmup": 20,
+    "repetition": 100,
+    "target_ms": 1.0
+  },
+  "gate_policy": "Input initialization, reference, comparison and production baseline are the original bundled task callbacks. The requested role is evaluated independently over every case; timed outputs use the same numerical gate. Any baseline numerical exception is declared in config.yaml and preserves the failed comparison evidence.",
+  "cases": [
+    {
+      "case_id": "m_1",
+      "uuid": "093bad7e2d28309d",
+      "m": 1
+    },
+    {
+      "case_id": "m_2",
+      "uuid": "9c9cf63c0b4ab9e4",
+      "m": 2
+    },
+    {
+      "case_id": "m_4",
+      "uuid": "3b63dca48ca24aaf",
+      "m": 4
+    },
+    {
+      "case_id": "m_8",
+      "uuid": "fd8d70b486941aac",
+      "m": 8
+    },
+    {
+      "case_id": "m_16",
+      "uuid": "dc040838d15ca7a6",
+      "m": 16
+    },
+    {
+      "case_id": "m_32",
+      "uuid": "0c1ac07d9da2e338",
+      "m": 32
+    },
+    {
+      "case_id": "m_64",
+      "uuid": "e2d47517a07d7d00",
+      "m": 64
+    },
+    {
+      "case_id": "m_128",
+      "uuid": "b95a96bc3cfb6e4b",
+      "m": 128
+    },
+    {
+      "case_id": "m_256",
+      "uuid": "fd4540ed40921e9f",
+      "m": 256
+    },
+    {
+      "case_id": "m_512",
+      "uuid": "bd8442c2f80769dd",
+      "m": 512
+    },
+    {
+      "case_id": "m_1024",
+      "uuid": "7127f263b123b293",
+      "m": 1024
+    },
+    {
+      "case_id": "m_2048",
+      "uuid": "4ebb50e97f245044",
+      "m": 2048
+    },
+    {
+      "case_id": "m_4096",
+      "uuid": "a1a18b0ef1fa6e8c",
+      "m": 4096
+    }
+  ]
+}

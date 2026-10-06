@@ -1,4 +1,4 @@
-"""Protected operator semantics and packaging invariants for the 26 SIKL tasks."""
+"""Protected operator semantics and packaging invariants for the 41 SIKL tasks."""
 from __future__ import annotations
 
 import ast
@@ -23,15 +23,16 @@ DEFERRED_TIMING_TASKS = {
 }
 ROTATING_TASKS = [t for t in TASKS if t.name not in DEFERRED_TIMING_TASKS]
 SPLIT_TEMPLATE_FILES = {'README.md', 'scripts/task_inputs.py', 'scripts/task_measure.py'}
-VAR_AXIS = {'gemm': 'm', 'moe': 'num_tokens', 'mhc': 'tokens', 'topk': 'batch', 'mla': 'batch'}
+VAR_AXIS = {'gemm': 'm', 'moe': 'num_tokens', 'mhc': 'tokens', 'topk': 'batch', 'mla': 'batch',
+            'gemm_a8w8': 'm'}
 # Families whose workload cases are exactly the bundle's 13 rows. Top-k and
 # MLA also vary the valid lengths per row; their own test modules cover them.
-BUNDLE_ROW_FAMILIES = {'gemm', 'moe', 'mhc'}
+BUNDLE_ROW_FAMILIES = {'gemm', 'moe', 'mhc', 'gemm_a8w8'}
 _AITER_SOURCE = [{'kind': 'image', 'image_path': '/sgl-workspace/aiter/aiter',
                   'destination': 'aiter_source/aiter',
                   'exclude': ['jit/build', 'jit/flydsl_cache', '__pycache__']}]
 SOURCE_ACQUISITION = {
-    'gemm': _AITER_SOURCE, 'moe': _AITER_SOURCE, 'mhc': _AITER_SOURCE,
+    'gemm': _AITER_SOURCE, 'moe': _AITER_SOURCE, 'mhc': _AITER_SOURCE, 'gemm_a8w8': _AITER_SOURCE,
     'topk': [{'kind': 'image', 'image_path': '/sgl-workspace/sglang/python/sglang/kernels/ops/attention/dsv4',
               'destination': 'sglang_source/kernels/ops/attention/dsv4', 'exclude': ['__pycache__']},
              {'kind': 'image', 'image_path': '/sgl-workspace/sglang/python/sglang/kernels/jit/csrc/deepseek_v4',
@@ -39,9 +40,12 @@ SOURCE_ACQUISITION = {
     'mla': [{'kind': 'image', 'image_path': '/sgl-workspace/sglang/python/sglang/kernels/ops/attention/dsa',
              'destination': 'sglang_source/kernels/ops/attention/dsa', 'exclude': ['__pycache__']}],
 }
-# The MLA definitions differ in their reference and baseline bindings, so those
-# callbacks are pinned per task rather than shared by the family.
-PER_TASK_CALLBACKS = {'mla': {'scripts/task_reference.py', 'scripts/task_baseline.py'}}
+# The MLA definitions differ in their reference and baseline bindings, and the
+# a8w8 definitions in their activation-scale storage, so those callbacks are
+# pinned per task (MLA) or per storage mode (a8w8) rather than per family.
+PER_TASK_CALLBACKS = {'mla': {'scripts/task_reference.py', 'scripts/task_baseline.py'},
+                      'gemm_a8w8': {'scripts/task_reference.py', 'scripts/task_initialize.py',
+                                    'scripts/task_baseline.py'}}
 SHARED_TEMPLATE_FILES = (
     'kernel.py', 'test_kernel_harness.py', 'scripts/task_inputs.py',
     'scripts/task_initialize.py', 'scripts/task_compare.py', 'scripts/task_reference.py',
@@ -96,7 +100,32 @@ CALLBACK_SHA256 = {
         } for name in ('flash_mla_with_kvcache_dsv4_fp8_11111_q1_h64_d512_p256_k128_ep2_ek8256',
                        'flash_mla_with_kvcache_dsv4_fp8_11111_q1_h64_d512_p256_k128_ep64_ek512')},
     },
+    # Verbatim callbacks and baselines of the 15 deepseek-v4-flash bundle
+    # gemm_a8w8_blockwise_scaled definitions, by activation-scale storage.
+    'gemm_a8w8': {
+        'raw': {
+            'task_baseline': 'e2627497c37ff4e341469a45d89097c07d7fb9a9b6bf7a8b65b680add2172ef9',
+            'task_compare': 'd12a114fb11ddbbc00411aca479777ef89dd1c75c0f126a14b8311d16d554589',
+            'task_initialize': '28ce7376d9ac41989dc5d35ebd5ab466c370eeb5e9169fcb25f51fabaea153af',
+            'task_reference': 'b87a298edc4fa8ce630a1d6ff53efd1c37786be48c603b0d0855fbf03822670d',
+        },
+        'logical': {
+            'task_baseline': '37803a944240d8788e3ce6f5c118fbc5672552db0fbd6e9c1ecd149d368a6fa6',
+            'task_compare': 'd12a114fb11ddbbc00411aca479777ef89dd1c75c0f126a14b8311d16d554589',
+            'task_initialize': '2a831f1d158c90bcfe10879667a94eb35a8f580e04b63ca81027835b57874777',
+            'task_reference': '922be729d0b7804505aa55e6c2f146f61a8c9d8f61846c4e66110d9809580584',
+        },
+    },
 }
+
+
+def _callback_hashes(task, workload):
+    hashes = CALLBACK_SHA256[workload['op_type']]
+    if workload['op_type'] == 'mla':
+        return hashes[task.name]
+    if workload['op_type'] == 'gemm_a8w8':
+        return hashes[workload['a_scale_storage']]
+    return hashes
 
 
 def _config(task):
@@ -107,14 +136,15 @@ def _workload(task):
     return json.loads((task / 'workload.json').read_text())
 
 
-def test_suite_keeps_all_26_tasks_and_1374_cases():
-    assert len(TASKS) == 26
+def test_suite_keeps_all_41_tasks_and_1569_cases():
+    assert len(TASKS) == 41
     assert sum(_workload(t)['op_type'] == 'gemm' for t in TASKS) == 17
     assert sum(_workload(t)['op_type'] == 'moe' for t in TASKS) == 4
     assert sum(_workload(t)['op_type'] == 'mhc' for t in TASKS) == 1
     assert sum(_workload(t)['op_type'] == 'topk' for t in TASKS) == 1
     assert sum(_workload(t)['op_type'] == 'mla' for t in TASKS) == 3
-    assert sum(len(_workload(t)['cases']) for t in TASKS) == 1374
+    assert sum(_workload(t)['op_type'] == 'gemm_a8w8' for t in TASKS) == 15
+    assert sum(len(_workload(t)['cases']) for t in TASKS) == 1569
 
 
 @pytest.mark.parametrize('op_type', sorted(VAR_AXIS))
@@ -194,6 +224,7 @@ def test_image_acquisition_excludes_generated_jit_trees_but_keeps_sources(tmp_pa
         'tuned_gemm.py': b'production_source = True\n',
         'fused_moe.py': b'moe_production_source = True\n',
         'ops/mhc.py': b'mhc_production_source = True\n',
+        'ops/gemm_op_a8w8.py': b'a8w8_production_source = True\n',
         'ops/flydsl/gemm_kernels.py': b'kernel_source = True\n',
         'configs/model_configs/tuned.csv': b'M,N,K\n1,32,6144\n',
     }
@@ -245,8 +276,7 @@ def test_image_acquisition_excludes_generated_jit_trees_but_keeps_sources(tmp_pa
 def test_original_callbacks_and_case_sampling_are_unchanged(task):
     workload = _workload(task)
     kind = workload['op_type']
-    hashes = CALLBACK_SHA256[kind][task.name] if kind in PER_TASK_CALLBACKS else CALLBACK_SHA256[kind]
-    for module, sha in hashes.items():
+    for module, sha in _callback_hashes(task, workload).items():
         assert hashlib.sha256((task / 'scripts' / f'{module}.py').read_bytes()).hexdigest() == sha
     cases = workload['cases']
     if kind in BUNDLE_ROW_FAMILIES:

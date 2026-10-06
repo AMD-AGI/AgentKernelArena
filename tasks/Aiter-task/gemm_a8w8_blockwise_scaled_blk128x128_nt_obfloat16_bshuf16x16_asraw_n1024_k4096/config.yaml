@@ -1,0 +1,61 @@
+schema_version: 2
+description: Implement gemm_a8w8_blockwise_scaled_blk128x128_nt_obfloat16_bshuf16x16_asraw_n1024_k4096 in FlyDSL over every declared case.
+instructions:
+- README.md
+kernel_identity:
+  logical_operator: gemm_a8w8_blockwise_scaled_blk128x128_nt_obfloat16_bshuf16x16_asraw_n1024_k4096
+  source_owner: aiter
+candidate:
+  language: flydsl
+  initial_state: unimplemented
+  editable:
+  - kernel.py
+  entrypoints:
+  - file: kernel.py
+    kind: builder
+    symbol: build_gemm_a8w8_blockwise_scaled_blk128x128_nt_obfloat16_bshuf16x16_asraw_n1024_k4096_module
+baseline:
+  kind: provided
+  source_files:
+  - aiter_source/aiter/ops/gemm_op_a8w8.py
+  correctness_policy: diagnostic
+  diagnostic_reason: >-
+    MI355X/gfx950 on 2026-10-06 with AITER commit dbd8bf5bd624120197a7a26780a8c72201824f0f: for
+    M=128 the tuned row gfx950,256,128,1024,4096,asm,5,6 of
+    aiter/configs/model_configs/a8w8_blockscale_bpreshuffle_tuned_gemm_qwen3.5_397b.csv (SHA256
+    65246705468a77baacc29af9831825efdbba78b8aab5e324d484463f4ddfea97) selects
+    _ZN5aiter42fp8gemm_bf16_blockscale_BpreShuffle_32x128E with splitK=6. Over 4 input draws x 5
+    repeats, 0/20 m_128 outputs met the task comparison and every repeat produced a different
+    output, while the other 12 cases passed the comparison. Only completed finite numerical
+    mismatches are diagnostic; candidate checks retain the full original gate.
+workspace:
+  sources:
+  - kind: image
+    image_path: /sgl-workspace/aiter/aiter
+    destination: aiter_source/aiter
+    exclude:
+    - jit/build
+    - jit/flydsl_cache
+    - __pycache__
+evaluation:
+  runner:
+  - python3
+  - scripts/evaluate.py
+  workloads: workload.json
+  timeout_s: 3600
+  baseline:
+    correctness:
+      timeout_s: 1800
+  candidate:
+    correctness:
+      timeout_s: 1800
+platform_support:
+  required_arch: gfx950
+  status: active
+exports:
+- format: sikl-solution
+  output: artifacts/solution.json
+  command:
+  - python3
+  - scripts/export_solution.py
+  timeout_s: 60

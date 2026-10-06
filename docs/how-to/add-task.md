@@ -659,9 +659,9 @@ installed package in the pinned runtime; they do not import this copy. Preserve
 the package's Python JIT sources while excluding generated build/cache trees.
 Copying the whole upstream repository is unnecessary for this task contract.
 
-The existing SIKL suite contains 17 BF16 GEMM tasks, four MXFP4 MoE tasks, one
-fused mHC post→pre task, one paged top-k task and three sparse flash MLA tasks,
-each covering its declared case set. The same schema fits every family. A MoE
+The existing SIKL suite contains 17 BF16 GEMM tasks, 15 blockwise-scaled FP8
+GEMM tasks, four MXFP4 MoE tasks, one fused mHC post→pre task, one paged top-k
+task and three sparse flash MLA tasks, each covering its declared case set. The same schema fits every family. A MoE
 runner keeps its routing, quantization, reference, comparison, and multi-kernel
 timing logic in task files; the mHC runner keeps its multi-output naming and
 scalar inputs there too, the top-k runner its declared valid lengths,

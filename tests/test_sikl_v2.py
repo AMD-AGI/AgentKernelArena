@@ -59,12 +59,13 @@ def test_complete_manifest_is_accepted_by_framework(config_path, monkeypatch):
         captured = manifest(contract)
         workload = contract.load_workload()
         assert len(captured.cases) == len(workload['cases'])
-        if workload['op_type'] in ('gemm', 'moe', 'mhc'):
+        if workload['op_type'] in ('gemm', 'moe', 'mhc', 'gemm_a8w8'):
             assert len(captured.cases) == 13
         for row in captured.cases:
             assert row['checks'] == ['correctness', 'performance']
             assert row['params']['uuid']
-            assert row['dtype'] == ('float32' if workload['op_type'] == 'topk' else 'bfloat16')
+            assert row['dtype'] == {'topk': 'float32', 'gemm_a8w8': 'float8_e4m3fn'}.get(
+                workload['op_type'], 'bfloat16')
 
 
 @pytest.mark.parametrize('config_path', TASKS, ids=lambda p: p.parent.name)
@@ -763,6 +764,10 @@ def test_diagnostic_policy_only_names_tasks_with_specific_evidence():
         'gemm_a16w16_nt_n6144_k3072': '9488e7dd33b407bbbbb193b258d812870132d1a31708475bebe7d93f36a6da55',
         'gemm_a16w16_nt_n6144_k4096': '01fa1cdb8b76a15e0c4de1643b0cabcf5c4d3c49ebd550d2cc079c7f3237ef01',
         'gemm_a16w16_nt_n6144_k6144': 'd641c76d2113890966f1b4132fd3cb0cd53fde9a6a7d44e25bd177db9ecc86b5',
+        # AITER's tuned asm split-K row for M=128 in this model config file.
+        **{f'gemm_a8w8_blockwise_scaled_blk128x128_nt_obfloat16_bshuf16x16_as{storage}_n1024_k4096':
+           '65246705468a77baacc29af9831825efdbba78b8aab5e324d484463f4ddfea97'
+           for storage in ('raw', 'logical')},
     }
     diagnostic = []
     for path in TASKS:
