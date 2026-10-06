@@ -112,8 +112,8 @@ class CaseEvaluation:
             # Independent cutoff math establishes validity; exact native parity
             # also preserves the existing integer-index contract and tie choice.
         else:
-            expected = sparse_attention(args, self.definition["kind"], device="cuda")
-            mixed_close(actual["result"], expected, self.definition["tolerance"])
+            expected, roundoff = sparse_attention(args, self.definition["kind"], device="cuda", return_roundoff=True)
+            mixed_close(actual["result"], expected, self.definition["tolerance"], arithmetic_error=roundoff)
         self.compare_outputs(actual, self.native_reference(reference_storage))
 
     def measure(self, replay):

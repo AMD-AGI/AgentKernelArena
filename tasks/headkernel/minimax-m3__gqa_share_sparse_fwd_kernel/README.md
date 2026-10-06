@@ -24,7 +24,11 @@ Use the repository [trusted fixture materializer](../../../docs/how-to/trusted-f
 
 The runner reconstructs original storage capacities and aliased physical views. Before every replay it refreshes Q, K, V and sink values. Alternating seeds correlate the standard-normal sink with the first query so sink omission remains detectable at long context. Fresh page translations, request-row translations and legal sparse-block permutations preserve sequence lengths, top-k counts, duplicate multiplicity, sorted right padding, partial last blocks and causal-boundary work.
 
-The independent FP32 reference gathers actual paged K/V rows and computes attention over selected sparse blocks. It preserves GQA sharing, repeated selected blocks, ragged causal positions, sink logits, and Q/K/V scales. Floating outputs use the unchanged mixed bound `0.02 * RMS(reference) + 0.02 * abs(reference)` with explicit nonfinite checks. Every checked replay runs both independent math and frozen native parity at the recorded launch configuration.
+The independent FP32 reference gathers actual paged K/V rows and computes attention over selected sparse blocks. It preserves GQA sharing, repeated selected blocks, ragged causal positions, sink logits, and Q/K/V scales.
+
+Floating outputs retain the mixed bound `0.02 * RMS(reference) + 0.02 * abs(reference)` and explicit nonfinite checks. Sparse attention also includes the elementwise PV rounding interval `u * sum(P * abs(V))`, where `P` is the independent FP32 softmax and `u` is half the probability compute dtype epsilon, plus its half-subnormal underflow bound. The interval includes `abs(v_scale)` and final output rounding of that interval. This interval accounts for BF16/FP16 probability rounding before the value dot product, including cancellation; it does not change the FP32 expected result or use candidate/native outputs to set the bound. Frozen native parity retains the original mixed bound without this interval.
+
+Every checked replay runs both independent math and frozen native parity at the recorded launch configuration.
 
 Pure outputs are poisoned before replay. Immutable CPU snapshots cover all input storage, including padding. Candidate outputs are snapshotted before expected outputs are computed on GPU. Correctness restores every retained actual first/min/max state and checks captured output parity, then checks three fresh seeds `[0, 1, 2]`. No-op and wrong-output controls must fail.
 

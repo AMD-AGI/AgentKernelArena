@@ -469,6 +469,85 @@ def test_sparse_reference_matches_scalar_softmax_with_duplicates_and_causality(t
     torch.testing.assert_close(actual, expected, rtol=2e-6, atol=2e-6, equal_nan=True)
 
 
+def probability_cancellation_args(torch, dtype):
+    # Small fresh-input regression distilled from the diagnosed four-token row;
+    # no captured operand storage or native implementation is needed by the test.
+    return {"q": torch.ones(1, 1, 1, dtype=dtype),
+            "k_cache": torch.tensor([-0.5596288443, 0.4663691223, 0.2869253159, 0.7347205281],
+                                    dtype=dtype).reshape(4, 1, 1),
+            "v_cache": torch.tensor([1.421875, -1.3046875, -1.9296875, 1.8125],
+                                    dtype=dtype).reshape(4, 1, 1),
+            "req_to_token": torch.arange(4, dtype=torch.int32).reshape(1, 4),
+            "seq_lens": torch.tensor([4]), "slot_ids": torch.tensor([0]),
+            "topk_idx": torch.tensor([[[0]]]), "block_size_q": 1, "block_size_k": 4,
+            "cu_seqlens": torch.tensor([0, 1]), "cu_seqblocks_q": torch.tensor([0, 1]),
+            "prefix_lens": torch.tensor([3]), "sm_scale": 1.0, "sink": None}
+
+
+def test_probability_roundoff_interval_handles_bf16_cancellation(torch, modules):
+    ref = modules["minimax_reference"]
+    args = probability_cancellation_args(torch, torch.bfloat16)
+    expected, error = ref.sparse_attention(args, "sparse_prefill", return_roundoff=True)
+    logits = args["k_cache"].flatten().float()
+    values = args["v_cache"].flatten().float()
+    probabilities = torch.exp(logits-logits.max())
+    rounded = ((probabilities.to(torch.bfloat16).float()*values).sum()/probabilities.sum())
+    actual = rounded.to(torch.bfloat16).reshape(1, 1, 1)
+    precise = (torch.softmax(logits.double(), 0)*values.double()).sum().reshape(1, 1, 1)
+    torch.testing.assert_close(expected.double(), precise, rtol=1e-5, atol=1e-7)
+    with pytest.raises(AssertionError, match="mixed-tolerance"):
+        ref.mixed_close(actual, expected, 0.02)
+    ref.mixed_close(actual, expected, 0.02, arithmetic_error=error)
+    # An accurate implementation also passes; the expected answer was not moved
+    # to match a particular block order or the frozen native output.
+    ref.mixed_close(precise, expected, 0.02, arithmetic_error=error)
+    for wrong in (torch.zeros_like(actual), actual+0.05, torch.full_like(actual, float("nan"))):
+        with pytest.raises(AssertionError):
+            ref.mixed_close(wrong, expected, 0.02, arithmetic_error=error)
+    # Native parity remains strict unless the independent oracle explicitly
+    # supplies its input-derived arithmetic interval.
+    with pytest.raises(AssertionError):
+        ref.mixed_close(actual+0.01, actual, 0.02)
+
+
+@pytest.mark.parametrize("dtype", ["float16", "bfloat16", "float32"])
+def test_probability_roundoff_depends_on_dtype_and_value_magnitude(torch, modules, dtype):
+    ref = modules["minimax_reference"]
+    args = probability_cancellation_args(torch, getattr(torch, dtype))
+    args["v_cache"].fill_(1)
+    expected, error = ref.sparse_attention(args, "sparse_prefill", return_roundoff=True)
+    precision = torch.finfo(getattr(torch, dtype))
+    # For V=1, sum(P*abs(V))=1 and four tokens contribute to underflow.
+    analytical = (precision.eps/2 + 4*precision.tiny*precision.eps/2) * (1+precision.eps/2)
+    analytical += precision.tiny*precision.eps/2
+    torch.testing.assert_close(expected, torch.ones_like(expected))
+    torch.testing.assert_close(error, torch.full_like(error, analytical), rtol=2e-6, atol=0)
+    args["v_scale"] = -3.0
+    scaled, scaled_error = ref.sparse_attention(args, "sparse_prefill", return_roundoff=True)
+    torch.testing.assert_close(scaled, -3*expected)
+    torch.testing.assert_close(scaled_error, 3*error - precision.tiny*precision.eps, rtol=2e-6, atol=0)
+
+
+def test_probability_roundoff_excludes_causally_masked_values(torch, modules):
+    args = probability_cancellation_args(torch, torch.float16)
+    args["prefix_lens"].zero_()
+    args["v_cache"][0] = 1
+    args["v_cache"][1:] = 1000
+    expected, error = modules["minimax_reference"].sparse_attention(args, "sparse_prefill", return_roundoff=True)
+    precision = torch.finfo(torch.float16)
+    tiny = precision.tiny*precision.eps/2
+    analytical = (precision.eps/2+tiny)*(1+precision.eps/2)+tiny
+    torch.testing.assert_close(expected, torch.ones_like(expected))
+    torch.testing.assert_close(error, torch.full_like(error, analytical), rtol=2e-6, atol=0)
+
+
+@pytest.mark.parametrize("error", [-1.0, float("nan"), float("inf")])
+def test_invalid_arithmetic_intervals_are_rejected(torch, modules, error):
+    with pytest.raises(AssertionError, match="finite and nonnegative"):
+        modules["minimax_reference"].mixed_close(torch.ones(2), torch.ones(2),
+                                                arithmetic_error=torch.full((2,), error))
+
+
 @pytest.mark.parametrize("score_type", ["max", "lse"])
 def test_score_reference_bias_and_cutoff_reject_wrong_selection(torch, modules, score_type):
     ref = modules["minimax_reference"]

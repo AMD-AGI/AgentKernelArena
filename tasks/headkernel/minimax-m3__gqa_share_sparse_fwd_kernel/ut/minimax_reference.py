@@ -39,12 +39,14 @@ def _selected_positions(indices, block_size, length, *, device):
     return positions.flatten(-2), mask.flatten(-2)
 
 
-def sparse_attention(args, kind, *, device="cpu", query_blocks_per_chunk=256):
+def sparse_attention(args, kind, *, device="cpu", query_blocks_per_chunk=256, return_roundoff=False):
     """Use dense FP32 math on the selected logical tokens; no SGLang/Triton calls.
 
     Inputs are views of immutable storage snapshots. The caller may copy those
     snapshots to the reference device after candidate outputs have been saved.
     Chunked gathers bound intermediate memory and preserve physical row IDs.
+    When requested, also return the elementwise PV rounding bound implied by
+    the public compute dtype. The expected result remains independent FP32 math.
     """
     import torch
     q = args["q"]
@@ -78,6 +80,13 @@ def sparse_attention(args, kind, *, device="cpu", query_blocks_per_chunk=256):
         else:
             block_starts = args["cu_seqblocks_q"].to(torch.int64).tolist()[:-1]
     expected = torch.full((q.shape[0], heads, out_dim), float("nan"), dtype=torch.float32, device=device)
+    roundoff = torch.zeros_like(expected) if return_roundoff else None
+    # FP8 V is widened to Q's dtype before PV; other V keeps its stored dtype.
+    probability_dtype = q.dtype if str(pool_v.dtype).startswith("torch.float8") else pool_v.dtype
+    precision = torch.finfo(probability_dtype)
+    unit_roundoff = precision.eps / 2
+    half_subnormal = precision.tiny * precision.eps / 2
+    output_precision = torch.finfo(q.dtype)
     for batch, (start, count) in enumerate(zip(starts, sizes)):
         length = int(lengths[batch]); row = int(rows[batch])
         if count == 0:
@@ -116,12 +125,29 @@ def sparse_attention(args, kind, *, device="cpu", query_blocks_per_chunk=256):
                     sink_logits = (queries * sink[lo:hi].float().to(device)[None, None]).sum(-1) * scale
                     logits = torch.cat((logits, sink_logits.reshape(number, block_q*group, 1)), dim=-1)
                     v = torch.cat((v, torch.zeros((number, 1, v.shape[-1]), device=device)), dim=1)
-                result = torch.bmm(torch.softmax(logits, dim=-1), v) * v_scale
+                probabilities = torch.softmax(logits, dim=-1)
+                result = torch.bmm(probabilities, v) * v_scale
+                if return_roundoff:
+                    # Rounding each unnormalized probability introduces at most
+                    # u*P relative error, plus half a subnormal for underflow.
+                    # Positive normalization/rescaling preserves the relative
+                    # bound, regardless of the chosen block order or running max.
+                    # |sum(delta_P * V)| <= u * sum(P * |V|), so cancellation
+                    # never turns a dtype rounding effect into an oracle failure.
+                    magnitude = torch.bmm(probabilities, v.abs())
+                    underflow = torch.bmm(torch.isfinite(logits).to(v.dtype), v.abs())
+                    error = (unit_roundoff * magnitude + half_subnormal * underflow) * abs(v_scale)
+                    # Final output rounding also acts on this interval. Its
+                    # u_out*abs(expected) term remains within the 0.02 mixed bound.
+                    error = error * (1 + output_precision.eps / 2) + output_precision.tiny * output_precision.eps / 2
+                    error = error.reshape(number*block_q, group, out_dim)
                 result = result.reshape(number*block_q, group, out_dim)
                 good = min(count-begin*block_q, number*block_q)
                 offset = start + begin*block_q
                 expected[offset:offset+good, lo:hi] = result[:good]
-    return expected.cpu()
+                if return_roundoff:
+                    roundoff[offset:offset+good, lo:hi] = error[:good]
+    return (expected.cpu(), roundoff.cpu()) if return_roundoff else expected.cpu()
 
 
 def score_reference(args, *, device="cpu"):
@@ -185,7 +211,8 @@ def check_topk(indices, scores, counts, topk, *, tolerance=0.02):
                 raise AssertionError("mandatory high-scoring block was omitted")
 
 
-def mixed_close(actual, expected, tolerance=0.02):
+def mixed_close(actual, expected, tolerance=0.02, *, arithmetic_error=None):
+    """Apply the mixed bound plus an optional independently derived error interval."""
     import torch
     if tuple(actual.shape) != tuple(expected.shape):
         raise AssertionError("output shape differs")
@@ -198,5 +225,13 @@ def mixed_close(actual, expected, tolerance=0.02):
     if not bool(finite.any()):
         raise AssertionError("case has no defined finite output to validate")
     floor = tolerance * e[finite].square().mean().sqrt().clamp_min(1e-6)
-    if not bool(((a[finite]-e[finite]).abs() <= floor + tolerance*e[finite].abs()).all()):
+    allowance = floor + tolerance*e[finite].abs()
+    if arithmetic_error is not None:
+        if tuple(arithmetic_error.shape) != tuple(expected.shape):
+            raise AssertionError("arithmetic error shape differs")
+        error = arithmetic_error.float()[finite]
+        if not bool((torch.isfinite(error) & (error >= 0)).all()):
+            raise AssertionError("arithmetic error must be finite and nonnegative")
+        allowance = allowance + error
+    if not bool(((a[finite]-e[finite]).abs() <= allowance).all()):
         raise AssertionError("independent mixed-tolerance oracle failed")
