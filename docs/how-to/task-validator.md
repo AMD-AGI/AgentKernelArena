@@ -101,6 +101,25 @@ The `task_validator` runs the following checks in order.
 | 11 | `benchmark_integrity` | Every case has scoreable device timing/method metadata, stable identity, and fair state/allocation boundaries; missing exact replay validation is WARN |
 | 12 | `harness_integrity` | Harness logic stays protected while co-located target and Triton-JIT implementation nodes remain editable |
 
+Check 7 judges completeness against the **declared current task contract**: required
+case identities, configured phases, runnable declared targets, and the documented
+current workload scope. A missing required current case or an unchecked runnable
+declared target is a failure, even if the available cases pass. Weak but substantive
+current comparisons or tolerances can still warrant a warning; historical scope
+notes do not excuse defects in the current checks.
+
+Historical or legacy scenarios explicitly outside that contract remain advisory.
+Their absence alone must not cause `WARN` or `FAIL`. Keep unresolved historical
+flags and describe their unclaimed coverage in the review details, including in a
+`PASS` report when all current correctness criteria are met. Do not add synthetic
+cases, broaden the task's qualification scope, or imply that historical scenarios
+were validated. Explicit current requirements take precedence over broad coverage
+disclaimers. The existing rule for a concrete backend-specific unavailable branch
+applies to an in-scope branch, not to unrelated historical scenarios.
+
+This is guidance for a fresh review. It does not rewrite existing reports, approve
+their warnings, or change schema normalization and overall-status aggregation.
+
 ## Overall status
 
 - **PASS:** all applicable checks passed; a contract-approved `SKIP` does not

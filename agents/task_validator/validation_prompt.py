@@ -455,14 +455,33 @@ dropped. Apply any task-family exception stated above.
 
 ## 7. correctness_implementation_review
 
+Assess completeness against the declared current task contract: its required case
+identities, configured phases, runnable declared targets, and explicit current
+workload scope. Every required current case and every runnable declared target must
+have a meaningful independent correctness check. A missing required current case or
+an unchecked runnable declared target is FAIL, even when the available cases pass.
+A general coverage disclaimer cannot remove a required current case or target.
+
 Inspect the actual scored shapes, references, output comparisons, tolerances, and
 exception handling. Garbage, NaN, missing writes, or arbitrary exceptions must not
-pass. Weak but real coverage/tolerance is WARN; no independent comparison or a
-fallback that ignores candidate output is FAIL and `is_trivially_passing: true`.
+pass. Weak but real coverage/tolerance within the current contract is WARN; no
+independent comparison or a fallback that ignores candidate output is FAIL and
+`is_trivially_passing: true`.
+
+Documented historical or legacy scenarios explicitly outside the current contract
+are advisory context, not additional current coverage requirements. Do not assign
+WARN or FAIL solely because those out-of-scope scenarios remain untested or
+unresolved. Retain the historical flags and state in `details` that their coverage
+remains unclaimed; such a note may accompany PASS when the current correctness
+criteria are satisfied. Do not invent cases, broaden the qualification scope, or
+claim that historical coverage has passed. Required current case identities and
+runnable declared targets remain binding regardless of historical-scope notes.
+
 When a branch is explicitly unsupported by the active backend/runtime and the
 command records a concrete backend-specific skip reason, do not fail solely for
 that unreachable branch. Require independent checks for every runnable declared
-target and mark the unavailable branch as a coverage WARN.
+target and mark the unavailable in-scope branch as a coverage WARN. This backend
+eligibility rule does not turn separate out-of-scope historical notes into warnings.
 
 ## 8. self_contained
 

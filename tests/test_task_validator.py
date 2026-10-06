@@ -252,6 +252,22 @@ class ValidationReportSchemaTests(unittest.TestCase):
             report["validation_warnings"],
         )
 
+    def test_scope_guidance_does_not_automatically_upgrade_review_results(self) -> None:
+        for status, finding in (
+            ("WARN", "Documented historical scenarios outside the current contract remain unvalidated."),
+            ("FAIL", "A required current case or runnable declared target has no independent check."),
+        ):
+            with self.subTest(status=status):
+                raw = _valid_raw_report()
+                raw["checks"]["correctness_implementation_review"].update(
+                    status=status,
+                    details=finding,
+                    evidence=[{"path": "provenance/COVERAGE.json", "finding": finding}],
+                )
+                report = normalize_report(raw, expected_task_name="hip2hip/example")
+                self.assertEqual(report["checks"]["correctness_implementation_review"]["status"], status)
+                self.assertEqual(report["overall_status"], status)
+
     def test_command_report_cannot_override_nonzero_exit(self) -> None:
         raw = _valid_raw_report()
         raw["checks"]["compilation"]["attempts"][0]["exit_code"] = 1
@@ -330,6 +346,22 @@ class ValidationAggregationTests(unittest.TestCase):
 
 
 class ValidationLauncherTests(unittest.TestCase):
+    def test_review_scope_keeps_current_requirements_and_historical_advisories_distinct(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        task = root / "tasks/headkernel/deepseek-v4-pro__unified_paged_attention_prefill/config.yaml"
+        prompt = build_validation_prompt(str(task), "/tmp/current-scope-validator", {"agent": {}})
+        section = prompt.split("## 7. correctness_implementation_review", 1)[1].split("## 8.", 1)[0]
+        text = " ".join(section.split())
+        self.assertIn("declared current task contract", text)
+        self.assertIn("A missing required current case or an unchecked runnable declared target is FAIL", text)
+        self.assertIn("A general coverage disclaimer cannot remove a required current case or target", text)
+        self.assertIn("Do not assign WARN or FAIL solely because those out-of-scope scenarios remain untested or unresolved", text)
+        self.assertIn("Retain the historical flags", text)
+        self.assertIn("coverage remains unclaimed", text)
+        self.assertIn("Weak but real coverage/tolerance within the current contract is WARN", text)
+        self.assertNotIn("M=8192", section)
+        self.assertNotIn("DeepSeek", section)
+
     def test_run_config_overrides_validator_backend_model_and_effort(self) -> None:
         resolved = _resolve_backend_settings(
             {
