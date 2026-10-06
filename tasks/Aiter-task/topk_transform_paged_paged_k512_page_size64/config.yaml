@@ -1,0 +1,54 @@
+schema_version: 2
+description: Implement topk_transform_paged_paged_k512_page_size64 in FlyDSL over every declared case.
+instructions:
+- README.md
+kernel_identity:
+  logical_operator: topk_transform_paged_paged_k512_page_size64
+  source_owner: sglang
+candidate:
+  language: flydsl
+  initial_state: unimplemented
+  editable:
+  - kernel.py
+  entrypoints:
+  - file: kernel.py
+    kind: builder
+    symbol: build_topk_transform_paged_paged_k512_page_size64_module
+baseline:
+  kind: provided
+  source_files:
+  - sglang_source/kernels/ops/attention/dsv4/topk.py
+  - sglang_source/kernels/jit/csrc/deepseek_v4/topk_v2.cuh
+  correctness_policy: required
+workspace:
+  sources:
+  - kind: image
+    image_path: /sgl-workspace/sglang/python/sglang/kernels/ops/attention/dsv4
+    destination: sglang_source/kernels/ops/attention/dsv4
+    exclude:
+    - __pycache__
+  - kind: image
+    image_path: /sgl-workspace/sglang/python/sglang/kernels/jit/csrc/deepseek_v4
+    destination: sglang_source/kernels/jit/csrc/deepseek_v4
+evaluation:
+  runner:
+  - python3
+  - scripts/evaluate.py
+  workloads: workload.json
+  timeout_s: 7200
+  baseline:
+    correctness:
+      timeout_s: 3600
+  candidate:
+    correctness:
+      timeout_s: 3600
+platform_support:
+  required_arch: gfx950
+  status: active
+exports:
+- format: sikl-solution
+  output: artifacts/solution.json
+  command:
+  - python3
+  - scripts/export_solution.py
+  timeout_s: 60

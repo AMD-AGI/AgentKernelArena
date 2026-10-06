@@ -57,11 +57,14 @@ def manifest(contract):
 def test_complete_manifest_is_accepted_by_framework(config_path, monkeypatch):
     with modules(config_path.parent, monkeypatch) as contract:
         captured = manifest(contract)
-        assert len(captured.cases) == 13
+        workload = contract.load_workload()
+        assert len(captured.cases) == len(workload['cases'])
+        if workload['op_type'] != 'topk':
+            assert len(captured.cases) == 13
         for row in captured.cases:
             assert row['checks'] == ['correctness', 'performance']
             assert row['params']['uuid']
-            assert row['dtype'] == 'bfloat16'
+            assert row['dtype'] == ('float32' if workload['op_type'] == 'topk' else 'bfloat16')
 
 
 @pytest.mark.parametrize('config_path', TASKS, ids=lambda p: p.parent.name)

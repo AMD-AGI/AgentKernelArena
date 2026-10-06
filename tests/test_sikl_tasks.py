@@ -1,4 +1,4 @@
-"""Protected operator semantics and packaging invariants for the 21 SIKL tasks."""
+"""Protected operator semantics and packaging invariants for the 23 SIKL tasks."""
 from __future__ import annotations
 
 import ast
@@ -23,7 +23,19 @@ DEFERRED_TIMING_TASKS = {
 }
 ROTATING_TASKS = [t for t in TASKS if t.name not in DEFERRED_TIMING_TASKS]
 SPLIT_TEMPLATE_FILES = {'README.md', 'scripts/task_inputs.py', 'scripts/task_measure.py'}
-VAR_AXIS = {'gemm': 'm', 'moe': 'num_tokens'}
+VAR_AXIS = {'gemm': 'm', 'moe': 'num_tokens', 'mhc': 'tokens', 'topk': 'batch'}
+# Families whose workload cases are exactly the bundle's 13 rows. Top-k also
+# varies the valid lengths per row; tests/test_sikl_topk.py covers its cases.
+BUNDLE_ROW_FAMILIES = {'gemm', 'moe', 'mhc'}
+SOURCE_ACQUISITION = {
+    'aiter': [{'kind': 'image', 'image_path': '/sgl-workspace/aiter/aiter',
+               'destination': 'aiter_source/aiter',
+               'exclude': ['jit/build', 'jit/flydsl_cache', '__pycache__']}],
+    'sglang': [{'kind': 'image', 'image_path': '/sgl-workspace/sglang/python/sglang/kernels/ops/attention/dsv4',
+                'destination': 'sglang_source/kernels/ops/attention/dsv4', 'exclude': ['__pycache__']},
+               {'kind': 'image', 'image_path': '/sgl-workspace/sglang/python/sglang/kernels/jit/csrc/deepseek_v4',
+                'destination': 'sglang_source/kernels/jit/csrc/deepseek_v4'}],
+}
 SHARED_TEMPLATE_FILES = (
     'kernel.py', 'test_kernel_harness.py', 'scripts/task_inputs.py',
     'scripts/task_initialize.py', 'scripts/task_compare.py', 'scripts/task_reference.py',
@@ -45,6 +57,22 @@ CALLBACK_SHA256 = {
         'task_initialize': '80e50d81def9ac0c6f85390155e23eec48c173e8a6b754eaa465e9ed65f2120e',
         'task_reference': 'de096e2726bb4e81e4e748748b044bcaf99576070ace1f0b1662eee763f5d072',
     },
+    # Verbatim callbacks of the deepseek-v4-flash bundle definition
+    # mhc_fused_post_pre_flat_rmsnorm_c4_d4096 and its baseline solution.
+    'mhc': {
+        'task_baseline': 'a9b382a087108a834fc8b1d0a97db8eb13ce339aafe6c3175492c4648212e7c5',
+        'task_compare': '68fed5cc0e5ebd128c57faf7dff01269157c99399e99e437b40d0a7530901508',
+        'task_initialize': '974d427b993949c55a983857d8b7821c52dc2070de7d63cb16b7a79945b64863',
+        'task_reference': '58ba2fc0f93e65dfa2d3693a877a202733aeffea79424304c7ca718c1235ee6e',
+    },
+    # deepseek-v4-flash bundle topk_transform_paged_paged_k512_page_size64. The
+    # baseline differs from the bundle only by its sglang entry-point lookup.
+    'topk': {
+        'task_baseline': 'e96d3e217a56f6acffb967926ef1c3ebc4cdcb9b57654e462351a8206ea79d6f',
+        'task_compare': '3371b93c48bf588efb2862ecf0d0975217088b5a202a861bf8775a2f2fe980a2',
+        'task_initialize': 'f7af24a49e9771170911d619463932ea6fb57345b1bd2e5a8cf0babc4ffa9f00',
+        'task_reference': '7e1e8421dad6172e55003553076e1a73ab2aeafa41cf019d7d6877e1be8de33d',
+    },
 }
 
 
@@ -56,11 +84,13 @@ def _workload(task):
     return json.loads((task / 'workload.json').read_text())
 
 
-def test_suite_keeps_all_21_tasks_and_273_cases():
-    assert len(TASKS) == 21
+def test_suite_keeps_all_23_tasks_and_519_cases():
+    assert len(TASKS) == 23
     assert sum(_workload(t)['op_type'] == 'gemm' for t in TASKS) == 17
     assert sum(_workload(t)['op_type'] == 'moe' for t in TASKS) == 4
-    assert sum(len(_workload(t)['cases']) for t in TASKS) == 273
+    assert sum(_workload(t)['op_type'] == 'mhc' for t in TASKS) == 1
+    assert sum(_workload(t)['op_type'] == 'topk' for t in TASKS) == 1
+    assert sum(len(_workload(t)['cases']) for t in TASKS) == 519
 
 
 @pytest.mark.parametrize('op_type', sorted(VAR_AXIS))
@@ -108,15 +138,13 @@ def test_one_v2_config_and_no_agent_dependency(task):
 @pytest.mark.parametrize('task', TASKS, ids=lambda t: t.name)
 def test_production_source_is_separate_and_documented(task):
     config = _config(task)
-    acquisition, = config['workspace']['sources']
-    assert acquisition['kind'] == 'image'
-    assert acquisition['image_path'] == '/sgl-workspace/aiter/aiter'
-    assert acquisition['destination'] == 'aiter_source/aiter'
+    acquisitions = config['workspace']['sources']
+    assert acquisitions == SOURCE_ACQUISITION[config['kernel_identity']['source_owner']]
+    destinations = [acquisition['destination'] for acquisition in acquisitions]
     for source in config['baseline']['source_files']:
-        assert source.startswith(acquisition['destination'] + '/')
+        assert any(source.startswith(destination + '/') for destination in destinations)
         assert source in (task / 'README.md').read_text()
         assert source not in config['candidate']['editable']
-    assert acquisition['exclude'] == ['jit/build', 'jit/flydsl_cache', '__pycache__']
 
 
 def test_image_acquisition_excludes_generated_jit_trees_but_keeps_sources(tmp_path, monkeypatch):
@@ -137,6 +165,7 @@ def test_image_acquisition_excludes_generated_jit_trees_but_keeps_sources(tmp_pa
         'jit/module.so': b'adjacent installed module is not excluded',
         'tuned_gemm.py': b'production_source = True\n',
         'fused_moe.py': b'moe_production_source = True\n',
+        'ops/mhc.py': b'mhc_production_source = True\n',
         'ops/flydsl/gemm_kernels.py': b'kernel_source = True\n',
         'configs/model_configs/tuned.csv': b'M,N,K\n1,32,6144\n',
     }
@@ -175,6 +204,8 @@ def test_image_acquisition_excludes_generated_jit_trees_but_keeps_sources(tmp_pa
         assert (root / name).read_bytes() == data  # Installed image tree is untouched.
     assert not (workspace / 'aiter_source/3rdparty').exists()
     for task in TASKS:
+        if _config(task)['kernel_identity']['source_owner'] != 'aiter':
+            continue
         for declared in _config(task)['baseline']['source_files']:
             assert (workspace / declared).is_file(), declared
     copied = materialization._tree_manifest(destination, materialization._Deadline(10))
@@ -188,10 +219,14 @@ def test_original_callbacks_and_case_sampling_are_unchanged(task):
     for module, sha in CALLBACK_SHA256[kind].items():
         assert hashlib.sha256((task / 'scripts' / f'{module}.py').read_bytes()).hexdigest() == sha
     cases = workload['cases']
-    assert [case[VAR_AXIS[kind]] for case in cases] == [2**i for i in range(13)]
-    assert len({case['uuid'] for case in cases}) == 13
-    for case in cases:
-        assert set(case) == {'case_id', 'uuid', VAR_AXIS[kind]}
+    if kind in BUNDLE_ROW_FAMILIES:
+        assert [case[VAR_AXIS[kind]] for case in cases] == [2**i for i in range(13)]
+        assert len({case['uuid'] for case in cases}) == 13
+        for case in cases:
+            assert set(case) == {'case_id', 'uuid', VAR_AXIS[kind]}
+    else:
+        assert sorted({case[VAR_AXIS[kind]] for case in cases}) == [2**i for i in range(13)]
+        assert len({case['uuid'] for case in cases}) == len(cases)
     assert workload['seed'] == 0
     assert workload['bench'] == {'warmup': 20, 'repetition': 100, 'target_ms': 1.0}
     assert workload['gate_policy']

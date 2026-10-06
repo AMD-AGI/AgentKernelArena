@@ -1,0 +1,212 @@
+{
+  "definition": "mhc_fused_post_pre_flat_rmsnorm_c4_d4096",
+  "op_type": "mhc",
+  "axes": {
+    "streams": 4,
+    "hidden_size": 4096,
+    "projection_size": 16384,
+    "mixes": 24,
+    "scale_groups": 3,
+    "one": 1
+  },
+  "variable_axis": "tokens",
+  "constraints": [
+    "projection_size == streams * hidden_size"
+  ],
+  "inputs": {
+    "x": {
+      "shape": [
+        "tokens",
+        "hidden_size"
+      ],
+      "dtype": "bfloat16"
+    },
+    "residual": {
+      "shape": [
+        "tokens",
+        "streams",
+        "hidden_size"
+      ],
+      "dtype": "bfloat16"
+    },
+    "post_mix": {
+      "shape": [
+        "tokens",
+        "streams"
+      ],
+      "dtype": "float32"
+    },
+    "comb_mix": {
+      "shape": [
+        "tokens",
+        "streams",
+        "streams"
+      ],
+      "dtype": "float32"
+    },
+    "proj_weight": {
+      "shape": [
+        "mixes",
+        "projection_size"
+      ],
+      "dtype": "float32"
+    },
+    "mix_scale": {
+      "shape": [
+        "scale_groups"
+      ],
+      "dtype": "float32"
+    },
+    "mix_bias": {
+      "shape": [
+        "mixes"
+      ],
+      "dtype": "float32"
+    },
+    "rms_eps": {
+      "shape": null,
+      "dtype": "float32"
+    },
+    "pre_eps": {
+      "shape": null,
+      "dtype": "float32"
+    },
+    "sinkhorn_eps": {
+      "shape": null,
+      "dtype": "float32"
+    },
+    "post_multiplier": {
+      "shape": null,
+      "dtype": "float32"
+    },
+    "sinkhorn_iters": {
+      "shape": null,
+      "dtype": "int32"
+    },
+    "norm_weight": {
+      "shape": [
+        "hidden_size"
+      ],
+      "dtype": "bfloat16"
+    },
+    "norm_eps": {
+      "shape": null,
+      "dtype": "float32"
+    }
+  },
+  "outputs": {
+    "next_post_mix": {
+      "shape": [
+        "tokens",
+        "streams",
+        "one"
+      ],
+      "dtype": "float32"
+    },
+    "next_comb_mix": {
+      "shape": [
+        "tokens",
+        "streams",
+        "streams"
+      ],
+      "dtype": "float32"
+    },
+    "layer_input": {
+      "shape": [
+        "tokens",
+        "hidden_size"
+      ],
+      "dtype": "bfloat16"
+    },
+    "next_residual": {
+      "shape": [
+        "tokens",
+        "streams",
+        "hidden_size"
+      ],
+      "dtype": "bfloat16"
+    }
+  },
+  "scalars": {
+    "rms_eps": 1e-06,
+    "pre_eps": 1e-06,
+    "sinkhorn_eps": 1e-06,
+    "post_multiplier": 2.0,
+    "sinkhorn_iters": 20,
+    "norm_eps": 1e-06
+  },
+  "seed": 0,
+  "bench": {
+    "warmup": 20,
+    "repetition": 100,
+    "target_ms": 1.0
+  },
+  "gate_policy": "Input initialization, reference, comparison and production baseline are the original bundled task callbacks. The requested role is evaluated independently over every case; timed outputs use the same numerical gate. The baseline has no numerical exception.",
+  "cases": [
+    {
+      "case_id": "tokens_1",
+      "uuid": "cc5e401383031592",
+      "tokens": 1
+    },
+    {
+      "case_id": "tokens_2",
+      "uuid": "89f078c585a56e74",
+      "tokens": 2
+    },
+    {
+      "case_id": "tokens_4",
+      "uuid": "bbf83b55d6eb502e",
+      "tokens": 4
+    },
+    {
+      "case_id": "tokens_8",
+      "uuid": "76bc9f174ab5bf88",
+      "tokens": 8
+    },
+    {
+      "case_id": "tokens_16",
+      "uuid": "1766bb4ff6ff4f2e",
+      "tokens": 16
+    },
+    {
+      "case_id": "tokens_32",
+      "uuid": "870d8b7eceb6dffa",
+      "tokens": 32
+    },
+    {
+      "case_id": "tokens_64",
+      "uuid": "77fff142ad504e81",
+      "tokens": 64
+    },
+    {
+      "case_id": "tokens_128",
+      "uuid": "b8ea075a072ae329",
+      "tokens": 128
+    },
+    {
+      "case_id": "tokens_256",
+      "uuid": "19ef8a7ff0255bc0",
+      "tokens": 256
+    },
+    {
+      "case_id": "tokens_512",
+      "uuid": "dd5a755c9d5c7345",
+      "tokens": 512
+    },
+    {
+      "case_id": "tokens_1024",
+      "uuid": "db052a5ee6205a10",
+      "tokens": 1024
+    },
+    {
+      "case_id": "tokens_2048",
+      "uuid": "722eb0cea2c0f650",
+      "tokens": 2048
+    },
+    {
+      "case_id": "tokens_4096",
+      "uuid": "97a4694afe587a22",
+      "tokens": 4096
+    }
+  ]
+}
