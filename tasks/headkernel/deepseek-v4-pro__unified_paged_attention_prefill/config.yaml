@@ -1,7 +1,6 @@
 source_file_path:
 - source/pa_sparse_prefill_opus.h
 target_kernel_functions:
-- pa_prefill_16mx8_32nx1_kernel
 - pa_prefill_16mx1_16nx4_kernel
 compile_command:
 - python3 scripts/task_runner.py compile
@@ -18,7 +17,8 @@ prompt:
     imports, signatures, launch parameters, compilation and timing are frozen. Preserve
     every captured case and all storage/scalar semantics. The current native implementation
     is rebuilt/loaded through protected bindings; source-hash-dependent algorithm
-    selection is forbidden.
+    selection is forbidden. Only the captured dispatch branch is editable; see provenance/EDITABLE-DISPATCH.json.
+    Unused native implementations remain frozen.
 headkernel:
   model: DeepSeek-V4-Pro
   sglang_version: 0.5.20
@@ -42,3 +42,6 @@ trusted_evaluation:
     source/pa_sparse_prefill_opus.h: ut/reference/pa_sparse_prefill_opus.h
   requires_aiter_jit_cache: true
   fixture_manifest: fixtures/EXTERNAL-MANIFEST.json
+compile_timeout: 1200
+correctness_timeout: 1200
+performance_timeout: 3600

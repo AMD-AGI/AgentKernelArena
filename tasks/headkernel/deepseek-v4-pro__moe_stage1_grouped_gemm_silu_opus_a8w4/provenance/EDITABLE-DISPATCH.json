@@ -1,0 +1,81 @@
+{
+  "schema": "captured-editable-dispatch-v1",
+  "case_manifest_sha256": "c6245e885949032a35d9f8d4a9a10e1d0b195a6747f595cdbc703b576db1901a",
+  "case_manifest_fingerprint": "87288c36ffaa0d57d6047be7e997781a897dd90c1da8146da4fbf9c2223e12ba",
+  "native_source_sha256": "5cea2bd316394b05007ff382b758081e3fc9eb3848b3f1c96f01d299b939c367",
+  "source_capture_run_id": "deepseek-capture-csr-v7-194603",
+  "all_current_cases_preserved": true,
+  "new_cases_added": false,
+  "native_implementation_bytes_changed": false,
+  "cases": [
+    {
+      "case_id": "deepseek_moe1_prefill-29ea221dcf7a6a7000b32591-work-c5cd180a3a906c17",
+      "fixture": {
+        "path": "fixtures/deepseek_moe1_prefill-29ea221dcf7a6a7000b32591-work-c5cd180a3a906c17.json",
+        "sha256": "19c0a46b12ade42755b80c95b23128d82bdf82a19c654c35e43f5e938f675345"
+      },
+      "occurrences": 3,
+      "kernelName": "opus_moe1_afp8_wfp4_bf16_t64x384_gs_qgb3_aff64_k1lead_fp8",
+      "kernel_id": 1021,
+      "block_m": 64,
+      "gate_up_group_split": true
+    },
+    {
+      "case_id": "deepseek_moe1_prefill-29ea221dcf7a6a7000b32591-work-ee3f0c2bc494c65f",
+      "fixture": {
+        "path": "fixtures/deepseek_moe1_prefill-29ea221dcf7a6a7000b32591-work-ee3f0c2bc494c65f.json",
+        "sha256": "0d60a1eab37b94dcfdc07af9aa41c5dce3f58e7f6a902166a0b68dceabda8039"
+      },
+      "occurrences": 1,
+      "kernelName": "opus_moe1_afp8_wfp4_bf16_t64x384_gs_qgb3_aff64_k1lead_fp8",
+      "kernel_id": 1021,
+      "block_m": 64,
+      "gate_up_group_split": true
+    },
+    {
+      "case_id": "deepseek_moe1_prefill-29ea221dcf7a6a7000b32591",
+      "fixture": {
+        "path": "fixtures/deepseek_moe1_prefill-29ea221dcf7a6a7000b32591.json",
+        "sha256": "6d66876297940c92d0d5866d1e9b28bf4bc44cbd02e049362b596f5f4f24075e"
+      },
+      "occurrences": 3904,
+      "kernelName": "opus_moe1_afp8_wfp4_bf16_t64x384_gs_qgb3_aff64_k1lead_fp8",
+      "kernel_id": 1021,
+      "block_m": 64,
+      "gate_up_group_split": true
+    }
+  ],
+  "editable_sources": [
+    "source/opus_moe_stage1_a8w4_pipeline_group_split_gfx950.cuh"
+  ],
+  "frozen_unused_sources": [
+    "source/opus_moe_stage1_a8w4_pipeline_pair_kwave_gfx950.cuh"
+  ],
+  "reason": "All captured cases resolve to the same metadata instance with gate_up_group_split=True; the native launch dispatch selects only pipeline_group_split.",
+  "native_instance": {
+    "kid": 1021,
+    "name": "opus_moe1_afp8_wfp4_bf16_t64x384_gs_qgb3_aff64_k1lead",
+    "block_m": 64,
+    "block_n": 384,
+    "gate_up_group_split": true,
+    "k_wave": 1,
+    "min_blocks_per_cu_override": 1,
+    "quant_group_blocks": 3,
+    "block_threads": 256,
+    "weight_load_stream": false,
+    "weight_load_reverse": false,
+    "sparse_epilogue": false,
+    "k_loop_swizzle_colors": 0,
+    "route_affinity_window": 64,
+    "route_affinity_phase_period": 1,
+    "m_fragment_major": false,
+    "b_k1_lead": true
+  },
+  "dispatch_sources": {
+    "ut/native/csrc/opus_moe/opus_moe_common.py": "e6ca0074088e75fdd472572b7413adb3677223663c81213a07dadff6b4a54f71",
+    "ut/native/csrc/opus_moe/gen_instances.py": "28c3fd8573b4d4671db3d31eb76a34ca687cd1c7b5b68d132a2c232c2d4b0044",
+    "ut/native/csrc/opus_moe/include/gfx950/a8w4/stage1/opus_moe_stage1_a8w4_dispatch_gfx950.cuh": "77d3c627ab4c6607e5974a389fccfa7fcae2c0d18cf83e70e5f4d6aec55f9503",
+    "ut/native/csrc/opus_moe/include/opus_moe_host_impl.cuh": "25c513d0ecd2b78d3a4608687cdd6bfcbc804fb3ffa9fde122c160161965e1f0",
+    "ut/native/csrc/opus_moe/include/gfx950/a8w4/stage1/opus_moe_stage1_a8w4_traits_gfx950.cuh": "619c1cdc51ddf5207210163a90fb8ba4c36a84d11e1b9503c8665cde8f6b7cb6"
+  }
+}

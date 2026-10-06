@@ -83,7 +83,6 @@
       "reference": "ut/reference/pa_sparse_prefill_opus.h",
       "language": "hip",
       "markers": [
-        "__global__ __launch_bounds__(Traits::BLOCK_SIZE, 2) void pa_prefill_16mx8_32nx1_kernel(",
         "__global__ __launch_bounds__(Traits::BLOCK_SIZE, 2) void pa_prefill_16mx1_16nx4_kernel("
       ],
       "native_relative": "include/pa_sparse_prefill_opus.h"

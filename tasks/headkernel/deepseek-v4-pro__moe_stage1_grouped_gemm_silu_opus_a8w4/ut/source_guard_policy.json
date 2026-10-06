@@ -8,14 +8,6 @@
         "static __device__ void process_tile("
       ],
       "native_relative": "opus_moe/include/gfx950/a8w4/stage1/opus_moe_stage1_a8w4_pipeline_group_split_gfx950.cuh"
-    },
-    "source/opus_moe_stage1_a8w4_pipeline_pair_kwave_gfx950.cuh": {
-      "reference": "ut/reference/opus_moe_stage1_a8w4_pipeline_pair_kwave_gfx950.cuh",
-      "language": "hip",
-      "markers": [
-        "static __device__ void process_tile("
-      ],
-      "native_relative": "opus_moe/include/gfx950/a8w4/stage1/opus_moe_stage1_a8w4_pipeline_pair_kwave_gfx950.cuh"
     }
   },
   "frozen_files": {
@@ -223,6 +215,7 @@
     "ut/native/csrc/opus_moe/include/gfx950/a8w4/stage1/opus_moe_stage1_a8w4_traits_gfx950.cuh": "619c1cdc51ddf5207210163a90fb8ba4c36a84d11e1b9503c8665cde8f6b7cb6",
     "ut/reference/opus_moe_stage1_a8w4_pipeline_group_split_gfx950.cuh": "5935df7775e0a2192f495e651742ccaed23ab3ab971a4ada03beccf18fd74e6c",
     "ut/reference/opus_moe_stage1_a8w4_pipeline_pair_kwave_gfx950.cuh": "3628f1ce1af8bf0405be32af649a0b175a9a8f6b04b94ac625fea00f0117c30f",
-    "ut/baseline/native.py": "5cea2bd316394b05007ff382b758081e3fc9eb3848b3f1c96f01d299b939c367"
+    "ut/baseline/native.py": "5cea2bd316394b05007ff382b758081e3fc9eb3848b3f1c96f01d299b939c367",
+    "source/opus_moe_stage1_a8w4_pipeline_pair_kwave_gfx950.cuh": "3628f1ce1af8bf0405be32af649a0b175a9a8f6b04b94ac625fea00f0117c30f"
   }
 }

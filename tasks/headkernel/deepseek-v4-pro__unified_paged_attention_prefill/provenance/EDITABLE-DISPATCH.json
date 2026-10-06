@@ -1,0 +1,48 @@
+{
+  "schema": "captured-editable-dispatch-v1",
+  "case_manifest_sha256": "7d3c6ef96fd053b7bb89a132610806406025910b37c06b175eca6333c7cc4876",
+  "case_manifest_fingerprint": "34211505d78fd6e5580644fcc4ea4f747b8fbdf057b4c66fd9b7d68e9e38d9e7",
+  "native_source_sha256": "3d914fac43732cdf3fecc63ec7a0239f318def8d518b09a4ff8b663d7299ca33",
+  "source_capture_run_id": "deepseek-capture-csr-v7-194603",
+  "all_current_cases_preserved": true,
+  "new_cases_added": false,
+  "native_implementation_bytes_changed": false,
+  "cases": [
+    {
+      "case_id": "deepseek_mla_prefill-2800f2114cb8548cf5fdd0ba",
+      "fixture": {
+        "path": "fixtures/deepseek_mla_prefill-2800f2114cb8548cf5fdd0ba.json",
+        "sha256": "5cae361f707cade96836a335d1d4e011add632b3096c77b5fd884a5fe871a442"
+      },
+      "occurrences": 1920,
+      "query_shape": [
+        8192,
+        16,
+        512
+      ],
+      "H": 16,
+      "selected_kernel": "pa_prefill_16mx1_16nx4_kernel"
+    },
+    {
+      "case_id": "deepseek_mla_prefill-fff723d1365f8696979e5779",
+      "fixture": {
+        "path": "fixtures/deepseek_mla_prefill-fff723d1365f8696979e5779.json",
+        "sha256": "26910b0df9a6365e6b1063e6547ef310017550de81f27b2d0752746c783b80d9"
+      },
+      "occurrences": 1984,
+      "query_shape": [
+        8192,
+        16,
+        512
+      ],
+      "H": 16,
+      "selected_kernel": "pa_prefill_16mx1_16nx4_kernel"
+    }
+  ],
+  "editable_body": "__global__ __launch_bounds__(Traits::BLOCK_SIZE, 2) void pa_prefill_16mx1_16nx4_kernel(",
+  "frozen_unused_body": "__global__ __launch_bounds__(Traits::BLOCK_SIZE, 2) void pa_prefill_16mx8_32nx1_kernel(",
+  "reason": "Every actual captured query has H=16; the frozen native H<=32 dispatch selects only pa_prefill_16mx1_16nx4_kernel.",
+  "dispatch_sources": {
+    "ut/native/csrc/py_itfs_cu/pa_sparse_prefill_opus_kernels.cu": "38c8350c9b125234352b3bf147bb4e7b6795b985d674980d6385acd18cb9c20a"
+  }
+}

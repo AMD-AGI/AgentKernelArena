@@ -116,14 +116,6 @@
         "static __device__ void process_tile("
       ],
       "native_relative": "opus_moe/include/gfx950/a8w4/stage1/opus_moe_stage1_a8w4_pipeline_group_split_gfx950.cuh"
-    },
-    "source/opus_moe_stage1_a8w4_pipeline_pair_kwave_gfx950.cuh": {
-      "reference": "ut/reference/opus_moe_stage1_a8w4_pipeline_pair_kwave_gfx950.cuh",
-      "language": "hip",
-      "markers": [
-        "static __device__ void process_tile("
-      ],
-      "native_relative": "opus_moe/include/gfx950/a8w4/stage1/opus_moe_stage1_a8w4_pipeline_pair_kwave_gfx950.cuh"
     }
   },
   "gpu_source_provenance": [

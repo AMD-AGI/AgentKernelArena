@@ -1,6 +1,5 @@
 source_file_path:
 - source/opus_moe_stage1_a8w4_pipeline_group_split_gfx950.cuh
-- source/opus_moe_stage1_a8w4_pipeline_pair_kwave_gfx950.cuh
 target_kernel_functions:
 - process_tile
 compile_command:
@@ -18,7 +17,8 @@ prompt:
     imports, signatures, launch parameters, compilation and timing are frozen. Preserve
     every captured case and all storage/scalar semantics. The current native implementation
     is rebuilt/loaded through protected bindings; source-hash-dependent algorithm
-    selection is forbidden.
+    selection is forbidden. Only the captured dispatch branch is editable; see provenance/EDITABLE-DISPATCH.json.
+    Unused native implementations remain frozen.
 headkernel:
   model: DeepSeek-V4-Pro
   sglang_version: 0.5.20
@@ -40,6 +40,8 @@ trusted_evaluation:
   source_guard: ut/source_guard.py
   reference_sources:
     source/opus_moe_stage1_a8w4_pipeline_group_split_gfx950.cuh: ut/reference/opus_moe_stage1_a8w4_pipeline_group_split_gfx950.cuh
-    source/opus_moe_stage1_a8w4_pipeline_pair_kwave_gfx950.cuh: ut/reference/opus_moe_stage1_a8w4_pipeline_pair_kwave_gfx950.cuh
   requires_aiter_jit_cache: true
   fixture_manifest: fixtures/EXTERNAL-MANIFEST.json
+compile_timeout: 1200
+correctness_timeout: 1200
+performance_timeout: 3600

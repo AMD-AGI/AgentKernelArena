@@ -13,6 +13,7 @@ from source_guard import validate_sources
 from evaluation_contract import (canonical, fingerprint, strict_json, validate_manifest,
     observe_case, checked_replays, finalize_report)
 from abi import runtime_abi
+from dispatch_contract import validate_dispatch
 
 
 def write(phase,report):
@@ -48,9 +49,18 @@ def compare(actual,golden,tol,path='output'):
     if actual!=golden: raise AssertionError(path+': scalar differs')
 
 
+def configure_cpu_threads(torch):
+    """Keep concurrent GPU validators from each creating a node-wide CPU pool."""
+    previous=torch.get_num_threads()
+    active=min(previous,8)
+    torch.set_num_threads(active)
+    return {'intraop_threads_before':previous,'intraop_threads':torch.get_num_threads(),
+            'scope':'CPU snapshots and comparisons; graph work and checks unchanged'}
+
+
 def cpu_clone(value):
     import torch
-    if torch.is_tensor(value): return value.detach().cpu().clone()
+    if torch.is_tensor(value): return value.detach().to(device='cpu',copy=True)
     if isinstance(value,tuple): return tuple(cpu_clone(x) for x in value)
     if isinstance(value,list): return [cpu_clone(x) for x in value]
     if isinstance(value,dict): return {k:cpu_clone(v) for k,v in value.items()}
@@ -129,7 +139,7 @@ def engage_specialization(fn,inputs,golden,tol,label):
     return output
 
 
-def fixture(case,manifest,module):
+def fixture(case,manifest,module, *, include_golden=True):
     from runtime_capture import restore_phase
     from snapshots import restore
     reference=case['fixture']
@@ -158,6 +168,9 @@ def fixture(case,manifest,module):
             for key,value in controls.get(name+'_attributes',{}).items():
                 attr=tensors[value['tensor_binding']] if isinstance(value,dict) and 'tensor_binding' in value else restore({'tree':value,'storages':{}},'cuda',module)
                 setattr(tensor,key,attr)
+    # The reference leg needs independent inputs but reuses the same verified
+    # CPU golden already restored by the candidate fixture call.
+    if not include_golden: return inputs,None
     # Captured golden outputs must never be resident on the GPU when a
     # candidate executes. Inputs keep their captured GPU ABI and storage.
     outputs=restore_phase(path.parent,record,'outputs',device='cpu',max_storage_bytes=64<<30)
@@ -185,11 +198,13 @@ def main():
     a=p.parse_args()
     (ROOT/'build').mkdir(exist_ok=True)
     (ROOT/'build'/(a.phase+'_report.json')).unlink(missing_ok=True)
-    manifest=strict_json((ROOT/'cases.json').read_text()); validate_manifest(manifest)
+    manifest=strict_json((ROOT/'cases.json').read_text()); validate_manifest(manifest); validate_dispatch(manifest)
     if manifest.get('status')!='FROZEN_CURRENT_CAPTURE': raise RuntimeError('Current fixtures and expected cases are not sealed')
     request=request_for(a.phase,manifest,a.request); validate_sources(ROOT,ROOT)
     report={'schema_version':1,'status':'ok','request':request,'cases':[]}
     import torch
+    report['cpu_runtime']=configure_cpu_threads(torch)
+    (ROOT/'build'/('cpu_runtime_'+a.phase+'.json')).write_text(canonical(report['cpu_runtime'])+'\n')
     from snapshots import raw_storage
     if not torch.version.hip or 'gfx950' not in torch.cuda.get_device_properties(0).gcnArchName:
         raise RuntimeError('ROCm gfx950 GPU required')
@@ -199,7 +214,7 @@ def main():
     compiled=[]
     for case in manifest['cases']:
         if case['calls_per_sample']!=1: raise RuntimeError('This seam graph represents one native call per replay')
-        inputs,golden=fixture(case,manifest,module); reference_inputs,_=fixture(case,manifest,reference_module)
+        inputs,golden=fixture(case,manifest,module); reference_inputs,_=fixture(case,manifest,reference_module,include_golden=False)
         pristine_inputs=storage_snapshots(inputs)
         initial_out=cpu_clone(inputs.get('out'))
         primary='q' if manifest['seam'].startswith('mla') else 'a' if manifest['seam']=='moe1' else 'hidden_states' if manifest['seam']=='moe1_prefill' else 'inter_states'
