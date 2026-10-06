@@ -1,0 +1,14 @@
+{
+  "image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
+  "logical_head_replacement": "kimi-k3__score_combine_mix_fused",
+  "actual_target": "sglang.kernels.ops.kimi_k3.attn_res_hip:attn_res_hip",
+  "editable_gpu_body": "_agg_kernel",
+  "native_sources": {
+    "kernels/ops/kimi_k3/attn_res_hip.py": "95ebe877ec7176f869e5d19997c92b0c57079b32430da8e264ea13809aacc51b",
+    "srt/layers/attn_residual.py": "a0586497dec4db2b7fd9e073ed0ad98ec2f9b1535a53e3b5e43f12c075662f11",
+    "srt/models/kimi_k3.py": "7a3ef867394a2fd52b3a71a979c053b51e9f2310c35cd4c12ef3aa8e7be172e5"
+  },
+  "capture_status": "FROZEN_CURRENT_CAPTURE",
+  "oracle": "independent FP32 mathematical aggregation; exact BF16 prefix/bank writes; actual token-row parity samples",
+  "source_run": "kimi-original-heads-v2-194958"
+}

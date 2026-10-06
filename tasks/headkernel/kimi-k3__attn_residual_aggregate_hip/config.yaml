@@ -1,0 +1,52 @@
+task_type: triton2triton
+target_file_path: source/attn_res_hip.py
+source_file_path:
+  - source/attn_res_hip.py
+target_kernel_functions:
+  - _agg_kernel
+compile_command:
+  - python3 scripts/task_runner.py compile
+correctness_command:
+  - python3 scripts/task_runner.py correctness
+performance_command:
+  - python3 scripts/task_runner.py performance
+performance_timeout: 3600
+platform_support:
+  required_arch: gfx950
+  status: active
+prompt:
+  instructions: |
+    Optimize the current Kimi-K3 attention-residual aggregation kernel.
+    Only the body of _agg_kernel in source/attn_res_hip.py is editable.
+    Preserve the complete captured native ABI, all aliases and strides,
+    hidden size 7168, valid bank rows, the optional residual addition rounded
+    to BF16 before scoring, optional exact bank snapshot, independent score
+    and output epsilons, optional output RMSNorm, and all output/state writes.
+    Host wrapper, shape gate, imports, signatures, launch controls, references,
+    capture metadata, case counts and timing are protected.
+    Every full-size trial is checked against an independent FP32 mathematical
+    oracle after CPU candidate snapshots. Current live token-row samples also
+    bind source parity; these samples are explicitly not full tensor dumps.
+    Preserve the 0.02 RMS-relative output tolerance, exact prefix/bank writes,
+    10 warmups, 100 measured graph replays and all negative controls.
+headkernel:
+  model: Kimi-K3
+  source_run: kimi-original-heads-v2-194958
+  docker: docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96
+  original_logical_head: kimi-k3__score_combine_mix_fused
+  replacement_name: kimi-k3__attn_residual_aggregate_hip
+  target_callable: sglang.kernels.ops.kimi_k3.attn_res_hip:attn_res_hip
+  source_seed: stock
+  tol: 0.02
+  case_manifest: cases.json
+  validation_status: pending_gpu_qualification
+harness_protection:
+  reject_new_source_symlinks: true
+trusted_evaluation:
+  schema_version: 1
+  case_manifest: cases.json
+  fixture_manifest: fixtures/EXTERNAL-MANIFEST.json
+  contract_file: ut/evaluation_contract.py
+  source_guard: ut/source_guard.py
+  reference_sources:
+    source/attn_res_hip.py: ut/reference/attn_res_hip.py

@@ -1,0 +1,11 @@
+{
+  "original_logical_head": "kimi-k3__score_combine_mix_fused",
+  "legacy_implementation": "_score_kernel + _combine_kernel through _mix_fused",
+  "current_replacement": "kimi-k3__attn_residual_aggregate_hip",
+  "current_target": "sglang.kernels.ops.kimi_k3.attn_res_hip:attn_res_hip",
+  "logical_head_retired": false,
+  "logical_head_complete": false,
+  "current_capture_required": true,
+  "old_marker_sha256": "c05425fa8278a415db2b498d508053cfec6ce4c496b3092cb4f827e8234d80a6",
+  "state": "SOURCE_PREPARED_CAPTURE_AND_GPU_QUALIFICATION_PENDING"
+}

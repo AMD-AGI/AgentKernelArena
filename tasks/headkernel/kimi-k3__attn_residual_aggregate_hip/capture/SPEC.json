@@ -1,0 +1,16 @@
+{
+  "family": "attn_res_hip",
+  "module": "sglang.kernels.ops.kimi_k3.attn_res_hip",
+  "callable": "attn_res_hip",
+  "adapter": "capture/adapter.py",
+  "editable_source": "source/attn_res_hip.py",
+  "source_sha256": "95ebe877ec7176f869e5d19997c92b0c57079b32430da8e264ea13809aacc51b",
+  "native_abi_location": "controls.native_abi",
+  "sample_policy": "first min(4,T) actual token rows; full native ABI and full-workload occurrence counts retained",
+  "full_native_tensor_dump": false,
+  "integration": "Configure the adapter before install() in a new Kimi served-hook bundle; keep graph notifications and strict all-rank finalization.",
+  "artifact_budget_growth_requested": false,
+  "owner_adapter": "capture/adapter.py:owner_bindings",
+  "output_adapter": "capture/adapter.py:outputs_for",
+  "capture_adapter_sha256": "f613cff76f4d9ce2aed51e79721b2d95d36e62649c2c9be9577816461b9670d7"
+}

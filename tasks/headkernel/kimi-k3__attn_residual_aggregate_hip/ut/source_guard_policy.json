@@ -1,0 +1,32 @@
+{
+  "frozen_files": {
+    "capture/SPEC.json": "f8c8460a49e0e90ae1cb6d43ec83bfaab37b54805ad4d0ed6fda1cf9c8ecdb81",
+    "capture/adapter.py": "f613cff76f4d9ce2aed51e79721b2d95d36e62649c2c9be9577816461b9670d7",
+    "cases.json": "2bca81c795f6ae5790ca4969139385c14d34393908acb5d22d398659e4ddaf92",
+    "fixtures/EXTERNAL-MANIFEST.json": "341b46c57096071ee0cd29bfba08ab09013e895e92678bd7cb3d76c7317d4874",
+    "provenance/CAPTURE.json": "1489a46d91c989a0ef70141c2f8d9e133e46886af85ff040a2703b06a71f176d",
+    "provenance/FIXTURE-FILES.txt": "51aaac2ec259f90e67443383c9e6877df1bec9ae08bc9e200b537f44970c7406",
+    "provenance/LOGICAL-SCOPE.json": "e578bfa262ee22516eccdfe7b1241ba20356ae2e369e3a3faf2c875819c75e33",
+    "provenance/SOURCE.json": "33a5be4ca20fda7df72677cee300f8952279edeca1462c8f6660da5b8b7e7cdf",
+    "scripts/task_runner.py": "bf4c91ddb56d435806300b6c3907d0ddfdedd30fd37290076b9111a192a82eb1",
+    "ut/cpp_body_guard.py": "b51f41072d8967244294dbf12184b0d991e8be53e61c8de729cc6a1ce78fc667",
+    "ut/evaluation_contract.py": "2dffc785afb98cbe46303227281f4efcf0f82380a9de6d9f53fcb8774a43cb75",
+    "ut/expected_abi.json": "a8c45823a1f90dcebc5371a1f8eff6f97dcbb594dc274cc7088688f29ac7c91c",
+    "ut/fresh_runner.py": "faa2d89dc5f5966746b9fe6af74a6ebb33afc379283b99b54489fab63495458c",
+    "ut/native.py": "5d2b885deaf205251bf61fccdf25b9c59338cbf2e9ce7fedae1eb10c50ba73d3",
+    "ut/reference/attn_res_hip.py": "95ebe877ec7176f869e5d19997c92b0c57079b32430da8e264ea13809aacc51b",
+    "ut/reference_math.py": "c9d5d86141a15aafc2087fad359159361b4532a2a074ea135c2c928586318a2e",
+    "ut/runtime_adapter.py": "83f845eef93d92238341479ad76f99cae3b134b3d62b798ab3a03cbdb459be95",
+    "ut/source_guard.py": "e64775bea09da5f75040099bcf85128977505c5f24bba8e92c1477289f164bd8",
+    "ut/test_replay_contract.py": "82a9bf9cc1027c6ea128afc32c21010bf8e9a93c02db0e574b83b03a6b87275f"
+  },
+  "sources": {
+    "source/attn_res_hip.py": {
+      "language": "triton",
+      "reference": "ut/reference/attn_res_hip.py",
+      "targets": [
+        "_agg_kernel"
+      ]
+    }
+  }
+}

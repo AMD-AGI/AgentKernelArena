@@ -1,0 +1,31 @@
+{
+  "run_id": "kimi-original-heads-v2-194958",
+  "CAPTURE_READY_sha256": "7d4b4dee5fbd12a18be01bda51d815cc6666fecd10dbfee41aad203b4f0ff092",
+  "coverage_sha256": "c56c07afcb8a11e7acde7b9e6dcd7c1f9e1e7bd28ae7f7b788942800721a0729",
+  "case_count": 69,
+  "occurrences_by_rank": {
+    "0": 196602,
+    "1": 196602,
+    "2": 196602,
+    "3": 196602,
+    "4": 196602,
+    "5": 196602,
+    "6": 196602,
+    "7": 196602
+  },
+  "occurrences_all_ranks": 1572816,
+  "sample_rows_per_case": 4,
+  "full_native_tensor_dump": false,
+  "full_shape_math_check_required": true,
+  "gpu_qualified": false,
+  "all_eight_stop_marker_sha256": {
+    "0": "de24a62952a0bf81e529dd98530cdff4d217f77d83cda867713edd81675d1273",
+    "1": "6e80db512b6da8230ab3c8539d7acdedc662db73d4b793baf11acfd6ca80b802",
+    "2": "7e29422a37287206ffac64ba6da76d3de498c9f55c603fcadc448d5288db92d6",
+    "3": "a21ac75ec6a5badd88986b35cc9c956b3309607be599d95000674cfdcc5368dc",
+    "4": "3a8911102c2d525f739d018732d786aa568f9af60322ddc0c8a31447d602a18f",
+    "5": "669e9697d579ccfed387518ee255e598d366d2757bef68c86a928c14684011dc",
+    "6": "8cf1ceeb887ac3d57f1cadca2a16fbf55de96b66c924817cbf793a55779129a0",
+    "7": "3e1c238f58eaf2951087e4b8950bf593e936d1b1ea8fe152dadc1fb2de6537da"
+  }
+}
