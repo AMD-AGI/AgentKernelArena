@@ -1,0 +1,74 @@
+{
+  "partial_bits": [
+    [
+      24749,
+      24749
+    ],
+    [
+      57517,
+      57517
+    ],
+    [
+      20501,
+      20501
+    ],
+    [
+      53269,
+      53269
+    ],
+    [
+      18371,
+      18371
+    ],
+    [
+      51139,
+      51139
+    ],
+    [
+      16256,
+      16256
+    ],
+    [
+      49024,
+      49024
+    ],
+    [
+      15821,
+      15821
+    ],
+    [
+      48589,
+      48589
+    ],
+    [
+      14979,
+      14979
+    ],
+    [
+      47747,
+      47747
+    ],
+    [
+      14120,
+      14120
+    ],
+    [
+      46888,
+      46888
+    ],
+    [
+      11996,
+      11996
+    ],
+    [
+      44764,
+      44764
+    ]
+  ],
+  "target_bits": [
+    0,
+    16256
+  ],
+  "reason_jointly_unreachable": "Both lanes have identical partials and identical zero initialization, so every common order produces equal lanes; target is [0.0,1.0].",
+  "scope": "Solver-level finite-BF16 stress input, not a captured native failure reproduction."
+}

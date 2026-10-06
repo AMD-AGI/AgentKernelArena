@@ -186,7 +186,7 @@
     },
     {
       "family": "portable_case_contract",
-      "description": "Existing matched native and port graph replays retain canonical validation; request-bound raw comparisons feed the explicit native-production scoring policy.",
+      "description": "Candidate pointwise and scale-relative checks remain protected; native ASM exceptions require independently replayed shared-order witnesses under aggregate work limits. Typed failure receipts retain original evidence. Bound native/port graph replay samples feed primary-native scoring.",
       "entrypoint": "scripts/task_runner.py",
       "entrypoint_sha256": [
         "6c740df5ce39e05d5d5e78cd3f41192bcd848c542fc03c7482402322d2304bc9",
@@ -194,7 +194,13 @@
       ],
       "files_sha256": {
         "scripts/production_comparison.py": [
-          "44188c53bd2839efb54030585ed414646e62630b63eb9c18edbe919059dbfc6e"
+          "e97592824075c115d05dcf7f1a5adcf872085da719ec0a6c53adeabad4e7a889"
+        ],
+        "ut/native_precision.py": [
+          "8bbfb75f783d7d2ea95d74e79418b483669c0c64b8273c5331e9a5c5b3a24891"
+        ],
+        "ut/native_order_exact.py": [
+          "1b306a02afb375ed28253013e25d1e423d8f5c4f0effd85c1768f5acbabb5ae8"
         ]
       }
     },

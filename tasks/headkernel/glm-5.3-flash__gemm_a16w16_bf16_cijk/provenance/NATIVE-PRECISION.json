@@ -13,7 +13,7 @@
     "atomic_updates": "0x52d0..0x5340 global_atomic_pk_add_bf16 after LDS layout transpose; one shared arrival order per adjacent BF16 pair; round to nearest even after each atomic update.",
     "initialization": "0x2ca0..0x2d18: split0 waits for semaphore and clears output before release."
   },
-  "acceptance": "Original rtol0.01/atol0.02 first on every native element. Each failing pair must equal an explicit shared legal order of16 input-derived BF16 partials bit for bit. The existing fast order search is followed by deterministic exact inverse subset reachability. Every fallback witness is independently replayed before acceptance. No tolerance expansion or interval-based acceptance.",
+  "acceptance": "Original rtol0.01/atol0.02 first on every native element. Each failing pair must equal an explicit shared legal order of16 input-derived BF16 partials bit for bit. The existing fast order search is followed by inverse subset reachability under protected aggregate work limits. Every fallback witness is independently replayed before acceptance. Budget exhaustion or solver/replay exceptions reject without tolerance expansion or interval-based acceptance.",
   "candidate_float32": {
     "rtol": 1.3e-06,
     "atol": 1e-05,
@@ -59,7 +59,7 @@
     }
   },
   "exact_order_fallback": {
-    "algorithm": "Exact monotone scalar subset bounds plus exhaustive inverse paired reachability over the finite BF16 addition lattice.",
+    "algorithm": "Exact monotone scalar subset bounds plus inverse paired reachability over the finite BF16 addition lattice, subject to deterministic aggregate limits; incomplete proofs reject.",
     "case_seed817302019": {
       "legal_outcomes": 113,
       "old_fast_search_outcomes": 54,
@@ -73,11 +73,22 @@
       "total_partial_elements": 131072,
       "detail": "Near-halfway or cancellation discrepancies outside the target pair remain explicit; no GPU-derived partial substitution or wider error acceptance is introduced."
     },
-    "failure_evidence": "Observed failed pair bits,16partial pair bits,and CPU reference pair bits are retained in native_production_failure.json.",
+    "failure_evidence": "Original pending observed and partial bits are snapshotted before solver allocation; CPU reference bits are retained before fallback. Construction, budget, solve, and independent-witness-replay exceptions, including MemoryError, become NativeOrderProofError. The production receipt preserves these bits, exception type, stage, budget counters and case/fixture/leg/seed context.",
     "protected_helper": {
       "path": "ut/native_order_exact.py",
-      "sha256": "1f3759ed5a00d047a03d673a45f1429909023b60f693be5ab716067b117984ca"
+      "sha256": "1b306a02afb375ed28253013e25d1e423d8f5c4f0effd85c1768f5acbabb5ae8"
     },
-    "CPU_regression": "All113 independently enumerated outcomes accepted with explicit shared witnesses, including24 missed outcomes beyond the old pointwise threshold. A jointly unreachable pair is rejected and preserves observed/partial bits."
+    "CPU_regression": "All113 independently enumerated outcomes accepted with explicit shared witnesses, including24 missed outcomes beyond the old pointwise threshold; adding the jointly unreachable target retains the original4,174states. An unequal-lane finite-BF16 stress input rejects at262,144transitions. Aggregate state, transition and group exhaustion reject across distinct partial groups; cache hits consume work. Construction/solve/replay MemoryError and invalid witness regressions preserve original observed/partial/CPU-reference bits through production receipts.",
+    "protected_work_budget": {
+      "scope": "One fallback operation: every target and partial group shares the same counters. Protected constants have no candidate, CLI or environment override.",
+      "groups": 8,
+      "states": 65536,
+      "transitions": 262144,
+      "state_charge": "Every uncached nonempty paired state is charged before visiting or caching; this bounds retained known/failed states and in-flight states.",
+      "transition_charge": "Every visit is charged before base-case/cache checks, including each Cartesian predecessor pair; each split inverse probe is separately charged even if it yields no predecessor.",
+      "group_charge": "Charged before construction. Each group has at most32 tables of65,282 BF16 transitions and524,288 scalar-bound subset transitions. Tables and caches are released between groups.",
+      "limit_basis": "The independently enumerated113-outcome fixture plus its jointly unreachable target consumes1group,4,174states and39,119transitions. Fixed limits retain headroom while bounding unobserved work; exhaustion remains a proof failure.",
+      "exhaustion": "NativeOrderProofError with original pending pair bits, protected limits, aggregate counters, exhausted resource and failure stage; never acceptance."
+    }
   }
 }
