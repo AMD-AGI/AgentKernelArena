@@ -1,6 +1,6 @@
 # Head-kernel tasks and portable setup
 
-This branch contains **18 active refreshed tasks** for DeepSeek V4 Pro, GLM 5.3 Flash, Kimi K3 and MiniMax M3, plus **five preserved Qwen3.8 2.4T tasks**. The refreshed tasks use the exact SGLang 0.5.20 image in the [runtime catalog](tools/headkernel-runtime-targets.json). The catalog and this setup remain **not qualified / ready=false** until the matching task-validator, native correctness/performance, submitted-source controls and trusted retest reports have passed.
+This branch contains **18 active refreshed tasks** for DeepSeek V4 Pro, GLM 5.3 Flash, Kimi K3 and MiniMax M3, plus **five preserved Qwen3.8 2.4T tasks**. The [runtime catalog](tools/headkernel-runtime-targets.json) is the source of truth for task selection, the exact SGLang 0.5.20 image and fixture bindings. **As of 2026-10-06, five current tasks have qualified publications and 13 remain pending**; the [current qualification record](docs/reference/headkernel-sg520-refresh.md#current-qualification) links their evidence and identifies the remaining tasks. Aggregate catalogue and whole-suite readiness remain **`ready=false`**. Qualification covers each task's declared cases and sampling policy; it does not establish complete model-workload readiness or serving gains.
 
 | Model | Refreshed active tasks | Setup |
 | --- | ---: | --- |
