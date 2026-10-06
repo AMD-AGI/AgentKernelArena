@@ -22,6 +22,7 @@
     "capture_native_dispatch includes complete typed config, libtype, solidx and cached solution callable"
   ],
   "installation": [
+    "Use capture_signature(native_module), derived from SHA256-verified gemm_a16w16 source, for signature.bind and apply_defaults. The runtime decorator may expose only (*args, **kwargs). Hash native_module.__file__, not decorator source.",
     "At module import, wrap original gemm_a16w16 before consumer aliases bind. Bind inputs first, then call checked_native_call with capture_native_dispatch to verify exactly one actual solMap solution invocation while delegating unchanged native work.",
     "Use parent-seam context to suppress nested aten::mm records already owned by bf16_gemm",
     "Record independent direct ATen BF16/FP32 mm via make_aten_bindings, preserving both default and supplied-out variants and their exact schema SHA256.",
@@ -37,5 +38,7 @@
   "direct_aten_outputs": "capture/dense_bindings.py:aten_outputs_for",
   "out_parameter": "None is captured as null; a supplied output is encoded as {kind:output_binding,name:result}. Capture actual returned/out buffer metadata and bytes once, verify matching storage/view. Initial out bytes are not read by mm.out.",
   "required_identity": "Finalized capture provenance must include model:Kimi-K3 and the actual run_id; final CAPTURE-READY and all rank pins must live inside the owner run root.",
-  "checked_native_call_adapter": "capture/dense_bindings.py:checked_native_call"
+  "checked_native_call_adapter": "capture/dense_bindings.py:checked_native_call",
+  "signature_adapter": "capture/dense_bindings.py:capture_signature",
+  "argument_binding_adapter": "capture/dense_bindings.py:bind_arguments"
 }

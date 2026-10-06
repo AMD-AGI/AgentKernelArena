@@ -40,5 +40,31 @@ class Tests(unittest.TestCase):
         captured=dense_bindings.aten_outputs_for(arguments,result)
         self.assertIs(captured['result'],arguments['out']);self.assertEqual(controls['out'],{'kind':'output_binding','name':'result'})
         self.assertEqual(set(inputs),{'A','B'})
+    def test_generic_decorator_signature_is_recovered_from_pinned_source(self):
+        import inspect
+        import torch
+        native=binding_tests.Tests().native_wrapper();native.__file__=str(ROOT/'ut/native/tuned_gemm.py')
+        original=native.gemm_a16w16
+        def generic(*args,**kwargs):return original(*args,**kwargs)
+        native.gemm_a16w16=generic
+        self.assertEqual(str(inspect.signature(generic)),'(*args, **kwargs)')
+        declared=dense_bindings.capture_signature(native)
+        self.assertEqual(list(declared.parameters),['A','B','bias','otype','scale_a','scale_b','scale_c'])
+        a=torch.ones(2,128,dtype=torch.bfloat16);b=torch.ones(8,128,dtype=torch.bfloat16)
+        for args,kwargs in [((a,b),{}),((a,),{'B':b,'otype':torch.bfloat16})]:
+            opaque=inspect.signature(generic).bind(*args,**kwargs);opaque.apply_defaults()
+            _,inputs,controls=dense_bindings.make_bindings(self.runtime(),native,opaque.arguments)
+            self.assertIs(inputs['A'],a);self.assertIs(inputs['B'],b);self.assertIsNone(controls['bias'])
+            actual=dense_bindings.checked_native_call(native,generic,args,kwargs,controls['capture_native_dispatch'])
+            torch.testing.assert_close(actual,torch.full((2,8),128.,dtype=torch.bfloat16),rtol=0,atol=0)
+    def test_source_signature_rejects_missing_duplicate_and_unknown_arguments(self):
+        native=binding_tests.Tests().native_wrapper();native.__file__=str(ROOT/'ut/native/tuned_gemm.py')
+        for args,kwargs in [((1,),{}),((1,2),{'B':3}),((1,2),{'unknown':3})]:
+            with self.assertRaises(TypeError):dense_bindings.bind_arguments(native,args,kwargs)
+    def test_signature_recovery_rejects_changed_source(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as temporary:
+            source=Path(temporary)/'tuned_gemm.py';source.write_text('def gemm_a16w16(*args, **kwargs): pass\n')
+            with self.assertRaisesRegex(ValueError,'not pinned'):dense_bindings.capture_signature(types.SimpleNamespace(__file__=str(source)))
     def test_stock_source_guard(self):validate_sources(ROOT,ROOT)
 if __name__=='__main__':unittest.main(verbosity=2)

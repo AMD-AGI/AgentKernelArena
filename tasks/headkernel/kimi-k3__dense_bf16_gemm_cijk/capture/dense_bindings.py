@@ -1,5 +1,8 @@
 """Owner adapter for a new shared-runtime Kimi dense capture; no installation."""
+import ast
+from functools import lru_cache
 import hashlib
+import inspect
 from pathlib import Path
 import sys
 ROOT=Path(__file__).resolve().parents[1]
@@ -8,8 +11,47 @@ from native_dispatch import describe_dispatch
 NATIVE_SHA='1fafc9782b43f8c6e198e1d39ce83e01ea3b5892f8b5e1a26c4a5eeb74252b51'
 
 
+@lru_cache(maxsize=4)
+def _source_signature(path):
+    source=Path(path).read_bytes()
+    if hashlib.sha256(source).hexdigest()!=NATIVE_SHA:raise ValueError('Capture wrapper source is not pinned')
+    definitions=[node for node in ast.parse(source).body if isinstance(node,ast.FunctionDef) and node.name=='gemm_a16w16']
+    if len(definitions)!=1:raise ValueError('Ambiguous native GEMM declaration')
+    args=definitions[0].args
+    if args.vararg is not None or args.kwarg is not None:raise ValueError('Native source declaration must have an explicit finite ABI')
+    positional=[*args.posonlyargs,*args.args]
+    defaults=[inspect.Parameter.empty]*(len(positional)-len(args.defaults))+[ast.literal_eval(node) for node in args.defaults]
+    parameters=[]
+    for index,(arg,default) in enumerate(zip(positional,defaults)):
+        kind=inspect.Parameter.POSITIONAL_ONLY if index<len(args.posonlyargs) else inspect.Parameter.POSITIONAL_OR_KEYWORD
+        parameters.append(inspect.Parameter(arg.arg,kind,default=default))
+    for arg,default in zip(args.kwonlyargs,args.kw_defaults):
+        parameters.append(inspect.Parameter(arg.arg,inspect.Parameter.KEYWORD_ONLY,default=inspect.Parameter.empty if default is None else ast.literal_eval(default)))
+    if [p.name for p in parameters]!=['A','B','bias','otype','scale_a','scale_b','scale_c']:raise ValueError('Pinned native GEMM parameter inventory differs')
+    return inspect.Signature(parameters)
+
+
+def capture_signature(module):
+    """Recover the actual ABI behind compile guards exposing only *args/**kwargs.
+
+    The image source hash is verified before AST parsing; annotations are not
+    evaluated and defaults use literal_eval only. Never replace the native body.
+    """
+    return _source_signature(str(Path(module.__file__).resolve()))
+
+
+def bind_arguments(module,args,kwargs):
+    bound=capture_signature(module).bind(*args,**kwargs)
+    bound.apply_defaults()
+    return dict(bound.arguments)
+
+
 def make_bindings(runtime,module,arguments):
     if hashlib.sha256(Path(module.__file__).read_bytes()).hexdigest()!=NATIVE_SHA:raise ValueError('Capture wrapper source is not pinned')
+    # Compatibility for owner wrappers that already used inspect.signature on
+    # AITER's opaque decorator. New owners should bind capture_signature once.
+    if 'A' not in arguments and set(arguments)<= {'args','kwargs'}:
+        arguments=bind_arguments(module,arguments.get('args',()),arguments.get('kwargs',{}))
     inputs={};roles={};controls={}
     for name in ('A','B','bias','scale_a','scale_b','scale_c'):
         value=arguments[name]
