@@ -1,0 +1,25 @@
+{
+  "name": "flash_mla_with_kvcache_dsv4_fp8_11111_q1_h64_d512_p256_k128_ep2_ek8256__flydsl",
+  "definition": "flash_mla_with_kvcache_dsv4_fp8_11111_q1_h64_d512_p256_k128_ep2_ek8256",
+  "author": "",
+  "spec": {
+    "language": "",
+    "target": [
+      {
+        "arch": "gfx950",
+        "hardware_id": "MI355X"
+      }
+    ],
+    "entry_point": "",
+    "dependencies": [],
+    "destination_passing_style": false,
+    "binding": null
+  },
+  "sources": [
+    {
+      "path": "",
+      "content": ""
+    }
+  ],
+  "description": "FlyDSL solution slot for flash_mla_with_kvcache_dsv4_fp8_11111_q1_h64_d512_p256_k128_ep2_ek8256 -- language, entry_point and sources to be filled in."
+}

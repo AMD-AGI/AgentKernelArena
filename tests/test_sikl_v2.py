@@ -59,7 +59,7 @@ def test_complete_manifest_is_accepted_by_framework(config_path, monkeypatch):
         captured = manifest(contract)
         workload = contract.load_workload()
         assert len(captured.cases) == len(workload['cases'])
-        if workload['op_type'] != 'topk':
+        if workload['op_type'] in ('gemm', 'moe', 'mhc'):
             assert len(captured.cases) == 13
         for row in captured.cases:
             assert row['checks'] == ['correctness', 'performance']

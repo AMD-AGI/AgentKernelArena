@@ -88,7 +88,7 @@ AgentKernelArena/
 │   ├── torch2flydsl/
 │   ├── triton2flydsl/
 │   ├── flydsl2flydsl/
-│   ├── Aiter-task/                 # Production GEMM, MoE, mHC and top-k to FlyDSL
+│   ├── Aiter-task/                 # Production GEMM, MoE, mHC, top-k and MLA to FlyDSL
 │   └── image_kernel/               # Kernels from declared in-image source trees
 └── docs/                            # Full documentation
 ```
@@ -148,7 +148,7 @@ for tested CLI/model versions, run-level overrides, and the scope of live checks
 | `triton2flydsl` | Translate a Triton implementation to FlyDSL |
 | `flydsl2flydsl` | Optimize an existing FlyDSL implementation |
 | `image_kernel` | Optimize a kernel from a declared source tree in the runtime image |
-| `Aiter-task` | Reimplement production BF16 GEMM, MXFP4 MoE, fused mHC and paged top-k operators in FlyDSL |
+| `Aiter-task` | Reimplement production BF16 GEMM, MXFP4 MoE, fused mHC, paged top-k and sparse flash MLA operators in FlyDSL |
 
 These names organize task selection; the candidate and evaluation declarations
 determine behavior. Every retained suite uses the unified task contract in
@@ -368,7 +368,7 @@ files. Read [Task definition, schema, and authoring](docs/how-to/add-task.md)
 for the canonical schema, examples, command/result contracts, baseline and
 candidate lifecycle, optional sanitizers, and migration instructions.
 
-All 440 retained tasks declare schema v2 and task-owned evaluation actions.
+All 443 retained tasks declare schema v2 and task-owned evaluation actions.
 GPU qualification and agent campaign results are tracked separately from that
 migration. Task-family directory names remain useful selectors; no family has
 a separate configuration schema.

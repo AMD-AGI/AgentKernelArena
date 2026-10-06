@@ -1,4 +1,4 @@
-"""Protected operator semantics and packaging invariants for the 23 SIKL tasks."""
+"""Protected operator semantics and packaging invariants for the 26 SIKL tasks."""
 from __future__ import annotations
 
 import ast
@@ -23,19 +23,25 @@ DEFERRED_TIMING_TASKS = {
 }
 ROTATING_TASKS = [t for t in TASKS if t.name not in DEFERRED_TIMING_TASKS]
 SPLIT_TEMPLATE_FILES = {'README.md', 'scripts/task_inputs.py', 'scripts/task_measure.py'}
-VAR_AXIS = {'gemm': 'm', 'moe': 'num_tokens', 'mhc': 'tokens', 'topk': 'batch'}
-# Families whose workload cases are exactly the bundle's 13 rows. Top-k also
-# varies the valid lengths per row; tests/test_sikl_topk.py covers its cases.
+VAR_AXIS = {'gemm': 'm', 'moe': 'num_tokens', 'mhc': 'tokens', 'topk': 'batch', 'mla': 'batch'}
+# Families whose workload cases are exactly the bundle's 13 rows. Top-k and
+# MLA also vary the valid lengths per row; their own test modules cover them.
 BUNDLE_ROW_FAMILIES = {'gemm', 'moe', 'mhc'}
+_AITER_SOURCE = [{'kind': 'image', 'image_path': '/sgl-workspace/aiter/aiter',
+                  'destination': 'aiter_source/aiter',
+                  'exclude': ['jit/build', 'jit/flydsl_cache', '__pycache__']}]
 SOURCE_ACQUISITION = {
-    'aiter': [{'kind': 'image', 'image_path': '/sgl-workspace/aiter/aiter',
-               'destination': 'aiter_source/aiter',
-               'exclude': ['jit/build', 'jit/flydsl_cache', '__pycache__']}],
-    'sglang': [{'kind': 'image', 'image_path': '/sgl-workspace/sglang/python/sglang/kernels/ops/attention/dsv4',
-                'destination': 'sglang_source/kernels/ops/attention/dsv4', 'exclude': ['__pycache__']},
-               {'kind': 'image', 'image_path': '/sgl-workspace/sglang/python/sglang/kernels/jit/csrc/deepseek_v4',
-                'destination': 'sglang_source/kernels/jit/csrc/deepseek_v4'}],
+    'gemm': _AITER_SOURCE, 'moe': _AITER_SOURCE, 'mhc': _AITER_SOURCE,
+    'topk': [{'kind': 'image', 'image_path': '/sgl-workspace/sglang/python/sglang/kernels/ops/attention/dsv4',
+              'destination': 'sglang_source/kernels/ops/attention/dsv4', 'exclude': ['__pycache__']},
+             {'kind': 'image', 'image_path': '/sgl-workspace/sglang/python/sglang/kernels/jit/csrc/deepseek_v4',
+              'destination': 'sglang_source/kernels/jit/csrc/deepseek_v4'}],
+    'mla': [{'kind': 'image', 'image_path': '/sgl-workspace/sglang/python/sglang/kernels/ops/attention/dsa',
+             'destination': 'sglang_source/kernels/ops/attention/dsa', 'exclude': ['__pycache__']}],
 }
+# The MLA definitions differ in their reference and baseline bindings, so those
+# callbacks are pinned per task rather than shared by the family.
+PER_TASK_CALLBACKS = {'mla': {'scripts/task_reference.py', 'scripts/task_baseline.py'}}
 SHARED_TEMPLATE_FILES = (
     'kernel.py', 'test_kernel_harness.py', 'scripts/task_inputs.py',
     'scripts/task_initialize.py', 'scripts/task_compare.py', 'scripts/task_reference.py',
@@ -73,6 +79,23 @@ CALLBACK_SHA256 = {
         'task_initialize': 'f7af24a49e9771170911d619463932ea6fb57345b1bd2e5a8cf0babc4ffa9f00',
         'task_reference': '7e1e8421dad6172e55003553076e1a73ab2aeafa41cf019d7d6877e1be8de33d',
     },
+    # Verbatim callbacks and baselines of the three deepseek-v4-flash bundle
+    # flash_mla_with_kvcache definitions.
+    'mla': {
+        'flash_mla_with_kvcache_dsv4_fp8_10011_q1_h64_d512_p256_k128': {
+            'task_baseline': '926f57554a42c119979e122173474cc04dcc718304830c5fc16fce6ea02ba534',
+            'task_compare': '72b817d46e7b8b43806063801c29f038bd2d0badb82789ae8cff0e2563fd9ebf',
+            'task_initialize': '10c29e00fe79b60f0b95589c488c6cd784171fba826251fa7ab8357309f748a4',
+            'task_reference': '5c3cd40597de69a5fc921bcaed49b08fa690e0281479764ca3b96545ece20ddb',
+        },
+        **{name: {
+            'task_baseline': '2bad75d98748e1b559f7288bcb5ee730a04ac4e7a1abffdf53305d203dc6630b',
+            'task_compare': '72b817d46e7b8b43806063801c29f038bd2d0badb82789ae8cff0e2563fd9ebf',
+            'task_initialize': '10c29e00fe79b60f0b95589c488c6cd784171fba826251fa7ab8357309f748a4',
+            'task_reference': '3205e074974193f2eade0410901b52e0e93cab034a10e53efa8ed2a3f44ea845',
+        } for name in ('flash_mla_with_kvcache_dsv4_fp8_11111_q1_h64_d512_p256_k128_ep2_ek8256',
+                       'flash_mla_with_kvcache_dsv4_fp8_11111_q1_h64_d512_p256_k128_ep64_ek512')},
+    },
 }
 
 
@@ -84,18 +107,21 @@ def _workload(task):
     return json.loads((task / 'workload.json').read_text())
 
 
-def test_suite_keeps_all_23_tasks_and_519_cases():
-    assert len(TASKS) == 23
+def test_suite_keeps_all_26_tasks_and_1374_cases():
+    assert len(TASKS) == 26
     assert sum(_workload(t)['op_type'] == 'gemm' for t in TASKS) == 17
     assert sum(_workload(t)['op_type'] == 'moe' for t in TASKS) == 4
     assert sum(_workload(t)['op_type'] == 'mhc' for t in TASKS) == 1
     assert sum(_workload(t)['op_type'] == 'topk' for t in TASKS) == 1
-    assert sum(len(_workload(t)['cases']) for t in TASKS) == 519
+    assert sum(_workload(t)['op_type'] == 'mla' for t in TASKS) == 3
+    assert sum(len(_workload(t)['cases']) for t in TASKS) == 1374
 
 
 @pytest.mark.parametrize('op_type', sorted(VAR_AXIS))
 @pytest.mark.parametrize('relative', SHARED_TEMPLATE_FILES)
 def test_family_copies_are_identical(op_type, relative):
+    if relative in PER_TASK_CALLBACKS.get(op_type, ()):
+        pytest.skip('Pinned per task by test_original_callbacks_and_case_sampling_are_unchanged')
     tasks = [t for t in TASKS if _workload(t)['op_type'] == op_type]
     contents = [(t / relative).read_bytes() for t in tasks]
     if relative == 'README.md':
@@ -139,7 +165,9 @@ def test_one_v2_config_and_no_agent_dependency(task):
 def test_production_source_is_separate_and_documented(task):
     config = _config(task)
     acquisitions = config['workspace']['sources']
-    assert acquisitions == SOURCE_ACQUISITION[config['kernel_identity']['source_owner']]
+    assert acquisitions == SOURCE_ACQUISITION[_workload(task)['op_type']]
+    owner = config['kernel_identity']['source_owner']
+    assert all(a['destination'].startswith(f'{owner}_source/') for a in acquisitions)
     destinations = [acquisition['destination'] for acquisition in acquisitions]
     for source in config['baseline']['source_files']:
         assert any(source.startswith(destination + '/') for destination in destinations)
@@ -173,7 +201,8 @@ def test_image_acquisition_excludes_generated_jit_trees_but_keeps_sources(tmp_pa
         path = root / name
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(data)
-    source = dict(_config(TASKS[0])['workspace']['sources'][0], image_path=str(root))
+    aiter_task = next(t for t in TASKS if _config(t)['kernel_identity']['source_owner'] == 'aiter')
+    source = dict(_config(aiter_task)['workspace']['sources'][0], image_path=str(root))
     outside = root.parent / '3rdparty/composable_kernel/include/ck.hpp'
     outside.parent.mkdir(parents=True)
     outside.write_bytes(b'repository-only header')
@@ -216,7 +245,8 @@ def test_image_acquisition_excludes_generated_jit_trees_but_keeps_sources(tmp_pa
 def test_original_callbacks_and_case_sampling_are_unchanged(task):
     workload = _workload(task)
     kind = workload['op_type']
-    for module, sha in CALLBACK_SHA256[kind].items():
+    hashes = CALLBACK_SHA256[kind][task.name] if kind in PER_TASK_CALLBACKS else CALLBACK_SHA256[kind]
+    for module, sha in hashes.items():
         assert hashlib.sha256((task / 'scripts' / f'{module}.py').read_bytes()).hexdigest() == sha
     cases = workload['cases']
     if kind in BUNDLE_ROW_FAMILIES:
@@ -233,11 +263,17 @@ def test_original_callbacks_and_case_sampling_are_unchanged(task):
     for forbidden in ('gate_multiplier', 'gate_floor', 'atol', 'rtol', 'snr_threshold'):
         assert forbidden not in workload
     inputs = (task / 'scripts/task_inputs.py').read_text()
-    assert 'task_initialize.run(inputs, seed=SEED)' in inputs
-    if task.name in DEFERRED_TIMING_TASKS:
+    if kind == 'mla':
+        # One full callback run per batch shape; further draws run the callback
+        # without its optional extra pool (tests/test_sikl_mla.py).
+        assert 'task_initialize.run(self.inputs, seed=SEED)' in inputs
+        assert '**scratch}, seed=seed)' in inputs
+    elif task.name in DEFERRED_TIMING_TASKS:
+        assert 'task_initialize.run(inputs, seed=SEED)' in inputs
         assert 'task_initialize.run(inputs, seed=REFILL_SEED)' in inputs
         assert 'def refill_case_inputs(inputs: dict[str, Any])' in inputs
     else:
+        assert 'task_initialize.run(inputs, seed=SEED)' in inputs
         assert 'task_initialize.run(inputs, seed=seed)' in inputs
         assert 'def refill_case_inputs(inputs: dict[str, Any], seed: int)' in inputs
     assert 'task_compare.run(got, expected)' in inputs
@@ -264,7 +300,10 @@ def test_timing_protocol_checks_the_timed_invocations_themselves(task):
     assert 'if repeats != 1:' in measure
     # No invocation is singled out for checking by state prepared for it.
     assert 'float("nan")' not in measure and '.rerun()' not in measure
-    assert 'def redraw_call_varying_inputs(inputs: dict[str, Any], seed: int)' in inputs
+    if _workload(task)['op_type'] == 'mla':
+        assert 'def draws(self, case: dict[str, Any], seeds: list[int])' in inputs
+    else:
+        assert 'def redraw_call_varying_inputs(inputs: dict[str, Any], seed: int)' in inputs
     assert 'PERSISTENT_INPUTS' in inputs
     assert 'REFILL_SEED' not in inputs and 'SEED + ' not in inputs
     ns: dict = {}
