@@ -161,7 +161,7 @@
       "capture_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
       "framework": "sglang",
       "primary_target": "sglang_v0520",
-      "task_compatibility": "pending_final_qualification",
+      "task_compatibility": "ordinary_scoring_pairing_hold",
       "ready": false,
       "framework_qualified": false,
       "trusted_retest_qualified": false,
@@ -177,7 +177,17 @@
       "fixture_manifest_sha256": "a1eaf0c94adf2e2c611f6ed379717cc2d1016692bde344806072ea648e34c6e3",
       "fixture_asset_count": 19180,
       "fixture_declared_bytes": 121463093,
-      "fixture_publication_status": "task_manifest_declared; publication and qualification are separate gates"
+      "fixture_publication_status": "task_manifest_declared; publication and qualification are separate gates",
+      "ordinary_scoring_review": {
+        "status": "shared_schedule_repair_and_exact_review_required",
+        "ordinary_scoring_qualified": false,
+        "audit_name": "OTHER-DISTRIBUTION-TASKS.json",
+        "audit_sha256": "cb2e1abbcf44f6b555388fc0454dbe9e1dc002283202df2ca92f19d0b2253abc",
+        "audited_cases_sha256": "755efecb441865248d6e7b360a437266374cb9af381fc014b1bcae8e3f08d758",
+        "reason": "request-seeded width draws; ordinary request_for creates a fresh seed per invocation",
+        "workload_scope": "9 observed KV widths in one generated distribution case",
+        "existing_private_paired_evidence_retracted": false
+      }
     },
     {
       "task": "headkernel/deepseek-v4-pro__unified_paged_attention_prefill",
@@ -186,7 +196,7 @@
       "capture_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
       "framework": "sglang",
       "primary_target": "sglang_v0520",
-      "task_compatibility": "pending_final_qualification",
+      "task_compatibility": "scoped_publication_pending_exact_review",
       "ready": false,
       "framework_qualified": false,
       "trusted_retest_qualified": false,
@@ -202,7 +212,12 @@
       "fixture_manifest_sha256": "f998110ec4d0451bd43ecbbea9e63d595027732f429b45cf850f2ea7495b19d4",
       "fixture_asset_count": 25,
       "fixture_declared_bytes": 1413573052,
-      "fixture_publication_status": "task_manifest_declared; publication and qualification are separate gates"
+      "fixture_publication_status": "task_manifest_declared; publication and qualification are separate gates",
+      "ordinary_scoring_review": {
+        "status": "unaffected_by_new_pairing_finding_pending_exact_review",
+        "ordinary_scoring_readiness_claimed": false,
+        "published_scoped_evidence_retained": true
+      }
     },
     {
       "task": "headkernel/glm-5.3-flash__ck_gemm_a8w8_blockscale_bpreshuffle",
@@ -211,8 +226,8 @@
       "capture_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
       "framework": "sglang",
       "primary_target": "sglang_v0520",
-      "task_compatibility": "qualified_current_task",
-      "ready": true,
+      "task_compatibility": "scoped_publication_pending_exact_review",
+      "ready": false,
       "framework_qualified": true,
       "trusted_retest_qualified": true,
       "workload": "sg520_64x8192x1024_c64_tp8",
@@ -228,7 +243,7 @@
       "fixture_asset_count": 70,
       "fixture_declared_bytes": 522116267,
       "fixture_publication_status": "full_readback_verified",
-      "qualification_scope": "Current14-case correctness and native-primary measurement qualification; no production improvement or whole-suite readiness.",
+      "qualification_scope": "Published14-case correctness and native-primary measurement evidence retained; ordinary-scoring exact review remains pending. No production improvement or whole-suite readiness.",
       "qualified_evidence": {
         "oci_prefix": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261005/qualified-task-evidence/glm-5.3-flash__ck_gemm_a8w8_blockscale_bpreshuffle/42448aad-670cd1870ed0/",
         "manifest_sha256": "6113bdde7c57be172809433e4e42a1b439114c37d052a436be54fa789f0ef95e",
@@ -247,6 +262,11 @@
         "all_suite_ready": false,
         "framework_report": "framework/validation_report.yaml",
         "framework_marker": "framework/.validation_complete"
+      },
+      "ordinary_scoring_review": {
+        "status": "unaffected_by_new_pairing_finding_pending_exact_review",
+        "ordinary_scoring_readiness_claimed": false,
+        "published_scoped_evidence_retained": true
       }
     },
     {
@@ -357,7 +377,7 @@
       "capture_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
       "framework": "sglang",
       "primary_target": "sglang_v0520",
-      "task_compatibility": "pending_final_qualification",
+      "task_compatibility": "ordinary_scoring_pairing_hold",
       "ready": false,
       "framework_qualified": false,
       "trusted_retest_qualified": false,
@@ -373,7 +393,27 @@
       "fixture_manifest_sha256": "64bafd7c9e69dfc3df20d00f4ef2cac044cce3494bd8cc2efacdad6f0f77ff84",
       "fixture_asset_count": 15,
       "fixture_declared_bytes": 632810514,
-      "fixture_publication_status": "task_manifest_declared; publication and qualification are separate gates"
+      "fixture_publication_status": "task_manifest_declared; publication and qualification are separate gates",
+      "ordinary_scoring_review": {
+        "status": "shared_schedule_repair_and_exact_review_required",
+        "ordinary_scoring_qualified": false,
+        "audit_name": "OTHER-DISTRIBUTION-TASKS.json",
+        "audit_sha256": "cb2e1abbcf44f6b555388fc0454dbe9e1dc002283202df2ca92f19d0b2253abc",
+        "audited_cases_sha256": "400f89a5a5bfff1c453017ed7fefe45aedcbfc99fdb2fc0cb156bc96fe71dcfa",
+        "reason": "request-seeded length and physical-KV selection",
+        "workload_scope": "1024 sequence-length values",
+        "existing_private_paired_evidence_retracted": false
+      },
+      "published_private_paired_evidence": {
+        "status": "retained_valid_within_published_scope",
+        "oci_prefix": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261005/qualified-task-evidence/kimi-k3__lean_attention_decode/fbf39099-0f472d9140f8/",
+        "manifest_sha256": "f318830ac9882671c75730d7221e261de0aded1ebc704caab248cdd2b7f381ac",
+        "source_commit": "fbf390991f750828d7bc61b05f141777416a83bc",
+        "trusted_commit": "fbf390991f750828d7bc61b05f141777416a83bc",
+        "case_count": 1,
+        "private_paired_phases": 6,
+        "ordinary_scoring_readiness": false
+      }
     },
     {
       "task": "headkernel/kimi-k3__moe_gemm1_stage1",
@@ -382,7 +422,7 @@
       "capture_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
       "framework": "sglang",
       "primary_target": "sglang_v0520",
-      "task_compatibility": "pending_final_qualification",
+      "task_compatibility": "ordinary_scoring_pairing_hold",
       "ready": false,
       "framework_qualified": false,
       "trusted_retest_qualified": false,
@@ -398,7 +438,17 @@
       "fixture_manifest_sha256": "8a97c214c08327913b48b72f04c440e68d05252b549993603461a6e9eecb1358",
       "fixture_asset_count": 29,
       "fixture_declared_bytes": 1666534545,
-      "fixture_publication_status": "task_manifest_declared; publication and qualification are separate gates"
+      "fixture_publication_status": "task_manifest_declared; publication and qualification are separate gates",
+      "ordinary_scoring_review": {
+        "status": "shared_schedule_repair_and_exact_review_required",
+        "ordinary_scoring_qualified": false,
+        "audit_name": "OTHER-DISTRIBUTION-TASKS.json",
+        "audit_sha256": "cb2e1abbcf44f6b555388fc0454dbe9e1dc002283202df2ca92f19d0b2253abc",
+        "audited_cases_sha256": "1a075d3ad2b67217a26b214de067405607869056086d1b1e0b31e9c55e3b2769",
+        "reason": "request-seeded padded-row and route-population selection",
+        "workload_scope": "503 padded-row histogram entries across 3 structural cases, plus generated populations",
+        "existing_private_paired_evidence_retracted": false
+      }
     },
     {
       "task": "headkernel/kimi-k3__moe_gemm2_stage2",
@@ -407,7 +457,7 @@
       "capture_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
       "framework": "sglang",
       "primary_target": "sglang_v0520",
-      "task_compatibility": "pending_final_qualification",
+      "task_compatibility": "ordinary_scoring_pairing_hold",
       "ready": false,
       "framework_qualified": false,
       "trusted_retest_qualified": false,
@@ -426,7 +476,17 @@
       "fixture_manifest_sha256": "ba55858a83cc23eab5f9d5e622502939609c24c3442dba1871a6671fe4c0279c",
       "fixture_asset_count": 30,
       "fixture_declared_bytes": 2462745708,
-      "fixture_publication_status": "task_manifest_declared; publication and qualification are separate gates"
+      "fixture_publication_status": "task_manifest_declared; publication and qualification are separate gates",
+      "ordinary_scoring_review": {
+        "status": "shared_schedule_repair_and_exact_review_required",
+        "ordinary_scoring_qualified": false,
+        "audit_name": "OTHER-DISTRIBUTION-TASKS.json",
+        "audit_sha256": "cb2e1abbcf44f6b555388fc0454dbe9e1dc002283202df2ca92f19d0b2253abc",
+        "audited_cases_sha256": "a7c4b60f29f3a99b5629265c6076e23b2908f1349c7acd44f3a2d07a54be89f5",
+        "reason": "request-seeded padded-row and route-population selection",
+        "workload_scope": "503 padded-row histogram entries across 3 structural cases, plus generated populations",
+        "existing_private_paired_evidence_retracted": false
+      }
     },
     {
       "task": "headkernel/minimax-m3__decode_score_kernel",
@@ -435,7 +495,7 @@
       "capture_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
       "framework": "sglang",
       "primary_target": "sglang_v0520",
-      "task_compatibility": "pending_final_qualification",
+      "task_compatibility": "ordinary_scoring_pairing_hold",
       "ready": false,
       "framework_qualified": false,
       "trusted_retest_qualified": false,
@@ -451,7 +511,17 @@
       "fixture_manifest_sha256": "c254d61cf1ef28a414177bad0ecf88c42a7c999cf52b81d05c077b0e1d5eb25c",
       "fixture_asset_count": 213,
       "fixture_declared_bytes": 2397202144,
-      "fixture_publication_status": "task_manifest_declared; publication and qualification are separate gates"
+      "fixture_publication_status": "task_manifest_declared; publication and qualification are separate gates",
+      "ordinary_scoring_review": {
+        "status": "shared_schedule_repair_and_exact_review_required",
+        "ordinary_scoring_qualified": false,
+        "audit_name": "OTHER-DISTRIBUTION-TASKS.json",
+        "audit_sha256": "cb2e1abbcf44f6b555388fc0454dbe9e1dc002283202df2ca92f19d0b2253abc",
+        "audited_cases_sha256": "44185b9e91aefed1da6c5cbcac4aa12ddf3b1f30221cae451e3aee549a3c582f",
+        "reason": "request-seeded occurrence-weighted control draws; paired_report_costs exists but needs two explicitly paired requests",
+        "workload_scope": "16 cases, each with 128 observed control variants",
+        "existing_private_paired_evidence_retracted": false
+      }
     },
     {
       "task": "headkernel/minimax-m3__gemm_afp4wfp4_kernel",
@@ -460,7 +530,7 @@
       "capture_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
       "framework": "sglang",
       "primary_target": "sglang_v0520",
-      "task_compatibility": "pending_final_qualification",
+      "task_compatibility": "scoped_publication_pending_exact_review",
       "ready": false,
       "framework_qualified": false,
       "trusted_retest_qualified": false,
@@ -476,7 +546,12 @@
       "fixture_manifest_sha256": "38b9e7e8952710b8fc87621520ca3c1203d7d8366dc830d9e92bdb588c21f037",
       "fixture_asset_count": 74,
       "fixture_declared_bytes": 2044395146,
-      "fixture_publication_status": "task_manifest_declared; publication and qualification are separate gates"
+      "fixture_publication_status": "task_manifest_declared; publication and qualification are separate gates",
+      "ordinary_scoring_review": {
+        "status": "unaffected_by_new_pairing_finding_pending_exact_review",
+        "ordinary_scoring_readiness_claimed": false,
+        "published_scoped_evidence_retained": true
+      }
     },
     {
       "task": "headkernel/minimax-m3__gqa_share_sparse_decode_kernel",
@@ -485,7 +560,7 @@
       "capture_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
       "framework": "sglang",
       "primary_target": "sglang_v0520",
-      "task_compatibility": "pending_final_qualification",
+      "task_compatibility": "ordinary_scoring_pairing_hold",
       "ready": false,
       "framework_qualified": false,
       "trusted_retest_qualified": false,
@@ -501,7 +576,17 @@
       "fixture_manifest_sha256": "4020b60011ba94ab6443704db52c090beb50378adf80f2c19f9d500966ea82da",
       "fixture_asset_count": 289,
       "fixture_declared_bytes": 4683533856,
-      "fixture_publication_status": "task_manifest_declared; publication and qualification are separate gates"
+      "fixture_publication_status": "task_manifest_declared; publication and qualification are separate gates",
+      "ordinary_scoring_review": {
+        "status": "shared_schedule_repair_and_exact_review_required",
+        "ordinary_scoring_qualified": false,
+        "audit_name": "OTHER-DISTRIBUTION-TASKS.json",
+        "audit_sha256": "cb2e1abbcf44f6b555388fc0454dbe9e1dc002283202df2ca92f19d0b2253abc",
+        "audited_cases_sha256": "86444f5b9ed405b7355ccce892d630e7caad4448bd534411a83862d8523b161e",
+        "reason": "request-seeded occurrence-weighted control draws; paired_report_costs exists but needs two explicitly paired requests",
+        "workload_scope": "24 cases, each with 128 observed control variants",
+        "existing_private_paired_evidence_retracted": false
+      }
     },
     {
       "task": "headkernel/minimax-m3__gqa_share_sparse_fwd_kernel",
@@ -510,7 +595,7 @@
       "capture_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
       "framework": "sglang",
       "primary_target": "sglang_v0520",
-      "task_compatibility": "pending_final_qualification",
+      "task_compatibility": "ordinary_scoring_pairing_hold",
       "ready": false,
       "framework_qualified": false,
       "trusted_retest_qualified": false,
@@ -526,7 +611,17 @@
       "fixture_manifest_sha256": "5e5f03b8c915dbd9b8b3e451e693c7853364db95d23d4de3edb79a425d1b8e00",
       "fixture_asset_count": 346,
       "fixture_declared_bytes": 1694863880,
-      "fixture_publication_status": "task_manifest_declared; publication and qualification are separate gates"
+      "fixture_publication_status": "task_manifest_declared; publication and qualification are separate gates",
+      "ordinary_scoring_review": {
+        "status": "shared_schedule_repair_and_exact_review_required",
+        "ordinary_scoring_qualified": false,
+        "audit_name": "OTHER-DISTRIBUTION-TASKS.json",
+        "audit_sha256": "cb2e1abbcf44f6b555388fc0454dbe9e1dc002283202df2ca92f19d0b2253abc",
+        "audited_cases_sha256": "b87cf1d619918541575246970d4a2dd2aedc92c5e9f653ec61217bfff4501e5f",
+        "reason": "seed selects retained state and fresh geometry; even if 100 draws balance two states, ordered inputs are not paired",
+        "workload_scope": "40 cases; 6 have two retained control states",
+        "existing_private_paired_evidence_retracted": false
+      }
     },
     {
       "task": "headkernel_sg520/deepseek-v4-pro__per_group_quant_fp8",
@@ -535,7 +630,7 @@
       "capture_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
       "framework": "sglang",
       "primary_target": "sglang_v0520",
-      "task_compatibility": "pending_final_qualification",
+      "task_compatibility": "scoped_publication_pending_exact_review",
       "ready": false,
       "framework_qualified": false,
       "trusted_retest_qualified": false,
@@ -547,7 +642,12 @@
       "input_policy": "self_contained_declared_generated_cases",
       "trusted_retest_tool": "src/tools/trusted_native_eval.py",
       "environment_and_setup_guide": "docs/how-to/headkernel-upstream-runtime.md",
-      "frequency_scope": "eight sampled prefill steps per rank; no full-workload extrapolation"
+      "frequency_scope": "eight sampled prefill steps per rank; no full-workload extrapolation",
+      "ordinary_scoring_review": {
+        "status": "unaffected_by_new_pairing_finding_pending_exact_review",
+        "ordinary_scoring_readiness_claimed": false,
+        "published_scoped_evidence_retained": true
+      }
     },
     {
       "task": "headkernel/qwen3.8-2.4t__dense_bf16_gemm_cluster",
@@ -785,5 +885,31 @@
         "headkernel/kimi-k3__attn_residual_aggregate_hip"
       ]
     }
-  ]
+  ],
+  "ordinary_scoring_review": {
+    "status": "readiness_withheld_pending_repairs_and_exact_review",
+    "published_scoped_packages_retained": 5,
+    "older_Kimi_MoE_snapshots_retained_separately": 2,
+    "ordinary_pairing_held_task_count": 7,
+    "ordinary_pairing_held_tasks": [
+      "headkernel/deepseek-v4-pro__unified_paged_attention_decode",
+      "headkernel/kimi-k3__lean_attention_decode",
+      "headkernel/kimi-k3__moe_gemm1_stage1",
+      "headkernel/kimi-k3__moe_gemm2_stage2",
+      "headkernel/minimax-m3__decode_score_kernel",
+      "headkernel/minimax-m3__gqa_share_sparse_decode_kernel",
+      "headkernel/minimax-m3__gqa_share_sparse_fwd_kernel"
+    ],
+    "unaffected_published_definitions_pending_exact_review": [
+      "headkernel_sg520/deepseek-v4-pro__per_group_quant_fp8",
+      "headkernel/deepseek-v4-pro__unified_paged_attention_prefill",
+      "headkernel/minimax-m3__gemm_afp4wfp4_kernel",
+      "headkernel/glm-5.3-flash__ck_gemm_a8w8_blockscale_bpreshuffle"
+    ],
+    "unaffected_count_pending_exact_review": 4,
+    "audit_name": "OTHER-DISTRIBUTION-TASKS.json",
+    "audit_sha256": "cb2e1abbcf44f6b555388fc0454dbe9e1dc002283202df2ca92f19d0b2253abc",
+    "normal_path_ready_count_asserted": false,
+    "published_evidence_retracted": false
+  }
 }

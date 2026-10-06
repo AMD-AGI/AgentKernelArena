@@ -1,20 +1,20 @@
 # SGLang 0.5.20 head-kernel refresh progress
 
-**As of 2026-10-06, five of the 18 current refreshed tasks have qualified, published evidence; 13 remain pending.** The full refresh and whole-suite release remain incomplete. These are individual task qualifications within the four-model scope, with declared case and sampling limits; they do not establish complete model workloads, all-observed-settings coverage or end-to-end gains.
+**As of 2026-10-06, five task packages retain scoped published evidence. Kimi Lean's ordinary scoring is withheld, and the four other published definitions are unaffected by the new pairing finding, pending exact review.** This is not five fully ready tasks. The 18-task refresh and whole-suite release remain incomplete, with no complete model-workload, all-observed-settings or end-to-end gain claim.
 
 The [current runtime catalogue](../../tools/headkernel-runtime-targets.json) is the source of truth for active task IDs, runtime/image selection and fixture bindings. [HEADKERNELS.md](../../HEADKERNELS.md) describes the current 18-task selection and portable setup. The older [progress JSON](../../tools/headkernel-sg520-refresh.json) retains its **2026-10-05 snapshot** and original status; it is an archival evidence index, not the current qualification count.
 
 ## Current qualification
 
-Each publication below has matching native/correctness evidence, submitted-source controls, a framework-finalized PASS, a complete six-phase trusted retest and verified publication readback. Qualification applies to the tested task contract. No optimization or serving-runtime gain is claimed by this table.
+Each publication below retains its matching native/correctness evidence, source controls, framework-finalized PASS, private six-phase paired retest and verified readback. Those receipts remain valid within their recorded scope. Ordinary baseline/candidate scoring needs its own pairing and exact readiness review; publication alone does not discharge that gate.
 
-| Current qualified task | Declared cases | Published evidence |
-| --- | ---: | --- |
-| [DeepSeek native per-group FP8 quantization](../../tasks/headkernel_sg520/deepseek-v4-pro__per_group_quant_fp8/README.md) | 3 | [Quant validation archive manifest][quant-evidence] |
-| [DeepSeek unified paged MLA prefill](../../tasks/headkernel/deepseek-v4-pro__unified_paged_attention_prefill/README.md) | 2 | [Current prefill bundle manifest][mla-prefill-evidence] |
-| [Kimi Lean attention decode](../../tasks/headkernel/kimi-k3__lean_attention_decode/README.md) | 1 | [Lean bundle manifest][lean-evidence] |
-| [MiniMax FP4 GEMM](../../tasks/headkernel/minimax-m3__gemm_afp4wfp4_kernel/README.md) | 14 | [FP4 bundle manifest][fp4-evidence] |
-| [GLM FP8 GEMM](../../tasks/headkernel/glm-5.3-flash__ck_gemm_a8w8_blockscale_bpreshuffle/README.md) | 14 | [Repaired-checker FP8 bundle manifest][fp8-evidence] |
+| Published scoped package | Declared cases | Published evidence | Ordinary-scoring review |
+| --- | ---: | --- | --- |
+| [DeepSeek native per-group FP8 quantization](../../tasks/headkernel_sg520/deepseek-v4-pro__per_group_quant_fp8/README.md) | 3 | [Quant validation archive manifest][quant-evidence] | Unaffected by this finding; exact review pending |
+| [DeepSeek unified paged MLA prefill](../../tasks/headkernel/deepseek-v4-pro__unified_paged_attention_prefill/README.md) | 2 | [Current prefill bundle manifest][mla-prefill-evidence] | Unaffected by this finding; exact review pending |
+| [Kimi Lean attention decode](../../tasks/headkernel/kimi-k3__lean_attention_decode/README.md) | 1 | [Lean bundle manifest][lean-evidence] | **Schedule-pairing hold**; private paired evidence retained |
+| [MiniMax FP4 GEMM](../../tasks/headkernel/minimax-m3__gemm_afp4wfp4_kernel/README.md) | 14 | [FP4 bundle manifest][fp4-evidence] | Unaffected by this finding; exact review pending |
+| [GLM FP8 GEMM](../../tasks/headkernel/glm-5.3-flash__ck_gemm_a8w8_blockscale_bpreshuffle/README.md) | 14 | [Repaired-checker FP8 bundle manifest][fp8-evidence] | Unaffected by this finding; exact review pending |
 
 The evidence links are **rclone OCI URIs**. Verify the downloaded `MANIFEST.json` against these SHA-256 pins, then verify the files it lists:
 
@@ -28,16 +28,24 @@ The evidence links are **rclone OCI URIs**. Verify the downloaded `MANIFEST.json
 
 The GLM FP8 publication qualifies correctness and measurement of the unchanged starter. Its primary native-production ratio is **0.32515109525911207×**, with all 14 cases slower than native; the secondary frozen-port ratio **1.017613135002193×** is same-source control variation.
 
-**Seven qualified snapshots are retained**, including the two earlier Kimi MoE publications. Those two snapshots qualify older routing contracts and are excluded from the current five; the changed Kimi MoE tasks require fresh qualification. Kimi's interrupted loading attempt in the historical chronology below is not its current capture or Lean-task status.
+**Seven scoped qualification snapshots are retained**, including the two earlier Kimi MoE publications. Those two snapshots qualify older routing contracts and are separate from the five packages above. The changed Kimi MoE tasks require fresh qualification. Kimi's interrupted loading attempt in the historical chronology below remains a historical capture event; Lean's present hold concerns ordinary-scoring schedule pairing.
 
-| Model | Current tasks still pending | Count |
+## Ordinary scoring pairing hold
+
+The broader CPU source audit found **seven ordinary distribution-scoring paths** that select independent request-seeded work schedules for baseline and candidate. They are DeepSeek MLA decode; Kimi Lean and both MoE stages; and MiniMax decode score, sparse decode and sparse prefill. Even balanced state counts do not establish identical ordered inputs. The ordinary path needs a shared seed and ordered schedule, followed by owner repair and exact review.
+
+Kimi Lean's published private six-phase route used a paired challenge and remains valid within that scope. Its ordinary path must not inherit readiness from that result. The finding is recorded in `OTHER-DISTRIBUTION-TASKS.json`, SHA-256 `cb2e1abbcf44f6b555388fc0454dbe9e1dc002283202df2ca92f19d0b2253abc`; the [runtime catalogue](../../tools/headkernel-runtime-targets.json) records the affected task IDs and readiness holds.
+
+The current matrix withholds **14 definitions** for this hold or other outstanding gates. The four published definitions outside this additional pairing hold still await exact readiness review; no fully ready task count is asserted.
+
+| Model | Definitions held or with other gates pending | Count |
 | --- | --- | ---: |
 | DeepSeek V4 Pro | MLA decode; FlyDSL MoE stage 1; Opus MoE stages 1 and 2 | 4 |
 | GLM-5.3-Flash | Dense BF16 GEMM; fused MoE | 2 |
-| Kimi K3 | Dense GEMM; residual aggregation; MoE stages 1 and 2 | 4 |
+| Kimi K3 | Dense GEMM; residual aggregation; Lean attention; MoE stages 1 and 2 | 5 |
 | MiniMax M3 | Decode score; sparse attention decode and prefill | 3 |
 
-Qwen's five preserved mappings and tasks are outside these 18 refreshed tasks and the 13 pending count.
+Qwen's five preserved mappings and tasks are outside these 18 refreshed tasks and the 14-definition held/pending count.
 
 [quant-evidence]: oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/MANIFEST.json
 [mla-prefill-evidence]: oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261005/qualified-task-evidence/deepseek-v4-pro__unified_paged_attention_prefill/b98b3d12-744a5ca81874/MANIFEST.json
