@@ -1,0 +1,157 @@
+{
+  "capture_representation": "All eight ranks supplied structural metadata; rank zero supplied actual tensor representatives, as the pinned capture request specifies. Rank 1-7 metadata-only manifests retain complete=false for absent per-rank payloads. No claim is made that all-rank tensor payloads were captured.",
+  "current_workload": {
+    "calls_per_rank": 3904,
+    "case_count": 2,
+    "observed_required_m": [
+      8192
+    ],
+    "qualification_contract": "Exactly the two required observed M=8192 prefill cases from the pinned SG520 workload; historical M=1 and M=64 coverage is outside this current prefill qualification contract and remains unclaimed.",
+    "required_case_ids": [
+      "deepseek_mla_prefill-2800f2114cb8548cf5fdd0ba",
+      "deepseek_mla_prefill-fff723d1365f8696979e5779"
+    ],
+    "required_phases": [
+      "prefill"
+    ],
+    "separate_decode_task": "tasks/headkernel/deepseek-v4-pro__unified_paged_attention_decode",
+    "source_of_requirement": "All served structural MLA prefill cases in the complete 64 x 8192/1024, C64, TP8 capture.",
+    "unresolved_current_m": []
+  },
+  "dispatch_sources": {
+    "kernels/ops/attention/dsv4/unified_kv_kernels/env_gate.py": {
+      "lines": [
+        13,
+        15
+      ],
+      "sha256": "6b4c787730a9c88fd19d5a8ec241619af514229af4450ce20472534bc4acab25"
+    },
+    "kernels/ops/attention/dsv4/unified_kv_kernels/paged_prefill.py": {
+      "lines": [
+        288,
+        302,
+        319
+      ],
+      "sha256": "3d914fac43732cdf3fecc63ec7a0239f318def8d518b09a4ff8b663d7299ca33"
+    },
+    "kernels/ops/attention/dsv4/unified_kv_kernels/runtime.py": {
+      "lines": [
+        229,
+        744
+      ],
+      "sha256": "1f9189059ed3f851f2d753962f47802c85d0ef2132cea2d9d3482926d69b382c"
+    },
+    "srt/layers/attention/deepseek_v4_backend_hip_radix.py": {
+      "lines": [
+        1401,
+        1470,
+        1690
+      ],
+      "sha256": "76b35b297f00fd0ca401a8196fa6060e8c823bb1ce1105c6da2e50b9c8e85768"
+    }
+  },
+  "frozen_contract": {
+    "case_manifest_fingerprint": "34211505d78fd6e5580644fcc4ea4f747b8fbdf057b4c66fd9b7d68e9e38d9e7",
+    "case_manifest_sha256": "7d3c6ef96fd053b7bb89a132610806406025910b37c06b175eca6333c7cc4876",
+    "coverage_sha256": "4e83fe9edd17c7d1fb39c992e17875a525bc1be034b680924c06d6ff03fe1a23",
+    "native_source_sha256": "3d914fac43732cdf3fecc63ec7a0239f318def8d518b09a4ff8b663d7299ca33"
+  },
+  "historical_scope": {
+    "dispositions": {
+      "1": "NOT_OBSERVED_CURRENT: no served MLA prefill or decode M=1 case in this run. Historical diagnostic obligation remains unresolved.",
+      "64": "NOT_OBSERVED_CURRENT_PREFILL: served M=64 occurs in the separate unified paged attention decode task. This does not satisfy a historical prefill test obligation."
+    },
+    "full_legacy_coverage": false,
+    "legacy_required_m": [
+      1,
+      64,
+      8192
+    ],
+    "unresolved_legacy_m": [
+      1,
+      64
+    ]
+  },
+  "legacy_origin": {
+    "empty_draft": {
+      "bundle": "completion",
+      "key": "deepseek/tasks/deepseek-v4-pro__unified_paged_attention_prefill/cases.json",
+      "sha256": "8639af4ba96f81bfb69a19986d8407569be315ac33a184f3fd42d81079c63be2"
+    },
+    "finding": "The empty per-prefill draft already carried the cross-phase legacy list. Intake and sealing mechanically subtract the observed query-row M set; they do not infer additional current prefill shapes. The original authoring command was not recovered.",
+    "intake_rule": {
+      "key": "deepseek/intake_current_v7.py",
+      "line": 218,
+      "sha256": "8520e8d6532507687191d0e8068739261efb7764a8f373a080087199475065f3"
+    },
+    "seal_rule": {
+      "key": "deepseek/seal_final_v7.py",
+      "line": 128,
+      "sha256": "bcb27df305c91946bf2d64d75232aaf9729ab5c3244ab3c3490314309ef9e8d2"
+    }
+  },
+  "logical_m_definition": "q.shape[0], the number of query rows; active_requests and occurrence counts are separate quantities.",
+  "model_level_history": {
+    "original_served_work_control_gate_passed": false,
+    "prefill_work_control_gaps": [],
+    "preserve_original_terminal_status_and_all_qualification_flags": true
+  },
+  "qualification": {
+    "framework_status": "PASS",
+    "fresh_validator_review_required": true,
+    "latest_report_key": "validator/nvme-runs/195082/ds-mla-prefill-gpt-5.6-sol-20261006T032939634940Z/checkpoints/000083/artifacts/framework/workspace_MI355X_task_validator/run_20261006_033950_sg520_quant_validator/headkernel_deepseek-v4-pro__unified_paged_attention_prefill_20261006_033950/validation_report.yaml",
+    "latest_report_sha256": "316f7d43655358cee21269739f77a7a45cebd7112d3fcb98a75fbe7cfec224bb",
+    "overall_status": "WARN",
+    "owner_approval_recorded": false,
+    "scope_clarification_approves_existing_WARN": false,
+    "status_changed_by_this_review": false
+  },
+  "rank_manifest_evidence": [
+    {
+      "bundle": "completion",
+      "key": "runs/deepseek-capture-csr-v7-194603/native-captures/rank-0/manifest.json",
+      "sha256": "f9b3868d6f9ea8df7f71a0e52b58bd8442d40d8678de93815c94c08ce912ffca"
+    },
+    {
+      "bundle": "completion",
+      "key": "runs/deepseek-capture-csr-v7-194603/native-captures/rank-1/manifest.json",
+      "sha256": "b66b2f5e4eb06a8a0d7ed4b2e4567e847316f49b605382375dcc04a95d01a832"
+    },
+    {
+      "bundle": "completion",
+      "key": "runs/deepseek-capture-csr-v7-194603/native-captures/rank-2/manifest.json",
+      "sha256": "af3c657267b13355628191e5be2d83e86296f5db53fb659f9e0e38f31d3fdee6"
+    },
+    {
+      "bundle": "completion",
+      "key": "runs/deepseek-capture-csr-v7-194603/native-captures/rank-3/manifest.json",
+      "sha256": "f27ecf1c50a5fbfdf65d92e38656a303f1bed8646e120eebf81da290742c804e"
+    },
+    {
+      "bundle": "completion",
+      "key": "runs/deepseek-capture-csr-v7-194603/native-captures/rank-4/manifest.json",
+      "sha256": "87fb978692a4a88d6c2f014e13cb857a1a7fd47952f5d7b2d326131560b158ac"
+    },
+    {
+      "bundle": "completion",
+      "key": "runs/deepseek-capture-csr-v7-194603/native-captures/rank-5/manifest.json",
+      "sha256": "7e0dcb5bd8d5fe2ef222a42ba5271faa36001a72d71d4a7bff7a6b4c85183ea5"
+    },
+    {
+      "bundle": "completion",
+      "key": "runs/deepseek-capture-csr-v7-194603/native-captures/rank-6/manifest.json",
+      "sha256": "cd97c44ea203ac2f6e793ffc6ba6f3b6696fda1593e9252e9d62fdfdf698464d"
+    },
+    {
+      "bundle": "completion",
+      "key": "runs/deepseek-capture-csr-v7-194603/native-captures/rank-7/manifest.json",
+      "sha256": "5c006225366a1d24b240d4c09aa333930d47600778a0b0d52a7a4ef98a82ee15"
+    }
+  ],
+  "review_status": "CURRENT_WORKLOAD_SCOPE_CLARIFIED_PENDING_FRESH_VALIDATOR_REVIEW",
+  "run_id": "deepseek-capture-csr-v7-194603",
+  "runtime_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
+  "schema": "deepseek-logical-m-scope-review-v1",
+  "scope_limit": "This is a workload-specific disposition. It does not establish that M=1 or M=64 prefill is impossible or numerically validated for other workloads.",
+  "task": "tasks/headkernel/deepseek-v4-pro__unified_paged_attention_prefill"
+}
