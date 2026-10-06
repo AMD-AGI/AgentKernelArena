@@ -186,7 +186,8 @@ def test_reference_runs_only_after_candidate_observations_and_all_checks_remain(
                      assert_immutable_inputs=lambda inputs, expected: log.append('immutable '+inputs),
                      restore_storages=lambda inputs, expected: log.append('restore '+inputs),
                      invoke=lambda fn, inputs: log.append('reference launch') or 'reference output',
-                     compare=lambda actual, expected, tol: log.append('compare'))
+                     compare=lambda actual, expected, tol: log.append('compare'),
+                     compare_native_outputs=lambda actual, expected, inputs, tol, **kwargs: log.append('compare'))
     namespace['verify_after_snapshot']('candidate output', 'candidate inputs', object(), None, 'reference inputs', 0.02)
     assert log == ['sync', 'snapshot candidate output', 'immutable candidate inputs',
                    'restore reference inputs', 'reference launch', 'sync',

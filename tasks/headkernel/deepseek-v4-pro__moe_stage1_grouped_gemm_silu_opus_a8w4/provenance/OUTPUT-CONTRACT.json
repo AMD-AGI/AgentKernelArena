@@ -1,0 +1,37 @@
+{
+  "schema": "opus-stage1-physical-output-contract-v1",
+  "meaning": "FP8 payload codes multiplied by their E8M0 block scales are the physical intermediate activations consumed by stage2",
+  "scale_value": "2**(byte-127) for finite E8M0; live NaN code255 is invalid",
+  "scale_layout": "(row//32)*(padded_columns*32)+(column//8)*256+(column%4)*64+(row%16)*4+((column//4)%2)*2+(row//16)%2",
+  "routing": "scale rows follow sorted routing; payload rows follow token,slot; use immutable CPU routing and require every token/slot exactly once",
+  "scale_comparison": "all allocated bytes exact, including zero-initialized padding",
+  "semantic_comparison": {
+    "dtype": "float64",
+    "relative_coefficient": 0.02,
+    "RMS_coefficient": 0.02,
+    "RMS_floor": 1e-06,
+    "extent": "all dense payload values"
+  },
+  "retained_encoded_compatibility_tolerance": 0.15,
+  "expected_outputs": "captured CPU goldens and separately built frozen native reference; no claim of independently recomputing the GEMM",
+  "checks_apply_to": "captured candidate/reference specialization checks and every fresh correctness/warmup/measured replay",
+  "native_layout_source": {
+    "path": "ut/native/csrc/opus_moe/include/gfx950/a8w4/stage1/opus_moe_stage1_a8w4_pipeline_common_gfx950.cuh",
+    "sha256": "e9c01eb78823c497c1d43936edca4cf21a48700b7509098ea45e26ffab256e38"
+  },
+  "allocation_source": {
+    "path": "ut/host/native.py",
+    "sha256": "5cea2bd316394b05007ff382b758081e3fc9eb3848b3f1c96f01d299b939c367",
+    "function": "_make_out_scale uses torch.zeros"
+  },
+  "coverage_scope": {
+    "current_component": "moe1_prefill",
+    "current_structural_cases": [
+      "deepseek_moe1_prefill-29ea221dcf7a6a7000b32591"
+    ],
+    "current_component_work_control_gaps": [],
+    "historical_M_values_are_not_added_to_current_workload": true,
+    "original_model_gate_unchanged": false,
+    "original_model_error_component": "moe1 (FlyDSL decode), not this moe1_prefill Opus component"
+  }
+}

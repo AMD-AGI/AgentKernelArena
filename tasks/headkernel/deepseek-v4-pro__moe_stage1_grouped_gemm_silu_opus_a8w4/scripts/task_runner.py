@@ -15,6 +15,8 @@ from evaluation_contract import (canonical, fingerprint, strict_json, validate_m
 from abi import runtime_abi
 from dispatch_contract import validate_dispatch
 
+OUTPUT_CONTRACT_PROOFS = {}
+
 
 def write(phase,report):
     target=ROOT/'build'/(phase+'_report.json'); target.parent.mkdir(exist_ok=True)
@@ -124,7 +126,19 @@ def verify_after_snapshot(output, inputs, expected_inputs, reference_fn, referen
     expected_cpu=cpu_clone(reference_output)
     assert_immutable_inputs(reference_inputs,expected_inputs)
     del reference_output
-    compare(actual_cpu,expected_cpu,tol)
+    compare_native_outputs(actual_cpu,expected_cpu,inputs,tol,expected_inputs=expected_inputs)
+
+
+def compare_native_outputs(actual,golden,inputs,tol,*,expected_inputs,path='output'):
+    # Keep the original encoded-payload and full scale-byte checks, then check
+    # the physical activation values consumed by stage2. Quantization codes
+    # alone do not have a meaningful global RMS across differently scaled groups.
+    compare(actual,golden,tol,path)
+    from output_contract import comparison_inputs_from_snapshot,compare_opus_outputs
+    tensors,_=runtime_abi(inputs,None)
+    truth_inputs=comparison_inputs_from_snapshot(inputs,expected_inputs,tensors)
+    proof=compare_opus_outputs(actual,golden,truth_inputs,path)
+    OUTPUT_CONTRACT_PROOFS[proof['live_scale_offsets_sha256']]=proof
 
 
 def engage_specialization(fn,inputs,golden,tol,label):
@@ -135,7 +149,7 @@ def engage_specialization(fn,inputs,golden,tol,label):
     torch.cuda.synchronize()
     actual=cpu_clone(output)
     assert_immutable_inputs(inputs,before)
-    compare(actual,golden,tol,label)
+    compare_native_outputs(actual,golden,inputs,tol,expected_inputs=before,path=label)
     return output
 
 
@@ -281,6 +295,7 @@ def main():
         del graph,inputs,reference_inputs,golden,output,pristine_inputs,initial_out
         torch.cuda.empty_cache()
     report.update(compiled=True,compiled_specializations=compiled,
+                  output_contract_proofs=list(OUTPUT_CONTRACT_PROOFS.values()),
                   compilation_kind='current native implementations invoked and synchronized for every frozen case',
                   oracle_order='candidate output/input CPU snapshots before reference GPU computation',
                   native_binding=identity,unresolved_legacy_m=manifest.get('unresolved_legacy_m',[]),
