@@ -16,7 +16,7 @@ def main():
     module=task.load_source();native=None;comparisons=[];policy=manifest['measurement'];challenge=secrets.randbelow(2**29)
     before=task.package_hash()
     for case in manifest['cases']:
-        tensors,port,observe,initialize,verify,reset,reference=task.build_state(case,1,module)
+        tensors,port,observe,initialize,verify,reset,reference=task.build_state(case,1,module,defer_reference=True)
         def reset_live(seed):return reset(seed*2+1)
         family=case['live_fixture']['capture_family'];provenance=task.strict_json((task.ROOT/'provenance/NATIVE-BASELINE.json').read_text())
         if family=='fp8_gemm':

@@ -1,0 +1,4607 @@
+{
+  "schema_version": 1,
+  "runtime_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
+  "source_run": "kimi-original-heads-v2-194958",
+  "cases": [
+    {
+      "case_id": "bfloat16-decode-m64-n6016-k7168-aten_bf16_mm-03ade5322a32784f1ef4c58d",
+      "occurrences": 94208,
+      "calls_per_sample": 1,
+      "scalars": {
+        "M": 64,
+        "N": 6016,
+        "K": 7168,
+        "fp8": false,
+        "BM": 32,
+        "BN": 64,
+        "BK": 128,
+        "A_ROW_STRIDE": 7168
+      },
+      "tensors": {
+        "A": {
+          "role": "input",
+          "shape": [
+            64,
+            7168
+          ],
+          "strides": [
+            7168,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        },
+        "B": {
+          "role": "input",
+          "shape": [
+            7168,
+            6016
+          ],
+          "strides": [
+            1,
+            7168
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        },
+        "C": {
+          "role": "output",
+          "shape": [
+            64,
+            6016
+          ],
+          "strides": [
+            6016,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        }
+      },
+      "live_fixture": {
+        "path": "fixtures/bfloat16-decode-m64-n6016-k7168-aten_bf16_mm-03ade5322a32784f1ef4c58d.json",
+        "sha256": "b4d2722510437dc56495c5b1396a3172e406e3a1e74b7243f66603e26a4362ef",
+        "native_capture_run": "kimi-original-heads-v2-194958",
+        "source_case_key": "aten_bf16_mm-03ade5322a32784f1ef4c58d",
+        "ABI_preserved": true,
+        "capture_family": "aten_bf16_mm",
+        "source_sha256": "858756c0f22052de641bfde6c0c93bfacfb7c16094a9e1ead7e1802c3ca043c4"
+      },
+      "capture_controls": {
+        "out": null,
+        "tensor_attributes": {
+          "A": {},
+          "B": {}
+        }
+      },
+      "served_geometry": {
+        "active_requests": 64,
+        "active_tokens": 64,
+        "replay_id": "forward-34",
+        "run_id": "kimi-original-heads-v2-194958",
+        "stage": "decode",
+        "tp_rank": 0,
+        "workload_marker": "controller CAPTURE-PHASE=profile; exact native benchmark workload"
+      },
+      "frequency_evidence": {
+        "source_case_key": "aten_bf16_mm-03ade5322a32784f1ef4c58d",
+        "per_rank_counts": {
+          "0": 94208,
+          "1": 94208,
+          "2": 94208,
+          "3": 94208,
+          "4": 94208,
+          "5": 94208,
+          "6": 94208,
+          "7": 94208
+        },
+        "scope": "all notified actual served calls in the complete64-request workload; one numerical representative per structural record",
+        "capture_origin": "served_graph",
+        "graph_bucket": "bs64"
+      }
+    },
+    {
+      "case_id": "bfloat16-decode-m64-n7168-k768-aten_bf16_mm-0739844fe69b9cb4431a1c19",
+      "occurrences": 94208,
+      "calls_per_sample": 1,
+      "scalars": {
+        "M": 64,
+        "N": 7168,
+        "K": 768,
+        "fp8": false,
+        "BM": 32,
+        "BN": 64,
+        "BK": 128,
+        "A_ROW_STRIDE": 768
+      },
+      "tensors": {
+        "A": {
+          "role": "input",
+          "shape": [
+            64,
+            768
+          ],
+          "strides": [
+            768,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        },
+        "B": {
+          "role": "input",
+          "shape": [
+            768,
+            7168
+          ],
+          "strides": [
+            1,
+            768
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        },
+        "C": {
+          "role": "output",
+          "shape": [
+            64,
+            7168
+          ],
+          "strides": [
+            7168,
+            1
+          ],
+          "storage_offset": 229376,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        }
+      },
+      "live_fixture": {
+        "path": "fixtures/bfloat16-decode-m64-n7168-k768-aten_bf16_mm-0739844fe69b9cb4431a1c19.json",
+        "sha256": "10149dae1c6bac62bab31a13a6652164234a8499553940427d7751840fceda7e",
+        "native_capture_run": "kimi-original-heads-v2-194958",
+        "source_case_key": "aten_bf16_mm-0739844fe69b9cb4431a1c19",
+        "ABI_preserved": true,
+        "capture_family": "aten_bf16_mm",
+        "source_sha256": "ef84113a5e5b45526af2fc2b77ba8bf6a418912afb6e00fea63e1eab0482dbd5"
+      },
+      "capture_controls": {
+        "out": {
+          "kind": "output_binding",
+          "name": "result"
+        },
+        "tensor_attributes": {
+          "A": {},
+          "B": {}
+        }
+      },
+      "served_geometry": {
+        "active_requests": 64,
+        "active_tokens": 64,
+        "replay_id": "forward-34",
+        "run_id": "kimi-original-heads-v2-194958",
+        "stage": "decode",
+        "tp_rank": 0,
+        "workload_marker": "controller CAPTURE-PHASE=profile; exact native benchmark workload"
+      },
+      "frequency_evidence": {
+        "source_case_key": "aten_bf16_mm-0739844fe69b9cb4431a1c19",
+        "per_rank_counts": {
+          "0": 94208,
+          "1": 94208,
+          "2": 94208,
+          "3": 94208,
+          "4": 94208,
+          "5": 94208,
+          "6": 94208,
+          "7": 94208
+        },
+        "scope": "all notified actual served calls in the complete64-request workload; one numerical representative per structural record",
+        "capture_origin": "served_graph",
+        "graph_bucket": "bs64"
+      }
+    },
+    {
+      "case_id": "bfloat16-prefill-m8192-n6016-k7168-aten_bf16_mm-0cd84f06c7ee5e46caba4ec2",
+      "occurrences": 184,
+      "calls_per_sample": 1,
+      "scalars": {
+        "M": 8192,
+        "N": 6016,
+        "K": 7168,
+        "fp8": false,
+        "BM": 32,
+        "BN": 64,
+        "BK": 128,
+        "A_ROW_STRIDE": 7168
+      },
+      "tensors": {
+        "A": {
+          "role": "input",
+          "shape": [
+            8192,
+            7168
+          ],
+          "strides": [
+            7168,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        },
+        "B": {
+          "role": "input",
+          "shape": [
+            7168,
+            6016
+          ],
+          "strides": [
+            1,
+            7168
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        },
+        "C": {
+          "role": "output",
+          "shape": [
+            8192,
+            6016
+          ],
+          "strides": [
+            6016,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        }
+      },
+      "live_fixture": {
+        "path": "fixtures/bfloat16-prefill-m8192-n6016-k7168-aten_bf16_mm-0cd84f06c7ee5e46caba4ec2.json",
+        "sha256": "c5cbef3e2fac6466a86b04792e5e8fdff9b374ee1876a5787d9d13f59bee8429",
+        "native_capture_run": "kimi-original-heads-v2-194958",
+        "source_case_key": "aten_bf16_mm-0cd84f06c7ee5e46caba4ec2",
+        "ABI_preserved": true,
+        "capture_family": "aten_bf16_mm",
+        "source_sha256": "858756c0f22052de641bfde6c0c93bfacfb7c16094a9e1ead7e1802c3ca043c4"
+      },
+      "capture_controls": {
+        "out": null,
+        "tensor_attributes": {
+          "A": {},
+          "B": {}
+        }
+      },
+      "served_geometry": {
+        "active_requests": 1,
+        "active_tokens": 8192,
+        "replay_id": "forward-1",
+        "run_id": "kimi-original-heads-v2-194958",
+        "stage": "prefill",
+        "tp_rank": 0,
+        "workload_marker": "controller CAPTURE-PHASE=profile; exact native benchmark workload"
+      },
+      "frequency_evidence": {
+        "source_case_key": "aten_bf16_mm-0cd84f06c7ee5e46caba4ec2",
+        "per_rank_counts": {
+          "0": 184,
+          "1": 184,
+          "2": 184,
+          "3": 184,
+          "4": 184,
+          "5": 184,
+          "6": 184,
+          "7": 184
+        },
+        "scope": "all notified actual served calls in the complete64-request workload; one numerical representative per structural record",
+        "capture_origin": "served_eager",
+        "graph_bucket": null
+      }
+    },
+    {
+      "case_id": "bfloat16-prefill-m2-n20480-k7168-aten_bf16_mm-1597bea56341ec10f06f0cd8",
+      "occurrences": 31,
+      "calls_per_sample": 1,
+      "scalars": {
+        "M": 2,
+        "N": 20480,
+        "K": 7168,
+        "fp8": false,
+        "BM": 32,
+        "BN": 64,
+        "BK": 128,
+        "A_ROW_STRIDE": 7168
+      },
+      "tensors": {
+        "A": {
+          "role": "input",
+          "shape": [
+            2,
+            7168
+          ],
+          "strides": [
+            7168,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        },
+        "B": {
+          "role": "input",
+          "shape": [
+            7168,
+            20480
+          ],
+          "strides": [
+            1,
+            7168
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        },
+        "C": {
+          "role": "output",
+          "shape": [
+            2,
+            20480
+          ],
+          "strides": [
+            20480,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        }
+      },
+      "live_fixture": {
+        "path": "fixtures/bfloat16-prefill-m2-n20480-k7168-aten_bf16_mm-1597bea56341ec10f06f0cd8.json",
+        "sha256": "5852f8dc5df3f6f47e25fbc3de13955b3a32047aa24a649fffe2c55980b014c2",
+        "native_capture_run": "kimi-original-heads-v2-194958",
+        "source_case_key": "aten_bf16_mm-1597bea56341ec10f06f0cd8",
+        "ABI_preserved": true,
+        "capture_family": "aten_bf16_mm",
+        "source_sha256": "858756c0f22052de641bfde6c0c93bfacfb7c16094a9e1ead7e1802c3ca043c4"
+      },
+      "capture_controls": {
+        "out": null,
+        "tensor_attributes": {
+          "A": {},
+          "B": {}
+        }
+      },
+      "served_geometry": {
+        "active_requests": 2,
+        "active_tokens": 16384,
+        "replay_id": "forward-2",
+        "run_id": "kimi-original-heads-v2-194958",
+        "stage": "prefill",
+        "tp_rank": 0,
+        "workload_marker": "controller CAPTURE-PHASE=profile; exact native benchmark workload"
+      },
+      "frequency_evidence": {
+        "source_case_key": "aten_bf16_mm-1597bea56341ec10f06f0cd8",
+        "per_rank_counts": {
+          "0": 31,
+          "1": 31,
+          "2": 31,
+          "3": 31,
+          "4": 31,
+          "5": 31,
+          "6": 31,
+          "7": 31
+        },
+        "scope": "all notified actual served calls in the complete64-request workload; one numerical representative per structural record",
+        "capture_origin": "served_eager",
+        "graph_bucket": null
+      }
+    },
+    {
+      "case_id": "bfloat16-decode-m64-n20480-k7168-aten_bf16_mm-1dd0b9cb464b0f6c17e49357",
+      "occurrences": 1024,
+      "calls_per_sample": 1,
+      "scalars": {
+        "M": 64,
+        "N": 20480,
+        "K": 7168,
+        "fp8": false,
+        "BM": 32,
+        "BN": 64,
+        "BK": 128,
+        "A_ROW_STRIDE": 7168
+      },
+      "tensors": {
+        "A": {
+          "role": "input",
+          "shape": [
+            64,
+            7168
+          ],
+          "strides": [
+            7168,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        },
+        "B": {
+          "role": "input",
+          "shape": [
+            7168,
+            20480
+          ],
+          "strides": [
+            1,
+            7168
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        },
+        "C": {
+          "role": "output",
+          "shape": [
+            64,
+            20480
+          ],
+          "strides": [
+            20480,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        }
+      },
+      "live_fixture": {
+        "path": "fixtures/bfloat16-decode-m64-n20480-k7168-aten_bf16_mm-1dd0b9cb464b0f6c17e49357.json",
+        "sha256": "8a85cfa16643fad8f30fa13985ca5c9de8edf20dfde860ec483f1ae068be7539",
+        "native_capture_run": "kimi-original-heads-v2-194958",
+        "source_case_key": "aten_bf16_mm-1dd0b9cb464b0f6c17e49357",
+        "ABI_preserved": true,
+        "capture_family": "aten_bf16_mm",
+        "source_sha256": "858756c0f22052de641bfde6c0c93bfacfb7c16094a9e1ead7e1802c3ca043c4"
+      },
+      "capture_controls": {
+        "out": null,
+        "tensor_attributes": {
+          "A": {},
+          "B": {}
+        }
+      },
+      "served_geometry": {
+        "active_requests": 64,
+        "active_tokens": 64,
+        "replay_id": "forward-34",
+        "run_id": "kimi-original-heads-v2-194958",
+        "stage": "decode",
+        "tp_rank": 0,
+        "workload_marker": "controller CAPTURE-PHASE=profile; exact native benchmark workload"
+      },
+      "frequency_evidence": {
+        "source_case_key": "aten_bf16_mm-1dd0b9cb464b0f6c17e49357",
+        "per_rank_counts": {
+          "0": 1024,
+          "1": 1024,
+          "2": 1024,
+          "3": 1024,
+          "4": 1024,
+          "5": 1024,
+          "6": 1024,
+          "7": 1024
+        },
+        "scope": "all notified actual served calls in the complete64-request workload; one numerical representative per structural record",
+        "capture_origin": "served_graph",
+        "graph_bucket": "bs64"
+      }
+    },
+    {
+      "case_id": "bfloat16-decode-m64-n1536-k128-aten_bf16_mm-3f37c0cfdd926d45a5c858ad",
+      "occurrences": 70656,
+      "calls_per_sample": 1,
+      "scalars": {
+        "M": 64,
+        "N": 1536,
+        "K": 128,
+        "fp8": false,
+        "BM": 32,
+        "BN": 64,
+        "BK": 128,
+        "A_ROW_STRIDE": 6288
+      },
+      "tensors": {
+        "A": {
+          "role": "input",
+          "shape": [
+            64,
+            128
+          ],
+          "strides": [
+            6288,
+            1
+          ],
+          "storage_offset": 6144,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        },
+        "B": {
+          "role": "input",
+          "shape": [
+            128,
+            1536
+          ],
+          "strides": [
+            1,
+            128
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        },
+        "C": {
+          "role": "output",
+          "shape": [
+            64,
+            1536
+          ],
+          "strides": [
+            1536,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        }
+      },
+      "live_fixture": {
+        "path": "fixtures/bfloat16-decode-m64-n1536-k128-aten_bf16_mm-3f37c0cfdd926d45a5c858ad.json",
+        "sha256": "0488b45df2ea402aeda95e17d0f6a369a596c61f085d015bcba920fa01c2c9bb",
+        "native_capture_run": "kimi-original-heads-v2-194958",
+        "source_case_key": "aten_bf16_mm-3f37c0cfdd926d45a5c858ad",
+        "ABI_preserved": true,
+        "capture_family": "aten_bf16_mm",
+        "source_sha256": "858756c0f22052de641bfde6c0c93bfacfb7c16094a9e1ead7e1802c3ca043c4"
+      },
+      "capture_controls": {
+        "out": null,
+        "tensor_attributes": {
+          "A": {},
+          "B": {}
+        }
+      },
+      "served_geometry": {
+        "active_requests": 64,
+        "active_tokens": 64,
+        "replay_id": "forward-34",
+        "run_id": "kimi-original-heads-v2-194958",
+        "stage": "decode",
+        "tp_rank": 0,
+        "workload_marker": "controller CAPTURE-PHASE=profile; exact native benchmark workload"
+      },
+      "frequency_evidence": {
+        "source_case_key": "aten_bf16_mm-3f37c0cfdd926d45a5c858ad",
+        "per_rank_counts": {
+          "0": 70656,
+          "1": 70656,
+          "2": 70656,
+          "3": 70656,
+          "4": 70656,
+          "5": 70656,
+          "6": 70656,
+          "7": 70656
+        },
+        "scope": "all notified actual served calls in the complete64-request workload; one numerical representative per structural record",
+        "capture_origin": "served_graph",
+        "graph_bucket": "bs64"
+      }
+    },
+    {
+      "case_id": "bfloat16-prefill-m8192-n144-k7168-aten_bf16_mm-54dcedb25680da8984085d7d",
+      "occurrences": 138,
+      "calls_per_sample": 1,
+      "scalars": {
+        "M": 8192,
+        "N": 144,
+        "K": 7168,
+        "fp8": false,
+        "BM": 32,
+        "BN": 64,
+        "BK": 128,
+        "A_ROW_STRIDE": 7168
+      },
+      "tensors": {
+        "A": {
+          "role": "input",
+          "shape": [
+            8192,
+            7168
+          ],
+          "strides": [
+            7168,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        },
+        "B": {
+          "role": "input",
+          "shape": [
+            7168,
+            144
+          ],
+          "strides": [
+            1,
+            7168
+          ],
+          "storage_offset": 44040192,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        },
+        "C": {
+          "role": "output",
+          "shape": [
+            8192,
+            144
+          ],
+          "strides": [
+            144,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        }
+      },
+      "live_fixture": {
+        "path": "fixtures/bfloat16-prefill-m8192-n144-k7168-aten_bf16_mm-54dcedb25680da8984085d7d.json",
+        "sha256": "1f3daf34de1b1c0c4b89394d450d1609e9b33214f6f20630bf847485f3069d1d",
+        "native_capture_run": "kimi-original-heads-v2-194958",
+        "source_case_key": "aten_bf16_mm-54dcedb25680da8984085d7d",
+        "ABI_preserved": true,
+        "capture_family": "aten_bf16_mm",
+        "source_sha256": "858756c0f22052de641bfde6c0c93bfacfb7c16094a9e1ead7e1802c3ca043c4"
+      },
+      "capture_controls": {
+        "out": null,
+        "tensor_attributes": {
+          "A": {},
+          "B": {}
+        }
+      },
+      "served_geometry": {
+        "active_requests": 1,
+        "active_tokens": 8192,
+        "replay_id": "forward-1",
+        "run_id": "kimi-original-heads-v2-194958",
+        "stage": "prefill",
+        "tp_rank": 0,
+        "workload_marker": "controller CAPTURE-PHASE=profile; exact native benchmark workload"
+      },
+      "frequency_evidence": {
+        "source_case_key": "aten_bf16_mm-54dcedb25680da8984085d7d",
+        "per_rank_counts": {
+          "0": 138,
+          "1": 138,
+          "2": 138,
+          "3": 138,
+          "4": 138,
+          "5": 138,
+          "6": 138,
+          "7": 138
+        },
+        "scope": "all notified actual served calls in the complete64-request workload; one numerical representative per structural record",
+        "capture_origin": "served_eager",
+        "graph_bucket": null
+      }
+    },
+    {
+      "case_id": "bfloat16-prefill-m16384-n1536-k128-aten_bf16_mm-6342fbeb5343d24e332b0fe6",
+      "occurrences": 2139,
+      "calls_per_sample": 1,
+      "scalars": {
+        "M": 16384,
+        "N": 1536,
+        "K": 128,
+        "fp8": false,
+        "BM": 32,
+        "BN": 64,
+        "BK": 128,
+        "A_ROW_STRIDE": 144
+      },
+      "tensors": {
+        "A": {
+          "role": "input",
+          "shape": [
+            16384,
+            128
+          ],
+          "strides": [
+            144,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        },
+        "B": {
+          "role": "input",
+          "shape": [
+            128,
+            1536
+          ],
+          "strides": [
+            1,
+            128
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        },
+        "C": {
+          "role": "output",
+          "shape": [
+            16384,
+            1536
+          ],
+          "strides": [
+            1536,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        }
+      },
+      "live_fixture": {
+        "path": "fixtures/bfloat16-prefill-m16384-n1536-k128-aten_bf16_mm-6342fbeb5343d24e332b0fe6.json",
+        "sha256": "293be6b490c644ca37356353ddcf48b07e93f7019d139c7d4295a9e107d17bdd",
+        "native_capture_run": "kimi-original-heads-v2-194958",
+        "source_case_key": "aten_bf16_mm-6342fbeb5343d24e332b0fe6",
+        "ABI_preserved": true,
+        "capture_family": "aten_bf16_mm",
+        "source_sha256": "858756c0f22052de641bfde6c0c93bfacfb7c16094a9e1ead7e1802c3ca043c4"
+      },
+      "capture_controls": {
+        "out": null,
+        "tensor_attributes": {
+          "A": {},
+          "B": {}
+        }
+      },
+      "served_geometry": {
+        "active_requests": 2,
+        "active_tokens": 16384,
+        "replay_id": "forward-2",
+        "run_id": "kimi-original-heads-v2-194958",
+        "stage": "prefill",
+        "tp_rank": 0,
+        "workload_marker": "controller CAPTURE-PHASE=profile; exact native benchmark workload"
+      },
+      "frequency_evidence": {
+        "source_case_key": "aten_bf16_mm-6342fbeb5343d24e332b0fe6",
+        "per_rank_counts": {
+          "0": 2139,
+          "1": 2139,
+          "2": 2139,
+          "3": 2139,
+          "4": 2139,
+          "5": 2139,
+          "6": 2139,
+          "7": 2139
+        },
+        "scope": "all notified actual served calls in the complete64-request workload; one numerical representative per structural record",
+        "capture_origin": "served_eager",
+        "graph_bucket": null
+      }
+    },
+    {
+      "case_id": "bfloat16-prefill-m16384-n6016-k7168-aten_bf16_mm-63c54ed44dfa981ccde1366a",
+      "occurrences": 2852,
+      "calls_per_sample": 1,
+      "scalars": {
+        "M": 16384,
+        "N": 6016,
+        "K": 7168,
+        "fp8": false,
+        "BM": 32,
+        "BN": 64,
+        "BK": 128,
+        "A_ROW_STRIDE": 7168
+      },
+      "tensors": {
+        "A": {
+          "role": "input",
+          "shape": [
+            16384,
+            7168
+          ],
+          "strides": [
+            7168,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        },
+        "B": {
+          "role": "input",
+          "shape": [
+            7168,
+            6016
+          ],
+          "strides": [
+            1,
+            7168
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        },
+        "C": {
+          "role": "output",
+          "shape": [
+            16384,
+            6016
+          ],
+          "strides": [
+            6016,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        }
+      },
+      "live_fixture": {
+        "path": "fixtures/bfloat16-prefill-m16384-n6016-k7168-aten_bf16_mm-63c54ed44dfa981ccde1366a.json",
+        "sha256": "54afa920ec516921f83e82912fe4477b689dc9d900f73ee04c40e37a5e139b75",
+        "native_capture_run": "kimi-original-heads-v2-194958",
+        "source_case_key": "aten_bf16_mm-63c54ed44dfa981ccde1366a",
+        "ABI_preserved": true,
+        "capture_family": "aten_bf16_mm",
+        "source_sha256": "858756c0f22052de641bfde6c0c93bfacfb7c16094a9e1ead7e1802c3ca043c4"
+      },
+      "capture_controls": {
+        "out": null,
+        "tensor_attributes": {
+          "A": {},
+          "B": {}
+        }
+      },
+      "served_geometry": {
+        "active_requests": 2,
+        "active_tokens": 16384,
+        "replay_id": "forward-2",
+        "run_id": "kimi-original-heads-v2-194958",
+        "stage": "prefill",
+        "tp_rank": 0,
+        "workload_marker": "controller CAPTURE-PHASE=profile; exact native benchmark workload"
+      },
+      "frequency_evidence": {
+        "source_case_key": "aten_bf16_mm-63c54ed44dfa981ccde1366a",
+        "per_rank_counts": {
+          "0": 2852,
+          "1": 2852,
+          "2": 2852,
+          "3": 2852,
+          "4": 2852,
+          "5": 2852,
+          "6": 2852,
+          "7": 2852
+        },
+        "scope": "all notified actual served calls in the complete64-request workload; one numerical representative per structural record",
+        "capture_origin": "served_eager",
+        "graph_bucket": null
+      }
+    },
+    {
+      "case_id": "bfloat16-prefill-m8192-n7168-k768-aten_bf16_mm-a342aabee8d45dfe33fb4c25",
+      "occurrences": 184,
+      "calls_per_sample": 1,
+      "scalars": {
+        "M": 8192,
+        "N": 7168,
+        "K": 768,
+        "fp8": false,
+        "BM": 32,
+        "BN": 64,
+        "BK": 128,
+        "A_ROW_STRIDE": 768
+      },
+      "tensors": {
+        "A": {
+          "role": "input",
+          "shape": [
+            8192,
+            768
+          ],
+          "strides": [
+            768,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        },
+        "B": {
+          "role": "input",
+          "shape": [
+            768,
+            7168
+          ],
+          "strides": [
+            1,
+            768
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        },
+        "C": {
+          "role": "output",
+          "shape": [
+            8192,
+            7168
+          ],
+          "strides": [
+            7168,
+            1
+          ],
+          "storage_offset": 29360128,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        }
+      },
+      "live_fixture": {
+        "path": "fixtures/bfloat16-prefill-m8192-n7168-k768-aten_bf16_mm-a342aabee8d45dfe33fb4c25.json",
+        "sha256": "2e8114fbf1aaef80abb2a18ddf2ea8174c7e044571c55abc452b89924320633b",
+        "native_capture_run": "kimi-original-heads-v2-194958",
+        "source_case_key": "aten_bf16_mm-a342aabee8d45dfe33fb4c25",
+        "ABI_preserved": true,
+        "capture_family": "aten_bf16_mm",
+        "source_sha256": "ef84113a5e5b45526af2fc2b77ba8bf6a418912afb6e00fea63e1eab0482dbd5"
+      },
+      "capture_controls": {
+        "out": {
+          "kind": "output_binding",
+          "name": "result"
+        },
+        "tensor_attributes": {
+          "A": {},
+          "B": {}
+        }
+      },
+      "served_geometry": {
+        "active_requests": 1,
+        "active_tokens": 8192,
+        "replay_id": "forward-1",
+        "run_id": "kimi-original-heads-v2-194958",
+        "stage": "prefill",
+        "tp_rank": 0,
+        "workload_marker": "controller CAPTURE-PHASE=profile; exact native benchmark workload"
+      },
+      "frequency_evidence": {
+        "source_case_key": "aten_bf16_mm-a342aabee8d45dfe33fb4c25",
+        "per_rank_counts": {
+          "0": 184,
+          "1": 184,
+          "2": 184,
+          "3": 184,
+          "4": 184,
+          "5": 184,
+          "6": 184,
+          "7": 184
+        },
+        "scope": "all notified actual served calls in the complete64-request workload; one numerical representative per structural record",
+        "capture_origin": "served_eager",
+        "graph_bucket": null
+      }
+    },
+    {
+      "case_id": "bfloat16-prefill-m16384-n7168-k768-aten_bf16_mm-afefdfa8449d94dcb0d324e5",
+      "occurrences": 2852,
+      "calls_per_sample": 1,
+      "scalars": {
+        "M": 16384,
+        "N": 7168,
+        "K": 768,
+        "fp8": false,
+        "BM": 32,
+        "BN": 64,
+        "BK": 128,
+        "A_ROW_STRIDE": 768
+      },
+      "tensors": {
+        "A": {
+          "role": "input",
+          "shape": [
+            16384,
+            768
+          ],
+          "strides": [
+            768,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        },
+        "B": {
+          "role": "input",
+          "shape": [
+            768,
+            7168
+          ],
+          "strides": [
+            1,
+            768
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        },
+        "C": {
+          "role": "output",
+          "shape": [
+            16384,
+            7168
+          ],
+          "strides": [
+            7168,
+            1
+          ],
+          "storage_offset": 58720256,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        }
+      },
+      "live_fixture": {
+        "path": "fixtures/bfloat16-prefill-m16384-n7168-k768-aten_bf16_mm-afefdfa8449d94dcb0d324e5.json",
+        "sha256": "725c735f53bd9457d50eafe2f23f3ac902b6d7c25a2a575363651dfdcc2542b4",
+        "native_capture_run": "kimi-original-heads-v2-194958",
+        "source_case_key": "aten_bf16_mm-afefdfa8449d94dcb0d324e5",
+        "ABI_preserved": true,
+        "capture_family": "aten_bf16_mm",
+        "source_sha256": "ef84113a5e5b45526af2fc2b77ba8bf6a418912afb6e00fea63e1eab0482dbd5"
+      },
+      "capture_controls": {
+        "out": {
+          "kind": "output_binding",
+          "name": "result"
+        },
+        "tensor_attributes": {
+          "A": {},
+          "B": {}
+        }
+      },
+      "served_geometry": {
+        "active_requests": 2,
+        "active_tokens": 16384,
+        "replay_id": "forward-2",
+        "run_id": "kimi-original-heads-v2-194958",
+        "stage": "prefill",
+        "tp_rank": 0,
+        "workload_marker": "controller CAPTURE-PHASE=profile; exact native benchmark workload"
+      },
+      "frequency_evidence": {
+        "source_case_key": "aten_bf16_mm-afefdfa8449d94dcb0d324e5",
+        "per_rank_counts": {
+          "0": 2852,
+          "1": 2852,
+          "2": 2852,
+          "3": 2852,
+          "4": 2852,
+          "5": 2852,
+          "6": 2852,
+          "7": 2852
+        },
+        "scope": "all notified actual served calls in the complete64-request workload; one numerical representative per structural record",
+        "capture_origin": "served_eager",
+        "graph_bucket": null
+      }
+    },
+    {
+      "case_id": "bfloat16-prefill-m8192-n1536-k128-aten_bf16_mm-b5cc06e0a2a489963900e52a",
+      "occurrences": 138,
+      "calls_per_sample": 1,
+      "scalars": {
+        "M": 8192,
+        "N": 1536,
+        "K": 128,
+        "fp8": false,
+        "BM": 32,
+        "BN": 64,
+        "BK": 128,
+        "A_ROW_STRIDE": 144
+      },
+      "tensors": {
+        "A": {
+          "role": "input",
+          "shape": [
+            8192,
+            128
+          ],
+          "strides": [
+            144,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        },
+        "B": {
+          "role": "input",
+          "shape": [
+            128,
+            1536
+          ],
+          "strides": [
+            1,
+            128
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        },
+        "C": {
+          "role": "output",
+          "shape": [
+            8192,
+            1536
+          ],
+          "strides": [
+            1536,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        }
+      },
+      "live_fixture": {
+        "path": "fixtures/bfloat16-prefill-m8192-n1536-k128-aten_bf16_mm-b5cc06e0a2a489963900e52a.json",
+        "sha256": "7cb6733f5e15a8dd7d9a2b392a6f3e70af83f1cf256fecefe6b118dbeb7f18cc",
+        "native_capture_run": "kimi-original-heads-v2-194958",
+        "source_case_key": "aten_bf16_mm-b5cc06e0a2a489963900e52a",
+        "ABI_preserved": true,
+        "capture_family": "aten_bf16_mm",
+        "source_sha256": "858756c0f22052de641bfde6c0c93bfacfb7c16094a9e1ead7e1802c3ca043c4"
+      },
+      "capture_controls": {
+        "out": null,
+        "tensor_attributes": {
+          "A": {},
+          "B": {}
+        }
+      },
+      "served_geometry": {
+        "active_requests": 1,
+        "active_tokens": 8192,
+        "replay_id": "forward-1",
+        "run_id": "kimi-original-heads-v2-194958",
+        "stage": "prefill",
+        "tp_rank": 0,
+        "workload_marker": "controller CAPTURE-PHASE=profile; exact native benchmark workload"
+      },
+      "frequency_evidence": {
+        "source_case_key": "aten_bf16_mm-b5cc06e0a2a489963900e52a",
+        "per_rank_counts": {
+          "0": 138,
+          "1": 138,
+          "2": 138,
+          "3": 138,
+          "4": 138,
+          "5": 138,
+          "6": 138,
+          "7": 138
+        },
+        "scope": "all notified actual served calls in the complete64-request workload; one numerical representative per structural record",
+        "capture_origin": "served_eager",
+        "graph_bucket": null
+      }
+    },
+    {
+      "case_id": "bfloat16-prefill-m16384-n144-k7168-aten_bf16_mm-c1aa3c0ec7ed91c022f9e859",
+      "occurrences": 2139,
+      "calls_per_sample": 1,
+      "scalars": {
+        "M": 16384,
+        "N": 144,
+        "K": 7168,
+        "fp8": false,
+        "BM": 32,
+        "BN": 64,
+        "BK": 128,
+        "A_ROW_STRIDE": 7168
+      },
+      "tensors": {
+        "A": {
+          "role": "input",
+          "shape": [
+            16384,
+            7168
+          ],
+          "strides": [
+            7168,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        },
+        "B": {
+          "role": "input",
+          "shape": [
+            7168,
+            144
+          ],
+          "strides": [
+            1,
+            7168
+          ],
+          "storage_offset": 44040192,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        },
+        "C": {
+          "role": "output",
+          "shape": [
+            16384,
+            144
+          ],
+          "strides": [
+            144,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        }
+      },
+      "live_fixture": {
+        "path": "fixtures/bfloat16-prefill-m16384-n144-k7168-aten_bf16_mm-c1aa3c0ec7ed91c022f9e859.json",
+        "sha256": "07928cd65ec51b4f2d7e4666ffbd6e35fddeb868c367316fcb4acfb276f85480",
+        "native_capture_run": "kimi-original-heads-v2-194958",
+        "source_case_key": "aten_bf16_mm-c1aa3c0ec7ed91c022f9e859",
+        "ABI_preserved": true,
+        "capture_family": "aten_bf16_mm",
+        "source_sha256": "858756c0f22052de641bfde6c0c93bfacfb7c16094a9e1ead7e1802c3ca043c4"
+      },
+      "capture_controls": {
+        "out": null,
+        "tensor_attributes": {
+          "A": {},
+          "B": {}
+        }
+      },
+      "served_geometry": {
+        "active_requests": 2,
+        "active_tokens": 16384,
+        "replay_id": "forward-2",
+        "run_id": "kimi-original-heads-v2-194958",
+        "stage": "prefill",
+        "tp_rank": 0,
+        "workload_marker": "controller CAPTURE-PHASE=profile; exact native benchmark workload"
+      },
+      "frequency_evidence": {
+        "source_case_key": "aten_bf16_mm-c1aa3c0ec7ed91c022f9e859",
+        "per_rank_counts": {
+          "0": 2139,
+          "1": 2139,
+          "2": 2139,
+          "3": 2139,
+          "4": 2139,
+          "5": 2139,
+          "6": 2139,
+          "7": 2139
+        },
+        "scope": "all notified actual served calls in the complete64-request workload; one numerical representative per structural record",
+        "capture_origin": "served_eager",
+        "graph_bucket": null
+      }
+    },
+    {
+      "case_id": "bfloat16-prefill-m1-n20480-k7168-aten_bf16_mm-fefbc7df75990d5605f4bb06",
+      "occurrences": 2,
+      "calls_per_sample": 1,
+      "scalars": {
+        "M": 1,
+        "N": 20480,
+        "K": 7168,
+        "fp8": false,
+        "BM": 32,
+        "BN": 64,
+        "BK": 128,
+        "A_ROW_STRIDE": 7168
+      },
+      "tensors": {
+        "A": {
+          "role": "input",
+          "shape": [
+            1,
+            7168
+          ],
+          "strides": [
+            7168,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        },
+        "B": {
+          "role": "input",
+          "shape": [
+            7168,
+            20480
+          ],
+          "strides": [
+            1,
+            7168
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        },
+        "C": {
+          "role": "output",
+          "shape": [
+            1,
+            20480
+          ],
+          "strides": [
+            20480,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        }
+      },
+      "live_fixture": {
+        "path": "fixtures/bfloat16-prefill-m1-n20480-k7168-aten_bf16_mm-fefbc7df75990d5605f4bb06.json",
+        "sha256": "234bb1eb6ca5cf57a80063f6c99010e0bf1ad080905259e5a3ff17cfac8eccfe",
+        "native_capture_run": "kimi-original-heads-v2-194958",
+        "source_case_key": "aten_bf16_mm-fefbc7df75990d5605f4bb06",
+        "ABI_preserved": true,
+        "capture_family": "aten_bf16_mm",
+        "source_sha256": "858756c0f22052de641bfde6c0c93bfacfb7c16094a9e1ead7e1802c3ca043c4"
+      },
+      "capture_controls": {
+        "out": null,
+        "tensor_attributes": {
+          "A": {},
+          "B": {}
+        }
+      },
+      "served_geometry": {
+        "active_requests": 1,
+        "active_tokens": 8192,
+        "replay_id": "forward-1",
+        "run_id": "kimi-original-heads-v2-194958",
+        "stage": "prefill",
+        "tp_rank": 0,
+        "workload_marker": "controller CAPTURE-PHASE=profile; exact native benchmark workload"
+      },
+      "frequency_evidence": {
+        "source_case_key": "aten_bf16_mm-fefbc7df75990d5605f4bb06",
+        "per_rank_counts": {
+          "0": 2,
+          "1": 2,
+          "2": 2,
+          "3": 2,
+          "4": 2,
+          "5": 2,
+          "6": 2,
+          "7": 2
+        },
+        "scope": "all notified actual served calls in the complete64-request workload; one numerical representative per structural record",
+        "capture_origin": "served_eager",
+        "graph_bucket": null
+      }
+    },
+    {
+      "case_id": "bfloat16-prefill-m8192-n7168-k4224-bf16_gemm-176adda2e79f272a90beeb23",
+      "occurrences": 2,
+      "calls_per_sample": 1,
+      "scalars": {
+        "M": 8192,
+        "N": 7168,
+        "K": 4224,
+        "fp8": false,
+        "BM": 32,
+        "BN": 64,
+        "BK": 128,
+        "A_ROW_STRIDE": 4224
+      },
+      "tensors": {
+        "A": {
+          "role": "input",
+          "shape": [
+            8192,
+            4224
+          ],
+          "strides": [
+            4224,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        },
+        "B": {
+          "role": "input",
+          "shape": [
+            4224,
+            7168
+          ],
+          "strides": [
+            1,
+            4224
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        },
+        "C": {
+          "role": "output",
+          "shape": [
+            8192,
+            7168
+          ],
+          "strides": [
+            7168,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        }
+      },
+      "live_fixture": {
+        "path": "fixtures/bfloat16-prefill-m8192-n7168-k4224-bf16_gemm-176adda2e79f272a90beeb23.json",
+        "sha256": "c5d1852353b2eee1adf55474edf15c657e00d9f3b08c3362ba4313f4ea8ae1f7",
+        "native_capture_run": "kimi-original-heads-v2-194958",
+        "source_case_key": "bf16_gemm-176adda2e79f272a90beeb23",
+        "ABI_preserved": true,
+        "capture_family": "bf16_gemm",
+        "source_sha256": "1fafc9782b43f8c6e198e1d39ce83e01ea3b5892f8b5e1a26c4a5eeb74252b51"
+      },
+      "capture_controls": {
+        "bias": null,
+        "capture_native_dispatch": {
+          "callable": {
+            "module": "aiter.tuned_gemm",
+            "qualname": "torch_gemm"
+          },
+          "config": {
+            "libtype": "torch",
+            "solidx": 0
+          },
+          "libtype": "torch",
+          "schema": "aiter-solmap-dispatch-v1",
+          "solidx": 0
+        },
+        "otype": {
+          "kind": "dtype",
+          "name": "bfloat16"
+        },
+        "scale_a": null,
+        "scale_b": null,
+        "scale_c": null,
+        "tensor_attributes": {
+          "A": {},
+          "B": {}
+        }
+      },
+      "served_geometry": {
+        "active_requests": 1,
+        "active_tokens": 8192,
+        "replay_id": "forward-1",
+        "run_id": "kimi-original-heads-v2-194958",
+        "stage": "prefill",
+        "tp_rank": 0,
+        "workload_marker": "controller CAPTURE-PHASE=profile; exact native benchmark workload"
+      },
+      "frequency_evidence": {
+        "source_case_key": "bf16_gemm-176adda2e79f272a90beeb23",
+        "per_rank_counts": {
+          "0": 2,
+          "1": 2,
+          "2": 2,
+          "3": 2,
+          "4": 2,
+          "5": 2,
+          "6": 2,
+          "7": 2
+        },
+        "scope": "all notified actual served calls in the complete64-request workload; one numerical representative per structural record",
+        "capture_origin": "served_eager",
+        "graph_bucket": null
+      }
+    },
+    {
+      "case_id": "bfloat16-prefill-m8192-n1536-k7168-bf16_gemm-17bdc4bef3d34b73c70c2de3",
+      "occurrences": 48,
+      "calls_per_sample": 1,
+      "scalars": {
+        "M": 8192,
+        "N": 1536,
+        "K": 7168,
+        "fp8": false,
+        "BM": 32,
+        "BN": 64,
+        "BK": 128,
+        "A_ROW_STRIDE": 7168
+      },
+      "tensors": {
+        "A": {
+          "role": "input",
+          "shape": [
+            8192,
+            7168
+          ],
+          "strides": [
+            7168,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        },
+        "B": {
+          "role": "input",
+          "shape": [
+            7168,
+            1536
+          ],
+          "strides": [
+            1,
+            7168
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        },
+        "C": {
+          "role": "output",
+          "shape": [
+            8192,
+            1536
+          ],
+          "strides": [
+            1536,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        }
+      },
+      "live_fixture": {
+        "path": "fixtures/bfloat16-prefill-m8192-n1536-k7168-bf16_gemm-17bdc4bef3d34b73c70c2de3.json",
+        "sha256": "52faec58e5c8339c8ad0bc8d1055ae3d0ec1dfc9bab2343adf1c2dc4feb1196a",
+        "native_capture_run": "kimi-original-heads-v2-194958",
+        "source_case_key": "bf16_gemm-17bdc4bef3d34b73c70c2de3",
+        "ABI_preserved": true,
+        "capture_family": "bf16_gemm",
+        "source_sha256": "1fafc9782b43f8c6e198e1d39ce83e01ea3b5892f8b5e1a26c4a5eeb74252b51"
+      },
+      "capture_controls": {
+        "bias": null,
+        "capture_native_dispatch": {
+          "callable": {
+            "module": "aiter.tuned_gemm",
+            "qualname": "torch_gemm"
+          },
+          "config": {
+            "libtype": "torch",
+            "solidx": 0
+          },
+          "libtype": "torch",
+          "schema": "aiter-solmap-dispatch-v1",
+          "solidx": 0
+        },
+        "otype": {
+          "kind": "dtype",
+          "name": "bfloat16"
+        },
+        "scale_a": null,
+        "scale_b": null,
+        "scale_c": null,
+        "tensor_attributes": {
+          "A": {},
+          "B": {}
+        }
+      },
+      "served_geometry": {
+        "active_requests": 1,
+        "active_tokens": 8192,
+        "replay_id": "forward-1",
+        "run_id": "kimi-original-heads-v2-194958",
+        "stage": "prefill",
+        "tp_rank": 0,
+        "workload_marker": "controller CAPTURE-PHASE=profile; exact native benchmark workload"
+      },
+      "frequency_evidence": {
+        "source_case_key": "bf16_gemm-17bdc4bef3d34b73c70c2de3",
+        "per_rank_counts": {
+          "0": 48,
+          "1": 48,
+          "2": 48,
+          "3": 48,
+          "4": 48,
+          "5": 48,
+          "6": 48,
+          "7": 48
+        },
+        "scope": "all notified actual served calls in the complete64-request workload; one numerical representative per structural record",
+        "capture_origin": "served_eager",
+        "graph_bucket": null
+      }
+    },
+    {
+      "case_id": "bfloat16-prefill-m8192-n2304-k1536-bf16_gemm-23794c20d84685991ee40dfc",
+      "occurrences": 48,
+      "calls_per_sample": 1,
+      "scalars": {
+        "M": 8192,
+        "N": 2304,
+        "K": 1536,
+        "fp8": false,
+        "BM": 32,
+        "BN": 64,
+        "BK": 128,
+        "A_ROW_STRIDE": 1536
+      },
+      "tensors": {
+        "A": {
+          "role": "input",
+          "shape": [
+            8192,
+            1536
+          ],
+          "strides": [
+            1536,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        },
+        "B": {
+          "role": "input",
+          "shape": [
+            1536,
+            2304
+          ],
+          "strides": [
+            1,
+            1536
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        },
+        "C": {
+          "role": "output",
+          "shape": [
+            8192,
+            2304
+          ],
+          "strides": [
+            2304,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        }
+      },
+      "live_fixture": {
+        "path": "fixtures/bfloat16-prefill-m8192-n2304-k1536-bf16_gemm-23794c20d84685991ee40dfc.json",
+        "sha256": "0956d1b31c2f7557ed3058f4f2c4defd08251eb016d64ba87af5668206af0142",
+        "native_capture_run": "kimi-original-heads-v2-194958",
+        "source_case_key": "bf16_gemm-23794c20d84685991ee40dfc",
+        "ABI_preserved": true,
+        "capture_family": "bf16_gemm",
+        "source_sha256": "1fafc9782b43f8c6e198e1d39ce83e01ea3b5892f8b5e1a26c4a5eeb74252b51"
+      },
+      "capture_controls": {
+        "bias": null,
+        "capture_native_dispatch": {
+          "callable": {
+            "module": "aiter.tuned_gemm",
+            "qualname": "torch_gemm"
+          },
+          "config": {
+            "libtype": "torch",
+            "solidx": 0
+          },
+          "libtype": "torch",
+          "schema": "aiter-solmap-dispatch-v1",
+          "solidx": 0
+        },
+        "otype": {
+          "kind": "dtype",
+          "name": "bfloat16"
+        },
+        "scale_a": null,
+        "scale_b": null,
+        "scale_c": null,
+        "tensor_attributes": {
+          "A": {},
+          "B": {}
+        }
+      },
+      "served_geometry": {
+        "active_requests": 1,
+        "active_tokens": 8192,
+        "replay_id": "forward-1",
+        "run_id": "kimi-original-heads-v2-194958",
+        "stage": "prefill",
+        "tp_rank": 0,
+        "workload_marker": "controller CAPTURE-PHASE=profile; exact native benchmark workload"
+      },
+      "frequency_evidence": {
+        "source_case_key": "bf16_gemm-23794c20d84685991ee40dfc",
+        "per_rank_counts": {
+          "0": 48,
+          "1": 48,
+          "2": 48,
+          "3": 48,
+          "4": 48,
+          "5": 48,
+          "6": 48,
+          "7": 48
+        },
+        "scope": "all notified actual served calls in the complete64-request workload; one numerical representative per structural record",
+        "capture_origin": "served_eager",
+        "graph_bucket": null
+      }
+    },
+    {
+      "case_id": "bfloat16-decode-m64-n2304-k1536-bf16_gemm-352027d94ada534c1049a001",
+      "occurrences": 24576,
+      "calls_per_sample": 1,
+      "scalars": {
+        "M": 64,
+        "N": 2304,
+        "K": 1536,
+        "fp8": false,
+        "BM": 32,
+        "BN": 64,
+        "BK": 128,
+        "A_ROW_STRIDE": 1536
+      },
+      "tensors": {
+        "A": {
+          "role": "input",
+          "shape": [
+            64,
+            1536
+          ],
+          "strides": [
+            1536,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        },
+        "B": {
+          "role": "input",
+          "shape": [
+            1536,
+            2304
+          ],
+          "strides": [
+            1,
+            1536
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        },
+        "C": {
+          "role": "output",
+          "shape": [
+            64,
+            2304
+          ],
+          "strides": [
+            2304,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        }
+      },
+      "live_fixture": {
+        "path": "fixtures/bfloat16-decode-m64-n2304-k1536-bf16_gemm-352027d94ada534c1049a001.json",
+        "sha256": "f4bcb5e7d70d919cec4102b0efea98786f0da6f33ddb7c8e00b92650d75a04f5",
+        "native_capture_run": "kimi-original-heads-v2-194958",
+        "source_case_key": "bf16_gemm-352027d94ada534c1049a001",
+        "ABI_preserved": true,
+        "capture_family": "bf16_gemm",
+        "source_sha256": "1fafc9782b43f8c6e198e1d39ce83e01ea3b5892f8b5e1a26c4a5eeb74252b51"
+      },
+      "capture_controls": {
+        "bias": null,
+        "capture_native_dispatch": {
+          "callable": {
+            "module": "aiter.tuned_gemm",
+            "qualname": "flydsl_gemm"
+          },
+          "config": {
+            "bw": 1108.89,
+            "err_ratio": 0.0,
+            "kernelName": "flydsl_gemm4_abf16_wbf16_bf16_t16x64x128_split_k1_block_m_warp1_block_n_warp2_block_k_warp1_async_copyTrue_b_to_ldsTrue_b_preshuffleFalse_c_to_ldsFalse_gfx950",
+            "libtype": "flydsl",
+            "solidx": 5279,
+            "splitK": 1,
+            "tflops": 66.36,
+            "us": 6.8261
+          },
+          "libtype": "flydsl",
+          "schema": "aiter-solmap-dispatch-v1",
+          "solidx": 5279
+        },
+        "otype": {
+          "kind": "dtype",
+          "name": "bfloat16"
+        },
+        "scale_a": null,
+        "scale_b": null,
+        "scale_c": null,
+        "tensor_attributes": {
+          "A": {},
+          "B": {}
+        }
+      },
+      "served_geometry": {
+        "active_requests": 64,
+        "active_tokens": 64,
+        "replay_id": "forward-34",
+        "run_id": "kimi-original-heads-v2-194958",
+        "stage": "decode",
+        "tp_rank": 0,
+        "workload_marker": "controller CAPTURE-PHASE=profile; exact native benchmark workload"
+      },
+      "frequency_evidence": {
+        "source_case_key": "bf16_gemm-352027d94ada534c1049a001",
+        "per_rank_counts": {
+          "0": 24576,
+          "1": 24576,
+          "2": 24576,
+          "3": 24576,
+          "4": 24576,
+          "5": 24576,
+          "6": 24576,
+          "7": 24576
+        },
+        "scope": "all notified actual served calls in the complete64-request workload; one numerical representative per structural record",
+        "capture_origin": "served_graph",
+        "graph_bucket": "bs64"
+      }
+    },
+    {
+      "case_id": "bfloat16-prefill-m8192-n7168-k1536-bf16_gemm-47037bc4993a17d0f4ac82d1",
+      "occurrences": 186,
+      "calls_per_sample": 1,
+      "scalars": {
+        "M": 8192,
+        "N": 7168,
+        "K": 1536,
+        "fp8": false,
+        "BM": 32,
+        "BN": 64,
+        "BK": 128,
+        "A_ROW_STRIDE": 1536
+      },
+      "tensors": {
+        "A": {
+          "role": "input",
+          "shape": [
+            8192,
+            1536
+          ],
+          "strides": [
+            1536,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        },
+        "B": {
+          "role": "input",
+          "shape": [
+            1536,
+            7168
+          ],
+          "strides": [
+            1,
+            1536
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        },
+        "C": {
+          "role": "output",
+          "shape": [
+            8192,
+            7168
+          ],
+          "strides": [
+            7168,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        }
+      },
+      "live_fixture": {
+        "path": "fixtures/bfloat16-prefill-m8192-n7168-k1536-bf16_gemm-47037bc4993a17d0f4ac82d1.json",
+        "sha256": "83ddd5cfa3198693122606c8f8326166937a670b05468e3d4195897160fd8060",
+        "native_capture_run": "kimi-original-heads-v2-194958",
+        "source_case_key": "bf16_gemm-47037bc4993a17d0f4ac82d1",
+        "ABI_preserved": true,
+        "capture_family": "bf16_gemm",
+        "source_sha256": "1fafc9782b43f8c6e198e1d39ce83e01ea3b5892f8b5e1a26c4a5eeb74252b51"
+      },
+      "capture_controls": {
+        "bias": null,
+        "capture_native_dispatch": {
+          "callable": {
+            "module": "aiter.tuned_gemm",
+            "qualname": "torch_gemm"
+          },
+          "config": {
+            "libtype": "torch",
+            "solidx": 0
+          },
+          "libtype": "torch",
+          "schema": "aiter-solmap-dispatch-v1",
+          "solidx": 0
+        },
+        "otype": {
+          "kind": "dtype",
+          "name": "bfloat16"
+        },
+        "scale_a": null,
+        "scale_b": null,
+        "scale_c": null,
+        "tensor_attributes": {
+          "A": {},
+          "B": {}
+        }
+      },
+      "served_geometry": {
+        "active_requests": 1,
+        "active_tokens": 8192,
+        "replay_id": "forward-1",
+        "run_id": "kimi-original-heads-v2-194958",
+        "stage": "prefill",
+        "tp_rank": 0,
+        "workload_marker": "controller CAPTURE-PHASE=profile; exact native benchmark workload"
+      },
+      "frequency_evidence": {
+        "source_case_key": "bf16_gemm-47037bc4993a17d0f4ac82d1",
+        "per_rank_counts": {
+          "0": 186,
+          "1": 186,
+          "2": 186,
+          "3": 186,
+          "4": 186,
+          "5": 186,
+          "6": 186,
+          "7": 186
+        },
+        "scope": "all notified actual served calls in the complete64-request workload; one numerical representative per structural record",
+        "capture_origin": "served_eager",
+        "graph_bucket": null
+      }
+    },
+    {
+      "case_id": "bfloat16-decode-m64-n7168-k4224-bf16_gemm-57573f22436ee7403ea12472",
+      "occurrences": 1024,
+      "calls_per_sample": 1,
+      "scalars": {
+        "M": 64,
+        "N": 7168,
+        "K": 4224,
+        "fp8": false,
+        "BM": 32,
+        "BN": 64,
+        "BK": 128,
+        "A_ROW_STRIDE": 4224
+      },
+      "tensors": {
+        "A": {
+          "role": "input",
+          "shape": [
+            64,
+            4224
+          ],
+          "strides": [
+            4224,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        },
+        "B": {
+          "role": "input",
+          "shape": [
+            4224,
+            7168
+          ],
+          "strides": [
+            1,
+            4224
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        },
+        "C": {
+          "role": "output",
+          "shape": [
+            64,
+            7168
+          ],
+          "strides": [
+            7168,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        }
+      },
+      "live_fixture": {
+        "path": "fixtures/bfloat16-decode-m64-n7168-k4224-bf16_gemm-57573f22436ee7403ea12472.json",
+        "sha256": "d21c2138669f8d9765cc626156707177ad5aa792dcde49a1c8a21c5f73d9cd2d",
+        "native_capture_run": "kimi-original-heads-v2-194958",
+        "source_case_key": "bf16_gemm-57573f22436ee7403ea12472",
+        "ABI_preserved": true,
+        "capture_family": "bf16_gemm",
+        "source_sha256": "1fafc9782b43f8c6e198e1d39ce83e01ea3b5892f8b5e1a26c4a5eeb74252b51"
+      },
+      "capture_controls": {
+        "bias": null,
+        "capture_native_dispatch": {
+          "callable": {
+            "module": "aiter.tuned_gemm",
+            "qualname": "flydsl_gemm"
+          },
+          "config": {
+            "bw": 3488.76,
+            "err_ratio": 0.0047,
+            "kernelName": "flydsl_gemm4_abf16_wbf16_bf16_t32x64x128_split_k1_block_m_warp1_block_n_warp2_block_k_warp2_async_copyTrue_b_to_ldsTrue_b_preshuffleFalse_c_to_ldsFalse_gfx950",
+            "libtype": "flydsl",
+            "solidx": 3287,
+            "splitK": 1,
+            "tflops": 218.03,
+            "us": 17.7752
+          },
+          "libtype": "flydsl",
+          "schema": "aiter-solmap-dispatch-v1",
+          "solidx": 3287
+        },
+        "otype": {
+          "kind": "dtype",
+          "name": "bfloat16"
+        },
+        "scale_a": null,
+        "scale_b": null,
+        "scale_c": null,
+        "tensor_attributes": {
+          "A": {},
+          "B": {}
+        }
+      },
+      "served_geometry": {
+        "active_requests": 64,
+        "active_tokens": 64,
+        "replay_id": "forward-34",
+        "run_id": "kimi-original-heads-v2-194958",
+        "stage": "decode",
+        "tp_rank": 0,
+        "workload_marker": "controller CAPTURE-PHASE=profile; exact native benchmark workload"
+      },
+      "frequency_evidence": {
+        "source_case_key": "bf16_gemm-57573f22436ee7403ea12472",
+        "per_rank_counts": {
+          "0": 1024,
+          "1": 1024,
+          "2": 1024,
+          "3": 1024,
+          "4": 1024,
+          "5": 1024,
+          "6": 1024,
+          "7": 1024
+        },
+        "scope": "all notified actual served calls in the complete64-request workload; one numerical representative per structural record",
+        "capture_origin": "served_graph",
+        "graph_bucket": "bs64"
+      }
+    },
+    {
+      "case_id": "bfloat16-prefill-m16384-n2112-k7168-bf16_gemm-63525c38316ec1174ea2d246",
+      "occurrences": 744,
+      "calls_per_sample": 1,
+      "scalars": {
+        "M": 16384,
+        "N": 2112,
+        "K": 7168,
+        "fp8": false,
+        "BM": 32,
+        "BN": 64,
+        "BK": 128,
+        "A_ROW_STRIDE": 7168
+      },
+      "tensors": {
+        "A": {
+          "role": "input",
+          "shape": [
+            16384,
+            7168
+          ],
+          "strides": [
+            7168,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        },
+        "B": {
+          "role": "input",
+          "shape": [
+            7168,
+            2112
+          ],
+          "strides": [
+            1,
+            7168
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        },
+        "C": {
+          "role": "output",
+          "shape": [
+            16384,
+            2112
+          ],
+          "strides": [
+            2112,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        }
+      },
+      "live_fixture": {
+        "path": "fixtures/bfloat16-prefill-m16384-n2112-k7168-bf16_gemm-63525c38316ec1174ea2d246.json",
+        "sha256": "bffab23c6f69aed0e772f68c22a6726506b995e978109b67649989c7d671de94",
+        "native_capture_run": "kimi-original-heads-v2-194958",
+        "source_case_key": "bf16_gemm-63525c38316ec1174ea2d246",
+        "ABI_preserved": true,
+        "capture_family": "bf16_gemm",
+        "source_sha256": "1fafc9782b43f8c6e198e1d39ce83e01ea3b5892f8b5e1a26c4a5eeb74252b51"
+      },
+      "capture_controls": {
+        "bias": null,
+        "capture_native_dispatch": {
+          "callable": {
+            "module": "aiter.tuned_gemm",
+            "qualname": "torch_gemm"
+          },
+          "config": {
+            "bw": 696.04,
+            "err_ratio": 0.0,
+            "kernelName": "native",
+            "libtype": "torch",
+            "solidx": 0,
+            "splitK": 0,
+            "tflops": 1032.65,
+            "us": 480.3821
+          },
+          "libtype": "torch",
+          "schema": "aiter-solmap-dispatch-v1",
+          "solidx": 0
+        },
+        "otype": {
+          "kind": "dtype",
+          "name": "bfloat16"
+        },
+        "scale_a": null,
+        "scale_b": null,
+        "scale_c": null,
+        "tensor_attributes": {
+          "A": {},
+          "B": {}
+        }
+      },
+      "served_geometry": {
+        "active_requests": 2,
+        "active_tokens": 16384,
+        "replay_id": "forward-2",
+        "run_id": "kimi-original-heads-v2-194958",
+        "stage": "prefill",
+        "tp_rank": 0,
+        "workload_marker": "controller CAPTURE-PHASE=profile; exact native benchmark workload"
+      },
+      "frequency_evidence": {
+        "source_case_key": "bf16_gemm-63525c38316ec1174ea2d246",
+        "per_rank_counts": {
+          "0": 744,
+          "1": 744,
+          "2": 744,
+          "3": 744,
+          "4": 744,
+          "5": 744,
+          "6": 744,
+          "7": 744
+        },
+        "scope": "all notified actual served calls in the complete64-request workload; one numerical representative per structural record",
+        "capture_origin": "served_eager",
+        "graph_bucket": null
+      }
+    },
+    {
+      "case_id": "bfloat16-decode-m64-n8448-k7168-bf16_gemm-6684574a98cb3bd33166a549",
+      "occurrences": 1024,
+      "calls_per_sample": 1,
+      "scalars": {
+        "M": 64,
+        "N": 8448,
+        "K": 7168,
+        "fp8": false,
+        "BM": 32,
+        "BN": 64,
+        "BK": 128,
+        "A_ROW_STRIDE": 7168
+      },
+      "tensors": {
+        "A": {
+          "role": "input",
+          "shape": [
+            64,
+            7168
+          ],
+          "strides": [
+            7168,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        },
+        "B": {
+          "role": "input",
+          "shape": [
+            7168,
+            8448
+          ],
+          "strides": [
+            1,
+            7168
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        },
+        "C": {
+          "role": "output",
+          "shape": [
+            64,
+            8448
+          ],
+          "strides": [
+            8448,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        }
+      },
+      "live_fixture": {
+        "path": "fixtures/bfloat16-decode-m64-n8448-k7168-bf16_gemm-6684574a98cb3bd33166a549.json",
+        "sha256": "4d243dea01c272301d058076b48ae8c2895adf8ef66cbba7f0eee61593696ec1",
+        "native_capture_run": "kimi-original-heads-v2-194958",
+        "source_case_key": "bf16_gemm-6684574a98cb3bd33166a549",
+        "ABI_preserved": true,
+        "capture_family": "bf16_gemm",
+        "source_sha256": "1fafc9782b43f8c6e198e1d39ce83e01ea3b5892f8b5e1a26c4a5eeb74252b51"
+      },
+      "capture_controls": {
+        "bias": null,
+        "capture_native_dispatch": {
+          "callable": {
+            "module": "aiter.tuned_gemm",
+            "qualname": "opus_gemm"
+          },
+          "config": {
+            "bw": 3507.38,
+            "err_ratio": 0.0,
+            "kernelName": "opus_gemm_flatmm_splitk_256x64x96x128_2x1_16x16x32_0x0x0_wgpcu1_nooob",
+            "libtype": "opus",
+            "solidx": 1216,
+            "splitK": 2,
+            "tflops": 220.83,
+            "us": 35.1001
+          },
+          "libtype": "opus",
+          "schema": "aiter-solmap-dispatch-v1",
+          "solidx": 1216
+        },
+        "otype": {
+          "kind": "dtype",
+          "name": "bfloat16"
+        },
+        "scale_a": null,
+        "scale_b": null,
+        "scale_c": null,
+        "tensor_attributes": {
+          "A": {},
+          "B": {}
+        }
+      },
+      "served_geometry": {
+        "active_requests": 64,
+        "active_tokens": 64,
+        "replay_id": "forward-34",
+        "run_id": "kimi-original-heads-v2-194958",
+        "stage": "decode",
+        "tp_rank": 0,
+        "workload_marker": "controller CAPTURE-PHASE=profile; exact native benchmark workload"
+      },
+      "frequency_evidence": {
+        "source_case_key": "bf16_gemm-6684574a98cb3bd33166a549",
+        "per_rank_counts": {
+          "0": 1024,
+          "1": 1024,
+          "2": 1024,
+          "3": 1024,
+          "4": 1024,
+          "5": 1024,
+          "6": 1024,
+          "7": 1024
+        },
+        "scope": "all notified actual served calls in the complete64-request workload; one numerical representative per structural record",
+        "capture_origin": "served_graph",
+        "graph_bucket": "bs64"
+      }
+    },
+    {
+      "case_id": "bfloat16-decode-m64-n7168-k3584-bf16_gemm-721f5766c6bbfb1a7283a388",
+      "occurrences": 94208,
+      "calls_per_sample": 1,
+      "scalars": {
+        "M": 64,
+        "N": 7168,
+        "K": 3584,
+        "fp8": false,
+        "BM": 32,
+        "BN": 64,
+        "BK": 128,
+        "A_ROW_STRIDE": 3584
+      },
+      "tensors": {
+        "A": {
+          "role": "input",
+          "shape": [
+            64,
+            3584
+          ],
+          "strides": [
+            3584,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        },
+        "B": {
+          "role": "input",
+          "shape": [
+            3584,
+            7168
+          ],
+          "strides": [
+            1,
+            3584
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        },
+        "C": {
+          "role": "output",
+          "shape": [
+            64,
+            7168
+          ],
+          "strides": [
+            7168,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        }
+      },
+      "live_fixture": {
+        "path": "fixtures/bfloat16-decode-m64-n7168-k3584-bf16_gemm-721f5766c6bbfb1a7283a388.json",
+        "sha256": "31cb2314c7b22f27d3d991ae86f19cda088963c46989075a3f9f2e5183e012ed",
+        "native_capture_run": "kimi-original-heads-v2-194958",
+        "source_case_key": "bf16_gemm-721f5766c6bbfb1a7283a388",
+        "ABI_preserved": true,
+        "capture_family": "bf16_gemm",
+        "source_sha256": "1fafc9782b43f8c6e198e1d39ce83e01ea3b5892f8b5e1a26c4a5eeb74252b51"
+      },
+      "capture_controls": {
+        "bias": null,
+        "capture_native_dispatch": {
+          "callable": {
+            "module": "aiter.tuned_gemm",
+            "qualname": "flydsl_gemm"
+          },
+          "config": {
+            "bw": 3437.46,
+            "err_ratio": 0.0048,
+            "kernelName": "flydsl_gemm3_abf16_wbf16_bf16_t32x64x256_split_k1_block_m_warp2_block_n_warp1_block_k_warp2_async_copyTrue_b_to_ldsTrue_b_preshuffleFalse_c_to_ldsFalse_gfx950",
+            "libtype": "flydsl",
+            "solidx": 2620,
+            "splitK": 1,
+            "tflops": 214.26,
+            "us": 15.3475
+          },
+          "libtype": "flydsl",
+          "schema": "aiter-solmap-dispatch-v1",
+          "solidx": 2620
+        },
+        "otype": {
+          "kind": "dtype",
+          "name": "bfloat16"
+        },
+        "scale_a": null,
+        "scale_b": null,
+        "scale_c": null,
+        "tensor_attributes": {
+          "A": {},
+          "B": {}
+        }
+      },
+      "served_geometry": {
+        "active_requests": 64,
+        "active_tokens": 64,
+        "replay_id": "forward-34",
+        "run_id": "kimi-original-heads-v2-194958",
+        "stage": "decode",
+        "tp_rank": 0,
+        "workload_marker": "controller CAPTURE-PHASE=profile; exact native benchmark workload"
+      },
+      "frequency_evidence": {
+        "source_case_key": "bf16_gemm-721f5766c6bbfb1a7283a388",
+        "per_rank_counts": {
+          "0": 94208,
+          "1": 94208,
+          "2": 94208,
+          "3": 94208,
+          "4": 94208,
+          "5": 94208,
+          "6": 94208,
+          "7": 94208
+        },
+        "scope": "all notified actual served calls in the complete64-request workload; one numerical representative per structural record",
+        "capture_origin": "served_graph",
+        "graph_bucket": "bs64"
+      }
+    },
+    {
+      "case_id": "bfloat16-prefill-m8192-n7168-k3584-bf16_gemm-72525318784f55f557dfd888",
+      "occurrences": 184,
+      "calls_per_sample": 1,
+      "scalars": {
+        "M": 8192,
+        "N": 7168,
+        "K": 3584,
+        "fp8": false,
+        "BM": 32,
+        "BN": 64,
+        "BK": 128,
+        "A_ROW_STRIDE": 3584
+      },
+      "tensors": {
+        "A": {
+          "role": "input",
+          "shape": [
+            8192,
+            3584
+          ],
+          "strides": [
+            3584,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        },
+        "B": {
+          "role": "input",
+          "shape": [
+            3584,
+            7168
+          ],
+          "strides": [
+            1,
+            3584
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        },
+        "C": {
+          "role": "output",
+          "shape": [
+            8192,
+            7168
+          ],
+          "strides": [
+            7168,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        }
+      },
+      "live_fixture": {
+        "path": "fixtures/bfloat16-prefill-m8192-n7168-k3584-bf16_gemm-72525318784f55f557dfd888.json",
+        "sha256": "906af1cab3fe7144d8304b47fb2821efe56cb89bef68c3a91f0ee963c588b495",
+        "native_capture_run": "kimi-original-heads-v2-194958",
+        "source_case_key": "bf16_gemm-72525318784f55f557dfd888",
+        "ABI_preserved": true,
+        "capture_family": "bf16_gemm",
+        "source_sha256": "1fafc9782b43f8c6e198e1d39ce83e01ea3b5892f8b5e1a26c4a5eeb74252b51"
+      },
+      "capture_controls": {
+        "bias": null,
+        "capture_native_dispatch": {
+          "callable": {
+            "module": "aiter.tuned_gemm",
+            "qualname": "torch_gemm"
+          },
+          "config": {
+            "libtype": "torch",
+            "solidx": 0
+          },
+          "libtype": "torch",
+          "schema": "aiter-solmap-dispatch-v1",
+          "solidx": 0
+        },
+        "otype": {
+          "kind": "dtype",
+          "name": "bfloat16"
+        },
+        "scale_a": null,
+        "scale_b": null,
+        "scale_c": null,
+        "tensor_attributes": {
+          "A": {},
+          "B": {}
+        }
+      },
+      "served_geometry": {
+        "active_requests": 1,
+        "active_tokens": 8192,
+        "replay_id": "forward-1",
+        "run_id": "kimi-original-heads-v2-194958",
+        "stage": "prefill",
+        "tp_rank": 0,
+        "workload_marker": "controller CAPTURE-PHASE=profile; exact native benchmark workload"
+      },
+      "frequency_evidence": {
+        "source_case_key": "bf16_gemm-72525318784f55f557dfd888",
+        "per_rank_counts": {
+          "0": 184,
+          "1": 184,
+          "2": 184,
+          "3": 184,
+          "4": 184,
+          "5": 184,
+          "6": 184,
+          "7": 184
+        },
+        "scope": "all notified actual served calls in the complete64-request workload; one numerical representative per structural record",
+        "capture_origin": "served_eager",
+        "graph_bucket": null
+      }
+    },
+    {
+      "case_id": "bfloat16-prefill-m8192-n6144-k7168-bf16_gemm-78725b1d5a8e8850ff027124",
+      "occurrences": 138,
+      "calls_per_sample": 1,
+      "scalars": {
+        "M": 8192,
+        "N": 6144,
+        "K": 7168,
+        "fp8": false,
+        "BM": 32,
+        "BN": 64,
+        "BK": 128,
+        "A_ROW_STRIDE": 7168
+      },
+      "tensors": {
+        "A": {
+          "role": "input",
+          "shape": [
+            8192,
+            7168
+          ],
+          "strides": [
+            7168,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        },
+        "B": {
+          "role": "input",
+          "shape": [
+            7168,
+            6144
+          ],
+          "strides": [
+            1,
+            7168
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        },
+        "C": {
+          "role": "output",
+          "shape": [
+            8192,
+            6144
+          ],
+          "strides": [
+            6144,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        }
+      },
+      "live_fixture": {
+        "path": "fixtures/bfloat16-prefill-m8192-n6144-k7168-bf16_gemm-78725b1d5a8e8850ff027124.json",
+        "sha256": "678f83e36cae3f9827a251afe449d0582bfe0a4f0b835a662854e79c220ac8c5",
+        "native_capture_run": "kimi-original-heads-v2-194958",
+        "source_case_key": "bf16_gemm-78725b1d5a8e8850ff027124",
+        "ABI_preserved": true,
+        "capture_family": "bf16_gemm",
+        "source_sha256": "1fafc9782b43f8c6e198e1d39ce83e01ea3b5892f8b5e1a26c4a5eeb74252b51"
+      },
+      "capture_controls": {
+        "bias": null,
+        "capture_native_dispatch": {
+          "callable": {
+            "module": "aiter.tuned_gemm",
+            "qualname": "torch_gemm"
+          },
+          "config": {
+            "libtype": "torch",
+            "solidx": 0
+          },
+          "libtype": "torch",
+          "schema": "aiter-solmap-dispatch-v1",
+          "solidx": 0
+        },
+        "otype": {
+          "kind": "dtype",
+          "name": "bfloat16"
+        },
+        "scale_a": null,
+        "scale_b": null,
+        "scale_c": null,
+        "tensor_attributes": {
+          "A": {},
+          "B": {}
+        }
+      },
+      "served_geometry": {
+        "active_requests": 1,
+        "active_tokens": 8192,
+        "replay_id": "forward-1",
+        "run_id": "kimi-original-heads-v2-194958",
+        "stage": "prefill",
+        "tp_rank": 0,
+        "workload_marker": "controller CAPTURE-PHASE=profile; exact native benchmark workload"
+      },
+      "frequency_evidence": {
+        "source_case_key": "bf16_gemm-78725b1d5a8e8850ff027124",
+        "per_rank_counts": {
+          "0": 138,
+          "1": 138,
+          "2": 138,
+          "3": 138,
+          "4": 138,
+          "5": 138,
+          "6": 138,
+          "7": 138
+        },
+        "scope": "all notified actual served calls in the complete64-request workload; one numerical representative per structural record",
+        "capture_origin": "served_eager",
+        "graph_bucket": null
+      }
+    },
+    {
+      "case_id": "bfloat16-prefill-m16384-n8448-k7168-bf16_gemm-7ee350295145b28f706c1f60",
+      "occurrences": 31,
+      "calls_per_sample": 1,
+      "scalars": {
+        "M": 16384,
+        "N": 8448,
+        "K": 7168,
+        "fp8": false,
+        "BM": 32,
+        "BN": 64,
+        "BK": 128,
+        "A_ROW_STRIDE": 7168
+      },
+      "tensors": {
+        "A": {
+          "role": "input",
+          "shape": [
+            16384,
+            7168
+          ],
+          "strides": [
+            7168,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        },
+        "B": {
+          "role": "input",
+          "shape": [
+            7168,
+            8448
+          ],
+          "strides": [
+            1,
+            7168
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        },
+        "C": {
+          "role": "output",
+          "shape": [
+            16384,
+            8448
+          ],
+          "strides": [
+            8448,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        }
+      },
+      "live_fixture": {
+        "path": "fixtures/bfloat16-prefill-m16384-n8448-k7168-bf16_gemm-7ee350295145b28f706c1f60.json",
+        "sha256": "03cba8dccb1c5320ad54935a87715c04f69b6e0ef6b712198ea18c2434337445",
+        "native_capture_run": "kimi-original-heads-v2-194958",
+        "source_case_key": "bf16_gemm-7ee350295145b28f706c1f60",
+        "ABI_preserved": true,
+        "capture_family": "bf16_gemm",
+        "source_sha256": "1fafc9782b43f8c6e198e1d39ce83e01ea3b5892f8b5e1a26c4a5eeb74252b51"
+      },
+      "capture_controls": {
+        "bias": null,
+        "capture_native_dispatch": {
+          "callable": {
+            "module": "aiter.tuned_gemm",
+            "qualname": "torch_gemm"
+          },
+          "config": {
+            "libtype": "torch",
+            "solidx": 0
+          },
+          "libtype": "torch",
+          "schema": "aiter-solmap-dispatch-v1",
+          "solidx": 0
+        },
+        "otype": {
+          "kind": "dtype",
+          "name": "bfloat16"
+        },
+        "scale_a": null,
+        "scale_b": null,
+        "scale_c": null,
+        "tensor_attributes": {
+          "A": {},
+          "B": {}
+        }
+      },
+      "served_geometry": {
+        "active_requests": 2,
+        "active_tokens": 16384,
+        "replay_id": "forward-2",
+        "run_id": "kimi-original-heads-v2-194958",
+        "stage": "prefill",
+        "tp_rank": 0,
+        "workload_marker": "controller CAPTURE-PHASE=profile; exact native benchmark workload"
+      },
+      "frequency_evidence": {
+        "source_case_key": "bf16_gemm-7ee350295145b28f706c1f60",
+        "per_rank_counts": {
+          "0": 31,
+          "1": 31,
+          "2": 31,
+          "3": 31,
+          "4": 31,
+          "5": 31,
+          "6": 31,
+          "7": 31
+        },
+        "scope": "all notified actual served calls in the complete64-request workload; one numerical representative per structural record",
+        "capture_origin": "served_eager",
+        "graph_bucket": null
+      }
+    },
+    {
+      "case_id": "bfloat16-decode-m64-n2112-k7168-bf16_gemm-84759eb3ff0b4b1d0af0cb6f",
+      "occurrences": 24576,
+      "calls_per_sample": 1,
+      "scalars": {
+        "M": 64,
+        "N": 2112,
+        "K": 7168,
+        "fp8": false,
+        "BM": 32,
+        "BN": 64,
+        "BK": 128,
+        "A_ROW_STRIDE": 7168
+      },
+      "tensors": {
+        "A": {
+          "role": "input",
+          "shape": [
+            64,
+            7168
+          ],
+          "strides": [
+            7168,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        },
+        "B": {
+          "role": "input",
+          "shape": [
+            7168,
+            2112
+          ],
+          "strides": [
+            1,
+            7168
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        },
+        "C": {
+          "role": "output",
+          "shape": [
+            64,
+            2112
+          ],
+          "strides": [
+            2112,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        }
+      },
+      "live_fixture": {
+        "path": "fixtures/bfloat16-decode-m64-n2112-k7168-bf16_gemm-84759eb3ff0b4b1d0af0cb6f.json",
+        "sha256": "54d06a33903dd2655b5bdaedc154a17dd1025321e6c08ca8b45c1b313bd73858",
+        "native_capture_run": "kimi-original-heads-v2-194958",
+        "source_case_key": "bf16_gemm-84759eb3ff0b4b1d0af0cb6f",
+        "ABI_preserved": true,
+        "capture_family": "bf16_gemm",
+        "source_sha256": "1fafc9782b43f8c6e198e1d39ce83e01ea3b5892f8b5e1a26c4a5eeb74252b51"
+      },
+      "capture_controls": {
+        "bias": null,
+        "capture_native_dispatch": {
+          "callable": {
+            "module": "aiter.tuned_gemm",
+            "qualname": "flydsl_gemm"
+          },
+          "config": {
+            "bw": 2295.51,
+            "err_ratio": 0.0199,
+            "kernelName": "flydsl_gemm5_abf16_wbf16_bf16_t64x64x64_split_k7_block_m_warp2_block_n_warp2_block_k_warp1_async_copyTrue_b_to_ldsTrue_b_preshuffleFalse_c_to_ldsFalse_gfx950",
+            "libtype": "flydsl",
+            "solidx": 2321,
+            "splitK": 7,
+            "tflops": 141.37,
+            "us": 13.7074
+          },
+          "libtype": "flydsl",
+          "schema": "aiter-solmap-dispatch-v1",
+          "solidx": 2321
+        },
+        "otype": {
+          "kind": "dtype",
+          "name": "bfloat16"
+        },
+        "scale_a": null,
+        "scale_b": null,
+        "scale_c": null,
+        "tensor_attributes": {
+          "A": {},
+          "B": {}
+        }
+      },
+      "served_geometry": {
+        "active_requests": 64,
+        "active_tokens": 64,
+        "replay_id": "forward-34",
+        "run_id": "kimi-original-heads-v2-194958",
+        "stage": "decode",
+        "tp_rank": 0,
+        "workload_marker": "controller CAPTURE-PHASE=profile; exact native benchmark workload"
+      },
+      "frequency_evidence": {
+        "source_case_key": "bf16_gemm-84759eb3ff0b4b1d0af0cb6f",
+        "per_rank_counts": {
+          "0": 24576,
+          "1": 24576,
+          "2": 24576,
+          "3": 24576,
+          "4": 24576,
+          "5": 24576,
+          "6": 24576,
+          "7": 24576
+        },
+        "scope": "all notified actual served calls in the complete64-request workload; one numerical representative per structural record",
+        "capture_origin": "served_graph",
+        "graph_bucket": "bs64"
+      }
+    },
+    {
+      "case_id": "bfloat16-prefill-m8192-n2112-k7168-bf16_gemm-8546090b80f8b898796db167",
+      "occurrences": 48,
+      "calls_per_sample": 1,
+      "scalars": {
+        "M": 8192,
+        "N": 2112,
+        "K": 7168,
+        "fp8": false,
+        "BM": 32,
+        "BN": 64,
+        "BK": 128,
+        "A_ROW_STRIDE": 7168
+      },
+      "tensors": {
+        "A": {
+          "role": "input",
+          "shape": [
+            8192,
+            7168
+          ],
+          "strides": [
+            7168,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        },
+        "B": {
+          "role": "input",
+          "shape": [
+            7168,
+            2112
+          ],
+          "strides": [
+            1,
+            7168
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        },
+        "C": {
+          "role": "output",
+          "shape": [
+            8192,
+            2112
+          ],
+          "strides": [
+            2112,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        }
+      },
+      "live_fixture": {
+        "path": "fixtures/bfloat16-prefill-m8192-n2112-k7168-bf16_gemm-8546090b80f8b898796db167.json",
+        "sha256": "3be0a4cf1680ddc153ae0f4cb97bad74f13ba9f8351abdcfe117d53d797503f8",
+        "native_capture_run": "kimi-original-heads-v2-194958",
+        "source_case_key": "bf16_gemm-8546090b80f8b898796db167",
+        "ABI_preserved": true,
+        "capture_family": "bf16_gemm",
+        "source_sha256": "1fafc9782b43f8c6e198e1d39ce83e01ea3b5892f8b5e1a26c4a5eeb74252b51"
+      },
+      "capture_controls": {
+        "bias": null,
+        "capture_native_dispatch": {
+          "callable": {
+            "module": "aiter.tuned_gemm",
+            "qualname": "torch_gemm"
+          },
+          "config": {
+            "libtype": "torch",
+            "solidx": 0
+          },
+          "libtype": "torch",
+          "schema": "aiter-solmap-dispatch-v1",
+          "solidx": 0
+        },
+        "otype": {
+          "kind": "dtype",
+          "name": "bfloat16"
+        },
+        "scale_a": null,
+        "scale_b": null,
+        "scale_c": null,
+        "tensor_attributes": {
+          "A": {},
+          "B": {}
+        }
+      },
+      "served_geometry": {
+        "active_requests": 1,
+        "active_tokens": 8192,
+        "replay_id": "forward-1",
+        "run_id": "kimi-original-heads-v2-194958",
+        "stage": "prefill",
+        "tp_rank": 0,
+        "workload_marker": "controller CAPTURE-PHASE=profile; exact native benchmark workload"
+      },
+      "frequency_evidence": {
+        "source_case_key": "bf16_gemm-8546090b80f8b898796db167",
+        "per_rank_counts": {
+          "0": 48,
+          "1": 48,
+          "2": 48,
+          "3": 48,
+          "4": 48,
+          "5": 48,
+          "6": 48,
+          "7": 48
+        },
+        "scope": "all notified actual served calls in the complete64-request workload; one numerical representative per structural record",
+        "capture_origin": "served_eager",
+        "graph_bucket": null
+      }
+    },
+    {
+      "case_id": "bfloat16-prefill-m16384-n6144-k7168-bf16_gemm-8df4bd85b77671a9e9c4552b",
+      "occurrences": 2139,
+      "calls_per_sample": 1,
+      "scalars": {
+        "M": 16384,
+        "N": 6144,
+        "K": 7168,
+        "fp8": false,
+        "BM": 32,
+        "BN": 64,
+        "BK": 128,
+        "A_ROW_STRIDE": 7168
+      },
+      "tensors": {
+        "A": {
+          "role": "input",
+          "shape": [
+            16384,
+            7168
+          ],
+          "strides": [
+            7168,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        },
+        "B": {
+          "role": "input",
+          "shape": [
+            7168,
+            6144
+          ],
+          "strides": [
+            1,
+            7168
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        },
+        "C": {
+          "role": "output",
+          "shape": [
+            16384,
+            6144
+          ],
+          "strides": [
+            6144,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        }
+      },
+      "live_fixture": {
+        "path": "fixtures/bfloat16-prefill-m16384-n6144-k7168-bf16_gemm-8df4bd85b77671a9e9c4552b.json",
+        "sha256": "7db17be71b33213f9fbd6abbe497d4296741ebb5360ba026ec6d07d32e26ea0d",
+        "native_capture_run": "kimi-original-heads-v2-194958",
+        "source_case_key": "bf16_gemm-8df4bd85b77671a9e9c4552b",
+        "ABI_preserved": true,
+        "capture_family": "bf16_gemm",
+        "source_sha256": "1fafc9782b43f8c6e198e1d39ce83e01ea3b5892f8b5e1a26c4a5eeb74252b51"
+      },
+      "capture_controls": {
+        "bias": null,
+        "capture_native_dispatch": {
+          "callable": {
+            "module": "aiter.tuned_gemm",
+            "qualname": "torch_gemm"
+          },
+          "config": {
+            "libtype": "torch",
+            "solidx": 0
+          },
+          "libtype": "torch",
+          "schema": "aiter-solmap-dispatch-v1",
+          "solidx": 0
+        },
+        "otype": {
+          "kind": "dtype",
+          "name": "bfloat16"
+        },
+        "scale_a": null,
+        "scale_b": null,
+        "scale_c": null,
+        "tensor_attributes": {
+          "A": {},
+          "B": {}
+        }
+      },
+      "served_geometry": {
+        "active_requests": 2,
+        "active_tokens": 16384,
+        "replay_id": "forward-2",
+        "run_id": "kimi-original-heads-v2-194958",
+        "stage": "prefill",
+        "tp_rank": 0,
+        "workload_marker": "controller CAPTURE-PHASE=profile; exact native benchmark workload"
+      },
+      "frequency_evidence": {
+        "source_case_key": "bf16_gemm-8df4bd85b77671a9e9c4552b",
+        "per_rank_counts": {
+          "0": 2139,
+          "1": 2139,
+          "2": 2139,
+          "3": 2139,
+          "4": 2139,
+          "5": 2139,
+          "6": 2139,
+          "7": 2139
+        },
+        "scope": "all notified actual served calls in the complete64-request workload; one numerical representative per structural record",
+        "capture_origin": "served_eager",
+        "graph_bucket": null
+      }
+    },
+    {
+      "case_id": "bfloat16-prefill-m16384-n3072-k512-bf16_gemm-9a137f837c24a75035c92b77",
+      "occurrences": 744,
+      "calls_per_sample": 1,
+      "scalars": {
+        "M": 16384,
+        "N": 3072,
+        "K": 512,
+        "fp8": false,
+        "BM": 32,
+        "BN": 64,
+        "BK": 128,
+        "A_ROW_STRIDE": 512
+      },
+      "tensors": {
+        "A": {
+          "role": "input",
+          "shape": [
+            16384,
+            512
+          ],
+          "strides": [
+            512,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        },
+        "B": {
+          "role": "input",
+          "shape": [
+            512,
+            3072
+          ],
+          "strides": [
+            1,
+            512
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        },
+        "C": {
+          "role": "output",
+          "shape": [
+            16384,
+            3072
+          ],
+          "strides": [
+            3072,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        }
+      },
+      "live_fixture": {
+        "path": "fixtures/bfloat16-prefill-m16384-n3072-k512-bf16_gemm-9a137f837c24a75035c92b77.json",
+        "sha256": "07e6656d75b7a442579157544b9ec509a86faecd67c6f508d9f4871b6fa3e7cd",
+        "native_capture_run": "kimi-original-heads-v2-194958",
+        "source_case_key": "bf16_gemm-9a137f837c24a75035c92b77",
+        "ABI_preserved": true,
+        "capture_family": "bf16_gemm",
+        "source_sha256": "1fafc9782b43f8c6e198e1d39ce83e01ea3b5892f8b5e1a26c4a5eeb74252b51"
+      },
+      "capture_controls": {
+        "bias": null,
+        "capture_native_dispatch": {
+          "callable": {
+            "module": "aiter.tuned_gemm",
+            "qualname": "torch_gemm"
+          },
+          "config": {
+            "libtype": "torch",
+            "solidx": 0
+          },
+          "libtype": "torch",
+          "schema": "aiter-solmap-dispatch-v1",
+          "solidx": 0
+        },
+        "otype": {
+          "kind": "dtype",
+          "name": "bfloat16"
+        },
+        "scale_a": null,
+        "scale_b": null,
+        "scale_c": null,
+        "tensor_attributes": {
+          "A": {},
+          "B": {}
+        }
+      },
+      "served_geometry": {
+        "active_requests": 2,
+        "active_tokens": 16384,
+        "replay_id": "forward-2",
+        "run_id": "kimi-original-heads-v2-194958",
+        "stage": "prefill",
+        "tp_rank": 0,
+        "workload_marker": "controller CAPTURE-PHASE=profile; exact native benchmark workload"
+      },
+      "frequency_evidence": {
+        "source_case_key": "bf16_gemm-9a137f837c24a75035c92b77",
+        "per_rank_counts": {
+          "0": 744,
+          "1": 744,
+          "2": 744,
+          "3": 744,
+          "4": 744,
+          "5": 744,
+          "6": 744,
+          "7": 744
+        },
+        "scope": "all notified actual served calls in the complete64-request workload; one numerical representative per structural record",
+        "capture_origin": "served_eager",
+        "graph_bucket": null
+      }
+    },
+    {
+      "case_id": "bfloat16-prefill-m8192-n8448-k7168-bf16_gemm-a1d89280790c8a7824642240",
+      "occurrences": 2,
+      "calls_per_sample": 1,
+      "scalars": {
+        "M": 8192,
+        "N": 8448,
+        "K": 7168,
+        "fp8": false,
+        "BM": 32,
+        "BN": 64,
+        "BK": 128,
+        "A_ROW_STRIDE": 7168
+      },
+      "tensors": {
+        "A": {
+          "role": "input",
+          "shape": [
+            8192,
+            7168
+          ],
+          "strides": [
+            7168,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        },
+        "B": {
+          "role": "input",
+          "shape": [
+            7168,
+            8448
+          ],
+          "strides": [
+            1,
+            7168
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        },
+        "C": {
+          "role": "output",
+          "shape": [
+            8192,
+            8448
+          ],
+          "strides": [
+            8448,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        }
+      },
+      "live_fixture": {
+        "path": "fixtures/bfloat16-prefill-m8192-n8448-k7168-bf16_gemm-a1d89280790c8a7824642240.json",
+        "sha256": "8d78f00f409924d79ddb353aca856a98eaf0882f39b18954a0e3950e4181ec7d",
+        "native_capture_run": "kimi-original-heads-v2-194958",
+        "source_case_key": "bf16_gemm-a1d89280790c8a7824642240",
+        "ABI_preserved": true,
+        "capture_family": "bf16_gemm",
+        "source_sha256": "1fafc9782b43f8c6e198e1d39ce83e01ea3b5892f8b5e1a26c4a5eeb74252b51"
+      },
+      "capture_controls": {
+        "bias": null,
+        "capture_native_dispatch": {
+          "callable": {
+            "module": "aiter.tuned_gemm",
+            "qualname": "torch_gemm"
+          },
+          "config": {
+            "libtype": "torch",
+            "solidx": 0
+          },
+          "libtype": "torch",
+          "schema": "aiter-solmap-dispatch-v1",
+          "solidx": 0
+        },
+        "otype": {
+          "kind": "dtype",
+          "name": "bfloat16"
+        },
+        "scale_a": null,
+        "scale_b": null,
+        "scale_c": null,
+        "tensor_attributes": {
+          "A": {},
+          "B": {}
+        }
+      },
+      "served_geometry": {
+        "active_requests": 1,
+        "active_tokens": 8192,
+        "replay_id": "forward-1",
+        "run_id": "kimi-original-heads-v2-194958",
+        "stage": "prefill",
+        "tp_rank": 0,
+        "workload_marker": "controller CAPTURE-PHASE=profile; exact native benchmark workload"
+      },
+      "frequency_evidence": {
+        "source_case_key": "bf16_gemm-a1d89280790c8a7824642240",
+        "per_rank_counts": {
+          "0": 2,
+          "1": 2,
+          "2": 2,
+          "3": 2,
+          "4": 2,
+          "5": 2,
+          "6": 2,
+          "7": 2
+        },
+        "scope": "all notified actual served calls in the complete64-request workload; one numerical representative per structural record",
+        "capture_origin": "served_eager",
+        "graph_bucket": null
+      }
+    },
+    {
+      "case_id": "bfloat16-decode-m64-n6288-k7168-bf16_gemm-a398a7e26cd7e291cbd2a1e9",
+      "occurrences": 70656,
+      "calls_per_sample": 1,
+      "scalars": {
+        "M": 64,
+        "N": 6288,
+        "K": 7168,
+        "fp8": false,
+        "BM": 32,
+        "BN": 64,
+        "BK": 128,
+        "A_ROW_STRIDE": 7168
+      },
+      "tensors": {
+        "A": {
+          "role": "input",
+          "shape": [
+            64,
+            7168
+          ],
+          "strides": [
+            7168,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        },
+        "B": {
+          "role": "input",
+          "shape": [
+            7168,
+            6288
+          ],
+          "strides": [
+            1,
+            7168
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        },
+        "C": {
+          "role": "output",
+          "shape": [
+            64,
+            6288
+          ],
+          "strides": [
+            6288,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        }
+      },
+      "live_fixture": {
+        "path": "fixtures/bfloat16-decode-m64-n6288-k7168-bf16_gemm-a398a7e26cd7e291cbd2a1e9.json",
+        "sha256": "9de35a43fb22c97f1cc8acdf2603016069d1d1c14288eece181a7e8a8218a9a4",
+        "native_capture_run": "kimi-original-heads-v2-194958",
+        "source_case_key": "bf16_gemm-a398a7e26cd7e291cbd2a1e9",
+        "ABI_preserved": true,
+        "capture_family": "bf16_gemm",
+        "source_sha256": "1fafc9782b43f8c6e198e1d39ce83e01ea3b5892f8b5e1a26c4a5eeb74252b51"
+      },
+      "capture_controls": {
+        "bias": null,
+        "capture_native_dispatch": {
+          "callable": {
+            "module": "aiter.tuned_gemm",
+            "qualname": "torch_gemm"
+          },
+          "config": {
+            "libtype": "torch",
+            "solidx": 0
+          },
+          "libtype": "torch",
+          "schema": "aiter-solmap-dispatch-v1",
+          "solidx": 0
+        },
+        "otype": {
+          "kind": "dtype",
+          "name": "bfloat16"
+        },
+        "scale_a": null,
+        "scale_b": null,
+        "scale_c": null,
+        "tensor_attributes": {
+          "A": {},
+          "B": {}
+        }
+      },
+      "served_geometry": {
+        "active_requests": 64,
+        "active_tokens": 64,
+        "replay_id": "forward-34",
+        "run_id": "kimi-original-heads-v2-194958",
+        "stage": "decode",
+        "tp_rank": 0,
+        "workload_marker": "controller CAPTURE-PHASE=profile; exact native benchmark workload"
+      },
+      "frequency_evidence": {
+        "source_case_key": "bf16_gemm-a398a7e26cd7e291cbd2a1e9",
+        "per_rank_counts": {
+          "0": 70656,
+          "1": 70656,
+          "2": 70656,
+          "3": 70656,
+          "4": 70656,
+          "5": 70656,
+          "6": 70656,
+          "7": 70656
+        },
+        "scope": "all notified actual served calls in the complete64-request workload; one numerical representative per structural record",
+        "capture_origin": "served_graph",
+        "graph_bucket": "bs64"
+      }
+    },
+    {
+      "case_id": "bfloat16-prefill-m16384-n7168-k4224-bf16_gemm-a5d5d295ce57ee1e2c698883",
+      "occurrences": 31,
+      "calls_per_sample": 1,
+      "scalars": {
+        "M": 16384,
+        "N": 7168,
+        "K": 4224,
+        "fp8": false,
+        "BM": 32,
+        "BN": 64,
+        "BK": 128,
+        "A_ROW_STRIDE": 4224
+      },
+      "tensors": {
+        "A": {
+          "role": "input",
+          "shape": [
+            16384,
+            4224
+          ],
+          "strides": [
+            4224,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        },
+        "B": {
+          "role": "input",
+          "shape": [
+            4224,
+            7168
+          ],
+          "strides": [
+            1,
+            4224
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        },
+        "C": {
+          "role": "output",
+          "shape": [
+            16384,
+            7168
+          ],
+          "strides": [
+            7168,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        }
+      },
+      "live_fixture": {
+        "path": "fixtures/bfloat16-prefill-m16384-n7168-k4224-bf16_gemm-a5d5d295ce57ee1e2c698883.json",
+        "sha256": "10a5caf5d575ec880f422177801e66a2080d614e026fe1d030edc8e1094d59ae",
+        "native_capture_run": "kimi-original-heads-v2-194958",
+        "source_case_key": "bf16_gemm-a5d5d295ce57ee1e2c698883",
+        "ABI_preserved": true,
+        "capture_family": "bf16_gemm",
+        "source_sha256": "1fafc9782b43f8c6e198e1d39ce83e01ea3b5892f8b5e1a26c4a5eeb74252b51"
+      },
+      "capture_controls": {
+        "bias": null,
+        "capture_native_dispatch": {
+          "callable": {
+            "module": "aiter.tuned_gemm",
+            "qualname": "torch_gemm"
+          },
+          "config": {
+            "libtype": "torch",
+            "solidx": 0
+          },
+          "libtype": "torch",
+          "schema": "aiter-solmap-dispatch-v1",
+          "solidx": 0
+        },
+        "otype": {
+          "kind": "dtype",
+          "name": "bfloat16"
+        },
+        "scale_a": null,
+        "scale_b": null,
+        "scale_c": null,
+        "tensor_attributes": {
+          "A": {},
+          "B": {}
+        }
+      },
+      "served_geometry": {
+        "active_requests": 2,
+        "active_tokens": 16384,
+        "replay_id": "forward-2",
+        "run_id": "kimi-original-heads-v2-194958",
+        "stage": "prefill",
+        "tp_rank": 0,
+        "workload_marker": "controller CAPTURE-PHASE=profile; exact native benchmark workload"
+      },
+      "frequency_evidence": {
+        "source_case_key": "bf16_gemm-a5d5d295ce57ee1e2c698883",
+        "per_rank_counts": {
+          "0": 31,
+          "1": 31,
+          "2": 31,
+          "3": 31,
+          "4": 31,
+          "5": 31,
+          "6": 31,
+          "7": 31
+        },
+        "scope": "all notified actual served calls in the complete64-request workload; one numerical representative per structural record",
+        "capture_origin": "served_eager",
+        "graph_bucket": null
+      }
+    },
+    {
+      "case_id": "bfloat16-prefill-m16384-n7168-k3584-bf16_gemm-bf307d88450475b1705a37ca",
+      "occurrences": 2852,
+      "calls_per_sample": 1,
+      "scalars": {
+        "M": 16384,
+        "N": 7168,
+        "K": 3584,
+        "fp8": false,
+        "BM": 32,
+        "BN": 64,
+        "BK": 128,
+        "A_ROW_STRIDE": 3584
+      },
+      "tensors": {
+        "A": {
+          "role": "input",
+          "shape": [
+            16384,
+            3584
+          ],
+          "strides": [
+            3584,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        },
+        "B": {
+          "role": "input",
+          "shape": [
+            3584,
+            7168
+          ],
+          "strides": [
+            1,
+            3584
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        },
+        "C": {
+          "role": "output",
+          "shape": [
+            16384,
+            7168
+          ],
+          "strides": [
+            7168,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        }
+      },
+      "live_fixture": {
+        "path": "fixtures/bfloat16-prefill-m16384-n7168-k3584-bf16_gemm-bf307d88450475b1705a37ca.json",
+        "sha256": "8cce36090788707d6bf3cff26a8e180056104c2ab1609f4bf34735dd8bc7d325",
+        "native_capture_run": "kimi-original-heads-v2-194958",
+        "source_case_key": "bf16_gemm-bf307d88450475b1705a37ca",
+        "ABI_preserved": true,
+        "capture_family": "bf16_gemm",
+        "source_sha256": "1fafc9782b43f8c6e198e1d39ce83e01ea3b5892f8b5e1a26c4a5eeb74252b51"
+      },
+      "capture_controls": {
+        "bias": null,
+        "capture_native_dispatch": {
+          "callable": {
+            "module": "aiter.tuned_gemm",
+            "qualname": "torch_gemm"
+          },
+          "config": {
+            "libtype": "torch",
+            "solidx": 0
+          },
+          "libtype": "torch",
+          "schema": "aiter-solmap-dispatch-v1",
+          "solidx": 0
+        },
+        "otype": {
+          "kind": "dtype",
+          "name": "bfloat16"
+        },
+        "scale_a": null,
+        "scale_b": null,
+        "scale_c": null,
+        "tensor_attributes": {
+          "A": {},
+          "B": {}
+        }
+      },
+      "served_geometry": {
+        "active_requests": 2,
+        "active_tokens": 16384,
+        "replay_id": "forward-2",
+        "run_id": "kimi-original-heads-v2-194958",
+        "stage": "prefill",
+        "tp_rank": 0,
+        "workload_marker": "controller CAPTURE-PHASE=profile; exact native benchmark workload"
+      },
+      "frequency_evidence": {
+        "source_case_key": "bf16_gemm-bf307d88450475b1705a37ca",
+        "per_rank_counts": {
+          "0": 2852,
+          "1": 2852,
+          "2": 2852,
+          "3": 2852,
+          "4": 2852,
+          "5": 2852,
+          "6": 2852,
+          "7": 2852
+        },
+        "scope": "all notified actual served calls in the complete64-request workload; one numerical representative per structural record",
+        "capture_origin": "served_eager",
+        "graph_bucket": null
+      }
+    },
+    {
+      "case_id": "bfloat16-decode-m64-n1536-k7168-bf16_gemm-c4d5cafd57231958f410b12b",
+      "occurrences": 24576,
+      "calls_per_sample": 1,
+      "scalars": {
+        "M": 64,
+        "N": 1536,
+        "K": 7168,
+        "fp8": false,
+        "BM": 32,
+        "BN": 64,
+        "BK": 128,
+        "A_ROW_STRIDE": 7168
+      },
+      "tensors": {
+        "A": {
+          "role": "input",
+          "shape": [
+            64,
+            7168
+          ],
+          "strides": [
+            7168,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        },
+        "B": {
+          "role": "input",
+          "shape": [
+            7168,
+            1536
+          ],
+          "strides": [
+            1,
+            7168
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        },
+        "C": {
+          "role": "output",
+          "shape": [
+            64,
+            1536
+          ],
+          "strides": [
+            1536,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        }
+      },
+      "live_fixture": {
+        "path": "fixtures/bfloat16-decode-m64-n1536-k7168-bf16_gemm-c4d5cafd57231958f410b12b.json",
+        "sha256": "0438ee239741bcdcce9481fd69c9df715be6b84d73887d856fa367852a11b0f7",
+        "native_capture_run": "kimi-original-heads-v2-194958",
+        "source_case_key": "bf16_gemm-c4d5cafd57231958f410b12b",
+        "ABI_preserved": true,
+        "capture_family": "bf16_gemm",
+        "source_sha256": "1fafc9782b43f8c6e198e1d39ce83e01ea3b5892f8b5e1a26c4a5eeb74252b51"
+      },
+      "capture_controls": {
+        "bias": null,
+        "capture_native_dispatch": {
+          "callable": {
+            "module": "aiter.tuned_gemm",
+            "qualname": "flydsl_gemm"
+          },
+          "config": {
+            "bw": 2002.82,
+            "err_ratio": 0.0143,
+            "kernelName": "flydsl_gemm4_abf16_wbf16_bf16_t32x64x128_split_k4_block_m_warp1_block_n_warp4_block_k_warp1_async_copyTrue_b_to_ldsTrue_b_preshuffleFalse_c_to_ldsFalse_gfx950",
+            "libtype": "flydsl",
+            "solidx": 4319,
+            "splitK": 4,
+            "tflops": 122.01,
+            "us": 11.5508
+          },
+          "libtype": "flydsl",
+          "schema": "aiter-solmap-dispatch-v1",
+          "solidx": 4319
+        },
+        "otype": {
+          "kind": "dtype",
+          "name": "bfloat16"
+        },
+        "scale_a": null,
+        "scale_b": null,
+        "scale_c": null,
+        "tensor_attributes": {
+          "A": {},
+          "B": {}
+        }
+      },
+      "served_geometry": {
+        "active_requests": 64,
+        "active_tokens": 64,
+        "replay_id": "forward-34",
+        "run_id": "kimi-original-heads-v2-194958",
+        "stage": "decode",
+        "tp_rank": 0,
+        "workload_marker": "controller CAPTURE-PHASE=profile; exact native benchmark workload"
+      },
+      "frequency_evidence": {
+        "source_case_key": "bf16_gemm-c4d5cafd57231958f410b12b",
+        "per_rank_counts": {
+          "0": 24576,
+          "1": 24576,
+          "2": 24576,
+          "3": 24576,
+          "4": 24576,
+          "5": 24576,
+          "6": 24576,
+          "7": 24576
+        },
+        "scope": "all notified actual served calls in the complete64-request workload; one numerical representative per structural record",
+        "capture_origin": "served_graph",
+        "graph_bucket": "bs64"
+      }
+    },
+    {
+      "case_id": "bfloat16-prefill-m16384-n7168-k1536-bf16_gemm-c62766e2a6020c08b6b6a551",
+      "occurrences": 2883,
+      "calls_per_sample": 1,
+      "scalars": {
+        "M": 16384,
+        "N": 7168,
+        "K": 1536,
+        "fp8": false,
+        "BM": 32,
+        "BN": 64,
+        "BK": 128,
+        "A_ROW_STRIDE": 1536
+      },
+      "tensors": {
+        "A": {
+          "role": "input",
+          "shape": [
+            16384,
+            1536
+          ],
+          "strides": [
+            1536,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        },
+        "B": {
+          "role": "input",
+          "shape": [
+            1536,
+            7168
+          ],
+          "strides": [
+            1,
+            1536
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        },
+        "C": {
+          "role": "output",
+          "shape": [
+            16384,
+            7168
+          ],
+          "strides": [
+            7168,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        }
+      },
+      "live_fixture": {
+        "path": "fixtures/bfloat16-prefill-m16384-n7168-k1536-bf16_gemm-c62766e2a6020c08b6b6a551.json",
+        "sha256": "7cc7430128ffda7ca4fc6bf17d2080602044eae51ac016f638b8b2276254f037",
+        "native_capture_run": "kimi-original-heads-v2-194958",
+        "source_case_key": "bf16_gemm-c62766e2a6020c08b6b6a551",
+        "ABI_preserved": true,
+        "capture_family": "bf16_gemm",
+        "source_sha256": "1fafc9782b43f8c6e198e1d39ce83e01ea3b5892f8b5e1a26c4a5eeb74252b51"
+      },
+      "capture_controls": {
+        "bias": null,
+        "capture_native_dispatch": {
+          "callable": {
+            "module": "aiter.tuned_gemm",
+            "qualname": "torch_gemm"
+          },
+          "config": {
+            "libtype": "torch",
+            "solidx": 0
+          },
+          "libtype": "torch",
+          "schema": "aiter-solmap-dispatch-v1",
+          "solidx": 0
+        },
+        "otype": {
+          "kind": "dtype",
+          "name": "bfloat16"
+        },
+        "scale_a": null,
+        "scale_b": null,
+        "scale_c": null,
+        "tensor_attributes": {
+          "A": {},
+          "B": {}
+        }
+      },
+      "served_geometry": {
+        "active_requests": 2,
+        "active_tokens": 16384,
+        "replay_id": "forward-2",
+        "run_id": "kimi-original-heads-v2-194958",
+        "stage": "prefill",
+        "tp_rank": 0,
+        "workload_marker": "controller CAPTURE-PHASE=profile; exact native benchmark workload"
+      },
+      "frequency_evidence": {
+        "source_case_key": "bf16_gemm-c62766e2a6020c08b6b6a551",
+        "per_rank_counts": {
+          "0": 2883,
+          "1": 2883,
+          "2": 2883,
+          "3": 2883,
+          "4": 2883,
+          "5": 2883,
+          "6": 2883,
+          "7": 2883
+        },
+        "scope": "all notified actual served calls in the complete64-request workload; one numerical representative per structural record",
+        "capture_origin": "served_eager",
+        "graph_bucket": null
+      }
+    },
+    {
+      "case_id": "bfloat16-prefill-m16384-n2304-k1536-bf16_gemm-d515c50c4eb5ca248d18bdf8",
+      "occurrences": 744,
+      "calls_per_sample": 1,
+      "scalars": {
+        "M": 16384,
+        "N": 2304,
+        "K": 1536,
+        "fp8": false,
+        "BM": 32,
+        "BN": 64,
+        "BK": 128,
+        "A_ROW_STRIDE": 1536
+      },
+      "tensors": {
+        "A": {
+          "role": "input",
+          "shape": [
+            16384,
+            1536
+          ],
+          "strides": [
+            1536,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        },
+        "B": {
+          "role": "input",
+          "shape": [
+            1536,
+            2304
+          ],
+          "strides": [
+            1,
+            1536
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        },
+        "C": {
+          "role": "output",
+          "shape": [
+            16384,
+            2304
+          ],
+          "strides": [
+            2304,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        }
+      },
+      "live_fixture": {
+        "path": "fixtures/bfloat16-prefill-m16384-n2304-k1536-bf16_gemm-d515c50c4eb5ca248d18bdf8.json",
+        "sha256": "1037528852a6d524deb4ed9f80fba89e56f2b75fd44147a4edc6410ccb799b51",
+        "native_capture_run": "kimi-original-heads-v2-194958",
+        "source_case_key": "bf16_gemm-d515c50c4eb5ca248d18bdf8",
+        "ABI_preserved": true,
+        "capture_family": "bf16_gemm",
+        "source_sha256": "1fafc9782b43f8c6e198e1d39ce83e01ea3b5892f8b5e1a26c4a5eeb74252b51"
+      },
+      "capture_controls": {
+        "bias": null,
+        "capture_native_dispatch": {
+          "callable": {
+            "module": "aiter.tuned_gemm",
+            "qualname": "torch_gemm"
+          },
+          "config": {
+            "libtype": "torch",
+            "solidx": 0
+          },
+          "libtype": "torch",
+          "schema": "aiter-solmap-dispatch-v1",
+          "solidx": 0
+        },
+        "otype": {
+          "kind": "dtype",
+          "name": "bfloat16"
+        },
+        "scale_a": null,
+        "scale_b": null,
+        "scale_c": null,
+        "tensor_attributes": {
+          "A": {},
+          "B": {}
+        }
+      },
+      "served_geometry": {
+        "active_requests": 2,
+        "active_tokens": 16384,
+        "replay_id": "forward-2",
+        "run_id": "kimi-original-heads-v2-194958",
+        "stage": "prefill",
+        "tp_rank": 0,
+        "workload_marker": "controller CAPTURE-PHASE=profile; exact native benchmark workload"
+      },
+      "frequency_evidence": {
+        "source_case_key": "bf16_gemm-d515c50c4eb5ca248d18bdf8",
+        "per_rank_counts": {
+          "0": 744,
+          "1": 744,
+          "2": 744,
+          "3": 744,
+          "4": 744,
+          "5": 744,
+          "6": 744,
+          "7": 744
+        },
+        "scope": "all notified actual served calls in the complete64-request workload; one numerical representative per structural record",
+        "capture_origin": "served_eager",
+        "graph_bucket": null
+      }
+    },
+    {
+      "case_id": "bfloat16-prefill-m8192-n3072-k512-bf16_gemm-dea622a8be22e8ca883bb3da",
+      "occurrences": 48,
+      "calls_per_sample": 1,
+      "scalars": {
+        "M": 8192,
+        "N": 3072,
+        "K": 512,
+        "fp8": false,
+        "BM": 32,
+        "BN": 64,
+        "BK": 128,
+        "A_ROW_STRIDE": 512
+      },
+      "tensors": {
+        "A": {
+          "role": "input",
+          "shape": [
+            8192,
+            512
+          ],
+          "strides": [
+            512,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        },
+        "B": {
+          "role": "input",
+          "shape": [
+            512,
+            3072
+          ],
+          "strides": [
+            1,
+            512
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        },
+        "C": {
+          "role": "output",
+          "shape": [
+            8192,
+            3072
+          ],
+          "strides": [
+            3072,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        }
+      },
+      "live_fixture": {
+        "path": "fixtures/bfloat16-prefill-m8192-n3072-k512-bf16_gemm-dea622a8be22e8ca883bb3da.json",
+        "sha256": "ed923596ec00b63e82701120e42ddfbfd71d92bbed97efd3297697a56702a4e7",
+        "native_capture_run": "kimi-original-heads-v2-194958",
+        "source_case_key": "bf16_gemm-dea622a8be22e8ca883bb3da",
+        "ABI_preserved": true,
+        "capture_family": "bf16_gemm",
+        "source_sha256": "1fafc9782b43f8c6e198e1d39ce83e01ea3b5892f8b5e1a26c4a5eeb74252b51"
+      },
+      "capture_controls": {
+        "bias": null,
+        "capture_native_dispatch": {
+          "callable": {
+            "module": "aiter.tuned_gemm",
+            "qualname": "torch_gemm"
+          },
+          "config": {
+            "libtype": "torch",
+            "solidx": 0
+          },
+          "libtype": "torch",
+          "schema": "aiter-solmap-dispatch-v1",
+          "solidx": 0
+        },
+        "otype": {
+          "kind": "dtype",
+          "name": "bfloat16"
+        },
+        "scale_a": null,
+        "scale_b": null,
+        "scale_c": null,
+        "tensor_attributes": {
+          "A": {},
+          "B": {}
+        }
+      },
+      "served_geometry": {
+        "active_requests": 1,
+        "active_tokens": 8192,
+        "replay_id": "forward-1",
+        "run_id": "kimi-original-heads-v2-194958",
+        "stage": "prefill",
+        "tp_rank": 0,
+        "workload_marker": "controller CAPTURE-PHASE=profile; exact native benchmark workload"
+      },
+      "frequency_evidence": {
+        "source_case_key": "bf16_gemm-dea622a8be22e8ca883bb3da",
+        "per_rank_counts": {
+          "0": 48,
+          "1": 48,
+          "2": 48,
+          "3": 48,
+          "4": 48,
+          "5": 48,
+          "6": 48,
+          "7": 48
+        },
+        "scope": "all notified actual served calls in the complete64-request workload; one numerical representative per structural record",
+        "capture_origin": "served_eager",
+        "graph_bucket": null
+      }
+    },
+    {
+      "case_id": "bfloat16-decode-m64-n7168-k1536-bf16_gemm-fcb79a38c6211d6759fa27f4",
+      "occurrences": 95232,
+      "calls_per_sample": 1,
+      "scalars": {
+        "M": 64,
+        "N": 7168,
+        "K": 1536,
+        "fp8": false,
+        "BM": 32,
+        "BN": 64,
+        "BK": 128,
+        "A_ROW_STRIDE": 1536
+      },
+      "tensors": {
+        "A": {
+          "role": "input",
+          "shape": [
+            64,
+            1536
+          ],
+          "strides": [
+            1536,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        },
+        "B": {
+          "role": "input",
+          "shape": [
+            1536,
+            7168
+          ],
+          "strides": [
+            1,
+            1536
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        },
+        "C": {
+          "role": "output",
+          "shape": [
+            64,
+            7168
+          ],
+          "strides": [
+            7168,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        }
+      },
+      "live_fixture": {
+        "path": "fixtures/bfloat16-decode-m64-n7168-k1536-bf16_gemm-fcb79a38c6211d6759fa27f4.json",
+        "sha256": "908ab5aaf5524516fb8b4ffc7c5ffed54132a46e4b1fdb6fd570a601cd356373",
+        "native_capture_run": "kimi-original-heads-v2-194958",
+        "source_case_key": "bf16_gemm-fcb79a38c6211d6759fa27f4",
+        "ABI_preserved": true,
+        "capture_family": "bf16_gemm",
+        "source_sha256": "1fafc9782b43f8c6e198e1d39ce83e01ea3b5892f8b5e1a26c4a5eeb74252b51"
+      },
+      "capture_controls": {
+        "bias": null,
+        "capture_native_dispatch": {
+          "callable": {
+            "module": "aiter.tuned_gemm",
+            "qualname": "flydsl_gemm"
+          },
+          "config": {
+            "bw": 2792.91,
+            "err_ratio": 0.0,
+            "kernelName": "flydsl_gemm4_abf16_wbf16_bf16_t32x64x128_split_k1_block_m_warp2_block_n_warp2_block_k_warp1_async_copyTrue_b_to_ldsTrue_b_preshuffleFalse_c_to_ldsFalse_gfx950",
+            "libtype": "flydsl",
+            "solidx": 5552,
+            "splitK": 1,
+            "tflops": 170.14,
+            "us": 8.2832
+          },
+          "libtype": "flydsl",
+          "schema": "aiter-solmap-dispatch-v1",
+          "solidx": 5552
+        },
+        "otype": {
+          "kind": "dtype",
+          "name": "bfloat16"
+        },
+        "scale_a": null,
+        "scale_b": null,
+        "scale_c": null,
+        "tensor_attributes": {
+          "A": {},
+          "B": {}
+        }
+      },
+      "served_geometry": {
+        "active_requests": 64,
+        "active_tokens": 64,
+        "replay_id": "forward-34",
+        "run_id": "kimi-original-heads-v2-194958",
+        "stage": "decode",
+        "tp_rank": 0,
+        "workload_marker": "controller CAPTURE-PHASE=profile; exact native benchmark workload"
+      },
+      "frequency_evidence": {
+        "source_case_key": "bf16_gemm-fcb79a38c6211d6759fa27f4",
+        "per_rank_counts": {
+          "0": 95232,
+          "1": 95232,
+          "2": 95232,
+          "3": 95232,
+          "4": 95232,
+          "5": 95232,
+          "6": 95232,
+          "7": 95232
+        },
+        "scope": "all notified actual served calls in the complete64-request workload; one numerical representative per structural record",
+        "capture_origin": "served_graph",
+        "graph_bucket": "bs64"
+      }
+    },
+    {
+      "case_id": "bfloat16-prefill-m16384-n1536-k7168-bf16_gemm-fff9a1291e1550a5188def3e",
+      "occurrences": 744,
+      "calls_per_sample": 1,
+      "scalars": {
+        "M": 16384,
+        "N": 1536,
+        "K": 7168,
+        "fp8": false,
+        "BM": 32,
+        "BN": 64,
+        "BK": 128,
+        "A_ROW_STRIDE": 7168
+      },
+      "tensors": {
+        "A": {
+          "role": "input",
+          "shape": [
+            16384,
+            7168
+          ],
+          "strides": [
+            7168,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        },
+        "B": {
+          "role": "input",
+          "shape": [
+            7168,
+            1536
+          ],
+          "strides": [
+            1,
+            7168
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        },
+        "C": {
+          "role": "output",
+          "shape": [
+            16384,
+            1536
+          ],
+          "strides": [
+            1536,
+            1
+          ],
+          "storage_offset": 0,
+          "dtype": "bfloat16",
+          "device_type": "cuda"
+        }
+      },
+      "live_fixture": {
+        "path": "fixtures/bfloat16-prefill-m16384-n1536-k7168-bf16_gemm-fff9a1291e1550a5188def3e.json",
+        "sha256": "c86163d03550dbba7030a258641e72b627d942995d7ac32cf742a422e118c748",
+        "native_capture_run": "kimi-original-heads-v2-194958",
+        "source_case_key": "bf16_gemm-fff9a1291e1550a5188def3e",
+        "ABI_preserved": true,
+        "capture_family": "bf16_gemm",
+        "source_sha256": "1fafc9782b43f8c6e198e1d39ce83e01ea3b5892f8b5e1a26c4a5eeb74252b51"
+      },
+      "capture_controls": {
+        "bias": null,
+        "capture_native_dispatch": {
+          "callable": {
+            "module": "aiter.tuned_gemm",
+            "qualname": "torch_gemm"
+          },
+          "config": {
+            "libtype": "torch",
+            "solidx": 0
+          },
+          "libtype": "torch",
+          "schema": "aiter-solmap-dispatch-v1",
+          "solidx": 0
+        },
+        "otype": {
+          "kind": "dtype",
+          "name": "bfloat16"
+        },
+        "scale_a": null,
+        "scale_b": null,
+        "scale_c": null,
+        "tensor_attributes": {
+          "A": {},
+          "B": {}
+        }
+      },
+      "served_geometry": {
+        "active_requests": 2,
+        "active_tokens": 16384,
+        "replay_id": "forward-2",
+        "run_id": "kimi-original-heads-v2-194958",
+        "stage": "prefill",
+        "tp_rank": 0,
+        "workload_marker": "controller CAPTURE-PHASE=profile; exact native benchmark workload"
+      },
+      "frequency_evidence": {
+        "source_case_key": "bf16_gemm-fff9a1291e1550a5188def3e",
+        "per_rank_counts": {
+          "0": 744,
+          "1": 744,
+          "2": 744,
+          "3": 744,
+          "4": 744,
+          "5": 744,
+          "6": 744,
+          "7": 744
+        },
+        "scope": "all notified actual served calls in the complete64-request workload; one numerical representative per structural record",
+        "capture_origin": "served_eager",
+        "graph_bucket": null
+      }
+    }
+  ],
+  "measurement": {
+    "method": "cuda_graph",
+    "warmup_iterations": 10,
+    "benchmark_iterations": 100,
+    "correctness_seeds": [
+      0,
+      1
+    ],
+    "refresh_inputs": "each_replay",
+    "initialize_outputs": "each_replay",
+    "validate_outputs": "each_replay",
+    "negative_controls": [
+      "no_op",
+      "wrong_output"
+    ]
+  },
+  "capture_stop_manifest_sha256": "348752f8e24f7034c0ab609f5457ffdcb03012ebe040c5bf7375d545b780733c",
+  "coverage": "Every actual notified GEMM record in this task family is retained, including decode, FP32 dense records and distinct equal-shape source records. Unsupported controls or ABIs fail intake.",
+  "live_operand_policy": {
+    "required": true,
+    "case_count": 40,
+    "selection": "Generated even seeds and numerically perturbed actual activation odd seeds; actual weights/scales/layout preserved. CPU FP32 correctness cross-checks the independent GPU FP32 reference with TF32 disabled. Timed replay GPU truth is computed only after candidate output/input CPU observations. No current golden output exists before candidate observation."
+  }
+}

@@ -29,6 +29,21 @@ class Tests(unittest.TestCase):
         f['controls']={'out':{'kind':'output_binding','name':'result'},'tensor_attributes':{'A':{},'B':{}}}
         mapped=comparable_bindings(f);self.assertEqual(mapped['C']['shape'],[64,32])
         self.assertEqual(mapped['B']['stride'],[1,128])
+    def test_padded_activation_rows_and_offset_are_preserved(self):
+        import torch
+        for row_stride,offset in [(144,0),(6288,6144)]:
+            f=self.fixture('bfloat16');f['inputs']['A']['stride']=[row_stride,1];f['inputs']['A']['storage_offset']=offset
+            mapped=comparable_bindings(f);self.assertEqual(mapped['A']['stride'],[row_stride,1])
+            case={'tensors':{'A':{'shape':[64,128],'strides':[row_stride,1],'storage_offset':offset}}}
+            values=torch.randn(64,128).bfloat16();fresh=live_operands.match_activation_layout(values,case)
+            self.assertEqual(fresh.stride(),(row_stride,1));self.assertEqual(fresh.storage_offset(),offset)
+            torch.testing.assert_close(fresh,values,rtol=0,atol=0)
+    def test_provenance_allows_only_later_source_inventory_additions(self):
+        from import_live_operands import provenance_matches
+        early={'run_id':'actual','native_source_hashes':{'dense':'a'}}
+        self.assertTrue(provenance_matches(early,{'run_id':'actual','native_source_hashes':{'dense':'a','later':'b'}}))
+        self.assertFalse(provenance_matches(early,{'run_id':'actual','native_source_hashes':{'dense':'different'}}))
+        self.assertFalse(provenance_matches(early,{'run_id':'other','native_source_hashes':{'dense':'a'}}))
     def test_nonzero_offset_preserved(self):
         f=self.fixture();f['inputs']['A']['storage_offset']=128
         self.assertEqual(comparable_bindings(f)['A']['storage_offset'],128)

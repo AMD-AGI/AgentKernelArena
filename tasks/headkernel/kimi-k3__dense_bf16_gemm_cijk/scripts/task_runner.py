@@ -1,4 +1,4 @@
-"""Protected complete-case Triton-port evaluation entrypoint. No oracle exists on the GPU."""
+"""Protected complete-case evaluation; GPU reference follows frozen CPU observations."""
 import argparse
 import hashlib
 import importlib.util
@@ -35,11 +35,11 @@ def pack(weight):
     return weight.reshape(n//16,16,k//32,2,16).permute(0,2,3,1,4).contiguous().reshape(n,k)
 
 
-def generate(case,seed):
+def generate(case,seed,compute_reference=True):
     import torch
     if case.get('live_fixture') and seed%2:
         from live_operands import generate_live
-        return generate_live(case,seed)
+        return generate_live(case,seed,compute_reference=compute_reference)
     m,n,k=(case['scalars'][x] for x in ('M','N','K'));g=torch.Generator(device='cpu').manual_seed(seed)
     a=torch.randn((m,k),generator=g,dtype=torch.float32)/math.sqrt(k)
     b=torch.randn((n,k),generator=g,dtype=torch.float32)
@@ -56,11 +56,13 @@ def generate(case,seed):
         return {'A':aq,'B':pack(bq),'SA':sa,'SB':sb},expected
     dtype=getattr(torch,case['tensors']['A']['dtype'])
     a=a.to(dtype);b=b.to(dtype)
-    expected=(a.float()@b.float().t()).to(dtype)
+    from live_operands import match_activation_layout
+    a=match_activation_layout(a,case)
+    expected=(a.float()@b.float().t()).to(dtype) if compute_reference else None
     return {'A':a,'B':b.t()},expected
 
 
-def build_state(case,seed,module):
+def build_state(case,seed,module,defer_reference=False):
     import torch
     fresh,reference=generate(case,seed)
     def allocate(spec):
@@ -71,7 +73,7 @@ def build_state(case,seed,module):
     for name,value in fresh.items():tensors[name].copy_(value)
     scalars=case['scalars'];m,n,k=(scalars[x] for x in ('M','N','K'));fp8=scalars['fp8']
     def launch_port():
-        return module.gemm_kernel[(math.ceil(m/32),math.ceil(n/64))](tensors['A'],tensors['B'],tensors['A'],tensors['B'],tensors['C'],m,n,k,False,32,64,128,num_warps=4)
+        return module.gemm_kernel[(math.ceil(m/32),math.ceil(n/64))](tensors['A'],tensors['B'],tensors['A'],tensors['B'],tensors['C'],m,n,k,False,32,64,128,tensors['A'].stride(0),num_warps=4)
     family=case['live_fixture']['capture_family']
     if family=='bf16_gemm':
         from native_dispatch import load_native,describe_dispatch,require_dispatch,bind_solutions
@@ -93,7 +95,7 @@ def build_state(case,seed,module):
         return compiled[0]
     def observe():
         actual={'M':tensors['A'].shape[0],'N':tensors['C'].shape[1],'K':tensors['A'].shape[1],
-                'fp8':tensors['A'].dtype==torch.float8_e4m3fn,'BM':32,'BN':64,'BK':128}
+                'fp8':tensors['A'].dtype==torch.float8_e4m3fn,'BM':32,'BN':64,'BK':128,'A_ROW_STRIDE':tensors['A'].stride(0)}
         return observe_case(case,tensors,actual)
     def initialize():tensors['C'].fill_(float('nan'))
     def verify(ref):
@@ -104,9 +106,20 @@ def build_state(case,seed,module):
             after=tensors[name].cpu()
             if not torch.equal(after.contiguous().view(torch.uint8),before.contiguous().view(torch.uint8)):raise AssertionError('Input mutation: '+name)
         if tensors['C'].untyped_storage().data_ptr() in [x.untyped_storage().data_ptr() for name,x in tensors.items() if name!='C']:raise AssertionError('Output aliases input')
-        torch.testing.assert_close(actual,expected,rtol=0.01,atol=0.02)
+        # Candidate output and immutable inputs are already observed on CPU.
+        # Only now may an independent FP32 GPU reference exist. Correctness and
+        # initial case checks also bind this fast reference to CPU FP32 truth.
+        prior_tf32=torch.backends.cuda.matmul.allow_tf32
+        torch.backends.cuda.matmul.allow_tf32=False
+        try:
+            gpu_reference=(tensors['A'].float()@tensors['B'].float()).to(tensors['C'].dtype)
+            reference_cpu=gpu_reference.detach().cpu().clone()
+            del gpu_reference
+        finally:torch.backends.cuda.matmul.allow_tf32=prior_tf32
+        if expected is not None:torch.testing.assert_close(reference_cpu,expected,rtol=0.01,atol=0.02)
+        torch.testing.assert_close(actual,reference_cpu if expected is None else expected,rtol=0.01,atol=0.02)
     def reset(seed):
-        values,expected=generate(case,seed)
+        values,expected=generate(case,seed,compute_reference=not defer_reference)
         for name,value in values.items():tensors[name].copy_(value)
         return expected,values
     observe();return tensors,invoke,observe,initialize,verify,reset,(reference,fresh)
@@ -140,7 +153,7 @@ def main():
     torch.set_num_threads(16)
     results=[];compiled=[];policy=manifest['measurement']
     for case in manifest['cases']:
-        tensors,invoke,observe,initialize,verify,reset,reference=build_state(case,policy['correctness_seeds'][0],module)
+        tensors,invoke,observe,initialize,verify,reset,reference=build_state(case,policy['correctness_seeds'][0],module,defer_reference=a.phase=='performance')
         initialize();kernel=invoke();torch.cuda.synchronize();verify(reference)
         compiled.append({'case_id':case['case_id'],'kernel_name':kernel.name,'kernel_hash':kernel.hash})
         if a.phase=='compile':continue
@@ -164,7 +177,7 @@ def main():
             results.append(checked_replays(case,policy,reset_inputs=reset,initialize_outputs=initialize,replay=graph.replay,verify=verify,measure=measure,observe=observe,seed=request['challenge_seed']))
         del tensors,invoke,observe,initialize,verify,reset,reference
     if package_hash()!=before:raise ValueError('Protected package changed during evaluation')
-    report=finalize_report({'schema_version':1,'status':'ok','request':request,'compiled':True,'cases':results,'compiled_kernels':compiled,'oracle_device':'cpu','runtime_source_sha256':source_hash(),'implementation':'submitted_triton_port','comparison_baseline':'frozen_triton_port','stock_source_equivalence':False},manifest,request)
+    report=finalize_report({'schema_version':1,'status':'ok','request':request,'compiled':True,'cases':results,'compiled_kernels':compiled,'oracle_device':'cpu','reference_policy':'CPU FP32 correctness plus independent GPU FP32 after candidate CPU observations for timed replay; TF32 disabled','runtime_source_sha256':source_hash(),'implementation':'submitted_triton_port','comparison_baseline':'frozen_triton_port','stock_source_equivalence':False},manifest,request)
     temp=path.with_suffix('.tmp');temp.write_text(json.dumps(report,indent=2,allow_nan=False)+'\n');temp.replace(path)
     if a.phase=='performance':
         import production_comparison

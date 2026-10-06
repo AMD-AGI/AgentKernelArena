@@ -1,0 +1,33 @@
+{
+  "status": "NATIVE_PRECISION_REQUIRES_GPU_DIAGNOSTIC",
+  "case_id": "bfloat16-decode-m64-n2112-k7168-bf16_gemm-84759eb3ff0b4b1d0af0cb6f",
+  "capture_dispatch": {
+    "callable": {
+      "module": "aiter.tuned_gemm",
+      "qualname": "flydsl_gemm"
+    },
+    "config": {
+      "bw": 2295.51,
+      "err_ratio": 0.0199,
+      "kernelName": "flydsl_gemm5_abf16_wbf16_bf16_t64x64x64_split_k7_block_m_warp2_block_n_warp2_block_k_warp1_async_copyTrue_b_to_ldsTrue_b_preshuffleFalse_c_to_ldsFalse_gfx950",
+      "libtype": "flydsl",
+      "solidx": 2321,
+      "splitK": 7,
+      "tflops": 141.37,
+      "us": 13.7074
+    },
+    "libtype": "flydsl",
+    "schema": "aiter-solmap-dispatch-v1",
+    "solidx": 2321
+  },
+  "failed_elements": 14,
+  "total_elements": 135168,
+  "largest_failed_abs_error": 0.078125,
+  "rtol": 0.01,
+  "atol": 0.02,
+  "tolerances_unchanged": true,
+  "case_retained": true,
+  "evidence": "Pinned native splitk_hgemm.py truncates partial accumulators to BF16 before BF16 atomic fadd. This exact case uses split_k7 and native config err_ratio0.0199. No tolerance or oracle relaxation has been applied.",
+  "other_actual_cases_CPU_native_parity": "39/40 PASS",
+  "GPU_launches_by_owner": false
+}

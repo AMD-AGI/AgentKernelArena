@@ -26,6 +26,7 @@ trusted_evaluation:
   reference_sources:
     source/kernels.py: ut/reference/kernels.py
   requires_aiter_jit_cache: true
+  fixture_manifest: fixtures/EXTERNAL-MANIFEST.json
 prompt:
   source_code: null
   instructions: Optimize only the GPU body of gemm_kernel in source/kernels.py. Preserve all protected
@@ -38,14 +39,15 @@ prompt:
 headkernel:
   model: Kimi-K3
   docker: docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96
-  source_run: kimi-actual-v4-no-stack-194550
+  source_run: kimi-original-heads-v2-194958
   target_callable: aiter.tuned_gemm:gemm_a16w16 and torch:mm
   source_seed: portable_triton_candidate_scaffold
   native_dispatch: Actual pinned gemm_a16w16 solMap dispatch; candidate replaces cached solMap entries
     with the submitted Triton port and proves invocation
-  validation_status: prepared_pending_actual_dense_capture
-  oracle: independent CPU FP32 matmul from quantized/dequantized operands; no GPU oracle buffers exist
-  count_scope: unknown until new completed capture; sampled profile evidence is not a frequency manifest
+  validation_status: final40_dense_cases_imported_pending_GPU_framework
+  oracle: CPU FP32 correctness with independent GPU FP32 replay reference (TF32 disabled), computed only
+    after candidate output and immutable input observations are frozen on CPU
+  count_scope: all actual notified calls in the finalized64-request workload on each TP rank
   performance_baseline: frozen supplied Triton port; reference and candidate use identical dispatch
   task_scope: replacement/port implementation optimization for observed operator ABI; not original native
     image kernel source

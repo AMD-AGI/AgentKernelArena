@@ -34,7 +34,8 @@ def comparable_bindings(f):
         result['B']['shape']=list(reversed(result['B']['shape']));result['B']['stride']=list(reversed(result['B']['stride']))
     m,k=result['A']['shape'];n=result['C']['shape'][1];fp8=family=='fp8_gemm';dtype=result['A']['dtype'].removeprefix('torch.')
     if min(m,n,k)<=0:raise ValueError('Empty GEMM dimensions need an explicit disposition')
-    layouts={'A':([m,k],[k,1],dtype),'B':([n,k],[k,1],dtype) if fp8 else ([k,n],[1,k],dtype),'C':([m,n],[n,1],'bfloat16' if fp8 else dtype)}
+    if result['A']['stride'][1]!=1 or result['A']['stride'][0]<k:raise ValueError('Overlapping/non-unit inner A stride needs another contract')
+    layouts={'A':([m,k],result['A']['stride'],dtype),'B':([n,k],[k,1],dtype) if fp8 else ([k,n],[1,k],dtype),'C':([m,n],[n,1],'bfloat16' if fp8 else dtype)}
     if fp8:
         if dtype!='float8_e4m3fn' or k%128 or n%128:raise ValueError('Unsupported FP8 block geometry')
         layouts.update(SA=([m,k//128],[1,m],'float32'),SB=([n//128,k//128],[k//128,1],'float32'))
@@ -43,6 +44,14 @@ def comparable_bindings(f):
         if actual['shape']!=shape or actual['stride']!=stride or type(actual['storage_offset']) is not int or actual['storage_offset']<0 or actual['dtype'].removeprefix('torch.')!=dtype:raise ValueError('Unsupported observed ABI: '+name)
     if len({meta['alias'] for meta in result.values()})!=len(result):raise ValueError('Observed aliased GEMM needs an explicit contract')
     return result
+
+
+def provenance_matches(early,final):
+    # Native module inventory grows as unrelated modules first execute. Every
+    # already-recorded source hash must match; all other identity stays exact.
+    left=dict(early);right=dict(final)
+    earlier=left.pop('native_source_hashes',{});later=right.pop('native_source_hashes',{})
+    return left==right and all(later.get(name)==digest for name,digest in earlier.items())
 
 
 def pinned(path,checksum):
@@ -78,7 +87,7 @@ def collect(path,fp8,native,ready_path):
         ref=rank['cases'][key];file=(origin/ref['path']).resolve()
         if not file.is_relative_to(origin):raise ValueError('Fixture escapes source')
         f=pinned(file,ref['sha256']);family=f['family'];served=f['served']
-        if f['case_key']!=key or f['startup_values'] or f['origin'] not in ('served_eager','served_graph') or f['provenance']!=rank['provenance'] or served['tp_rank']!=0 or served['run_id']!=verified['run_id']:raise ValueError('Wrong actual served source')
+        if f['case_key']!=key or f['startup_values'] or f['origin'] not in ('served_eager','served_graph') or not provenance_matches(f['provenance'],rank['provenance']) or served['tp_rank']!=0 or served['run_id']!=verified['run_id']:raise ValueError('Wrong actual served source')
         if served['stage'] not in ('prefill','decode') or not 1<=served['active_requests']<=64:raise ValueError('Unsupported actual stage')
         accepted=native['source_hashes_by_family'][family];accepted=accepted if isinstance(accepted,list) else [accepted]
         if f['source_sha256'] not in accepted:raise ValueError('Pinned native module/schema differs')
@@ -114,7 +123,7 @@ def main():
                     if not output.exists():copy(source,output)
                     if file_sha(output)!=part['sha256']:raise ValueError('Staged blob checksum mismatch')
         tensors={name:{'role':'output' if name=='C' else 'input','shape':meta['shape'],'strides':meta['stride'],'storage_offset':meta['storage_offset'],'dtype':meta['dtype'].removeprefix('torch.'),'device_type':'cuda'} for name,meta in bindings.items()}
-        cases.append({'case_id':case_id,'occurrences':counts['0'],'calls_per_sample':1,'scalars':{'M':m,'N':n,'K':k,'fp8':fp8,'BM':32,'BN':64,'BK':128},'tensors':tensors,
+        cases.append({'case_id':case_id,'occurrences':counts['0'],'calls_per_sample':1,'scalars':{'M':m,'N':n,'K':k,'fp8':fp8,'BM':32,'BN':64,'BK':128,'A_ROW_STRIDE':bindings['A']['stride'][0]},'tensors':tensors,
             'live_fixture':{'path':'fixtures/'+target.name,'sha256':file_sha(target),'native_capture_run':rank['provenance']['run_id'],'source_case_key':f['case_key'],'ABI_preserved':True,'capture_family':f['family'],'source_sha256':f['source_sha256']},
             'capture_controls':f['controls'],'served_geometry':f['served'],'frequency_evidence':{'source_case_key':f['case_key'],'per_rank_counts':counts,'scope':'all notified actual served calls in the complete64-request workload; one numerical representative per structural record','capture_origin':f['origin'],'graph_bucket':f['graph_bucket']}})
     manifest=validate_manifest({'schema_version':1,'runtime_image':rank['provenance']['image'],'source_run':rank['provenance']['run_id'],'cases':cases,'measurement':requirements['measurement'],
