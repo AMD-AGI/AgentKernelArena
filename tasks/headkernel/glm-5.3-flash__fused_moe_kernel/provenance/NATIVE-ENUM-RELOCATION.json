@@ -1,0 +1,53 @@
+{
+  "schema": "aiter-native-enum-relocation-v1",
+  "runtime_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
+  "canonical_payload_module": "aiter.jit.module_aiter_core",
+  "runtime_module_names": [
+    "aiter.jit.module_aiter_core",
+    "module_aiter_core"
+  ],
+  "binary": {
+    "image_relative_path": "aiter/jit/module_aiter_core.so",
+    "relocated_filename": "module_aiter_core.so",
+    "bytes": 661008,
+    "sha256": "58c4a636ab04c32d774218946e4c6087b3443fe4a4697130b7e826d7e935a536"
+  },
+  "observed_identity": {
+    "module": "module_aiter_core",
+    "loader": "importlib.machinery.ExtensionFileLoader",
+    "metaclass": "pybind11_builtins.pybind11_type",
+    "defining_module_and_aiter_exports_identical": true,
+    "complete_enum_tables": {
+      "ActivationType": {
+        "Gelu": 1,
+        "GeluTanh": 4,
+        "No": -1,
+        "Silu": 0,
+        "Situv2": 3,
+        "Swiglu": 2
+      },
+      "QuantType": {
+        "No": 0,
+        "per_1024x128": 7,
+        "per_128x128": 5,
+        "per_1x128": 4,
+        "per_1x32": 3,
+        "per_256x128": 6,
+        "per_Tensor": 1,
+        "per_Token": 2
+      }
+    },
+    "image_and_relocated_bytes_identical_before_and_after_import": true
+  },
+  "evidence": {
+    "run_id": "enum-trusted-environment-probe-20261006-195184-gpu4",
+    "identity_receipt_sha256": "aca9ea92fc44ecd2a57d453a27824e78db8ba2550b9b434c0f7c9ca3aa3050c7",
+    "gpu_preflight_sha256": "033f15be036408251f06473b573738e31c306d8016bc1ff97a6dd476b3b5745b",
+    "full_cache_manifest_sha256": "17de59dd4fd3d6346581a6f728f7bceffa877ca89798b1802533deea3b0b512d",
+    "original_restore_result": "Wrong native enum restore class for both actual relocated classes",
+    "MoE_kernels_invoked": false
+  },
+  "policy": "Only the canonical or observed bare import name is admitted. Require exact aiter/defining-module class identity, native pybind metaclass, complete member names/types/values, real matching extension loader and origin, the declared image/JIT path, and pinned binary bytes. Serialized enum payloads remain canonical.",
+  "default_identity_evidence": "The successful4b327ee1 framework compile, correctness and performance restore assertions required the canonical runtime module.",
+  "numerical_and_measurement_policy_changed": false
+}
