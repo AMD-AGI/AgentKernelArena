@@ -1,158 +1,21 @@
-# Upstream head-kernel setup
+# Head-kernel tasks and portable setup
 
-This branch restores the original `headkernel_ut_0914_full` tasks for the five
-requested model families, as retrieved on 2026-09-22. Commit `a16f2203` records
-that restoration, including the task sources, unit tests, configuration,
-baseline packages, internal aliases and upstream runners. The adapted
-generated-input suite is replaced. Subsequent portable fixes are described below.
+This branch contains **18 active refreshed tasks** for DeepSeek V4 Pro, GLM 5.3 Flash, Kimi K3 and MiniMax M3, plus **five preserved Qwen3.8 2.4T tasks**. The refreshed tasks use the exact SGLang 0.5.20 image in the [runtime catalog](tools/headkernel-runtime-targets.json). The catalog and this setup remain **not qualified / ready=false** until the matching task-validator, native correctness/performance, submitted-source controls and trusted retest reports have passed.
 
-The [reported workload results table](docs/reference/headkernel-reported-results.md)
-records the supplied E2E gains, head-kernel speedups and roofline figures, with
-links to the corresponding tasks and explicit provenance limits.
+| Model | Refreshed active tasks | Setup |
+| --- | ---: | --- |
+| DeepSeek V4 Pro | 6 | Five captured-fixture tasks and the self-contained native FP8 quantization task |
+| GLM 5.3 Flash | 3 | Dense BF16 GEMM, FP8 GEMM and whole-MoE port |
+| Kimi K3 | 5 | Dense GEMM, residual aggregation, Lean attention and two MoE stages |
+| MiniMax M3 | 4 | FP4 Quark GEMM and three attention tasks |
+| Qwen3.8 2.4T | 0 refreshed; 5 preserved | Existing capture-era mappings and task files remain unchanged |
 
-The canonical tasks are in [`tasks/headkernel/`](tasks/headkernel/). Their original
-flat directory names are retained:
+Use the [portable setup guide](docs/how-to/headkernel-upstream-runtime.md) to materialize task-local OCI fixtures into a clean checkout **before an agent starts**, run the standard framework validator, and retest submitted source from a trusted Git commit. A normal replay needs a compatible local ROCm/Docker host and the task fixtures. It does not need a Crusoe allocation, shared campaign directory, model server or whole-model checkpoint. [The current selection](example_configs/headkernel_sg520_current_mi355x.yaml) enumerates all 18 refreshed task IDs; selecting a task does not assert that it is qualified.
 
-| Model | Configured tasks | `NOT_BUILT` placeholders |
-| --- | ---: | ---: |
-| DeepSeek V4 Pro | 3 | 0 |
-| GLM 5.3 Flash | 2 | 2 |
-| Kimi K3 | 3 | 2 |
-| MiniMax M3 | 3 | 1 |
-| Qwen3.8 2.4T | 5 | 0 |
-| Total | 16 | 5 |
+The recording workload is 64 requests, ISL8192, OSL1024, concurrency64, TP8, context9218 and seed42. Warmup uses the same prompts with OSL16 followed by a prefix-cache flush. Isolated tasks replay rank-local operations on one compatible GPU. Each task's `cases.json`, config and provenance remain authoritative about layouts, controls, occurrence counts, references and scoring; sampled profiler counts must not be extrapolated into full-workload frequencies.
 
-The two GLM GEMM tasks added by the earlier adaptation are upstream placeholders
-again. The previous adapted suite and its eight native-verified results remain
-in Git history at commit `8b57ca074e7fd28fcba96b1d0097e772b6054c22`; those results
-do not qualify the restored setup.
+Kimi residual aggregation preserves the original score/combine **logical head** through `kimi-k3__attn_residual_aggregate_hip`. Its fixtures contain the first `min(4,T)` actual token rows as explicitly labeled parity samples, with the complete native ABI and workload counts. They are not full native tensor dumps. The task separately checks complete full-shape outputs against an independent mathematical reference. GLM whole-MoE and GEMM port comparisons also retain their task-specific native-parity limits; a port-versus-port score is not a serving-runtime gain.
 
-## Original setup and inputs
+Historical implementations have explicit dispositions: DeepSeek sparse MLA is replaced by unified paged prefill/decode for this recipe; Kimi grouped attention is replaced by Lean for served batch64 but remains a native low-batch branch; GLM scale-layout copies produced aliases rather than materialized GPU copies. The [disposition record](docs/reference/headkernel-superseded-attention.json) links the attention replacements. None of these dispositions retires the current dense GEMM or residual logical heads.
 
-Read the [setup guide](docs/how-to/headkernel-upstream-runtime.md) and the
-[verbatim upstream README](HEADKERNELS_UPSTREAM.md). Each task's `config.yaml`
-retains its original capture-image declaration. The setup guide lists the
-capture-era public HyperLoom images and their compatibility limits; it records
-the custom Kimi build separately. The
-[current runtime targets](tools/headkernel-runtime-targets.json), supplied on
-2026-10-05, define a `refresh_scope` for MiniMax M3, Kimi K3, DeepSeek V4 Pro and
-GLM 5.3 Flash. Refresh and new validation for these four models use **SGLang
-0.5.20 only**, pinned by the catalog's exact manifest digest, and require the
-latest matching HyperLoom run evidence. Their 11 configured task mappings have
-no alternate target. Qwen3.8 2.4T is excluded from this refresh; its five mappings,
-task paths and workloads remain unchanged.
-
-The alternate SGLang and vLLM image entries remain in the catalog as historical
-references, including Qwen's existing alternate mapping. They are not fallback
-targets for this four-model refresh. Registry availability does not establish
-task compatibility.
-
-The existing tasks still contain historical kernels and captures. The
-[SGLang 0.5.20 refresh progress](docs/reference/headkernel-sg520-refresh.md)
-records sampled traces, revision-scoped native checks and historical diagnostics.
-The [DeepSeek native-quant task](tasks/headkernel_sg520/deepseek-v4-pro__per_group_quant_fp8/README.md)
-passed final native checks, all 12 framework validator checks and the trusted
-six-phase measurement on job 194224. The measurement used identical reference
-and candidate source and establishes no gain; the prior validator FAIL remains
-preserved. This is the only qualified refreshed task. [MiniMax 194299](docs/reference/headkernel-sg520-minimax.md)
-and [GLM 194292](docs/reference/headkernel-sg520-glm.md) now have verified full 64-request 8192/1024 profiles at C64/TP8/context
-9218, with 16 prefill/decode traces each. Sampling requests eight steps per stage
-and does not capture every graph replay. GLM uses 18 backport files over the
-pinned SGLang 0.5.20 image; MiniMax uses stock native JIT. Kernel contracts,
-traced tensor/reference oracles, other task validations and the full four-model
-refresh remain pending.
-
-The [published validation archive](docs/reference/headkernel-sg520-refresh.md#published-validation-evidence)
-contains 172 evidence files plus its manifest (173 objects), all downloaded back
-and SHA-256 verified. Its OCI prefix is
-`oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z`.
-The archive keeps the quant-only PASS separate from legacy diagnostics and GLM
-component checks. It predates the completed MiniMax/GLM profiles, whose fresh
-capture receipts and two fully read-back, SHA-256-verified OCI archives are
-recorded separately in the catalog.
-
-The policy and progress records do not change kernel implementations, shapes,
-tensors or historical gain figures, and do not establish a suite-wide PASS or E2E gain.
-
-The original numerical input contract is restored. The 16 configured tasks need
-17 original tensor files totaling 33,139,788,731 bytes: 14 reference archives and
-three MiniMax timing-geometry files. Two tasks use their original deterministic
-runtime baselines instead of persistent reference archives. The tensor payloads
-are external to Git. Their exact names, sizes, and SHA-256 hashes are declared in
-the [artifact manifest](tools/headkernel-artifacts.json); the setup guide explains
-how to download them from OCI with rclone and verify each original SHA-256.
-Generated substitutes are not provided. The OCI root is
-`oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_ut_0914_full/20260922`.
-The original patch, GPU-lock script, and GLM configuration/tokenizer files are
-available under its `setup/` prefix; see the
-[setup manifest](tools/headkernel-setup-artifacts.json).
-
-Task-local `ut/meta.json`, `ut/cases.py`, and the original UT documentation govern
-shapes, values, layouts, references, and scoring. The adaptation's generated
-contracts, shape catalogs, scoring restrictions, and native-verified selectors
-are not part of this restored set.
-
-## Restoration scope
-
-The upstream package also contains GLM 5.2 entries outside the five requested
-families. Its original full manifest and maintenance documentation are retained
-as source evidence; the task selection above contains the requested families.
-Generated build output, caches, temporary overlays, and run logs are not shipped.
-
-The upstream README is preserved verbatim and contains historical statements.
-For example, its older MiniMax missing-geometry warning predates the three files
-present in the retrieved inventory. Preserving an upstream result or statement
-does not turn it into a new verification result.
-
-The original restoration did not include new GPU validation. File-copy and setup
-checks remain separate from upstream GPU results and the later quant-only PASS.
-Neither establishes universal resistance to benchmark cheating or complete
-HyperLoom end-to-end equivalence.
-
-## Portable execution fixes
-
-These corrections address shared execution behavior. They do not introduce
-optimized kernel implementations, substitute captured inputs, or change the
-reference math, test shapes, tolerances, warmups, sample counts or timing method.
-
-- **Keep evaluation connected to editable source.** Workspace, quality-loop,
-  held-out and inspection copies preserve relative task symlinks such as
-  `ut/kernel_src/kernel.py -> ../../source/kernel.py`. The harness guard records
-  the original editable-source aliases and rejects missing, detached or
-  redirected aliases. Noneditable support files remain protected. Task packages
-  must contain their symlink targets; old workspaces with detached copies must
-  be recreated from the task rather than treated as valid candidate evaluations.
-  Held-out baseline restoration validates every destination before writing, so
-  a copied absolute or escaping source link cannot overwrite the submitted
-  candidate. Quality-loop changes operate on the link itself when adding,
-  replacing or deleting an alias, preserving its referenced kernel file.
-- **Separate candidate and production MoE registration.** The Qwen two-stage
-  MoE candidate registers its guarded operation under a module-qualified name,
-  so AITER cannot reuse the production operation's registration for the candidate.
-  Duplicate candidate registration fails explicitly.
-- **Keep benchmark failures visible.** The common runner, copied into all 16
-  configured tasks, permits the existing UT timing fallback only when replay
-  reconstruction is unsupported. Failed candidate calls, failed case builders,
-  timeouts, stale output and invalid or partial measurements cannot become a
-  successful score through fallback. Successful CUDA-event timing retains the
-  original measurement procedure. The follow-up parser also rejects malformed
-  or nonfinite `timing:` lines when valid rows or structured output are present;
-  it does not silently drop the bad rows. Generator templates match all 16
-  runner/benchmark copies, with a regression check preventing old runner behavior
-  from being regenerated.
-
-Focused regression coverage is in `tests/test_task_source_aliases.py`,
-`tests/test_headkernel_moe_registration.py` and
-`tests/test_headkernel_benchmark_failures.py`, with copy/restoration regressions
-in `tests/test_source_alias_copy_safety.py`. CPU tests establish these control
-paths; they do not establish real GPU correctness, AITER dispatch or performance.
-
-Stricter failure handling can expose existing replay incompatibilities that
-previously selected a different timing path, including the DeepSeek MoE tasks.
-This is not a claim that all 16 tasks are newly qualified. Their original
-CUDA-event reports also predate the current validator's graph/fallback metadata
-contract; passing the CPU regressions does not resolve that qualification gap.
-The existing `make check-perf-helpers` check also reports the 16 legacy
-headkernel performance entrypoints as unrecognized. The current image catalog
-and these execution fixes do not establish that this integration check or GPU
-task qualification has passed.
+The [reported workload results table](docs/reference/headkernel-reported-results.md) and [reported-results data](tools/headkernel-reported-results.json) remain the supplied historical **SGLang 0.5.17** figures. They are not new SG0.5.20 measurements or gains. The verbatim [upstream README](HEADKERNELS_UPSTREAM.md), [capture-era runtime catalog](tools/headkernel-public-runtimes.json), [original payload manifest](tools/headkernel-artifacts.json) and [original publication record](tools/headkernel-publication.json) preserve the earlier restoration, including Qwen's setup. Their historical setup requirements do not apply automatically to a refreshed task.

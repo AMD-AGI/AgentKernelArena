@@ -171,3 +171,7 @@ sources. No fixture fetch belongs inside the validator's evaluation container.
 A stage receipt does not replace a framework-finalized `PASS` or a trusted GPU
 measurement. Task owners should qualify their prepared input with the normal
 framework validator and the trusted replay before publication.
+
+## Prepare a normal Arena checkout
+
+For the refreshed head-kernel selection, [prepare_headkernel_run.py](../../tools/prepare_headkernel_run.py) composes this stage-only API with a clean checkout of the trusted Git commit. It installs each complete prepared task before an agent starts, preserves the original Git task trees and per-task receipts, and writes `example_configs/prepared_headkernel_run.yaml`. It then uses the ordinary `make docker-run` workflow. See the [portable setup guide](headkernel-upstream-runtime.md) for the complete staging, standard-validator and source-only trusted-retest sequence. This preparation performs no GPU qualification and makes no ready-suite claim.

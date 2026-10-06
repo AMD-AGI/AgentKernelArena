@@ -1,0 +1,26 @@
+# Stage external fixtures before using this selection; see HEADKERNELS.md.
+# Current selection is unqualified until matching finalized reports exist.
+agent:
+  template: task_validator
+tasks:
+- headkernel/deepseek-v4-pro__moe_stage1_grouped_gemm_silu_flydsl
+- headkernel/deepseek-v4-pro__moe_stage1_grouped_gemm_silu_opus_a8w4
+- headkernel/deepseek-v4-pro__moe_stage2_down_proj_reduce_opus_a8w4
+- headkernel/deepseek-v4-pro__unified_paged_attention_decode
+- headkernel/deepseek-v4-pro__unified_paged_attention_prefill
+- headkernel/glm-5.3-flash__ck_gemm_a8w8_blockscale_bpreshuffle
+- headkernel/glm-5.3-flash__fused_moe_kernel
+- headkernel/glm-5.3-flash__gemm_a16w16_bf16_cijk
+- headkernel/kimi-k3__attn_residual_aggregate_hip
+- headkernel/kimi-k3__dense_bf16_gemm_cijk
+- headkernel/kimi-k3__lean_attention_decode
+- headkernel/kimi-k3__moe_gemm1_stage1
+- headkernel/kimi-k3__moe_gemm2_stage2
+- headkernel/minimax-m3__decode_score_kernel
+- headkernel/minimax-m3__gemm_afp4wfp4_kernel
+- headkernel/minimax-m3__gqa_share_sparse_decode_kernel
+- headkernel/minimax-m3__gqa_share_sparse_fwd_kernel
+- headkernel_sg520/deepseek-v4-pro__per_group_quant_fp8
+target_gpu_model: MI355X
+log_directory: logs
+workspace_directory_prefix: workspace

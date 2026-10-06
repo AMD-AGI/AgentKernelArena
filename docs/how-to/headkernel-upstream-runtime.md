@@ -1,412 +1,57 @@
-# Run the restored upstream head-kernel tasks
+# Portable head-kernel setup and trusted retest
 
-The original tasks live at `tasks/headkernel/<flat-task-name>/`. The five-model
-selection contains 16 configured tasks and five `NOT_BUILT` placeholders. The
-task files, sources, harnesses and original suite tools are restored from the
-upstream delivery; [HEADKERNELS_UPSTREAM.md](../../HEADKERNELS_UPSTREAM.md) preserves
-its README. See [portable execution fixes](../../HEADKERNELS.md#portable-execution-fixes)
-for subsequent workspace-alias, candidate-registration and failure-handling
-corrections. The original tools also describe the wider six-model suite, including
-GLM-5.2, which is outside this selection. Their full-suite counts therefore differ.
+The [runtime catalog](../../tools/headkernel-runtime-targets.json) maps 18 refreshed tasks to one exact SGLang 0.5.20 digest and retains all five Qwen mappings. **Readiness and qualification remain false** until final, source-matched GPU reports pass. Artifact download, CPU staging and a completed capture do not establish task correctness, performance or a serving-runtime gain.
 
-Verification of copied bytes establishes source identity. It does not establish
-GPU correctness, performance, or a new framework `task_validator` PASS. No GPU
-validation was run for this restoration. Historical upstream verdicts remain
-historical evidence; preserve new run logs and reports separately.
+The refreshed recording workload is 64 requests, ISL8192, OSL1024, C64, TP8, context9218 and seed42. Warmup uses OSL16 and a prefix-cache flush. Replay uses the task's captured rank-local operands on a MI355X (`gfx950`), with the work and measurement policy in its local case manifest. Full model weights and the original serving cluster are not required for isolated replay.
 
-## Current workload image targets — 2026-10-05
+## Prepare trusted inputs before launching an agent
 
-Refresh and new validation for **MiniMax M3, Kimi K3, DeepSeek V4 Pro and
-GLM 5.3 Flash use SGLang 0.5.20 only**, with the latest matching HyperLoom run
-evidence. Qwen3.8 2.4T is excluded; its five task mappings, paths and workloads
-remain unchanged. The `refresh_scope` in
-[the current runtime catalog](../../tools/headkernel-runtime-targets.json)
-records the allowed models, exact image digest and pending evidence status.
+On a trusted ROCm host, install Git, Python3 with PyYAML, rclone and Docker. Configure rclone's `oci` remote to access the exact prefix in each selected task's `fixtures/EXTERNAL-MANIFEST.json`. This is an OCI object-store remote, distinct from the Docker image registry. Credentials stay on the host. Choose a trusted full Git commit containing the task, case manifest, external-asset manifest and setup helper.
 
-Registry manifest and configuration digests were verified on 2026-10-05; all
-three recorded images declare `linux/amd64`. Registry availability does not
-establish GPU compatibility or refresh the existing captures. The alternate and
-vLLM catalog entries are retained for historical references, including Qwen's
-existing mapping; neither is allowed as a fallback for the four-model refresh.
-
-| Purpose | Requested image | Status |
-| --- | --- | --- |
-| Only target for the current refresh | `lmsysorg/sglang:v0.5.20-rocm724-mi35x` | Registry verified; refreshed evidence and task compatibility pending |
-| Historical alternate SGLang entry | `lmsysorg/sglang-rocm:v0.5.19-rocm720-mi35x-20260913` | Preserved in the catalog; excluded from the four-model refresh |
-| Recorded vLLM serving entry | `vllm/vllm-openai-rocm:v0.29.0` | Preserved in the catalog; excluded from the four-model refresh |
-| Planned vLLM upgrade | v0.30 | Outside this refresh; exact tag not supplied |
-
-The primary SGLang pull reference is:
-
-```text
-docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96
-```
-
-The catalog maps the 11 configured tasks in scope only to SGLang 0.5.20 and
-retains their original capture-image and setup references. Qwen's five mapping
-objects, including their alternate targets, remain unchanged:
-
-| Captured workload | Configured tasks | New validation target | Setup that still needs verification |
-| --- | ---: | --- | --- |
-| DeepSeek V4 Pro | 3 | SGLang 0.5.20 only | TileLang/FlyDSL dependencies and original MoE replay coverage |
-| GLM5.3 Flash | 2 | SGLang 0.5.20 only | Elementwise capture-version discrepancy; fused-MoE architecture and checkpoint configuration |
-| Kimi K3 | 3 | SGLang 0.5.20 only | Compatibility with the original custom Kimi build and its baseline overlay |
-| MiniMax M3 | 3 | SGLang 0.5.20 only | Original reference archives and timing geometry |
-| Qwen3.8 2.4T | 5 | Excluded; existing mapping unchanged | Original AITER bindings, candidate registration and dense-GEMM dispatch rows |
-
-All 16 task declarations remain historical SGLang captures. The five `NOT_BUILT`
-placeholders are still placeholders. The vLLM image entries do not authorize
-changing these tasks to a different framework in the current refresh.
-
-Keep the setup assets and per-task environment from the original runtime mapping
-below, and verify their compatibility with the selected target. In particular,
-the GLM patch was authored for an older SGLang checkout: check whether the new
-image already supplies the required architecture and whether the patch applies
-before using it. Do not treat a failed patch check as a successful setup.
-
-The existing kernels, workload shapes, captured tensors and reported E2E results
-have not been refreshed by this policy update. New evidence from the latest
-matching SGLang 0.5.20 runs remains pending. A refreshed task requires that
-profiling/source/capture evidence, followed by correctness, performance and a
-finalized `task_validator` report on the pinned 0.5.20 image. The historical image
-cohorts below remain provenance for the restored files; they are not alternate
-targets for the current four-model refresh. No GPU validation result is claimed
-by this update.
-
-## Select the original runtime
-
-The original runtime declarations target MI355X / `gfx950`. Each task's
-`headkernel.docker` preserves that source evidence. Current image targets are
-listed above, and capture-era public overrides are recorded below as historical
-reproduction information. New validation for the four models in scope must use
-the pinned 0.5.20 target. These task-validator configs preserve
-the original image grouping and select only configured tasks:
-
-| Run config | Tasks | Exact original image |
-| --- | ---: | --- |
-| [upstream_headkernel_sglang_v0517_mi355x.yaml](../../example_configs/upstream_headkernel_sglang_v0517_mi355x.yaml) | 7 | `harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.17-rocm720-mi35x-profilerfix` |
-| [upstream_headkernel_sglang_v0518_mi355x.yaml](../../example_configs/upstream_headkernel_sglang_v0518_mi355x.yaml) | 6 | `harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.18-rocm720-mi35x-profilerfix` |
-| [upstream_headkernel_kimi_k3_mi355x.yaml](../../example_configs/upstream_headkernel_kimi_k3_mi355x.yaml) | 3 | `harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang-rocm-k3:rocm720-mi35x-k3-20260727-tl312-08011830` |
-
-All 16 configs retain `ISL 8192 / OSL 1024 / CONC 64 / TP 8`. The UTs replay
-captured rank-local operations; this serving provenance does not mean each UT
-launches an eight-GPU model server.
-
-**GLM elementwise has an upstream version discrepancy.** Its
-[config.yaml](../../tasks/headkernel/glm-5.3-flash__elementwise_copy_cluster/config.yaml)
-declares v0.5.17, while its
-[ut/README.md](../../tasks/headkernel/glm-5.3-flash__elementwise_copy_cluster/ut/README.md)
-documents v0.5.18. The v0.5.17 cohort preserves the original declaration. This
-restoration does not resolve the disagreement by changing the image pin.
-
-The GLM UT docs record Torch `2.9.1+rocm7.2.0`, SGLang `0.5.18`, HIP `7.2.26015`
-and `gfx950`. Qwen metadata records AITER commit
-`d9e5ef7ce08ee7045d583aed768cff41aa9210fe` or SGLang commit
-`71de97b264b04dcd514cf904003028aefe9775c8`, according to the source repository,
-and image/config ID
-`sha256:760dd38b9b6f2bd11c13011d470eb8e377c3f0d71284a090a710d64a23bd789f`.
-That ID is not a registry manifest digest. No equivalence to a public image is
-established by these records.
-
-### Image availability checked on 2026-09-22
-
-The original Harbor hostname failed DNS resolution from both the CPU work host
-and the source login host. Ordinary-user access to both Docker sockets was also
-denied. No image was pulled, exported, uploaded to OCI, or run during this check.
-Current original-image sizes and registry manifest digests could not be observed. The
-Qwen image/config ID above remains historical source evidence.
-
-Exact original-image export therefore still requires access to the original registry or an
-existing authorized Docker daemon holding the exact images. Preserve a raw
-registry manifest and its layer digests when exporting from the registry, or
-record image IDs and repository digests alongside a `docker image save` archive.
-Hash each completed archive before transferring it with `rclone`. Loading an
-archive on another node must reproduce the recorded image ID. No OCI image
-object is advertised as ready by this guide.
-
-## Capture-era public runtime overrides — 2026-09-22
-
-The earlier public runtime choices were the corresponding `rocm/hyperloom` images.
-They remain historical records. For the current four-model refresh and new
-validation, use only the 0.5.20 target selected by `refresh_scope` above.
-Original task `headkernel.docker` values remain unchanged as historical source
-metadata. On 2026-09-22, anonymous Docker Hub manifest reads verified both public
-image digests and their configuration digests; no GPU execution was performed.
-These were recorded as public runtime choices for historical reproduction,
-without a claim of byte identity to Harbor images. They do not authorize
-alternate images for the current four-model refresh or new validation.
-
-| Alias | Public tag | Pinned pull reference | Compressed layer bytes |
-| --- | --- | --- | ---: |
-| P17 | `docker.io/rocm/hyperloom:sglang-v0.5.17-rocm7.2.0-mi350x` | `docker.io/rocm/hyperloom@sha256:1f5464829559b086eb66f9b803cb9c7a817438c43edff2d5ef59b46a186745f6` | 28479323239 |
-| P18 | `docker.io/rocm/hyperloom:sglang-v0.5.18-rocm7.2.0-mi350x` | `docker.io/rocm/hyperloom@sha256:da36f56f24cb2897a56be52dd43774c1a75b1500308ed7db3ba32fb8db4d259c` | 23161974193 |
-
-Every workload below uses `TVM_FFI_DISABLE_TORCH_C_DLPACK=1`, the compiler cache
-variables and setup mount shown in the direct Docker command below. The full
-per-task image, original image, environment and patch mapping is machine readable
-in [tools/headkernel-public-runtimes.json](../../tools/headkernel-public-runtimes.json).
-
-| Workload / kernel task | Public runtime | Additional setup / status |
-| --- | --- | --- |
-| `deepseek-v4-pro__dsa_sparse_mla_attn` | P17 | No GPU validation |
-| `deepseek-v4-pro__moe_stage1_grouped_gemm_silu_flydsl` | P17 | No GPU validation |
-| `deepseek-v4-pro__moe_stage2_down_proj_reduce_opus_a8w4` | P17 | No GPU validation |
-| `glm-5.3-flash__elementwise_copy_cluster` | P17 | Preserves original v0.5.17 grouping; UT docs record v0.5.18 |
-| `minimax-m3__decode_score_kernel` | P17 | No GPU validation |
-| `minimax-m3__gqa_share_sparse_decode_kernel` | P17 | No GPU validation |
-| `minimax-m3__gqa_share_sparse_fwd_kernel` | P17 | No GPU validation |
-| `glm-5.3-flash__fused_moe_kernel` | P18 | Original patch + GLM configuration bundle; patch compatibility must pass |
-| `qwen3.8-2.4t__dense_bf16_gemm_cluster` | P18 | Task-local `live_dispatch_rows.csv` |
-| `qwen3.8-2.4t__fused_moe_2stage_mxfp4` | P18 | No GPU validation |
-| `qwen3.8-2.4t__fused_recurrent_gated_delta_rule_decode` | P18 | No GPU validation |
-| `qwen3.8-2.4t__gemma_fused_add_rmsnorm` | P18 | No GPU validation |
-| `qwen3.8-2.4t__paged_attention_decode` | P18 | No GPU validation |
-| `kimi-k3__fwd_grouped_kernel_stage1` | P17 | Candidate only; custom Kimi build compatibility unverified |
-| `kimi-k3__moe_gemm1_stage1` | P17 | Candidate only; custom Kimi build compatibility unverified |
-| `kimi-k3__moe_gemm2_stage2` | P17 | Candidate only; custom Kimi build compatibility unverified |
-
-The complete Docker Hub `rocm/hyperloom` tag listing contained no Kimi/K3-named
-build on 2026-09-22. Generic public v0.5.17 is therefore only a candidate for the
-three Kimi tasks; it is not established as the custom original Kimi build. Keep
-that compatibility limitation in any handoff. Public images are pulled directly
-from Docker Hub; no OCI mirror of the original Harbor images is claimed.
-
-## Restore the original tensor files
-
-The 16 tasks require **17 original tensor files**: 14 `ut/reference_io.pt` files
-and the three MiniMax `ut/timing_geometry.pt` files. Source code alone is
-insufficient to run their original harnesses. Obtain the original files through
-the source delivery and verify their recorded hashes before running. Preserve
-the original serialization and metadata; regenerated inputs change the setup.
-
-The OCI object-storage destination is recorded in
-[tools/headkernel-artifacts.json](../../tools/headkernel-artifacts.json):
-
-```text
-oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_ut_0914_full/20260922/tensors
-```
-
-Check its `oci_storage.publication_status` before a handoff. A configured
-destination does not establish that every upload completed. Once publication is
-verified, configure an `oci` rclone remote outside the repository and download
-the complete original objects with the fixture helper:
+The following creates a separate clean Arena checkout and materializes the exact task package with the existing trusted fixture materializer. It preserves the original Git task tree, checks that tracked task content is unchanged, retains staging receipts and creates a standard validator config. The helper chooses file/byte limits from the committed manifest; DeepSeek decode has more than the default16,384 assets.
 
 ```bash
-python3 src/tools/prepare_head_kernel_artifacts.py --download
-python3 src/tools/prepare_head_kernel_artifacts.py --verify
+TRUSTED_COMMIT=$(git rev-parse HEAD)
+PREPARED_ROOT="$PWD/../aka-headkernel-prepared"
+SCRATCH_ROOT="$PWD/../aka-headkernel-scratch"
+python3 tools/prepare_headkernel_run.py   --repo . --commit "$TRUSTED_COMMIT"   --output "$PREPARED_ROOT" --scratch-dir "$SCRATCH_ROOT"   --task headkernel/kimi-k3__dense_bf16_gemm_cijk   --use-manifest-oci-prefixes
 ```
 
-The helper verifies the declared byte count and SHA-256 before installing each
-file. `--oci-remote REMOTE:bucket/prefix` selects another caller-configured
-remote. Registry and object-storage credentials are not part of the delivery.
+Repeat `--task` to select several refreshed tasks, or omit it to prepare all18. For one task with an existing trusted local mirror, replace `--use-manifest-oci-prefixes` with `--fixture-local-mirror /absolute/mirror`; arrange it as `MIRROR/object_key` using that task's manifest. Prefixes are task-specific and may share a published capture bundle. The materializer requires every declared object and exact SHA256/size match; an unavailable or incomplete publication stops preparation. The new supplemental manifests do not inherit publication or qualification status from older captures.
 
-Paths below are relative to `tasks/headkernel/`:
+Preparation uses `src/tools/trusted_task_eval.py --stage-only`, which extracts task files from the selected Git commit, stages data without executing an importer, validates the case/segment reference closure and emits receipts. Downloaded fixtures are installed before framework workspace copying. See [the fixture contract](trusted-fixture-artifacts.md) for the supported formats, host budgets and receipt semantics. The native DeepSeek FP8 quantization task has declared generated cases and requires no external fixture manifest.
 
-| Task | Required files under `ut/` |
-| --- | --- |
-| `deepseek-v4-pro__dsa_sparse_mla_attn` | `reference_io.pt` |
-| `deepseek-v4-pro__moe_stage1_grouped_gemm_silu_flydsl` | `reference_io.pt` |
-| `deepseek-v4-pro__moe_stage2_down_proj_reduce_opus_a8w4` | `reference_io.pt` |
-| `glm-5.3-flash__elementwise_copy_cluster` | `reference_io.pt` |
-| `glm-5.3-flash__fused_moe_kernel` | `reference_io.pt` |
-| `kimi-k3__fwd_grouped_kernel_stage1` | `reference_io.pt` |
-| `kimi-k3__moe_gemm1_stage1` | `reference_io.pt` |
-| `kimi-k3__moe_gemm2_stage2` | `reference_io.pt` |
-| `minimax-m3__decode_score_kernel` | `reference_io.pt`, `timing_geometry.pt` |
-| `minimax-m3__gqa_share_sparse_decode_kernel` | `reference_io.pt`, `timing_geometry.pt` |
-| `minimax-m3__gqa_share_sparse_fwd_kernel` | `reference_io.pt`, `timing_geometry.pt` |
-| `qwen3.8-2.4t__fused_moe_2stage_mxfp4` | `reference_io.pt` |
-| `qwen3.8-2.4t__fused_recurrent_gated_delta_rule_decode` | `reference_io.pt` |
-| `qwen3.8-2.4t__paged_attention_decode` | `reference_io.pt` |
+## Run the standard Arena validator
 
-Qwen dense GEMM and fused add+RMSNorm deliberately generate their deterministic
-baseline at runtime and do not require `reference_io.pt`. Kimi MoE stores a
-synthetic schema with captured routing in its frozen blob; the common config's
-oracle label does not describe every package's internal format precisely.
-
-The MiniMax geometry files now exist in the refreshed source inventory. The
-older upstream README's statement that they are absent is stale. Keep each
-task's `capture_telemetry.json`, `attempts/`, baseline files and overlays too:
-the original provenance checks can open them during execution.
-
-## Download the published setup assets
-
-All ten external setup files are published under this OCI prefix. Download them
-with the requested transfer/progress options:
+Read `PREPARATION.json` and the per-task staging receipts. Configure the chosen validator backend and its ordinary authentication in `arena/example_configs/prepared_headkernel_run.yaml` and the normal agent configuration. Run from the prepared checkout:
 
 ```bash
-mkdir -p .upstream-assets/setup
-rclone copy \
-  oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_ut_0914_full/20260922/setup \
-  .upstream-assets/setup --transfers 64000 --progress
+cd "$PREPARED_ROOT/arena"
+export AKA_DOCKER_IMAGE=$(python3 -c 'import json; print(json.load(open("tools/headkernel-runtime-targets.json"))["images"]["sglang_v0520"]["pull_reference"])')
+export AKA_AITER_JIT_SOURCE=/sgl-workspace/aiter/aiter/jit
+make docker-smoke
+make docker-check-agents CONFIG=example_configs/prepared_headkernel_run.yaml
+make docker-run CONFIG=example_configs/prepared_headkernel_run.yaml
 ```
 
-Verify the downloaded files against
-[tools/headkernel-setup-artifacts.json](../../tools/headkernel-setup-artifacts.json).
-From the repository root, verify the published checksums and restore the lock
-script executable bit before using its wrapper:
+The image override is an exact digest. `AKA_AITER_JIT_SOURCE` asks the standard Docker runner to copy and verify the image's complete native JIT cache into a private writable cache. It preserves image-precompiled entries and avoids root-owned cache and CSV-write failures; it does not use another campaign's cache. The refreshed task sources and declared fixtures contain their replay requirements. No shared model tree, external architecture patch, cluster lock script, Spur or Slurm command is part of this route.
+
+Inspect the **framework-finalized** `validation_report.yaml` and completion marker for the exact prepared package. Require `overall_status: PASS`; a partial report, WARN, stale report or direct UT success is not a replacement. Standard task protection preserves fixture and harness files. For optimization, use the same prepared task package with an ordinary agent run config and change only the agent selection; do not regenerate or substitute fixture data.
+
+## Retest only the submitted source
+
+After the optimization worker stops, run the trusted evaluator from the trusted source checkout, outside the candidate workspace. It extracts the reference and harness again from Git, rematerializes the declared fixtures, admits only configured editable source files and runs fresh comparison phases. For example:
 
 ```bash
-(cd .upstream-assets/setup && sha256sum -c ../../tools/headkernel-setup.SHA256SUMS)
-chmod +x .upstream-assets/setup/shared_nfs/hongtaom/qwen3_14B/hl_matrix_0824/deps/kimi-k3/GEAK/kernel_workflow/scripts/gpu_lock.sh
-```
-The object layout preserves their original paths below `shared_nfs/`. Mount
-`.upstream-assets/setup/shared_nfs` at `/shared_nfs` in the container so the
-unchanged `pre_run_patch`, `GEAK_MODEL_PATH` default and Kimi `gpu_lock.sh` paths
-resolve. The setup upload is complete; the image-export limitation is separate.
-
-## Complete the original environment
-
-The original [tools/run_on_gpu.sh](../../tools/run_on_gpu.sh) and upstream README
-define the suite launch environment. Read the script before using its cluster
-driver; it relies on the upstream shared-filesystem layout and reservation tools.
-Its actual syntax is `bash tools/run_on_gpu.sh <jobid> <task-id|all>`; it also
-supports `pending`. The task ID is the flat directory name. Use an explicit task
-ID for this subset. The original driver reads the original Harbor declaration;
-it does not select the public override table. Use the direct Docker route below
-for an authorized public image.
-
-The suite sets `TVM_FFI_DISABLE_TORCH_C_DLPACK=1` inside its containers. The
-v0.5.18 image ships a CPU build of the optional torch/DLPack addon; otherwise
-fresh subprocesses can repeatedly try and fail to compile the ROCm addon. Keep
-the original cache environment and warmup/timing settings from the launcher and
-task runner when comparing results.
-
-**GLM fused MoE requires an external architecture patch and checkpoint
-configuration.** Its
-[config.yaml](../../tasks/headkernel/glm-5.3-flash__fused_moe_kernel/config.yaml)
-declares `headkernel.pre_run_patch`. Make that original patch available to the
-container and apply it to the image's SGLang checkout as the upstream launcher
-does. Stock v0.5.18 does not recognize `glm5_next` without the patch; stock
-v0.5.17 also lacks the runtime-context API this UT uses.
-
-The original
-[sglang_bootstrap.py](../../tasks/headkernel/glm-5.3-flash__fused_moe_kernel/ut/sglang_bootstrap.py)
-reads `GEAK_MODEL_PATH`, defaulting to the original shared model path, and passes
-it as both `model_path` and `tokenizer_path` to real `ServerArgs`. Ensure the
-checkpoint configuration and any files that this image reads from that path
-are accessible inside the container. The bootstrap publishes the original
-TP=8 configuration and initializes a world-size-1 process group to replay one
-already-sharded MoE operation. Its declared patch and model assets remain
-external setup requirements; a source-only checkout does not supply them.
-
-The source SSH inventory on 2026-09-22 confirmed the original patch and the model configuration/tokenizer files.
-The published bundle contains `config.json`, `generation_config.json`,
-`processor_config.json`, `tokenizer_config.json`, `chat_template.jinja`,
-`tokenizer.json`, the upstream model README and license, plus the patch and
-GPU-lock script: 10 files totaling 21,170,934 bytes. It contains no checkpoint
-weights or weight index; the exact minimum subset accessed by the original
-image was not tested. The original `config.json` declares
-`model_type: glm5_next` and architecture `Glm5NextForConditionalGeneration`.
-
-| External setup file | Bytes | SHA-256 observed on source |
-| --- | ---: | --- |
-| Declared `001_glm5_next_arch_enablement.patch` | 850212 | `808c011b098cbc0087f303e4424f8e248984bbf8419879b058c4c35449883558` |
-| GLM `config.json` | 69416 | `bb8f01c42cb92a52ca72e65afb4d5bd8d11aef083cd210e8de25dfb904f23e9f` |
-| Kimi `kernel_workflow/scripts/gpu_lock.sh` | 13048 | `6174729af74289cbe6575b08c87a5692e0a3e170b8a252c79c888a6dac41515a` |
-
-The source inventory above is included in the published setup delivery. Use the
-setup manifest to verify all ten downloaded files before launching a container.
-
-**Kimi grouped attention requires its original baseline overlay.** Its
-[ut/run_unittest.sh](../../tasks/headkernel/kimi-k3__fwd_grouped_kernel_stage1/ut/run_unittest.sh)
-sets `PYTHONPATH` to `ut/baseline_overlay` and invokes
-`GEAK_ROOT/kernel_workflow/scripts/gpu_lock.sh`. The original UT README identifies
-that overlay as necessary to preserve the accepted tuning-round baseline. Supply
-the original lock script when using this wrapper. The common task runner invokes
-`unittest.py` directly and inherits the environment; inspect the actual launch
-environment and both resolved legs before interpreting a comparison.
-
-Qwen dense GEMM sets `AITER_CONFIG_GEMM_BF16` to its own
-`ut/live_dispatch_rows.csv`. Preserve that local dispatch file. Historical
-serving paths in selection evidence and oracle-capture scripts do not imply
-that a full model server or those capture directories are needed for every UT.
-
-## Direct Docker command with the public runtime
-
-After installing the tensor files and setup bundle, select one task and an
-explicit image. This example selects the current SGLang target for a new GLM
-fused-MoE compatibility check of the historical task; it does not supply refreshed
-kernels or captures and is not a previously validated command. It fails if the
-original patch does not apply cleanly to the selected public image. A patch
-failure is a compatibility issue to report; do not silently skip it.
-
-```bash
-TASK=tasks/headkernel/glm-5.3-flash__fused_moe_kernel
-IMAGE=docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96
-GPU=0
-mkdir -p .upstream-assets/cache/{triton,flydsl,comgr,tilelang,torch_ext}
-docker run --rm -i -u 0 --entrypoint /bin/bash \
-  --ipc=host --network=host --shm-size 128G \
-  --device=/dev/kfd --device=/dev/dri --group-add video \
-  --security-opt seccomp=unconfined \
-  -e HIP_VISIBLE_DEVICES="$GPU" -e PYTHONUNBUFFERED=1 \
-  -e TRITON_CACHE_DIR=/cache/triton -e FLYDSL_RUNTIME_CACHE_DIR=/cache/flydsl \
-  -e AMD_COMGR_CACHE_DIR=/cache/comgr -e TILELANG_CACHE_DIR=/cache/tilelang \
-  -e TORCH_EXTENSIONS_DIR=/cache/torch_ext -e TVM_FFI_CACHE_DIR=/tmp/c/tvm_ffi \
-  -e TVM_FFI_DISABLE_TORCH_C_DLPACK=1 \
-  -v "$PWD:/workspace" \
-  -v "$PWD/.upstream-assets/setup/shared_nfs:/shared_nfs:ro" \
-  -v "$PWD/.upstream-assets/cache:/cache" \
-  -w "/workspace/$TASK" "$IMAGE" -se <<'CONTAINER'
-mkdir -p /tmp/c/tvm_ffi
-patch_path=$(python3 -c 'import yaml; print(yaml.safe_load(open("config.yaml"))["headkernel"].get("pre_run_patch", ""))')
-if [ -n "$patch_path" ]; then
-  git -C /sgl-workspace/sglang apply --check "$patch_path"
-  git -C /sgl-workspace/sglang apply --whitespace=nowarn "$patch_path"
-fi
-HK_TASK_TIMEOUT=240 timeout -k 120 300 python3 -u scripts/task_runner.py compile
-HK_TASK_TIMEOUT=5340 timeout -k 120 5400 python3 -u scripts/task_runner.py correctness
-HK_TASK_TIMEOUT=1140 timeout -k 120 1200 python3 -u scripts/task_runner.py performance
-CONTAINER
+TASK_PATH=tasks/headkernel/kimi-k3__dense_bf16_gemm_cijk
+FIXTURE_PREFIX=$(git show "$TRUSTED_COMMIT:$TASK_PATH/fixtures/EXTERNAL-MANIFEST.json" | python3 -c 'import json,sys; print(json.load(sys.stdin)["oci_prefix"])')
+python3 src/tools/trusted_task_eval.py   --repo . --commit "$TRUSTED_COMMIT" --task "$TASK_PATH"   --candidate-workspace /absolute/path/to/stopped-agent-workspace   --render-device /dev/dri/renderD128   --output /absolute/path/to/new-trusted-results   --scratch-dir "$SCRATCH_ROOT"   --fixture-oci-prefix "$FIXTURE_PREFIX" --fixture-max-files 32768
 ```
 
-The device, shared-memory, cache and TVM environment settings and phase budgets
-come from the original driver. The container uses its original root-user mode;
-outputs in the mounted checkout may consequently be root-owned. For Kimi grouped
-attention also follow its baseline-overlay wrapper requirements above. These
-commands are instructions for the next GPU node, not a record of a run performed
-during this restoration.
+Select the available render device. A verified local mirror can replace the OCI argument. The evaluator uses the task's committed image and source/fixture contracts; its containers have no network or credential mounts. It retains diagnostics and binds materialization receipts into `trusted_measurement.json`. Keep this receipt with the framework report and source-only negative-control evidence. The dedicated [native quant retest](../../src/tools/trusted_native_eval.py) remains the supported route for `headkernel_sg520/deepseek-v4-pro__per_group_quant_fp8`; its task README gives the explicit single-source command.
 
-## Execute and report
+## Interpret fixture and result scope
 
-Inside the task's original Docker image, after completing its setup, run its
-unchanged commands from the task directory:
+The Kimi residual task records the complete native ABI and frequencies but stores only first-`min(4,T)` actual token-row parity samples. Its full-shape fresh-input mathematical checks remain mandatory. Other tasks document captured, generated or supplemental-native cases in their local provenance. Preserve those distinctions, output mutations, tensor aliases, tolerances, warmups and timed boundaries.
 
-```bash
-python3 scripts/task_runner.py compile
-python3 scripts/task_runner.py correctness
-python3 scripts/task_runner.py performance
-```
-
-These commands write task-local `build/` reports. `HK_TASK_TIMEOUT` defaults to
-1800 seconds in the original task runner. Preserve the original performance
-path, including any explicitly reported fallback, and report failures without
-relabeling them as environment-independent correctness verdicts.
-
-The standard framework accepts the cohort configs above with its existing
-`make docker-run CONFIG=...` interface and `AKA_DOCKER_IMAGE` override. For
-example, its image-selection syntax for a new validation of the first capture
-cohort on the current SGLang target is:
-
-```bash
-AKA_DOCKER_IMAGE=docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96 \
-  make docker-run CONFIG=example_configs/upstream_headkernel_sglang_v0517_mi355x.yaml
-```
-
-**This framework command alone does not complete upstream setup.** The unchanged
-[Docker runner](../../src/scripts/docker_benchmark.sh) does not consume
-`headkernel.docker` or `headkernel.pre_run_patch`, mount the shared model tree, or
-forward `TVM_FFI_DISABLE_TORCH_C_DLPACK` from the host. The image override selects
-the image only. Use the original launcher for an original-setup run. A framework
-reproduction additionally needs the same environment and assets supplied to its
-own container; the cohort config and image override alone do not provide them.
-Do not use the framework's default MI355X image for these cohorts.
-
-The example configs select the existing `task_validator` agent, whose CLI and
-authentication requirements are described in the
-[validator guide](task-validator.md). They do not introduce a separate native
-verifier. A fresh framework validation requires its finalized
-`validation_report.yaml`; direct UT reports, copied-byte checks, and historical
-upstream reports are distinct evidence. Record the exact image identity,
-hardware, setup assets, command and resulting report for every new GPU run.
+The user-provided [results table](../reference/headkernel-reported-results.md) reports historical SGLang0.5.17 numbers. Current setup and capture completion do not replace those figures with new gains. Qwen's five mappings, task files and historical workload remain unchanged; use its task-local instructions and the [historical setup guide](../reference/headkernel-historical-setup.md), not the refreshed SG0.5.20 selection.
