@@ -319,6 +319,25 @@
           "b36ba472fb3d6612a00a5db5179f1fc1cc2a50cb30461e049637d43a3d04418d"
         ]
       }
+    },
+    {
+      "family": "portable_case_contract",
+      "description": "BF16 candidate pointwise and scale-relative checks retain complete native/port graph replay validation; each graph captures on its warmed explicit stream for per-stream Opus workspace initialization. Bound native/port samples feed primary-native scoring.",
+      "entrypoint": "scripts/task_runner.py",
+      "entrypoint_sha256": [
+        "f23dbece2262dc9e6c0517aeca8226fd0454bb26555cbb00317208286c8951fd"
+      ],
+      "files_sha256": {
+        "scripts/production_comparison.py": [
+          "440be378400b4236d6e22ecfa24bb9d5ea89600133c71c6e75dcf81b81fd9e00"
+        ],
+        "ut/candidate_precision.py": [
+          "e14d9a9142c68ff0a1f9b802c08554a556924fce612a4e6e9686412d7eaa084e"
+        ],
+        "ut/native_precision.py": [
+          "2d6f114411905e1d92e4f3a10c4946cc260241aa7096baed77ae27625179090f"
+        ]
+      }
     }
   ]
 }

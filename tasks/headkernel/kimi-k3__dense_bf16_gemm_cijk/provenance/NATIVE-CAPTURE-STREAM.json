@@ -1,0 +1,71 @@
+{
+  "schema": "kimi-native-graph-capture-stream-v1",
+  "problem": "The Opus gfx950 split-K workspace is keyed by CUDA stream. Warmups initialized one stream, while implicit graph capture selected a different stream and failed.",
+  "fix": "Pass the existing warmup stream explicitly to torch.cuda.graph for each native/candidate leg.",
+  "runtime_change": "torch.cuda.graph(graph, stream=stream)",
+  "setup_warmups_unchanged": 3,
+  "native_and_candidate_math_unchanged": true,
+  "case_manifest_and_measurement_policy_unchanged": true,
+  "prior_failure": {
+    "campaign_run": "validator/nvme-runs/195184/kimi-dense-long-20261006T071357904441Z",
+    "final_checkpoint": 230,
+    "validation_report_sha256": "a6836d9b2600f50c83f3d5362614f106cdc6a2674e11b83b330b211e0c3f8289",
+    "ordinary_performance_cases_completed": 40,
+    "configured_performance_command_exit_code": 1,
+    "error": "AITER splitk workspace not initialized for the current CUDA stream",
+    "old_failure_preserved": true
+  },
+  "GPU_probe": {
+    "campaign_run": "kimi/native-capture-stream-20261006/probe-v1/runs/195184-gpu5-opus-stream-v1",
+    "runtime_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
+    "job_id": "195184",
+    "GPU": 5,
+    "target_case": "bfloat16-decode-m64-n8448-k7168-bf16_gemm-6684574a98cb3bd33166a549",
+    "native_dispatch": {
+      "callable": {
+        "module": "aiter.tuned_gemm",
+        "qualname": "opus_gemm"
+      },
+      "config": {
+        "bw": 3507.38,
+        "err_ratio": 0.0,
+        "kernelName": "opus_gemm_flatmm_splitk_256x64x96x128_2x1_16x16x32_0x0x0_wgpcu1_nooob",
+        "libtype": "opus",
+        "solidx": 1216,
+        "splitK": 2,
+        "tflops": 220.83,
+        "us": 35.1001
+      },
+      "libtype": "opus",
+      "schema": "aiter-solmap-dispatch-v1",
+      "solidx": 1216
+    },
+    "challenge_seed": 119187449,
+    "precision_report_sha256": "0a7f9034240f862e0701e403f5a283d474e31a42ddceef5f83188d0af62f806d",
+    "result_sha256": "5d28d5ed355c65702a1ace982017c474fe16267417b0abb4bcfbb5000a8d2433",
+    "production_comparison_sha256": "440be378400b4236d6e22ecfa24bb9d5ea89600133c71c6e75dcf81b81fd9e00",
+    "source_sha256": "e017d3afe6b25b6d1749dfdee8bc2d1fa2de30212bc654fa2d127e0eebc3b94d",
+    "candidate_checker_sha256": "e14d9a9142c68ff0a1f9b802c08554a556924fce612a4e6e9686412d7eaa084e",
+    "native_precision_sha256": "2d6f114411905e1d92e4f3a10c4946cc260241aa7096baed77ae27625179090f",
+    "stream_evidence": {
+      "warmup_streams": [
+        2262188944,
+        2265420688
+      ],
+      "capture_streams": [
+        2262188944,
+        2265420688
+      ]
+    },
+    "coverage": {
+      "target_cases": 1,
+      "matched_legs": 2,
+      "samples_per_leg": 100,
+      "warmups_per_leg": 10,
+      "same_warmup_and_capture_stream": true
+    },
+    "probe_elapsed_seconds": 19.355112250894308,
+    "qualification": false
+  },
+  "full_framework_and_trusted_qualification": "Pending fresh full 40-case validation of the combined scale-relative and capture-stream fixes."
+}

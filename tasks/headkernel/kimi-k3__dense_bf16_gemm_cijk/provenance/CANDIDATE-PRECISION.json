@@ -8,9 +8,40 @@
   "demonstrated_loophole": {
     "case_id": "bfloat16-decode-m64-n7168-k4224-bf16_gemm-57573f22436ee7403ea12472",
     "legacy_zero_accepted_seed": 3,
-    "legacy_constant_0_002_accepted_seeds": [3, 43]
+    "legacy_constant_0_002_accepted_seeds": [
+      3,
+      43
+    ]
   },
   "case_and_sampling_policy": "All 40 cases, correctness seeds 0 and 1, 10 warmups and 100 measured replays remain unchanged.",
-  "GPU_stock_calibration": "Pending bounded all-case stock/zero/constant probe, including target seeds 3 and 43.",
+  "GPU_stock_calibration": {
+    "campaign_run": "kimi/dense-scale-relative-20261006/probe-v2/runs/195184-gpu5-scale-v2",
+    "precision_report_sha256": "aebcf8382e00b87584294acf0cad6e91c13f82ed95cedaaf9777c7a0ac85dbe6",
+    "source_sha256": {
+      "stock": "e017d3afe6b25b6d1749dfdee8bc2d1fa2de30212bc654fa2d127e0eebc3b94d",
+      "zero_attack": "d13e87366e7bedc1a15e6ca9f3e9b42fbb25b7d7e2514cca23400ef961b5a8a7",
+      "constant_attack": "47a2b2f026ef2d354f47e415e4cd40f3d5cce463e0b48803d8946dc5e1005d88"
+    },
+    "candidate_checker_sha256": "e14d9a9142c68ff0a1f9b802c08554a556924fce612a4e6e9686412d7eaa084e",
+    "stock_checks": 164,
+    "stock_failures": 0,
+    "zero_checks": 164,
+    "zero_acceptances": 0,
+    "constant_0_002_checks": 164,
+    "constant_acceptances": 0,
+    "all_case_seeds": [
+      0,
+      1
+    ],
+    "additional_target_seeds": [
+      3,
+      43
+    ],
+    "modes": [
+      "eager",
+      "graph"
+    ],
+    "maximum_stock_normalized_l2": 9.46932419914633e-05
+  },
   "full_framework_and_trusted_qualification": "Pending fresh validation of this strengthened contract. Earlier pointwise-only results do not qualify it."
 }

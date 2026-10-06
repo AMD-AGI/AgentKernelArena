@@ -81,6 +81,8 @@ def test_changed_legacy_or_native_timer_is_rejected(tmp_path, example, relative)
 @pytest.mark.parametrize("example,relative", [
     ("headkernel/kimi-k3__attn_residual_aggregate_hip", "ut/fresh_runner.py"),
     ("headkernel/kimi-k3__dense_bf16_gemm_cijk", "scripts/production_comparison.py"),
+    ("headkernel/kimi-k3__dense_bf16_gemm_cijk", "ut/candidate_precision.py"),
+    ("headkernel/kimi-k3__dense_bf16_gemm_cijk", "ut/native_precision.py"),
     ("headkernel/minimax-m3__gemm_afp4wfp4_kernel", "ut/runtime.py"),
     ("headkernel/minimax-m3__gemm_afp4wfp4_kernel", "ut/admission.py"),
     ("headkernel/minimax-m3__gemm_afp4wfp4_kernel", "ut/reference.py"),

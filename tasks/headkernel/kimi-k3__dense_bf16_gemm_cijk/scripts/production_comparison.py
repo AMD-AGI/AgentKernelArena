@@ -50,7 +50,8 @@ def main(request=None):
                 for _ in range(3):invoke()
             torch.cuda.current_stream().wait_stream(stream)
             graph=torch.cuda.CUDAGraph()
-            with torch.cuda.graph(graph):
+            # Opus split-K workspaces belong to the stream warmed above.
+            with torch.cuda.graph(graph,stream=stream):
                 for _ in range(case['calls_per_sample']):invoke()
             def measure(call):
                 begin=torch.cuda.Event(enable_timing=True);end=torch.cuda.Event(enable_timing=True)
