@@ -57,6 +57,7 @@ class Tests(unittest.TestCase):
         import torch
         from unittest.mock import patch
         import native_dispatch
+        import storage_guard
         native=self.native_wrapper()
         spec=importlib.util.spec_from_file_location('binding_runner',ROOT/'scripts/task_runner.py');runner=importlib.util.module_from_spec(spec);spec.loader.exec_module(runner)
         m,n,k=2,8,128
@@ -71,7 +72,7 @@ class Tests(unittest.TestCase):
                 return launch
         original_empty=torch.empty
         def cpu_empty(*args,**kwargs):kwargs['device']='cpu';return original_empty(*args,**kwargs)
-        with patch.object(torch,'empty',cpu_empty),patch.object(runner,'observe_case',lambda case,tensors,scalars:case),patch.object(native_dispatch,'load_native',return_value=native):
+        with patch.object(storage_guard,'extents',return_value={'A':m*k*2,'B':k*n*2,'C':m*n*2}),patch.object(torch,'empty',cpu_empty),patch.object(runner,'observe_case',lambda case,tensors,scalars:case),patch.object(native_dispatch,'load_native',return_value=native):
             state=runner.build_state(case,0,types.SimpleNamespace(gemm_kernel=Kernel()));compiled=state[1]()
         self.assertEqual(compiled.name,'submitted_spy');self.assertEqual(len(calls),1)
         self.assertEqual(calls[0][0],(1,1));self.assertEqual(calls[0][1][5:8],(m,n,k))

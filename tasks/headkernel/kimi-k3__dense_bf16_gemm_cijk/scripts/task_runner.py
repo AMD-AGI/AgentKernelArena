@@ -11,6 +11,7 @@ ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/'ut'))
 from evaluation_contract import canonical,fingerprint,strict_json,validate_manifest,observe_case,checked_replays,finalize_report
 from source_guard import validate_sources
+import storage_guard
 
 
 def source_hash():return hashlib.sha256((ROOT/'source/kernels.py').read_bytes()).hexdigest()
@@ -56,21 +57,18 @@ def generate(case,seed,compute_reference=True):
         return {'A':aq,'B':pack(bq),'SA':sa,'SB':sb},expected
     dtype=getattr(torch,case['tensors']['A']['dtype'])
     a=a.to(dtype);b=b.to(dtype)
-    from live_operands import match_activation_layout
-    a=match_activation_layout(a,case)
-    expected=(a.float()@b.float().t()).to(dtype) if compute_reference else None
-    return {'A':a,'B':b.t()},expected
+    values=storage_guard.fresh_input_storage({'A':a,'B':b.t()},case,seed)
+    expected=(values['A'].float()@values['B'].float()).to(dtype) if compute_reference else None
+    return values,expected
 
 
 def build_state(case,seed,module,defer_reference=False):
     import torch
     fresh,reference=generate(case,seed)
-    def allocate(spec):
-        size=spec['storage_offset']+1+sum((dim-1)*stride for dim,stride in zip(spec['shape'],spec['strides']))
-        storage=torch.empty((size,),dtype=getattr(torch,spec['dtype']),device='cuda')
-        return storage.as_strided(spec['shape'],spec['strides'],spec['storage_offset'])
-    tensors={name:allocate(spec) for name,spec in case['tensors'].items()}
-    for name,value in fresh.items():tensors[name].copy_(value)
+    sizes=storage_guard.extents(case)
+    tensors={name:storage_guard.allocate_view(spec,sizes[name],'cuda') for name,spec in case['tensors'].items()}
+    for name,value in fresh.items():storage_guard.copy_complete(tensors[name],value)
+    native_events=[]
     scalars=case['scalars'];m,n,k=(scalars[x] for x in ('M','N','K'));fp8=scalars['fp8']
     def launch_port():
         return module.gemm_kernel[(math.ceil(m/32),math.ceil(n/64))](tensors['A'],tensors['B'],tensors['A'],tensors['B'],tensors['C'],m,n,k,False,32,64,128,tensors['A'].stride(0),num_warps=4)
@@ -94,17 +92,19 @@ def build_state(case,seed,module,defer_reference=False):
         if calls!=[observed_dispatch['libtype']] or len(compiled)!=1 or result.data_ptr()!=tensors['C'].data_ptr():raise ValueError('Submitted port was not reached exactly once through native solMap')
         return compiled[0]
     def observe():
+        if any(tensors[name].untyped_storage().nbytes()!=size for name,size in sizes.items()):raise AssertionError('Runtime backing storage extent changed')
         actual={'M':tensors['A'].shape[0],'N':tensors['C'].shape[1],'K':tensors['A'].shape[1],
                 'fp8':tensors['A'].dtype==torch.float8_e4m3fn,'BM':32,'BN':64,'BK':128,'A_ROW_STRIDE':tensors['A'].stride(0)}
         return observe_case(case,tensors,actual)
-    def initialize():tensors['C'].fill_(float('nan'))
-    def verify(ref):
+    def initialize():storage_guard.initialize_output(tensors['C'])
+    def verify(ref,*,native_calibration=False):
         expected,inputs=ref
-        torch.cuda.synchronize();actual=tensors['C'].cpu().clone()
+        torch.cuda.synchronize()
+        output_storage=storage_guard.snapshot_complete(tensors['C'])
+        actual=storage_guard.view_snapshot(output_storage,case['tensors']['C'])
+        storage_guard.assert_output_guards(output_storage,case['tensors']['C'])
+        storage_guard.assert_inputs_unchanged(tensors,inputs)
         if not torch.isfinite(actual.float()).all():raise AssertionError('Unwritten/nonfinite output')
-        for name,before in inputs.items():
-            after=tensors[name].cpu()
-            if not torch.equal(after.contiguous().view(torch.uint8),before.contiguous().view(torch.uint8)):raise AssertionError('Input mutation: '+name)
         if tensors['C'].untyped_storage().data_ptr() in [x.untyped_storage().data_ptr() for name,x in tensors.items() if name!='C']:raise AssertionError('Output aliases input')
         # Candidate output and immutable inputs are already observed on CPU.
         # Only now may an independent FP32 GPU reference exist. Correctness and
@@ -117,22 +117,29 @@ def build_state(case,seed,module,defer_reference=False):
             del gpu_reference
         finally:torch.backends.cuda.matmul.allow_tf32=prior_tf32
         if expected is not None:torch.testing.assert_close(reference_cpu,expected,rtol=0.01,atol=0.02)
-        torch.testing.assert_close(actual,reference_cpu if expected is None else expected,rtol=0.01,atol=0.02)
+        if not torch.isfinite(reference_cpu.float()).all():raise AssertionError('Nonfinite independent reference')
+        mathematical=reference_cpu if expected is None else expected
+        if native_calibration:
+            from native_precision import calibrate
+            native_events.append(calibrate(case,inputs,actual,mathematical))
+        else:torch.testing.assert_close(actual,mathematical,rtol=0.01,atol=0.02)
     def reset(seed):
         values,expected=generate(case,seed,compute_reference=not defer_reference)
-        for name,value in values.items():tensors[name].copy_(value)
+        for name,value in values.items():storage_guard.copy_complete(tensors[name],value)
         return expected,values
+    verify.native_calibration_events=native_events
     observe();return tensors,invoke,observe,initialize,verify,reset,(reference,fresh)
 
 
 def negative_controls(tensors,initialize,verify,reference):
     import torch
     result={}
+    valid_output=tensors['C'].detach().cpu().clone()
     initialize()
     try:verify(reference)
     except AssertionError:result['no_op']=True
     else:raise AssertionError('No-op accepted')
-    tensors['C'].copy_(reference[0]);tensors['C'][0,0]=float(reference[0][0,0])+max(1.0,abs(float(reference[0][0,0]))*0.5)
+    tensors['C'].copy_(valid_output);tensors['C'][0,0]=float(valid_output[0,0])+max(1.0,abs(float(valid_output[0,0]))*0.5)
     try:verify(reference)
     except AssertionError:result['wrong_output']=True
     else:raise AssertionError('Wrong output accepted')
@@ -177,7 +184,7 @@ def main():
             results.append(checked_replays(case,policy,reset_inputs=reset,initialize_outputs=initialize,replay=graph.replay,verify=verify,measure=measure,observe=observe,seed=request['challenge_seed']))
         del tensors,invoke,observe,initialize,verify,reset,reference
     if package_hash()!=before:raise ValueError('Protected package changed during evaluation')
-    report=finalize_report({'schema_version':1,'status':'ok','request':request,'compiled':True,'cases':results,'compiled_kernels':compiled,'oracle_device':'cpu','reference_policy':'CPU FP32 correctness plus independent GPU FP32 after candidate CPU observations for timed replay; TF32 disabled','runtime_source_sha256':source_hash(),'implementation':'submitted_triton_port','comparison_baseline':'frozen_triton_port','stock_source_equivalence':False},manifest,request)
+    report=finalize_report({'schema_version':1,'status':'ok','request':request,'compiled':True,'cases':results,'compiled_kernels':compiled,'oracle_device':'cpu','input_immutability':'entire_backing_storage_including_prefix_padding_and_tail','output_guards':'all_bytes_outside_declared_output_view','reference_policy':'CPU FP32 correctness plus independent GPU FP32 after candidate CPU observations for timed replay; TF32 disabled','runtime_source_sha256':source_hash(),'implementation':'submitted_triton_port','comparison_baseline':'frozen_triton_port','stock_source_equivalence':False},manifest,request)
     temp=path.with_suffix('.tmp');temp.write_text(json.dumps(report,indent=2,allow_nan=False)+'\n');temp.replace(path)
     if a.phase=='performance':
         import production_comparison

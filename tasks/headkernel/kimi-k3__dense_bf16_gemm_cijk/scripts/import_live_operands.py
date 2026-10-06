@@ -6,7 +6,7 @@ import subprocess
 import sys
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/'ut'))
-from evaluation_contract import strict_json,validate_manifest
+from evaluation_contract import strict_json,validate_manifest,fingerprint
 from fixture_codec import file_sha
 
 
@@ -109,7 +109,7 @@ def main():
     path=Path(args.capture_manifest).resolve();origin=path.parent
     requirements=strict_json((ROOT/'CASE-REQUIREMENTS.json').read_text());native=strict_json((ROOT/'provenance/NATIVE-BASELINE.json').read_text())
     fp8=False;rank,selected=collect(path,fp8,native,Path(args.capture_ready).resolve())
-    destination=ROOT/'fixtures';destination.mkdir(exist_ok=True);cases=[]
+    destination=ROOT/'fixtures';destination.mkdir(exist_ok=True);cases=[];storage_rows={}
     def copy(source,target):subprocess.run(['rclone','copyto','--transfers','64000','--progress','--buffer-size','0',str(source),str(target)],check=True)
     for file,f,bindings,counts in selected:
         m,k=bindings['A']['shape'];n=bindings['C']['shape'][1];dtype=bindings['A']['dtype'].removeprefix('torch.')
@@ -126,6 +126,8 @@ def main():
         cases.append({'case_id':case_id,'occurrences':counts['0'],'calls_per_sample':1,'scalars':{'M':m,'N':n,'K':k,'fp8':fp8,'BM':32,'BN':64,'BK':128,'A_ROW_STRIDE':bindings['A']['stride'][0]},'tensors':tensors,
             'live_fixture':{'path':'fixtures/'+target.name,'sha256':file_sha(target),'native_capture_run':rank['provenance']['run_id'],'source_case_key':f['case_key'],'ABI_preserved':True,'capture_family':f['family'],'source_sha256':f['source_sha256']},
             'capture_controls':f['controls'],'served_geometry':f['served'],'frequency_evidence':{'source_case_key':f['case_key'],'per_rank_counts':counts,'scope':'all notified actual served calls in the complete64-request workload; one numerical representative per structural record','capture_origin':f['origin'],'graph_bucket':f['graph_bucket']}})
+        storage_rows[case_id]={'case_sha256':fingerprint(cases[-1]),'storage_nbytes':{name:meta['storage_nbytes'] for name,meta in bindings.items()},'fixture_sha256':file_sha(target)}
+    (ROOT/'ut/storage_contract.json').write_text(json.dumps({'schema':'dense-complete-storage-contract-v1','cases':storage_rows},indent=2)+'\n')
     manifest=validate_manifest({'schema_version':1,'runtime_image':rank['provenance']['image'],'source_run':rank['provenance']['run_id'],'cases':cases,'measurement':requirements['measurement'],
         'capture_stop_manifest_sha256':file_sha(path),'coverage':'Every actual notified GEMM record in this task family is retained, including decode, FP32 dense records and distinct equal-shape source records. Unsupported controls or ABIs fail intake.',
         'live_operand_policy':{'required':True,'case_count':len(cases),'selection':'Even seeds use generated numeric challenges; odd seeds perturb each actual activation numerically and preserve real weights/scales/layout. Native diagnostics use the same fresh numeric sequence. CPU FP32 oracle only; fixed captured output is never the replay oracle.'}})

@@ -29,7 +29,10 @@ class Tests(unittest.TestCase):
             isfinite=lambda value:types.SimpleNamespace(all=lambda:True),equal=lambda a,b:True,uint8='uint8',
             testing=types.SimpleNamespace(assert_close=lambda a,b,**kw:events.append('compare')))
         tree=ast.parse((ROOT/'scripts/task_runner.py').read_text());build=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='build_state');verify=next(n for n in build.body if isinstance(n,ast.FunctionDef) and n.name=='verify')
-        env={'torch':torch,'tensors':{name:Tensor(name) for name in ('A','B','C')}}
+        guard=types.SimpleNamespace(snapshot_complete=lambda t:t.cpu().clone(),view_snapshot=lambda t,s:t,
+            assert_output_guards=lambda *a:None,
+            assert_inputs_unchanged=lambda tensors,inputs:[tensors[name].cpu().clone() for name in inputs])
+        env={'torch':torch,'tensors':{name:Tensor(name) for name in ('A','B','C')},'storage_guard':guard,'case':{'tensors':{'C':{}}},'native_events':[]}
         exec(compile(ast.fix_missing_locations(ast.Module(body=[verify],type_ignores=[])),'protected_verify','exec'),env)
         env['verify']((None,{'A':Tensor('truthA'),'B':Tensor('truthB')}))
         position=events.index('GPU_FP32_reference')

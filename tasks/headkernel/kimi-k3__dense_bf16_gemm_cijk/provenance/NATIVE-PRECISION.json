@@ -1,0 +1,25 @@
+{
+  "schema": "source-derived-native-bf16-calibration-v1",
+  "source_sha256": {
+    "tuned_gemm.py": "1fafc9782b43f8c6e198e1d39ce83e01ea3b5892f8b5e1a26c4a5eeb74252b51",
+    "ops/flydsl/gemm_kernels.py": "d656f58b9ad9671dbdd85eec5e18d3145cf1f2270fa1da4599f21870bfa1fb44",
+    "ops/flydsl/kernels/hgemm_dispatch.py": "cdef8feeff05e1134039521e678341c127d1d3b55c8de8437f3668509bf455e3",
+    "ops/flydsl/kernels/splitk_hgemm.py": "6c645d267aac913d3ac991c1de5523bee629278da9dd1616772b84e682687d24"
+  },
+  "precision_steps": [
+    "Partition K into contiguous K/split_k segments. Within each TILE_K, assign each K warp its contiguous TILE_K/k_warps slice.",
+    "FP32 MFMA accumulation, then arith.truncf to BF16 in LDS. Round-to-nearest-even is independently reproduced by CPU BF16 conversion and verified by actual GPU results.",
+    "Add K-warp BF16 slices in increasing warp order, rounding to BF16 per addition.",
+    "For split_k>1, native vector<2xbf16> atomic fadd permits different split arrival orders. Both lanes of a packed pair share one order and round to BF16 after every update."
+  ],
+  "acceptance": "Check EVERY native output element at original rtol0.01/atol0.02 against independent FP32. For EACH pair containing any failure, require BIT-EXACT equality to one legal input-derived BF16 atomic arrival order. No interval or increased tolerance accepts an exception. Candidate outputs remain strictly checked against FP32.",
+  "GPU_evidence": {
+    "run": "kimi-dense-precision-probe-flex-v2/runs/195082/gpu0-03106abe",
+    "result_sha256": "345c1c5e606bb5918748b7ecb9262fbca816bd66e1aae93e2f53291eeba46ef5",
+    "native_repeats": 10,
+    "exception_pairs_in_union": 29,
+    "pairs_without_exact_legal_order": 0,
+    "duration_seconds_reported_by_root": 34
+  },
+  "full_task_qualification": "pending fresh complete-storage contract validator"
+}

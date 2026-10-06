@@ -57,8 +57,11 @@ def generate_live(case,seed,compute_reference=True):
     factor=0.75+torch.rand((base.shape[0],1),generator=g)*0.5
     activation=base*factor+torch.randn(base.shape,generator=g)*rms*0.05
     if values['A'].element_size()==1:activation=activation.clamp(-448,448)
-    fresh={'A':match_activation_layout(activation.to(values['A'].dtype),case),'B':values['B']}
+    fresh={'A':activation.to(values['A'].dtype),'B':values['B']}
     if 'SA' in values:
         shape=values['SA'].shape;scale=torch.empty_strided(shape,(1,shape[0]),dtype=values['SA'].dtype,device='cpu')
         scale.copy_(values['SA'].index_select(0,order));fresh.update(SA=scale,SB=values['SB'])
+    if case.get('tensors'):
+        from storage_guard import fresh_input_storage
+        fresh=fresh_input_storage(fresh,case,seed)
     return fresh,cpu_reference(fresh) if compute_reference else None
