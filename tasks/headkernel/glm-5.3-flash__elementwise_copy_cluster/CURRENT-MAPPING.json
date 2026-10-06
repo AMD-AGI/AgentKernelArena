@@ -1722,5 +1722,13 @@
   "capture_ready_ref": {
     "path": "CAPTURE-READY.json",
     "sha256": "748ccb405343992f193817bc83e4fe4cca848066b971c190380b2086135dd8f7"
-  }
+  },
+  "independent_native_identity_check": {
+    "path": "provenance/CURRENT-IDENTITY-CHECK.json",
+    "sha256": "e68bccebb81479ca83f8391d06869ed3c3e0187b1b82dff1cb58c42eca8ec609"
+  },
+  "current_wrapper_observed": true,
+  "current_wrapper_abi_count": 4,
+  "current_wrapper_calls_all_ranks": 391680,
+  "current_materialized_gpu_copy_observed": false
 }

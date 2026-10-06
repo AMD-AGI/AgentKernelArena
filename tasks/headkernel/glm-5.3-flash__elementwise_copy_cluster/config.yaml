@@ -12,11 +12,13 @@ task_type: triton2triton
 task_result_template: null
 prompt:
   source_code: null
-  instructions: This package retains a historical scale-copy implementation. It is not qualified as a
-    current GLM head task. Current run194292 does not establish this specific copy family; source emits
-    transposed scales directly for M>=2 and uses a zero-copy stride view. Await the source-pinned native
-    capture mapping before running an optimization. Do not substitute unrelated activation copies or report
-    historical speedups as current results.
+  instructions: The finalized native capture glm-final-capture-v4-194841 resolved this historical GPU-copy
+    head. All eight ranks observed four real materialize-wrapper ABIs and 391680 wrapper calls in total,
+    with unchanged input/output storage and column-major strides (1, M). The pinned native expression returns
+    identity views for every observed layout; native-source CPU replay matched the captured oracle bytes
+    exactly. No materialized GPU-copy operation occurred at this boundary. The historical kernel and harness
+    are retained only for provenance; do not benchmark an invented copy or report historical speedups
+    as current qualification. See CURRENT-MAPPING.json and provenance/CURRENT-IDENTITY-CHECK.json.
   cheatsheet: null
 headkernel:
   model: GLM-5.3-Flash
@@ -27,6 +29,7 @@ headkernel:
   current_mapping_status: NOT_OBSERVED_CURRENT
   validation_status: retired_not_observed_current_no_score
   historical_metadata: provenance/HISTORICAL-CONTRACT.json
+  identity_proof: provenance/CURRENT-IDENTITY-CHECK.json
 platform_support:
   required_arch: gfx950
   status: skip

@@ -1,0 +1,134 @@
+{
+  "schema": "current-native-scale-identity-check-v1",
+  "capture_run": "glm-final-capture-v4-194841",
+  "status": "FOUR_CURRENT_WRAPPER_ABIS_VERIFIED_ALIAS_ONLY_NO_GPU_COPY",
+  "capture_ready_sha256": "748ccb405343992f193817bc83e4fe4cca848066b971c190380b2086135dd8f7",
+  "source_capture_verified_sha256": "f08fe2803f7e28f5d3ff7ae549a6d2ed2835107ae638b900c93b7862c1233c45",
+  "runtime_source": {
+    "path": "sglang/srt/layers/quantization/fp8_utils.py",
+    "sha256": "dad19725ab4dde72170c9c4b6e1320898a9687f1c75857607193b19b9e021776",
+    "callable": "materialize_bpreshuffle_fp8_scale"
+  },
+  "source_expression": "scale.t().contiguous().t() if scale.dim() == 2 else scale",
+  "current_wrapper_abi_count": 4,
+  "current_wrapper_calls_all_ranks": 391680,
+  "current_view_calls_all_ranks": 1070592,
+  "materialized_gpu_copy_cases": 0,
+  "all_rank_layouts_and_counts_match": true,
+  "cases": [
+    {
+      "case_key": "scale_copy-5003a79dfd85d9645fb712f3",
+      "stage": "prefill",
+      "shape": [
+        8192,
+        12
+      ],
+      "stride": [
+        1,
+        8192
+      ],
+      "storage_offset": 0,
+      "storage_nbytes": 393216,
+      "same_native_storage_alias": true,
+      "same_native_layout": true,
+      "occurrences": 192,
+      "transpose_is_contiguous": true,
+      "native_CPU_dispatch_operations": [
+        "aten.t.default",
+        "aten.t.default"
+      ],
+      "native_function_allocated_new_storage": false,
+      "native_result_bitwise_matches_captured_oracle": true,
+      "fixture_sha256": "a639f48e35018891c698feb07aed27acad98724563a3f052f25ad2dd4d24925b"
+    },
+    {
+      "case_key": "scale_copy-bab7865e800141d0264a20b3",
+      "stage": "decode",
+      "shape": [
+        64,
+        2
+      ],
+      "stride": [
+        1,
+        64
+      ],
+      "storage_offset": 0,
+      "storage_nbytes": 512,
+      "same_native_storage_alias": true,
+      "same_native_layout": true,
+      "occurrences": 43008,
+      "transpose_is_contiguous": true,
+      "native_CPU_dispatch_operations": [
+        "aten.t.default",
+        "aten.t.default"
+      ],
+      "native_function_allocated_new_storage": false,
+      "native_result_bitwise_matches_captured_oracle": true,
+      "fixture_sha256": "a413d8ef1f2ed1d8d5263b5931ebd3f10e5a98d37015d724e6186dd5052ffe2c"
+    },
+    {
+      "case_key": "scale_copy-ca2ee4a3d5cee01a5ec778cc",
+      "stage": "prefill",
+      "shape": [
+        8192,
+        2
+      ],
+      "stride": [
+        1,
+        8192
+      ],
+      "storage_offset": 0,
+      "storage_nbytes": 65536,
+      "same_native_storage_alias": true,
+      "same_native_layout": true,
+      "occurrences": 2688,
+      "transpose_is_contiguous": true,
+      "native_CPU_dispatch_operations": [
+        "aten.t.default",
+        "aten.t.default"
+      ],
+      "native_function_allocated_new_storage": false,
+      "native_result_bitwise_matches_captured_oracle": true,
+      "fixture_sha256": "f48ee747452dbd6d3649065abd98d95435bee37620e754a5c277f6ef2bd4b750"
+    },
+    {
+      "case_key": "scale_copy-d941e9ca62d6f75f5ffc1b77",
+      "stage": "decode",
+      "shape": [
+        64,
+        12
+      ],
+      "stride": [
+        1,
+        64
+      ],
+      "storage_offset": 0,
+      "storage_nbytes": 3072,
+      "same_native_storage_alias": true,
+      "same_native_layout": true,
+      "occurrences": 3072,
+      "transpose_is_contiguous": true,
+      "native_CPU_dispatch_operations": [
+        "aten.t.default",
+        "aten.t.default"
+      ],
+      "native_function_allocated_new_storage": false,
+      "native_result_bitwise_matches_captured_oracle": true,
+      "fixture_sha256": "e69095df12db5d58dd3ec89bc953043f30ce655f52e9747828830f0f6f5c02fa"
+    }
+  ],
+  "rank_stop_sha256": {
+    "0": "2b099162163f07e1207aaf386f5cd95bf9e2b950cf338ed0c89ba44cc4938362",
+    "1": "cad376249bcd13f338fc894f4dfbea898e9f2e74366aae3354bfd8379d795ee9",
+    "2": "ed3ee4a6d84609fb8483e24adb523756a2057189e0d6435d61e9480658abf5c5",
+    "3": "037f665006ab0eb7f21009956c3700fddd56df0cf5919048caec40c4a8d21d04",
+    "4": "9a3975b5768c9265b47fe5080c71c8f7caa3a0c190f840aae11c732ca13175fc",
+    "5": "1bbfd56028fd27ca5e1d901823a3d8a7e72a0ba07483f6a04e97dd589159ce10",
+    "6": "077bd3511d3356865c85e2cb146b26dca816d1b073a5200d38dda4d319efd8be",
+    "7": "909bf267d25606274601921d03a85ff957044c3a297e2c23c5871685a60c1d00"
+  },
+  "verification": "Actual captured fixtures restored on CPU. Pinned native function returned the same storage and identical layout; bytes matched every captured native oracle. The observed transpose is contiguous; dispatch contained only two aten.t view operations.",
+  "scope": "Resolved current complete64-request workload. This does not assert that unobserved row-major layouts can never materialize. Capture-injected snapshot copies are not native scale-copy work.",
+  "GPU_actions": false,
+  "GPU_qualification_or_speedup_claim": false
+}
