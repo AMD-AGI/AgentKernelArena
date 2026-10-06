@@ -87,6 +87,19 @@ class Tests(unittest.TestCase):
         self.assertLess(events.index('snapshot:hidden_states'),events.index('native_reference'))
         self.assertEqual(events[-1],'compare')
     def test_stock_guard(self):validate_sources(ROOT,ROOT)
+    def test_intermediate_fp8_rounding_boundary_from_failed_prefill(self):
+        import torch
+        # Exact CPU observations from seed 20261067, token 5262, expert 232.
+        value=torch.tensor(-4.125622272491455,dtype=torch.float32)
+        maximum=torch.tensor(17.113691329956055,dtype=torch.float32)
+        old_scale=maximum/448.0
+        scale=maximum*torch.tensor(1/448.0,dtype=torch.float32)
+        self.assertEqual(int(old_scale.view(torch.int32)),1025275857)
+        self.assertEqual(int(scale.view(torch.int32)),1025275858)
+        self.assertEqual(float((value/old_scale).to(torch.float8_e4m3fn)),-112.0)
+        self.assertEqual(float((value*(1.0/scale)).to(torch.float8_e4m3fn)),-104.0)
+        evidence=json.loads((ROOT/'provenance/ACTIVATION-ROUNDING-REPAIR.json').read_text())
+        self.assertEqual(evidence['source_sha256'],hashlib.sha256((ROOT/'ut/reference/kernels.py').read_bytes()).hexdigest())
     def test_every_entrypoint_rejects_host_rebinding(self):
         source=(ROOT/'source/kernels.py').read_text();functions=[x for x in ast.parse(source).body if isinstance(x,ast.FunctionDef)]
         for function in functions:

@@ -1,0 +1,78 @@
+{
+  "schema_version": 1,
+  "purpose": "Repair intermediate FP8 rounding order in both candidate and frozen reference",
+  "source_sha256": "f5b48a8b6fc50c5b7c23592cd7051dbc82f87b7baac5549dda39cf86edbec376",
+  "previous_source_sha256": "6d7af2e807164efcd25ea23511dd199d687de565213582a6b4f57748e2124c42",
+  "expressions": {
+    "scale": "maximum * float32(1/448)",
+    "quantized": "activated * round_to_nearest_reciprocal(scale)"
+  },
+  "reproduced_failure": {
+    "seed": 20261067,
+    "case": "whole-moe-prefill-m8192-96e9c56377cc1062a8f1499f",
+    "leg": "candidate_port",
+    "iteration": 61,
+    "mismatches": 3,
+    "token": 5262,
+    "expert": 232,
+    "route_slot": 0,
+    "intermediate_channel": 144,
+    "old_fp8": -112.0,
+    "new_fp8": -104.0,
+    "rounding_boundary": {
+      "gate": 1.7597295045852661,
+      "up": -2.7479259967803955,
+      "activated": -4.125622272491455,
+      "group_max": 17.113691329956055,
+      "old_scale": 0.03820020332932472,
+      "new_scale": 0.03820020705461502,
+      "old_scale_bits": 1025275857,
+      "new_scale_bits": 1025275858,
+      "old_quantizer_value": -108.00000762939453,
+      "new_quantizer_value": -107.99999237060547,
+      "old_fp8": -112.0,
+      "new_fp8": -104.0
+    },
+    "graph_and_eager_exactly_equal": true,
+    "input_quantizer_native_byte_equal": true,
+    "native_intermediate_is_inferred": true,
+    "single_q2_step_explained_squared_error_fraction": 0.9187440061993147,
+    "artifact_bundle": "glm/moe-full-policy-diagnostic-cbf23f31-v1/execution-full-policy-194969-seed20261006",
+    "result_sha256": "0cf1fd0dc3c50f1fccf4f944aae0a9a6ba97c231bf9bfe81391a4c3833c63e4b"
+  },
+  "GPU_validation": {
+    "artifact_bundle": "glm/moe-activation-rounding-repair-cbf23f31-v1/execution-activation-repair-full-194958",
+    "result_sha256": "d8696f2d7cead4515fd5954a00c65c58e99e7a56e7adfec3f764147879abf0fc",
+    "diagnostic_result_sha256": "438a4c453e5088db51e388561a4a8fdd044154285c06d84ca3c5dc310648cbb4",
+    "status": "COMPARISONS_PASS",
+    "hardware": "AMD MI355X gfx950, allocation 194958, node crsuse2-m2m-204",
+    "elapsed_seconds": 381.00850379886106,
+    "port_challenge_seed": 639694534,
+    "production_challenge_seed": 20261006,
+    "replay_blocks": 6,
+    "graph_replays": 660,
+    "timed_samples": 600,
+    "verified_outputs": 666,
+    "case_order": [
+      "decode M64",
+      "prefill M8192"
+    ],
+    "production_leg_order": [
+      "candidate_port",
+      "native_production"
+    ],
+    "warmup_iterations": 10,
+    "benchmark_iterations": 100,
+    "rtol": 0.02,
+    "atol": 0.02,
+    "method": "cuda_graph",
+    "same_original_measure_and_replay_callbacks": true
+  },
+  "qualification": false,
+  "performance_claim": false,
+  "scope_limits": [
+    "Fresh framework task-validator PASS remains required for the committed candidate/reference package.",
+    "The original validator failure with 2844 mismatches used an unrecorded random challenge; it has not been reproduced or explained.",
+    "Native fused q2 is opaque; its rounding value is inferred from the saved output residual and CPU arithmetic."
+  ]
+}

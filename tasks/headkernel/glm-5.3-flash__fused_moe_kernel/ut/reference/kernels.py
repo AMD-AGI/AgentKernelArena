@@ -55,8 +55,8 @@ def activate_quantize(G, Q, S, M: tl.constexpr, I: tl.constexpr, TOPK: tl.conste
     up = tl.load(G + route * (2 * I) + I + cols)
     activated = gate / (1.0 + tl.exp(-gate)) * up
     maximum = tl.max(tl.abs(activated), axis=0)
-    scale = tl.where(maximum == 0, 1.0, maximum / 448.0)
-    quantized = tl.minimum(tl.maximum(activated / scale, -448.0), 448.0)
+    scale = tl.where(maximum == 0, 1.0, maximum * 0.0022321429569274187)
+    quantized = tl.minimum(tl.maximum(activated * tl.div_rn(1.0, scale), -448.0), 448.0)
     tl.store(Q + route * I + cols, quantized)
     tl.store(S + route * (I // 128) + block, scale)
 
