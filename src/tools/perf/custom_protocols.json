@@ -6,9 +6,9 @@
       "description": "Task-local timers call canonical checked_replays and finalize_report.",
       "entrypoint": "scripts/task_runner.py",
       "entrypoint_sha256": [
+        "33c4944dc3f1fbf1c77185f06896f64ba7fe69142c4e776d7a13e788aa58a023",
         "3d3fcf8c4caf7f0a9ca68d9385dfdf4225471d293523ae62f44f106dc6af8b56",
         "4b4255309657138e1a1a0ac6919991a4d604c200882a9824eed2c9c813d91503",
-        "612fe8dfdfcee0a4c50797dccec80a5ee16ad1f55b05fe845d47708e4f33dccf",
         "6bfa216084b7b63744aa1b25ed2a567722bb268b8ea93df1a6a70fd79e1e2dac",
         "82ada1b18bc7a2d6effc7c6ee581bd342920b516926d03a555f11c6bc86d2ca0",
         "b3afbfc7c55530991ad4f0264eca4df66f3e21a6dad1f0bb057a9add8ff6ad07",
