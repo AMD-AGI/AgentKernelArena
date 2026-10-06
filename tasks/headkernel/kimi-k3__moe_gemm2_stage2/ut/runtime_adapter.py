@@ -7,7 +7,8 @@ import random
 import sys
 
 from evaluation_contract import canonical, observe_case, strict_json
-from fresh_runner import FreshCallbacks, clear_device_reference, cpu_copy
+from fresh_runner import clear_device_reference, cpu_copy
+from routing import RoutingCallbacks, population_summary
 from fixture_helpers import checked_path, file_sha, make_routes, raw_storage, weighted_work
 from fixture_cache import CpuFixtureCache
 from native import NativeBindings
@@ -89,7 +90,8 @@ class Prepared:
         self.restore_original(self.groups)
         if self.family==LEAN:self.prepare_attention()
         else:self.prepare_moe()
-        self.callbacks=FreshCallbacks(refresh_inputs=self.refresh,initialize_outputs=self.initialize_outputs,
+        self.route_population=None
+        self.callbacks=RoutingCallbacks(prepared=self,refresh_inputs=self.refresh,initialize_outputs=self.initialize_outputs,
             snapshot_inputs=self.snapshot_inputs,snapshot_outputs=lambda:self.output,
             validate_metadata=self.validate_metadata,assert_immutable=self.assert_immutable,
             reference=self.reference,compare=self.compare,replay=self.invoke_candidate)
@@ -201,8 +203,11 @@ class Prepared:
 
     def refresh_moe(self,seed):
         t=self.torch;rng=random.Random(seed)
-        rows=weighted_work(self.case['work_distribution']['valid_rows_histogram'],rng)
-        routes=make_routes(self.tokens,self.tile,rows,self.inputs['sorted_token_ids'].numel(),self.inputs['sorted_expert_ids'].numel(),seed)
+        retained=self.route_population
+        rows=(weighted_work(self.case['work_distribution']['valid_rows_histogram'],rng) if retained is None
+              else retained['num_valid_ids'][0])
+        routes=make_routes(self.tokens,self.tile,rows,self.inputs['sorted_token_ids'].numel(),self.inputs['sorted_expert_ids'].numel(),seed,
+                           None if retained is None else retained['expert_sorted_block_histogram'])
         for name in ('sorted_token_ids','sorted_expert_ids','num_valid_ids'):
             self.inputs[name].copy_(t.frombuffer(routes[name],dtype=t.int32).reshape(self.inputs[name].shape))
         encoded=t.frombuffer(routes['sorted_token_ids'],dtype=t.int32)[:rows].to(t.int64)
@@ -221,7 +226,7 @@ class Prepared:
         weight/=weight.sum(dim=1,keepdim=True)
         self.inputs['sorted_weights'].zero_()
         self.inputs['sorted_weights'][live.to('cuda')]=weight[token[mask].to('cuda'),slot[mask].to('cuda')]
-        return {'valid_rows':rows,'active_m_tiles':rows//self.tile}
+        return {'valid_rows':rows,'active_m_tiles':rows//self.tile,**population_summary(routes,self.tile,retained)}
 
     def refresh(self,seed):
         self.restore_original(self.groups)
