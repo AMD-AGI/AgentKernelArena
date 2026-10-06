@@ -1,10 +1,11 @@
-"""Protected operator semantics and packaging invariants for the 41 SIKL tasks."""
+"""Protected operator semantics and packaging invariants for the 46 SIKL tasks."""
 from __future__ import annotations
 
 import ast
 import hashlib
 import json
 from pathlib import Path
+import sys
 
 import pytest
 import yaml
@@ -40,10 +41,13 @@ SOURCE_ACQUISITION = {
     'mla': [{'kind': 'image', 'image_path': '/sgl-workspace/sglang/python/sglang/kernels/ops/attention/dsa',
              'destination': 'sglang_source/kernels/ops/attention/dsa', 'exclude': ['__pycache__']}],
 }
-# The MLA definitions differ in their reference and baseline bindings, and the
-# a8w8 definitions in their activation-scale storage, so those callbacks are
-# pinned per task (MLA) or per storage mode (a8w8) rather than per family.
+# The MLA definitions differ in their reference and baseline bindings, the
+# a8w8 definitions in their activation-scale storage, and the BF16 GEMM
+# definitions in the bundle revision of their reference and comparison text, so
+# those callbacks are pinned per task (MLA), per storage mode (a8w8) or per
+# bundle (GEMM) rather than per family.
 PER_TASK_CALLBACKS = {'mla': {'scripts/task_reference.py', 'scripts/task_baseline.py'},
+                      'gemm': {'scripts/task_reference.py', 'scripts/task_compare.py'},
                       'gemm_a8w8': {'scripts/task_reference.py', 'scripts/task_initialize.py',
                                     'scripts/task_baseline.py'}}
 SHARED_TEMPLATE_FILES = (
@@ -52,14 +56,27 @@ SHARED_TEMPLATE_FILES = (
     'scripts/task_baseline.py', 'scripts/task_measure.py', 'scripts/task_contract.py',
     'scripts/evaluate.py', 'scripts/export_solution.py', 'scripts/task_validation.py', 'README.md',
 )
+DSV4_GEMM_TASKS = {f'gemm_a16w16_nt_n{n}_k4096' for n in (64, 256, 512, 1024, 2048)}
 # SHA256 from the original PR's bundled callbacks before schema migration.
 # A migration must not quietly change input distributions or acceptance gates.
 CALLBACK_SHA256 = {
     'gemm': {
-        'task_baseline': 'eeaf2f83a06a298b2b7c0fe2c2cad75bd4cb4da89ddf6b583f31a6b3de6de66e',
-        'task_compare': 'b3237750010516954281047cc26b7045d9a276ed5322f2104a5cecb770f89b1a',
-        'task_initialize': '60688988b28b137ee8cfe328077d4c4dba6d7bf5835a002062f03a88a298b89b',
-        'task_reference': '4ce9f4075562e14cd48ec6e6c20e6f80deae18f34e213dd6891432001314c663',
+        'original': {
+            'task_baseline': 'eeaf2f83a06a298b2b7c0fe2c2cad75bd4cb4da89ddf6b583f31a6b3de6de66e',
+            'task_compare': 'b3237750010516954281047cc26b7045d9a276ed5322f2104a5cecb770f89b1a',
+            'task_initialize': '60688988b28b137ee8cfe328077d4c4dba6d7bf5835a002062f03a88a298b89b',
+            'task_reference': '4ce9f4075562e14cd48ec6e6c20e6f80deae18f34e213dd6891432001314c663',
+        },
+        # Verbatim callbacks of the five deepseek-v4-flash bundle definitions.
+        # Initialization and baseline are byte-identical to the original
+        # bundle; reference and comparison differ only in annotations, an
+        # unused logits tolerance and a class name.
+        'deepseek-v4-flash': {
+            'task_baseline': 'eeaf2f83a06a298b2b7c0fe2c2cad75bd4cb4da89ddf6b583f31a6b3de6de66e',
+            'task_compare': 'd12a114fb11ddbbc00411aca479777ef89dd1c75c0f126a14b8311d16d554589',
+            'task_initialize': '60688988b28b137ee8cfe328077d4c4dba6d7bf5835a002062f03a88a298b89b',
+            'task_reference': '4be75db7193a88ff20efe37105d4c60835d0aeb6359dd00b1153e505e008f13e',
+        },
     },
     'moe': {
         'task_baseline': '3d27b3fe67b8d030aa1fd13287fcdef7d68e657a47a169469292c22f1dc4600e',
@@ -125,6 +142,8 @@ def _callback_hashes(task, workload):
         return hashes[task.name]
     if workload['op_type'] == 'gemm_a8w8':
         return hashes[workload['a_scale_storage']]
+    if workload['op_type'] == 'gemm':
+        return hashes['deepseek-v4-flash' if task.name in DSV4_GEMM_TASKS else 'original']
     return hashes
 
 
@@ -136,15 +155,16 @@ def _workload(task):
     return json.loads((task / 'workload.json').read_text())
 
 
-def test_suite_keeps_all_41_tasks_and_1569_cases():
-    assert len(TASKS) == 41
-    assert sum(_workload(t)['op_type'] == 'gemm' for t in TASKS) == 17
+def test_suite_keeps_all_46_tasks_and_1634_cases():
+    assert len(TASKS) == 46
+    assert sum(_workload(t)['op_type'] == 'gemm' for t in TASKS) == 22
+    assert DSV4_GEMM_TASKS <= {t.name for t in TASKS}
     assert sum(_workload(t)['op_type'] == 'moe' for t in TASKS) == 4
     assert sum(_workload(t)['op_type'] == 'mhc' for t in TASKS) == 1
     assert sum(_workload(t)['op_type'] == 'topk' for t in TASKS) == 1
     assert sum(_workload(t)['op_type'] == 'mla' for t in TASKS) == 3
     assert sum(_workload(t)['op_type'] == 'gemm_a8w8' for t in TASKS) == 15
-    assert sum(len(_workload(t)['cases']) for t in TASKS) == 1569
+    assert sum(len(_workload(t)['cases']) for t in TASKS) == 1634
 
 
 @pytest.mark.parametrize('op_type', sorted(VAR_AXIS))
@@ -307,6 +327,48 @@ def test_original_callbacks_and_case_sampling_are_unchanged(task):
         assert 'task_initialize.run(inputs, seed=seed)' in inputs
         assert 'def refill_case_inputs(inputs: dict[str, Any], seed: int)' in inputs
     assert 'task_compare.run(got, expected)' in inputs
+
+
+def _load_callback(path, name, monkeypatch):
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(name, path)
+    module = importlib.util.module_from_spec(spec)
+    monkeypatch.setitem(sys.modules, name, module)  # Dataclasses resolve their module.
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_bundle_revisions_of_gemm_callbacks_give_identical_results(monkeypatch):
+    torch = pytest.importorskip('torch')
+    original = SIKL_ROOT / 'gemm_a16w16_nt_n2048_k2048/scripts'
+    revised = SIKL_ROOT / 'gemm_a16w16_nt_n2048_k4096/scripts'
+    references = [_load_callback(root / 'task_reference.py', f'gemm_reference_{i}', monkeypatch)
+                  for i, root in enumerate((original, revised))]
+    compares = [_load_callback(root / 'task_compare.py', f'gemm_compare_{i}', monkeypatch)
+                for i, root in enumerate((original, revised))]
+    generator = torch.Generator().manual_seed(0)
+    a = torch.randn(8, 64, generator=generator).bfloat16()
+    b = torch.randn(32, 64, generator=generator).bfloat16()
+    expected = references[0].run(a=a, b=b)
+    assert torch.equal(expected, references[1].run(a=a, b=b))
+    near = expected.float()
+    near[0, 0] += 0.009
+    far = expected.float()
+    far[0, 0] += 0.5 + expected[0, 0].abs().float()
+    nonfinite = expected.clone()
+    nonfinite[0, 0] = float('nan')
+    candidates = [expected.clone(), near.bfloat16(), far.bfloat16(), -expected, nonfinite,
+                  expected[:, :-1].clone(), expected.half()]
+
+    def verdict(compare, actual):
+        try:
+            compare.run(actual, expected)
+        except (AssertionError, ValueError, RuntimeError, TypeError) as error:
+            return type(error).__name__
+        return 'pass'
+    verdicts = [[verdict(compare, actual) for actual in candidates] for compare in compares]
+    assert verdicts[0] == verdicts[1]
+    assert verdicts[0][:2] == ['pass', 'pass'] and 'pass' not in verdicts[0][2:6]
 
 
 @pytest.mark.parametrize('task', ROTATING_TASKS, ids=lambda t: t.name)

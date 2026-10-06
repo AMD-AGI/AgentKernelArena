@@ -1,0 +1,83 @@
+{
+  "definition": "gemm_a16w16_nt_n1024_k4096",
+  "op_type": "gemm",
+  "axes": {
+    "n": 1024,
+    "k": 4096
+  },
+  "seed": 0,
+  "bench": {
+    "warmup": 20,
+    "repetition": 100,
+    "target_ms": 1.0
+  },
+  "gate_policy": "Input initialization, reference, comparison and production baseline are the original bundled task callbacks. The requested role is evaluated independently over every case; candidate replay uses the same numerical gate. Any baseline numerical exception is declared in config.yaml and preserves the failed comparison evidence.",
+  "cases": [
+    {
+      "case_id": "m_1",
+      "uuid": "1de1b28d71b9492e",
+      "m": 1
+    },
+    {
+      "case_id": "m_2",
+      "uuid": "0d81ae1cb7a5224b",
+      "m": 2
+    },
+    {
+      "case_id": "m_4",
+      "uuid": "11bde4ec8c57840e",
+      "m": 4
+    },
+    {
+      "case_id": "m_8",
+      "uuid": "b8eeddacee04c044",
+      "m": 8
+    },
+    {
+      "case_id": "m_16",
+      "uuid": "26e5e44973eff36e",
+      "m": 16
+    },
+    {
+      "case_id": "m_32",
+      "uuid": "6bcf150b2571f4e0",
+      "m": 32
+    },
+    {
+      "case_id": "m_64",
+      "uuid": "a712f4ac952a988f",
+      "m": 64
+    },
+    {
+      "case_id": "m_128",
+      "uuid": "516a85f3370169bb",
+      "m": 128
+    },
+    {
+      "case_id": "m_256",
+      "uuid": "3e6bfd645b591099",
+      "m": 256
+    },
+    {
+      "case_id": "m_512",
+      "uuid": "f8f0e08e10faf90a",
+      "m": 512
+    },
+    {
+      "case_id": "m_1024",
+      "uuid": "7b555b4fb4f10f4c",
+      "m": 1024
+    },
+    {
+      "case_id": "m_2048",
+      "uuid": "c351891e4b1d76c3",
+      "m": 2048
+    },
+    {
+      "case_id": "m_4096",
+      "uuid": "5d3e4177273027d9",
+      "m": 4096
+    }
+  ],
+  "trans_b": true
+}

@@ -764,6 +764,11 @@ def test_diagnostic_policy_only_names_tasks_with_specific_evidence():
         'gemm_a16w16_nt_n6144_k3072': '9488e7dd33b407bbbbb193b258d812870132d1a31708475bebe7d93f36a6da55',
         'gemm_a16w16_nt_n6144_k4096': '01fa1cdb8b76a15e0c4de1643b0cabcf5c4d3c49ebd550d2cc079c7f3237ef01',
         'gemm_a16w16_nt_n6144_k6144': 'd641c76d2113890966f1b4132fd3cb0cd53fde9a6a7d44e25bd177db9ecc86b5',
+        'gemm_a16w16_nt_n64_k4096': 'c471e5e842344d232f504c5d8a191116bcfb8aa4119e7dfb3431edc7264cab81',
+        'gemm_a16w16_nt_n256_k4096': 'd529534b7ae881c1416f22dec7b9a0e8c8657ddb040b0a755f8a7344c53c6ccd',
+        'gemm_a16w16_nt_n512_k4096': '4e795b1efd64cdd01d9ff229e4176a27d12cadf81c5c864bb397a0f1c30b86fd',
+        'gemm_a16w16_nt_n1024_k4096': '1b1eff453ec7d1f253c5361eac683d91d5d14a73eb620f92b8c3bc1a1b7213d3',
+        'gemm_a16w16_nt_n2048_k4096': '20aa34f087b048be14d8b4352b03b79039f10f83d4e16a5c106b719ecc05937a',
         # AITER's tuned asm split-K row for M=128 in this model config file.
         **{f'gemm_a8w8_blockwise_scaled_blk128x128_nt_obfloat16_bshuf16x16_as{storage}_n1024_k4096':
            '65246705468a77baacc29af9831825efdbba78b8aab5e324d484463f4ddfea97'

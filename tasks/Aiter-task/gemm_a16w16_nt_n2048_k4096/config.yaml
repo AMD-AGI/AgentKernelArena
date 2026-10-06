@@ -1,0 +1,59 @@
+schema_version: 2
+description: Implement gemm_a16w16_nt_n2048_k4096 in FlyDSL over every declared case.
+instructions:
+- README.md
+kernel_identity:
+  logical_operator: gemm_a16w16_nt_n2048_k4096
+  source_owner: aiter
+candidate:
+  language: flydsl
+  initial_state: unimplemented
+  editable:
+  - kernel.py
+  entrypoints:
+  - file: kernel.py
+    kind: builder
+    symbol: build_gemm_a16w16_nt_n2048_k4096_module
+baseline:
+  kind: provided
+  source_files:
+  - aiter_source/aiter/tuned_gemm.py
+  correctness_policy: diagnostic
+  diagnostic_reason: >-
+    MI355X/gfx950 on 2026-10-06 with AITER commit dbd8bf5bd624120197a7a26780a8c72201824f0f: all 13
+    baseline cases completed with valid output contracts; 11 completed with finite numerical
+    mismatches (m_256, m_4096 passed). A repeat run failed the same cases with the same dispatch.
+    Report SHA256 20aa34f087b048be14d8b4352b03b79039f10f83d4e16a5c106b719ecc05937a. README.md
+    records every case. Only completed finite numerical mismatches are diagnostic; candidate checks
+    retain the full original gate.
+workspace:
+  sources:
+  - kind: image
+    image_path: /sgl-workspace/aiter/aiter
+    destination: aiter_source/aiter
+    exclude:
+    - jit/build
+    - jit/flydsl_cache
+    - __pycache__
+evaluation:
+  runner:
+  - python3
+  - scripts/evaluate.py
+  workloads: workload.json
+  timeout_s: 3600
+  baseline:
+    correctness:
+      timeout_s: 1800
+  candidate:
+    correctness:
+      timeout_s: 1800
+platform_support:
+  required_arch: gfx950
+  status: active
+exports:
+- format: sikl-solution
+  output: artifacts/solution.json
+  command:
+  - python3
+  - scripts/export_solution.py
+  timeout_s: 60
