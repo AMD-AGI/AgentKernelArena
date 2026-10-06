@@ -81,7 +81,7 @@
       "description": "Packed-value CPU oracle and fresh native FP4 graph replay callbacks with canonical finalization.",
       "entrypoint": "scripts/task_runner.py",
       "entrypoint_sha256": [
-        "98db37aa1aabbb53436f31f918e14289ca793754928b78416e49318ec8701161"
+        "b8d79bc1124a679c467dc3a1dd27e9bca7df7ac243839d72589447deb8776bc1"
       ],
       "files_sha256": {
         "ut/runtime.py": [

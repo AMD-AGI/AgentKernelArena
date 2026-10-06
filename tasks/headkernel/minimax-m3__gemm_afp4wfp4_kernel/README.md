@@ -41,6 +41,16 @@ A fresh framework-finalized `validation_report.yaml` with overall PASS and the
 actual task's source controls are still required. No task/model optimization
 or serving speedup is claimed.
 
+The first task-validator attempt on job194969 exited the compile command after
+38.9 seconds at the final package-hash check: the framework's live stderr log
+under `.validator_audit` was incorrectly included in that hash. Correctness and
+performance were skipped, and the outer launcher later reached its time bound.
+The revised hash excludes only top-level `.validator_audit` and
+`.validator_torch_extensions` runtime directories, while code, oracle, cases,
+fixtures and nested same-name directories remain protected. The preserved
+failure and repair are recorded in `provenance/VALIDATOR-HASH-BOUNDARY-194969.json`.
+This repair has CPU regression coverage and still requires a fresh GPU pass.
+
 For trusted staging use `src/tools/trusted_task_eval.py --stage-only` with the
 committed task and verified fixture mirror. The task runs through the protected
 `python3 scripts/task_runner.py compile|correctness|performance` entrypoint.

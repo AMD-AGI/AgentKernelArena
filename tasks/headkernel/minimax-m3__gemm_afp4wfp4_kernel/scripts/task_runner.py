@@ -33,9 +33,17 @@ def load_dataset(root):
 def package_hash():
     digest = hashlib.sha256()
     for path in sorted(ROOT.rglob("*")):
-        if path.is_file() and not any(part in {"build", "__pycache__", ".pytest_cache"} for part in path.relative_to(ROOT).parts):
-            require(not path.is_symlink(), "protected task contains a symlink")
-            digest.update(path.relative_to(ROOT).as_posix().encode() + b"\0" + path.read_bytes())
+        relative = path.relative_to(ROOT)
+        # The framework streams logs while the command runs and gives native
+        # extension builds a private cache. These two top-level directories are
+        # runtime output, not immutable task inputs. Nested names stay protected.
+        if relative.parts[0] in {".validator_audit", ".validator_torch_extensions"}:
+            continue
+        if any(part in {"build", "__pycache__", ".pytest_cache"} for part in relative.parts):
+            continue
+        require(not path.is_symlink(), "protected task contains a symlink")
+        if path.is_file():
+            digest.update(relative.as_posix().encode() + b"\0" + path.read_bytes())
     return digest.hexdigest()
 
 

@@ -1,0 +1,36 @@
+{
+  "schema": "minimax-fp4-validator-hash-boundary-v1",
+  "failed_task_commit": "ec757e3e23729eb34bc3ca52bd8020998ce393bb",
+  "job": "194969",
+  "node": "crsuse2-m2m-045",
+  "gpu": 5,
+  "checkpoint": 33,
+  "checkpoint_report_sha256": "ded1a52a4ac0330b714b7de5a91538a5f8a54c945eed89ec7a407970456d1e3d",
+  "checkpoint_report_overall_status": "FAIL",
+  "compilation": {
+    "exit_code": 1,
+    "timed_out": false,
+    "duration_seconds": 38.888924,
+    "error": "ValueError: protected package changed during execution",
+    "location": "scripts/task_runner.py post-loop package_hash assertion"
+  },
+  "root_cause": "The framework streams AITER stderr into top-level .validator_audit during the command. The previous task-local hash included that mutable log as if it were an immutable task input.",
+  "dedicated_correctness": "SKIP/dependency_failed",
+  "performance": "SKIP/dependency_failed",
+  "performance_samples": 0,
+  "outer_launcher_exit": 124,
+  "outer_work_deadline_utc": "2026-10-06T02:49:00Z",
+  "provider_rate_limit_retries_observed": true,
+  "repair": "Exclude only the two framework-owned top-level directories .validator_audit and .validator_torch_extensions in addition to existing runtime-cache exclusions. Keep code, cases, fixture data and nested same-name directories hashed. Reject directory symlinks as well as file symlinks.",
+  "unchanged": [
+    "source/kernel.py",
+    "ut/reference.py",
+    "cases.json",
+    "all 14 cases",
+    "0.02 mixed RMS tolerance",
+    "10 warmups and 100 measured graph samples",
+    "native dispatch",
+    "correctness and timing callbacks"
+  ],
+  "qualification": "pending fresh GPU task-validator run; no PASS inferred from the interrupted attempt"
+}
