@@ -200,6 +200,11 @@ the user's existing home directory for agent installation/authentication mounts.
 This preserves the scheduler process's `HOME`; when unset, the runner continues
 to use the caller's `HOME`. Keep the intended agent CLI on `PATH` as usual.
 
+PyTorch Inductor receives an explicit container-private `TORCHINDUCTOR_CACHE_DIR`
+under `/tmp`, with the worker cache suffix when present. This permits import-time
+Dynamo/Inductor cache initialization when the sparse authentication mounts leave
+the caller's home directory unwritable.
+
 Each runtime container receives a private writable tmpfs at its existing
 `HOME/.aiter`, owned by the actual container UID/GID with mode `0700`. This lets
 AITER populate its normal cache from the image before imports complete, even

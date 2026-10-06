@@ -999,6 +999,7 @@ build_docker_args() {
         -e "XDG_CACHE_HOME=/tmp/agent-cache${cache_postfix}"
         -e "MPLCONFIGDIR=/tmp/matplotlib${cache_postfix}"
         -e "TORCH_EXTENSIONS_DIR=/tmp/torch-extensions${cache_postfix}"
+        -e "TORCHINDUCTOR_CACHE_DIR=/tmp/torchinductor-cache${cache_postfix}"
         -e "TRITON_CACHE_DIR=/tmp/triton-cache${cache_postfix}"
         -e "PYTHONUSERBASE=${CONTAINER_WORKDIR}/.aka-pyuserbase"
         -e "MIOPEN_USER_DB_PATH=/tmp/miopen-cache${cache_postfix}"

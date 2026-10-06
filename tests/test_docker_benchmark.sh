@@ -257,6 +257,7 @@ mapfile -t args < <(run_shell_args AKA_GPU_ARCH=gfx950)
 assert_has "$PINNED_GFX950_IMAGE" "${args[@]}"
 assert_cache_args_present "" "${args[@]}"
 assert_not_has "AITER_ROOT_DIR=/tmp/aiter-root" "${args[@]}"
+assert_has "TORCHINDUCTOR_CACHE_DIR=/tmp/torchinductor-cache" "${args[@]}"
 
 # Allocation owners can label every preflight/worker container without changing
 # the standard runner or accepting arbitrary extra Docker arguments.
@@ -272,6 +273,7 @@ fi
 # A worker suffix must isolate both runtime cache directories.
 mapfile -t args < <(run_shell_args AKA_GPU_ARCH=gfx950 AKA_CACHE_SUFFIX=worker/3)
 assert_cache_args_present "-worker_3" "${args[@]}"
+assert_has "TORCHINDUCTOR_CACHE_DIR=/tmp/torchinductor-cache-worker_3" "${args[@]}"
 
 # Explicitly selecting the same verified tag has the same behavior.
 mapfile -t args < <(run_shell_args AKA_GPU_ARCH=gfx950 AKA_DOCKER_IMAGE="$PINNED_GFX950_IMAGE")
