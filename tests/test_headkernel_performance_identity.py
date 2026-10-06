@@ -12,6 +12,7 @@ import yaml
 TASKS = Path(__file__).resolve().parents[1] / "tasks/headkernel"
 RUNNERS = [path for path in sorted(TASKS.glob("*/scripts/task_runner.py"))
            if not path.parent.parent.name.startswith("qwen")
+           and (path.parent.parent / "config.yaml").is_file()
            and not yaml.safe_load((path.parent.parent / "config.yaml").read_text()).get("trusted_evaluation")
            and (path.parent.parent / "ut/meta.json").is_file()
            and (json.loads((path.parent.parent / "ut/meta.json").read_text())

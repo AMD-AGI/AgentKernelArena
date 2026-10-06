@@ -18,6 +18,11 @@ EXAMPLES = [
     ("headkernel/deepseek-v4-pro__dsa_sparse_mla_attn", "legacy_headkernel"),
     ("headkernel_sg520/deepseek-v4-pro__per_group_quant_fp8", "isolated_native_graph"),
     ("headkernel/glm-5.3-flash__elementwise_copy_cluster", "blocked_entrypoint"),
+    ("headkernel/minimax-m3__gqa_share_sparse_fwd_kernel", "portable_case_contract"),
+    ("headkernel/deepseek-v4-pro__moe_stage1_grouped_gemm_silu_flydsl", "portable_case_contract"),
+    ("headkernel/kimi-k3__attn_residual_aggregate_hip", "portable_case_contract"),
+    ("headkernel/kimi-k3__dense_bf16_gemm_cijk", "portable_case_contract"),
+    ("headkernel/minimax-m3__gemm_afp4wfp4_kernel", "portable_case_contract"),
 ]
 
 
@@ -66,6 +71,23 @@ def test_changed_portable_runner_or_helper_is_rejected(tmp_path, relative):
 def test_changed_legacy_or_native_timer_is_rejected(tmp_path, example, relative):
     task, _ = stage_protocol(tmp_path, example)
     (task / relative).write_text("def measure(): return 0.001\n")
+    counts, problems = audit_task_benchmark_entrypoints(tmp_path)
+    assert counts == {} and len(problems) == 1
+    assert "reviewed implementation" in problems[0]
+
+
+@pytest.mark.parametrize("example,relative", [
+    ("headkernel/kimi-k3__attn_residual_aggregate_hip", "ut/fresh_runner.py"),
+    ("headkernel/kimi-k3__dense_bf16_gemm_cijk", "scripts/production_comparison.py"),
+    ("headkernel/minimax-m3__gemm_afp4wfp4_kernel", "ut/runtime.py"),
+    ("headkernel/minimax-m3__gemm_afp4wfp4_kernel", "ut/admission.py"),
+    ("headkernel/minimax-m3__gemm_afp4wfp4_kernel", "ut/reference.py"),
+    ("headkernel/minimax-m3__gemm_afp4wfp4_kernel", "ut/fixture_codec.py"),
+])
+def test_current_portable_protocol_helper_drift_requires_review(tmp_path, example, relative):
+    task, _ = stage_protocol(tmp_path, example)
+    helper = task / relative
+    helper.write_text(helper.read_text() + "\n# implementation changed after review\n")
     counts, problems = audit_task_benchmark_entrypoints(tmp_path)
     assert counts == {} and len(problems) == 1
     assert "reviewed implementation" in problems[0]
