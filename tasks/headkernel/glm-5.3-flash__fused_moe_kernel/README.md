@@ -1,6 +1,6 @@
 The current GLM-5.3-Flash run uses whole AITER fused MoE with FP8 blockscale weights. The historical SGLang Triton `fused_moe_kernel` does not appear in run `glm-flash-fp8-native-jit-194292`. This task is now an explicitly labelled replacement port for `aiter.fused_moe:fused_moe`.
 
-The original image supplies a precompiled fused GPU code object. Its dispatch and layout sources are pinned in `provenance/NATIVE-SOURCES.json`; an editable body for the observed code object was not found in the extracted source. The new Triton implementation is therefore a port, not a stock-source optimization task. The Arena reference and candidate both run the same complete port pipeline. Production-native timings cannot serve as its score baseline.
+The original image supplies a precompiled fused GPU code object. Its dispatch and layout sources are pinned in `provenance/NATIVE-SOURCES.json`; an editable body for the observed code object was not found in the extracted source. The new Triton implementation is therefore a port, not a stock-source optimization task. The editable implementation remains the complete replacement port. Primary scoring compares its matched GPU time with pinned native production; frozen-port versus edited-port improvement remains secondary.
 
 The protected runner includes native Opus routing sort, input FP8 quantization, gate/up matrix multiplication with physical shuffled weights, SiLU and intermediate FP8 quantization, down projection and weighted expert reduction. Only the five GPU function bodies are editable. Every host operation, launch setting, fixture, scalar and oracle is frozen.
 
@@ -16,8 +16,24 @@ For each replay the runner permutes actual routing rows and creates fresh numeri
 
 Run `python3 scripts/import_fixtures.py CAPTURE_MANIFEST` after capture. Then run the compile, correctness and performance commands in `config.yaml`, followed by the generic trusted-host retest and framework task-validator. The real fixtures have been imported and `NOT_BUILT` removed. Fresh GPU/framework reports for this exact final contract are still required.
 
-Every performance phase also compares the complete candidate port with the pinned native `aiter.fused_moe` on each exact captured case, using identical token permutations, output checks and timing policy. Native output/workspace allocations occur during graph construction; no extra copy is included in its timed graph. `native_production_comparison.json` reports raw samples, native parity and `native_mean_ms/candidate_mean_ms`. The Arena score still measures local port optimization. A port gain alone does not establish native improvement; only a native ratio above1 supports that isolated claim, and serving speedup requires a model rerun.
+Every performance phase also compares the complete candidate port with the pinned native `aiter.fused_moe` on each exact captured case, using identical token permutations, output checks and timing policy. Native output/workspace allocations occur during graph construction; no extra copy is included in its timed graph. `native_production_comparison.json` reports raw samples, native parity and `native_mean_ms/candidate_mean_ms`. The primary Arena score uses the matched native-production comparison. A port gain alone does not establish native improvement; only a native ratio above1 supports that isolated claim, and serving speedup requires a model rerun.
 
 The protected production comparator also writes a unique `build/native_production_events-*.jsonl` receipt containing every case, leg, seed, iteration, and verification result. Reset and verification receipts are outside device timing. Failures are recorded and propagated unchanged; the final comparison report binds the challenge seed and receipt digest. This makes a fresh-challenge failure reproducible even when the final comparison report is never completed.
 
 After importing the finalized real capture, keep data out of the source commit and use the repository trusted-fixture contract: commit `fixtures/EXTERNAL-MANIFEST.json` plus `cases.json` references, with `trusted_evaluation.fixture_manifest` pointing at that manifest. Case metadata stays `served-tensor-fixture-v1`; raw bytes stay `raw-storage-segment-v1`. The original frozen rank0capture can serve as the local mirror because object keys may differ from the task-relative renamed case files. Use trusted host `--stage-only` for the framework validator input and `--fixture-local-mirror` for fresh retests. Neither the bounded diagnostic nor fixture staging qualifies the task.
+
+The frozen `scoring_baseline` policy opts this task into native-production scoring.
+The host validates the enclosing request, current source hashes, native source
+provenance, runtime image, complete case ABI, raw samples, and replay checks for
+both existing comparison legs. Means and ratios are recomputed from samples.
+Missing, stale, partial, or diagnostic-only evidence cannot fall back to the
+port score. No benchmark calls, cases, seeds, tolerances, or timing boundaries
+change for this policy.
+
+`task_result.yaml` and `trusted_measurement.json` carry `baseline_kind:
+native_production`, the primary native/candidate ratio, the secondary
+`port_to_port_speedup_ratio`, every case ratio, `regressed_case_ids`, and
+`all_cases_faster_than_native`. `production_kernel_improvement` is true only when
+the primary aggregate ratio exceeds one; individual regressions remain explicit.
+A slower correct starter is still valid and measurable. This is an isolated
+operator metric and does not assert end-to-end serving improvement.

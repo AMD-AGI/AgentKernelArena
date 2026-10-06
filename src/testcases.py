@@ -13,6 +13,11 @@ from dataclasses import dataclass
 
 _SYNTHETIC_TEST_ID_METADATA_KEY = "_synthetic_test_case_id"
 _TIMING_SOURCE_METADATA_KEY = "_timing_source"
+_NATIVE_BASELINE_METADATA_KEYS = (
+    'baseline_kind', 'case_sha256', 'native_ms', 'candidate_ms', 'port_measurement_ms',
+    'native_request_id', 'native_source_manifest_sha256',
+    'native_source_hashes', 'native_manifest_sha256',
+)
 
 _DEVICE_TIME_KEYS = [
     "device_time_ms",
@@ -823,7 +828,7 @@ def save_performance_results(
         # measurements can be audited and compared after workspace reload.
         if case.metadata:
             for key, value in case.metadata.items():
-                if key.startswith('benchmark_') and value is not None:
+                if (key.startswith('benchmark_') or key in _NATIVE_BASELINE_METADATA_KEYS) and value is not None:
                     case_dict[key] = value
             # Preserve whether an ID was generated from list order. Without
             # this private provenance bit, a YAML reload would treat a

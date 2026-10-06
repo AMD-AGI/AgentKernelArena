@@ -29,14 +29,16 @@ trusted_evaluation:
   fixture_manifest: fixtures/EXTERNAL-MANIFEST.json
 prompt:
   source_code: null
-  instructions: Optimize only the GPU body of gemm_kernel in source/kernels.py. Preserve its ABI, imports,
-    decorators, launch configuration and all protected files. Complete every case in cases.json; preserve
-    observed multiplicity and exact physical strides. B is the actual AITER (16,16) FP8 preshuffle layout,
-    SA is column-major with stride(1,M), SB is row-major block128 scales, and C is BF16. Both the frozen
-    reference and submitted candidate execute this declared Triton port through the same loader, launch
-    geometry, oracle and timing path. Source hashes never select an algorithm. The port is newly authored
-    and is not original image kernel source. Production-native timings are separate diagnostics and cannot
-    enter the Arena score. No end-to-end serving speedup is claimed.
+  instructions: Optimize only the GPU body of gemm_kernel in source/kernels.py. Preserve
+    its ABI, imports, decorators, launch configuration and all protected files. Complete
+    every case in cases.json; preserve observed multiplicity and exact physical strides.
+    B is the actual AITER (16,16) FP8 preshuffle layout, SA is column-major with stride(1,M),
+    SB is row-major block128 scales, and C is BF16. Both the frozen reference and
+    submitted candidate execute this declared Triton port through the same loader,
+    launch geometry, oracle and timing path. Source hashes never select an algorithm.
+    The port is newly authored and is not original image kernel source. Primary scoring
+    uses protected matched native-production timings; supplied-port improvement remains
+    secondary. No end-to-end serving speedup is claimed.
   cheatsheet: null
 headkernel:
   model: GLM-5.3-Flash
@@ -46,12 +48,22 @@ headkernel:
   source_seed: portable_triton_candidate_scaffold
   native_dispatch: CK blockscale BP GEMM
   validation_status: final_complete_real_capture_contract_pending_fresh_gpu_framework
-  oracle: independent CPU FP32 matmul from quantized/dequantized operands; no GPU oracle buffers exist
-  count_scope: actual per-rank notifications across complete64-request served prefill and decode workload
-  performance_baseline: frozen supplied Triton port; reference and candidate use identical dispatch
-  task_scope: replacement/port implementation optimization for observed operator ABI; not original native
-    image kernel source
-  required_live_operand_evidence: Every mandatory FP8 case needs a source-pinned native captured operand
-    representative before qualification; generator-only runs are diagnostics.
-  native_gain_requirement: Protected matched diagnostics must check every native captured ABI and report
-    native_ms/candidate_ms. A local port-vs-port speedup alone is not a native operator or serving speedup.
+  oracle: independent CPU FP32 matmul from quantized/dequantized operands; no GPU
+    oracle buffers exist
+  count_scope: actual per-rank notifications across complete64-request served prefill
+    and decode workload
+  performance_baseline: Pinned native production on matched fresh inputs; frozen-port
+    improvement is secondary
+  task_scope: replacement/port implementation optimization for observed operator ABI;
+    not original native image kernel source
+  required_live_operand_evidence: Every mandatory FP8 case needs a source-pinned native
+    captured operand representative before qualification; generator-only runs are
+    diagnostics.
+  native_gain_requirement: Primary score is protected native_ms/candidate_ms from
+    complete matched replay evidence. Slower correct ports remain measurable. Report
+    aggregate improvement, every per-case native ratio, regressions, and all-cases-faster
+    explicitly; no serving gain is asserted.
+scoring_baseline:
+  schema_version: 1
+  kind: native_production
+  native_source_manifest: provenance/NATIVE-BASELINE.json

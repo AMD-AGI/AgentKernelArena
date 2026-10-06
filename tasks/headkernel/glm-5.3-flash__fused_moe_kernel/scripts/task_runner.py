@@ -166,6 +166,6 @@ def main():
     temp=path.with_suffix('.tmp');temp.write_text(json.dumps(report,indent=2,allow_nan=False)+'\n');temp.replace(path)
     if args.phase=='performance':
         import production_comparison
-        production_comparison.main()
+        production_comparison.main(request=request)
     print(args.phase+': PASS')
 if __name__=='__main__':main()

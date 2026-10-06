@@ -160,6 +160,67 @@ def test_sources_only_retest_scores_complete_cases_or_rejects(packaged_task, tmp
         assert not (output / "task_result.yaml").exists() and not (output / "validation_report.yaml").exists()
 
 
+@pytest.mark.parametrize('stale_native_request', [False, True])
+def test_native_baseline_retest_keeps_port_gain_secondary(packaged_task, tmp_path, monkeypatch, stale_native_request):
+    import hashlib
+    repo, task, _, candidate, manifest = packaged_task
+    (task / 'provenance').mkdir()
+    (task / 'provenance/NATIVE.json').write_text('{"native": "pinned"}\n')
+    config = yaml.safe_load((task / 'config.yaml').read_text())
+    config['scoring_baseline'] = {'schema_version': 1, 'kind': 'native_production',
+                                  'native_source_manifest': 'provenance/NATIVE.json'}
+    (task / 'config.yaml').write_text(yaml.safe_dump(config))
+    subprocess.run(['git', '-C', str(repo), 'add', 'tasks/example'], check=True)
+    subprocess.run(['git', '-C', str(repo), '-c', 'user.name=Test', '-c', 'user.email=test@example.invalid',
+                    'commit', '-qm', 'native scoring policy'], check=True)
+    commit = subprocess.check_output(['git', '-C', str(repo), 'rev-parse', 'HEAD'], text=True).strip()
+    check_output = subprocess.check_output
+    def inspect(command, **kwargs):
+        if command[:3] == ['docker', 'image', 'inspect']:
+            return json.dumps([{'RepoDigests': [manifest['runtime_image']], 'Id': 'sha256:' + 'b' * 64}])
+        return check_output(command, **kwargs)
+    def run_phase(image, staged, staging, output, leg, request, *args):
+        timing = 4.0 if leg == 'reference' else 2.0
+        report = phase_report(request, manifest, timing)
+        if request['phase'] == 'performance':
+            native_rows = phase_report(request, manifest, 1.0)['cases']
+            native = {'schema_version': 1, 'schema': 'native-production-comparison-v1', 'status': 'ok',
+                      'diagnostic_only': False, 'score_input': True, 'baseline_kind': 'native_production',
+                      'request': copy.deepcopy(request), 'source_hashes': request['source_sha256'],
+                      'source_sha256': next(iter(request['source_sha256'].values())),
+                      'manifest_sha256': trusted.fingerprint(manifest), 'runtime_image': image,
+                      'native_source_manifest_sha256': hashlib.sha256((staged / 'provenance/NATIVE.json').read_bytes()).hexdigest(),
+                      'cases': [{'case_id': row['case']['case_id'], 'native_output_parity': True,
+                                 'identical_captured_ABI_and_fresh_numeric_challenge_sequence': True,
+                                 'legs': {'candidate_port': copy.deepcopy(row), 'native_production': native_row}}
+                                for row, native_row in zip(report['cases'], native_rows)]}
+            if stale_native_request and leg == 'candidate':
+                native['request']['request_id'] = 'previous-run'
+            report['native_production_comparison'] = native
+        return report
+    monkeypatch.setattr(subprocess, 'check_output', inspect)
+    monkeypatch.setattr(trusted, 'select_gpu', lambda render: {'render_device': render, 'rocr_uuid': 'GPU-000000000000abcd',
+                                                              'pci_bus_id': '0000:83:00.0'})
+    monkeypatch.setattr(trusted, 'run_phase', run_phase)
+    output = tmp_path / 'native-result'
+    def run():
+        return trusted.trusted_retest(repo=repo, commit=commit, task_path='tasks/example', candidate_workspace=candidate,
+                                      output=output, scratch_dir=tmp_path / 'scratch', render_device='/dev/dri/renderD128')
+    if stale_native_request:
+        with pytest.raises(ValueError, match='Stale native comparison'):
+            run()
+        assert not (output / 'trusted_measurement.json').exists()
+    else:
+        result = run()
+        assert result['arithmetic_mean_speedup'] == 0.5
+        assert result['port_to_port_speedup_ratio'] == 2.0
+        assert result['baseline_kind'] == 'native_production'
+        assert result['production_kernel_improvement'] is False
+        assert result['all_cases_faster_than_native'] is False
+        assert len(result['regressed_case_ids']) == 2
+        assert all(row['reference_ms'] == 1 and row['candidate_ms'] == 2 for row in result['cases'])
+
+
 @pytest.mark.parametrize("attack", ["symlink", "body_escape"])
 def test_bad_source_rejected_before_any_docker_call(packaged_task, tmp_path, monkeypatch, attack):
     repo, _task, commit, candidate, _manifest = packaged_task

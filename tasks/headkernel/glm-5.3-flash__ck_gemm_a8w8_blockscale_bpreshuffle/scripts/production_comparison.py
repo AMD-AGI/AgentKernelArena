@@ -1,4 +1,4 @@
-"""Protected matched native-versus-candidate diagnostics; never the Arena score."""
+"""Protected matched native-versus-candidate comparison with explicit production-baseline scoring."""
 import hashlib
 import importlib
 import json
@@ -7,7 +7,7 @@ import secrets
 import task_runner as task
 
 
-def main():
+def main(request=None):
     import torch
     manifest=task.validate_manifest(task.strict_json((task.ROOT/'cases.json').read_text()))
     if any('live_fixture' not in case for case in manifest['cases']):raise RuntimeError('Matched native diagnostics require exact-ABI native operands for every case')
@@ -58,15 +58,24 @@ def main():
             'identical_captured_ABI_and_fresh_numeric_challenge_sequence':True,'mean_ms':means,'speedup_vs_native':ratio,
             'candidate_faster_than_native':ratio>1.0,'legs':legs})
     if task.package_hash()!=before:raise ValueError('Task changed during native comparison')
-    record={'schema_version':1,'status':'ok','diagnostic_only':True,'score_input':False,'source_sha256':task.source_hash(),
+    if request is not None:
+        if request.get('phase')!='performance' or request.get('manifest_sha256')!=task.fingerprint(manifest) or request.get('source_sha256')!={'source/kernels.py':task.source_hash()}:
+            raise ValueError('Native comparison request does not bind the current source/cases')
+    record={'schema_version':1,'schema':'native-production-comparison-v1','status':'ok','diagnostic_only':request is None,'score_input':request is not None,'source_sha256':task.source_hash(),
+        'source_hashes':{'source/kernels.py':task.source_hash()},'request':request,'runtime_image':manifest['runtime_image'],
+        'baseline_kind':'native_production','native_source_manifest_sha256':hashlib.sha256((task.ROOT/'provenance/NATIVE-BASELINE.json').read_bytes()).hexdigest(),
         'manifest_sha256':task.fingerprint(manifest),'comparison':'native_mean_ms / candidate_port_mean_ms on identical fresh numerical challenges derived from the actual captured operands; each graph retains its own capture-time output, with no added output copy',
         'case_count':len(comparisons),'cases':comparisons,'all_cases_have_native_parity':True,
         'all_cases_faster_than_native':all(row['candidate_faster_than_native'] for row in comparisons),
-        'claim_scope':'Arena port-vs-port speedup measures local optimization only. A ratio greater than1 here is measured isolated native-operator improvement; serving gain still requires end-to-end validation.'}
+        'claim_scope':'Primary scoring uses protected matched native-production/candidate timings. Frozen-port optimization remains a secondary metric. A native ratio above1 is isolated operator improvement; no serving gain is asserted.'}
     path=task.ROOT/'build/native_production_comparison.json';path.parent.mkdir(exist_ok=True);path.write_text(json.dumps(record,indent=2,allow_nan=False)+'\n')
     performance=task.ROOT/'build/performance_report.json'
-    if performance.is_file():
-        report=task.strict_json(performance.read_text());report['native_production_diagnostic']={'path':path.name,'sha256':hashlib.sha256(path.read_bytes()).hexdigest(),'all_cases_have_native_parity':True,'speedup_vs_native_by_case':{row['case_id']:row['speedup_vs_native'] for row in comparisons},'score_input':False}
+    if performance.is_file() and request is not None:
+        report=task.strict_json(performance.read_text());report['native_production_diagnostic']={'path':path.name,'sha256':hashlib.sha256(path.read_bytes()).hexdigest(),'all_cases_have_native_parity':True,'speedup_vs_native_by_case':{row['case_id']:row['speedup_vs_native'] for row in comparisons},'score_input':True}
+        if report.get('request')!=request:raise ValueError('Enclosing performance request changed')
+        report['native_production_comparison']=record
+        report['secondary_comparison_baseline']=report.get('comparison_baseline')
+        report['comparison_baseline']='native_production'
         performance.write_text(json.dumps(report,indent=2,allow_nan=False)+'\n')
-    print('Matched native production comparison complete; raw samples are diagnostic, excluded from Arena scoring')
+    print('Matched native production comparison complete; bound samples support native-baseline scoring')
 if __name__=='__main__':main()

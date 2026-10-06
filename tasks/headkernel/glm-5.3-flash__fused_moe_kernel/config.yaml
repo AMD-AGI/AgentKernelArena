@@ -33,15 +33,17 @@ trusted_evaluation:
   fixture_manifest: fixtures/EXTERNAL-MANIFEST.json
 prompt:
   source_code: null
-  instructions: 'Optimize only the five GPU function bodies in source/kernels.py. This is a newly authored
-    whole-MoE replacement port for the current AITER operator ABI, not original native image GPU source.
-    Both frozen reference and candidate always execute the same declared pipeline: frozen native routing
-    sort, input quantization, two packed-weight matrix products, SiLU and intermediate quantization, then
-    weighted reduction. Timings include the whole pipeline. Preserve every case, scalar, packed physical
-    layout, dtype, token routing and launch ABI. Captured inputs and expected outputs remain protected;
-    expected outputs stay on CPU. Reference and candidate use identical dispatch; source hashes never
-    select an implementation. No production-native or serving speedup is implied by optimization of this
-    port.'
+  instructions: 'Optimize only the five GPU function bodies in source/kernels.py.
+    This is a newly authored whole-MoE replacement port for the current AITER operator
+    ABI, not original native image GPU source. Both frozen reference and candidate
+    always execute the same declared pipeline: frozen native routing sort, input quantization,
+    two packed-weight matrix products, SiLU and intermediate quantization, then weighted
+    reduction. Timings include the whole pipeline. Preserve every case, scalar, packed
+    physical layout, dtype, token routing and launch ABI. Captured inputs and expected
+    outputs remain protected; expected outputs stay on CPU. Reference and candidate
+    use identical dispatch; source hashes never select an implementation. Only the
+    protected native/candidate primary ratio supports an isolated operator improvement
+    claim; no serving gain is asserted.'
   cheatsheet: null
 headkernel:
   model: GLM-5.3-Flash
@@ -52,12 +54,20 @@ headkernel:
   source_seed: new_whole_operator_replacement_port
   original_native_kernel_source: false
   validation_status: final_real_capture_imported_pending_fresh_gpu_framework
-  oracle: Fresh numeric CPU input truth. Candidate output/input snapshots reach CPU before the pinned
-    native MoE reference executes. Current golden output is not available before candidate observation.
-  performance_baseline: frozen same whole-MoE port
-  native_swiglu_limit: profile supplies10.0; selected one-stage native dispatcher does not forward this
-    control to fused_moe_1stage; matching actual native output remains GPU qualification gate
-  native_gain_requirement: Every case requires protected matched native-production parity and native_ms/candidate_ms
-    diagnostics. Frozen-port versus edited-port score is local optimization only; no native or workload
-    gain can be inferred from it.
+  oracle: Fresh numeric CPU input truth. Candidate output/input snapshots reach CPU
+    before the pinned native MoE reference executes. Current golden output is not
+    available before candidate observation.
+  performance_baseline: Pinned native production on matched fresh inputs; frozen-port
+    improvement is secondary
+  native_swiglu_limit: profile supplies10.0; selected one-stage native dispatcher
+    does not forward this control to fused_moe_1stage; matching actual native output
+    remains GPU qualification gate
+  native_gain_requirement: Primary score is protected native_ms/candidate_ms from
+    complete matched replay evidence. Slower correct ports remain measurable. Report
+    aggregate improvement, every per-case native ratio, regressions, and all-cases-faster
+    explicitly; no serving gain is asserted.
   diagnostic_evidence: provenance/DIAGNOSTIC-EVIDENCE.json
+scoring_baseline:
+  schema_version: 1
+  kind: native_production
+  native_source_manifest: provenance/NATIVE-SOURCES.json

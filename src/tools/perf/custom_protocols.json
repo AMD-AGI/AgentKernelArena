@@ -137,6 +137,58 @@
           "17c6b6eecc96d07b4500ba266aacb716a2984365ebd4117a2fb601309444f881"
         ]
       }
+    },
+    {
+      "family": "portable_case_contract",
+      "description": "Existing matched native and port graph replays retain canonical validation; request-bound raw comparisons feed the explicit native-production scoring policy.",
+      "entrypoint": "scripts/task_runner.py",
+      "entrypoint_sha256": [
+        "9ddd19898c276570ed5d65eff7e9addcc86e37fdc9d7219cd0ed5e57074629eb"
+      ],
+      "files_sha256": {
+        "scripts/production_comparison.py": [
+          "ac7d34b7b406e57c967c9ea842ec5978e33525404eae99fa32ab3833b74a3e04"
+        ]
+      }
+    },
+    {
+      "family": "portable_case_contract",
+      "description": "Existing matched native and port graph replays retain canonical validation; request-bound raw comparisons feed the explicit native-production scoring policy.",
+      "entrypoint": "scripts/task_runner.py",
+      "entrypoint_sha256": [
+        "5e289603476bea349695ef079956f3707b570995fd6102c3d91153b6407bf96a"
+      ],
+      "files_sha256": {
+        "scripts/production_comparison.py": [
+          "a8385960c0198559072a9bd1ccd3a603be38a663e21022c5ffd68ac2c604e209"
+        ]
+      }
+    },
+    {
+      "family": "portable_case_contract",
+      "description": "Existing matched native and port graph replays retain canonical validation; request-bound raw comparisons feed the explicit native-production scoring policy.",
+      "entrypoint": "scripts/task_runner.py",
+      "entrypoint_sha256": [
+        "6c740df5ce39e05d5d5e78cd3f41192bcd848c542fc03c7482402322d2304bc9"
+      ],
+      "files_sha256": {
+        "scripts/production_comparison.py": [
+          "e38a83513ee65fec671ac6afc13306d18712439651467d355b7209cd5d808065"
+        ]
+      }
+    },
+    {
+      "family": "portable_case_contract",
+      "description": "Existing matched native and port graph replays retain canonical validation; request-bound raw comparisons feed the explicit native-production scoring policy.",
+      "entrypoint": "scripts/task_runner.py",
+      "entrypoint_sha256": [
+        "b1a224e6d02334f987fad736851bab56f66e663acc8cf6eabe765a95fd84ed33"
+      ],
+      "files_sha256": {
+        "scripts/production_comparison.py": [
+          "2f3cf4df5104c5e3d8ab8a51f249d4f7ec0ea213ea3bdf99031e3e0b85e45581"
+        ]
+      }
     }
   ]
 }

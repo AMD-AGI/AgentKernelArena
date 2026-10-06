@@ -76,6 +76,30 @@ rclone transfer flags. Commit the task-local helper with the package.
 
 ## Expected cases
 
+Replacement-port tasks can declare an explicit native-production scoring policy:
+
+```yaml
+scoring_baseline:
+  schema_version: 1
+  kind: native_production
+  native_source_manifest: provenance/NATIVE-BASELINE.json
+```
+
+This policy uses the already measured native-production and candidate-port graph
+legs on matched inputs. The protected performance report embeds a
+`native-production-comparison-v1` record bound to its complete request, current
+source hashes, case manifest, image, and native-source provenance. The host
+revalidates every leg with the case contract and derives timings from raw samples.
+Absent or mismatched evidence rejects scoring; it never falls back to a port
+baseline. No implementation is selected by source hash.
+
+Arena results and trusted retests report native/candidate as the primary ratio,
+and keep frozen-port/candidate-port improvement as `port_to_port_speedup_ratio`.
+The aggregate `production_kernel_improvement` flag requires a primary ratio
+greater than one. Per-case ratios, regressions, and `all_cases_faster_than_native`
+remain explicit. Slower correct starters remain measurable and can qualify as
+valid tasks. These isolated operator measurements do not establish serving gains.
+
 `cases.json` contains `schema_version: 1`, `runtime_image` with the exact image
 digest, a nonempty `cases` array, and a `measurement` policy. The image must also
 match `headkernel.docker` in the task configuration.

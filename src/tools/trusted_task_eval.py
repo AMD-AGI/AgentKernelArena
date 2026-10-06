@@ -20,6 +20,10 @@ from pathlib import Path, PurePosixPath
 
 import yaml
 
+if not __package__:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from src.native_baseline import scoring_policy, load_native_measurements, as_test_cases, metric_summary
+
 if __package__:
     from ..task_contract import (
         canonical,
@@ -97,8 +101,12 @@ def package_contract(task):
     fixtures = None
     if "fixture_manifest" in descriptor:
         fixtures = load_fixture_manifest(task, descriptor["fixture_manifest"], manifest, reserved | set(sources))
+    score_policy = scoring_policy(config)
+    if score_policy is not None:
+        read_regular(task / score_policy['native_source_manifest'])
     return {"sources": sources, "references": references, "manifest": manifest,
-            "guard": guard_path, "needs_cache": needs_cache, "fixtures": fixtures}
+            "guard": guard_path, "needs_cache": needs_cache, "fixtures": fixtures,
+            "scoring_policy": score_policy, "config": config}
 
 
 def prepare_reference(*, repo, commit, task_path, reference, staging, candidate_workspace,
@@ -251,7 +259,7 @@ def trusted_retest(*, repo, commit, task_path, candidate_workspace, output, rend
             proof = seed_image_cache(image, cache_root, output / "cache_init.log", timeout=timeout)
             (output / "cache_manifest.json").write_text(canonical(proof))
             cache_source = cache_root / "jit"
-        results, reports, sources = {}, {}, {}
+        results, reports, sources, scored_native = {}, {}, {}, {}
         challenge_seed = secrets.randbelow(2**30)
         for leg, task in (("reference", reference), ("candidate", candidate)):
             package = fingerprint(tree_manifest(task))
@@ -274,6 +282,9 @@ def trusted_retest(*, repo, commit, task_path, candidate_workspace, output, rend
                 reports[leg][phase] = {"file": filename, "sha256": sha256(encoded)}
                 if phase == "performance":
                     results[leg] = measured
+                    if contract['scoring_policy'] is not None:
+                        evidence = load_native_measurements(task, contract['config'], report=report, request=request)
+                        scored_native[leg] = as_test_cases(evidence, is_baseline=leg == 'reference')
         cases = []
         for baseline, optimized in zip(results["reference"], results["candidate"]):
             require(baseline["case_sha256"] == optimized["case_sha256"], "reference/candidate ABI differs")
@@ -288,6 +299,12 @@ def trusted_retest(*, repo, commit, task_path, candidate_workspace, output, rend
                   "manifest_sha256": fingerprint(manifest), "full_case_coverage": True, "cases": cases,
                   "arithmetic_mean_speedup": math.fsum(row["speedup"] for row in cases) / len(cases),
                   "reports": reports, "framework_task_validator_status": "not_asserted"}
+        if contract['scoring_policy'] is not None:
+            summary = metric_summary(scored_native['reference'], scored_native['candidate'])
+            result.update(summary)
+            result['arithmetic_mean_speedup'] = summary['native_speedup_ratio']
+            result['cases'] = [{**row, 'reference_ms': row['native_ms']}
+                               for row in summary['native_baseline_cases']]
         if fixture_receipt is not None:
             result["fixtures"] = fixture_receipt
         (output / "trusted_measurement.json").write_text(json.dumps(result, indent=2, allow_nan=False) + "\n")

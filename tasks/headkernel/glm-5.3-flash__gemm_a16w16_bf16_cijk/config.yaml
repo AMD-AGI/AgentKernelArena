@@ -29,15 +29,17 @@ trusted_evaluation:
   fixture_manifest: fixtures/EXTERNAL-MANIFEST.json
 prompt:
   source_code: null
-  instructions: Optimize only the GPU body of gemm_kernel in source/kernels.py. Preserve its ABI, imports,
-    decorators, launch configuration and all protected files. Complete every case in cases.json; preserve
-    observed multiplicity and exact physical strides. Compute C=A@B for BF16 inputs. B is a transposed
-    strided view with shape(K,N) and strides(1,K); C is contiguous BF16. Both the frozen reference and
-    submitted candidate execute this declared Triton port through the same loader, launch geometry, oracle
-    and timing path. Source hashes never select an algorithm. The port is newly authored and is not original
-    image kernel source. Production-native timings are separate diagnostics and cannot enter the Arena
-    score. No end-to-end serving speedup is claimed. The final dense contract includes both bfloat16 and
-    float32 actual records; preserve each declared dtype.
+  instructions: Optimize only the GPU body of gemm_kernel in source/kernels.py. Preserve
+    its ABI, imports, decorators, launch configuration and all protected files. Complete
+    every case in cases.json; preserve observed multiplicity and exact physical strides.
+    Compute C=A@B for BF16 inputs. B is a transposed strided view with shape(K,N)
+    and strides(1,K); C is contiguous BF16. Both the frozen reference and submitted
+    candidate execute this declared Triton port through the same loader, launch geometry,
+    oracle and timing path. Source hashes never select an algorithm. The port is newly
+    authored and is not original image kernel source. Primary scoring uses protected
+    matched native-production timings; supplied-port improvement remains secondary.
+    No end-to-end serving speedup is claimed. The final dense contract includes both
+    bfloat16 and float32 actual records; preserve each declared dtype.
   cheatsheet: null
 headkernel:
   model: GLM-5.3-Flash
@@ -45,12 +47,22 @@ headkernel:
   source_run: glm-final-capture-v4-194841
   target_callable: aiter.tuned_gemm:gemm_a16w16 and torch:mm
   source_seed: portable_triton_candidate_scaffold
-  native_dispatch: Pinned AITER dense dispatcher for wrapper records; direct ATen mm for direct records
+  native_dispatch: Pinned AITER dense dispatcher for wrapper records; direct ATen
+    mm for direct records
   validation_status: final_complete_real_capture_contract_pending_fresh_gpu_framework
-  oracle: independent CPU FP32 matmul from quantized/dequantized operands; no GPU oracle buffers exist
-  count_scope: actual per-rank notifications across complete64-request served prefill and decode workload
-  performance_baseline: frozen supplied Triton port; reference and candidate use identical dispatch
-  task_scope: replacement/port implementation optimization for observed operator ABI; not original native
-    image kernel source
-  native_gain_requirement: Protected matched diagnostics must check every native captured ABI and report
-    native_ms/candidate_ms. A local port-vs-port speedup alone is not a native operator or serving speedup.
+  oracle: independent CPU FP32 matmul from quantized/dequantized operands; no GPU
+    oracle buffers exist
+  count_scope: actual per-rank notifications across complete64-request served prefill
+    and decode workload
+  performance_baseline: Pinned native production on matched fresh inputs; frozen-port
+    improvement is secondary
+  task_scope: replacement/port implementation optimization for observed operator ABI;
+    not original native image kernel source
+  native_gain_requirement: Primary score is protected native_ms/candidate_ms from
+    complete matched replay evidence. Slower correct ports remain measurable. Report
+    aggregate improvement, every per-case native ratio, regressions, and all-cases-faster
+    explicitly; no serving gain is asserted.
+scoring_baseline:
+  schema_version: 1
+  kind: native_production
+  native_source_manifest: provenance/NATIVE-BASELINE.json

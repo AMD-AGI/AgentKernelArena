@@ -187,6 +187,10 @@ def evaluate_kernel(
         'tool_policy_satisfied': True,
         'tool_evaluation': None,
     }
+    from .native_baseline import scoring_policy
+    if scoring_policy(task_config) is not None:
+        results.update(baseline_kind='native_production', secondary_baseline_kind='frozen_port',
+                       production_kernel_improvement=False)
     
     # 1. Compilation check
     log.info("Step 1: Checking compilation...")
@@ -286,7 +290,31 @@ def evaluate_kernel(
         # The baseline method is the immutable policy for each case. A
         # candidate that cannot replay a graph must remain incomparable; it may
         # not select a second Event baseline after seeing its own fallback.
-        comparison_baseline_cases = baseline_cases
+        from .native_baseline import scoring_policy, paired_native_cases, metric_summary
+        native_policy = scoring_policy(task_config)
+        if native_policy is not None:
+            try:
+                comparison_baseline_cases = paired_native_cases(optimized_cases)
+                native_summary = metric_summary(baseline_cases, optimized_cases)
+            except (ValueError, KeyError, TypeError) as exc:
+                results['baseline_kind'] = 'native_production'
+                results['production_kernel_improvement'] = False
+                results['speedup_calculation_error_message'] = 'Native-production scoring rejected: ' + str(exc)
+                return results
+            results.update(native_summary)
+            # Preserve the initial native run and both port timing series.
+            # The primary plot/result pair uses the matched native comparison.
+            diagnostics = workspace / 'build'
+            diagnostics.mkdir(exist_ok=True)
+            save_performance_results(baseline_cases, diagnostics, 'initial_native_baseline_perf.yaml', logger)
+            for filename, series in (('port_baseline_perf.yaml', baseline_cases),
+                                     ('port_optimized_perf.yaml', optimized_cases)):
+                port_cases = [TestCaseResult(c.test_case_id, c.shape, c.metadata['port_measurement_ms'],
+                                             {**c.metadata, 'baseline_kind': 'frozen_port'}) for c in series]
+                save_performance_results(port_cases, diagnostics, filename, logger)
+            save_performance_results(comparison_baseline_cases, workspace, 'baseline_perf.yaml', logger)
+        else:
+            comparison_baseline_cases = baseline_cases
         valid_optimized_cases = _valid_perf_cases(optimized_cases)
         valid_baseline_cases = _valid_perf_cases(comparison_baseline_cases)
         results['valid_optimized_cases'] = len(valid_optimized_cases)
@@ -451,6 +479,8 @@ def write_task_result(
     # Get results
     optimized_time = evaluation_results.get('best_optimized_execution_time', 0.0)
     avg_speedup = evaluation_results.get('average_speedup', 0.0)
+    if evaluation_results.get('baseline_kind') == 'native_production':
+        avg_baseline_time = evaluation_results.get('native_baseline_execution_time', 0.0)
     speedup_error = evaluation_results.get('speedup_calculation_error_message')
     benchmark_method_consistent = bool(
         evaluation_results.get('benchmark_method_consistent', False)
@@ -507,6 +537,15 @@ def write_task_result(
         'optimization_summary': f'Optimized by {agent_name} using centralized evaluator'
     }
     tool_evaluation = evaluation_results.get('tool_evaluation')
+    if evaluation_results.get('baseline_kind') == 'native_production':
+        for key in ('baseline_kind', 'secondary_baseline_kind', 'native_speedup_ratio', 'port_to_port_speedup_ratio',
+                    'all_cases_faster_than_native', 'regressed_case_ids', 'native_baseline_cases',
+                    'native_scoring_evidence', 'gain_scope'):
+            if key in evaluation_results:
+                task_result[key] = evaluation_results[key]
+        task_result['production_kernel_improvement'] = bool(
+            task_result['pass_compilation'] and task_result['pass_correctness']
+            and benchmark_method_consistent and workload_consistent and not speedup_error and avg_speedup > 1)
     if tool_evaluation is not None:
         task_result['tool_evaluation'] = tool_evaluation
     

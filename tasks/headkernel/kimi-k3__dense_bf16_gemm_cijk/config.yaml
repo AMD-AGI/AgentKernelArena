@@ -29,12 +29,13 @@ trusted_evaluation:
   fixture_manifest: fixtures/EXTERNAL-MANIFEST.json
 prompt:
   source_code: null
-  instructions: Optimize only the GPU body of gemm_kernel in source/kernels.py. Preserve all protected
-    ABI, fixtures, controls, host solMap binding and native dispatch observations. This newly authored
-    replacement port is reached through the pinned AITER gemm_a16w16 wrapper by a checked solMap binding;
-    both reference and candidate use it identically. Direct ATen records use the same declared port. All
-    future cases.json entries are mandatory, including any actual FP32 records. Arena port speedup is
-    not native or serving gain. Native ratios remain diagnostic.
+  instructions: Optimize only the GPU body of gemm_kernel in source/kernels.py. Preserve
+    all protected ABI, fixtures, controls, host solMap binding and native dispatch
+    observations. This newly authored replacement port is reached through the pinned
+    AITER gemm_a16w16 wrapper by a checked solMap binding; both reference and candidate
+    use it identically. Direct ATen records use the same declared port. All future
+    cases.json entries are mandatory, including any actual FP32 records. Arena port
+    speedup is not native or serving gain. Native ratios remain diagnostic.
   cheatsheet: null
 headkernel:
   model: Kimi-K3
@@ -42,18 +43,28 @@ headkernel:
   source_run: kimi-original-heads-v2-194958
   target_callable: aiter.tuned_gemm:gemm_a16w16 and torch:mm
   source_seed: portable_triton_candidate_scaffold
-  native_dispatch: Actual pinned gemm_a16w16 solMap dispatch; candidate replaces cached solMap entries
-    with the submitted Triton port and proves invocation
+  native_dispatch: Actual pinned gemm_a16w16 solMap dispatch; candidate replaces cached
+    solMap entries with the submitted Triton port and proves invocation
   validation_status: complete_storage_and_source_derived_native_calibration_pending_fresh40case_GPU_framework
-  oracle: CPU FP32 correctness with independent GPU FP32 replay reference (TF32 disabled), computed only
-    after candidate output and immutable input observations are frozen on CPU
-  count_scope: all actual notified calls in the finalized64-request workload on each TP rank
-  performance_baseline: frozen supplied Triton port; reference and candidate use identical dispatch
-  task_scope: replacement/port implementation optimization for observed operator ABI; not original native
-    image kernel source
-  native_gain_requirement: Protected matched diagnostics must check every native captured ABI and report
-    native_ms/candidate_ms. A local port-vs-port speedup alone is not a native operator or serving speedup.
-  input_immutability: Complete captured backing-storage extent is reset and checked byte-for-byte, including
-    offset prefixes, row padding and tails.
-  native_precision: Unchanged FP32 bounds on every output; exact source-derived BF16 atomic-order proof
-    for each exceptional native pair. Candidate accuracy stays strictly FP32-referenced.
+  oracle: CPU FP32 correctness with independent GPU FP32 replay reference (TF32 disabled),
+    computed only after candidate output and immutable input observations are frozen
+    on CPU
+  count_scope: all actual notified calls in the finalized64-request workload on each
+    TP rank
+  performance_baseline: Pinned native production on matched fresh inputs; frozen-port
+    improvement is secondary
+  task_scope: replacement/port implementation optimization for observed operator ABI;
+    not original native image kernel source
+  native_gain_requirement: Primary score is protected native_ms/candidate_ms from
+    complete matched replay evidence. Slower correct ports remain measurable. Report
+    aggregate improvement, every per-case native ratio, regressions, and all-cases-faster
+    explicitly; no serving gain is asserted.
+  input_immutability: Complete captured backing-storage extent is reset and checked
+    byte-for-byte, including offset prefixes, row padding and tails.
+  native_precision: Unchanged FP32 bounds on every output; exact source-derived BF16
+    atomic-order proof for each exceptional native pair. Candidate accuracy stays
+    strictly FP32-referenced.
+scoring_baseline:
+  schema_version: 1
+  kind: native_production
+  native_source_manifest: provenance/NATIVE-BASELINE.json

@@ -323,6 +323,14 @@ def measure_performance(
         combined_output = stdout + stderr
         
         if success:
+            from .native_baseline import scoring_policy, load_native_measurements, as_test_cases
+            if scoring_policy(task_config) is not None:
+                try:
+                    evidence = load_native_measurements(workspace, task_config)
+                    return as_test_cases(evidence, is_baseline=is_baseline)
+                except (OSError, ValueError, KeyError, TypeError) as exc:
+                    log.error("Native-production scoring evidence rejected: %s", exc)
+                    return []
             # Try to parse all test cases (will check report files and stdout)
             test_cases = parse_all_test_cases(combined_output, workspace, task_type, logger, is_baseline)
             if test_cases:
