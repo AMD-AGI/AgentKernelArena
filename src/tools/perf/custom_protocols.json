@@ -73,6 +73,28 @@
         "0f6f0a2424fd24c6d99ecfbaa55e34d22d27735ebe6ec8b058fa60c7b90f1fae"
       ],
       "files_sha256": {}
+    },
+    {
+      "family": "portable_case_contract",
+      "description": "Packed-value CPU oracle and fresh native FP4 graph replay callbacks; exact source controls remain diagnostic.",
+      "entrypoint": "scripts/task_runner.py",
+      "entrypoint_sha256": [
+        "98db37aa1aabbb53436f31f918e14289ca793754928b78416e49318ec8701161"
+      ],
+      "files_sha256": {
+        "ut/runtime.py": [
+          "7011f65e384f9cd6ab8a3cae5dd2104e38cafa23782056490bc61ab274d1f016"
+        ],
+        "ut/admission.py": [
+          "0dfd2250830c789d552e52ca13a9544f176f0e3f5bed9876f0be462db94e664e"
+        ],
+        "ut/reference.py": [
+          "8a8aa1ddcdc32611cbd9075ba75821e804ba80c447da61507db09de34ddcbc53"
+        ],
+        "ut/fixture_codec.py": [
+          "502d14650ef6f3b685776ed0b7a0cc219e274a7025d6c606988eb9484dae17c8"
+        ]
+      }
     }
   ]
 }

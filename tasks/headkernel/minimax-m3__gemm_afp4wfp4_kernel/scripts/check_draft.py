@@ -21,8 +21,8 @@ def main():
     raw_wrapper_tree((ROOT / "ut/native/wrapper.py").read_text())
     for path in ROOT.rglob("*.py"):
         ast.parse(path.read_text(), filename=str(path))
-    print(json.dumps({"status": "CPU_DRAFT_CHECK_PASS", "scoreable": False,
-                      "actual_operand_capture": "missing", "gpu_source_binding_validated": False,
+    print(json.dumps({"status": "CPU_SOURCE_CHECK_PASS", "scoreable": False,
+                      "actual_operand_capture": "external_manifest" if (ROOT / "cases.json").exists() else "missing", "gpu_source_binding_validated": False,
                       "framework_task_validator_status": "not_run"}))
 
 

@@ -6,6 +6,8 @@
   "kernels": [
     "_gemm_afp4wfp4_kernel"
   ],
-  "status": "DRAFT_REQUIRES_ACTUAL_CAPTURE",
-  "scoreable": false
+  "status": "ACTUAL_CAPTURE_SEALED_PENDING_GPU_QUALIFICATION",
+  "scoreable": true,
+  "case_manifest": "cases.json",
+  "source_run": "minimax-original-head-v3-194969"
 }

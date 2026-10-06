@@ -1,0 +1,53 @@
+source_file_path:
+- source/kernel.py
+target_kernel_functions:
+- _gemm_afp4wfp4_kernel
+task_type: triton2triton
+task_result_template: null
+compile_command:
+- python3 scripts/task_runner.py compile
+correctness_command:
+- python3 scripts/task_runner.py correctness
+performance_command:
+- python3 scripts/task_runner.py performance
+compile_timeout: 1800
+correctness_timeout: 1800
+performance_timeout: 1800
+harness_protection:
+  reject_new_source_symlinks: true
+platform_support:
+  required_arch: gfx950
+  status: active
+trusted_evaluation:
+  schema_version: 1
+  case_manifest: cases.json
+  contract_file: ut/evaluation_contract.py
+  source_guard: ut/source_guard.py
+  reference_sources:
+    source/kernel.py: ut/reference/kernel.py
+  requires_aiter_jit_cache: true
+  fixture_manifest: fixtures/EXTERNAL-MANIFEST.json
+prompt:
+  source_code: null
+  instructions: Optimize only the body of _gemm_afp4wfp4_kernel in source/kernel.py.
+    Preserve all imports, decorators, signatures, host code and protected files. Execute
+    every admitted native prefill/decode case with its exact packed FP4/E8M0 layout,
+    scale strides, output alias and split-K controls. Both comparison legs use the
+    frozen native wrapper body and private source binding; preserve the independent
+    CPU oracle, per-replay input refresh, output poison, 10 warmups and 100 measured
+    graph replays. No profile-only or fabricated cases may replace the full served
+    capture.
+  cheatsheet: null
+headkernel:
+  model: MiniMax-M3-MXFP4
+  docker: docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96
+  source_run: minimax-original-head-v3-194969
+  target_callable: aiter.ops.triton.gemm.basic.gemm_afp4wfp4:gemm_afp4wfp4_
+  backend: Triton dense FP4 GEMM
+  regime: prefill+decode
+  tol: 0.02
+  oracle: Independent CPU E2M1/E8M0 decode and FP64 product with native output casting;
+    fixed mixed-RMS bound
+  count_scope: All native calls in the completed 64-request ISL8192/OSL1024 workload
+    across TP8
+  validation_status: actual_capture_sealed_pending_fresh_task_validator

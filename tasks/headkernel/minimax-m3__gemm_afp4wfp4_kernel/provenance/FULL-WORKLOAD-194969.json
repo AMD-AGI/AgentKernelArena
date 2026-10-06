@@ -1,0 +1,19 @@
+{
+  "schema": "minimax-fp4-full-workload-contract-v1",
+  "source_run": "minimax-original-head-v3-194969",
+  "case_count": 14,
+  "occurrences": 1897872,
+  "rank_count": 8,
+  "asset_bytes": 2044395146,
+  "assets": 74,
+  "case_manifest_sha256": "72e2d6ca920ad288804d58ba03bca6da257f1cdceed55688b77cddd486b25869",
+  "external_manifest_sha256": "38b9e7e8952710b8fc87621520ca3c1203d7d8366dc830d9e92bdb588c21f037",
+  "receipts": {
+    "CAPTURE-READY.json": "00192b1f1322a31b3af38d12a8d0633852c9703e0715ad3f2be69a82abc630c1",
+    "SOURCE-CAPTURE-VERIFIED.json": "88002160e350a2584ccee983b9d6878c570c5ee8c765ed339b411ba358cbb6c8",
+    "MINIMAX-OWNER-VERIFIED.json": "04aef13d92c5df7439fa7a247c8312b4167ff1dbdd28b5f15284b8695af9fbe8",
+    "WORKLOAD-COMPLETE.json": "e5a6da1e5f863a9dffcf065306f17447947d7bf43228950eb81386f4da94f439"
+  },
+  "task_validator_status": "not_run",
+  "source_controls_status": "pending_actual_task_probe"
+}

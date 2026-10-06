@@ -16,9 +16,10 @@ from fixture_codec import file_sha, safe_file, validate_fixture
 COMMON_SHA256 = "8cff65ca8a74c4ee7565de5fddfbab92f4a5bb564c6348b6449eb2086da741ea"
 
 
-def import_capture(common, receipt_path, policy_path, output):
+def import_capture(common, receipt_path, policy_path, output, capture_root=None):
     pins = strict_json((ROOT / "SOURCE-PROVENANCE.json").read_text())
     receipt_path, output = Path(receipt_path).resolve(), Path(output)
+    capture_root = Path(capture_root).resolve() if capture_root else receipt_path.parent
     receipt = strict_json(receipt_path.read_text())
     require(receipt.get("schema") == "minimax-fp4-full-workload-receipt-v1"
             and receipt.get("complete") is True and receipt.get("scope") == "full_served_workload"
@@ -37,7 +38,7 @@ def import_capture(common, receipt_path, policy_path, output):
     paths, rows, required, counts, schemas = [], {}, {}, defaultdict(dict), {}
     for rank_text, ref in receipt["ranks"].items():
         rank = int(rank_text)
-        path = safe_file(receipt_path.parent, ref["path"])
+        path = safe_file(capture_root, ref["path"])
         require(file_sha(path) == ref["sha256"], "rank receipt changed")
         row = strict_json(path.read_text())
         require(row["provenance"]["tp_rank"] == rank and row["provenance"]["image"] == pins["runtime_image"],
@@ -113,8 +114,9 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     for name in ("common", "receipt", "oracle-policy", "output"):
         parser.add_argument("--" + name, required=True, type=Path)
+    parser.add_argument("--capture-root", type=Path)
     args = parser.parse_args()
-    import_capture(args.common, args.receipt, args.oracle_policy, args.output)
+    import_capture(args.common, args.receipt, args.oracle_policy, args.output, args.capture_root)
 
 
 if __name__ == "__main__":

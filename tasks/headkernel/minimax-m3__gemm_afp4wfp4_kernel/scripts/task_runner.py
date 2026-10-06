@@ -8,6 +8,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "ut"))
+sys.path.insert(0, str(ROOT / "scripts"))
 from admission import POLICY, oracle_policy
 from evaluation_contract import checked_replays, finalize_report, fingerprint, require, strict_json, validate_manifest
 from fixture_codec import file_sha, safe_file
@@ -49,6 +50,7 @@ def run(phase, dataset, request=None):
             and request["source_sha256"] == source, "request does not match current source/cases")
     require(torch.cuda.is_available() and "gfx950" in torch.cuda.get_device_properties(0).gcnArchName,
             "native FP4 runner requires gfx950")
+    torch.set_num_threads(16)
     before = package_hash()
     rows, compiled = [], []
     for case in manifest["cases"]:
@@ -82,9 +84,25 @@ def run(phase, dataset, request=None):
                 replay=state.replay, verify=state.verify, measure=state.measure, observe=state.observe,
                 seed=request["challenge_seed"]))
         del state
+    submitted_controls = []
+    if phase == "correctness":
+        from check_source_binding import probe
+        from make_source_controls import control_source
+        control_case = min((case for case in manifest["cases"] if case["scalars"]["resolved_config"]["NUM_KSPLIT"] == 1),
+                           key=lambda case: case["tensors"]["x"]["shape"][0] * case["tensors"]["result"]["shape"][-1])
+        for kind in ("no_op", "wrong_output"):
+            workspace = ROOT / "build" / ("submitted_" + kind)
+            (workspace / "source").mkdir(parents=True, exist_ok=True)
+            (workspace / "source/kernel.py").write_text(control_source(kind))
+            for mode in ("eager", "graph"):
+                code, evidence = probe(dataset, workspace, control_case["case_id"], mode, request["challenge_seed"])
+                require(code == 1 and evidence["status"] == "candidate_rejected" and evidence["reference_calibrated"],
+                        "submitted source control did not reject after calibrated reference: " + kind + "/" + mode)
+                submitted_controls.append({"variant": kind, **evidence})
     require(package_hash() == before, "protected package changed during execution")
     return finalize_report({"schema_version": 1, "status": "ok", "request": request, "compiled": True,
-                            "cases": rows, "compiled_kernels": compiled, "oracle": "independent_cpu_packed_fp4"},
+                            "cases": rows, "compiled_kernels": compiled, "oracle": "independent_cpu_packed_fp4",
+                            "submitted_source_controls": submitted_controls},
                            manifest, request)
 
 
