@@ -142,33 +142,77 @@ class CaseEvaluation:
                 self.initialize(); self.graph.replay(); self.verify(before)
                 self.compare_outputs(snapshot_output(self.result), self.inputs.recorded_outputs(index))
                 recorded += 1
+        distribution = self.inputs.control_distribution
+        original = {"seed_checks": []}
         for seed in policy["correctness_seeds"]:
-            before = self.inputs.reset(seed)
+            before = self.inputs.reset_recorded(seed)
+            self.observe()
             self.initialize(); self.graph.replay(); self.verify(before)
-        before = self.inputs.reset(policy["correctness_seeds"][0] + 1000)
+            index = self.inputs.current_state
+            original["seed_checks"].append({"seed": seed, "recorded_state_index": index,
+                "variant_id": fingerprint(self.case["states"][index]["tensor_controls"])})
+        original_seed = policy["correctness_seeds"][0] + 1000
+        before = self.inputs.reset_recorded(original_seed)
+        self.observe()
         self.initialize()
         try:
             self.verify(before)
         except (AssertionError, ValueError):
             pass
         else:
-            raise AssertionError("no-op replay was accepted")
+            raise AssertionError("original no-op replay was accepted")
         self.graph.replay(); self.verify(before)
         try:
             self.verify(before, corrupt=True)
         except (AssertionError, ValueError):
             pass
         else:
-            raise AssertionError("corrupted output was accepted")
+            raise AssertionError("original corrupted output was accepted")
+        index = self.inputs.current_state
+        original["negative_controls"] = {"seed": original_seed, "recorded_state_index": index,
+            "variant_id": fingerprint(self.case["states"][index]["tensor_controls"]),
+            "no_op": True, "wrong_output": True}
+        completed = []
+        for variant in distribution.targeted_variants():
+            for seed in policy["correctness_seeds"]:
+                before = self.inputs.reset(seed, control_variant=variant)
+                self.observe()
+                self.initialize(); self.graph.replay(); self.verify(before)
+            before = self.inputs.reset(policy["correctness_seeds"][0] + 1000, control_variant=variant)
+            self.observe()
+            self.initialize()
+            try:
+                self.verify(before)
+            except (AssertionError, ValueError):
+                pass
+            else:
+                raise AssertionError("no-op replay was accepted")
+            self.graph.replay(); self.verify(before)
+            try:
+                self.verify(before, corrupt=True)
+            except (AssertionError, ValueError):
+                pass
+            else:
+                raise AssertionError("corrupted output was accepted")
+            completed.append(variant)
+        coverage = distribution.coverage(policy, completed, original)
         return {"case": self.observe(), "correct": True, "seeds": policy["correctness_seeds"],
                 "negative_controls": {"no_op": True, "wrong_output": True},
                 "recorded_representatives_checked": recorded,
+                "workload_control_coverage": coverage,
                 "independent_math_and_frozen_native_parity": True}
 
     def performance(self, policy, seed):
-        return checked_replays(self.case, policy, reset_inputs=self.inputs.reset,
+        selected = []
+        def reset(private_seed):
+            before = self.inputs.reset(private_seed)
+            selected.append(self.inputs.current_control_variant)
+            return before
+        report = checked_replays(self.case, policy, reset_inputs=reset,
             initialize_outputs=self.initialize, replay=self.graph.replay, verify=self.verify,
             measure=self.measure, observe=self.observe, seed=seed)
+        report["workload_control_sampling"] = self.inputs.control_distribution.sampling(seed, selected, policy, report["samples_ms"])
+        return report
 
 
 def main():
@@ -219,6 +263,8 @@ def main():
               "capture_scope": manifest["capture"], "speedup_claim": False}
     if args.phase == "compile":
         report["compiled"] = True
+    from workload_controls import validate_scope_reports
+    validate_scope_reports(manifest, rows, args.phase, challenge_seed=request["challenge_seed"])
     report = finalize_report(report, manifest, request)
     write_report(args.phase, report)
     print(args.phase.capitalize() + ": PASS")

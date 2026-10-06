@@ -57,3 +57,8 @@ Qualification requires positive compile/correctness/performance, actual no-op an
 - `scripts/task_runner.py`: compilation, correctness and checked timing.
 
 The superseded legacy overlays and historical geometry fallbacks were removed. Their tracked history remains provenance and is not used for evaluation.
+
+
+Fresh replay covers the full recorded sequence-length histogram within every original ABI/compiler case. The original recorded-golden checks and seed-to-recorded-state mapping for seeds 0, 1, 2 and the seed-1000 negative controls remain intact. Correctness additionally checks six numeric ranks in each 128-setting class: 0, 1, 63, 64, 126 and 127. Reports distinguish all represented settings from the settings actually checked.
+
+Performance draws from exact recorded integer occurrence weights with replacement and retains 10 warmups and 100 checked graph samples per case. Reports include all draw IDs, untimed values and the arithmetic mean of all 100 raw device samples. The trusted evaluator supplies the same private seed to reference and candidate; `ut/workload_controls.py:paired_report_costs` additionally validates complete phase requests, raw means and matched schedules for evidence review. This is sampled distribution coverage, not exhaustive numerical execution or an end-to-end gain claim. This harness change requires fresh GPU and framework qualification; existing receipts qualify their original snapshots.

@@ -23,6 +23,8 @@ EXAMPLES = [
     ("headkernel/kimi-k3__attn_residual_aggregate_hip", "portable_case_contract"),
     ("headkernel/kimi-k3__dense_bf16_gemm_cijk", "portable_case_contract"),
     ("headkernel/minimax-m3__gemm_afp4wfp4_kernel", "portable_case_contract"),
+    ("headkernel/minimax-m3__decode_score_kernel", "portable_case_contract"),
+    ("headkernel/minimax-m3__gqa_share_sparse_decode_kernel", "portable_case_contract"),
 ]
 
 
@@ -83,6 +85,8 @@ def test_changed_legacy_or_native_timer_is_rejected(tmp_path, example, relative)
     ("headkernel/minimax-m3__gemm_afp4wfp4_kernel", "ut/admission.py"),
     ("headkernel/minimax-m3__gemm_afp4wfp4_kernel", "ut/reference.py"),
     ("headkernel/minimax-m3__gemm_afp4wfp4_kernel", "ut/fixture_codec.py"),
+    ("headkernel/minimax-m3__decode_score_kernel", "ut/workload_controls.py"),
+    ("headkernel/minimax-m3__gqa_share_sparse_decode_kernel", "ut/minimax_data.py"),
 ])
 def test_current_portable_protocol_helper_drift_requires_review(tmp_path, example, relative):
     task, _ = stage_protocol(tmp_path, example)

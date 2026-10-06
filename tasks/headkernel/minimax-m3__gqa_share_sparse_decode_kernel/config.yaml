@@ -9,7 +9,7 @@ correctness_command:
 performance_command:
 - python3 scripts/task_runner.py performance
 compile_timeout: 1800
-correctness_timeout: 3600
+correctness_timeout: 5400
 performance_timeout: 14400
 task_type: triton2triton
 task_result_template: null

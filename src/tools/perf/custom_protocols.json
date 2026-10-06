@@ -3,6 +3,22 @@
   "protocols": [
     {
       "family": "portable_case_contract",
+      "description": "Original MiniMax decode checks plus targeted recorded controls retain canonical checked replays; integer-histogram sampling logs every raw mean and paired schedule.",
+      "entrypoint": "scripts/task_runner.py",
+      "entrypoint_sha256": [
+        "1c5f1e95a3d69604e98bbfd0a08545f1d59f56b69736709e9de5f544e8f0d59f"
+      ],
+      "files_sha256": {
+        "ut/minimax_data.py": [
+          "2f7a9d5a9010961eed4e14d22a49616090a5f84b0862f8c0f23bf0176350cbcd"
+        ],
+        "ut/workload_controls.py": [
+          "77eae163f89ed8701f981c3a2c5a6c00b4571972392b416e7dce587eb1c27aa2"
+        ]
+      }
+    },
+    {
+      "family": "portable_case_contract",
       "description": "Task-local timers call canonical checked_replays and finalize_report.",
       "entrypoint": "scripts/task_runner.py",
       "entrypoint_sha256": [

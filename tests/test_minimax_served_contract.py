@@ -117,9 +117,22 @@ def manifest_for(case, definition):
 
 
 def test_common_helper_copies_and_canonical_contract_match():
-    for name in ("served_contract.py", "source_guard.py", "minimax_data.py", "minimax_reference.py", "minimax_native.py",
+    for name in ("served_contract.py", "source_guard.py", "minimax_reference.py", "minimax_native.py",
                  "minimax_work.py", "minimax_fixtures.py", "minimax_coverage.py"):
         assert len({(task/"ut"/name).read_bytes() for task in TASKS}) == 1
+    # Decode has a recorded-histogram selector; prefill retains its original
+    # state schedule. Their geometry, physical storage and oracle boundaries
+    # remain shared, and the two decode adapters remain exact copies.
+    assert len({(task/"ut/minimax_data.py").read_bytes() for task in TASKS[:2]}) == 1
+    shared_methods = {"_fresh_geometry", "validate_geometry", "views", "_physical_ids",
+                      "reference_args", "assert_immutable"}
+    for name in shared_methods | {"snapshot_output", "initialize_outputs"}:
+        implementations = []
+        for task in TASKS:
+            tree = ast.parse((task/"ut/minimax_data.py").read_text())
+            function, = [node for node in ast.walk(tree) if isinstance(node, ast.FunctionDef) and node.name == name]
+            implementations.append(ast.dump(function))
+        assert len(set(implementations)) == 1
     for task in TASKS:
         assert (task/"ut/evaluation_contract.py").read_bytes() == (REPO/"src/task_contract.py").read_bytes()
 

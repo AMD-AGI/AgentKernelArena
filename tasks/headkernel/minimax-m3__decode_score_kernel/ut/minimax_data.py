@@ -71,6 +71,11 @@ class Inputs:
         self.scalars = {name: value for name, value in case["scalars"].items()
                         if not name.startswith(("result", "work."))}
         self.args = {**self.scalars, **self.tensors}
+        self.control_distribution = None
+        if self.external:
+            from workload_controls import RecordedControls
+            self.control_distribution = RecordedControls(case)
+        self.current_control_variant = None
 
     def _fresh_geometry(self, state, seed):
         """Preserve work bounds/counts while changing concrete page/routing values.
@@ -198,10 +203,25 @@ class Inputs:
                 result.append((table[row, :length].to(torch.int64) + total) % total)
         return torch.unique(torch.cat(result)) if result else torch.empty(0, dtype=torch.int64)
 
-    def reset(self, seed):
+    def reset_recorded(self, seed):
+        """Preserve the original seed-to-recorded-state mapping exactly."""
+        return self.reset(seed, recorded_state=int(seed) % len(self.states))
+
+    def reset(self, seed, *, control_variant=None, recorded_state=None):
         import torch
-        self.current_state = int(seed) % len(self.states)
-        geometry = self._fresh_geometry(self.states[self.current_state], seed)
+        if recorded_state is not None:
+            if control_variant is not None or type(recorded_state) is not int or not 0 <= recorded_state < len(self.states):
+                raise ValueError("invalid or ambiguous recorded-state selection")
+            self.current_state = recorded_state
+            self.current_control_variant = None
+            state = self.states[recorded_state]
+        elif self.control_distribution is None:
+            self.current_state = int(seed) % len(self.states)
+            state = self.states[self.current_state]
+        else:
+            self.current_control_variant = (self.control_distribution.choose(seed) if control_variant is None else control_variant)
+            self.current_state, state = self.control_distribution.geometry(self.states, self.current_control_variant)
+        geometry = self._fresh_geometry(state, seed)
         for name, value in geometry.items():
             self.tensors[name].copy_(value.to(self.device))
         ids = self._physical_ids(geometry).to(self.device)
@@ -228,6 +248,7 @@ class Inputs:
         if not self.external:
             raise ValueError("recorded parity requires a verified external fixture")
         self.current_state = index
+        self.current_control_variant = None
         self.validate_geometry(self.states[index])
         restore_recorded_inputs(self.entries[index], self.storage, self.verified_blobs)
         return {alias: value.detach().to(device="cpu", copy=True) for alias, value in self.storage.items()}
@@ -267,7 +288,10 @@ class Inputs:
         if self.external:
             from minimax_work import structural_work
             raw = {"inputs."+name.removeprefix("work."): value for name, value in controls.items()}
-            if raw != self.case["states"][self.current_state]["tensor_controls"]:
+            expected_controls = (self.control_distribution.controls(self.current_control_variant)
+                                 if self.current_control_variant is not None
+                                 else self.case["states"][self.current_state]["tensor_controls"])
+            if raw != expected_controls:
                 raise ValueError("actual replay work controls differ from the selected real state")
             controls = {"work.variant": structural_work(raw, self.scalars)}
         scalars = {**self.scalars, **{name: value for name, value in outputs.items() if value is None}, **controls}
