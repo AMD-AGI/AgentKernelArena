@@ -76,8 +76,8 @@ class DecodeDispatchTests(unittest.TestCase):
 
     def test_three_actual_cases_select_split_then_reduce_in_unchanged_wrapper(self):
         self.assertTrue(self.contract.validate_dispatch(self.manifest))
-        self.assertEqual(len(self.manifest["cases"]), 3)
-        for case in self.manifest["cases"]:
+        self.assertEqual(len(self.manifest["cases"]), 4)
+        for case in self.manifest["cases"][:3]:
             native, calls = native_control_flow()
             inputs = {}
             for name in ("q", "unified_kv", "kv_indices", "kv_indptr", "attn_sink"):
@@ -136,9 +136,15 @@ class DecodeDispatchTests(unittest.TestCase):
 
     def test_evidence_binds_existing_cases_and_native_bytes(self):
         evidence = json.loads((TASK / "provenance/EDITABLE-DISPATCH.json").read_text())
-        self.assertEqual(evidence["case_manifest_sha256"], hashlib.sha256((TASK / "cases.json").read_bytes()).hexdigest())
-        self.assertEqual([x["case_id"] for x in evidence["cases"]], [x["case_id"] for x in self.manifest["cases"]])
-        self.assertEqual([x["occurrences"] for x in evidence["cases"]], [x["occurrences"] for x in self.manifest["cases"]])
+        # This evidence describes the historical three-capture manifest. The
+        # reviewed distribution recipe binds those unchanged case objects.
+        recipe = load(TASK / "ut/mla_decode_distribution.py", "mla_decode_distribution_evidence")
+        policy = recipe.load_policy(TASK, self.manifest)
+        captured = self.manifest["cases"][:3]
+        self.assertEqual(evidence["case_manifest_sha256"], "feba83237fe94a96d3314e4f84810397a482336d84a8ff29c8e92dfda3ce34d3")
+        self.assertEqual(recipe.fingerprint(captured), policy["base_cases_sha256"])
+        self.assertEqual([x["case_id"] for x in evidence["cases"]], [x["case_id"] for x in captured])
+        self.assertEqual([x["occurrences"] for x in evidence["cases"]], [x["occurrences"] for x in captured])
         for name, expected in evidence["dispatch_sources"].items():
             self.assertEqual(hashlib.sha256((TASK / name).read_bytes()).hexdigest(), expected)
         self.assertFalse(evidence["new_cases_added"])

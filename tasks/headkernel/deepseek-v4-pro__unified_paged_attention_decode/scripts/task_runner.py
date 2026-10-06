@@ -14,6 +14,7 @@ from evaluation_contract import (canonical, fingerprint, strict_json, validate_m
     observe_case, checked_replays, finalize_report)
 from abi import runtime_abi
 from dispatch_contract import validate_dispatch, validate_runtime_dispatch
+from mla_decode_distribution import KIND, RuntimeRecipe, load_policy
 
 
 def write(phase,report):
@@ -188,7 +189,7 @@ def main():
     (ROOT/'build'/(a.phase+'_report.json')).unlink(missing_ok=True)
     manifest=strict_json((ROOT/'cases.json').read_text()); validate_manifest(manifest)
     validate_dispatch(manifest)
-    if manifest.get('status')!='FROZEN_CURRENT_CAPTURE': raise RuntimeError('Current fixtures and expected cases are not sealed')
+    distribution_policy=load_policy(ROOT,manifest)
     request=request_for(a.phase,manifest,a.request); validate_sources(ROOT,ROOT)
     report={'schema_version':1,'status':'ok','request':request,'cases':[]}
     import torch
@@ -206,6 +207,8 @@ def main():
         if validate_runtime_dispatch(reference_module,reference_inputs)!=dispatch:
             raise RuntimeError('Candidate and reference dispatch controls differ')
         pristine_inputs=storage_snapshots(inputs)
+        recipe=(RuntimeRecipe(case,distribution_policy,inputs,module,reference_module)
+                if case.get('provenance_kind')==KIND else None)
         initial_out=cpu_clone(inputs.get('out'))
         primary='q' if manifest['seam'].startswith('mla') else 'a' if manifest['seam']=='moe1' else 'hidden_states' if manifest['seam']=='moe1_prefill' else 'inter_states'
         # Current candidate and immutable reference specializations are both
@@ -219,6 +222,9 @@ def main():
         compiled.append({'case_id':case['case_id'],'candidate_binding':identity,
                          'reference_binding':reference_identity,'dispatch':dispatch,'invoked_and_synchronized':True})
         if a.phase=='compile':
+            if recipe is not None:
+                compiled[-1]['control_distribution']=recipe.proof('compile',policy)
+                recipe.close()
             del inputs,reference_inputs,golden,output,pristine_inputs,initial_out
             torch.cuda.empty_cache()
             continue
@@ -228,8 +234,9 @@ def main():
         torch.cuda.synchronize(); graph=torch.cuda.CUDAGraph()
         restore_storages(inputs,pristine_inputs)
         with torch.cuda.graph(graph): output=invoke(fn,inputs)
-        def reset_inputs(seed):
+        def reset_inputs(seed,forced_length=None):
             restore_storages(inputs,pristine_inputs)
+            if recipe is not None:recipe.apply(inputs,seed,forced_length)
             generator=torch.Generator(device='cuda'); generator.manual_seed(seed)
             values=torch.randn(inputs[primary].shape,dtype=torch.float32,device='cuda',generator=generator).to(inputs[primary].dtype)
             inputs[primary].copy_(values)
@@ -242,6 +249,7 @@ def main():
             for value in leaves(output):
                 if value.untyped_storage().data_ptr()!=mutable_ptr: raw_storage(value).fill_(0xAA)
         def observe():
+            if recipe is not None:recipe.verify_controls(inputs,output)
             tensors,scalars=runtime_abi(inputs,output)
             return observe_case(case,tensors,scalars)
         def verify(expected):
@@ -250,24 +258,36 @@ def main():
             start=torch.cuda.Event(enable_timing=True); stop=torch.cuda.Event(enable_timing=True)
             start.record(); call(); stop.record(); stop.synchronize(); return float(start.elapsed_time(stop))
         if a.phase=='correctness':
-            for seed in policy['correctness_seeds']:
-                expected=reset_inputs(seed); initialize_outputs(); observe(); graph.replay(); verify(expected)
-            controls={}
-            for control in policy['negative_controls']:
-                expected=reset_inputs(request['challenge_seed']); initialize_outputs()
-                if control=='wrong_output':
-                    graph.replay(); torch.cuda.synchronize()
-                    for value in leaves(output): raw_storage(value).zero_()
-                elif control!='no_op': raise RuntimeError('Unknown required negative control')
-                try: verify(expected)
-                except AssertionError: controls[control]=True
-                else: raise RuntimeError('Required negative control escaped: '+control)
-            report['cases'].append({'case':observe(),'correct':True,'seeds':policy['correctness_seeds'],
-                'negative_controls':controls,'negative_control_scope':'protected no-op replay and output corruption; submitted-source mutation retest is separate'})
+            settings=distribution_policy['lengths'] if recipe is not None else [None]
+            all_controls={name:True for name in policy['negative_controls']}
+            exhaustive=[]
+            for length in settings:
+                for seed in policy['correctness_seeds']:
+                    expected=reset_inputs(seed,length); initialize_outputs(); observe(); graph.replay(); verify(expected)
+                controls={}
+                for control in policy['negative_controls']:
+                    expected=reset_inputs(request['challenge_seed'],length); initialize_outputs()
+                    if control=='wrong_output':
+                        graph.replay(); torch.cuda.synchronize()
+                        for value in leaves(output): raw_storage(value).zero_()
+                    elif control!='no_op': raise RuntimeError('Unknown required negative control')
+                    try: verify(expected)
+                    except AssertionError: controls[control]=True
+                    else: raise RuntimeError('Required negative control escaped: '+control)
+                if recipe is not None:
+                    exhaustive.append({'length':length,'seeds':policy['correctness_seeds'],'negative_controls':controls})
+                for name in all_controls:all_controls[name] &= controls.get(name) is True
+            row={'case':observe(),'correct':True,'seeds':policy['correctness_seeds'],
+                 'negative_controls':all_controls,'negative_control_scope':'protected no-op replay and output corruption; submitted-source mutation retest is separate'}
+            if recipe is not None:row['exhaustive_control_settings']=exhaustive
+            report['cases'].append(row)
         else:
             row=checked_replays(case,policy,reset_inputs=reset_inputs,initialize_outputs=initialize_outputs,
                 replay=graph.replay,verify=verify,measure=measure,observe=observe,seed=request['challenge_seed'])
             report['cases'].append(row)
+        if recipe is not None:
+            report['cases'][-1]['control_distribution']=recipe.proof(a.phase,policy)
+            recipe.close()
         del graph,inputs,reference_inputs,golden,output,pristine_inputs,initial_out
         torch.cuda.empty_cache()
     report.update(compiled=True,compiled_specializations=compiled,

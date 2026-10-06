@@ -377,11 +377,146 @@
           ]
         }
       }
+    },
+    {
+      "calls_per_sample": 1,
+      "case_id": "deepseek_mla_decode-current-kvlen-distribution-192-200",
+      "distribution_recipe": {
+        "path": "ut/mla_control_distribution.json",
+        "sha256": "ef2822025f2215f39752bfc4897899fd456f7115570f659576bab919df3cd4b1"
+      },
+      "fixture": {
+        "path": "fixtures/deepseek_mla_decode-ef9a66de43776b4e2e04f22b-work-531ff7069c2236ba.json",
+        "sha256": "36977106e1fbf567dece555e8f387ccfcde3e521a130608c79924d0db05aca9d"
+      },
+      "fixture_role": "parent_inputs_and_200_calibration_only",
+      "occurrence_basis": "rank-0 observations for the complete variable control group; not additive with preserved endpoint regression cases",
+      "occurrences": 31744,
+      "original_missing_tensor_capture_recovered": false,
+      "provenance_kind": "generated_observed_control_distribution",
+      "scalars": {
+        "arguments": {
+          "attn_sink": {
+            "attributes": {},
+            "tensor": "arg.attn_sink"
+          },
+          "kv_indices": {
+            "attributes": {},
+            "tensor": "arg.kv_indices"
+          },
+          "kv_indptr": {
+            "attributes": {},
+            "tensor": "arg.kv_indptr"
+          },
+          "kv_scales": null,
+          "q": {
+            "attributes": {},
+            "tensor": "arg.q"
+          },
+          "softmax_scale": 0.04419417382415922,
+          "unified_kv": {
+            "attributes": {},
+            "tensor": "arg.unified_kv"
+          }
+        },
+        "return": {
+          "attributes": {},
+          "tensor": "result"
+        }
+      },
+      "stage": "decode",
+      "tensors": {
+        "arg.attn_sink": {
+          "device_type": "cuda",
+          "dtype": "float32",
+          "role": "input",
+          "shape": [
+            16
+          ],
+          "storage_offset": 0,
+          "strides": [
+            1
+          ]
+        },
+        "arg.kv_indices": {
+          "device_type": "cuda",
+          "dtype": "int32",
+          "role": "input",
+          "shape": [
+            16384
+          ],
+          "storage_offset": 0,
+          "strides": [
+            1
+          ]
+        },
+        "arg.kv_indptr": {
+          "device_type": "cuda",
+          "dtype": "int32",
+          "role": "input",
+          "shape": [
+            65
+          ],
+          "storage_offset": 0,
+          "strides": [
+            1
+          ]
+        },
+        "arg.q": {
+          "device_type": "cuda",
+          "dtype": "bfloat16",
+          "role": "input",
+          "shape": [
+            64,
+            16,
+            512
+          ],
+          "storage_offset": 0,
+          "strides": [
+            32768,
+            512,
+            1
+          ]
+        },
+        "arg.unified_kv": {
+          "device_type": "cuda",
+          "dtype": "bfloat16",
+          "role": "input",
+          "shape": [
+            136856,
+            512
+          ],
+          "storage_offset": 0,
+          "strides": [
+            512,
+            1
+          ]
+        },
+        "result": {
+          "device_type": "cuda",
+          "dtype": "bfloat16",
+          "role": "output",
+          "shape": [
+            64,
+            16,
+            512
+          ],
+          "storage_offset": 0,
+          "strides": [
+            8192,
+            512,
+            1
+          ]
+        }
+      }
     }
   ],
   "coverage_manifest": "provenance/COVERAGE.json",
-  "coverage_sha256": "d2a4088887ea78bb7bef3d8820f8c23bda52bd5b4a42820f7acf9a6db24976ed",
-  "generated_work_control_supplement": false,
+  "coverage_sha256": "e7968d0e1b1819dfe49b5e431efb86564adf15612184250a9a4afaca9f62ca40",
+  "current_control_setting_count": 10,
+  "distribution_GPU_qualification": false,
+  "distribution_case_count": 1,
+  "generated_work_control_supplement": true,
   "historical_oracle_reused": false,
   "legacy_required_m": [
     1,
@@ -414,7 +549,8 @@
   "required_case_ids": [
     "deepseek_mla_decode-98f9f736c04a9282790736a9",
     "deepseek_mla_decode-ef9a66de43776b4e2e04f22b-work-531ff7069c2236ba",
-    "deepseek_mla_decode-ef9a66de43776b4e2e04f22b"
+    "deepseek_mla_decode-ef9a66de43776b4e2e04f22b",
+    "deepseek_mla_decode-current-kvlen-distribution-192-200"
   ],
   "required_phases": [
     "decode"
@@ -424,7 +560,7 @@
   "schema": "deepseek-frozen-current-case-contract-v1",
   "schema_version": 1,
   "seam": "mla_decode",
-  "status": "FROZEN_CURRENT_CAPTURE",
+  "status": "FROZEN_CAPTURE_AND_GENERATED_DISTRIBUTION",
   "task_GPU_qualification": false,
   "tensor_fixtures_required": true,
   "tolerance": 0.02,

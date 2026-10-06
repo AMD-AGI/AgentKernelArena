@@ -195,6 +195,25 @@
           "59ba874e20cc45b6e62961b72ce0bf65a5e5c621c5d580198b1ce0460ac2b8a8"
         ]
       }
+    },
+    {
+      "family": "portable_case_contract",
+      "description": "Original captured regressions plus one protected observed-control distribution; exhaustive nine-state correctness and canonical private histogram-weighted replay timing.",
+      "entrypoint": "scripts/task_runner.py",
+      "entrypoint_sha256": [
+        "45bd6e62e55f764ea38318a162c6046ca5cbf8488ee4594e65b99300bc177af4"
+      ],
+      "files_sha256": {
+        "ut/dispatch_contract.py": [
+          "17c6b6eecc96d07b4500ba266aacb716a2984365ebd4117a2fb601309444f881"
+        ],
+        "ut/mla_decode_distribution.py": [
+          "850f07dbad7fe75b06521a85f9dcaf03741728c1702c56f9b143b3a12d53eea9"
+        ],
+        "ut/mla_control_distribution.json": [
+          "ef2822025f2215f39752bfc4897899fd456f7115570f659576bab919df3cd4b1"
+        ]
+      }
     }
   ]
 }

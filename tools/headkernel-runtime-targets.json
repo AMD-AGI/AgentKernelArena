@@ -174,7 +174,7 @@
       "trusted_retest_tool": "src/tools/trusted_task_eval.py",
       "environment_and_setup_guide": "docs/how-to/headkernel-upstream-runtime.md",
       "fixture_oci_prefix": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261005/deepseek-final-v7-mixed/",
-      "fixture_manifest_sha256": "867dd168011522795cd46fdcf3b2ce4385d1c0505f2e5509f525fc9da001f69c",
+      "fixture_manifest_sha256": "a1eaf0c94adf2e2c611f6ed379717cc2d1016692bde344806072ea648e34c6e3",
       "fixture_asset_count": 19180,
       "fixture_declared_bytes": 121463093,
       "fixture_publication_status": "task_manifest_declared; publication and qualification are separate gates"

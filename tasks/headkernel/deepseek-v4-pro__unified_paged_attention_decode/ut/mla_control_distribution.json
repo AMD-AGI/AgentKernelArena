@@ -1,0 +1,744 @@
+{
+  "audit_sha256": "c1afbc12593819377bd07f794939083c2b87b1ebae2d168266ee51f25027ad43",
+  "base_cases_sha256": "58ace273e789f091ce02b5570a2b1130d9134c115cbfecab882b1016e57658fd",
+  "base_task_commit": "2a5986d3ab35f6292ffeeaa23a8511875d1499b9",
+  "captured_public_bindings": {
+    "attn_sink": {
+      "attributes": {},
+      "dtype": "torch.float32",
+      "kind": "tensor",
+      "shape": [
+        16
+      ],
+      "storage_bytes": 256,
+      "storage_offset": 0,
+      "stride": [
+        1
+      ]
+    },
+    "kv_indices": {
+      "attributes": {},
+      "dtype": "torch.int32",
+      "kind": "tensor",
+      "shape": [
+        16384
+      ],
+      "storage_bytes": 65536,
+      "storage_offset": 0,
+      "stride": [
+        1
+      ]
+    },
+    "kv_indptr": {
+      "attributes": {},
+      "dtype": "torch.int32",
+      "kind": "tensor",
+      "shape": [
+        65
+      ],
+      "storage_bytes": 260,
+      "storage_offset": 0,
+      "stride": [
+        1
+      ]
+    },
+    "kv_scales": null,
+    "q": {
+      "attributes": {},
+      "dtype": "torch.bfloat16",
+      "kind": "tensor",
+      "shape": [
+        64,
+        16,
+        512
+      ],
+      "storage_bytes": 4194304,
+      "storage_offset": 0,
+      "stride": [
+        32768,
+        512,
+        1
+      ]
+    },
+    "softmax_scale": 0.04419417382415922,
+    "unified_kv": {
+      "attributes": {},
+      "dtype": "torch.bfloat16",
+      "kind": "tensor",
+      "shape": [
+        136856,
+        512
+      ],
+      "storage_bytes": 140140544,
+      "storage_offset": 0,
+      "stride": [
+        512,
+        1
+      ]
+    }
+  },
+  "dispatch_evidence_scope": "All-rank captured public ABI/scalars plus execution of hash-pinned Python wrapper with recording kernels. Actual GPU dispatch probes remain required and are installed by the runtime recipe.",
+  "generation": "Each row takes its first L parent entries; kv_indices is repacked to CSR and remaining full-buffer entries are -1. Q values follow the unchanged seeded refresh policy. KV and sink values remain captured, and all native storage extents, strides, offsets, aliases, scalar controls, and source bytes are preserved.",
+  "group": "mla_decode-ff60fd7ffb41b5ee6f3faa4e",
+  "histogram": [
+    {
+      "length": 192,
+      "occurrences_by_rank": {
+        "0": 3937,
+        "1": 3937,
+        "2": 3937,
+        "3": 3937,
+        "4": 3937,
+        "5": 3937,
+        "6": 3937,
+        "7": 3937
+      },
+      "variant": "60c0364af5fc84d4193c136b6a09454ed2c2216b074271fd8c261ae636d11258",
+      "weight": 31496
+    },
+    {
+      "length": 193,
+      "occurrences_by_rank": {
+        "0": 3968,
+        "1": 3968,
+        "2": 3968,
+        "3": 3968,
+        "4": 3968,
+        "5": 3968,
+        "6": 3968,
+        "7": 3968
+      },
+      "variant": "b922f6c0f2303cdb21ec7fe749bc424f06612d6dabbdeb23bc82b9c023010cbe",
+      "weight": 31744
+    },
+    {
+      "length": 194,
+      "occurrences_by_rank": {
+        "0": 3968,
+        "1": 3968,
+        "2": 3968,
+        "3": 3968,
+        "4": 3968,
+        "5": 3968,
+        "6": 3968,
+        "7": 3968
+      },
+      "variant": "bfd8bd71c98ec2aab7a1b926fb0bbc0a22397d5bbd1bf9834fb761ef6a59c6d8",
+      "weight": 31744
+    },
+    {
+      "length": 195,
+      "occurrences_by_rank": {
+        "0": 3968,
+        "1": 3968,
+        "2": 3968,
+        "3": 3968,
+        "4": 3968,
+        "5": 3968,
+        "6": 3968,
+        "7": 3968
+      },
+      "variant": "ca59a2e401e6aa4a489b9b2fb4d87e0385e89b2780d8b2bcbf6903de7821b2a6",
+      "weight": 31744
+    },
+    {
+      "length": 196,
+      "occurrences_by_rank": {
+        "0": 3968,
+        "1": 3968,
+        "2": 3968,
+        "3": 3968,
+        "4": 3968,
+        "5": 3968,
+        "6": 3968,
+        "7": 3968
+      },
+      "variant": "8d83805ce745beb383e8d6388524b3053b898cabb858b013f4e1a176852b8db2",
+      "weight": 31744
+    },
+    {
+      "length": 197,
+      "occurrences_by_rank": {
+        "0": 3968,
+        "1": 3968,
+        "2": 3968,
+        "3": 3968,
+        "4": 3968,
+        "5": 3968,
+        "6": 3968,
+        "7": 3968
+      },
+      "variant": "e0c707a68cd89b5b3cf6d7797df09d4670b9edb739950b5f09247d53a5604907",
+      "weight": 31744
+    },
+    {
+      "length": 198,
+      "occurrences_by_rank": {
+        "0": 3968,
+        "1": 3968,
+        "2": 3968,
+        "3": 3968,
+        "4": 3968,
+        "5": 3968,
+        "6": 3968,
+        "7": 3968
+      },
+      "variant": "0456d5a6c9092bf44d6c7838acba31f0eaeefb0912a4e7c7f1967caa816dea70",
+      "weight": 31744
+    },
+    {
+      "length": 199,
+      "occurrences_by_rank": {
+        "0": 3968,
+        "1": 3968,
+        "2": 3968,
+        "3": 3968,
+        "4": 3968,
+        "5": 3968,
+        "6": 3968,
+        "7": 3968
+      },
+      "variant": "ab4780fcdffe37cb9dafeaa209d1d44bb975e8ed851e82f860e44fe4e2972472",
+      "weight": 31744
+    },
+    {
+      "length": 200,
+      "occurrences_by_rank": {
+        "0": 31,
+        "1": 31,
+        "2": 31,
+        "3": 31,
+        "4": 31,
+        "5": 31,
+        "6": 31,
+        "7": 31
+      },
+      "variant": "531ff7069c2236ba13474198b81c357f226aa5a6f1382d6caf7256097265e79e",
+      "weight": 248
+    }
+  ],
+  "kv_subset_proof": {
+    "all_selected_rows_captured": true,
+    "captured_byte_ranges": [
+      [
+        131072,
+        8519680
+      ],
+      [
+        8521728,
+        13240320
+      ]
+    ],
+    "parent_live_rows": 12800
+  },
+  "lengths": [
+    192,
+    193,
+    194,
+    195,
+    196,
+    197,
+    198,
+    199,
+    200
+  ],
+  "max_length_scalar_argument": null,
+  "measurement": {
+    "benchmark_iterations": 100,
+    "correctness_seeds": [
+      42,
+      43
+    ],
+    "initialize_outputs": "each_replay",
+    "method": "cuda_graph",
+    "negative_controls": [
+      "no_op",
+      "wrong_output"
+    ],
+    "refresh_inputs": "each_replay",
+    "validate_outputs": "each_replay",
+    "warmup_iterations": 10
+  },
+  "missing_actual_lengths": [
+    193,
+    194,
+    195,
+    196,
+    197,
+    198,
+    199
+  ],
+  "native_inputs": {
+    "attn_sink": {
+      "alias": "s3",
+      "device": "cuda:0",
+      "dtype": "torch.float32",
+      "element_size": 4,
+      "kind": "tensor",
+      "role": {
+        "case_control": false,
+        "footprint": "view_span",
+        "kind": "mutable",
+        "optional": false,
+        "paged": null
+      },
+      "shape": [
+        16
+      ],
+      "storage_nbytes": 256,
+      "storage_offset": 0,
+      "stride": [
+        1
+      ]
+    },
+    "kv_indices": {
+      "alias": "s4",
+      "device": "cuda:0",
+      "dtype": "torch.int32",
+      "element_size": 4,
+      "kind": "tensor",
+      "role": {
+        "case_control": false,
+        "footprint": "view_span",
+        "kind": "mutable",
+        "optional": false,
+        "paged": null
+      },
+      "shape": [
+        16384
+      ],
+      "storage_nbytes": 65536,
+      "storage_offset": 0,
+      "stride": [
+        1
+      ]
+    },
+    "kv_indptr": {
+      "alias": "s5",
+      "device": "cuda:0",
+      "dtype": "torch.int32",
+      "element_size": 4,
+      "kind": "tensor",
+      "role": {
+        "case_control": false,
+        "footprint": "view_span",
+        "kind": "mutable",
+        "optional": false,
+        "paged": null
+      },
+      "shape": [
+        65
+      ],
+      "storage_nbytes": 260,
+      "storage_offset": 0,
+      "stride": [
+        1
+      ]
+    },
+    "q": {
+      "alias": "s6",
+      "device": "cuda:0",
+      "dtype": "torch.bfloat16",
+      "element_size": 2,
+      "kind": "tensor",
+      "role": {
+        "case_control": false,
+        "footprint": "view_span",
+        "kind": "mutable",
+        "optional": false,
+        "paged": null
+      },
+      "shape": [
+        64,
+        16,
+        512
+      ],
+      "storage_nbytes": 4194304,
+      "storage_offset": 0,
+      "stride": [
+        32768,
+        512,
+        1
+      ]
+    },
+    "unified_kv": {
+      "alias": "s7",
+      "device": "cuda:0",
+      "dtype": "torch.bfloat16",
+      "element_size": 2,
+      "kind": "tensor",
+      "role": {
+        "case_control": false,
+        "footprint": "view_span",
+        "kind": "paged",
+        "optional": false,
+        "paged": {
+          "access_contract": "only_indexed_units",
+          "index_divisor": 1,
+          "indices": "_capture_unified_indices",
+          "invalid_indices": [
+            -1
+          ],
+          "max_index_entries": 16384,
+          "storage_offset_bytes": 0,
+          "unit_bytes": 1024,
+          "unit_count": 136856,
+          "unit_name": "unified_KV_row",
+          "unit_stride_bytes": 1024
+        }
+      },
+      "shape": [
+        136856,
+        512
+      ],
+      "storage_nbytes": 140140544,
+      "storage_offset": 0,
+      "stride": [
+        512,
+        1
+      ]
+    }
+  },
+  "native_output": {
+    "alias": "s8",
+    "device": "cuda:0",
+    "dtype": "torch.bfloat16",
+    "element_size": 2,
+    "kind": "tensor",
+    "role": {
+      "case_control": false,
+      "footprint": "view_span",
+      "kind": "mutable",
+      "optional": false,
+      "paged": null
+    },
+    "shape": [
+      64,
+      16,
+      512
+    ],
+    "storage_nbytes": 1048576,
+    "storage_offset": 0,
+    "stride": [
+      8192,
+      512,
+      1
+    ]
+  },
+  "native_source_sha256": "fd1e927877cdefcf8cabcbc6b0e04ef39ea61cd5967a4fbfd6c6e67463f2ccc5",
+  "oracle": "Captured parent output is used only for unchanged L=200 initial calibration. Every generated state is checked using separately restored frozen-native inputs after candidate CPU snapshots. No precomputed generated golden is exposed.",
+  "paired_sampling_contract": "Use the supplied request.challenge_seed; src/tools/trusted_task_eval.py supplies the same private challenge to reference and candidate. No per-leg random seed is generated.",
+  "parent_case_id": "deepseek_mla_decode-ef9a66de43776b4e2e04f22b-work-531ff7069c2236ba",
+  "parent_controls_sha256": {
+    "kv_indices": "9e73dcde98302a6415cb2f206adfd6b2b252975cd373400cae6f8bd8396d9cc1",
+    "kv_indptr": "43b91155e4abc10fd6852f71faa4bd8809a52f492ec17c0042ddd6411191c692"
+  },
+  "parent_fixture": {
+    "path": "fixtures/deepseek_mla_decode-ef9a66de43776b4e2e04f22b-work-531ff7069c2236ba.json",
+    "sha256": "36977106e1fbf567dece555e8f387ccfcde3e521a130608c79924d0db05aca9d"
+  },
+  "per_state_source_work": [
+    {
+      "length": 192,
+      "live_tokens_by_split": [
+        48,
+        48,
+        48,
+        48
+      ],
+      "native_launch_controls_identical": true,
+      "tiles_per_segment": 3
+    },
+    {
+      "length": 193,
+      "live_tokens_by_split": [
+        64,
+        64,
+        64,
+        1
+      ],
+      "native_launch_controls_identical": true,
+      "tiles_per_segment": 4
+    },
+    {
+      "length": 194,
+      "live_tokens_by_split": [
+        64,
+        64,
+        64,
+        2
+      ],
+      "native_launch_controls_identical": true,
+      "tiles_per_segment": 4
+    },
+    {
+      "length": 195,
+      "live_tokens_by_split": [
+        64,
+        64,
+        64,
+        3
+      ],
+      "native_launch_controls_identical": true,
+      "tiles_per_segment": 4
+    },
+    {
+      "length": 196,
+      "live_tokens_by_split": [
+        64,
+        64,
+        64,
+        4
+      ],
+      "native_launch_controls_identical": true,
+      "tiles_per_segment": 4
+    },
+    {
+      "length": 197,
+      "live_tokens_by_split": [
+        64,
+        64,
+        64,
+        5
+      ],
+      "native_launch_controls_identical": true,
+      "tiles_per_segment": 4
+    },
+    {
+      "length": 198,
+      "live_tokens_by_split": [
+        64,
+        64,
+        64,
+        6
+      ],
+      "native_launch_controls_identical": true,
+      "tiles_per_segment": 4
+    },
+    {
+      "length": 199,
+      "live_tokens_by_split": [
+        64,
+        64,
+        64,
+        7
+      ],
+      "native_launch_controls_identical": true,
+      "tiles_per_segment": 4
+    },
+    {
+      "length": 200,
+      "live_tokens_by_split": [
+        64,
+        64,
+        64,
+        8
+      ],
+      "native_launch_controls_identical": true,
+      "tiles_per_segment": 4
+    }
+  ],
+  "rank_evidence": [
+    {
+      "control_path": "runs/deepseek-capture-csr-v7-194603/native-captures/rank-0/CONTROL-DISTRIBUTIONS.json",
+      "control_sha256": "a338f27c8ecc3ee1f3c0fe2d5294b9306717c06d3c4a0b57cdc1e9e27a3c8d34",
+      "manifest_sha256": "f9b3868d6f9ea8df7f71a0e52b58bd8442d40d8678de93815c94c08ce912ffca",
+      "rank": 0
+    },
+    {
+      "control_path": "runs/deepseek-capture-csr-v7-194603/native-captures/rank-1/CONTROL-DISTRIBUTIONS.json",
+      "control_sha256": "157dd397c66351ba6a31a09046f994a028fee10989cc81e5734c50a324291af3",
+      "manifest_sha256": "b66b2f5e4eb06a8a0d7ed4b2e4567e847316f49b605382375dcc04a95d01a832",
+      "rank": 1
+    },
+    {
+      "control_path": "runs/deepseek-capture-csr-v7-194603/native-captures/rank-2/CONTROL-DISTRIBUTIONS.json",
+      "control_sha256": "20a2300be3cb34fe316797cf70375fce2e79ece8c87f05aa353d0077a8cde98d",
+      "manifest_sha256": "af3c657267b13355628191e5be2d83e86296f5db53fb659f9e0e38f31d3fdee6",
+      "rank": 2
+    },
+    {
+      "control_path": "runs/deepseek-capture-csr-v7-194603/native-captures/rank-3/CONTROL-DISTRIBUTIONS.json",
+      "control_sha256": "efdef33083d8fc611d68f9741bbca5edca781d90513bdebcfc7c2c8355810029",
+      "manifest_sha256": "f27ecf1c50a5fbfdf65d92e38656a303f1bed8646e120eebf81da290742c804e",
+      "rank": 3
+    },
+    {
+      "control_path": "runs/deepseek-capture-csr-v7-194603/native-captures/rank-4/CONTROL-DISTRIBUTIONS.json",
+      "control_sha256": "056097658bf045a74e6d604f4ff2a312de34e6f2e28aebce5adec5a8470d714a",
+      "manifest_sha256": "87fb978692a4a88d6c2f014e13cb857a1a7fd47952f5d7b2d326131560b158ac",
+      "rank": 4
+    },
+    {
+      "control_path": "runs/deepseek-capture-csr-v7-194603/native-captures/rank-5/CONTROL-DISTRIBUTIONS.json",
+      "control_sha256": "df06805f25ad1d3f06414fc5b19f39489ee85045e8592ebe031ce950b6a28bdb",
+      "manifest_sha256": "7e0dcb5bd8d5fe2ef222a42ba5271faa36001a72d71d4a7bff7a6b4c85183ea5",
+      "rank": 5
+    },
+    {
+      "control_path": "runs/deepseek-capture-csr-v7-194603/native-captures/rank-6/CONTROL-DISTRIBUTIONS.json",
+      "control_sha256": "c7e18e1adf2ebdf142a56ca94c2448bb9ed353fe869c4d057d9a15c658ed72aa",
+      "manifest_sha256": "cd97c44ea203ac2f6e793ffc6ba6f3b6696fda1593e9252e9d62fdfdf698464d",
+      "rank": 6
+    },
+    {
+      "control_path": "runs/deepseek-capture-csr-v7-194603/native-captures/rank-7/CONTROL-DISTRIBUTIONS.json",
+      "control_sha256": "8009683917a075c170d9c62a7876f58f1e084718e7f49e088fb037a67aa3d742",
+      "manifest_sha256": "5c006225366a1d24b240d4c09aa333930d47600778a0b0d52a7a4ef98a82ee15",
+      "rank": 7
+    }
+  ],
+  "schema": "mla-observed-control-distribution-v1",
+  "softmax_scale": 0.04419417382415922,
+  "source_supported_launches": [
+    {
+      "argument_names": [
+        "q_ptr",
+        "unified_kv_ptr",
+        "kv_scales_ptr",
+        "kv_indices_ptr",
+        "kv_indptr_ptr",
+        "m_partial_ptr",
+        "l_partial_ptr",
+        "acc_partial_ptr",
+        "q_stride_t",
+        "q_stride_h",
+        "q_stride_d",
+        "kv_stride_n",
+        "kv_stride_d",
+        "ks_stride_n",
+        "mp_stride_t",
+        "mp_stride_k",
+        "mp_stride_h",
+        "lp_stride_t",
+        "lp_stride_k",
+        "lp_stride_h",
+        "ap_stride_t",
+        "ap_stride_k",
+        "ap_stride_h",
+        "ap_stride_d",
+        "H",
+        "D",
+        "KV_SPLITS",
+        "qk_scale",
+        "BLOCK_H",
+        "BLOCK_D",
+        "BLOCK_K",
+        "QUANT_KV",
+        "GROUP_SIZE",
+        "NUM_GROUPS"
+      ],
+      "grid": [
+        64,
+        1,
+        4
+      ],
+      "kernel": "_paged_decode_split_kernel",
+      "kwargs": {
+        "BLOCK_D": 512,
+        "BLOCK_H": 16,
+        "BLOCK_K": 16,
+        "GROUP_SIZE": 64,
+        "NUM_GROUPS": 1,
+        "QUANT_KV": false,
+        "num_stages": 2,
+        "num_warps": 4
+      },
+      "scalar_arguments": {
+        "BLOCK_D": 512,
+        "BLOCK_H": 16,
+        "BLOCK_K": 16,
+        "D": 512,
+        "GROUP_SIZE": 64,
+        "H": 16,
+        "KV_SPLITS": 4,
+        "NUM_GROUPS": 1,
+        "QUANT_KV": false,
+        "ap_stride_d": 1,
+        "ap_stride_h": 512,
+        "ap_stride_k": 8192,
+        "ap_stride_t": 32768,
+        "ks_stride_n": 1,
+        "kv_stride_d": 1,
+        "kv_stride_n": 512,
+        "lp_stride_h": 1,
+        "lp_stride_k": 16,
+        "lp_stride_t": 64,
+        "mp_stride_h": 1,
+        "mp_stride_k": 16,
+        "mp_stride_t": 64,
+        "num_stages": 2,
+        "num_warps": 4,
+        "q_stride_d": 1,
+        "q_stride_h": 512,
+        "q_stride_t": 32768,
+        "qk_scale": 0.06375871541229934
+      }
+    },
+    {
+      "argument_names": [
+        "m_partial_ptr",
+        "l_partial_ptr",
+        "acc_partial_ptr",
+        "attn_sink_ptr",
+        "kv_indptr_ptr",
+        "out_ptr",
+        "mp_stride_t",
+        "mp_stride_k",
+        "mp_stride_h",
+        "lp_stride_t",
+        "lp_stride_k",
+        "lp_stride_h",
+        "ap_stride_t",
+        "ap_stride_k",
+        "ap_stride_h",
+        "ap_stride_d",
+        "out_stride_t",
+        "out_stride_h",
+        "out_stride_d",
+        "log2e",
+        "H",
+        "D",
+        "KV_SPLITS",
+        "BLOCK_D",
+        "D_CHUNK",
+        "BLOCK_K"
+      ],
+      "grid": [
+        64,
+        16,
+        1
+      ],
+      "kernel": "_paged_decode_reduce_kernel",
+      "kwargs": {
+        "BLOCK_D": 512,
+        "BLOCK_K": 16,
+        "D_CHUNK": 512,
+        "num_warps": 4
+      },
+      "scalar_arguments": {
+        "BLOCK_D": 512,
+        "BLOCK_K": 16,
+        "D": 512,
+        "D_CHUNK": 512,
+        "H": 16,
+        "KV_SPLITS": 4,
+        "ap_stride_d": 1,
+        "ap_stride_h": 512,
+        "ap_stride_k": 8192,
+        "ap_stride_t": 32768,
+        "log2e": 1.4426950408889634,
+        "lp_stride_h": 1,
+        "lp_stride_k": 16,
+        "lp_stride_t": 64,
+        "mp_stride_h": 1,
+        "mp_stride_k": 16,
+        "mp_stride_t": 64,
+        "num_warps": 4,
+        "out_stride_d": 1,
+        "out_stride_h": 512,
+        "out_stride_t": 8192
+      }
+    }
+  ]
+}

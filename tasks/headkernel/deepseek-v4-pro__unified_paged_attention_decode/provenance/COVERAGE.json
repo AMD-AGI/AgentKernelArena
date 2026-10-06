@@ -36,8 +36,32 @@
   },
   "framework_validator_PASS": false,
   "full_token_gate_passed": true,
-  "generated_scope": null,
+  "generated_scope": {
+    "case_id": "deepseek_mla_decode-current-kvlen-distribution-192-200",
+    "kind": "runtime_generated_observed_control_distribution",
+    "lengths": [
+      192,
+      193,
+      194,
+      195,
+      196,
+      197,
+      198,
+      199,
+      200
+    ],
+    "parent_case_id": "deepseek_mla_decode-ef9a66de43776b4e2e04f22b-work-531ff7069c2236ba"
+  },
   "generated_supplement_is_actual_other_rank_tensor_capture": false,
+  "missing_actual_control_capture_lengths": [
+    193,
+    194,
+    195,
+    196,
+    197,
+    198,
+    199
+  ],
   "observed_structural_case_ids": [
     "deepseek_mla_decode-98f9f736c04a9282790736a9",
     "deepseek_mla_decode-ef9a66de43776b4e2e04f22b"
@@ -96,6 +120,28 @@
       "deepseek_mla_decode-ef9a66de43776b4e2e04f22b": 31744
     }
   },
+  "runtime_control_distributions": {
+    "deepseek_mla_decode-current-kvlen-distribution-192-200": {
+      "native_validation": "pending",
+      "new_actual_tensor_captures": 0,
+      "observed_values": [
+        192,
+        193,
+        194,
+        195,
+        196,
+        197,
+        198,
+        199,
+        200
+      ],
+      "recipe": {
+        "path": "ut/mla_control_distribution.json",
+        "sha256": "ef2822025f2215f39752bfc4897899fd456f7115570f659576bab919df3cd4b1"
+      }
+    }
+  },
+  "runtime_recipe_validation": "CPU proposal only; GPU validation pending",
   "schema": "deepseek-current-captured-generated-coverage-v1",
   "seam": "mla_decode",
   "supplemental_host_verification_sha256": null,
