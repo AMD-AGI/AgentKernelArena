@@ -5,6 +5,7 @@ from pathlib import Path
 import time
 
 from work_distribution import Provider, correctness_variants, digest, require
+from paired_reference import paired_performance
 
 
 def progress(root, case_id, event, value=None):
@@ -59,6 +60,39 @@ def run_case(api, root, manifest, base_manifest, registry, case, phase, request,
         del inputs, reference_inputs, output, pristine, initial_out, provider, truth
         torch.cuda.empty_cache()
         return None, compiled
+    if phase == 'performance':
+        producer_start = provider.producer_calls
+        provider.draws.clear()
+        result = paired_performance(api, case, manifest, request, inputs, reference_inputs, fn, reference_fn,
+            truth, initial_out, identity, reference_identity, provider.refresh,
+            current_input_signature=lambda: provider.draws[-1])
+        expected_preparations = policy['warmup_iterations'] + policy['benchmark_iterations']
+        require(len(provider.draws) == expected_preparations, 'weighted draw count differs')
+        warmups = provider.draws[:policy['warmup_iterations']]
+        measured = provider.draws[policy['warmup_iterations']:]
+        result['observed_work_distribution'] = {
+            'histogram_sha256': group['histogram_sha256'], 'frequency_basis': 'actual eight-rank call counts',
+            'sampling': 'integer histogram draws from the protected request challenge seed',
+            'schedule_sha256': digest([row['variant_id'] for row in provider.draws]),
+            'shared_private_request_seed_required_for_paired_comparison': True,
+            'warmup_variants': warmups, 'performance_samples': [dict(draw, device_time_ms=sample)
+                for draw, sample in zip(measured, result['samples_ms'])],
+            'distinct_measured_settings': len({row['variant_id'] for row in measured}),
+            'observed_setting_count': len(group['histogram']), 'all_observed_settings_timed': False,
+            'actual_other_rank_routing_recovered': False,
+            'scope': 'sampled observed work-count distribution with representative generated routes'}
+        if group['seam'] == 'moe2':
+            require(provider.producer_calls - producer_start == expected_preparations,
+                    'stage2 did not receive a fresh stage1 reference output for every preparation')
+            result['stage1_input_generation'] = {'reference_binding': provider.producer_identity,
+                'fresh_calls': expected_preparations, 'candidate_stage1_used': False,
+                'fresh_call_scope': 'checked correctness or warmup/measured preparations',
+                'total_fresh_calls_including_compile_and_capture': provider.producer_calls,
+                'captured_parent_output_reused': False}
+        progress(root, case['case_id'], 'performance_completed')
+        del inputs, reference_inputs, output, pristine, initial_out, provider, truth
+        torch.cuda.empty_cache()
+        return result, compiled
     for _ in range(3):
         provider.refresh(policy['correctness_seeds'][0], forced=first)
         api['invoke'](fn, inputs)
@@ -129,25 +163,6 @@ def run_case(api, root, manifest, base_manifest, registry, case, phase, request,
                       'all_observed_settings_timed': False,
                       'actual_other_rank_routing_recovered': False,
                       'reference_generated_outputs_not_parent_goldens': True}}
-    else:
-        forced = None
-        result = api['checked_replays'](case, policy, reset_inputs=reset_inputs, initialize_outputs=initialize_outputs,
-            replay=graph.replay, verify=verify, measure=measure, observe=observe, seed=request['challenge_seed'])
-        expected_preparations = policy['warmup_iterations'] + policy['benchmark_iterations']
-        require(len(provider.draws) == expected_preparations, 'weighted draw count differs')
-        warmups = provider.draws[:policy['warmup_iterations']]
-        measured = provider.draws[policy['warmup_iterations']:]
-        result['observed_work_distribution'] = {
-            'histogram_sha256': group['histogram_sha256'], 'frequency_basis': 'actual eight-rank call counts',
-            'sampling': 'integer histogram draws from the protected request challenge seed',
-            'schedule_sha256': digest([row['variant_id'] for row in provider.draws]),
-            'shared_private_request_seed_required_for_paired_comparison': True,
-            'warmup_variants': warmups, 'performance_samples': [dict(draw, device_time_ms=sample)
-                for draw, sample in zip(measured, result['samples_ms'])],
-            'distinct_measured_settings': len({row['variant_id'] for row in measured}),
-            'observed_setting_count': len(group['histogram']), 'all_observed_settings_timed': False,
-            'actual_other_rank_routing_recovered': False,
-            'scope': 'sampled observed work-count distribution with representative generated routes'}
     if group['seam'] == 'moe2':
         require(provider.producer_calls - producer_start == expected_preparations,
                 'stage2 did not receive a fresh stage1 reference output for every preparation')

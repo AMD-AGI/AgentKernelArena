@@ -345,6 +345,81 @@
           "2d6f114411905e1d92e4f3a10c4946cc260241aa7096baed77ae27625179090f"
         ]
       }
+    },
+    {
+      "family": "portable_case_contract",
+      "description": "Checked candidate graph replays with the single deferred protected oracle timed on matched inputs.",
+      "entrypoint": "scripts/task_runner.py",
+      "entrypoint_sha256": [
+        "7d236383269ef7247963cb8c00464f1a107f60d29ca4b2d598de6e402476ebcf"
+      ],
+      "files_sha256": {
+        "ut/distribution_runner.py": [
+          "530a7ee28d1664c78124223f8a68203348e246c4792c39f6097bb3e4144422ab"
+        ],
+        "ut/work_distribution.py": [
+          "b36ba472fb3d6612a00a5db5179f1fc1cc2a50cb30461e049637d43a3d04418d"
+        ],
+        "ut/paired_reference.py": [
+          "c7b2ba6ffbeb9267fdbe977581e560a80414a83f061174da8a5d37b375be574f"
+        ],
+        "provenance/WORK-DISTRIBUTIONS.json": [
+          "363583ccffa2a0683da769d4338a109f04fbe967e7a47e2ef024d0e1e2d6cac1"
+        ],
+        "provenance/PAIRED-REFERENCE.json": [
+          "3c9b0992580e67d66e3b7209a253996e90ca073968434d6fa9796c50636de6ee"
+        ]
+      }
+    },
+    {
+      "family": "portable_case_contract",
+      "description": "Checked candidate graph replays with the single deferred protected oracle timed on matched inputs.",
+      "entrypoint": "scripts/task_runner.py",
+      "entrypoint_sha256": [
+        "398839059d809f0ba5a233fee477012dd0c39db9a488fd7aa643962a4e9e15a6"
+      ],
+      "files_sha256": {
+        "ut/distribution_runner.py": [
+          "530a7ee28d1664c78124223f8a68203348e246c4792c39f6097bb3e4144422ab"
+        ],
+        "ut/work_distribution.py": [
+          "b36ba472fb3d6612a00a5db5179f1fc1cc2a50cb30461e049637d43a3d04418d"
+        ],
+        "ut/paired_reference.py": [
+          "c7b2ba6ffbeb9267fdbe977581e560a80414a83f061174da8a5d37b375be574f"
+        ],
+        "provenance/WORK-DISTRIBUTIONS.json": [
+          "3293b8a0227353b7946da0730e3cff34c3b48e18ccb9d7a87f970ab8099f5575"
+        ],
+        "provenance/PAIRED-REFERENCE.json": [
+          "a1995fa670ba738f00c5d4003c4bafe8161321b4e723c17b5909a8cb0d39ebda"
+        ]
+      }
+    },
+    {
+      "family": "portable_case_contract",
+      "description": "Checked candidate graph replays with the single deferred protected oracle timed on matched inputs.",
+      "entrypoint": "scripts/task_runner.py",
+      "entrypoint_sha256": [
+        "277fc399a5bcb97d46874d60f26b0ce0cc1e33869e0f9b33df07293d618962af"
+      ],
+      "files_sha256": {
+        "ut/distribution_runner.py": [
+          "530a7ee28d1664c78124223f8a68203348e246c4792c39f6097bb3e4144422ab"
+        ],
+        "ut/work_distribution.py": [
+          "b36ba472fb3d6612a00a5db5179f1fc1cc2a50cb30461e049637d43a3d04418d"
+        ],
+        "ut/paired_reference.py": [
+          "c7b2ba6ffbeb9267fdbe977581e560a80414a83f061174da8a5d37b375be574f"
+        ],
+        "provenance/WORK-DISTRIBUTIONS.json": [
+          "d68c952922945f4e193141c9eea534c00acb25238ef5fd85799999eacdc0363b"
+        ],
+        "provenance/PAIRED-REFERENCE.json": [
+          "1500339aab61a1dfba9136f2990d5d0c584643dae571541dff52bb45c434b1e2"
+        ]
+      }
     }
   ]
 }

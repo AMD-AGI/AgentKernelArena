@@ -1,0 +1,50 @@
+{
+  "baseline_kind": "native_production",
+  "comparison": "candidate graph and the deferred frozen-reference graph on the same fresh inputs",
+  "gpu_binding": "hip",
+  "independent_trusted_host_retest_required": true,
+  "input_receipt_contracts": {
+    "deepseek_moe1_prefill-29ea221dcf7a6a7000b32591": {
+      "kind": "fixed_fixture_v1"
+    },
+    "deepseek_moe1_prefill-29ea221dcf7a6a7000b32591-work-c5cd180a3a906c17": {
+      "kind": "fixed_fixture_v1"
+    },
+    "deepseek_moe1_prefill-29ea221dcf7a6a7000b32591-work-ee3f0c2bc494c65f": {
+      "kind": "fixed_fixture_v1"
+    },
+    "observed-work-distribution-moe1_prefill-a7960e1a87fc21a37d04302a": {
+      "kind": "moe_observed_work_v1"
+    }
+  },
+  "input_signature_fields": {
+    "deepseek_moe1_prefill-29ea221dcf7a6a7000b32591": [
+      "fixture",
+      "input_seed"
+    ],
+    "deepseek_moe1_prefill-29ea221dcf7a6a7000b32591-work-c5cd180a3a906c17": [
+      "fixture",
+      "input_seed"
+    ],
+    "deepseek_moe1_prefill-29ea221dcf7a6a7000b32591-work-ee3f0c2bc494c65f": [
+      "fixture",
+      "input_seed"
+    ],
+    "observed-work-distribution-moe1_prefill-a7960e1a87fc21a37d04302a": [
+      "activation_origin",
+      "fresh_stage1_reference_output",
+      "input_seed",
+      "num_valid_ids",
+      "route_seed",
+      "routing_origin",
+      "variant_id"
+    ]
+  },
+  "reference_implementation": "pinned_image_native_source",
+  "reference_source_sha256": {
+    "source/opus_moe_stage1_a8w4_pipeline_group_split_gfx950.cuh": "5935df7775e0a2192f495e651742ccaed23ab3ab971a4ada03beccf18fd74e6c"
+  },
+  "runtime_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
+  "schema": "paired-reference-provenance-v1",
+  "source_manifest_sha256": "79bf891a8d4ba5005251c2c4b602bc69ee2682411b5dd70733429aea9c2558ae"
+}

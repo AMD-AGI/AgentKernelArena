@@ -45,3 +45,7 @@ trusted_evaluation:
 compile_timeout: 1200
 correctness_timeout: 1200
 performance_timeout: 3600
+scoring_baseline:
+  schema_version: 2
+  kind: native_production
+  native_source_manifest: provenance/PAIRED-REFERENCE.json

@@ -781,7 +781,7 @@
       "sha256": "5b6349ae9e9f196321bca52a5d66c6aa151c6953f251973f25175dceecdebd36"
     }
   ],
-  "case_manifest_fingerprint": "c5c080845dac75eb91094002fb5a314d7dce66afa7a8e5c2da58d1a3e9746ef7",
+  "case_manifest_fingerprint": "a53874ca891c9a6c3854358faf88f35582059b9be46cf0026b4ffc6918c3ff47",
   "oci_prefix": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261005/deepseek-final-v7-mixed/",
   "runtime_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
   "schema": "trusted-external-fixtures-v1"

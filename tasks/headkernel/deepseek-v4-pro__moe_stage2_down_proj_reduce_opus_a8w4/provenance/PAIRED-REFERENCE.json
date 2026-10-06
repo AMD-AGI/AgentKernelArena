@@ -1,0 +1,126 @@
+{
+  "baseline_kind": "native_production",
+  "comparison": "candidate graph and the deferred frozen-reference graph on the same fresh inputs",
+  "gpu_binding": "hip",
+  "independent_trusted_host_retest_required": true,
+  "input_receipt_contracts": {
+    "deepseek_moe2-46d9a158091ade7c0f211cbd": {
+      "kind": "fixed_fixture_v1"
+    },
+    "deepseek_moe2-46d9a158091ade7c0f211cbd-work-c5cd180a3a906c17": {
+      "kind": "fixed_fixture_v1"
+    },
+    "deepseek_moe2-46d9a158091ade7c0f211cbd-work-ee3f0c2bc494c65f": {
+      "kind": "fixed_fixture_v1"
+    },
+    "deepseek_moe2-85737162d661689681167e9c": {
+      "kind": "fixed_fixture_v1"
+    },
+    "deepseek_moe2-85737162d661689681167e9c-work-1823119e10017f2d": {
+      "kind": "fixed_fixture_v1"
+    },
+    "deepseek_moe2-85737162d661689681167e9c-work-a8403d1d6afee320": {
+      "kind": "fixed_fixture_v1"
+    },
+    "generated-n2400-seed42-moe2": {
+      "kind": "fixed_fixture_v1"
+    },
+    "generated-n2400-seed43-moe2": {
+      "kind": "fixed_fixture_v1"
+    },
+    "generated-n2432-seed42-moe2": {
+      "kind": "fixed_fixture_v1"
+    },
+    "generated-n2432-seed43-moe2": {
+      "kind": "fixed_fixture_v1"
+    },
+    "generated-n2496-seed42-moe2": {
+      "kind": "fixed_fixture_v1"
+    },
+    "generated-n2496-seed43-moe2": {
+      "kind": "fixed_fixture_v1"
+    },
+    "observed-work-distribution-moe2-8e894354cd8b36ea7a19ee46": {
+      "kind": "moe_observed_work_v1"
+    },
+    "observed-work-distribution-moe2-cd81026414b9ba42211b0d91": {
+      "kind": "moe_observed_work_v1"
+    }
+  },
+  "input_signature_fields": {
+    "deepseek_moe2-46d9a158091ade7c0f211cbd": [
+      "fixture",
+      "input_seed"
+    ],
+    "deepseek_moe2-46d9a158091ade7c0f211cbd-work-c5cd180a3a906c17": [
+      "fixture",
+      "input_seed"
+    ],
+    "deepseek_moe2-46d9a158091ade7c0f211cbd-work-ee3f0c2bc494c65f": [
+      "fixture",
+      "input_seed"
+    ],
+    "deepseek_moe2-85737162d661689681167e9c": [
+      "fixture",
+      "input_seed"
+    ],
+    "deepseek_moe2-85737162d661689681167e9c-work-1823119e10017f2d": [
+      "fixture",
+      "input_seed"
+    ],
+    "deepseek_moe2-85737162d661689681167e9c-work-a8403d1d6afee320": [
+      "fixture",
+      "input_seed"
+    ],
+    "generated-n2400-seed42-moe2": [
+      "fixture",
+      "input_seed"
+    ],
+    "generated-n2400-seed43-moe2": [
+      "fixture",
+      "input_seed"
+    ],
+    "generated-n2432-seed42-moe2": [
+      "fixture",
+      "input_seed"
+    ],
+    "generated-n2432-seed43-moe2": [
+      "fixture",
+      "input_seed"
+    ],
+    "generated-n2496-seed42-moe2": [
+      "fixture",
+      "input_seed"
+    ],
+    "generated-n2496-seed43-moe2": [
+      "fixture",
+      "input_seed"
+    ],
+    "observed-work-distribution-moe2-8e894354cd8b36ea7a19ee46": [
+      "activation_origin",
+      "fresh_stage1_reference_output",
+      "input_seed",
+      "num_valid_ids",
+      "route_seed",
+      "routing_origin",
+      "variant_id"
+    ],
+    "observed-work-distribution-moe2-cd81026414b9ba42211b0d91": [
+      "activation_origin",
+      "fresh_stage1_reference_output",
+      "input_seed",
+      "num_valid_ids",
+      "route_seed",
+      "routing_origin",
+      "variant_id"
+    ]
+  },
+  "reference_implementation": "pinned_image_native_source",
+  "reference_source_sha256": {
+    "source/opus_moe_pipeline_stage2_a8w4_decode_main_gfx950.cuh": "cb5050ee044533b7c8a74f72d230066bd7de680a77109bfa5f7eec73b4893e9c",
+    "source/opus_moe_stage2_route_output_reduce_gfx950.cuh": "ff4fd99f1e64aab790aa16dc1f8d51217bff3c4b438defbe70c26634eb4f59fe"
+  },
+  "runtime_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
+  "schema": "paired-reference-provenance-v1",
+  "source_manifest_sha256": "bd73549d550ed7fa5cc311222c5a0f5f7f0175cba6b5cacdc5b5b1f6b3241f99"
+}

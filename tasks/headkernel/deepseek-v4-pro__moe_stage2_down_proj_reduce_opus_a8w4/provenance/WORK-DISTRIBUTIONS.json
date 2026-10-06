@@ -7380,13 +7380,15 @@
   "schema": "moe-observed-work-distributions-v1",
   "source_audit_sha256": "c1afbc12593819377bd07f794939083c2b87b1ebae2d168266ee51f25027ad43",
   "support_sha256": {
-    "scripts/task_runner.py": "7877d6dc74ff92ab03710985bab33a460b230f5e2b9b9b1ccc37465418240bc6",
-    "ut/distribution_runner.py": "77a76fea4a416dcae025606ad34d3d677a5ff30130970b477a8bddc7277c7a30",
+    "provenance/PAIRED-REFERENCE.json": "1500339aab61a1dfba9136f2990d5d0c584643dae571541dff52bb45c434b1e2",
+    "scripts/task_runner.py": "277fc399a5bcb97d46874d60f26b0ce0cc1e33869e0f9b33df07293d618962af",
+    "ut/distribution_runner.py": "530a7ee28d1664c78124223f8a68203348e246c4792c39f6097bb3e4144422ab",
     "ut/generation/decode/provenance/SOURCE.json": "377a7096388aa67b67f6573285c62aff17c94ede5a7b84db1152d9dd61d88135",
     "ut/generation/decode/ut/host/native.py": "d08339bc94dfabd3529d415857e49d0383f9efe2ef62be9a84916c55c5857e68",
     "ut/generation/decode/ut/native/mixed_moe_gemm_2stage.py": "7ab78bf4195364aad7778532844a4b8c01e9dfe82a728c3322381162b428ac37",
     "ut/generation/decode/ut/reference/mixed_moe_gemm_2stage_common.py": "b819545c0be6f94932edd994983c7d3ec6c18a652d4f8c330cad2513372bbe6d",
     "ut/generation/prefill/provenance/SOURCE.json": "79bf891a8d4ba5005251c2c4b602bc69ee2682411b5dd70733429aea9c2558ae",
+    "ut/paired_reference.py": "c7b2ba6ffbeb9267fdbe977581e560a80414a83f061174da8a5d37b375be574f",
     "ut/work_distribution.py": "b36ba472fb3d6612a00a5db5179f1fc1cc2a50cb30461e049637d43a3d04418d"
   },
   "targeted_selection_source_sha256": "593eea1dce7ef7ec248361019f86312029440ec16025dea4df5968e2589d0a1a"

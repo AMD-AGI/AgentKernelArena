@@ -45,3 +45,7 @@ trusted_evaluation:
     source/opus_moe_stage2_route_output_reduce_gfx950.cuh: ut/reference/opus_moe_stage2_route_output_reduce_gfx950.cuh
   requires_aiter_jit_cache: true
   fixture_manifest: fixtures/EXTERNAL-MANIFEST.json
+scoring_baseline:
+  schema_version: 2
+  kind: native_production
+  native_source_manifest: provenance/PAIRED-REFERENCE.json

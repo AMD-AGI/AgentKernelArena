@@ -3525,8 +3525,10 @@
   "schema": "moe-observed-work-distributions-v1",
   "source_audit_sha256": "c1afbc12593819377bd07f794939083c2b87b1ebae2d168266ee51f25027ad43",
   "support_sha256": {
-    "scripts/task_runner.py": "ac7af078a1056751ab5da0304deac579259e8989fbf9c2711d9a0b31351aa62e",
-    "ut/distribution_runner.py": "77a76fea4a416dcae025606ad34d3d677a5ff30130970b477a8bddc7277c7a30",
+    "provenance/PAIRED-REFERENCE.json": "3c9b0992580e67d66e3b7209a253996e90ca073968434d6fa9796c50636de6ee",
+    "scripts/task_runner.py": "7d236383269ef7247963cb8c00464f1a107f60d29ca4b2d598de6e402476ebcf",
+    "ut/distribution_runner.py": "530a7ee28d1664c78124223f8a68203348e246c4792c39f6097bb3e4144422ab",
+    "ut/paired_reference.py": "c7b2ba6ffbeb9267fdbe977581e560a80414a83f061174da8a5d37b375be574f",
     "ut/work_distribution.py": "b36ba472fb3d6612a00a5db5179f1fc1cc2a50cb30461e049637d43a3d04418d"
   },
   "targeted_selection_source_sha256": "593eea1dce7ef7ec248361019f86312029440ec16025dea4df5968e2589d0a1a"

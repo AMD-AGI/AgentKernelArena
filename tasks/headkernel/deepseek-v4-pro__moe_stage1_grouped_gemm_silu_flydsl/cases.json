@@ -2426,7 +2426,7 @@
   ],
   "observed_work_distributions": {
     "path": "provenance/WORK-DISTRIBUTIONS.json",
-    "sha256": "a24193d49d4ffb918513a4c0711e818554ddb25d8c4441fba525a6a3af752418"
+    "sha256": "363583ccffa2a0683da769d4338a109f04fbe967e7a47e2ef024d0e1e2d6cac1"
   },
   "original_served_work_control_gate_passed": false,
   "random_draws": 3,

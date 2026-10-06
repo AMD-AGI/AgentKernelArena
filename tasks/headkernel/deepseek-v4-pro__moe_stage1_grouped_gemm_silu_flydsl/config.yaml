@@ -45,3 +45,7 @@ trusted_evaluation:
     source/mixed_moe_gemm_2stage_common.py: ut/reference/mixed_moe_gemm_2stage_common.py
   requires_aiter_jit_cache: true
   fixture_manifest: fixtures/EXTERNAL-MANIFEST.json
+scoring_baseline:
+  schema_version: 2
+  kind: protected_reference
+  native_source_manifest: provenance/PAIRED-REFERENCE.json

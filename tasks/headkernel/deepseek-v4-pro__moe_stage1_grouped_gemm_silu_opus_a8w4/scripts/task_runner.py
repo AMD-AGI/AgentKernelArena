@@ -15,6 +15,7 @@ from evaluation_contract import (canonical, fingerprint, strict_json, validate_m
 from abi import runtime_abi
 from work_distribution import load_contract, KIND, CORRECTNESS_MODES, correctness_variants
 from distribution_runner import run_case as run_distribution_case
+from paired_reference import fixed_performance, attach_comparison
 from dispatch_contract import validate_dispatch
 
 OUTPUT_CONTRACT_PROOFS = {}
@@ -261,6 +262,13 @@ def main():
             del inputs,reference_inputs,golden,output,pristine_inputs,initial_out
             torch.cuda.empty_cache()
             continue
+        if a.phase=='performance':
+            row=fixed_performance(globals(),case,manifest,request,inputs,reference_inputs,fn,reference_fn,
+                pristine_inputs,initial_out,identity,reference_identity)
+            report['cases'].append(row)
+            del inputs,reference_inputs,golden,output,pristine_inputs,initial_out
+            torch.cuda.empty_cache()
+            continue
         for _ in range(3):
             restore_storages(inputs,pristine_inputs)
             invoke(fn,inputs)
@@ -303,10 +311,6 @@ def main():
                 else: raise RuntimeError('Required negative control escaped: '+control)
             report['cases'].append({'case':observe(),'correct':True,'seeds':policy['correctness_seeds'],
                 'negative_controls':controls,'negative_control_scope':'protected no-op replay and output corruption; submitted-source mutation retest is separate'})
-        else:
-            row=checked_replays(case,policy,reset_inputs=reset_inputs,initialize_outputs=initialize_outputs,
-                replay=graph.replay,verify=verify,measure=measure,observe=observe,seed=request['challenge_seed'])
-            report['cases'].append(row)
         del graph,inputs,reference_inputs,golden,output,pristine_inputs,initial_out
         torch.cuda.empty_cache()
     report.update(compiled=True,compiled_specializations=compiled,
@@ -315,7 +319,9 @@ def main():
                   oracle_order='candidate output/input CPU snapshots before reference GPU computation',
                   native_binding=identity,unresolved_legacy_m=manifest.get('unresolved_legacy_m',[]),
                   full_legacy_coverage=not manifest.get('unresolved_legacy_m'))
-    write(a.phase,finalize_report(report,manifest,request))
+    completed=finalize_report(report,manifest,request)
+    if a.phase=='performance': completed=attach_comparison(ROOT,completed,manifest,request)
+    write(a.phase,completed)
 
 
 if __name__=='__main__':

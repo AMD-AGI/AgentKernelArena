@@ -189,7 +189,7 @@ def evaluate_kernel(
     }
     from .native_baseline import scoring_policy
     if scoring_policy(task_config) is not None:
-        results.update(baseline_kind='native_production', secondary_baseline_kind='frozen_port',
+        results.update(baseline_kind=scoring_policy(task_config)['kind'], secondary_baseline_kind='frozen_port',
                        production_kernel_improvement=False)
     
     # 1. Compilation check
@@ -297,7 +297,7 @@ def evaluate_kernel(
                 comparison_baseline_cases = paired_native_cases(optimized_cases)
                 native_summary = metric_summary(baseline_cases, optimized_cases)
             except (ValueError, KeyError, TypeError) as exc:
-                results['baseline_kind'] = 'native_production'
+                results['baseline_kind'] = native_policy['kind']
                 results['production_kernel_improvement'] = False
                 results['speedup_calculation_error_message'] = 'Native-production scoring rejected: ' + str(exc)
                 return results
@@ -479,7 +479,7 @@ def write_task_result(
     # Get results
     optimized_time = evaluation_results.get('best_optimized_execution_time', 0.0)
     avg_speedup = evaluation_results.get('average_speedup', 0.0)
-    if evaluation_results.get('baseline_kind') == 'native_production':
+    if evaluation_results.get('baseline_kind') in ('native_production', 'protected_reference'):
         avg_baseline_time = evaluation_results.get('native_baseline_execution_time', 0.0)
     speedup_error = evaluation_results.get('speedup_calculation_error_message')
     benchmark_method_consistent = bool(
@@ -537,14 +537,16 @@ def write_task_result(
         'optimization_summary': f'Optimized by {agent_name} using centralized evaluator'
     }
     tool_evaluation = evaluation_results.get('tool_evaluation')
-    if evaluation_results.get('baseline_kind') == 'native_production':
+    if evaluation_results.get('baseline_kind') in ('native_production', 'protected_reference'):
         for key in ('baseline_kind', 'secondary_baseline_kind', 'native_speedup_ratio', 'port_to_port_speedup_ratio',
                     'all_cases_faster_than_native', 'regressed_case_ids', 'native_baseline_cases',
-                    'native_scoring_evidence', 'gain_scope'):
+                    'native_scoring_evidence', 'gain_scope', 'secondary_comparison_status',
+                    'protected_reference_improvement'):
             if key in evaluation_results:
                 task_result[key] = evaluation_results[key]
         task_result['production_kernel_improvement'] = bool(
-            task_result['pass_compilation'] and task_result['pass_correctness']
+            task_result['baseline_kind'] == 'native_production'
+            and task_result['pass_compilation'] and task_result['pass_correctness']
             and benchmark_method_consistent and workload_consistent and not speedup_error and avg_speedup > 1)
     if tool_evaluation is not None:
         task_result['tool_evaluation'] = tool_evaluation

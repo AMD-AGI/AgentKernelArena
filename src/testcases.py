@@ -18,6 +18,7 @@ _NATIVE_BASELINE_METADATA_KEYS = (
     'native_request_id', 'native_source_manifest_sha256',
     'native_source_hashes', 'native_manifest_sha256',
     'native_comparison_challenge_seed',
+    'paired_input_schedule_sha256', 'comparison_protocol_version',
 )
 
 _DEVICE_TIME_KEYS = [

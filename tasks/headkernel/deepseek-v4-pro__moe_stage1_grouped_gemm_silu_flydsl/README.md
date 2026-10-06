@@ -53,3 +53,7 @@ scales, copied into stable stage-2 input buffers outside timing. No new dense go
 files are generated. The original fixed-set COVERAGE provenance and qualification
 flags remain unchanged. This proposal needs compatible GPU and task-validator checks
 before it can qualify; CPU preparation is not GPU validation.
+
+Performance primary scoring uses the protected reference timed in the same invocation as the candidate. Both graphs are warmed and captured on their own streams. Each of the unchanged 10 checked warmups and 100 measured draws executes the candidate once, freezes its CPU observations, and executes the reference once. The reference output supplies the existing oracle; no additional comparison replay is added. Persistent reference outputs are cleared before another candidate can run.
+
+The paired report binds both sample series to the actual input schedule, request, source identities and reference provenance. Unpaired old/new port timings have no secondary speedup. This FlyDSL baseline is the synchronization-repaired protected reference, not unchanged native production. Ordinary pairing is not an anti-cheat attestation; fresh private trusted-host retesting remains required. Targeted correctness coverage and its existing warnings remain unchanged.

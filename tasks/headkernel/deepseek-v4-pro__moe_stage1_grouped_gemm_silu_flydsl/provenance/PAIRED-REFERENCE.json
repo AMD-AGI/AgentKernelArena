@@ -1,0 +1,92 @@
+{
+  "baseline_kind": "protected_reference",
+  "comparison": "candidate graph and the deferred frozen-reference graph on the same fresh inputs",
+  "gpu_binding": "flydsl_stage1",
+  "independent_trusted_host_retest_required": true,
+  "input_receipt_contracts": {
+    "deepseek_moe1-aedfa8cdf4fad913658bc7bd": {
+      "kind": "fixed_fixture_v1"
+    },
+    "deepseek_moe1-aedfa8cdf4fad913658bc7bd-work-1823119e10017f2d": {
+      "kind": "fixed_fixture_v1"
+    },
+    "deepseek_moe1-aedfa8cdf4fad913658bc7bd-work-a8403d1d6afee320": {
+      "kind": "fixed_fixture_v1"
+    },
+    "generated-n2400-seed42-moe1": {
+      "kind": "fixed_fixture_v1"
+    },
+    "generated-n2400-seed43-moe1": {
+      "kind": "fixed_fixture_v1"
+    },
+    "generated-n2432-seed42-moe1": {
+      "kind": "fixed_fixture_v1"
+    },
+    "generated-n2432-seed43-moe1": {
+      "kind": "fixed_fixture_v1"
+    },
+    "generated-n2496-seed42-moe1": {
+      "kind": "fixed_fixture_v1"
+    },
+    "generated-n2496-seed43-moe1": {
+      "kind": "fixed_fixture_v1"
+    },
+    "observed-work-distribution-moe1-8ba9c41fa9ff9eee839f682f": {
+      "kind": "moe_observed_work_v1"
+    }
+  },
+  "input_signature_fields": {
+    "deepseek_moe1-aedfa8cdf4fad913658bc7bd": [
+      "fixture",
+      "input_seed"
+    ],
+    "deepseek_moe1-aedfa8cdf4fad913658bc7bd-work-1823119e10017f2d": [
+      "fixture",
+      "input_seed"
+    ],
+    "deepseek_moe1-aedfa8cdf4fad913658bc7bd-work-a8403d1d6afee320": [
+      "fixture",
+      "input_seed"
+    ],
+    "generated-n2400-seed42-moe1": [
+      "fixture",
+      "input_seed"
+    ],
+    "generated-n2400-seed43-moe1": [
+      "fixture",
+      "input_seed"
+    ],
+    "generated-n2432-seed42-moe1": [
+      "fixture",
+      "input_seed"
+    ],
+    "generated-n2432-seed43-moe1": [
+      "fixture",
+      "input_seed"
+    ],
+    "generated-n2496-seed42-moe1": [
+      "fixture",
+      "input_seed"
+    ],
+    "generated-n2496-seed43-moe1": [
+      "fixture",
+      "input_seed"
+    ],
+    "observed-work-distribution-moe1-8ba9c41fa9ff9eee839f682f": [
+      "activation_origin",
+      "fresh_stage1_reference_output",
+      "input_seed",
+      "num_valid_ids",
+      "route_seed",
+      "routing_origin",
+      "variant_id"
+    ]
+  },
+  "reference_implementation": "synchronization_repaired_supplied_reference",
+  "reference_source_sha256": {
+    "source/mixed_moe_gemm_2stage_common.py": "b819545c0be6f94932edd994983c7d3ec6c18a652d4f8c330cad2513372bbe6d"
+  },
+  "runtime_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
+  "schema": "paired-reference-provenance-v1",
+  "source_manifest_sha256": "377a7096388aa67b67f6573285c62aff17c94ede5a7b84db1152d9dd61d88135"
+}
