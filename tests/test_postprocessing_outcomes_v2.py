@@ -11,8 +11,9 @@ from src.tools.compare_runs import compare_overall
 
 
 @pytest.mark.parametrize("recover_from_text", [False, True])
+@pytest.mark.parametrize("speedup,expected_score", [(1.0, 0.0), (1.1, 0.21320071635561044)])
 def test_final_outcomes_survive_all_report_formats_without_changing_scores(
-    tmp_path, monkeypatch, recover_from_text,
+    tmp_path, monkeypatch, recover_from_text, speedup, expected_score,
 ):
     run = tmp_path / "workspace_MI355X_codex" / "run_20260916_120000"
     # Legacy results have numerical evidence, but no evidence of final acceptance.
@@ -32,8 +33,8 @@ def test_final_outcomes_survive_all_report_formats_without_changing_scores(
         result = {
             "task_name": task_name, "pass_compilation": True,
             "pass_correctness": correct, "base_execution_time": 10.0,
-            "best_optimized_execution_time": 10.0,
-            "benchmark_method_consistent": True, "speedup_ratio": 1.0 if correct else 0.0,
+            "best_optimized_execution_time": 10.0 / speedup,
+            "benchmark_method_consistent": True, "speedup_ratio": speedup if correct else 0.0,
         }
         if accepted is not None:
             result.update(candidate_accepted=accepted, delivery_status=delivery)
@@ -46,7 +47,7 @@ def test_final_outcomes_survive_all_report_formats_without_changing_scores(
     reports = run / "reports"
     summary = json.loads((reports / "task_type_breakdown.json").read_text())
     overall = summary["overall"]
-    assert overall["total_score"] == 900
+    assert overall["total_score"] == pytest.approx(4 * expected_score)
     assert overall["correctness_pass_count"] == 4
     assert overall["valid_speedup_count"] == 4
     expected_counts = {
@@ -76,7 +77,8 @@ def test_final_outcomes_survive_all_report_formats_without_changing_scores(
         assert row["Delivery Status"] == (delivery or "N/A")
         assert row["Agent Execution"] == (execution or "N/A")
         assert row["Candidate Changed"] == ("N/A" if changed is None else "YES" if changed else "NO")
-        assert float(row["Score"]) == text_rows[name]["score_from_report"] == (220 if correct else 20)
+        expected = round(expected_score, 4) if correct else 0.0
+        assert float(row["Score"]) == text_rows[name]["score_from_report"] == expected
         assert text_rows[name]["candidateAccepted"] is accepted
         assert text_rows[name]["deliveryStatus"] == delivery
 
@@ -93,7 +95,7 @@ def test_final_outcomes_survive_all_report_formats_without_changing_scores(
         assert tasks[name]["status"] == status
         assert tasks[name]["candidateAccepted"] is accepted
         assert tasks[name]["deliveryStatus"] == delivery
-        assert tasks[name]["score"] == (220 if correct else 20)
+        assert tasks[name]["score"] == (round(expected_score, 4) if correct else 0.0)
 
 
 def test_execution_comparison_keeps_absent_historical_counts_unknown():
