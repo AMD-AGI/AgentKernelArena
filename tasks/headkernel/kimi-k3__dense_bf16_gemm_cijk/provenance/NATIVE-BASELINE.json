@@ -1,0 +1,30 @@
+{
+  "runtime_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
+  "source_hashes_by_family": {
+    "bf16_gemm": "1fafc9782b43f8c6e198e1d39ce83e01ea3b5892f8b5e1a26c4a5eeb74252b51",
+    "aten_bf16_mm": [
+      "858756c0f22052de641bfde6c0c93bfacfb7c16094a9e1ead7e1802c3ca043c4",
+      "ef84113a5e5b45526af2fc2b77ba8bf6a418912afb6e00fea63e1eab0482dbd5"
+    ]
+  },
+  "source_file": "aiter/tuned_gemm.py",
+  "wrapper": "gemm_a16w16",
+  "dispatch_binding": "wrapper chooses get_GEMM_A16W16_config(...), then calls solMap[libtype]. Replacing a module function attribute alone is insufficient. The protected candidate binding swaps solMap entries temporarily and requires exactly one submitted-port call. Native diagnostics use restored original solMap.",
+  "source_seed": "new Triton replacement port; not editable native Tensile code-object source",
+  "production_callable_by_family": {
+    "bf16_gemm": "aiter.tuned_gemm:gemm_a16w16",
+    "aten_bf16_mm": "torch:mm"
+  },
+  "scoring": "same frozen port versus edited port; native ratios are separate diagnostics",
+  "capture_status": "pending",
+  "aten_schemas": {
+    "default": {
+      "schema": "aten::mm(Tensor self, Tensor mat2) -> Tensor",
+      "sha256": "858756c0f22052de641bfde6c0c93bfacfb7c16094a9e1ead7e1802c3ca043c4"
+    },
+    "out": {
+      "schema": "aten::mm.out(Tensor self, Tensor mat2, *, Tensor(a!) out) -> Tensor(a!)",
+      "sha256": "ef84113a5e5b45526af2fc2b77ba8bf6a418912afb6e00fea63e1eab0482dbd5"
+    }
+  }
+}

@@ -1,0 +1,4142 @@
+{
+  "schema": "kimi-dense-capture-requirements-v1",
+  "runtime_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
+  "source_run": "kimi-actual-v4-no-stack-194550",
+  "status": "actual_dense_capture_required",
+  "measurement": {
+    "method": "cuda_graph",
+    "warmup_iterations": 10,
+    "benchmark_iterations": 100,
+    "correctness_seeds": [
+      0,
+      1
+    ],
+    "refresh_inputs": "each_replay",
+    "initialize_outputs": "each_replay",
+    "validate_outputs": "each_replay",
+    "negative_controls": [
+      "no_op",
+      "wrong_output"
+    ]
+  },
+  "count_scope": "Sampled profiler counts below are evidence only. cases.json occurrences must come from new completed served-workload notifications.",
+  "required_families": [
+    "bf16_gemm",
+    "aten_bf16_mm"
+  ],
+  "required_stages": [
+    "prefill",
+    "decode"
+  ],
+  "observed_wrapper_requirements": [
+    {
+      "requirement_id": "profile-prefill-m8192-n6144-k7168",
+      "evidence_kind": "sampled_CPU_operator_signature",
+      "stage": "prefill",
+      "inputs": {
+        "A": {
+          "shape": [
+            8192,
+            7168
+          ],
+          "strides": [
+            7168,
+            1
+          ],
+          "dtype": "bfloat16"
+        },
+        "B": {
+          "shape": [
+            6144,
+            7168
+          ],
+          "strides": [
+            7168,
+            1
+          ],
+          "dtype": "bfloat16"
+        }
+      },
+      "output_contract": {
+        "shape": [
+          8192,
+          6144
+        ],
+        "dtype": "bfloat16",
+        "basis": "operator semantics; actual strides/offset/alias and values require capture"
+      },
+      "scalar_evidence": {
+        "otype": "torch.bfloat16",
+        "profiler_dtype_enum": 15,
+        "other_optional_argument_observations": "empty profiler values; actual None/tensor identity must be captured"
+      },
+      "sampled_counts": {
+        "3:prefill": 69,
+        "2:prefill": 69,
+        "1:prefill": 69,
+        "4:prefill": 69,
+        "5:prefill": 69,
+        "0:prefill": 69,
+        "6:prefill": 69,
+        "7:prefill": 69
+      },
+      "examples": {
+        "3:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-3-EXTEND.trace.json.gz",
+          "sha256": "792076088ccf7a428df4997ca13bcab87f81ad931fc0b3e8663a5063186cb661",
+          "event_index": 128
+        },
+        "2:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-2-EXTEND.trace.json.gz",
+          "sha256": "80296f1706c2a20f5a233e97ef6a149705ec5cc9b0631a1ab799e5ac16638a0b",
+          "event_index": 128
+        },
+        "1:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-1-EXTEND.trace.json.gz",
+          "sha256": "d543918c67885508fbcc0a7244ab349c28b2e60e3d6efe129f3b494950d6206a",
+          "event_index": 129
+        },
+        "4:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-4-EXTEND.trace.json.gz",
+          "sha256": "051d25243c00a0a3f03c5b3fae638bb5e77513eaa49ba1b6c6dc71e78ccab3ba",
+          "event_index": 128
+        },
+        "5:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-5-EXTEND.trace.json.gz",
+          "sha256": "f98e9bc759028d71a39bee9ce7a133b38261c75e6fb40cb0a0573414d2c6d96d",
+          "event_index": 128
+        },
+        "0:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-0-EXTEND.trace.json.gz",
+          "sha256": "a1ad83855acd4dd375a21ca512b86834fdcd448f34c5cc97967c73659eec6efa",
+          "event_index": 128
+        },
+        "6:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-6-EXTEND.trace.json.gz",
+          "sha256": "2515834fcaf70011bb5b0d0c2a91fe989375e2a48cf70d2a0e47d45054cbe894",
+          "event_index": 129
+        },
+        "7:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-7-EXTEND.trace.json.gz",
+          "sha256": "9fc00ec19cd9bfb35cfaf5456a4309628f311b078e9e54d916da69c3222d5199",
+          "event_index": 129
+        }
+      }
+    },
+    {
+      "requirement_id": "profile-prefill-m8192-n7168-k1536",
+      "evidence_kind": "sampled_CPU_operator_signature",
+      "stage": "prefill",
+      "inputs": {
+        "A": {
+          "shape": [
+            8192,
+            1536
+          ],
+          "strides": [
+            1536,
+            1
+          ],
+          "dtype": "bfloat16"
+        },
+        "B": {
+          "shape": [
+            7168,
+            1536
+          ],
+          "strides": [
+            1536,
+            1
+          ],
+          "dtype": "bfloat16"
+        }
+      },
+      "output_contract": {
+        "shape": [
+          8192,
+          7168
+        ],
+        "dtype": "bfloat16",
+        "basis": "operator semantics; actual strides/offset/alias and values require capture"
+      },
+      "scalar_evidence": {
+        "otype": "torch.bfloat16",
+        "profiler_dtype_enum": 15,
+        "other_optional_argument_observations": "empty profiler values; actual None/tensor identity must be captured"
+      },
+      "sampled_counts": {
+        "3:prefill": 93,
+        "2:prefill": 93,
+        "1:prefill": 93,
+        "4:prefill": 93,
+        "5:prefill": 93,
+        "0:prefill": 93,
+        "6:prefill": 93,
+        "7:prefill": 93
+      },
+      "examples": {
+        "3:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-3-EXTEND.trace.json.gz",
+          "sha256": "792076088ccf7a428df4997ca13bcab87f81ad931fc0b3e8663a5063186cb661",
+          "event_index": 323
+        },
+        "2:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-2-EXTEND.trace.json.gz",
+          "sha256": "80296f1706c2a20f5a233e97ef6a149705ec5cc9b0631a1ab799e5ac16638a0b",
+          "event_index": 323
+        },
+        "1:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-1-EXTEND.trace.json.gz",
+          "sha256": "d543918c67885508fbcc0a7244ab349c28b2e60e3d6efe129f3b494950d6206a",
+          "event_index": 324
+        },
+        "4:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-4-EXTEND.trace.json.gz",
+          "sha256": "051d25243c00a0a3f03c5b3fae638bb5e77513eaa49ba1b6c6dc71e78ccab3ba",
+          "event_index": 323
+        },
+        "5:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-5-EXTEND.trace.json.gz",
+          "sha256": "f98e9bc759028d71a39bee9ce7a133b38261c75e6fb40cb0a0573414d2c6d96d",
+          "event_index": 323
+        },
+        "0:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-0-EXTEND.trace.json.gz",
+          "sha256": "a1ad83855acd4dd375a21ca512b86834fdcd448f34c5cc97967c73659eec6efa",
+          "event_index": 323
+        },
+        "6:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-6-EXTEND.trace.json.gz",
+          "sha256": "2515834fcaf70011bb5b0d0c2a91fe989375e2a48cf70d2a0e47d45054cbe894",
+          "event_index": 324
+        },
+        "7:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-7-EXTEND.trace.json.gz",
+          "sha256": "9fc00ec19cd9bfb35cfaf5456a4309628f311b078e9e54d916da69c3222d5199",
+          "event_index": 324
+        }
+      }
+    },
+    {
+      "requirement_id": "profile-prefill-m8192-n8448-k7168",
+      "evidence_kind": "sampled_CPU_operator_signature",
+      "stage": "prefill",
+      "inputs": {
+        "A": {
+          "shape": [
+            8192,
+            7168
+          ],
+          "strides": [
+            7168,
+            1
+          ],
+          "dtype": "bfloat16"
+        },
+        "B": {
+          "shape": [
+            8448,
+            7168
+          ],
+          "strides": [
+            7168,
+            1
+          ],
+          "dtype": "bfloat16"
+        }
+      },
+      "output_contract": {
+        "shape": [
+          8192,
+          8448
+        ],
+        "dtype": "bfloat16",
+        "basis": "operator semantics; actual strides/offset/alias and values require capture"
+      },
+      "scalar_evidence": {
+        "otype": "torch.bfloat16",
+        "profiler_dtype_enum": 15,
+        "other_optional_argument_observations": "empty profiler values; actual None/tensor identity must be captured"
+      },
+      "sampled_counts": {
+        "3:prefill": 1,
+        "2:prefill": 1,
+        "1:prefill": 1,
+        "4:prefill": 1,
+        "5:prefill": 1,
+        "0:prefill": 1,
+        "6:prefill": 1,
+        "7:prefill": 1
+      },
+      "examples": {
+        "3:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-3-EXTEND.trace.json.gz",
+          "sha256": "792076088ccf7a428df4997ca13bcab87f81ad931fc0b3e8663a5063186cb661",
+          "event_index": 336
+        },
+        "2:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-2-EXTEND.trace.json.gz",
+          "sha256": "80296f1706c2a20f5a233e97ef6a149705ec5cc9b0631a1ab799e5ac16638a0b",
+          "event_index": 336
+        },
+        "1:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-1-EXTEND.trace.json.gz",
+          "sha256": "d543918c67885508fbcc0a7244ab349c28b2e60e3d6efe129f3b494950d6206a",
+          "event_index": 337
+        },
+        "4:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-4-EXTEND.trace.json.gz",
+          "sha256": "051d25243c00a0a3f03c5b3fae638bb5e77513eaa49ba1b6c6dc71e78ccab3ba",
+          "event_index": 336
+        },
+        "5:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-5-EXTEND.trace.json.gz",
+          "sha256": "f98e9bc759028d71a39bee9ce7a133b38261c75e6fb40cb0a0573414d2c6d96d",
+          "event_index": 336
+        },
+        "0:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-0-EXTEND.trace.json.gz",
+          "sha256": "a1ad83855acd4dd375a21ca512b86834fdcd448f34c5cc97967c73659eec6efa",
+          "event_index": 336
+        },
+        "6:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-6-EXTEND.trace.json.gz",
+          "sha256": "2515834fcaf70011bb5b0d0c2a91fe989375e2a48cf70d2a0e47d45054cbe894",
+          "event_index": 337
+        },
+        "7:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-7-EXTEND.trace.json.gz",
+          "sha256": "9fc00ec19cd9bfb35cfaf5456a4309628f311b078e9e54d916da69c3222d5199",
+          "event_index": 337
+        }
+      }
+    },
+    {
+      "requirement_id": "profile-prefill-m8192-n7168-k4224",
+      "evidence_kind": "sampled_CPU_operator_signature",
+      "stage": "prefill",
+      "inputs": {
+        "A": {
+          "shape": [
+            8192,
+            4224
+          ],
+          "strides": [
+            4224,
+            1
+          ],
+          "dtype": "bfloat16"
+        },
+        "B": {
+          "shape": [
+            7168,
+            4224
+          ],
+          "strides": [
+            4224,
+            1
+          ],
+          "dtype": "bfloat16"
+        }
+      },
+      "output_contract": {
+        "shape": [
+          8192,
+          7168
+        ],
+        "dtype": "bfloat16",
+        "basis": "operator semantics; actual strides/offset/alias and values require capture"
+      },
+      "scalar_evidence": {
+        "otype": "torch.bfloat16",
+        "profiler_dtype_enum": 15,
+        "other_optional_argument_observations": "empty profiler values; actual None/tensor identity must be captured"
+      },
+      "sampled_counts": {
+        "3:prefill": 1,
+        "2:prefill": 1,
+        "1:prefill": 1,
+        "4:prefill": 1,
+        "5:prefill": 1,
+        "0:prefill": 1,
+        "6:prefill": 1,
+        "7:prefill": 1
+      },
+      "examples": {
+        "3:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-3-EXTEND.trace.json.gz",
+          "sha256": "792076088ccf7a428df4997ca13bcab87f81ad931fc0b3e8663a5063186cb661",
+          "event_index": 346
+        },
+        "2:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-2-EXTEND.trace.json.gz",
+          "sha256": "80296f1706c2a20f5a233e97ef6a149705ec5cc9b0631a1ab799e5ac16638a0b",
+          "event_index": 346
+        },
+        "1:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-1-EXTEND.trace.json.gz",
+          "sha256": "d543918c67885508fbcc0a7244ab349c28b2e60e3d6efe129f3b494950d6206a",
+          "event_index": 347
+        },
+        "4:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-4-EXTEND.trace.json.gz",
+          "sha256": "051d25243c00a0a3f03c5b3fae638bb5e77513eaa49ba1b6c6dc71e78ccab3ba",
+          "event_index": 346
+        },
+        "5:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-5-EXTEND.trace.json.gz",
+          "sha256": "f98e9bc759028d71a39bee9ce7a133b38261c75e6fb40cb0a0573414d2c6d96d",
+          "event_index": 346
+        },
+        "0:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-0-EXTEND.trace.json.gz",
+          "sha256": "a1ad83855acd4dd375a21ca512b86834fdcd448f34c5cc97967c73659eec6efa",
+          "event_index": 346
+        },
+        "6:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-6-EXTEND.trace.json.gz",
+          "sha256": "2515834fcaf70011bb5b0d0c2a91fe989375e2a48cf70d2a0e47d45054cbe894",
+          "event_index": 347
+        },
+        "7:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-7-EXTEND.trace.json.gz",
+          "sha256": "9fc00ec19cd9bfb35cfaf5456a4309628f311b078e9e54d916da69c3222d5199",
+          "event_index": 347
+        }
+      }
+    },
+    {
+      "requirement_id": "profile-prefill-m8192-n7168-k3584",
+      "evidence_kind": "sampled_CPU_operator_signature",
+      "stage": "prefill",
+      "inputs": {
+        "A": {
+          "shape": [
+            8192,
+            3584
+          ],
+          "strides": [
+            3584,
+            1
+          ],
+          "dtype": "bfloat16"
+        },
+        "B": {
+          "shape": [
+            7168,
+            3584
+          ],
+          "strides": [
+            3584,
+            1
+          ],
+          "dtype": "bfloat16"
+        }
+      },
+      "output_contract": {
+        "shape": [
+          8192,
+          7168
+        ],
+        "dtype": "bfloat16",
+        "basis": "operator semantics; actual strides/offset/alias and values require capture"
+      },
+      "scalar_evidence": {
+        "otype": "torch.bfloat16",
+        "profiler_dtype_enum": 15,
+        "other_optional_argument_observations": "empty profiler values; actual None/tensor identity must be captured"
+      },
+      "sampled_counts": {
+        "3:prefill": 92,
+        "2:prefill": 92,
+        "1:prefill": 92,
+        "4:prefill": 92,
+        "5:prefill": 92,
+        "0:prefill": 92,
+        "6:prefill": 92,
+        "7:prefill": 92
+      },
+      "examples": {
+        "3:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-3-EXTEND.trace.json.gz",
+          "sha256": "792076088ccf7a428df4997ca13bcab87f81ad931fc0b3e8663a5063186cb661",
+          "event_index": 650
+        },
+        "2:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-2-EXTEND.trace.json.gz",
+          "sha256": "80296f1706c2a20f5a233e97ef6a149705ec5cc9b0631a1ab799e5ac16638a0b",
+          "event_index": 650
+        },
+        "1:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-1-EXTEND.trace.json.gz",
+          "sha256": "d543918c67885508fbcc0a7244ab349c28b2e60e3d6efe129f3b494950d6206a",
+          "event_index": 651
+        },
+        "4:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-4-EXTEND.trace.json.gz",
+          "sha256": "051d25243c00a0a3f03c5b3fae638bb5e77513eaa49ba1b6c6dc71e78ccab3ba",
+          "event_index": 650
+        },
+        "5:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-5-EXTEND.trace.json.gz",
+          "sha256": "f98e9bc759028d71a39bee9ce7a133b38261c75e6fb40cb0a0573414d2c6d96d",
+          "event_index": 650
+        },
+        "0:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-0-EXTEND.trace.json.gz",
+          "sha256": "a1ad83855acd4dd375a21ca512b86834fdcd448f34c5cc97967c73659eec6efa",
+          "event_index": 3983
+        },
+        "6:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-6-EXTEND.trace.json.gz",
+          "sha256": "2515834fcaf70011bb5b0d0c2a91fe989375e2a48cf70d2a0e47d45054cbe894",
+          "event_index": 651
+        },
+        "7:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-7-EXTEND.trace.json.gz",
+          "sha256": "9fc00ec19cd9bfb35cfaf5456a4309628f311b078e9e54d916da69c3222d5199",
+          "event_index": 651
+        }
+      }
+    },
+    {
+      "requirement_id": "profile-prefill-m8192-n2112-k7168",
+      "evidence_kind": "sampled_CPU_operator_signature",
+      "stage": "prefill",
+      "inputs": {
+        "A": {
+          "shape": [
+            8192,
+            7168
+          ],
+          "strides": [
+            7168,
+            1
+          ],
+          "dtype": "bfloat16"
+        },
+        "B": {
+          "shape": [
+            2112,
+            7168
+          ],
+          "strides": [
+            7168,
+            1
+          ],
+          "dtype": "bfloat16"
+        }
+      },
+      "output_contract": {
+        "shape": [
+          8192,
+          2112
+        ],
+        "dtype": "bfloat16",
+        "basis": "operator semantics; actual strides/offset/alias and values require capture"
+      },
+      "scalar_evidence": {
+        "otype": "torch.bfloat16",
+        "profiler_dtype_enum": 15,
+        "other_optional_argument_observations": "empty profiler values; actual None/tensor identity must be captured"
+      },
+      "sampled_counts": {
+        "3:prefill": 24,
+        "2:prefill": 24,
+        "1:prefill": 24,
+        "4:prefill": 24,
+        "5:prefill": 24,
+        "0:prefill": 24,
+        "6:prefill": 24,
+        "7:prefill": 24
+      },
+      "examples": {
+        "3:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-3-EXTEND.trace.json.gz",
+          "sha256": "792076088ccf7a428df4997ca13bcab87f81ad931fc0b3e8663a5063186cb661",
+          "event_index": 972
+        },
+        "2:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-2-EXTEND.trace.json.gz",
+          "sha256": "80296f1706c2a20f5a233e97ef6a149705ec5cc9b0631a1ab799e5ac16638a0b",
+          "event_index": 972
+        },
+        "1:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-1-EXTEND.trace.json.gz",
+          "sha256": "d543918c67885508fbcc0a7244ab349c28b2e60e3d6efe129f3b494950d6206a",
+          "event_index": 973
+        },
+        "4:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-4-EXTEND.trace.json.gz",
+          "sha256": "051d25243c00a0a3f03c5b3fae638bb5e77513eaa49ba1b6c6dc71e78ccab3ba",
+          "event_index": 972
+        },
+        "5:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-5-EXTEND.trace.json.gz",
+          "sha256": "f98e9bc759028d71a39bee9ce7a133b38261c75e6fb40cb0a0573414d2c6d96d",
+          "event_index": 972
+        },
+        "0:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-0-EXTEND.trace.json.gz",
+          "sha256": "a1ad83855acd4dd375a21ca512b86834fdcd448f34c5cc97967c73659eec6efa",
+          "event_index": 4481
+        },
+        "6:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-6-EXTEND.trace.json.gz",
+          "sha256": "2515834fcaf70011bb5b0d0c2a91fe989375e2a48cf70d2a0e47d45054cbe894",
+          "event_index": 973
+        },
+        "7:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-7-EXTEND.trace.json.gz",
+          "sha256": "9fc00ec19cd9bfb35cfaf5456a4309628f311b078e9e54d916da69c3222d5199",
+          "event_index": 973
+        }
+      }
+    },
+    {
+      "requirement_id": "profile-prefill-m8192-n2304-k1536",
+      "evidence_kind": "sampled_CPU_operator_signature",
+      "stage": "prefill",
+      "inputs": {
+        "A": {
+          "shape": [
+            8192,
+            1536
+          ],
+          "strides": [
+            1536,
+            1
+          ],
+          "dtype": "bfloat16"
+        },
+        "B": {
+          "shape": [
+            2304,
+            1536
+          ],
+          "strides": [
+            1536,
+            1
+          ],
+          "dtype": "bfloat16"
+        }
+      },
+      "output_contract": {
+        "shape": [
+          8192,
+          2304
+        ],
+        "dtype": "bfloat16",
+        "basis": "operator semantics; actual strides/offset/alias and values require capture"
+      },
+      "scalar_evidence": {
+        "otype": "torch.bfloat16",
+        "profiler_dtype_enum": 15,
+        "other_optional_argument_observations": "empty profiler values; actual None/tensor identity must be captured"
+      },
+      "sampled_counts": {
+        "3:prefill": 24,
+        "2:prefill": 24,
+        "1:prefill": 24,
+        "4:prefill": 24,
+        "5:prefill": 24,
+        "0:prefill": 24,
+        "6:prefill": 24,
+        "7:prefill": 24
+      },
+      "examples": {
+        "3:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-3-EXTEND.trace.json.gz",
+          "sha256": "792076088ccf7a428df4997ca13bcab87f81ad931fc0b3e8663a5063186cb661",
+          "event_index": 991
+        },
+        "2:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-2-EXTEND.trace.json.gz",
+          "sha256": "80296f1706c2a20f5a233e97ef6a149705ec5cc9b0631a1ab799e5ac16638a0b",
+          "event_index": 991
+        },
+        "1:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-1-EXTEND.trace.json.gz",
+          "sha256": "d543918c67885508fbcc0a7244ab349c28b2e60e3d6efe129f3b494950d6206a",
+          "event_index": 992
+        },
+        "4:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-4-EXTEND.trace.json.gz",
+          "sha256": "051d25243c00a0a3f03c5b3fae638bb5e77513eaa49ba1b6c6dc71e78ccab3ba",
+          "event_index": 991
+        },
+        "5:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-5-EXTEND.trace.json.gz",
+          "sha256": "f98e9bc759028d71a39bee9ce7a133b38261c75e6fb40cb0a0573414d2c6d96d",
+          "event_index": 991
+        },
+        "0:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-0-EXTEND.trace.json.gz",
+          "sha256": "a1ad83855acd4dd375a21ca512b86834fdcd448f34c5cc97967c73659eec6efa",
+          "event_index": 4500
+        },
+        "6:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-6-EXTEND.trace.json.gz",
+          "sha256": "2515834fcaf70011bb5b0d0c2a91fe989375e2a48cf70d2a0e47d45054cbe894",
+          "event_index": 992
+        },
+        "7:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-7-EXTEND.trace.json.gz",
+          "sha256": "9fc00ec19cd9bfb35cfaf5456a4309628f311b078e9e54d916da69c3222d5199",
+          "event_index": 992
+        }
+      }
+    },
+    {
+      "requirement_id": "profile-prefill-m8192-n3072-k512",
+      "evidence_kind": "sampled_CPU_operator_signature",
+      "stage": "prefill",
+      "inputs": {
+        "A": {
+          "shape": [
+            8192,
+            512
+          ],
+          "strides": [
+            512,
+            1
+          ],
+          "dtype": "bfloat16"
+        },
+        "B": {
+          "shape": [
+            3072,
+            512
+          ],
+          "strides": [
+            512,
+            1
+          ],
+          "dtype": "bfloat16"
+        }
+      },
+      "output_contract": {
+        "shape": [
+          8192,
+          3072
+        ],
+        "dtype": "bfloat16",
+        "basis": "operator semantics; actual strides/offset/alias and values require capture"
+      },
+      "scalar_evidence": {
+        "otype": "torch.bfloat16",
+        "profiler_dtype_enum": 15,
+        "other_optional_argument_observations": "empty profiler values; actual None/tensor identity must be captured"
+      },
+      "sampled_counts": {
+        "3:prefill": 24,
+        "2:prefill": 24,
+        "1:prefill": 24,
+        "4:prefill": 24,
+        "5:prefill": 24,
+        "0:prefill": 24,
+        "6:prefill": 24,
+        "7:prefill": 24
+      },
+      "examples": {
+        "3:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-3-EXTEND.trace.json.gz",
+          "sha256": "792076088ccf7a428df4997ca13bcab87f81ad931fc0b3e8663a5063186cb661",
+          "event_index": 1023
+        },
+        "2:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-2-EXTEND.trace.json.gz",
+          "sha256": "80296f1706c2a20f5a233e97ef6a149705ec5cc9b0631a1ab799e5ac16638a0b",
+          "event_index": 1023
+        },
+        "1:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-1-EXTEND.trace.json.gz",
+          "sha256": "d543918c67885508fbcc0a7244ab349c28b2e60e3d6efe129f3b494950d6206a",
+          "event_index": 1024
+        },
+        "4:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-4-EXTEND.trace.json.gz",
+          "sha256": "051d25243c00a0a3f03c5b3fae638bb5e77513eaa49ba1b6c6dc71e78ccab3ba",
+          "event_index": 1023
+        },
+        "5:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-5-EXTEND.trace.json.gz",
+          "sha256": "f98e9bc759028d71a39bee9ce7a133b38261c75e6fb40cb0a0573414d2c6d96d",
+          "event_index": 1023
+        },
+        "0:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-0-EXTEND.trace.json.gz",
+          "sha256": "a1ad83855acd4dd375a21ca512b86834fdcd448f34c5cc97967c73659eec6efa",
+          "event_index": 4532
+        },
+        "6:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-6-EXTEND.trace.json.gz",
+          "sha256": "2515834fcaf70011bb5b0d0c2a91fe989375e2a48cf70d2a0e47d45054cbe894",
+          "event_index": 1024
+        },
+        "7:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-7-EXTEND.trace.json.gz",
+          "sha256": "9fc00ec19cd9bfb35cfaf5456a4309628f311b078e9e54d916da69c3222d5199",
+          "event_index": 1024
+        }
+      }
+    },
+    {
+      "requirement_id": "profile-prefill-m8192-n1536-k7168",
+      "evidence_kind": "sampled_CPU_operator_signature",
+      "stage": "prefill",
+      "inputs": {
+        "A": {
+          "shape": [
+            8192,
+            7168
+          ],
+          "strides": [
+            7168,
+            1
+          ],
+          "dtype": "bfloat16"
+        },
+        "B": {
+          "shape": [
+            1536,
+            7168
+          ],
+          "strides": [
+            7168,
+            1
+          ],
+          "dtype": "bfloat16"
+        }
+      },
+      "output_contract": {
+        "shape": [
+          8192,
+          1536
+        ],
+        "dtype": "bfloat16",
+        "basis": "operator semantics; actual strides/offset/alias and values require capture"
+      },
+      "scalar_evidence": {
+        "otype": "torch.bfloat16",
+        "profiler_dtype_enum": 15,
+        "other_optional_argument_observations": "empty profiler values; actual None/tensor identity must be captured"
+      },
+      "sampled_counts": {
+        "3:prefill": 24,
+        "2:prefill": 24,
+        "1:prefill": 24,
+        "4:prefill": 24,
+        "5:prefill": 24,
+        "0:prefill": 24,
+        "6:prefill": 24,
+        "7:prefill": 24
+      },
+      "examples": {
+        "3:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-3-EXTEND.trace.json.gz",
+          "sha256": "792076088ccf7a428df4997ca13bcab87f81ad931fc0b3e8663a5063186cb661",
+          "event_index": 1061
+        },
+        "2:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-2-EXTEND.trace.json.gz",
+          "sha256": "80296f1706c2a20f5a233e97ef6a149705ec5cc9b0631a1ab799e5ac16638a0b",
+          "event_index": 1061
+        },
+        "1:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-1-EXTEND.trace.json.gz",
+          "sha256": "d543918c67885508fbcc0a7244ab349c28b2e60e3d6efe129f3b494950d6206a",
+          "event_index": 1062
+        },
+        "4:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-4-EXTEND.trace.json.gz",
+          "sha256": "051d25243c00a0a3f03c5b3fae638bb5e77513eaa49ba1b6c6dc71e78ccab3ba",
+          "event_index": 1061
+        },
+        "5:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-5-EXTEND.trace.json.gz",
+          "sha256": "f98e9bc759028d71a39bee9ce7a133b38261c75e6fb40cb0a0573414d2c6d96d",
+          "event_index": 1061
+        },
+        "0:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-0-EXTEND.trace.json.gz",
+          "sha256": "a1ad83855acd4dd375a21ca512b86834fdcd448f34c5cc97967c73659eec6efa",
+          "event_index": 4570
+        },
+        "6:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-6-EXTEND.trace.json.gz",
+          "sha256": "2515834fcaf70011bb5b0d0c2a91fe989375e2a48cf70d2a0e47d45054cbe894",
+          "event_index": 1062
+        },
+        "7:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-7-EXTEND.trace.json.gz",
+          "sha256": "9fc00ec19cd9bfb35cfaf5456a4309628f311b078e9e54d916da69c3222d5199",
+          "event_index": 1062
+        }
+      }
+    },
+    {
+      "requirement_id": "profile-prefill-m16384-n6144-k7168",
+      "evidence_kind": "sampled_CPU_operator_signature",
+      "stage": "prefill",
+      "inputs": {
+        "A": {
+          "shape": [
+            16384,
+            7168
+          ],
+          "strides": [
+            7168,
+            1
+          ],
+          "dtype": "bfloat16"
+        },
+        "B": {
+          "shape": [
+            6144,
+            7168
+          ],
+          "strides": [
+            7168,
+            1
+          ],
+          "dtype": "bfloat16"
+        }
+      },
+      "output_contract": {
+        "shape": [
+          16384,
+          6144
+        ],
+        "dtype": "bfloat16",
+        "basis": "operator semantics; actual strides/offset/alias and values require capture"
+      },
+      "scalar_evidence": {
+        "otype": "torch.bfloat16",
+        "profiler_dtype_enum": 15,
+        "other_optional_argument_observations": "empty profiler values; actual None/tensor identity must be captured"
+      },
+      "sampled_counts": {
+        "3:prefill": 483,
+        "2:prefill": 483,
+        "1:prefill": 483,
+        "4:prefill": 483,
+        "5:prefill": 483,
+        "0:prefill": 483,
+        "6:prefill": 483,
+        "7:prefill": 483
+      },
+      "examples": {
+        "3:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-3-EXTEND.trace.json.gz",
+          "sha256": "792076088ccf7a428df4997ca13bcab87f81ad931fc0b3e8663a5063186cb661",
+          "event_index": 28449
+        },
+        "2:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-2-EXTEND.trace.json.gz",
+          "sha256": "80296f1706c2a20f5a233e97ef6a149705ec5cc9b0631a1ab799e5ac16638a0b",
+          "event_index": 28449
+        },
+        "1:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-1-EXTEND.trace.json.gz",
+          "sha256": "d543918c67885508fbcc0a7244ab349c28b2e60e3d6efe129f3b494950d6206a",
+          "event_index": 28450
+        },
+        "4:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-4-EXTEND.trace.json.gz",
+          "sha256": "051d25243c00a0a3f03c5b3fae638bb5e77513eaa49ba1b6c6dc71e78ccab3ba",
+          "event_index": 28449
+        },
+        "5:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-5-EXTEND.trace.json.gz",
+          "sha256": "f98e9bc759028d71a39bee9ce7a133b38261c75e6fb40cb0a0573414d2c6d96d",
+          "event_index": 28449
+        },
+        "0:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-0-EXTEND.trace.json.gz",
+          "sha256": "a1ad83855acd4dd375a21ca512b86834fdcd448f34c5cc97967c73659eec6efa",
+          "event_index": 47792
+        },
+        "6:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-6-EXTEND.trace.json.gz",
+          "sha256": "2515834fcaf70011bb5b0d0c2a91fe989375e2a48cf70d2a0e47d45054cbe894",
+          "event_index": 28450
+        },
+        "7:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-7-EXTEND.trace.json.gz",
+          "sha256": "9fc00ec19cd9bfb35cfaf5456a4309628f311b078e9e54d916da69c3222d5199",
+          "event_index": 28450
+        }
+      }
+    },
+    {
+      "requirement_id": "profile-prefill-m16384-n7168-k1536",
+      "evidence_kind": "sampled_CPU_operator_signature",
+      "stage": "prefill",
+      "inputs": {
+        "A": {
+          "shape": [
+            16384,
+            1536
+          ],
+          "strides": [
+            1536,
+            1
+          ],
+          "dtype": "bfloat16"
+        },
+        "B": {
+          "shape": [
+            7168,
+            1536
+          ],
+          "strides": [
+            1536,
+            1
+          ],
+          "dtype": "bfloat16"
+        }
+      },
+      "output_contract": {
+        "shape": [
+          16384,
+          7168
+        ],
+        "dtype": "bfloat16",
+        "basis": "operator semantics; actual strides/offset/alias and values require capture"
+      },
+      "scalar_evidence": {
+        "otype": "torch.bfloat16",
+        "profiler_dtype_enum": 15,
+        "other_optional_argument_observations": "empty profiler values; actual None/tensor identity must be captured"
+      },
+      "sampled_counts": {
+        "3:prefill": 651,
+        "2:prefill": 651,
+        "1:prefill": 651,
+        "4:prefill": 651,
+        "5:prefill": 651,
+        "0:prefill": 651,
+        "6:prefill": 651,
+        "7:prefill": 651
+      },
+      "examples": {
+        "3:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-3-EXTEND.trace.json.gz",
+          "sha256": "792076088ccf7a428df4997ca13bcab87f81ad931fc0b3e8663a5063186cb661",
+          "event_index": 28648
+        },
+        "2:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-2-EXTEND.trace.json.gz",
+          "sha256": "80296f1706c2a20f5a233e97ef6a149705ec5cc9b0631a1ab799e5ac16638a0b",
+          "event_index": 28648
+        },
+        "1:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-1-EXTEND.trace.json.gz",
+          "sha256": "d543918c67885508fbcc0a7244ab349c28b2e60e3d6efe129f3b494950d6206a",
+          "event_index": 28649
+        },
+        "4:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-4-EXTEND.trace.json.gz",
+          "sha256": "051d25243c00a0a3f03c5b3fae638bb5e77513eaa49ba1b6c6dc71e78ccab3ba",
+          "event_index": 28648
+        },
+        "5:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-5-EXTEND.trace.json.gz",
+          "sha256": "f98e9bc759028d71a39bee9ce7a133b38261c75e6fb40cb0a0573414d2c6d96d",
+          "event_index": 28648
+        },
+        "0:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-0-EXTEND.trace.json.gz",
+          "sha256": "a1ad83855acd4dd375a21ca512b86834fdcd448f34c5cc97967c73659eec6efa",
+          "event_index": 47991
+        },
+        "6:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-6-EXTEND.trace.json.gz",
+          "sha256": "2515834fcaf70011bb5b0d0c2a91fe989375e2a48cf70d2a0e47d45054cbe894",
+          "event_index": 28649
+        },
+        "7:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-7-EXTEND.trace.json.gz",
+          "sha256": "9fc00ec19cd9bfb35cfaf5456a4309628f311b078e9e54d916da69c3222d5199",
+          "event_index": 28649
+        }
+      }
+    },
+    {
+      "requirement_id": "profile-prefill-m16384-n8448-k7168",
+      "evidence_kind": "sampled_CPU_operator_signature",
+      "stage": "prefill",
+      "inputs": {
+        "A": {
+          "shape": [
+            16384,
+            7168
+          ],
+          "strides": [
+            7168,
+            1
+          ],
+          "dtype": "bfloat16"
+        },
+        "B": {
+          "shape": [
+            8448,
+            7168
+          ],
+          "strides": [
+            7168,
+            1
+          ],
+          "dtype": "bfloat16"
+        }
+      },
+      "output_contract": {
+        "shape": [
+          16384,
+          8448
+        ],
+        "dtype": "bfloat16",
+        "basis": "operator semantics; actual strides/offset/alias and values require capture"
+      },
+      "scalar_evidence": {
+        "otype": "torch.bfloat16",
+        "profiler_dtype_enum": 15,
+        "other_optional_argument_observations": "empty profiler values; actual None/tensor identity must be captured"
+      },
+      "sampled_counts": {
+        "3:prefill": 7,
+        "2:prefill": 7,
+        "1:prefill": 7,
+        "4:prefill": 7,
+        "5:prefill": 7,
+        "0:prefill": 7,
+        "6:prefill": 7,
+        "7:prefill": 7
+      },
+      "examples": {
+        "3:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-3-EXTEND.trace.json.gz",
+          "sha256": "792076088ccf7a428df4997ca13bcab87f81ad931fc0b3e8663a5063186cb661",
+          "event_index": 28661
+        },
+        "2:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-2-EXTEND.trace.json.gz",
+          "sha256": "80296f1706c2a20f5a233e97ef6a149705ec5cc9b0631a1ab799e5ac16638a0b",
+          "event_index": 28661
+        },
+        "1:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-1-EXTEND.trace.json.gz",
+          "sha256": "d543918c67885508fbcc0a7244ab349c28b2e60e3d6efe129f3b494950d6206a",
+          "event_index": 28662
+        },
+        "4:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-4-EXTEND.trace.json.gz",
+          "sha256": "051d25243c00a0a3f03c5b3fae638bb5e77513eaa49ba1b6c6dc71e78ccab3ba",
+          "event_index": 28661
+        },
+        "5:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-5-EXTEND.trace.json.gz",
+          "sha256": "f98e9bc759028d71a39bee9ce7a133b38261c75e6fb40cb0a0573414d2c6d96d",
+          "event_index": 28661
+        },
+        "0:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-0-EXTEND.trace.json.gz",
+          "sha256": "a1ad83855acd4dd375a21ca512b86834fdcd448f34c5cc97967c73659eec6efa",
+          "event_index": 48004
+        },
+        "6:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-6-EXTEND.trace.json.gz",
+          "sha256": "2515834fcaf70011bb5b0d0c2a91fe989375e2a48cf70d2a0e47d45054cbe894",
+          "event_index": 28662
+        },
+        "7:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-7-EXTEND.trace.json.gz",
+          "sha256": "9fc00ec19cd9bfb35cfaf5456a4309628f311b078e9e54d916da69c3222d5199",
+          "event_index": 28662
+        }
+      }
+    },
+    {
+      "requirement_id": "profile-prefill-m16384-n7168-k4224",
+      "evidence_kind": "sampled_CPU_operator_signature",
+      "stage": "prefill",
+      "inputs": {
+        "A": {
+          "shape": [
+            16384,
+            4224
+          ],
+          "strides": [
+            4224,
+            1
+          ],
+          "dtype": "bfloat16"
+        },
+        "B": {
+          "shape": [
+            7168,
+            4224
+          ],
+          "strides": [
+            4224,
+            1
+          ],
+          "dtype": "bfloat16"
+        }
+      },
+      "output_contract": {
+        "shape": [
+          16384,
+          7168
+        ],
+        "dtype": "bfloat16",
+        "basis": "operator semantics; actual strides/offset/alias and values require capture"
+      },
+      "scalar_evidence": {
+        "otype": "torch.bfloat16",
+        "profiler_dtype_enum": 15,
+        "other_optional_argument_observations": "empty profiler values; actual None/tensor identity must be captured"
+      },
+      "sampled_counts": {
+        "3:prefill": 7,
+        "2:prefill": 7,
+        "1:prefill": 7,
+        "4:prefill": 7,
+        "5:prefill": 7,
+        "0:prefill": 7,
+        "6:prefill": 7,
+        "7:prefill": 7
+      },
+      "examples": {
+        "3:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-3-EXTEND.trace.json.gz",
+          "sha256": "792076088ccf7a428df4997ca13bcab87f81ad931fc0b3e8663a5063186cb661",
+          "event_index": 28671
+        },
+        "2:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-2-EXTEND.trace.json.gz",
+          "sha256": "80296f1706c2a20f5a233e97ef6a149705ec5cc9b0631a1ab799e5ac16638a0b",
+          "event_index": 28671
+        },
+        "1:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-1-EXTEND.trace.json.gz",
+          "sha256": "d543918c67885508fbcc0a7244ab349c28b2e60e3d6efe129f3b494950d6206a",
+          "event_index": 28672
+        },
+        "4:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-4-EXTEND.trace.json.gz",
+          "sha256": "051d25243c00a0a3f03c5b3fae638bb5e77513eaa49ba1b6c6dc71e78ccab3ba",
+          "event_index": 28671
+        },
+        "5:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-5-EXTEND.trace.json.gz",
+          "sha256": "f98e9bc759028d71a39bee9ce7a133b38261c75e6fb40cb0a0573414d2c6d96d",
+          "event_index": 28671
+        },
+        "0:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-0-EXTEND.trace.json.gz",
+          "sha256": "a1ad83855acd4dd375a21ca512b86834fdcd448f34c5cc97967c73659eec6efa",
+          "event_index": 48014
+        },
+        "6:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-6-EXTEND.trace.json.gz",
+          "sha256": "2515834fcaf70011bb5b0d0c2a91fe989375e2a48cf70d2a0e47d45054cbe894",
+          "event_index": 28672
+        },
+        "7:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-7-EXTEND.trace.json.gz",
+          "sha256": "9fc00ec19cd9bfb35cfaf5456a4309628f311b078e9e54d916da69c3222d5199",
+          "event_index": 28672
+        }
+      }
+    },
+    {
+      "requirement_id": "profile-prefill-m16384-n7168-k3584",
+      "evidence_kind": "sampled_CPU_operator_signature",
+      "stage": "prefill",
+      "inputs": {
+        "A": {
+          "shape": [
+            16384,
+            3584
+          ],
+          "strides": [
+            3584,
+            1
+          ],
+          "dtype": "bfloat16"
+        },
+        "B": {
+          "shape": [
+            7168,
+            3584
+          ],
+          "strides": [
+            3584,
+            1
+          ],
+          "dtype": "bfloat16"
+        }
+      },
+      "output_contract": {
+        "shape": [
+          16384,
+          7168
+        ],
+        "dtype": "bfloat16",
+        "basis": "operator semantics; actual strides/offset/alias and values require capture"
+      },
+      "scalar_evidence": {
+        "otype": "torch.bfloat16",
+        "profiler_dtype_enum": 15,
+        "other_optional_argument_observations": "empty profiler values; actual None/tensor identity must be captured"
+      },
+      "sampled_counts": {
+        "3:prefill": 644,
+        "2:prefill": 644,
+        "1:prefill": 644,
+        "4:prefill": 644,
+        "5:prefill": 644,
+        "0:prefill": 644,
+        "6:prefill": 644,
+        "7:prefill": 644
+      },
+      "examples": {
+        "3:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-3-EXTEND.trace.json.gz",
+          "sha256": "792076088ccf7a428df4997ca13bcab87f81ad931fc0b3e8663a5063186cb661",
+          "event_index": 28975
+        },
+        "2:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-2-EXTEND.trace.json.gz",
+          "sha256": "80296f1706c2a20f5a233e97ef6a149705ec5cc9b0631a1ab799e5ac16638a0b",
+          "event_index": 28975
+        },
+        "1:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-1-EXTEND.trace.json.gz",
+          "sha256": "d543918c67885508fbcc0a7244ab349c28b2e60e3d6efe129f3b494950d6206a",
+          "event_index": 28976
+        },
+        "4:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-4-EXTEND.trace.json.gz",
+          "sha256": "051d25243c00a0a3f03c5b3fae638bb5e77513eaa49ba1b6c6dc71e78ccab3ba",
+          "event_index": 28975
+        },
+        "5:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-5-EXTEND.trace.json.gz",
+          "sha256": "f98e9bc759028d71a39bee9ce7a133b38261c75e6fb40cb0a0573414d2c6d96d",
+          "event_index": 28975
+        },
+        "0:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-0-EXTEND.trace.json.gz",
+          "sha256": "a1ad83855acd4dd375a21ca512b86834fdcd448f34c5cc97967c73659eec6efa",
+          "event_index": 49374
+        },
+        "6:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-6-EXTEND.trace.json.gz",
+          "sha256": "2515834fcaf70011bb5b0d0c2a91fe989375e2a48cf70d2a0e47d45054cbe894",
+          "event_index": 28976
+        },
+        "7:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-7-EXTEND.trace.json.gz",
+          "sha256": "9fc00ec19cd9bfb35cfaf5456a4309628f311b078e9e54d916da69c3222d5199",
+          "event_index": 28976
+        }
+      }
+    },
+    {
+      "requirement_id": "profile-prefill-m16384-n2112-k7168",
+      "evidence_kind": "sampled_CPU_operator_signature",
+      "stage": "prefill",
+      "inputs": {
+        "A": {
+          "shape": [
+            16384,
+            7168
+          ],
+          "strides": [
+            7168,
+            1
+          ],
+          "dtype": "bfloat16"
+        },
+        "B": {
+          "shape": [
+            2112,
+            7168
+          ],
+          "strides": [
+            7168,
+            1
+          ],
+          "dtype": "bfloat16"
+        }
+      },
+      "output_contract": {
+        "shape": [
+          16384,
+          2112
+        ],
+        "dtype": "bfloat16",
+        "basis": "operator semantics; actual strides/offset/alias and values require capture"
+      },
+      "scalar_evidence": {
+        "otype": "torch.bfloat16",
+        "profiler_dtype_enum": 15,
+        "other_optional_argument_observations": "empty profiler values; actual None/tensor identity must be captured"
+      },
+      "sampled_counts": {
+        "3:prefill": 168,
+        "2:prefill": 168,
+        "1:prefill": 168,
+        "4:prefill": 168,
+        "5:prefill": 168,
+        "0:prefill": 168,
+        "6:prefill": 168,
+        "7:prefill": 168
+      },
+      "examples": {
+        "3:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-3-EXTEND.trace.json.gz",
+          "sha256": "792076088ccf7a428df4997ca13bcab87f81ad931fc0b3e8663a5063186cb661",
+          "event_index": 29297
+        },
+        "2:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-2-EXTEND.trace.json.gz",
+          "sha256": "80296f1706c2a20f5a233e97ef6a149705ec5cc9b0631a1ab799e5ac16638a0b",
+          "event_index": 29297
+        },
+        "1:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-1-EXTEND.trace.json.gz",
+          "sha256": "d543918c67885508fbcc0a7244ab349c28b2e60e3d6efe129f3b494950d6206a",
+          "event_index": 29298
+        },
+        "4:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-4-EXTEND.trace.json.gz",
+          "sha256": "051d25243c00a0a3f03c5b3fae638bb5e77513eaa49ba1b6c6dc71e78ccab3ba",
+          "event_index": 29297
+        },
+        "5:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-5-EXTEND.trace.json.gz",
+          "sha256": "f98e9bc759028d71a39bee9ce7a133b38261c75e6fb40cb0a0573414d2c6d96d",
+          "event_index": 29297
+        },
+        "0:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-0-EXTEND.trace.json.gz",
+          "sha256": "a1ad83855acd4dd375a21ca512b86834fdcd448f34c5cc97967c73659eec6efa",
+          "event_index": 49872
+        },
+        "6:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-6-EXTEND.trace.json.gz",
+          "sha256": "2515834fcaf70011bb5b0d0c2a91fe989375e2a48cf70d2a0e47d45054cbe894",
+          "event_index": 29298
+        },
+        "7:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-7-EXTEND.trace.json.gz",
+          "sha256": "9fc00ec19cd9bfb35cfaf5456a4309628f311b078e9e54d916da69c3222d5199",
+          "event_index": 29298
+        }
+      }
+    },
+    {
+      "requirement_id": "profile-prefill-m16384-n2304-k1536",
+      "evidence_kind": "sampled_CPU_operator_signature",
+      "stage": "prefill",
+      "inputs": {
+        "A": {
+          "shape": [
+            16384,
+            1536
+          ],
+          "strides": [
+            1536,
+            1
+          ],
+          "dtype": "bfloat16"
+        },
+        "B": {
+          "shape": [
+            2304,
+            1536
+          ],
+          "strides": [
+            1536,
+            1
+          ],
+          "dtype": "bfloat16"
+        }
+      },
+      "output_contract": {
+        "shape": [
+          16384,
+          2304
+        ],
+        "dtype": "bfloat16",
+        "basis": "operator semantics; actual strides/offset/alias and values require capture"
+      },
+      "scalar_evidence": {
+        "otype": "torch.bfloat16",
+        "profiler_dtype_enum": 15,
+        "other_optional_argument_observations": "empty profiler values; actual None/tensor identity must be captured"
+      },
+      "sampled_counts": {
+        "3:prefill": 168,
+        "2:prefill": 168,
+        "1:prefill": 168,
+        "4:prefill": 168,
+        "5:prefill": 168,
+        "0:prefill": 168,
+        "6:prefill": 168,
+        "7:prefill": 168
+      },
+      "examples": {
+        "3:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-3-EXTEND.trace.json.gz",
+          "sha256": "792076088ccf7a428df4997ca13bcab87f81ad931fc0b3e8663a5063186cb661",
+          "event_index": 29316
+        },
+        "2:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-2-EXTEND.trace.json.gz",
+          "sha256": "80296f1706c2a20f5a233e97ef6a149705ec5cc9b0631a1ab799e5ac16638a0b",
+          "event_index": 29316
+        },
+        "1:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-1-EXTEND.trace.json.gz",
+          "sha256": "d543918c67885508fbcc0a7244ab349c28b2e60e3d6efe129f3b494950d6206a",
+          "event_index": 29317
+        },
+        "4:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-4-EXTEND.trace.json.gz",
+          "sha256": "051d25243c00a0a3f03c5b3fae638bb5e77513eaa49ba1b6c6dc71e78ccab3ba",
+          "event_index": 29316
+        },
+        "5:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-5-EXTEND.trace.json.gz",
+          "sha256": "f98e9bc759028d71a39bee9ce7a133b38261c75e6fb40cb0a0573414d2c6d96d",
+          "event_index": 29316
+        },
+        "0:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-0-EXTEND.trace.json.gz",
+          "sha256": "a1ad83855acd4dd375a21ca512b86834fdcd448f34c5cc97967c73659eec6efa",
+          "event_index": 49891
+        },
+        "6:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-6-EXTEND.trace.json.gz",
+          "sha256": "2515834fcaf70011bb5b0d0c2a91fe989375e2a48cf70d2a0e47d45054cbe894",
+          "event_index": 29317
+        },
+        "7:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-7-EXTEND.trace.json.gz",
+          "sha256": "9fc00ec19cd9bfb35cfaf5456a4309628f311b078e9e54d916da69c3222d5199",
+          "event_index": 29317
+        }
+      }
+    },
+    {
+      "requirement_id": "profile-prefill-m16384-n3072-k512",
+      "evidence_kind": "sampled_CPU_operator_signature",
+      "stage": "prefill",
+      "inputs": {
+        "A": {
+          "shape": [
+            16384,
+            512
+          ],
+          "strides": [
+            512,
+            1
+          ],
+          "dtype": "bfloat16"
+        },
+        "B": {
+          "shape": [
+            3072,
+            512
+          ],
+          "strides": [
+            512,
+            1
+          ],
+          "dtype": "bfloat16"
+        }
+      },
+      "output_contract": {
+        "shape": [
+          16384,
+          3072
+        ],
+        "dtype": "bfloat16",
+        "basis": "operator semantics; actual strides/offset/alias and values require capture"
+      },
+      "scalar_evidence": {
+        "otype": "torch.bfloat16",
+        "profiler_dtype_enum": 15,
+        "other_optional_argument_observations": "empty profiler values; actual None/tensor identity must be captured"
+      },
+      "sampled_counts": {
+        "3:prefill": 168,
+        "2:prefill": 168,
+        "1:prefill": 168,
+        "4:prefill": 168,
+        "5:prefill": 168,
+        "0:prefill": 168,
+        "6:prefill": 168,
+        "7:prefill": 168
+      },
+      "examples": {
+        "3:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-3-EXTEND.trace.json.gz",
+          "sha256": "792076088ccf7a428df4997ca13bcab87f81ad931fc0b3e8663a5063186cb661",
+          "event_index": 29348
+        },
+        "2:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-2-EXTEND.trace.json.gz",
+          "sha256": "80296f1706c2a20f5a233e97ef6a149705ec5cc9b0631a1ab799e5ac16638a0b",
+          "event_index": 29348
+        },
+        "1:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-1-EXTEND.trace.json.gz",
+          "sha256": "d543918c67885508fbcc0a7244ab349c28b2e60e3d6efe129f3b494950d6206a",
+          "event_index": 29349
+        },
+        "4:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-4-EXTEND.trace.json.gz",
+          "sha256": "051d25243c00a0a3f03c5b3fae638bb5e77513eaa49ba1b6c6dc71e78ccab3ba",
+          "event_index": 29348
+        },
+        "5:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-5-EXTEND.trace.json.gz",
+          "sha256": "f98e9bc759028d71a39bee9ce7a133b38261c75e6fb40cb0a0573414d2c6d96d",
+          "event_index": 29348
+        },
+        "0:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-0-EXTEND.trace.json.gz",
+          "sha256": "a1ad83855acd4dd375a21ca512b86834fdcd448f34c5cc97967c73659eec6efa",
+          "event_index": 49923
+        },
+        "6:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-6-EXTEND.trace.json.gz",
+          "sha256": "2515834fcaf70011bb5b0d0c2a91fe989375e2a48cf70d2a0e47d45054cbe894",
+          "event_index": 29349
+        },
+        "7:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-7-EXTEND.trace.json.gz",
+          "sha256": "9fc00ec19cd9bfb35cfaf5456a4309628f311b078e9e54d916da69c3222d5199",
+          "event_index": 29349
+        }
+      }
+    },
+    {
+      "requirement_id": "profile-prefill-m16384-n1536-k7168",
+      "evidence_kind": "sampled_CPU_operator_signature",
+      "stage": "prefill",
+      "inputs": {
+        "A": {
+          "shape": [
+            16384,
+            7168
+          ],
+          "strides": [
+            7168,
+            1
+          ],
+          "dtype": "bfloat16"
+        },
+        "B": {
+          "shape": [
+            1536,
+            7168
+          ],
+          "strides": [
+            7168,
+            1
+          ],
+          "dtype": "bfloat16"
+        }
+      },
+      "output_contract": {
+        "shape": [
+          16384,
+          1536
+        ],
+        "dtype": "bfloat16",
+        "basis": "operator semantics; actual strides/offset/alias and values require capture"
+      },
+      "scalar_evidence": {
+        "otype": "torch.bfloat16",
+        "profiler_dtype_enum": 15,
+        "other_optional_argument_observations": "empty profiler values; actual None/tensor identity must be captured"
+      },
+      "sampled_counts": {
+        "3:prefill": 168,
+        "2:prefill": 168,
+        "1:prefill": 168,
+        "4:prefill": 168,
+        "5:prefill": 168,
+        "0:prefill": 168,
+        "6:prefill": 168,
+        "7:prefill": 168
+      },
+      "examples": {
+        "3:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-3-EXTEND.trace.json.gz",
+          "sha256": "792076088ccf7a428df4997ca13bcab87f81ad931fc0b3e8663a5063186cb661",
+          "event_index": 29386
+        },
+        "2:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-2-EXTEND.trace.json.gz",
+          "sha256": "80296f1706c2a20f5a233e97ef6a149705ec5cc9b0631a1ab799e5ac16638a0b",
+          "event_index": 29386
+        },
+        "1:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-1-EXTEND.trace.json.gz",
+          "sha256": "d543918c67885508fbcc0a7244ab349c28b2e60e3d6efe129f3b494950d6206a",
+          "event_index": 29387
+        },
+        "4:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-4-EXTEND.trace.json.gz",
+          "sha256": "051d25243c00a0a3f03c5b3fae638bb5e77513eaa49ba1b6c6dc71e78ccab3ba",
+          "event_index": 29386
+        },
+        "5:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-5-EXTEND.trace.json.gz",
+          "sha256": "f98e9bc759028d71a39bee9ce7a133b38261c75e6fb40cb0a0573414d2c6d96d",
+          "event_index": 29386
+        },
+        "0:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-0-EXTEND.trace.json.gz",
+          "sha256": "a1ad83855acd4dd375a21ca512b86834fdcd448f34c5cc97967c73659eec6efa",
+          "event_index": 49961
+        },
+        "6:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-6-EXTEND.trace.json.gz",
+          "sha256": "2515834fcaf70011bb5b0d0c2a91fe989375e2a48cf70d2a0e47d45054cbe894",
+          "event_index": 29387
+        },
+        "7:prefill": {
+          "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-7-EXTEND.trace.json.gz",
+          "sha256": "9fc00ec19cd9bfb35cfaf5456a4309628f311b078e9e54d916da69c3222d5199",
+          "event_index": 29387
+        }
+      }
+    }
+  ],
+  "decode_requirements": "Capture every actual decode ABI and graph bucket, including tail/batch variants. Decode GPU symbols do not establish missing CPU arguments.",
+  "intake_policy": "Retain every actual dense record in both families, including BF16/FP32 and distinct equal-shape records; reject unsupported layouts/controls visibly instead of dropping them. No hardcoded M8192 ceiling; sampled M16384 is required evidence.",
+  "required_metadata": [
+    "complete A/B/output dtype, shape, stride, storage_offset, storage_nbytes, alias and physical tensor attributes",
+    "all optional bias/otype/scale_a/scale_b/scale_c values, distinguishing absent from tensor",
+    "full selected get_GEMM_A16W16_config result, libtype, solidx and solMap callable identity",
+    "actual eager/graph origin, stage, active_requests, active_tokens, physical graph bucket and replay linkage",
+    "complete notified structural inventory and counts across all8 ranks; real representative bytes for each distinct record",
+    "finalized64-request workload and all8 rank stop receipts with byte hashes"
+  ],
+  "sample_limits": "One captured operand representative is not full tensor-value history or a distribution-extrema guarantee.",
+  "sampled_aten_evidence": {
+    "record_count": 28,
+    "scope": "These sampled ATen calls can be children of sampled native wrappers. Do not sum wrapper and ATen counts. New owner hook must suppress nested duplicates and retain independent direct calls.",
+    "records": [
+      {
+        "signature": {
+          "concrete_inputs": [
+            "",
+            ""
+          ],
+          "input_dims": [
+            [
+              8192,
+              7168
+            ],
+            [
+              7168,
+              6144
+            ]
+          ],
+          "input_strides": [
+            [
+              7168,
+              1
+            ],
+            [
+              1,
+              7168
+            ]
+          ],
+          "input_types": [
+            "c10::BFloat16",
+            "c10::BFloat16"
+          ],
+          "operator": "aten::mm"
+        },
+        "sampled_counts": {
+          "3:prefill": 69,
+          "2:prefill": 69,
+          "1:prefill": 69,
+          "4:prefill": 69,
+          "5:prefill": 69,
+          "0:prefill": 69,
+          "6:prefill": 69,
+          "7:prefill": 69
+        },
+        "examples": {
+          "3:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-3-EXTEND.trace.json.gz",
+            "sha256": "792076088ccf7a428df4997ca13bcab87f81ad931fc0b3e8663a5063186cb661",
+            "event_index": 134
+          },
+          "2:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-2-EXTEND.trace.json.gz",
+            "sha256": "80296f1706c2a20f5a233e97ef6a149705ec5cc9b0631a1ab799e5ac16638a0b",
+            "event_index": 134
+          },
+          "1:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-1-EXTEND.trace.json.gz",
+            "sha256": "d543918c67885508fbcc0a7244ab349c28b2e60e3d6efe129f3b494950d6206a",
+            "event_index": 135
+          },
+          "4:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-4-EXTEND.trace.json.gz",
+            "sha256": "051d25243c00a0a3f03c5b3fae638bb5e77513eaa49ba1b6c6dc71e78ccab3ba",
+            "event_index": 134
+          },
+          "5:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-5-EXTEND.trace.json.gz",
+            "sha256": "f98e9bc759028d71a39bee9ce7a133b38261c75e6fb40cb0a0573414d2c6d96d",
+            "event_index": 134
+          },
+          "0:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-0-EXTEND.trace.json.gz",
+            "sha256": "a1ad83855acd4dd375a21ca512b86834fdcd448f34c5cc97967c73659eec6efa",
+            "event_index": 134
+          },
+          "6:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-6-EXTEND.trace.json.gz",
+            "sha256": "2515834fcaf70011bb5b0d0c2a91fe989375e2a48cf70d2a0e47d45054cbe894",
+            "event_index": 135
+          },
+          "7:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-7-EXTEND.trace.json.gz",
+            "sha256": "9fc00ec19cd9bfb35cfaf5456a4309628f311b078e9e54d916da69c3222d5199",
+            "event_index": 135
+          }
+        }
+      },
+      {
+        "signature": {
+          "concrete_inputs": [
+            "",
+            ""
+          ],
+          "input_dims": [
+            [
+              8192,
+              7168
+            ],
+            [
+              7168,
+              144
+            ]
+          ],
+          "input_strides": [
+            [
+              7168,
+              1
+            ],
+            [
+              1,
+              7168
+            ]
+          ],
+          "input_types": [
+            "c10::BFloat16",
+            "c10::BFloat16"
+          ],
+          "operator": "aten::mm"
+        },
+        "sampled_counts": {
+          "3:prefill": 69,
+          "2:prefill": 69,
+          "1:prefill": 69,
+          "4:prefill": 69,
+          "5:prefill": 69,
+          "0:prefill": 69,
+          "6:prefill": 69,
+          "7:prefill": 69
+        },
+        "examples": {
+          "3:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-3-EXTEND.trace.json.gz",
+            "sha256": "792076088ccf7a428df4997ca13bcab87f81ad931fc0b3e8663a5063186cb661",
+            "event_index": 143
+          },
+          "2:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-2-EXTEND.trace.json.gz",
+            "sha256": "80296f1706c2a20f5a233e97ef6a149705ec5cc9b0631a1ab799e5ac16638a0b",
+            "event_index": 143
+          },
+          "1:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-1-EXTEND.trace.json.gz",
+            "sha256": "d543918c67885508fbcc0a7244ab349c28b2e60e3d6efe129f3b494950d6206a",
+            "event_index": 144
+          },
+          "4:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-4-EXTEND.trace.json.gz",
+            "sha256": "051d25243c00a0a3f03c5b3fae638bb5e77513eaa49ba1b6c6dc71e78ccab3ba",
+            "event_index": 143
+          },
+          "5:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-5-EXTEND.trace.json.gz",
+            "sha256": "f98e9bc759028d71a39bee9ce7a133b38261c75e6fb40cb0a0573414d2c6d96d",
+            "event_index": 143
+          },
+          "0:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-0-EXTEND.trace.json.gz",
+            "sha256": "a1ad83855acd4dd375a21ca512b86834fdcd448f34c5cc97967c73659eec6efa",
+            "event_index": 143
+          },
+          "6:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-6-EXTEND.trace.json.gz",
+            "sha256": "2515834fcaf70011bb5b0d0c2a91fe989375e2a48cf70d2a0e47d45054cbe894",
+            "event_index": 144
+          },
+          "7:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-7-EXTEND.trace.json.gz",
+            "sha256": "9fc00ec19cd9bfb35cfaf5456a4309628f311b078e9e54d916da69c3222d5199",
+            "event_index": 144
+          }
+        }
+      },
+      {
+        "signature": {
+          "concrete_inputs": [
+            "",
+            ""
+          ],
+          "input_dims": [
+            [
+              8192,
+              128
+            ],
+            [
+              128,
+              1536
+            ]
+          ],
+          "input_strides": [
+            [
+              144,
+              1
+            ],
+            [
+              1,
+              128
+            ]
+          ],
+          "input_types": [
+            "c10::BFloat16",
+            "c10::BFloat16"
+          ],
+          "operator": "aten::mm"
+        },
+        "sampled_counts": {
+          "3:prefill": 69,
+          "2:prefill": 69,
+          "1:prefill": 69,
+          "4:prefill": 69,
+          "5:prefill": 69,
+          "0:prefill": 69,
+          "6:prefill": 69,
+          "7:prefill": 69
+        },
+        "examples": {
+          "3:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-3-EXTEND.trace.json.gz",
+            "sha256": "792076088ccf7a428df4997ca13bcab87f81ad931fc0b3e8663a5063186cb661",
+            "event_index": 151
+          },
+          "2:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-2-EXTEND.trace.json.gz",
+            "sha256": "80296f1706c2a20f5a233e97ef6a149705ec5cc9b0631a1ab799e5ac16638a0b",
+            "event_index": 151
+          },
+          "1:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-1-EXTEND.trace.json.gz",
+            "sha256": "d543918c67885508fbcc0a7244ab349c28b2e60e3d6efe129f3b494950d6206a",
+            "event_index": 152
+          },
+          "4:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-4-EXTEND.trace.json.gz",
+            "sha256": "051d25243c00a0a3f03c5b3fae638bb5e77513eaa49ba1b6c6dc71e78ccab3ba",
+            "event_index": 151
+          },
+          "5:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-5-EXTEND.trace.json.gz",
+            "sha256": "f98e9bc759028d71a39bee9ce7a133b38261c75e6fb40cb0a0573414d2c6d96d",
+            "event_index": 151
+          },
+          "0:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-0-EXTEND.trace.json.gz",
+            "sha256": "a1ad83855acd4dd375a21ca512b86834fdcd448f34c5cc97967c73659eec6efa",
+            "event_index": 151
+          },
+          "6:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-6-EXTEND.trace.json.gz",
+            "sha256": "2515834fcaf70011bb5b0d0c2a91fe989375e2a48cf70d2a0e47d45054cbe894",
+            "event_index": 152
+          },
+          "7:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-7-EXTEND.trace.json.gz",
+            "sha256": "9fc00ec19cd9bfb35cfaf5456a4309628f311b078e9e54d916da69c3222d5199",
+            "event_index": 152
+          }
+        }
+      },
+      {
+        "signature": {
+          "concrete_inputs": [
+            "",
+            ""
+          ],
+          "input_dims": [
+            [
+              8192,
+              1536
+            ],
+            [
+              1536,
+              7168
+            ]
+          ],
+          "input_strides": [
+            [
+              1536,
+              1
+            ],
+            [
+              1,
+              1536
+            ]
+          ],
+          "input_types": [
+            "c10::BFloat16",
+            "c10::BFloat16"
+          ],
+          "operator": "aten::mm"
+        },
+        "sampled_counts": {
+          "3:prefill": 93,
+          "2:prefill": 93,
+          "1:prefill": 93,
+          "4:prefill": 93,
+          "5:prefill": 93,
+          "0:prefill": 93,
+          "6:prefill": 93,
+          "7:prefill": 93
+        },
+        "examples": {
+          "3:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-3-EXTEND.trace.json.gz",
+            "sha256": "792076088ccf7a428df4997ca13bcab87f81ad931fc0b3e8663a5063186cb661",
+            "event_index": 329
+          },
+          "2:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-2-EXTEND.trace.json.gz",
+            "sha256": "80296f1706c2a20f5a233e97ef6a149705ec5cc9b0631a1ab799e5ac16638a0b",
+            "event_index": 329
+          },
+          "1:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-1-EXTEND.trace.json.gz",
+            "sha256": "d543918c67885508fbcc0a7244ab349c28b2e60e3d6efe129f3b494950d6206a",
+            "event_index": 330
+          },
+          "4:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-4-EXTEND.trace.json.gz",
+            "sha256": "051d25243c00a0a3f03c5b3fae638bb5e77513eaa49ba1b6c6dc71e78ccab3ba",
+            "event_index": 329
+          },
+          "5:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-5-EXTEND.trace.json.gz",
+            "sha256": "f98e9bc759028d71a39bee9ce7a133b38261c75e6fb40cb0a0573414d2c6d96d",
+            "event_index": 329
+          },
+          "0:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-0-EXTEND.trace.json.gz",
+            "sha256": "a1ad83855acd4dd375a21ca512b86834fdcd448f34c5cc97967c73659eec6efa",
+            "event_index": 329
+          },
+          "6:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-6-EXTEND.trace.json.gz",
+            "sha256": "2515834fcaf70011bb5b0d0c2a91fe989375e2a48cf70d2a0e47d45054cbe894",
+            "event_index": 330
+          },
+          "7:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-7-EXTEND.trace.json.gz",
+            "sha256": "9fc00ec19cd9bfb35cfaf5456a4309628f311b078e9e54d916da69c3222d5199",
+            "event_index": 330
+          }
+        }
+      },
+      {
+        "signature": {
+          "concrete_inputs": [
+            "",
+            ""
+          ],
+          "input_dims": [
+            [
+              8192,
+              7168
+            ],
+            [
+              7168,
+              8448
+            ]
+          ],
+          "input_strides": [
+            [
+              7168,
+              1
+            ],
+            [
+              1,
+              7168
+            ]
+          ],
+          "input_types": [
+            "c10::BFloat16",
+            "c10::BFloat16"
+          ],
+          "operator": "aten::mm"
+        },
+        "sampled_counts": {
+          "3:prefill": 1,
+          "2:prefill": 1,
+          "1:prefill": 1,
+          "4:prefill": 1,
+          "5:prefill": 1,
+          "0:prefill": 1,
+          "6:prefill": 1,
+          "7:prefill": 1
+        },
+        "examples": {
+          "3:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-3-EXTEND.trace.json.gz",
+            "sha256": "792076088ccf7a428df4997ca13bcab87f81ad931fc0b3e8663a5063186cb661",
+            "event_index": 342
+          },
+          "2:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-2-EXTEND.trace.json.gz",
+            "sha256": "80296f1706c2a20f5a233e97ef6a149705ec5cc9b0631a1ab799e5ac16638a0b",
+            "event_index": 342
+          },
+          "1:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-1-EXTEND.trace.json.gz",
+            "sha256": "d543918c67885508fbcc0a7244ab349c28b2e60e3d6efe129f3b494950d6206a",
+            "event_index": 343
+          },
+          "4:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-4-EXTEND.trace.json.gz",
+            "sha256": "051d25243c00a0a3f03c5b3fae638bb5e77513eaa49ba1b6c6dc71e78ccab3ba",
+            "event_index": 342
+          },
+          "5:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-5-EXTEND.trace.json.gz",
+            "sha256": "f98e9bc759028d71a39bee9ce7a133b38261c75e6fb40cb0a0573414d2c6d96d",
+            "event_index": 342
+          },
+          "0:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-0-EXTEND.trace.json.gz",
+            "sha256": "a1ad83855acd4dd375a21ca512b86834fdcd448f34c5cc97967c73659eec6efa",
+            "event_index": 342
+          },
+          "6:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-6-EXTEND.trace.json.gz",
+            "sha256": "2515834fcaf70011bb5b0d0c2a91fe989375e2a48cf70d2a0e47d45054cbe894",
+            "event_index": 343
+          },
+          "7:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-7-EXTEND.trace.json.gz",
+            "sha256": "9fc00ec19cd9bfb35cfaf5456a4309628f311b078e9e54d916da69c3222d5199",
+            "event_index": 343
+          }
+        }
+      },
+      {
+        "signature": {
+          "concrete_inputs": [
+            "",
+            ""
+          ],
+          "input_dims": [
+            [
+              8192,
+              4224
+            ],
+            [
+              4224,
+              7168
+            ]
+          ],
+          "input_strides": [
+            [
+              4224,
+              1
+            ],
+            [
+              1,
+              4224
+            ]
+          ],
+          "input_types": [
+            "c10::BFloat16",
+            "c10::BFloat16"
+          ],
+          "operator": "aten::mm"
+        },
+        "sampled_counts": {
+          "3:prefill": 1,
+          "2:prefill": 1,
+          "1:prefill": 1,
+          "4:prefill": 1,
+          "5:prefill": 1,
+          "0:prefill": 1,
+          "6:prefill": 1,
+          "7:prefill": 1
+        },
+        "examples": {
+          "3:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-3-EXTEND.trace.json.gz",
+            "sha256": "792076088ccf7a428df4997ca13bcab87f81ad931fc0b3e8663a5063186cb661",
+            "event_index": 352
+          },
+          "2:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-2-EXTEND.trace.json.gz",
+            "sha256": "80296f1706c2a20f5a233e97ef6a149705ec5cc9b0631a1ab799e5ac16638a0b",
+            "event_index": 352
+          },
+          "1:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-1-EXTEND.trace.json.gz",
+            "sha256": "d543918c67885508fbcc0a7244ab349c28b2e60e3d6efe129f3b494950d6206a",
+            "event_index": 353
+          },
+          "4:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-4-EXTEND.trace.json.gz",
+            "sha256": "051d25243c00a0a3f03c5b3fae638bb5e77513eaa49ba1b6c6dc71e78ccab3ba",
+            "event_index": 352
+          },
+          "5:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-5-EXTEND.trace.json.gz",
+            "sha256": "f98e9bc759028d71a39bee9ce7a133b38261c75e6fb40cb0a0573414d2c6d96d",
+            "event_index": 352
+          },
+          "0:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-0-EXTEND.trace.json.gz",
+            "sha256": "a1ad83855acd4dd375a21ca512b86834fdcd448f34c5cc97967c73659eec6efa",
+            "event_index": 352
+          },
+          "6:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-6-EXTEND.trace.json.gz",
+            "sha256": "2515834fcaf70011bb5b0d0c2a91fe989375e2a48cf70d2a0e47d45054cbe894",
+            "event_index": 353
+          },
+          "7:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-7-EXTEND.trace.json.gz",
+            "sha256": "9fc00ec19cd9bfb35cfaf5456a4309628f311b078e9e54d916da69c3222d5199",
+            "event_index": 353
+          }
+        }
+      },
+      {
+        "signature": {
+          "concrete_inputs": [
+            "",
+            ""
+          ],
+          "input_dims": [
+            [
+              8192,
+              7168
+            ],
+            [
+              7168,
+              6016
+            ]
+          ],
+          "input_strides": [
+            [
+              7168,
+              1
+            ],
+            [
+              1,
+              7168
+            ]
+          ],
+          "input_types": [
+            "c10::BFloat16",
+            "c10::BFloat16"
+          ],
+          "operator": "aten::mm"
+        },
+        "sampled_counts": {
+          "3:prefill": 92,
+          "2:prefill": 92,
+          "1:prefill": 92,
+          "4:prefill": 92,
+          "5:prefill": 92,
+          "0:prefill": 92,
+          "6:prefill": 92,
+          "7:prefill": 92
+        },
+        "examples": {
+          "3:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-3-EXTEND.trace.json.gz",
+            "sha256": "792076088ccf7a428df4997ca13bcab87f81ad931fc0b3e8663a5063186cb661",
+            "event_index": 510
+          },
+          "2:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-2-EXTEND.trace.json.gz",
+            "sha256": "80296f1706c2a20f5a233e97ef6a149705ec5cc9b0631a1ab799e5ac16638a0b",
+            "event_index": 510
+          },
+          "1:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-1-EXTEND.trace.json.gz",
+            "sha256": "d543918c67885508fbcc0a7244ab349c28b2e60e3d6efe129f3b494950d6206a",
+            "event_index": 511
+          },
+          "4:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-4-EXTEND.trace.json.gz",
+            "sha256": "051d25243c00a0a3f03c5b3fae638bb5e77513eaa49ba1b6c6dc71e78ccab3ba",
+            "event_index": 510
+          },
+          "5:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-5-EXTEND.trace.json.gz",
+            "sha256": "f98e9bc759028d71a39bee9ce7a133b38261c75e6fb40cb0a0573414d2c6d96d",
+            "event_index": 510
+          },
+          "0:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-0-EXTEND.trace.json.gz",
+            "sha256": "a1ad83855acd4dd375a21ca512b86834fdcd448f34c5cc97967c73659eec6efa",
+            "event_index": 510
+          },
+          "6:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-6-EXTEND.trace.json.gz",
+            "sha256": "2515834fcaf70011bb5b0d0c2a91fe989375e2a48cf70d2a0e47d45054cbe894",
+            "event_index": 511
+          },
+          "7:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-7-EXTEND.trace.json.gz",
+            "sha256": "9fc00ec19cd9bfb35cfaf5456a4309628f311b078e9e54d916da69c3222d5199",
+            "event_index": 511
+          }
+        }
+      },
+      {
+        "signature": {
+          "concrete_inputs": [
+            "",
+            "",
+            ""
+          ],
+          "input_dims": [
+            [
+              8192,
+              768
+            ],
+            [
+              768,
+              7168
+            ],
+            [
+              8192,
+              7168
+            ]
+          ],
+          "input_strides": [
+            [
+              768,
+              1
+            ],
+            [
+              1,
+              768
+            ],
+            [
+              7168,
+              1
+            ]
+          ],
+          "input_types": [
+            "c10::BFloat16",
+            "c10::BFloat16",
+            "c10::BFloat16"
+          ],
+          "operator": "aten::mm"
+        },
+        "sampled_counts": {
+          "3:prefill": 92,
+          "2:prefill": 92,
+          "1:prefill": 92,
+          "4:prefill": 92,
+          "5:prefill": 92,
+          "0:prefill": 92,
+          "6:prefill": 92,
+          "7:prefill": 92
+        },
+        "examples": {
+          "3:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-3-EXTEND.trace.json.gz",
+            "sha256": "792076088ccf7a428df4997ca13bcab87f81ad931fc0b3e8663a5063186cb661",
+            "event_index": 535
+          },
+          "2:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-2-EXTEND.trace.json.gz",
+            "sha256": "80296f1706c2a20f5a233e97ef6a149705ec5cc9b0631a1ab799e5ac16638a0b",
+            "event_index": 535
+          },
+          "1:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-1-EXTEND.trace.json.gz",
+            "sha256": "d543918c67885508fbcc0a7244ab349c28b2e60e3d6efe129f3b494950d6206a",
+            "event_index": 536
+          },
+          "4:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-4-EXTEND.trace.json.gz",
+            "sha256": "051d25243c00a0a3f03c5b3fae638bb5e77513eaa49ba1b6c6dc71e78ccab3ba",
+            "event_index": 535
+          },
+          "5:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-5-EXTEND.trace.json.gz",
+            "sha256": "f98e9bc759028d71a39bee9ce7a133b38261c75e6fb40cb0a0573414d2c6d96d",
+            "event_index": 535
+          },
+          "0:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-0-EXTEND.trace.json.gz",
+            "sha256": "a1ad83855acd4dd375a21ca512b86834fdcd448f34c5cc97967c73659eec6efa",
+            "event_index": 535
+          },
+          "6:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-6-EXTEND.trace.json.gz",
+            "sha256": "2515834fcaf70011bb5b0d0c2a91fe989375e2a48cf70d2a0e47d45054cbe894",
+            "event_index": 536
+          },
+          "7:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-7-EXTEND.trace.json.gz",
+            "sha256": "9fc00ec19cd9bfb35cfaf5456a4309628f311b078e9e54d916da69c3222d5199",
+            "event_index": 536
+          }
+        }
+      },
+      {
+        "signature": {
+          "concrete_inputs": [
+            "",
+            ""
+          ],
+          "input_dims": [
+            [
+              8192,
+              3584
+            ],
+            [
+              3584,
+              7168
+            ]
+          ],
+          "input_strides": [
+            [
+              3584,
+              1
+            ],
+            [
+              1,
+              3584
+            ]
+          ],
+          "input_types": [
+            "c10::BFloat16",
+            "c10::BFloat16"
+          ],
+          "operator": "aten::mm"
+        },
+        "sampled_counts": {
+          "3:prefill": 92,
+          "2:prefill": 92,
+          "1:prefill": 92,
+          "4:prefill": 92,
+          "5:prefill": 92,
+          "0:prefill": 92,
+          "6:prefill": 92,
+          "7:prefill": 92
+        },
+        "examples": {
+          "3:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-3-EXTEND.trace.json.gz",
+            "sha256": "792076088ccf7a428df4997ca13bcab87f81ad931fc0b3e8663a5063186cb661",
+            "event_index": 656
+          },
+          "2:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-2-EXTEND.trace.json.gz",
+            "sha256": "80296f1706c2a20f5a233e97ef6a149705ec5cc9b0631a1ab799e5ac16638a0b",
+            "event_index": 656
+          },
+          "1:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-1-EXTEND.trace.json.gz",
+            "sha256": "d543918c67885508fbcc0a7244ab349c28b2e60e3d6efe129f3b494950d6206a",
+            "event_index": 657
+          },
+          "4:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-4-EXTEND.trace.json.gz",
+            "sha256": "051d25243c00a0a3f03c5b3fae638bb5e77513eaa49ba1b6c6dc71e78ccab3ba",
+            "event_index": 656
+          },
+          "5:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-5-EXTEND.trace.json.gz",
+            "sha256": "f98e9bc759028d71a39bee9ce7a133b38261c75e6fb40cb0a0573414d2c6d96d",
+            "event_index": 656
+          },
+          "0:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-0-EXTEND.trace.json.gz",
+            "sha256": "a1ad83855acd4dd375a21ca512b86834fdcd448f34c5cc97967c73659eec6efa",
+            "event_index": 3989
+          },
+          "6:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-6-EXTEND.trace.json.gz",
+            "sha256": "2515834fcaf70011bb5b0d0c2a91fe989375e2a48cf70d2a0e47d45054cbe894",
+            "event_index": 657
+          },
+          "7:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-7-EXTEND.trace.json.gz",
+            "sha256": "9fc00ec19cd9bfb35cfaf5456a4309628f311b078e9e54d916da69c3222d5199",
+            "event_index": 657
+          }
+        }
+      },
+      {
+        "signature": {
+          "concrete_inputs": [
+            "",
+            ""
+          ],
+          "input_dims": [
+            [
+              8192,
+              7168
+            ],
+            [
+              7168,
+              2112
+            ]
+          ],
+          "input_strides": [
+            [
+              7168,
+              1
+            ],
+            [
+              1,
+              7168
+            ]
+          ],
+          "input_types": [
+            "c10::BFloat16",
+            "c10::BFloat16"
+          ],
+          "operator": "aten::mm"
+        },
+        "sampled_counts": {
+          "3:prefill": 24,
+          "2:prefill": 24,
+          "1:prefill": 24,
+          "4:prefill": 24,
+          "5:prefill": 24,
+          "0:prefill": 24,
+          "6:prefill": 24,
+          "7:prefill": 24
+        },
+        "examples": {
+          "3:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-3-EXTEND.trace.json.gz",
+            "sha256": "792076088ccf7a428df4997ca13bcab87f81ad931fc0b3e8663a5063186cb661",
+            "event_index": 978
+          },
+          "2:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-2-EXTEND.trace.json.gz",
+            "sha256": "80296f1706c2a20f5a233e97ef6a149705ec5cc9b0631a1ab799e5ac16638a0b",
+            "event_index": 978
+          },
+          "1:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-1-EXTEND.trace.json.gz",
+            "sha256": "d543918c67885508fbcc0a7244ab349c28b2e60e3d6efe129f3b494950d6206a",
+            "event_index": 979
+          },
+          "4:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-4-EXTEND.trace.json.gz",
+            "sha256": "051d25243c00a0a3f03c5b3fae638bb5e77513eaa49ba1b6c6dc71e78ccab3ba",
+            "event_index": 978
+          },
+          "5:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-5-EXTEND.trace.json.gz",
+            "sha256": "f98e9bc759028d71a39bee9ce7a133b38261c75e6fb40cb0a0573414d2c6d96d",
+            "event_index": 978
+          },
+          "0:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-0-EXTEND.trace.json.gz",
+            "sha256": "a1ad83855acd4dd375a21ca512b86834fdcd448f34c5cc97967c73659eec6efa",
+            "event_index": 4487
+          },
+          "6:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-6-EXTEND.trace.json.gz",
+            "sha256": "2515834fcaf70011bb5b0d0c2a91fe989375e2a48cf70d2a0e47d45054cbe894",
+            "event_index": 979
+          },
+          "7:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-7-EXTEND.trace.json.gz",
+            "sha256": "9fc00ec19cd9bfb35cfaf5456a4309628f311b078e9e54d916da69c3222d5199",
+            "event_index": 979
+          }
+        }
+      },
+      {
+        "signature": {
+          "concrete_inputs": [
+            "",
+            ""
+          ],
+          "input_dims": [
+            [
+              8192,
+              1536
+            ],
+            [
+              1536,
+              2304
+            ]
+          ],
+          "input_strides": [
+            [
+              1536,
+              1
+            ],
+            [
+              1,
+              1536
+            ]
+          ],
+          "input_types": [
+            "c10::BFloat16",
+            "c10::BFloat16"
+          ],
+          "operator": "aten::mm"
+        },
+        "sampled_counts": {
+          "3:prefill": 24,
+          "2:prefill": 24,
+          "1:prefill": 24,
+          "4:prefill": 24,
+          "5:prefill": 24,
+          "0:prefill": 24,
+          "6:prefill": 24,
+          "7:prefill": 24
+        },
+        "examples": {
+          "3:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-3-EXTEND.trace.json.gz",
+            "sha256": "792076088ccf7a428df4997ca13bcab87f81ad931fc0b3e8663a5063186cb661",
+            "event_index": 997
+          },
+          "2:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-2-EXTEND.trace.json.gz",
+            "sha256": "80296f1706c2a20f5a233e97ef6a149705ec5cc9b0631a1ab799e5ac16638a0b",
+            "event_index": 997
+          },
+          "1:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-1-EXTEND.trace.json.gz",
+            "sha256": "d543918c67885508fbcc0a7244ab349c28b2e60e3d6efe129f3b494950d6206a",
+            "event_index": 998
+          },
+          "4:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-4-EXTEND.trace.json.gz",
+            "sha256": "051d25243c00a0a3f03c5b3fae638bb5e77513eaa49ba1b6c6dc71e78ccab3ba",
+            "event_index": 997
+          },
+          "5:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-5-EXTEND.trace.json.gz",
+            "sha256": "f98e9bc759028d71a39bee9ce7a133b38261c75e6fb40cb0a0573414d2c6d96d",
+            "event_index": 997
+          },
+          "0:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-0-EXTEND.trace.json.gz",
+            "sha256": "a1ad83855acd4dd375a21ca512b86834fdcd448f34c5cc97967c73659eec6efa",
+            "event_index": 4506
+          },
+          "6:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-6-EXTEND.trace.json.gz",
+            "sha256": "2515834fcaf70011bb5b0d0c2a91fe989375e2a48cf70d2a0e47d45054cbe894",
+            "event_index": 998
+          },
+          "7:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-7-EXTEND.trace.json.gz",
+            "sha256": "9fc00ec19cd9bfb35cfaf5456a4309628f311b078e9e54d916da69c3222d5199",
+            "event_index": 998
+          }
+        }
+      },
+      {
+        "signature": {
+          "concrete_inputs": [
+            "",
+            ""
+          ],
+          "input_dims": [
+            [
+              8192,
+              512
+            ],
+            [
+              512,
+              3072
+            ]
+          ],
+          "input_strides": [
+            [
+              512,
+              1
+            ],
+            [
+              1,
+              512
+            ]
+          ],
+          "input_types": [
+            "c10::BFloat16",
+            "c10::BFloat16"
+          ],
+          "operator": "aten::mm"
+        },
+        "sampled_counts": {
+          "3:prefill": 24,
+          "2:prefill": 24,
+          "1:prefill": 24,
+          "4:prefill": 24,
+          "5:prefill": 24,
+          "0:prefill": 24,
+          "6:prefill": 24,
+          "7:prefill": 24
+        },
+        "examples": {
+          "3:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-3-EXTEND.trace.json.gz",
+            "sha256": "792076088ccf7a428df4997ca13bcab87f81ad931fc0b3e8663a5063186cb661",
+            "event_index": 1029
+          },
+          "2:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-2-EXTEND.trace.json.gz",
+            "sha256": "80296f1706c2a20f5a233e97ef6a149705ec5cc9b0631a1ab799e5ac16638a0b",
+            "event_index": 1029
+          },
+          "1:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-1-EXTEND.trace.json.gz",
+            "sha256": "d543918c67885508fbcc0a7244ab349c28b2e60e3d6efe129f3b494950d6206a",
+            "event_index": 1030
+          },
+          "4:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-4-EXTEND.trace.json.gz",
+            "sha256": "051d25243c00a0a3f03c5b3fae638bb5e77513eaa49ba1b6c6dc71e78ccab3ba",
+            "event_index": 1029
+          },
+          "5:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-5-EXTEND.trace.json.gz",
+            "sha256": "f98e9bc759028d71a39bee9ce7a133b38261c75e6fb40cb0a0573414d2c6d96d",
+            "event_index": 1029
+          },
+          "0:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-0-EXTEND.trace.json.gz",
+            "sha256": "a1ad83855acd4dd375a21ca512b86834fdcd448f34c5cc97967c73659eec6efa",
+            "event_index": 4538
+          },
+          "6:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-6-EXTEND.trace.json.gz",
+            "sha256": "2515834fcaf70011bb5b0d0c2a91fe989375e2a48cf70d2a0e47d45054cbe894",
+            "event_index": 1030
+          },
+          "7:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-7-EXTEND.trace.json.gz",
+            "sha256": "9fc00ec19cd9bfb35cfaf5456a4309628f311b078e9e54d916da69c3222d5199",
+            "event_index": 1030
+          }
+        }
+      },
+      {
+        "signature": {
+          "concrete_inputs": [
+            "",
+            ""
+          ],
+          "input_dims": [
+            [
+              8192,
+              7168
+            ],
+            [
+              7168,
+              1536
+            ]
+          ],
+          "input_strides": [
+            [
+              7168,
+              1
+            ],
+            [
+              1,
+              7168
+            ]
+          ],
+          "input_types": [
+            "c10::BFloat16",
+            "c10::BFloat16"
+          ],
+          "operator": "aten::mm"
+        },
+        "sampled_counts": {
+          "3:prefill": 24,
+          "2:prefill": 24,
+          "1:prefill": 24,
+          "4:prefill": 24,
+          "5:prefill": 24,
+          "0:prefill": 24,
+          "6:prefill": 24,
+          "7:prefill": 24
+        },
+        "examples": {
+          "3:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-3-EXTEND.trace.json.gz",
+            "sha256": "792076088ccf7a428df4997ca13bcab87f81ad931fc0b3e8663a5063186cb661",
+            "event_index": 1067
+          },
+          "2:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-2-EXTEND.trace.json.gz",
+            "sha256": "80296f1706c2a20f5a233e97ef6a149705ec5cc9b0631a1ab799e5ac16638a0b",
+            "event_index": 1067
+          },
+          "1:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-1-EXTEND.trace.json.gz",
+            "sha256": "d543918c67885508fbcc0a7244ab349c28b2e60e3d6efe129f3b494950d6206a",
+            "event_index": 1068
+          },
+          "4:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-4-EXTEND.trace.json.gz",
+            "sha256": "051d25243c00a0a3f03c5b3fae638bb5e77513eaa49ba1b6c6dc71e78ccab3ba",
+            "event_index": 1067
+          },
+          "5:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-5-EXTEND.trace.json.gz",
+            "sha256": "f98e9bc759028d71a39bee9ce7a133b38261c75e6fb40cb0a0573414d2c6d96d",
+            "event_index": 1067
+          },
+          "0:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-0-EXTEND.trace.json.gz",
+            "sha256": "a1ad83855acd4dd375a21ca512b86834fdcd448f34c5cc97967c73659eec6efa",
+            "event_index": 4576
+          },
+          "6:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-6-EXTEND.trace.json.gz",
+            "sha256": "2515834fcaf70011bb5b0d0c2a91fe989375e2a48cf70d2a0e47d45054cbe894",
+            "event_index": 1068
+          },
+          "7:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-7-EXTEND.trace.json.gz",
+            "sha256": "9fc00ec19cd9bfb35cfaf5456a4309628f311b078e9e54d916da69c3222d5199",
+            "event_index": 1068
+          }
+        }
+      },
+      {
+        "signature": {
+          "concrete_inputs": [
+            "",
+            ""
+          ],
+          "input_dims": [
+            [
+              1,
+              7168
+            ],
+            [
+              7168,
+              20480
+            ]
+          ],
+          "input_strides": [
+            [
+              7168,
+              1
+            ],
+            [
+              1,
+              7168
+            ]
+          ],
+          "input_types": [
+            "c10::BFloat16",
+            "c10::BFloat16"
+          ],
+          "operator": "aten::mm"
+        },
+        "sampled_counts": {
+          "3:prefill": 1,
+          "2:prefill": 1,
+          "1:prefill": 1,
+          "4:prefill": 1,
+          "5:prefill": 1,
+          "0:prefill": 1,
+          "6:prefill": 1,
+          "7:prefill": 1
+        },
+        "examples": {
+          "3:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-3-EXTEND.trace.json.gz",
+            "sha256": "792076088ccf7a428df4997ca13bcab87f81ad931fc0b3e8663a5063186cb661",
+            "event_index": 27841
+          },
+          "2:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-2-EXTEND.trace.json.gz",
+            "sha256": "80296f1706c2a20f5a233e97ef6a149705ec5cc9b0631a1ab799e5ac16638a0b",
+            "event_index": 27841
+          },
+          "1:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-1-EXTEND.trace.json.gz",
+            "sha256": "d543918c67885508fbcc0a7244ab349c28b2e60e3d6efe129f3b494950d6206a",
+            "event_index": 27842
+          },
+          "4:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-4-EXTEND.trace.json.gz",
+            "sha256": "051d25243c00a0a3f03c5b3fae638bb5e77513eaa49ba1b6c6dc71e78ccab3ba",
+            "event_index": 27841
+          },
+          "5:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-5-EXTEND.trace.json.gz",
+            "sha256": "f98e9bc759028d71a39bee9ce7a133b38261c75e6fb40cb0a0573414d2c6d96d",
+            "event_index": 27841
+          },
+          "0:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-0-EXTEND.trace.json.gz",
+            "sha256": "a1ad83855acd4dd375a21ca512b86834fdcd448f34c5cc97967c73659eec6efa",
+            "event_index": 47190
+          },
+          "6:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-6-EXTEND.trace.json.gz",
+            "sha256": "2515834fcaf70011bb5b0d0c2a91fe989375e2a48cf70d2a0e47d45054cbe894",
+            "event_index": 27842
+          },
+          "7:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-7-EXTEND.trace.json.gz",
+            "sha256": "9fc00ec19cd9bfb35cfaf5456a4309628f311b078e9e54d916da69c3222d5199",
+            "event_index": 27842
+          }
+        }
+      },
+      {
+        "signature": {
+          "concrete_inputs": [
+            "",
+            ""
+          ],
+          "input_dims": [
+            [
+              16384,
+              7168
+            ],
+            [
+              7168,
+              6144
+            ]
+          ],
+          "input_strides": [
+            [
+              7168,
+              1
+            ],
+            [
+              1,
+              7168
+            ]
+          ],
+          "input_types": [
+            "c10::BFloat16",
+            "c10::BFloat16"
+          ],
+          "operator": "aten::mm"
+        },
+        "sampled_counts": {
+          "3:prefill": 483,
+          "2:prefill": 483,
+          "1:prefill": 483,
+          "4:prefill": 483,
+          "5:prefill": 483,
+          "0:prefill": 483,
+          "6:prefill": 483,
+          "7:prefill": 483
+        },
+        "examples": {
+          "3:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-3-EXTEND.trace.json.gz",
+            "sha256": "792076088ccf7a428df4997ca13bcab87f81ad931fc0b3e8663a5063186cb661",
+            "event_index": 28455
+          },
+          "2:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-2-EXTEND.trace.json.gz",
+            "sha256": "80296f1706c2a20f5a233e97ef6a149705ec5cc9b0631a1ab799e5ac16638a0b",
+            "event_index": 28455
+          },
+          "1:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-1-EXTEND.trace.json.gz",
+            "sha256": "d543918c67885508fbcc0a7244ab349c28b2e60e3d6efe129f3b494950d6206a",
+            "event_index": 28456
+          },
+          "4:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-4-EXTEND.trace.json.gz",
+            "sha256": "051d25243c00a0a3f03c5b3fae638bb5e77513eaa49ba1b6c6dc71e78ccab3ba",
+            "event_index": 28455
+          },
+          "5:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-5-EXTEND.trace.json.gz",
+            "sha256": "f98e9bc759028d71a39bee9ce7a133b38261c75e6fb40cb0a0573414d2c6d96d",
+            "event_index": 28455
+          },
+          "0:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-0-EXTEND.trace.json.gz",
+            "sha256": "a1ad83855acd4dd375a21ca512b86834fdcd448f34c5cc97967c73659eec6efa",
+            "event_index": 47798
+          },
+          "6:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-6-EXTEND.trace.json.gz",
+            "sha256": "2515834fcaf70011bb5b0d0c2a91fe989375e2a48cf70d2a0e47d45054cbe894",
+            "event_index": 28456
+          },
+          "7:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-7-EXTEND.trace.json.gz",
+            "sha256": "9fc00ec19cd9bfb35cfaf5456a4309628f311b078e9e54d916da69c3222d5199",
+            "event_index": 28456
+          }
+        }
+      },
+      {
+        "signature": {
+          "concrete_inputs": [
+            "",
+            ""
+          ],
+          "input_dims": [
+            [
+              16384,
+              7168
+            ],
+            [
+              7168,
+              144
+            ]
+          ],
+          "input_strides": [
+            [
+              7168,
+              1
+            ],
+            [
+              1,
+              7168
+            ]
+          ],
+          "input_types": [
+            "c10::BFloat16",
+            "c10::BFloat16"
+          ],
+          "operator": "aten::mm"
+        },
+        "sampled_counts": {
+          "3:prefill": 483,
+          "2:prefill": 483,
+          "1:prefill": 483,
+          "4:prefill": 483,
+          "5:prefill": 483,
+          "0:prefill": 483,
+          "6:prefill": 483,
+          "7:prefill": 483
+        },
+        "examples": {
+          "3:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-3-EXTEND.trace.json.gz",
+            "sha256": "792076088ccf7a428df4997ca13bcab87f81ad931fc0b3e8663a5063186cb661",
+            "event_index": 28464
+          },
+          "2:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-2-EXTEND.trace.json.gz",
+            "sha256": "80296f1706c2a20f5a233e97ef6a149705ec5cc9b0631a1ab799e5ac16638a0b",
+            "event_index": 28464
+          },
+          "1:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-1-EXTEND.trace.json.gz",
+            "sha256": "d543918c67885508fbcc0a7244ab349c28b2e60e3d6efe129f3b494950d6206a",
+            "event_index": 28465
+          },
+          "4:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-4-EXTEND.trace.json.gz",
+            "sha256": "051d25243c00a0a3f03c5b3fae638bb5e77513eaa49ba1b6c6dc71e78ccab3ba",
+            "event_index": 28464
+          },
+          "5:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-5-EXTEND.trace.json.gz",
+            "sha256": "f98e9bc759028d71a39bee9ce7a133b38261c75e6fb40cb0a0573414d2c6d96d",
+            "event_index": 28464
+          },
+          "0:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-0-EXTEND.trace.json.gz",
+            "sha256": "a1ad83855acd4dd375a21ca512b86834fdcd448f34c5cc97967c73659eec6efa",
+            "event_index": 47807
+          },
+          "6:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-6-EXTEND.trace.json.gz",
+            "sha256": "2515834fcaf70011bb5b0d0c2a91fe989375e2a48cf70d2a0e47d45054cbe894",
+            "event_index": 28465
+          },
+          "7:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-7-EXTEND.trace.json.gz",
+            "sha256": "9fc00ec19cd9bfb35cfaf5456a4309628f311b078e9e54d916da69c3222d5199",
+            "event_index": 28465
+          }
+        }
+      },
+      {
+        "signature": {
+          "concrete_inputs": [
+            "",
+            ""
+          ],
+          "input_dims": [
+            [
+              16384,
+              128
+            ],
+            [
+              128,
+              1536
+            ]
+          ],
+          "input_strides": [
+            [
+              144,
+              1
+            ],
+            [
+              1,
+              128
+            ]
+          ],
+          "input_types": [
+            "c10::BFloat16",
+            "c10::BFloat16"
+          ],
+          "operator": "aten::mm"
+        },
+        "sampled_counts": {
+          "3:prefill": 483,
+          "2:prefill": 483,
+          "1:prefill": 483,
+          "4:prefill": 483,
+          "5:prefill": 483,
+          "0:prefill": 483,
+          "6:prefill": 483,
+          "7:prefill": 483
+        },
+        "examples": {
+          "3:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-3-EXTEND.trace.json.gz",
+            "sha256": "792076088ccf7a428df4997ca13bcab87f81ad931fc0b3e8663a5063186cb661",
+            "event_index": 28472
+          },
+          "2:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-2-EXTEND.trace.json.gz",
+            "sha256": "80296f1706c2a20f5a233e97ef6a149705ec5cc9b0631a1ab799e5ac16638a0b",
+            "event_index": 28472
+          },
+          "1:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-1-EXTEND.trace.json.gz",
+            "sha256": "d543918c67885508fbcc0a7244ab349c28b2e60e3d6efe129f3b494950d6206a",
+            "event_index": 28473
+          },
+          "4:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-4-EXTEND.trace.json.gz",
+            "sha256": "051d25243c00a0a3f03c5b3fae638bb5e77513eaa49ba1b6c6dc71e78ccab3ba",
+            "event_index": 28472
+          },
+          "5:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-5-EXTEND.trace.json.gz",
+            "sha256": "f98e9bc759028d71a39bee9ce7a133b38261c75e6fb40cb0a0573414d2c6d96d",
+            "event_index": 28472
+          },
+          "0:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-0-EXTEND.trace.json.gz",
+            "sha256": "a1ad83855acd4dd375a21ca512b86834fdcd448f34c5cc97967c73659eec6efa",
+            "event_index": 47815
+          },
+          "6:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-6-EXTEND.trace.json.gz",
+            "sha256": "2515834fcaf70011bb5b0d0c2a91fe989375e2a48cf70d2a0e47d45054cbe894",
+            "event_index": 28473
+          },
+          "7:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-7-EXTEND.trace.json.gz",
+            "sha256": "9fc00ec19cd9bfb35cfaf5456a4309628f311b078e9e54d916da69c3222d5199",
+            "event_index": 28473
+          }
+        }
+      },
+      {
+        "signature": {
+          "concrete_inputs": [
+            "",
+            ""
+          ],
+          "input_dims": [
+            [
+              16384,
+              1536
+            ],
+            [
+              1536,
+              7168
+            ]
+          ],
+          "input_strides": [
+            [
+              1536,
+              1
+            ],
+            [
+              1,
+              1536
+            ]
+          ],
+          "input_types": [
+            "c10::BFloat16",
+            "c10::BFloat16"
+          ],
+          "operator": "aten::mm"
+        },
+        "sampled_counts": {
+          "3:prefill": 651,
+          "2:prefill": 651,
+          "1:prefill": 651,
+          "4:prefill": 651,
+          "5:prefill": 651,
+          "0:prefill": 651,
+          "6:prefill": 651,
+          "7:prefill": 651
+        },
+        "examples": {
+          "3:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-3-EXTEND.trace.json.gz",
+            "sha256": "792076088ccf7a428df4997ca13bcab87f81ad931fc0b3e8663a5063186cb661",
+            "event_index": 28654
+          },
+          "2:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-2-EXTEND.trace.json.gz",
+            "sha256": "80296f1706c2a20f5a233e97ef6a149705ec5cc9b0631a1ab799e5ac16638a0b",
+            "event_index": 28654
+          },
+          "1:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-1-EXTEND.trace.json.gz",
+            "sha256": "d543918c67885508fbcc0a7244ab349c28b2e60e3d6efe129f3b494950d6206a",
+            "event_index": 28655
+          },
+          "4:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-4-EXTEND.trace.json.gz",
+            "sha256": "051d25243c00a0a3f03c5b3fae638bb5e77513eaa49ba1b6c6dc71e78ccab3ba",
+            "event_index": 28654
+          },
+          "5:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-5-EXTEND.trace.json.gz",
+            "sha256": "f98e9bc759028d71a39bee9ce7a133b38261c75e6fb40cb0a0573414d2c6d96d",
+            "event_index": 28654
+          },
+          "0:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-0-EXTEND.trace.json.gz",
+            "sha256": "a1ad83855acd4dd375a21ca512b86834fdcd448f34c5cc97967c73659eec6efa",
+            "event_index": 47997
+          },
+          "6:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-6-EXTEND.trace.json.gz",
+            "sha256": "2515834fcaf70011bb5b0d0c2a91fe989375e2a48cf70d2a0e47d45054cbe894",
+            "event_index": 28655
+          },
+          "7:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-7-EXTEND.trace.json.gz",
+            "sha256": "9fc00ec19cd9bfb35cfaf5456a4309628f311b078e9e54d916da69c3222d5199",
+            "event_index": 28655
+          }
+        }
+      },
+      {
+        "signature": {
+          "concrete_inputs": [
+            "",
+            ""
+          ],
+          "input_dims": [
+            [
+              16384,
+              7168
+            ],
+            [
+              7168,
+              8448
+            ]
+          ],
+          "input_strides": [
+            [
+              7168,
+              1
+            ],
+            [
+              1,
+              7168
+            ]
+          ],
+          "input_types": [
+            "c10::BFloat16",
+            "c10::BFloat16"
+          ],
+          "operator": "aten::mm"
+        },
+        "sampled_counts": {
+          "3:prefill": 7,
+          "2:prefill": 7,
+          "1:prefill": 7,
+          "4:prefill": 7,
+          "5:prefill": 7,
+          "0:prefill": 7,
+          "6:prefill": 7,
+          "7:prefill": 7
+        },
+        "examples": {
+          "3:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-3-EXTEND.trace.json.gz",
+            "sha256": "792076088ccf7a428df4997ca13bcab87f81ad931fc0b3e8663a5063186cb661",
+            "event_index": 28667
+          },
+          "2:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-2-EXTEND.trace.json.gz",
+            "sha256": "80296f1706c2a20f5a233e97ef6a149705ec5cc9b0631a1ab799e5ac16638a0b",
+            "event_index": 28667
+          },
+          "1:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-1-EXTEND.trace.json.gz",
+            "sha256": "d543918c67885508fbcc0a7244ab349c28b2e60e3d6efe129f3b494950d6206a",
+            "event_index": 28668
+          },
+          "4:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-4-EXTEND.trace.json.gz",
+            "sha256": "051d25243c00a0a3f03c5b3fae638bb5e77513eaa49ba1b6c6dc71e78ccab3ba",
+            "event_index": 28667
+          },
+          "5:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-5-EXTEND.trace.json.gz",
+            "sha256": "f98e9bc759028d71a39bee9ce7a133b38261c75e6fb40cb0a0573414d2c6d96d",
+            "event_index": 28667
+          },
+          "0:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-0-EXTEND.trace.json.gz",
+            "sha256": "a1ad83855acd4dd375a21ca512b86834fdcd448f34c5cc97967c73659eec6efa",
+            "event_index": 48010
+          },
+          "6:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-6-EXTEND.trace.json.gz",
+            "sha256": "2515834fcaf70011bb5b0d0c2a91fe989375e2a48cf70d2a0e47d45054cbe894",
+            "event_index": 28668
+          },
+          "7:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-7-EXTEND.trace.json.gz",
+            "sha256": "9fc00ec19cd9bfb35cfaf5456a4309628f311b078e9e54d916da69c3222d5199",
+            "event_index": 28668
+          }
+        }
+      },
+      {
+        "signature": {
+          "concrete_inputs": [
+            "",
+            ""
+          ],
+          "input_dims": [
+            [
+              16384,
+              4224
+            ],
+            [
+              4224,
+              7168
+            ]
+          ],
+          "input_strides": [
+            [
+              4224,
+              1
+            ],
+            [
+              1,
+              4224
+            ]
+          ],
+          "input_types": [
+            "c10::BFloat16",
+            "c10::BFloat16"
+          ],
+          "operator": "aten::mm"
+        },
+        "sampled_counts": {
+          "3:prefill": 7,
+          "2:prefill": 7,
+          "1:prefill": 7,
+          "4:prefill": 7,
+          "5:prefill": 7,
+          "0:prefill": 7,
+          "6:prefill": 7,
+          "7:prefill": 7
+        },
+        "examples": {
+          "3:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-3-EXTEND.trace.json.gz",
+            "sha256": "792076088ccf7a428df4997ca13bcab87f81ad931fc0b3e8663a5063186cb661",
+            "event_index": 28677
+          },
+          "2:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-2-EXTEND.trace.json.gz",
+            "sha256": "80296f1706c2a20f5a233e97ef6a149705ec5cc9b0631a1ab799e5ac16638a0b",
+            "event_index": 28677
+          },
+          "1:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-1-EXTEND.trace.json.gz",
+            "sha256": "d543918c67885508fbcc0a7244ab349c28b2e60e3d6efe129f3b494950d6206a",
+            "event_index": 28678
+          },
+          "4:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-4-EXTEND.trace.json.gz",
+            "sha256": "051d25243c00a0a3f03c5b3fae638bb5e77513eaa49ba1b6c6dc71e78ccab3ba",
+            "event_index": 28677
+          },
+          "5:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-5-EXTEND.trace.json.gz",
+            "sha256": "f98e9bc759028d71a39bee9ce7a133b38261c75e6fb40cb0a0573414d2c6d96d",
+            "event_index": 28677
+          },
+          "0:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-0-EXTEND.trace.json.gz",
+            "sha256": "a1ad83855acd4dd375a21ca512b86834fdcd448f34c5cc97967c73659eec6efa",
+            "event_index": 48020
+          },
+          "6:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-6-EXTEND.trace.json.gz",
+            "sha256": "2515834fcaf70011bb5b0d0c2a91fe989375e2a48cf70d2a0e47d45054cbe894",
+            "event_index": 28678
+          },
+          "7:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-7-EXTEND.trace.json.gz",
+            "sha256": "9fc00ec19cd9bfb35cfaf5456a4309628f311b078e9e54d916da69c3222d5199",
+            "event_index": 28678
+          }
+        }
+      },
+      {
+        "signature": {
+          "concrete_inputs": [
+            "",
+            ""
+          ],
+          "input_dims": [
+            [
+              16384,
+              7168
+            ],
+            [
+              7168,
+              6016
+            ]
+          ],
+          "input_strides": [
+            [
+              7168,
+              1
+            ],
+            [
+              1,
+              7168
+            ]
+          ],
+          "input_types": [
+            "c10::BFloat16",
+            "c10::BFloat16"
+          ],
+          "operator": "aten::mm"
+        },
+        "sampled_counts": {
+          "3:prefill": 644,
+          "2:prefill": 644,
+          "1:prefill": 644,
+          "4:prefill": 644,
+          "5:prefill": 644,
+          "0:prefill": 644,
+          "6:prefill": 644,
+          "7:prefill": 644
+        },
+        "examples": {
+          "3:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-3-EXTEND.trace.json.gz",
+            "sha256": "792076088ccf7a428df4997ca13bcab87f81ad931fc0b3e8663a5063186cb661",
+            "event_index": 28835
+          },
+          "2:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-2-EXTEND.trace.json.gz",
+            "sha256": "80296f1706c2a20f5a233e97ef6a149705ec5cc9b0631a1ab799e5ac16638a0b",
+            "event_index": 28835
+          },
+          "1:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-1-EXTEND.trace.json.gz",
+            "sha256": "d543918c67885508fbcc0a7244ab349c28b2e60e3d6efe129f3b494950d6206a",
+            "event_index": 28836
+          },
+          "4:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-4-EXTEND.trace.json.gz",
+            "sha256": "051d25243c00a0a3f03c5b3fae638bb5e77513eaa49ba1b6c6dc71e78ccab3ba",
+            "event_index": 28835
+          },
+          "5:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-5-EXTEND.trace.json.gz",
+            "sha256": "f98e9bc759028d71a39bee9ce7a133b38261c75e6fb40cb0a0573414d2c6d96d",
+            "event_index": 28835
+          },
+          "0:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-0-EXTEND.trace.json.gz",
+            "sha256": "a1ad83855acd4dd375a21ca512b86834fdcd448f34c5cc97967c73659eec6efa",
+            "event_index": 48178
+          },
+          "6:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-6-EXTEND.trace.json.gz",
+            "sha256": "2515834fcaf70011bb5b0d0c2a91fe989375e2a48cf70d2a0e47d45054cbe894",
+            "event_index": 28836
+          },
+          "7:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-7-EXTEND.trace.json.gz",
+            "sha256": "9fc00ec19cd9bfb35cfaf5456a4309628f311b078e9e54d916da69c3222d5199",
+            "event_index": 28836
+          }
+        }
+      },
+      {
+        "signature": {
+          "concrete_inputs": [
+            "",
+            "",
+            ""
+          ],
+          "input_dims": [
+            [
+              16384,
+              768
+            ],
+            [
+              768,
+              7168
+            ],
+            [
+              16384,
+              7168
+            ]
+          ],
+          "input_strides": [
+            [
+              768,
+              1
+            ],
+            [
+              1,
+              768
+            ],
+            [
+              7168,
+              1
+            ]
+          ],
+          "input_types": [
+            "c10::BFloat16",
+            "c10::BFloat16",
+            "c10::BFloat16"
+          ],
+          "operator": "aten::mm"
+        },
+        "sampled_counts": {
+          "3:prefill": 644,
+          "2:prefill": 644,
+          "1:prefill": 644,
+          "4:prefill": 644,
+          "5:prefill": 644,
+          "0:prefill": 644,
+          "6:prefill": 644,
+          "7:prefill": 644
+        },
+        "examples": {
+          "3:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-3-EXTEND.trace.json.gz",
+            "sha256": "792076088ccf7a428df4997ca13bcab87f81ad931fc0b3e8663a5063186cb661",
+            "event_index": 28860
+          },
+          "2:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-2-EXTEND.trace.json.gz",
+            "sha256": "80296f1706c2a20f5a233e97ef6a149705ec5cc9b0631a1ab799e5ac16638a0b",
+            "event_index": 28860
+          },
+          "1:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-1-EXTEND.trace.json.gz",
+            "sha256": "d543918c67885508fbcc0a7244ab349c28b2e60e3d6efe129f3b494950d6206a",
+            "event_index": 28861
+          },
+          "4:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-4-EXTEND.trace.json.gz",
+            "sha256": "051d25243c00a0a3f03c5b3fae638bb5e77513eaa49ba1b6c6dc71e78ccab3ba",
+            "event_index": 28860
+          },
+          "5:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-5-EXTEND.trace.json.gz",
+            "sha256": "f98e9bc759028d71a39bee9ce7a133b38261c75e6fb40cb0a0573414d2c6d96d",
+            "event_index": 28860
+          },
+          "0:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-0-EXTEND.trace.json.gz",
+            "sha256": "a1ad83855acd4dd375a21ca512b86834fdcd448f34c5cc97967c73659eec6efa",
+            "event_index": 48203
+          },
+          "6:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-6-EXTEND.trace.json.gz",
+            "sha256": "2515834fcaf70011bb5b0d0c2a91fe989375e2a48cf70d2a0e47d45054cbe894",
+            "event_index": 28861
+          },
+          "7:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-7-EXTEND.trace.json.gz",
+            "sha256": "9fc00ec19cd9bfb35cfaf5456a4309628f311b078e9e54d916da69c3222d5199",
+            "event_index": 28861
+          }
+        }
+      },
+      {
+        "signature": {
+          "concrete_inputs": [
+            "",
+            ""
+          ],
+          "input_dims": [
+            [
+              16384,
+              3584
+            ],
+            [
+              3584,
+              7168
+            ]
+          ],
+          "input_strides": [
+            [
+              3584,
+              1
+            ],
+            [
+              1,
+              3584
+            ]
+          ],
+          "input_types": [
+            "c10::BFloat16",
+            "c10::BFloat16"
+          ],
+          "operator": "aten::mm"
+        },
+        "sampled_counts": {
+          "3:prefill": 644,
+          "2:prefill": 644,
+          "1:prefill": 644,
+          "4:prefill": 644,
+          "5:prefill": 644,
+          "0:prefill": 644,
+          "6:prefill": 644,
+          "7:prefill": 644
+        },
+        "examples": {
+          "3:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-3-EXTEND.trace.json.gz",
+            "sha256": "792076088ccf7a428df4997ca13bcab87f81ad931fc0b3e8663a5063186cb661",
+            "event_index": 28981
+          },
+          "2:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-2-EXTEND.trace.json.gz",
+            "sha256": "80296f1706c2a20f5a233e97ef6a149705ec5cc9b0631a1ab799e5ac16638a0b",
+            "event_index": 28981
+          },
+          "1:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-1-EXTEND.trace.json.gz",
+            "sha256": "d543918c67885508fbcc0a7244ab349c28b2e60e3d6efe129f3b494950d6206a",
+            "event_index": 28982
+          },
+          "4:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-4-EXTEND.trace.json.gz",
+            "sha256": "051d25243c00a0a3f03c5b3fae638bb5e77513eaa49ba1b6c6dc71e78ccab3ba",
+            "event_index": 28981
+          },
+          "5:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-5-EXTEND.trace.json.gz",
+            "sha256": "f98e9bc759028d71a39bee9ce7a133b38261c75e6fb40cb0a0573414d2c6d96d",
+            "event_index": 28981
+          },
+          "0:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-0-EXTEND.trace.json.gz",
+            "sha256": "a1ad83855acd4dd375a21ca512b86834fdcd448f34c5cc97967c73659eec6efa",
+            "event_index": 49380
+          },
+          "6:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-6-EXTEND.trace.json.gz",
+            "sha256": "2515834fcaf70011bb5b0d0c2a91fe989375e2a48cf70d2a0e47d45054cbe894",
+            "event_index": 28982
+          },
+          "7:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-7-EXTEND.trace.json.gz",
+            "sha256": "9fc00ec19cd9bfb35cfaf5456a4309628f311b078e9e54d916da69c3222d5199",
+            "event_index": 28982
+          }
+        }
+      },
+      {
+        "signature": {
+          "concrete_inputs": [
+            "",
+            ""
+          ],
+          "input_dims": [
+            [
+              16384,
+              7168
+            ],
+            [
+              7168,
+              2112
+            ]
+          ],
+          "input_strides": [
+            [
+              7168,
+              1
+            ],
+            [
+              1,
+              7168
+            ]
+          ],
+          "input_types": [
+            "c10::BFloat16",
+            "c10::BFloat16"
+          ],
+          "operator": "aten::mm"
+        },
+        "sampled_counts": {
+          "3:prefill": 168,
+          "2:prefill": 168,
+          "1:prefill": 168,
+          "4:prefill": 168,
+          "5:prefill": 168,
+          "0:prefill": 168,
+          "6:prefill": 168,
+          "7:prefill": 168
+        },
+        "examples": {
+          "3:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-3-EXTEND.trace.json.gz",
+            "sha256": "792076088ccf7a428df4997ca13bcab87f81ad931fc0b3e8663a5063186cb661",
+            "event_index": 29303
+          },
+          "2:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-2-EXTEND.trace.json.gz",
+            "sha256": "80296f1706c2a20f5a233e97ef6a149705ec5cc9b0631a1ab799e5ac16638a0b",
+            "event_index": 29303
+          },
+          "1:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-1-EXTEND.trace.json.gz",
+            "sha256": "d543918c67885508fbcc0a7244ab349c28b2e60e3d6efe129f3b494950d6206a",
+            "event_index": 29304
+          },
+          "4:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-4-EXTEND.trace.json.gz",
+            "sha256": "051d25243c00a0a3f03c5b3fae638bb5e77513eaa49ba1b6c6dc71e78ccab3ba",
+            "event_index": 29303
+          },
+          "5:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-5-EXTEND.trace.json.gz",
+            "sha256": "f98e9bc759028d71a39bee9ce7a133b38261c75e6fb40cb0a0573414d2c6d96d",
+            "event_index": 29303
+          },
+          "0:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-0-EXTEND.trace.json.gz",
+            "sha256": "a1ad83855acd4dd375a21ca512b86834fdcd448f34c5cc97967c73659eec6efa",
+            "event_index": 49878
+          },
+          "6:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-6-EXTEND.trace.json.gz",
+            "sha256": "2515834fcaf70011bb5b0d0c2a91fe989375e2a48cf70d2a0e47d45054cbe894",
+            "event_index": 29304
+          },
+          "7:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-7-EXTEND.trace.json.gz",
+            "sha256": "9fc00ec19cd9bfb35cfaf5456a4309628f311b078e9e54d916da69c3222d5199",
+            "event_index": 29304
+          }
+        }
+      },
+      {
+        "signature": {
+          "concrete_inputs": [
+            "",
+            ""
+          ],
+          "input_dims": [
+            [
+              16384,
+              1536
+            ],
+            [
+              1536,
+              2304
+            ]
+          ],
+          "input_strides": [
+            [
+              1536,
+              1
+            ],
+            [
+              1,
+              1536
+            ]
+          ],
+          "input_types": [
+            "c10::BFloat16",
+            "c10::BFloat16"
+          ],
+          "operator": "aten::mm"
+        },
+        "sampled_counts": {
+          "3:prefill": 168,
+          "2:prefill": 168,
+          "1:prefill": 168,
+          "4:prefill": 168,
+          "5:prefill": 168,
+          "0:prefill": 168,
+          "6:prefill": 168,
+          "7:prefill": 168
+        },
+        "examples": {
+          "3:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-3-EXTEND.trace.json.gz",
+            "sha256": "792076088ccf7a428df4997ca13bcab87f81ad931fc0b3e8663a5063186cb661",
+            "event_index": 29322
+          },
+          "2:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-2-EXTEND.trace.json.gz",
+            "sha256": "80296f1706c2a20f5a233e97ef6a149705ec5cc9b0631a1ab799e5ac16638a0b",
+            "event_index": 29322
+          },
+          "1:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-1-EXTEND.trace.json.gz",
+            "sha256": "d543918c67885508fbcc0a7244ab349c28b2e60e3d6efe129f3b494950d6206a",
+            "event_index": 29323
+          },
+          "4:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-4-EXTEND.trace.json.gz",
+            "sha256": "051d25243c00a0a3f03c5b3fae638bb5e77513eaa49ba1b6c6dc71e78ccab3ba",
+            "event_index": 29322
+          },
+          "5:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-5-EXTEND.trace.json.gz",
+            "sha256": "f98e9bc759028d71a39bee9ce7a133b38261c75e6fb40cb0a0573414d2c6d96d",
+            "event_index": 29322
+          },
+          "0:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-0-EXTEND.trace.json.gz",
+            "sha256": "a1ad83855acd4dd375a21ca512b86834fdcd448f34c5cc97967c73659eec6efa",
+            "event_index": 49897
+          },
+          "6:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-6-EXTEND.trace.json.gz",
+            "sha256": "2515834fcaf70011bb5b0d0c2a91fe989375e2a48cf70d2a0e47d45054cbe894",
+            "event_index": 29323
+          },
+          "7:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-7-EXTEND.trace.json.gz",
+            "sha256": "9fc00ec19cd9bfb35cfaf5456a4309628f311b078e9e54d916da69c3222d5199",
+            "event_index": 29323
+          }
+        }
+      },
+      {
+        "signature": {
+          "concrete_inputs": [
+            "",
+            ""
+          ],
+          "input_dims": [
+            [
+              16384,
+              512
+            ],
+            [
+              512,
+              3072
+            ]
+          ],
+          "input_strides": [
+            [
+              512,
+              1
+            ],
+            [
+              1,
+              512
+            ]
+          ],
+          "input_types": [
+            "c10::BFloat16",
+            "c10::BFloat16"
+          ],
+          "operator": "aten::mm"
+        },
+        "sampled_counts": {
+          "3:prefill": 168,
+          "2:prefill": 168,
+          "1:prefill": 168,
+          "4:prefill": 168,
+          "5:prefill": 168,
+          "0:prefill": 168,
+          "6:prefill": 168,
+          "7:prefill": 168
+        },
+        "examples": {
+          "3:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-3-EXTEND.trace.json.gz",
+            "sha256": "792076088ccf7a428df4997ca13bcab87f81ad931fc0b3e8663a5063186cb661",
+            "event_index": 29354
+          },
+          "2:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-2-EXTEND.trace.json.gz",
+            "sha256": "80296f1706c2a20f5a233e97ef6a149705ec5cc9b0631a1ab799e5ac16638a0b",
+            "event_index": 29354
+          },
+          "1:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-1-EXTEND.trace.json.gz",
+            "sha256": "d543918c67885508fbcc0a7244ab349c28b2e60e3d6efe129f3b494950d6206a",
+            "event_index": 29355
+          },
+          "4:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-4-EXTEND.trace.json.gz",
+            "sha256": "051d25243c00a0a3f03c5b3fae638bb5e77513eaa49ba1b6c6dc71e78ccab3ba",
+            "event_index": 29354
+          },
+          "5:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-5-EXTEND.trace.json.gz",
+            "sha256": "f98e9bc759028d71a39bee9ce7a133b38261c75e6fb40cb0a0573414d2c6d96d",
+            "event_index": 29354
+          },
+          "0:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-0-EXTEND.trace.json.gz",
+            "sha256": "a1ad83855acd4dd375a21ca512b86834fdcd448f34c5cc97967c73659eec6efa",
+            "event_index": 49929
+          },
+          "6:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-6-EXTEND.trace.json.gz",
+            "sha256": "2515834fcaf70011bb5b0d0c2a91fe989375e2a48cf70d2a0e47d45054cbe894",
+            "event_index": 29355
+          },
+          "7:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-7-EXTEND.trace.json.gz",
+            "sha256": "9fc00ec19cd9bfb35cfaf5456a4309628f311b078e9e54d916da69c3222d5199",
+            "event_index": 29355
+          }
+        }
+      },
+      {
+        "signature": {
+          "concrete_inputs": [
+            "",
+            ""
+          ],
+          "input_dims": [
+            [
+              16384,
+              7168
+            ],
+            [
+              7168,
+              1536
+            ]
+          ],
+          "input_strides": [
+            [
+              7168,
+              1
+            ],
+            [
+              1,
+              7168
+            ]
+          ],
+          "input_types": [
+            "c10::BFloat16",
+            "c10::BFloat16"
+          ],
+          "operator": "aten::mm"
+        },
+        "sampled_counts": {
+          "3:prefill": 168,
+          "2:prefill": 168,
+          "1:prefill": 168,
+          "4:prefill": 168,
+          "5:prefill": 168,
+          "0:prefill": 168,
+          "6:prefill": 168,
+          "7:prefill": 168
+        },
+        "examples": {
+          "3:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-3-EXTEND.trace.json.gz",
+            "sha256": "792076088ccf7a428df4997ca13bcab87f81ad931fc0b3e8663a5063186cb661",
+            "event_index": 29392
+          },
+          "2:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-2-EXTEND.trace.json.gz",
+            "sha256": "80296f1706c2a20f5a233e97ef6a149705ec5cc9b0631a1ab799e5ac16638a0b",
+            "event_index": 29392
+          },
+          "1:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-1-EXTEND.trace.json.gz",
+            "sha256": "d543918c67885508fbcc0a7244ab349c28b2e60e3d6efe129f3b494950d6206a",
+            "event_index": 29393
+          },
+          "4:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-4-EXTEND.trace.json.gz",
+            "sha256": "051d25243c00a0a3f03c5b3fae638bb5e77513eaa49ba1b6c6dc71e78ccab3ba",
+            "event_index": 29392
+          },
+          "5:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-5-EXTEND.trace.json.gz",
+            "sha256": "f98e9bc759028d71a39bee9ce7a133b38261c75e6fb40cb0a0573414d2c6d96d",
+            "event_index": 29392
+          },
+          "0:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-0-EXTEND.trace.json.gz",
+            "sha256": "a1ad83855acd4dd375a21ca512b86834fdcd448f34c5cc97967c73659eec6efa",
+            "event_index": 49967
+          },
+          "6:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-6-EXTEND.trace.json.gz",
+            "sha256": "2515834fcaf70011bb5b0d0c2a91fe989375e2a48cf70d2a0e47d45054cbe894",
+            "event_index": 29393
+          },
+          "7:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-7-EXTEND.trace.json.gz",
+            "sha256": "9fc00ec19cd9bfb35cfaf5456a4309628f311b078e9e54d916da69c3222d5199",
+            "event_index": 29393
+          }
+        }
+      },
+      {
+        "signature": {
+          "concrete_inputs": [
+            "",
+            ""
+          ],
+          "input_dims": [
+            [
+              2,
+              7168
+            ],
+            [
+              7168,
+              20480
+            ]
+          ],
+          "input_strides": [
+            [
+              7168,
+              1
+            ],
+            [
+              1,
+              7168
+            ]
+          ],
+          "input_types": [
+            "c10::BFloat16",
+            "c10::BFloat16"
+          ],
+          "operator": "aten::mm"
+        },
+        "sampled_counts": {
+          "3:prefill": 7,
+          "2:prefill": 7,
+          "1:prefill": 7,
+          "4:prefill": 7,
+          "5:prefill": 7,
+          "0:prefill": 7,
+          "6:prefill": 7,
+          "7:prefill": 7
+        },
+        "examples": {
+          "3:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-3-EXTEND.trace.json.gz",
+            "sha256": "792076088ccf7a428df4997ca13bcab87f81ad931fc0b3e8663a5063186cb661",
+            "event_index": 56166
+          },
+          "2:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-2-EXTEND.trace.json.gz",
+            "sha256": "80296f1706c2a20f5a233e97ef6a149705ec5cc9b0631a1ab799e5ac16638a0b",
+            "event_index": 56166
+          },
+          "1:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-1-EXTEND.trace.json.gz",
+            "sha256": "d543918c67885508fbcc0a7244ab349c28b2e60e3d6efe129f3b494950d6206a",
+            "event_index": 56167
+          },
+          "4:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-4-EXTEND.trace.json.gz",
+            "sha256": "051d25243c00a0a3f03c5b3fae638bb5e77513eaa49ba1b6c6dc71e78ccab3ba",
+            "event_index": 56166
+          },
+          "5:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-5-EXTEND.trace.json.gz",
+            "sha256": "f98e9bc759028d71a39bee9ce7a133b38261c75e6fb40cb0a0573414d2c6d96d",
+            "event_index": 56166
+          },
+          "0:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-0-EXTEND.trace.json.gz",
+            "sha256": "a1ad83855acd4dd375a21ca512b86834fdcd448f34c5cc97967c73659eec6efa",
+            "event_index": 92581
+          },
+          "6:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-6-EXTEND.trace.json.gz",
+            "sha256": "2515834fcaf70011bb5b0d0c2a91fe989375e2a48cf70d2a0e47d45054cbe894",
+            "event_index": 56167
+          },
+          "7:prefill": {
+            "trace": "kimi-actual-v4-no-stack-194550-kimi-actual-v4-no-stack-194550-TP-7-EXTEND.trace.json.gz",
+            "sha256": "9fc00ec19cd9bfb35cfaf5456a4309628f311b078e9e54d916da69c3222d5199",
+            "event_index": 56167
+          }
+        }
+      }
+    ]
+  }
+}
