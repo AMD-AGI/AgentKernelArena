@@ -51,6 +51,14 @@ def compare(actual,golden,tol,path='output'):
     if actual!=golden: raise AssertionError(path+': scalar differs')
 
 
+def configure_cpu_threads(torch):
+    """Keep concurrent GPU validators from each creating a node-wide CPU pool."""
+    previous=torch.get_num_threads()
+    active=min(previous,8)
+    torch.set_num_threads(active)
+    return {'intraop_threads_before':previous,'intraop_threads':torch.get_num_threads(),
+            'scope':'CPU snapshots and comparisons; graph work and checks unchanged'}
+
 def cpu_clone(value):
     import torch
     if torch.is_tensor(value): return value.detach().cpu().clone()
@@ -203,6 +211,8 @@ def main():
     request=request_for(a.phase,manifest,a.request); validate_sources(ROOT,ROOT)
     report={'schema_version':1,'status':'ok','request':request,'cases':[]}
     import torch
+    report['cpu_runtime']=configure_cpu_threads(torch)
+    (ROOT/'build'/('cpu_runtime_'+a.phase+'.json')).write_text(canonical(report['cpu_runtime'])+'\n')
     from snapshots import raw_storage
     if not torch.version.hip or 'gfx950' not in torch.cuda.get_device_properties(0).gcnArchName:
         raise RuntimeError('ROCm gfx950 GPU required')

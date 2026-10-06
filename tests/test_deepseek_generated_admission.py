@@ -169,3 +169,19 @@ def test_generated_admission_does_not_accept_wrong_numerical_outputs(name):
     namespace['compare'](expected.clone(), expected, 0.02)
     with pytest.raises(AssertionError, match='values differ'):
         namespace['compare'](torch.zeros_like(expected), expected, 0.02)
+
+
+@pytest.mark.parametrize('name', NAMES)
+@pytest.mark.parametrize('initial,expected', [(118, 8), (8, 8), (4, 4)])
+def test_generated_replay_bounds_host_threads_without_raising_small_limits(name, initial, expected):
+    import ast
+    tree = ast.parse((TASKS / name / 'scripts/task_runner.py').read_text())
+    helper = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == 'configure_cpu_threads')
+    namespace = {}
+    exec(compile(ast.Module(body=[helper], type_ignores=[]), '<cpu-thread-policy>', 'exec'), namespace)
+    threads = [initial]
+    fake = SimpleNamespace(get_num_threads=lambda: threads[0], set_num_threads=lambda value: threads.__setitem__(0, value))
+    observed = namespace['configure_cpu_threads'](fake)
+    assert threads[0] == expected
+    assert observed['intraop_threads_before'] == initial and observed['intraop_threads'] == expected
+    assert observed['scope'] == 'CPU snapshots and comparisons; graph work and checks unchanged'
