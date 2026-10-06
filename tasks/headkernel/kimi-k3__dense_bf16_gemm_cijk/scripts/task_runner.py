@@ -12,6 +12,7 @@ sys.path.insert(0,str(ROOT/'ut'))
 from evaluation_contract import canonical,fingerprint,strict_json,validate_manifest,observe_case,checked_replays,finalize_report
 from source_guard import validate_sources
 import storage_guard
+from candidate_precision import candidate_close
 
 
 def source_hash():return hashlib.sha256((ROOT/'source/kernels.py').read_bytes()).hexdigest()
@@ -129,7 +130,7 @@ def build_state(case,seed,module,defer_reference=False):
         if native_calibration:
             from native_precision import calibrate
             native_events.append(calibrate(case,inputs,actual,mathematical))
-        else:torch.testing.assert_close(actual,mathematical,rtol=0.01,atol=0.02)
+        else:candidate_close(actual,mathematical)
     def reset(seed):
         values,expected=generate(case,seed,compute_reference=not defer_reference)
         for name,value in values.items():storage_guard.copy_complete(tensors[name],value)

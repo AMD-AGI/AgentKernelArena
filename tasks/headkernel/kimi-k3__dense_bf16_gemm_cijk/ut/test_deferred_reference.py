@@ -32,10 +32,11 @@ class Tests(unittest.TestCase):
         guard=types.SimpleNamespace(snapshot_complete=lambda t:t.cpu().clone(),view_snapshot=lambda t,s:t,
             assert_output_guards=lambda *a:None,
             assert_inputs_unchanged=lambda tensors,inputs:[tensors[name].cpu().clone() for name in inputs])
-        env={'torch':torch,'tensors':{name:Tensor(name) for name in ('A','B','C')},'storage_guard':guard,'case':{'tensors':{'C':{}}},'native_events':[]}
+        env={'torch':torch,'tensors':{name:Tensor(name) for name in ('A','B','C')},'storage_guard':guard,'case':{'tensors':{'C':{}}},'native_events':[],
+            'candidate_close':lambda *args:events.append('candidate_compare')}
         exec(compile(ast.fix_missing_locations(ast.Module(body=[verify],type_ignores=[])),'protected_verify','exec'),env)
         env['verify']((None,{'A':Tensor('truthA'),'B':Tensor('truthB')}))
         position=events.index('GPU_FP32_reference')
         for name in ('A','B','C'):self.assertLess(events.index('cpu:'+name),position)
-        self.assertLess(events.index('clone:C-cpu'),position);self.assertEqual(events[-1],'compare');self.assertTrue(backend.allow_tf32)
+        self.assertLess(events.index('clone:C-cpu'),position);self.assertEqual(events[-1],'candidate_compare');self.assertTrue(backend.allow_tf32)
 if __name__=='__main__':unittest.main(verbosity=2)

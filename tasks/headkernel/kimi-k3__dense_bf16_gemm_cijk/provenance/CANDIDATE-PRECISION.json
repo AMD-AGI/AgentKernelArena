@@ -1,0 +1,16 @@
+{
+  "schema": "kimi-dense-scale-relative-candidate-accuracy-v1",
+  "pointwise_check": "Unchanged BF16 rtol=0.01 and atol=0.02, followed by an additional global check.",
+  "global_check": "CPU FP64 Frobenius norm(actual-reference) <= (2/255) * Frobenius norm(reference), without an absolute floor. An exact-zero reference requires exact-zero output.",
+  "BF16_relative_budget": 0.00784313725490196,
+  "basis": "BF16 unit roundoff u=2^-8 gives a two-final-rounding output-precision scale 2u/(1-u). This independent requirement matches the GLM dense candidate policy; it is not fitted to observed bad outputs or relaxed native arithmetic.",
+  "native_calibration": "Unchanged. Exact source-derived BF16 atomic-order exceptions apply only to the native_production leg.",
+  "demonstrated_loophole": {
+    "case_id": "bfloat16-decode-m64-n7168-k4224-bf16_gemm-57573f22436ee7403ea12472",
+    "legacy_zero_accepted_seed": 3,
+    "legacy_constant_0_002_accepted_seeds": [3, 43]
+  },
+  "case_and_sampling_policy": "All 40 cases, correctness seeds 0 and 1, 10 warmups and 100 measured replays remain unchanged.",
+  "GPU_stock_calibration": "Pending bounded all-case stock/zero/constant probe, including target seeds 3 and 43.",
+  "full_framework_and_trusted_qualification": "Pending fresh validation of this strengthened contract. Earlier pointwise-only results do not qualify it."
+}

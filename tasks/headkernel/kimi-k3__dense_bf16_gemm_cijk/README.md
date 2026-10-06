@@ -31,3 +31,5 @@ change for this policy.
 the primary aggregate ratio exceeds one; individual regressions remain explicit.
 A slower correct starter is still valid and measurable. This is an isolated
 operator metric and does not assert end-to-end serving improvement.
+
+Candidate outputs retain the pointwise BF16 check (rtol=0.01, atol=0.02) and must also satisfy a scale-relative global accuracy requirement: CPU FP64 Frobenius error divided by the reference norm is at most 2/255. This additional check has no absolute floor; an exactly zero reference requires exactly zero output. The budget uses the precision scale of two final BF16 roundings, independently of observed failures. The pointwise check continues to reject localized corruption. Native precision calibration and its exact source-derived exceptions remain confined to the native production leg. See `provenance/CANDIDATE-PRECISION.json`. The stronger candidate contract requires fresh stock calibration, full framework validation, and independent trusted qualification; earlier results remain scoped to the pointwise-only contract.
