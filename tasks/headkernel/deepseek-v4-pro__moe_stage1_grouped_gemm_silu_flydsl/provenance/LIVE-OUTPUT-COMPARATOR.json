@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "purpose": "Live FP8/E8M0 semantic-output comparator calibration",
+  "task_qualification": false,
+  "performance_claim": false,
+  "semantic_tolerance": 0.02,
+  "live_scale_comparison": "exact bytes",
+  "routing_source": "immutable CPU raw-storage snapshots",
+  "cpu_regression": {
+    "path": "tests/test_live_scale_output_contract.py",
+    "cases": 13,
+    "status": "PASS",
+    "runtime": "torch 2.8.0+cpu",
+    "final_decode_shape": [
+      64,
+      6,
+      384
+    ],
+    "final_decode_live_scale_bytes": 4608,
+    "final_decode_nonoutput_padding_bytes": 200192
+  },
+  "gpu_diagnostic": {
+    "archive_bundle_id": "ds-source-bound-native-r3-194846",
+    "status": "PASS",
+    "elapsed_seconds": 126.14395332336426,
+    "historical_fixture_only": true,
+    "payload_shape": [
+      1,
+      6,
+      384
+    ],
+    "scale_allocation_shape": [
+      12288,
+      16
+    ],
+    "live_scale_bytes": 72,
+    "nonoutput_padding_bytes": 196536,
+    "baseline": "archived semantic parity PASS",
+    "unchanged": "three fresh graph observations PASS",
+    "no_op": "rejected: output.1: nonfinite live E8M0 scale",
+    "reports": {
+      "baseline": {
+        "file": "execution/moe1/baseline/build-evidence/SOURCE-BOUND-SMOKE.json",
+        "sha256": "1d505d5c6693b60b5653672a1eae30df22c6e75fc75d95c5e6abc2318a520f5b"
+      },
+      "unchanged": {
+        "file": "execution/moe1/unchanged/build-evidence/SOURCE-BOUND-SMOKE.json",
+        "sha256": "bbb3367a0e47996de31decc83a5b5e21b0b37a1e3b9decfa7634c26cebe01560"
+      },
+      "no_op": {
+        "file": "execution/moe1/no_op/build-evidence/SOURCE-BOUND-SMOKE.json",
+        "sha256": "338796cdc6150893ddd4897faa2e0d7d1221ccd92638c5cd2da2525b473e90d7"
+      }
+    },
+    "result_sha256": "5855351518057f7a2a2aba951df1ee705c8021c7809c988850c771e626e5b550"
+  },
+  "source_sha256": {
+    "candidate_and_reference": "b819545c0be6f94932edd994983c7d3ec6c18a652d4f8c330cad2513372bbe6d",
+    "no_op": "77e8f7373ba6db62574388e9cebc28268deceac4ac1070d2f868bf0247863e73"
+  },
+  "changed_contract_sha256": {
+    "ut/output_contract.py": "34d61e63ef785f0ec2660d9a47ba524fd49a301f92ae76be738193d2a252b961",
+    "scripts/task_runner.py": "4b4255309657138e1a1a0ac6919991a4d604c200882a9824eed2c9c813d91503",
+    "cases.json": "6b525ac0acdd4d09fbc3ff126c67d5fd4a5258bd8b48c07fcc4630552caa87c4"
+  },
+  "scope_limit": "GPU calibration is the historical M=1 source-bound diagnostic. CPU regression checks M64 live-domain enumeration; it does not qualify all final fixtures. Fresh complete task_validator remains required."
+}

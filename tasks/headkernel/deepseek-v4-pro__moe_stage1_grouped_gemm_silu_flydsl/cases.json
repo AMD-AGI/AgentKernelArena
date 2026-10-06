@@ -2218,7 +2218,7 @@
   "status": "FROZEN_CAPTURE_AND_GENERATED",
   "task_GPU_qualification": false,
   "tensor_fixtures_required": true,
-  "tolerance": 0.15,
+  "tolerance": 0.02,
   "unresolved_legacy_m": [
     1,
     256,

@@ -15,6 +15,8 @@ from evaluation_contract import (canonical, fingerprint, strict_json, validate_m
 from abi import runtime_abi
 from fixture_admission import validate_fixture_manifest, validate_fixture_record, validate_generated_inputs
 
+OUTPUT_CONTRACT_PROOFS={}
+
 
 def write(phase,report):
     target=ROOT/'build'/(phase+'_report.json'); target.parent.mkdir(exist_ok=True)
@@ -56,6 +58,19 @@ def cpu_clone(value):
     if isinstance(value,list): return [cpu_clone(x) for x in value]
     if isinstance(value,dict): return {k:cpu_clone(v) for k,v in value.items()}
     return value
+
+
+def compare_native_outputs(actual,golden,inputs,tol,path='output',expected_inputs=None):
+    """Keep dense payload checks and restrict tiled scales to native-written bytes."""
+    cfg=strict_json((ROOT/'provenance/SOURCE.json').read_text())
+    if cfg['seam']=='moe1' and isinstance(golden,(tuple,list)) and len(golden)==2:
+        from output_contract import compare_stage1_outputs,comparison_inputs_from_snapshot
+        if expected_inputs is None:raise ValueError('Immutable input truth is required for live output comparison')
+        tensors,_=runtime_abi(inputs,None)
+        truth=comparison_inputs_from_snapshot(inputs,expected_inputs,tensors)
+        proof=compare_stage1_outputs(actual,golden,truth,tol,compare,path)
+        OUTPUT_CONTRACT_PROOFS[proof['live_scale_offsets_sha256']]=proof
+    else:compare(actual,golden,tol,path)
 
 
 def leaves(value):
@@ -115,7 +130,7 @@ def verify_after_snapshot(output, inputs, expected_inputs, reference_fn, referen
     expected_cpu=cpu_clone(reference_output)
     assert_immutable_inputs(reference_inputs,expected_inputs)
     del reference_output
-    compare(actual_cpu,expected_cpu,tol)
+    compare_native_outputs(actual_cpu,expected_cpu,inputs,tol,expected_inputs=expected_inputs)
 
 
 def engage_specialization(fn,inputs,golden,tol,label):
@@ -126,7 +141,7 @@ def engage_specialization(fn,inputs,golden,tol,label):
     torch.cuda.synchronize()
     actual=cpu_clone(output)
     assert_immutable_inputs(inputs,before)
-    compare(actual,golden,tol,label)
+    compare_native_outputs(actual,golden,inputs,tol,label,expected_inputs=before)
     return output
 
 
