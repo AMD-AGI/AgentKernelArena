@@ -8,6 +8,13 @@ Six additional fixtures use separately generated legal expert routing at observe
 
 Only the GPU implementation bodies declared in config.yaml are editable. Native host wrappers, launch decisions, source guards, fixture codecs, oracle logic, timing, and state resets are protected. The contract retains tolerance 0.02, correctness seeds 42 and 43, 10 warmup iterations, and 100 checked graph measurements per case. All output components and required negative controls remain mandatory.
 
+The performance command has a 3,600-second budget for the full 12-case checked
+replay. In the previous validator attempt, all correctness cases and negative
+controls passed in 379.876 seconds, while performance reached the inherited
+600-second limit before emitting its complete report. The explicit performance
+budget covers the existing device measurements, input restoration, and independent
+output checks; compilation and correctness keep their existing limits.
+
 Tensor data remain external. The trusted host materializes the exact assets in fixtures/EXTERNAL-MANIFEST.json before task execution; the task does not download or regenerate fixture data. Cases keep shapes, strides, storage offsets, aliases, scalar arguments, and packed scale semantics. See cases.json and provenance/COVERAGE.json for explicit historical logical-M gaps. Native repeatability is not independent source-bound correctness or a framework PASS.
 
 Generated fixture admission is explicit in `ut/fixture_admission.py`. The

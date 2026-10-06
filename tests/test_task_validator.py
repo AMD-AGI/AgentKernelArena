@@ -371,6 +371,18 @@ class ValidationLauncherTests(unittest.TestCase):
         self.assertEqual(resolved[:3], (1800, 3600, 1800))
         self.assertGreaterEqual(resolved[3], 7500)
 
+    def test_deepseek_stage2_full_replay_budget_reaches_validator(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        task_path = root / "tasks/headkernel/deepseek-v4-pro__moe_stage2_down_proj_reduce_opus_a8w4/config.yaml"
+        task_config = yaml.safe_load(task_path.read_text())
+        resolved = _resolve_validation_timeouts(
+            task_config,
+            {"timeout_seconds": 1200, "compile_timeout": 600,
+             "correctness_timeout": 600, "performance_timeout": 600},
+        )
+        self.assertEqual(resolved[:3], (600, 600, 3600))
+        self.assertGreaterEqual(resolved[3], sum(resolved[:3]) + 300)
+
     def test_prompt_builder_handles_every_current_task_config(self) -> None:
         repo_root = Path(__file__).resolve().parents[1]
         configs = sorted((repo_root / "tasks").rglob("config.yaml"))
