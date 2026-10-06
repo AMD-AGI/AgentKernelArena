@@ -2,6 +2,7 @@
 
 import copy
 import json
+from pathlib import Path
 import shutil
 import subprocess
 
@@ -11,6 +12,40 @@ import yaml
 from src.task_contract import finalize_report
 from src.tools import trusted_task_eval as trusted
 from src.tools.materialize_task_contract import materialize
+
+
+def test_jsonl_failure_context_survives_disposable_build_cleanup(tmp_path, monkeypatch):
+    if shutil.which("rclone") is None:
+        pytest.skip("diagnostic preservation requires rclone")
+    build = tmp_path / "build"
+    build.mkdir()
+    event = b'{"event":"verify_failure","leg":"candidate_port","seed":436841561,"iteration":61}\n'
+    (build / "native_production_events.jsonl").write_bytes(event)
+    (build / "performance_report.json").write_text('{"status":"failed"}\n')
+    (build / "compiler.log").write_text("compiler evidence\n")
+    (build / "unselected.bin").write_bytes(b"not a textual diagnostic")
+    original = subprocess.run
+    offered = []
+
+    def run(command, **kwargs):
+        names = Path(command[command.index("--files-from-raw") + 1]).read_text().splitlines()
+        assert len(names) == 1
+        assert command[command.index("--transfers") + 1] == "64000"
+        assert command[command.index("--buffer-size") + 1] == "0"
+        assert command[command.index("--multi-thread-streams") + 1] == "0"
+        assert kwargs["env"]["GOMAXPROCS"] == "1"
+        offered.extend(names)
+        return original(command, **kwargs)
+
+    monkeypatch.setattr(subprocess, "run", run)
+    output = tmp_path / "preserved"
+    trusted.preserve_diagnostics(build, output)
+    shutil.rmtree(build)
+    assert (output / "native_production_events.jsonl").read_bytes() == event
+    hashes = json.loads((output / "hashes.json").read_text())
+    assert hashes["native_production_events.jsonl"] == trusted.sha256(event)
+    assert set(offered) == {"native_production_events.jsonl", "performance_report.json", "compiler.log"}
+    assert not (output / "unselected.bin").exists()
 
 
 @pytest.fixture

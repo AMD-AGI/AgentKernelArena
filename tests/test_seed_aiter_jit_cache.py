@@ -96,7 +96,8 @@ def test_large_cache_uses_bounded_batches_and_preserves_entire_tree(image_packag
     def run(command, **kwargs):
         names = Path(command[command.index("--files-from-raw") + 1]).read_text().splitlines()
         batches.append(names)
-        assert 1 <= len(names) <= 128
+        assert 1 <= len(names) <= 64
+        assert command[command.index("--multi-thread-streams") + 1] == "0"
         assert command[command.index("--transfers") + 1] == "64000"
         assert "--progress" in command and "--links" in command
         assert command[command.index("--buffer-size") + 1] == "0"
@@ -106,7 +107,7 @@ def test_large_cache_uses_bounded_batches_and_preserves_entire_tree(image_packag
     monkeypatch.setattr(subprocess, "run", run)
     destination = tmp_path / "batched-copy"
     seed.copy_cache(source, destination)
-    assert [len(batch) for batch in batches] == [128, 128, 4]
+    assert [len(batch) for batch in batches] == [64, 64, 64, 64, 4]
     assert "alias.so.rclonelink" in batches[0]
     assert seed.tree_manifest(destination) == seed.tree_manifest(source)
     assert (destination / "empty").is_dir()

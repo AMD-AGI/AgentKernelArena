@@ -59,14 +59,14 @@ def copy_cache(source, destination, *, rclone="rclone", timeout=1800):
     # Keep the mandated transfer setting while bounding the available jobs.
     # GOMAXPROCS alone does not prevent blocking file I/O from growing Go's
     # OS-thread pool when thousands of payload files are offered at once.
-    for start in range(0, len(files), 128):
+    for start in range(0, len(files), 64):
         with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", prefix="aka-jit-batch-") as batch:
-            batch.write("\n".join(files[start:start + 128]) + "\n")
+            batch.write("\n".join(files[start:start + 64]) + "\n")
             batch.flush()
             subprocess.run([
                 rclone, "copy", str(Path(source).resolve()), str(destination.resolve()),
                 "--transfers", "64000", "--progress", "--config", os.devnull,
-                "--buffer-size", "0", "--links", "--no-traverse",
+                "--buffer-size", "0", "--multi-thread-streams", "0", "--links", "--no-traverse",
                 "--files-from-raw", batch.name,
             ], check=True, timeout=timeout, env=copy_env)
     try:

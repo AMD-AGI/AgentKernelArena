@@ -136,15 +136,21 @@ def preserve_diagnostics(build, output):
     records = {}
     try:
         for source in sorted(build.iterdir()):
-            if source.suffix not in (".json", ".log"):
+            if source.suffix not in (".json", ".jsonl", ".log"):
                 continue
+            require("\n" not in source.name and "\r" not in source.name,
+                    "diagnostic filenames cannot contain line breaks")
             digest = sha256(read_regular(source))
             target = output / source.name
             environment = os.environ.copy()
             environment["GOMAXPROCS"] = "1"
-            subprocess.run(["rclone", "copyto", str(source), str(target), "--transfers", "64000",
-                            "--progress", "--buffer-size", "0", "--config", os.devnull],
-                           check=True, timeout=300, env=environment)
+            with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", prefix="aka-diagnostic-") as listing:
+                listing.write(source.name + "\n")
+                listing.flush()
+                subprocess.run(["rclone", "copy", str(build), str(output), "--files-from-raw", listing.name,
+                                "--transfers", "64000", "--progress", "--buffer-size", "0",
+                                "--multi-thread-streams", "0", "--config", os.devnull, "--no-traverse"],
+                               check=True, timeout=300, env=environment)
             require(sha256(read_regular(target)) == digest, "diagnostic copy differs from phase output")
             records[source.name] = digest
     finally:

@@ -189,6 +189,12 @@ python3 src/tools/trusted_task_eval.py \
   --scratch-dir LOCAL_SCRATCH --output NEW_OUTPUT_DIRECTORY
 ```
 
+The trusted retest preserves task-generated JSON, JSONL, and log diagnostics
+before removing disposable build directories. JSONL replay receipts retain the
+case, leg, challenge seed, and iteration when a native comparison fails. Copies
+are hashed after transfer; image-cache file lists are bounded to 64 entries and
+disable multithreaded streams while retaining the configured transfer count.
+
 The evaluator extracts the task from Git and accepts only regular files named
 by `source_file_path` from the candidate workspace. It discards agent reports,
 caches and harness files by never staging them. It uses the same protected
