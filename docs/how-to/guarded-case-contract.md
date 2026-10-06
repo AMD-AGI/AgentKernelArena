@@ -226,6 +226,13 @@ case, leg, challenge seed, and iteration when a native comparison fails. Copies
 are hashed after transfer; image-cache file lists are bounded to 64 entries and
 disable multithreaded streams while retaining the configured transfer count.
 
+Replacement-port package hashes exclude the top-level runtime directories
+`build`, `.validator_audit`, and `.validator_torch_extensions`, along with Python
+bytecode-cache directories. The same runtime directory names nested under
+`source`, `ut`, or `fixtures` remain hashed inputs. Protected file and directory
+symlinks, including a symlink replacing a top-level runtime directory, are
+rejected. Streaming validator logs must not appear as immutable input changes.
+
 The evaluator extracts the task from Git and accepts only regular files named
 by `source_file_path` from the candidate workspace. It discards agent reports,
 caches and harness files by never staging them. It uses the same protected

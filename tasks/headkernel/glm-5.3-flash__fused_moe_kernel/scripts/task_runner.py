@@ -21,9 +21,16 @@ def source_hash():return hashlib.sha256((ROOT/'source/kernels.py').read_bytes())
 def package_hash():
     h=hashlib.sha256()
     for path in sorted(ROOT.rglob('*')):
-        if path.is_file() and not any(x in path.relative_to(ROOT).parts for x in ('build','__pycache__')) and path.suffix!='.pyc':
-            if path.is_symlink():raise ValueError('Protected package contains a symlink')
-            h.update(str(path.relative_to(ROOT)).encode()+b'\0')
+        relative=path.relative_to(ROOT)
+        # Framework logs and extension caches are mutable top-level outputs.
+        # The same names nested under source, ut or fixtures remain inputs.
+        if relative.parts[0] in {'build','.validator_audit','.validator_torch_extensions'}:
+            if len(relative.parts)==1 and path.is_symlink():raise ValueError('Protected package contains a symlink')
+            continue
+        if path.is_symlink():raise ValueError('Protected package contains a symlink')
+        if '__pycache__' in relative.parts:continue
+        if path.is_file():
+            h.update(relative.as_posix().encode()+b'\0')
             # Raw fixture blobs are separately streamed and verified at restoration.
             h.update(file_sha(path).encode())
     return h.hexdigest()

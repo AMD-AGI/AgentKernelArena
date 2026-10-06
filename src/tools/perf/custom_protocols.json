@@ -145,6 +145,7 @@
       "description": "Existing matched native and port graph replays retain canonical validation; request-bound raw comparisons feed the explicit native-production scoring policy.",
       "entrypoint": "scripts/task_runner.py",
       "entrypoint_sha256": [
+        "33abf5c26a9d6370d7e1927c69e4e7c6947d31856836d09fbd863fabafbddb4f",
         "9ddd19898c276570ed5d65eff7e9addcc86e37fdc9d7219cd0ed5e57074629eb"
       ],
       "files_sha256": {
@@ -158,7 +159,8 @@
       "description": "Existing matched native and port graph replays retain canonical validation; request-bound raw comparisons feed the explicit native-production scoring policy.",
       "entrypoint": "scripts/task_runner.py",
       "entrypoint_sha256": [
-        "5e289603476bea349695ef079956f3707b570995fd6102c3d91153b6407bf96a"
+        "5e289603476bea349695ef079956f3707b570995fd6102c3d91153b6407bf96a",
+        "8bb3159909ef271443a36afb4351ada0c2635ffdb2b83fa4c92b15666ffcb10b"
       ],
       "files_sha256": {
         "scripts/production_comparison.py": [
@@ -171,7 +173,8 @@
       "description": "Existing matched native and port graph replays retain canonical validation; request-bound raw comparisons feed the explicit native-production scoring policy.",
       "entrypoint": "scripts/task_runner.py",
       "entrypoint_sha256": [
-        "6c740df5ce39e05d5d5e78cd3f41192bcd848c542fc03c7482402322d2304bc9"
+        "6c740df5ce39e05d5d5e78cd3f41192bcd848c542fc03c7482402322d2304bc9",
+        "9662091b7c09b6397feb103569a95234b6e724a2d5f945db26433525578622b2"
       ],
       "files_sha256": {
         "scripts/production_comparison.py": [
@@ -184,7 +187,8 @@
       "description": "Existing matched native and port graph replays retain canonical validation; request-bound raw comparisons feed the explicit native-production scoring policy.",
       "entrypoint": "scripts/task_runner.py",
       "entrypoint_sha256": [
-        "b1a224e6d02334f987fad736851bab56f66e663acc8cf6eabe765a95fd84ed33"
+        "b1a224e6d02334f987fad736851bab56f66e663acc8cf6eabe765a95fd84ed33",
+        "ece571808b1fe88965959f3fbaf936f990a5aa4d4ec050c39abe4ce54be648a7"
       ],
       "files_sha256": {
         "scripts/production_comparison.py": [
