@@ -77,10 +77,15 @@ def _iter_protected_files(root: Path) -> Iterable[Path]:
     configured_entrypoints = {
         path.resolve() for path in configured_performance_entrypoints(root)
     }
+    trusted_inputs = _trusted_evaluation_input_paths(root)
     for path in root.rglob("*"):
         if not path.is_file():
             continue
         rel = path.relative_to(root)
+        if trusted_inputs:
+            if rel.as_posix() in trusted_inputs or path.resolve() in configured_entrypoints:
+                yield path
+            continue
         if set(rel.parts) & _IGNORED_RUNTIME_DIRS:
             continue
         if _is_protected_path(rel) or path.resolve() in configured_entrypoints:
@@ -255,6 +260,7 @@ def _task_input_paths(root: Path, task_root: Path) -> set[str]:
         raise FileNotFoundError(f"Original task directory is unavailable: {task_root}")
     config = _task_config(root)
     editable = _editable_source_paths(root)
+    trusted = isinstance(config.get("trusted_evaluation"), dict)
 
     repo_subdir = config.get("repo_subdir")
     if not repo_subdir:
@@ -271,13 +277,68 @@ def _task_input_paths(root: Path, task_root: Path) -> set[str]:
         if not path.is_file():
             continue
         rel = path.relative_to(task_root)
-        if set(rel.parts[:-1]) & runtime_dirs or rel.name in output_names:
+        if trusted:
+            # A trusted package can contain immutable helpers/data in nested
+            # directories named build or logs. Only top-level runtime outputs
+            # and Python bytecode caches are outside its input contract.
+            runtime_output = (
+                rel.parts[0] in runtime_dirs | {".validator_audit"}
+                or "__pycache__" in rel.parts[:-1]
+                or (len(rel.parts) == 1 and rel.name in output_names)
+            )
+        else:
+            runtime_output = bool(set(rel.parts[:-1]) & runtime_dirs) or rel.name in output_names
+        if runtime_output:
             continue
         if repo_subdir and rel.is_relative_to(repo_subdir):
             continue
         candidate = root / rel
         if candidate.resolve() not in editable:
             protected.add(rel.as_posix())
+    return protected
+
+
+def _trusted_evaluation_input_paths(root: Path) -> set[str]:
+    """Protect an opted-in package's complete non-editable input closure.
+
+    Ordinary optimization also supplies task_root, but validators and direct
+    snapshot callers may only have the materialized workspace. The descriptor
+    must provide the same immutable boundary in both cases. This includes
+    helpers imported by the declared contract, not just its named entrypoints.
+    """
+    config = _task_config(root)
+    descriptor = config.get("trusted_evaluation")
+    if descriptor is None:
+        return set()
+    if (not isinstance(descriptor, dict)
+            or type(descriptor.get("schema_version")) is not int
+            or descriptor["schema_version"] != 1):
+        raise RuntimeError("Unsupported trusted_evaluation harness contract")
+    references = descriptor.get("reference_sources", {})
+    if not isinstance(references, dict):
+        raise RuntimeError("trusted_evaluation reference_sources must be a mapping")
+    required = [
+        descriptor.get("case_manifest", "cases.json"),
+        descriptor.get("contract_file", "ut/evaluation_contract.py"),
+        descriptor.get("source_guard", "ut/source_guard.py"),
+        *references.values(),
+    ]
+    if "fixture_manifest" in descriptor:
+        required.append(descriptor["fixture_manifest"])
+    protected = _task_input_paths(root, root)
+    editable = _editable_source_paths(root)
+    for value in required:
+        if not isinstance(value, str) or not value:
+            raise RuntimeError("Trusted evaluation input paths must be nonempty strings")
+        relative = Path(value)
+        path = root / relative
+        if (relative.is_absolute() or ".." in relative.parts
+                or not path.resolve().is_relative_to(root.resolve())
+                or not path.is_file() or path.is_symlink()):
+            raise RuntimeError(f"Missing or unsafe trusted evaluation input: {value}")
+        if path.resolve() in editable:
+            raise RuntimeError(f"Trusted evaluation input is declared editable: {value}")
+        protected.add(relative.as_posix())
     return protected
 
 
@@ -418,10 +479,12 @@ def describe_workspace_harness(root: Path) -> dict[str, object]:
 def snapshot_workspace_harness(
     root: Path, *, task_root: Path | None = None
 ) -> WorkspaceSnapshot:
-    """Capture harness digests and, when supplied, immutable task-package inputs.
+    """Capture harness digests and immutable task-package inputs.
 
     Callers running optimization must pass the original task directory. Keep the
     snapshot outside the agent workspace and verify it before final evaluation.
+    trusted_evaluation packages additionally protect their non-editable inputs
+    when only the materialized workspace is available.
     """
 
     root = Path(root)

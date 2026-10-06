@@ -39,6 +39,16 @@ tree. The frozen source copy must equal the shipped editable source. Every
 declared source needs its own reference entry. Editable paths cannot also be
 the manifest, contract, guard, runner, or reference files.
 
+The ordinary optimizer freezes every non-editable file shipped by the task
+before launching the agent. For `trusted_evaluation` packages, this protection
+also applies when only a materialized workspace is available, and the
+validator's authoritative `protected_paths` reports that same boundary. It
+includes the complete task-local helper tree, case and fixture manifests,
+materialized fixture payloads, provenance, and non-editable source wrappers.
+Declared source files remain subject to the task's GPU-body guard. Top-level
+build, log, validator, and environment caches remain runtime output; nested
+same-name directories containing task inputs stay protected.
+
 The guard must expose `validate_sources(candidate_root, reference_root)` and
 raise on edits outside the intended GPU implementation boundary. It runs on
 the host from the trusted Git package before any container starts. Keep it
