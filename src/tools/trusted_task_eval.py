@@ -170,9 +170,13 @@ def run_phase(image, task, staging, output, leg, request, render_device, timeout
     image_index = command.index(image)
     if cache is not None:
         # AITER's import otherwise selects the image's root-owned FlyDSL cache
-        # independently of AITER_JIT_DIR. Keep locks and entries in the complete
-        # verified cache that is private to this evaluation phase.
-        command[image_index:image_index] = ["--env", "FLYDSL_RUNTIME_CACHE_DIR=/aiter-jit/flydsl_cache"]
+        # independently of AITER_JIT_DIR. Keep the verified AITER cache intact,
+        # but compile FlyDSL from this phase's sources instead of image artifacts.
+        fresh_flydsl_name = "fresh_flydsl_" + request["request_id"]
+        fresh_flydsl_cache = cache / fresh_flydsl_name
+        require(not fresh_flydsl_cache.exists() and not fresh_flydsl_cache.is_symlink(),
+                "FlyDSL phase cache must start absent")
+        command[image_index:image_index] = ["--env", "FLYDSL_RUNTIME_CACHE_DIR=/aiter-jit/" + fresh_flydsl_name]
         image_index = command.index(image)
     command[image_index:image_index] = ["--mount", f"type=bind,src={request_path},dst=/evaluation-request.json,readonly"]
     command += [phase, "--request", "/evaluation-request.json"]

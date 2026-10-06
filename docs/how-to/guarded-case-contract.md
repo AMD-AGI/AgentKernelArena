@@ -184,6 +184,18 @@ and the unprivileged runtime UID. AITER tasks use the verified complete image
 cache initializer. Requests and complete case identities are checked on the
 host, including multiplicity and scalar types.
 
+For tasks with `requires_aiter_jit_cache: true`, each phase retains a complete,
+byte-verified copy of the image cache at `AITER_JIT_DIR=/aiter-jit`. The portable
+evaluator separately sets
+`FLYDSL_RUNTIME_CACHE_DIR=/aiter-jit/fresh_flydsl_<request_id>` and rejects that
+path if it already exists, including as a symlink. The fresh request ID gives
+each reference/candidate compile, correctness and performance phase its own
+initially absent FlyDSL cache. Image-built FlyDSL artifacts must not mask
+submitted source changes. Existing AITER modules, lookup paths and copied
+image-cache files remain intact. This changes only the FlyDSL cache selection;
+task timing, warmups, sample counts and correctness checks are unchanged. Tasks
+without the AITER cache opt-in keep their existing cache environment.
+
 GPU selection maps the requested render node to KFD's `drm_render_minor` and
 `unique_id`, then sets `ROCR_VISIBLE_DEVICES` to the corresponding `GPU-` UUID.
 It does not assume render order, KFD-node order, or physical GPU ordinal zero.
