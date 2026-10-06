@@ -8,6 +8,7 @@ correctness_command:
 - python3 scripts/task_runner.py correctness
 performance_command:
 - python3 scripts/task_runner.py performance
+performance_timeout: 3600
 task_type: flydsl2flydsl
 platform_support:
   required_arch: gfx950

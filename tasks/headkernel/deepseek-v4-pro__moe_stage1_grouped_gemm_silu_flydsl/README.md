@@ -25,3 +25,9 @@ Both fixture kinds use the same protected payload hash checks, CPU golden
 snapshots, source-backed reference execution, full numerical comparison, input
 mutation checks, graph timing, and negative controls. Admission alone is not GPU
 correctness or framework qualification.
+
+The performance command has a 3,600-second limit. The previous nine-case GPU
+attempt passed compilation and correctness, then reached the default
+600-second performance limit before producing a complete timing report.
+The longer limit preserves every case, warmup, checked replay, tolerance and
+measurement boundary; it does not establish qualification by itself.
