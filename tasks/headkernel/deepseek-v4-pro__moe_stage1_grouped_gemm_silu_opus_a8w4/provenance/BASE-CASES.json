@@ -665,228 +665,6 @@
           ]
         }
       }
-    },
-    {
-      "calls_per_sample": 1,
-      "case_id": "observed-work-distribution-moe1_prefill-a7960e1a87fc21a37d04302a",
-      "distribution_group": "moe1_prefill-a7960e1a87fc21a37d04302a",
-      "fixture": {
-        "path": "fixtures/deepseek_moe1_prefill-29ea221dcf7a6a7000b32591-work-c5cd180a3a906c17.json",
-        "sha256": "19c0a46b12ade42755b80c95b23128d82bdf82a19c654c35e43f5e938f675345"
-      },
-      "occurrences": 1,
-      "provenance_kind": "generated_observed_work_distribution",
-      "scalars": {
-        "arguments": {
-          "_kwargs": {},
-          "a1_scale": {
-            "attributes": {},
-            "tensor": "arg.a1_scale"
-          },
-          "activation": {
-            "aiter_activation": 0
-          },
-          "bias1": null,
-          "block_m": 64,
-          "hidden_states": {
-            "attributes": {},
-            "tensor": "arg.hidden_states"
-          },
-          "inter_dim_pad": 0,
-          "kernelName": "opus_moe1_afp8_wfp4_bf16_t64x384_gs_qgb3_aff64_k1lead_fp8",
-          "num_valid_ids": {
-            "attributes": {},
-            "tensor": "arg.num_valid_ids"
-          },
-          "out": null,
-          "output_sorted": false,
-          "situ_beta": 4.0,
-          "situ_linear_beta": 25.0,
-          "sorted_expert_ids": {
-            "attributes": {},
-            "tensor": "arg.sorted_expert_ids"
-          },
-          "sorted_token_ids": {
-            "attributes": {},
-            "tensor": "arg.sorted_token_ids"
-          },
-          "sorted_weights": null,
-          "swiglu_limit": 10.0,
-          "topk": 6,
-          "w1": {
-            "attributes": {
-              "is_shuffled": true
-            },
-            "tensor": "arg.w1"
-          },
-          "w1_scale": {
-            "attributes": {},
-            "tensor": "arg.w1_scale"
-          },
-          "w2": {
-            "attributes": {
-              "is_shuffled": true
-            },
-            "tensor": "arg.w2"
-          }
-        },
-        "return": {
-          "container": "tuple",
-          "items": [
-            {
-              "attributes": {},
-              "tensor": "result.0"
-            },
-            {
-              "attributes": {},
-              "tensor": "result.1"
-            }
-          ]
-        }
-      },
-      "stage": "prefill",
-      "tensors": {
-        "arg.a1_scale": {
-          "device_type": "cuda",
-          "dtype": "float8_e8m0fnu",
-          "role": "input",
-          "shape": [
-            73728,
-            224
-          ],
-          "storage_offset": 0,
-          "strides": [
-            224,
-            1
-          ]
-        },
-        "arg.hidden_states": {
-          "device_type": "cuda",
-          "dtype": "float8_e4m3fn",
-          "role": "input",
-          "shape": [
-            8192,
-            7168
-          ],
-          "storage_offset": 0,
-          "strides": [
-            7168,
-            1
-          ]
-        },
-        "arg.num_valid_ids": {
-          "device_type": "cuda",
-          "dtype": "int32",
-          "role": "input",
-          "shape": [
-            2
-          ],
-          "storage_offset": 0,
-          "strides": [
-            1
-          ]
-        },
-        "arg.sorted_expert_ids": {
-          "device_type": "cuda",
-          "dtype": "int32",
-          "role": "input",
-          "shape": [
-            1152
-          ],
-          "storage_offset": 0,
-          "strides": [
-            1
-          ]
-        },
-        "arg.sorted_token_ids": {
-          "device_type": "cuda",
-          "dtype": "int32",
-          "role": "input",
-          "shape": [
-            73722
-          ],
-          "storage_offset": 0,
-          "strides": [
-            1
-          ]
-        },
-        "arg.w1": {
-          "device_type": "cuda",
-          "dtype": "float4_e2m1fn_x2",
-          "role": "input",
-          "shape": [
-            384,
-            768,
-            3584
-          ],
-          "storage_offset": 0,
-          "strides": [
-            2752512,
-            3584,
-            1
-          ]
-        },
-        "arg.w1_scale": {
-          "device_type": "cuda",
-          "dtype": "float8_e8m0fnu",
-          "role": "input",
-          "shape": [
-            294912,
-            224
-          ],
-          "storage_offset": 0,
-          "strides": [
-            224,
-            1
-          ]
-        },
-        "arg.w2": {
-          "device_type": "cuda",
-          "dtype": "float4_e2m1fn_x2",
-          "role": "input",
-          "shape": [
-            384,
-            7168,
-            192
-          ],
-          "storage_offset": 0,
-          "strides": [
-            1376256,
-            192,
-            1
-          ]
-        },
-        "result.0": {
-          "device_type": "cuda",
-          "dtype": "float8_e4m3fn",
-          "role": "output",
-          "shape": [
-            8192,
-            6,
-            384
-          ],
-          "storage_offset": 0,
-          "strides": [
-            2304,
-            384,
-            1
-          ]
-        },
-        "result.1": {
-          "device_type": "cuda",
-          "dtype": "float8_e8m0fnu",
-          "role": "output",
-          "shape": [
-            73728,
-            16
-          ],
-          "storage_offset": 0,
-          "strides": [
-            16,
-            1
-          ]
-        }
-      }
     }
   ],
   "coverage_manifest": "provenance/COVERAGE.json",
@@ -922,17 +700,12 @@
   "observed_case_ids": [
     "deepseek_moe1_prefill-29ea221dcf7a6a7000b32591"
   ],
-  "observed_work_distributions": {
-    "path": "provenance/WORK-DISTRIBUTIONS.json",
-    "sha256": "2527d87f08a3a4e9cd698766909045412221feda647e01635fc8dfb8f44d2ab4"
-  },
   "original_served_work_control_gate_passed": false,
   "random_draws": 3,
   "required_case_ids": [
     "deepseek_moe1_prefill-29ea221dcf7a6a7000b32591-work-c5cd180a3a906c17",
     "deepseek_moe1_prefill-29ea221dcf7a6a7000b32591-work-ee3f0c2bc494c65f",
-    "deepseek_moe1_prefill-29ea221dcf7a6a7000b32591",
-    "observed-work-distribution-moe1_prefill-a7960e1a87fc21a37d04302a"
+    "deepseek_moe1_prefill-29ea221dcf7a6a7000b32591"
   ],
   "required_phases": [
     "prefill"
@@ -942,7 +715,7 @@
   "schema": "deepseek-frozen-current-case-contract-v1",
   "schema_version": 1,
   "seam": "moe1_prefill",
-  "status": "FROZEN_WITH_OBSERVED_WORK_DISTRIBUTIONS",
+  "status": "FROZEN_CURRENT_CAPTURE",
   "task_GPU_qualification": false,
   "tensor_fixtures_required": true,
   "tolerance": 0.15,

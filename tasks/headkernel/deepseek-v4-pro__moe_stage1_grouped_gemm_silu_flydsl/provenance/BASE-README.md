@@ -31,25 +31,3 @@ attempt passed compilation and correctness, then reached the default
 600-second performance limit before producing a complete timing report.
 The longer limit preserves every case, warmup, checked replay, tolerance and
 measurement boundary; it does not establish qualification by itself.
-
-
-This isolated proposal preserves every original fixed case, seed, negative control,
-tolerance, warmup, and 100-sample measurement. Additional distribution cases support
-all recorded `num_valid_ids` values with legal representative routing and fresh seeded
-FP8 activation values. Captured per-token scales are remapped to each generated route.
-The original other-rank routing arrays were not recorded or recovered.
-
-New distribution cases default to the reviewed targeted behavior checks in
-`provenance/WORK-DISTRIBUTIONS.json`; pending selections fail correctness explicitly.
-An optional separate run uses `--distribution-correctness-mode exhaustive_observed_values`
-to check every recorded value with the unchanged seeds and controls. Reports label
-the executed mode and claim full value coverage only after the complete sweep.
-Performance uses 10 checked warmups and 100 checked frequency-weighted draws. Use
-the same protected request challenge seed for paired reference/candidate comparisons;
-independent standalone runner invocations do not share a sampling schedule.
-
-Each new stage-2 routing receives fresh protected stage-1 reference output and matching
-scales, copied into stable stage-2 input buffers outside timing. No new dense golden
-files are generated. The original fixed-set COVERAGE provenance and qualification
-flags remain unchanged. This proposal needs compatible GPU and task-validator checks
-before it can qualify; CPU preparation is not GPU validation.

@@ -2,11 +2,9 @@
 import argparse
 import hashlib
 import json
-import os
 from pathlib import Path
 import secrets
 import sys
-import time
 
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/'ut'))
@@ -15,23 +13,14 @@ from source_guard import validate_sources
 from evaluation_contract import (canonical, fingerprint, strict_json, validate_manifest,
     observe_case, checked_replays, finalize_report)
 from abi import runtime_abi
-from work_distribution import load_contract, KIND, CORRECTNESS_MODES, correctness_variants
-from distribution_runner import run_case as run_distribution_case
 from fixture_admission import validate_fixture_manifest, validate_fixture_record, validate_generated_inputs
+
+OUTPUT_CONTRACT_PROOFS={}
 
 
 def write(phase,report):
     target=ROOT/'build'/(phase+'_report.json'); target.parent.mkdir(exist_ok=True)
     temporary=target.with_suffix('.tmp'); temporary.write_text(canonical(report)+'\n'); temporary.replace(target)
-
-
-def case_progress(event,index,total,case_id,request_id):
-    """Durable host progress only; never called by a timed replay callback."""
-    record={'schema':'case-progress-v1','phase':'performance','scoreable':False,
-            'event':event,'case_index':index,'case_count':total,'case_id':case_id,
-            'request_id':request_id,'observed_unix':time.time(),'monotonic_seconds':time.monotonic()}
-    with (ROOT/'build/performance_progress.jsonl').open('a',encoding='utf-8') as stream:
-        stream.write(canonical(record)+'\n'); stream.flush(); os.fsync(stream.fileno())
 
 
 def compare(actual,golden,tol,path='output'):
@@ -77,6 +66,19 @@ def cpu_clone(value):
     if isinstance(value,list): return [cpu_clone(x) for x in value]
     if isinstance(value,dict): return {k:cpu_clone(v) for k,v in value.items()}
     return value
+
+
+def compare_native_outputs(actual,golden,inputs,tol,path='output',expected_inputs=None):
+    """Keep dense payload checks and restrict tiled scales to native-written bytes."""
+    cfg=strict_json((ROOT/'provenance/SOURCE.json').read_text())
+    if cfg['seam']=='moe1' and isinstance(golden,(tuple,list)) and len(golden)==2:
+        from output_contract import compare_stage1_outputs,comparison_inputs_from_snapshot
+        if expected_inputs is None:raise ValueError('Immutable input truth is required for live output comparison')
+        tensors,_=runtime_abi(inputs,None)
+        truth=comparison_inputs_from_snapshot(inputs,expected_inputs,tensors)
+        proof=compare_stage1_outputs(actual,golden,truth,tol,compare,path)
+        OUTPUT_CONTRACT_PROOFS[proof['live_scale_offsets_sha256']]=proof
+    else:compare(actual,golden,tol,path)
 
 
 def leaves(value):
@@ -136,7 +138,7 @@ def verify_after_snapshot(output, inputs, expected_inputs, reference_fn, referen
     expected_cpu=cpu_clone(reference_output)
     assert_immutable_inputs(reference_inputs,expected_inputs)
     del reference_output
-    compare(actual_cpu,expected_cpu,tol)
+    compare_native_outputs(actual_cpu,expected_cpu,inputs,tol,expected_inputs=expected_inputs)
 
 
 def engage_specialization(fn,inputs,golden,tol,label):
@@ -147,7 +149,7 @@ def engage_specialization(fn,inputs,golden,tol,label):
     torch.cuda.synchronize()
     actual=cpu_clone(output)
     assert_immutable_inputs(inputs,before)
-    compare(actual,golden,tol,label)
+    compare_native_outputs(actual,golden,inputs,tol,label,expected_inputs=before)
     return output
 
 
@@ -201,17 +203,11 @@ def request_for(phase,manifest,path):
 
 def main():
     p=argparse.ArgumentParser(); p.add_argument('phase',choices=('compile','correctness','performance')); p.add_argument('--request')
-    p.add_argument('--distribution-correctness-mode', choices=CORRECTNESS_MODES, default=CORRECTNESS_MODES[0])
     a=p.parse_args()
     (ROOT/'build').mkdir(exist_ok=True)
     (ROOT/'build'/(a.phase+'_report.json')).unlink(missing_ok=True)
-    if a.phase=='performance': (ROOT/'build/performance_progress.jsonl').unlink(missing_ok=True)
     manifest=strict_json((ROOT/'cases.json').read_text()); validate_manifest(manifest)
-    base_manifest, distributions=load_contract(ROOT,manifest)
-    validate_fixture_manifest(ROOT,base_manifest)
-    if a.phase == 'correctness':
-        for group in distributions['groups'].values():
-            correctness_variants(group,a.distribution_correctness_mode)
+    validate_fixture_manifest(ROOT,manifest)
     request=request_for(a.phase,manifest,a.request); validate_sources(ROOT,ROOT)
     report={'schema_version':1,'status':'ok','request':request,'cases':[]}
     import torch
@@ -224,20 +220,9 @@ def main():
     reference_module,reference_fn,reference_identity=load_native(ROOT,'reference')
     policy=manifest['measurement']; tol=manifest['tolerance']
     compiled=[]
-    for case_index,case in enumerate(manifest['cases'],start=1):
-        if a.phase=='performance':
-            case_progress('start',case_index,len(manifest['cases']),case['case_id'],request['request_id'])
-        if case.get('provenance_kind') == KIND:
-            row, receipt=run_distribution_case(globals(), ROOT, manifest, base_manifest, distributions,
-                case, a.phase, request, module, fn, reference_module, reference_fn, identity,
-                reference_identity, correctness_mode=a.distribution_correctness_mode)
-            compiled.append(receipt)
-            if row is not None: report['cases'].append(row)
-            if a.phase=='performance':
-                case_progress('completed',case_index,len(manifest['cases']),case['case_id'],request['request_id'])
-            continue
+    for case in manifest['cases']:
         if case['calls_per_sample']!=1: raise RuntimeError('This seam graph represents one native call per replay')
-        inputs,golden=fixture(case,base_manifest,module); reference_inputs,_=fixture(case,base_manifest,reference_module)
+        inputs,golden=fixture(case,manifest,module); reference_inputs,_=fixture(case,manifest,reference_module)
         pristine_inputs=storage_snapshots(inputs)
         initial_out=cpu_clone(inputs.get('out'))
         primary='q' if manifest['seam'].startswith('mla') else 'a' if manifest['seam']=='moe1' else 'hidden_states' if manifest['seam']=='moe1_prefill' else 'inter_states'
@@ -301,7 +286,6 @@ def main():
             row=checked_replays(case,policy,reset_inputs=reset_inputs,initialize_outputs=initialize_outputs,
                 replay=graph.replay,verify=verify,measure=measure,observe=observe,seed=request['challenge_seed'])
             report['cases'].append(row)
-            case_progress('completed',case_index,len(manifest['cases']),case['case_id'],request['request_id'])
         del graph,inputs,reference_inputs,golden,output,pristine_inputs,initial_out
         torch.cuda.empty_cache()
     report.update(compiled=True,compiled_specializations=compiled,

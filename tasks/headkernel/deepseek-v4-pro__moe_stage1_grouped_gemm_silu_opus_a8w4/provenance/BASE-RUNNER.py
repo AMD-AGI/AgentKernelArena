@@ -2,11 +2,9 @@
 import argparse
 import hashlib
 import json
-import os
 from pathlib import Path
 import secrets
 import sys
-import time
 
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/'ut'))
@@ -15,23 +13,14 @@ from source_guard import validate_sources
 from evaluation_contract import (canonical, fingerprint, strict_json, validate_manifest,
     observe_case, checked_replays, finalize_report)
 from abi import runtime_abi
-from work_distribution import load_contract, KIND, CORRECTNESS_MODES, correctness_variants
-from distribution_runner import run_case as run_distribution_case
-from fixture_admission import validate_fixture_manifest, validate_fixture_record, validate_generated_inputs
+from dispatch_contract import validate_dispatch
+
+OUTPUT_CONTRACT_PROOFS = {}
 
 
 def write(phase,report):
     target=ROOT/'build'/(phase+'_report.json'); target.parent.mkdir(exist_ok=True)
     temporary=target.with_suffix('.tmp'); temporary.write_text(canonical(report)+'\n'); temporary.replace(target)
-
-
-def case_progress(event,index,total,case_id,request_id):
-    """Durable host progress only; never called by a timed replay callback."""
-    record={'schema':'case-progress-v1','phase':'performance','scoreable':False,
-            'event':event,'case_index':index,'case_count':total,'case_id':case_id,
-            'request_id':request_id,'observed_unix':time.time(),'monotonic_seconds':time.monotonic()}
-    with (ROOT/'build/performance_progress.jsonl').open('a',encoding='utf-8') as stream:
-        stream.write(canonical(record)+'\n'); stream.flush(); os.fsync(stream.fileno())
 
 
 def compare(actual,golden,tol,path='output'):
@@ -70,9 +59,10 @@ def configure_cpu_threads(torch):
     return {'intraop_threads_before':previous,'intraop_threads':torch.get_num_threads(),
             'scope':'CPU snapshots and comparisons; graph work and checks unchanged'}
 
+
 def cpu_clone(value):
     import torch
-    if torch.is_tensor(value): return value.detach().cpu().clone()
+    if torch.is_tensor(value): return value.detach().to(device='cpu',copy=True)
     if isinstance(value,tuple): return tuple(cpu_clone(x) for x in value)
     if isinstance(value,list): return [cpu_clone(x) for x in value]
     if isinstance(value,dict): return {k:cpu_clone(v) for k,v in value.items()}
@@ -136,7 +126,19 @@ def verify_after_snapshot(output, inputs, expected_inputs, reference_fn, referen
     expected_cpu=cpu_clone(reference_output)
     assert_immutable_inputs(reference_inputs,expected_inputs)
     del reference_output
-    compare(actual_cpu,expected_cpu,tol)
+    compare_native_outputs(actual_cpu,expected_cpu,inputs,tol,expected_inputs=expected_inputs)
+
+
+def compare_native_outputs(actual,golden,inputs,tol,*,expected_inputs,path='output'):
+    # Keep the original encoded-payload and full scale-byte checks, then check
+    # the physical activation values consumed by stage2. Quantization codes
+    # alone do not have a meaningful global RMS across differently scaled groups.
+    compare(actual,golden,tol,path)
+    from output_contract import comparison_inputs_from_snapshot,compare_opus_outputs
+    tensors,_=runtime_abi(inputs,None)
+    truth_inputs=comparison_inputs_from_snapshot(inputs,expected_inputs,tensors)
+    proof=compare_opus_outputs(actual,golden,truth_inputs,path)
+    OUTPUT_CONTRACT_PROOFS[proof['live_scale_offsets_sha256']]=proof
 
 
 def engage_specialization(fn,inputs,golden,tol,label):
@@ -147,11 +149,11 @@ def engage_specialization(fn,inputs,golden,tol,label):
     torch.cuda.synchronize()
     actual=cpu_clone(output)
     assert_immutable_inputs(inputs,before)
-    compare(actual,golden,tol,label)
+    compare_native_outputs(actual,golden,inputs,tol,expected_inputs=before,path=label)
     return output
 
 
-def fixture(case,manifest,module):
+def fixture(case,manifest,module, *, include_golden=True):
     from runtime_capture import restore_phase
     from snapshots import restore
     reference=case['fixture']
@@ -161,10 +163,14 @@ def fixture(case,manifest,module):
     if not path.is_relative_to(ROOT.resolve()) or original_path.is_symlink() or sha256(path)!=expected_sha:
         raise RuntimeError('Untrusted or changed fixture')
     record=strict_json(path.read_text())
-    cfg=strict_json((ROOT/'provenance/SOURCE.json').read_text())
-    validate_fixture_record(ROOT,case,manifest,cfg,record)
+    if record['provenance']['run_id']!=manifest['run_id'] or record['source_sha256']!=manifest['native_source_sha256']:
+        raise RuntimeError('Stale fixture source/run identity')
+    if record['served']['stage']=='decode' and record['origin']!='served_graph':
+        raise RuntimeError('Decode fixture must follow actual served graph replay')
+    if record.get('startup_values') is not False: raise RuntimeError('Startup data are not served fixtures')
     tensors=restore_phase(path.parent,record,'inputs',device='cuda',max_storage_bytes=64<<30)
     controls=record['controls']; inputs={}
+    cfg=strict_json((ROOT/'provenance/SOURCE.json').read_text())
     for key in cfg['signature_parameters']:
         if key in tensors: inputs[key]=tensors[key]
         elif key in controls: inputs[key]=restore({'tree':controls[key],'storages':{}},'cuda',module)
@@ -176,8 +182,10 @@ def fixture(case,manifest,module):
             for key,value in controls.get(name+'_attributes',{}).items():
                 attr=tensors[value['tensor_binding']] if isinstance(value,dict) and 'tensor_binding' in value else restore({'tree':value,'storages':{}},'cuda',module)
                 setattr(tensor,key,attr)
-    validate_generated_inputs(case,inputs)
-    # Fixture golden outputs must never be resident on the GPU when a
+    # The reference leg needs independent inputs but reuses the same verified
+    # CPU golden already restored by the candidate fixture call.
+    if not include_golden: return inputs,None
+    # Captured golden outputs must never be resident on the GPU when a
     # candidate executes. Inputs keep their captured GPU ABI and storage.
     outputs=restore_phase(path.parent,record,'outputs',device='cpu',max_storage_bytes=64<<30)
     golden=(outputs['output'],outputs['lse']) if manifest['seam']=='mla' else (outputs['output'],outputs['scale']) if 'scale' in outputs else outputs['output']
@@ -201,17 +209,11 @@ def request_for(phase,manifest,path):
 
 def main():
     p=argparse.ArgumentParser(); p.add_argument('phase',choices=('compile','correctness','performance')); p.add_argument('--request')
-    p.add_argument('--distribution-correctness-mode', choices=CORRECTNESS_MODES, default=CORRECTNESS_MODES[0])
     a=p.parse_args()
     (ROOT/'build').mkdir(exist_ok=True)
     (ROOT/'build'/(a.phase+'_report.json')).unlink(missing_ok=True)
-    if a.phase=='performance': (ROOT/'build/performance_progress.jsonl').unlink(missing_ok=True)
-    manifest=strict_json((ROOT/'cases.json').read_text()); validate_manifest(manifest)
-    base_manifest, distributions=load_contract(ROOT,manifest)
-    validate_fixture_manifest(ROOT,base_manifest)
-    if a.phase == 'correctness':
-        for group in distributions['groups'].values():
-            correctness_variants(group,a.distribution_correctness_mode)
+    manifest=strict_json((ROOT/'cases.json').read_text()); validate_manifest(manifest); validate_dispatch(manifest)
+    if manifest.get('status')!='FROZEN_CURRENT_CAPTURE': raise RuntimeError('Current fixtures and expected cases are not sealed')
     request=request_for(a.phase,manifest,a.request); validate_sources(ROOT,ROOT)
     report={'schema_version':1,'status':'ok','request':request,'cases':[]}
     import torch
@@ -224,20 +226,9 @@ def main():
     reference_module,reference_fn,reference_identity=load_native(ROOT,'reference')
     policy=manifest['measurement']; tol=manifest['tolerance']
     compiled=[]
-    for case_index,case in enumerate(manifest['cases'],start=1):
-        if a.phase=='performance':
-            case_progress('start',case_index,len(manifest['cases']),case['case_id'],request['request_id'])
-        if case.get('provenance_kind') == KIND:
-            row, receipt=run_distribution_case(globals(), ROOT, manifest, base_manifest, distributions,
-                case, a.phase, request, module, fn, reference_module, reference_fn, identity,
-                reference_identity, correctness_mode=a.distribution_correctness_mode)
-            compiled.append(receipt)
-            if row is not None: report['cases'].append(row)
-            if a.phase=='performance':
-                case_progress('completed',case_index,len(manifest['cases']),case['case_id'],request['request_id'])
-            continue
+    for case in manifest['cases']:
         if case['calls_per_sample']!=1: raise RuntimeError('This seam graph represents one native call per replay')
-        inputs,golden=fixture(case,base_manifest,module); reference_inputs,_=fixture(case,base_manifest,reference_module)
+        inputs,golden=fixture(case,manifest,module); reference_inputs,_=fixture(case,manifest,reference_module,include_golden=False)
         pristine_inputs=storage_snapshots(inputs)
         initial_out=cpu_clone(inputs.get('out'))
         primary='q' if manifest['seam'].startswith('mla') else 'a' if manifest['seam']=='moe1' else 'hidden_states' if manifest['seam']=='moe1_prefill' else 'inter_states'
@@ -301,10 +292,10 @@ def main():
             row=checked_replays(case,policy,reset_inputs=reset_inputs,initialize_outputs=initialize_outputs,
                 replay=graph.replay,verify=verify,measure=measure,observe=observe,seed=request['challenge_seed'])
             report['cases'].append(row)
-            case_progress('completed',case_index,len(manifest['cases']),case['case_id'],request['request_id'])
         del graph,inputs,reference_inputs,golden,output,pristine_inputs,initial_out
         torch.cuda.empty_cache()
     report.update(compiled=True,compiled_specializations=compiled,
+                  output_contract_proofs=list(OUTPUT_CONTRACT_PROOFS.values()),
                   compilation_kind='current native implementations invoked and synchronized for every frozen case',
                   oracle_order='candidate output/input CPU snapshots before reference GPU computation',
                   native_binding=identity,unresolved_legacy_m=manifest.get('unresolved_legacy_m',[]),

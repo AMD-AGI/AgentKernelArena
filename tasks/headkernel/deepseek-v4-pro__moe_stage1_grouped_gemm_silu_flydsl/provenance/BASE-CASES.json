@@ -2159,236 +2159,6 @@
           ]
         }
       }
-    },
-    {
-      "calls_per_sample": 1,
-      "case_id": "observed-work-distribution-moe1-8ba9c41fa9ff9eee839f682f",
-      "distribution_group": "moe1-8ba9c41fa9ff9eee839f682f",
-      "fixture": {
-        "path": "fixtures/deepseek_moe1-aedfa8cdf4fad913658bc7bd-work-1823119e10017f2d.json",
-        "sha256": "a273b50115dbe82b231d262492efe9e6af9cd8bf4c40476f92e40d54bee6362a"
-      },
-      "occurrences": 1,
-      "provenance_kind": "generated_observed_work_distribution",
-      "scalars": {
-        "arguments": {
-          "a": {
-            "attributes": {},
-            "tensor": "arg.a"
-          },
-          "a1_scale": {
-            "attributes": {},
-            "tensor": "arg.a1_scale"
-          },
-          "a_dtype": "fp8",
-          "a_scale_one": false,
-          "act": "silu",
-          "b_dtype": "fp4",
-          "b_nt": 2,
-          "bias": null,
-          "gate_mode": "interleave",
-          "inter_dim_pad": 0,
-          "k_batch": 1,
-          "k_batch_intra_block": null,
-          "k_wave": 1,
-          "model_dim_pad": 0,
-          "num_valid_ids": {
-            "attributes": {},
-            "tensor": "arg.num_valid_ids"
-          },
-          "out": null,
-          "out_dtype": "fp8",
-          "persist_m": 0,
-          "situ_beta": 1.0,
-          "situ_linear_beta": 1.0,
-          "sorted_expert_ids": {
-            "attributes": {},
-            "tensor": "arg.sorted_expert_ids"
-          },
-          "sorted_token_ids": {
-            "attributes": {},
-            "tensor": "arg.sorted_token_ids"
-          },
-          "sorted_weights": null,
-          "swiglu_limit": 10.0,
-          "tile_k": 256,
-          "tile_m": 32,
-          "tile_n": 128,
-          "topk": 6,
-          "topk_ids": {
-            "attributes": {},
-            "tensor": "arg.topk_ids"
-          },
-          "use_async_copy": true,
-          "v2_output_layout": false,
-          "w1": {
-            "attributes": {
-              "is_shuffled": true
-            },
-            "tensor": "arg.w1"
-          },
-          "w1_scale": {
-            "attributes": {},
-            "tensor": "arg.w1_scale"
-          },
-          "waves_per_eu": 2,
-          "xcd_swizzle": 0
-        },
-        "return": {
-          "container": "tuple",
-          "items": [
-            {
-              "attributes": {},
-              "tensor": "result.0"
-            },
-            {
-              "attributes": {},
-              "tensor": "result.1"
-            }
-          ]
-        }
-      },
-      "stage": "decode",
-      "tensors": {
-        "arg.a": {
-          "device_type": "cuda",
-          "dtype": "float8_e4m3fn",
-          "role": "input",
-          "shape": [
-            64,
-            7168
-          ],
-          "storage_offset": 0,
-          "strides": [
-            7168,
-            1
-          ]
-        },
-        "arg.a1_scale": {
-          "device_type": "cuda",
-          "dtype": "float8_e8m0fnu",
-          "role": "input",
-          "shape": [
-            12672,
-            224
-          ],
-          "storage_offset": 0,
-          "strides": [
-            224,
-            1
-          ]
-        },
-        "arg.num_valid_ids": {
-          "device_type": "cuda",
-          "dtype": "int32",
-          "role": "input",
-          "shape": [
-            2
-          ],
-          "storage_offset": 0,
-          "strides": [
-            1
-          ]
-        },
-        "arg.sorted_expert_ids": {
-          "device_type": "cuda",
-          "dtype": "int32",
-          "role": "input",
-          "shape": [
-            396
-          ],
-          "storage_offset": 0,
-          "strides": [
-            1
-          ]
-        },
-        "arg.sorted_token_ids": {
-          "device_type": "cuda",
-          "dtype": "int32",
-          "role": "input",
-          "shape": [
-            12666
-          ],
-          "storage_offset": 0,
-          "strides": [
-            1
-          ]
-        },
-        "arg.topk_ids": {
-          "device_type": "cuda",
-          "dtype": "int32",
-          "role": "input",
-          "shape": [
-            64,
-            6
-          ],
-          "storage_offset": 0,
-          "strides": [
-            6,
-            1
-          ]
-        },
-        "arg.w1": {
-          "device_type": "cuda",
-          "dtype": "float4_e2m1fn_x2",
-          "role": "input",
-          "shape": [
-            384,
-            768,
-            3584
-          ],
-          "storage_offset": 0,
-          "strides": [
-            2752512,
-            3584,
-            1
-          ]
-        },
-        "arg.w1_scale": {
-          "device_type": "cuda",
-          "dtype": "float8_e8m0fnu",
-          "role": "input",
-          "shape": [
-            294912,
-            224
-          ],
-          "storage_offset": 0,
-          "strides": [
-            224,
-            1
-          ]
-        },
-        "result.0": {
-          "device_type": "cuda",
-          "dtype": "float8_e4m3fn",
-          "role": "output",
-          "shape": [
-            64,
-            6,
-            384
-          ],
-          "storage_offset": 0,
-          "strides": [
-            2304,
-            384,
-            1
-          ]
-        },
-        "result.1": {
-          "device_type": "cuda",
-          "dtype": "float8_e8m0fnu",
-          "role": "output",
-          "shape": [
-            12800,
-            16
-          ],
-          "storage_offset": 0,
-          "strides": [
-            16,
-            1
-          ]
-        }
-      }
     }
   ],
   "coverage_manifest": "provenance/COVERAGE.json",
@@ -2424,10 +2194,6 @@
   "observed_case_ids": [
     "deepseek_moe1-aedfa8cdf4fad913658bc7bd"
   ],
-  "observed_work_distributions": {
-    "path": "provenance/WORK-DISTRIBUTIONS.json",
-    "sha256": "a24193d49d4ffb918513a4c0711e818554ddb25d8c4441fba525a6a3af752418"
-  },
   "original_served_work_control_gate_passed": false,
   "random_draws": 3,
   "required_case_ids": [
@@ -2439,8 +2205,7 @@
     "generated-n2432-seed42-moe1",
     "generated-n2432-seed43-moe1",
     "generated-n2496-seed42-moe1",
-    "generated-n2496-seed43-moe1",
-    "observed-work-distribution-moe1-8ba9c41fa9ff9eee839f682f"
+    "generated-n2496-seed43-moe1"
   ],
   "required_phases": [
     "decode"
@@ -2450,7 +2215,7 @@
   "schema": "deepseek-frozen-current-case-contract-v1",
   "schema_version": 1,
   "seam": "moe1",
-  "status": "FROZEN_WITH_OBSERVED_WORK_DISTRIBUTIONS",
+  "status": "FROZEN_CAPTURE_AND_GENERATED",
   "task_GPU_qualification": false,
   "tensor_fixtures_required": true,
   "tolerance": 0.02,

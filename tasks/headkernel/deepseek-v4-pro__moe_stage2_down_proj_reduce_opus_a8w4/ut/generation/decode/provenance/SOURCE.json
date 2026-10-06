@@ -1,0 +1,689 @@
+{
+  "baseline_kind": "synchronization_repaired_supplied_reference",
+  "classification": "SYNCHRONIZATION_REPAIRED_BASELINE_NATIVE_REPEATABILITY_PASSED_NOT_FRAMEWORK_QUALIFIED",
+  "dependencies": [
+    {
+      "package": "aiter",
+      "path": "jit/core.py",
+      "sha256": "97998734a817f5444fa539e1811932f7529db8427a48a5bd73112763dbde768a"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/activation.py",
+      "sha256": "abfc73cc1b48be22fbd2ebb427016d65887a6bc06d6eada53785af479f265f8b"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/__init__.py",
+      "sha256": "f0ca8a1f6a112d5f1d6af38e8ca7734d45d40de9182c6e0911d4d36a5d30c742"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/batched_gemm_mxfp4.py",
+      "sha256": "7702e0db79d9a309b462831ce6bbecedabe2926de3f804ebc6c61dfff255b126"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/bpreshuffle_gemm_gfx1250.py",
+      "sha256": "5d477ccc235f775874c955ab60e70ee29289a457e55f9047014c2c1ea2f3547e"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/causal_conv1d_flydsl.py",
+      "sha256": "162748b7f2d4b589b3afba1d9cd0ef1c4757c801ec4553fc21b2d66841ff8492"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/fhmoe.py",
+      "sha256": "98c257f8f4739a44fa2076720960f3ed9fef20bd2e2f9360a3abe69b7e44addb"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/fmha_kernels.py",
+      "sha256": "35a7d04041fd7525d5009e8d9befa91a08ffefb2d63aa72ff2e7efa72091cd96"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/gemm_a8w8_bpreshuffle_8wave.py",
+      "sha256": "7510e063f8bbec6374fa9f7beb13b5c718cb66e81d5cdb39fdb15cb7ab5d4da6"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/gemm_kernels.py",
+      "sha256": "d656f58b9ad9671dbdd85eec5e18d3145cf1f2270fa1da4599f21870bfa1fb44"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/gemm_tune/flydsl_gemm_a8w8_bpreshuffle_common.py",
+      "sha256": "ad4cb71767d5a903560b00144730c50d5537ad11245bcbc60fe4df7c5078e636"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/gemm_tune/flydsl_gemm_a8w8_bpreshuffle_wmma_common.py",
+      "sha256": "81e3edac714307e0fb6a2c7425f57dd8c73ed008a3770570220053a4b8d5f4f8"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/gemm_tune/flydsl_gemm_mxfp8_128_bpreshuffle_wmma_common.py",
+      "sha256": "6668d5d3bf59bb23c1744d4397d4fff48d2e145c46258bae8cfc926f803f2555"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/grouped_gemm_mxfp4.py",
+      "sha256": "96c531ecb3f922e3556ae51e8d4251c830fd94b727516dbb010d24d50ca0682f"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/grouped_moe_gfx1250.py",
+      "sha256": "7ad29f7d35f50fa1a04f6828113743884b6f57c3aaad72b86df2103d7f681424"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/kernels/__init__.py",
+      "sha256": "03e3672f0f6627efeb6c75ec11d16c56a75f1b8bfec3717c16945ff259798c52"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/kernels/act.py",
+      "sha256": "0602318cdc3ee64fcef18ad79d731848f26f479c7a2badb65046e7727e10ddee"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/kernels/buffer_ops.py",
+      "sha256": "8a2eb2035f33332abcbbb8f55cf3bdbf7b05530e40cb54014add11854dfdf038"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/kernels/chunk_gated_delta_h.py",
+      "sha256": "ce5f06d92b8d6f7bc3687d39070272b0653a96c119fff9a6b11ed948ca8daa96"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/kernels/chunk_gated_delta_h_opt.py",
+      "sha256": "a39e407e25e22a49d4c01d9f5a530d0373d7f82d597c3307f9e799b29c7171f2"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/kernels/communication_ops_utils.py",
+      "sha256": "18a0818db2748c3852caab0a16f20625a2b69e6b9390de58a2326d4ebc59fd60"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/kernels/dpp_utils.py",
+      "sha256": "dec913a9321597bcbb6dbd5dda73ee4f53ba2ed02777235f7520c73369d02d44"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/kernels/fhmoe.py",
+      "sha256": "8e348bda73394acb329642cc6130122359e970a085dcc2d7302478dc5d916a07"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/kernels/flash_attn_func_gfx1201.py",
+      "sha256": "f8c35bf8dc93c202da3fa9cc1d62f6aa1a4460c171605a6eeab4f49051cdc20a"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/kernels/flydsl_dispatch_combine_intranode_kernel.py",
+      "sha256": "937cac497f37375b923559151f8d80908c1b9825b029b84f9f111fc77ac020e9"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/kernels/flydsl_dispatch_combine_intranode_op.py",
+      "sha256": "a54f352753cf0e539466a47355fc0d410724447943d0f8ff058c6613daeb7d03"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/kernels/fmha_gfx1250/__init__.py",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/kernels/fmha_gfx1250/fmha_core_loop.py",
+      "sha256": "fbb5b6a7e25147a549a5e54518ace3545cbdde24155c09f1e6db35d9ced875b0"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/kernels/fmha_gfx1250/fmha_kernel.py",
+      "sha256": "b901acc2baf54fdd3d02e865521745b3e6bcf0fe48c472072ff9badfdd9b4ab9"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/kernels/fmha_gfx1250/fmha_prologue.py",
+      "sha256": "7f56b43d626cd5df810fe353cd1840c9ea6636940eb61e565a32f95797379da0"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/kernels/fmha_gfx1250/fmha_schedule.py",
+      "sha256": "08a4098be945044ed62dff1deecfb2938563e559d39e3f062e2eff087da08d36"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/kernels/fused_compress_attn.py",
+      "sha256": "456628e259f06a2a4eb9b53761784540388d876320d7d84d956d43ebe856b30d"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/kernels/fused_compress_attn_common.py",
+      "sha256": "ac18e10567d3a51d28639ded1505dc531569cb716daa252a1bd0e3ea871ff521"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/kernels/fused_compress_attn_gfx1250.py",
+      "sha256": "c59c406d6babb5f16eab91e527a58757182447a600ed68c5e3aa4471ddfe859e"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/kernels/fused_compress_attn_hca.py",
+      "sha256": "e895fb902c92ca868b3f6d7dc5794152611e72f966eae547fbdec5b0c89c9a20"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/kernels/fused_compress_attn_hca_gfx1250.py",
+      "sha256": "0e2c6cd5b5706e15dea0e171c807eed4f32c8f6248d9173bccc986cb952e6163"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/kernels/gdn_prepare.py",
+      "sha256": "2d65f46c7d17dfbc15d1123125714d13c311a884d5154272065dc0d702be5ad9"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/kernels/gdr_decode.py",
+      "sha256": "6905ceae8fbd0e9aef664ac31cd8a07b03c4dc6c79c37234ccead26c0313d0c3"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/kernels/gemm_a8w8_256x256_gfx1250.py",
+      "sha256": "7651fb652587bd30bbee65b92104e1f1fc409afabe8fbd5ffac04e8c9f82c397"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/kernels/gemm_a8w8_8wave.py",
+      "sha256": "eb86d7fd7cc6bc1ab28f5a50639945f534436a5165f4ffa0fed0e4e4d443a509"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/kernels/gemm_a8w8_gfx1250.py",
+      "sha256": "2c43599164ef1299f6e33d50a361912de5ba2dabfadce7c314a44eb1f3bbb647"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/kernels/gemm_a8w8_splitk_reduce_gfx1250.py",
+      "sha256": "d78c6c44c826e2165967783e9eaa20d73e0f185dd9637bbab097bfbccecae8ee"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/kernels/gemm_common_gfx1250.py",
+      "sha256": "56bc1718cfd06346de834be1e78fe0d2567129b6ad0568a13a9f3ba19f0fe1d5"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/kernels/gfx1250_cluster.py",
+      "sha256": "9fcab55f57242e76f320520c98f51feceb6ba58e68bd5a047d2748ef5912fe89"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/kernels/hgemm_dispatch.py",
+      "sha256": "cdef8feeff05e1134039521e678341c127d1d3b55c8de8437f3668509bf455e3"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/kernels/kernels_common.py",
+      "sha256": "40c660901f8445a60a802eb72690223d1b20dd0810bda03e6f7880fbfdd0d091"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/kernels/layout_utils.py",
+      "sha256": "c31a14195e7abdcac527c37effff8fd2240d7d609402f50395871a60423a0db1"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/kernels/mega_moe/__init__.py",
+      "sha256": "cf9683f57fb3435e809e2115ccf81fb1e0e0b88baf89feec59819a22b3036a99"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/kernels/mega_moe/dispatch.py",
+      "sha256": "e1cfec32ce3468403315517b4b5281b023e1174d3effd93b92c7546b3fec3804"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/kernels/mega_moe/gemm1.py",
+      "sha256": "758ccb05b90f017df69a9bdd36e1dbbd5a4e50e04e43043e6316f630b351f984"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/kernels/mega_moe/gemm2.py",
+      "sha256": "cf2678e950511aa09ac1efa5de93b3466879c4428e657998fe64802688065352"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/kernels/mega_moe/gemm_util.py",
+      "sha256": "ed1e25ed6d9c7bbb4dfd2fa696902e5b78175105996ce1938e70843cb9e07530"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/kernels/mega_moe/mega_moe_config.py",
+      "sha256": "5f271de118efaeb6eb4b332961a7a380b406fc09f29a10d91a244830c81326c8"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/kernels/mega_moe/mega_moe_stage1.py",
+      "sha256": "ca977cc4a45236e8c2a657a63305065027a42170a54d23884f9c15ec61c03144"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/kernels/mega_moe/mega_moe_stage2.py",
+      "sha256": "7e258056b28c5aef1b372c27126b0c839c830d1b6e2888d1919cd44ddbdd4c50"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/kernels/mega_moe/mega_moe_v2.py",
+      "sha256": "577370d3c647a1199d0f1b9e5c2410bac66ee18aa2e3f8043f8b428a29e7d1ff"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/kernels/mega_moe/quant.py",
+      "sha256": "3cd161a5ea3f438aa88db7e5a64a48fb480909ffd41876715ac9da4bc1b84947"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/kernels/mega_moe_gfx1250/__init__.py",
+      "sha256": "882cf28dd4d67990e619f3c8d7f8f2af533abb9af8ebfb454452aa51d83b341e"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/kernels/mega_moe_gfx1250/combine.py",
+      "sha256": "8ad83d693fd524259f00d71c31451cdeb4ef7c24d06b64e6866e5fd7e47ff30b"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/kernels/mega_moe_gfx1250/config.py",
+      "sha256": "53c7d3beb670cab3254ba9ed5af1e6771d4e6c0d3c2ea9ead6b1597334f06957"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/kernels/mega_moe_gfx1250/dispatch.py",
+      "sha256": "b8f25a258dd72f44133ca7cf2f63bda4ff6a329868f8ebffa400a8bf7b0758e3"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/kernels/mega_moe_gfx1250/mega_moe.py",
+      "sha256": "33385219e1a607ae6ffeb4c7c8addd0ac37b3a2c74b6890fbda1a26ca5d904ac"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/kernels/mega_moe_gfx1250/tdm_gather_shim.py",
+      "sha256": "3b6fab071e3514cc7d6f0d791605dcd450522843078cb9fa3fd4793be171b94f"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/kernels/mega_moe_gfx1250/types.py",
+      "sha256": "9f59ce8b50f703ec78cb561f1b17e7dc335dc80592dcea197bf35b3b471b81fe"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/kernels/mfma_epilogues.py",
+      "sha256": "411dfec00e8bf1ed0642c93d2cf908c744dd8ff188ba3daf63c9a42cf28303c6"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/kernels/mfma_preshuffle_pipeline.py",
+      "sha256": "80c14a2dcc40a15b712f4c00987e9d460b0309dc34faa988f423ce3686f3f0ee"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/kernels/mixed_moe_gemm_2stage.py",
+      "sha256": "7ab78bf4195364aad7778532844a4b8c01e9dfe82a728c3322381162b428ac37"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/kernels/mixed_moe_gemm_2stage_common.py",
+      "sha256": "7c43585c51bfee5506515d0efec908611c93ac8d0583addb437296d442a91a91"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/kernels/mla_reduce.py",
+      "sha256": "9defc5adab11a2c004599730e52c6891a298d5308d18c0ab777b06f1c67dadf0"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/kernels/moe_2stage_a16wmix/__init__.py",
+      "sha256": "a48dc8c104562ca3212ec35560d7f087423f28c07ebd40340970a526f2ec038e"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/kernels/moe_2stage_a16wmix/gemm1.py",
+      "sha256": "09c0c7967a2b5d26055bea321a2a534eca2a151f0c666c075f6df4a76efeebfa"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/kernels/moe_2stage_a16wmix/gemm2.py",
+      "sha256": "b37f33e38496fdc848a623a268f20440873b0b9e90a9b6302bfec231f3f3dca2"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/kernels/moe_2stage_a16wmix/utils.py",
+      "sha256": "7b501832fdf6ff716e5bf7d3798ad40381489b778f2695579b47862bc50faef0"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/kernels/moe_contiguous_psum.py",
+      "sha256": "3de9f5af0b75d909014035aa52db61128fe6caa4225cc942c4c6033fdaed661d"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/kernels/moe_fused_route_quant_scatter.py",
+      "sha256": "48521909599c219400068bf64c7d18df3ca7b0d438e2f5299df22b432b5b9bb4"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/kernels/moe_g2l_lut.py",
+      "sha256": "511a9e22cd2141e5148fe6d9f24574204b232c1ba7789d4677798dd9fba8a209"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/kernels/moe_gather_reduce.py",
+      "sha256": "b5a50c1c9d2255015b48703c99db831bab1c9bc40204146def9da4435a1cdd57"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/kernels/moe_m_tile_map.py",
+      "sha256": "4abcc4d144b3d322d81174ae70f7e88f7d64b5fa34a4279061d9fd9e59c981b9"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/kernels/moe_reduce.py",
+      "sha256": "dc2605e06ecae1a94e98522ea2d3f0dda9c3eb6fdf08095a811ea28ac9729d73"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/kernels/moe_route_maps.py",
+      "sha256": "042425ccc0fa2420c6d189320052e5efc8c2b8e3448cf200e20bc985a47d4c42"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/kernels/moe_scatter_copy_preshuffle_scale.py",
+      "sha256": "4f2a205ccc4323e78f558b67877dfd7cddabc194c9f70ed007e5b9f713877ddf"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/kernels/moe_scatter_copy_token.py",
+      "sha256": "a912de056515a3737d4ba74997d155d29e17615f35c0827ed8afecf68e09275f"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/kernels/moe_sorting_kernel.py",
+      "sha256": "c5eed4d648b99b2b9d7c2c28b8430080acd20e77f2a97f9bac529ceec99ac1b8"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/kernels/mqa_logits/__init__.py",
+      "sha256": "868601d279866866ee89b0145653b2be5a68d445af229409f709781ba69f753c"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/kernels/mqa_logits/fp8_mqa_logits.py",
+      "sha256": "4ac91b8c8edc673644d9d4ee28d5cec9cf96da8da66dad913461544e858aaf79"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/kernels/mqa_logits/pa_mqa_logits_fp4.py",
+      "sha256": "a21c7cdaee0247d536d4ad389181f53da340b2fa5e11b1a20ebeeb6fa18cf4d9"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/kernels/mqa_logits/pa_mqa_logits_fp4_common.py",
+      "sha256": "d0af6f9b0a2d3dd57ab04c5f71fea435c5cb11e62871e4920627e60e1e5ff438"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/kernels/mqa_logits/pa_mqa_logits_fp4_prefill.py",
+      "sha256": "0801476fa5d90ff1027045bd83638f43b49398112c38405b42380542fe4cfcfa"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/kernels/mxfp4_gemm1.py",
+      "sha256": "eec4211ea683b6a6e900ceb0fad1de4e9a3b829fa8c138b02321dc686140df75"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/kernels/mxfp4_gemm2.py",
+      "sha256": "aa9649fdbe35611a030c2198bb49632502912b9d9ca97d7f313fe9b698f06486"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/kernels/mxfp4_gemm_common.py",
+      "sha256": "8972e9d4f3b1611d945ffa4b6d4200b2402e5bd2e4149cd6995b851f0232d33d"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/kernels/mxfp4_preshuffle_batched_gemm_gfx1250_tdm.py",
+      "sha256": "c9387b94455c34485b75ccc31c8de73fd36976da1e889d42250e10d9ec56258b"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/kernels/mxfp4_preshuffle_gfx1250_tdm.py",
+      "sha256": "ae2b1c5ecdd53032c873c70399e51665cdc9242f5f5ae3b0f90d0b06400edf70"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/kernels/mxmoe_dispatcher.py",
+      "sha256": "25ff79966f770b013c6d5471460244f4c979fb9a185262778ae5fb3435078f8a"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/kernels/mxmoe_gemm_v2.py",
+      "sha256": "25a045055b9d3a8f083c9e48e7a0d594109abf466da1b159d16c8e99ae257c77"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/kernels/preshuffle_gemm.py",
+      "sha256": "4585b56eda6cbfefa405e754f14a9318cfc2a63f29d05b226e34a291c9c97107"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/kernels/qk_norm_rope_quant.py",
+      "sha256": "adfe9dc484339d79af43cea932bf2997d271a769a0d2baf83f90999bd60776e3"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/kernels/quant_utils.py",
+      "sha256": "d2b8577717ff2c2a5896921129591c81d25dd3c8e64f70f6288b585f25bca672"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/kernels/silu_and_mul_fq.py",
+      "sha256": "4714d6dc89617840a4944e1e95b86512266353464f6f45de1aa7ebb5e52af403"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/kernels/small_m_hgemm.py",
+      "sha256": "049b39589f9aa35b34efd5a0bcd38f0453fd6d8d1e43088c761145ca0a23e918"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/kernels/splitk_epilogue.py",
+      "sha256": "ca51d92f26af30633fd04aab004c9cdc0c8fd19e5e1b5df3836ee8fa552ccd03"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/kernels/splitk_hgemm.py",
+      "sha256": "6c645d267aac913d3ac991c1de5523bee629278da9dd1616772b84e682687d24"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/kernels/swiglu_and_mul.py",
+      "sha256": "8878303f58b1bbb63a348dab5de74527e767401bdc67bbc621c0752c9a4a0a6a"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/kernels/tdm_ops_gfx1250.py",
+      "sha256": "3fdc69c1afee97131ed502d3a92fdb4271355af3cb1d17d08399c4d5bc239621"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/kernels/tensor_shim.py",
+      "sha256": "1b6fe9f728f8818da5e1e9d11d44ba9d8118c92908798ef51f27786a44fba16e"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/kernels/vector.py",
+      "sha256": "f63210b5089c797a484c5d8c4f310c17fd4fc965e44cbcbd464bd7fd37b67ba1"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/linear_attention_kernels.py",
+      "sha256": "cc69290bb8319e693950a809ba951259f94bf16912f1cd45eed8d6e50c3f596b"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/linear_attention_prefill_kernels.py",
+      "sha256": "14d179f520d42eed3732cad6f054bd6544ddacd9262882def554b2f0817fa0b8"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/mla_reduce_kernels.py",
+      "sha256": "cc75b9128de87388d460a336eca48560f42e2a8d308eaa4ba1da45fa6e836219"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/moe_common.py",
+      "sha256": "49e6d7c4c1c65e4a918425ec1985ec4dc077039b0e47aca4749d5f1ba611f719"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/moe_kernels.py",
+      "sha256": "d08339bc94dfabd3529d415857e49d0383f9efe2ef62be9a84916c55c5857e68"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/moe_sorting.py",
+      "sha256": "ea97426a898312b2e6911c9ce7c612a3e5f2bdf0d416781499a3073786aa44e2"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/mxfp4_gemm1_kernels.py",
+      "sha256": "3dfffcc252ec16e90be624e658b8deef605ebc4045a067a4fab93cead8fb1151"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/mxfp4_gemm2_kernels.py",
+      "sha256": "1f3e3d01e747291b4d33e34db8489d1c89fcd949447dfbaa28c8514d97d6d8a5"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/mxfp4_kname.py",
+      "sha256": "de98ccb74e83cdcb9dc95da4907f594af15a2cc99be197552d0b89cf7484330b"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/mxfp4_v2_tune_utils.py",
+      "sha256": "f0c856767f0ae4aa4a059afef61189e355821367df3d204951e08279071ccfdc"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/mxfp8_128_bpreshuffle_gemm_gfx1250.py",
+      "sha256": "f341129f036f5049c83384c9343e98f0171f381a4add050a82af6a5090487b0b"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/test_flydsl_linear_attention.py",
+      "sha256": "b17acde4280e4918c17d3487affc75fd91efb4c18593003508782fabb1700361"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/test_flydsl_moe_a4w4.py",
+      "sha256": "531b10d29be55cd16d68aada80e686f1e325947dcdff6172ec8e17705d11e047"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/test_flydsl_splitk_hgemm.py",
+      "sha256": "e30196e1038c24da53ab44632e64605f41ad32cdb312db84ee88a0823bb5922c"
+    },
+    {
+      "package": "aiter",
+      "path": "ops/flydsl/utils.py",
+      "sha256": "165276d3756ecf7a6c0965420d8c4c64be865dc8df94ce9fbdfa71c07e380804"
+    },
+    {
+      "package": "aiter",
+      "path": "utility/dtypes.py",
+      "sha256": "1c473c70a7033aeefde72f021b8e35abfb067fefc27027815c7635ca4644f04a"
+    }
+  ],
+  "editable_sources": {
+    "source/mixed_moe_gemm_2stage_common.py": {
+      "language": "flydsl",
+      "reference": "ut/reference/mixed_moe_gemm_2stage_common.py",
+      "targets": [
+        "compile_mixed_moe_gemm1_common._emit_moe_gemm1"
+      ]
+    }
+  },
+  "function": "flydsl_moe_stage1",
+  "gpu_binding": {
+    "compiler_source": "ut/native/mixed_moe_gemm_2stage.py",
+    "kind": "flydsl_stage1"
+  },
+  "gpu_source_provenance": [
+    {
+      "image_path": "/sgl-workspace/aiter/aiter/ops/flydsl/kernels/mixed_moe_gemm_2stage_common.py",
+      "sha256": "7c43585c51bfee5506515d0efec908611c93ac8d0583addb437296d442a91a91"
+    }
+  ],
+  "gpu_source_status": "READY_FOR_GPU_VALIDATION",
+  "has_var_kwargs": false,
+  "host_source": "ut/host/native.py",
+  "image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
+  "module": "aiter.ops.flydsl.moe_kernels",
+  "native_source_sha256": "d08339bc94dfabd3529d415857e49d0383f9efe2ef62be9a84916c55c5857e68",
+  "repaired_gpu_source_sha256": {
+    "source/mixed_moe_gemm_2stage_common.py": "b819545c0be6f94932edd994983c7d3ec6c18a652d4f8c330cad2513372bbe6d"
+  },
+  "seam": "moe1",
+  "sglang_version": "0.5.20",
+  "signature": "def flydsl_moe_stage1(a: torch.Tensor, w1: torch.Tensor, sorted_token_ids: torch.Tensor, sorted_expert_ids: torch.Tensor, num_valid_ids: torch.Tensor, out: torch.Tensor | None=None, topk: int=1, *, tile_m: int=32, tile_n: int=256, tile_k: int=256, a_dtype: str='fp8', b_dtype: str='fp4', out_dtype: str='bf16', act: str='silu', situ_beta: float=1.0, situ_linear_beta: float=1.0, w1_scale: torch.Tensor | None=None, a1_scale: torch.Tensor | None=None, sorted_weights: torch.Tensor | None=None, persist_m: int=0, use_async_copy: bool=False, k_batch: int=1, k_batch_intra_block: int | None=None, waves_per_eu: int=3, b_nt: int=0, gate_mode: str='separated', model_dim_pad: int=0, inter_dim_pad: int=0, bias: torch.Tensor | None=None, topk_ids: torch.Tensor | None=None, a_scale_one: bool=False, xcd_swizzle: int=0, swiglu_limit: float | None=None, k_wave: int=1, v2_output_layout: bool=False):",
+  "signature_parameters": [
+    "a",
+    "w1",
+    "sorted_token_ids",
+    "sorted_expert_ids",
+    "num_valid_ids",
+    "out",
+    "topk",
+    "tile_m",
+    "tile_n",
+    "tile_k",
+    "a_dtype",
+    "b_dtype",
+    "out_dtype",
+    "act",
+    "situ_beta",
+    "situ_linear_beta",
+    "w1_scale",
+    "a1_scale",
+    "sorted_weights",
+    "persist_m",
+    "use_async_copy",
+    "k_batch",
+    "k_batch_intra_block",
+    "waves_per_eu",
+    "b_nt",
+    "gate_mode",
+    "model_dim_pad",
+    "inter_dim_pad",
+    "bias",
+    "topk_ids",
+    "a_scale_one",
+    "xcd_swizzle",
+    "swiglu_limit",
+    "k_wave",
+    "v2_output_layout"
+  ],
+  "source_sha256": "d08339bc94dfabd3529d415857e49d0383f9efe2ef62be9a84916c55c5857e68",
+  "stock_equivalence_claimed": false,
+  "stock_image_byte_identical": false,
+  "synchronization_repair": "provenance/STAGE1-SYNC-REPAIR.json"
+}

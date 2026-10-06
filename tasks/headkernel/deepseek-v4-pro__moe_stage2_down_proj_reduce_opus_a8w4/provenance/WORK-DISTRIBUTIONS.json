@@ -1,0 +1,7393 @@
+{
+  "activation_provenance": "Fresh seeded FP8 values with captured per-token scales remapped to generated sorted routes.",
+  "base_manifest": {
+    "fingerprint": "6b1636e037de5a88b3139ab487aa838e4833c244bc780b82bf071332afe7243f",
+    "path": "provenance/BASE-CASES.json",
+    "sha256": "dbdaf608e4200973ad1bf4e3fcc12f41e17bd4b428ceef71065afcb67e6dfb6b"
+  },
+  "generation": {
+    "decode": {
+      "config": "ut/generation/decode/provenance/SOURCE.json",
+      "emitter_sha256": "b819545c0be6f94932edd994983c7d3ec6c18a652d4f8c330cad2513372bbe6d",
+      "kind": "frozen_repaired_flydsl_reference",
+      "task_root": "ut/generation/decode"
+    },
+    "prefill": {
+      "config": "ut/generation/prefill/provenance/SOURCE.json",
+      "kind": "pinned_image_native"
+    }
+  },
+  "groups": {
+    "moe2-8e894354cd8b36ea7a19ee46": {
+      "base_case_id": "deepseek_moe2-46d9a158091ade7c0f211cbd-work-c5cd180a3a906c17",
+      "block_m": 64,
+      "case_id": "observed-work-distribution-moe2-8e894354cd8b36ea7a19ee46",
+      "correctness": {
+        "all_observed_settings_tested_in_standard_mode": false,
+        "default_mode": "targeted_uncovered_behaviors",
+        "full_histogram_still_required": true,
+        "observed_setting_count": 195,
+        "optional_mode": "exhaustive_observed_values",
+        "rationale": "Thirteen actual observed counts cover minimum/maximum and neighbors, rare previously uncovered behavior, dominant and weighted interior states, and explicit live-work tile/alignment boundaries. These are probes within the unchanged native dispatch, not claims of new dispatch branches or exhaustive value testing. Original fixed cases/seeds/controls/timings remain intact.",
+        "review_status": "reviewed",
+        "reviewed_by": "/root/top5_workload_layout",
+        "targeted_probes": [
+          {
+            "num_valid_ids": [
+              49152,
+              8192
+            ],
+            "observed_occurrences": 24,
+            "observed_occurrences_by_rank": {
+              "0": 3,
+              "1": 3,
+              "2": 3,
+              "3": 3,
+              "4": 3,
+              "5": 3,
+              "6": 3,
+              "7": 3
+            },
+            "reasons": [
+              "Observed global minimum equals all 8192*6 real routes: zero padded-route overhead."
+            ],
+            "variant_id": "c5cd180a3a906c17583179ad5dae57e8b82349af82b0d7e7f85facde85e362ca"
+          },
+          {
+            "num_valid_ids": [
+              50624,
+              8192
+            ],
+            "observed_occurrences": 48,
+            "observed_occurrences_by_rank": {
+              "0": 6,
+              "1": 6,
+              "2": 6,
+              "3": 6,
+              "4": 6,
+              "5": 6,
+              "6": 6,
+              "7": 6
+            },
+            "reasons": [
+              "Immediate observed successor to the minimum; first recorded padded-work state."
+            ],
+            "variant_id": "84be876c4df6dc88676cd8b9061c92e4122387ede0eb71e960f74f5550e8e149"
+          },
+          {
+            "num_valid_ids": [
+              51072,
+              8192
+            ],
+            "observed_occurrences": 8,
+            "observed_occurrences_by_rank": {
+              "0": 1,
+              "1": 1,
+              "2": 1,
+              "3": 1,
+              "4": 1,
+              "5": 1,
+              "6": 1,
+              "7": 1
+            },
+            "reasons": [
+              "Smallest count among the least-frequent previously unrepresented prefill settings (eight rank-local calls)."
+            ],
+            "variant_id": "4beba0873d7fcaa8c136d4fe79e374ee6d8962649bea390a23b75f813311bf0e"
+          },
+          {
+            "num_valid_ids": [
+              57856,
+              8192
+            ],
+            "observed_occurrences": 80,
+            "observed_occurrences_by_rank": {
+              "0": 10,
+              "1": 10,
+              "2": 10,
+              "3": 10,
+              "4": 10,
+              "5": 10,
+              "6": 10,
+              "7": 10
+            },
+            "reasons": [
+              "Weighted 10th-percentile interior count."
+            ],
+            "variant_id": "6ab07fab0246f2eca413ffff2cdea500a8dc96551537597c179f633b108b1c94"
+          },
+          {
+            "num_valid_ids": [
+              59840,
+              8192
+            ],
+            "observed_occurrences": 248,
+            "observed_occurrences_by_rank": {
+              "0": 31,
+              "1": 31,
+              "2": 31,
+              "3": 31,
+              "4": 31,
+              "5": 31,
+              "6": 31,
+              "7": 31
+            },
+            "reasons": [
+              "Weighted 25th-percentile interior count."
+            ],
+            "variant_id": "01a44972e790e9a07e296642f810e083e7c31aaf5aa251d1d6b7b34ccb943391"
+          },
+          {
+            "num_valid_ids": [
+              61376,
+              8192
+            ],
+            "observed_occurrences": 432,
+            "observed_occurrences_by_rank": {
+              "0": 54,
+              "1": 54,
+              "2": 54,
+              "3": 54,
+              "4": 54,
+              "5": 54,
+              "6": 54,
+              "7": 54
+            },
+            "reasons": [
+              "Weighted median and observed predecessor to the selected alignment boundary."
+            ],
+            "variant_id": "0bc15f999c966b90b1b66c559b7b9b67dbb2261092ee9e7617a422d8a3e92c49"
+          },
+          {
+            "num_valid_ids": [
+              61440,
+              8192
+            ],
+            "observed_occurrences": 432,
+            "observed_occurrences_by_rank": {
+              "0": 54,
+              "1": 54,
+              "2": 54,
+              "3": 54,
+              "4": 54,
+              "5": 54,
+              "6": 54,
+              "7": 54
+            },
+            "reasons": [
+              "Exact 256-row alignment boundary in the live sorted prefix; unchanged allocation and dispatch."
+            ],
+            "variant_id": "7abe03e9310dce0dec8fcc7dc6589f2cbdd13888fb98937a0d5ed63898ce82c4"
+          },
+          {
+            "num_valid_ids": [
+              61504,
+              8192
+            ],
+            "observed_occurrences": 576,
+            "observed_occurrences_by_rank": {
+              "0": 72,
+              "1": 72,
+              "2": 72,
+              "3": 72,
+              "4": 72,
+              "5": 72,
+              "6": 72,
+              "7": 72
+            },
+            "reasons": [
+              "Immediate observed 64-row successor across that alignment boundary."
+            ],
+            "variant_id": "4c2aead510486a002a7650ac20ff27f4f248869cf302a869688aca2f5a9928c9"
+          },
+          {
+            "num_valid_ids": [
+              61888,
+              8192
+            ],
+            "observed_occurrences": 680,
+            "observed_occurrences_by_rank": {
+              "0": 85,
+              "1": 85,
+              "2": 85,
+              "3": 85,
+              "4": 85,
+              "5": 85,
+              "6": 85,
+              "7": 85
+            },
+            "reasons": [
+              "Observed frequency mode; dominant workload interior."
+            ],
+            "variant_id": "67175c4a5821d250f9215ec0ad7f3d80997ef81231986504e57d6729060fdddb"
+          },
+          {
+            "num_valid_ids": [
+              62208,
+              8192
+            ],
+            "observed_occurrences": 632,
+            "observed_occurrences_by_rank": {
+              "0": 79,
+              "1": 79,
+              "2": 79,
+              "3": 79,
+              "4": 79,
+              "5": 79,
+              "6": 79,
+              "7": 79
+            },
+            "reasons": [
+              "Weighted 75th-percentile count."
+            ],
+            "variant_id": "24b55cd619169c2c3dfa465e5170374ef794e79db3d6b05d2be618f33a737880"
+          },
+          {
+            "num_valid_ids": [
+              62784,
+              8192
+            ],
+            "observed_occurrences": 464,
+            "observed_occurrences_by_rank": {
+              "0": 58,
+              "1": 58,
+              "2": 58,
+              "3": 58,
+              "4": 58,
+              "5": 58,
+              "6": 58,
+              "7": 58
+            },
+            "reasons": [
+              "Weighted 90th-percentile count."
+            ],
+            "variant_id": "0808ca811b750f7e704522421554fa8f5a72ba597f347b5ef55d3daa3ede37f0"
+          },
+          {
+            "num_valid_ids": [
+              64192,
+              8192
+            ],
+            "observed_occurrences": 16,
+            "observed_occurrences_by_rank": {
+              "0": 2,
+              "1": 2,
+              "2": 2,
+              "3": 2,
+              "4": 2,
+              "5": 2,
+              "6": 2,
+              "7": 2
+            },
+            "reasons": [
+              "Immediate observed predecessor to global maximum; 64256 was not observed and is not invented."
+            ],
+            "variant_id": "6a06ba1829166c8b7ea52b9c618fe602f9533395d8eff9781cbdfde72db1e60d"
+          },
+          {
+            "num_valid_ids": [
+              64320,
+              8192
+            ],
+            "observed_occurrences": 8,
+            "observed_occurrences_by_rank": {
+              "0": 1,
+              "1": 1,
+              "2": 1,
+              "3": 1,
+              "4": 1,
+              "5": 1,
+              "6": 1,
+              "7": 1
+            },
+            "reasons": [
+              "Observed global maximum; largest prefill live routing prefix."
+            ],
+            "variant_id": "ee3f0c2bc494c65fc52f757a97ae7cce2716a5bea806c19c3890d25a70a7fdba"
+          }
+        ],
+        "targeted_setting_count": 13,
+        "targeted_variant_ids": [
+          "c5cd180a3a906c17583179ad5dae57e8b82349af82b0d7e7f85facde85e362ca",
+          "84be876c4df6dc88676cd8b9061c92e4122387ede0eb71e960f74f5550e8e149",
+          "4beba0873d7fcaa8c136d4fe79e374ee6d8962649bea390a23b75f813311bf0e",
+          "6ab07fab0246f2eca413ffff2cdea500a8dc96551537597c179f633b108b1c94",
+          "01a44972e790e9a07e296642f810e083e7c31aaf5aa251d1d6b7b34ccb943391",
+          "0bc15f999c966b90b1b66c559b7b9b67dbb2261092ee9e7617a422d8a3e92c49",
+          "7abe03e9310dce0dec8fcc7dc6589f2cbdd13888fb98937a0d5ed63898ce82c4",
+          "4c2aead510486a002a7650ac20ff27f4f248869cf302a869688aca2f5a9928c9",
+          "67175c4a5821d250f9215ec0ad7f3d80997ef81231986504e57d6729060fdddb",
+          "24b55cd619169c2c3dfa465e5170374ef794e79db3d6b05d2be618f33a737880",
+          "0808ca811b750f7e704522421554fa8f5a72ba597f347b5ef55d3daa3ede37f0",
+          "6a06ba1829166c8b7ea52b9c618fe602f9533395d8eff9781cbdfde72db1e60d",
+          "ee3f0c2bc494c65fc52f757a97ae7cce2716a5bea806c19c3890d25a70a7fdba"
+        ]
+      },
+      "expert_capacity": 1152,
+      "experts": 384,
+      "group_id": "moe2-8e894354cd8b36ea7a19ee46",
+      "histogram": [
+        {
+          "num_valid_ids": [
+            49152,
+            8192
+          ],
+          "occurrences": 24,
+          "occurrences_by_rank": {
+            "0": 3,
+            "1": 3,
+            "2": 3,
+            "3": 3,
+            "4": 3,
+            "5": 3,
+            "6": 3,
+            "7": 3
+          },
+          "variant_id": "c5cd180a3a906c17583179ad5dae57e8b82349af82b0d7e7f85facde85e362ca"
+        },
+        {
+          "num_valid_ids": [
+            50624,
+            8192
+          ],
+          "occurrences": 48,
+          "occurrences_by_rank": {
+            "0": 6,
+            "1": 6,
+            "2": 6,
+            "3": 6,
+            "4": 6,
+            "5": 6,
+            "6": 6,
+            "7": 6
+          },
+          "variant_id": "84be876c4df6dc88676cd8b9061c92e4122387ede0eb71e960f74f5550e8e149"
+        },
+        {
+          "num_valid_ids": [
+            50688,
+            8192
+          ],
+          "occurrences": 24,
+          "occurrences_by_rank": {
+            "0": 3,
+            "1": 3,
+            "2": 3,
+            "3": 3,
+            "4": 3,
+            "5": 3,
+            "6": 3,
+            "7": 3
+          },
+          "variant_id": "1646d81a5f84ac129fe44401071d4a5ea75d6aba8880fd0238290252127c0e65"
+        },
+        {
+          "num_valid_ids": [
+            50944,
+            8192
+          ],
+          "occurrences": 16,
+          "occurrences_by_rank": {
+            "0": 2,
+            "1": 2,
+            "2": 2,
+            "3": 2,
+            "4": 2,
+            "5": 2,
+            "6": 2,
+            "7": 2
+          },
+          "variant_id": "29e2022919ce6d54c61bcc92dcbaabefe868cefc3c456cba680fdaaadb068300"
+        },
+        {
+          "num_valid_ids": [
+            51072,
+            8192
+          ],
+          "occurrences": 8,
+          "occurrences_by_rank": {
+            "0": 1,
+            "1": 1,
+            "2": 1,
+            "3": 1,
+            "4": 1,
+            "5": 1,
+            "6": 1,
+            "7": 1
+          },
+          "variant_id": "4beba0873d7fcaa8c136d4fe79e374ee6d8962649bea390a23b75f813311bf0e"
+        },
+        {
+          "num_valid_ids": [
+            51392,
+            8192
+          ],
+          "occurrences": 8,
+          "occurrences_by_rank": {
+            "0": 1,
+            "1": 1,
+            "2": 1,
+            "3": 1,
+            "4": 1,
+            "5": 1,
+            "6": 1,
+            "7": 1
+          },
+          "variant_id": "e5b2cf534087184e5b2d2589d22f918cd632a02edf13348ab338b9783e6c8656"
+        },
+        {
+          "num_valid_ids": [
+            51584,
+            8192
+          ],
+          "occurrences": 16,
+          "occurrences_by_rank": {
+            "0": 2,
+            "1": 2,
+            "2": 2,
+            "3": 2,
+            "4": 2,
+            "5": 2,
+            "6": 2,
+            "7": 2
+          },
+          "variant_id": "342248738d7a2c449e8aa32b588f142c375a9add17c462a33ed9e515b1fd1ee5"
+        },
+        {
+          "num_valid_ids": [
+            51648,
+            8192
+          ],
+          "occurrences": 8,
+          "occurrences_by_rank": {
+            "0": 1,
+            "1": 1,
+            "2": 1,
+            "3": 1,
+            "4": 1,
+            "5": 1,
+            "6": 1,
+            "7": 1
+          },
+          "variant_id": "ae41deb20c19f3485e0698ced905251183cc33ed3ff29acf23c4fc80f18bcf69"
+        },
+        {
+          "num_valid_ids": [
+            51840,
+            8192
+          ],
+          "occurrences": 8,
+          "occurrences_by_rank": {
+            "0": 1,
+            "1": 1,
+            "2": 1,
+            "3": 1,
+            "4": 1,
+            "5": 1,
+            "6": 1,
+            "7": 1
+          },
+          "variant_id": "aa2eba0666c72d9bb51da9be820826fdaf460d76cdfb0eaf13fd032837800772"
+        },
+        {
+          "num_valid_ids": [
+            51904,
+            8192
+          ],
+          "occurrences": 8,
+          "occurrences_by_rank": {
+            "0": 1,
+            "1": 1,
+            "2": 1,
+            "3": 1,
+            "4": 1,
+            "5": 1,
+            "6": 1,
+            "7": 1
+          },
+          "variant_id": "69e624fa4af172ca6363286d560339562c43990ada1e3a14625ae4720cf265bd"
+        },
+        {
+          "num_valid_ids": [
+            52096,
+            8192
+          ],
+          "occurrences": 8,
+          "occurrences_by_rank": {
+            "0": 1,
+            "1": 1,
+            "2": 1,
+            "3": 1,
+            "4": 1,
+            "5": 1,
+            "6": 1,
+            "7": 1
+          },
+          "variant_id": "24040db6f03e12cb2b47a2e712ac6a3a963292c7f0b930e1f4afd9019c9e5312"
+        },
+        {
+          "num_valid_ids": [
+            52160,
+            8192
+          ],
+          "occurrences": 8,
+          "occurrences_by_rank": {
+            "0": 1,
+            "1": 1,
+            "2": 1,
+            "3": 1,
+            "4": 1,
+            "5": 1,
+            "6": 1,
+            "7": 1
+          },
+          "variant_id": "175d7150d3b238ab65d449f3213fe4b348d5bac41b0d0230c93839cfd8aec1d3"
+        },
+        {
+          "num_valid_ids": [
+            52224,
+            8192
+          ],
+          "occurrences": 8,
+          "occurrences_by_rank": {
+            "0": 1,
+            "1": 1,
+            "2": 1,
+            "3": 1,
+            "4": 1,
+            "5": 1,
+            "6": 1,
+            "7": 1
+          },
+          "variant_id": "eba11cf4221ebe2f80f806558dd9a327b6130204978293f9ed61ece3a813172b"
+        },
+        {
+          "num_valid_ids": [
+            52288,
+            8192
+          ],
+          "occurrences": 16,
+          "occurrences_by_rank": {
+            "0": 2,
+            "1": 2,
+            "2": 2,
+            "3": 2,
+            "4": 2,
+            "5": 2,
+            "6": 2,
+            "7": 2
+          },
+          "variant_id": "ff4ba6629fb959d9667923c264ee021496606ca180e7f55c2beaaa83f76196e0"
+        },
+        {
+          "num_valid_ids": [
+            52416,
+            8192
+          ],
+          "occurrences": 8,
+          "occurrences_by_rank": {
+            "0": 1,
+            "1": 1,
+            "2": 1,
+            "3": 1,
+            "4": 1,
+            "5": 1,
+            "6": 1,
+            "7": 1
+          },
+          "variant_id": "f3fdad2864966a930550014cffd445b68c396edf996cec1c2e3385a2ab0877e4"
+        },
+        {
+          "num_valid_ids": [
+            52544,
+            8192
+          ],
+          "occurrences": 8,
+          "occurrences_by_rank": {
+            "0": 1,
+            "1": 1,
+            "2": 1,
+            "3": 1,
+            "4": 1,
+            "5": 1,
+            "6": 1,
+            "7": 1
+          },
+          "variant_id": "ebd8048425f342d78c48e9a17bc59746296ac161793783ca6f27940fae81bde9"
+        },
+        {
+          "num_valid_ids": [
+            52672,
+            8192
+          ],
+          "occurrences": 8,
+          "occurrences_by_rank": {
+            "0": 1,
+            "1": 1,
+            "2": 1,
+            "3": 1,
+            "4": 1,
+            "5": 1,
+            "6": 1,
+            "7": 1
+          },
+          "variant_id": "ca60d978f34924655ad39204c2a6cfe801a3dab4e39031c99f38b06835b76e86"
+        },
+        {
+          "num_valid_ids": [
+            52736,
+            8192
+          ],
+          "occurrences": 8,
+          "occurrences_by_rank": {
+            "0": 1,
+            "1": 1,
+            "2": 1,
+            "3": 1,
+            "4": 1,
+            "5": 1,
+            "6": 1,
+            "7": 1
+          },
+          "variant_id": "0020334497dbe1cd16ff3a2b5708a8cd5779100d3fca6b8a96f1e07b20234a9d"
+        },
+        {
+          "num_valid_ids": [
+            52800,
+            8192
+          ],
+          "occurrences": 24,
+          "occurrences_by_rank": {
+            "0": 3,
+            "1": 3,
+            "2": 3,
+            "3": 3,
+            "4": 3,
+            "5": 3,
+            "6": 3,
+            "7": 3
+          },
+          "variant_id": "94a072ff6b65b28e81e7232e7d85692d562fc6d80ab70a1c32ce66ca5da19066"
+        },
+        {
+          "num_valid_ids": [
+            52864,
+            8192
+          ],
+          "occurrences": 40,
+          "occurrences_by_rank": {
+            "0": 5,
+            "1": 5,
+            "2": 5,
+            "3": 5,
+            "4": 5,
+            "5": 5,
+            "6": 5,
+            "7": 5
+          },
+          "variant_id": "523630e182e9369716ef18a30fafd2cbf33bc731710e5de6b0754cc017042ab9"
+        },
+        {
+          "num_valid_ids": [
+            52928,
+            8192
+          ],
+          "occurrences": 16,
+          "occurrences_by_rank": {
+            "0": 2,
+            "1": 2,
+            "2": 2,
+            "3": 2,
+            "4": 2,
+            "5": 2,
+            "6": 2,
+            "7": 2
+          },
+          "variant_id": "9347ae1c24255eef6c1b0a4871838bc0f6bba36cfbca124dc9e5bdfeb8b8fd64"
+        },
+        {
+          "num_valid_ids": [
+            52992,
+            8192
+          ],
+          "occurrences": 8,
+          "occurrences_by_rank": {
+            "0": 1,
+            "1": 1,
+            "2": 1,
+            "3": 1,
+            "4": 1,
+            "5": 1,
+            "6": 1,
+            "7": 1
+          },
+          "variant_id": "77932209b77ececbc155e41f7d233aac3983747462cfda534286ec7f48af1c8f"
+        },
+        {
+          "num_valid_ids": [
+            53056,
+            8192
+          ],
+          "occurrences": 16,
+          "occurrences_by_rank": {
+            "0": 2,
+            "1": 2,
+            "2": 2,
+            "3": 2,
+            "4": 2,
+            "5": 2,
+            "6": 2,
+            "7": 2
+          },
+          "variant_id": "93655c86ac1b182e03b8aa4d6836a18b6504f52b1a36c47873539a90740bb6c8"
+        },
+        {
+          "num_valid_ids": [
+            53120,
+            8192
+          ],
+          "occurrences": 32,
+          "occurrences_by_rank": {
+            "0": 4,
+            "1": 4,
+            "2": 4,
+            "3": 4,
+            "4": 4,
+            "5": 4,
+            "6": 4,
+            "7": 4
+          },
+          "variant_id": "1e54287526d7c77aed2c7e750d4f63369d8e5534d3a5b6076c3b9ab09961d8d4"
+        },
+        {
+          "num_valid_ids": [
+            53184,
+            8192
+          ],
+          "occurrences": 16,
+          "occurrences_by_rank": {
+            "0": 2,
+            "1": 2,
+            "2": 2,
+            "3": 2,
+            "4": 2,
+            "5": 2,
+            "6": 2,
+            "7": 2
+          },
+          "variant_id": "c46b6d84689a784a7625c3954b998e3cc16f74b76a1c88280d7ac7f6ac2dcd38"
+        },
+        {
+          "num_valid_ids": [
+            53248,
+            8192
+          ],
+          "occurrences": 8,
+          "occurrences_by_rank": {
+            "0": 1,
+            "1": 1,
+            "2": 1,
+            "3": 1,
+            "4": 1,
+            "5": 1,
+            "6": 1,
+            "7": 1
+          },
+          "variant_id": "c2a737bcd0a866d54c989aa86db2d24e6d6aa043ea8e348cda0892c6fc1eee27"
+        },
+        {
+          "num_valid_ids": [
+            53312,
+            8192
+          ],
+          "occurrences": 32,
+          "occurrences_by_rank": {
+            "0": 4,
+            "1": 4,
+            "2": 4,
+            "3": 4,
+            "4": 4,
+            "5": 4,
+            "6": 4,
+            "7": 4
+          },
+          "variant_id": "1f26a459885f2c8d9a229daebecfb38ea8cefd44b37a97d2d8f3cf12f9f29b61"
+        },
+        {
+          "num_valid_ids": [
+            53376,
+            8192
+          ],
+          "occurrences": 16,
+          "occurrences_by_rank": {
+            "0": 2,
+            "1": 2,
+            "2": 2,
+            "3": 2,
+            "4": 2,
+            "5": 2,
+            "6": 2,
+            "7": 2
+          },
+          "variant_id": "563acc2c8f81cfd9e21db7db7d0c2c221311714cd3b41aab003eef4324837542"
+        },
+        {
+          "num_valid_ids": [
+            53440,
+            8192
+          ],
+          "occurrences": 32,
+          "occurrences_by_rank": {
+            "0": 4,
+            "1": 4,
+            "2": 4,
+            "3": 4,
+            "4": 4,
+            "5": 4,
+            "6": 4,
+            "7": 4
+          },
+          "variant_id": "6be9142e3c087bffa82c5da20c278b2fe6c62d6a7787b8873082f82066f3eee9"
+        },
+        {
+          "num_valid_ids": [
+            53504,
+            8192
+          ],
+          "occurrences": 8,
+          "occurrences_by_rank": {
+            "0": 1,
+            "1": 1,
+            "2": 1,
+            "3": 1,
+            "4": 1,
+            "5": 1,
+            "6": 1,
+            "7": 1
+          },
+          "variant_id": "523c13965d60ddecddd944a4f90f6c6138e55da4504d3514c4f7ba0c0bd3cd0a"
+        },
+        {
+          "num_valid_ids": [
+            53696,
+            8192
+          ],
+          "occurrences": 16,
+          "occurrences_by_rank": {
+            "0": 2,
+            "1": 2,
+            "2": 2,
+            "3": 2,
+            "4": 2,
+            "5": 2,
+            "6": 2,
+            "7": 2
+          },
+          "variant_id": "ce82408e299f45d1ba7ea1bb997b719d7a6472cfb4c15ba304c532da9fb4257a"
+        },
+        {
+          "num_valid_ids": [
+            53760,
+            8192
+          ],
+          "occurrences": 16,
+          "occurrences_by_rank": {
+            "0": 2,
+            "1": 2,
+            "2": 2,
+            "3": 2,
+            "4": 2,
+            "5": 2,
+            "6": 2,
+            "7": 2
+          },
+          "variant_id": "3f49bbf6a1d96dcbb58577a84e5922ad97f841e24e8d84a4fe62a83a30a726ae"
+        },
+        {
+          "num_valid_ids": [
+            53824,
+            8192
+          ],
+          "occurrences": 16,
+          "occurrences_by_rank": {
+            "0": 2,
+            "1": 2,
+            "2": 2,
+            "3": 2,
+            "4": 2,
+            "5": 2,
+            "6": 2,
+            "7": 2
+          },
+          "variant_id": "3ea59fb54a5ca8651e4617874116bcc81d859b1e746cce27d38b8db92552eaf0"
+        },
+        {
+          "num_valid_ids": [
+            53888,
+            8192
+          ],
+          "occurrences": 16,
+          "occurrences_by_rank": {
+            "0": 2,
+            "1": 2,
+            "2": 2,
+            "3": 2,
+            "4": 2,
+            "5": 2,
+            "6": 2,
+            "7": 2
+          },
+          "variant_id": "0029279650649f6409a87a4dda66af166fc186e483df95b7a3135e9cf918cdd0"
+        },
+        {
+          "num_valid_ids": [
+            53952,
+            8192
+          ],
+          "occurrences": 16,
+          "occurrences_by_rank": {
+            "0": 2,
+            "1": 2,
+            "2": 2,
+            "3": 2,
+            "4": 2,
+            "5": 2,
+            "6": 2,
+            "7": 2
+          },
+          "variant_id": "c8ac0c73e4ade83cb790fd2afb8b8b534f6c43cbb6603e14fdb97bd90461df82"
+        },
+        {
+          "num_valid_ids": [
+            54016,
+            8192
+          ],
+          "occurrences": 32,
+          "occurrences_by_rank": {
+            "0": 4,
+            "1": 4,
+            "2": 4,
+            "3": 4,
+            "4": 4,
+            "5": 4,
+            "6": 4,
+            "7": 4
+          },
+          "variant_id": "6de096c2c234f28103cac1b012e5d70d8d628bb3a33335b8bcb2e204efbc8cf5"
+        },
+        {
+          "num_valid_ids": [
+            54080,
+            8192
+          ],
+          "occurrences": 16,
+          "occurrences_by_rank": {
+            "0": 2,
+            "1": 2,
+            "2": 2,
+            "3": 2,
+            "4": 2,
+            "5": 2,
+            "6": 2,
+            "7": 2
+          },
+          "variant_id": "917e8c4cbf73936179905b1c9a0a94b950f7bce4939456dafdcb219ac3e533ed"
+        },
+        {
+          "num_valid_ids": [
+            54208,
+            8192
+          ],
+          "occurrences": 24,
+          "occurrences_by_rank": {
+            "0": 3,
+            "1": 3,
+            "2": 3,
+            "3": 3,
+            "4": 3,
+            "5": 3,
+            "6": 3,
+            "7": 3
+          },
+          "variant_id": "9b5c7a01516d9edae74ea6a7bb72cce5fa9b29d53af78b7d5479a4bdc249302f"
+        },
+        {
+          "num_valid_ids": [
+            54272,
+            8192
+          ],
+          "occurrences": 24,
+          "occurrences_by_rank": {
+            "0": 3,
+            "1": 3,
+            "2": 3,
+            "3": 3,
+            "4": 3,
+            "5": 3,
+            "6": 3,
+            "7": 3
+          },
+          "variant_id": "d0d4975f06a31af8cc8e138338e17dd6f8fb01a060577647e10050a27a0c95ac"
+        },
+        {
+          "num_valid_ids": [
+            54336,
+            8192
+          ],
+          "occurrences": 16,
+          "occurrences_by_rank": {
+            "0": 2,
+            "1": 2,
+            "2": 2,
+            "3": 2,
+            "4": 2,
+            "5": 2,
+            "6": 2,
+            "7": 2
+          },
+          "variant_id": "ec6beb4ca27b0b922b67890bc64b4e90cb2880746eeeb16c12ad54f4ff0619db"
+        },
+        {
+          "num_valid_ids": [
+            54400,
+            8192
+          ],
+          "occurrences": 16,
+          "occurrences_by_rank": {
+            "0": 2,
+            "1": 2,
+            "2": 2,
+            "3": 2,
+            "4": 2,
+            "5": 2,
+            "6": 2,
+            "7": 2
+          },
+          "variant_id": "8760dc16a68b52135303ba38d3406b2b0dfc217c69121fc3cd4573180b8be7af"
+        },
+        {
+          "num_valid_ids": [
+            54464,
+            8192
+          ],
+          "occurrences": 32,
+          "occurrences_by_rank": {
+            "0": 4,
+            "1": 4,
+            "2": 4,
+            "3": 4,
+            "4": 4,
+            "5": 4,
+            "6": 4,
+            "7": 4
+          },
+          "variant_id": "85f31e61a93fded3b8d1e1cec6010be3dc2320f814e0ab218c305ff8acdbabaa"
+        },
+        {
+          "num_valid_ids": [
+            54528,
+            8192
+          ],
+          "occurrences": 24,
+          "occurrences_by_rank": {
+            "0": 3,
+            "1": 3,
+            "2": 3,
+            "3": 3,
+            "4": 3,
+            "5": 3,
+            "6": 3,
+            "7": 3
+          },
+          "variant_id": "229fd28134b7b6db97ce6aa67d67cd77688152bf15880be9c0c9aabd84f008ed"
+        },
+        {
+          "num_valid_ids": [
+            54592,
+            8192
+          ],
+          "occurrences": 16,
+          "occurrences_by_rank": {
+            "0": 2,
+            "1": 2,
+            "2": 2,
+            "3": 2,
+            "4": 2,
+            "5": 2,
+            "6": 2,
+            "7": 2
+          },
+          "variant_id": "b94380f28ff0b266bafd458b313e626b32cd0650655eccb0b36ef93f16030bab"
+        },
+        {
+          "num_valid_ids": [
+            54656,
+            8192
+          ],
+          "occurrences": 32,
+          "occurrences_by_rank": {
+            "0": 4,
+            "1": 4,
+            "2": 4,
+            "3": 4,
+            "4": 4,
+            "5": 4,
+            "6": 4,
+            "7": 4
+          },
+          "variant_id": "d9396ba04efda60b67f00dbc29f5cbbd8ed95b04d96e2b3d7f06ed38fd056493"
+        },
+        {
+          "num_valid_ids": [
+            54720,
+            8192
+          ],
+          "occurrences": 40,
+          "occurrences_by_rank": {
+            "0": 5,
+            "1": 5,
+            "2": 5,
+            "3": 5,
+            "4": 5,
+            "5": 5,
+            "6": 5,
+            "7": 5
+          },
+          "variant_id": "707dc0010b3b7706bdbd522ca7c040763335a38acb196566c663b69fbce3ff24"
+        },
+        {
+          "num_valid_ids": [
+            54784,
+            8192
+          ],
+          "occurrences": 24,
+          "occurrences_by_rank": {
+            "0": 3,
+            "1": 3,
+            "2": 3,
+            "3": 3,
+            "4": 3,
+            "5": 3,
+            "6": 3,
+            "7": 3
+          },
+          "variant_id": "ff0ef258f1b57b5ebbd8f4cb2ccf6ba32a2528b196082c0391b6f4664d1c3ff4"
+        },
+        {
+          "num_valid_ids": [
+            54848,
+            8192
+          ],
+          "occurrences": 56,
+          "occurrences_by_rank": {
+            "0": 7,
+            "1": 7,
+            "2": 7,
+            "3": 7,
+            "4": 7,
+            "5": 7,
+            "6": 7,
+            "7": 7
+          },
+          "variant_id": "5659e4f035498b0ca25866b149dc529a95aca0ef5a304afdee44bfc9d85827d7"
+        },
+        {
+          "num_valid_ids": [
+            54912,
+            8192
+          ],
+          "occurrences": 16,
+          "occurrences_by_rank": {
+            "0": 2,
+            "1": 2,
+            "2": 2,
+            "3": 2,
+            "4": 2,
+            "5": 2,
+            "6": 2,
+            "7": 2
+          },
+          "variant_id": "e964988e3e1f68c814d697adcdda7b94adbf1657a7d4a22744f1d4c8be24a1af"
+        },
+        {
+          "num_valid_ids": [
+            54976,
+            8192
+          ],
+          "occurrences": 64,
+          "occurrences_by_rank": {
+            "0": 8,
+            "1": 8,
+            "2": 8,
+            "3": 8,
+            "4": 8,
+            "5": 8,
+            "6": 8,
+            "7": 8
+          },
+          "variant_id": "204f71bf72f7ff1dfcf446b3b1c342594426f205c3424fa195e570ebec14c6a0"
+        },
+        {
+          "num_valid_ids": [
+            55040,
+            8192
+          ],
+          "occurrences": 16,
+          "occurrences_by_rank": {
+            "0": 2,
+            "1": 2,
+            "2": 2,
+            "3": 2,
+            "4": 2,
+            "5": 2,
+            "6": 2,
+            "7": 2
+          },
+          "variant_id": "d92b84b01c1a4df503cfa0b5ae7a40f9415813deccd32b1a16bf939c3f04a985"
+        },
+        {
+          "num_valid_ids": [
+            55104,
+            8192
+          ],
+          "occurrences": 16,
+          "occurrences_by_rank": {
+            "0": 2,
+            "1": 2,
+            "2": 2,
+            "3": 2,
+            "4": 2,
+            "5": 2,
+            "6": 2,
+            "7": 2
+          },
+          "variant_id": "69d414d6bb15b89e7bf4c689d8bffbc0c9ccc5460596b6a4dc9b6872b7eddae4"
+        },
+        {
+          "num_valid_ids": [
+            55168,
+            8192
+          ],
+          "occurrences": 64,
+          "occurrences_by_rank": {
+            "0": 8,
+            "1": 8,
+            "2": 8,
+            "3": 8,
+            "4": 8,
+            "5": 8,
+            "6": 8,
+            "7": 8
+          },
+          "variant_id": "bafe35c9bcfb36fc1d1c5782c225d53005dfc08777e4df36f92537f0c4c3b000"
+        },
+        {
+          "num_valid_ids": [
+            55232,
+            8192
+          ],
+          "occurrences": 8,
+          "occurrences_by_rank": {
+            "0": 1,
+            "1": 1,
+            "2": 1,
+            "3": 1,
+            "4": 1,
+            "5": 1,
+            "6": 1,
+            "7": 1
+          },
+          "variant_id": "f1dae0563dcd80371c8906c71e6e52d9c5bc1261ca84b381263d3d52273eb943"
+        },
+        {
+          "num_valid_ids": [
+            55296,
+            8192
+          ],
+          "occurrences": 40,
+          "occurrences_by_rank": {
+            "0": 5,
+            "1": 5,
+            "2": 5,
+            "3": 5,
+            "4": 5,
+            "5": 5,
+            "6": 5,
+            "7": 5
+          },
+          "variant_id": "0ec010ffdbe8c89d1c58fdc01314d3ef498539f59d2a2921026b91c14b036d78"
+        },
+        {
+          "num_valid_ids": [
+            55360,
+            8192
+          ],
+          "occurrences": 48,
+          "occurrences_by_rank": {
+            "0": 6,
+            "1": 6,
+            "2": 6,
+            "3": 6,
+            "4": 6,
+            "5": 6,
+            "6": 6,
+            "7": 6
+          },
+          "variant_id": "9041057911aa21301f1bffbe3dc52659678216cfb4c4958d68f31385ba6f1d68"
+        },
+        {
+          "num_valid_ids": [
+            55424,
+            8192
+          ],
+          "occurrences": 8,
+          "occurrences_by_rank": {
+            "0": 1,
+            "1": 1,
+            "2": 1,
+            "3": 1,
+            "4": 1,
+            "5": 1,
+            "6": 1,
+            "7": 1
+          },
+          "variant_id": "56613918789168afa0603907696adef74e294296a7d714f5ae58d50b812f4b34"
+        },
+        {
+          "num_valid_ids": [
+            55488,
+            8192
+          ],
+          "occurrences": 32,
+          "occurrences_by_rank": {
+            "0": 4,
+            "1": 4,
+            "2": 4,
+            "3": 4,
+            "4": 4,
+            "5": 4,
+            "6": 4,
+            "7": 4
+          },
+          "variant_id": "8f1ebde7979a4da7127f86c073dc524d2e29ba50e91fbbf6c69571287b9823b1"
+        },
+        {
+          "num_valid_ids": [
+            55552,
+            8192
+          ],
+          "occurrences": 48,
+          "occurrences_by_rank": {
+            "0": 6,
+            "1": 6,
+            "2": 6,
+            "3": 6,
+            "4": 6,
+            "5": 6,
+            "6": 6,
+            "7": 6
+          },
+          "variant_id": "8fa99562c68b725863f99eeb1c8c281594913abe2bbc7c873af3ec184b08ebcd"
+        },
+        {
+          "num_valid_ids": [
+            55616,
+            8192
+          ],
+          "occurrences": 32,
+          "occurrences_by_rank": {
+            "0": 4,
+            "1": 4,
+            "2": 4,
+            "3": 4,
+            "4": 4,
+            "5": 4,
+            "6": 4,
+            "7": 4
+          },
+          "variant_id": "6ccb380f35e6807daf4348ba11318a2342987332e5c6ddc766f14995a1ba30b5"
+        },
+        {
+          "num_valid_ids": [
+            55680,
+            8192
+          ],
+          "occurrences": 32,
+          "occurrences_by_rank": {
+            "0": 4,
+            "1": 4,
+            "2": 4,
+            "3": 4,
+            "4": 4,
+            "5": 4,
+            "6": 4,
+            "7": 4
+          },
+          "variant_id": "2e498b87fe9e96d5b9440875899557d3c09b194eac439282455cecafd1176d1a"
+        },
+        {
+          "num_valid_ids": [
+            55744,
+            8192
+          ],
+          "occurrences": 56,
+          "occurrences_by_rank": {
+            "0": 7,
+            "1": 7,
+            "2": 7,
+            "3": 7,
+            "4": 7,
+            "5": 7,
+            "6": 7,
+            "7": 7
+          },
+          "variant_id": "138699c94cc817430aaf5f350faed48a416e01f5df5564662fbf048b5a858e06"
+        },
+        {
+          "num_valid_ids": [
+            55808,
+            8192
+          ],
+          "occurrences": 24,
+          "occurrences_by_rank": {
+            "0": 3,
+            "1": 3,
+            "2": 3,
+            "3": 3,
+            "4": 3,
+            "5": 3,
+            "6": 3,
+            "7": 3
+          },
+          "variant_id": "b7c3dfe96cbc8280e75c81dc9e6346f4684e0f441fff1d80f9ff694763703c17"
+        },
+        {
+          "num_valid_ids": [
+            55872,
+            8192
+          ],
+          "occurrences": 40,
+          "occurrences_by_rank": {
+            "0": 5,
+            "1": 5,
+            "2": 5,
+            "3": 5,
+            "4": 5,
+            "5": 5,
+            "6": 5,
+            "7": 5
+          },
+          "variant_id": "9ef94d53423970bd3057de2bc20fd61f98d9497bafd5e2ff0bd8498fb6e2121e"
+        },
+        {
+          "num_valid_ids": [
+            55936,
+            8192
+          ],
+          "occurrences": 24,
+          "occurrences_by_rank": {
+            "0": 3,
+            "1": 3,
+            "2": 3,
+            "3": 3,
+            "4": 3,
+            "5": 3,
+            "6": 3,
+            "7": 3
+          },
+          "variant_id": "79c4195cc197ce722e193e9d0ecca2e1468432df8011584de09be25a54231b4c"
+        },
+        {
+          "num_valid_ids": [
+            56000,
+            8192
+          ],
+          "occurrences": 24,
+          "occurrences_by_rank": {
+            "0": 3,
+            "1": 3,
+            "2": 3,
+            "3": 3,
+            "4": 3,
+            "5": 3,
+            "6": 3,
+            "7": 3
+          },
+          "variant_id": "b4fc0750ee7ff8b558277feb63aa85698069bd6c0c3e8397c5dbd3757887bb5c"
+        },
+        {
+          "num_valid_ids": [
+            56064,
+            8192
+          ],
+          "occurrences": 40,
+          "occurrences_by_rank": {
+            "0": 5,
+            "1": 5,
+            "2": 5,
+            "3": 5,
+            "4": 5,
+            "5": 5,
+            "6": 5,
+            "7": 5
+          },
+          "variant_id": "ca435995eacc2f67034883c6daa527143425458599a0a5b118aac1d7d8f34a2e"
+        },
+        {
+          "num_valid_ids": [
+            56128,
+            8192
+          ],
+          "occurrences": 56,
+          "occurrences_by_rank": {
+            "0": 7,
+            "1": 7,
+            "2": 7,
+            "3": 7,
+            "4": 7,
+            "5": 7,
+            "6": 7,
+            "7": 7
+          },
+          "variant_id": "ba40ecce9cf6e31c085f1e1567a574f7df939b733966c08eef98304702bec1ef"
+        },
+        {
+          "num_valid_ids": [
+            56192,
+            8192
+          ],
+          "occurrences": 32,
+          "occurrences_by_rank": {
+            "0": 4,
+            "1": 4,
+            "2": 4,
+            "3": 4,
+            "4": 4,
+            "5": 4,
+            "6": 4,
+            "7": 4
+          },
+          "variant_id": "8f01e39229020ec4ec2ee6ce04867290f5c9bb16a8da3ee251dbb33593a29869"
+        },
+        {
+          "num_valid_ids": [
+            56256,
+            8192
+          ],
+          "occurrences": 88,
+          "occurrences_by_rank": {
+            "0": 11,
+            "1": 11,
+            "2": 11,
+            "3": 11,
+            "4": 11,
+            "5": 11,
+            "6": 11,
+            "7": 11
+          },
+          "variant_id": "c6577d904a59be74d93a0cf62e341a90ca756255cf2c4f23ac5b10ccb9beb30d"
+        },
+        {
+          "num_valid_ids": [
+            56320,
+            8192
+          ],
+          "occurrences": 56,
+          "occurrences_by_rank": {
+            "0": 7,
+            "1": 7,
+            "2": 7,
+            "3": 7,
+            "4": 7,
+            "5": 7,
+            "6": 7,
+            "7": 7
+          },
+          "variant_id": "c4e404ed8a13f919f6737ac0779a493792571e48bc9fd068fa2d9f305b93e7de"
+        },
+        {
+          "num_valid_ids": [
+            56384,
+            8192
+          ],
+          "occurrences": 72,
+          "occurrences_by_rank": {
+            "0": 9,
+            "1": 9,
+            "2": 9,
+            "3": 9,
+            "4": 9,
+            "5": 9,
+            "6": 9,
+            "7": 9
+          },
+          "variant_id": "fa3bcebb3b605346927efd703da18f50e03ddfec4f7d90a4ec2a2e5428226288"
+        },
+        {
+          "num_valid_ids": [
+            56448,
+            8192
+          ],
+          "occurrences": 56,
+          "occurrences_by_rank": {
+            "0": 7,
+            "1": 7,
+            "2": 7,
+            "3": 7,
+            "4": 7,
+            "5": 7,
+            "6": 7,
+            "7": 7
+          },
+          "variant_id": "4158d2d81c23c576baaafd7a069c0a23b36064689c40ce22fc2a99c045688ff9"
+        },
+        {
+          "num_valid_ids": [
+            56512,
+            8192
+          ],
+          "occurrences": 16,
+          "occurrences_by_rank": {
+            "0": 2,
+            "1": 2,
+            "2": 2,
+            "3": 2,
+            "4": 2,
+            "5": 2,
+            "6": 2,
+            "7": 2
+          },
+          "variant_id": "b7dc320ec611ed835d556014587b62dcbb59f49d510a11bbe834c0322a2d5a19"
+        },
+        {
+          "num_valid_ids": [
+            56576,
+            8192
+          ],
+          "occurrences": 56,
+          "occurrences_by_rank": {
+            "0": 7,
+            "1": 7,
+            "2": 7,
+            "3": 7,
+            "4": 7,
+            "5": 7,
+            "6": 7,
+            "7": 7
+          },
+          "variant_id": "e48c63875f391ead26c46f2643df359699281893c6b49f6620e9a581fdcc962c"
+        },
+        {
+          "num_valid_ids": [
+            56640,
+            8192
+          ],
+          "occurrences": 40,
+          "occurrences_by_rank": {
+            "0": 5,
+            "1": 5,
+            "2": 5,
+            "3": 5,
+            "4": 5,
+            "5": 5,
+            "6": 5,
+            "7": 5
+          },
+          "variant_id": "88e86e0f2ffd1fdb4c708bc9436d3f9d5bedb7e382a4e8fcd7afba376b9f77ff"
+        },
+        {
+          "num_valid_ids": [
+            56704,
+            8192
+          ],
+          "occurrences": 64,
+          "occurrences_by_rank": {
+            "0": 8,
+            "1": 8,
+            "2": 8,
+            "3": 8,
+            "4": 8,
+            "5": 8,
+            "6": 8,
+            "7": 8
+          },
+          "variant_id": "303888a29ebf05668e261c7551564404557d8f47819941a62f8b9cc6c487aa0b"
+        },
+        {
+          "num_valid_ids": [
+            56768,
+            8192
+          ],
+          "occurrences": 72,
+          "occurrences_by_rank": {
+            "0": 9,
+            "1": 9,
+            "2": 9,
+            "3": 9,
+            "4": 9,
+            "5": 9,
+            "6": 9,
+            "7": 9
+          },
+          "variant_id": "46e5b017140ceaf1e3b4f10fafefee37f9ae23a8753d7f792b11fefd62bda185"
+        },
+        {
+          "num_valid_ids": [
+            56832,
+            8192
+          ],
+          "occurrences": 80,
+          "occurrences_by_rank": {
+            "0": 10,
+            "1": 10,
+            "2": 10,
+            "3": 10,
+            "4": 10,
+            "5": 10,
+            "6": 10,
+            "7": 10
+          },
+          "variant_id": "104e907b6da5e4340674002072687856ba8eaad79ce167e53c68fa8c4ce43afa"
+        },
+        {
+          "num_valid_ids": [
+            56896,
+            8192
+          ],
+          "occurrences": 64,
+          "occurrences_by_rank": {
+            "0": 8,
+            "1": 8,
+            "2": 8,
+            "3": 8,
+            "4": 8,
+            "5": 8,
+            "6": 8,
+            "7": 8
+          },
+          "variant_id": "4c5e45d5e9c7b11aff66ef185acac5da5933d2af8863b964d80b1564a52c57d8"
+        },
+        {
+          "num_valid_ids": [
+            56960,
+            8192
+          ],
+          "occurrences": 48,
+          "occurrences_by_rank": {
+            "0": 6,
+            "1": 6,
+            "2": 6,
+            "3": 6,
+            "4": 6,
+            "5": 6,
+            "6": 6,
+            "7": 6
+          },
+          "variant_id": "1c1736a30d6646d2529b91e419903b0428be346286334ad7f8ac269369f07716"
+        },
+        {
+          "num_valid_ids": [
+            57024,
+            8192
+          ],
+          "occurrences": 72,
+          "occurrences_by_rank": {
+            "0": 9,
+            "1": 9,
+            "2": 9,
+            "3": 9,
+            "4": 9,
+            "5": 9,
+            "6": 9,
+            "7": 9
+          },
+          "variant_id": "063eefcdfb2b9cdc201afb9a78d623f5d919125c87394ecc2766c108999fd5fa"
+        },
+        {
+          "num_valid_ids": [
+            57088,
+            8192
+          ],
+          "occurrences": 40,
+          "occurrences_by_rank": {
+            "0": 5,
+            "1": 5,
+            "2": 5,
+            "3": 5,
+            "4": 5,
+            "5": 5,
+            "6": 5,
+            "7": 5
+          },
+          "variant_id": "b2e415b22ebc2e44b9d8f6cf4e8786acc6076bbc7308dff8cca885d78b60c358"
+        },
+        {
+          "num_valid_ids": [
+            57152,
+            8192
+          ],
+          "occurrences": 24,
+          "occurrences_by_rank": {
+            "0": 3,
+            "1": 3,
+            "2": 3,
+            "3": 3,
+            "4": 3,
+            "5": 3,
+            "6": 3,
+            "7": 3
+          },
+          "variant_id": "aa699c3d4a719f266016bc119e155a48b8117b338ed024d352e89286d805930b"
+        },
+        {
+          "num_valid_ids": [
+            57216,
+            8192
+          ],
+          "occurrences": 40,
+          "occurrences_by_rank": {
+            "0": 5,
+            "1": 5,
+            "2": 5,
+            "3": 5,
+            "4": 5,
+            "5": 5,
+            "6": 5,
+            "7": 5
+          },
+          "variant_id": "d225a8df8ba3d4785992fbee5e88172829ed8e305b8ca4be5b5a153e11cec28a"
+        },
+        {
+          "num_valid_ids": [
+            57280,
+            8192
+          ],
+          "occurrences": 40,
+          "occurrences_by_rank": {
+            "0": 5,
+            "1": 5,
+            "2": 5,
+            "3": 5,
+            "4": 5,
+            "5": 5,
+            "6": 5,
+            "7": 5
+          },
+          "variant_id": "c1bf45be59dacea698cf71935ca5ed1b70968d47659bf1e383214e553ea5873c"
+        },
+        {
+          "num_valid_ids": [
+            57344,
+            8192
+          ],
+          "occurrences": 72,
+          "occurrences_by_rank": {
+            "0": 9,
+            "1": 9,
+            "2": 9,
+            "3": 9,
+            "4": 9,
+            "5": 9,
+            "6": 9,
+            "7": 9
+          },
+          "variant_id": "cd156a3444d903e8daf1dc8e0fdb1c1011b4d48ec78045e0fc3dd1f811c0497b"
+        },
+        {
+          "num_valid_ids": [
+            57408,
+            8192
+          ],
+          "occurrences": 32,
+          "occurrences_by_rank": {
+            "0": 4,
+            "1": 4,
+            "2": 4,
+            "3": 4,
+            "4": 4,
+            "5": 4,
+            "6": 4,
+            "7": 4
+          },
+          "variant_id": "28e84245c10e8e0a880ee372134dd2c394470a15a92759f85faae153513f7f02"
+        },
+        {
+          "num_valid_ids": [
+            57472,
+            8192
+          ],
+          "occurrences": 64,
+          "occurrences_by_rank": {
+            "0": 8,
+            "1": 8,
+            "2": 8,
+            "3": 8,
+            "4": 8,
+            "5": 8,
+            "6": 8,
+            "7": 8
+          },
+          "variant_id": "8df542484c97949913bbb81c90ef886c42c883183efe6e1f41330b844bf695ce"
+        },
+        {
+          "num_valid_ids": [
+            57536,
+            8192
+          ],
+          "occurrences": 64,
+          "occurrences_by_rank": {
+            "0": 8,
+            "1": 8,
+            "2": 8,
+            "3": 8,
+            "4": 8,
+            "5": 8,
+            "6": 8,
+            "7": 8
+          },
+          "variant_id": "6f9ff8934e0b524ac9849d71941c7c721d20c4b85592c757d0a800161bdd1cb0"
+        },
+        {
+          "num_valid_ids": [
+            57600,
+            8192
+          ],
+          "occurrences": 56,
+          "occurrences_by_rank": {
+            "0": 7,
+            "1": 7,
+            "2": 7,
+            "3": 7,
+            "4": 7,
+            "5": 7,
+            "6": 7,
+            "7": 7
+          },
+          "variant_id": "054c539ea4c522116f4fd24c322836c2bc951a93c4263206736202786f2ef058"
+        },
+        {
+          "num_valid_ids": [
+            57664,
+            8192
+          ],
+          "occurrences": 72,
+          "occurrences_by_rank": {
+            "0": 9,
+            "1": 9,
+            "2": 9,
+            "3": 9,
+            "4": 9,
+            "5": 9,
+            "6": 9,
+            "7": 9
+          },
+          "variant_id": "f073972e2ae700e89080907258f8e743bd4ba801d247ba441864eeb1547c8476"
+        },
+        {
+          "num_valid_ids": [
+            57728,
+            8192
+          ],
+          "occurrences": 104,
+          "occurrences_by_rank": {
+            "0": 13,
+            "1": 13,
+            "2": 13,
+            "3": 13,
+            "4": 13,
+            "5": 13,
+            "6": 13,
+            "7": 13
+          },
+          "variant_id": "103c6b77faec0cfd199dce8653e599e0a1938117046834786ebe5b3e6caefbda"
+        },
+        {
+          "num_valid_ids": [
+            57792,
+            8192
+          ],
+          "occurrences": 72,
+          "occurrences_by_rank": {
+            "0": 9,
+            "1": 9,
+            "2": 9,
+            "3": 9,
+            "4": 9,
+            "5": 9,
+            "6": 9,
+            "7": 9
+          },
+          "variant_id": "2d1a28812c868d581c1449f4e6f551a2d4d085f6332a58b917aabdf078e0b482"
+        },
+        {
+          "num_valid_ids": [
+            57856,
+            8192
+          ],
+          "occurrences": 80,
+          "occurrences_by_rank": {
+            "0": 10,
+            "1": 10,
+            "2": 10,
+            "3": 10,
+            "4": 10,
+            "5": 10,
+            "6": 10,
+            "7": 10
+          },
+          "variant_id": "6ab07fab0246f2eca413ffff2cdea500a8dc96551537597c179f633b108b1c94"
+        },
+        {
+          "num_valid_ids": [
+            57920,
+            8192
+          ],
+          "occurrences": 64,
+          "occurrences_by_rank": {
+            "0": 8,
+            "1": 8,
+            "2": 8,
+            "3": 8,
+            "4": 8,
+            "5": 8,
+            "6": 8,
+            "7": 8
+          },
+          "variant_id": "b8f3a216e1532da00b106bffedccee724d4fe9aeba0f5c4a587af8efe87ecf11"
+        },
+        {
+          "num_valid_ids": [
+            57984,
+            8192
+          ],
+          "occurrences": 80,
+          "occurrences_by_rank": {
+            "0": 10,
+            "1": 10,
+            "2": 10,
+            "3": 10,
+            "4": 10,
+            "5": 10,
+            "6": 10,
+            "7": 10
+          },
+          "variant_id": "5b974287c9ee73d3d781892f4ac64c4961f260a9d50c8f4cdca796724dc1f5e7"
+        },
+        {
+          "num_valid_ids": [
+            58048,
+            8192
+          ],
+          "occurrences": 96,
+          "occurrences_by_rank": {
+            "0": 12,
+            "1": 12,
+            "2": 12,
+            "3": 12,
+            "4": 12,
+            "5": 12,
+            "6": 12,
+            "7": 12
+          },
+          "variant_id": "286dc5cf5c468185a95c970ee4326bfff4c26b7c260043daec5108c7511d4423"
+        },
+        {
+          "num_valid_ids": [
+            58112,
+            8192
+          ],
+          "occurrences": 96,
+          "occurrences_by_rank": {
+            "0": 12,
+            "1": 12,
+            "2": 12,
+            "3": 12,
+            "4": 12,
+            "5": 12,
+            "6": 12,
+            "7": 12
+          },
+          "variant_id": "53523c46c9a72ec0385a2a7ebd503a03a602ca099fe4a508265756405297dc98"
+        },
+        {
+          "num_valid_ids": [
+            58176,
+            8192
+          ],
+          "occurrences": 72,
+          "occurrences_by_rank": {
+            "0": 9,
+            "1": 9,
+            "2": 9,
+            "3": 9,
+            "4": 9,
+            "5": 9,
+            "6": 9,
+            "7": 9
+          },
+          "variant_id": "e299250f9c5aa11b41652b7e3168494b17515d5f6ae44cc604e09973615d9b19"
+        },
+        {
+          "num_valid_ids": [
+            58240,
+            8192
+          ],
+          "occurrences": 64,
+          "occurrences_by_rank": {
+            "0": 8,
+            "1": 8,
+            "2": 8,
+            "3": 8,
+            "4": 8,
+            "5": 8,
+            "6": 8,
+            "7": 8
+          },
+          "variant_id": "ba02a3fd521e9a97cbc846d45d5107d5b52d3d82a8db9d493abd7a230d1af541"
+        },
+        {
+          "num_valid_ids": [
+            58304,
+            8192
+          ],
+          "occurrences": 88,
+          "occurrences_by_rank": {
+            "0": 11,
+            "1": 11,
+            "2": 11,
+            "3": 11,
+            "4": 11,
+            "5": 11,
+            "6": 11,
+            "7": 11
+          },
+          "variant_id": "3954df72e02974612a620cd6fd93624d98bac03f6e295164140677294644834a"
+        },
+        {
+          "num_valid_ids": [
+            58368,
+            8192
+          ],
+          "occurrences": 96,
+          "occurrences_by_rank": {
+            "0": 12,
+            "1": 12,
+            "2": 12,
+            "3": 12,
+            "4": 12,
+            "5": 12,
+            "6": 12,
+            "7": 12
+          },
+          "variant_id": "d01410e406bff9ed629464032a52a82f331d47b183ecadef44817c41d202e6b5"
+        },
+        {
+          "num_valid_ids": [
+            58432,
+            8192
+          ],
+          "occurrences": 160,
+          "occurrences_by_rank": {
+            "0": 20,
+            "1": 20,
+            "2": 20,
+            "3": 20,
+            "4": 20,
+            "5": 20,
+            "6": 20,
+            "7": 20
+          },
+          "variant_id": "3460c32a965c50bf0555c2ee19d50eb137b83bbb5a6df39640ffadec51f72719"
+        },
+        {
+          "num_valid_ids": [
+            58496,
+            8192
+          ],
+          "occurrences": 80,
+          "occurrences_by_rank": {
+            "0": 10,
+            "1": 10,
+            "2": 10,
+            "3": 10,
+            "4": 10,
+            "5": 10,
+            "6": 10,
+            "7": 10
+          },
+          "variant_id": "188c362d3837104c232e038ca5d5f6e227c8ed896cb80d79b3287b80b2f262a1"
+        },
+        {
+          "num_valid_ids": [
+            58560,
+            8192
+          ],
+          "occurrences": 128,
+          "occurrences_by_rank": {
+            "0": 16,
+            "1": 16,
+            "2": 16,
+            "3": 16,
+            "4": 16,
+            "5": 16,
+            "6": 16,
+            "7": 16
+          },
+          "variant_id": "ebf257370cb58a16b40f51727a29bfe4ef66ec994203efc2888af8c50edfae3c"
+        },
+        {
+          "num_valid_ids": [
+            58624,
+            8192
+          ],
+          "occurrences": 80,
+          "occurrences_by_rank": {
+            "0": 10,
+            "1": 10,
+            "2": 10,
+            "3": 10,
+            "4": 10,
+            "5": 10,
+            "6": 10,
+            "7": 10
+          },
+          "variant_id": "fa6d5c896822016fdfd674b9d5ef08b2591e85194e3ea4d254904405e5689e0b"
+        },
+        {
+          "num_valid_ids": [
+            58688,
+            8192
+          ],
+          "occurrences": 104,
+          "occurrences_by_rank": {
+            "0": 13,
+            "1": 13,
+            "2": 13,
+            "3": 13,
+            "4": 13,
+            "5": 13,
+            "6": 13,
+            "7": 13
+          },
+          "variant_id": "f55569ce1c232f0efe0a8aa91b988105ac5a14aa4e898853c8f945e72a686a1c"
+        },
+        {
+          "num_valid_ids": [
+            58752,
+            8192
+          ],
+          "occurrences": 152,
+          "occurrences_by_rank": {
+            "0": 19,
+            "1": 19,
+            "2": 19,
+            "3": 19,
+            "4": 19,
+            "5": 19,
+            "6": 19,
+            "7": 19
+          },
+          "variant_id": "2e5af5bd0f418538fe02735905056e1e0e5ac48402a2fb14d076be7c0832e8d3"
+        },
+        {
+          "num_valid_ids": [
+            58816,
+            8192
+          ],
+          "occurrences": 80,
+          "occurrences_by_rank": {
+            "0": 10,
+            "1": 10,
+            "2": 10,
+            "3": 10,
+            "4": 10,
+            "5": 10,
+            "6": 10,
+            "7": 10
+          },
+          "variant_id": "68877f5033ea42a7a76ffa8ca469a0b4be5bbbc0d8b653b92cd0f623ee7e7dca"
+        },
+        {
+          "num_valid_ids": [
+            58880,
+            8192
+          ],
+          "occurrences": 144,
+          "occurrences_by_rank": {
+            "0": 18,
+            "1": 18,
+            "2": 18,
+            "3": 18,
+            "4": 18,
+            "5": 18,
+            "6": 18,
+            "7": 18
+          },
+          "variant_id": "b020a9317fc826e778b78f472ebcf24e95056417cb251318b59ab4e3a90701f7"
+        },
+        {
+          "num_valid_ids": [
+            58944,
+            8192
+          ],
+          "occurrences": 160,
+          "occurrences_by_rank": {
+            "0": 20,
+            "1": 20,
+            "2": 20,
+            "3": 20,
+            "4": 20,
+            "5": 20,
+            "6": 20,
+            "7": 20
+          },
+          "variant_id": "a3d6eae09beeff1276bb64984a7a43194575ef9aeb53eb29b008c94d42fa0229"
+        },
+        {
+          "num_valid_ids": [
+            59008,
+            8192
+          ],
+          "occurrences": 120,
+          "occurrences_by_rank": {
+            "0": 15,
+            "1": 15,
+            "2": 15,
+            "3": 15,
+            "4": 15,
+            "5": 15,
+            "6": 15,
+            "7": 15
+          },
+          "variant_id": "b261a7cb15fd33c77d85c80bd913622a2f9531648f7b26b4245a82e97fd8f205"
+        },
+        {
+          "num_valid_ids": [
+            59072,
+            8192
+          ],
+          "occurrences": 216,
+          "occurrences_by_rank": {
+            "0": 27,
+            "1": 27,
+            "2": 27,
+            "3": 27,
+            "4": 27,
+            "5": 27,
+            "6": 27,
+            "7": 27
+          },
+          "variant_id": "04e733bee0a615f4747f971b308b09ff86d862cbe61dcefa73f715dad13abdba"
+        },
+        {
+          "num_valid_ids": [
+            59136,
+            8192
+          ],
+          "occurrences": 176,
+          "occurrences_by_rank": {
+            "0": 22,
+            "1": 22,
+            "2": 22,
+            "3": 22,
+            "4": 22,
+            "5": 22,
+            "6": 22,
+            "7": 22
+          },
+          "variant_id": "36f5c33655cb42957ff3cbec48b689e74ab234d99f32630bfd8fcb88f2f9db4c"
+        },
+        {
+          "num_valid_ids": [
+            59200,
+            8192
+          ],
+          "occurrences": 288,
+          "occurrences_by_rank": {
+            "0": 36,
+            "1": 36,
+            "2": 36,
+            "3": 36,
+            "4": 36,
+            "5": 36,
+            "6": 36,
+            "7": 36
+          },
+          "variant_id": "7fdb58646fdfb14d7330b6c34e0cf9562dc0548b4cded3624362ea6ba766bf31"
+        },
+        {
+          "num_valid_ids": [
+            59264,
+            8192
+          ],
+          "occurrences": 208,
+          "occurrences_by_rank": {
+            "0": 26,
+            "1": 26,
+            "2": 26,
+            "3": 26,
+            "4": 26,
+            "5": 26,
+            "6": 26,
+            "7": 26
+          },
+          "variant_id": "6db9cea83cbc21c9085f4c4687780f071981d6101480ad2017615970954d2b12"
+        },
+        {
+          "num_valid_ids": [
+            59328,
+            8192
+          ],
+          "occurrences": 208,
+          "occurrences_by_rank": {
+            "0": 26,
+            "1": 26,
+            "2": 26,
+            "3": 26,
+            "4": 26,
+            "5": 26,
+            "6": 26,
+            "7": 26
+          },
+          "variant_id": "7abe5c55987091f6353da512cec331e07e03d6973e4ff194571963407b31fbda"
+        },
+        {
+          "num_valid_ids": [
+            59392,
+            8192
+          ],
+          "occurrences": 136,
+          "occurrences_by_rank": {
+            "0": 17,
+            "1": 17,
+            "2": 17,
+            "3": 17,
+            "4": 17,
+            "5": 17,
+            "6": 17,
+            "7": 17
+          },
+          "variant_id": "bd4b053744d2ac8714e949146787042eda4211823f73f6338b69dc59a0bf450c"
+        },
+        {
+          "num_valid_ids": [
+            59456,
+            8192
+          ],
+          "occurrences": 216,
+          "occurrences_by_rank": {
+            "0": 27,
+            "1": 27,
+            "2": 27,
+            "3": 27,
+            "4": 27,
+            "5": 27,
+            "6": 27,
+            "7": 27
+          },
+          "variant_id": "67914ca5e64a6cb08c80a74f02dccdbe50692ee5e40e69accf39af719a992ccd"
+        },
+        {
+          "num_valid_ids": [
+            59520,
+            8192
+          ],
+          "occurrences": 152,
+          "occurrences_by_rank": {
+            "0": 19,
+            "1": 19,
+            "2": 19,
+            "3": 19,
+            "4": 19,
+            "5": 19,
+            "6": 19,
+            "7": 19
+          },
+          "variant_id": "26b066fd16134ca039c6c51ae9d345a12565568800609af2eec2bd289f6392c7"
+        },
+        {
+          "num_valid_ids": [
+            59584,
+            8192
+          ],
+          "occurrences": 176,
+          "occurrences_by_rank": {
+            "0": 22,
+            "1": 22,
+            "2": 22,
+            "3": 22,
+            "4": 22,
+            "5": 22,
+            "6": 22,
+            "7": 22
+          },
+          "variant_id": "ac73af39a907b3c2d015952335ecbca3edaf540fa794ccf9ae7900ade164d5b4"
+        },
+        {
+          "num_valid_ids": [
+            59648,
+            8192
+          ],
+          "occurrences": 264,
+          "occurrences_by_rank": {
+            "0": 33,
+            "1": 33,
+            "2": 33,
+            "3": 33,
+            "4": 33,
+            "5": 33,
+            "6": 33,
+            "7": 33
+          },
+          "variant_id": "ef7024c37057152a3900b85f360c950f0f712aa0c2da77fee345e726dc15f6d3"
+        },
+        {
+          "num_valid_ids": [
+            59712,
+            8192
+          ],
+          "occurrences": 264,
+          "occurrences_by_rank": {
+            "0": 33,
+            "1": 33,
+            "2": 33,
+            "3": 33,
+            "4": 33,
+            "5": 33,
+            "6": 33,
+            "7": 33
+          },
+          "variant_id": "032e31f0bbd2cbb4a522d186c81b4cb8cfa5079fe1dd110e98c11916d02560a6"
+        },
+        {
+          "num_valid_ids": [
+            59776,
+            8192
+          ],
+          "occurrences": 272,
+          "occurrences_by_rank": {
+            "0": 34,
+            "1": 34,
+            "2": 34,
+            "3": 34,
+            "4": 34,
+            "5": 34,
+            "6": 34,
+            "7": 34
+          },
+          "variant_id": "c92a076fe8c14e3d229d9f413d9541255614c62b7abb4787f4539f41cc9c571b"
+        },
+        {
+          "num_valid_ids": [
+            59840,
+            8192
+          ],
+          "occurrences": 248,
+          "occurrences_by_rank": {
+            "0": 31,
+            "1": 31,
+            "2": 31,
+            "3": 31,
+            "4": 31,
+            "5": 31,
+            "6": 31,
+            "7": 31
+          },
+          "variant_id": "01a44972e790e9a07e296642f810e083e7c31aaf5aa251d1d6b7b34ccb943391"
+        },
+        {
+          "num_valid_ids": [
+            59904,
+            8192
+          ],
+          "occurrences": 312,
+          "occurrences_by_rank": {
+            "0": 39,
+            "1": 39,
+            "2": 39,
+            "3": 39,
+            "4": 39,
+            "5": 39,
+            "6": 39,
+            "7": 39
+          },
+          "variant_id": "4ba82d15aa385f1c18784c383c299fa7b98901b5c918f9313042a375d65d17d2"
+        },
+        {
+          "num_valid_ids": [
+            59968,
+            8192
+          ],
+          "occurrences": 304,
+          "occurrences_by_rank": {
+            "0": 38,
+            "1": 38,
+            "2": 38,
+            "3": 38,
+            "4": 38,
+            "5": 38,
+            "6": 38,
+            "7": 38
+          },
+          "variant_id": "1cfa458dca54e3d9c6fa6ca9fa1e4b8978ce77ca7c1177f5314beeaa91dc85fc"
+        },
+        {
+          "num_valid_ids": [
+            60032,
+            8192
+          ],
+          "occurrences": 216,
+          "occurrences_by_rank": {
+            "0": 27,
+            "1": 27,
+            "2": 27,
+            "3": 27,
+            "4": 27,
+            "5": 27,
+            "6": 27,
+            "7": 27
+          },
+          "variant_id": "8f0104822697a96442540bfd345a283c043086e3ad8ff69e6d35ec224c2a5445"
+        },
+        {
+          "num_valid_ids": [
+            60096,
+            8192
+          ],
+          "occurrences": 296,
+          "occurrences_by_rank": {
+            "0": 37,
+            "1": 37,
+            "2": 37,
+            "3": 37,
+            "4": 37,
+            "5": 37,
+            "6": 37,
+            "7": 37
+          },
+          "variant_id": "a389c74909dac4a3c6ccddc063278cc8567fa4a72ce9447df575247b4bc63605"
+        },
+        {
+          "num_valid_ids": [
+            60160,
+            8192
+          ],
+          "occurrences": 240,
+          "occurrences_by_rank": {
+            "0": 30,
+            "1": 30,
+            "2": 30,
+            "3": 30,
+            "4": 30,
+            "5": 30,
+            "6": 30,
+            "7": 30
+          },
+          "variant_id": "0d6b236a8cba00e6967abe675886fe10e038b4783e8ab8ff352be4f93e6ac5cd"
+        },
+        {
+          "num_valid_ids": [
+            60224,
+            8192
+          ],
+          "occurrences": 264,
+          "occurrences_by_rank": {
+            "0": 33,
+            "1": 33,
+            "2": 33,
+            "3": 33,
+            "4": 33,
+            "5": 33,
+            "6": 33,
+            "7": 33
+          },
+          "variant_id": "6531be339c0150de48a4be49b1495dce0c7d897a3d507c56c48116116ade7fab"
+        },
+        {
+          "num_valid_ids": [
+            60288,
+            8192
+          ],
+          "occurrences": 288,
+          "occurrences_by_rank": {
+            "0": 36,
+            "1": 36,
+            "2": 36,
+            "3": 36,
+            "4": 36,
+            "5": 36,
+            "6": 36,
+            "7": 36
+          },
+          "variant_id": "59d44f0dc90a62327aa4bd1242bc5be512f25e99e275e53dde341299dc8d5282"
+        },
+        {
+          "num_valid_ids": [
+            60352,
+            8192
+          ],
+          "occurrences": 304,
+          "occurrences_by_rank": {
+            "0": 38,
+            "1": 38,
+            "2": 38,
+            "3": 38,
+            "4": 38,
+            "5": 38,
+            "6": 38,
+            "7": 38
+          },
+          "variant_id": "4090f969896924ba36ef903fd6511af60ef742aaa5d4f0bac7881f10ad34ca9a"
+        },
+        {
+          "num_valid_ids": [
+            60416,
+            8192
+          ],
+          "occurrences": 344,
+          "occurrences_by_rank": {
+            "0": 43,
+            "1": 43,
+            "2": 43,
+            "3": 43,
+            "4": 43,
+            "5": 43,
+            "6": 43,
+            "7": 43
+          },
+          "variant_id": "0a1c6b6d954edcf73fea383892ef3e90a86f7597a6127e87430c82dc209b25b3"
+        },
+        {
+          "num_valid_ids": [
+            60480,
+            8192
+          ],
+          "occurrences": 264,
+          "occurrences_by_rank": {
+            "0": 33,
+            "1": 33,
+            "2": 33,
+            "3": 33,
+            "4": 33,
+            "5": 33,
+            "6": 33,
+            "7": 33
+          },
+          "variant_id": "0a4ed99327e505c9b0fba176c24c543f7f5e3af5c52aeccd04d21a21d4cb3f58"
+        },
+        {
+          "num_valid_ids": [
+            60544,
+            8192
+          ],
+          "occurrences": 328,
+          "occurrences_by_rank": {
+            "0": 41,
+            "1": 41,
+            "2": 41,
+            "3": 41,
+            "4": 41,
+            "5": 41,
+            "6": 41,
+            "7": 41
+          },
+          "variant_id": "b2e0fd6ae1e75294aa63a3b69038692e11e11438575e87aaf11261b717ea7bdf"
+        },
+        {
+          "num_valid_ids": [
+            60608,
+            8192
+          ],
+          "occurrences": 256,
+          "occurrences_by_rank": {
+            "0": 32,
+            "1": 32,
+            "2": 32,
+            "3": 32,
+            "4": 32,
+            "5": 32,
+            "6": 32,
+            "7": 32
+          },
+          "variant_id": "c70b4ddba358c76eb449eec9fdd0132c9cfb5392b24030986e4b18500f5eaef4"
+        },
+        {
+          "num_valid_ids": [
+            60672,
+            8192
+          ],
+          "occurrences": 352,
+          "occurrences_by_rank": {
+            "0": 44,
+            "1": 44,
+            "2": 44,
+            "3": 44,
+            "4": 44,
+            "5": 44,
+            "6": 44,
+            "7": 44
+          },
+          "variant_id": "15232f686964e78d0e05ee4dd809ce7600273a5517ffd26240ebad457a1a9c6d"
+        },
+        {
+          "num_valid_ids": [
+            60736,
+            8192
+          ],
+          "occurrences": 248,
+          "occurrences_by_rank": {
+            "0": 31,
+            "1": 31,
+            "2": 31,
+            "3": 31,
+            "4": 31,
+            "5": 31,
+            "6": 31,
+            "7": 31
+          },
+          "variant_id": "69175a1cff1d4c8859efe3ee07ead2ef6f703b837df45762a78815924a641592"
+        },
+        {
+          "num_valid_ids": [
+            60800,
+            8192
+          ],
+          "occurrences": 456,
+          "occurrences_by_rank": {
+            "0": 57,
+            "1": 57,
+            "2": 57,
+            "3": 57,
+            "4": 57,
+            "5": 57,
+            "6": 57,
+            "7": 57
+          },
+          "variant_id": "53a0caf14e2ce2aec7c058559c5a6247822df93a6444ede73cdb8496021242a7"
+        },
+        {
+          "num_valid_ids": [
+            60864,
+            8192
+          ],
+          "occurrences": 240,
+          "occurrences_by_rank": {
+            "0": 30,
+            "1": 30,
+            "2": 30,
+            "3": 30,
+            "4": 30,
+            "5": 30,
+            "6": 30,
+            "7": 30
+          },
+          "variant_id": "71b4aa52c9299e5a2d4712e3ce3537f5277d6237290993aa055a044ad50d1c43"
+        },
+        {
+          "num_valid_ids": [
+            60928,
+            8192
+          ],
+          "occurrences": 392,
+          "occurrences_by_rank": {
+            "0": 49,
+            "1": 49,
+            "2": 49,
+            "3": 49,
+            "4": 49,
+            "5": 49,
+            "6": 49,
+            "7": 49
+          },
+          "variant_id": "bc2debb71405bff311a5f22da26f02d8c509ae4f7fbfeeaa748c6786506538e2"
+        },
+        {
+          "num_valid_ids": [
+            60992,
+            8192
+          ],
+          "occurrences": 472,
+          "occurrences_by_rank": {
+            "0": 59,
+            "1": 59,
+            "2": 59,
+            "3": 59,
+            "4": 59,
+            "5": 59,
+            "6": 59,
+            "7": 59
+          },
+          "variant_id": "dea5321542295db25b7c3038ec5a51e50a03825ba16f11a517212a135d4aeed0"
+        },
+        {
+          "num_valid_ids": [
+            61056,
+            8192
+          ],
+          "occurrences": 320,
+          "occurrences_by_rank": {
+            "0": 40,
+            "1": 40,
+            "2": 40,
+            "3": 40,
+            "4": 40,
+            "5": 40,
+            "6": 40,
+            "7": 40
+          },
+          "variant_id": "621ffbb09b9a815a4ac12553db43cde3736e27030696887ebfe1ea990f7b2054"
+        },
+        {
+          "num_valid_ids": [
+            61120,
+            8192
+          ],
+          "occurrences": 360,
+          "occurrences_by_rank": {
+            "0": 45,
+            "1": 45,
+            "2": 45,
+            "3": 45,
+            "4": 45,
+            "5": 45,
+            "6": 45,
+            "7": 45
+          },
+          "variant_id": "ae5461371c33c2b46f997d3c356c4722c10cefc383c764b394b9c4df4f6474cf"
+        },
+        {
+          "num_valid_ids": [
+            61184,
+            8192
+          ],
+          "occurrences": 480,
+          "occurrences_by_rank": {
+            "0": 60,
+            "1": 60,
+            "2": 60,
+            "3": 60,
+            "4": 60,
+            "5": 60,
+            "6": 60,
+            "7": 60
+          },
+          "variant_id": "697a39b1633cd76193bee7f6fe706c4e4928833fd728376bbfff27803ee2e984"
+        },
+        {
+          "num_valid_ids": [
+            61248,
+            8192
+          ],
+          "occurrences": 416,
+          "occurrences_by_rank": {
+            "0": 52,
+            "1": 52,
+            "2": 52,
+            "3": 52,
+            "4": 52,
+            "5": 52,
+            "6": 52,
+            "7": 52
+          },
+          "variant_id": "3e1dbeca20ffdf6cee529fc9181290c95b115a8e6e8449b18d0f55b19014b0b6"
+        },
+        {
+          "num_valid_ids": [
+            61312,
+            8192
+          ],
+          "occurrences": 552,
+          "occurrences_by_rank": {
+            "0": 69,
+            "1": 69,
+            "2": 69,
+            "3": 69,
+            "4": 69,
+            "5": 69,
+            "6": 69,
+            "7": 69
+          },
+          "variant_id": "0a66c80d3413049279938d1b54c066cfe7bc22737598a0ba7f5e9ed9b5d03e6f"
+        },
+        {
+          "num_valid_ids": [
+            61376,
+            8192
+          ],
+          "occurrences": 432,
+          "occurrences_by_rank": {
+            "0": 54,
+            "1": 54,
+            "2": 54,
+            "3": 54,
+            "4": 54,
+            "5": 54,
+            "6": 54,
+            "7": 54
+          },
+          "variant_id": "0bc15f999c966b90b1b66c559b7b9b67dbb2261092ee9e7617a422d8a3e92c49"
+        },
+        {
+          "num_valid_ids": [
+            61440,
+            8192
+          ],
+          "occurrences": 432,
+          "occurrences_by_rank": {
+            "0": 54,
+            "1": 54,
+            "2": 54,
+            "3": 54,
+            "4": 54,
+            "5": 54,
+            "6": 54,
+            "7": 54
+          },
+          "variant_id": "7abe03e9310dce0dec8fcc7dc6589f2cbdd13888fb98937a0d5ed63898ce82c4"
+        },
+        {
+          "num_valid_ids": [
+            61504,
+            8192
+          ],
+          "occurrences": 576,
+          "occurrences_by_rank": {
+            "0": 72,
+            "1": 72,
+            "2": 72,
+            "3": 72,
+            "4": 72,
+            "5": 72,
+            "6": 72,
+            "7": 72
+          },
+          "variant_id": "4c2aead510486a002a7650ac20ff27f4f248869cf302a869688aca2f5a9928c9"
+        },
+        {
+          "num_valid_ids": [
+            61568,
+            8192
+          ],
+          "occurrences": 520,
+          "occurrences_by_rank": {
+            "0": 65,
+            "1": 65,
+            "2": 65,
+            "3": 65,
+            "4": 65,
+            "5": 65,
+            "6": 65,
+            "7": 65
+          },
+          "variant_id": "2d0b52ce75c866fa1d763b2e2852ed709dffa6a8de833215fcdbee5ea5eb058f"
+        },
+        {
+          "num_valid_ids": [
+            61632,
+            8192
+          ],
+          "occurrences": 592,
+          "occurrences_by_rank": {
+            "0": 74,
+            "1": 74,
+            "2": 74,
+            "3": 74,
+            "4": 74,
+            "5": 74,
+            "6": 74,
+            "7": 74
+          },
+          "variant_id": "0fa6c396048e7be12536fec5e6753ff4d41fad7674db2b4e808d1cc2ba599067"
+        },
+        {
+          "num_valid_ids": [
+            61696,
+            8192
+          ],
+          "occurrences": 632,
+          "occurrences_by_rank": {
+            "0": 79,
+            "1": 79,
+            "2": 79,
+            "3": 79,
+            "4": 79,
+            "5": 79,
+            "6": 79,
+            "7": 79
+          },
+          "variant_id": "84dd1da575c4581a52cdcfa0b12f72043014164f69464dde60d1785cbf01b790"
+        },
+        {
+          "num_valid_ids": [
+            61760,
+            8192
+          ],
+          "occurrences": 472,
+          "occurrences_by_rank": {
+            "0": 59,
+            "1": 59,
+            "2": 59,
+            "3": 59,
+            "4": 59,
+            "5": 59,
+            "6": 59,
+            "7": 59
+          },
+          "variant_id": "031982c48e842d8015220598881c868c39877dc939549242d281b6f2651b43b2"
+        },
+        {
+          "num_valid_ids": [
+            61824,
+            8192
+          ],
+          "occurrences": 608,
+          "occurrences_by_rank": {
+            "0": 76,
+            "1": 76,
+            "2": 76,
+            "3": 76,
+            "4": 76,
+            "5": 76,
+            "6": 76,
+            "7": 76
+          },
+          "variant_id": "e692be158a18a9916b0cf8f5ec980fb543e353474e8c3d9f9d60af628b986c03"
+        },
+        {
+          "num_valid_ids": [
+            61888,
+            8192
+          ],
+          "occurrences": 680,
+          "occurrences_by_rank": {
+            "0": 85,
+            "1": 85,
+            "2": 85,
+            "3": 85,
+            "4": 85,
+            "5": 85,
+            "6": 85,
+            "7": 85
+          },
+          "variant_id": "67175c4a5821d250f9215ec0ad7f3d80997ef81231986504e57d6729060fdddb"
+        },
+        {
+          "num_valid_ids": [
+            61952,
+            8192
+          ],
+          "occurrences": 664,
+          "occurrences_by_rank": {
+            "0": 83,
+            "1": 83,
+            "2": 83,
+            "3": 83,
+            "4": 83,
+            "5": 83,
+            "6": 83,
+            "7": 83
+          },
+          "variant_id": "38f604a1089047cbd56fe3b006aa92b93751beb2f52fdf1be473a564288acc8d"
+        },
+        {
+          "num_valid_ids": [
+            62016,
+            8192
+          ],
+          "occurrences": 592,
+          "occurrences_by_rank": {
+            "0": 74,
+            "1": 74,
+            "2": 74,
+            "3": 74,
+            "4": 74,
+            "5": 74,
+            "6": 74,
+            "7": 74
+          },
+          "variant_id": "6d80a7fc00741052b01dcf6555ae9d4294b1f895e523a5cecd869027e4f12b66"
+        },
+        {
+          "num_valid_ids": [
+            62080,
+            8192
+          ],
+          "occurrences": 544,
+          "occurrences_by_rank": {
+            "0": 68,
+            "1": 68,
+            "2": 68,
+            "3": 68,
+            "4": 68,
+            "5": 68,
+            "6": 68,
+            "7": 68
+          },
+          "variant_id": "beab1d3a2a9679b402d54b31f807c4a13988290a709bfaea80495594aa04b572"
+        },
+        {
+          "num_valid_ids": [
+            62144,
+            8192
+          ],
+          "occurrences": 624,
+          "occurrences_by_rank": {
+            "0": 78,
+            "1": 78,
+            "2": 78,
+            "3": 78,
+            "4": 78,
+            "5": 78,
+            "6": 78,
+            "7": 78
+          },
+          "variant_id": "21d621623724268495888ffc521be6820d9044f03a153f7083339686ee12604d"
+        },
+        {
+          "num_valid_ids": [
+            62208,
+            8192
+          ],
+          "occurrences": 632,
+          "occurrences_by_rank": {
+            "0": 79,
+            "1": 79,
+            "2": 79,
+            "3": 79,
+            "4": 79,
+            "5": 79,
+            "6": 79,
+            "7": 79
+          },
+          "variant_id": "24b55cd619169c2c3dfa465e5170374ef794e79db3d6b05d2be618f33a737880"
+        },
+        {
+          "num_valid_ids": [
+            62272,
+            8192
+          ],
+          "occurrences": 616,
+          "occurrences_by_rank": {
+            "0": 77,
+            "1": 77,
+            "2": 77,
+            "3": 77,
+            "4": 77,
+            "5": 77,
+            "6": 77,
+            "7": 77
+          },
+          "variant_id": "50b91dec51b9d7ddc67b9f17d5fc6c10c641d49e37f55c6f24bb3750cea7ec1f"
+        },
+        {
+          "num_valid_ids": [
+            62336,
+            8192
+          ],
+          "occurrences": 656,
+          "occurrences_by_rank": {
+            "0": 82,
+            "1": 82,
+            "2": 82,
+            "3": 82,
+            "4": 82,
+            "5": 82,
+            "6": 82,
+            "7": 82
+          },
+          "variant_id": "bbfd2c64e7aef0c10b72c4290ebc25f2806f21c20c562d5a6d3f155d29060e3a"
+        },
+        {
+          "num_valid_ids": [
+            62400,
+            8192
+          ],
+          "occurrences": 528,
+          "occurrences_by_rank": {
+            "0": 66,
+            "1": 66,
+            "2": 66,
+            "3": 66,
+            "4": 66,
+            "5": 66,
+            "6": 66,
+            "7": 66
+          },
+          "variant_id": "1fae55256ad8188537af860c3b8000e001a9b5b0be43a6f1ad43f9dc3342ed25"
+        },
+        {
+          "num_valid_ids": [
+            62464,
+            8192
+          ],
+          "occurrences": 472,
+          "occurrences_by_rank": {
+            "0": 59,
+            "1": 59,
+            "2": 59,
+            "3": 59,
+            "4": 59,
+            "5": 59,
+            "6": 59,
+            "7": 59
+          },
+          "variant_id": "98b00f9f72039471cc62c488fc418edf995a8226fc5e97705b028b79689a1a0f"
+        },
+        {
+          "num_valid_ids": [
+            62528,
+            8192
+          ],
+          "occurrences": 680,
+          "occurrences_by_rank": {
+            "0": 85,
+            "1": 85,
+            "2": 85,
+            "3": 85,
+            "4": 85,
+            "5": 85,
+            "6": 85,
+            "7": 85
+          },
+          "variant_id": "180ec4920828d430951d9fbc41b7ae275d36e6a264502956581b376b0e3aedb2"
+        },
+        {
+          "num_valid_ids": [
+            62592,
+            8192
+          ],
+          "occurrences": 536,
+          "occurrences_by_rank": {
+            "0": 67,
+            "1": 67,
+            "2": 67,
+            "3": 67,
+            "4": 67,
+            "5": 67,
+            "6": 67,
+            "7": 67
+          },
+          "variant_id": "b816f78ff615122cd3fc3e8161c0dfb29b5c78f7056e084b638d476225255a02"
+        },
+        {
+          "num_valid_ids": [
+            62656,
+            8192
+          ],
+          "occurrences": 384,
+          "occurrences_by_rank": {
+            "0": 48,
+            "1": 48,
+            "2": 48,
+            "3": 48,
+            "4": 48,
+            "5": 48,
+            "6": 48,
+            "7": 48
+          },
+          "variant_id": "e7d9b73a925d939d9a63d20a663afa5cd1b0de583473641af8e65b34dc507e03"
+        },
+        {
+          "num_valid_ids": [
+            62720,
+            8192
+          ],
+          "occurrences": 480,
+          "occurrences_by_rank": {
+            "0": 60,
+            "1": 60,
+            "2": 60,
+            "3": 60,
+            "4": 60,
+            "5": 60,
+            "6": 60,
+            "7": 60
+          },
+          "variant_id": "34ef06c6e7da14caf26de243388c2447d846b6719025785560e03382506f8ce5"
+        },
+        {
+          "num_valid_ids": [
+            62784,
+            8192
+          ],
+          "occurrences": 464,
+          "occurrences_by_rank": {
+            "0": 58,
+            "1": 58,
+            "2": 58,
+            "3": 58,
+            "4": 58,
+            "5": 58,
+            "6": 58,
+            "7": 58
+          },
+          "variant_id": "0808ca811b750f7e704522421554fa8f5a72ba597f347b5ef55d3daa3ede37f0"
+        },
+        {
+          "num_valid_ids": [
+            62848,
+            8192
+          ],
+          "occurrences": 416,
+          "occurrences_by_rank": {
+            "0": 52,
+            "1": 52,
+            "2": 52,
+            "3": 52,
+            "4": 52,
+            "5": 52,
+            "6": 52,
+            "7": 52
+          },
+          "variant_id": "bbb51e23e60ea8e6defa6886f0340686711a4b56eb648969a1b40bf69b16f0a4"
+        },
+        {
+          "num_valid_ids": [
+            62912,
+            8192
+          ],
+          "occurrences": 320,
+          "occurrences_by_rank": {
+            "0": 40,
+            "1": 40,
+            "2": 40,
+            "3": 40,
+            "4": 40,
+            "5": 40,
+            "6": 40,
+            "7": 40
+          },
+          "variant_id": "bf5216f5f98dce9259018a4e744fd7658e8cd20855e9474ae043691c4ca8dd10"
+        },
+        {
+          "num_valid_ids": [
+            62976,
+            8192
+          ],
+          "occurrences": 280,
+          "occurrences_by_rank": {
+            "0": 35,
+            "1": 35,
+            "2": 35,
+            "3": 35,
+            "4": 35,
+            "5": 35,
+            "6": 35,
+            "7": 35
+          },
+          "variant_id": "90e8cfd2b931513ae34de4e3685b82f23bd48a8757ec18383d64b163c4aeba10"
+        },
+        {
+          "num_valid_ids": [
+            63040,
+            8192
+          ],
+          "occurrences": 264,
+          "occurrences_by_rank": {
+            "0": 33,
+            "1": 33,
+            "2": 33,
+            "3": 33,
+            "4": 33,
+            "5": 33,
+            "6": 33,
+            "7": 33
+          },
+          "variant_id": "c6e80d636605591af16552532990de7ace313d83b0b2a6be0c9a74b4b457ed76"
+        },
+        {
+          "num_valid_ids": [
+            63104,
+            8192
+          ],
+          "occurrences": 336,
+          "occurrences_by_rank": {
+            "0": 42,
+            "1": 42,
+            "2": 42,
+            "3": 42,
+            "4": 42,
+            "5": 42,
+            "6": 42,
+            "7": 42
+          },
+          "variant_id": "13d46c59ecea0d7fecb2bf6158c4eb3971a4f5b14a5cc5fe31f3af664a0aa27a"
+        },
+        {
+          "num_valid_ids": [
+            63168,
+            8192
+          ],
+          "occurrences": 216,
+          "occurrences_by_rank": {
+            "0": 27,
+            "1": 27,
+            "2": 27,
+            "3": 27,
+            "4": 27,
+            "5": 27,
+            "6": 27,
+            "7": 27
+          },
+          "variant_id": "e3f9235bde7af81856655918a08918821c16c7212d04e6f9e77e74aeb1ca3031"
+        },
+        {
+          "num_valid_ids": [
+            63232,
+            8192
+          ],
+          "occurrences": 184,
+          "occurrences_by_rank": {
+            "0": 23,
+            "1": 23,
+            "2": 23,
+            "3": 23,
+            "4": 23,
+            "5": 23,
+            "6": 23,
+            "7": 23
+          },
+          "variant_id": "eaf6eca61dcb7e6bc3477ca5cf38e48b36cac0070419e7255441fc8fee765469"
+        },
+        {
+          "num_valid_ids": [
+            63296,
+            8192
+          ],
+          "occurrences": 216,
+          "occurrences_by_rank": {
+            "0": 27,
+            "1": 27,
+            "2": 27,
+            "3": 27,
+            "4": 27,
+            "5": 27,
+            "6": 27,
+            "7": 27
+          },
+          "variant_id": "e2245057618edb5c95e99ab0d3e254d216d18d52fe35a4dee82c7764070e75c5"
+        },
+        {
+          "num_valid_ids": [
+            63360,
+            8192
+          ],
+          "occurrences": 168,
+          "occurrences_by_rank": {
+            "0": 21,
+            "1": 21,
+            "2": 21,
+            "3": 21,
+            "4": 21,
+            "5": 21,
+            "6": 21,
+            "7": 21
+          },
+          "variant_id": "e02619e56f62912c09b396b2528b61b9f54f220d16526f42a81aa54c9c2b3254"
+        },
+        {
+          "num_valid_ids": [
+            63424,
+            8192
+          ],
+          "occurrences": 80,
+          "occurrences_by_rank": {
+            "0": 10,
+            "1": 10,
+            "2": 10,
+            "3": 10,
+            "4": 10,
+            "5": 10,
+            "6": 10,
+            "7": 10
+          },
+          "variant_id": "58fd538eaab2b27c9c6a33c6ebd28eea7d2b78b4aca30a0bee147592af850fc7"
+        },
+        {
+          "num_valid_ids": [
+            63488,
+            8192
+          ],
+          "occurrences": 40,
+          "occurrences_by_rank": {
+            "0": 5,
+            "1": 5,
+            "2": 5,
+            "3": 5,
+            "4": 5,
+            "5": 5,
+            "6": 5,
+            "7": 5
+          },
+          "variant_id": "ef841be26282e6ef15739c85e1fc9f5efabbd7cd23365c1d1f31e8cd60c7ed9d"
+        },
+        {
+          "num_valid_ids": [
+            63552,
+            8192
+          ],
+          "occurrences": 64,
+          "occurrences_by_rank": {
+            "0": 8,
+            "1": 8,
+            "2": 8,
+            "3": 8,
+            "4": 8,
+            "5": 8,
+            "6": 8,
+            "7": 8
+          },
+          "variant_id": "e4fdebc3648d5514693dd97e4918a3c1d83b4c874f9fa235059365ab3208fff2"
+        },
+        {
+          "num_valid_ids": [
+            63616,
+            8192
+          ],
+          "occurrences": 48,
+          "occurrences_by_rank": {
+            "0": 6,
+            "1": 6,
+            "2": 6,
+            "3": 6,
+            "4": 6,
+            "5": 6,
+            "6": 6,
+            "7": 6
+          },
+          "variant_id": "a566436e881eae4cd16f43e1ca5ed537b100aae6f7fb3decaa0e838e6a707743"
+        },
+        {
+          "num_valid_ids": [
+            63680,
+            8192
+          ],
+          "occurrences": 48,
+          "occurrences_by_rank": {
+            "0": 6,
+            "1": 6,
+            "2": 6,
+            "3": 6,
+            "4": 6,
+            "5": 6,
+            "6": 6,
+            "7": 6
+          },
+          "variant_id": "870a8d92959090ee54f8ef13ee4cb660ed765ee21ea4ab895b22ea2a0002a8fc"
+        },
+        {
+          "num_valid_ids": [
+            63744,
+            8192
+          ],
+          "occurrences": 48,
+          "occurrences_by_rank": {
+            "0": 6,
+            "1": 6,
+            "2": 6,
+            "3": 6,
+            "4": 6,
+            "5": 6,
+            "6": 6,
+            "7": 6
+          },
+          "variant_id": "5bbaca7392e6d176d4962d3da616179d6a94bac8542657b63866ff9930c7981f"
+        },
+        {
+          "num_valid_ids": [
+            63808,
+            8192
+          ],
+          "occurrences": 8,
+          "occurrences_by_rank": {
+            "0": 1,
+            "1": 1,
+            "2": 1,
+            "3": 1,
+            "4": 1,
+            "5": 1,
+            "6": 1,
+            "7": 1
+          },
+          "variant_id": "4522c881a8b8be43fe81983b1166df7c770fa24062d6dc3aef40c5139c250852"
+        },
+        {
+          "num_valid_ids": [
+            63872,
+            8192
+          ],
+          "occurrences": 16,
+          "occurrences_by_rank": {
+            "0": 2,
+            "1": 2,
+            "2": 2,
+            "3": 2,
+            "4": 2,
+            "5": 2,
+            "6": 2,
+            "7": 2
+          },
+          "variant_id": "d842de53ae2358c0dc1f9930faec8adb3bb5d978465270cef21bcc79a39267b4"
+        },
+        {
+          "num_valid_ids": [
+            63936,
+            8192
+          ],
+          "occurrences": 40,
+          "occurrences_by_rank": {
+            "0": 5,
+            "1": 5,
+            "2": 5,
+            "3": 5,
+            "4": 5,
+            "5": 5,
+            "6": 5,
+            "7": 5
+          },
+          "variant_id": "d00db2c6361f47f64a8a2a878a8dd27bddfb30776bd2539bfeedb678c18bae99"
+        },
+        {
+          "num_valid_ids": [
+            64000,
+            8192
+          ],
+          "occurrences": 8,
+          "occurrences_by_rank": {
+            "0": 1,
+            "1": 1,
+            "2": 1,
+            "3": 1,
+            "4": 1,
+            "5": 1,
+            "6": 1,
+            "7": 1
+          },
+          "variant_id": "93a2de2ece451df9636a9ceac788918d0186f74ecc69bcec1f66f497b053831a"
+        },
+        {
+          "num_valid_ids": [
+            64064,
+            8192
+          ],
+          "occurrences": 8,
+          "occurrences_by_rank": {
+            "0": 1,
+            "1": 1,
+            "2": 1,
+            "3": 1,
+            "4": 1,
+            "5": 1,
+            "6": 1,
+            "7": 1
+          },
+          "variant_id": "e4ba40859b912cdadc2627bfecb0f325b5af45853ef85e4a13bd6da8a2ea5af5"
+        },
+        {
+          "num_valid_ids": [
+            64128,
+            8192
+          ],
+          "occurrences": 8,
+          "occurrences_by_rank": {
+            "0": 1,
+            "1": 1,
+            "2": 1,
+            "3": 1,
+            "4": 1,
+            "5": 1,
+            "6": 1,
+            "7": 1
+          },
+          "variant_id": "d5de0701945922178dedb01ff01ae0490207ef794256791daeb03d430122ce97"
+        },
+        {
+          "num_valid_ids": [
+            64192,
+            8192
+          ],
+          "occurrences": 16,
+          "occurrences_by_rank": {
+            "0": 2,
+            "1": 2,
+            "2": 2,
+            "3": 2,
+            "4": 2,
+            "5": 2,
+            "6": 2,
+            "7": 2
+          },
+          "variant_id": "6a06ba1829166c8b7ea52b9c618fe602f9533395d8eff9781cbdfde72db1e60d"
+        },
+        {
+          "num_valid_ids": [
+            64320,
+            8192
+          ],
+          "occurrences": 8,
+          "occurrences_by_rank": {
+            "0": 1,
+            "1": 1,
+            "2": 1,
+            "3": 1,
+            "4": 1,
+            "5": 1,
+            "6": 1,
+            "7": 1
+          },
+          "variant_id": "ee3f0c2bc494c65fc52f757a97ae7cce2716a5bea806c19c3890d25a70a7fdba"
+        }
+      ],
+      "histogram_sha256": "7d892c1cafae9a1422c6f8a5c2a5d53931b11b6c23edefaa55cdcd5ce9dc21a8",
+      "observed_calls": 31232,
+      "seam": "moe2",
+      "sorted_capacity": 73722,
+      "stage": "prefill",
+      "stage1_parent_fixture": {
+        "path": "fixtures/deepseek_moe1_prefill-29ea221dcf7a6a7000b32591-work-c5cd180a3a906c17.json",
+        "sha256": "19c0a46b12ade42755b80c95b23128d82bdf82a19c654c35e43f5e938f675345"
+      },
+      "stage2_parent_fixture": {
+        "path": "fixtures/deepseek_moe2-46d9a158091ade7c0f211cbd-work-c5cd180a3a906c17.json",
+        "sha256": "b4799b3218d97bf83a7815819985ed4204ed8e0ab4e5f61a87dfb746fe745c9d"
+      },
+      "tokens": 8192,
+      "topk": 6
+    },
+    "moe2-cd81026414b9ba42211b0d91": {
+      "base_case_id": "deepseek_moe2-85737162d661689681167e9c-work-1823119e10017f2d",
+      "block_m": 32,
+      "case_id": "observed-work-distribution-moe2-cd81026414b9ba42211b0d91",
+      "correctness": {
+        "all_observed_settings_tested_in_standard_mode": false,
+        "default_mode": "targeted_uncovered_behaviors",
+        "full_histogram_still_required": true,
+        "observed_setting_count": 180,
+        "optional_mode": "exhaustive_observed_values",
+        "rationale": "Thirteen actual observed counts cover minimum/maximum and neighbors, rare previously uncovered behavior, dominant and weighted interior states, and explicit live-work tile/alignment boundaries. These are probes within the unchanged native dispatch, not claims of new dispatch branches or exhaustive value testing. Original fixed cases/seeds/controls/timings remain intact.",
+        "review_status": "reviewed",
+        "reviewed_by": "/root/top5_workload_layout",
+        "targeted_probes": [
+          {
+            "num_valid_ids": [
+              2400,
+              64
+            ],
+            "observed_occurrences": 1,
+            "observed_occurrences_by_rank": {
+              "6": 1
+            },
+            "reasons": [
+              "Observed global minimum; least frequent count (one rank-local call)."
+            ],
+            "variant_id": "dba28ac56a3ac9960b9838df442119ebc22e6c0966fbcdeaaa4ffd24deefbb20"
+          },
+          {
+            "num_valid_ids": [
+              2432,
+              64
+            ],
+            "observed_occurrences": 3,
+            "observed_occurrences_by_rank": {
+              "3": 1,
+              "5": 1,
+              "7": 1
+            },
+            "reasons": [
+              "Immediate observed successor to the global minimum; lower-edge padding/control transition."
+            ],
+            "variant_id": "738d3b43ba754595e0e467724d3957ed794c4ac95ba75091ffc3549c94258dba"
+          },
+          {
+            "num_valid_ids": [
+              2592,
+              64
+            ],
+            "observed_occurrences": 3,
+            "observed_occurrences_by_rank": {
+              "0": 1,
+              "4": 1,
+              "6": 1
+            },
+            "reasons": [
+              "Least frequent previously unrepresented interior count; lower-tail generated-state check."
+            ],
+            "variant_id": "b21c49a1fe30a1d5c2e9300c3f0b27cd15a507f377d0229e171e95b62a2f8b1c"
+          },
+          {
+            "num_valid_ids": [
+              3872,
+              64
+            ],
+            "observed_occurrences": 5319,
+            "observed_occurrences_by_rank": {
+              "0": 630,
+              "1": 647,
+              "2": 638,
+              "3": 671,
+              "4": 671,
+              "5": 682,
+              "6": 674,
+              "7": 706
+            },
+            "reasons": [
+              "Weighted 10th-percentile interior count."
+            ],
+            "variant_id": "c2ac9fd67321217d638789cf162d80c153bedc96b8c660fac25a250056f1e33b"
+          },
+          {
+            "num_valid_ids": [
+              4064,
+              64
+            ],
+            "observed_occurrences": 7379,
+            "observed_occurrences_by_rank": {
+              "0": 945,
+              "1": 921,
+              "2": 908,
+              "3": 918,
+              "4": 925,
+              "5": 914,
+              "6": 945,
+              "7": 903
+            },
+            "reasons": [
+              "127 active 32-row tiles, immediately below the 128-tile carry boundary."
+            ],
+            "variant_id": "33f053631b2d7a3c891764f4e4b65717a6d9eacf2fbb754b4f1205d3876c9e1d"
+          },
+          {
+            "num_valid_ids": [
+              4096,
+              64
+            ],
+            "observed_occurrences": 7755,
+            "observed_occurrences_by_rank": {
+              "0": 970,
+              "1": 949,
+              "2": 1020,
+              "3": 962,
+              "4": 937,
+              "5": 952,
+              "6": 953,
+              "7": 1012
+            },
+            "reasons": [
+              "128 active 32-row tiles, exact power-of-two count boundary."
+            ],
+            "variant_id": "abcc3fd74defdc1e49c1b83f2db22bdb08f5d6df70458e61928e3123710dc01f"
+          },
+          {
+            "num_valid_ids": [
+              4128,
+              64
+            ],
+            "observed_occurrences": 8297,
+            "observed_occurrences_by_rank": {
+              "0": 1038,
+              "1": 1046,
+              "2": 969,
+              "3": 1071,
+              "4": 1073,
+              "5": 1089,
+              "6": 1011,
+              "7": 1000
+            },
+            "reasons": [
+              "129 active 32-row tiles, immediately above that boundary."
+            ],
+            "variant_id": "cf74d91ce5af43f1b7203c3012e7dd0525183d7fe3f1458d3b4f790da8320a39"
+          },
+          {
+            "num_valid_ids": [
+              4448,
+              64
+            ],
+            "observed_occurrences": 10683,
+            "observed_occurrences_by_rank": {
+              "0": 1358,
+              "1": 1283,
+              "2": 1337,
+              "3": 1351,
+              "4": 1335,
+              "5": 1347,
+              "6": 1357,
+              "7": 1315
+            },
+            "reasons": [
+              "Observed frequency mode; dominant workload interior."
+            ],
+            "variant_id": "6e0ca449d19b55ff09b77a0ea69188e968f9076c37c6bc1ed76a18168be8e406"
+          },
+          {
+            "num_valid_ids": [
+              4608,
+              64
+            ],
+            "observed_occurrences": 10095,
+            "observed_occurrences_by_rank": {
+              "0": 1265,
+              "1": 1319,
+              "2": 1212,
+              "3": 1267,
+              "4": 1250,
+              "5": 1254,
+              "6": 1253,
+              "7": 1275
+            },
+            "reasons": [
+              "Weighted median count."
+            ],
+            "variant_id": "2ac978512a38f1da052d7c45d3d6d23de0622bff6584f095c74d9c6bc63f7fcf"
+          },
+          {
+            "num_valid_ids": [
+              5088,
+              64
+            ],
+            "observed_occurrences": 5487,
+            "observed_occurrences_by_rank": {
+              "0": 696,
+              "1": 671,
+              "2": 673,
+              "3": 694,
+              "4": 674,
+              "5": 716,
+              "6": 687,
+              "7": 676
+            },
+            "reasons": [
+              "Weighted 75th-percentile count."
+            ],
+            "variant_id": "750769f6d997783f2ac2039de2fc623610c74ffadfc1560500b38094fb420dba"
+          },
+          {
+            "num_valid_ids": [
+              6272,
+              64
+            ],
+            "observed_occurrences": 1873,
+            "observed_occurrences_by_rank": {
+              "0": 233,
+              "1": 223,
+              "2": 235,
+              "3": 233,
+              "4": 235,
+              "5": 232,
+              "6": 234,
+              "7": 248
+            },
+            "reasons": [
+              "Weighted 90th-percentile count; upper interior."
+            ],
+            "variant_id": "791b04e29ca7033d587ed2636b07644bb8e6bcec8197a413210e252adba177c0"
+          },
+          {
+            "num_valid_ids": [
+              8160,
+              64
+            ],
+            "observed_occurrences": 8,
+            "observed_occurrences_by_rank": {
+              "0": 1,
+              "1": 1,
+              "2": 1,
+              "3": 1,
+              "4": 1,
+              "5": 1,
+              "6": 1,
+              "7": 1
+            },
+            "reasons": [
+              "Immediate observed predecessor to maximum; last 32-row tail step."
+            ],
+            "variant_id": "8c38cdf57ddd8f7984cae374597a83a3761850bd36d8040bc86738f7a2cc5b62"
+          },
+          {
+            "num_valid_ids": [
+              8192,
+              64
+            ],
+            "observed_occurrences": 16,
+            "observed_occurrences_by_rank": {
+              "0": 2,
+              "1": 2,
+              "2": 2,
+              "3": 2,
+              "4": 2,
+              "5": 2,
+              "6": 2,
+              "7": 2
+            },
+            "reasons": [
+              "Observed global maximum; largest live routing prefix in the fixed allocation."
+            ],
+            "variant_id": "a8403d1d6afee3205601c79dd0473c0de6ea14e6a8828572e9271f88bf13f02b"
+          }
+        ],
+        "targeted_setting_count": 13,
+        "targeted_variant_ids": [
+          "dba28ac56a3ac9960b9838df442119ebc22e6c0966fbcdeaaa4ffd24deefbb20",
+          "738d3b43ba754595e0e467724d3957ed794c4ac95ba75091ffc3549c94258dba",
+          "b21c49a1fe30a1d5c2e9300c3f0b27cd15a507f377d0229e171e95b62a2f8b1c",
+          "c2ac9fd67321217d638789cf162d80c153bedc96b8c660fac25a250056f1e33b",
+          "33f053631b2d7a3c891764f4e4b65717a6d9eacf2fbb754b4f1205d3876c9e1d",
+          "abcc3fd74defdc1e49c1b83f2db22bdb08f5d6df70458e61928e3123710dc01f",
+          "cf74d91ce5af43f1b7203c3012e7dd0525183d7fe3f1458d3b4f790da8320a39",
+          "6e0ca449d19b55ff09b77a0ea69188e968f9076c37c6bc1ed76a18168be8e406",
+          "2ac978512a38f1da052d7c45d3d6d23de0622bff6584f095c74d9c6bc63f7fcf",
+          "750769f6d997783f2ac2039de2fc623610c74ffadfc1560500b38094fb420dba",
+          "791b04e29ca7033d587ed2636b07644bb8e6bcec8197a413210e252adba177c0",
+          "8c38cdf57ddd8f7984cae374597a83a3761850bd36d8040bc86738f7a2cc5b62",
+          "a8403d1d6afee3205601c79dd0473c0de6ea14e6a8828572e9271f88bf13f02b"
+        ]
+      },
+      "expert_capacity": 396,
+      "experts": 384,
+      "group_id": "moe2-cd81026414b9ba42211b0d91",
+      "histogram": [
+        {
+          "num_valid_ids": [
+            2400,
+            64
+          ],
+          "occurrences": 1,
+          "occurrences_by_rank": {
+            "6": 1
+          },
+          "variant_id": "dba28ac56a3ac9960b9838df442119ebc22e6c0966fbcdeaaa4ffd24deefbb20"
+        },
+        {
+          "num_valid_ids": [
+            2432,
+            64
+          ],
+          "occurrences": 3,
+          "occurrences_by_rank": {
+            "3": 1,
+            "5": 1,
+            "7": 1
+          },
+          "variant_id": "738d3b43ba754595e0e467724d3957ed794c4ac95ba75091ffc3549c94258dba"
+        },
+        {
+          "num_valid_ids": [
+            2496,
+            64
+          ],
+          "occurrences": 2,
+          "occurrences_by_rank": {
+            "1": 1,
+            "4": 1
+          },
+          "variant_id": "b6d8ba69a02a71f18d8ada9b3d6ace80c4efb8c828150c8728400cd9ff7e1dd5"
+        },
+        {
+          "num_valid_ids": [
+            2528,
+            64
+          ],
+          "occurrences": 2,
+          "occurrences_by_rank": {
+            "0": 1,
+            "2": 1
+          },
+          "variant_id": "1823119e10017f2d1acadc482e4ac6830d529bfacf64141269c795f367f75067"
+        },
+        {
+          "num_valid_ids": [
+            2592,
+            64
+          ],
+          "occurrences": 3,
+          "occurrences_by_rank": {
+            "0": 1,
+            "4": 1,
+            "6": 1
+          },
+          "variant_id": "b21c49a1fe30a1d5c2e9300c3f0b27cd15a507f377d0229e171e95b62a2f8b1c"
+        },
+        {
+          "num_valid_ids": [
+            2624,
+            64
+          ],
+          "occurrences": 17,
+          "occurrences_by_rank": {
+            "1": 2,
+            "2": 3,
+            "3": 3,
+            "4": 1,
+            "5": 3,
+            "6": 3,
+            "7": 2
+          },
+          "variant_id": "cd5a1108b76fa5a879eb5807a62130402f54f888a99f3c94910dbc1a7410fd0c"
+        },
+        {
+          "num_valid_ids": [
+            2656,
+            64
+          ],
+          "occurrences": 16,
+          "occurrences_by_rank": {
+            "0": 3,
+            "1": 2,
+            "2": 2,
+            "3": 1,
+            "4": 2,
+            "5": 3,
+            "6": 1,
+            "7": 2
+          },
+          "variant_id": "229a9befdac62110a2abcd7607a90ccdbeb7fe8682ce45ee900e8f2e066f3ab8"
+        },
+        {
+          "num_valid_ids": [
+            2688,
+            64
+          ],
+          "occurrences": 21,
+          "occurrences_by_rank": {
+            "0": 4,
+            "1": 4,
+            "2": 2,
+            "3": 3,
+            "4": 3,
+            "5": 1,
+            "6": 2,
+            "7": 2
+          },
+          "variant_id": "13734b99c36acfd4deb63688feae5a17015331bb90a28a573700344eb93cdb56"
+        },
+        {
+          "num_valid_ids": [
+            2720,
+            64
+          ],
+          "occurrences": 35,
+          "occurrences_by_rank": {
+            "0": 4,
+            "1": 5,
+            "2": 6,
+            "3": 3,
+            "4": 5,
+            "5": 2,
+            "6": 4,
+            "7": 6
+          },
+          "variant_id": "e6bcd4e32404690d046c8db403e238db96ffbcb2f5b8d77bc7f4b6498c26ca30"
+        },
+        {
+          "num_valid_ids": [
+            2752,
+            64
+          ],
+          "occurrences": 21,
+          "occurrences_by_rank": {
+            "0": 1,
+            "1": 1,
+            "2": 4,
+            "3": 4,
+            "4": 3,
+            "5": 3,
+            "6": 2,
+            "7": 3
+          },
+          "variant_id": "13445c5c5689348351317932de1c200ce11104aa9de714649f05dea2a4394bf3"
+        },
+        {
+          "num_valid_ids": [
+            2784,
+            64
+          ],
+          "occurrences": 35,
+          "occurrences_by_rank": {
+            "0": 5,
+            "1": 4,
+            "2": 5,
+            "3": 3,
+            "4": 2,
+            "5": 6,
+            "6": 5,
+            "7": 5
+          },
+          "variant_id": "5ee8b767e5758f651d223601986e5538c04e29714892336d9d0afc1e7b053705"
+        },
+        {
+          "num_valid_ids": [
+            2816,
+            64
+          ],
+          "occurrences": 62,
+          "occurrences_by_rank": {
+            "0": 12,
+            "1": 7,
+            "2": 4,
+            "3": 9,
+            "4": 7,
+            "5": 8,
+            "6": 8,
+            "7": 7
+          },
+          "variant_id": "733caf95099f15c61a1ed5fc2c11e1a4c3ad53df82217acc6ecf0bfd3004f1e3"
+        },
+        {
+          "num_valid_ids": [
+            2848,
+            64
+          ],
+          "occurrences": 86,
+          "occurrences_by_rank": {
+            "0": 9,
+            "1": 10,
+            "2": 12,
+            "3": 10,
+            "4": 13,
+            "5": 10,
+            "6": 12,
+            "7": 10
+          },
+          "variant_id": "a09f0818ae8bdba72e7fd3456039999b4c526c31d920a77053d6f2b259160dbe"
+        },
+        {
+          "num_valid_ids": [
+            2880,
+            64
+          ],
+          "occurrences": 81,
+          "occurrences_by_rank": {
+            "0": 9,
+            "1": 10,
+            "2": 10,
+            "3": 13,
+            "4": 11,
+            "5": 12,
+            "6": 6,
+            "7": 10
+          },
+          "variant_id": "6cd65c9dd17c25daea661de32d2561a5c21e4b7897351b632e353bc2fb83a772"
+        },
+        {
+          "num_valid_ids": [
+            2912,
+            64
+          ],
+          "occurrences": 124,
+          "occurrences_by_rank": {
+            "0": 10,
+            "1": 18,
+            "2": 15,
+            "3": 16,
+            "4": 16,
+            "5": 19,
+            "6": 16,
+            "7": 14
+          },
+          "variant_id": "77faf7706a3e7cd717de7fec4e86e4cb706534a7fb9d02d4661e3a986d3c0368"
+        },
+        {
+          "num_valid_ids": [
+            2944,
+            64
+          ],
+          "occurrences": 146,
+          "occurrences_by_rank": {
+            "0": 24,
+            "1": 17,
+            "2": 19,
+            "3": 18,
+            "4": 20,
+            "5": 12,
+            "6": 20,
+            "7": 16
+          },
+          "variant_id": "932c40c91e0449594baf982b40cb4847e05aff4e7a9d2ae30d7089b5b6a6ec9a"
+        },
+        {
+          "num_valid_ids": [
+            2976,
+            64
+          ],
+          "occurrences": 200,
+          "occurrences_by_rank": {
+            "0": 24,
+            "1": 26,
+            "2": 20,
+            "3": 24,
+            "4": 24,
+            "5": 30,
+            "6": 28,
+            "7": 24
+          },
+          "variant_id": "4e24c9965accb91ac9c28b977b696bfb2e4a00a917b82947f6e173fd4396a39a"
+        },
+        {
+          "num_valid_ids": [
+            3008,
+            64
+          ],
+          "occurrences": 220,
+          "occurrences_by_rank": {
+            "0": 27,
+            "1": 25,
+            "2": 36,
+            "3": 24,
+            "4": 24,
+            "5": 27,
+            "6": 25,
+            "7": 32
+          },
+          "variant_id": "bb6144aed2990b84072d2d8f9835a92eeb88d526620ac8b8acd8ff50af33c9ce"
+        },
+        {
+          "num_valid_ids": [
+            3040,
+            64
+          ],
+          "occurrences": 269,
+          "occurrences_by_rank": {
+            "0": 40,
+            "1": 38,
+            "2": 29,
+            "3": 37,
+            "4": 35,
+            "5": 37,
+            "6": 23,
+            "7": 30
+          },
+          "variant_id": "0bb8eb5821292b673857f539fbd973e12c8d60c2de3017d7e9fdc9d0b344a23c"
+        },
+        {
+          "num_valid_ids": [
+            3072,
+            64
+          ],
+          "occurrences": 365,
+          "occurrences_by_rank": {
+            "0": 49,
+            "1": 50,
+            "2": 49,
+            "3": 52,
+            "4": 42,
+            "5": 35,
+            "6": 49,
+            "7": 39
+          },
+          "variant_id": "9442b8ff614c0b466260bb0ffb3e16bdcf4d1149711c625ce413dd8515d1fa3a"
+        },
+        {
+          "num_valid_ids": [
+            3104,
+            64
+          ],
+          "occurrences": 401,
+          "occurrences_by_rank": {
+            "0": 41,
+            "1": 47,
+            "2": 51,
+            "3": 52,
+            "4": 51,
+            "5": 53,
+            "6": 50,
+            "7": 56
+          },
+          "variant_id": "8eb37c3d77f9360a564e058dd5bc108c2ea2b4d5ac85399bb990e88c37e545d0"
+        },
+        {
+          "num_valid_ids": [
+            3136,
+            64
+          ],
+          "occurrences": 485,
+          "occurrences_by_rank": {
+            "0": 56,
+            "1": 60,
+            "2": 60,
+            "3": 54,
+            "4": 64,
+            "5": 62,
+            "6": 59,
+            "7": 70
+          },
+          "variant_id": "ae224d4b7717720612918866d6e38dd0a6acbe160942ad94536e740b2a18204a"
+        },
+        {
+          "num_valid_ids": [
+            3168,
+            64
+          ],
+          "occurrences": 514,
+          "occurrences_by_rank": {
+            "0": 66,
+            "1": 57,
+            "2": 66,
+            "3": 69,
+            "4": 56,
+            "5": 66,
+            "6": 74,
+            "7": 60
+          },
+          "variant_id": "37b82acf07b5821404d595f4c05be0666d9d89bab55d3fdeff720ab64244f71b"
+        },
+        {
+          "num_valid_ids": [
+            3200,
+            64
+          ],
+          "occurrences": 564,
+          "occurrences_by_rank": {
+            "0": 70,
+            "1": 77,
+            "2": 72,
+            "3": 65,
+            "4": 78,
+            "5": 66,
+            "6": 67,
+            "7": 69
+          },
+          "variant_id": "dd1087d8dfd3f0ed80157cf91a74a6881aa1a9a3a292860fce1d900cb55e4097"
+        },
+        {
+          "num_valid_ids": [
+            3232,
+            64
+          ],
+          "occurrences": 670,
+          "occurrences_by_rank": {
+            "0": 85,
+            "1": 87,
+            "2": 76,
+            "3": 78,
+            "4": 86,
+            "5": 84,
+            "6": 93,
+            "7": 81
+          },
+          "variant_id": "4bb7a9b1e1d801e10c3250794cc46ac3eaa6ecc88556acaea49f62f99f28bcbe"
+        },
+        {
+          "num_valid_ids": [
+            3264,
+            64
+          ],
+          "occurrences": 746,
+          "occurrences_by_rank": {
+            "0": 92,
+            "1": 98,
+            "2": 86,
+            "3": 91,
+            "4": 91,
+            "5": 100,
+            "6": 86,
+            "7": 102
+          },
+          "variant_id": "08985e02635ccf33651ffbfbe09fff152aebdea4d7f7eca8efbfa1037a95ad02"
+        },
+        {
+          "num_valid_ids": [
+            3296,
+            64
+          ],
+          "occurrences": 847,
+          "occurrences_by_rank": {
+            "0": 112,
+            "1": 99,
+            "2": 109,
+            "3": 110,
+            "4": 92,
+            "5": 113,
+            "6": 104,
+            "7": 108
+          },
+          "variant_id": "70d813b121515c12ae298add3f4e20941f535986b9bf36a0c9bc0fddde53632a"
+        },
+        {
+          "num_valid_ids": [
+            3328,
+            64
+          ],
+          "occurrences": 932,
+          "occurrences_by_rank": {
+            "0": 120,
+            "1": 113,
+            "2": 115,
+            "3": 103,
+            "4": 132,
+            "5": 109,
+            "6": 125,
+            "7": 115
+          },
+          "variant_id": "cdcef31d2da3c7df3e7845adbcdada21c20327525ce7eb91a090e68f34d758dc"
+        },
+        {
+          "num_valid_ids": [
+            3360,
+            64
+          ],
+          "occurrences": 1033,
+          "occurrences_by_rank": {
+            "0": 128,
+            "1": 129,
+            "2": 124,
+            "3": 140,
+            "4": 124,
+            "5": 136,
+            "6": 128,
+            "7": 124
+          },
+          "variant_id": "9b1a8f9c3e98314f2d3162014c84a7ae439aa17bf91737b61d0eeb4207c1e7c1"
+        },
+        {
+          "num_valid_ids": [
+            3392,
+            64
+          ],
+          "occurrences": 1230,
+          "occurrences_by_rank": {
+            "0": 147,
+            "1": 159,
+            "2": 153,
+            "3": 142,
+            "4": 156,
+            "5": 163,
+            "6": 155,
+            "7": 155
+          },
+          "variant_id": "0e6f71b0351f6a70d4f97dcd7c5e4576d82b7c8d69b7df72f5f566521912a8a1"
+        },
+        {
+          "num_valid_ids": [
+            3424,
+            64
+          ],
+          "occurrences": 1348,
+          "occurrences_by_rank": {
+            "0": 171,
+            "1": 175,
+            "2": 162,
+            "3": 179,
+            "4": 167,
+            "5": 157,
+            "6": 168,
+            "7": 169
+          },
+          "variant_id": "ca78ffffeea9625dca1c59a2a66c963064cb8137a89d95d4a5cc184d8096a11b"
+        },
+        {
+          "num_valid_ids": [
+            3456,
+            64
+          ],
+          "occurrences": 1413,
+          "occurrences_by_rank": {
+            "0": 189,
+            "1": 178,
+            "2": 172,
+            "3": 166,
+            "4": 179,
+            "5": 167,
+            "6": 191,
+            "7": 171
+          },
+          "variant_id": "b94f35be8a95d3858b12a0555a67ce34fd3caa0695226ba282c99d2d84e92e85"
+        },
+        {
+          "num_valid_ids": [
+            3488,
+            64
+          ],
+          "occurrences": 1526,
+          "occurrences_by_rank": {
+            "0": 177,
+            "1": 180,
+            "2": 204,
+            "3": 204,
+            "4": 188,
+            "5": 200,
+            "6": 172,
+            "7": 201
+          },
+          "variant_id": "30891d4c8cef40ab5a9546a9026a85222b5547af8e9ba859c3a3a07a1d327c05"
+        },
+        {
+          "num_valid_ids": [
+            3520,
+            64
+          ],
+          "occurrences": 1861,
+          "occurrences_by_rank": {
+            "0": 232,
+            "1": 225,
+            "2": 241,
+            "3": 244,
+            "4": 234,
+            "5": 230,
+            "6": 238,
+            "7": 217
+          },
+          "variant_id": "e954d3d71446f9a805a6d847294944aeddaf215234e659e4e8af68db95c18ee8"
+        },
+        {
+          "num_valid_ids": [
+            3552,
+            64
+          ],
+          "occurrences": 2006,
+          "occurrences_by_rank": {
+            "0": 254,
+            "1": 252,
+            "2": 255,
+            "3": 237,
+            "4": 257,
+            "5": 267,
+            "6": 241,
+            "7": 243
+          },
+          "variant_id": "d2741134a56bce9a990f0c490c542ddcd41b408a5e4d0a2e9313fa801bba3f1e"
+        },
+        {
+          "num_valid_ids": [
+            3584,
+            64
+          ],
+          "occurrences": 2289,
+          "occurrences_by_rank": {
+            "0": 268,
+            "1": 300,
+            "2": 274,
+            "3": 293,
+            "4": 284,
+            "5": 257,
+            "6": 308,
+            "7": 305
+          },
+          "variant_id": "da205212c48098a318f552d1cd1dd974214c45d148b3761f4648a0d6951f8a61"
+        },
+        {
+          "num_valid_ids": [
+            3616,
+            64
+          ],
+          "occurrences": 2628,
+          "occurrences_by_rank": {
+            "0": 367,
+            "1": 325,
+            "2": 339,
+            "3": 314,
+            "4": 318,
+            "5": 352,
+            "6": 314,
+            "7": 299
+          },
+          "variant_id": "dee4867f477014af01c3f86cca4391139f59741ad931c9ead117a38c56de6793"
+        },
+        {
+          "num_valid_ids": [
+            3648,
+            64
+          ],
+          "occurrences": 2916,
+          "occurrences_by_rank": {
+            "0": 354,
+            "1": 347,
+            "2": 373,
+            "3": 352,
+            "4": 385,
+            "5": 357,
+            "6": 376,
+            "7": 372
+          },
+          "variant_id": "da570db0fd3ebb1e4bb4d1028d3c02784cc534796d60ddac8c8864959a8aac05"
+        },
+        {
+          "num_valid_ids": [
+            3680,
+            64
+          ],
+          "occurrences": 3172,
+          "occurrences_by_rank": {
+            "0": 372,
+            "1": 409,
+            "2": 394,
+            "3": 410,
+            "4": 392,
+            "5": 386,
+            "6": 409,
+            "7": 400
+          },
+          "variant_id": "5f4aa8ff358fee7ced397d8f23c68bcb0e33378c4764c4e7184cfd9ca1003590"
+        },
+        {
+          "num_valid_ids": [
+            3712,
+            64
+          ],
+          "occurrences": 3387,
+          "occurrences_by_rank": {
+            "0": 439,
+            "1": 428,
+            "2": 421,
+            "3": 422,
+            "4": 420,
+            "5": 418,
+            "6": 412,
+            "7": 427
+          },
+          "variant_id": "a2fd82325f7d7fee05e0ca6a2ef651c5d6922fc4b5bd36ae7ab3b7f64566b1a6"
+        },
+        {
+          "num_valid_ids": [
+            3744,
+            64
+          ],
+          "occurrences": 3845,
+          "occurrences_by_rank": {
+            "0": 483,
+            "1": 471,
+            "2": 457,
+            "3": 500,
+            "4": 484,
+            "5": 480,
+            "6": 490,
+            "7": 480
+          },
+          "variant_id": "13b41bd71db16c00cc3177ae755b280602c531c728d9f6197835479eff63daf2"
+        },
+        {
+          "num_valid_ids": [
+            3776,
+            64
+          ],
+          "occurrences": 4203,
+          "occurrences_by_rank": {
+            "0": 543,
+            "1": 536,
+            "2": 546,
+            "3": 548,
+            "4": 500,
+            "5": 538,
+            "6": 473,
+            "7": 519
+          },
+          "variant_id": "f1b65ca4b627dd74a293280ca00bdffb750a3319c5b2ceb0efbdd68b66a0897c"
+        },
+        {
+          "num_valid_ids": [
+            3808,
+            64
+          ],
+          "occurrences": 4515,
+          "occurrences_by_rank": {
+            "0": 520,
+            "1": 561,
+            "2": 573,
+            "3": 532,
+            "4": 604,
+            "5": 579,
+            "6": 572,
+            "7": 574
+          },
+          "variant_id": "795286388fb952557866ac49f0fe11607054dd318c9bc11489c1ba3d2f2b7752"
+        },
+        {
+          "num_valid_ids": [
+            3840,
+            64
+          ],
+          "occurrences": 5003,
+          "occurrences_by_rank": {
+            "0": 644,
+            "1": 623,
+            "2": 637,
+            "3": 623,
+            "4": 618,
+            "5": 597,
+            "6": 655,
+            "7": 606
+          },
+          "variant_id": "4b6800fefe4d2183143d9f60944ab01ed6faf58873b0dbad2d9e9668f3028477"
+        },
+        {
+          "num_valid_ids": [
+            3872,
+            64
+          ],
+          "occurrences": 5319,
+          "occurrences_by_rank": {
+            "0": 630,
+            "1": 647,
+            "2": 638,
+            "3": 671,
+            "4": 671,
+            "5": 682,
+            "6": 674,
+            "7": 706
+          },
+          "variant_id": "c2ac9fd67321217d638789cf162d80c153bedc96b8c660fac25a250056f1e33b"
+        },
+        {
+          "num_valid_ids": [
+            3904,
+            64
+          ],
+          "occurrences": 5629,
+          "occurrences_by_rank": {
+            "0": 726,
+            "1": 722,
+            "2": 694,
+            "3": 704,
+            "4": 673,
+            "5": 707,
+            "6": 688,
+            "7": 715
+          },
+          "variant_id": "5bc40a88cb1848e2a6677049625c579a0921993d38d739fe20d36bef361ba559"
+        },
+        {
+          "num_valid_ids": [
+            3936,
+            64
+          ],
+          "occurrences": 6000,
+          "occurrences_by_rank": {
+            "0": 747,
+            "1": 741,
+            "2": 792,
+            "3": 776,
+            "4": 748,
+            "5": 746,
+            "6": 709,
+            "7": 741
+          },
+          "variant_id": "5c974730ea108a82b1ac21b9ffa7ed26eea796b42a75040435eab49f45a438bd"
+        },
+        {
+          "num_valid_ids": [
+            3968,
+            64
+          ],
+          "occurrences": 6388,
+          "occurrences_by_rank": {
+            "0": 810,
+            "1": 793,
+            "2": 797,
+            "3": 777,
+            "4": 797,
+            "5": 798,
+            "6": 840,
+            "7": 776
+          },
+          "variant_id": "336dc1f78559a26f337fd1d610dbd5ca06b34da8b140686b7cd39de6b82a8ae9"
+        },
+        {
+          "num_valid_ids": [
+            4000,
+            64
+          ],
+          "occurrences": 6751,
+          "occurrences_by_rank": {
+            "0": 841,
+            "1": 846,
+            "2": 824,
+            "3": 810,
+            "4": 874,
+            "5": 850,
+            "6": 834,
+            "7": 872
+          },
+          "variant_id": "c73c9dbca39a2e874715cf40503771145a23459d97fbfe78d8dd517313f5e21c"
+        },
+        {
+          "num_valid_ids": [
+            4032,
+            64
+          ],
+          "occurrences": 7170,
+          "occurrences_by_rank": {
+            "0": 889,
+            "1": 867,
+            "2": 906,
+            "3": 919,
+            "4": 898,
+            "5": 909,
+            "6": 911,
+            "7": 871
+          },
+          "variant_id": "f3ec16bd3f95a7701594d698944a65f333bdd46e1001a022f0440c8f99c62b7c"
+        },
+        {
+          "num_valid_ids": [
+            4064,
+            64
+          ],
+          "occurrences": 7379,
+          "occurrences_by_rank": {
+            "0": 945,
+            "1": 921,
+            "2": 908,
+            "3": 918,
+            "4": 925,
+            "5": 914,
+            "6": 945,
+            "7": 903
+          },
+          "variant_id": "33f053631b2d7a3c891764f4e4b65717a6d9eacf2fbb754b4f1205d3876c9e1d"
+        },
+        {
+          "num_valid_ids": [
+            4096,
+            64
+          ],
+          "occurrences": 7755,
+          "occurrences_by_rank": {
+            "0": 970,
+            "1": 949,
+            "2": 1020,
+            "3": 962,
+            "4": 937,
+            "5": 952,
+            "6": 953,
+            "7": 1012
+          },
+          "variant_id": "abcc3fd74defdc1e49c1b83f2db22bdb08f5d6df70458e61928e3123710dc01f"
+        },
+        {
+          "num_valid_ids": [
+            4128,
+            64
+          ],
+          "occurrences": 8297,
+          "occurrences_by_rank": {
+            "0": 1038,
+            "1": 1046,
+            "2": 969,
+            "3": 1071,
+            "4": 1073,
+            "5": 1089,
+            "6": 1011,
+            "7": 1000
+          },
+          "variant_id": "cf74d91ce5af43f1b7203c3012e7dd0525183d7fe3f1458d3b4f790da8320a39"
+        },
+        {
+          "num_valid_ids": [
+            4160,
+            64
+          ],
+          "occurrences": 8763,
+          "occurrences_by_rank": {
+            "0": 1120,
+            "1": 1102,
+            "2": 1081,
+            "3": 1065,
+            "4": 1070,
+            "5": 1103,
+            "6": 1113,
+            "7": 1109
+          },
+          "variant_id": "1c8e164683369a9d63b29c7c49f640943e8aca41e3cacc53529cd7797882734a"
+        },
+        {
+          "num_valid_ids": [
+            4192,
+            64
+          ],
+          "occurrences": 8873,
+          "occurrences_by_rank": {
+            "0": 1072,
+            "1": 1122,
+            "2": 1124,
+            "3": 1133,
+            "4": 1108,
+            "5": 1073,
+            "6": 1115,
+            "7": 1126
+          },
+          "variant_id": "69d2f7e16f33a2e95a0218682dddbf0569f7be45d8ff11e732c79da3adeab16c"
+        },
+        {
+          "num_valid_ids": [
+            4224,
+            64
+          ],
+          "occurrences": 9029,
+          "occurrences_by_rank": {
+            "0": 1108,
+            "1": 1150,
+            "2": 1119,
+            "3": 1115,
+            "4": 1118,
+            "5": 1144,
+            "6": 1125,
+            "7": 1150
+          },
+          "variant_id": "034226a36ea5c2819d7ce4352c3ff54b06bbb149bb406046752f3e4a2bc8834c"
+        },
+        {
+          "num_valid_ids": [
+            4256,
+            64
+          ],
+          "occurrences": 9425,
+          "occurrences_by_rank": {
+            "0": 1163,
+            "1": 1179,
+            "2": 1209,
+            "3": 1155,
+            "4": 1184,
+            "5": 1156,
+            "6": 1211,
+            "7": 1168
+          },
+          "variant_id": "34f94def2747417172fe3ffd05feb86436ea1b8dfad4ec710928153d22864902"
+        },
+        {
+          "num_valid_ids": [
+            4288,
+            64
+          ],
+          "occurrences": 9327,
+          "occurrences_by_rank": {
+            "0": 1168,
+            "1": 1179,
+            "2": 1171,
+            "3": 1182,
+            "4": 1151,
+            "5": 1139,
+            "6": 1181,
+            "7": 1156
+          },
+          "variant_id": "674e9bbc1f2f29e2c6abc9cc019d1fd45564a1540a9b86fa9bfae132e9811436"
+        },
+        {
+          "num_valid_ids": [
+            4320,
+            64
+          ],
+          "occurrences": 9959,
+          "occurrences_by_rank": {
+            "0": 1206,
+            "1": 1296,
+            "2": 1246,
+            "3": 1260,
+            "4": 1225,
+            "5": 1219,
+            "6": 1264,
+            "7": 1243
+          },
+          "variant_id": "da1bb48b16f06400633f2c8ba8e7d047ca6a584306c1d7b07095dac5036af929"
+        },
+        {
+          "num_valid_ids": [
+            4352,
+            64
+          ],
+          "occurrences": 10246,
+          "occurrences_by_rank": {
+            "0": 1305,
+            "1": 1293,
+            "2": 1275,
+            "3": 1293,
+            "4": 1252,
+            "5": 1328,
+            "6": 1247,
+            "7": 1253
+          },
+          "variant_id": "fd4621736ab53b76ff3ee499f908b1c866b9acddddd85afe8da0c9a132619d77"
+        },
+        {
+          "num_valid_ids": [
+            4384,
+            64
+          ],
+          "occurrences": 10260,
+          "occurrences_by_rank": {
+            "0": 1295,
+            "1": 1297,
+            "2": 1316,
+            "3": 1273,
+            "4": 1312,
+            "5": 1256,
+            "6": 1239,
+            "7": 1272
+          },
+          "variant_id": "974d1e77de2ce97e7e057b45a0d4f3d5f4ac4204b6f0ffdf241a923c01c897c3"
+        },
+        {
+          "num_valid_ids": [
+            4416,
+            64
+          ],
+          "occurrences": 10268,
+          "occurrences_by_rank": {
+            "0": 1294,
+            "1": 1297,
+            "2": 1285,
+            "3": 1246,
+            "4": 1314,
+            "5": 1272,
+            "6": 1239,
+            "7": 1321
+          },
+          "variant_id": "88b5f189fd2d516931dc97396cb8f982ba9dd91110162b7ef899fa7d9170d9bc"
+        },
+        {
+          "num_valid_ids": [
+            4448,
+            64
+          ],
+          "occurrences": 10683,
+          "occurrences_by_rank": {
+            "0": 1358,
+            "1": 1283,
+            "2": 1337,
+            "3": 1351,
+            "4": 1335,
+            "5": 1347,
+            "6": 1357,
+            "7": 1315
+          },
+          "variant_id": "6e0ca449d19b55ff09b77a0ea69188e968f9076c37c6bc1ed76a18168be8e406"
+        },
+        {
+          "num_valid_ids": [
+            4480,
+            64
+          ],
+          "occurrences": 10430,
+          "occurrences_by_rank": {
+            "0": 1326,
+            "1": 1277,
+            "2": 1266,
+            "3": 1317,
+            "4": 1303,
+            "5": 1302,
+            "6": 1289,
+            "7": 1350
+          },
+          "variant_id": "772793aba736afacadabebb914f906fca844017f5f073d8428374aaa0411d52a"
+        },
+        {
+          "num_valid_ids": [
+            4512,
+            64
+          ],
+          "occurrences": 10528,
+          "occurrences_by_rank": {
+            "0": 1354,
+            "1": 1297,
+            "2": 1340,
+            "3": 1263,
+            "4": 1347,
+            "5": 1306,
+            "6": 1315,
+            "7": 1306
+          },
+          "variant_id": "e63a07c3146803fafda245af3fcc44d986c61e1001154a5aa983ee9daa3929b1"
+        },
+        {
+          "num_valid_ids": [
+            4544,
+            64
+          ],
+          "occurrences": 10652,
+          "occurrences_by_rank": {
+            "0": 1261,
+            "1": 1312,
+            "2": 1375,
+            "3": 1355,
+            "4": 1333,
+            "5": 1391,
+            "6": 1327,
+            "7": 1298
+          },
+          "variant_id": "c3c978144940a72b57e1b34317a4749b11eabf57b7da5eaa3736a265ffb03a78"
+        },
+        {
+          "num_valid_ids": [
+            4576,
+            64
+          ],
+          "occurrences": 10318,
+          "occurrences_by_rank": {
+            "0": 1353,
+            "1": 1294,
+            "2": 1287,
+            "3": 1307,
+            "4": 1249,
+            "5": 1280,
+            "6": 1285,
+            "7": 1263
+          },
+          "variant_id": "8cad0e9dc3f75cda695822627b32a3d6988853ec25ab581876fab175af3febb5"
+        },
+        {
+          "num_valid_ids": [
+            4608,
+            64
+          ],
+          "occurrences": 10095,
+          "occurrences_by_rank": {
+            "0": 1265,
+            "1": 1319,
+            "2": 1212,
+            "3": 1267,
+            "4": 1250,
+            "5": 1254,
+            "6": 1253,
+            "7": 1275
+          },
+          "variant_id": "2ac978512a38f1da052d7c45d3d6d23de0622bff6584f095c74d9c6bc63f7fcf"
+        },
+        {
+          "num_valid_ids": [
+            4640,
+            64
+          ],
+          "occurrences": 9844,
+          "occurrences_by_rank": {
+            "0": 1220,
+            "1": 1211,
+            "2": 1252,
+            "3": 1246,
+            "4": 1243,
+            "5": 1182,
+            "6": 1243,
+            "7": 1247
+          },
+          "variant_id": "ebc0e91a4bf35f617a3a7ae6d3625f5e3a25bee367b9c63856b313d0fd31966d"
+        },
+        {
+          "num_valid_ids": [
+            4672,
+            64
+          ],
+          "occurrences": 9702,
+          "occurrences_by_rank": {
+            "0": 1199,
+            "1": 1220,
+            "2": 1195,
+            "3": 1181,
+            "4": 1250,
+            "5": 1204,
+            "6": 1241,
+            "7": 1212
+          },
+          "variant_id": "e4567f35798d1286cfaf9d84dcd4457869ac85e2f3e9c8ce068e32c91f9e1300"
+        },
+        {
+          "num_valid_ids": [
+            4704,
+            64
+          ],
+          "occurrences": 9597,
+          "occurrences_by_rank": {
+            "0": 1197,
+            "1": 1183,
+            "2": 1198,
+            "3": 1148,
+            "4": 1187,
+            "5": 1232,
+            "6": 1236,
+            "7": 1216
+          },
+          "variant_id": "211311b8a8e1144297890f620595b5cd140b0d6f932d90cbbd32b03a83aefa97"
+        },
+        {
+          "num_valid_ids": [
+            4736,
+            64
+          ],
+          "occurrences": 9268,
+          "occurrences_by_rank": {
+            "0": 1132,
+            "1": 1115,
+            "2": 1136,
+            "3": 1178,
+            "4": 1194,
+            "5": 1217,
+            "6": 1113,
+            "7": 1183
+          },
+          "variant_id": "829ef0f94cb7c1848d4141f09b46f5fd486014f680d9bb46ac4b20c6340755d6"
+        },
+        {
+          "num_valid_ids": [
+            4768,
+            64
+          ],
+          "occurrences": 9293,
+          "occurrences_by_rank": {
+            "0": 1181,
+            "1": 1166,
+            "2": 1158,
+            "3": 1206,
+            "4": 1146,
+            "5": 1105,
+            "6": 1154,
+            "7": 1177
+          },
+          "variant_id": "4c3bd1f13fe3c7ba2889e8e815831adbb4f7626ae98d100479f4baefe8dbf00e"
+        },
+        {
+          "num_valid_ids": [
+            4800,
+            64
+          ],
+          "occurrences": 9134,
+          "occurrences_by_rank": {
+            "0": 1111,
+            "1": 1159,
+            "2": 1166,
+            "3": 1155,
+            "4": 1141,
+            "5": 1162,
+            "6": 1124,
+            "7": 1116
+          },
+          "variant_id": "923a82b44b6373f8c3cf70b2fe74255fc68abd20201da9974231139bba10d024"
+        },
+        {
+          "num_valid_ids": [
+            4832,
+            64
+          ],
+          "occurrences": 8829,
+          "occurrences_by_rank": {
+            "0": 1105,
+            "1": 1124,
+            "2": 1111,
+            "3": 1096,
+            "4": 1079,
+            "5": 1073,
+            "6": 1156,
+            "7": 1085
+          },
+          "variant_id": "4ffa8fad9338e44c6f18a55c864e0bede61049b7c9142e427209072dfd29cb1d"
+        },
+        {
+          "num_valid_ids": [
+            4864,
+            64
+          ],
+          "occurrences": 8614,
+          "occurrences_by_rank": {
+            "0": 1109,
+            "1": 1081,
+            "2": 1083,
+            "3": 1095,
+            "4": 1058,
+            "5": 1090,
+            "6": 1053,
+            "7": 1045
+          },
+          "variant_id": "9205085efe3c3b27512d0abe9c9330edf4028d5b50775f464905950a2a42b808"
+        },
+        {
+          "num_valid_ids": [
+            4896,
+            64
+          ],
+          "occurrences": 8153,
+          "occurrences_by_rank": {
+            "0": 991,
+            "1": 1034,
+            "2": 1031,
+            "3": 1001,
+            "4": 1006,
+            "5": 996,
+            "6": 1060,
+            "7": 1034
+          },
+          "variant_id": "02dfe46213e2e1a3191c18bc1334f356ca492b4d46eadf5c5945fcdad1b8cc96"
+        },
+        {
+          "num_valid_ids": [
+            4928,
+            64
+          ],
+          "occurrences": 7518,
+          "occurrences_by_rank": {
+            "0": 949,
+            "1": 932,
+            "2": 887,
+            "3": 965,
+            "4": 963,
+            "5": 964,
+            "6": 912,
+            "7": 946
+          },
+          "variant_id": "f00700242c9a4ad315e995b73f7be4ec83c7803a85cabe78fcb66735c8ec500d"
+        },
+        {
+          "num_valid_ids": [
+            4960,
+            64
+          ],
+          "occurrences": 7108,
+          "occurrences_by_rank": {
+            "0": 904,
+            "1": 860,
+            "2": 907,
+            "3": 914,
+            "4": 862,
+            "5": 892,
+            "6": 877,
+            "7": 892
+          },
+          "variant_id": "6310f16172c6fef5f0ac04e44c646fd162c313671872a6a9b7b1b2f0777b5179"
+        },
+        {
+          "num_valid_ids": [
+            4992,
+            64
+          ],
+          "occurrences": 6719,
+          "occurrences_by_rank": {
+            "0": 806,
+            "1": 894,
+            "2": 834,
+            "3": 797,
+            "4": 850,
+            "5": 866,
+            "6": 844,
+            "7": 828
+          },
+          "variant_id": "935ebeb252e553dba34e6951a85c1feff9d6a849dda05ad34fde99db7497dbdb"
+        },
+        {
+          "num_valid_ids": [
+            5024,
+            64
+          ],
+          "occurrences": 6135,
+          "occurrences_by_rank": {
+            "0": 768,
+            "1": 712,
+            "2": 780,
+            "3": 805,
+            "4": 805,
+            "5": 719,
+            "6": 769,
+            "7": 777
+          },
+          "variant_id": "172dc8a5b5d59b376c7326589e00bd61149686eb49dcf1cc8a98454a7c5471b3"
+        },
+        {
+          "num_valid_ids": [
+            5056,
+            64
+          ],
+          "occurrences": 5764,
+          "occurrences_by_rank": {
+            "0": 745,
+            "1": 723,
+            "2": 729,
+            "3": 672,
+            "4": 703,
+            "5": 746,
+            "6": 720,
+            "7": 726
+          },
+          "variant_id": "654c2a35e53594c20c8ea88f159fb4073d18b85e4b06cf9ea8a27022eb46bab8"
+        },
+        {
+          "num_valid_ids": [
+            5088,
+            64
+          ],
+          "occurrences": 5487,
+          "occurrences_by_rank": {
+            "0": 696,
+            "1": 671,
+            "2": 673,
+            "3": 694,
+            "4": 674,
+            "5": 716,
+            "6": 687,
+            "7": 676
+          },
+          "variant_id": "750769f6d997783f2ac2039de2fc623610c74ffadfc1560500b38094fb420dba"
+        },
+        {
+          "num_valid_ids": [
+            5120,
+            64
+          ],
+          "occurrences": 4790,
+          "occurrences_by_rank": {
+            "0": 584,
+            "1": 624,
+            "2": 584,
+            "3": 583,
+            "4": 604,
+            "5": 589,
+            "6": 590,
+            "7": 632
+          },
+          "variant_id": "f62e14f27bdde74599fec8673c9cc5d0671e429203351277fda11b86385bca3b"
+        },
+        {
+          "num_valid_ids": [
+            5152,
+            64
+          ],
+          "occurrences": 4458,
+          "occurrences_by_rank": {
+            "0": 556,
+            "1": 573,
+            "2": 559,
+            "3": 569,
+            "4": 577,
+            "5": 511,
+            "6": 555,
+            "7": 558
+          },
+          "variant_id": "53fa04f962fbb0117e66223f376c7d89e5880338176c11b30ac656dba83f389f"
+        },
+        {
+          "num_valid_ids": [
+            5184,
+            64
+          ],
+          "occurrences": 3988,
+          "occurrences_by_rank": {
+            "0": 521,
+            "1": 506,
+            "2": 480,
+            "3": 501,
+            "4": 484,
+            "5": 508,
+            "6": 520,
+            "7": 468
+          },
+          "variant_id": "aec2e6ab00cb8423cb1a2dd59e14ee8ad97225ed5e70072d3239d09847d6795a"
+        },
+        {
+          "num_valid_ids": [
+            5216,
+            64
+          ],
+          "occurrences": 3480,
+          "occurrences_by_rank": {
+            "0": 425,
+            "1": 428,
+            "2": 414,
+            "3": 468,
+            "4": 453,
+            "5": 442,
+            "6": 436,
+            "7": 414
+          },
+          "variant_id": "f14d4a74e206e5a611acf625834e404213ca85637d442c5da09cca42589cba73"
+        },
+        {
+          "num_valid_ids": [
+            5248,
+            64
+          ],
+          "occurrences": 3102,
+          "occurrences_by_rank": {
+            "0": 373,
+            "1": 375,
+            "2": 412,
+            "3": 365,
+            "4": 380,
+            "5": 390,
+            "6": 399,
+            "7": 408
+          },
+          "variant_id": "385309a6b455514a74c3fb8f296a4dcfee5b6561819cf38571a0110641ded799"
+        },
+        {
+          "num_valid_ids": [
+            5280,
+            64
+          ],
+          "occurrences": 2830,
+          "occurrences_by_rank": {
+            "0": 337,
+            "1": 333,
+            "2": 345,
+            "3": 348,
+            "4": 366,
+            "5": 363,
+            "6": 380,
+            "7": 358
+          },
+          "variant_id": "d85f84fa1029096f74874c76e00e2c668a1e8b615db46820ef715107ac55e298"
+        },
+        {
+          "num_valid_ids": [
+            5312,
+            64
+          ],
+          "occurrences": 2597,
+          "occurrences_by_rank": {
+            "0": 334,
+            "1": 345,
+            "2": 321,
+            "3": 317,
+            "4": 329,
+            "5": 332,
+            "6": 288,
+            "7": 331
+          },
+          "variant_id": "4b177328f3b767f83f43f417ba4c8b0003e06233c70e435625c99bfc8a28eae6"
+        },
+        {
+          "num_valid_ids": [
+            5344,
+            64
+          ],
+          "occurrences": 2253,
+          "occurrences_by_rank": {
+            "0": 269,
+            "1": 267,
+            "2": 309,
+            "3": 265,
+            "4": 276,
+            "5": 295,
+            "6": 284,
+            "7": 288
+          },
+          "variant_id": "7d08beb93b197d82c4c4872a33b60f29eb08b4e2e9fc6e9c4f7dc8ca5c783651"
+        },
+        {
+          "num_valid_ids": [
+            5376,
+            64
+          ],
+          "occurrences": 1960,
+          "occurrences_by_rank": {
+            "0": 259,
+            "1": 264,
+            "2": 233,
+            "3": 276,
+            "4": 232,
+            "5": 218,
+            "6": 246,
+            "7": 232
+          },
+          "variant_id": "28c65c79b81e32e00187550e02f8207d1908048151873995f77bb417968a7460"
+        },
+        {
+          "num_valid_ids": [
+            5408,
+            64
+          ],
+          "occurrences": 1685,
+          "occurrences_by_rank": {
+            "0": 212,
+            "1": 197,
+            "2": 225,
+            "3": 213,
+            "4": 218,
+            "5": 203,
+            "6": 212,
+            "7": 205
+          },
+          "variant_id": "d97e0c7cbf3ab9f960a62b0110881c9d2f13da50579db5992a97027e1cfcf23d"
+        },
+        {
+          "num_valid_ids": [
+            5440,
+            64
+          ],
+          "occurrences": 1636,
+          "occurrences_by_rank": {
+            "0": 205,
+            "1": 206,
+            "2": 215,
+            "3": 190,
+            "4": 187,
+            "5": 221,
+            "6": 195,
+            "7": 217
+          },
+          "variant_id": "c94be11b448b5a3fdd4218ef6af9cba9f9f82a27359fa428dec2bc6c77ff670a"
+        },
+        {
+          "num_valid_ids": [
+            5472,
+            64
+          ],
+          "occurrences": 1620,
+          "occurrences_by_rank": {
+            "0": 213,
+            "1": 223,
+            "2": 191,
+            "3": 205,
+            "4": 196,
+            "5": 201,
+            "6": 201,
+            "7": 190
+          },
+          "variant_id": "2c02eb99072f2eee90c895b8f09fbeaac9ecab399d451ca0b9489cf93b3885f6"
+        },
+        {
+          "num_valid_ids": [
+            5504,
+            64
+          ],
+          "occurrences": 1612,
+          "occurrences_by_rank": {
+            "0": 194,
+            "1": 189,
+            "2": 193,
+            "3": 202,
+            "4": 203,
+            "5": 207,
+            "6": 215,
+            "7": 209
+          },
+          "variant_id": "477157968a5cf98faf75a1424bdbec1350c88392e7141768850fbe76b09b6da0"
+        },
+        {
+          "num_valid_ids": [
+            5536,
+            64
+          ],
+          "occurrences": 1475,
+          "occurrences_by_rank": {
+            "0": 186,
+            "1": 175,
+            "2": 183,
+            "3": 179,
+            "4": 207,
+            "5": 174,
+            "6": 183,
+            "7": 188
+          },
+          "variant_id": "db2405bb7ddf0d6f0c581333d60b84cbc2a99d7ba0f3ad3c9eecb9fa8dc41950"
+        },
+        {
+          "num_valid_ids": [
+            5568,
+            64
+          ],
+          "occurrences": 1458,
+          "occurrences_by_rank": {
+            "0": 178,
+            "1": 185,
+            "2": 182,
+            "3": 185,
+            "4": 188,
+            "5": 176,
+            "6": 173,
+            "7": 191
+          },
+          "variant_id": "d60f774b29671a95b2e2901496e6c859b30140d84adf88b54f1a6427d2c89273"
+        },
+        {
+          "num_valid_ids": [
+            5600,
+            64
+          ],
+          "occurrences": 1312,
+          "occurrences_by_rank": {
+            "0": 161,
+            "1": 157,
+            "2": 164,
+            "3": 186,
+            "4": 162,
+            "5": 165,
+            "6": 164,
+            "7": 153
+          },
+          "variant_id": "df87b2d59bed218de265ce37f2e462bec304341e45e9291ffc2c27b5012a6f6b"
+        },
+        {
+          "num_valid_ids": [
+            5632,
+            64
+          ],
+          "occurrences": 1234,
+          "occurrences_by_rank": {
+            "0": 155,
+            "1": 150,
+            "2": 154,
+            "3": 144,
+            "4": 139,
+            "5": 171,
+            "6": 162,
+            "7": 159
+          },
+          "variant_id": "1ee0868b9dfa507027c892ee65b086951e2415a191ed96aba5ee575a2d9dd65f"
+        },
+        {
+          "num_valid_ids": [
+            5664,
+            64
+          ],
+          "occurrences": 1068,
+          "occurrences_by_rank": {
+            "0": 139,
+            "1": 142,
+            "2": 135,
+            "3": 126,
+            "4": 131,
+            "5": 129,
+            "6": 138,
+            "7": 128
+          },
+          "variant_id": "58ce9593eda83b28ab8d0d8064f9cc782a184d25beeca20625782d2181c44a50"
+        },
+        {
+          "num_valid_ids": [
+            5696,
+            64
+          ],
+          "occurrences": 1084,
+          "occurrences_by_rank": {
+            "0": 136,
+            "1": 141,
+            "2": 133,
+            "3": 137,
+            "4": 126,
+            "5": 128,
+            "6": 139,
+            "7": 144
+          },
+          "variant_id": "375eb35054bb6312ea14ef18b8a6d07afc081d65759ab48e6dc6894f00bcafa4"
+        },
+        {
+          "num_valid_ids": [
+            5728,
+            64
+          ],
+          "occurrences": 1023,
+          "occurrences_by_rank": {
+            "0": 134,
+            "1": 125,
+            "2": 142,
+            "3": 127,
+            "4": 128,
+            "5": 117,
+            "6": 126,
+            "7": 124
+          },
+          "variant_id": "c2e8ab0bafb253d7d3cd930057a26622dbfb9ee7bad560c15065d088ac0dc090"
+        },
+        {
+          "num_valid_ids": [
+            5760,
+            64
+          ],
+          "occurrences": 1031,
+          "occurrences_by_rank": {
+            "0": 127,
+            "1": 122,
+            "2": 128,
+            "3": 132,
+            "4": 131,
+            "5": 139,
+            "6": 127,
+            "7": 125
+          },
+          "variant_id": "6e1f8a66af54db86fb501b024d09f945e7c9acc0b9d268369fe5b5bf5546de22"
+        },
+        {
+          "num_valid_ids": [
+            5792,
+            64
+          ],
+          "occurrences": 1043,
+          "occurrences_by_rank": {
+            "0": 121,
+            "1": 142,
+            "2": 119,
+            "3": 113,
+            "4": 146,
+            "5": 139,
+            "6": 136,
+            "7": 127
+          },
+          "variant_id": "77061543c399b2d299a23f64f6a31f34408a81d1e38537ce91fb524c349cb60c"
+        },
+        {
+          "num_valid_ids": [
+            5824,
+            64
+          ],
+          "occurrences": 1078,
+          "occurrences_by_rank": {
+            "0": 149,
+            "1": 130,
+            "2": 150,
+            "3": 143,
+            "4": 114,
+            "5": 143,
+            "6": 119,
+            "7": 130
+          },
+          "variant_id": "87a4848f982fd759287781bcd977ef04db24dc6d236a711cd6a398ac114d3f77"
+        },
+        {
+          "num_valid_ids": [
+            5856,
+            64
+          ],
+          "occurrences": 1067,
+          "occurrences_by_rank": {
+            "0": 126,
+            "1": 134,
+            "2": 136,
+            "3": 145,
+            "4": 144,
+            "5": 121,
+            "6": 123,
+            "7": 138
+          },
+          "variant_id": "7c0ef3251a9af373c46007f71dbfcadee03d62005597ac0aba17ce7c62f53e1b"
+        },
+        {
+          "num_valid_ids": [
+            5888,
+            64
+          ],
+          "occurrences": 1217,
+          "occurrences_by_rank": {
+            "0": 151,
+            "1": 165,
+            "2": 141,
+            "3": 154,
+            "4": 152,
+            "5": 149,
+            "6": 166,
+            "7": 139
+          },
+          "variant_id": "52cd3e9fd0832815c624d9730ba5382e766e97668aa8a4b399c9f49a1b565d9a"
+        },
+        {
+          "num_valid_ids": [
+            5920,
+            64
+          ],
+          "occurrences": 1293,
+          "occurrences_by_rank": {
+            "0": 149,
+            "1": 149,
+            "2": 169,
+            "3": 153,
+            "4": 167,
+            "5": 152,
+            "6": 176,
+            "7": 178
+          },
+          "variant_id": "7d2f3194ecb9a3f8f6847a32bfafc5ddaca3ecaf32a34f5dd2c990b259666ca6"
+        },
+        {
+          "num_valid_ids": [
+            5952,
+            64
+          ],
+          "occurrences": 1301,
+          "occurrences_by_rank": {
+            "0": 170,
+            "1": 164,
+            "2": 179,
+            "3": 161,
+            "4": 156,
+            "5": 156,
+            "6": 145,
+            "7": 170
+          },
+          "variant_id": "30e762312bd62469d23bd8ed6c0baaad18d834cecb986fdffa74b4e45c378c14"
+        },
+        {
+          "num_valid_ids": [
+            5984,
+            64
+          ],
+          "occurrences": 1440,
+          "occurrences_by_rank": {
+            "0": 187,
+            "1": 183,
+            "2": 162,
+            "3": 172,
+            "4": 196,
+            "5": 181,
+            "6": 184,
+            "7": 175
+          },
+          "variant_id": "9982321f6df4a443ba243e522519edbdf698679523d8cd4e0c6098fa57a2ee66"
+        },
+        {
+          "num_valid_ids": [
+            6016,
+            64
+          ],
+          "occurrences": 1578,
+          "occurrences_by_rank": {
+            "0": 210,
+            "1": 173,
+            "2": 205,
+            "3": 189,
+            "4": 197,
+            "5": 219,
+            "6": 184,
+            "7": 201
+          },
+          "variant_id": "b731cd6c64e3a776d1e59b514f37011d7a546dd26060e33109e319da430379f9"
+        },
+        {
+          "num_valid_ids": [
+            6048,
+            64
+          ],
+          "occurrences": 1627,
+          "occurrences_by_rank": {
+            "0": 181,
+            "1": 230,
+            "2": 195,
+            "3": 210,
+            "4": 199,
+            "5": 195,
+            "6": 221,
+            "7": 196
+          },
+          "variant_id": "85829434f141ed33a7e7ee2559cb01d6fa91f1ac92b7f6ac6e37b683c2ed3d29"
+        },
+        {
+          "num_valid_ids": [
+            6080,
+            64
+          ],
+          "occurrences": 1811,
+          "occurrences_by_rank": {
+            "0": 236,
+            "1": 227,
+            "2": 211,
+            "3": 242,
+            "4": 223,
+            "5": 238,
+            "6": 220,
+            "7": 214
+          },
+          "variant_id": "57a5a62b6e7359d90a99f1a2a729d6f7abfa66d7b00599538b9fa876d5cbb6d6"
+        },
+        {
+          "num_valid_ids": [
+            6112,
+            64
+          ],
+          "occurrences": 1802,
+          "occurrences_by_rank": {
+            "0": 217,
+            "1": 229,
+            "2": 231,
+            "3": 229,
+            "4": 231,
+            "5": 216,
+            "6": 226,
+            "7": 223
+          },
+          "variant_id": "250218eecf67e1906b40988ec24b9592d03e9119d4581a96876f7acbb14c4a0d"
+        },
+        {
+          "num_valid_ids": [
+            6144,
+            64
+          ],
+          "occurrences": 1741,
+          "occurrences_by_rank": {
+            "0": 227,
+            "1": 191,
+            "2": 229,
+            "3": 212,
+            "4": 204,
+            "5": 235,
+            "6": 213,
+            "7": 230
+          },
+          "variant_id": "1e098653cc5b59ac533b82487a5b6f8bb12975fb38fd2b93447be0d9611a35ff"
+        },
+        {
+          "num_valid_ids": [
+            6176,
+            64
+          ],
+          "occurrences": 1692,
+          "occurrences_by_rank": {
+            "0": 230,
+            "1": 228,
+            "2": 213,
+            "3": 206,
+            "4": 203,
+            "5": 188,
+            "6": 210,
+            "7": 214
+          },
+          "variant_id": "74b49d251f90f25ab8becba9613f45c99b5d2a7644bc2d672a799fc656ab41cc"
+        },
+        {
+          "num_valid_ids": [
+            6208,
+            64
+          ],
+          "occurrences": 1827,
+          "occurrences_by_rank": {
+            "0": 216,
+            "1": 232,
+            "2": 225,
+            "3": 222,
+            "4": 237,
+            "5": 233,
+            "6": 242,
+            "7": 220
+          },
+          "variant_id": "294a4a8ec61b96f32c54c712913e26e957daf1598de74193735399f3ca9234ec"
+        },
+        {
+          "num_valid_ids": [
+            6240,
+            64
+          ],
+          "occurrences": 1927,
+          "occurrences_by_rank": {
+            "0": 247,
+            "1": 242,
+            "2": 246,
+            "3": 254,
+            "4": 231,
+            "5": 238,
+            "6": 228,
+            "7": 241
+          },
+          "variant_id": "2e32be59e0fc4a36948fee575f9385bcdf16ffa272c72e56a3fdaf34b043e2c9"
+        },
+        {
+          "num_valid_ids": [
+            6272,
+            64
+          ],
+          "occurrences": 1873,
+          "occurrences_by_rank": {
+            "0": 233,
+            "1": 223,
+            "2": 235,
+            "3": 233,
+            "4": 235,
+            "5": 232,
+            "6": 234,
+            "7": 248
+          },
+          "variant_id": "791b04e29ca7033d587ed2636b07644bb8e6bcec8197a413210e252adba177c0"
+        },
+        {
+          "num_valid_ids": [
+            6304,
+            64
+          ],
+          "occurrences": 1925,
+          "occurrences_by_rank": {
+            "0": 238,
+            "1": 235,
+            "2": 227,
+            "3": 236,
+            "4": 262,
+            "5": 242,
+            "6": 243,
+            "7": 242
+          },
+          "variant_id": "03ec00a24b91cafcaf3f475f9e8007d509a87c4c9b86a9b6f704dbc3ed39a697"
+        },
+        {
+          "num_valid_ids": [
+            6336,
+            64
+          ],
+          "occurrences": 1767,
+          "occurrences_by_rank": {
+            "0": 223,
+            "1": 239,
+            "2": 223,
+            "3": 226,
+            "4": 205,
+            "5": 219,
+            "6": 202,
+            "7": 230
+          },
+          "variant_id": "5f78ca4ba6427497a667161865f3ba556731503f53d8c3b986ab0fc2cc604ebe"
+        },
+        {
+          "num_valid_ids": [
+            6368,
+            64
+          ],
+          "occurrences": 1817,
+          "occurrences_by_rank": {
+            "0": 216,
+            "1": 223,
+            "2": 235,
+            "3": 216,
+            "4": 238,
+            "5": 238,
+            "6": 234,
+            "7": 217
+          },
+          "variant_id": "197787344b1c53d022f94ddbea677c073a2b460446864d0876980e3de4d67da6"
+        },
+        {
+          "num_valid_ids": [
+            6400,
+            64
+          ],
+          "occurrences": 1895,
+          "occurrences_by_rank": {
+            "0": 226,
+            "1": 248,
+            "2": 241,
+            "3": 238,
+            "4": 240,
+            "5": 229,
+            "6": 246,
+            "7": 227
+          },
+          "variant_id": "67ab93fdeef6af1c532637f2f6611589e01a96351bca541a346364845c9b0b5e"
+        },
+        {
+          "num_valid_ids": [
+            6432,
+            64
+          ],
+          "occurrences": 1761,
+          "occurrences_by_rank": {
+            "0": 223,
+            "1": 226,
+            "2": 209,
+            "3": 233,
+            "4": 200,
+            "5": 209,
+            "6": 229,
+            "7": 232
+          },
+          "variant_id": "8f3ec0ab6cb7dace20a2a086eefba35aff037ad4e911854bd0b0efb2242dc13f"
+        },
+        {
+          "num_valid_ids": [
+            6464,
+            64
+          ],
+          "occurrences": 1609,
+          "occurrences_by_rank": {
+            "0": 205,
+            "1": 184,
+            "2": 196,
+            "3": 197,
+            "4": 219,
+            "5": 201,
+            "6": 200,
+            "7": 207
+          },
+          "variant_id": "3bbbee8ffc79d9108f07bde72ca74b77a49804c838887bcda7e4563220d0a6a4"
+        },
+        {
+          "num_valid_ids": [
+            6496,
+            64
+          ],
+          "occurrences": 1547,
+          "occurrences_by_rank": {
+            "0": 200,
+            "1": 194,
+            "2": 195,
+            "3": 189,
+            "4": 201,
+            "5": 211,
+            "6": 187,
+            "7": 170
+          },
+          "variant_id": "1acf6d7c177bd915dc92aa3ac2e1da789ae8896d61bad3e0eff5f8a44fa16096"
+        },
+        {
+          "num_valid_ids": [
+            6528,
+            64
+          ],
+          "occurrences": 1518,
+          "occurrences_by_rank": {
+            "0": 189,
+            "1": 181,
+            "2": 180,
+            "3": 194,
+            "4": 188,
+            "5": 181,
+            "6": 193,
+            "7": 212
+          },
+          "variant_id": "266a8d41538fe0f41d94265feff4550d1a3145f0584cd453eae13f08819c7a61"
+        },
+        {
+          "num_valid_ids": [
+            6560,
+            64
+          ],
+          "occurrences": 1479,
+          "occurrences_by_rank": {
+            "0": 175,
+            "1": 193,
+            "2": 192,
+            "3": 197,
+            "4": 165,
+            "5": 182,
+            "6": 186,
+            "7": 189
+          },
+          "variant_id": "6054a4fe281c743bf439a01847cd10e5121c444a9228dc3c48b9b2f184658fd2"
+        },
+        {
+          "num_valid_ids": [
+            6592,
+            64
+          ],
+          "occurrences": 1472,
+          "occurrences_by_rank": {
+            "0": 194,
+            "1": 188,
+            "2": 184,
+            "3": 170,
+            "4": 193,
+            "5": 183,
+            "6": 191,
+            "7": 169
+          },
+          "variant_id": "f53c5542f7cf1a394880f708aa777bbec0e743976900b4c43a1cd34975313649"
+        },
+        {
+          "num_valid_ids": [
+            6624,
+            64
+          ],
+          "occurrences": 1358,
+          "occurrences_by_rank": {
+            "0": 177,
+            "1": 181,
+            "2": 169,
+            "3": 166,
+            "4": 165,
+            "5": 175,
+            "6": 156,
+            "7": 169
+          },
+          "variant_id": "f40285f9e122c201a4d92db8dc103fda3a13c926afd2b0c13409f557d1a6a868"
+        },
+        {
+          "num_valid_ids": [
+            6656,
+            64
+          ],
+          "occurrences": 1253,
+          "occurrences_by_rank": {
+            "0": 160,
+            "1": 134,
+            "2": 159,
+            "3": 156,
+            "4": 160,
+            "5": 152,
+            "6": 169,
+            "7": 163
+          },
+          "variant_id": "a1af619cd4b3077dbe41f8f2870324e999baaa71d23f60789bb94cadc6110244"
+        },
+        {
+          "num_valid_ids": [
+            6688,
+            64
+          ],
+          "occurrences": 1178,
+          "occurrences_by_rank": {
+            "0": 142,
+            "1": 152,
+            "2": 145,
+            "3": 149,
+            "4": 155,
+            "5": 154,
+            "6": 143,
+            "7": 138
+          },
+          "variant_id": "4cf2c5e2b84ea2804876581036124f9f1811f3f9950e0c03dfa6cb800045a4a0"
+        },
+        {
+          "num_valid_ids": [
+            6720,
+            64
+          ],
+          "occurrences": 1067,
+          "occurrences_by_rank": {
+            "0": 122,
+            "1": 140,
+            "2": 140,
+            "3": 145,
+            "4": 128,
+            "5": 123,
+            "6": 129,
+            "7": 140
+          },
+          "variant_id": "ef33b0e276a2d561c714ac38884c6d034c3c0b17e01ecb6dfdc1ce22f371036b"
+        },
+        {
+          "num_valid_ids": [
+            6752,
+            64
+          ],
+          "occurrences": 1059,
+          "occurrences_by_rank": {
+            "0": 152,
+            "1": 118,
+            "2": 133,
+            "3": 117,
+            "4": 135,
+            "5": 137,
+            "6": 134,
+            "7": 133
+          },
+          "variant_id": "11d8ce8d122d21c03a5f31dbde03fef6c8575aa6f5928e6422a43feb94850371"
+        },
+        {
+          "num_valid_ids": [
+            6784,
+            64
+          ],
+          "occurrences": 865,
+          "occurrences_by_rank": {
+            "0": 95,
+            "1": 105,
+            "2": 109,
+            "3": 120,
+            "4": 108,
+            "5": 115,
+            "6": 112,
+            "7": 101
+          },
+          "variant_id": "1b4d17db411b65a4c4a8bfb50f2e385e68619dc8090ccff0cb277691dc703737"
+        },
+        {
+          "num_valid_ids": [
+            6816,
+            64
+          ],
+          "occurrences": 846,
+          "occurrences_by_rank": {
+            "0": 102,
+            "1": 116,
+            "2": 102,
+            "3": 100,
+            "4": 110,
+            "5": 105,
+            "6": 106,
+            "7": 105
+          },
+          "variant_id": "80eb28f6f62df313c69ca1d87c4e6baa52405bab119b26c534c56ec41022ab9b"
+        },
+        {
+          "num_valid_ids": [
+            6848,
+            64
+          ],
+          "occurrences": 940,
+          "occurrences_by_rank": {
+            "0": 116,
+            "1": 123,
+            "2": 124,
+            "3": 111,
+            "4": 119,
+            "5": 112,
+            "6": 112,
+            "7": 123
+          },
+          "variant_id": "37c4e0a4f6144242954ca2b3535f9ae276c7ab9c985983f5c467332ee6ccd874"
+        },
+        {
+          "num_valid_ids": [
+            6880,
+            64
+          ],
+          "occurrences": 965,
+          "occurrences_by_rank": {
+            "0": 122,
+            "1": 115,
+            "2": 119,
+            "3": 127,
+            "4": 120,
+            "5": 122,
+            "6": 124,
+            "7": 116
+          },
+          "variant_id": "740d47dc0f1327cebc8443e03919c8dffeae13d0956499c4af8de04761643341"
+        },
+        {
+          "num_valid_ids": [
+            6912,
+            64
+          ],
+          "occurrences": 846,
+          "occurrences_by_rank": {
+            "0": 108,
+            "1": 104,
+            "2": 101,
+            "3": 100,
+            "4": 102,
+            "5": 114,
+            "6": 112,
+            "7": 105
+          },
+          "variant_id": "dc6d5cf61c8448a73f6379678ecd4e542870f6d7aec167e5028ad7fd4e61ae2e"
+        },
+        {
+          "num_valid_ids": [
+            6944,
+            64
+          ],
+          "occurrences": 845,
+          "occurrences_by_rank": {
+            "0": 103,
+            "1": 108,
+            "2": 104,
+            "3": 111,
+            "4": 103,
+            "5": 103,
+            "6": 104,
+            "7": 109
+          },
+          "variant_id": "4e256152d9ac0c95f93a3209e4227d185bb522649d74b66d1cfa0cceaf682c2a"
+        },
+        {
+          "num_valid_ids": [
+            6976,
+            64
+          ],
+          "occurrences": 926,
+          "occurrences_by_rank": {
+            "0": 122,
+            "1": 117,
+            "2": 114,
+            "3": 111,
+            "4": 120,
+            "5": 119,
+            "6": 110,
+            "7": 113
+          },
+          "variant_id": "30c83334cf1dcaa75401f0d985e4b9f1a05aed2f6f1ad4140cfe39593006db78"
+        },
+        {
+          "num_valid_ids": [
+            7008,
+            64
+          ],
+          "occurrences": 825,
+          "occurrences_by_rank": {
+            "0": 101,
+            "1": 101,
+            "2": 110,
+            "3": 102,
+            "4": 103,
+            "5": 100,
+            "6": 104,
+            "7": 104
+          },
+          "variant_id": "76a16d59c19a886ad38e00c18ba024b023a2a1df2d399ca76bce7e300a5e641c"
+        },
+        {
+          "num_valid_ids": [
+            7040,
+            64
+          ],
+          "occurrences": 971,
+          "occurrences_by_rank": {
+            "0": 122,
+            "1": 124,
+            "2": 122,
+            "3": 126,
+            "4": 119,
+            "5": 120,
+            "6": 120,
+            "7": 118
+          },
+          "variant_id": "46b3c1d6b5c85b22080062b30016e3e1c794f9da75c626e4dafe5769fbd1ff64"
+        },
+        {
+          "num_valid_ids": [
+            7072,
+            64
+          ],
+          "occurrences": 921,
+          "occurrences_by_rank": {
+            "0": 114,
+            "1": 112,
+            "2": 113,
+            "3": 119,
+            "4": 115,
+            "5": 115,
+            "6": 115,
+            "7": 118
+          },
+          "variant_id": "3cf3a99a10048f2c77ca94bd37e0e53b8d38707deb2f22d86a6292bf7735524e"
+        },
+        {
+          "num_valid_ids": [
+            7104,
+            64
+          ],
+          "occurrences": 1043,
+          "occurrences_by_rank": {
+            "0": 127,
+            "1": 131,
+            "2": 132,
+            "3": 131,
+            "4": 127,
+            "5": 131,
+            "6": 130,
+            "7": 134
+          },
+          "variant_id": "8b25f9631004b6f54bff30e31bd865d79398dfafd0f1f1a52e11daaa6e89e320"
+        },
+        {
+          "num_valid_ids": [
+            7136,
+            64
+          ],
+          "occurrences": 1051,
+          "occurrences_by_rank": {
+            "0": 133,
+            "1": 133,
+            "2": 129,
+            "3": 131,
+            "4": 134,
+            "5": 129,
+            "6": 135,
+            "7": 127
+          },
+          "variant_id": "aec851911984f5a1bcc964885ec4661e8aeb85a31651d83f2d841852a2cd9be2"
+        },
+        {
+          "num_valid_ids": [
+            7168,
+            64
+          ],
+          "occurrences": 1095,
+          "occurrences_by_rank": {
+            "0": 136,
+            "1": 138,
+            "2": 136,
+            "3": 135,
+            "4": 136,
+            "5": 140,
+            "6": 136,
+            "7": 138
+          },
+          "variant_id": "4589af2a008390b401ddcea0e2cf85634cd05acc6693f407aabd4b0eba6412b7"
+        },
+        {
+          "num_valid_ids": [
+            7200,
+            64
+          ],
+          "occurrences": 1105,
+          "occurrences_by_rank": {
+            "0": 138,
+            "1": 138,
+            "2": 139,
+            "3": 138,
+            "4": 138,
+            "5": 138,
+            "6": 138,
+            "7": 138
+          },
+          "variant_id": "a2db7a6b45046739d4be9fdf0e4a7568df58d028121a74981cfcb74e8708f7f6"
+        },
+        {
+          "num_valid_ids": [
+            7232,
+            64
+          ],
+          "occurrences": 1220,
+          "occurrences_by_rank": {
+            "0": 153,
+            "1": 151,
+            "2": 153,
+            "3": 153,
+            "4": 154,
+            "5": 152,
+            "6": 152,
+            "7": 152
+          },
+          "variant_id": "5dcf440ddd23e59a173f8b8160b84086152ad9cb4b4ea127d88ae11023032f85"
+        },
+        {
+          "num_valid_ids": [
+            7264,
+            64
+          ],
+          "occurrences": 1165,
+          "occurrences_by_rank": {
+            "0": 145,
+            "1": 146,
+            "2": 146,
+            "3": 146,
+            "4": 146,
+            "5": 145,
+            "6": 146,
+            "7": 145
+          },
+          "variant_id": "9175d7d24d9a9a6d6542aff0a46ed95e8c9171581ea74203f848e1a3b60580bb"
+        },
+        {
+          "num_valid_ids": [
+            7296,
+            64
+          ],
+          "occurrences": 1017,
+          "occurrences_by_rank": {
+            "0": 127,
+            "1": 128,
+            "2": 127,
+            "3": 127,
+            "4": 127,
+            "5": 127,
+            "6": 127,
+            "7": 127
+          },
+          "variant_id": "828c696bcd6206c40574f7e8e7989901c0748c2b4cb9d535fb1351ed6c096b7b"
+        },
+        {
+          "num_valid_ids": [
+            7328,
+            64
+          ],
+          "occurrences": 1012,
+          "occurrences_by_rank": {
+            "0": 127,
+            "1": 126,
+            "2": 127,
+            "3": 126,
+            "4": 126,
+            "5": 127,
+            "6": 126,
+            "7": 127
+          },
+          "variant_id": "80b2a9eb146be422225c1217358af830ac9711373db0eac0d19df5a5942b89b3"
+        },
+        {
+          "num_valid_ids": [
+            7360,
+            64
+          ],
+          "occurrences": 1048,
+          "occurrences_by_rank": {
+            "0": 131,
+            "1": 131,
+            "2": 131,
+            "3": 131,
+            "4": 131,
+            "5": 131,
+            "6": 131,
+            "7": 131
+          },
+          "variant_id": "783973ffdc0957781b7e51e210d9ac4608a333eeb8c624cb9c6317821b899d1a"
+        },
+        {
+          "num_valid_ids": [
+            7392,
+            64
+          ],
+          "occurrences": 896,
+          "occurrences_by_rank": {
+            "0": 112,
+            "1": 112,
+            "2": 112,
+            "3": 112,
+            "4": 112,
+            "5": 112,
+            "6": 112,
+            "7": 112
+          },
+          "variant_id": "f695476840e0e27ab760fa79247520123181cb0d1664f848f8f619ed886e1e22"
+        },
+        {
+          "num_valid_ids": [
+            7424,
+            64
+          ],
+          "occurrences": 984,
+          "occurrences_by_rank": {
+            "0": 123,
+            "1": 123,
+            "2": 123,
+            "3": 123,
+            "4": 123,
+            "5": 123,
+            "6": 123,
+            "7": 123
+          },
+          "variant_id": "8e6bfa06029e3a644f73a37329afb8120495e49efb59c8f939cbc7028aa343be"
+        },
+        {
+          "num_valid_ids": [
+            7456,
+            64
+          ],
+          "occurrences": 784,
+          "occurrences_by_rank": {
+            "0": 98,
+            "1": 98,
+            "2": 98,
+            "3": 98,
+            "4": 98,
+            "5": 98,
+            "6": 98,
+            "7": 98
+          },
+          "variant_id": "c693a1100931f97705cb9c96d5b01302e8b6f3d6928eaf66d347817304b2c494"
+        },
+        {
+          "num_valid_ids": [
+            7488,
+            64
+          ],
+          "occurrences": 880,
+          "occurrences_by_rank": {
+            "0": 110,
+            "1": 110,
+            "2": 110,
+            "3": 110,
+            "4": 110,
+            "5": 110,
+            "6": 110,
+            "7": 110
+          },
+          "variant_id": "ce89c44a28794684a41ff4b605391dd55b2287c70cbc9a7fb8b4bb4cffe4c05e"
+        },
+        {
+          "num_valid_ids": [
+            7520,
+            64
+          ],
+          "occurrences": 704,
+          "occurrences_by_rank": {
+            "0": 88,
+            "1": 88,
+            "2": 88,
+            "3": 88,
+            "4": 88,
+            "5": 88,
+            "6": 88,
+            "7": 88
+          },
+          "variant_id": "d5a11780789e49a5b26dcfb26276f591359c634cdfae8ac443189f12a9edec3d"
+        },
+        {
+          "num_valid_ids": [
+            7552,
+            64
+          ],
+          "occurrences": 676,
+          "occurrences_by_rank": {
+            "0": 84,
+            "1": 84,
+            "2": 84,
+            "3": 84,
+            "4": 85,
+            "5": 85,
+            "6": 85,
+            "7": 85
+          },
+          "variant_id": "70863ccbf664813f57846a2efe0dbdfd39624ad5c5c3e36447f0989b48ebf53a"
+        },
+        {
+          "num_valid_ids": [
+            7584,
+            64
+          ],
+          "occurrences": 627,
+          "occurrences_by_rank": {
+            "0": 79,
+            "1": 78,
+            "2": 79,
+            "3": 79,
+            "4": 78,
+            "5": 78,
+            "6": 78,
+            "7": 78
+          },
+          "variant_id": "c23d8c39aa6349846584df7b7fe996e18f6bffe915698f09b42c505880ebc2e7"
+        },
+        {
+          "num_valid_ids": [
+            7616,
+            64
+          ],
+          "occurrences": 425,
+          "occurrences_by_rank": {
+            "0": 53,
+            "1": 54,
+            "2": 53,
+            "3": 53,
+            "4": 53,
+            "5": 53,
+            "6": 53,
+            "7": 53
+          },
+          "variant_id": "bb3d8e32f7cfba8465d3e21f2badd6570a601c37114d1c6c059344d94c428bf9"
+        },
+        {
+          "num_valid_ids": [
+            7648,
+            64
+          ],
+          "occurrences": 448,
+          "occurrences_by_rank": {
+            "0": 56,
+            "1": 56,
+            "2": 56,
+            "3": 56,
+            "4": 56,
+            "5": 56,
+            "6": 56,
+            "7": 56
+          },
+          "variant_id": "f7f34b8e7dc55084ddd56f3f299068078717b264dd526c06b53ad42d07674798"
+        },
+        {
+          "num_valid_ids": [
+            7680,
+            64
+          ],
+          "occurrences": 336,
+          "occurrences_by_rank": {
+            "0": 42,
+            "1": 42,
+            "2": 42,
+            "3": 42,
+            "4": 42,
+            "5": 42,
+            "6": 42,
+            "7": 42
+          },
+          "variant_id": "4e2e485504be774a8689b54466c2e0edb4700728f41da827c8e73120a387a9b3"
+        },
+        {
+          "num_valid_ids": [
+            7712,
+            64
+          ],
+          "occurrences": 304,
+          "occurrences_by_rank": {
+            "0": 38,
+            "1": 38,
+            "2": 38,
+            "3": 38,
+            "4": 38,
+            "5": 38,
+            "6": 38,
+            "7": 38
+          },
+          "variant_id": "15b4c2a7b997193cf4967d99d7c48c2c0bb5245d8e38e88875666d852f9e869d"
+        },
+        {
+          "num_valid_ids": [
+            7744,
+            64
+          ],
+          "occurrences": 336,
+          "occurrences_by_rank": {
+            "0": 42,
+            "1": 42,
+            "2": 42,
+            "3": 42,
+            "4": 42,
+            "5": 42,
+            "6": 42,
+            "7": 42
+          },
+          "variant_id": "4ba703fea30d41f6d90275b7f6f5470196ee43a563162529eea7f5dd9fd1f366"
+        },
+        {
+          "num_valid_ids": [
+            7776,
+            64
+          ],
+          "occurrences": 256,
+          "occurrences_by_rank": {
+            "0": 32,
+            "1": 32,
+            "2": 32,
+            "3": 32,
+            "4": 32,
+            "5": 32,
+            "6": 32,
+            "7": 32
+          },
+          "variant_id": "5ff997c7750d0f59856db3a57e97aa77fd99486b78741d02fbee3b0e5e33515e"
+        },
+        {
+          "num_valid_ids": [
+            7808,
+            64
+          ],
+          "occurrences": 128,
+          "occurrences_by_rank": {
+            "0": 16,
+            "1": 16,
+            "2": 16,
+            "3": 16,
+            "4": 16,
+            "5": 16,
+            "6": 16,
+            "7": 16
+          },
+          "variant_id": "950d2cd3cb454b735412e5c0beb5ed6a545a783fa60154a5e0b6f8d0288493fb"
+        },
+        {
+          "num_valid_ids": [
+            7840,
+            64
+          ],
+          "occurrences": 160,
+          "occurrences_by_rank": {
+            "0": 20,
+            "1": 20,
+            "2": 20,
+            "3": 20,
+            "4": 20,
+            "5": 20,
+            "6": 20,
+            "7": 20
+          },
+          "variant_id": "082ea4457c5f74272bbb870853b686ea9b325797feaeb20683e991464ab19ff8"
+        },
+        {
+          "num_valid_ids": [
+            7872,
+            64
+          ],
+          "occurrences": 144,
+          "occurrences_by_rank": {
+            "0": 18,
+            "1": 18,
+            "2": 18,
+            "3": 18,
+            "4": 18,
+            "5": 18,
+            "6": 18,
+            "7": 18
+          },
+          "variant_id": "493258572602055f4f01f69bf695d1b17891b5d357a0d82ad1064070c6bb4cc5"
+        },
+        {
+          "num_valid_ids": [
+            7904,
+            64
+          ],
+          "occurrences": 80,
+          "occurrences_by_rank": {
+            "0": 10,
+            "1": 10,
+            "2": 10,
+            "3": 10,
+            "4": 10,
+            "5": 10,
+            "6": 10,
+            "7": 10
+          },
+          "variant_id": "9d35068adf389d44e4b3b2ec0a9baf9b029a34fbf09f797f976b733c5379bb58"
+        },
+        {
+          "num_valid_ids": [
+            7936,
+            64
+          ],
+          "occurrences": 48,
+          "occurrences_by_rank": {
+            "0": 6,
+            "1": 6,
+            "2": 6,
+            "3": 6,
+            "4": 6,
+            "5": 6,
+            "6": 6,
+            "7": 6
+          },
+          "variant_id": "2e2d465136fe7f3b088f0dffc751d6c0c467eb956afe5868a05ed9bf9fa176cd"
+        },
+        {
+          "num_valid_ids": [
+            7968,
+            64
+          ],
+          "occurrences": 24,
+          "occurrences_by_rank": {
+            "0": 3,
+            "1": 3,
+            "2": 3,
+            "3": 3,
+            "4": 3,
+            "5": 3,
+            "6": 3,
+            "7": 3
+          },
+          "variant_id": "7297ad3e608754d428e9de98ea909cbb7da1667917bcaa6dbb624991978751a6"
+        },
+        {
+          "num_valid_ids": [
+            8000,
+            64
+          ],
+          "occurrences": 16,
+          "occurrences_by_rank": {
+            "0": 2,
+            "1": 2,
+            "2": 2,
+            "3": 2,
+            "4": 2,
+            "5": 2,
+            "6": 2,
+            "7": 2
+          },
+          "variant_id": "97526ab737eeef7e943092528a607eb0e2127baeed73b33d44226998b5edf14a"
+        },
+        {
+          "num_valid_ids": [
+            8032,
+            64
+          ],
+          "occurrences": 24,
+          "occurrences_by_rank": {
+            "0": 3,
+            "1": 3,
+            "2": 3,
+            "3": 3,
+            "4": 3,
+            "5": 3,
+            "6": 3,
+            "7": 3
+          },
+          "variant_id": "921166f061a8b23157d4f1b8727e62c6a002766a9aa9baf0275d49aae89abc5d"
+        },
+        {
+          "num_valid_ids": [
+            8064,
+            64
+          ],
+          "occurrences": 8,
+          "occurrences_by_rank": {
+            "0": 1,
+            "1": 1,
+            "2": 1,
+            "3": 1,
+            "4": 1,
+            "5": 1,
+            "6": 1,
+            "7": 1
+          },
+          "variant_id": "898e86634504c34ba1a0734d87cadedf6609235bf61ae2282dab72b36fe2bad9"
+        },
+        {
+          "num_valid_ids": [
+            8096,
+            64
+          ],
+          "occurrences": 8,
+          "occurrences_by_rank": {
+            "0": 1,
+            "1": 1,
+            "2": 1,
+            "3": 1,
+            "4": 1,
+            "5": 1,
+            "6": 1,
+            "7": 1
+          },
+          "variant_id": "5d08992a139ac0958b6899509dbb274dc66a39604c7a0ebce8267a1a5b1450c3"
+        },
+        {
+          "num_valid_ids": [
+            8128,
+            64
+          ],
+          "occurrences": 16,
+          "occurrences_by_rank": {
+            "0": 2,
+            "1": 2,
+            "2": 2,
+            "3": 2,
+            "4": 2,
+            "5": 2,
+            "6": 2,
+            "7": 2
+          },
+          "variant_id": "57ea02c7d66945e6b989e2efc16ad463067b60ac22214f2da84b1ca48d597972"
+        },
+        {
+          "num_valid_ids": [
+            8160,
+            64
+          ],
+          "occurrences": 8,
+          "occurrences_by_rank": {
+            "0": 1,
+            "1": 1,
+            "2": 1,
+            "3": 1,
+            "4": 1,
+            "5": 1,
+            "6": 1,
+            "7": 1
+          },
+          "variant_id": "8c38cdf57ddd8f7984cae374597a83a3761850bd36d8040bc86738f7a2cc5b62"
+        },
+        {
+          "num_valid_ids": [
+            8192,
+            64
+          ],
+          "occurrences": 16,
+          "occurrences_by_rank": {
+            "0": 2,
+            "1": 2,
+            "2": 2,
+            "3": 2,
+            "4": 2,
+            "5": 2,
+            "6": 2,
+            "7": 2
+          },
+          "variant_id": "a8403d1d6afee3205601c79dd0473c0de6ea14e6a8828572e9271f88bf13f02b"
+        }
+      ],
+      "histogram_sha256": "3a52135791d372a99d7c12aa782a4a0b5a693182a5303dd51177ba5f49743591",
+      "observed_calls": 499712,
+      "seam": "moe2",
+      "sorted_capacity": 12666,
+      "stage": "decode",
+      "stage1_parent_fixture": {
+        "path": "fixtures/deepseek_moe1-aedfa8cdf4fad913658bc7bd-work-1823119e10017f2d.json",
+        "sha256": "a273b50115dbe82b231d262492efe9e6af9cd8bf4c40476f92e40d54bee6362a"
+      },
+      "stage2_parent_fixture": {
+        "path": "fixtures/deepseek_moe2-85737162d661689681167e9c-work-1823119e10017f2d.json",
+        "sha256": "66276f5bab07bd0a655156771e801468721340f959da12639467a2f9c6854bef"
+      },
+      "tokens": 64,
+      "topk": 6
+    }
+  },
+  "observed_source_sha256": "b2c093ab83032dec0a2da895f422b5032c24d6bdea99de76140ec368cb1a1e6c",
+  "performance_scope": "10 checked warmups and 100 frequency-weighted measured draws per added distribution case; no per-value timing claim.",
+  "routing_provenance": "Legal representative routes generated for recorded num_valid_ids; original other-rank routing was not recorded.",
+  "schema": "moe-observed-work-distributions-v1",
+  "source_audit_sha256": "c1afbc12593819377bd07f794939083c2b87b1ebae2d168266ee51f25027ad43",
+  "support_sha256": {
+    "scripts/task_runner.py": "7877d6dc74ff92ab03710985bab33a460b230f5e2b9b9b1ccc37465418240bc6",
+    "ut/distribution_runner.py": "77a76fea4a416dcae025606ad34d3d677a5ff30130970b477a8bddc7277c7a30",
+    "ut/generation/decode/provenance/SOURCE.json": "377a7096388aa67b67f6573285c62aff17c94ede5a7b84db1152d9dd61d88135",
+    "ut/generation/decode/ut/host/native.py": "d08339bc94dfabd3529d415857e49d0383f9efe2ef62be9a84916c55c5857e68",
+    "ut/generation/decode/ut/native/mixed_moe_gemm_2stage.py": "7ab78bf4195364aad7778532844a4b8c01e9dfe82a728c3322381162b428ac37",
+    "ut/generation/decode/ut/reference/mixed_moe_gemm_2stage_common.py": "b819545c0be6f94932edd994983c7d3ec6c18a652d4f8c330cad2513372bbe6d",
+    "ut/generation/prefill/provenance/SOURCE.json": "79bf891a8d4ba5005251c2c4b602bc69ee2682411b5dd70733429aea9c2558ae",
+    "ut/work_distribution.py": "b36ba472fb3d6612a00a5db5179f1fc1cc2a50cb30461e049637d43a3d04418d"
+  },
+  "targeted_selection_source_sha256": "593eea1dce7ef7ec248361019f86312029440ec16025dea4df5968e2589d0a1a"
+}

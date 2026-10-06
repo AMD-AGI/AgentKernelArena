@@ -13,6 +13,8 @@ from source_guard import validate_sources
 from evaluation_contract import (canonical, fingerprint, strict_json, validate_manifest,
     observe_case, checked_replays, finalize_report)
 from abi import runtime_abi
+from work_distribution import load_contract, KIND, CORRECTNESS_MODES, correctness_variants
+from distribution_runner import run_case as run_distribution_case
 from dispatch_contract import validate_dispatch
 
 OUTPUT_CONTRACT_PROOFS = {}
@@ -209,11 +211,17 @@ def request_for(phase,manifest,path):
 
 def main():
     p=argparse.ArgumentParser(); p.add_argument('phase',choices=('compile','correctness','performance')); p.add_argument('--request')
+    p.add_argument('--distribution-correctness-mode', choices=CORRECTNESS_MODES, default=CORRECTNESS_MODES[0])
     a=p.parse_args()
     (ROOT/'build').mkdir(exist_ok=True)
     (ROOT/'build'/(a.phase+'_report.json')).unlink(missing_ok=True)
-    manifest=strict_json((ROOT/'cases.json').read_text()); validate_manifest(manifest); validate_dispatch(manifest)
-    if manifest.get('status')!='FROZEN_CURRENT_CAPTURE': raise RuntimeError('Current fixtures and expected cases are not sealed')
+    manifest=strict_json((ROOT/'cases.json').read_text()); validate_manifest(manifest)
+    base_manifest, distributions=load_contract(ROOT,manifest)
+    validate_dispatch(base_manifest)
+    if base_manifest.get('status')!='FROZEN_CURRENT_CAPTURE': raise RuntimeError('Current fixtures and expected cases are not sealed')
+    if a.phase == 'correctness':
+        for group in distributions['groups'].values():
+            correctness_variants(group,a.distribution_correctness_mode)
     request=request_for(a.phase,manifest,a.request); validate_sources(ROOT,ROOT)
     report={'schema_version':1,'status':'ok','request':request,'cases':[]}
     import torch
@@ -227,8 +235,15 @@ def main():
     policy=manifest['measurement']; tol=manifest['tolerance']
     compiled=[]
     for case in manifest['cases']:
+        if case.get('provenance_kind') == KIND:
+            row, receipt=run_distribution_case(globals(), ROOT, manifest, base_manifest, distributions,
+                case, a.phase, request, module, fn, reference_module, reference_fn, identity,
+                reference_identity, correctness_mode=a.distribution_correctness_mode)
+            compiled.append(receipt)
+            if row is not None: report['cases'].append(row)
+            continue
         if case['calls_per_sample']!=1: raise RuntimeError('This seam graph represents one native call per replay')
-        inputs,golden=fixture(case,manifest,module); reference_inputs,_=fixture(case,manifest,reference_module,include_golden=False)
+        inputs,golden=fixture(case,base_manifest,module); reference_inputs,_=fixture(case,base_manifest,reference_module,include_golden=False)
         pristine_inputs=storage_snapshots(inputs)
         initial_out=cpu_clone(inputs.get('out'))
         primary='q' if manifest['seam'].startswith('mla') else 'a' if manifest['seam']=='moe1' else 'hidden_states' if manifest['seam']=='moe1_prefill' else 'inter_states'
