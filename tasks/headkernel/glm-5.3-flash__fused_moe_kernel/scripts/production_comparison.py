@@ -6,6 +6,7 @@ from pathlib import Path
 import secrets
 import task_runner as task
 from native_enums import restore_native_enum
+from replay_receipts import ReplayReceipts
 
 
 def main():
@@ -17,6 +18,7 @@ def main():
     if task.file_sha(native.__file__)!=sources['files']['aiter/fused_moe.py']:raise ValueError('Native whole-MoE source differs from pinned image')
     from aiter import ActivationType,QuantType
     before=task.package_hash();challenge=secrets.randbelow(2**29);comparisons=[]
+    receipts=ReplayReceipts(task.ROOT/'build',challenge,task.source_hash())
     for case in manifest['cases']:
         tensors,port,observe,reset,initialize,verify=task.build_state(case,module)
         port_output=tensors['result'];controls=dict(case['scalars']);controls.pop('port_launch');controls.pop('tensor_attributes')
@@ -30,7 +32,8 @@ def main():
         legs={}
         for label,invoke in [('candidate_port',port),('native_production',production)]:
             if label=='candidate_port':tensors['result']=port_output
-            reference=reset(challenge);initialize();invoke();torch.cuda.synchronize();verify(reference)
+            replay_reset,replay_verify=receipts.leg(case['case_id'],label,reset,verify)
+            reference=reset(challenge);initialize();invoke();torch.cuda.synchronize();replay_verify(reference)
             stream=torch.cuda.Stream();stream.wait_stream(torch.cuda.current_stream())
             with torch.cuda.stream(stream):
                 for _ in range(3):invoke()
@@ -41,13 +44,15 @@ def main():
             def measure(call):
                 begin=torch.cuda.Event(enable_timing=True);end=torch.cuda.Event(enable_timing=True)
                 begin.record();call();end.record();end.synchronize();return begin.elapsed_time(end)
-            legs[label]=task.checked_replays(case,policy,reset_inputs=reset,initialize_outputs=initialize,replay=graph.replay,verify=verify,measure=measure,observe=observe,seed=challenge)
+            legs[label]=task.checked_replays(case,policy,reset_inputs=replay_reset,initialize_outputs=initialize,replay=graph.replay,verify=replay_verify,measure=measure,observe=observe,seed=challenge)
         means={name:sum(row['samples_ms'])/len(row['samples_ms']) for name,row in legs.items()};ratio=means['native_production']/means['candidate_port']
         comparisons.append({'case_id':case['case_id'],'live_fixture':case['fixture'],'native_output_parity':True,
             'identical_captured_ABI_and_fresh_numeric_challenge_sequence':True,'mean_ms':means,'speedup_vs_native':ratio,'candidate_faster_than_native':ratio>1.0,'legs':legs})
     if task.package_hash()!=before:raise ValueError('Task changed during native comparison')
     record={'schema_version':1,'status':'ok','diagnostic_only':True,'score_input':False,'source_sha256':task.source_hash(),
         'manifest_sha256':task.fingerprint(manifest),'cases':comparisons,'all_cases_have_native_parity':True,
+        'challenge_seed':challenge,'replay_receipts':receipts.path.name,
+        'replay_receipts_sha256':task.file_sha(receipts.path),
         'all_cases_faster_than_native':all(row['candidate_faster_than_native'] for row in comparisons),
         'allocation_boundary':'Both graph legs retain their own preallocated capture-time output and workspace. Native fused_moe has no out argument; no output copy is added to its timed graph.',
         'claim_scope':'The Arena score compares frozen and edited versions of the replacement port. It is local optimization only. native_mean_ms/candidate_mean_ms greater than1 demonstrates isolated native-operator improvement; serving gain requires a model rerun.'}

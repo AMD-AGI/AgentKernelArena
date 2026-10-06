@@ -1,0 +1,80 @@
+{
+  "schema_version": 1,
+  "status": "SOURCE_PINNED_DIAGNOSTIC_PASS_FRAMEWORK_PENDING",
+  "source_sha256": "f2cc9ea7fd30ede75850f3c22ca3d09e85a024b7bb314e1330c14b39bc69d315",
+  "previous_source_sha256": "f5b48a8b6fc50c5b7c23592cd7051dbc82f87b7baac5549dda39cf86edbec376",
+  "native_codeobject": {
+    "runtime_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
+    "path": "hsa/gfx950/fmoe/silu/fmoe_bf16_blockscaleFp8_g1u1_vs_silu_1tg_ps_32x256.co",
+    "sha256": "6a583441c6bb139c6af20c5198614b7b02b74fdba370580a5a5bbe164bd7bb34",
+    "runtime_digest_verified": true,
+    "decoded_instructions": 3671,
+    "undecoded_instructions": 0
+  },
+  "arithmetic": {
+    "matrix_scaling": "FMA(delta, float32(activation_scale * weight_scale), accumulator)",
+    "silu": "exp2(gate * float32(-log2(e))), single hardware reciprocal of 1+exponential, then (gate * inverse) * up",
+    "intermediate_quantizer": "maximum=max(abs(activated),float32(1e-6)); multiplier=448*hardware_rcp(maximum); FP8(activated*multiplier); dequantization_scale=hardware_rcp(multiplier)"
+  },
+  "implementation_boundary": "Single-instruction reciprocal only. The failed opaque multi-instruction SiLU assembly block is not admitted by the source guard. Matrix dimensions, host launch grid, route reduction, cases, timing and tolerances are unchanged.",
+  "GPU_full_policy": {
+    "artifact_bundle": "glm/moe-silu-split-full-20261006/execution-silu-split-full-195082",
+    "result_sha256": "a5032fa8205a7722b92c00e380fb2b781671eea9919ff56aa39a369f9f55ac27",
+    "detailed_result_sha256": "b89bb4dc56b2efc9c8a115dd44fce1cce3d7a2c13b919adde832a7869936f829",
+    "status": "COMPARISONS_PASS",
+    "hardware": "MI355X gfx950, allocation 195082, node037 GPU3",
+    "elapsed_seconds": 269.2042336757295,
+    "case_count": 2,
+    "case_order": [
+      "decode M64",
+      "prefill M8192"
+    ],
+    "leg_order": [
+      "candidate_port",
+      "native_production"
+    ],
+    "challenge_seed": 20261116,
+    "seed_extent": [
+      20261116,
+      20261225
+    ],
+    "replay_blocks": 4,
+    "graph_replays": 440,
+    "timed_samples": 400,
+    "verified_outputs": 444,
+    "warmup_iterations": 10,
+    "benchmark_iterations": 100,
+    "method": "cuda_graph",
+    "rtol": 0.02,
+    "atol": 0.02,
+    "normal_measure_and_replay_callbacks_retained": true
+  },
+  "GPU_micro": {
+    "artifact_bundle": "glm/moe-silu-split-micro-20261006/execution-silu-split-micro-195082",
+    "result_sha256": "8b6192cd3b3d5367042df81f0aee286a16730f4421db14aa83dd57a5826d2b86",
+    "elapsed_seconds": 9.582184292841703,
+    "primitive_repeats_per_variant": 3,
+    "original_d37_quantization_envelope_failures": 0,
+    "split_quantization_envelope_failures": 0,
+    "original_and_split_bit_repeatable": true,
+    "whole_decode_eager_checks": 1,
+    "whole_decode_graph_checks": 3
+  },
+  "preserved_failed_variant": {
+    "source_sha256": "3f7b6836056ba5b590be2651864a6ec21330b54439826557c2fe7624c61001d9",
+    "artifact_bundle": "glm/moe-native-isa-repair-20261006/execution-native-isa-paired-195082-20261116",
+    "result_sha256": "0541016d300d605cf485b7c6dc05f3d4716a59a783c1dbedd22ffd9d718e5198",
+    "eager_decode_mismatches": 237045,
+    "opaque_multi_instruction_primitive_envelope_failures": 15283,
+    "bit_repeatable": false,
+    "canonical_committed": false
+  },
+  "diagnostics": "Unique build/native_production_events-*.jsonl records case, leg, seed, iteration and propagated failures outside timing. The successful final native comparison records the challenge and receipt digest.",
+  "qualification": false,
+  "performance_claim": false,
+  "scope_limits": [
+    "Fresh task_validator PASS is required for this committed candidate/reference and protected harness.",
+    "The original 2844-element and later 22-element validator failures used unrecorded production challenges; neither exact challenge has been reproduced or claimed explained.",
+    "Native uses BF16 atomic route reduction and 16x16x128 MFMA; this port retains its existing FP32 route reduction and 32x32x64 MFMA. No arbitrary matrix-layout change is included."
+  ]
+}

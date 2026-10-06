@@ -41,7 +41,7 @@ def stage1(Q, S, W, WS, IDS, EXPERTS, VALID, G,
             delta = tl.dot(a, b)
             sa = tl.load(S + rows * (H // 128) + start, rows < M, 0)
             sb = tl.load(WS + expert * (2 * I // 128) * (H // 128) + (cols // 128) * (H // 128) + start, cols < 2 * I, 0)
-            acc += delta * sa[:, None] * sb[None, :]
+            acc = tl.fma(delta, sa[:, None] * sb[None, :], acc)
         tl.store(G + route[:, None] * (2 * I) + cols[None, :], acc,
                  (rows[:, None] < M) & (slots[:, None] < TOPK) & (positions[:, None] < count) & (cols[None, :] < 2 * I))
 
@@ -53,10 +53,17 @@ def activate_quantize(G, Q, S, M: tl.constexpr, I: tl.constexpr, TOPK: tl.conste
     cols = block * 128 + tl.arange(0, 128)
     gate = tl.load(G + route * (2 * I) + cols)
     up = tl.load(G + route * (2 * I) + I + cols)
-    activated = gate / (1.0 + tl.exp(-gate)) * up
-    maximum = tl.max(tl.abs(activated), axis=0)
-    scale = tl.where(maximum == 0, 1.0, maximum * 0.0022321429569274187)
-    quantized = tl.minimum(tl.maximum(activated * tl.div_rn(1.0, scale), -448.0), 448.0)
+    exponential = tl.exp2(gate * (-1.4426950408889634))
+    inverse = tl.inline_asm_elementwise(asm="v_rcp_f32 $0, $1;",
+        constraints="=v,v", args=[1.0 + exponential], dtype=tl.float32, is_pure=True, pack=1)
+    activated = (gate * inverse) * up
+    maximum = tl.maximum(tl.max(tl.abs(activated), axis=0), 1.0e-6)
+    inverse_maximum = tl.inline_asm_elementwise(asm="v_rcp_f32 $0, $1;",
+        constraints="=v,v", args=[maximum], dtype=tl.float32, is_pure=True, pack=1)
+    multiplier = inverse_maximum * 448.0
+    scale = tl.inline_asm_elementwise(asm="v_rcp_f32 $0, $1;",
+        constraints="=v,v", args=[multiplier], dtype=tl.float32, is_pure=True, pack=1)
+    quantized = tl.minimum(tl.maximum(activated * multiplier, -448.0), 448.0)
     tl.store(Q + route * I + cols, quantized)
     tl.store(S + route * (I // 128) + block, scale)
 
@@ -86,7 +93,7 @@ def stage2(Q, S, W, WS, IDS, EXPERTS, VALID, P,
             delta = tl.dot(a, b)
             sa = tl.load(S + route * (I // 128) + start, (rows < M) & (slots < TOPK), 0)
             sb = tl.load(WS + expert * (H // 128) * (I // 128) + (cols // 128) * (I // 128) + start, cols < H, 0)
-            acc += delta * sa[:, None] * sb[None, :]
+            acc = tl.fma(delta, sa[:, None] * sb[None, :], acc)
         tl.store(P + route[:, None] * H + cols[None, :], acc,
                  (rows[:, None] < M) & (slots[:, None] < TOPK) & (positions[:, None] < count) & (cols[None, :] < H))
 

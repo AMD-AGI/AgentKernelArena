@@ -36,5 +36,11 @@
     "native_expression": "scale=max(amax,1e-10f)*float32(1/448); quant_input=x*(1.0f/scale)",
     "port_expression": "Same multiplication order and float32 constant, using tl.div_rn for reciprocal",
     "GPU_byte_parity": "PASS on bounded M64fresh-input seeds0and1: zero q1byte mismatches and zero s1scale mismatches against actual native input quantization. See DIAGNOSTIC-EVIDENCE.json; full workload qualification pending."
+  },
+  "native_codeobject_arithmetic_evidence": {
+    "path": "hsa/gfx950/fmoe/silu/fmoe_bf16_blockscaleFp8_g1u1_vs_silu_1tg_ps_32x256.co",
+    "sha256": "6a583441c6bb139c6af20c5198614b7b02b74fdba370580a5a5bbe164bd7bb34",
+    "evidence": "provenance/NATIVE-ARITHMETIC-REPAIR.json",
+    "implementation_scope": "Matching scale-product FMA and split hardware reciprocal/exp2 arithmetic; independent source-pinned GPU diagnostics, not a claim of stock source or full native instruction identity."
   }
 }

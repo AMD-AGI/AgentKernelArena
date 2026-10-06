@@ -98,8 +98,41 @@ class Tests(unittest.TestCase):
         self.assertEqual(int(scale.view(torch.int32)),1025275858)
         self.assertEqual(float((value/old_scale).to(torch.float8_e4m3fn)),-112.0)
         self.assertEqual(float((value*(1.0/scale)).to(torch.float8_e4m3fn)),-104.0)
-        evidence=json.loads((ROOT/'provenance/ACTIVATION-ROUNDING-REPAIR.json').read_text())
+        # The current frozen source has a later native reciprocal-order repair.
+        evidence=json.loads((ROOT/'provenance/NATIVE-ARITHMETIC-REPAIR.json').read_text())
         self.assertEqual(evidence['source_sha256'],hashlib.sha256((ROOT/'ut/reference/kernels.py').read_bytes()).hexdigest())
+    def test_native_reciprocal_guard_rejects_other_assembly_forms(self):
+        source=(ROOT/'source/kernels.py').read_text()
+        attacks=[('v_rcp_f32 $0, $1;','s_endpgm;'),('constraints="=v,v"','constraints="=s,s"'),
+                 ('dtype=tl.float32','dtype=tl.int32'),('is_pure=True','is_pure=False'),('pack=1','pack=2')]
+        for before,after in attacks:
+            with self.subTest(replacement=after),tempfile.TemporaryDirectory() as temp:
+                candidate=Path(temp);(candidate/'source').mkdir()
+                self.assertIn(before,source)
+                (candidate/'source/kernels.py').write_text(source.replace(before,after))
+                with self.assertRaises(ValueError):validate_sources(candidate,ROOT)
+    def test_replay_receipts_preserve_inputs_failures_and_context(self):
+        from replay_receipts import ReplayReceipts
+        failure=AssertionError('native-output-mismatch');truth={'seed':123};seen=[]
+        def reset(seed):
+            truth['seed']=seed;seen.append(('reset',seed));return truth
+        def verify(value):
+            self.assertIs(value,truth);seen.append(('verify',value['seed']))
+            if value['seed']==124:raise failure
+        with tempfile.TemporaryDirectory() as temp:
+            receipts=ReplayReceipts(Path(temp),123,'source')
+            checked_reset,checked_verify=receipts.leg('prefill','candidate_port',reset,verify)
+            self.assertIsNone(checked_verify(truth))
+            self.assertIs(checked_reset(123),truth);checked_verify(truth)
+            checked_reset(124)
+            with self.assertRaises(AssertionError) as caught:checked_verify(truth)
+            self.assertIs(caught.exception,failure)
+            rows=[json.loads(line) for line in receipts.path.read_text().splitlines()]
+            self.assertEqual(rows[1]['iteration'],-1)
+            self.assertEqual(rows[-1]['event'],'verify_failure')
+            self.assertEqual({key:rows[-1][key] for key in ('case_id','leg','seed','iteration')},
+                {'case_id':'prefill','leg':'candidate_port','seed':124,'iteration':1})
+        self.assertEqual(seen,[('verify',123),('reset',123),('verify',123),('reset',124),('verify',124)])
     def test_every_entrypoint_rejects_host_rebinding(self):
         source=(ROOT/'source/kernels.py').read_text();functions=[x for x in ast.parse(source).body if isinstance(x,ast.FunctionDef)]
         for function in functions:

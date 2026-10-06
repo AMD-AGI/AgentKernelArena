@@ -8,6 +8,34 @@ RESERVED = {'tl','triton',*BUILTIN_CALLS}
 FORBIDDEN_NAMES = {'sys','os','builtins','globals','locals','vars','dir','eval','exec','compile','open','getattr','setattr','delattr','type','object','super'}
 TL_TYPES = {'float32','float16','bfloat16','float64','int8','int16','int32','int64','uint8','uint16','uint32','uint64','float8e4nv','float8e5','constexpr'}
 ALLOWED_TL = {'program_id','arange','load','store','zeros','dot','minimum','maximum','where','sum','max','exp','exp2','sigmoid','cdiv','multiple_of','max_contiguous','static_range','full','reshape','trans','broadcast_to','abs','cast','fdiv','div_rn'}
+ALLOWED_TL |= {'fma','inline_asm_elementwise'}
+GPU_ASM = {
+    'v_rcp_f32 $0, $1;': ('=v,v',1),
+}
+
+
+def _approved_asm_strings(function):
+    strings=set()
+    for node in ast.walk(function):
+        if not (isinstance(node,ast.Call) and isinstance(node.func,ast.Attribute)
+                and isinstance(node.func.value,ast.Name) and node.func.value.id=='tl'
+                and node.func.attr=='inline_asm_elementwise'):continue
+        fields={item.arg:item.value for item in node.keywords}
+        if node.args or len(fields)!=len(node.keywords) or set(fields)!={'asm','constraints','args','dtype','is_pure','pack'}:
+            raise ValueError('GPU assembly requires the exact declared intrinsic signature')
+        assembly=fields['asm'];constraints=fields['constraints'];arguments=fields['args']
+        if not isinstance(assembly,ast.Constant) or assembly.value not in GPU_ASM:
+            raise ValueError('GPU assembly opcode sequence is not declared')
+        expected,count=GPU_ASM[assembly.value]
+        if not isinstance(constraints,ast.Constant) or constraints.value!=expected or not isinstance(arguments,ast.List) or len(arguments.elts)!=count:
+            raise ValueError('GPU assembly operands or constraints differ')
+        dtype=fields['dtype']
+        if not isinstance(dtype,ast.Attribute) or not isinstance(dtype.value,ast.Name) or dtype.value.id!='tl' or dtype.attr!='float32':
+            raise ValueError('GPU assembly dtype must be float32')
+        if not isinstance(fields['is_pure'],ast.Constant) or fields['is_pure'].value is not True or not isinstance(fields['pack'],ast.Constant) or type(fields['pack'].value) is not int or fields['pack'].value!=1:
+            raise ValueError('GPU assembly purity and scalar packing are fixed')
+        strings.update((id(assembly),id(constraints)))
+    return strings
 
 
 def _tree(path):
@@ -16,6 +44,7 @@ def _tree(path):
 
 
 def _body_guard(function):
+    asm_strings=_approved_asm_strings(function)
     for node in ast.walk(ast.Module(body=function.body,type_ignores=[])):
         if isinstance(node,(ast.Import,ast.ImportFrom,ast.Global,ast.Nonlocal,ast.ClassDef,ast.FunctionDef,ast.AsyncFunctionDef,ast.Lambda,ast.With,ast.AsyncWith,ast.Try,ast.Raise,ast.Delete,ast.Yield,ast.YieldFrom,ast.Await)):
             raise ValueError('Only GPU tensor operations are editable')
@@ -29,7 +58,7 @@ def _body_guard(function):
                 if node.attr not in ALLOWED_TL | TL_TYPES:raise ValueError('Only declared Triton language operations/types are available')
             elif node.attr not in {'to','dtype','element_ty','shape','T'}:
                 raise ValueError('Host object attribute access is forbidden')
-        if isinstance(node,ast.Constant) and isinstance(node.value,(str,bytes)):
+        if isinstance(node,ast.Constant) and isinstance(node.value,(str,bytes)) and id(node) not in asm_strings:
             raise ValueError('String/byte payloads are not GPU values')
         if isinstance(node,(ast.Assign,ast.AnnAssign,ast.AugAssign)):
             targets=node.targets if isinstance(node,ast.Assign) else [node.target]
