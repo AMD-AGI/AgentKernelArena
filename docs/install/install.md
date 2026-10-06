@@ -205,6 +205,12 @@ under `/tmp`, with the worker cache suffix when present. This permits import-tim
 Dynamo/Inductor cache initialization when the sparse authentication mounts leave
 the caller's home directory unwritable.
 
+The pinned SGLang 0.5.20 gfx950 runtime also receives a UID-owned private tmpfs
+at `/tmp/aiter_configs`. AITER writes merged copies of its original tuned CSVs
+and lock files there; its source CSVs, configuration selection, and native JIT
+module lookup remain unchanged. This handles images that ship this generated
+configuration directory owned by root.
+
 Each runtime container receives a private writable tmpfs at its existing
 `HOME/.aiter`, owned by the actual container UID/GID with mode `0700`. This lets
 AITER populate its normal cache from the image before imports complete, even

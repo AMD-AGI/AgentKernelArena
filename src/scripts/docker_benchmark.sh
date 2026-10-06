@@ -1050,6 +1050,14 @@ build_docker_args() {
         )
     fi
 
+    # SG 0.5.20 AITER merges its original tuned CSVs into this hardcoded
+    # directory. The image ships it root-owned; only the generated merge/lock
+    # files need a writable mount. Keep native source, config selection and
+    # prebuilt JIT module lookup intact.
+    if [[ "$SELECTED_GPU_ARCH" == "gfx950" && "$SELECTED_IMAGE" == "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96" ]]; then
+        docker_args+=(--tmpfs "/tmp/aiter_configs:rw,uid=${HOST_UID},gid=${HOST_GID},mode=1777")
+    fi
+
     if [[ "$SELECTED_GPU_ARCH" == "gfx1201" ]]; then
         # AITER's repository and installed-package builds use separate caches.
         # The host-UID container does not have a writable host-home mount.

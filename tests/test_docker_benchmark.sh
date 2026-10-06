@@ -290,11 +290,15 @@ assert_cache_args_absent "${args[@]}"
 SG520_IMAGE="docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96"
 mapfile -t args < <(run_shell_args AKA_GPU_ARCH=gfx950 AKA_DOCKER_IMAGE="$SG520_IMAGE")
 assert_has "$TEST_HOME/.aiter:rw,exec,uid=$(id -u),gid=$(id -g),mode=0700" "${args[@]}"
-assert_cache_args_absent "${args[@]}"
+assert_not_has "AITER_JIT_DIR=/tmp/aiter-jit" "${args[@]}"
+assert_not_has "FLYDSL_RUNTIME_CACHE_DIR=/tmp/flydsl-runtime-cache" "${args[@]}"
+assert_has "/tmp/aiter_configs:rw,uid=$(id -u),gid=$(id -g),mode=1777" "${args[@]}"
 mapfile -t args < <(run_shell_args AKA_GPU_ARCH=gfx950 AKA_DOCKER_IMAGE="$SG520_IMAGE" AKA_CONTAINER_HOME=/tmp/aka-isolated-worker)
 assert_has "/tmp/aka-isolated-worker/.aiter:rw,exec,uid=$(id -u),gid=$(id -g),mode=0700" "${args[@]}"
 assert_not_has "$TEST_HOME/.aiter:rw,exec,uid=$(id -u),gid=$(id -g),mode=0700" "${args[@]}"
-assert_cache_args_absent "${args[@]}"
+assert_not_has "AITER_JIT_DIR=/tmp/aiter-jit" "${args[@]}"
+assert_not_has "FLYDSL_RUNTIME_CACHE_DIR=/tmp/flydsl-runtime-cache" "${args[@]}"
+assert_has "/tmp/aiter_configs:rw,uid=$(id -u),gid=$(id -g),mode=1777" "${args[@]}"
 
 # Root cache initialization has no GPU, network, auth, or broad checkout mount.
 mapfile -t seed_args < <(AKA_DOCKER_LABEL_FILE="$LABEL_FILE" bash "$RUNNER" _print_aiter_seed_args \
