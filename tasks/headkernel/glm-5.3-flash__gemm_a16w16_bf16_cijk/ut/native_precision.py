@@ -14,12 +14,38 @@ ROOT=Path(__file__).resolve().parents[1]
 KERNEL='_ZN5aiter39bf16gemm_fp32bf16_tn_64x64_splitk_cleanE'
 
 
+def candidate_error_metrics(actual,expected):
+    """CPU FP64 Frobenius error, without an absolute floor tied to output units."""
+    import math
+    import torch
+    # BF16 has7 fraction bits and unit roundoff2^-8. Two independently
+    # rounded copies of the same FP32 value differ by at most2u/(1-u)
+    # relative to the rounded reference. Use that output-precision scale
+    # as the BF16 global accuracy requirement; the probe also measures
+    # the submitted FP32 reduction error against this requirement.
+    if expected.dtype==torch.bfloat16:
+        unit_roundoff=2.0**-8
+        limit=2*unit_roundoff/(1-unit_roundoff)
+    elif expected.dtype==torch.float32:
+        limit=1.3e-6  # Existing PyTorch float32 relative-accuracy requirement.
+    else:raise AssertionError('Unexpected dense output dtype')
+    reference_norm=float(torch.linalg.vector_norm(expected.double()))
+    error_norm=float(torch.linalg.vector_norm(actual.double()-expected.double()))
+    if not math.isfinite(reference_norm) or not math.isfinite(error_norm):raise AssertionError('Nonfinite candidate/reference norm')
+    ratio=error_norm/reference_norm if reference_norm else (0.0 if error_norm==0.0 else None)
+    return {'reference_l2':reference_norm,'error_l2':error_norm,'normalized_l2':ratio,
+        'normalized_l2_limit':limit,'scale_relative_pass':error_norm<=limit*reference_norm}
+
+
 def candidate_close(actual,expected):
     import torch
     if actual.dtype==torch.float32:
-        # PyTorch's documented default for float32; independent of probe errors.
         torch.testing.assert_close(actual,expected,rtol=1.3e-6,atol=1e-5)
     else:torch.testing.assert_close(actual,expected,rtol=0.01,atol=0.02)
+    metrics=candidate_error_metrics(actual,expected)
+    if not metrics['scale_relative_pass']:
+        raise AssertionError('Scale-relative candidate error exceeds dtype accuracy requirement: '+str(metrics))
+    return metrics
 
 
 def strict_mask(actual,expected):

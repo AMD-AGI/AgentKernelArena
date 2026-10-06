@@ -1,0 +1,51 @@
+{
+  "schema": "glm-dense-scale-relative-candidate-accuracy-v1",
+  "pointwise_checks": "Unchanged BF16 rtol0.01/atol0.02 and FP32 rtol1.3e-6/atol1e-5, followed by an additional global check.",
+  "global_check": "FP64 Frobenius norm(actual-reference) <= dtype_relative_budget * Frobenius norm(reference), with no absolute floor. Exact-zero reference requires exact-zero output.",
+  "BF16_relative_budget": 0.00784313725490196,
+  "BF16_basis": "BF16 has7 fraction bits, unit roundoffu=2^-8. Two rounded copies of the same FP32 value differ by at most2u/(1-u) relative to the rounded reference. This output-precision scale defines the independent global accuracy requirement; actual stock FP32 reduction error was measured against it.",
+  "FP32_relative_budget": 1.3e-06,
+  "FP32_basis": "The existing PyTorch float32 relative accuracy component, without its absolute floor for the additional global check.",
+  "native_calibration": "Unchanged; the added requirement applies only to candidate/port outputs.",
+  "demonstrated_loophole": {
+    "case_id": "bfloat16-decode-m64-n4096-k1024-bf16_gemm-b9bfce1f718cea2eb9bb1d51",
+    "seed": 1,
+    "reference_max_abs": 0.0150146484375,
+    "legacy_all_zero_pointwise_accepted": true,
+    "strengthened_all_zero_accepted": false
+  },
+  "GPU_evidence": {
+    "run": "glm/dense-scale-relative-probe-v1/runs/195184-gpu7-31a50bda",
+    "precision_report_sha256": "a9feb124099ba6e834f31b38fb50a1d3cd261f496e126c156388cef874c5c027",
+    "stock_source_sha256": "b75735a6eaf61b335bd854ab7e7ce029952226e3ff190332e30158a4e07c7392",
+    "candidate_checker_sha256": "1d38cb273b1727f66ff316d2918a955acdd293ec0589b7125ba91b76c3944a91",
+    "direct_zero_source_sha256": "ad0f72910de6dc3d53b8b92fe856b2b48c4be48945eb8bb894d7dc8c60df7fef",
+    "cases": 20,
+    "seeds": [
+      0,
+      1
+    ],
+    "stock_checks": 40,
+    "stock_failures": 0,
+    "direct_zero_checks": 40,
+    "direct_zero_acceptances": 0,
+    "legacy_zero_acceptances": [
+      {
+        "case_id": "bfloat16-decode-m64-n4096-k1024-bf16_gemm-b9bfce1f718cea2eb9bb1d51",
+        "seed": 1
+      }
+    ],
+    "actual_stock_metrics": {
+      "bfloat16": {
+        "max_stock_normalized_l2": 6.546645249545295e-05,
+        "limit": 0.00784313725490196
+      },
+      "float32": {
+        "max_stock_normalized_l2": 2.714709474095648e-07,
+        "limit": 1.3e-06
+      }
+    },
+    "all_zero_normalized_error": 1.0
+  },
+  "full_framework_and_trusted_qualification": "Pending fresh runs of this strengthened contract; earlier pointwise-only PASS remains scoped to its old contract."
+}
