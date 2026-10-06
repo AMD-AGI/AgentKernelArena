@@ -11,10 +11,11 @@ On a trusted ROCm host, install Git, Python3 with PyYAML, rclone and Docker. Con
 The following creates a separate clean Arena checkout and materializes the exact task package with the existing trusted fixture materializer. It preserves the original Git task tree, checks that tracked task content is unchanged, retains staging receipts and creates a standard validator config. The helper chooses file/byte limits from the committed manifest; DeepSeek decode has more than the default16,384 assets.
 
 ```bash
+TRUSTED_REPO="$PWD"
 TRUSTED_COMMIT=$(git rev-parse HEAD)
 PREPARED_ROOT="$PWD/../aka-headkernel-prepared"
 SCRATCH_ROOT="$PWD/../aka-headkernel-scratch"
-python3 tools/prepare_headkernel_run.py   --repo . --commit "$TRUSTED_COMMIT"   --output "$PREPARED_ROOT" --scratch-dir "$SCRATCH_ROOT"   --task headkernel/kimi-k3__dense_bf16_gemm_cijk   --use-manifest-oci-prefixes
+python3 tools/prepare_headkernel_run.py   --repo "$TRUSTED_REPO" --commit "$TRUSTED_COMMIT"   --output "$PREPARED_ROOT" --scratch-dir "$SCRATCH_ROOT"   --task headkernel/kimi-k3__dense_bf16_gemm_cijk   --use-manifest-oci-prefixes
 ```
 
 Repeat `--task` to select several refreshed tasks, or omit it to prepare all18. For one task with an existing trusted local mirror, replace `--use-manifest-oci-prefixes` with `--fixture-local-mirror /absolute/mirror`; arrange it as `MIRROR/object_key` using that task's manifest. Prefixes are task-specific and may share a published capture bundle. The materializer requires every declared object and exact SHA256/size match; an unavailable or incomplete publication stops preparation. The new supplemental manifests do not inherit publication or qualification status from older captures.
@@ -43,9 +44,10 @@ Inspect the **framework-finalized** `validation_report.yaml` and completion mark
 After the optimization worker stops, run the trusted evaluator from the trusted source checkout, outside the candidate workspace. It extracts the reference and harness again from Git, rematerializes the declared fixtures, admits only configured editable source files and runs fresh comparison phases. For example:
 
 ```bash
+cd "$TRUSTED_REPO"
 TASK_PATH=tasks/headkernel/kimi-k3__dense_bf16_gemm_cijk
 FIXTURE_PREFIX=$(git show "$TRUSTED_COMMIT:$TASK_PATH/fixtures/EXTERNAL-MANIFEST.json" | python3 -c 'import json,sys; print(json.load(sys.stdin)["oci_prefix"])')
-python3 src/tools/trusted_task_eval.py   --repo . --commit "$TRUSTED_COMMIT" --task "$TASK_PATH"   --candidate-workspace /absolute/path/to/stopped-agent-workspace   --render-device /dev/dri/renderD128   --output /absolute/path/to/new-trusted-results   --scratch-dir "$SCRATCH_ROOT"   --fixture-oci-prefix "$FIXTURE_PREFIX" --fixture-max-files 32768
+python3 src/tools/trusted_task_eval.py   --repo "$TRUSTED_REPO" --commit "$TRUSTED_COMMIT" --task "$TASK_PATH"   --candidate-workspace /absolute/path/to/stopped-agent-workspace   --render-device /dev/dri/renderD128   --output /absolute/path/to/new-trusted-results   --scratch-dir "$SCRATCH_ROOT"   --fixture-oci-prefix "$FIXTURE_PREFIX" --fixture-max-files 32768
 ```
 
 Select the available render device. A verified local mirror can replace the OCI argument. The evaluator uses the task's committed image and source/fixture contracts; its containers have no network or credential mounts. It retains diagnostics and binds materialization receipts into `trusted_measurement.json`. Keep this receipt with the framework report and source-only negative-control evidence. The dedicated [native quant retest](../../src/tools/trusted_native_eval.py) remains the supported route for `headkernel_sg520/deepseek-v4-pro__per_group_quant_fp8`; its task README gives the explicit single-source command.
