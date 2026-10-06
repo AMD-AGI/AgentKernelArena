@@ -232,11 +232,6 @@ bytecode-cache directories. The same runtime directory names nested under
 `source`, `ut`, or `fixtures` remain hashed inputs. Protected file and directory
 symlinks, including a symlink replacing a top-level runtime directory, are
 rejected. Streaming validator logs must not appear as immutable input changes.
-The whole-MoE runner retains both file manifests and the added, removed, and
-content-changed paths under `build/package_hash_mismatch_<phase>_<id>.json` when
-its final package hash differs. The manifests use the content SHA-256 values
-from the hash scans and include observed file sizes. The diagnostic does not
-change the hash boundary or turn a mismatch into a successful evaluation.
 
 The evaluator extracts the task from Git and accepts only regular files named
 by `source_file_path` from the candidate workspace. It discards agent reports,

@@ -145,7 +145,6 @@
       "description": "Existing matched native and port graph replays retain canonical validation; request-bound raw comparisons feed the explicit native-production scoring policy.",
       "entrypoint": "scripts/task_runner.py",
       "entrypoint_sha256": [
-        "d5339dc6a097f66e3c9c012846c23a16bdf29a185b10360d4b033da38dfd1d31",
         "33abf5c26a9d6370d7e1927c69e4e7c6947d31856836d09fbd863fabafbddb4f",
         "9ddd19898c276570ed5d65eff7e9addcc86e37fdc9d7219cd0ed5e57074629eb"
       ],
