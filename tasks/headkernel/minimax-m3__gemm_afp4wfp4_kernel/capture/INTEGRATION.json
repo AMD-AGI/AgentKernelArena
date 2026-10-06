@@ -1,0 +1,78 @@
+{
+  "schema": "minimax-fp4-capture-integration-v1",
+  "family": "minimax_fp4_gemm",
+  "status": "CPU_PREPARED_NATIVE_SMOKE_REQUIRED",
+  "shared_recorder": {
+    "version": "v4",
+    "runtime_capture_sha256": "8cff65ca8a74c4ee7565de5fddfbab92f4a5bb564c6348b6449eb2086da741ea"
+  },
+  "modules": {
+    "quark": "sglang.srt.layers.quantization.quark.schemes.quark_w4a4_mxfp4",
+    "wrapper": "aiter.ops.triton.gemm.basic.gemm_afp4wfp4",
+    "kernel": "aiter.ops.triton._triton_kernels.gemm.basic.gemm_afp4wfp4"
+  },
+  "install": "capture.adapter.install(cap, quark_module, basic_module, kernel_module, owner_context)",
+  "binding": "Replace quark_module._gemm_afp4wfp4_orig; the cached Quark custom-op implementation reads this global. Probe basic_module._triton_gemm_afp4wfp4_kernel for the actual launch.",
+  "owner_context": [
+    "recorder",
+    "served (eager)",
+    "graph_id (graph)",
+    "slot_id (graph)",
+    "bucket (graph)"
+  ],
+  "required_stages": [
+    "prefill",
+    "decode"
+  ],
+  "required_ranks": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7
+  ],
+  "input_tensors": [
+    "x",
+    "w",
+    "x_scales",
+    "w_scales",
+    "y (optional)"
+  ],
+  "output_tensors": [
+    "result"
+  ],
+  "required_metadata": [
+    "shape",
+    "stride",
+    "dtype",
+    "storage_offset",
+    "storage_nbytes",
+    "alias",
+    "full storage byte payload for selected representatives",
+    "original requested config",
+    "resolved native launch config",
+    "all scalar strides",
+    "skip_reduce",
+    "_USE_GEMM_SPLITK_BF16",
+    "requested and actual output dtype"
+  ],
+  "owner_obligations": [
+    "Initialize recorder before graph capture and admit actual storage budgets without changing model memory or workload.",
+    "Track all observed structural classes and exact all-rank full-workload counts, separately from sampled profile-window counts.",
+    "Capture D2D snapshots at the native wrapper boundary and record actual served graph replay notifications; graph construction alone is not a fixture.",
+    "Seal every rank and verify hashes, aliases, outputs, graph replay and case/control coverage using shared V4 verification.",
+    "Keep existing three MiniMax attention families and their fixtures unchanged. Merge family integration only in a fresh capture bundle.",
+    "Run a native integration smoke before launching a full capture. This adapter has CPU tests only."
+  ],
+  "unknowns": [
+    "matrix shape and stride distribution",
+    "optional output/config/reduction-state distribution",
+    "full-workload call counts",
+    "actual packed activation and weight payloads",
+    "captured output calibration",
+    "GPU numerical tolerance and task qualification"
+  ]
+}

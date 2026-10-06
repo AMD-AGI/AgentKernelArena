@@ -1,0 +1,35 @@
+{
+  "schema": "minimax-fp4-source-provenance-v1",
+  "runtime_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
+  "sources": {
+    "source/kernel.py": {
+      "image_path": "/sgl-workspace/aiter/aiter/ops/triton/_triton_kernels/gemm/basic/gemm_afp4wfp4.py",
+      "sha256": "66d8611eae70089b20639eae8dc94ae4df1d7a5cf537317575ea89adf9944fbf"
+    },
+    "ut/native/wrapper.py": {
+      "image_path": "/sgl-workspace/aiter/aiter/ops/triton/gemm/basic/gemm_afp4wfp4.py",
+      "sha256": "6d7da580b9465905a092996287c05af9920402fb7c14b5d9c1e71de40456a09c"
+    },
+    "ut/native/quark_linear.py": {
+      "image_path": "/sgl-workspace/sglang/python/sglang/srt/layers/quantization/quark/schemes/quark_w4a4_mxfp4.py",
+      "sha256": "a39b1c745c354782e91aaf54ec1673638aeaa7601acb19b35569a22653976570"
+    }
+  },
+  "runtime_dependencies": {
+    "aiter.jit.utils.torch_guard": "037c74413847fae1a4ad7cf087c583c5786ff82b08250799a67e68b31f04e32c",
+    "aiter.ops.triton._triton_kernels.common.splitk_reduce": "0f8c324c168a8687d07a849b5c2481521fa7113f93c7ba8cf8fc21609d0ef529",
+    "aiter.ops.triton.utils._triton.kernel_repr": "c65c5d8cd32b3c5df72a33d426e71901140226080b1b4f64ed46e1e7250110e1",
+    "aiter.ops.triton.utils._triton.pid_preprocessing": "b18096d48047fd2f7f232c470886e9f154712c1fb12bd01091fd6a366689790b",
+    "aiter.ops.triton.utils.gemm_config_utils": "18ea1366e9339dfb09b8c8410bf55c7ddb992e8c9e9e128949189bada914f9cc",
+    "aiter.ops.triton.utils.common_utils": "f61e3c172068a1bd66ce8a2257ae5d48c1e65f884aa034bf367014eee44ef851",
+    "aiter.ops.triton.utils._triton.arch_info": "f20618af9b6aa87c2b4f73939cbea7daea91fd8f9a3c00af06878ae2647303af",
+    "aiter.ops.triton.utils.logger": "1199a4044a8a27de0822e11bb702d409a02bd766f668fd81bb8167d47ab9b9ba"
+  },
+  "binding_adaptation": {
+    "file": "ut/native/wrapper.py",
+    "function": "gemm_afp4wfp4_",
+    "action": "Remove exactly its torch_compile_guard decorator in the private loader AST; bind wrapper kernel global to private submitted or frozen module. Original source bytes stay unchanged.",
+    "reason": "Existing torch.ops.aiter registration is keyed only by function name and can ignore a later private import."
+  },
+  "scope": "Packed FP4 GEMM after Quark activation quantization; excludes input quantization, bias addition, fused split-cat and pre-quant variants."
+}

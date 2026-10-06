@@ -1,4 +1,81 @@
-# minimax-m3__gemm_afp4wfp4_kernel - NOT_BUILT
+# minimax-m3__gemm_afp4wfp4_kernel — CPU draft, capture integration pending
+
+The current pinned SG520 runtime still executes this original MiniMax head at
+the Quark dense-linear seam. Its sampled native profile contains 7,296 prefill
+and 7,296 decode kernel events (912 per rank per stage). These are profile-window
+counts, not full-workload frequencies. Prefill uses BM256/BN256/BK256 and decode
+BM32/BN32/BK512; those tile sizes do not establish matrix shapes. Exact profile
+receipts and the recipe-parity result are in `provenance/OBSERVED-PRESENCE.json`.
+
+This directory now contains a CPU-tested draft. It has no `config.yaml`, case
+manifest, operand fixtures, timing report, or task-validator result. The original
+`NOT_BUILT` marker below remains as historical evidence of the unfinished head.
+Do not count the three existing MiniMax attention tasks as coverage of this
+separate dense GEMM.
+
+## Prepared contract
+
+- `source/kernel.py` and `ut/reference/kernel.py` are identical copies of the
+  current image's full kernel module. Only `_gemm_afp4wfp4_kernel` is editable.
+  Imports, decorators, signatures, other kernels and configuration lookup are
+  frozen by `ut/source_guard.py`.
+- `ut/native/wrapper.py` and `ut/native/quark_linear.py` preserve exact current
+  native sources. `SOURCE-PROVENANCE.json` pins them and the runtime dependencies.
+- Activations have logical shape `(M, 2*K_bytes)` and packed shape `(M,K_bytes)`;
+  weights arrive as `(N,K_bytes)` and the native wrapper transposes their view.
+  The low nibble precedes the high nibble. E8M0 scales cover 32 logical values.
+  Scale byte zero means `2**-127`; byte 255 is NaN and is never silently erased.
+  Capture preserves real strides, offsets, aliases and full storage, including
+  any padded scale allocation.
+- `ut/reference.py` implements independent CPU decoding and mathematical dot
+  products, including strided byte views and split-K partials. Its small CPU
+  examples are format tests, not claimed production cases. Native FP32
+  accumulation, optional BF16 partials, final casting and numerical tolerance
+  still require calibration against captured outputs.
+- `ut/binding.py` loads each leg under a private module name and binds the
+  wrapper's actual kernel global to it. The loader removes exactly the
+  `torch_compile_guard` decorator from the frozen wrapper AST, preserving its
+  body. This avoids dispatch through an already registered process-global
+  `torch.ops.aiter.gemm_afp4wfp4_`. This adaptation is explicit provenance and has
+  not yet been checked on a GPU. Supply the captured reduction mode and config;
+  do not infer them from tile names.
+- `scripts/make_source_controls.py NEW_DIRECTORY` prepares guarded source-only
+  no-op and zero-output candidates. Their numerical rejection still requires
+  a valid native reference and actual eager/graph execution.
+
+## Capture integration
+
+`capture/INTEGRATION.json` is the handoff for the shared-capture owner.
+`capture/adapter.py` imports without starting capture. Install it with the
+pinned V4 recorder, loaded Quark/basic/kernel modules, and an owner callback
+providing the recorder, current served context, and graph identity/slot/bucket.
+The owner must initialize the recorder and admit memory before graph capture,
+notify actual served graph replays, then seal and verify every rank.
+
+The adapter replaces Quark's `_gemm_afp4wfp4_orig` global, which the already
+registered Quark custom-op implementation reads at execution. It also observes
+the basic wrapper's actual Triton kernel launch. It captures `x`, `w`, both
+scales, optional `y`, returned output, requested dtype/config, resolved launch
+controls, all scalar strides, `skip_reduce`, and `_USE_GEMM_SPLITK_BF16`. Input
+quantization, bias addition and the fused pre-quant/split-cat variants are outside
+this head. The adapter must run in a fresh capture bundle alongside, without
+changing, the existing three attention-family adapters.
+
+Before task activation, obtain complete prefill/decode matrix/layout/control
+coverage and exact full-workload all-rank counts, verify output/alias/storage
+receipts, and admit actual fixture payloads. Then add a protected runner and
+scoreable manifest, prove submitted-source eager/graph controls, and run native
+and framework qualification. Missing capture is never filled with guessed
+shapes, weights, call distributions, or successful reports.
+
+CPU checks:
+
+```bash
+python3 scripts/check_draft.py
+python3 -m pytest -q tests/test_draft.py
+```
+
+## Historical unbuilt inventory
 
 **MiniMax-M3-MXFP4** - `_gemm_afp4wfp4_kernel` (Triton, 5.14% GPU).
 

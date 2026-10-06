@@ -1,0 +1,11 @@
+{
+  "schema": "minimax-fp4-draft-v1",
+  "source_file": "source/kernel.py",
+  "reference_file": "ut/reference/kernel.py",
+  "source_sha256": "66d8611eae70089b20639eae8dc94ae4df1d7a5cf537317575ea89adf9944fbf",
+  "kernels": [
+    "_gemm_afp4wfp4_kernel"
+  ],
+  "status": "DRAFT_REQUIRES_ACTUAL_CAPTURE",
+  "scoreable": false
+}

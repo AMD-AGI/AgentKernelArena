@@ -1,0 +1,135 @@
+{
+  "schema": "minimax-fp4-observed-presence-v1",
+  "runtime_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
+  "profile_run": "minimax-nvme-194299",
+  "profile_scope": "Counts are exact occurrences in native sampled windows, not full-workload frequencies. Kimi decode GPU coverage is uneven (rank7 has none of these target events); no counts are rescaled.",
+  "sampled_occurrences": {
+    "prefill": 7296,
+    "decode": 7296
+  },
+  "tiles": {
+    "prefill": {
+      "BLOCK_SIZE_M": 256,
+      "BLOCK_SIZE_N": 256,
+      "BLOCK_SIZE_K": 256
+    },
+    "decode": {
+      "BLOCK_SIZE_M": 32,
+      "BLOCK_SIZE_N": 32,
+      "BLOCK_SIZE_K": 512
+    }
+  },
+  "profile_receipts": {
+    "prefill": [
+      {
+        "rank": 0,
+        "file": "minimax-nvme-194299-minimax-nvme-194299-TP-0-EXTEND.trace.json.gz",
+        "sha256": "2d46f22cbb9015ab72a10cb0ce5e9399e5286d072529f0dd7f6c3d27b0ef289f",
+        "occurrences": 912
+      },
+      {
+        "rank": 3,
+        "file": "minimax-nvme-194299-minimax-nvme-194299-TP-3-EXTEND.trace.json.gz",
+        "sha256": "9278e3efea1b8b783f855a41650307758be6419e201265ee4c21a6b34e0914a3",
+        "occurrences": 912
+      },
+      {
+        "rank": 1,
+        "file": "minimax-nvme-194299-minimax-nvme-194299-TP-1-EXTEND.trace.json.gz",
+        "sha256": "6f72f74514273419ee0a8a75a9c71ac98e0c63e3758a9b4b68ff20c9a9b73dbc",
+        "occurrences": 912
+      },
+      {
+        "rank": 2,
+        "file": "minimax-nvme-194299-minimax-nvme-194299-TP-2-EXTEND.trace.json.gz",
+        "sha256": "6b09d41dd8de6f3506af14566f16632a5125fc3a3768cea02f7f5b011b9a3fe7",
+        "occurrences": 912
+      },
+      {
+        "rank": 6,
+        "file": "minimax-nvme-194299-minimax-nvme-194299-TP-6-EXTEND.trace.json.gz",
+        "sha256": "f8f501fc4d868bcbc6a951d5c7fc1e72b8175ec8bf7ba2d55ccca70d7c624e9b",
+        "occurrences": 912
+      },
+      {
+        "rank": 4,
+        "file": "minimax-nvme-194299-minimax-nvme-194299-TP-4-EXTEND.trace.json.gz",
+        "sha256": "c5ea53aa7b27ca67c5e0d64f6caaaceabc280fbe42057edcf294effa83081c75",
+        "occurrences": 912
+      },
+      {
+        "rank": 7,
+        "file": "minimax-nvme-194299-minimax-nvme-194299-TP-7-EXTEND.trace.json.gz",
+        "sha256": "0fb95d1e6a9ad1d77983ccd2881f027474fa819f56b866144c88c22a440d5440",
+        "occurrences": 912
+      },
+      {
+        "rank": 5,
+        "file": "minimax-nvme-194299-minimax-nvme-194299-TP-5-EXTEND.trace.json.gz",
+        "sha256": "d7b6c5a4fa2da8b4fbd149f46d4d960d1ffc70847cc72177ade33cd9306adcec",
+        "occurrences": 912
+      }
+    ],
+    "decode": [
+      {
+        "rank": 0,
+        "file": "minimax-nvme-194299-minimax-nvme-194299-TP-0-DECODE.trace.json.gz",
+        "sha256": "b48ab314f69ea2678fbf726484f08aa82f656216009afbeb5821332fb0fee43e",
+        "occurrences": 912
+      },
+      {
+        "rank": 1,
+        "file": "minimax-nvme-194299-minimax-nvme-194299-TP-1-DECODE.trace.json.gz",
+        "sha256": "4497559db689e9d78a11bcc34c7fc9ac5b01da7432e7e0fdc287132ec2156261",
+        "occurrences": 912
+      },
+      {
+        "rank": 2,
+        "file": "minimax-nvme-194299-minimax-nvme-194299-TP-2-DECODE.trace.json.gz",
+        "sha256": "84c76ca0a44528ea04259c31928541ef30300ef0173caaf96697d943f72a7802",
+        "occurrences": 912
+      },
+      {
+        "rank": 3,
+        "file": "minimax-nvme-194299-minimax-nvme-194299-TP-3-DECODE.trace.json.gz",
+        "sha256": "ba67fbc7ceb347def6d1d74c33f06c8f0002045baee155ac299b2159cb16f427",
+        "occurrences": 912
+      },
+      {
+        "rank": 4,
+        "file": "minimax-nvme-194299-minimax-nvme-194299-TP-4-DECODE.trace.json.gz",
+        "sha256": "ce2a52b15a40a68dad1792156d589579ea89b1083b87f6573a241bc4d80a7b6a",
+        "occurrences": 912
+      },
+      {
+        "rank": 5,
+        "file": "minimax-nvme-194299-minimax-nvme-194299-TP-5-DECODE.trace.json.gz",
+        "sha256": "fc5986ab1dbbeff1546819b8d5a31a7538d49e804e9fca29631295b784280613",
+        "occurrences": 912
+      },
+      {
+        "rank": 6,
+        "file": "minimax-nvme-194299-minimax-nvme-194299-TP-6-DECODE.trace.json.gz",
+        "sha256": "fccd7322b556bb73f84c40b0723c265a6e04dd27cd11ff0155a3dd7dacb5fde1",
+        "occurrences": 912
+      },
+      {
+        "rank": 7,
+        "file": "minimax-nvme-194299-minimax-nvme-194299-TP-7-DECODE.trace.json.gz",
+        "sha256": "8679a36582d31fe572a2bf19be98f270e1c99346fd0ec7d7bafd2bd09fe88bf6",
+        "occurrences": 912
+      }
+    ]
+  },
+  "recipe_parity": {
+    "image": true,
+    "workload": true,
+    "server_command_args": true,
+    "model_environment": true,
+    "native_jit_policy": true
+  },
+  "matrix_shape_distribution": null,
+  "full_workload_occurrences": null,
+  "operand_fixtures": null,
+  "gpu_qualification": null
+}
