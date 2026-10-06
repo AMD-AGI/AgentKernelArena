@@ -12,7 +12,7 @@
     "kernel": "aiter.ops.triton._triton_kernels.gemm.basic.gemm_afp4wfp4"
   },
   "install": "capture.adapter.install(cap, quark_module, basic_module, kernel_module, owner_context)",
-  "binding": "Replace quark_module._gemm_afp4wfp4_orig; the cached Quark custom-op implementation reads this global. Probe basic_module._triton_gemm_afp4wfp4_kernel for the actual launch.",
+  "binding": "Replace quark_module._gemm_afp4wfp4_orig; the cached Quark custom-op implementation reads this global. Observe run on the exact shared pinned Heuristics/JIT kernel object, including calls from retained first-import globals.",
   "owner_context": [
     "recorder",
     "served (eager)",
@@ -107,5 +107,11 @@
     },
     "oracle_policy": "Explicit reviewed JSON with metric=mixed_rms, tolerance>0 and <=0.02, and nonempty basis; every native captured output must independently calibrate before candidate checks.",
     "output": "A new bundle with cases.json, raw fixtures, provenance receipts, and CAPTURE-ADMISSION.json; no config activation or GPU qualification."
+  },
+  "native_binding_revision": {
+    "reason": "Native smoke exposed AITER legacy alias double import and retained Torch registration globals.",
+    "repair": "Observe the shared kernel object run method, preserve native dispatch, require exactly one launch, read split-K mode from the executing pinned native frame.",
+    "proof": "provenance/NATIVE-CAPTURE-BINDING-REPAIR.json",
+    "native_validation": "pending fresh smoke; prior failure preserved"
   }
 }

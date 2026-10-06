@@ -62,7 +62,15 @@ notify actual served graph replays, then seal and verify every rank.
 
 The adapter replaces Quark's `_gemm_afp4wfp4_orig` global, which the already
 registered Quark custom-op implementation reads at execution. It also observes
-the basic wrapper's actual Triton kernel launch. It captures `x`, `w`, both
+the exact pinned Triton kernel object's `run` method. A native smoke exposed
+that AITER's legacy-module redirect executes the wrapper module twice, while
+Torch registration retains the first function's globals. Replacing only the
+current module's kernel global therefore missed the actual launch. The shared
+kernel-object probe covers both module instances, still requires exactly one
+launch, and reads split-K dtype mode from the executing native wrapper frame.
+The failed run and CPU reproduction are described in
+`provenance/NATIVE-CAPTURE-BINDING-REPAIR.json`; this revision needs a fresh native
+smoke. The adapter captures `x`, `w`, both
 scales, optional `y`, returned output, requested dtype/config, resolved launch
 controls, all scalar strides, `skip_reduce`, and `_USE_GEMM_SPLITK_BF16`. Input
 quantization, bias addition and the fused pre-quant/split-cat variants are outside

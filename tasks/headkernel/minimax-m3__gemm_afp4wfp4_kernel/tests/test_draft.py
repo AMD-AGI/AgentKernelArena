@@ -112,24 +112,40 @@ def test_generated_source_controls_pass_the_unchanged_boundary(tmp_path, kind):
 
 
 @pytest.mark.parametrize("graph", [False, True])
-def test_capture_hooks_cached_quark_global_and_records_native_launch(monkeypatch, graph):
+@pytest.mark.parametrize("retained_globals", [False, True])
+@pytest.mark.parametrize("launch_count", [0, 1, 2])
+def test_capture_hooks_cached_quark_global_and_records_native_launch(monkeypatch, graph, retained_globals, launch_count):
     spec = importlib.util.spec_from_file_location("fp4_capture_adapter", ROOT / "capture/adapter.py")
     adapter = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(adapter)
     calls = []
     class Jit:
+        def run(self, *args, **kwargs):
+            return SimpleNamespace(name="native_fp4", hash="compiled-hash")
         def __getitem__(self, grid):
-            return lambda *args, **kwargs: SimpleNamespace(name="native_fp4", hash="compiled-hash")
+            # Triton's KernelInterface resolves run dynamically on this object.
+            return lambda *args, **kwargs: self.run(*args, grid=grid, warmup=False, **kwargs)
     basic = ModuleType("fake_basic")
     basic.__file__ = str(ROOT / "ut/native/wrapper.py")
     basic._triton_gemm_afp4wfp4_kernel = Jit()
     basic._USE_GEMM_SPLITK_BF16 = False
     kernel_module = SimpleNamespace(__file__=str(ROOT / "source/kernel.py"),
                                     _gemm_afp4wfp4_kernel=basic._triton_gemm_afp4wfp4_kernel)
+    # Model AITER's redirect: a cached custom-op function keeps the first
+    # execution's globals, while the current module can be a second instance.
+    raw_globals = dict(basic.__dict__) if retained_globals else basic.__dict__
+    raw_globals["_USE_GEMM_SPLITK_BF16"] = retained_globals
+    raw_globals["launch_count"] = launch_count
+    code = """def gemm_afp4wfp4_(x, w, x_scales, w_scales, dtype, y, config, skip_reduce):
+    for _ in range(launch_count):
+        _triton_gemm_afp4wfp4_kernel[(1,)](x, w, y, x_scales, w_scales, 2, 3, 16,
+            BLOCK_SIZE_M=32, BLOCK_SIZE_N=32, BLOCK_SIZE_K=128, NUM_KSPLIT=1)
+    return y
+"""
+    exec(compile(code, basic.__file__, "exec"), raw_globals)
+    registered_native = raw_globals["gemm_afp4wfp4_"]
     def original(x, w, x_scales, w_scales, dtype="bfloat16", y=None, config=None, skip_reduce=False):
-        basic._triton_gemm_afp4wfp4_kernel[(1,)](x, w, y, x_scales, w_scales, 2, 3, 16,
-            **{"BLOCK_SIZE_M": 32, "BLOCK_SIZE_N": 32, "BLOCK_SIZE_K": 128, "NUM_KSPLIT": 1})
-        return y
+        return registered_native(x, w, x_scales, w_scales, dtype, y, config, skip_reduce)
     basic.gemm_afp4wfp4 = original
     quark = ModuleType("fake_quark")
     quark.__file__ = str(ROOT / "ut/native/quark_linear.py")
@@ -139,7 +155,7 @@ def test_capture_hooks_cached_quark_global_and_records_native_launch(monkeypatch
     recorder = SimpleNamespace(begin_eager=lambda *args: SimpleNamespace(controls=args[2]),
         begin_graph=lambda *args, **kwargs: SimpleNamespace(controls=args[2]),
         finish=lambda handle, outputs: calls.append((handle.controls, outputs)),
-        abort=lambda *args: pytest.fail("capture aborted"))
+        abort=lambda *args: None)
     cap = SimpleNamespace(__file__=str(ROOT / "capture/adapter.py"), capturing=lambda: graph,
         controls_json=lambda value: value, Role=lambda *args, **kw: (args, kw),
         Family=lambda *args: args)
@@ -147,6 +163,15 @@ def test_capture_hooks_cached_quark_global_and_records_native_launch(monkeypatch
     adapter.install(cap, quark, basic, kernel_module, lambda: {"recorder": recorder, "served": object(),
         "graph_id": "graph-1", "slot_id": "minimax_fp4_gemm:0", "bucket": "actual-observed"})
     result = object()
+    if launch_count != 1:
+        with pytest.raises(ValueError, match="exactly one declared FP4 GEMM launch: " + str(launch_count)):
+            cached(object(), object(), object(), object(), "bfloat16", result)
+        assert calls == []
+        return
     assert cached(object(), object(), object(), object(), "bfloat16", result) is result
     assert calls[0][0]["launches"][0]["arguments"]["K"] == 16
+    assert "warmup" not in calls[0][0]["launches"][0]["arguments"]
+    assert "grid" not in calls[0][0]["launches"][0]["arguments"]
+    assert calls[0][0]["use_splitk_bf16"] is retained_globals
+    assert basic._triton_gemm_afp4wfp4_kernel is kernel_module._gemm_afp4wfp4_kernel
     assert calls[0][1]["result"] is result

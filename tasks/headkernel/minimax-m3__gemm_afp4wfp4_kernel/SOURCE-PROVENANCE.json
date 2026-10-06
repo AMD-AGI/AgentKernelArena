@@ -13,6 +13,10 @@
     "ut/native/quark_linear.py": {
       "image_path": "/sgl-workspace/sglang/python/sglang/srt/layers/quantization/quark/schemes/quark_w4a4_mxfp4.py",
       "sha256": "a39b1c745c354782e91aaf54ec1673638aeaa7601acb19b35569a22653976570"
+    },
+    "ut/native/triton_compat.py": {
+      "image_path": "/sgl-workspace/aiter/aiter/ops/triton/__init__.py",
+      "sha256": "39b69b1c44d4d7ef1a88e4c082d422ac320f5bec150474a1865831bffce5ed64"
     }
   },
   "runtime_dependencies": {

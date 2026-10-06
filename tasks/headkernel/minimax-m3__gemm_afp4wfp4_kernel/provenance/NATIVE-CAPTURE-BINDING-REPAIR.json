@@ -1,0 +1,36 @@
+{
+  "schema": "minimax-fp4-native-capture-binding-repair-v1",
+  "status": "CPU_REPRODUCED_PENDING_FRESH_NATIVE_SMOKE",
+  "failed_native_run": {
+    "job": "194958",
+    "node": "crsuse2-m2m-204",
+    "gpu": 3,
+    "run": "minimax-gpu3-20261006T011559Z-822d768b",
+    "error": "Quark call did not execute exactly one declared FP4 GEMM launch",
+    "preserved": true
+  },
+  "native_compatibility_source": {
+    "image_path": "/sgl-workspace/aiter/aiter/ops/triton/__init__.py",
+    "task_copy": "ut/native/triton_compat.py",
+    "sha256": "39b69b1c44d4d7ef1a88e4c082d422ac320f5bec150474a1865831bffce5ed64"
+  },
+  "diagnosis": "The pinned backward-compatibility finder imports the canonical wrapper and returns its spec, causing a second module execution. Torch custom-op registration retains the first raw function/global dictionary; patching only the current module global misses that execution.",
+  "cpu_reproduction": {
+    "uses_original_backward_compat_find_spec": true,
+    "wrapper_module_executions": 2,
+    "imported_wrapper_matches_current_module": true,
+    "registered_globals_match_current_module": false,
+    "registered_globals_match_first_module": true
+  },
+  "repair": "Observe run on the exact pinned Heuristics/JIT object shared by retained and current globals. Delegate the original bound run once, preserving its arguments/result. Require exactly one native launch. Read split-K dtype mode from the executing pinned wrapper frame.",
+  "unchanged": [
+    "native source bytes",
+    "native dispatch and custom-op registration",
+    "kernel launch arguments",
+    "one-launch requirement",
+    "tensor values",
+    "task math and numerical policy",
+    "measurement policy"
+  ],
+  "gpu_validation": "not yet run for this revision"
+}

@@ -20,29 +20,42 @@ ARGS = ("a_ptr", "b_ptr", "c_ptr", "a_scales_ptr", "b_scales_ptr", "M", "N", "K"
 
 
 class KernelProbe:
-    def __init__(self, original, context, cap):
-        self.original, self.context, self.cap = original, context, cap
+    def __init__(self, original, context, cap, wrapper_path):
+        self.original_run, self.context, self.cap = original.run, context, cap
+        self.wrapper_paths = {str(wrapper_path), str(Path(wrapper_path).resolve())}
 
-    def __getattr__(self, name):
-        return getattr(self.original, name)
+    def executing_splitk_flag(self):
+        frame = inspect.currentframe()
+        try:
+            while frame is not None:
+                if frame.f_code.co_name == "gemm_afp4wfp4_" and frame.f_code.co_filename in self.wrapper_paths:
+                    value = frame.f_globals.get("_USE_GEMM_SPLITK_BF16")
+                    if type(value) is not bool:
+                        raise ValueError("executing native wrapper has an invalid split-K dtype flag")
+                    return value
+                frame = frame.f_back
+        finally:
+            del frame
+        raise ValueError("FP4 launch is not inside the pinned native wrapper body")
 
-    def __getitem__(self, grid):
-        launch = self.original[grid]
-        def run(*args, **kwargs):
-            values = dict(zip(ARGS, args))
-            values.update(kwargs)
-            result = launch(*args, **kwargs)
-            events = getattr(self.context, "events", None)
-            if events is not None:
-                controls = {key: self.cap.controls_json(value) for key, value in values.items()
-                            if key not in ARGS[:5]}
-                resolved_grid = grid(values) if callable(grid) else grid
-                events.append({"kernel": KERNEL, "arguments": controls,
-                               "grid": self.cap.controls_json(resolved_grid),
-                               "compiled_name": getattr(result, "name", None),
-                               "compiled_hash": getattr(result, "hash", None)})
-            return result
-        return run
+    def __call__(self, *args, **kwargs):
+        values = dict(zip(ARGS, args))
+        values.update({key: value for key, value in kwargs.items() if key not in {"grid", "warmup"}})
+        result = self.original_run(*args, **kwargs)
+        events = getattr(self.context, "events", None)
+        if events is not None:
+            if kwargs.get("warmup", False):
+                raise ValueError("compile-only warmup cannot stand in for a captured kernel launch")
+            controls = {key: self.cap.controls_json(value) for key, value in values.items()
+                        if key not in ARGS[:5]}
+            grid = kwargs.get("grid")
+            resolved_grid = grid(values) if callable(grid) else grid
+            events.append({"kernel": KERNEL, "arguments": controls,
+                           "grid": self.cap.controls_json(resolved_grid),
+                           "executing_splitk_bf16": self.executing_splitk_flag(),
+                           "compiled_name": getattr(result, "name", None),
+                           "compiled_hash": getattr(result, "hash", None)})
+        return result
 
 
 def install(cap, quark_module, basic_module, kernel_module, context):
@@ -69,7 +82,15 @@ def install(cap, quark_module, basic_module, kernel_module, context):
     kernel_original = basic_module._triton_gemm_afp4wfp4_kernel
     if kernel_original is not kernel_module._gemm_afp4wfp4_kernel:
         raise ValueError("native wrapper kernel global does not match the pinned kernel module")
-    basic_module._triton_gemm_afp4wfp4_kernel = KernelProbe(kernel_original, local, cap)
+    # AITER's legacy-module redirect can execute the wrapper module twice.
+    # torch_compile_guard retains the first function's globals in its registered
+    # custom op, even after sys.modules exposes the second module. Both globals
+    # retain this same pinned Heuristics/JIT object. KernelInterface.__getitem__
+    # resolves its run method at launch, so observe the object rather than only
+    # replacing the current wrapper module's global.
+    if isinstance(kernel_original.run, KernelProbe):
+        raise ValueError("FP4 kernel already has a capture probe")
+    kernel_original.run = KernelProbe(kernel_original, local, cap, basic_module.__file__)
 
     @functools.wraps(original)
     def capture(*args, **kwargs):
@@ -102,7 +123,8 @@ def install(cap, quark_module, basic_module, kernel_module, context):
         try:
             result = original(*args, **kwargs)
             if len(local.events) != 1:
-                raise ValueError("Quark call did not execute exactly one declared FP4 GEMM launch")
+                raise ValueError("Quark call did not execute exactly one declared FP4 GEMM launch: " + str(len(local.events)))
+            handle.controls["use_splitk_bf16"] = local.events[0].pop("executing_splitk_bf16")
             handle.controls["launches"] = local.events
             rec.finish(handle, {"result": result})
             return result
