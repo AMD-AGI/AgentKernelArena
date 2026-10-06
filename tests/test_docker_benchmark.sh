@@ -282,8 +282,10 @@ assert_cache_args_present "" "${args[@]}"
 # Old and custom gfx950 images do not receive the v0.5.14-specific overrides.
 mapfile -t args < <(run_shell_args AKA_GPU_ARCH=gfx950 AKA_DOCKER_IMAGE="$OLD_GFX950_IMAGE")
 assert_cache_args_absent "${args[@]}"
+assert_not_has "$TEST_HOME/.cache:rw,exec,uid=$(id -u),gid=$(id -g),mode=0700" "${args[@]}"
 mapfile -t args < <(run_shell_args AKA_GPU_ARCH=gfx950 AKA_DOCKER_IMAGE_GFX950=example.invalid/custom:latest)
 assert_cache_args_absent "${args[@]}"
+assert_not_has "$TEST_HOME/.cache:rw,exec,uid=$(id -u),gid=$(id -g),mode=0700" "${args[@]}"
 
 # AITER can seed its normal user cache in custom runtimes even when the sparse
 # auth mounts leave HOME's parent root-owned. Keep native module lookup intact.
@@ -293,12 +295,16 @@ assert_has "$TEST_HOME/.aiter:rw,exec,uid=$(id -u),gid=$(id -g),mode=0700" "${ar
 assert_not_has "AITER_JIT_DIR=/tmp/aiter-jit" "${args[@]}"
 assert_not_has "FLYDSL_RUNTIME_CACHE_DIR=/tmp/flydsl-runtime-cache" "${args[@]}"
 assert_has "/tmp/aiter_configs:rw,uid=$(id -u),gid=$(id -g),mode=1777" "${args[@]}"
+assert_has "$TEST_HOME/.cache:rw,exec,uid=$(id -u),gid=$(id -g),mode=0700" "${args[@]}"
+assert_before "$TEST_HOME/.cache:rw,exec,uid=$(id -u),gid=$(id -g),mode=0700" "$SG520_IMAGE" "${args[@]}"
 mapfile -t args < <(run_shell_args AKA_GPU_ARCH=gfx950 AKA_DOCKER_IMAGE="$SG520_IMAGE" AKA_CONTAINER_HOME=/tmp/aka-isolated-worker)
 assert_has "/tmp/aka-isolated-worker/.aiter:rw,exec,uid=$(id -u),gid=$(id -g),mode=0700" "${args[@]}"
 assert_not_has "$TEST_HOME/.aiter:rw,exec,uid=$(id -u),gid=$(id -g),mode=0700" "${args[@]}"
 assert_not_has "AITER_JIT_DIR=/tmp/aiter-jit" "${args[@]}"
 assert_not_has "FLYDSL_RUNTIME_CACHE_DIR=/tmp/flydsl-runtime-cache" "${args[@]}"
 assert_has "/tmp/aiter_configs:rw,uid=$(id -u),gid=$(id -g),mode=1777" "${args[@]}"
+assert_has "/tmp/aka-isolated-worker/.cache:rw,exec,uid=$(id -u),gid=$(id -g),mode=0700" "${args[@]}"
+assert_not_has "$TEST_HOME/.cache:rw,exec,uid=$(id -u),gid=$(id -g),mode=0700" "${args[@]}"
 
 # Root cache initialization has no GPU, network, auth, or broad checkout mount.
 mapfile -t seed_args < <(AKA_DOCKER_LABEL_FILE="$LABEL_FILE" bash "$RUNNER" _print_aiter_seed_args \

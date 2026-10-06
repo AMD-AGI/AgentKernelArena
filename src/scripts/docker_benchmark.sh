@@ -1051,11 +1051,15 @@ build_docker_args() {
     fi
 
     # SG 0.5.20 AITER merges its original tuned CSVs into this hardcoded
-    # directory. The image ships it root-owned; only the generated merge/lock
-    # files need a writable mount. Keep native source, config selection and
-    # prebuilt JIT module lookup intact.
+    # directory. Its own JIT loader also defaults to ~/.cache/sglang/jit,
+    # independently of Torch's cache overrides. Supply private writable
+    # storage before imports without changing native source/config selection
+    # or the complete AITER JIT cache and prebuilt module lookup above.
     if [[ "$SELECTED_GPU_ARCH" == "gfx950" && "$SELECTED_IMAGE" == "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96" ]]; then
-        docker_args+=(--tmpfs "/tmp/aiter_configs:rw,uid=${HOST_UID},gid=${HOST_GID},mode=1777")
+        docker_args+=(
+            --tmpfs "/tmp/aiter_configs:rw,uid=${HOST_UID},gid=${HOST_GID},mode=1777"
+            --tmpfs "${container_home}/.cache:rw,exec,uid=${HOST_UID},gid=${HOST_GID},mode=0700"
+        )
     fi
 
     if [[ "$SELECTED_GPU_ARCH" == "gfx1201" ]]; then

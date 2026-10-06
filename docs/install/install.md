@@ -211,6 +211,14 @@ and lock files there; its source CSVs, configuration selection, and native JIT
 module lookup remain unchanged. This handles images that ship this generated
 configuration directory owned by root.
 
+That exact runtime also receives a private executable tmpfs at its effective
+`HOME/.cache`, owned by the container UID/GID with mode `0700`, before Python
+starts. SGLang's own JIT loader defaults to `~/.cache/sglang/jit` independently
+of Torch's cache settings. The mount permits native JIT builds when the sparse
+authentication mounts leave the parent home directory unwritable. It follows
+`AKA_CONTAINER_HOME` and leaves the separate complete AITER cache and native
+precompiled-module lookup unchanged.
+
 Each runtime container receives a private writable tmpfs at its existing
 `HOME/.aiter`, owned by the actual container UID/GID with mode `0700`. This lets
 AITER populate its normal cache from the image before imports complete, even
