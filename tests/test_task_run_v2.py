@@ -72,7 +72,7 @@ def test_complete_pipeline_keeps_baseline_and_evaluates_after_agent_error(tmp_pa
     complete, workspace = run(tmp_path, path, launcher)
     report = read_report(workspace)
     assert complete and report["candidate_accepted"]
-    assert report["score"] == 220
+    assert report["score"] == 0
     assert report["agent_execution"]["status"] == "FAILED"
     assert report["agent_execution"]["candidate_changed"] is True
     assert report["baseline_correctness"]["status"] == "PASS"
@@ -101,7 +101,7 @@ def test_unchanged_candidate_is_reported_without_discarding_independent_evaluati
 
     complete, workspace = run(tmp_path, path, launcher)
     report = read_report(workspace)
-    assert complete and report["candidate_accepted"] and report["score"] == 220
+    assert complete and report["candidate_accepted"] and report["score"] == 0
     assert report["agent_execution"]["status"] == ("FAILED" if fail else "COMPLETED")
     assert report["agent_execution"]["candidate_changed"] is False
 
@@ -221,7 +221,7 @@ def test_resume_retains_original_baseline_and_performs_new_candidate_checks(tmp_
     report = read_report(workspace)
     assert not report["candidate_accepted"]
     assert report["baseline_correctness"]["status"] == "PASS"
-    assert report["score"] == 20
+    assert report["score"] == 0
     after = json.loads((workspace.parent / ".task-sessions" / workspace.name / "initial_sources.json").read_text())
     assert before == after
 
@@ -233,7 +233,7 @@ output = pathlib.Path(os.environ["ARENA_EXPORT_PATH"])
 output.parent.mkdir(parents=True, exist_ok=True)
 report = pathlib.Path(os.environ["ARENA_FINAL_RESULT_PATH"])
 evaluation = yaml.safe_load(report.read_text())
-assert evaluation['pass_correctness'] and evaluation['score'] == 220
+assert evaluation['pass_correctness'] and evaluation['score'] == 0
 assert not {'candidate_accepted', 'exports', 'delivery_status'} & evaluation.keys()
 output.write_text(json.dumps({"delivered": True}))
 '''
@@ -246,7 +246,7 @@ output.write_text(json.dumps({"delivered": True}))
     path = package(tmp_path, exporter=code)
     _, workspace = run(tmp_path, path, lambda **_: None, agent="claude_code")
     report = read_report(workspace)
-    assert report["score"] == 220
+    assert report["score"] == 0
     assert report["delivery_status"] == ("INCOMPLETE" if modify_report else "COMPLETE")
     assert report["exports"][0]["status"] == ("FAIL" if modify_report else "PASS")
     assert json.loads((workspace / "artifacts/solution.json").read_text())["delivered"]
@@ -268,7 +268,7 @@ output.write_text('{}')
     path = package(tmp_path, exporter=code)
     _, workspace = run(tmp_path, path, lambda **_: None)
     report = read_report(workspace)
-    assert report["pass_correctness"] and report["score"] == 220
+    assert report["pass_correctness"] and report["score"] == 0
     assert not report["candidate_accepted"]
     assert report["delivery_status"] == "INCOMPLETE"
     assert report["exports"][0]["protected_state_unchanged"] is False
@@ -280,11 +280,13 @@ def test_quality_loop_api_returns_exact_scored_report_and_rechecks_new_candidate
     config = {"agent": {"template": "quality_loop"}}
     first = evaluate_task_session(session, eval_config=config)
     assert first == read_report(session.workspace)
-    assert first["score"] == 220
+    assert first["score"] == 0
+    assert first["pass_correctness"]
     (session.workspace / "kernel.py").write_text("def compute(): return -1\n")
     second = evaluate_task_session(session, eval_config=config)
     assert second == read_report(session.workspace)
-    assert second["score"] == 20
+    assert second["score"] == 0
+    assert not second["pass_correctness"]
     assert second["baseline_correctness"]["status"] == "PASS"
 
 
@@ -296,7 +298,7 @@ raise RuntimeError('failed before writing the artifact')
     path = package(tmp_path, exporter=code)
     _, workspace = run(tmp_path, path, lambda **_: None)
     report = read_report(workspace)
-    assert report["pass_correctness"] and report["score"] == 220
+    assert report["pass_correctness"] and report["score"] == 0
     assert report["evaluated_candidate_sources"]["kernel.py"]
     assert report["delivery_status"] == "INCOMPLETE"
     assert not report["candidate_accepted"]
@@ -309,7 +311,7 @@ raise RuntimeError('failed before writing the artifact')
     assert row["Status"] == "NOT_ACCEPTED"
     assert row["Candidate Accepted"] == "NO"
     assert row["Delivery Status"] == "INCOMPLETE"
-    assert float(row["Score"]) == report["score"] == 220
+    assert float(row["Score"]) == report["score"] == 0
     summary = json.loads((reports / "task_type_breakdown.json").read_text())
     assert summary["overall"]["candidate_rejected_count"] == 1
     assert summary["overall"]["delivery_incomplete_count"] == 1

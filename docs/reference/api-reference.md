@@ -332,29 +332,67 @@ the ordinary correctness run.
 
 ## Scoring
 
-The score is the sum of three components:
+The existing `score` field uses a bounded power-family reward. The default is
+the concave square-root curve (`p = 0.5`) with a `1.05×` speedup cutoff:
 
-| Component | Points | Condition |
-| --- | --- | --- |
-| Compilation | `20` | The kernel compiles successfully |
-| Correctness | `100` | The kernel passes the correctness check |
-| Speedup | `speedup_ratio × 100` | Added only when compilation *and* correctness pass |
+```text
+s = speedup_ratio
+score = max(0, 1 - speedup_threshold / s) ** p
+```
 
-The rules, expressed as the framework applies them:
+The formula applies only when compilation and correctness pass and `s` is a
+finite positive ratio with `benchmark_method_consistent: true`. Failures,
+missing/invalid ratios, or missing/mismatched timing-method evidence score `0`.
+Aggregate timing fields are not a fallback for missing speedup evidence.
+The evaluator also rejects incomplete case coverage or mismatched workloads.
 
-- Compilation fails → score `0`.
-- Compilation passes, correctness fails → score `20`.
-- Both pass → `120 + speedup_ratio × 100`.
+For a single case, `s = baseline_time / candidate_time`. Equivalently, let
+`u = candidate_time / baseline_time` and `c = 1 / speedup_threshold`; then
+`score = max(0, 1 - u/c) ** p`. At the default cutoff, the candidate must take
+less than `baseline_time / 1.05` (about 95.24% of the baseline time) to score
+above zero. Exactly `1.05×` still scores `0`.
 
-**Example**: A kernel that compiles (`20`), is correct (`100`), and achieves a
-`1.58×` speedup scores `20 + 100 + 158 = 278`.
+For multi-case tasks, `s` is the evaluator's arithmetic mean of matched per-case
+speedups. Apply the formula **once to that mean**; do not average per-case
+rewards or divide the two aggregate timing fields. This retains the existing
+aggregation contract, so a positive task score does not guarantee every case
+improved.
 
-The speedup used for scoring is the explicit `speedup_ratio` written by the
-evaluator. For multi-case tasks it is the arithmetic mean of matched per-case
-ratios. Missing/invalid ratios or incomplete/mismatched benchmark-method metadata
-receive no performance points; aggregate timing fields are not a scoring fallback.
+#### Adjusting the curve
 
-This is the default scoring scheme; you can define your own in `src/score.py`.
+Edit these two constants in `src/score.py` before running or aggregating an
+experiment. There is one scoring function, with no additional reward field or
+run-configuration section:
+
+| Constant | Default | Effect |
+| --- | ---: | --- |
+| `SCORE_POWER` | `0.5` | Exponent `p`: `0.5` is concave, `1.0` linear, `2.0` convex |
+| `SCORE_SPEEDUP_THRESHOLD` | `1.05` | Speedup at or below which the score is zero |
+
+Both constants must be finite and positive. `p = 0.5` raises scores for modest
+qualifying improvements; `p = 2.0` emphasizes large improvements. All choices
+preserve the ranking above the cutoff. Changing `p` does not provide a signal
+below the cutoff. Setting the threshold to `1.0` removes the 5% margin but still
+gives zero to baseline-equivalent and slower candidates.
+
+**Example**: For a correct candidate taking 80 microseconds against a
+100-microsecond baseline, `s = 1.25`. The default score is
+`sqrt(1 - 1.05 / 1.25) = 0.4`. The same measurement scores `0.16` with `p = 1`
+and `0.0256` with `p = 2`.
+
+#### Result interpretation and historical reports
+
+Scores are in `[0, 1]`, with faster valid candidates approaching `1`. Compilation
+and correctness are prerequisites, with no separate point bonuses. A correct
+but slower candidate can score `0`; use the explicit correctness and acceptance
+fields for those outcomes.
+
+This replaces the previous `20 + 100 + 100 * speedup_ratio` scoring scale.
+Stored historical scores and runs using different constants are not directly
+comparable. Existing reports are not migrated automatically. Running
+post-processing again recalculates each `task_result.yaml` score using the
+current constants, so use copies when rescoring historical runs and retain the
+code revision and parameter values with the experiment.
 
 For an A/B pair, compare completed run directories with:
 

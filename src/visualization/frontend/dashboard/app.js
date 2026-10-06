@@ -617,7 +617,7 @@
   function formatScore(value) {
     return Number(value || 0).toLocaleString(undefined, {
       minimumFractionDigits: 0,
-      maximumFractionDigits: 1,
+      maximumFractionDigits: 4,
     });
   }
 

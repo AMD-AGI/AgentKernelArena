@@ -199,7 +199,7 @@ class HeldOutBenchmarkMethodTests(unittest.TestCase):
             self.assertEqual(result["speedup_ratio"], 0.0)
             self.assertFalse(result["benchmark_method_consistent"])
             self.assertEqual(len(result["benchmark_method_mismatches"]), 1)
-            self.assertEqual(result["score"], 120.0)
+            self.assertEqual(result["score"], 0.0)
             self.assertFalse(
                 (output_workspace / "orig" / "comparison_baseline_perf.yaml")
                 .exists()

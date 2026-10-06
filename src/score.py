@@ -3,6 +3,12 @@ import math
 import yaml
 from pathlib import Path
 
+
+# Power-family scoring; see docs/reference/api-reference.md#scoring.
+SCORE_POWER = 0.5
+SCORE_SPEEDUP_THRESHOLD = 1.05
+
+
 def resolve_speedup_ratio(
     speedup_ratio: float | int | None = None,
     base_execution_time: float = 0.0,
@@ -47,18 +53,19 @@ def score(
     benchmark_method_consistent: bool | None = None,
 ) -> float:
     """
-    Calculate the optimization task score based on compilation, correctness, and performance.
+    Calculate a bounded power-family score for a correct, comparable candidate.
 
-    Scoring rules:
-    - Pass compilation: +20 points
-    - Pass correctness: +100 points
-    - Speedup (only if both compilation and correctness pass): speedup_ratio * 100 points
+    The score is ``max(0, 1 - SCORE_SPEEDUP_THRESHOLD / speedup) ** SCORE_POWER``.
+    Defaults use the concave square-root curve and require more than 1.05x
+    speedup for a positive score. Compilation/correctness failures and invalid
+    performance comparisons receive zero, with no partial-credit bonuses.
 
     Args:
         pass_compilation: Whether compilation succeeded
         pass_correctness: Whether correctness tests passed
-        base_execution_time: Baseline execution time (must be > 0)
-        best_optimized_execution_time: Optimized execution time (must be > 0)
+        base_execution_time: Retained for caller compatibility; not used to
+            reconstruct missing or invalid speedup ratios.
+        best_optimized_execution_time: Retained for caller compatibility.
         speedup_ratio: Explicit speedup ratio from evaluator output. Preferred for
             multi-testcase tasks where each testcase should have equal weight.
         benchmark_method_consistent: Whether matched baseline/optimized cases used
@@ -66,36 +73,32 @@ def score(
             points.
 
     Returns:
-        float: Total score
-            - 0: Compilation failed
-            - 20: Compilation passed, correctness failed
-            - 120+: Both passed, 120 base + speedup_ratio * 100
-    """
-    total_score = 0.0
+        float: Score in [0, 1]. Correctness and acceptance remain separate fields;
+            a correct candidate at or below the speedup threshold also scores 0.
 
-    # 1. Compilation check: +20 points
-    if not pass_compilation:
+    Raises:
+        ValueError: A scoring constant is not finite and positive.
+    """
+    for name, value in (
+        ("SCORE_POWER", SCORE_POWER),
+        ("SCORE_SPEEDUP_THRESHOLD", SCORE_SPEEDUP_THRESHOLD),
+    ):
+        if not math.isfinite(value) or value <= 0:
+            raise ValueError(f"{name} must be finite and positive")
+
+    if not pass_compilation or not pass_correctness:
         return 0.0
 
-    total_score += 20.0
-
-    # 2. Correctness check: +100 points
-    if not pass_correctness:
-        return total_score
-
-    total_score += 100.0
-
-    # 3. Performance speedup: speedup_ratio * 100 (only if both compilation and correctness passed)
     effective_speedup = resolve_speedup_ratio(
         speedup_ratio=speedup_ratio,
         base_execution_time=base_execution_time,
         best_optimized_execution_time=best_optimized_execution_time,
         benchmark_method_consistent=benchmark_method_consistent,
     )
-    if effective_speedup > 0:
-        total_score += effective_speedup * 100.0
+    if effective_speedup <= SCORE_SPEEDUP_THRESHOLD:
+        return 0.0
 
-    return total_score
+    return (1.0 - SCORE_SPEEDUP_THRESHOLD / effective_speedup) ** SCORE_POWER
 
 
 def task_result_scoring(workspace_path: str) -> float:
