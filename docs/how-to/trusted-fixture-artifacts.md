@@ -131,6 +131,12 @@ materializer checks available space for the transaction, reference, and
 candidate copies before transferring. It streams large tensor hashes rather
 than loading tensors into host memory.
 
+After GPU identity preflight, the isolated Python launcher adds only the selected
+script's canonical parent directory to its import path. This gives protected
+task scripts their normal sibling imports, including `production_comparison`,
+while `-I` continues to exclude ambient `PYTHONPATH` and user-site packages.
+The task and image mounts retain their existing read-only boundaries.
+
 Transfers use `rclone --transfers 64000 --progress --buffer-size 0`,
 `GOMAXPROCS=1`, two checkers, disabled multithread streams, and explicit lists of
 at most 24 objects. Batches target at most 64 MiB; a larger individual asset is

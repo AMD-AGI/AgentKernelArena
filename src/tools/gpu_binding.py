@@ -146,6 +146,29 @@ def command_with_binding(command, image, expected, helper_path, expected_path):
     return command + ["--expected", "/gpu_expectation.json", "--proof", "/task/build/gpu_preflight.json", "--", runner]
 
 
+def run_python_script(command):
+    """Run the selected script with its own directory available for imports.
+
+    run_path does not provide normal script-directory imports when this helper
+    runs under -I. Add only the canonical parent of the already selected script;
+    isolated Python still excludes ambient PYTHONPATH and user-site directories.
+    Trusted evaluators supply this script from their read-only task mount.
+    """
+    script = Path(command[0]).resolve(strict=True)
+    if not script.is_file():
+        raise ValueError("GPU-bound Python command must select a regular script file")
+    previous_argv, previous_path = sys.argv, sys.path
+    previous_entries = previous_path[:]
+    try:
+        sys.argv = list(command)
+        sys.path.insert(0, str(script.parent))
+        return runpy.run_path(str(script), run_name="__main__")
+    finally:
+        sys.argv = previous_argv
+        sys.path = previous_path
+        sys.path[:] = previous_entries
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--render-device")
@@ -164,8 +187,7 @@ def main():
     Path(args.proof).write_text(json.dumps(observed, indent=2) + "\n")
     command = args.command[1:] if args.command[:1] == ["--"] else args.command
     if command:
-        sys.argv = command
-        runpy.run_path(command[0], run_name="__main__")
+        run_python_script(command)
 
 
 if __name__ == "__main__":
