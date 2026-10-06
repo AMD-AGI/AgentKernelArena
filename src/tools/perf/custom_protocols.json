@@ -166,6 +166,7 @@
       ],
       "files_sha256": {
         "scripts/production_comparison.py": [
+          "ef938e7a44134d2e2e8ed02d9d8ae97bac3f7da558ed257ef98b30f7803d29c0",
           "ac7d34b7b406e57c967c9ea842ec5978e33525404eae99fa32ab3833b74a3e04"
         ]
       }

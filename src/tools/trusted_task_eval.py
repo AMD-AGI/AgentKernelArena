@@ -10,6 +10,7 @@ import argparse
 import json
 import math
 import os
+import re
 import secrets
 import stat
 import subprocess
@@ -139,16 +140,50 @@ def guard_sources(reference, candidate, guard_path):
                     str(candidate), str(reference)], check=True, timeout=30)
 
 
+def declared_failure_bundles(build):
+    """Only bounded tensor files named and hashed by a failure manifest qualify."""
+    bundles = {}
+    for manifest in sorted(build.glob('*.tensor_failure.json')):
+        require(manifest.stat().st_size <= 1 << 20, 'failure manifest exceeds metadata bound')
+        record = strict_json(read_regular(manifest))
+        require(isinstance(record, dict), 'tensor failure manifest must be a dictionary')
+        require(record.get('schema') == 'trusted-tensor-failure-v1', 'unknown tensor failure schema')
+        item = record.get('bundle')
+        if item is None:
+            continue
+        require(isinstance(item, dict) and item.get('file') == manifest.with_suffix('.pt').name,
+                'tensor failure bundle must share its manifest basename')
+        require(type(item.get('bytes')) is int and 0 <= item['bytes'] <= 2 << 30
+                and isinstance(item.get('sha256'), str) and re.fullmatch('[0-9a-f]{64}', item['sha256']),
+                'invalid tensor failure bundle size or digest')
+        require(len(bundles) < 1, 'only one tensor failure bundle is permitted per phase')
+        source = build / item['file']
+        require(source.is_file() and not source.is_symlink() and source.stat().st_size == item['bytes'],
+                'declared tensor failure bundle is missing or differs in size')
+        bundles[item['file']] = item
+    return bundles
+
+
 def preserve_diagnostics(build, output):
     output.mkdir()
     records = {}
     try:
-        for source in sorted(build.iterdir()):
-            if source.suffix not in (".json", ".jsonl", ".log"):
-                continue
+        bundles = {}
+        def selected_sources():
+            # Keep the original textual failure context even if its tensor
+            # bundle is missing or invalid.
+            for source in sorted(build.iterdir()):
+                if source.suffix in (".json", ".jsonl", ".log"):
+                    yield source
+            bundles.update(declared_failure_bundles(build))
+            for name in sorted(bundles):
+                yield build / name
+        for source in selected_sources():
             require("\n" not in source.name and "\r" not in source.name,
                     "diagnostic filenames cannot contain line breaks")
             digest = sha256(read_regular(source))
+            if source.name in bundles:
+                require(digest == bundles[source.name]['sha256'], 'tensor failure bundle digest changed')
             target = output / source.name
             environment = os.environ.copy()
             environment["GOMAXPROCS"] = "1"

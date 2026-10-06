@@ -129,8 +129,8 @@ class Tests(unittest.TestCase):
             self.assertIs(caught.exception,failure)
             rows=[json.loads(line) for line in receipts.path.read_text().splitlines()]
             self.assertEqual(rows[1]['iteration'],-1)
-            self.assertEqual(rows[-1]['event'],'verify_failure')
-            self.assertEqual({key:rows[-1][key] for key in ('case_id','leg','seed','iteration')},
+            failed=next(row for row in rows if row['event']=='verify_failure')
+            self.assertEqual({key:failed[key] for key in ('case_id','leg','seed','iteration')},
                 {'case_id':'prefill','leg':'candidate_port','seed':124,'iteration':1})
         self.assertEqual(seen,[('verify',123),('reset',123),('verify',123),('reset',124),('verify',124)])
     def test_every_entrypoint_rejects_host_rebinding(self):

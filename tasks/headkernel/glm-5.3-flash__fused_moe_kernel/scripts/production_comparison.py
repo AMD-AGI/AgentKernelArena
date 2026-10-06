@@ -18,7 +18,9 @@ def main(request=None):
     if task.file_sha(native.__file__)!=sources['files']['aiter/fused_moe.py']:raise ValueError('Native whole-MoE source differs from pinned image')
     from aiter import ActivationType,QuantType
     before=task.package_hash();challenge=secrets.randbelow(2**29);comparisons=[]
-    receipts=ReplayReceipts(task.ROOT/'build',challenge,task.source_hash())
+    receipts=ReplayReceipts(task.ROOT/'build',challenge,task.source_hash(),request=request,
+        provenance={'runtime_image':manifest['runtime_image'],'native_sources':sources,
+                    'native_source_manifest_sha256':task.file_sha(task.ROOT/'provenance/NATIVE-SOURCES.json')})
     for case in manifest['cases']:
         tensors,port,observe,reset,initialize,verify=task.build_state(case,module)
         port_output=tensors['result'];controls=dict(case['scalars']);controls.pop('port_launch');controls.pop('tensor_attributes')
@@ -32,7 +34,7 @@ def main(request=None):
         legs={}
         for label,invoke in [('candidate_port',port),('native_production',production)]:
             if label=='candidate_port':tensors['result']=port_output
-            replay_reset,replay_verify=receipts.leg(case['case_id'],label,reset,verify)
+            replay_reset,replay_verify=receipts.leg(case['case_id'],label,reset,verify,case=case)
             reference=reset(challenge);initialize();invoke();torch.cuda.synchronize();replay_verify(reference)
             stream=torch.cuda.Stream();stream.wait_stream(torch.cuda.current_stream())
             with torch.cuda.stream(stream):

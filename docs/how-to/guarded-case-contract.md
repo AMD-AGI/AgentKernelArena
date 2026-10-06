@@ -233,6 +233,28 @@ bytecode-cache directories. The same runtime directory names nested under
 symlinks, including a symlink replacing a top-level runtime directory, are
 rejected. Streaming validator logs must not appear as immutable input changes.
 
+Whole-MoE comparison failures first emit their durable `verify_failure` receipt.
+An assertion then attempts one tensor bundle per comparison, using only dense
+CPU tensors already present in that exact verifier frame and its input truth.
+No verifier, native kernel, or device readback is repeated. The manifest binds
+the enclosing request and its challenge seed, the separate native comparison
+challenge, sample seed/iteration, case, source provenance, per-tensor logical
+hashes, and bundle digest. Missing snapshots and persistence errors are explicit;
+the original exception still propagates. Bundle storage, aggregate logical tensor
+bytes, and serialized size are bounded to 2 GiB. Logical bytes are checked before
+any contiguous hashing materialization, including expanded and overlapping
+views. Tensor data uses detached CPU views with unchanged storage and
+layout; gradient flags and JSON-compatible Python attributes remain in the
+manifest, so serialization cannot traverse an attribute containing a device
+tensor or arbitrary Python object.
+
+The trusted copier preserves textual diagnostics first, then accepts at most
+one `.tensor_failure.pt` file named and hashed by its matching
+`.tensor_failure.json` manifest. Unrelated tensor files are not selected.
+Manifest, size, or digest failures remain errors and do not discard the already
+copied textual failure context. These artifacts provide evidence for a later
+review; they do not waive a correctness failure or authorize a retry.
+
 The evaluator extracts the task from Git and accepts only regular files named
 by `source_file_path` from the candidate workspace. It discards agent reports,
 caches and harness files by never staging them. It uses the same protected

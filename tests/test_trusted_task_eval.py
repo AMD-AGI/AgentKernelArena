@@ -48,6 +48,56 @@ def test_jsonl_failure_context_survives_disposable_build_cleanup(tmp_path, monke
     assert not (output / "unselected.bin").exists()
 
 
+def test_failed_diagnostic_copy_preserves_original_phase_exception(tmp_path, monkeypatch):
+    staging=tmp_path/'staging';staging.mkdir()
+    output=tmp_path/'output';output.mkdir()
+    image='image@sha256:'+'a'*64
+    original_error=subprocess.CalledProcessError(1,['docker','run',image])
+    monkeypatch.setattr(trusted,'docker_command',lambda *args:['docker','run',image,'/task/scripts/task_runner.py'])
+    monkeypatch.setattr(trusted,'command_with_binding',lambda command,*args:command)
+    def run(command,**kwargs):
+        if command[:2]==['docker','run']:raise original_error
+        return subprocess.CompletedProcess(command,0)
+    monkeypatch.setattr(subprocess,'run',run)
+    def copy_failure(*args):raise ValueError('declared failure tensor is missing')
+    monkeypatch.setattr(trusted,'preserve_diagnostics',copy_failure)
+    with pytest.raises(subprocess.CalledProcessError) as caught:
+        trusted.run_phase(image,tmp_path/'task',staging,output,'reference',{'phase':'performance','gpu':{}},'/dev/dri/renderD0',1)
+    assert caught.value is original_error
+    assert any('declared failure tensor is missing' in note for note in caught.value.__notes__)
+
+
+@pytest.mark.parametrize('malformed',['[]','null'])
+def test_non_object_failure_manifest_preserves_original_phase_error_and_text(tmp_path,monkeypatch,malformed):
+    if shutil.which('rclone') is None:pytest.skip('rclone required for real diagnostic preservation')
+    staging=tmp_path/'staging';staging.mkdir()
+    output=tmp_path/'output';output.mkdir()
+    image='image@sha256:'+'a'*64
+    original_error=subprocess.CalledProcessError(1,['docker','run',image])
+    event=b'{"event":"verify_failure","seed":512174569}\n'
+    monkeypatch.setattr(trusted,'docker_command',lambda *args:['docker','run',image,'/task/scripts/task_runner.py'])
+    monkeypatch.setattr(trusted,'command_with_binding',lambda command,*args:command)
+    original_run=subprocess.run
+    def run(command,**kwargs):
+        if command[:2]==['docker','run']:
+            build=staging/'reference_performance_build'
+            (build/'original_failure.jsonl').write_bytes(event)
+            (build/'broken.tensor_failure.json').write_text(malformed)
+            raise original_error
+        if command[:3]==['docker','rm','-f']:return subprocess.CompletedProcess(command,0)
+        return original_run(command,**kwargs)
+    monkeypatch.setattr(subprocess,'run',run)
+    with pytest.raises(subprocess.CalledProcessError) as caught:
+        trusted.run_phase(image,tmp_path/'task',staging,output,'reference',{'phase':'performance','gpu':{}},'/dev/dri/renderD0',1)
+    assert caught.value is original_error
+    assert any('must be a dictionary' in note for note in caught.value.__notes__)
+    saved=output/'reference_performance.diagnostics'
+    assert (saved/'original_failure.jsonl').read_bytes()==event
+    assert (saved/'broken.tensor_failure.json').read_text()==malformed
+    hashes=json.loads((saved/'hashes.json').read_text())
+    assert hashes['original_failure.jsonl']==trusted.sha256(event)
+
+
 @pytest.fixture
 def packaged_task(tmp_path):
     if shutil.which("rclone") is None:
