@@ -20,8 +20,8 @@ Missing, stale, partial, or diagnostic-only evidence cannot fall back to the
 port score. No benchmark calls, cases, seeds, tolerances, or timing boundaries
 change for this policy.
 
-`task_result.yaml` and `trusted_measurement.json` carry `baseline_kind:
-native_production`, the primary native/candidate ratio, the secondary
+`task_result.yaml` and `trusted_measurement.json` carry
+`baseline_kind: native_production`, the primary native/candidate ratio, and the secondary
 `port_to_port_speedup_ratio`, every case ratio, `regressed_case_ids`, and
 `all_cases_faster_than_native`. `production_kernel_improvement` is true only when
 the primary aggregate ratio exceeds one; individual regressions remain explicit.

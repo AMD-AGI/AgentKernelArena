@@ -34,8 +34,10 @@ prompt:
     observations. This newly authored replacement port is reached through the pinned
     AITER gemm_a16w16 wrapper by a checked solMap binding; both reference and candidate
     use it identically. Direct ATen records use the same declared port. All future
-    cases.json entries are mandatory, including any actual FP32 records. Arena port
-    speedup is not native or serving gain. Native ratios remain diagnostic.
+    cases.json entries are mandatory, including any actual FP32 records. Primary
+    scoring uses protected matched native-production time divided by candidate-port
+    time. Frozen-port improvement remains secondary. Only a primary ratio above one
+    supports isolated native-operator improvement; no serving gain is asserted.
   cheatsheet: null
 headkernel:
   model: Kimi-K3

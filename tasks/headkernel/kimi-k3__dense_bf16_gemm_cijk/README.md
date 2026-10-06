@@ -4,7 +4,7 @@ This is the prepared current SG0.5.20 Kimi-K3 dense GEMM replacement task. It re
 
 `CASE-REQUIREMENTS.json` records18 sampled BF16 wrapper signatures: nine N/K geometries at M8192 and M16384. Their counts belong only to sampled profile windows. Decode GPU symbols show the head remains active, but complete decode arguments and full-workload frequencies require new capture. Every actual wrapper and direct ATen dense record must be retained, including additional shapes, dtypes, offsets, aliases and controls. Unsupported cases stop intake instead of disappearing.
 
-The native wrapper selects a solution from `aiter.tuned_gemm.solMap`, which holds cached function objects. A module-only setattr is a dead binding. `ut/native_dispatch.py` provides a scoped replacement of the solution dictionary and an exactly-once invocation check; the protected runner calls the original wrapper and proves that it reaches the submitted GPU port. It restores every native entry after the call. The independent native diagnostic uses those original entries. CPU regression tests demonstrate both the dead module-only binding and the effective dictionary binding. GPU source controls must subsequently prove actual edited kernel behavior.
+The native wrapper selects a solution from `aiter.tuned_gemm.solMap`, which holds cached function objects. A module-only setattr is a dead binding. `ut/native_dispatch.py` provides a scoped replacement of the solution dictionary and an exactly-once invocation check; the protected runner calls the original wrapper and proves that it reaches the submitted GPU port. It restores every native entry after the call. The matched native-production comparison uses those original entries. CPU regression tests demonstrate both the dead module-only binding and the effective dictionary binding. GPU source controls must subsequently prove actual edited kernel behavior.
 
 The editable implementation is a newly authored Triton replacement port. The native Cijk/Tensile code object itself is not claimed as editable source. Frozen reference and candidate use the same declared port and binding. Correctness and initial case checks compare against CPU FP32 math and also cross-check an independent GPU FP32 reference with TF32 disabled. Timed replays freeze candidate outputs and all immutable input observations on CPU before computing that GPU FP32 reference. No current golden output is available on GPU before candidate observation. Fresh numerical challenges, output poisoning and input checks remain mandatory. All10 warmups and100 measured replays are validated at unchanged rtol0.01/atol0.02. Native comparison uses every real case and the same fresh numerical sequence, retains native capture-time output allocation and reports native_ms/candidate_ms as the primary score, with the frozen-port ratio retained separately. Serving gain still requires end-to-end validation.
 
@@ -24,8 +24,8 @@ Missing, stale, partial, or diagnostic-only evidence cannot fall back to the
 port score. No benchmark calls, cases, seeds, tolerances, or timing boundaries
 change for this policy.
 
-`task_result.yaml` and `trusted_measurement.json` carry `baseline_kind:
-native_production`, the primary native/candidate ratio, the secondary
+`task_result.yaml` and `trusted_measurement.json` carry
+`baseline_kind: native_production`, the primary native/candidate ratio, and the secondary
 `port_to_port_speedup_ratio`, every case ratio, `regressed_case_ids`, and
 `all_cases_faster_than_native`. `production_kernel_improvement` is true only when
 the primary aggregate ratio exceeds one; individual regressions remain explicit.

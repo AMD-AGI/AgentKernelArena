@@ -54,6 +54,22 @@ Select the available render device. A verified local mirror can replace the OCI 
 
 ## Interpret fixture and result scope
 
+GLM MoE, GLM FP8 GEMM, GLM dense GEMM, and Kimi dense GEMM use newly authored
+replacement ports with `scoring_baseline.kind: native_production`. Their primary
+Arena `speedup_ratio` and trusted-retest `arithmetic_mean_speedup` are the mean
+of per-case native-production time divided by candidate-port time, using the
+protected matched comparison samples. Frozen-port improvement is reported
+separately as `port_to_port_speedup_ratio`; it is not the primary score.
+
+Read `baseline_kind`, the per-case native ratios, `regressed_case_ids`, and
+`all_cases_faster_than_native` together. `production_kernel_improvement` requires
+a primary aggregate above one, while individual regressions remain explicit.
+A slower correct starter remains valid and measurable; qualification does not
+require a gain. These measurements establish only isolated operator performance,
+not end-to-end serving improvement. The enclosing request binds the source and
+case contract; its challenge seed is not a substitute for the native comparator's
+own matched numerical challenge sequence.
+
 The Kimi residual task records the complete native ABI and frequencies but stores only first-`min(4,T)` actual token-row parity samples. Its full-shape fresh-input mathematical checks remain mandatory. Other tasks document captured, generated or supplemental-native cases in their local provenance. Preserve those distinctions, output mutations, tensor aliases, tolerances, warmups and timed boundaries.
 
 The user-provided [results table](../reference/headkernel-reported-results.md) reports historical SGLang0.5.17 numbers. Current setup and capture completion do not replace those figures with new gains. Qwen's five mappings, task files and historical workload remain unchanged; use its task-local instructions and the [historical setup guide](../reference/headkernel-historical-setup.md), not the refreshed SG0.5.20 selection.
