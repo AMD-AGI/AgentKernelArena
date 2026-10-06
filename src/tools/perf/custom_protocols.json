@@ -10,6 +10,7 @@
         "3d3fcf8c4caf7f0a9ca68d9385dfdf4225471d293523ae62f44f106dc6af8b56",
         "4b4255309657138e1a1a0ac6919991a4d604c200882a9824eed2c9c813d91503",
         "6bfa216084b7b63744aa1b25ed2a567722bb268b8ea93df1a6a70fd79e1e2dac",
+        "7c90dc01508c350348d1b6645476958b06b388a128452261ad1e8149ffe24dca",
         "82ada1b18bc7a2d6effc7c6ee581bd342920b516926d03a555f11c6bc86d2ca0",
         "b3afbfc7c55530991ad4f0264eca4df66f3e21a6dad1f0bb057a9add8ff6ad07",
         "d79eac67d7948fa06dd207100a16e3ecdcf119b2328e981d3d18cef8fa7a2766",
@@ -116,11 +117,11 @@
       "description": "Direct graph replay timing and separate native-production diagnostics both use the canonical replay contract; diagnostic samples are excluded from Arena scoring.",
       "entrypoint": "scripts/task_runner.py",
       "entrypoint_sha256": [
-        "a76e738d65f8ad79f6358a9cc093b606e66d86f994b139f9d815258586bab2b2"
+        "b8bcf271bae71057cdface85dc9df0df43f091c148c573b66d2518813a50a475"
       ],
       "files_sha256": {
         "scripts/production_comparison.py": [
-          "5a916a4baf939329d83065e9fa3f1fbe5da0025ee06fc50d869f82b981c62314"
+          "700146943b964c266daa7c8a8362e9bd0d0d902c1913c841fa9bb15182829766"
         ]
       }
     }
