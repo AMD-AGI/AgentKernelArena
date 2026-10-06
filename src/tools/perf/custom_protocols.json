@@ -214,6 +214,22 @@
           "ef2822025f2215f39752bfc4897899fd456f7115570f659576bab919df3cd4b1"
         ]
       }
+    },
+    {
+      "family": "portable_case_contract",
+      "description": "FP8 candidate outputs retain pointwise checks and add CPU FP64 relativeL2<=2/255; native calibration remains separate, and matched native/port raw comparisons feed primary-native scoring.",
+      "entrypoint": "scripts/task_runner.py",
+      "entrypoint_sha256": [
+        "5adf7ea0942e4702211c0860bce47560b076229e4d511a2f966f67b0997a49cc"
+      ],
+      "files_sha256": {
+        "scripts/production_comparison.py": [
+          "97f1e827519e831d230e034fd5374f52e270f897e4e792c9cd32a1b5b11b0707"
+        ],
+        "ut/candidate_precision.py": [
+          "9fa6c8689949e727788bbc77036b735445a28c56cab935e2082b99cabd6fb39a"
+        ]
+      }
     }
   ]
 }

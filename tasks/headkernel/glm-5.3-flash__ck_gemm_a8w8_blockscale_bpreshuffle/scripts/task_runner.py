@@ -89,7 +89,7 @@ def build_state(case,seed,module):
                 'fp8':tensors['A'].dtype==torch.float8_e4m3fn,'BM':32,'BN':64,'BK':128}
         return observe_case(case,tensors,actual)
     def initialize():tensors['C'].fill_(float('nan'))
-    def verify(ref):
+    def verify(ref,*,native=False):
         expected,inputs=ref
         torch.cuda.synchronize();actual=tensors['C'].cpu().clone()
         if not torch.isfinite(actual.float()).all():raise AssertionError('Unwritten/nonfinite output')
@@ -98,6 +98,9 @@ def build_state(case,seed,module):
             if not torch.equal(after.contiguous().view(torch.uint8),before.contiguous().view(torch.uint8)):raise AssertionError('Input mutation: '+name)
         if tensors['C'].untyped_storage().data_ptr() in [x.untyped_storage().data_ptr() for name,x in tensors.items() if name!='C']:raise AssertionError('Output aliases input')
         torch.testing.assert_close(actual,expected,rtol=0.01,atol=0.02)
+        if not native:
+            from candidate_precision import require_candidate_accuracy
+            return require_candidate_accuracy(actual,expected)
     def reset(seed):
         values,expected=generate(case,seed)
         for name,value in values.items():tensors[name].copy_(value)

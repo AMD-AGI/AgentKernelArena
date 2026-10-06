@@ -1,0 +1,88 @@
+{
+  "schema": "glm-fp8-scale-relative-candidate-accuracy-v1",
+  "candidate_pointwise": {
+    "rtol": 0.01,
+    "atol": 0.02,
+    "unchanged": true
+  },
+  "additional_candidate_requirement": {
+    "metric": "CPU FP64 Frobenius norm(actual-reference) / norm(reference)",
+    "relative_limit": 0.00784313725490196,
+    "absolute_floor": null,
+    "zero_reference": "Requires exact zero error",
+    "basis": "BF16 output unit roundoff u=2^-8; the fixture-independent output-scale requirement is 2u/(1-u)=2/255, as in the reviewed dense checker. Actual stock reduction accuracy was independently measured against this fixed requirement."
+  },
+  "native_calibration": "Original pointwise, finite-output, input-immutability and alias checks retained. The new relative check applies only to candidate/port outputs; protected native call bodies and arguments are unchanged.",
+  "GPU_evidence": {
+    "task_commit_before_proposal": "ce1c8b91fd0ed196d6cc5dc990db7ed6ce3f230f",
+    "image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
+    "cases": 14,
+    "seeds": [
+      0,
+      1,
+      3,
+      43
+    ],
+    "modes": [
+      "eager",
+      "graph"
+    ],
+    "case_seed_records": 56,
+    "stock_checks": 112,
+    "stock_failures": 0,
+    "zero_checks": 112,
+    "zero_acceptances": 0,
+    "native_checks": 112,
+    "native_failures": 0,
+    "candidate_checker_sha256": "9fa6c8689949e727788bbc77036b735445a28c56cab935e2082b99cabd6fb39a",
+    "stock_source_sha256": "323a67e59ed362a8d9f1df7b62fa1d2187d4178b6b407e9b5814b805418822d0",
+    "zero_source_sha256": "3b0cfebc9d3aaf7c1a4b0b200b8ed5e4c2978096a5e5a6f815e81be73f5ed09e",
+    "max_stock_normalized_l2": 0.000384705730548025,
+    "max_stock_case": {
+      "case_id": "fp8-decode-m64-n4096-k256-fp8_gemm-48a3c45e41b5321f9e71acc9",
+      "seed": 43,
+      "mode": "stock_graph"
+    },
+    "max_native_normalized_l2_diagnostic": 0.0003848663361238352,
+    "native_global_limit_not_used_as_acceptance": true,
+    "receipts": {
+      "RESULT.json": {
+        "bundle": "completion",
+        "key": "glm/fp8-scale-relative-probe-v1/runs/195184-gpu4-all14-seeds0-1-3-43/RESULT.json",
+        "sha256": "d7b8613f3b69fe25031d2322e422e5d5dcd8f7cc5c88bade90eb17d015f604c6"
+      },
+      "output/PRECISION.json": {
+        "bundle": "completion",
+        "key": "glm/fp8-scale-relative-probe-v1/runs/195184-gpu4-all14-seeds0-1-3-43/output/PRECISION.json",
+        "sha256": "ab75637ff5beedf5c2ea36e9754fbd06c010c683e6386322b3205e7ff1f8ec0a"
+      },
+      "ADMISSION.json": {
+        "bundle": "completion",
+        "key": "glm/fp8-scale-relative-probe-v1/runs/195184-gpu4-all14-seeds0-1-3-43/ADMISSION.json",
+        "sha256": "a780f88c7e5dd3ca77238a9f5240189476666f538670a0dd8722120e02fb25cd"
+      },
+      "IMAGE.json": {
+        "bundle": "completion",
+        "key": "glm/fp8-scale-relative-probe-v1/runs/195184-gpu4-all14-seeds0-1-3-43/IMAGE.json",
+        "sha256": "c594968f15c6b552c0492396b1eb78cd267a946d3955e2959b5bcf88bf03eb22"
+      },
+      "output/GPU-PREFLIGHT.json": {
+        "bundle": "completion",
+        "key": "glm/fp8-scale-relative-probe-v1/runs/195184-gpu4-all14-seeds0-1-3-43/output/GPU-PREFLIGHT.json",
+        "sha256": "033f15be036408251f06473b573738e31c306d8016bc1ff97a6dd476b3b5745b"
+      }
+    }
+  },
+  "known_previous_gap": {
+    "geometry": "decode and prefill N4096/K1536",
+    "fresh_seeds": [
+      1,
+      3,
+      43
+    ],
+    "zero_passed_original_pointwise": true,
+    "zero_rejected_by_added_global_requirement": true
+  },
+  "kernels_cases_generators_and_measurement_counts_changed": false,
+  "full_framework_and_trusted_qualification": "Pending fresh runs of this strengthened candidate contract. Previous pointwise-only passes and failed trusted runs retain their original scope."
+}

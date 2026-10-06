@@ -1,5 +1,6 @@
 """Protected matched native-versus-candidate comparison with explicit production-baseline scoring."""
 import hashlib
+from functools import partial
 import importlib
 import json
 from pathlib import Path
@@ -40,7 +41,8 @@ def main(request=None):
         else:raise ValueError('No native production callable for observed family')
         legs={}
         for label,invoke in [('candidate_port',port),('native_production',production)]:
-            reference=reset_live(challenge);initialize();invoke();torch.cuda.synchronize();verify(reference)
+            verify_leg=partial(verify,native=label=='native_production')
+            reference=reset_live(challenge);initialize();invoke();torch.cuda.synchronize();verify_leg(reference)
             stream=torch.cuda.Stream();stream.wait_stream(torch.cuda.current_stream())
             with torch.cuda.stream(stream):
                 for _ in range(3):invoke()
@@ -51,7 +53,7 @@ def main(request=None):
             def measure(call):
                 begin=torch.cuda.Event(enable_timing=True);end=torch.cuda.Event(enable_timing=True)
                 begin.record();call();end.record();end.synchronize();return begin.elapsed_time(end)
-            legs[label]=task.checked_replays(case,policy,reset_inputs=reset_live,initialize_outputs=initialize,replay=graph.replay,verify=verify,measure=measure,observe=observe,seed=challenge)
+            legs[label]=task.checked_replays(case,policy,reset_inputs=reset_live,initialize_outputs=initialize,replay=graph.replay,verify=verify_leg,measure=measure,observe=observe,seed=challenge)
         means={label:sum(row['samples_ms'])/len(row['samples_ms']) for label,row in legs.items()}
         ratio=means['native_production']/means['candidate_port']
         comparisons.append({'case_id':case['case_id'],'live_fixture':case['live_fixture'],'native_output_parity':True,
