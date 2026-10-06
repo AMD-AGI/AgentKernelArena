@@ -5,9 +5,10 @@ import json
 from pathlib import Path
 import secrets
 import task_runner as task
+CONTEXT={}
 
 
-def main():
+def compare():
     import torch
     manifest=task.validate_manifest(task.strict_json((task.ROOT/'cases.json').read_text()))
     if any('live_fixture' not in case for case in manifest['cases']):raise RuntimeError('Matched native diagnostics require exact-ABI native operands for every case')
@@ -16,8 +17,11 @@ def main():
     module=task.load_source();native=None;comparisons=[];policy=manifest['measurement'];challenge=secrets.randbelow(2**29)
     before=task.package_hash()
     for case in manifest['cases']:
+        CONTEXT.update(case_id=case['case_id'],live_fixture=case['live_fixture'],phase='captured_fixture_calibration',seed=1,challenge_base=challenge)
         tensors,port,observe,initialize,verify,reset,reference=task.build_state(case,1,module)
-        def reset_live(seed):return reset(seed*2+1)
+        def reset_live(seed):
+            CONTEXT['seed']=seed*2+1
+            return reset(seed*2+1)
         family=case['live_fixture']['capture_family'];provenance=task.strict_json((task.ROOT/'provenance/NATIVE-BASELINE.json').read_text())
         if family=='fp8_gemm':
             native_module=importlib.import_module('aiter.ops.gemm_op_a8w8')
@@ -38,9 +42,13 @@ def main():
                 tensors['C']=torch.mm(tensors['A'],tensors['B'])
                 return tensors['C']
         else:raise ValueError('No native production callable for observed family')
-        legs={}
+        legs={};precision_proofs=[]
         for label,invoke in [('candidate_port',port),('native_production',production)]:
-            reference=reset_live(challenge);initialize();invoke();torch.cuda.synchronize();verify(reference)
+            CONTEXT['phase']=label
+            def leg_verify(ref,_native=label=='native_production'):
+                record=verify(ref,native=_native)
+                if record and record['strict_failure_elements']:precision_proofs.append({'seed':CONTEXT['seed'],**record})
+            reference=reset_live(challenge);initialize();invoke();torch.cuda.synchronize();leg_verify(reference)
             stream=torch.cuda.Stream();stream.wait_stream(torch.cuda.current_stream())
             with torch.cuda.stream(stream):
                 for _ in range(3):invoke()
@@ -51,12 +59,12 @@ def main():
             def measure(call):
                 begin=torch.cuda.Event(enable_timing=True);end=torch.cuda.Event(enable_timing=True)
                 begin.record();call();end.record();end.synchronize();return begin.elapsed_time(end)
-            legs[label]=task.checked_replays(case,policy,reset_inputs=reset_live,initialize_outputs=initialize,replay=graph.replay,verify=verify,measure=measure,observe=observe,seed=challenge)
+            legs[label]=task.checked_replays(case,policy,reset_inputs=reset_live,initialize_outputs=initialize,replay=graph.replay,verify=leg_verify,measure=measure,observe=observe,seed=challenge)
         means={label:sum(row['samples_ms'])/len(row['samples_ms']) for label,row in legs.items()}
         ratio=means['native_production']/means['candidate_port']
         comparisons.append({'case_id':case['case_id'],'live_fixture':case['live_fixture'],'native_output_parity':True,
             'identical_captured_ABI_and_fresh_numeric_challenge_sequence':True,'mean_ms':means,'speedup_vs_native':ratio,
-            'candidate_faster_than_native':ratio>1.0,'legs':legs})
+            'candidate_faster_than_native':ratio>1.0,'legs':legs,'native_precision_proofs':precision_proofs})
     if task.package_hash()!=before:raise ValueError('Task changed during native comparison')
     record={'schema_version':1,'status':'ok','diagnostic_only':True,'score_input':False,'source_sha256':task.source_hash(),
         'manifest_sha256':task.fingerprint(manifest),'comparison':'native_mean_ms / candidate_port_mean_ms on identical fresh numerical challenges derived from the actual captured operands; each graph retains its own capture-time output, with no added output copy',
@@ -69,4 +77,10 @@ def main():
         report=task.strict_json(performance.read_text());report['native_production_diagnostic']={'path':path.name,'sha256':hashlib.sha256(path.read_bytes()).hexdigest(),'all_cases_have_native_parity':True,'speedup_vs_native_by_case':{row['case_id']:row['speedup_vs_native'] for row in comparisons},'score_input':False}
         performance.write_text(json.dumps(report,indent=2,allow_nan=False)+'\n')
     print('Matched native production comparison complete; raw samples are diagnostic, excluded from Arena scoring')
+def main():
+    try:return compare()
+    except BaseException as error:
+        path=task.ROOT/'build/native_production_failure.json';path.parent.mkdir(exist_ok=True)
+        path.write_text(json.dumps({**CONTEXT,'error_type':type(error).__name__,'error':str(error)},indent=2)+'\n')
+        raise
 if __name__=='__main__':main()

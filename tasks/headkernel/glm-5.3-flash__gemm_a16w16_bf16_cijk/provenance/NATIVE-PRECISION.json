@@ -1,0 +1,61 @@
+{
+  "schema": "source-derived-native-ASM-bf16-calibration-v1",
+  "source_sha256": {
+    "aiter/tuned_gemm.py": "1fafc9782b43f8c6e198e1d39ce83e01ea3b5892f8b5e1a26c4a5eeb74252b51",
+    "csrc/py_itfs_cu/asm_gemm_a16w16.cu": "e4e44924230209e00c627297373e434c1c43abb650cc77f0303f21ac5e2a1639",
+    "hsa/gfx950/bf16gemm/bf16gemm_fp32bf16.csv": "1134570021895369fd053dae6f567649e84b9e263ffd226ea461256633b4076e",
+    "hsa/gfx950/bf16gemm/bf16gemm_fp32bf16_tn_64x64_splitk_clean.co": "f5533fb6996b3bda1b6dc8274460fcdcb0487ce1e242d824d7431d1e0af04915"
+  },
+  "scope": "BF16 M64 N128 K4096 wrapper; exact ASM kernel and splitK16 required; candidate never uses this exception",
+  "code_object_disassembly": {
+    "K_partition": "0x2ed8..0x2f68: floor((K/64)/splitK)*64 per split; final split receives remainder; K4096/split16 gives256 each",
+    "partial_rounding": "0x2b8c..0x2b94 set v11=0x7fff; 0x5080 etc add v11+1 to FP32 bits, then v_perm takes high16 bits. This is round-to-nearest with ties away from zero, not ties-to-even.",
+    "atomic_updates": "0x52d0..0x5340 global_atomic_pk_add_bf16 after LDS layout transpose; one shared arrival order per adjacent BF16 pair; round to nearest even after each atomic update.",
+    "initialization": "0x2ca0..0x2d18: split0 waits for semaphore and clears output before release."
+  },
+  "acceptance": "Original rtol0.01/atol0.02 first on every native element. Each failing pair must equal an explicit legal order of16 input-derived partials bit for bit. Deterministic bounded order search rejects on exhaustion; no tolerance expansion or interval acceptance.",
+  "candidate_float32": {
+    "rtol": 1.3e-06,
+    "atol": 1e-05,
+    "basis": "PyTorch default float32 assert_close; FP32 source and frozen reference sum128-term IEEE FP32 dot partials in FP64 to avoid a4096-term FP32 accumulation chain."
+  },
+  "evidence": {
+    "dispatch_probe": "glm-dense-precision-195082-v1/runs/195082-gpu6-c123b31b",
+    "captured_CPU_exact_proof": {
+      "pairs_with_abs_error_at_least_0_0078125": 760,
+      "pairs_proved_exactly": 760,
+      "orders_examined": 8751,
+      "pairs_with_any_difference_from_CPU_FP32": 3303,
+      "all_differing_pairs_proved_exactly": 3303,
+      "orders_for_all_differing_pairs": 22704
+    },
+    "fresh_GPU_model_and_modified_port": {
+      "run": "glm-dense-precision-195082-v2-gpu4/runs/195082-gpu4-624283ac",
+      "precision_report_sha256": "87ed27debf506ccd7a8b7ff8275814708c032bd871b267cd0863a72dff85b22e",
+      "gpu": "MI355X gfx950, job195082/node037/GPU4",
+      "status": "BOUNDED_DIAGNOSTIC_COMPLETE",
+      "BF16_odd_seeds": 64,
+      "BF16_native_and_candidate_replays": 128,
+      "BF16_original_threshold_failures": 0,
+      "ASM_exact_proofs": [
+        {
+          "seed": 1,
+          "replay": 0,
+          "orders_examined": 689,
+          "pairs_proved_exactly": 16
+        },
+        {
+          "seed": 3,
+          "replay": 0,
+          "orders_examined": 198,
+          "pairs_proved_exactly": 16
+        }
+      ],
+      "FP32_odd_seeds_per_case": 4,
+      "FP32_replays_per_case": 8,
+      "FP32_candidate_default_threshold_failures": 0,
+      "elapsed_probe_seconds": 9.586138075217605,
+      "limitation": "The earlier rare native threshold failure was not reproduced; largest-error pairs exercised the exact model independently. Full20-case framework qualification remains pending."
+    }
+  }
+}

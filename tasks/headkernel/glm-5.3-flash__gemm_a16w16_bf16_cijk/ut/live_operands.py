@@ -30,7 +30,8 @@ def load(path,checksum):
     elif fixture['family'] in ('bf16_gemm','aten_bf16_mm'):values={'A':inputs['A'],'B':inputs['B'].t() if fixture['family']=='bf16_gemm' else inputs['B']}
     else:raise ValueError('Unexpected native operand family')
     expected=cpu_reference(values)
-    torch.testing.assert_close(expected,native,rtol=0.01,atol=0.02)
+    from native_precision import calibrate
+    calibrate({'case_id':file.stem,'live_fixture':{'capture_family':fixture['family']}},values,native,expected)
     return values,expected
 
 
