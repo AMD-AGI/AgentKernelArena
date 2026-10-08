@@ -1,0 +1,302 @@
+{
+  "schema": "paired-reference-provenance-v1",
+  "baseline_kind": "protected_reference",
+  "reference_source_sha256": {
+    "source/topk_sparse.py": "468b315b91ae13bb88e97504bed6e538e7ea5e93c121abe52a528c14752fba42"
+  },
+  "gpu_binding": "private_triton_code_object_source_checked_v1",
+  "reference_file": "ut/reference/topk_sparse.py",
+  "installed_native_module": "sglang.kernels.ops.attention.minimax_sparse.decode.topk_sparse",
+  "installed_native_source_sha256": "468b315b91ae13bb88e97504bed6e538e7ea5e93c121abe52a528c14752fba42",
+  "runtime_helper_hashes": {
+    "sglang.kernels.ops.attention.minimax_sparse.common.utils": "7dd6ffa28fcc14374cc2d7006c884217300b344fe544e56d8bbc662c1a9af3bc"
+  },
+  "meaning": "Frozen captured native source at the existing per-case observed launch configurations, loaded under a private reference module. Timing is a protected-reference component comparison, not a production end-to-end improvement claim.",
+  "graph_setup": {
+    "warmup_invocations_per_leg": 3,
+    "capture_invocations_per_leg": 1,
+    "capture_on_warmed_stream": true,
+    "separate_graphs_and_outputs": true
+  },
+  "input_contract": "Both legs use the same CPU-owned pre-candidate storage snapshot; full byte restoration and immutability are checked.",
+  "reference_outputs": "Complete storage cleared after setup and every paired replay, including failure paths.",
+  "comparison_counts": {
+    "warmups_per_leg": 10,
+    "measured_samples_per_leg": 100
+  },
+  "independent_math": "Existing FP32 score/attention oracle and fixed tolerance remain; run after both timed native graphs.",
+  "validation_status": "isolated CPU review only; GPU qualification pending",
+  "input_signature_fields": {
+    "minimax-56856aa9fdfd010ec1a2bde74c9b0c9ddc879ca0590c2081c35a08b800e8e299": [
+      "input_seed",
+      "variant_id",
+      "actual_tensor_controls_sha256",
+      "addressing",
+      "private_cpu_storage_bytes"
+    ],
+    "minimax-3f723fd13e0dd0688d15cc53e0232d281372610ff70070d67d8b8d83bf63f956": [
+      "input_seed",
+      "variant_id",
+      "actual_tensor_controls_sha256",
+      "addressing",
+      "private_cpu_storage_bytes"
+    ],
+    "minimax-f1e152bbc10960ae0e2a565461135545910ea4afdac6fb0b3c990670bb5ebad5": [
+      "input_seed",
+      "variant_id",
+      "actual_tensor_controls_sha256",
+      "addressing",
+      "private_cpu_storage_bytes"
+    ],
+    "minimax-073b4cd3905a667321d70c7a02e7b436c73e2f6c3d07cbff15db57473fddb96e": [
+      "input_seed",
+      "variant_id",
+      "actual_tensor_controls_sha256",
+      "addressing",
+      "private_cpu_storage_bytes"
+    ],
+    "minimax-6277ec77a86f86823e37d15d0c0f94939fb32a214513b2e1d81c861083a13e5a": [
+      "input_seed",
+      "variant_id",
+      "actual_tensor_controls_sha256",
+      "addressing",
+      "private_cpu_storage_bytes"
+    ],
+    "minimax-bd5ab8f046368089a74a794340f7bc8c44748f7ddddfbfe59463381376fd4340": [
+      "input_seed",
+      "variant_id",
+      "actual_tensor_controls_sha256",
+      "addressing",
+      "private_cpu_storage_bytes"
+    ],
+    "minimax-31bb0558f1f9652888f60c8964719e813d21a97a701b6c3aa657bc92ff1c8648": [
+      "input_seed",
+      "variant_id",
+      "actual_tensor_controls_sha256",
+      "addressing",
+      "private_cpu_storage_bytes"
+    ],
+    "minimax-c509e93eb60fb243c145a5f40c47c77bc33aa0e93de3c522ebffd29359a9b516": [
+      "input_seed",
+      "variant_id",
+      "actual_tensor_controls_sha256",
+      "addressing",
+      "private_cpu_storage_bytes"
+    ],
+    "minimax-57f7fc45d5a470d154d7de3896fff54b29f9c64c9a15b707afddf964c8000698": [
+      "input_seed",
+      "variant_id",
+      "actual_tensor_controls_sha256",
+      "addressing",
+      "private_cpu_storage_bytes"
+    ],
+    "minimax-f48175c39e7631ff4c4c1c1d4df34d7140f3d5788c0cd84f9a5c3816b9c89710": [
+      "input_seed",
+      "variant_id",
+      "actual_tensor_controls_sha256",
+      "addressing",
+      "private_cpu_storage_bytes"
+    ],
+    "minimax-5c94b3159e8f7bc0d6f576dfcdf5cb153d2a2abacff45d5457cafab965f5588f": [
+      "input_seed",
+      "variant_id",
+      "actual_tensor_controls_sha256",
+      "addressing",
+      "private_cpu_storage_bytes"
+    ],
+    "minimax-389566a169839444886d9a83f8038fc60dd2bd87fc6f5bb9e350d0fad99cd2fe": [
+      "input_seed",
+      "variant_id",
+      "actual_tensor_controls_sha256",
+      "addressing",
+      "private_cpu_storage_bytes"
+    ],
+    "minimax-36369a6117ef58ef8e700d299f83c697e7bc1f3e6358a120d45a146648096372": [
+      "input_seed",
+      "variant_id",
+      "actual_tensor_controls_sha256",
+      "addressing",
+      "private_cpu_storage_bytes"
+    ],
+    "minimax-6e4fb52b8572ffb2fc05680f41e6aef65b809802a9e484892beab5ff3e327f3a": [
+      "input_seed",
+      "variant_id",
+      "actual_tensor_controls_sha256",
+      "addressing",
+      "private_cpu_storage_bytes"
+    ],
+    "minimax-f9e712026e07b9f02439eab6f9d11ef7d1a200eaef195a7e87d5bcaf1120bfd5": [
+      "input_seed",
+      "variant_id",
+      "actual_tensor_controls_sha256",
+      "addressing",
+      "private_cpu_storage_bytes"
+    ],
+    "minimax-2c27072180c41436711acd4472a6de61ff1791a8bdad9db951e4409242f0ab24": [
+      "input_seed",
+      "variant_id",
+      "actual_tensor_controls_sha256",
+      "addressing",
+      "private_cpu_storage_bytes"
+    ],
+    "minimax-7b34e0206844e0873351bc27452a4d07c9680eeeff35584b01b489f9a1186247": [
+      "input_seed",
+      "variant_id",
+      "actual_tensor_controls_sha256",
+      "addressing",
+      "private_cpu_storage_bytes"
+    ],
+    "minimax-cc74ed29af43794e460d0fe53ca85a09c3144823b46f31c00959a0ecc09c0b1b": [
+      "input_seed",
+      "variant_id",
+      "actual_tensor_controls_sha256",
+      "addressing",
+      "private_cpu_storage_bytes"
+    ],
+    "minimax-02e57e9f590e79a1e6ae5a3a4e051a34254d041aa539b4e06ce77fded0097cb5": [
+      "input_seed",
+      "variant_id",
+      "actual_tensor_controls_sha256",
+      "addressing",
+      "private_cpu_storage_bytes"
+    ],
+    "minimax-32701b947c78c947ab2963be3456db8c95faf0b1027bb3ecac04a6c2fa4c6bb4": [
+      "input_seed",
+      "variant_id",
+      "actual_tensor_controls_sha256",
+      "addressing",
+      "private_cpu_storage_bytes"
+    ],
+    "minimax-0457b51e8479670c0b4c1c956c79ab236ee1868521084a81c955dd03a528a3e2": [
+      "input_seed",
+      "variant_id",
+      "actual_tensor_controls_sha256",
+      "addressing",
+      "private_cpu_storage_bytes"
+    ],
+    "minimax-37f87fa9be02f4859c7aaa2d8108e261874d3a3522f70cff045e954c84fbb8ab": [
+      "input_seed",
+      "variant_id",
+      "actual_tensor_controls_sha256",
+      "addressing",
+      "private_cpu_storage_bytes"
+    ],
+    "minimax-33633f776269dd6a58f429004e944393411b5d8eb7a96e0380b85bfadb3ad7fa": [
+      "input_seed",
+      "variant_id",
+      "actual_tensor_controls_sha256",
+      "addressing",
+      "private_cpu_storage_bytes"
+    ],
+    "minimax-3489a7e94d733ad53594e4fe747d2990a03d5084a7de6e04cd508c098b0d613a": [
+      "input_seed",
+      "variant_id",
+      "actual_tensor_controls_sha256",
+      "addressing",
+      "private_cpu_storage_bytes"
+    ]
+  },
+  "input_receipt_contract": {
+    "schema": "task-local-paired-input-validator-v1",
+    "validator": "ut/paired_input_validation.py",
+    "validator_sha256": "773c092881c73825b72c6758ec9b3ffaa70cf316b4967a2dc86158fa3eb7df32",
+    "function": "validate_paired_input_receipts",
+    "files_sha256": {
+      "ut/evaluation_contract.py": "2dffc785afb98cbe46303227281f4efcf0f82380a9de6d9f53fcb8774a43cb75",
+      "ut/served_contract.py": "675a23fbcaac5b93dfe6281f86eecfa775b03bd6db20759ded04ef44ad5358e2",
+      "ut/minimax_work.py": "0a6917e9f17dd55adc206e2bf1ca482f04426db7ee130acb52f4748700466f26",
+      "ut/minimax_fixtures.py": "e08a7b10537b9736e1ce27a6ae9f0c4fd4b92fc1b7a56a3291848723f4a9ba2e",
+      "ut/minimax_data.py": "2f7a9d5a9010961eed4e14d22a49616090a5f84b0862f8c0f23bf0176350cbcd",
+      "ut/workload_controls.py": "77eae163f89ed8701f981c3a2c5a6c00b4571972392b416e7dce587eb1c27aa2"
+    },
+    "requires_cpu_torch": true
+  },
+  "input_receipt_contracts": {
+    "minimax-56856aa9fdfd010ec1a2bde74c9b0c9ddc879ca0590c2081c35a08b800e8e299": {
+      "kind": "task_local_paired_inputs_v1"
+    },
+    "minimax-3f723fd13e0dd0688d15cc53e0232d281372610ff70070d67d8b8d83bf63f956": {
+      "kind": "task_local_paired_inputs_v1"
+    },
+    "minimax-f1e152bbc10960ae0e2a565461135545910ea4afdac6fb0b3c990670bb5ebad5": {
+      "kind": "task_local_paired_inputs_v1"
+    },
+    "minimax-073b4cd3905a667321d70c7a02e7b436c73e2f6c3d07cbff15db57473fddb96e": {
+      "kind": "task_local_paired_inputs_v1"
+    },
+    "minimax-6277ec77a86f86823e37d15d0c0f94939fb32a214513b2e1d81c861083a13e5a": {
+      "kind": "task_local_paired_inputs_v1"
+    },
+    "minimax-bd5ab8f046368089a74a794340f7bc8c44748f7ddddfbfe59463381376fd4340": {
+      "kind": "task_local_paired_inputs_v1"
+    },
+    "minimax-31bb0558f1f9652888f60c8964719e813d21a97a701b6c3aa657bc92ff1c8648": {
+      "kind": "task_local_paired_inputs_v1"
+    },
+    "minimax-c509e93eb60fb243c145a5f40c47c77bc33aa0e93de3c522ebffd29359a9b516": {
+      "kind": "task_local_paired_inputs_v1"
+    },
+    "minimax-57f7fc45d5a470d154d7de3896fff54b29f9c64c9a15b707afddf964c8000698": {
+      "kind": "task_local_paired_inputs_v1"
+    },
+    "minimax-f48175c39e7631ff4c4c1c1d4df34d7140f3d5788c0cd84f9a5c3816b9c89710": {
+      "kind": "task_local_paired_inputs_v1"
+    },
+    "minimax-5c94b3159e8f7bc0d6f576dfcdf5cb153d2a2abacff45d5457cafab965f5588f": {
+      "kind": "task_local_paired_inputs_v1"
+    },
+    "minimax-389566a169839444886d9a83f8038fc60dd2bd87fc6f5bb9e350d0fad99cd2fe": {
+      "kind": "task_local_paired_inputs_v1"
+    },
+    "minimax-36369a6117ef58ef8e700d299f83c697e7bc1f3e6358a120d45a146648096372": {
+      "kind": "task_local_paired_inputs_v1"
+    },
+    "minimax-6e4fb52b8572ffb2fc05680f41e6aef65b809802a9e484892beab5ff3e327f3a": {
+      "kind": "task_local_paired_inputs_v1"
+    },
+    "minimax-f9e712026e07b9f02439eab6f9d11ef7d1a200eaef195a7e87d5bcaf1120bfd5": {
+      "kind": "task_local_paired_inputs_v1"
+    },
+    "minimax-2c27072180c41436711acd4472a6de61ff1791a8bdad9db951e4409242f0ab24": {
+      "kind": "task_local_paired_inputs_v1"
+    },
+    "minimax-7b34e0206844e0873351bc27452a4d07c9680eeeff35584b01b489f9a1186247": {
+      "kind": "task_local_paired_inputs_v1"
+    },
+    "minimax-cc74ed29af43794e460d0fe53ca85a09c3144823b46f31c00959a0ecc09c0b1b": {
+      "kind": "task_local_paired_inputs_v1"
+    },
+    "minimax-02e57e9f590e79a1e6ae5a3a4e051a34254d041aa539b4e06ce77fded0097cb5": {
+      "kind": "task_local_paired_inputs_v1"
+    },
+    "minimax-32701b947c78c947ab2963be3456db8c95faf0b1027bb3ecac04a6c2fa4c6bb4": {
+      "kind": "task_local_paired_inputs_v1"
+    },
+    "minimax-0457b51e8479670c0b4c1c956c79ab236ee1868521084a81c955dd03a528a3e2": {
+      "kind": "task_local_paired_inputs_v1"
+    },
+    "minimax-37f87fa9be02f4859c7aaa2d8108e261874d3a3522f70cff045e954c84fbb8ab": {
+      "kind": "task_local_paired_inputs_v1"
+    },
+    "minimax-33633f776269dd6a58f429004e944393411b5d8eb7a96e0380b85bfadb3ad7fa": {
+      "kind": "task_local_paired_inputs_v1"
+    },
+    "minimax-3489a7e94d733ad53594e4fe747d2990a03d5084a7de6e04cd508c098b0d613a": {
+      "kind": "task_local_paired_inputs_v1"
+    }
+  },
+  "paired_input_validator": {
+    "schema": "task-local-paired-input-validator-v1",
+    "validator": "ut/paired_input_validation.py",
+    "function": "validate_paired_input_receipts",
+    "files_sha256": {
+      "ut/evaluation_contract.py": "2dffc785afb98cbe46303227281f4efcf0f82380a9de6d9f53fcb8774a43cb75",
+      "ut/served_contract.py": "675a23fbcaac5b93dfe6281f86eecfa775b03bd6db20759ded04ef44ad5358e2",
+      "ut/minimax_work.py": "0a6917e9f17dd55adc206e2bf1ca482f04426db7ee130acb52f4748700466f26",
+      "ut/minimax_fixtures.py": "e08a7b10537b9736e1ce27a6ae9f0c4fd4b92fc1b7a56a3291848723f4a9ba2e",
+      "ut/minimax_data.py": "2f7a9d5a9010961eed4e14d22a49616090a5f84b0862f8c0f23bf0176350cbcd",
+      "ut/workload_controls.py": "77eae163f89ed8701f981c3a2c5a6c00b4571972392b416e7dce587eb1c27aa2",
+      "ut/paired_input_validation.py": "773c092881c73825b72c6758ec9b3ffaa70cf316b4967a2dc86158fa3eb7df32"
+    }
+  }
+}

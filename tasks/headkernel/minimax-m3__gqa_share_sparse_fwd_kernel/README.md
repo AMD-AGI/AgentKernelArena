@@ -61,3 +61,9 @@ Qualification requires positive compile/correctness/performance, actual no-op an
 - `scripts/task_runner.py`: compilation, correctness and checked timing.
 
 The superseded legacy overlays and historical geometry fallbacks were removed. Their tracked history remains provenance and is not used for evaluation.
+
+Paired performance keeps the original recorded-state selection and all 40 cases, while measuring one deferred frozen-reference graph per candidate replay on the same CPU-owned snapshot. Both legs retain 10 checked warmups and 100 device samples, with symmetric graph setup and reference outputs cleared before the next candidate. The primary metric is the ratio of matched protected-reference and candidate means, with original mathematical checks unchanged. Input receipts are independently reconstructed from the protected captured control geometry and original state sampler; no new histogram weighting is introduced. This requires the shared paired-reference consumer and fresh GPU qualification.
+
+The `task_local_paired_inputs_v1` receipt contract requires the protected CPU reconstruction hook. It rebuilds all 110 input signatures using the unchanged `seed % len(states)` selection, verifies paging and sparse-address tensor bytes, and reconciles the state receipt against all 100 raw candidate samples. The performance timeout remains 19,800 seconds.
+
+The private reference transfers ownership of each newly returned output before launch-count or launch-configuration checks. A failed setup invocation therefore clears that output even when the invocation does not return to graph setup. Cleanup preserves the original validation error, and this ownership hook is not used for candidate invocations.

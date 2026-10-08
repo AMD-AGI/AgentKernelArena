@@ -44,3 +44,7 @@ trusted_evaluation:
     source/native.py: ut/baseline/native.py
   requires_aiter_jit_cache: true
   fixture_manifest: fixtures/EXTERNAL-MANIFEST.json
+scoring_baseline:
+  schema_version: 2
+  kind: native_production
+  native_source_manifest: provenance/PAIRED-REFERENCE.json

@@ -1,0 +1,56 @@
+{
+  "baseline_kind": "native_production",
+  "comparison": "candidate and deferred frozen-native graphs on the same prepared CPU-owned inputs",
+  "gpu_binding": "triton_module",
+  "independent_trusted_host_retest_required": true,
+  "input_receipt_contracts": {
+    "deepseek_mla_decode-98f9f736c04a9282790736a9": {
+      "kind": "fixed_fixture_v1"
+    },
+    "deepseek_mla_decode-current-kvlen-distribution-192-200": {
+      "kind": "task_local_paired_inputs_v1"
+    },
+    "deepseek_mla_decode-ef9a66de43776b4e2e04f22b": {
+      "kind": "fixed_fixture_v1"
+    },
+    "deepseek_mla_decode-ef9a66de43776b4e2e04f22b-work-531ff7069c2236ba": {
+      "kind": "fixed_fixture_v1"
+    }
+  },
+  "input_signature_fields": {
+    "deepseek_mla_decode-98f9f736c04a9282790736a9": [
+      "fixture",
+      "input_seed"
+    ],
+    "deepseek_mla_decode-current-kvlen-distribution-192-200": [
+      "input_seed",
+      "length",
+      "kv_indices_sha256",
+      "kv_indptr_sha256",
+      "private_cpu_storage_bytes"
+    ],
+    "deepseek_mla_decode-ef9a66de43776b4e2e04f22b": [
+      "fixture",
+      "input_seed"
+    ],
+    "deepseek_mla_decode-ef9a66de43776b4e2e04f22b-work-531ff7069c2236ba": [
+      "fixture",
+      "input_seed"
+    ]
+  },
+  "paired_input_validator": {
+    "files_sha256": {
+      "ut/paired_input_validation.py": "b053a932c620f0084e3acc8f84a65e581b4c80e0dadd5c7c4a5f5bedc6c5fc93"
+    },
+    "function": "validate_paired_input_receipts",
+    "schema": "task-local-paired-input-validator-v1",
+    "validator": "ut/paired_input_validation.py"
+  },
+  "reference_implementation": "unchanged_pinned_image_native_triton_source",
+  "reference_source_sha256": {
+    "source/native.py": "fd1e927877cdefcf8cabcbc6b0e04ef39ea61cd5967a4fbfd6c6e67463f2ccc5"
+  },
+  "runtime_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
+  "schema": "paired-reference-provenance-v1",
+  "source_manifest_sha256": "f876722fa2449d028d5f504798b22e2c74cd35cc4fc96b1496ff226ec435cb5e"
+}

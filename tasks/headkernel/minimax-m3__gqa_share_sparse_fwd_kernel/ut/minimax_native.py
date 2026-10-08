@@ -107,9 +107,12 @@ class Operator:
             tuner.cache.clear()
         self.expected_launches = expected
 
-    def __call__(self, args):
+    def __call__(self, args, *, reference_output_owner=None):
         before = sum(len(p.launches) for p in self.probes)
         result = self.function(**args)
+        if reference_output_owner is not None:
+            # Transfer reference-output ownership before launch attestation can raise.
+            reference_output_owner(result)
         if sum(len(p.launches) for p in self.probes) != before + 1:
             raise RuntimeError("wrapper did not execute exactly one declared GPU kernel")
         if self.expected_launches is not None:

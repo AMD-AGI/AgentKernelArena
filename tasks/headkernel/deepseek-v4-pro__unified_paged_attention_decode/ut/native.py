@@ -95,5 +95,9 @@ def load_native(root, leg):
     if kind=='flydsl_stage1':
         from native_build import guarded_flydsl_call
         fn=guarded_flydsl_call(fn)
+    if kind=='triton_module':
+        from native_write_ownership import track_native_allocations
+        fn=track_native_allocations(fn)
+        proof['allocation_tracking']='module_local_torch_factories_v1'
     return module, fn, {'leg':leg,'source_sha256':hashes,'module':alias,'host_file':str(path.relative_to(root)),
                         'gpu_binding':kind,**proof}

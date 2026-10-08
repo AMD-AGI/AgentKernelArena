@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "updated_date": "2026-10-06",
+  "updated_date": "2026-10-08",
   "description": "Portable task/runtime mapping for 18 refreshed SG0.5.20 tasks and five preserved Qwen mappings. Active selection is not qualification; readiness stays false pending final reports.",
   "primary_sglang": "sglang_v0520",
   "alternate_sglang": "sglang_v0519",
@@ -99,7 +99,7 @@
       "trusted_retest_tool": "src/tools/trusted_task_eval.py",
       "environment_and_setup_guide": "docs/how-to/headkernel-upstream-runtime.md",
       "fixture_oci_prefix": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261005/deepseek-final-v7-mixed/",
-      "fixture_manifest_sha256": "0617e9b23418654662b7cfe3763a5b8d78c26d18f441e75fd5859416257b0993",
+      "fixture_manifest_sha256": "a5ad824c4762090509f5a0807759ae221f48fe83cc762751a26f0bdf4b522e4b",
       "fixture_asset_count": 78,
       "fixture_declared_bytes": 3399769775,
       "fixture_publication_status": "raw_assets_full_readback_verified; current_task_unqualified"
@@ -124,7 +124,7 @@
       "trusted_retest_tool": "src/tools/trusted_task_eval.py",
       "environment_and_setup_guide": "docs/how-to/headkernel-upstream-runtime.md",
       "fixture_oci_prefix": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261005/deepseek-final-v7-mixed/",
-      "fixture_manifest_sha256": "c53439331acba660d59e3b4d6d1b0a4ff0e2fa798ef7d501b4ce667200295d77",
+      "fixture_manifest_sha256": "2b9dedf91c64ec44620033615168acdb425412480cfeddb1fdae9ef5420ab2f2",
       "fixture_asset_count": 30,
       "fixture_declared_bytes": 3589806040,
       "fixture_publication_status": "raw_assets_full_readback_verified; current_task_unqualified"
@@ -149,7 +149,7 @@
       "trusted_retest_tool": "src/tools/trusted_task_eval.py",
       "environment_and_setup_guide": "docs/how-to/headkernel-upstream-runtime.md",
       "fixture_oci_prefix": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261005/deepseek-final-v7-mixed/",
-      "fixture_manifest_sha256": "a3e0b8dc9faab1b34000f8a1017ade13a1e4e4e9f22c15ebdd602a9920ceca33",
+      "fixture_manifest_sha256": "60aa91f6a36469ceb9210e97efef6eb0c08ba016c4940b5cf4f22ae75c78ac05",
       "fixture_asset_count": 118,
       "fixture_declared_bytes": 7508634634,
       "fixture_publication_status": "raw_assets_full_readback_verified; current_task_unqualified"
@@ -179,14 +179,19 @@
       "fixture_declared_bytes": 121463093,
       "fixture_publication_status": "task_manifest_declared; publication and qualification are separate gates",
       "ordinary_scoring_review": {
-        "status": "shared_schedule_repair_and_exact_review_required",
+        "status": "paired_reference_cpu_reviewed_pending_gpu_qualification",
         "ordinary_scoring_qualified": false,
         "audit_name": "OTHER-DISTRIBUTION-TASKS.json",
         "audit_sha256": "cb2e1abbcf44f6b555388fc0454dbe9e1dc002283202df2ca92f19d0b2253abc",
         "audited_cases_sha256": "755efecb441865248d6e7b360a437266374cb9af381fc014b1bcae8e3f08d758",
-        "reason": "request-seeded width draws; ordinary request_for creates a fresh seed per invocation",
+        "reason": "Reviewed paired producer integrated; fresh framework and independent trusted GPU qualification remain required.",
         "workload_scope": "9 observed KV widths in one generated distribution case",
-        "existing_private_paired_evidence_retracted": false
+        "existing_private_paired_evidence_retracted": false,
+        "paired_reference_provenance": {
+          "path": "tasks/headkernel/deepseek-v4-pro__unified_paged_attention_decode/provenance/PAIRED-REFERENCE.json",
+          "sha256": "e87c347efd705e86817a97accbfc869d0932d40636c4882c4c973f2f0f240775",
+          "baseline_kind": "native_production"
+        }
       }
     },
     {
@@ -513,14 +518,19 @@
       "fixture_declared_bytes": 2397202144,
       "fixture_publication_status": "task_manifest_declared; publication and qualification are separate gates",
       "ordinary_scoring_review": {
-        "status": "shared_schedule_repair_and_exact_review_required",
+        "status": "paired_reference_cpu_reviewed_pending_gpu_qualification",
         "ordinary_scoring_qualified": false,
         "audit_name": "OTHER-DISTRIBUTION-TASKS.json",
         "audit_sha256": "cb2e1abbcf44f6b555388fc0454dbe9e1dc002283202df2ca92f19d0b2253abc",
         "audited_cases_sha256": "44185b9e91aefed1da6c5cbcac4aa12ddf3b1f30221cae451e3aee549a3c582f",
-        "reason": "request-seeded occurrence-weighted control draws; paired_report_costs exists but needs two explicitly paired requests",
+        "reason": "Reviewed paired producer integrated; fresh framework and independent trusted GPU qualification remain required.",
         "workload_scope": "16 cases, each with 128 observed control variants",
-        "existing_private_paired_evidence_retracted": false
+        "existing_private_paired_evidence_retracted": false,
+        "paired_reference_provenance": {
+          "path": "tasks/headkernel/minimax-m3__decode_score_kernel/provenance/PAIRED-REFERENCE.json",
+          "sha256": "a245babacf070ba04dc376ec2fcdb96d8990fefa99301a867802c6d4b8661a73",
+          "baseline_kind": "protected_reference"
+        }
       }
     },
     {
@@ -578,14 +588,19 @@
       "fixture_declared_bytes": 4683533856,
       "fixture_publication_status": "task_manifest_declared; publication and qualification are separate gates",
       "ordinary_scoring_review": {
-        "status": "shared_schedule_repair_and_exact_review_required",
+        "status": "paired_reference_cpu_reviewed_pending_gpu_qualification",
         "ordinary_scoring_qualified": false,
         "audit_name": "OTHER-DISTRIBUTION-TASKS.json",
         "audit_sha256": "cb2e1abbcf44f6b555388fc0454dbe9e1dc002283202df2ca92f19d0b2253abc",
         "audited_cases_sha256": "86444f5b9ed405b7355ccce892d630e7caad4448bd534411a83862d8523b161e",
-        "reason": "request-seeded occurrence-weighted control draws; paired_report_costs exists but needs two explicitly paired requests",
+        "reason": "Reviewed paired producer integrated; fresh framework and independent trusted GPU qualification remain required.",
         "workload_scope": "24 cases, each with 128 observed control variants",
-        "existing_private_paired_evidence_retracted": false
+        "existing_private_paired_evidence_retracted": false,
+        "paired_reference_provenance": {
+          "path": "tasks/headkernel/minimax-m3__gqa_share_sparse_decode_kernel/provenance/PAIRED-REFERENCE.json",
+          "sha256": "898c880209b65f2cb1e73aa959bad4b0f75c0bbd2096946a5177e6b127506e14",
+          "baseline_kind": "protected_reference"
+        }
       }
     },
     {
@@ -613,14 +628,19 @@
       "fixture_declared_bytes": 1694863880,
       "fixture_publication_status": "task_manifest_declared; publication and qualification are separate gates",
       "ordinary_scoring_review": {
-        "status": "shared_schedule_repair_and_exact_review_required",
+        "status": "paired_reference_cpu_reviewed_pending_gpu_qualification",
         "ordinary_scoring_qualified": false,
         "audit_name": "OTHER-DISTRIBUTION-TASKS.json",
         "audit_sha256": "cb2e1abbcf44f6b555388fc0454dbe9e1dc002283202df2ca92f19d0b2253abc",
         "audited_cases_sha256": "b87cf1d619918541575246970d4a2dd2aedc92c5e9f653ec61217bfff4501e5f",
-        "reason": "seed selects retained state and fresh geometry; even if 100 draws balance two states, ordered inputs are not paired",
+        "reason": "Reviewed paired producer integrated; fresh framework and independent trusted GPU qualification remain required.",
         "workload_scope": "40 cases; 6 have two retained control states",
-        "existing_private_paired_evidence_retracted": false
+        "existing_private_paired_evidence_retracted": false,
+        "paired_reference_provenance": {
+          "path": "tasks/headkernel/minimax-m3__gqa_share_sparse_fwd_kernel/provenance/PAIRED-REFERENCE.json",
+          "sha256": "f904121a4b5d41602dd7f4428a099ea48cfeaff14daafdb913488339f34042bc",
+          "baseline_kind": "protected_reference"
+        }
       }
     },
     {

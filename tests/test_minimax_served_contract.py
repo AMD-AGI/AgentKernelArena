@@ -117,9 +117,24 @@ def manifest_for(case, definition):
 
 
 def test_common_helper_copies_and_canonical_contract_match():
-    for name in ("served_contract.py", "source_guard.py", "minimax_reference.py", "minimax_native.py",
+    for name in ("served_contract.py", "source_guard.py", "minimax_reference.py",
                  "minimax_work.py", "minimax_fixtures.py", "minimax_coverage.py"):
         assert len({(task/"ut"/name).read_bytes() for task in TASKS}) == 1
+    # Decode and prefill ship in separate patches. The optional reference-only
+    # ownership callback may land first in either family; all original native
+    # loading, launch attestation and candidate behavior must remain identical.
+    native_implementations = []
+    for task in TASKS:
+        native = ast.parse((task/"ut/minimax_native.py").read_text())
+        call, = [node for node in ast.walk(native) if isinstance(node, ast.FunctionDef) and node.name == "__call__"]
+        if call.args.kwonlyargs:
+            assert [arg.arg for arg in call.args.kwonlyargs] == ["reference_output_owner"]
+            assert ast.literal_eval(call.args.kw_defaults[0]) is None
+            call.args.kwonlyargs = []; call.args.kw_defaults = []
+            owner = call.body.pop(2)
+            assert ast.unparse(owner) == "if reference_output_owner is not None:\n    reference_output_owner(result)"
+        native_implementations.append(ast.dump(native))
+    assert len(set(native_implementations)) == 1
     # Decode has a recorded-histogram selector; prefill retains its original
     # state schedule. Their geometry, physical storage and oracle boundaries
     # remain shared, and the two decode adapters remain exact copies.

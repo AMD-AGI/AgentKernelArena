@@ -196,14 +196,16 @@ def test_runner_preserves_original_checks_and_adds_six_targeted_values():
 
 
 def test_runner_retains_all_110_checked_replays_and_100_device_samples():
-    evaluation, events = fake_evaluation()
-    policy = {'warmup_iterations': 10, 'benchmark_iterations': 100, 'method': 'cuda_graph'}
-    result = evaluation.performance(policy, 159)
-    actions = Counter(event[0] for event in events)
-    assert actions == {'reset': 110, 'poison': 110, 'replay': 110, 'verify': 110}
-    assert len(result['samples_ms']) == 100 and result['oracle_checks'] == 100
-    assert len(result['workload_control_sampling']['measured_variant_ids']) == 100
-    assert result['workload_control_sampling']['exhaustive_timing_claim'] is False
+    from paired_cpu_backend import run_cpu_pair
+    pair = run_cpu_pair(159)
+    assert pair.events.count('prepare') == 110
+    assert pair.events.count('candidate_initialize') == 110
+    assert pair.events.count('candidate_replay') == 110
+    assert pair.events.count('reference_replay') == 110
+    assert len(pair.row['samples_ms']) == 100 and pair.row['oracle_checks'] == 100
+    assert len(pair.row['workload_control_sampling']['measured_variant_ids']) == 100
+    assert pair.row['workload_control_sampling']['exhaustive_timing_claim'] is False
+
 
 
 @pytest.mark.parametrize('kind,name', KINDS)

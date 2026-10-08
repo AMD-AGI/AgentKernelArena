@@ -15,6 +15,9 @@ from evaluation_contract import (canonical, fingerprint, strict_json, validate_m
 from abi import runtime_abi
 from dispatch_contract import validate_dispatch, validate_runtime_dispatch
 from mla_decode_distribution import KIND, RuntimeRecipe, load_policy
+from paired_reference import clear_owned, capture_native_graph, attach_comparison
+from native_write_ownership import owned_outputs
+from mla_paired import paired_decode_performance
 
 
 def write(phase,report):
@@ -105,30 +108,47 @@ def assert_immutable_inputs(inputs, expected):
 
 
 def verify_after_snapshot(output, inputs, expected_inputs, reference_fn, reference_inputs, tol):
-    """Freeze observations before a reference launch can expose golden GPU data."""
+    """Freeze candidate observations, then own and scrub every reference write."""
     import torch
     torch.cuda.synchronize()
     actual_cpu=cpu_clone(output)
     assert_immutable_inputs(inputs,expected_inputs)
-    restore_storages(reference_inputs,expected_inputs)
-    reference_output=invoke(reference_fn,reference_inputs)
-    torch.cuda.synchronize()
-    expected_cpu=cpu_clone(reference_output)
-    assert_immutable_inputs(reference_inputs,expected_inputs)
-    del reference_output
+    owner=owned_outputs(reference_fn)
+    try:
+        restore_storages(reference_inputs,expected_inputs)
+        with owner:
+            reference_output=invoke(reference_fn,reference_inputs)
+        torch.cuda.synchronize()
+        expected_cpu=cpu_clone(reference_output)
+        assert_immutable_inputs(reference_inputs,expected_inputs)
+    finally:
+        try:
+            clear_owned(owner)
+        finally:
+            owner.release()
     compare(actual_cpu,expected_cpu,tol)
 
 
-def engage_specialization(fn,inputs,golden,tol,label):
-    """Invoke the actual specialization, synchronize and validate its outputs."""
+def engage_specialization(fn,inputs,golden,tol,label,*,scrub_output=False):
+    """Validate one native calibration; its return is retained only for ABI checks."""
     import torch
     before=storage_snapshots(inputs)
-    output=invoke(fn,inputs)
-    torch.cuda.synchronize()
-    actual=cpu_clone(output)
-    assert_immutable_inputs(inputs,before)
-    compare(actual,golden,tol,label)
-    return output
+    owner=owned_outputs(fn)
+    try:
+        with owner:
+            output=invoke(fn,inputs)
+        torch.cuda.synchronize()
+        actual=cpu_clone(output)
+        assert_immutable_inputs(inputs,before)
+        compare(actual,golden,tol,label)
+        return output
+    finally:
+        # Calibration outputs and all private scratch are dead after the CPU
+        # observation. Clear both legs symmetrically, including first-call errors.
+        try:
+            clear_owned(owner)
+        finally:
+            owner.release()
 
 
 def fixture(case,manifest,module):
@@ -216,8 +236,9 @@ def main():
         # compile. The candidate's CPU snapshot precedes any reference launch.
         output=engage_specialization(fn,inputs,golden,tol,'served-fixture')
         tensors,scalars=runtime_abi(inputs,output); observe_case(case,tensors,scalars)
+        del output  # both calibration results are released before graph setup
         restore_storages(reference_inputs,pristine_inputs)
-        reference_output=engage_specialization(reference_fn,reference_inputs,golden,tol,'reference-served-fixture')
+        reference_output=engage_specialization(reference_fn,reference_inputs,golden,tol,'reference-served-fixture',scrub_output=True)
         del reference_output
         compiled.append({'case_id':case['case_id'],'candidate_binding':identity,
                          'reference_binding':reference_identity,'dispatch':dispatch,'invoked_and_synchronized':True})
@@ -225,76 +246,87 @@ def main():
             if recipe is not None:
                 compiled[-1]['control_distribution']=recipe.proof('compile',policy)
                 recipe.close()
-            del inputs,reference_inputs,golden,output,pristine_inputs,initial_out
+            del inputs,reference_inputs,golden,pristine_inputs,initial_out
             torch.cuda.empty_cache()
             continue
-        for _ in range(3):
-            restore_storages(inputs,pristine_inputs)
-            invoke(fn,inputs)
-        torch.cuda.synchronize(); graph=torch.cuda.CUDAGraph()
-        restore_storages(inputs,pristine_inputs)
-        with torch.cuda.graph(graph): output=invoke(fn,inputs)
-        def reset_inputs(seed,forced_length=None):
-            restore_storages(inputs,pristine_inputs)
-            if recipe is not None:recipe.apply(inputs,seed,forced_length)
-            generator=torch.Generator(device='cuda'); generator.manual_seed(seed)
-            values=torch.randn(inputs[primary].shape,dtype=torch.float32,device='cuda',generator=generator).to(inputs[primary].dtype)
-            inputs[primary].copy_(values)
-            # Return an immutable CPU input token, not a live GPU golden. The
-            # reference is evaluated only after replay observations are frozen.
-            return storage_snapshots(inputs)
-        def initialize_outputs():
-            if initial_out is not None: inputs['out'].copy_(initial_out)
-            mutable_ptr=inputs['out'].untyped_storage().data_ptr() if initial_out is not None else None
-            for value in leaves(output):
-                if value.untyped_storage().data_ptr()!=mutable_ptr: raw_storage(value).fill_(0xAA)
-        def observe():
-            if recipe is not None:recipe.verify_controls(inputs,output)
-            tensors,scalars=runtime_abi(inputs,output)
-            return observe_case(case,tensors,scalars)
-        def verify(expected):
-            verify_after_snapshot(output,inputs,expected,reference_fn,reference_inputs,tol)
-        def measure(call):
-            start=torch.cuda.Event(enable_timing=True); stop=torch.cuda.Event(enable_timing=True)
-            start.record(); call(); stop.record(); stop.synchronize(); return float(start.elapsed_time(stop))
-        if a.phase=='correctness':
-            settings=distribution_policy['lengths'] if recipe is not None else [None]
-            all_controls={name:True for name in policy['negative_controls']}
-            exhaustive=[]
-            for length in settings:
-                for seed in policy['correctness_seeds']:
-                    expected=reset_inputs(seed,length); initialize_outputs(); observe(); graph.replay(); verify(expected)
-                controls={}
-                for control in policy['negative_controls']:
-                    expected=reset_inputs(request['challenge_seed'],length); initialize_outputs()
-                    if control=='wrong_output':
-                        graph.replay(); torch.cuda.synchronize()
-                        for value in leaves(output): raw_storage(value).zero_()
-                    elif control!='no_op': raise RuntimeError('Unknown required negative control')
-                    try: verify(expected)
-                    except AssertionError: controls[control]=True
-                    else: raise RuntimeError('Required negative control escaped: '+control)
-                if recipe is not None:
-                    exhaustive.append({'length':length,'seeds':policy['correctness_seeds'],'negative_controls':controls})
-                for name in all_controls:all_controls[name] &= controls.get(name) is True
-            row={'case':observe(),'correct':True,'seeds':policy['correctness_seeds'],
-                 'negative_controls':all_controls,'negative_control_scope':'protected no-op replay and output corruption; submitted-source mutation retest is separate'}
-            if recipe is not None:row['exhaustive_control_settings']=exhaustive
-            report['cases'].append(row)
-        else:
-            row=checked_replays(case,policy,reset_inputs=reset_inputs,initialize_outputs=initialize_outputs,
-                replay=graph.replay,verify=verify,measure=measure,observe=observe,seed=request['challenge_seed'])
-            report['cases'].append(row)
-        if recipe is not None:
-            report['cases'][-1]['control_distribution']=recipe.proof(a.phase,policy)
-            recipe.close()
-        del graph,inputs,reference_inputs,golden,output,pristine_inputs,initial_out
+        if a.phase=='performance':
+            try:
+                row=paired_decode_performance(globals(),case,manifest,request,inputs,reference_inputs,
+                    fn,reference_fn,pristine_inputs,initial_out,identity,reference_identity,recipe)
+                report['cases'].append(row)
+            finally:
+                if recipe is not None:recipe.close()
+            del inputs,reference_inputs,golden,pristine_inputs,initial_out
+            torch.cuda.empty_cache()
+            continue
+        graph,output,graph_stream,graph_owner=capture_native_graph(
+            globals(),case,fn,inputs,pristine_inputs)
+        try:
+            def reset_inputs(seed,forced_length=None):
+                restore_storages(inputs,pristine_inputs)
+                if recipe is not None:recipe.apply(inputs,seed,forced_length)
+                generator=torch.Generator(device='cuda'); generator.manual_seed(seed)
+                values=torch.randn(inputs[primary].shape,dtype=torch.float32,device='cuda',generator=generator).to(inputs[primary].dtype)
+                inputs[primary].copy_(values)
+                # Return an immutable CPU input token, not a live GPU golden. The
+                # reference is evaluated only after replay observations are frozen.
+                return storage_snapshots(inputs)
+            def initialize_outputs():
+                graph_owner.clear()
+                if initial_out is not None: inputs['out'].copy_(initial_out)
+            def observe():
+                if recipe is not None:recipe.verify_controls(inputs,output)
+                tensors,scalars=runtime_abi(inputs,output)
+                return observe_case(case,tensors,scalars)
+            def verify(expected):
+                verify_after_snapshot(output,inputs,expected,reference_fn,reference_inputs,tol)
+            def measure(call):
+                start=torch.cuda.Event(enable_timing=True); stop=torch.cuda.Event(enable_timing=True)
+                start.record(); call(); stop.record(); stop.synchronize(); return float(start.elapsed_time(stop))
+            if a.phase=='correctness':
+                settings=distribution_policy['lengths'] if recipe is not None else [None]
+                all_controls={name:True for name in policy['negative_controls']}
+                exhaustive=[]
+                for length in settings:
+                    for seed in policy['correctness_seeds']:
+                        expected=reset_inputs(seed,length); initialize_outputs(); observe(); graph.replay(); verify(expected)
+                    controls={}
+                    for control in policy['negative_controls']:
+                        expected=reset_inputs(request['challenge_seed'],length); initialize_outputs()
+                        if control=='wrong_output':
+                            graph.replay(); torch.cuda.synchronize()
+                            for value in leaves(output): raw_storage(value).zero_()
+                        elif control!='no_op': raise RuntimeError('Unknown required negative control')
+                        try: verify(expected)
+                        except AssertionError: controls[control]=True
+                        else: raise RuntimeError('Required negative control escaped: '+control)
+                    if recipe is not None:
+                        exhaustive.append({'length':length,'seeds':policy['correctness_seeds'],'negative_controls':controls})
+                    for name in all_controls:all_controls[name] &= controls.get(name) is True
+                row={'case':observe(),'correct':True,'seeds':policy['correctness_seeds'],
+                     'negative_controls':all_controls,'negative_control_scope':'protected no-op replay and output corruption; submitted-source mutation retest is separate'}
+                if recipe is not None:row['exhaustive_control_settings']=exhaustive
+                report['cases'].append(row)
+            else:
+                row=checked_replays(case,policy,reset_inputs=reset_inputs,initialize_outputs=initialize_outputs,
+                    replay=graph.replay,verify=verify,measure=measure,observe=observe,seed=request['challenge_seed'])
+                report['cases'].append(row)
+            if recipe is not None:
+                report['cases'][-1]['control_distribution']=recipe.proof(a.phase,policy)
+        finally:
+            if recipe is not None:recipe.close()
+            try:
+                clear_owned(graph_owner)
+            finally:
+                graph_owner.release()
+        del graph,graph_owner,inputs,reference_inputs,golden,output,pristine_inputs,initial_out
         torch.cuda.empty_cache()
     report.update(compiled=True,compiled_specializations=compiled,
                   compilation_kind='current native implementations invoked and synchronized for every frozen case',
                   oracle_order='candidate output/input CPU snapshots before reference GPU computation',
                   native_binding=identity,unresolved_legacy_m=manifest.get('unresolved_legacy_m',[]),
                   full_legacy_coverage=not manifest.get('unresolved_legacy_m'))
+    if a.phase=='performance':attach_comparison(ROOT,report,manifest,request)
     write(a.phase,finalize_report(report,manifest,request))
 
 

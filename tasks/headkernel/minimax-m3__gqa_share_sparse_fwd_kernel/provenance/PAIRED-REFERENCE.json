@@ -1,0 +1,443 @@
+{
+  "schema": "paired-reference-provenance-v1",
+  "baseline_kind": "protected_reference",
+  "reference_source_sha256": {
+    "source/topk_sparse.py": "1bc59d10771c5f4ecf98b0addd50e7de88cc7aeeddb9121532ccd259458c3688"
+  },
+  "gpu_binding": "private_triton_code_object_source_checked_v1",
+  "input_signature_fields": {
+    "minimax-cdd0fcf6fb24edf401b4046e4728730074e985f695beeeb471f8cda1c9d0d258": [
+      "input_seed",
+      "variant_id",
+      "actual_tensor_controls_sha256",
+      "addressing",
+      "private_cpu_storage_bytes"
+    ],
+    "minimax-f0e3dcd9cb258f21d79f5268fdbf5e47814c42f55ba7c666dcb628803d8426f1": [
+      "input_seed",
+      "variant_id",
+      "actual_tensor_controls_sha256",
+      "addressing",
+      "private_cpu_storage_bytes"
+    ],
+    "minimax-9350310d0de1ed8c98fc50fedee80d1bb33392d9ba6204bf714415f6c4c2da2e": [
+      "input_seed",
+      "variant_id",
+      "actual_tensor_controls_sha256",
+      "addressing",
+      "private_cpu_storage_bytes"
+    ],
+    "minimax-d56aaaac1e329514e29486fa7471d70fa266761ed2d05236896efbd89665f0b3": [
+      "input_seed",
+      "variant_id",
+      "actual_tensor_controls_sha256",
+      "addressing",
+      "private_cpu_storage_bytes"
+    ],
+    "minimax-d19c646c588a313d5a24d3e3332de6cd3bf12b02f48e5860d93af73bc892f914": [
+      "input_seed",
+      "variant_id",
+      "actual_tensor_controls_sha256",
+      "addressing",
+      "private_cpu_storage_bytes"
+    ],
+    "minimax-0a7f9877140221a83941daa4c72115652c84356ad02a920d4e04bfed7bf1cf4f": [
+      "input_seed",
+      "variant_id",
+      "actual_tensor_controls_sha256",
+      "addressing",
+      "private_cpu_storage_bytes"
+    ],
+    "minimax-54f9b8d3fe700c22dead6f6d452e5e50b548e88475f22f1eb66aa75dfc7521a2": [
+      "input_seed",
+      "variant_id",
+      "actual_tensor_controls_sha256",
+      "addressing",
+      "private_cpu_storage_bytes"
+    ],
+    "minimax-c9a63522bcbe36501e9b44e36554cdce1edc9001db398b3dccf71af3ccf005fc": [
+      "input_seed",
+      "variant_id",
+      "actual_tensor_controls_sha256",
+      "addressing",
+      "private_cpu_storage_bytes"
+    ],
+    "minimax-c9bb69220fee97fb28296b6730c89099ff0dee553b6f9ad0fddc72877a436035": [
+      "input_seed",
+      "variant_id",
+      "actual_tensor_controls_sha256",
+      "addressing",
+      "private_cpu_storage_bytes"
+    ],
+    "minimax-0fa6eb49bb3fe1dd21b8c2b53fe9773653c7817df8d8e51a94a07dfe6e583c4c": [
+      "input_seed",
+      "variant_id",
+      "actual_tensor_controls_sha256",
+      "addressing",
+      "private_cpu_storage_bytes"
+    ],
+    "minimax-60b5a111abc741a41679bcff6af1f36b53c1539f9a8b178def681c7738b18fe7": [
+      "input_seed",
+      "variant_id",
+      "actual_tensor_controls_sha256",
+      "addressing",
+      "private_cpu_storage_bytes"
+    ],
+    "minimax-69b4f3f0559bbfc54a739074dd1de5e3f3801d2b47452722145cfa2433fc075b": [
+      "input_seed",
+      "variant_id",
+      "actual_tensor_controls_sha256",
+      "addressing",
+      "private_cpu_storage_bytes"
+    ],
+    "minimax-60e3ee889a900cb97602a7dba495c12bf532875d0ad8f8d41bbd9c0f7a04da26": [
+      "input_seed",
+      "variant_id",
+      "actual_tensor_controls_sha256",
+      "addressing",
+      "private_cpu_storage_bytes"
+    ],
+    "minimax-14c58870093a09068de06559d533e054e460fabf6f90e32694f48d33667e66eb": [
+      "input_seed",
+      "variant_id",
+      "actual_tensor_controls_sha256",
+      "addressing",
+      "private_cpu_storage_bytes"
+    ],
+    "minimax-3d9c7f1fe3970377e00b3b842ea53c1a9f027508deba7ed33dfb1e32ea90b20b": [
+      "input_seed",
+      "variant_id",
+      "actual_tensor_controls_sha256",
+      "addressing",
+      "private_cpu_storage_bytes"
+    ],
+    "minimax-287de7252b3146bc56ae3827202c8664c9b656895a1e6bcae9c980e22c19a9e6": [
+      "input_seed",
+      "variant_id",
+      "actual_tensor_controls_sha256",
+      "addressing",
+      "private_cpu_storage_bytes"
+    ],
+    "minimax-7437d64b95ccf87601e464c5733690fdab2624e9a2a3fba4736513eaa4926241": [
+      "input_seed",
+      "variant_id",
+      "actual_tensor_controls_sha256",
+      "addressing",
+      "private_cpu_storage_bytes"
+    ],
+    "minimax-5f5d20ce1ae87dc915c13a8c17c837bd94a2cd71a9b850c0dda16523cdf5f498": [
+      "input_seed",
+      "variant_id",
+      "actual_tensor_controls_sha256",
+      "addressing",
+      "private_cpu_storage_bytes"
+    ],
+    "minimax-32d5f946b10e7f35c68f7dfa218ea57e59532bfdc2f0f51332d28cc321ccedba": [
+      "input_seed",
+      "variant_id",
+      "actual_tensor_controls_sha256",
+      "addressing",
+      "private_cpu_storage_bytes"
+    ],
+    "minimax-8316af95c1bb8819d2ae6a96e928fc693a8cd41575a0e56afd6ed2f18c96f4ec": [
+      "input_seed",
+      "variant_id",
+      "actual_tensor_controls_sha256",
+      "addressing",
+      "private_cpu_storage_bytes"
+    ],
+    "minimax-c070555204362dd4b105ad9438ad488f7aa60e6639be67837a93270f7898eeb4": [
+      "input_seed",
+      "variant_id",
+      "actual_tensor_controls_sha256",
+      "addressing",
+      "private_cpu_storage_bytes"
+    ],
+    "minimax-b58bd977978dfb3f4c829440fdc3bf0f30961cf8f618bce0216ec474726a8dd5": [
+      "input_seed",
+      "variant_id",
+      "actual_tensor_controls_sha256",
+      "addressing",
+      "private_cpu_storage_bytes"
+    ],
+    "minimax-78be2c771badeef8c2c9ccc94ce4bfa42107e2b01da1e12fd068c3075740d8d0": [
+      "input_seed",
+      "variant_id",
+      "actual_tensor_controls_sha256",
+      "addressing",
+      "private_cpu_storage_bytes"
+    ],
+    "minimax-b456d877fcf9dcc32413728c4d64bb9e0d76fbd904d8a1ead4c12829e88365ff": [
+      "input_seed",
+      "variant_id",
+      "actual_tensor_controls_sha256",
+      "addressing",
+      "private_cpu_storage_bytes"
+    ],
+    "minimax-d1d91eaeb202aad8a356ad68df75ee9af0649665d3a453e1efef3fa7e6ba76a4": [
+      "input_seed",
+      "variant_id",
+      "actual_tensor_controls_sha256",
+      "addressing",
+      "private_cpu_storage_bytes"
+    ],
+    "minimax-ba8f86734ab0569d328f9521e3a6421c33defabb133f8dc51f7f37302a494685": [
+      "input_seed",
+      "variant_id",
+      "actual_tensor_controls_sha256",
+      "addressing",
+      "private_cpu_storage_bytes"
+    ],
+    "minimax-f9e61001978ce9fd05023ddb8ca2e2f76d7daa2b51978bc70527bb3c28ccebc8": [
+      "input_seed",
+      "variant_id",
+      "actual_tensor_controls_sha256",
+      "addressing",
+      "private_cpu_storage_bytes"
+    ],
+    "minimax-af7bb755d5a2e25a1271031bde55ca67bc61e4a38a923c18c67aac3defdb9249": [
+      "input_seed",
+      "variant_id",
+      "actual_tensor_controls_sha256",
+      "addressing",
+      "private_cpu_storage_bytes"
+    ],
+    "minimax-85f336d8774ba35363be8ef457f89c277aeb945bfb98314c99645df60d5cbe57": [
+      "input_seed",
+      "variant_id",
+      "actual_tensor_controls_sha256",
+      "addressing",
+      "private_cpu_storage_bytes"
+    ],
+    "minimax-c39add5f6c294940dee259787266312099cf6115b625be4a38ec5306f1eea830": [
+      "input_seed",
+      "variant_id",
+      "actual_tensor_controls_sha256",
+      "addressing",
+      "private_cpu_storage_bytes"
+    ],
+    "minimax-6406bad80b121625467bfab73edbc91584b191cfc4cd18887869e0cf7f5f0909": [
+      "input_seed",
+      "variant_id",
+      "actual_tensor_controls_sha256",
+      "addressing",
+      "private_cpu_storage_bytes"
+    ],
+    "minimax-562f0454acb82202f49b9f43297c4b999f463d75a72090698056f9a169410e1c": [
+      "input_seed",
+      "variant_id",
+      "actual_tensor_controls_sha256",
+      "addressing",
+      "private_cpu_storage_bytes"
+    ],
+    "minimax-436027c97450401841758c299b8e9a12d88f1d0b50044b3fed65a509138a9e1a": [
+      "input_seed",
+      "variant_id",
+      "actual_tensor_controls_sha256",
+      "addressing",
+      "private_cpu_storage_bytes"
+    ],
+    "minimax-906f8a9f1bbfc9663eedafcc8bf4551fdcd03fb2fd2589fac1b0d3288f939ced": [
+      "input_seed",
+      "variant_id",
+      "actual_tensor_controls_sha256",
+      "addressing",
+      "private_cpu_storage_bytes"
+    ],
+    "minimax-ede05d329fad3fc0618a57a942dabd6ed773a0e054996c8bd74dc9b8e9d720a0": [
+      "input_seed",
+      "variant_id",
+      "actual_tensor_controls_sha256",
+      "addressing",
+      "private_cpu_storage_bytes"
+    ],
+    "minimax-fe1910d498c85d5611e64a3c71169eef73de29043ffd60243afcc69b6f760874": [
+      "input_seed",
+      "variant_id",
+      "actual_tensor_controls_sha256",
+      "addressing",
+      "private_cpu_storage_bytes"
+    ],
+    "minimax-6c1ff1050fb43ebfba82e83d329d9fd0e037ac7b1823a98b17cb51527a99ac6b": [
+      "input_seed",
+      "variant_id",
+      "actual_tensor_controls_sha256",
+      "addressing",
+      "private_cpu_storage_bytes"
+    ],
+    "minimax-c7d664457a0e740326b2854ede5fb8b53e6cb9be6d753768c0f1a298bbd50d72": [
+      "input_seed",
+      "variant_id",
+      "actual_tensor_controls_sha256",
+      "addressing",
+      "private_cpu_storage_bytes"
+    ],
+    "minimax-a6633773750aa3907caaf74ba3dcdc0f34a76d5bf60d8dfd90523f8b1abe5eeb": [
+      "input_seed",
+      "variant_id",
+      "actual_tensor_controls_sha256",
+      "addressing",
+      "private_cpu_storage_bytes"
+    ],
+    "minimax-a7eb2ab8d571e943962190b16db925d51b35c16133d1f4273c2b261f3ee28a9d": [
+      "input_seed",
+      "variant_id",
+      "actual_tensor_controls_sha256",
+      "addressing",
+      "private_cpu_storage_bytes"
+    ]
+  },
+  "input_receipt_contracts": {
+    "minimax-cdd0fcf6fb24edf401b4046e4728730074e985f695beeeb471f8cda1c9d0d258": {
+      "kind": "task_local_paired_inputs_v1"
+    },
+    "minimax-f0e3dcd9cb258f21d79f5268fdbf5e47814c42f55ba7c666dcb628803d8426f1": {
+      "kind": "task_local_paired_inputs_v1"
+    },
+    "minimax-9350310d0de1ed8c98fc50fedee80d1bb33392d9ba6204bf714415f6c4c2da2e": {
+      "kind": "task_local_paired_inputs_v1"
+    },
+    "minimax-d56aaaac1e329514e29486fa7471d70fa266761ed2d05236896efbd89665f0b3": {
+      "kind": "task_local_paired_inputs_v1"
+    },
+    "minimax-d19c646c588a313d5a24d3e3332de6cd3bf12b02f48e5860d93af73bc892f914": {
+      "kind": "task_local_paired_inputs_v1"
+    },
+    "minimax-0a7f9877140221a83941daa4c72115652c84356ad02a920d4e04bfed7bf1cf4f": {
+      "kind": "task_local_paired_inputs_v1"
+    },
+    "minimax-54f9b8d3fe700c22dead6f6d452e5e50b548e88475f22f1eb66aa75dfc7521a2": {
+      "kind": "task_local_paired_inputs_v1"
+    },
+    "minimax-c9a63522bcbe36501e9b44e36554cdce1edc9001db398b3dccf71af3ccf005fc": {
+      "kind": "task_local_paired_inputs_v1"
+    },
+    "minimax-c9bb69220fee97fb28296b6730c89099ff0dee553b6f9ad0fddc72877a436035": {
+      "kind": "task_local_paired_inputs_v1"
+    },
+    "minimax-0fa6eb49bb3fe1dd21b8c2b53fe9773653c7817df8d8e51a94a07dfe6e583c4c": {
+      "kind": "task_local_paired_inputs_v1"
+    },
+    "minimax-60b5a111abc741a41679bcff6af1f36b53c1539f9a8b178def681c7738b18fe7": {
+      "kind": "task_local_paired_inputs_v1"
+    },
+    "minimax-69b4f3f0559bbfc54a739074dd1de5e3f3801d2b47452722145cfa2433fc075b": {
+      "kind": "task_local_paired_inputs_v1"
+    },
+    "minimax-60e3ee889a900cb97602a7dba495c12bf532875d0ad8f8d41bbd9c0f7a04da26": {
+      "kind": "task_local_paired_inputs_v1"
+    },
+    "minimax-14c58870093a09068de06559d533e054e460fabf6f90e32694f48d33667e66eb": {
+      "kind": "task_local_paired_inputs_v1"
+    },
+    "minimax-3d9c7f1fe3970377e00b3b842ea53c1a9f027508deba7ed33dfb1e32ea90b20b": {
+      "kind": "task_local_paired_inputs_v1"
+    },
+    "minimax-287de7252b3146bc56ae3827202c8664c9b656895a1e6bcae9c980e22c19a9e6": {
+      "kind": "task_local_paired_inputs_v1"
+    },
+    "minimax-7437d64b95ccf87601e464c5733690fdab2624e9a2a3fba4736513eaa4926241": {
+      "kind": "task_local_paired_inputs_v1"
+    },
+    "minimax-5f5d20ce1ae87dc915c13a8c17c837bd94a2cd71a9b850c0dda16523cdf5f498": {
+      "kind": "task_local_paired_inputs_v1"
+    },
+    "minimax-32d5f946b10e7f35c68f7dfa218ea57e59532bfdc2f0f51332d28cc321ccedba": {
+      "kind": "task_local_paired_inputs_v1"
+    },
+    "minimax-8316af95c1bb8819d2ae6a96e928fc693a8cd41575a0e56afd6ed2f18c96f4ec": {
+      "kind": "task_local_paired_inputs_v1"
+    },
+    "minimax-c070555204362dd4b105ad9438ad488f7aa60e6639be67837a93270f7898eeb4": {
+      "kind": "task_local_paired_inputs_v1"
+    },
+    "minimax-b58bd977978dfb3f4c829440fdc3bf0f30961cf8f618bce0216ec474726a8dd5": {
+      "kind": "task_local_paired_inputs_v1"
+    },
+    "minimax-78be2c771badeef8c2c9ccc94ce4bfa42107e2b01da1e12fd068c3075740d8d0": {
+      "kind": "task_local_paired_inputs_v1"
+    },
+    "minimax-b456d877fcf9dcc32413728c4d64bb9e0d76fbd904d8a1ead4c12829e88365ff": {
+      "kind": "task_local_paired_inputs_v1"
+    },
+    "minimax-d1d91eaeb202aad8a356ad68df75ee9af0649665d3a453e1efef3fa7e6ba76a4": {
+      "kind": "task_local_paired_inputs_v1"
+    },
+    "minimax-ba8f86734ab0569d328f9521e3a6421c33defabb133f8dc51f7f37302a494685": {
+      "kind": "task_local_paired_inputs_v1"
+    },
+    "minimax-f9e61001978ce9fd05023ddb8ca2e2f76d7daa2b51978bc70527bb3c28ccebc8": {
+      "kind": "task_local_paired_inputs_v1"
+    },
+    "minimax-af7bb755d5a2e25a1271031bde55ca67bc61e4a38a923c18c67aac3defdb9249": {
+      "kind": "task_local_paired_inputs_v1"
+    },
+    "minimax-85f336d8774ba35363be8ef457f89c277aeb945bfb98314c99645df60d5cbe57": {
+      "kind": "task_local_paired_inputs_v1"
+    },
+    "minimax-c39add5f6c294940dee259787266312099cf6115b625be4a38ec5306f1eea830": {
+      "kind": "task_local_paired_inputs_v1"
+    },
+    "minimax-6406bad80b121625467bfab73edbc91584b191cfc4cd18887869e0cf7f5f0909": {
+      "kind": "task_local_paired_inputs_v1"
+    },
+    "minimax-562f0454acb82202f49b9f43297c4b999f463d75a72090698056f9a169410e1c": {
+      "kind": "task_local_paired_inputs_v1"
+    },
+    "minimax-436027c97450401841758c299b8e9a12d88f1d0b50044b3fed65a509138a9e1a": {
+      "kind": "task_local_paired_inputs_v1"
+    },
+    "minimax-906f8a9f1bbfc9663eedafcc8bf4551fdcd03fb2fd2589fac1b0d3288f939ced": {
+      "kind": "task_local_paired_inputs_v1"
+    },
+    "minimax-ede05d329fad3fc0618a57a942dabd6ed773a0e054996c8bd74dc9b8e9d720a0": {
+      "kind": "task_local_paired_inputs_v1"
+    },
+    "minimax-fe1910d498c85d5611e64a3c71169eef73de29043ffd60243afcc69b6f760874": {
+      "kind": "task_local_paired_inputs_v1"
+    },
+    "minimax-6c1ff1050fb43ebfba82e83d329d9fd0e037ac7b1823a98b17cb51527a99ac6b": {
+      "kind": "task_local_paired_inputs_v1"
+    },
+    "minimax-c7d664457a0e740326b2854ede5fb8b53e6cb9be6d753768c0f1a298bbd50d72": {
+      "kind": "task_local_paired_inputs_v1"
+    },
+    "minimax-a6633773750aa3907caaf74ba3dcdc0f34a76d5bf60d8dfd90523f8b1abe5eeb": {
+      "kind": "task_local_paired_inputs_v1"
+    },
+    "minimax-a7eb2ab8d571e943962190b16db925d51b35c16133d1f4273c2b261f3ee28a9d": {
+      "kind": "task_local_paired_inputs_v1"
+    }
+  },
+  "input_receipt_contract": {
+    "schema": "task-local-paired-input-validator-v1",
+    "validator": "ut/paired_input_validation.py",
+    "validator_sha256": "d6730ea6a4b994070eebce0bfa3cfb348b7cf13ea71960e5fbb7ac5bbac57b5f",
+    "function": "validate_paired_input_receipts",
+    "files_sha256": {
+      "ut/evaluation_contract.py": "2dffc785afb98cbe46303227281f4efcf0f82380a9de6d9f53fcb8774a43cb75",
+      "ut/served_contract.py": "675a23fbcaac5b93dfe6281f86eecfa775b03bd6db20759ded04ef44ad5358e2",
+      "ut/minimax_work.py": "0a6917e9f17dd55adc206e2bf1ca482f04426db7ee130acb52f4748700466f26",
+      "ut/minimax_fixtures.py": "e08a7b10537b9736e1ce27a6ae9f0c4fd4b92fc1b7a56a3291848723f4a9ba2e",
+      "ut/minimax_data.py": "c0d52f60b05d33cba932cd552bd7fd43a8613ac196aa676438a1b6cd25efd11a",
+      "ut/paired_state_controls.py": "240906c540899e7e77480f7a60c148daee485130383aa6751f30c8e9467851bb"
+    },
+    "requires_cpu_torch": true
+  },
+  "reference_scope": "Frozen native wrapper and observed compiler configurations; same original seed-modulo-recorded-state policy and independent oracle, with same-invocation matched graph timing.",
+  "validation_status": "isolated CPU implementation, GPU pending",
+  "paired_input_validator": {
+    "schema": "task-local-paired-input-validator-v1",
+    "validator": "ut/paired_input_validation.py",
+    "function": "validate_paired_input_receipts",
+    "files_sha256": {
+      "ut/evaluation_contract.py": "2dffc785afb98cbe46303227281f4efcf0f82380a9de6d9f53fcb8774a43cb75",
+      "ut/served_contract.py": "675a23fbcaac5b93dfe6281f86eecfa775b03bd6db20759ded04ef44ad5358e2",
+      "ut/minimax_work.py": "0a6917e9f17dd55adc206e2bf1ca482f04426db7ee130acb52f4748700466f26",
+      "ut/minimax_fixtures.py": "e08a7b10537b9736e1ce27a6ae9f0c4fd4b92fc1b7a56a3291848723f4a9ba2e",
+      "ut/minimax_data.py": "c0d52f60b05d33cba932cd552bd7fd43a8613ac196aa676438a1b6cd25efd11a",
+      "ut/paired_state_controls.py": "240906c540899e7e77480f7a60c148daee485130383aa6751f30c8e9467851bb",
+      "ut/paired_input_validation.py": "d6730ea6a4b994070eebce0bfa3cfb348b7cf13ea71960e5fbb7ac5bbac57b5f"
+    }
+  }
+}

@@ -439,6 +439,123 @@
           "986dd393b21ec9861ee740f8455b466899f327d40ac2ac5b030755afb542b07b"
         ]
       }
+    },
+    {
+      "family": "portable_case_contract",
+      "description": "Four MLA cases use same-invocation paired native graphs, pre-invocation ownership of every native-written allocation, and a pinned CPU validator for the nine-state CSR schedule.",
+      "entrypoint": "scripts/task_runner.py",
+      "entrypoint_sha256": [
+        "bfb950f4059418bf92efe1229389b8eb061a02f728979ab1226bd57219db28e3"
+      ],
+      "files_sha256": {
+        "ut/dispatch_contract.py": [
+          "17c6b6eecc96d07b4500ba266aacb716a2984365ebd4117a2fb601309444f881"
+        ],
+        "ut/mla_decode_distribution.py": [
+          "850f07dbad7fe75b06521a85f9dcaf03741728c1702c56f9b143b3a12d53eea9"
+        ],
+        "ut/mla_control_distribution.json": [
+          "ef2822025f2215f39752bfc4897899fd456f7115570f659576bab919df3cd4b1"
+        ],
+        "ut/paired_reference.py": [
+          "afc3fbf6f317cdb687996b3ef8a72a17355006c8cbfd6b0b5c626a68fffabeea"
+        ],
+        "ut/mla_paired.py": [
+          "2bd841f2b90d9f463f963799b5da32a6b6c65f8e37219fb6548ec00acab156e9"
+        ],
+        "ut/paired_input_validation.py": [
+          "b053a932c620f0084e3acc8f84a65e581b4c80e0dadd5c7c4a5f5bedc6c5fc93"
+        ],
+        "provenance/PAIRED-REFERENCE.json": [
+          "e87c347efd705e86817a97accbfc869d0932d40636c4882c4c973f2f0f240775"
+        ],
+        "ut/native.py": [
+          "9a78bf854da56f4c21fab2dfb71e6ba9910e0941ad0c565c0a288920c5a44f14"
+        ],
+        "ut/native_write_ownership.py": [
+          "0f03f0ab25815566911330c3c946e00ef6c385e54b067a62eaedb715113671f7"
+        ]
+      }
+    },
+    {
+      "family": "portable_case_contract",
+      "description": "MiniMax protected-reference paired performance with independently reconstructed input receipts.",
+      "entrypoint": "scripts/task_runner.py",
+      "entrypoint_sha256": [
+        "2d3185aed8f1fc79e6b5d65cd6418d5d8fee706e4d898ec5a3573cc2448af286"
+      ],
+      "files_sha256": {
+        "ut/evaluation_contract.py": [
+          "2dffc785afb98cbe46303227281f4efcf0f82380a9de6d9f53fcb8774a43cb75"
+        ],
+        "ut/minimax_data.py": [
+          "2f7a9d5a9010961eed4e14d22a49616090a5f84b0862f8c0f23bf0176350cbcd"
+        ],
+        "ut/minimax_fixtures.py": [
+          "e08a7b10537b9736e1ce27a6ae9f0c4fd4b92fc1b7a56a3291848723f4a9ba2e"
+        ],
+        "ut/minimax_native.py": [
+          "ddc7188cc8003a4db592a6e00be5f680d42ec535042fa71db905694e05ab7c41"
+        ],
+        "ut/minimax_paired.py": [
+          "51c362bf922791c8da3234d91fb48d3a3fab13133832324f003e236503cc51e1"
+        ],
+        "ut/minimax_work.py": [
+          "0a6917e9f17dd55adc206e2bf1ca482f04426db7ee130acb52f4748700466f26"
+        ],
+        "ut/paired_input_validation.py": [
+          "773c092881c73825b72c6758ec9b3ffaa70cf316b4967a2dc86158fa3eb7df32"
+        ],
+        "ut/paired_reference.py": [
+          "aed5e416cc66c155ac73f40dbccbe72d86049013f5e410628e3d9ee76bd4fce3"
+        ],
+        "ut/served_contract.py": [
+          "675a23fbcaac5b93dfe6281f86eecfa775b03bd6db20759ded04ef44ad5358e2"
+        ],
+        "ut/workload_controls.py": [
+          "77eae163f89ed8701f981c3a2c5a6c00b4571972392b416e7dce587eb1c27aa2"
+        ]
+      }
+    },
+    {
+      "family": "portable_case_contract",
+      "description": "MiniMax protected-reference paired performance with independently reconstructed input receipts.",
+      "entrypoint": "scripts/task_runner.py",
+      "entrypoint_sha256": [
+        "cc550fe7123028755a110e540e8ba822c08a714c63dacc7a833b44961588ee38"
+      ],
+      "files_sha256": {
+        "ut/evaluation_contract.py": [
+          "2dffc785afb98cbe46303227281f4efcf0f82380a9de6d9f53fcb8774a43cb75"
+        ],
+        "ut/minimax_data.py": [
+          "c0d52f60b05d33cba932cd552bd7fd43a8613ac196aa676438a1b6cd25efd11a"
+        ],
+        "ut/minimax_fixtures.py": [
+          "e08a7b10537b9736e1ce27a6ae9f0c4fd4b92fc1b7a56a3291848723f4a9ba2e"
+        ],
+        "ut/minimax_native.py": [
+          "ddc7188cc8003a4db592a6e00be5f680d42ec535042fa71db905694e05ab7c41"
+        ],
+        "ut/minimax_paired.py": [
+          "70ab3fa9b38299896362c1fbf86500c190143cf041e99ae816d97c9f503a4ceb"
+        ],
+        "ut/minimax_work.py": [
+          "0a6917e9f17dd55adc206e2bf1ca482f04426db7ee130acb52f4748700466f26"
+        ],
+        "ut/paired_input_validation.py": [
+          "d6730ea6a4b994070eebce0bfa3cfb348b7cf13ea71960e5fbb7ac5bbac57b5f"
+        ],
+        "ut/paired_reference.py": [
+          "aed5e416cc66c155ac73f40dbccbe72d86049013f5e410628e3d9ee76bd4fce3"
+        ],
+        "ut/paired_state_controls.py": [
+          "240906c540899e7e77480f7a60c148daee485130383aa6751f30c8e9467851bb"
+        ],
+        "ut/served_contract.py": [
+          "675a23fbcaac5b93dfe6281f86eecfa775b03bd6db20759ded04ef44ad5358e2"
+        ]
+      }
     }
   ]
 }

@@ -1,0 +1,223 @@
+{
+  "schema": "paired-reference-provenance-v1",
+  "baseline_kind": "protected_reference",
+  "reference_source_sha256": {
+    "source/flash_with_topk_idx.py": "98c574e5c292c5fcfe8d2c4f7f3c1b480ba32be703ef12bf765e9549a65bc71c"
+  },
+  "gpu_binding": "private_triton_code_object_source_checked_v1",
+  "reference_file": "ut/reference/flash_with_topk_idx.py",
+  "installed_native_module": "sglang.kernels.ops.attention.minimax_sparse.decode.flash_with_topk_idx",
+  "installed_native_source_sha256": "98c574e5c292c5fcfe8d2c4f7f3c1b480ba32be703ef12bf765e9549a65bc71c",
+  "runtime_helper_hashes": {
+    "sglang.kernels.ops.attention.minimax_sparse.common.utils": "7dd6ffa28fcc14374cc2d7006c884217300b344fe544e56d8bbc662c1a9af3bc",
+    "sglang.kernels.ops.attention.minimax_decode_topk": "3e773a7cc4d20a05585993242d10d5fa0e59a16cf06b4c31596ebc97308eb090"
+  },
+  "meaning": "Frozen captured native source at the existing per-case observed launch configurations, loaded under a private reference module. Timing is a protected-reference component comparison, not a production end-to-end improvement claim.",
+  "graph_setup": {
+    "warmup_invocations_per_leg": 3,
+    "capture_invocations_per_leg": 1,
+    "capture_on_warmed_stream": true,
+    "separate_graphs_and_outputs": true
+  },
+  "input_contract": "Both legs use the same CPU-owned pre-candidate storage snapshot; full byte restoration and immutability are checked.",
+  "reference_outputs": "Complete storage cleared after setup and every paired replay, including failure paths.",
+  "comparison_counts": {
+    "warmups_per_leg": 10,
+    "measured_samples_per_leg": 100
+  },
+  "independent_math": "Existing FP32 score/attention oracle and fixed tolerance remain; run after both timed native graphs.",
+  "validation_status": "isolated CPU review only; GPU qualification pending",
+  "input_signature_fields": {
+    "minimax-75a551b117fb9311e8aad416e0540a2ecd80a7f8704c102240f27f492490c279": [
+      "input_seed",
+      "variant_id",
+      "actual_tensor_controls_sha256",
+      "addressing",
+      "private_cpu_storage_bytes"
+    ],
+    "minimax-b1949be3a65e6b1ac7f939f5b6d82b6d8fbef04c834631ef51bbef3ff47500b3": [
+      "input_seed",
+      "variant_id",
+      "actual_tensor_controls_sha256",
+      "addressing",
+      "private_cpu_storage_bytes"
+    ],
+    "minimax-06f895a71b00d0740cc838d2e375b2aaf6e2be0f9b27b86295e2b6f8c41c0106": [
+      "input_seed",
+      "variant_id",
+      "actual_tensor_controls_sha256",
+      "addressing",
+      "private_cpu_storage_bytes"
+    ],
+    "minimax-072538fca4ba546c75530fded01296a79034e763ab509d8b376c3e7ba7b6c3b4": [
+      "input_seed",
+      "variant_id",
+      "actual_tensor_controls_sha256",
+      "addressing",
+      "private_cpu_storage_bytes"
+    ],
+    "minimax-e985ceb14a54e492d8909db02f955dcfd0fdd2e68b4d638cd98d4387461572e4": [
+      "input_seed",
+      "variant_id",
+      "actual_tensor_controls_sha256",
+      "addressing",
+      "private_cpu_storage_bytes"
+    ],
+    "minimax-29e2d99fe2093340f28523f417e2e48dac028f87808d6be15b0969aff4bca9b1": [
+      "input_seed",
+      "variant_id",
+      "actual_tensor_controls_sha256",
+      "addressing",
+      "private_cpu_storage_bytes"
+    ],
+    "minimax-27556aa1dca04bab9dc2ad3db6459a8ba4ab802721c3861ed727103d85d8503d": [
+      "input_seed",
+      "variant_id",
+      "actual_tensor_controls_sha256",
+      "addressing",
+      "private_cpu_storage_bytes"
+    ],
+    "minimax-982311c1733761320107d450298f4ccf95bd13028539c94dc03ca016821b4bf3": [
+      "input_seed",
+      "variant_id",
+      "actual_tensor_controls_sha256",
+      "addressing",
+      "private_cpu_storage_bytes"
+    ],
+    "minimax-4d8e6f1bc6990226ed9cbd2eb57ed86730710e314001919b2949b86151f9121e": [
+      "input_seed",
+      "variant_id",
+      "actual_tensor_controls_sha256",
+      "addressing",
+      "private_cpu_storage_bytes"
+    ],
+    "minimax-20fc57a4cd6eac973ce20fdaa8b6cce6652a840390a8a6e534fd7d0bf2b331fa": [
+      "input_seed",
+      "variant_id",
+      "actual_tensor_controls_sha256",
+      "addressing",
+      "private_cpu_storage_bytes"
+    ],
+    "minimax-ab96c2be0f5856e8a65bcfdd2a2f9a3d7c05c00e8c55453296cb09681a69d7a2": [
+      "input_seed",
+      "variant_id",
+      "actual_tensor_controls_sha256",
+      "addressing",
+      "private_cpu_storage_bytes"
+    ],
+    "minimax-997e44e04023c93fd644b3a9fac6a2af7c636dd2f28489519e003f50b35a53ab": [
+      "input_seed",
+      "variant_id",
+      "actual_tensor_controls_sha256",
+      "addressing",
+      "private_cpu_storage_bytes"
+    ],
+    "minimax-18a7aee3aab5a2f0fefc11267fb4243d7fb2f9558d20884ccdac48af6d997d0c": [
+      "input_seed",
+      "variant_id",
+      "actual_tensor_controls_sha256",
+      "addressing",
+      "private_cpu_storage_bytes"
+    ],
+    "minimax-f7b5175c5c3c08efaa4733a63cdb42b08c0d95ba24ab0ed04c534b4d6b0f0238": [
+      "input_seed",
+      "variant_id",
+      "actual_tensor_controls_sha256",
+      "addressing",
+      "private_cpu_storage_bytes"
+    ],
+    "minimax-fbb3ed0f9cd110456d6b152d82a16d3cc7ba837f21be03b082c30f08a29b6b78": [
+      "input_seed",
+      "variant_id",
+      "actual_tensor_controls_sha256",
+      "addressing",
+      "private_cpu_storage_bytes"
+    ],
+    "minimax-f4de7dca4b49d87754be9494d41ad1e00807627a0f28154ec031a2584c40c302": [
+      "input_seed",
+      "variant_id",
+      "actual_tensor_controls_sha256",
+      "addressing",
+      "private_cpu_storage_bytes"
+    ]
+  },
+  "input_receipt_contract": {
+    "schema": "task-local-paired-input-validator-v1",
+    "validator": "ut/paired_input_validation.py",
+    "validator_sha256": "773c092881c73825b72c6758ec9b3ffaa70cf316b4967a2dc86158fa3eb7df32",
+    "function": "validate_paired_input_receipts",
+    "files_sha256": {
+      "ut/evaluation_contract.py": "2dffc785afb98cbe46303227281f4efcf0f82380a9de6d9f53fcb8774a43cb75",
+      "ut/served_contract.py": "675a23fbcaac5b93dfe6281f86eecfa775b03bd6db20759ded04ef44ad5358e2",
+      "ut/minimax_work.py": "0a6917e9f17dd55adc206e2bf1ca482f04426db7ee130acb52f4748700466f26",
+      "ut/minimax_fixtures.py": "e08a7b10537b9736e1ce27a6ae9f0c4fd4b92fc1b7a56a3291848723f4a9ba2e",
+      "ut/minimax_data.py": "2f7a9d5a9010961eed4e14d22a49616090a5f84b0862f8c0f23bf0176350cbcd",
+      "ut/workload_controls.py": "77eae163f89ed8701f981c3a2c5a6c00b4571972392b416e7dce587eb1c27aa2"
+    },
+    "requires_cpu_torch": true
+  },
+  "input_receipt_contracts": {
+    "minimax-75a551b117fb9311e8aad416e0540a2ecd80a7f8704c102240f27f492490c279": {
+      "kind": "task_local_paired_inputs_v1"
+    },
+    "minimax-b1949be3a65e6b1ac7f939f5b6d82b6d8fbef04c834631ef51bbef3ff47500b3": {
+      "kind": "task_local_paired_inputs_v1"
+    },
+    "minimax-06f895a71b00d0740cc838d2e375b2aaf6e2be0f9b27b86295e2b6f8c41c0106": {
+      "kind": "task_local_paired_inputs_v1"
+    },
+    "minimax-072538fca4ba546c75530fded01296a79034e763ab509d8b376c3e7ba7b6c3b4": {
+      "kind": "task_local_paired_inputs_v1"
+    },
+    "minimax-e985ceb14a54e492d8909db02f955dcfd0fdd2e68b4d638cd98d4387461572e4": {
+      "kind": "task_local_paired_inputs_v1"
+    },
+    "minimax-29e2d99fe2093340f28523f417e2e48dac028f87808d6be15b0969aff4bca9b1": {
+      "kind": "task_local_paired_inputs_v1"
+    },
+    "minimax-27556aa1dca04bab9dc2ad3db6459a8ba4ab802721c3861ed727103d85d8503d": {
+      "kind": "task_local_paired_inputs_v1"
+    },
+    "minimax-982311c1733761320107d450298f4ccf95bd13028539c94dc03ca016821b4bf3": {
+      "kind": "task_local_paired_inputs_v1"
+    },
+    "minimax-4d8e6f1bc6990226ed9cbd2eb57ed86730710e314001919b2949b86151f9121e": {
+      "kind": "task_local_paired_inputs_v1"
+    },
+    "minimax-20fc57a4cd6eac973ce20fdaa8b6cce6652a840390a8a6e534fd7d0bf2b331fa": {
+      "kind": "task_local_paired_inputs_v1"
+    },
+    "minimax-ab96c2be0f5856e8a65bcfdd2a2f9a3d7c05c00e8c55453296cb09681a69d7a2": {
+      "kind": "task_local_paired_inputs_v1"
+    },
+    "minimax-997e44e04023c93fd644b3a9fac6a2af7c636dd2f28489519e003f50b35a53ab": {
+      "kind": "task_local_paired_inputs_v1"
+    },
+    "minimax-18a7aee3aab5a2f0fefc11267fb4243d7fb2f9558d20884ccdac48af6d997d0c": {
+      "kind": "task_local_paired_inputs_v1"
+    },
+    "minimax-f7b5175c5c3c08efaa4733a63cdb42b08c0d95ba24ab0ed04c534b4d6b0f0238": {
+      "kind": "task_local_paired_inputs_v1"
+    },
+    "minimax-fbb3ed0f9cd110456d6b152d82a16d3cc7ba837f21be03b082c30f08a29b6b78": {
+      "kind": "task_local_paired_inputs_v1"
+    },
+    "minimax-f4de7dca4b49d87754be9494d41ad1e00807627a0f28154ec031a2584c40c302": {
+      "kind": "task_local_paired_inputs_v1"
+    }
+  },
+  "paired_input_validator": {
+    "schema": "task-local-paired-input-validator-v1",
+    "validator": "ut/paired_input_validation.py",
+    "function": "validate_paired_input_receipts",
+    "files_sha256": {
+      "ut/evaluation_contract.py": "2dffc785afb98cbe46303227281f4efcf0f82380a9de6d9f53fcb8774a43cb75",
+      "ut/served_contract.py": "675a23fbcaac5b93dfe6281f86eecfa775b03bd6db20759ded04ef44ad5358e2",
+      "ut/minimax_work.py": "0a6917e9f17dd55adc206e2bf1ca482f04426db7ee130acb52f4748700466f26",
+      "ut/minimax_fixtures.py": "e08a7b10537b9736e1ce27a6ae9f0c4fd4b92fc1b7a56a3291848723f4a9ba2e",
+      "ut/minimax_data.py": "2f7a9d5a9010961eed4e14d22a49616090a5f84b0862f8c0f23bf0176350cbcd",
+      "ut/workload_controls.py": "77eae163f89ed8701f981c3a2c5a6c00b4571972392b416e7dce587eb1c27aa2",
+      "ut/paired_input_validation.py": "773c092881c73825b72c6758ec9b3ffaa70cf316b4967a2dc86158fa3eb7df32"
+    }
+  }
+}

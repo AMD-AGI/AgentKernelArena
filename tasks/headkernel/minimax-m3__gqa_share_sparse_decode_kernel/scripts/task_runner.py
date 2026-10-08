@@ -50,14 +50,22 @@ def write_report(phase, report):
 
 
 class CaseEvaluation:
-    def __init__(self, case, definition, operator):
+    def __init__(self, case, definition, operator, *, paired=False, paired_seed=None):
         import torch
         from minimax_data import Inputs
         self.case, self.definition, self.operator = case, definition, operator
+        self.root = ROOT
         if "launch_contract" in case:
             operator.select_launch_contract(case["launch_contract"])
         self.inputs = Inputs(case, definition, root=ROOT)
-        self.inputs.reset(0)
+        require(not paired or (type(paired_seed) is int and paired_seed >= 0), "paired graph setup seed is missing")
+        initial = self.inputs.reset(paired_seed if paired else 0)
+        if paired:
+            self.paired_setup_seed = paired_seed
+            self.paired_initial_truth = initial
+            self.result = self.graph = self.baseline = None
+            return
+        del initial
         self.result = operator(self.inputs.args)
         torch.cuda.synchronize()
         # Capturing this same frozen wrapper preserves its allocation/work
@@ -125,6 +133,18 @@ class CaseEvaluation:
             expected, roundoff = sparse_attention(args, self.definition["kind"], device="cuda", return_roundoff=True)
             mixed_close(actual["result"], expected, self.definition["tolerance"], arithmetic_error=roundoff)
         self.compare_outputs(actual, self.native_reference(reference_storage))
+
+    def check_independent_output(self, actual, args):
+        from minimax_reference import mixed_close, score_reference, check_topk
+        from minimax_reference import sparse_attention
+        if self.definition["kind"] == "decode_score":
+            score, counts, topk = score_reference(args, device="cuda")
+            check_topk(actual["result.1"], score, counts, topk, tolerance=self.definition["tolerance"])
+            # Independent cutoff math establishes validity; exact native parity
+            # also preserves the existing integer-index contract and tie choice.
+        else:
+            expected, roundoff = sparse_attention(args, self.definition["kind"], device="cuda", return_roundoff=True)
+            mixed_close(actual["result"], expected, self.definition["tolerance"], arithmetic_error=roundoff)
 
     def measure(self, replay):
         import torch
@@ -202,17 +222,11 @@ class CaseEvaluation:
                 "workload_control_coverage": coverage,
                 "independent_math_and_frozen_native_parity": True}
 
-    def performance(self, policy, seed):
-        selected = []
-        def reset(private_seed):
-            before = self.inputs.reset(private_seed)
-            selected.append(self.inputs.current_control_variant)
-            return before
-        report = checked_replays(self.case, policy, reset_inputs=reset,
-            initialize_outputs=self.initialize, replay=self.graph.replay, verify=self.verify,
-            measure=self.measure, observe=self.observe, seed=seed)
-        report["workload_control_sampling"] = self.inputs.control_distribution.sampling(seed, selected, policy, report["samples_ms"])
-        return report
+    def performance(self, policy, seed, *, manifest, request):
+        require(request["phase"] == "performance" and request["challenge_seed"] == seed
+                and manifest["measurement"] == policy, "paired performance request differs")
+        from minimax_paired import performance
+        return performance(self, manifest, request)
 
 
 def main():
@@ -244,14 +258,17 @@ def main():
     from minimax_native import Operator
     operator = Operator(ROOT, definition)
     rows = []
+    paired_specializations = []
     for case in manifest["cases"]:
         started = time.monotonic()
         print(json.dumps({"phase": args.phase, "case_id": case["case_id"], "event": "start"}), flush=True)
-        evaluation = CaseEvaluation(case, definition, operator)
+        evaluation = CaseEvaluation(case, definition, operator, paired=args.phase == "performance",
+            paired_seed=request["challenge_seed"] + manifest["measurement"]["warmup_iterations"] + manifest["measurement"]["benchmark_iterations"])
         if args.phase == "correctness":
             rows.append(evaluation.correctness(manifest["measurement"]))
         elif args.phase == "performance":
-            rows.append(evaluation.performance(manifest["measurement"], request["challenge_seed"]))
+            rows.append(evaluation.performance(manifest["measurement"], request["challenge_seed"], manifest=manifest, request=request))
+            paired_specializations.append(evaluation.paired_specialization)
         del evaluation
         print(json.dumps({"phase": args.phase, "case_id": case["case_id"], "event": "complete",
                           "wall_seconds": time.monotonic() - started}), flush=True)
@@ -265,6 +282,10 @@ def main():
         report["compiled"] = True
     from workload_controls import validate_scope_reports
     validate_scope_reports(manifest, rows, args.phase, challenge_seed=request["challenge_seed"])
+    if args.phase == "performance":
+        from paired_reference import attach_comparison
+        report["compiled_specializations"] = paired_specializations
+        attach_comparison(ROOT, report, manifest, request)
     report = finalize_report(report, manifest, request)
     write_report(args.phase, report)
     print(args.phase.capitalize() + ": PASS")
