@@ -311,7 +311,7 @@ def test_every_task_performance_entrypoint_uses_a_supported_family():
     config_count = len(list((ROOT / "tasks").rglob("config.yaml")))
 
     functional_count = len(list((ROOT / "tasks/Aiter-task").glob("*/scripts/workload.json")))
-    assert config_count == 438 + functional_count
+    assert config_count == 441 + functional_count
     assert problems == []
     assert sum(counts.values()) == config_count
     # Replay-aware adapters call the canonical sample API directly so their
@@ -319,7 +319,7 @@ def test_every_task_performance_entrypoint_uses_a_supported_family():
     # runners now delegate through task-local _contract_checks.py, which imports
     # the canonical TimedRun API before the generated vLLM stub is inspected.
     assert counts == {
-        "canonical_python": 269 + functional_count,
+        "canonical_python": 272 + functional_count,
         "native_graph_driver": 2,
         "rocmbench_adapter": 32,
         "vllm_adapter": 135,

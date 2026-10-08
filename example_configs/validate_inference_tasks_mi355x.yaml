@@ -1,0 +1,9 @@
+agent:
+  template: task_validator
+tasks:
+  - hip2hip/vllm/wvsplitk
+  - triton2triton/triton_kernels/topk_forward
+  - hip2hip/vllm/paged_attention_large
+target_gpu_model: MI355X
+log_directory: logs
+workspace_directory_prefix: workspace_inference_validation
