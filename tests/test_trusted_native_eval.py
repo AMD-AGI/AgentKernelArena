@@ -114,8 +114,12 @@ def test_retest_ignores_agent_reports_caches_and_dirty_trusted_checkout(committe
     assert [(leg, mode) for leg, mode, _ in calls] == [
         (leg, mode) for leg in ("reference", "candidate") for mode in trusted.MODES]
     assert len({build for _, _, build in calls}) == 6
-    assert result["arithmetic_mean_speedup"] == 2.0
-    assert [row["speedup"] for row in result["cases"]] == [2.0] * 3
+    assert result["arithmetic_mean_speedup"] is None
+    assert result["raw_arithmetic_mean_speedup"] == 2.0
+    assert result["benchmark_quality"]["comparison_status"] == "unchanged_source_control"
+    assert result["accepted_gain"] is False
+    assert [row["speedup"] for row in result["cases"]] == [None] * 3
+    assert [row["raw_speedup"] for row in result["cases"]] == [2.0] * 3
     assert result["candidate_source_sha256"] == trusted.sha256(candidate.read_bytes())
     assert result["full_case_coverage"] is True
     assert (output / "trusted_measurement.json").is_file()

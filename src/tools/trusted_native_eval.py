@@ -26,8 +26,11 @@ import yaml
 
 if __package__:
     from .seed_aiter_jit_cache import copy_cache, seed_image_cache
+    from ..benchmark_quality import gate_native_measurement
 else:
     from seed_aiter_jit_cache import copy_cache, seed_image_cache
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from benchmark_quality import gate_native_measurement
 
 SOURCE = "source/quant_kernels.cu"
 MODES = ("compile", "correctness", "performance")
@@ -153,7 +156,11 @@ def copy_payload(source, destination):
         raise ValueError("staged task payload differs from its trusted reference")
 
 
-def identities(task):
+def identities(task, *, candidate_bytes=None):
+    # Offline quality review can bind a source-only candidate without writing
+    # it into the trusted task or modifying any existing evidence.
+    def contents(path):
+        return candidate_bytes if candidate_bytes is not None and path == task / SOURCE else read_regular(path)
     paths = [task / "cases.json", task / "config.yaml"]
     for directory in ("source", "ut", "scripts", "provenance"):
         paths.extend(p for p in (task / directory).rglob("*") if p.is_file()
@@ -161,13 +168,13 @@ def identities(task):
     package = hashlib.sha256()
     for path in sorted(paths):
         package.update(str(path.relative_to(task)).encode() + b"\0")
-        package.update(read_regular(path))
+        package.update(contents(path))
     native = hashlib.sha256()
     sources = [task / SOURCE, task / "ut/native/quant_entry_pybind.cu"]
     sources += sorted(p for p in (task / "ut/native/include").rglob("*") if p.is_file())
     for path in sources:
         native.update(str(path.relative_to(task)).encode())
-        native.update(read_regular(path))
+        native.update(contents(path))
     return {"package_sha256": package.hexdigest(), "source_tree_sha256": native.hexdigest()}
 
 
@@ -423,6 +430,11 @@ def trusted_retest(*, repo, commit, task_path, candidate, agent_workspace, outpu
                   "arithmetic_mean_speedup": math.fsum(row["speedup"] for row in rows) / len(rows),
                   "comparison": "same protected candidate_native entrypoint with reference then candidate source",
                   "reports": reports, "framework_task_validator_status": "not_asserted"}
+        # Assess only after every phase/case has finished and its raw report is
+        # retained. A quality failure never selects a subset or starts a retry.
+        result = gate_native_measurement(result,
+            json.loads(read_regular(output / reports['reference']['performance']['file'])),
+            json.loads(read_regular(output / reports['candidate']['performance']['file'])))
         (output / "trusted_measurement.json").write_text(json.dumps(result, indent=2, allow_nan=False) + "\n")
         return result
 
@@ -441,6 +453,8 @@ def main():
                             render_device=args.render_device, timeout=args.timeout, scratch_dir=args.scratch_dir)
     print(json.dumps({"measurement": str(Path(args.output) / "trusted_measurement.json"),
                       "arithmetic_mean_speedup": result["arithmetic_mean_speedup"]}))
+    if result['status'] == 'rejected_timing_quality':
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":
