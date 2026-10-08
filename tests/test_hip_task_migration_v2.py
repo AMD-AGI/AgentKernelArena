@@ -24,7 +24,16 @@ from src.task_spec import ACTIONS, load_task_spec
 from src.task_protocol import CaseManifest, parse_command_result
 
 ROOT = Path(__file__).resolve().parents[1]
-CONFIGS = sorted((ROOT / 'tasks/hip2hip').rglob('config.yaml')) + sorted((ROOT / 'tasks/torch2hip').rglob('config.yaml'))
+# This suite checks the original migration cohort and its historical manifests.
+# New inference tasks have their own contracts in test_inference_tasks_v2.py.
+MIGRATION_ROOTS = (
+    'hip2hip/gpumode',
+    'hip2hip/others',
+    'torch2hip/gpumode',
+    'torch2hip/kernelbench',
+)
+CONFIGS = sorted(p for root in MIGRATION_ROOTS
+                 for p in (ROOT / 'tasks' / root).rglob('config.yaml'))
 EXTENSIONS = [p for p in CONFIGS if (p.parent / 'eval_tools/evaluate.py').is_file()]
 NATIVE = [p for p in CONFIGS if (p.parent / 'scripts/evaluate.py').is_file()]
 ADDITIONAL_GPUMODE_REPLAY = ['hip2hip/gpumode/InnerProd', 'hip2hip/gpumode/KDLoss', 'hip2hip/gpumode/MLP_model', 'hip2hip/gpumode/MultiHeadAttention', 'hip2hip/gpumode/NormalAttention_embedded_gaussian', 'hip2hip/gpumode/PositionWiseFeedForward', 'hip2hip/gpumode/SimpleMatmulModule', 'hip2hip/gpumode/SoftmaxModule', 'hip2hip/gpumode/TransformerFFNLayer', 'hip2hip/gpumode/Transpose', 'hip2hip/gpumode/layer_normalization', 'torch2hip/gpumode/1003_NormalAttention_embedded_gaussian', 'torch2hip/gpumode/10082_SoftmaxModule', 'torch2hip/gpumode/10099_Gather', 'torch2hip/gpumode/10456_MultiHeadAttention', 'torch2hip/gpumode/1067_Transpose', 'torch2hip/gpumode/11122_PositionEmbedder', 'torch2hip/gpumode/11709_InnerProd', 'torch2hip/gpumode/11754_layer_normalization', 'torch2hip/gpumode/1178_MLP_model', 'torch2hip/gpumode/14007_KDLoss', 'torch2hip/gpumode/14044_PositionWiseFeedForward', 'torch2hip/gpumode/14069_TransformerFFNLayer', 'torch2hip/gpumode/3267_SimpleMatmulModule']

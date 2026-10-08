@@ -35,6 +35,31 @@ Update relevant docs in the same change when behavior or public configuration
 changes. Avoid copying volatile model IDs, image tags, or complete registries
 into new guidance; link to their source of truth instead.
 
+## File placement and repository cleanliness
+
+- Before adding a file, identify its lasting purpose and the existing directory
+  that owns it. Prefer updating the relevant source, test, configuration, or
+  documentation in place.
+- Keep temporary plans, scratch notes, session handoffs, PR status summaries,
+  and one-off validation reports outside the repository unless the user
+  explicitly requests that they be versioned. Record change-specific validation
+  results in the commit or PR description; keep reusable usage instructions in
+  the existing documentation.
+- Task directories contain task contracts, sources, inputs, harnesses, required
+  instructions, licenses, and source attribution. Do not add draft trackers or
+  campaign summaries beside the tasks. Preserve required attribution and
+  task-local documentation when removing redundant summaries.
+- Write experiment output only to its configured output locations and keep it
+  untracked. Do not copy generated workspaces, logs, or report bundles into
+  source or documentation directories to make them part of a commit.
+- Before committing, inspect `git status --short`, `git diff --stat`, and the
+  staged diff. Stage explicit paths, account for every added file, and check
+  references after moving or deleting documentation.
+- Before finishing, remove disposable scratch files you created inside the
+  repository. Preserve pre-existing user files and experiment artifacts; the
+  artifact-preservation rules below still apply. Do not add ignore rules merely
+  to hide misplaced source files or documentation.
+
 ## Architecture boundaries
 
 Keep agents and tasks independent.

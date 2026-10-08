@@ -1,0 +1,364 @@
+{
+  "cases": [
+    {
+      "test_case_id": "sig_91eb270fe708",
+      "shape": [
+        1,
+        128,
+        4096
+      ],
+      "dtype": "bfloat16",
+      "params": {
+        "tokens": 1,
+        "n": 128,
+        "k": 4096,
+        "bias": false,
+        "dtype": "bfloat16"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "sig_a6f816730e0a",
+      "shape": [
+        1,
+        37984,
+        4096
+      ],
+      "dtype": "bfloat16",
+      "params": {
+        "tokens": 1,
+        "n": 37984,
+        "k": 4096,
+        "bias": false,
+        "dtype": "bfloat16"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "sig_34c6787c2d55",
+      "shape": [
+        1,
+        512,
+        2048
+      ],
+      "dtype": "bfloat16",
+      "params": {
+        "tokens": 1,
+        "n": 512,
+        "k": 2048,
+        "bias": false,
+        "dtype": "bfloat16"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "sig_f376ca31172d",
+      "shape": [
+        1,
+        16,
+        2048
+      ],
+      "dtype": "bfloat16",
+      "params": {
+        "tokens": 1,
+        "n": 16,
+        "k": 2048,
+        "bias": false,
+        "dtype": "bfloat16"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "sig_ae3e0c7506c3",
+      "shape": [
+        1,
+        37984,
+        2048
+      ],
+      "dtype": "bfloat16",
+      "params": {
+        "tokens": 1,
+        "n": 37984,
+        "k": 2048,
+        "bias": false,
+        "dtype": "bfloat16"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "sig_06de0e61e142",
+      "shape": [
+        1,
+        128,
+        2048
+      ],
+      "dtype": "bfloat16",
+      "params": {
+        "tokens": 1,
+        "n": 128,
+        "k": 2048,
+        "bias": false,
+        "dtype": "bfloat16"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "sig_f97e2b0e3611",
+      "shape": [
+        1,
+        151936,
+        2048
+      ],
+      "dtype": "bfloat16",
+      "params": {
+        "tokens": 1,
+        "n": 151936,
+        "k": 2048,
+        "bias": false,
+        "dtype": "bfloat16"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "sig_a6a0fd1cdc57",
+      "shape": [
+        1,
+        256,
+        7168
+      ],
+      "dtype": "bfloat16",
+      "params": {
+        "tokens": 1,
+        "n": 256,
+        "k": 7168,
+        "bias": false,
+        "dtype": "bfloat16"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "sig_c423f8c6d387",
+      "shape": [
+        1,
+        16160,
+        7168
+      ],
+      "dtype": "bfloat16",
+      "params": {
+        "tokens": 1,
+        "n": 16160,
+        "k": 7168,
+        "bias": false,
+        "dtype": "bfloat16"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "sig_228a0a69990f",
+      "shape": [
+        1,
+        64,
+        7168
+      ],
+      "dtype": "bfloat16",
+      "params": {
+        "tokens": 1,
+        "n": 64,
+        "k": 7168,
+        "bias": false,
+        "dtype": "bfloat16"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "sig_291b8dd0b92c",
+      "shape": [
+        1,
+        5120,
+        2880
+      ],
+      "dtype": "bfloat16",
+      "params": {
+        "tokens": 1,
+        "n": 5120,
+        "k": 2880,
+        "bias": true,
+        "dtype": "bfloat16"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "sig_d257625fefea",
+      "shape": [
+        1,
+        2880,
+        4096
+      ],
+      "dtype": "bfloat16",
+      "params": {
+        "tokens": 1,
+        "n": 2880,
+        "k": 4096,
+        "bias": true,
+        "dtype": "bfloat16"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "sig_feea1eea6fbf",
+      "shape": [
+        1,
+        128,
+        2880
+      ],
+      "dtype": "bfloat16",
+      "params": {
+        "tokens": 1,
+        "n": 128,
+        "k": 2880,
+        "bias": true,
+        "dtype": "bfloat16"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "sig_6688e58ae019",
+      "shape": [
+        1,
+        201088,
+        2880
+      ],
+      "dtype": "bfloat16",
+      "params": {
+        "tokens": 1,
+        "n": 201088,
+        "k": 2880,
+        "bias": false,
+        "dtype": "bfloat16"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "m2_n256_k7168",
+      "shape": [
+        2,
+        256,
+        7168
+      ],
+      "dtype": "bfloat16",
+      "params": {
+        "tokens": 2,
+        "n": 256,
+        "k": 7168,
+        "bias": false,
+        "dtype": "bfloat16"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "m3_n256_k7168",
+      "shape": [
+        3,
+        256,
+        7168
+      ],
+      "dtype": "bfloat16",
+      "params": {
+        "tokens": 3,
+        "n": 256,
+        "k": 7168,
+        "bias": false,
+        "dtype": "bfloat16"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "m4_n256_k7168",
+      "shape": [
+        4,
+        256,
+        7168
+      ],
+      "dtype": "bfloat16",
+      "params": {
+        "tokens": 4,
+        "n": 256,
+        "k": 7168,
+        "bias": false,
+        "dtype": "bfloat16"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "fp16_m4_bias",
+      "shape": [
+        4,
+        128,
+        4096
+      ],
+      "dtype": "float16",
+      "params": {
+        "tokens": 4,
+        "n": 128,
+        "k": 4096,
+        "bias": true,
+        "dtype": "float16"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    }
+  ]
+}

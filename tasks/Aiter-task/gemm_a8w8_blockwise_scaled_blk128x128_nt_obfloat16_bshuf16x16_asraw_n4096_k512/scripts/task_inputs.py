@@ -1,173 +1,103 @@
-# Copyright(C) [2026] Advanced Micro Devices, Inc. All rights reserved.
-"""Input construction for a blockwise-scaled FP8 GEMM workload.
+"""Use supplied initialization callbacks or the legacy version-1 input policy.
 
-The buffers are allocated here, in the definition's declared shapes and dtypes,
-and filled by ``task_initialize``, which is the schema bundle's own
-``initialize`` callback: standard-normal FP8 activations and weights, positive
-nonuniform block scales, the AITER 16x16 weight shuffle, and the declared
-activation-scale storage. Nothing about the distribution or the encodings is
-decided in this file, because the acceptance run that verifies a result uses
-that callback and a second implementation of it here would be a second operator.
-
-Each case is built on its own, from a generator re-seeded to ``seed`` for that
-case. The activations carry the case's m and are drawn first, so the weights
-land at a different point in the stream for every case.
-
-Every constant that varies between tasks in this family lives in the configured
-workload JSON, so the helpers and runner stay byte-identical across the family.
-Arena copies each task directory into its own workspace, so a task cannot import
-from a sibling and every task has to carry its own copy of these modules.
+Random tensors are synthesized, not reconstructed captured inputs. Preserve
+all definition shapes, dtypes, scalar literals and operator semantics.
 """
 
 from __future__ import annotations
 
-from typing import Any
+import hashlib
+from pathlib import Path
 
 import torch
 
-import task_compare
-import task_initialize
-
-# The declared workload path is resolved only inside this task workspace.
-import task_contract
-
-WORKLOAD = task_contract.load_workload()
-
-DEFINITION = str(WORKLOAD["definition"])
-AXES: dict[str, int] = dict(WORKLOAD["axes"])
-N, K = AXES["n"], AXES["k"]
-INPUTS: dict[str, dict] = dict(WORKLOAD["inputs"])
-OUTPUT_SPEC: dict = WORKLOAD["outputs"]["out"]
-A_SCALE_STORAGE = str(WORKLOAD["a_scale_storage"])
-SEED = int(WORKLOAD["seed"])
-
-DTYPES = {"float8_e4m3fn": torch.float8_e4m3fn, "float32": torch.float32, "bfloat16": torch.bfloat16}
-
-# The entrypoint is explicit task data; it is not derived from operator identity.
-BUILDER_SYMBOL = task_contract.candidate_entry()["symbol"]
-
-# Benchmark parameters used for both baseline and candidate. Timing must be
-# CUDA-graph based: at the small-m cases this operator runs for microseconds
-# and eager timing would be dominated by per-call host dispatch.
-BENCH_WARMUP = int(WORKLOAD["bench"]["warmup"])
-BENCH_REPETITION = int(WORKLOAD["bench"]["repetition"])
-BENCH_TARGET_MS = float(WORKLOAD["bench"]["target_ms"])
-
-CASES: tuple[dict[str, Any], ...] = tuple(WORKLOAD["cases"])
-CASE_IDS: tuple[str, ...] = tuple(str(case["case_id"]) for case in CASES)
-
-GATE_EXPLANATION = (
-    "gate: scripts/task_compare.py, the schema bundle's own comparison callback. "
-    "It admits a candidate when every element is within its tolerance, and it "
-    "owns that tolerance -- nothing here sets or relaxes it."
-)
+from scripts.task_api import dimensions, dtype, shape_of, load_solution, validate_inputs
 
 
-def dimensions(case: dict[str, Any]) -> dict[str, int]:
-    return {**AXES, "m": int(case["m"])}
+def make_inputs(definition, row, policy, device="cuda"):
+    seed = int.from_bytes(hashlib.sha256(
+        f"{policy['seed']}:{row['workload']['uuid']}".encode()).digest()[:8], "little")
+    generator = torch.Generator(device=device).manual_seed(seed)
+    axes = dimensions(definition, row)
+    if definition.get("initialize"):
+        values = {
+            name: (row["workload"]["inputs"][name]["value"] if spec.get("shape") is None else
+                   torch.empty(shape_of(spec, axes), dtype=dtype(spec["dtype"]), device=device))
+            for name, spec in definition["inputs"].items()
+        }
+        return initialize_buffers(values, definition, row, seed % (2**63), device)
+    if definition["op_type"] == "moe":
+        return _moe(definition, row, axes, generator, device)
+    if definition["op_type"] != "gemm":
+        raise NotImplementedError("Implement this operator's input policy from its declared contract")
+    result = {}
+    for name, spec in definition["inputs"].items():
+        desc = row["workload"]["inputs"][name]
+        if desc["type"] == "scalar":
+            result[name] = desc["value"]
+        else:
+            kind = dtype(spec["dtype"])
+            if kind not in (torch.float16, torch.bfloat16, torch.float32, torch.float64):
+                raise NotImplementedError(f"No generic random policy for {name}: {kind}")
+            result[name] = torch.randn(shape_of(spec, axes), generator=generator, device=device, dtype=kind)
+    return result
 
 
-def declared_shape(spec: dict, dims: dict[str, int]) -> tuple[int, ...]:
-    return tuple(dims[name] for name in spec["shape"])
+def initialize_buffers(values, definition, row, seed, device):
+    initialize = load_solution(Path(__file__).parent / "initialize", "main.py::run")
+    original = dict(values)
+    storage = {name: (v.data_ptr(), v.stride()) for name, v in values.items() if isinstance(v, torch.Tensor)}
+    if initialize(values, seed=seed) is not values:
+        raise ValueError("initialize must return the original input dictionary")
+    validate_inputs(values, definition, row, device)
+    for name, (pointer, stride) in storage.items():
+        if values[name] is not original[name] or values[name].data_ptr() != pointer or values[name].stride() != stride:
+            raise ValueError(f"initialize replaced input buffer: {name}")
+    return values
 
 
-def build_case_inputs(case: dict[str, Any], device: str = "cuda") -> dict[str, Any]:
-    """Allocate one case's declared buffers and let the bundle fill them.
-
-    The bundle's callback writes preallocated buffers in place and validates
-    their dtype, shape, contiguity and non-overlap before it writes anything, so
-    allocating them is the whole of this task's share of input construction.
-    """
-    dims = dimensions(case)
-    inputs = {name: torch.empty(declared_shape(spec, dims), dtype=DTYPES[spec["dtype"]], device=device)
-              for name, spec in INPUTS.items()}
-    return task_initialize.run(inputs, seed=SEED)
-
-
-def refill_case_inputs(inputs: dict[str, Any], seed: int) -> dict[str, Any]:
-    """Redraw a case's buffers in place, keeping their storage.
-
-    The bundle's callback writes preallocated buffers rather than allocating
-    them, so redrawing through it changes the values while leaving every
-    property the operator depends on untouched. A CUDA graph captured over these
-    buffers therefore reads the new draw on its next replay.
-    """
-    return task_initialize.run(inputs, seed=seed)
+def refill_inputs(values, definition, row, policy, device="cuda"):
+    """Change the input draw without changing graph-bound storage or metadata."""
+    changed_policy = {**policy, "seed": policy["seed"] + 1}
+    if definition.get("initialize"):
+        seed = int.from_bytes(hashlib.sha256(
+            f"{changed_policy['seed']}:{row['workload']['uuid']}".encode()).digest()[:8], "little") % (2**63)
+        return initialize_buffers(values, definition, row, seed, device)
+    replacement = make_inputs(definition, row, changed_policy, device)
+    for name, value in values.items():
+        if isinstance(value, torch.Tensor):
+            value.copy_(replacement[name])
+            if hasattr(replacement[name], "is_shuffled"):
+                value.is_shuffled = replacement[name].is_shuffled
+    return values
 
 
-# The operands a production caller holds fixed while the activations change.
-# ``b`` and ``b_scale`` are the quantized weight and its block scales: loaded
-# once and reused for every batch. Holding them across the timed samples is what
-# lets an implementation re-lay them out once without being charged for it.
-PERSISTENT_INPUTS: tuple[str, ...] = ("b", "b_scale")
+def _moe(definition, row, axes, generator, device):
+    required = {"num_tokens", "model_dim", "num_experts", "topk", "w1_rows", "w1_cols",
+                "w2_cols", "w1_scale_cols", "w2_scale_cols"}
+    if not required <= axes.keys() or "quantization:per_1x32" not in definition.get("tags", []):
+        raise NotImplementedError("Only declared per_1x32 MXFP4 MoE inputs have a built-in policy")
+    from aiter.ops.shuffle import shuffle_weight
+    from aiter.utility.fp4_utils import dynamic_mxfp4_quant, e8m0_shuffle
 
-
-def redraw_call_varying_inputs(inputs: dict[str, Any], seed: int) -> dict[str, Any]:
-    """Redraw only what changes between two calls on a live model.
-
-    The draw itself stays the bundle's: the full callback runs, and the operands
-    the caller owns across calls are then restored. Selecting a subset of the
-    bundle's initializers instead would put a second copy of which distribution
-    fills which buffer in this file, and that copy is what goes stale.
-    """
-    held = {name: inputs[name].detach().clone() for name in PERSISTENT_INPUTS}
-    refill_case_inputs(inputs, seed=seed)
-    for name, value in held.items():
-        inputs[name].copy_(value)
-    return inputs
-
-
-def call_varying_draws(
-    inputs: dict[str, Any], seeds: list[int]
-) -> list[dict[str, torch.Tensor]]:
-    """One snapshot of the call-varying operands per seed, drawn by the bundle.
-
-    The buffers themselves end as they started, so drawing ahead of time does
-    not change what the next call reads.
-    """
-    names = tuple(name for name, value in inputs.items()
-                  if isinstance(value, torch.Tensor) and name not in PERSISTENT_INPUTS)
-    current = {name: inputs[name].detach().clone() for name in names}
-    draws = []
-    for seed in seeds:
-        redraw_call_varying_inputs(inputs, seed=seed)
-        draws.append({name: inputs[name].detach().clone() for name in names})
-    load_draw(inputs, current)
-    return draws
-
-
-def load_draw(inputs: dict[str, Any], draw: dict[str, torch.Tensor]) -> None:
-    """Copy a snapshot into the live buffers, keeping their storage."""
-    for name, value in draw.items():
-        inputs[name].copy_(value)
-
-
-def call_kwargs(inputs: dict[str, Any]) -> dict[str, Any]:
-    """The operator's full argument set, in the schema's input order."""
-    return {name: inputs[name] for name in INPUTS}
-
-
-def call_args(inputs: dict[str, Any]) -> tuple[Any, ...]:
-    """Positional launch arguments, in the schema's input order."""
-    return tuple(inputs[name] for name in INPUTS)
-
-
-def verdict(got: torch.Tensor, expected: torch.Tensor) -> tuple[bool, str]:
-    """Apply the bundle's comparison callback and report what it decided.
-
-    The callback raises AssertionError for a candidate that fails its contract
-    or its tolerance, and ValueError for a reference it considers invalid. Only
-    the first is a candidate verdict, so only the first is caught: an invalid
-    reference is this task's bug and has to stop the run rather than be scored
-    as a failed port.
-    """
-    try:
-        task_compare.run(got, expected)
-    except AssertionError as failure:
-        return False, str(failure)
-    return True, "within tolerance"
-
-
-def assert_candidate_is_independent(source: str) -> None:
-    """Apply the documented dependency policy before candidate import."""
-    task_contract.assert_source_independent(source)
+    e, d, rows, m, k = (axes[n] for n in ("num_experts", "model_dim", "w1_rows", "num_tokens", "topk"))
+    if k > e or rows % 2 or axes["w1_cols"] * 2 != d or axes["w2_cols"] * 2 != rows // 2:
+        raise ValueError("Inconsistent MXFP4 MoE dimensions")
+    result = {}
+    for name, shape in (("w1", (e, rows, d)), ("w2", (e, d, rows // 2))):
+        raw = 0.125 * torch.randn(shape, device=device, dtype=torch.bfloat16, generator=generator)
+        packed, scales = dynamic_mxfp4_quant(raw.reshape(-1, shape[-1]))
+        packed = packed.reshape(shape[0], shape[1], -1)
+        scales = e8m0_shuffle(scales).reshape(shape[0], shape[1], -1)
+        result[name] = shuffle_weight(packed.contiguous(), (16, 16)).view(dtype(definition["inputs"][name]["dtype"]))
+        result[name].is_shuffled = True
+        result[name + "_scale"] = scales.view(dtype(definition["inputs"][name + "_scale"]["dtype"]))
+    result["hidden_states"] = 0.25 * torch.randn((m, d), device=device, dtype=torch.bfloat16, generator=generator)
+    scores = torch.rand((m, e), device=device, generator=generator)
+    ids = scores.topk(k, dim=-1).indices
+    result["topk_ids"] = ids.to(torch.int32).contiguous()
+    result["topk_weights"] = scores.gather(1, ids).softmax(-1).contiguous()
+    for name, desc in row["workload"]["inputs"].items():
+        if desc["type"] == "scalar":
+            result[name] = desc["value"]
+    return result

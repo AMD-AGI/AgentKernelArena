@@ -1,52 +1,46 @@
 schema_version: 2
-description: Implement gemm_a8w8_blockwise_scaled_blk128x128_nt_obfloat16_bshuf16x16_asraw_n32768_k1024 in FlyDSL over every declared case.
-instructions:
-- README.md
-kernel_identity:
-  logical_operator: gemm_a8w8_blockwise_scaled_blk128x128_nt_obfloat16_bshuf16x16_asraw_n32768_k1024
-  source_owner: aiter
 candidate:
-  language: flydsl
-  initial_state: unimplemented
+  language: triton
+  initial_state: implemented
+  initial_language: python
   editable:
-  - kernel.py
+  - source/implementation/main.py
+  - source/kernel.py
   entrypoints:
-  - file: kernel.py
-    kind: builder
-    symbol: build_gemm_a8w8_blockwise_scaled_blk128x128_nt_obfloat16_bshuf16x16_asraw_n32768_k1024_module
+  - file: source/kernel.py
+    kind: function
+    symbol: run
 baseline:
   kind: provided
+  language: python
   source_files:
-  - aiter_source/aiter/ops/gemm_op_a8w8.py
-  correctness_policy: required
-workspace:
-  sources:
-  - kind: image
-    image_path: /sgl-workspace/aiter/aiter
-    destination: aiter_source/aiter
-    exclude:
-    - jit/build
-    - jit/flydsl_cache
-    - __pycache__
+  - scripts/baseline/main.py
 evaluation:
   runner:
   - python3
-  - scripts/evaluate.py
-  workloads: workload.json
-  timeout_s: 3600
-  baseline:
-    correctness:
-      timeout_s: 1800
-  candidate:
-    correctness:
-      timeout_s: 1800
+  - scripts/task_runner.py
+  workloads: scripts/workload.json
+  timeout_s: 1800
 platform_support:
   required_arch: gfx950
   status: active
-exports:
-- format: sikl-solution
-  output: artifacts/solution.json
-  command:
-  - python3
-  - scripts/export_solution.py
-  timeout_s: 60
+description: >-
+  Implement gemm_a8w8_blockwise_scaled_blk128x128_nt_obfloat16_bshuf16x16_asraw_n32768_k1024 in
+  Triton with the source/kernel.py run(**kwargs) interface. The declared implemented Python initial
+  candidate is an executable production wrapper used during task_validation; it is not a completed
+  Triton rewrite. The provided baseline and unchanged initial wrapper are permitted to call the
+  installed runtime entrypoint aiter.ops.gemm_op_a8w8.gemm_a8w8_blockscale_bpreshuffle. Their
+  required GPU runtime is MI355X/gfx950 with image
+  lmsysorg/sglang@sha256:e20849665c105d389ef91d23c0dc73931aaa6f02056dd10e7b43e4f16c79df69, which
+  supplies AITER, its GPU backend dependencies, ROCm PyTorch and Triton. See BUNDLE_README.md for
+  the role and dependency contract. The final submitted candidate must implement its own GPU
+  computation in Triton and must not delegate that computation to the production operator, protected
+  baseline, reference or another library operator. Read scripts/workload.json and the protected
+  reference for the full numerical contract. The supported axis and scalar combinations are exactly
+  those enumerated by the supplied workload rows; tensor values vary according to the task
+  initializer and replay-refill checks. The source definition documents the upstream operator and
+  does not extend this task to unlisted axis or scalar combinations. Retain all cases, dtypes,
+  tolerances and benchmark policy. Inputs are functional and may not be mutated. Edit only the
+  declared source files.
+instructions:
+- BUNDLE_README.md

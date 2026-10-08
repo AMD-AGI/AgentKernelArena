@@ -14,7 +14,10 @@ from src.task_spec import load_task_spec
 
 ROOT = Path(__file__).resolve().parents[1]
 SIKL_ROOT = ROOT / 'tasks' / 'Aiter-task'
-TASKS = sorted(p.parent for p in SIKL_ROOT.glob('*/config.yaml'))
+# The original FlyDSL builder suite uses root-level workload.json.
+# Functional task packages have separate coverage in test_functional_task_packages.py.
+TASKS = sorted(p.parent for p in SIKL_ROOT.glob('*/config.yaml')
+               if (p.parent / 'workload.json').is_file())
 # These existing tasks retain their main-branch protocol while their baseline
 # numerical findings and timed-output validation policy remain unresolved.
 DEFERRED_TIMING_TASKS = {
