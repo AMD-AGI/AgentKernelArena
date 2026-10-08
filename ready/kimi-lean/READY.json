@@ -1,0 +1,144 @@
+{
+  "archive": {
+    "payload_bytes": 10328195,
+    "payload_files_readback_verified": 150,
+    "readback_receipt_verified": true,
+    "root": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261008/qualification-evidence/kimi-k3__lean_attention_decode/20c1a949-201533-r2/",
+    "total_files_including_readback_receipt": 151
+  },
+  "case_ids": [
+    "_decode_lean_attention_fwd-616b10700cd40ae2986c1283"
+  ],
+  "editable_file": "tasks/headkernel/kimi-k3__lean_attention_decode/source/decode_attention.py",
+  "editable_kernel": "_lean_attention_decode_kernel",
+  "entry_config": "example_configs/ready_kimi_lean_mi355x.yaml",
+  "fixtures": {
+    "bytes": 632810514,
+    "files": 15,
+    "manifest": "tasks/headkernel/kimi-k3__lean_attention_decode/fixtures/EXTERNAL-MANIFEST.json",
+    "manifest_sha256": "64bafd7c9e69dfc3df20d00f4ef2cac044cce3494bd8cc2efacdad6f0f77ff84",
+    "oci_prefix": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261005/kimi-actual-v4-no-stack-194550/"
+  },
+  "mandatory_post_evaluation": {
+    "all_six_reports_and_both_outer_paired_series_validated": true,
+    "command": "python3 ready/kimi-lean/check_timing.py --measurement-dir TRUSTED_RESULTS --output NEW_QUALITY_RECEIPT.json",
+    "measurement_framework_commit": "20c1a949b07e0d2530315ee666cae8a178edad69",
+    "primary_comparison": "candidate invocation protected native reference / candidate, matched on the same work schedule",
+    "quality_module_commit": "47aaa88342ba07ef67f95ba7b3c348eb20f945e1",
+    "quality_module_sha256": "d7d0829186a6f2dc2f8c8c69394294b54680c5ddf1d030c1e71d4faca44a332d",
+    "statistical_proof_of_gain": false,
+    "trim_or_automatic_retry": false
+  },
+  "measurement": {
+    "benchmark_iterations": 100,
+    "correctness_seeds": [
+      0,
+      1,
+      2
+    ],
+    "initialize_outputs": "each_replay",
+    "method": "cuda_graph",
+    "negative_controls": [
+      "no_op",
+      "wrong_output"
+    ],
+    "refresh_inputs": "each_replay",
+    "validate_outputs": "each_replay",
+    "warmup_iterations": 10
+  },
+  "proofs": {
+    "archive_manifest": {
+      "sha256": "abd602d0fb98e0f1b207f2844acca647205b2417cc99d897de4a920fa3bf2bb5",
+      "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261008/qualification-evidence/kimi-k3__lean_attention_decode/20c1a949-201533-r2/FILE-MANIFEST.json"
+    },
+    "archive_readback": {
+      "sha256": "4b13816b60f2ec9545a59b433d868c0957ba1e628e368b2a1a1dcb2e9ce92eb4",
+      "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261008/qualification-evidence/kimi-k3__lean_attention_decode/20c1a949-201533-r2/ARCHIVE-READBACK.json"
+    },
+    "compiled_controls_audit": {
+      "sha256": "fe46026cc5a5f0cc13b46f52a5c080083eb74981975dce811c0eb4d83329c368",
+      "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261008/qualification-evidence/kimi-k3__lean_attention_decode/20c1a949-201533-r2/metadata/control-binding/COMPILED-CONTROLS-INDEPENDENT-AUDIT.json"
+    },
+    "final_summary": {
+      "sha256": "bca1393229d5d83100be351c0ab5c11dd58e040b21befe167977452082abd5aa",
+      "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261008/qualification-evidence/kimi-k3__lean_attention_decode/20c1a949-201533-r2/metadata/FINAL-QUALIFICATION.json"
+    },
+    "framework_report": {
+      "sha256": "4c5eaf3c70260c7c8a0d5fb724dc896ca1f13a25cb3aeea5f5a6c1e31b369b05",
+      "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261008/qualification-evidence/kimi-k3__lean_attention_decode/20c1a949-201533-r2/framework/artifacts/framework/workspace_MI355X_task_validator/run_20261008_184120_sg520_quant_validator/headkernel_kimi-k3__lean_attention_decode_20261008_184120/validation_report.yaml"
+    },
+    "framework_timing": {
+      "sha256": "e358413f5f47004060ced08e9209b0d3c6d94d317d106fb7e7bdbebc8b07926f",
+      "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261008/qualification-evidence/kimi-k3__lean_attention_decode/20c1a949-201533-r2/metadata/framework-audit/FRAMEWORK-TIMING-QUALITY.json"
+    },
+    "publication_approval": {
+      "sha256": "0a86888daef62be55acd94cdadc326f9231c3ac6f44482a7ddad0c00cc2e1f64",
+      "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261008/qualification-evidence/kimi-k3__lean_attention_decode/20c1a949-201533-r2/metadata/control-binding/PUBLICATION-APPROVAL-validator_execution_plan.json"
+    },
+    "trusted_measurement": {
+      "sha256": "d00291cecf0f8b963adbca57a15a4583e85a390f3630575df6f10d94947cae92",
+      "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261008/qualification-evidence/kimi-k3__lean_attention_decode/20c1a949-201533-r2/trusted/trusted_measurement.json"
+    },
+    "trusted_timing": {
+      "sha256": "749c931e3e8ea95ebbbfe298e50d75edb81042a822f8101ba81496a6817f62f7",
+      "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261008/qualification-evidence/kimi-k3__lean_attention_decode/20c1a949-201533-r2/metadata/trusted-timing/TIMING-QUALITY.json"
+    }
+  },
+  "qualification": {
+    "checked_pairs_per_case_per_outer_leg": 110,
+    "compiled_negative_source_rejections": 2,
+    "compiled_source_control_calibration_seeds": [
+      0,
+      1,
+      2
+    ],
+    "framework_checks_passed": 12,
+    "framework_primary_same_source_ratio": 0.99232270487896,
+    "framework_raw_inner_samples": 200,
+    "gain_eligible": false,
+    "negative_source_rejection_phase": "captured parity after actual compiled GPU completion; neither bad source was timed",
+    "original_wrapper_failure_and_CPU_recovery_preserved": true,
+    "provisional_task_status": "Preserved in unchanged task; this scoped receipt records the completed qualification.",
+    "singleton_timing_classes": 92,
+    "source_unchanged": true,
+    "timing_stability_exhaustive": false,
+    "trusted_phases_completed": 6,
+    "trusted_primary_same_source_ratio": 0.9912336584739921,
+    "trusted_raw_inner_samples": 400,
+    "verified_timing_classes": 96
+  },
+  "qualified_commit": "20c1a949b07e0d2530315ee666cae8a178edad69",
+  "ready_tasks": [
+    "headkernel/kimi-k3__lean_attention_decode"
+  ],
+  "runtime": {
+    "aiter_jit_source": "/sgl-workspace/aiter/aiter/jit",
+    "architecture": "gfx950",
+    "gpu_model": "MI355X",
+    "host_platform": "linux/amd64",
+    "image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96"
+  },
+  "schema": "qualified-kernel-entry-v1",
+  "scope": {
+    "batch": 64,
+    "end_to_end_serving_gain_claim": false,
+    "exhaustive_sequence_length_timing": false,
+    "optimization_gain_claim": false,
+    "other_Kimi_tasks_ready": false,
+    "page_size": 1,
+    "persistent_grid": 256,
+    "qk_dimension": 576,
+    "query_heads": 12,
+    "sampled_work_distribution": true,
+    "sequence_length_histogram_range": [
+      8193,
+      9216
+    ],
+    "structural_cases": 1,
+    "value_dimension": 512,
+    "whole_model_ready": false
+  },
+  "source_sha256": "34ca0066e2716e1ffad048ec7cbb3a25af13eeb61e99034a663fed6277bf691a",
+  "task_tree": "4c3c322f6970a887e0ec5559da76b5f11ae000cf",
+  "validator_config": "example_configs/validate_ready_kimi_lean_mi355x.yaml"
+}

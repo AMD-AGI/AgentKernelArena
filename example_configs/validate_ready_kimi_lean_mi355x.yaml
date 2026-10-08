@@ -1,0 +1,11 @@
+# Apply the archived validator profile as documented before this optional retest.
+agent:
+  template: task_validator
+  backend: codex
+  model: gpt-6-astra
+  effort: max
+tasks:
+  - headkernel/kimi-k3__lean_attention_decode
+target_gpu_model: MI355X
+log_directory: logs
+workspace_directory_prefix: workspace

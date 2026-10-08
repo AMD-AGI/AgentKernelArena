@@ -1,0 +1,8 @@
+# Qualified Lean decode entry; see ready/kimi-lean/README.md for fixture staging.
+agent:
+  template: claude_code
+tasks:
+  - headkernel/kimi-k3__lean_attention_decode
+target_gpu_model: MI355X
+log_directory: logs
+workspace_directory_prefix: workspace
