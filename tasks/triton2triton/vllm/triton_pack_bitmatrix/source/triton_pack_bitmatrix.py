@@ -17,6 +17,7 @@ def pack_bitmatrix(
     n_expts_act,  # num_topk
     BLOCK_SIZE_M: tl.constexpr,
     BLOCK_SIZE_K: tl.constexpr,
+    N_CHUNKS: tl.constexpr,
 ):
     """
     Pack topk_ids into a bitmatrix representation.
@@ -32,15 +33,39 @@ def pack_bitmatrix(
     rem = indices % 32
     one = tl.cast(1, tl.uint32)
 
-    for i in range(bm_cols):
-        offs = tl.arange(0, BLOCK_SIZE_K // 32) + i * (BLOCK_SIZE_K // 32)
-        x = tl.where(
-            mask[:, :, None] & (indices[:, :, None] >= 0) & (div[:, :, None] == offs[None, None, :]),
-            (one << rem)[:, :, None], 0
-        )
-        y = tl.reduce_or(x, axis=1)
-        bitmatrix_ptrs = bitmatrix + offsets_m[:, None] * bm_cols + offs[None, :]
-        tl.store(bitmatrix_ptrs, y, mask=offsets_m[:, None] < n_rows)
+    if N_CHUNKS == 1:
+        # Keep the original scored path intact when every assignment fits.
+        for i in range(bm_cols):
+            offs = tl.arange(0, BLOCK_SIZE_K // 32) + i * (BLOCK_SIZE_K // 32)
+            x = tl.where(
+                mask[:, :, None] & (indices[:, :, None] >= 0) & (div[:, :, None] == offs[None, None, :]),
+                (one << rem)[:, :, None], 0
+            )
+            y = tl.reduce_or(x, axis=1)
+            bitmatrix_ptrs = bitmatrix + offsets_m[:, None] * bm_cols + offs[None, :]
+            tl.store(bitmatrix_ptrs, y, mask=offsets_m[:, None] < n_rows)
+    else:
+        for i in range(bm_cols):
+            offs = tl.arange(0, 1) + i
+            x = tl.where(
+                mask[:, :, None] & (indices[:, :, None] >= 0) & (div[:, :, None] == offs[None, None, :]),
+                (one << rem)[:, :, None], 0
+            )
+            y = tl.reduce_or(x, axis=1)
+            # Fold every additional 32-assignment tile into this output word.
+            for chunk in range(1, N_CHUNKS):
+                chunk_k = chunk * BLOCK_SIZE_K + offsets_k
+                chunk_mask = (offsets_m < n_rows)[:, None] & (chunk_k < n_expts_act)[None, :]
+                chunk_offsets = offsets_m[:, None] * n_expts_act + chunk_k[None, :]
+                chunk_indices = tl.load(topk_ids + chunk_offsets, mask=chunk_mask, other=-1)
+                chunk_x = tl.where(
+                    chunk_mask[:, :, None] & (chunk_indices[:, :, None] >= 0)
+                    & (chunk_indices[:, :, None] // 32 == offs[None, None, :]),
+                    (one << (chunk_indices % 32))[:, :, None], 0
+                )
+                y = y | tl.reduce_or(chunk_x, axis=1)
+            bitmatrix_ptrs = bitmatrix + offsets_m[:, None] * bm_cols + offs[None, :]
+            tl.store(bitmatrix_ptrs, y, mask=(offsets_m[:, None] < n_rows) & (offs[None, :] < bm_cols))
 
 
 def pack_topk_to_bitmatrix(
@@ -77,5 +102,6 @@ def pack_topk_to_bitmatrix(
         num_topk,
         BLOCK_SIZE_M=BLOCK_SIZE_M,
         BLOCK_SIZE_K=BLOCK_SIZE_K,
+        N_CHUNKS=triton.cdiv(num_topk, BLOCK_SIZE_K),
     )
     return bitmatrix

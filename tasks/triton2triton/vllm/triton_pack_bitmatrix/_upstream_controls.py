@@ -30,8 +30,14 @@ def make_boundary_topk_ids(n_rows, num_experts, topk, device):
     prefix_len = min(topk, len(edge_ids))
     topk_ids[0, :prefix_len] = torch.tensor(edge_ids[:prefix_len], dtype=torch.int16)
     topk_ids[-1, 0] = num_experts - 1
+    if topk > 32:
+        # Only the final assignment selects the high word. A kernel that reads
+        # just its first 32 IDs must disagree with the independent reference.
+        topk_ids[0].zero_()
+        topk_ids[0, -1] = num_experts - 1
     return topk_ids.to(device)
-EXTRA_CASES = [(17, 31, 1), (33, 32, 31), (513, 33, 32)]
+EXTRA_CASES = [(17, 31, 1), (33, 32, 31), (513, 33, 32),
+               (1, 64, 33), (1, 64, 65)]
 
 def run_control(index, load_module):
     if type(index) is not int or not 0 <= index < len(EXTRA_CASES):

@@ -189,11 +189,26 @@ def test_vllm_v2_preserves_all_original_cases_checks_sources_and_helpers(path):
                     f'{operand.upper()}_LARGE={operand}.numel() > 2**31'.encode(),
                     f'{operand.upper()}_LARGE=_requires_int64_index({operand})'.encode())
         if task.name == 'triton_pack_bitmatrix':
-            old = b'div[:, :, None] == offs[None, None, :], (one << rem)[:, :, None], 0'
-            new = (b'mask[:, :, None] & (indices[:, :, None] >= 0) & (div[:, :, None] == offs[None, None, :]),\n'
-                   b'            (one << rem)[:, :, None], 0')
-            assert original.count(old) == 1
-            original = original.replace(old, new)
+            # Explicit semantic repairs: ignore tile padding and OR every
+            # 32-assignment tile, including top-k 33/65 tails. The dedicated
+            # boundary tests reject truncation. The wrapper only adds the
+            # compile-time tile count; retain every other source byte.
+            current = source.read_text()
+            before_tree, after_tree = ast.parse(original), ast.parse(current)
+            before_kernel = next(n for n in before_tree.body
+                                 if isinstance(n, ast.FunctionDef) and n.name == 'pack_bitmatrix')
+            after_kernel = next(n for n in after_tree.body
+                                if isinstance(n, ast.FunctionDef) and n.name == 'pack_bitmatrix')
+            assert hashlib.sha256(ast.dump(after_kernel, include_attributes=False).encode()).hexdigest() == (
+                'bcb27618446d9a98ce504268fbd520b56802d7baa44ac7a4f9cdaebc12d18cad'
+            )
+            original = original.replace(ast.get_source_segment(original.decode(), before_kernel).encode(),
+                                        ast.get_source_segment(current, after_kernel).encode(), 1)
+            old_launch = b'        BLOCK_SIZE_K=BLOCK_SIZE_K,\n    )'
+            new_launch = (b'        BLOCK_SIZE_K=BLOCK_SIZE_K,\n'
+                          b'        N_CHUNKS=triton.cdiv(num_topk, BLOCK_SIZE_K),\n    )')
+            assert original.count(old_launch) == 1
+            original = original.replace(old_launch, new_launch)
         if task.name == 'triton_batched_moe':
             # Only add the missing N-tail load mask; preserve all other source
             # bytes. Dedicated MoE controls cover inactive experts and tails.

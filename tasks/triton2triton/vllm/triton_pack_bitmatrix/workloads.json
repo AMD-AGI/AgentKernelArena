@@ -174,6 +174,36 @@
         "correctness"
       ],
       "status": "PASS"
+    },
+    {
+      "test_case_id": "control-upstream-4",
+      "params": {
+        "case_index": 10003,
+        "configuration": [
+          1,
+          64,
+          33
+        ]
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control-upstream-5",
+      "params": {
+        "case_index": 10004,
+        "configuration": [
+          1,
+          64,
+          65
+        ]
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
     }
   ],
   "migration": {
@@ -195,6 +225,16 @@
       513,
       33,
       32
+    ],
+    [
+      1,
+      64,
+      33
+    ],
+    [
+      1,
+      64,
+      65
     ]
   ]
 }
