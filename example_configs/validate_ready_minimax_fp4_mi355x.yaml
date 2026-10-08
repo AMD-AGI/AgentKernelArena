@@ -1,0 +1,11 @@
+# Backend settings used by the archived full framework validator.
+agent:
+  template: task_validator
+  backend: codex
+  model: gpt-6-astra
+  effort: max
+tasks:
+  - headkernel/minimax-m3__gemm_afp4wfp4_kernel
+target_gpu_model: MI355X
+log_directory: logs
+workspace_directory_prefix: workspace
