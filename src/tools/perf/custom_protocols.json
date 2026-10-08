@@ -556,6 +556,40 @@
           "675a23fbcaac5b93dfe6281f86eecfa775b03bd6db20759ded04ef44ad5358e2"
         ]
       }
+    },
+    {
+      "family": "portable_case_contract",
+      "description": "Packed-value CPU oracle, private native FP4 allocation ownership and out-of-timer graph poison; all 56 submitted-source controls require calibration and actual candidate engagement.",
+      "entrypoint": "scripts/task_runner.py",
+      "entrypoint_sha256": [
+        "8c2e194299313e543b6157222e395d89ca77502f68e0c68ddebe9375fdadbecf"
+      ],
+      "files_sha256": {
+        "ut/runtime.py": [
+          "3804a04972a5aa79123e346318e944df636ab272dc85ff909b8b37f24034f273"
+        ],
+        "ut/admission.py": [
+          "0dfd2250830c789d552e52ca13a9544f176f0e3f5bed9876f0be462db94e664e"
+        ],
+        "ut/reference.py": [
+          "8a8aa1ddcdc32611cbd9075ba75821e804ba80c447da61507db09de34ddcbc53"
+        ],
+        "ut/fixture_codec.py": [
+          "502d14650ef6f3b685776ed0b7a0cc219e274a7025d6c606988eb9484dae17c8"
+        ],
+        "ut/write_ownership.py": [
+          "a04bd37eea227520f579f105537c7aa4cc2778e200ca5e7ec120aa912898c2a7"
+        ],
+        "scripts/check_source_binding.py": [
+          "6649cbc592fe1682eeef82cf91e0cdbe9ca51ef9b9de42f3cf39c822c473c168"
+        ],
+        "scripts/make_source_controls.py": [
+          "3cc53007ff8dd74e212e35f7e93319ad2dc7ee117f98ecccb0d5ffe6760aa337"
+        ],
+        "ut/binding.py": [
+          "42967484c96589c708e17143e40b0d9104f24fccee3495288bc4555254b73691"
+        ]
+      }
     }
   ]
 }

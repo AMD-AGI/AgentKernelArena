@@ -47,6 +47,27 @@ def package_hash():
     return digest.hexdigest()
 
 
+def run_source_controls(dataset, manifest, seed):
+    from check_source_binding import probe
+    from make_source_controls import control_source
+    submitted_controls = []
+    for kind in ("no_op", "wrong_output"):
+        workspace = ROOT / "build" / ("submitted_" + kind)
+        (workspace / "source").mkdir(parents=True, exist_ok=True)
+        (workspace / "source/kernel.py").write_text(control_source(kind))
+        for case in manifest["cases"]:
+            for mode in ("eager", "graph"):
+                code, evidence = probe(dataset, workspace, case["case_id"], mode, seed)
+                require(code == 1 and evidence["status"] == "candidate_rejected"
+                        and evidence["reference_calibrated"] and evidence.get("candidate_compiled_and_engaged") is True
+                        and (mode != "graph" or evidence.get("graph_captured") is True
+                             and evidence.get("graph_replayed") is True),
+                        "submitted source control did not reject after calibrated reference and candidate engagement: "
+                        + kind + "/" + case["case_id"] + "/" + mode)
+                submitted_controls.append({"variant": kind, **evidence})
+    return submitted_controls
+
+
 def run(phase, dataset, request=None):
     manifest = load_dataset(dataset)
     import torch
@@ -94,19 +115,7 @@ def run(phase, dataset, request=None):
         del state
     submitted_controls = []
     if phase == "correctness":
-        from check_source_binding import probe
-        from make_source_controls import control_source
-        control_case = min((case for case in manifest["cases"] if case["scalars"]["resolved_config"]["NUM_KSPLIT"] == 1),
-                           key=lambda case: case["tensors"]["x"]["shape"][0] * case["tensors"]["result"]["shape"][-1])
-        for kind in ("no_op", "wrong_output"):
-            workspace = ROOT / "build" / ("submitted_" + kind)
-            (workspace / "source").mkdir(parents=True, exist_ok=True)
-            (workspace / "source/kernel.py").write_text(control_source(kind))
-            for mode in ("eager", "graph"):
-                code, evidence = probe(dataset, workspace, control_case["case_id"], mode, request["challenge_seed"])
-                require(code == 1 and evidence["status"] == "candidate_rejected" and evidence["reference_calibrated"],
-                        "submitted source control did not reject after calibrated reference: " + kind + "/" + mode)
-                submitted_controls.append({"variant": kind, **evidence})
+        submitted_controls = run_source_controls(dataset, manifest, request["challenge_seed"])
     require(package_hash() == before, "protected package changed during execution")
     return finalize_report({"schema_version": 1, "status": "ok", "request": request, "compiled": True,
                             "cases": rows, "compiled_kernels": compiled, "oracle": "independent_cpu_packed_fp4",

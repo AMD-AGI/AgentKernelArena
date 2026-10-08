@@ -33,6 +33,12 @@ def probe(dataset, candidate_workspace, case_id, mode, seed):
         candidate = FP4Case(ROOT, dataset, case, manifest["oracle_policy"], candidate_workspace=candidate_workspace,
                             defer_candidate_check=True)
         result["source_proof"] = candidate.proof
+        result["candidate_compilation"] = {"native_invocations": candidate.calls,
+            "compiled_kernels": list(candidate.probe.launches)}
+        if candidate.calls < 1 or len(candidate.probe.launches) != candidate.calls or not all(
+                item["kernel_name"] and item["kernel_hash"] for item in candidate.probe.launches):
+            raise ValueError("candidate compilation/native engagement evidence is incomplete")
+        result["candidate_compiled_and_engaged"] = True
         if mode == "graph":
             candidate.capture_graph()
             result["graph_captured"] = True

@@ -3,6 +3,7 @@ from binding import load_leg
 from evaluation_contract import observe_case, require, strict_json
 from fixture_codec import file_sha, restore, safe_file, views
 from reference import tensor_reference
+from write_ownership import track_native_allocations
 
 
 class ReferenceCalibrationError(AssertionError):
@@ -73,6 +74,11 @@ class FP4Case:
             self.output_bytes[offsets + byte] = True
         self.call, self.proof = load_leg(root, leg, use_splitk_bf16=controls["use_splitk_bf16"],
                                           candidate_workspace=candidate_workspace)
+        readonly = [self.inputs[name] for name in ("x", "w", "x_scales", "w_scales")]
+        self.returns_partials = controls["skip_reduce"] and controls["resolved_config"]["NUM_KSPLIT"] > 1
+        if self.returns_partials:
+            readonly.append(self.inputs["y"])  # The native wrapper does not write ignored y.
+        self.writes = track_native_allocations(self.call, readonly)
         namespace = self.call.__globals__
         self.probe = CheckedKernel(namespace["_triton_gemm_afp4wfp4_kernel"], controls["native_arguments"])
         namespace["_triton_gemm_afp4wfp4_kernel"] = self.probe
@@ -91,10 +97,18 @@ class FP4Case:
     def invoke(self):
         torch, controls = self.torch, self.case["scalars"]
         dtype = None if controls["dtype"] is None else getattr(torch, controls["dtype"].removeprefix("torch."))
-        self.result = self.call(self.inputs["x"], self.inputs["w"], self.inputs["x_scales"], self.inputs["w_scales"],
-                                dtype, self.inputs["y"], dict(controls["resolved_config"]), controls["skip_reduce"])
+        with self.writes.invocation(capturing=torch.cuda.is_current_stream_capturing()):
+            self.result = self.call(self.inputs["x"], self.inputs["w"], self.inputs["x_scales"], self.inputs["w_scales"],
+                                    dtype, self.inputs["y"], dict(controls["resolved_config"]), controls["skip_reduce"])
+        launch = controls["native_arguments"]
+        expected = [(launch["NUM_KSPLIT"], launch["M"], launch["N"])] if launch["NUM_KSPLIT"] > 1 else []
+        if self.inputs["y"] is None and not self.returns_partials:
+            expected.append((launch["M"], launch["N"]))
+        self.writes.validate_shapes(expected)
         self.calls += 1
         require(len(self.probe.launches) == self.calls, "wrapper did not launch submitted kernel exactly once")
+        self.proof["writable_storage_tracking"] = True
+        self.proof["tracked_native_allocations"] = len(self.writes.tensors)
 
     def reset(self, seed):
         torch = self.torch
@@ -117,11 +131,8 @@ class FP4Case:
         return self.truth
 
     def initialize(self):
-        if self.result is not None:
-            self.result.fill_(float("nan"))
-        output_y = self.inputs["y"]
-        if output_y is not None and not (self.case["scalars"]["skip_reduce"] and self.case["scalars"]["resolved_config"]["NUM_KSPLIT"] > 1):
-            output_y.fill_(float("nan"))
+        output_y = None if self.returns_partials else self.inputs["y"]
+        self.writes.initialize(self.result, output_y)
 
     def observe(self):
         require(self.result is not None, "native output was not produced")
@@ -167,12 +178,16 @@ class FP4Case:
         self.graph = torch.cuda.CUDAGraph()
         with torch.cuda.graph(self.graph):
             self.invoke()
+        # Captured allocation ownership survives until the graph is discarded.
+        # This initialization is deliberately outside the capture context.
+        self.initialize()
         self.proof["graph_captured"] = True
 
     def replay(self):
         if self.graph is None:
             self.invoke()
         else:
+            self.writes.before_graph_replay()
             self.graph.replay()
 
     def check_once(self, seed):
@@ -184,6 +199,7 @@ class FP4Case:
         return self.verify(truth)
 
     def measure(self, replay):
+        require(self.graph is not None, "FP4 device timing requires a captured native replay")
         begin, end = self.torch.cuda.Event(enable_timing=True), self.torch.cuda.Event(enable_timing=True)
         begin.record()
         replay()

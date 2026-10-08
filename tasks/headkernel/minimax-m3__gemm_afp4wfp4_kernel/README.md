@@ -27,12 +27,20 @@ The fixed mixed-RMS limit is 0.02 and never relaxes automatically. Every capture
 output must calibrate before candidate acceptance. Input refresh permutes rows
 and corresponding scales and changes FP4 signs while preserving layout and
 magnitudes. CPU-owned truth, complete input storage, output aliases and padding
-are checked on every replay. Outputs are poisoned before execution.
+are checked on every replay. The private wrapper's floating allocations, including
+split-K partials, are tracked without patching global Torch. Eager allocations are
+poisoned before native use. Graph capture records and retains written allocations;
+all written buffers are poisoned outside capture before every replay, outside the
+device timer. Read-only input storages and ignored output arguments are never
+poisoned. Reference and candidate use the same allocation and reset path.
 
 All 14 cases retain 10 warmups and 100 checked graph timing samples. Correctness
 also tests eager and graph callbacks plus real source-only no-op/zero-output
-submissions on the smallest captured non-split case, each after a valid native
-reference. Invalid reference or setup failures never count as rejection. These
+submissions on every captured case in both modes, each after a valid native
+reference and recorded candidate compilation/launch. This includes the M1/N768,
+packed-K3072, four-way split-K regression where an untracked partial buffer allowed
+a no-op eager candidate to reuse stale values. Invalid reference or setup failures
+never count as rejection. These
 additional source controls collect no performance samples and do not replace
 any scoreable case.
 
