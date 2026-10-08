@@ -58,7 +58,7 @@ prompt:
 headkernel:
   model: "Qwen3.8-2.4T-A95B-MXFP4"
   owner: "Li, Zeping <zepingl@amd.com>"
-  docker: "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.18-rocm720-mi35x-profilerfix"
+  docker: "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96"
   serving: ISL 8192 / OSL 1024 / CONC 64 / TP 8
   backend: AITER / FlyDSL
   regime: decode

@@ -1,0 +1,21 @@
+{
+  "schema": "qwen-sg520-source-refresh-v1",
+  "runtime_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
+  "sglang_version": "0.5.20",
+  "native_source_sha256": "e7e81662d1989eacd46b757b0240111ef9caae31a77fb3035ca2b9196307198d",
+  "prior_native_source_sha256": "e7e81662d1989eacd46b757b0240111ef9caae31a77fb3035ca2b9196307198d",
+  "native_source_changed": false,
+  "candidate_sha256": "e7e81662d1989eacd46b757b0240111ef9caae31a77fb3035ca2b9196307198d",
+  "model": "Qwen3.8-2.4T-A95B-MXFP4",
+  "capture_model_repository": "amd/Qwen3.8-2.4T-A95B-Quark-MXFP4",
+  "capture_model_snapshot": "1122ff36878499eb1e44823999e7de10ddfabd3b",
+  "capture_model_config_sha256": "03c45bb8de155ff683727782a526002b2aab9a2ae4b782f84e74152f4d57f01d",
+  "capture_runtime_image": "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.18-rocm720-mi35x-profilerfix",
+  "capture_shapes_and_oracles_unchanged": true,
+  "historical_validation_applies_only_to_capture_runtime": true,
+  "current_runtime_GPU_validation": "PENDING_ROOT_ASSIGNED_GPU_REPLAY",
+  "current_runtime_workload_capture_claimed": false,
+  "current_runtime_dispatch_identity_claimed": false,
+  "case_count": 2,
+  "tolerances_warmups_samples_and_guards_unchanged": true
+}

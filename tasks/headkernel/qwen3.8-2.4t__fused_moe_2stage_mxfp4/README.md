@@ -90,3 +90,7 @@ This package shipped no README. `ut/meta.json` (oracle policy, tolerance, case
 geometries), `ut/selection_validation.json` (proof the two legs resolve to
 different code) and `ut/negative_check.json` (proof a corrupted output is
 rejected) are what it records instead - read those before trusting a speedup.
+
+## SGLang 0.5.20 source refresh
+
+The candidate and frozen native source now bind to the digest in `ut/runtime_refresh.json`. Existing shapes, captured tensors, tolerances, samples, and harness checks are preserved from the documented SGLang 0.5.18 workload. Historical PASS artifacts apply to that capture runtime. Validation and dispatch verification in SGLang 0.5.20 are pending; no new serving capture or performance gain is claimed.

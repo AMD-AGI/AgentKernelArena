@@ -74,3 +74,7 @@ different code) and `ut/negative_check.json` (proof a corrupted output is
 rejected) are what it records instead - read those before trusting a speedup.
 
 **Note.** two live records, B=64 and B=1, compared as an ordered pair: the UT checks the recurrent state transition, not just the output tensor.
+
+## SGLang 0.5.20 source refresh
+
+The candidate and frozen native source now bind to the digest in `ut/runtime_refresh.json`. Existing shapes, captured tensors, tolerances, samples, and harness checks are preserved from the documented SGLang 0.5.18 workload. Historical PASS artifacts apply to that capture runtime. Validation and dispatch verification in SGLang 0.5.20 are pending; no new serving capture or performance gain is claimed.

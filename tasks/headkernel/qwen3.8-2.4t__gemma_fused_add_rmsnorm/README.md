@@ -76,3 +76,7 @@ different code) and `ut/negative_check.json` (proof a corrupted output is
 rejected) are what it records instead - read those before trusting a speedup.
 
 **Note.** prefill M=8192 and decode M=64 at N=8192. The oracle is a deterministic runtime baseline rather than a frozen blob; source/ is byte-identical to the deployed kernel, so the first measurement is a null run.
+
+## SGLang 0.5.20 source refresh
+
+The candidate and frozen native source now bind to the digest in `ut/runtime_refresh.json`. Existing shapes, captured tensors, tolerances, samples, and harness checks are preserved from the documented SGLang 0.5.18 workload. Historical PASS artifacts apply to that capture runtime. Validation and dispatch verification in SGLang 0.5.20 are pending; no new serving capture or performance gain is claimed.

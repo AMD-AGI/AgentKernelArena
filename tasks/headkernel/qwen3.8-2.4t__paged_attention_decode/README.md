@@ -84,3 +84,7 @@ different code) and `ut/negative_check.json` (proof a corrupted output is
 rejected) are what it records instead - read those before trusting a speedup.
 
 **Note.** the live capture yielded exactly one decode geometry (M=64, 521351 referenced KV pages). The callable must return the supplied output buffer and leave query/KV/metadata/scales unchanged - the UT checks that, not just the values. source/ also stubs direct_register_custom_op so loading the overlay copy does not re-register the torch.library schemas the production module already owns; keep it.
+
+## SGLang 0.5.20 source refresh
+
+The candidate and frozen native source now bind to the digest in `ut/runtime_refresh.json`. Existing shapes, captured tensors, tolerances, samples, and harness checks are preserved from the documented SGLang 0.5.18 workload. Historical PASS artifacts apply to that capture runtime. Validation and dispatch verification in SGLang 0.5.20 are pending; no new serving capture or performance gain is claimed.
