@@ -659,14 +659,19 @@ installed package in the pinned runtime; they do not import this copy. Preserve
 the package's Python JIT sources while excluding generated build/cache trees.
 Copying the whole upstream repository is unnecessary for this task contract.
 
-The existing SIKL suite contains 22 BF16 GEMM tasks, 15 blockwise-scaled FP8
-GEMM tasks, four MXFP4 MoE tasks, one fused mHC post→pre task, one paged top-k
-task and three sparse flash MLA tasks, each covering its declared case set. The same schema fits every family. A MoE
-runner keeps its routing, quantization, reference, comparison, and multi-kernel
-timing logic in task files; the mHC runner keeps its multi-output naming and
-scalar inputs there too, the top-k runner its declared valid lengths,
-routing-plan checks and destination-passing output, and the MLA runner its
-per-pool lengths, index patterns and per-shape base draws. A task whose production baseline lives in sglang
+The existing SIKL suite uses two package layouts, each covering its declared
+case set. The builder layout above (root `workload.json`, `scripts/evaluate.py`)
+holds 22 BF16 GEMM tasks, four MXFP4 MoE tasks, one paged top-k task and three
+sparse flash MLA tasks. The functional layout (`scripts/workload.json` embedding
+the bundle definition and rows, `scripts/task_runner.py`) holds 15
+blockwise-scaled FP8 GEMM tasks and one fused mHC post→pre task; one runner copy
+serves all of them, reading the operands held across timed calls from the
+workload policy's `persistent_inputs`. Both layouts declare unimplemented FlyDSL
+builder candidates and share the same schema. A MoE runner keeps its routing,
+quantization, reference, comparison, and multi-kernel timing logic in task
+files; the top-k runner its declared valid lengths, routing-plan checks and
+destination-passing output, and the MLA runner its per-pool lengths, index
+patterns and per-shape base draws. A task whose production baseline lives in sglang
 declares `kernel_identity.source_owner: sglang` and acquires the relevant
 sglang subtrees instead of the AITER package. No family acquires a separate
 task config schema.

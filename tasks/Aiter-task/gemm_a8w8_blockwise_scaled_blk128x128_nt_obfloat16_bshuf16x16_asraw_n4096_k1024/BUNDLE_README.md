@@ -5,53 +5,54 @@ preshuffled weights. This task fixes `n=4096`, `k=1024`, `sn=32`, and `sk=8`.
 The 13 [workload rows](scripts/workload.json) cover
 `m = 1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096`.
 Only these axis combinations are in scope; input values change across seeded
-initialization and replay checks.
+initialization and timing draws.
 
-## Initial candidate, final implementation, and runtime
+## Candidate, baseline, and runtime
 
-[config.yaml](config.yaml) declares `initial_state: implemented`,
-`initial_language: python`, and target `language: triton`. During initial
-`task_validation`, the unchanged Python wrapper in
-[source/implementation/main.py](source/implementation/main.py) is the declared
-starting implementation. It calls the same production operator as the separate
-protected [baseline](scripts/baseline/main.py). This dependency is allowed for
-those two roles. Initial qualification checks their executable behavior, full
-numerical contract, and timed replay; it does not certify a completed rewrite.
+[config.yaml](config.yaml) declares `language: flydsl` and `initial_state: unimplemented`.
+[source/kernel.py](source/kernel.py) is the empty generation target: it defines no
+builder, and task validation verifies that state without executing it. It is the
+only editable file.
 
-The final submitted candidate must implement its own GPU computation in Triton.
-It must not call the production AITER operator, the protected baseline or
-reference, or another library operator to perform that computation. Replace the
-initial wrapper in the declared editable files while retaining `run(**kwargs)`.
-The baseline remains protected and separate from candidate edits. All workload,
-accuracy, input immutability and measured-replay requirements apply in both
-phases; initial-language support does not waive the final Triton requirement.
+The candidate must implement its own GPU computation in FlyDSL. It must not call
+the production AITER operator, the protected baseline or reference, or another
+library operator to perform that computation. The runner statically rejects
+imports other than FlyDSL, PyTorch and a small set of standard-library modules,
+imports of AITER or the task scripts, library matrix products and torch
+normalizations. This guards against ordinary violations, not against arbitrary
+reflection; every checked invocation is also compared with the reference.
 
-The required GPU runtime is MI355X (`gfx950`) with the following immutable image:
-
-```text
-lmsysorg/sglang@sha256:e20849665c105d389ef91d23c0dc73931aaa6f02056dd10e7b43e4f16c79df69
-```
-
-This image supplies the installed AITER package and its GPU backend dependencies,
-plus ROCm PyTorch and Triton. Its exact package set is bound to the image digest.
-The provided baseline and unchanged initial wrapper require this entrypoint:
+The protected [baseline](scripts/baseline/main.py) calls this installed production
+entrypoint:
 
 ```text
 aiter.ops.gemm_op_a8w8.gemm_a8w8_blockscale_bpreshuffle
 ```
 
-The task imports this installed entrypoint from both wrappers; it does not
-depend on a sibling repository or a copied source tree. No task action installs
-packages or downloads runtime code. Select the pinned image before materializing
-the task; missing packages or this entrypoint are execution failures. The
-task-local initializer, independent reference, comparator and evaluation runner
-are bundled under `scripts/` and require the image's ROCm PyTorch installation.
+The validator run configuration pins MI355X (`gfx950`) and this immutable image:
+
+```text
+lmsysorg/sglang@sha256:e20849665c105d389ef91d23c0dc73931aaa6f02056dd10e7b43e4f16c79df69
+```
+
+That image supplies the installed AITER package, its GPU backend dependencies and
+ROCm PyTorch; the candidate also requires FlyDSL in the selected runtime. No task
+action installs packages or downloads runtime code, and missing packages or the
+entrypoint are execution failures. The task-local initializer, independent
+reference, comparator and evaluation runner are bundled under `scripts/`.
 
 ## Interface and storage
 
 ```python
-run(a, b, a_scale, b_scale) -> out
+build_gemm_a8w8_blockwise_scaled_blk128x128_nt_obfloat16_bshuf16x16_asraw_n4096_k1024_module(*, m, n, k, sn, sk) -> launch
+launch(a, b, a_scale, b_scale) -> out
 ```
+
+The builder receives every declared axis of a workload row as a keyword argument and
+returns `launch`, which the runner calls with the definition's inputs as keyword
+arguments. Prepare compilation, shape-dependent choices and reusable scratch in the
+builder; `launch` must recompute the outputs from the current input values on every
+call.
 
 | Argument | Shape | Dtype | Meaning |
 | --- | --- | --- | --- |
@@ -95,9 +96,9 @@ out = bfloat16(A_dequant @ B_dequant.T)
 
 The [initializer](scripts/initialize/main.py) draws normal activation and weight
 values, converts them to FP8, draws nonuniform positive scales uniformly from
-`[0.125, 1.0)`, and applies the declared payload encodings in place. The seed is
-derived from the policy seed and workload UUID; replay refill uses a new seed
-without changing input addresses or strides.
+`[0.125, 1.0)`, and applies the declared payload encodings in place. The base draw's
+seed is derived from the policy seed and workload UUID; timing draws use fresh
+seeds and keep input addresses and strides.
 
 The independent FP32 reference imports no AITER operator. The protected
 [comparator](scripts/compare/main.py) requires identical output shape, BF16 dtype,
@@ -116,36 +117,39 @@ GPU work; it does not measure end-to-end host API latency.
 ## Evaluation and timing
 
 The protected [runner](scripts/task_runner.py) implements `validate-task` and
-`baseline`/`candidate` actions for `compile`, `correctness`, and `performance`.
-Compilation executes every workload to exercise lazy GPU compilation. Task
-validation checks deterministic initialization, the reference against itself,
-and rejection of deliberately incorrect finite outputs. Correctness uses the
-protected reference and comparator for every workload row.
+`baseline`/`candidate` actions for `compile`, `correctness`, and `performance`, and
+reports every workload row separately. Task validation checks deterministic
+initialization, the reference against itself, rejection of deliberately incorrect
+finite outputs, that the timing draws vary, and that the candidate is still the
+unimplemented target. Compilation executes every row once; correctness compares
+every row with the protected reference and comparator. No invocation may modify
+its inputs.
 
 Run the task through the repository's Docker task-validator workflow on MI355X
 (`gfx950`), as required by [config.yaml](config.yaml). The framework materializes
 the shared benchmark helper before invoking the task-local runner. A successful
 runner action alone is not a framework-finalized task qualification report.
 
-Performance uses the policy in [scripts/workload.json](scripts/workload.json):
-20 warmups, 100 repetitions, and a 1 ms target for the shared GPU graph/event
-benchmark helper. Baseline and candidate use the same workload and timing
-policy. Input generation and reference evaluation stay outside the timed
-callback; all GPU work needed to produce the returned outputs belongs inside it.
-The runner poisons returned outputs and checks the exact measured replay, then
-refills the same input buffers with new seeded values and checks replay again.
-A candidate must recompute from current input values, preserve the inputs, and
-write every output on each invocation. These checks do not permit cached answers
-or input/output aliasing.
+Performance uses the policy in [scripts/workload.json](scripts/workload.json): 20
+warmups, 100 repetitions and a 1 ms target for the shared GPU graph/event benchmark
+helper, with the same workload and protocol for baseline and candidate. Input
+generation and reference evaluation stay outside the timed invocation; all GPU work
+needed to produce the returned outputs belongs inside it.
+
+Each timed sample is one invocation in one graph replay. Before every sample a
+fresh draw of the call-varying inputs is loaded into the same buffers, while
+`b`, `b_scale` stay fixed as a production caller holds them. The draws come from
+seeds chosen by the operating system when the row is timed. Eight samples, chosen
+secretly, have their outputs compared with the reference on the draw they
+consumed. After the samples, the timed invocation runs once over each of four
+draws it has never read; those outputs are compared too, and the fastest of these
+invocations may take at most 1.5 times the reported time. A capture that batches
+several invocations into one replay, a mismatch of any checked output, an input
+modification, or unseen-draw invocations slower than that bound fail the row.
 
 ## Implementation boundary
 
-Expose `run(**kwargs)` from [source/kernel.py](source/kernel.py). The only
-editable files are that entrypoint and
-[source/implementation/main.py](source/implementation/main.py), as declared in
-[config.yaml](config.yaml). The unchanged initial Python wrapper is permitted to
-call the installed production operator during initial `task_validation`, as
-described above. The final submitted candidate must implement
-its own GPU computation in Triton and must not delegate that computation to the
-protected baseline, reference, or a library operator. Keep the protected scripts,
-workload rows, dtypes, comparison thresholds, and benchmark policy unchanged.
+Define `build_gemm_a8w8_blockwise_scaled_blk128x128_nt_obfloat16_bshuf16x16_asraw_n4096_k1024_module`, the builder declared in [config.yaml](config.yaml),
+in [source/kernel.py](source/kernel.py), the only editable file. Keep the protected
+scripts, workload rows, dtypes, comparison thresholds, and benchmark policy
+unchanged.

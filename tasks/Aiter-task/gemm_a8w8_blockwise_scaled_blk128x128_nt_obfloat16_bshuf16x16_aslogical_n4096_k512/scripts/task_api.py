@@ -1,4 +1,4 @@
-"""Self-contained SIKL callable loading and tensor contract checks."""
+"""Self-contained SIKL callable loading, tensor contracts and the bundle comparison."""
 
 from __future__ import annotations
 
@@ -10,6 +10,8 @@ import types
 from pathlib import Path
 
 import torch
+
+SCRIPTS = Path(__file__).resolve().parent
 
 
 def load_solution(root: Path, entry: str):
@@ -53,23 +55,6 @@ def shape_of(spec, axes):
     return tuple(axes[d] if isinstance(d, str) else d for d in spec["shape"])
 
 
-def bind_outputs(launch, spec, definition, row, device="cuda"):
-    """Allocate declared destinations once, outside every timed invocation."""
-    if not spec["destination_passing_style"]:
-        return launch
-    axes = dimensions(definition, row)
-    destinations = {s["param"]: torch.empty(shape_of(s, axes), dtype=dtype(s["dtype"]), device=device)
-                    for s in definition["outputs"].values()}
-
-    def invoke(**values):
-        if launch(**values, **destinations) is not None:
-            raise ValueError("Destination-passing entrypoints must return None")
-        result = list(destinations.values())
-        return result[0] if len(result) == 1 else tuple(result)
-
-    return invoke
-
-
 def validate_inputs(values, definition, row, device):
     if not isinstance(values, dict) or set(values) != set(definition["inputs"]):
         raise ValueError("Input adapter must return exactly the definition's named arguments")
@@ -90,79 +75,74 @@ def validate_inputs(values, definition, row, device):
                 raise ValueError(f"{name}: wrong input device")
 
 
+class OutputContractError(AssertionError):
+    """A returned value violates the declared output names, shapes, dtypes or device."""
+
+
 def outputs(value, definition, row, device):
     names = list(definition["outputs"])
     if isinstance(value, dict):
         if set(value) != set(names):
-            raise ValueError("Output names differ from definition")
+            raise OutputContractError("Output names differ from definition")
         result = [value[n] for n in names]
     elif isinstance(value, (tuple, list)):
         result = list(value)
     else:
         result = [value]
     if len(result) != len(names):
-        raise ValueError("Output count differs from definition")
+        raise OutputContractError("Output count differs from definition")
     axes = dimensions(definition, row)
     for name, tensor in zip(names, result):
         spec = definition["outputs"][name]
         if not isinstance(tensor, torch.Tensor):
-            raise TypeError(f"{name}: output must be a tensor")
+            raise OutputContractError(f"{name}: output must be a tensor")
         if tensor.dtype != dtype(spec["dtype"]) or tuple(tensor.shape) != shape_of(spec, axes):
-            raise ValueError(f"{name}: output shape/dtype differs from definition")
+            raise OutputContractError(f"{name}: output shape/dtype differs from definition")
         if tensor.device.type != torch.device(device).type:
-            raise ValueError(f"{name}: output must be on the requested device")
-        if definition.get("compare"):
-            if bool(torch.isnan(tensor).any()):
-                raise ValueError(f"{name}: output must not contain NaN")
-        elif not bool(torch.isfinite(tensor).all()):
-            raise ValueError(f"{name}: output must be finite")
+            raise OutputContractError(f"{name}: output must be on the requested device")
+        if bool(torch.isnan(tensor).any()):
+            raise OutputContractError(f"{name}: output must not contain NaN")
     return result
 
 
-def assert_outputs(got, expected, definition, row, policy, device):
-    actual = outputs(got, definition, row, device)
+def compare_outputs(got, expected, definition, row, device):
+    """Return the bundle comparison's verdict as a per-case result.
+
+    Output-contract violations and numerical mismatches are distinguished, so a
+    declared diagnostic baseline policy can apply to the latter only. An invalid
+    reference raises instead of being scored as a candidate failure.
+    """
     wanted = outputs(expected, definition, row, device)
-    if definition.get("compare"):
+    try:
+        actual = outputs(got, definition, row, device)
         for a, b in zip(actual, wanted):
             if (not torch.equal(torch.isposinf(a), torch.isposinf(b))
                     or not torch.equal(torch.isneginf(a), torch.isneginf(b))):
-                raise AssertionError("Output infinity positions/signs differ from the reference")
-        compare = load_solution(Path(__file__).parent / "compare", "main.py::run")
-        if compare(got, expected) is not None:
+                raise OutputContractError("Output infinity positions/signs differ from the reference")
+    except OutputContractError as error:
+        return {"status": "FAIL", "failure_kind": "output_contract", "reason": str(error)}
+    compare = load_solution(SCRIPTS / "compare", "main.py::run")
+    # Schema callbacks consume a tensor for one output and the declared names
+    # for multiple outputs, independent of the solution's tuple ABI.
+    callback_actual = actual[0] if len(actual) == 1 else dict(zip(definition["outputs"], actual))
+    callback_expected = wanted[0] if len(wanted) == 1 else dict(zip(definition["outputs"], wanted))
+    try:
+        if compare(callback_actual, callback_expected) is not None:
             raise ValueError("compare must return None on success or raise AssertionError")
-        return
-    for a, b in zip(actual, wanted):
-        torch.testing.assert_close(a, b, rtol=policy["rtol"], atol=policy["atol"], equal_nan=False)
+    except AssertionError as error:
+        return {"status": "FAIL", "failure_kind": "numerical_mismatch", "reason": str(error),
+                "metadata": {"comparison": "scripts/compare/main.py:run", "output_contract_passed": True}}
+    return {"status": "PASS", "metadata": {"comparison": "scripts/compare/main.py:run",
+                                           "output_contract_passed": True}}
 
 
-def poison_outputs(captured, expected, values, definition, row, device):
-    actual = outputs(captured, definition, row, device)
-    wanted = outputs(expected, definition, row, device)
-    input_storage = {v.untyped_storage().data_ptr() for v in values.values() if isinstance(v, torch.Tensor)}
-    for tensor, reference in zip(actual, wanted):
-        if tensor.untyped_storage().data_ptr() in input_storage:
-            raise ValueError("Output/input aliasing is unsupported by this functional task")
-        if tensor.is_floating_point() or tensor.is_complex():
-            tensor.fill_(float("nan"))
-        else:
-            tensor.copy_(torch.bitwise_not(reference))
+def snapshot(values):
+    """Byte copies of every tensor input; exact for packed and FP8 operands too."""
+    return {name: value.detach().contiguous().view(torch.uint8).clone()
+            for name, value in values.items() if isinstance(value, torch.Tensor)}
 
 
-def clone_inputs(values):
-    # The supported contract is functional, with independent input tensors.
-    # Preserve AITER's layout tag when making correctness-only copies.
-    copied = {}
-    for name, value in values.items():
-        copied[name] = value.clone() if isinstance(value, torch.Tensor) else value
-        if hasattr(value, "is_shuffled"):
-            copied[name].is_shuffled = value.is_shuffled
-    return copied
-
-
-def assert_unmodified(before, after):
-    for name, value in before.items():
-        if isinstance(value, torch.Tensor):
-            other = after[name]
-            # Bytewise comparison works for packed FP4/E8M0 as well.
-            if not torch.equal(value.contiguous().view(torch.uint8), other.contiguous().view(torch.uint8)):
-                raise ValueError(f"Input mutation is unsupported: {name}")
+def assert_unmodified(values, before):
+    for name, expected in before.items():
+        if not torch.equal(values[name].detach().contiguous().view(torch.uint8), expected):
+            raise RuntimeError(f"Operator modified protected input tensor: {name}")

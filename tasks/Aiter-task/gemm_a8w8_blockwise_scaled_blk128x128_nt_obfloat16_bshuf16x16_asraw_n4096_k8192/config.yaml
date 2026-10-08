@@ -1,15 +1,13 @@
 schema_version: 2
 candidate:
-  language: triton
-  initial_state: implemented
-  initial_language: python
+  language: flydsl
+  initial_state: unimplemented
   editable:
-  - source/implementation/main.py
   - source/kernel.py
   entrypoints:
   - file: source/kernel.py
-    kind: function
-    symbol: run
+    kind: builder
+    symbol: build_gemm_a8w8_blockwise_scaled_blk128x128_nt_obfloat16_bshuf16x16_asraw_n4096_k8192_module
 baseline:
   kind: provided
   language: python
@@ -26,21 +24,19 @@ platform_support:
   status: active
 description: >-
   Implement gemm_a8w8_blockwise_scaled_blk128x128_nt_obfloat16_bshuf16x16_asraw_n4096_k8192 in
-  Triton with the source/kernel.py run(**kwargs) interface. The declared implemented Python initial
-  candidate is an executable production wrapper used during task_validation; it is not a completed
-  Triton rewrite. The provided baseline and unchanged initial wrapper are permitted to call the
-  installed runtime entrypoint aiter.ops.gemm_op_a8w8.gemm_a8w8_blockscale_bpreshuffle. Their
-  required GPU runtime is MI355X/gfx950 with image
-  lmsysorg/sglang@sha256:e20849665c105d389ef91d23c0dc73931aaa6f02056dd10e7b43e4f16c79df69, which
-  supplies AITER, its GPU backend dependencies, ROCm PyTorch and Triton. See BUNDLE_README.md for
-  the role and dependency contract. The final submitted candidate must implement its own GPU
-  computation in Triton and must not delegate that computation to the production operator, protected
-  baseline, reference or another library operator. Read scripts/workload.json and the protected
-  reference for the full numerical contract. The supported axis and scalar combinations are exactly
-  those enumerated by the supplied workload rows; tensor values vary according to the task
-  initializer and replay-refill checks. The source definition documents the upstream operator and
-  does not extend this task to unlisted axis or scalar combinations. Retain all cases, dtypes,
-  tolerances and benchmark policy. Inputs are functional and may not be mutated. Edit only the
-  declared source files.
+  FlyDSL as the builder
+  build_gemm_a8w8_blockwise_scaled_blk128x128_nt_obfloat16_bshuf16x16_asraw_n4096_k8192_module in
+  source/kernel.py; the builder takes the row's axes as keyword arguments and returns launch, which
+  takes the definition's inputs as keyword arguments and returns its outputs. The candidate starts
+  unimplemented. The protected baseline calls the installed runtime entrypoint
+  aiter.ops.gemm_op_a8w8.gemm_a8w8_blockscale_bpreshuffle. The validator configuration pins
+  MI355X/gfx950 with image
+  lmsysorg/sglang@sha256:e20849665c105d389ef91d23c0dc73931aaa6f02056dd10e7b43e4f16c79df69; the
+  candidate also requires FlyDSL. See BUNDLE_README.md. The candidate must implement its own GPU
+  computation and must not delegate it to the production operator, protected baseline, reference or
+  another library operator. Read scripts/workload.json and the protected reference for the full
+  numerical contract. The supported axis and scalar combinations are exactly those enumerated by the
+  supplied workload rows. Retain all cases, dtypes, tolerances and benchmark policy. Inputs are
+  functional and may not be mutated. Edit only the declared source file.
 instructions:
 - BUNDLE_README.md

@@ -1,8 +1,2 @@
-"""Initial production baseline. Replace run with your triton implementation."""
-from pathlib import Path
-from scripts.task_api import load_solution
-
-_initial = load_solution(Path(__file__).parent / 'implementation', 'main.py::run')
-
-def run(**kwargs):
-    return _initial(**kwargs)
+"""FlyDSL generation target. Define the builder declared in config.yaml here."""
+from __future__ import annotations

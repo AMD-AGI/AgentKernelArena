@@ -1,7 +1,9 @@
-"""Use supplied initialization callbacks or the legacy version-1 input policy.
+"""Input construction through the bundle's own ``initialize`` callback.
 
-Random tensors are synthesized, not reconstructed captured inputs. Preserve
-all definition shapes, dtypes, scalar literals and operator semantics.
+Buffers are allocated in the definition's shapes and dtypes and filled in place
+by the bundle callback; no distribution or encoding is decided here. The
+workload policy names the operands a production caller holds across calls
+(``persistent_inputs``); timing redraws only the others.
 """
 
 from __future__ import annotations
@@ -11,36 +13,20 @@ from pathlib import Path
 
 import torch
 
-from scripts.task_api import dimensions, dtype, shape_of, load_solution, validate_inputs
+from scripts.task_api import dimensions, dtype, load_solution, shape_of, validate_inputs
 
 
-def make_inputs(definition, row, policy, device="cuda"):
-    seed = int.from_bytes(hashlib.sha256(
-        f"{policy['seed']}:{row['workload']['uuid']}".encode()).digest()[:8], "little")
-    generator = torch.Generator(device=device).manual_seed(seed)
+def row_seed(policy, row):
+    """The base draw's seed, a function of the policy seed and the row identity."""
+    return int.from_bytes(hashlib.sha256(
+        f"{policy['seed']}:{row['workload']['uuid']}".encode()).digest()[:8], "little") % (2**63)
+
+
+def allocate(definition, row, device="cuda"):
     axes = dimensions(definition, row)
-    if definition.get("initialize"):
-        values = {
-            name: (row["workload"]["inputs"][name]["value"] if spec.get("shape") is None else
+    return {name: (row["workload"]["inputs"][name]["value"] if spec.get("shape") is None else
                    torch.empty(shape_of(spec, axes), dtype=dtype(spec["dtype"]), device=device))
-            for name, spec in definition["inputs"].items()
-        }
-        return initialize_buffers(values, definition, row, seed % (2**63), device)
-    if definition["op_type"] == "moe":
-        return _moe(definition, row, axes, generator, device)
-    if definition["op_type"] != "gemm":
-        raise NotImplementedError("Implement this operator's input policy from its declared contract")
-    result = {}
-    for name, spec in definition["inputs"].items():
-        desc = row["workload"]["inputs"][name]
-        if desc["type"] == "scalar":
-            result[name] = desc["value"]
-        else:
-            kind = dtype(spec["dtype"])
-            if kind not in (torch.float16, torch.bfloat16, torch.float32, torch.float64):
-                raise NotImplementedError(f"No generic random policy for {name}: {kind}")
-            result[name] = torch.randn(shape_of(spec, axes), generator=generator, device=device, dtype=kind)
-    return result
+            for name, spec in definition["inputs"].items()}
 
 
 def initialize_buffers(values, definition, row, seed, device):
@@ -56,48 +42,37 @@ def initialize_buffers(values, definition, row, seed, device):
     return values
 
 
-def refill_inputs(values, definition, row, policy, device="cuda"):
-    """Change the input draw without changing graph-bound storage or metadata."""
-    changed_policy = {**policy, "seed": policy["seed"] + 1}
-    if definition.get("initialize"):
-        seed = int.from_bytes(hashlib.sha256(
-            f"{changed_policy['seed']}:{row['workload']['uuid']}".encode()).digest()[:8], "little") % (2**63)
-        return initialize_buffers(values, definition, row, seed, device)
-    replacement = make_inputs(definition, row, changed_policy, device)
-    for name, value in values.items():
-        if isinstance(value, torch.Tensor):
-            value.copy_(replacement[name])
-            if hasattr(replacement[name], "is_shuffled"):
-                value.is_shuffled = replacement[name].is_shuffled
-    return values
+def make_inputs(definition, row, policy, device="cuda"):
+    if not definition.get("initialize"):
+        raise ValueError("This task requires the definition's initialize callback")
+    return initialize_buffers(allocate(definition, row, device), definition, row, row_seed(policy, row), device)
 
 
-def _moe(definition, row, axes, generator, device):
-    required = {"num_tokens", "model_dim", "num_experts", "topk", "w1_rows", "w1_cols",
-                "w2_cols", "w1_scale_cols", "w2_scale_cols"}
-    if not required <= axes.keys() or "quantization:per_1x32" not in definition.get("tags", []):
-        raise NotImplementedError("Only declared per_1x32 MXFP4 MoE inputs have a built-in policy")
-    from aiter.ops.shuffle import shuffle_weight
-    from aiter.utility.fp4_utils import dynamic_mxfp4_quant, e8m0_shuffle
+def persistent_inputs(definition, policy):
+    names = tuple(policy["persistent_inputs"])
+    tensors = {name for name, spec in definition["inputs"].items() if spec.get("shape") is not None}
+    if not set(names) < tensors:
+        raise ValueError("persistent_inputs must be a proper subset of the tensor inputs")
+    return names
 
-    e, d, rows, m, k = (axes[n] for n in ("num_experts", "model_dim", "w1_rows", "num_tokens", "topk"))
-    if k > e or rows % 2 or axes["w1_cols"] * 2 != d or axes["w2_cols"] * 2 != rows // 2:
-        raise ValueError("Inconsistent MXFP4 MoE dimensions")
-    result = {}
-    for name, shape in (("w1", (e, rows, d)), ("w2", (e, d, rows // 2))):
-        raw = 0.125 * torch.randn(shape, device=device, dtype=torch.bfloat16, generator=generator)
-        packed, scales = dynamic_mxfp4_quant(raw.reshape(-1, shape[-1]))
-        packed = packed.reshape(shape[0], shape[1], -1)
-        scales = e8m0_shuffle(scales).reshape(shape[0], shape[1], -1)
-        result[name] = shuffle_weight(packed.contiguous(), (16, 16)).view(dtype(definition["inputs"][name]["dtype"]))
-        result[name].is_shuffled = True
-        result[name + "_scale"] = scales.view(dtype(definition["inputs"][name + "_scale"]["dtype"]))
-    result["hidden_states"] = 0.25 * torch.randn((m, d), device=device, dtype=torch.bfloat16, generator=generator)
-    scores = torch.rand((m, e), device=device, generator=generator)
-    ids = scores.topk(k, dim=-1).indices
-    result["topk_ids"] = ids.to(torch.int32).contiguous()
-    result["topk_weights"] = scores.gather(1, ids).softmax(-1).contiguous()
-    for name, desc in row["workload"]["inputs"].items():
-        if desc["type"] == "scalar":
-            result[name] = desc["value"]
-    return result
+
+def call_varying_draws(values, definition, row, policy, seeds, device="cuda"):
+    """One snapshot of the call-varying operands per seed, drawn by the bundle.
+
+    Every draw runs the full callback on scratch buffers; the persistent
+    operands of the live buffers are untouched, so a draw differs from the base
+    exactly where two calls on a live model differ.
+    """
+    held = persistent_inputs(definition, policy)
+    draws = []
+    for seed in seeds:
+        scratch = initialize_buffers(allocate(definition, row, device), definition, row, seed, device)
+        draws.append({name: value for name, value in scratch.items()
+                      if isinstance(value, torch.Tensor) and name not in held})
+    return draws
+
+
+def load_draw(values, draw):
+    """Copy a snapshot into the live buffers, keeping their storage."""
+    for name, value in draw.items():
+        values[name].copy_(value)

@@ -1,4 +1,4 @@
-"""Protected operator semantics and packaging invariants for the 46 SIKL tasks."""
+"""Protected operator semantics and packaging invariants for the 30 SIKL builder tasks."""
 from __future__ import annotations
 
 import ast
@@ -27,16 +27,15 @@ DEFERRED_TIMING_TASKS = {
 }
 ROTATING_TASKS = [t for t in TASKS if t.name not in DEFERRED_TIMING_TASKS]
 SPLIT_TEMPLATE_FILES = {'README.md', 'scripts/task_inputs.py', 'scripts/task_measure.py'}
-VAR_AXIS = {'gemm': 'm', 'moe': 'num_tokens', 'mhc': 'tokens', 'topk': 'batch', 'mla': 'batch',
-            'gemm_a8w8': 'm'}
+VAR_AXIS = {'gemm': 'm', 'moe': 'num_tokens', 'topk': 'batch', 'mla': 'batch'}
 # Families whose workload cases are exactly the bundle's 13 rows. Top-k and
 # MLA also vary the valid lengths per row; their own test modules cover them.
-BUNDLE_ROW_FAMILIES = {'gemm', 'moe', 'mhc', 'gemm_a8w8'}
+BUNDLE_ROW_FAMILIES = {'gemm', 'moe'}
 _AITER_SOURCE = [{'kind': 'image', 'image_path': '/sgl-workspace/aiter/aiter',
                   'destination': 'aiter_source/aiter',
                   'exclude': ['jit/build', 'jit/flydsl_cache', '__pycache__']}]
 SOURCE_ACQUISITION = {
-    'gemm': _AITER_SOURCE, 'moe': _AITER_SOURCE, 'mhc': _AITER_SOURCE, 'gemm_a8w8': _AITER_SOURCE,
+    'gemm': _AITER_SOURCE, 'moe': _AITER_SOURCE,
     'topk': [{'kind': 'image', 'image_path': '/sgl-workspace/sglang/python/sglang/kernels/ops/attention/dsv4',
               'destination': 'sglang_source/kernels/ops/attention/dsv4', 'exclude': ['__pycache__']},
              {'kind': 'image', 'image_path': '/sgl-workspace/sglang/python/sglang/kernels/jit/csrc/deepseek_v4',
@@ -44,15 +43,12 @@ SOURCE_ACQUISITION = {
     'mla': [{'kind': 'image', 'image_path': '/sgl-workspace/sglang/python/sglang/kernels/ops/attention/dsa',
              'destination': 'sglang_source/kernels/ops/attention/dsa', 'exclude': ['__pycache__']}],
 }
-# The MLA definitions differ in their reference and baseline bindings, the
-# a8w8 definitions in their activation-scale storage, and the BF16 GEMM
-# definitions in the bundle revision of their reference and comparison text, so
-# those callbacks are pinned per task (MLA), per storage mode (a8w8) or per
-# bundle (GEMM) rather than per family.
+# The MLA definitions differ in their reference and baseline bindings, and the
+# BF16 GEMM definitions in the bundle revision of their reference and comparison
+# text, so those callbacks are pinned per task (MLA) or per bundle (GEMM)
+# rather than per family.
 PER_TASK_CALLBACKS = {'mla': {'scripts/task_reference.py', 'scripts/task_baseline.py'},
-                      'gemm': {'scripts/task_reference.py', 'scripts/task_compare.py'},
-                      'gemm_a8w8': {'scripts/task_reference.py', 'scripts/task_initialize.py',
-                                    'scripts/task_baseline.py'}}
+                      'gemm': {'scripts/task_reference.py', 'scripts/task_compare.py'}}
 SHARED_TEMPLATE_FILES = (
     'kernel.py', 'test_kernel_harness.py', 'scripts/task_inputs.py',
     'scripts/task_initialize.py', 'scripts/task_compare.py', 'scripts/task_reference.py',
@@ -87,14 +83,6 @@ CALLBACK_SHA256 = {
         'task_initialize': '80e50d81def9ac0c6f85390155e23eec48c173e8a6b754eaa465e9ed65f2120e',
         'task_reference': 'de096e2726bb4e81e4e748748b044bcaf99576070ace1f0b1662eee763f5d072',
     },
-    # Verbatim callbacks of the deepseek-v4-flash bundle definition
-    # mhc_fused_post_pre_flat_rmsnorm_c4_d4096 and its baseline solution.
-    'mhc': {
-        'task_baseline': 'a9b382a087108a834fc8b1d0a97db8eb13ce339aafe6c3175492c4648212e7c5',
-        'task_compare': '68fed5cc0e5ebd128c57faf7dff01269157c99399e99e437b40d0a7530901508',
-        'task_initialize': '974d427b993949c55a983857d8b7821c52dc2070de7d63cb16b7a79945b64863',
-        'task_reference': '58ba2fc0f93e65dfa2d3693a877a202733aeffea79424304c7ca718c1235ee6e',
-    },
     # deepseek-v4-flash bundle topk_transform_paged_paged_k512_page_size64. The
     # baseline differs from the bundle only by its sglang entry-point lookup.
     'topk': {
@@ -120,22 +108,6 @@ CALLBACK_SHA256 = {
         } for name in ('flash_mla_with_kvcache_dsv4_fp8_11111_q1_h64_d512_p256_k128_ep2_ek8256',
                        'flash_mla_with_kvcache_dsv4_fp8_11111_q1_h64_d512_p256_k128_ep64_ek512')},
     },
-    # Verbatim callbacks and baselines of the 15 deepseek-v4-flash bundle
-    # gemm_a8w8_blockwise_scaled definitions, by activation-scale storage.
-    'gemm_a8w8': {
-        'raw': {
-            'task_baseline': 'e2627497c37ff4e341469a45d89097c07d7fb9a9b6bf7a8b65b680add2172ef9',
-            'task_compare': 'd12a114fb11ddbbc00411aca479777ef89dd1c75c0f126a14b8311d16d554589',
-            'task_initialize': '28ce7376d9ac41989dc5d35ebd5ab466c370eeb5e9169fcb25f51fabaea153af',
-            'task_reference': 'b87a298edc4fa8ce630a1d6ff53efd1c37786be48c603b0d0855fbf03822670d',
-        },
-        'logical': {
-            'task_baseline': '37803a944240d8788e3ce6f5c118fbc5672552db0fbd6e9c1ecd149d368a6fa6',
-            'task_compare': 'd12a114fb11ddbbc00411aca479777ef89dd1c75c0f126a14b8311d16d554589',
-            'task_initialize': '2a831f1d158c90bcfe10879667a94eb35a8f580e04b63ca81027835b57874777',
-            'task_reference': '922be729d0b7804505aa55e6c2f146f61a8c9d8f61846c4e66110d9809580584',
-        },
-    },
 }
 
 
@@ -143,8 +115,6 @@ def _callback_hashes(task, workload):
     hashes = CALLBACK_SHA256[workload['op_type']]
     if workload['op_type'] == 'mla':
         return hashes[task.name]
-    if workload['op_type'] == 'gemm_a8w8':
-        return hashes[workload['a_scale_storage']]
     if workload['op_type'] == 'gemm':
         return hashes['deepseek-v4-flash' if task.name in DSV4_GEMM_TASKS else 'original']
     return hashes
@@ -158,16 +128,14 @@ def _workload(task):
     return json.loads((task / 'workload.json').read_text())
 
 
-def test_suite_keeps_all_46_tasks_and_1634_cases():
-    assert len(TASKS) == 46
+def test_suite_keeps_all_30_tasks_and_1426_cases():
+    assert len(TASKS) == 30
     assert sum(_workload(t)['op_type'] == 'gemm' for t in TASKS) == 22
     assert DSV4_GEMM_TASKS <= {t.name for t in TASKS}
     assert sum(_workload(t)['op_type'] == 'moe' for t in TASKS) == 4
-    assert sum(_workload(t)['op_type'] == 'mhc' for t in TASKS) == 1
     assert sum(_workload(t)['op_type'] == 'topk' for t in TASKS) == 1
     assert sum(_workload(t)['op_type'] == 'mla' for t in TASKS) == 3
-    assert sum(_workload(t)['op_type'] == 'gemm_a8w8' for t in TASKS) == 15
-    assert sum(len(_workload(t)['cases']) for t in TASKS) == 1634
+    assert sum(len(_workload(t)['cases']) for t in TASKS) == 1426
 
 
 @pytest.mark.parametrize('op_type', sorted(VAR_AXIS))
@@ -246,8 +214,6 @@ def test_image_acquisition_excludes_generated_jit_trees_but_keeps_sources(tmp_pa
         'jit/module.so': b'adjacent installed module is not excluded',
         'tuned_gemm.py': b'production_source = True\n',
         'fused_moe.py': b'moe_production_source = True\n',
-        'ops/mhc.py': b'mhc_production_source = True\n',
-        'ops/gemm_op_a8w8.py': b'a8w8_production_source = True\n',
         'ops/flydsl/gemm_kernels.py': b'kernel_source = True\n',
         'configs/model_configs/tuned.csv': b'M,N,K\n1,32,6144\n',
     }
