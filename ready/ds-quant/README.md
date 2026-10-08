@@ -59,6 +59,9 @@ rejection; this authorized single repeat does not erase or rescore that run.
 
 ## Exact environment and first run
 
+The tested runtime is SGLang 0.5.20. Its verified tag and immutable image identity
+are recorded in the [`sglang_v0520` runtime entry](../../tools/headkernel-runtime-targets.json).
+
 Use Linux amd64, a MI355X (`gfx950`), ROCm-compatible Docker access, Git, Python 3
 with PyYAML, and rclone. Put the checkout, generated workspaces, result folders
 and scratch on local NVMe. The unchanged Docker runner seeds AITER under host
