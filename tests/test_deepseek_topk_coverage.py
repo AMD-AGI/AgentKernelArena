@@ -61,9 +61,21 @@ def test_manifest_covers_every_length_for_every_original_batch():
     assert contract["bundle_readme"] == (TASK / "BUNDLE_README.md").read_text()
 
 
+@pytest.fixture(autouse=True)
+def assert_task_import_path_restored():
+    # A leaked regular scripts package masks other tasks' namespace packages
+    # even when their task roots are inserted earlier on the import path.
+    original = sys.path.count(str(TASK))
+    yield
+    assert sys.path.count(str(TASK)) == original
+
+
 @pytest.fixture
 def topk(monkeypatch):
     torch = pytest.importorskip("torch")
+    # The runner inserts its task root at import time. Snapshot sys.path so
+    # monkeypatch also restores that direct mutation after this fixture.
+    monkeypatch.syspath_prepend(str(TASK))
     package = types.ModuleType("scripts")
     package.__path__ = [str(TASK / "scripts")]
     monkeypatch.setitem(sys.modules, "scripts", package)
