@@ -1,0 +1,11 @@
+# The backend settings used for the archived full validator PASS.
+agent:
+  template: task_validator
+  backend: codex
+  model: gpt-6-astra
+  effort: max
+tasks:
+  - headkernel/deepseek-v4-pro__unified_paged_attention_prefill
+target_gpu_model: MI355X
+log_directory: logs
+workspace_directory_prefix: workspace

@@ -1,0 +1,101 @@
+{
+  "case_ids": [
+    "deepseek_mla_prefill-2800f2114cb8548cf5fdd0ba",
+    "deepseek_mla_prefill-fff723d1365f8696979e5779"
+  ],
+  "editable_file": "tasks/headkernel/deepseek-v4-pro__unified_paged_attention_prefill/source/pa_sparse_prefill_opus.h",
+  "editable_kernel": "pa_prefill_16mx1_16nx4_kernel",
+  "entry_config": "example_configs/ready_ds_mla_prefill_mi355x.yaml",
+  "fixtures": {
+    "bytes": 1413573052,
+    "files": 25,
+    "manifest": "tasks/headkernel/deepseek-v4-pro__unified_paged_attention_prefill/fixtures/EXTERNAL-MANIFEST.json",
+    "manifest_sha256": "f998110ec4d0451bd43ecbbea9e63d595027732f429b45cf850f2ea7495b19d4",
+    "oci_prefix": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261005/deepseek-final-v7-mixed/"
+  },
+  "mandatory_post_evaluation": {
+    "all_six_native_reports_validated_first": true,
+    "command": "python3 ready/mla-prefill/check_timing.py --measurement-dir TRUSTED_RESULTS --output NEW_QUALITY_RECEIPT.json",
+    "measurement_framework_commit": "20c1a949b07e0d2530315ee666cae8a178edad69",
+    "quality_module_commit": "47aaa88342ba07ef67f95ba7b3c348eb20f945e1",
+    "quality_module_sha256": "d7d0829186a6f2dc2f8c8c69394294b54680c5ddf1d030c1e71d4faca44a332d",
+    "statistical_proof_of_gain": false,
+    "task_tree_unchanged": true,
+    "trim_or_automatic_retry": false,
+    "unchanged_source_gain_eligible": false
+  },
+  "measurement": {
+    "benchmark_iterations": 100,
+    "correctness_seeds": [
+      42,
+      43
+    ],
+    "initialize_outputs": "each_replay",
+    "method": "cuda_graph",
+    "negative_controls": [
+      "no_op",
+      "wrong_output"
+    ],
+    "refresh_inputs": "each_replay",
+    "validate_outputs": "each_replay",
+    "warmup_iterations": 10
+  },
+  "proofs": {
+    "final_summary": {
+      "sha256": "67e77cd74781f61162750c8eca093987ae6e8f98c5303072faa230d52696ca6a",
+      "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261008/qualification-evidence/deepseek-v4-pro__unified_paged_attention_prefill/20c1a949-200712-r2/metadata/FINAL-QUALIFICATION.json"
+    },
+    "framework_bindings": {
+      "sha256": "884f435f832c115020ce8d726c27a75d095df2b2f90fb0c61d3e9ecf2dc343cc",
+      "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261008/qualification-evidence/deepseek-v4-pro__unified_paged_attention_prefill/20c1a949-200712-r2/positive/FRAMEWORK-BINDING-AUDIT.json"
+    },
+    "negative_controls": {
+      "sha256": "034bf27f1f8193e203ec290ccb8d5d0d0ab8edfba68e67d61c94f1c473b8dd18",
+      "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261008/qualification-evidence/deepseek-v4-pro__unified_paged_attention_prefill/20c1a949-200712-r2/source-negatives/NEGATIVE-AUDIT.json"
+    },
+    "positive": {
+      "sha256": "766680154a1e4dff09a557e1b2c82311b9bb1c55ef8d15b1cb608796177133e4",
+      "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261008/qualification-evidence/deepseek-v4-pro__unified_paged_attention_prefill/20c1a949-200712-r2/positive/POSITIVE-AUDIT.json"
+    },
+    "timing": {
+      "sha256": "29269f109b798937e95d4fb863cd4bbd8dcdf859d4bccbfb67db6e59ad5bd007",
+      "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261008/qualification-evidence/deepseek-v4-pro__unified_paged_attention_prefill/20c1a949-200712-r2/positive/TIMING-QUALITY.json"
+    }
+  },
+  "qualification": {
+    "framework_checks_passed": 12,
+    "provisional_task_and_broad_catalog_status": "Unmodified to retain qualified task/framework identities; this scoped receipt records the later completed qualification only for the exact pins.",
+    "raw_samples_verified": 600,
+    "same_source_mean_ratio": 0.9955920201151162,
+    "source_negative_rejections": 8,
+    "trusted_phases_passed": 6
+  },
+  "qualified_commit": "20c1a949b07e0d2530315ee666cae8a178edad69",
+  "ready_tasks": [
+    "headkernel/deepseek-v4-pro__unified_paged_attention_prefill"
+  ],
+  "runtime": {
+    "aiter_jit_source": "/sgl-workspace/aiter/aiter/jit",
+    "architecture": "gfx950",
+    "gpu_model": "MI355X",
+    "host_platform": "linux/amd64",
+    "image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96"
+  },
+  "schema": "qualified-kernel-entry-v1",
+  "scope": {
+    "H": 16,
+    "cases": 2,
+    "full_legacy_coverage": false,
+    "logical_M": 8192,
+    "model_level_ready": false,
+    "optimization_gain_claim": false,
+    "other_tasks_ready": false,
+    "unresolved_legacy_M": [
+      1,
+      64
+    ]
+  },
+  "source_sha256": "a71cbe21053ba78fc09d0ecc4e34bb03f0b2bd5d95da906b7fd6b8ec171b1883",
+  "task_tree": "b659474a77efd6d2e4b795011b669d06e634d595",
+  "validator_config": "example_configs/validate_ready_ds_mla_prefill_mi355x.yaml"
+}
