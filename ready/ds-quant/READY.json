@@ -1,0 +1,469 @@
+{
+  "archive_verification": {
+    "additional_preservation_receipt_objects": 1,
+    "bytes": 25222982,
+    "independent_extra_receipt_bytes_match": true,
+    "independent_payload_check_matches": 534,
+    "owner_full_download_SHA256_verified": true,
+    "payload_files": 534
+  },
+  "cases": [
+    {
+      "case_id": "x8192x1536",
+      "group_size": 128,
+      "input_dtype": "bfloat16",
+      "input_storage_offset": "not supplied by profiler; generated buffers are fresh aligned allocations",
+      "input_strides": [
+        1536,
+        1
+      ],
+      "num_rows": null,
+      "num_rows_factor": 1,
+      "physical_scale_write_order": "scale[group_column * M + row] with group_size128 and transpose_scale=True; see SOURCE-CALLEE-MAP.json",
+      "quant_dtype": "float8_e4m3fn",
+      "sample_event_evidence": [
+        {
+          "child_event_index": 336,
+          "rank": 0,
+          "trace_path": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529/profiles/deepseek-sg520-context9218-193529-deepseek-sg520-context9218-193529-TP-0-EXTEND.trace.json.gz",
+          "trace_sha256": "d07e42e012f714a55ec272127668dc26d4e72c1c16b884fa96777025dd9a7d22",
+          "wrapper_event_index": 332
+        },
+        {
+          "child_event_index": 336,
+          "rank": 1,
+          "trace_path": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529/profiles/deepseek-sg520-context9218-193529-deepseek-sg520-context9218-193529-TP-1-EXTEND.trace.json.gz",
+          "trace_sha256": "b561032a8f908769206b623d6d7fce102050207854f9526fde47e4fd9cdc41cd",
+          "wrapper_event_index": 332
+        },
+        {
+          "child_event_index": 336,
+          "rank": 2,
+          "trace_path": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529/profiles/deepseek-sg520-context9218-193529-deepseek-sg520-context9218-193529-TP-2-EXTEND.trace.json.gz",
+          "trace_sha256": "d4986015513f81b5287632252c08851fe9e4f08d14d09d90e3102bad59aaa700",
+          "wrapper_event_index": 332
+        },
+        {
+          "child_event_index": 335,
+          "rank": 3,
+          "trace_path": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529/profiles/deepseek-sg520-context9218-193529-deepseek-sg520-context9218-193529-TP-3-EXTEND.trace.json.gz",
+          "trace_sha256": "e85ba08f9fdec8106b0263b93ec133caecac27c97cc57f2477dc14623e5237c7",
+          "wrapper_event_index": 331
+        },
+        {
+          "child_event_index": 335,
+          "rank": 4,
+          "trace_path": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529/profiles/deepseek-sg520-context9218-193529-deepseek-sg520-context9218-193529-TP-4-EXTEND.trace.json.gz",
+          "trace_sha256": "899f805f5c678f800cb9f0b969aaf240fa22c00e20eddb4dfc1d382c0ab842f3",
+          "wrapper_event_index": 331
+        },
+        {
+          "child_event_index": 335,
+          "rank": 5,
+          "trace_path": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529/profiles/deepseek-sg520-context9218-193529-deepseek-sg520-context9218-193529-TP-5-EXTEND.trace.json.gz",
+          "trace_sha256": "47216dc6196e92b3b7a689e745b1388c87f226bf4a29ea35670b121f6f232113",
+          "wrapper_event_index": 331
+        },
+        {
+          "child_event_index": 335,
+          "rank": 6,
+          "trace_path": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529/profiles/deepseek-sg520-context9218-193529-deepseek-sg520-context9218-193529-TP-6-EXTEND.trace.json.gz",
+          "trace_sha256": "448d184a54ad8220d5867658f793b645fe5eb08cb9882f73ecc53deef45df5d9",
+          "wrapper_event_index": 331
+        },
+        {
+          "child_event_index": 336,
+          "rank": 7,
+          "trace_path": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529/profiles/deepseek-sg520-context9218-193529-deepseek-sg520-context9218-193529-TP-7-EXTEND.trace.json.gz",
+          "trace_sha256": "2abc8bb09ab59b8d96d4a035877e4496ee276c64e898912768b0674299524ad5",
+          "wrapper_event_index": 332
+        }
+      ],
+      "scale": null,
+      "scale_allocated_shape": [
+        8192,
+        12
+      ],
+      "scale_allocated_stride": [
+        12,
+        1
+      ],
+      "scale_type": "float32",
+      "scale_ub_at_native_call": null,
+      "shape": [
+        8192,
+        1536
+      ],
+      "total_observed_wrapper_occurrences": 5824,
+      "trace_call_count": 728,
+      "trace_call_counts_per_rank": {
+        "0": 728,
+        "1": 728,
+        "2": 728,
+        "3": 728,
+        "4": 728,
+        "5": 728,
+        "6": 728,
+        "7": 728
+      },
+      "transpose_scale": true
+    },
+    {
+      "case_id": "x8192x2048",
+      "group_size": 128,
+      "input_dtype": "bfloat16",
+      "input_storage_offset": "not supplied by profiler; generated buffers are fresh aligned allocations",
+      "input_strides": [
+        2048,
+        1
+      ],
+      "num_rows": null,
+      "num_rows_factor": 1,
+      "physical_scale_write_order": "scale[group_column * M + row] with group_size128 and transpose_scale=True; see SOURCE-CALLEE-MAP.json",
+      "quant_dtype": "float8_e4m3fn",
+      "sample_event_evidence": [
+        {
+          "child_event_index": 441,
+          "rank": 0,
+          "trace_path": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529/profiles/deepseek-sg520-context9218-193529-deepseek-sg520-context9218-193529-TP-0-EXTEND.trace.json.gz",
+          "trace_sha256": "d07e42e012f714a55ec272127668dc26d4e72c1c16b884fa96777025dd9a7d22",
+          "wrapper_event_index": 437
+        },
+        {
+          "child_event_index": 441,
+          "rank": 1,
+          "trace_path": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529/profiles/deepseek-sg520-context9218-193529-deepseek-sg520-context9218-193529-TP-1-EXTEND.trace.json.gz",
+          "trace_sha256": "b561032a8f908769206b623d6d7fce102050207854f9526fde47e4fd9cdc41cd",
+          "wrapper_event_index": 437
+        },
+        {
+          "child_event_index": 441,
+          "rank": 2,
+          "trace_path": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529/profiles/deepseek-sg520-context9218-193529-deepseek-sg520-context9218-193529-TP-2-EXTEND.trace.json.gz",
+          "trace_sha256": "d4986015513f81b5287632252c08851fe9e4f08d14d09d90e3102bad59aaa700",
+          "wrapper_event_index": 437
+        },
+        {
+          "child_event_index": 440,
+          "rank": 3,
+          "trace_path": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529/profiles/deepseek-sg520-context9218-193529-deepseek-sg520-context9218-193529-TP-3-EXTEND.trace.json.gz",
+          "trace_sha256": "e85ba08f9fdec8106b0263b93ec133caecac27c97cc57f2477dc14623e5237c7",
+          "wrapper_event_index": 436
+        },
+        {
+          "child_event_index": 440,
+          "rank": 4,
+          "trace_path": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529/profiles/deepseek-sg520-context9218-193529-deepseek-sg520-context9218-193529-TP-4-EXTEND.trace.json.gz",
+          "trace_sha256": "899f805f5c678f800cb9f0b969aaf240fa22c00e20eddb4dfc1d382c0ab842f3",
+          "wrapper_event_index": 436
+        },
+        {
+          "child_event_index": 440,
+          "rank": 5,
+          "trace_path": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529/profiles/deepseek-sg520-context9218-193529-deepseek-sg520-context9218-193529-TP-5-EXTEND.trace.json.gz",
+          "trace_sha256": "47216dc6196e92b3b7a689e745b1388c87f226bf4a29ea35670b121f6f232113",
+          "wrapper_event_index": 436
+        },
+        {
+          "child_event_index": 440,
+          "rank": 6,
+          "trace_path": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529/profiles/deepseek-sg520-context9218-193529-deepseek-sg520-context9218-193529-TP-6-EXTEND.trace.json.gz",
+          "trace_sha256": "448d184a54ad8220d5867658f793b645fe5eb08cb9882f73ecc53deef45df5d9",
+          "wrapper_event_index": 436
+        },
+        {
+          "child_event_index": 441,
+          "rank": 7,
+          "trace_path": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529/profiles/deepseek-sg520-context9218-193529-deepseek-sg520-context9218-193529-TP-7-EXTEND.trace.json.gz",
+          "trace_sha256": "2abc8bb09ab59b8d96d4a035877e4496ee276c64e898912768b0674299524ad5",
+          "wrapper_event_index": 437
+        }
+      ],
+      "scale": null,
+      "scale_allocated_shape": [
+        8192,
+        16
+      ],
+      "scale_allocated_stride": [
+        16,
+        1
+      ],
+      "scale_type": "float32",
+      "scale_ub_at_native_call": null,
+      "shape": [
+        8192,
+        2048
+      ],
+      "total_observed_wrapper_occurrences": 3904,
+      "trace_call_count": 488,
+      "trace_call_counts_per_rank": {
+        "0": 488,
+        "1": 488,
+        "2": 488,
+        "3": 488,
+        "4": 488,
+        "5": 488,
+        "6": 488,
+        "7": 488
+      },
+      "transpose_scale": true
+    },
+    {
+      "case_id": "x8192x7168",
+      "group_size": 128,
+      "input_dtype": "bfloat16",
+      "input_storage_offset": "not supplied by profiler; generated buffers are fresh aligned allocations",
+      "input_strides": [
+        7168,
+        1
+      ],
+      "num_rows": null,
+      "num_rows_factor": 1,
+      "physical_scale_write_order": "scale[group_column * M + row] with group_size128 and transpose_scale=True; see SOURCE-CALLEE-MAP.json",
+      "quant_dtype": "float8_e4m3fn",
+      "sample_event_evidence": [
+        {
+          "child_event_index": 473,
+          "rank": 0,
+          "trace_path": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529/profiles/deepseek-sg520-context9218-193529-deepseek-sg520-context9218-193529-TP-0-EXTEND.trace.json.gz",
+          "trace_sha256": "d07e42e012f714a55ec272127668dc26d4e72c1c16b884fa96777025dd9a7d22",
+          "wrapper_event_index": 469
+        },
+        {
+          "child_event_index": 473,
+          "rank": 1,
+          "trace_path": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529/profiles/deepseek-sg520-context9218-193529-deepseek-sg520-context9218-193529-TP-1-EXTEND.trace.json.gz",
+          "trace_sha256": "b561032a8f908769206b623d6d7fce102050207854f9526fde47e4fd9cdc41cd",
+          "wrapper_event_index": 469
+        },
+        {
+          "child_event_index": 473,
+          "rank": 2,
+          "trace_path": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529/profiles/deepseek-sg520-context9218-193529-deepseek-sg520-context9218-193529-TP-2-EXTEND.trace.json.gz",
+          "trace_sha256": "d4986015513f81b5287632252c08851fe9e4f08d14d09d90e3102bad59aaa700",
+          "wrapper_event_index": 469
+        },
+        {
+          "child_event_index": 472,
+          "rank": 3,
+          "trace_path": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529/profiles/deepseek-sg520-context9218-193529-deepseek-sg520-context9218-193529-TP-3-EXTEND.trace.json.gz",
+          "trace_sha256": "e85ba08f9fdec8106b0263b93ec133caecac27c97cc57f2477dc14623e5237c7",
+          "wrapper_event_index": 468
+        },
+        {
+          "child_event_index": 472,
+          "rank": 4,
+          "trace_path": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529/profiles/deepseek-sg520-context9218-193529-deepseek-sg520-context9218-193529-TP-4-EXTEND.trace.json.gz",
+          "trace_sha256": "899f805f5c678f800cb9f0b969aaf240fa22c00e20eddb4dfc1d382c0ab842f3",
+          "wrapper_event_index": 468
+        },
+        {
+          "child_event_index": 472,
+          "rank": 5,
+          "trace_path": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529/profiles/deepseek-sg520-context9218-193529-deepseek-sg520-context9218-193529-TP-5-EXTEND.trace.json.gz",
+          "trace_sha256": "47216dc6196e92b3b7a689e745b1388c87f226bf4a29ea35670b121f6f232113",
+          "wrapper_event_index": 468
+        },
+        {
+          "child_event_index": 472,
+          "rank": 6,
+          "trace_path": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529/profiles/deepseek-sg520-context9218-193529-deepseek-sg520-context9218-193529-TP-6-EXTEND.trace.json.gz",
+          "trace_sha256": "448d184a54ad8220d5867658f793b645fe5eb08cb9882f73ecc53deef45df5d9",
+          "wrapper_event_index": 468
+        },
+        {
+          "child_event_index": 473,
+          "rank": 7,
+          "trace_path": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/deepseek-sg520-context9218-193529/profiles/deepseek-sg520-context9218-193529-deepseek-sg520-context9218-193529-TP-7-EXTEND.trace.json.gz",
+          "trace_sha256": "2abc8bb09ab59b8d96d4a035877e4496ee276c64e898912768b0674299524ad5",
+          "wrapper_event_index": 469
+        }
+      ],
+      "scale": null,
+      "scale_allocated_shape": [
+        8192,
+        56
+      ],
+      "scale_allocated_stride": [
+        56,
+        1
+      ],
+      "scale_type": "float32",
+      "scale_ub_at_native_call": null,
+      "shape": [
+        8192,
+        7168
+      ],
+      "total_observed_wrapper_occurrences": 7744,
+      "trace_call_count": 968,
+      "trace_call_counts_per_rank": {
+        "0": 968,
+        "1": 968,
+        "2": 968,
+        "3": 968,
+        "4": 968,
+        "5": 968,
+        "6": 968,
+        "7": 968
+      },
+      "transpose_scale": true
+    }
+  ],
+  "editable_file": "tasks/headkernel_sg520/deepseek-v4-pro__per_group_quant_fp8/source/quant_kernels.cu",
+  "editable_kernel": "dynamic_per_group_scaled_quant_kernel",
+  "entry_config": "example_configs/ready_ds_quant_mi355x.yaml",
+  "fixtures": {
+    "external_tensor_downloads_required": false,
+    "input_kind": "seeded legal BF16 at the three captured shapes",
+    "model_weights_required": false
+  },
+  "mandatory_quality_gate": {
+    "all_comparison_and_production_native_series_required": true,
+    "built_into": "src/tools/trusted_native_eval.py",
+    "module": "src/benchmark_quality.py",
+    "module_commit": "47aaa88342ba07ef67f95ba7b3c348eb20f945e1",
+    "module_sha256": "d7d0829186a6f2dc2f8c8c69394294b54680c5ddf1d030c1e71d4faca44a332d",
+    "no_automatic_retry": true,
+    "no_sample_trimming": true,
+    "not_statistical_proof_of_gain": true,
+    "offline_review_module": "src.tools.benchmark_quality_gate"
+  },
+  "measurement": {
+    "correctness_seeds": [
+      0,
+      1
+    ],
+    "fresh_outer_performance_phases": 2,
+    "metric": "arithmetic mean of three per-case protected reference/candidate ratios",
+    "native_legs": [
+      "production_native",
+      "candidate_native"
+    ],
+    "samples_per_case_per_native_leg": 100,
+    "trace_weighted_timings": "diagnostic only",
+    "warmups": 10
+  },
+  "per_case_current_timings": [
+    {
+      "candidate_ms": 0.046226909905672076,
+      "production_diagnostic_ms": {
+        "candidate_run": 0.052612200006842615,
+        "reference_run": 0.05124175000935793
+      },
+      "raw_speedup": 1.1193253073434553,
+      "reference_ms": 0.05174295013770461,
+      "shape": [
+        8192,
+        1536
+      ],
+      "speedup": null,
+      "test_case_id": "x8192x1536"
+    },
+    {
+      "candidate_ms": 0.04325212977826595,
+      "production_diagnostic_ms": {
+        "candidate_run": 0.05351458003744483,
+        "reference_run": 0.0581658499315381
+      },
+      "raw_speedup": 1.2339616691137734,
+      "reference_ms": 0.053371470253914595,
+      "shape": [
+        8192,
+        2048
+      ],
+      "speedup": null,
+      "test_case_id": "x8192x2048"
+    },
+    {
+      "candidate_ms": 0.06822280965745449,
+      "production_diagnostic_ms": {
+        "candidate_run": 0.0693220005184412,
+        "reference_run": 0.07092362992465497
+      },
+      "raw_speedup": 1.0078629170291418,
+      "reference_ms": 0.06875923994928598,
+      "shape": [
+        8192,
+        7168
+      ],
+      "speedup": null,
+      "test_case_id": "x8192x7168"
+    }
+  ],
+  "proofs": {
+    "archive_manifest": {
+      "sha256": "52ed6085db0614bb4f903f169d8079d25bad321fb656adadf5290a2df0e60dbb",
+      "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261008/ds-quant-0b098bd1-201262-one-repeat-20261008T190900Z/ARCHIVE-MANIFEST.json"
+    },
+    "framework_report": {
+      "sha256": "47bb4d13b559c84c0bda8daebede9bc878ac534e1397e33d02a5c3eac47a1d75",
+      "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261008/ds-quant-20c1a949-200712-preservation-20261008T151040Z/positive/framework-final/validation_report.yaml"
+    },
+    "fresh_measurement": {
+      "sha256": "892b57fe2cb0ab518f62d0082602d188daa83a31a659adefa880373451b31ec5",
+      "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261008/ds-quant-0b098bd1-201262-one-repeat-20261008T190900Z/run/trusted-evidence/trusted_measurement.json"
+    },
+    "independent_audit": {
+      "sha256": "c0b229b18944be2d2167e267e0a8ec16b568f45ffe95f0a42202d6085025a380",
+      "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261008/ds-quant-0b098bd1-201262-one-repeat-20261008T190900Z/consumer/INDEPENDENT-PUBLICATION-AUDIT.json"
+    },
+    "independent_quality_review": {
+      "sha256": "849202f9fd625349729d1df0e8fc3fa6778d9d8cd6238d6bd211549a323805a9",
+      "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261008/ds-quant-0b098bd1-201262-one-repeat-20261008T190900Z/consumer/INDEPENDENT-QUALITY-REVIEW.json"
+    },
+    "no_op": {
+      "sha256": "fde96da26ab660fb7ca99948da881b8b83ffaa07283095d2fe4cf161bb29b172",
+      "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261008/ds-quant-20c1a949-200712-preservation-20261008T151040Z/negative/no_op/RESULT.json"
+    },
+    "preservation_receipt": {
+      "sha256": "a2e7cc254b0339c0592b8593352d6dbc598ec247800e4358b31f6157d4e023bc",
+      "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261008/ds-quant-0b098bd1-201262-one-repeat-20261008T190900Z/PRESERVATION-RECEIPT.json"
+    },
+    "wrong_output": {
+      "sha256": "9a70289e5dd105dfc062b4e8e85d60f47538fdbff802711dd32d6bc0cbe60b62",
+      "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261008/ds-quant-20c1a949-200712-preservation-20261008T151040Z/negative/wrong_output/RESULT.json"
+    }
+  },
+  "qualification": {
+    "accepted_arithmetic_mean_speedup": null,
+    "accepted_gain": false,
+    "all_native_diagnostic_series_pass": true,
+    "compiled_source_negative_variants": [
+      "no_op",
+      "wrong_output"
+    ],
+    "framework_checks_passed": 12,
+    "max_sample_over_median": 3.8300874998272025,
+    "prior_68ms_rejected_attempt_preserved": true,
+    "raw_arithmetic_mean_ratio": 1.1203832978287902,
+    "raw_samples_verified": 1200,
+    "same_source_control": true,
+    "samples_above_twice_median": 4,
+    "source_negative_scope": "Each compiled variant rejected at its first failing dynamic-scale oracle; no exhaustive per-case source-mutant sweep claimed.",
+    "timing_gate_status": "pass",
+    "trusted_phases_passed": 6
+  },
+  "qualified_framework_commit": "20c1a949b07e0d2530315ee666cae8a178edad69",
+  "qualified_measurement_commit": "0b098bd1beaa7c15e33cf6ecb35c00cfa990c07f",
+  "ready_tasks": [
+    "headkernel_sg520/deepseek-v4-pro__per_group_quant_fp8"
+  ],
+  "runtime": {
+    "aiter_jit_source": "/sgl-workspace/aiter/aiter/jit",
+    "gpu_model": "MI355X",
+    "image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
+    "platform": "linux/amd64",
+    "required_arch": "gfx950"
+  },
+  "schema": "qualified-kernel-entry-v1",
+  "scope": {
+    "count_scope": "eight sampled prefill steps per rank",
+    "full_workload_count_extrapolation": false,
+    "other_tasks_ready": false,
+    "serving_E2E_gain_claim": false,
+    "trace_call_count_sum": 2184
+  },
+  "source_sha256": "5c9d1e56d978d45ccdc099806267d75aad9074ab837b07cca32b8ae21dcccfec",
+  "task_tree": "b0019f08fcea66443cf73e2a6600bdbbbf75b231",
+  "validator_config": "example_configs/validate_headkernel_sg520_quant_mi355x.yaml"
+}

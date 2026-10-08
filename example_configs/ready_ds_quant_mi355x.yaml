@@ -1,0 +1,8 @@
+# Qualified one-task entry; see ready/ds-quant/README.md.
+agent:
+  template: claude_code
+tasks:
+  - headkernel_sg520/deepseek-v4-pro__per_group_quant_fp8
+target_gpu_model: MI355X
+log_directory: logs
+workspace_directory_prefix: workspace
