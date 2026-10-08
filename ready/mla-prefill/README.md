@@ -32,6 +32,8 @@ the two configs linked below instead of an all-head-kernels selection.
 Use a Linux amd64 host with a MI355X (`gfx950`), ROCm-compatible Docker access,
 Git, Python 3 with PyYAML, and rclone. Configure the host's `oci` remote to read
 the committed fixture prefix. The replay needs no full model checkpoint.
+The runtime is SGLang 0.5.20; the verified tag and immutable image identity are
+recorded in the [`sglang_v0520` runtime entry](../../tools/headkernel-runtime-targets.json).
 Keep image caches, fixture data, preparation output and result directories on
 local NVMe storage. The unchanged standard Docker helper creates its initial
 AITER seed under host `/tmp`; use a host whose `/tmp` and Docker data directory
@@ -183,5 +185,5 @@ readback. The final receipt is `metadata/FINAL-QUALIFICATION.json`, SHA-256
 [PUBLISHED-COMPARISON.json](PUBLISHED-COMPARISON.json) records why the supplied
 GitHub commit `373cf51f5601d88e49c04058e984cde4134eb883` cannot be used for this
 entry: it lacks the task and differs in required framework/trusted inputs.
-This handoff branch is prepared for coordinated publication; its existence
-does not mean it has been pushed.
+Use this dedicated handoff and its one-task configs when sharing the starter.
+The broader collection in the repository is still undergoing qualification.
