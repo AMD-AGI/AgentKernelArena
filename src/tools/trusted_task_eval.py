@@ -58,6 +58,91 @@ else:
 PORTABLE_CONTRACT = Path(__file__).resolve().parents[1] / "task_contract.py"
 GPU_BINDING_HELPER = Path(__file__).resolve().with_name("gpu_binding.py")
 PHASES = ("compile", "correctness", "performance")
+EXHAUSTIVE_CORRECTNESS = "exhaustive_observed_values"
+
+
+def distribution_phase_arguments(mode, phase):
+    """Only a committed exhaustive opt-in may extend the protected command."""
+    require(phase in PHASES, "unknown evaluation phase")
+    require(mode in (None, EXHAUSTIVE_CORRECTNESS), "unsupported distribution correctness mode")
+    return (["--distribution-correctness-mode", mode]
+            if mode is not None and phase in ("compile", "correctness") else [])
+
+
+def phase_timeout(config, phase, maximum):
+    limit = config.get(phase + "_timeout", maximum)
+    require(type(limit) is int and limit > 0, "phase timeout must be a positive integer")
+    return min(maximum, limit)
+
+
+def distribution_contract(task, manifest, mode):
+    """Read the manifest-bound registry without importing task executable code."""
+    if mode is None:
+        return None
+    reference = manifest.get("observed_work_distributions", {})
+    payload = read_regular(task / relative_file(reference.get("path")))
+    require(sha256(payload) == reference.get("sha256"), "work distribution registry digest differs")
+    registry = strict_json(payload)
+    require(registry.get("schema") == "moe-observed-work-distributions-v1", "unsupported work distribution registry")
+    groups = registry.get("groups", {})
+    dynamic = {case["case_id"]: groups[case["distribution_group"]]
+               for case in manifest["cases"] if case.get("provenance_kind") == "generated_observed_work_distribution"}
+    require(dynamic and len(dynamic) == len(groups), "work distribution case coverage differs")
+    for case_id, group in dynamic.items():
+        rows = group["histogram"]
+        require(group["case_id"] == case_id and rows
+                and len({row["variant_id"] for row in rows}) == len(rows)
+                and fingerprint(rows) == group["histogram_sha256"], "invalid work distribution histogram")
+    return dynamic
+
+
+def validate_distribution_report(report, manifest, request, distributions, mode):
+    """Require exhaustive seed/control evidence while keeping timing sampled."""
+    if distributions is None:
+        require("distribution_correctness_mode" not in request, "unconfigured distribution mode")
+        return
+    phase = request["phase"]
+    expected_mode = mode if phase in ("compile", "correctness") else None
+    require(request.get("distribution_correctness_mode") == expected_mode, "request distribution mode differs")
+    compiled = report.get("compiled_specializations", [])
+    ids = [row.get("case_id") for row in compiled]
+    require(len(ids) == len(manifest["cases"]) and set(ids) == {case["case_id"] for case in manifest["cases"]},
+            "compiled specialization coverage differs")
+    for receipt in compiled:
+        case_id = receipt["case_id"]
+        if case_id not in distributions:
+            continue
+        group = distributions[case_id]
+        selected = expected_mode or group["correctness"]["default_mode"]
+        require(receipt.get("invoked_and_synchronized") is True
+                and receipt.get("distribution_compile_setting") == group["histogram"][0]["num_valid_ids"][0]
+                and receipt.get("correctness_mode") == selected
+                and receipt.get("all_observed_settings_correctness") is False,
+                "distribution compile receipt mode/coverage differs")
+    if phase != "correctness":
+        return
+    policy = manifest["measurement"]
+    observed = {row["case"]["case_id"]: row for row in report["cases"]}
+    for case_id, group in distributions.items():
+        row = observed[case_id]
+        expected = [{"variant_id": setting["variant_id"], "num_valid_ids": setting["num_valid_ids"],
+                     "correct": True, "seeds": policy["correctness_seeds"],
+                     "negative_controls": {control: True for control in policy["negative_controls"]}}
+                    for setting in group["histogram"]]
+        require(canonical(row.get("correctness_variants")) == canonical(expected),
+                "exhaustive distribution seed/control coverage differs")
+        proof = row.get("observed_work_distribution", {})
+        require(proof.get("histogram_sha256") == group["histogram_sha256"]
+                and proof.get("correctness_mode") == mode
+                and type(proof.get("correctness_settings_checked")) is int
+                and proof["correctness_settings_checked"] == len(expected)
+                and type(proof.get("observed_setting_count")) is int
+                and proof["observed_setting_count"] == len(expected)
+                and proof.get("all_observed_settings_correctness") is True
+                and proof.get("all_observed_settings_timed") is False
+                and proof.get("actual_other_rank_routing_recovered") is False
+                and proof.get("reference_generated_outputs_not_parent_goldens") is True,
+                "exhaustive distribution scope/provenance differs")
 
 
 def relative_file(value):
@@ -89,9 +174,14 @@ def package_contract(task):
     references = {source: relative_file(reference) for source, reference in references.items()}
     reserved = {"config.yaml", "scripts/task_runner.py", manifest_path, helper_path, guard_path, *references.values()}
     require(not set(sources) & reserved, "editable sources overlap a protected harness/reference file")
+    mode = descriptor.get("distribution_correctness_mode")
     for phase in PHASES:
-        require(config.get(phase + "_command") == [f"python3 scripts/task_runner.py {phase}"],
+        arguments = distribution_phase_arguments(mode, phase)
+        expected_command = " ".join(["python3", "scripts/task_runner.py", phase, *arguments])
+        require(config.get(phase + "_command") == [expected_command],
                 "trusted tasks must use the protected scripts/task_runner.py entrypoint")
+        if mode is not None and phase + "_timeout" in config:
+            phase_timeout(config, phase, config[phase + "_timeout"])
     require(read_regular(task / helper_path) == read_regular(PORTABLE_CONTRACT), "task contract helper differs from the trusted host version")
     manifest = validate_manifest(strict_json(read_regular(task / manifest_path)))
     require(config.get("headkernel", {}).get("docker") == manifest["runtime_image"], "task and cases name different runtime images")
@@ -107,7 +197,9 @@ def package_contract(task):
         read_regular(task / score_policy['native_source_manifest'])
     return {"sources": sources, "references": references, "manifest": manifest,
             "guard": guard_path, "needs_cache": needs_cache, "fixtures": fixtures,
-            "scoring_policy": score_policy, "config": config}
+            "scoring_policy": score_policy, "config": config,
+            "distribution_correctness_mode": mode,
+            "distributions": distribution_contract(task, manifest, mode)}
 
 
 def prepare_reference(*, repo, commit, task_path, reference, staging, candidate_workspace,
@@ -229,6 +321,7 @@ def run_phase(image, task, staging, output, leg, request, render_device, timeout
         image_index = command.index(image)
     command[image_index:image_index] = ["--mount", f"type=bind,src={request_path},dst=/evaluation-request.json,readonly"]
     command += [phase, "--request", "/evaluation-request.json"]
+    command += distribution_phase_arguments(request.get("distribution_correctness_mode"), phase)
     primary = None
     try:
         with (output / (label + ".log")).open("xb") as log:
@@ -305,8 +398,14 @@ def trusted_retest(*, repo, commit, task_path, candidate_workspace, output, rend
                 request = {"schema_version": 1, "request_id": secrets.token_hex(24), "phase": phase,
                            "manifest_sha256": fingerprint(manifest), "package_sha256": package,
                            "source_sha256": sources[leg], "challenge_seed": challenge_seed, "gpu": gpu}
-                report = run_phase(image, task, staging, output, leg, request, render_device, timeout, cache_source)
+                mode = contract["distribution_correctness_mode"]
+                if mode is not None and phase in ("compile", "correctness"):
+                    request["distribution_correctness_mode"] = mode
+                limit = phase_timeout(contract["config"], phase, timeout) if mode is not None else timeout
+                report = run_phase(image, task, staging, output, leg, request, render_device,
+                                   limit, cache_source)
                 measured = validate_report(report, manifest, request)
+                validate_distribution_report(report, manifest, request, contract["distributions"], mode)
                 # Ignore only the empty bind-mount point added after fingerprinting.
                 current = tree_manifest(task)
                 current.pop("build", None)
@@ -334,6 +433,15 @@ def trusted_retest(*, repo, commit, task_path, candidate_workspace, output, rend
                   "manifest_sha256": fingerprint(manifest), "full_case_coverage": True, "cases": cases,
                   "arithmetic_mean_speedup": math.fsum(row["speedup"] for row in cases) / len(cases),
                   "reports": reports, "framework_task_validator_status": "not_asserted"}
+        if contract["distributions"] is not None:
+            result["observed_work_correctness"] = {
+                "mode": contract["distribution_correctness_mode"],
+                "settings_per_leg": sum(len(group["histogram"]) for group in contract["distributions"].values()),
+                "verified_legs": ["reference", "candidate"],
+                "all_observed_settings_correctness": True,
+                "all_observed_settings_timed": False,
+                "actual_other_rank_routing_recovered": False,
+                "scope": "recorded work counts with representative generated routes and activations"}
         if contract['scoring_policy'] is not None:
             summary = metric_summary(scored_native['reference'], scored_native['candidate'])
             result.update(summary)

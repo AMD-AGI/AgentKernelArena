@@ -39,6 +39,44 @@ tree. The frozen source copy must equal the shipped editable source. Every
 declared source needs its own reference entry. Editable paths cannot also be
 the manifest, contract, guard, runner, or reference files.
 
+Tasks with a manifest-bound `moe-observed-work-distributions-v1` registry can
+require exhaustive correctness over every recorded work-count setting:
+
+```yaml
+compile_command:
+- python3 scripts/task_runner.py compile --distribution-correctness-mode exhaustive_observed_values
+correctness_command:
+- python3 scripts/task_runner.py correctness --distribution-correctness-mode exhaustive_observed_values
+performance_command:
+- python3 scripts/task_runner.py performance
+trusted_evaluation:
+  schema_version: 1
+  distribution_correctness_mode: exhaustive_observed_values
+  # Keep the task's other trusted_evaluation fields.
+```
+
+The trusted evaluator binds this mode into fresh compile and correctness
+requests and checks both their compile receipts and the complete per-setting
+seed/control evidence. Compile receipts continue to state that correctness
+coverage has not yet run. Performance retains its normal sampled schedule;
+its compile receipt retains the task's default selection. The six reports
+share one private challenge and use separate request IDs. Exhaustive generated
+work-count coverage does not recover original served routing or payloads and
+does not imply exhaustive timing coverage.
+
+Set a positive integer `correctness_timeout` large enough for the full histogram,
+all seeds and all negative controls. For this explicit exhaustive opt-in, the
+trusted host validates and honors declared phase timeouts, capped by its
+`--timeout` argument; that argument must therefore be
+at least the longest required phase. It is a per-phase cap, not a total job
+budget. Admission should reserve both reference and candidate executions of
+all three phases, fixture/cache setup, and cleanup. The DeepSeek MoE task
+configs budget 100, 110, and 300 minutes per correctness phase for FlyDSL,
+Opus1, and Opus2 respectively. These include headroom over proportional prior
+runtime estimates and are not measured exhaustive runtimes.
+Tasks without this opt-in retain their previous command/request shape and
+receive the caller-supplied timeout unchanged in every trusted phase.
+
 The ordinary optimizer freezes every non-editable file shipped by the task
 before launching the agent. For `trusted_evaluation` packages, this protection
 also applies when only a materialized workspace is available, and the

@@ -5,9 +5,9 @@ target_kernel_functions:
 - opus_moe_stage2_a8w4_decode_kernel_gfx950
 - opus_moe_stage2_reduce_token_slot_route_output_kernel_gfx950
 compile_command:
-- python3 scripts/task_runner.py compile
+- python3 scripts/task_runner.py compile --distribution-correctness-mode exhaustive_observed_values
 correctness_command:
-- python3 scripts/task_runner.py correctness
+- python3 scripts/task_runner.py correctness --distribution-correctness-mode exhaustive_observed_values
 performance_command:
 - python3 scripts/task_runner.py performance
 performance_timeout: 7200
@@ -37,6 +37,7 @@ harness_protection:
   reject_new_source_symlinks: true
 trusted_evaluation:
   schema_version: 1
+  distribution_correctness_mode: exhaustive_observed_values
   case_manifest: cases.json
   contract_file: ut/evaluation_contract.py
   source_guard: ut/source_guard.py
@@ -49,3 +50,5 @@ scoring_baseline:
   schema_version: 2
   kind: native_production
   native_source_manifest: provenance/PAIRED-REFERENCE.json
+compile_timeout: 600
+correctness_timeout: 18000

@@ -160,6 +160,115 @@ def phase_report(request, manifest, timing):
     return finalize_report(report, manifest, request)
 
 
+def test_exhaustive_six_phase_orchestration_binds_mode_challenge_and_budgets(packaged_task, tmp_path, monkeypatch):
+    repo, task, _, candidate, manifest = packaged_task
+    config = yaml.safe_load((task / "config.yaml").read_text())
+    config["trusted_evaluation"]["distribution_correctness_mode"] = trusted.EXHAUSTIVE_CORRECTNESS
+    for phase in ("compile", "correctness"):
+        config[phase + "_command"][0] += " --distribution-correctness-mode exhaustive_observed_values"
+    config.update(compile_timeout=8, correctness_timeout=6000, performance_timeout=11)
+    (task / "config.yaml").write_text(yaml.safe_dump(config))
+    histogram = [{"variant_id": "one", "num_valid_ids": [64, 1]},
+                 {"variant_id": "two", "num_valid_ids": [128, 1]}]
+    group = {"case_id": "first", "histogram": histogram, "histogram_sha256": trusted.fingerprint(histogram),
+             "correctness": {"default_mode": "targeted_uncovered_behaviors"}}
+    registry = {"schema": "moe-observed-work-distributions-v1", "groups": {"test": group}}
+    payload = json.dumps(registry).encode()
+    (task / "registry.json").write_bytes(payload)
+    manifest["observed_work_distributions"] = {"path": "registry.json", "sha256": trusted.sha256(payload)}
+    manifest["cases"][0].update(provenance_kind="generated_observed_work_distribution", distribution_group="test")
+    (task / "cases.json").write_text(json.dumps(manifest))
+    subprocess.run(["git", "-C", str(repo), "add", "tasks/example"], check=True)
+    subprocess.run(["git", "-C", str(repo), "-c", "user.name=Test", "-c", "user.email=test@example.invalid",
+                    "commit", "-qm", "exhaustive policy"], check=True)
+    commit = subprocess.check_output(["git", "-C", str(repo), "rev-parse", "HEAD"], text=True).strip()
+    original = subprocess.check_output
+    def inspect(command, **kwargs):
+        if command[:3] == ["docker", "image", "inspect"]:
+            return json.dumps([{"RepoDigests": [manifest["runtime_image"]], "Id": "sha256:" + "b" * 64}])
+        return original(command, **kwargs)
+    calls = []
+    def run_phase(image, staged, staging, output, leg, request, render, timeout, cache):
+        calls.append((leg, copy.deepcopy(request), timeout))
+        report = phase_report(request, manifest, 1.0)
+        phase = request["phase"]
+        selected = trusted.EXHAUSTIVE_CORRECTNESS if phase != "performance" else "targeted_uncovered_behaviors"
+        report["compiled_specializations"] = [
+            {"case_id": "first", "invoked_and_synchronized": True, "distribution_compile_setting": 64,
+             "correctness_mode": selected, "all_observed_settings_correctness": False},
+            {"case_id": "second", "invoked_and_synchronized": True}]
+        if phase == "correctness":
+            row = report["cases"][0]
+            row["correctness_variants"] = [
+                {**setting, "correct": True, "seeds": [0, 1],
+                 "negative_controls": {"no_op": True, "wrong_output": True}} for setting in histogram]
+            row["observed_work_distribution"] = {
+                "histogram_sha256": group["histogram_sha256"], "correctness_mode": selected,
+                "correctness_settings_checked": 2, "observed_setting_count": 2,
+                "all_observed_settings_correctness": True, "all_observed_settings_timed": False,
+                "actual_other_rank_routing_recovered": False, "reference_generated_outputs_not_parent_goldens": True}
+        return report
+    monkeypatch.setattr(subprocess, "check_output", inspect)
+    monkeypatch.setattr(trusted, "select_gpu", lambda render: {"render_device": render})
+    monkeypatch.setattr(trusted, "run_phase", run_phase)
+    result = trusted.trusted_retest(repo=repo, commit=commit, task_path="tasks/example", candidate_workspace=candidate,
+                                   output=tmp_path / "exhaustive-result", scratch_dir=tmp_path / "scratch",
+                                   render_device="unused", timeout=5000)
+    assert result["status"] == "measured"
+    assert result["observed_work_correctness"]["settings_per_leg"] == 2
+    assert result["observed_work_correctness"]["all_observed_settings_correctness"] is True
+    assert result["observed_work_correctness"]["all_observed_settings_timed"] is False
+    assert result["observed_work_correctness"]["actual_other_rank_routing_recovered"] is False
+    assert len(calls) == 6 and len({request["request_id"] for _, request, _ in calls}) == 6
+    assert len({request["challenge_seed"] for _, request, _ in calls}) == 1
+    for _, request, timeout in calls:
+        phase = request["phase"]
+        assert timeout == {"compile": 8, "correctness": 5000, "performance": 11}[phase]
+        assert request.get("distribution_correctness_mode") == (None if phase == "performance" else trusted.EXHAUSTIVE_CORRECTNESS)
+
+
+@pytest.mark.parametrize("declared_timeouts", [
+    {"compile_timeout": 1800, "correctness_timeout": 1800, "performance_timeout": 7200},
+    {"compile_timeout": 0, "correctness_timeout": True, "performance_timeout": "legacy-value"},
+])
+def test_non_exhaustive_contract_preserves_timeouts_requests_and_commands(packaged_task, tmp_path, monkeypatch, declared_timeouts):
+    """The exhaustive opt-in must not change prior timeout validation/forwarding."""
+    repo, task, _, candidate, manifest = packaged_task
+    config = yaml.safe_load((task / "config.yaml").read_text())
+    config.update(declared_timeouts)
+    (task / "config.yaml").write_text(yaml.safe_dump(config))
+    contract = trusted.package_contract(task)
+    assert contract["distribution_correctness_mode"] is None
+    for phase in trusted.PHASES:
+        assert contract["config"][phase + "_command"] == [f"python3 scripts/task_runner.py {phase}"]
+    subprocess.run(["git", "-C", str(repo), "add", "tasks/example"], check=True)
+    subprocess.run(["git", "-C", str(repo), "-c", "user.name=Test", "-c", "user.email=test@example.invalid",
+                    "commit", "-qm", "legacy phase timeouts"], check=True)
+    commit = subprocess.check_output(["git", "-C", str(repo), "rev-parse", "HEAD"], text=True).strip()
+    original = subprocess.check_output
+    def inspect(command, **kwargs):
+        if command[:3] == ["docker", "image", "inspect"]:
+            return json.dumps([{"RepoDigests": [manifest["runtime_image"]], "Id": "sha256:" + "b" * 64}])
+        return original(command, **kwargs)
+    calls = []
+    def run_phase(image, staged, staging, output, leg, request, render, timeout, cache):
+        calls.append((leg, copy.deepcopy(request), timeout))
+        return phase_report(request, manifest, 1.0)
+    monkeypatch.setattr(subprocess, "check_output", inspect)
+    monkeypatch.setattr(trusted, "select_gpu", lambda render: {"render_device": render})
+    monkeypatch.setattr(trusted, "run_phase", run_phase)
+    result = trusted.trusted_retest(repo=repo, commit=commit, task_path="tasks/example", candidate_workspace=candidate,
+                                   output=tmp_path / "legacy-result", scratch_dir=tmp_path / "scratch",
+                                   render_device="unused", timeout=7200)
+    assert result["status"] == "measured" and "observed_work_correctness" not in result
+    assert len(calls) == 6 and len({request["request_id"] for _, request, _ in calls}) == 6
+    assert len({request["challenge_seed"] for _, request, _ in calls}) == 1
+    for _, request, timeout in calls:
+        assert timeout == 7200
+        assert set(request) == {"schema_version", "request_id", "phase", "manifest_sha256", "package_sha256",
+                                "source_sha256", "challenge_seed", "gpu"}
+
+
 @pytest.mark.parametrize("missing_case", [False, True])
 def test_sources_only_retest_scores_complete_cases_or_rejects(packaged_task, tmp_path, monkeypatch, missing_case):
     repo, task, commit, candidate, manifest = packaged_task
