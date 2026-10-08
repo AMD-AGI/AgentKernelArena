@@ -35,7 +35,7 @@
   "ledger_ids": [
     "hk11"
   ],
-  "math_contract": "pre_norm_sum = bf16(x + residual); normed = bf16(float(pre_norm_sum) * rsqrt(mean(float(pre_norm_sum)^2) + eps) * (1 + float(weight))); return (normed, pre_norm_sum) as two fresh non-aliasing tensors without mutating x, residual, or weight.",
+  "math_contract": "s = float32(x) + float32(residual); normed = bf16(s * rsqrt(mean(s * s) + eps) * (1 + float32(weight))); pre_norm_sum = bf16(s); return (normed, pre_norm_sum) as two fresh non-aliasing tensors without mutating x, residual, or weight. The normalization uses the unrounded FP32 sum, not the stored BF16 pre_norm_sum.",
   "negative_check": "negative_check.json",
   "notes": "The task freezes the real callable boundary and live-derived M buckets, then removes serving startup from all correctness and smoke iterations. No reference_io.pt is stored because the mathematical contract is pure and value-independent; reference_io_sha256 is empty by design.",
   "num_cases": 2,

@@ -80,3 +80,5 @@ rejected) are what it records instead - read those before trusting a speedup.
 ## SGLang 0.5.20 source refresh
 
 The candidate and frozen native source now bind to the digest in `ut/runtime_refresh.json`. Existing shapes, captured tensors, tolerances, samples, and harness checks are preserved from the documented SGLang 0.5.18 workload. Historical PASS artifacts apply to that capture runtime. Validation and dispatch verification in SGLang 0.5.20 are pending; no new serving capture or performance gain is claimed.
+
+The fused kernel computes the residual sum in FP32 and uses that unrounded sum for the variance and normalization. It casts independently when storing the BF16 normalized output and the BF16 residual output; the stored residual is not reread to compute the normalization. Both output buffers are fresh and distinct.
