@@ -20,7 +20,7 @@
 ```
 config.yaml              arena task schema + a headkernel: provenance block
 scripts/task_runner.py   compile | correctness | performance
-scripts/_bench.py        native 10 warmup / 100 measured timing
+scripts/_bench.py        canonical graph timing, 10 warmups / 100 raw samples
 source/                  THE EDITABLE KERNEL - change only this
 ut/                      frozen GEAK op package (oracle, harness, overlays)
 ut/kernel_src/           symlinks back into source/ - same bytes, two views
@@ -51,12 +51,24 @@ python3 scripts/task_runner.py performance
   deliberate output corruption that must be rejected (`ut/negative_check.json`)
   and an identity check that the two legs resolve to different code
   (`ut/selection_validation.json`).
-- **performance** builds this op's live geometries through the package's own
-  `ut/cases.py` - there is no frozen blob to replay - and times them with the same
-  10 warmup + 100 measured cuda-event methodology. It falls back to the GEAK
-  interleaved median-of-3 legs only if that entry point is missing, and says which
-  it used in `build/performance_report.json`.
-  A run whose unit test did not pass reports no cases at all.
+- **performance** builds the exact two live geometries through `ut/cases.py`
+  and uses the workspace-materialized canonical `_aka_benchmark.py` helper.
+  It performs 10 warmups and reports all 100 graph replay samples per case in
+  their original order, together with per-case `benchmark_method: cuda_graph`.
+  Each replay contains one native callable invocation. Before every replay,
+  outside the event interval, it restores x, residual and weight and poisons
+  both output buffers with NaN. It checks every completed invocation against
+  the hash-verified frozen native baseline at the existing tolerance `0.02`,
+  including the exact graph whose samples were recorded. Validation, input
+  restoration and output poisoning are excluded from device timing. Capture
+  failure, invalid samples or either output failing validation fails the whole
+  performance run; there is no event fallback for these graph-capable cases.
+  Use framework workspace setup or `make materialize-perf-task TASK=<task>`
+  from the repository before running timing directly in a copied task.
+
+Historical CUDA-event timings describe the previous benchmark method. This
+harness change requires fresh trusted and framework GPU qualification; the old
+numbers are not graph timings or a declared event fallback.
 
 ## Starting point
 
