@@ -222,6 +222,26 @@ make docker-check-agents AGENTS=all
 ```
 
 `AGENTS=all` is the explicit strict check for Cursor, Claude Code, and Codex.
+
+Codex uses the host's `~/.codex` directory by default. To use a separate, small
+authentication/configuration directory, set `AKA_CODEX_AUTH_DIR` before an agent
+check or run:
+
+```bash
+AKA_CODEX_AUTH_DIR="$HOME/.config/aka-codex-auth" \
+  make docker-check-agents CONFIG=my_experiment.yaml
+```
+
+The directory must already exist, be readable, and contain the authentication
+and configuration needed by the selected Codex CLI. It can omit sessions,
+worktrees, and package history. With worker-home isolation enabled, the runner
+mounts this source read-only and copies its contents into the worker's writable
+temporary home; worker updates do not write back to the source. Without
+isolation, it replaces the usual writable `~/.codex` mount. Native Codex packages
+remain mounted from the host installation, independently of this override.
+The normal CLI authentication check still runs. Leaving `AKA_CODEX_AUTH_DIR`
+unset preserves the existing mounts and copying behavior.
+
 DeepSeek Harness is opt-in: select its run config or pass
 `AGENTS=deepseek_harness`. Export `DEEPSEEK_API_KEY` before the check/run; the
 runner forwards it by environment-variable name only for DeepSeek runs.

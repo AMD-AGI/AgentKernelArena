@@ -1,84 +1,77 @@
-# Flash MLA and Top-k: Accuracy and Performance Tests
+# Paged Top-k with K=512 and page size 64
 
-**Kernels must generalize across valid lengths, not just tensor shapes or the supplied samples.** As the KV cache grows during decode, effective lengths change even when buffer capacities stay fixed.
+Implement `run(**kwargs)` in [source/kernel.py](source/kernel.py) using Triton.
+The [workload manifest](scripts/workload.json), [reference](scripts/reference/main.py),
+and [comparator](scripts/compare/main.py) define the protected contract. Only
+files listed in [config.yaml](config.yaml) are editable during optimization.
 
-| Operator | Runtime length values to vary | Capacity stays fixed within a test sweep |
-| --- | --- | --- |
-| `topk_transform_paged` | `seq_lens[b]` | Score width, page-table width, output `k` |
-| `flash_mla_with_kvcache` | `sparse_lens[b]`, plus `extra_sparse_lens[b]` when present | KV pools and sparse-index widths |
+## Interface and semantics
 
-These are **values inside tensors**, not changes to the length tensors' shapes. Length growth alone does not require changing constant axes such as `extra_topk=8256` into variable axes.
+`scores` is FP32 `[batch, 262208]`; `seq_lens` is int32 `[batch]`;
+`page_tables` is int32 `[batch, 4097]`; `metadata` is int32 `[batch + 1, 2]`.
+`page_size` is the scalar 64. Write the preallocated int32 destination
+`out_page_indices[batch, 512]` and return `None`. Do not mutate inputs.
 
-## Top-k example
+For each row, consider only `scores[row, :seq_lens[row]]`. Valid lengths range
+from zero through 262208. For lengths at most 512, emit every valid logical
+index in ascending logical order; this includes **length exactly 512**. For
+longer rows, select the 512 highest scores in any order. Map each selected
+logical index `i` to `page_tables[row, i // 64] * 64 + i % 64`. Fill all unused
+output positions at the end with `-1`. Tie-free inputs make the selected set
+unambiguous. NaN scores are unsupported.
 
-Case: [`topk_transform_paged_paged_k512_page_size64`](definitions/topk_transform_paged/topk_transform_paged_paged_k512_page_size64.json), using its [batch-1 workload](workloads/topk_transform_paged/topk_transform_paged_paged_k512_page_size64.jsonl).
+The comparator uses the actual `seq_lens` to decide whether logical ordering
+is required. Inferring short rows solely from `-1` padding misses the length-512
+boundary. Long rows are compared as sets, with exact integer values.
 
-Keep these shapes fixed:
+## Runtime-length coverage
 
-```text
-scores:           [1, 262208]
-page_tables:      [1, 4097]     page_size = 64
-metadata:         [2, 2]
-out_page_indices: [1, 512]
-```
-
-Vary `seq_lens[0]`, for example:
+All 13 original batch sizes and workload rows remain. Additional manifest cases
+cover these lengths while score and page-table capacities stay fixed:
 
 ```text
 0, 1, 63, 64, 65, 511, 512, 513,
-1024, 2048, 4096, 8192, 65536, 131072, 262207, 262208
+1024, 2048, 4096, 8192, 65536, 131072, 262207, 262208,
+37, 65537
 ```
 
-For a request with current visible token length `N`, this decode path uses `seq_lens = N // 4`. Thus `N = 4096 → 8192 → 16384 → 32768` gives `seq_lens = 1024 → 2048 → 4096 → 8192`, while the output remains 512 slots. **Do not clamp the candidate length to 512.**
+Batch 1 exercises every length independently. Larger batches use uniform empty,
+length-512 and full rows, plus mixed patterns that collectively include every
+listed length for each batch size. One additional case per batch uses a
+reproducible pseudorandom length pattern whose seed and exact values are retained
+in the manifest. `runtime_lengths.seq_lens` is a repeating
+pattern across batch rows; its values are explicit in both workload rows and
+case parameters. The 13 original cases retain their original input draws and
+initial length distributions.
 
-- Keep `0 <= seq_lens[b] <= min(width, pages * page_size)`.
-- Build or validate matching `metadata` for every length; never reuse a stale length-specific plan.
-- Vary tie-free scores and legal page mappings. NaN scores are unsupported.
-- Select only from the valid score prefix. Short rows preserve logical order and end with `-1` padding; long-row selections need not be sorted. Use the definition's `compare` callback.
+The protected input adapter applies each declared length after initialization.
+It rebuilds the conservative non-cluster metadata in the existing buffers.
+Correctness checks use two data seeds per case. Performance measures every
+manifest case, checks the exact timed output, then validates the captured graph
+after a second data draw and after changing the length pattern in place.
+`runtime_lengths.replay_seq_lens` declares that final transition; lengths grow
+by one, or reset from full capacity to zero. Neither buffers nor strides change.
 
-## Flash MLA example
+## Timing and validation
 
-Case: [`flash_mla_with_kvcache_dsv4_fp8_11111_q1_h64_d512_p256_k128_ep2_ek8256`](definitions/flash_mla_with_kvcache/flash_mla_with_kvcache_dsv4_fp8_11111_q1_h64_d512_p256_k128_ep2_ek8256.json), using its [batch-1 workload](workloads/flash_mla_with_kvcache/flash_mla_with_kvcache_dsv4_fp8_11111_q1_h64_d512_p256_k128_ep2_ek8256.jsonl).
+Input generation, metadata setup, reference computation and output allocation
+remain outside kernel-only timing. Both roles use the same warmup, repetition,
+case manifest, and canonical device-timing helper. Each measured input is checked
+before timing. Outputs are poisoned before replay validation, and input mutation
+is rejected. Per-case latency, timing method, length pattern, and replay checks
+are emitted through the task runner.
 
-Keep these shapes and both KV pool capacities fixed (`pages=2019`, `extra_pages=201836`):
+The numerical reference is independent of the production baseline. The baseline
+and initial candidate compile separate copies of the same SGLang production HIP
+kernel with a task-local overflow fix. The upstream bounded candidate scratch
+loses valid long-row selections for the original input distribution; overflowing
+bins now use exact FP32 radix refinement over the complete valid prefix.
+[scripts/baseline/main.py](scripts/baseline/main.py) defines the production loader.
+See [UPSTREAM.md](UPSTREAM.md) for the immutable public source, retained license,
+local changes, compiler dependencies, cache isolation and timing boundaries.
+There is no fallback to the reference or another backend. The final candidate
+must implement its own Triton computation; the initial Python-to-HIP wrapper is
+not a completed rewrite.
 
-```text
-q:                    [1, 1, 64, 512]
-sparse_indices:       [1, 1, 128]
-extra_sparse_indices: [1, 1, 8256]
-```
-
-In this C128 case, `sparse_lens = min(N, 128)` and `extra_sparse_lens = max(N // 128, 1)`, within the configured legal capacity:
-
-| Current visible tokens `N` | `sparse_lens[0]` | `extra_sparse_lens[0]` |
-| ---: | ---: | ---: |
-| 4096 | 128 | 32 |
-| 8192 | 128 | 64 |
-| 16384 | 128 | 128 |
-| 32768 | 128 | 256 |
-
-The main sliding window saturates at 128; the extra prefix continues growing. **8256 is index capacity, not the effective length of every call.**
-
-Also test legal boundary combinations independently, including both branches empty, either branch empty, and both branches nonempty:
-
-```text
-sparse_lens:       0, 1, 63, 64, 65, 127, 128
-extra_sparse_lens: 0, 1, 2, 31, 32, 33, 127, 128, 129,
-                   511, 512, 513, 1024, 2048, 4096, 8192, 8255, 8256
-```
-
-- Keep `0 <= sparse_lens[b] <= 128` and `0 <= extra_sparse_lens[b] <= 8256`.
-- Apply each length to its index prefix, then ignore negative indices inside that prefix. For short histories, `extra_sparse_lens=1` with index `-1` means no effective extra KV entry.
-- Vary Q, correctly packed KV data, legal indices, negative padding, and sinks. Test that indices outside the selected prefixes cannot affect outputs.
-- Check both BF16 output and FP32 LSE with the definition's `compare` callback: additive `atol=rtol=1e-2` for output and `1e-3` for finite LSE. Fully empty rows require zero output and `+inf` LSE.
-
-## Required test coverage and reporting
-
-- **Accuracy:** use the exported `reference` and operator-specific `compare` callbacks for every tested input. Cover empty, short, intermediate, near-capacity, and full lengths; add values immediately around kernel tile/partition boundaries and random lengths not used during tuning. The lists above are starting points, not an exhaustive whitelist.
-- **Data and batch generalization:** use multiple data seeds per length. Repeat across supported workload batch sizes, including mixed per-row lengths. Reuse buffers across growing-length calls to catch stale length or plan assumptions.
-- **Performance:** benchmark the same length regimes, including irregular lengths and mixed batches—not only full capacity. Validate each measured input first, warm up, and use repeated GPU-timed measurements under identical conditions for candidate and baseline. Keep input generation, reference checks, and metadata construction outside kernel-only timing; report setup cost separately if measured.
-- **Report per case:** batch, length values/distribution, seed, accuracy result, baseline latency, candidate latency, and speedup. Include short-, medium-, and long-length results and regressions, not just a best case or one aggregate speedup. Record hardware, timing method, and repetition count.
-
-**Changing seeds alone is insufficient.** The Top-k initializer selects only `0`, one-quarter, one-half, or full capacity. For batch 1, the MLA initializer always sets both prefixes to full width. Explicitly set the test lengths after initialization and update dependent inputs before checking or timing.
-
-These are test requirements and example inputs, not measured accuracy or performance results.
+Source inspection and CPU regression tests do not qualify the task; a fresh
+framework-finalized GPU validator PASS is required.

@@ -6,24 +6,27 @@ import struct as struct
 import torch as torch
 
 def _initialize_mla_cache(cache, generator):
-    """Write packed payloads and scale slots, using one page of scratch space."""
+    """Write packed payloads and scale slots, using bounded scratch space."""
     page_size = cache.shape[1]
     raw = cache.view(torch.uint8).view(cache.shape[0], page_size * 584)
     raw.zero_()
-    for page in range(cache.shape[0]):
+    # Batch pages into bounded scratch rather than launching per physical page.
+    pages_per_chunk = max(1, 8192 // page_size)
+    for start in range(0, cache.shape[0], pages_per_chunk):
+        stop = min(start + pages_per_chunk, cache.shape[0])
+        count = stop - start
         values = torch.randn(
-            (page_size, 512),
-            dtype=torch.float32,
-            device=cache.device,
-            generator=generator,
+            (count, page_size, 512), dtype=torch.float32,
+            device=cache.device, generator=generator,
         )
-        payload = raw[page, : page_size * 576].view(page_size, 576)
-        payload[:, :448].copy_(
-            values[:, :448].clamp(-448, 448).to(torch.float8_e4m3fn).view(torch.uint8)
+        payload = raw[start:stop, : page_size * 576].view(count, page_size, 576)
+        payload[:, :, :448].copy_(
+            values[:, :, :448].clamp(-448, 448).to(torch.float8_e4m3fn).view(torch.uint8)
         )
-        payload[:, 448:].copy_(values[:, 448:].to(torch.bfloat16).view(torch.uint8))
-        scales = raw[page, page_size * 576 :].view(page_size, 8)
-        scales[:, :7].random_(124, 128, generator=generator)
+        payload[:, :, 448:].copy_(values[:, :, 448:].to(torch.bfloat16).view(torch.uint8))
+        scales = raw[start:stop, page_size * 576 :].view(count, page_size, 8)
+        scales[:, :, :7].random_(124, 128, generator=generator)
+
 
 
 def _valid_tensor(
@@ -119,7 +122,7 @@ def check_init_buffers(inputs, tensor_names, seed=0) -> torch.Generator:
 
 
 @torch.no_grad()
-def initialize_mla_inputs(inputs, *, seed=0):
+def initialize_mla_inputs(inputs, *, seed=0, cache_templates=None):
     """Fill compact replay buffers in place without changing scalars or global RNG."""
     required = {"q", "kv_cache", "sparse_indices", "sm_scale"}
     optional = {
@@ -170,9 +173,18 @@ def initialize_mla_inputs(inputs, *, seed=0):
 
     # Keep scaled logits moderate without overwriting the caller's scale.
     q.normal_(std=min(1.0, 1.0 / (math.sqrt(512) * inputs["sm_scale"])), generator=rng)
-    for prefix in prefixes:
+    for branch, prefix in enumerate(prefixes):
         cache, indices = inputs[prefix + "kv_cache"], inputs[prefix + "sparse_indices"]
-        _initialize_mla_cache(cache, rng)
+        # Cache draws use an independent stream so cached and uncached creation
+        # produces identical Q, index, length and sink tensors.
+        key = (seed, prefix, tuple(cache.shape), cache.dtype, str(cache.device))
+        if cache_templates is not None and key in cache_templates:
+            cache.copy_(cache_templates[key])
+        else:
+            cache_rng = torch.Generator(device=q.device).manual_seed((seed + branch + 1) % (2**63))
+            _initialize_mla_cache(cache, cache_rng)
+            if cache_templates is not None:
+                cache_templates[key] = cache.clone()
         indices.random_(0, cache.shape[0] * cache.shape[1], generator=rng)
         width = indices.shape[-1]
         lengths = torch.randint(
@@ -183,14 +195,8 @@ def initialize_mla_inputs(inputs, *, seed=0):
             device=q.device,
             generator=rng,
         )
-        lengths[0] = width
-        if q.shape[0] > 1:
-            lengths[1] = 0
-        indices.masked_fill_(
-            torch.arange(width, device=q.device)[None, None, :]
-            >= lengths[:, None, None],
-            -1,
-        )
+        # Negative padding is applied independently by the case profile. Keep
+        # valid nonnegative indices beyond runtime lengths to detect ignored lengths.
         if prefix + "sparse_lens" in inputs:
             inputs[prefix + "sparse_lens"].copy_(lengths)
     if sink is not None:

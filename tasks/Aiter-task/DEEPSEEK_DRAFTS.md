@@ -1,76 +1,107 @@
-# Draft DeepSeek task packages
+# DeepSeek task packages
 
-These 18 schema-v2 task packages cover 13 block-scaled FP8 GEMMs, three MLA
-variants, one mHC operator, and one Top-k operator. Each retains 13 workload rows,
-an implemented Python starting candidate, a provided production baseline, and a
-Triton target. The baseline, independent reference, initializer, comparator,
-workloads, timing policy, and executable harness are preserved from the tested
-packages. They do not depend on the task generator at runtime.
+These 18 schema-v2 packages cover 13 block-scaled FP8 GEMMs, three MLA variants,
+one mHC operator, and one paged Top-k operator. They retain all 234 original
+workload rows and extend the MLA and Top-k runtime cases to cover lengths,
+padding, and graph replay. The complete selection contains **435 cases**.
 
-## Qualification still required
+The task-local input generators, independent references, comparators, workloads,
+and runners do not depend on the task generator at runtime. Each task provides
+an executable initial implementation and a production baseline. The final
+submitted candidate must implement its own GPU computation in Triton; passing
+initial task qualification does not certify a later optimized implementation.
 
-The previous MI355X (`gfx950`) run produced **2 PASS, 12 WARN, and 4 FAIL**
-for this group. All seven runtime actions passed for 17 tasks; Top-k could not
-load its production API. Successful execution does not replace formal task
-qualification. This is a draft collection, not a claim that all 18 are ready.
+## Qualification
 
-| Task | Previous formal status | Remaining work |
-| --- | --- | --- |
-| `flash_mla_with_kvcache_dsv4_fp8_10011_q1_h64_d512_p256_k128` | FAIL | Add independent runtime-length and padding coverage |
-| `flash_mla_with_kvcache_dsv4_fp8_11111_q1_h64_d512_p256_k128_ep2_ek8256` | FAIL | Add independent runtime-length and padding coverage |
-| `flash_mla_with_kvcache_dsv4_fp8_11111_q1_h64_d512_p256_k128_ep64_ek512` | FAIL | Add independent runtime-length and padding coverage |
-| `gemm_a8w8_blockwise_scaled_blk128x128_nt_obfloat16_bshuf16x16_aslogical_n4096_k256` | WARN | Replace unrelated bundle instructions and fix unavailable links |
-| `gemm_a8w8_blockwise_scaled_blk128x128_nt_obfloat16_bshuf16x16_aslogical_n4096_k512` | WARN | Replace unrelated bundle instructions and fix unavailable links |
-| `gemm_a8w8_blockwise_scaled_blk128x128_nt_obfloat16_bshuf16x16_aslogical_n512_k4096` | WARN | Replace unrelated bundle instructions and fix unavailable links |
-| `gemm_a8w8_blockwise_scaled_blk128x128_nt_obfloat16_bshuf16x16_asraw_n1536_k4096` | WARN | Replace unrelated bundle instructions and fix unavailable links |
-| `gemm_a8w8_blockwise_scaled_blk128x128_nt_obfloat16_bshuf16x16_asraw_n32768_k1024` | WARN | Replace unrelated bundle instructions and fix unavailable links |
-| `gemm_a8w8_blockwise_scaled_blk128x128_nt_obfloat16_bshuf16x16_asraw_n4096_k1024` | WARN | Replace unrelated bundle instructions and fix unavailable links |
-| `gemm_a8w8_blockwise_scaled_blk128x128_nt_obfloat16_bshuf16x16_asraw_n4096_k2048` | PASS | Fresh qualification after packaging |
-| `gemm_a8w8_blockwise_scaled_blk128x128_nt_obfloat16_bshuf16x16_asraw_n4096_k256` | PASS | Fresh qualification after packaging |
-| `gemm_a8w8_blockwise_scaled_blk128x128_nt_obfloat16_bshuf16x16_asraw_n4096_k4096` | WARN | Replace unrelated bundle instructions and fix unavailable links |
-| `gemm_a8w8_blockwise_scaled_blk128x128_nt_obfloat16_bshuf16x16_asraw_n4096_k512` | WARN | Replace unrelated bundle instructions and fix unavailable links |
-| `gemm_a8w8_blockwise_scaled_blk128x128_nt_obfloat16_bshuf16x16_asraw_n4096_k8192` | WARN | Replace unrelated bundle instructions and fix unavailable links |
-| `gemm_a8w8_blockwise_scaled_blk128x128_nt_obfloat16_bshuf16x16_asraw_n512_k4096` | WARN | Replace unrelated bundle instructions and fix unavailable links |
-| `gemm_a8w8_blockwise_scaled_blk128x128_nt_obfloat16_bshuf16x16_asraw_n8192_k1024` | WARN | Replace unrelated bundle instructions and fix unavailable links |
-| `mhc_fused_post_pre_flat_rmsnorm_c4_d4096` | WARN | Replace unrelated bundle instructions and fix unavailable links |
-| `topk_transform_paged_paged_k512_page_size64` | FAIL | Resolve production API, length coverage, and comparator boundary ordering |
+Fresh MI355X (`gfx950`) validation on **2026-10-08 UTC** produced
+**18 PASS, 0 WARN, and 0 FAIL**. Each framework-finalized report passed its
+initial validation gate, evidence verification, and all semantic checks.
+All seven runtime actions passed for every task: task validation and baseline
+and candidate compilation, correctness, and performance.
 
-The copied `BUNDLE_README.md` describes MLA and Top-k requirements and contains
-links into the original bundle layout. It is not an adequate per-task guide for
-GEMM or mHC. The MLA tasks additionally need explicit empty, short, intermediate,
-and boundary length regimes, mixed rows, and independent negative padding in
-both correctness and performance checks. Seed changes alone do not provide
-this coverage. Top-k also needs a compatible production entrypoint and stricter
-boundary-ordering checks. These findings remain unresolved in this draft.
+| Workload group | Tasks | Cases | Formal result |
+| --- | ---: | ---: | --- |
+| Block-scaled FP8 GEMM | 13 | 169 | 13 PASS |
+| MLA without extra KV | 1 | 29 | PASS |
+| MLA with page-size-2 extra KV | 1 | 63 | PASS |
+| MLA with page-size-64 extra KV | 1 | 54 | PASS |
+| mHC | 1 | 13 | PASS |
+| Paged Top-k | 1 | 107 | PASS |
+| **Total** | **18** | **435** | **18 PASS** |
 
-## Reproduction and evidence scope
+The selected task paths are maintained in the
+[validator configuration](../../example_configs/task_validator_deepseek_drafts_mi355x.yaml).
+Validation covered the implemented initial candidates. It establishes usable
+correctness and measurement contracts, not an optimization gain. Any later
+material task or harness change requires fresh qualification.
 
-Historical image: `lmsysorg/sglang:v0.5.20-rocm10-mi35x`, pinned as:
+## Resolved findings
+
+The earlier run reported 2 PASS, 12 WARN, and 4 FAIL. The following repairs
+preserve the original shapes, workload identities, numerical tolerances,
+warmups, sample counts, and device-timing policy:
+
+- GEMM and mHC now have task-specific instructions with working local links,
+  explicit runtime dependencies, and separate initial and final implementation
+  requirements.
+- MLA now exercises independent main/extra lengths, empty and boundary lengths,
+  mixed rows, negative padding within selected prefixes, and valid indices
+  outside those prefixes. Correctness and measured replay checks use the same
+  declared cases; replay refills data and lengths in the existing buffers.
+- Top-k covers empty, short, intermediate, full, mixed, and random lengths.
+  The comparator checks logical output order for every row with length at most
+  512, including the exact 512 boundary. Measured replay is checked after both
+  data and length changes.
+- Top-k uses a task-local production HIP kernel with an exact overflow repair.
+  The installed upstream kernel could truncate a threshold bin larger than its
+  6144-index scratch capacity and lose valid selections on long rows. The
+  repaired kernel rescans overflowing rows with FP32 radix refinement while
+  preserving the bounded-bin fast path. Baseline and initial candidate have
+  separate source copies; neither uses the numerical reference as computation.
+  See [the source record and license](topk_transform_paged_paged_k512_page_size64/UPSTREAM.md).
+- All 18 runners use the canonical benchmark helper's `TimedRun` implementation,
+  fixing the obsolete local binding interface. Output poisoning and exact
+  measured replay validation remain enabled.
+
+The Top-k repair also passed GPU regression checks at the 6144/6145 boundary,
+with negative and concentrated scores and changed-length graph replay.
+
+## Runtime and reproduction
+
+The qualified runtime is the immutable image pinned by the run configuration:
 
 ```text
 lmsysorg/sglang@sha256:e20849665c105d389ef91d23c0dc73931aaa6f02056dd10e7b43e4f16c79df69
 ```
 
-The historical run used writable per-worker AITER and FlyDSL caches, with a
-writable copy of AITER configuration files. PyTorch, AITER, SGLang, and their GPU
-runtime dependencies came from that image. No package upgrade was performed.
-The run config now pins this image using `docker_image`, and the runner applies
-the writable-cache setup automatically for both the image tag and digest.
+The tested image supplied ROCm PyTorch `2.11.0+rocm10.0.0`, Triton `3.8.0`,
+AITER, SGLang, and their GPU runtime dependencies. No package upgrade was used.
+The runner supplies writable worker-specific AITER and FlyDSL caches and a
+writable AITER configuration copy. The Top-k source compiles in a separate
+Torch extension cache; generated build files do not modify the task sources.
 
-Run the explicit task selection using the repository Docker workflow on MI355X:
+From the repository root on compatible MI355X hardware, run the complete
+selection through Docker:
 
 ```bash
+make docker-smoke
+make docker-check-agents CONFIG=example_configs/task_validator_deepseek_drafts_mi355x.yaml
 make docker-run CONFIG=example_configs/task_validator_deepseek_drafts_mi355x.yaml
 ```
 
-Explicit environment image overrides take precedence over the config. See the
-[Docker workflow](../../../docs/install/install.md) and
-[task-validator guide](../../../docs/how-to/task-validator.md).
+For an eight-GPU node, the same selection can run in parallel:
 
-The executable task files, configs, callbacks, and workloads were checked against
-the historical GPU run's source hashes when packaged. The task selectors have
-changed; those historical reports are not fresh qualification of this branch.
-CPU packaging checks cover schema loading, case manifests, isolated materialization,
-Python syntax, and failure reporting without a GPU. They cannot qualify numerical
-correctness or performance. Obtain fresh framework-finalized reports before
-merging; WARN is not a clean PASS and FAIL remains blocking.
+```bash
+make docker-parallel-run CONFIG=example_configs/task_validator_deepseek_drafts_mi355x.yaml GPU_IDS=0,1,2,3,4,5,6,7
+```
+
+Explicit image environment overrides take precedence over the configuration.
+See the [Docker workflow](../../docs/install/install.md) and
+[task-validator guide](../../docs/how-to/task-validator.md).
+
+CPU regression checks cover packaging, isolated materialization, source and
+runtime declarations, input integrity, coverage, comparator behavior, and timing
+helper integration. These checks complement the retained GPU reports; they do
+not replace GPU qualification. Inspect each fresh `validation_report.yaml` and
+its evidence binding after reproduction. WARN, FAIL, partial, or stale reports
+are not clean passes.

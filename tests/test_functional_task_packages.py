@@ -52,7 +52,31 @@ def test_config_paths_and_complete_manifest(task):
         assert resolve_task_path(task, path, must_exist=True).is_file()
     data = json.loads((task / config['evaluation']['workloads']).read_text())
     assert data['definition']['name'] == task.name
-    assert len(data['rows']) == len(data['cases']) == 13
+    assert len(data['rows']) == len(data['cases']) >= 13
+    # Runtime-length cases may extend a workload, but must retain every
+    # originally published shape and case identity.
+    original = json.loads(subprocess.check_output([
+        'git', 'show',
+        f'9ab5ddb238c4704985604285d9491e0d1820c9a5:{task.relative_to(ROOT)}/scripts/workload.json',
+    ], cwd=ROOT, text=True))
+    rows_by_id = {row['workload']['uuid']: row for row in data['rows']}
+    cases_by_id = {case['test_case_id']: case for case in data['cases']}
+    assert len(rows_by_id) == len(data['rows'])
+    assert len(cases_by_id) == len(data['cases'])
+    for row in original['rows']:
+        current = rows_by_id[row['workload']['uuid']]
+        for key in ('definition', 'solution', 'evaluation'):
+            assert current[key] == row[key]
+        for key, value in row['workload'].items():
+            assert current['workload'][key] == value
+    for case in original['cases']:
+        current = cases_by_id[case['test_case_id']]
+        for key, value in case.items():
+            if key == 'params':
+                for parameter, setting in value.items():
+                    assert current[key][parameter] == setting
+            else:
+                assert current[key] == value
     assert [row['workload']['uuid'] for row in data['rows']] == [
         case['test_case_id'] for case in data['cases']]
     result = parse_command_result('ARENA_EVAL_RESULT=' + json.dumps({
@@ -60,7 +84,7 @@ def test_config_paths_and_complete_manifest(task):
         'status': 'PASS', 'cases': data['cases'],
     }), role='task', action='validate-task', returncode=0)
     manifest = CaseManifest.from_result(result)
-    assert len(manifest.cases) == 13
+    assert len(manifest.cases) == len(data['cases'])
     assert all(set(case['checks']) == {'correctness', 'performance'}
                for case in manifest.cases)
 

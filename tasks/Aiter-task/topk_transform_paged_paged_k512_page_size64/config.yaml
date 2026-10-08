@@ -5,6 +5,7 @@ candidate:
   initial_language: python
   editable:
   - source/implementation/main.py
+  - source/implementation/topk_kernel.cu
   - source/kernel.py
   entrypoints:
   - file: source/kernel.py
@@ -15,6 +16,7 @@ baseline:
   language: python
   source_files:
   - scripts/baseline/main.py
+  - scripts/baseline/topk_kernel.cu
 evaluation:
   runner:
   - python3
@@ -38,3 +40,4 @@ description: Implement topk_transform_paged_paged_k512_page_size64 in triton wit
   Inputs are functional and may not be mutated. Edit only declared source files.
 instructions:
 - BUNDLE_README.md
+- UPSTREAM.md

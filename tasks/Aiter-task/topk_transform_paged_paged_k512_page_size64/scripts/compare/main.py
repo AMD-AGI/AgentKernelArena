@@ -38,7 +38,7 @@ def validate_comparison(actual, expected, *, allow_packed=False):
         raise AssertionError("candidate contains NaN or Inf")
 
 
-def compare_topk_outputs(actual, expected):
+def compare_topk_outputs(actual, expected, *, seq_lens):
     """Compare unordered selections; dual outputs must preserve slot/raw pairing."""
     if isinstance(expected, dict):
         if not isinstance(actual, dict) or actual.keys() != expected.keys():
@@ -68,8 +68,16 @@ def compare_topk_outputs(actual, expected):
     )
     if not torch.equal(actual_out == -1, expected_out == -1):
         raise AssertionError("padding positions differ")
-    # A padded row is necessarily on the short-row path, whose order is fixed.
-    short_rows = (expected_out == -1).any(dim=-1)
+    if (
+        not isinstance(seq_lens, torch.Tensor)
+        or seq_lens.shape != (expected_out.shape[0],)
+        or seq_lens.dtype != torch.int32
+        or seq_lens.device != expected_out.device
+        or bool((seq_lens < 0).any())
+    ):
+        raise ValueError("comparison requires valid int32 sequence lengths")
+    # The logical-order path includes length == K, which has no padding.
+    short_rows = seq_lens <= expected_out.shape[1]
     if isinstance(expected, dict):
         for name in expected:
             if not torch.equal(actual[name][short_rows], expected[name][short_rows]):

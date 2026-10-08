@@ -269,6 +269,8 @@ def compare_mla_outputs(actual, expected):
             "candidate LSE must match the reference shape, dtype and device"
         )
     infinite = torch.isposinf(y)
+    if torch.any(actual[0][infinite] != 0).item():
+        raise AssertionError("empty MLA rows must return exactly zero output")
     if not torch.equal(torch.isposinf(x), infinite):
         raise AssertionError("candidate LSE must match empty-row +inf positions")
     return DefaultCompare(atol=1e-3, rtol=1e-3, mode="additive")(

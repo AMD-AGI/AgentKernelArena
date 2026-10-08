@@ -19,12 +19,6 @@ from scripts.task_api import (assert_outputs, assert_unmodified, bind_outputs, c
 from scripts.task_inputs import make_inputs, refill_inputs
 
 
-class TimedRun:
-    def _bind(self, rerun, outputs=None):
-        self.rerun = rerun
-        self.outputs = outputs
-
-
 def candidate():
     path = ROOT / "source" / "kernel.py"
     spec = importlib.util.spec_from_file_location("aka_candidate", path)
@@ -64,7 +58,7 @@ def validate_case(definition, row, policy, reference, values, device="cuda"):
 
 
 def measure_case(launch, reference, values, definition, row, policy, device="cuda"):
-    from _aka_benchmark import benchmark_cuda_graph_or_events
+    from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
     pristine = clone_inputs(values)
     expected = reference(**clone_inputs(values))
     replay = TimedRun()

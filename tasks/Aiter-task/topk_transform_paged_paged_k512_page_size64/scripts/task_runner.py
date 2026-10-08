@@ -16,13 +16,8 @@ import torch
 
 from scripts.task_api import (assert_outputs, assert_unmodified, bind_outputs, clone_inputs,
                               load_solution, outputs, poison_outputs, validate_inputs)
-from scripts.task_inputs import make_inputs, refill_inputs
+from scripts.task_inputs import apply_runtime_lengths, make_inputs, refill_inputs
 
-
-class TimedRun:
-    def _bind(self, rerun, outputs=None):
-        self.rerun = rerun
-        self.outputs = outputs
 
 
 def candidate():
@@ -49,9 +44,9 @@ def wrong_output(expected):
 
 def validate_case(definition, row, policy, reference, values, device="cuda"):
     expected = reference(**clone_inputs(values))
-    assert_outputs(expected, expected, definition, row, policy, device)
+    assert_outputs(expected, expected, definition, row, policy, device, values=values)
     try:
-        assert_outputs(wrong_output(expected), expected, definition, row, policy, device)
+        assert_outputs(wrong_output(expected), expected, definition, row, policy, device, values=values)
     except AssertionError:
         pass
     else:
@@ -64,9 +59,12 @@ def validate_case(definition, row, policy, reference, values, device="cuda"):
 
 
 def measure_case(launch, reference, values, definition, row, policy, device="cuda"):
-    from _aka_benchmark import benchmark_cuda_graph_or_events
+    from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
     pristine = clone_inputs(values)
     expected = reference(**clone_inputs(values))
+    # Validate the exact input and dispatch before starting device timing.
+    assert_outputs(launch(**values), expected, definition, row, policy, device, values=values)
+    assert_unmodified(pristine, values)
     replay = TimedRun()
     elapsed, timing = benchmark_cuda_graph_or_events(
         lambda: launch(**values), warmup=policy["warmup"],
@@ -74,7 +72,7 @@ def measure_case(launch, reference, values, definition, row, policy, device="cud
     )
     assert_unmodified(pristine, values)
     poison_outputs(replay.outputs, expected, values, definition, row, device)
-    assert_outputs(replay.rerun(), expected, definition, row, policy, device)
+    assert_outputs(replay.rerun(), expected, definition, row, policy, device, values=values)
     assert_unmodified(pristine, values)
     # A correct capture over the original inputs must not conceal cached host
     # work or a stale output copy. Validate the same measured replay after refill.
@@ -83,11 +81,19 @@ def measure_case(launch, reference, values, definition, row, policy, device="cud
     changed = clone_inputs(values)
     expected = reference(**clone_inputs(values))
     poison_outputs(replay.outputs, expected, values, definition, row, device)
-    assert_outputs(replay.rerun(), expected, definition, row, policy, device)
+    assert_outputs(replay.rerun(), expected, definition, row, policy, device, values=values)
+    assert_unmodified(changed, values)
+    # Reuse the captured graph with different runtime lengths, not only new data.
+    apply_runtime_lengths(values, row, replay=True)
+    changed = clone_inputs(values)
+    expected = reference(**clone_inputs(values))
+    poison_outputs(replay.outputs, expected, values, definition, row, device)
+    assert_outputs(replay.rerun(), expected, definition, row, policy, device, values=values)
     assert_unmodified(changed, values)
     return {"execution_time_ms": elapsed, "benchmark_method": timing["benchmark_method"],
             "metadata": {"device_timing": timing, "timed_output_checked": True,
-                         "exact_graph_replay_validated": True, "refilled_input_replay_validated": True}}
+                         "exact_graph_replay_validated": True, "refilled_input_replay_validated": True,
+                         "changed_length_replay_validated": True}}
 
 
 def main(argv=None):
@@ -129,7 +135,13 @@ def main(argv=None):
                 outputs(case_launch(**values), definition, row, "cuda")
             elif action == "correctness":
                 expected = case_reference(**clone_inputs(values))
-                assert_outputs(case_launch(**values), expected, definition, row, policy, "cuda")
+                assert_outputs(case_launch(**values), expected, definition, row, policy, "cuda", values=values)
+                assert_unmodified(pristine, values)
+                # A second draw retains the explicit regime and catches value-specific behavior.
+                refill_inputs(values, definition, row, policy)
+                pristine = clone_inputs(values)
+                expected = case_reference(**clone_inputs(values))
+                assert_outputs(case_launch(**values), expected, definition, row, policy, "cuda", values=values)
             elif action == "compile":
                 # Exercise lazy GPU compilation for every declared case.
                 outputs(case_launch(**values), definition, row, "cuda")

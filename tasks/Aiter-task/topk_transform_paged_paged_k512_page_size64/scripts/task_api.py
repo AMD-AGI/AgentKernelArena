@@ -119,7 +119,7 @@ def outputs(value, definition, row, device):
     return result
 
 
-def assert_outputs(got, expected, definition, row, policy, device):
+def assert_outputs(got, expected, definition, row, policy, device, *, values):
     actual = outputs(got, definition, row, device)
     wanted = outputs(expected, definition, row, device)
     if definition.get("compare"):
@@ -128,7 +128,7 @@ def assert_outputs(got, expected, definition, row, policy, device):
                     or not torch.equal(torch.isneginf(a), torch.isneginf(b))):
                 raise AssertionError("Output infinity positions/signs differ from the reference")
         compare = load_solution(Path(__file__).parent / "compare", "main.py::run")
-        if compare(got, expected) is not None:
+        if compare(got, expected, seq_lens=values["seq_lens"]) is not None:
             raise ValueError("compare must return None on success or raise AssertionError")
         return
     for a, b in zip(actual, wanted):

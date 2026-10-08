@@ -12,11 +12,12 @@ from pathlib import Path
 import torch
 
 from scripts.task_api import dimensions, dtype, shape_of, load_solution, validate_inputs
+from scripts.mla_coverage import apply_profile
 
 
-def make_inputs(definition, row, policy, device="cuda"):
+def make_inputs(definition, row, policy, device="cuda", *, cache_templates=None):
     seed = int.from_bytes(hashlib.sha256(
-        f"{policy['seed']}:{row['workload']['uuid']}".encode()).digest()[:8], "little")
+        f"{policy['seed']}:{row.get('input_seed_id', row['workload']['uuid'])}".encode()).digest()[:8], "little")
     generator = torch.Generator(device=device).manual_seed(seed)
     axes = dimensions(definition, row)
     if definition.get("initialize"):
@@ -25,7 +26,7 @@ def make_inputs(definition, row, policy, device="cuda"):
                    torch.empty(shape_of(spec, axes), dtype=dtype(spec["dtype"]), device=device))
             for name, spec in definition["inputs"].items()
         }
-        return initialize_buffers(values, definition, row, seed % (2**63), device)
+        return initialize_buffers(values, definition, row, seed % (2**63), device, cache_templates=cache_templates)
     if definition["op_type"] == "moe":
         return _moe(definition, row, axes, generator, device)
     if definition["op_type"] != "gemm":
@@ -43,12 +44,13 @@ def make_inputs(definition, row, policy, device="cuda"):
     return result
 
 
-def initialize_buffers(values, definition, row, seed, device):
+def initialize_buffers(values, definition, row, seed, device, *, cache_templates=None, replay=False):
     initialize = load_solution(Path(__file__).parent / "initialize", "main.py::run")
     original = dict(values)
     storage = {name: (v.data_ptr(), v.stride()) for name, v in values.items() if isinstance(v, torch.Tensor)}
-    if initialize(values, seed=seed) is not values:
+    if initialize(values, seed=seed, cache_templates=cache_templates) is not values:
         raise ValueError("initialize must return the original input dictionary")
+    apply_profile(values, row.get("input_profile"), replay=replay)
     validate_inputs(values, definition, row, device)
     for name, (pointer, stride) in storage.items():
         if values[name] is not original[name] or values[name].data_ptr() != pointer or values[name].stride() != stride:
@@ -56,13 +58,20 @@ def initialize_buffers(values, definition, row, seed, device):
     return values
 
 
-def refill_inputs(values, definition, row, policy, device="cuda"):
+def reset_inputs(values, definition, row, policy, device="cuda", *, cache_templates=None):
+    seed = int.from_bytes(hashlib.sha256(
+        f"{policy['seed']}:{row.get('input_seed_id', row['workload']['uuid'])}".encode()
+    ).digest()[:8], "little") % (2**63)
+    return initialize_buffers(values, definition, row, seed, device, cache_templates=cache_templates)
+
+
+def refill_inputs(values, definition, row, policy, device="cuda", *, cache_templates=None):
     """Change the input draw without changing graph-bound storage or metadata."""
     changed_policy = {**policy, "seed": policy["seed"] + 1}
     if definition.get("initialize"):
         seed = int.from_bytes(hashlib.sha256(
-            f"{changed_policy['seed']}:{row['workload']['uuid']}".encode()).digest()[:8], "little") % (2**63)
-        return initialize_buffers(values, definition, row, seed, device)
+            f"{changed_policy['seed']}:{row.get('input_seed_id', row['workload']['uuid'])}".encode()).digest()[:8], "little") % (2**63)
+        return initialize_buffers(values, definition, row, seed, device, cache_templates=cache_templates, replay=True)
     replacement = make_inputs(definition, row, changed_policy, device)
     for name, value in values.items():
         if isinstance(value, torch.Tensor):

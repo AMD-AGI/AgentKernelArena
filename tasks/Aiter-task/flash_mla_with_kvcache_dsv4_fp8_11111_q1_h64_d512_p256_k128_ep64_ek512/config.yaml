@@ -25,15 +25,18 @@ platform_support:
   required_arch: gfx950
   status: active
 description: Implement flash_mla_with_kvcache_dsv4_fp8_11111_q1_h64_d512_p256_k128_ep64_ek512
-  in triton with the source/kernel.py run(**kwargs) interface. The initial source
-  is the production baseline, not a completed rewrite. Read scripts/workload.json
-  and the protected reference for the full contract. The supported axis and scalar
-  combinations are exactly those enumerated by the supplied workload rows; tensor
-  values vary according to the task initializer and replay-refill checks. The source
-  definition documents the upstream operator and does not extend this task to unlisted
-  axis or scalar combinations. Implement your own GPU computation; do not delegate
-  it to the protected baseline or a library product. Keep all workload cases, input/output
-  dtypes and semantics. Inputs are functional and may not be mutated. Edit only declared
-  source files.
+  in Triton with the source/kernel.py run(**kwargs) interface. The declared implemented Python
+  initial candidate is an executable production wrapper used during task_validation; it is
+  not a completed Triton rewrite. The provided baseline and unchanged initial wrapper are
+  permitted to call the installed runtime entrypoint sglang.kernels.ops.attention.dsa.tilelang_kernel.dpsk_v4_fp8_attention_fwd.
+  Their required GPU runtime is MI355X/gfx950 with image lmsysorg/sglang@sha256:e20849665c105d389ef91d23c0dc73931aaa6f02056dd10e7b43e4f16c79df69,
+  which supplies SGLang, TileLang, AITER, ROCm PyTorch and Triton. See BUNDLE_README.md for
+  the role and dependency contract. The final submitted candidate must implement its own GPU
+  computation in Triton and must not delegate that computation to the production operator,
+  protected baseline, reference or another library operator. Read scripts/workload.json and
+  the protected reference for the full numerical contract. Supported axes and scalars are
+  exactly the supplied workload rows; tensor values vary across explicit runtime-length profiles
+  and seeded replay-refill checks. Retain all cases, dtypes, tolerances and benchmark policy.
+  Inputs are functional and may not be mutated. Edit only the declared source files.
 instructions:
 - BUNDLE_README.md

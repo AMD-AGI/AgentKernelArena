@@ -49,6 +49,7 @@ def initialize_buffers(values, definition, row, seed, device):
     storage = {name: (v.data_ptr(), v.stride()) for name, v in values.items() if isinstance(v, torch.Tensor)}
     if initialize(values, seed=seed) is not values:
         raise ValueError("initialize must return the original input dictionary")
+    apply_runtime_lengths(values, row)
     validate_inputs(values, definition, row, device)
     for name, (pointer, stride) in storage.items():
         if values[name] is not original[name] or values[name].data_ptr() != pointer or values[name].stride() != stride:
@@ -101,3 +102,23 @@ def _moe(definition, row, axes, generator, device):
         if desc["type"] == "scalar":
             result[name] = desc["value"]
     return result
+
+
+def apply_runtime_lengths(values, row, *, replay=False):
+    """Apply the manifest's length pattern without replacing graph-bound buffers."""
+    regime = row["workload"].get("runtime_lengths")
+    if regime is None:
+        return values
+    pattern = regime["replay_seq_lens" if replay else "seq_lens"]
+    capacity = min(values["scores"].shape[1],
+                   values["page_tables"].shape[1] * values["page_size"])
+    if not pattern or any(type(length) is not int or not 0 <= length <= capacity
+                          for length in pattern):
+        raise ValueError("runtime length pattern must lie within score/page capacity")
+    lengths = values["seq_lens"]
+    lengths.copy_(torch.tensor([pattern[i % len(pattern)] for i in range(lengths.numel())],
+                              dtype=lengths.dtype, device=lengths.device))
+    # A conservative non-cluster plan remains valid for every supported length.
+    values["metadata"].zero_()
+    values["metadata"][0, 0] = 2**31 - 1
+    return values

@@ -466,6 +466,49 @@ HOME="$NATIVE_CODEX_WORKER_HOME" \
 [[ -d "$NATIVE_CODEX_WORKER_HOME/.codex/sessions" ]] || fail "native Codex session state was not copied"
 [[ ! -e "$NATIVE_CODEX_WORKER_HOME/.codex/packages" ]] || fail "native Codex packages were copied into worker HOME"
 
+# A small auth/config seed avoids copying host sessions and worktrees. Native
+# packages must still come from the real host installation, not the seed.
+CODEX_PRIVATE_AUTH_DIR="$TEST_HOME/private codex auth"
+mkdir -p "$CODEX_PRIVATE_AUTH_DIR"
+touch "$CODEX_PRIVATE_AUTH_DIR/auth.json" "$CODEX_PRIVATE_AUTH_DIR/config.toml"
+for isolation in 0 1; do
+    mapfile -t args < <(run_check_args \
+        "$NATIVE_CODEX_HOME" "$NATIVE_CODEX_CONFIG" \
+        PATH="$NATIVE_CODEX_HOME/.local/bin:$PATH" \
+        AGENT_HOME_ISOLATION="$isolation" AKA_CODEX_AUTH_DIR="$CODEX_PRIVATE_AUTH_DIR")
+    assert_has "$NATIVE_CODEX_HOME/.local/bin:$NATIVE_CODEX_HOME/.local/bin:ro" "${args[@]}"
+    assert_has "$NATIVE_CODEX_HOME/.codex/packages/standalone:$NATIVE_CODEX_HOME/.codex/packages/standalone:ro" "${args[@]}"
+    assert_not_has "$NATIVE_CODEX_HOME/.codex:/opt/aka-agent-state/.codex:ro" "${args[@]}"
+    assert_not_has "$NATIVE_CODEX_HOME/.codex:$NATIVE_CODEX_HOME/.codex" "${args[@]}"
+    assert_has "_container_check_agents" "${args[@]}"
+    assert_has "codex" "${args[@]}"
+    if [[ "$isolation" == "1" ]]; then
+        assert_has "$CODEX_PRIVATE_AUTH_DIR:/opt/aka-agent-state/.codex:ro" "${args[@]}"
+        assert_has "AGENT_KERNEL_ARENA_ISOLATED_HOME=1" "${args[@]}"
+    else
+        assert_has "$CODEX_PRIVATE_AUTH_DIR:$NATIVE_CODEX_HOME/.codex" "${args[@]}"
+    fi
+done
+
+CODEX_PRIVATE_STATE="$TEST_HOME/private-codex-state"
+CODEX_PRIVATE_WORKER_HOME="$TEST_HOME/private-codex-worker-home"
+mkdir -p "$CODEX_PRIVATE_STATE"
+ln -s "$CODEX_PRIVATE_AUTH_DIR" "$CODEX_PRIVATE_STATE/.codex"
+HOME="$CODEX_PRIVATE_WORKER_HOME" \
+    AKA_AGENT_STATE_MOUNT_ROOT="$CODEX_PRIVATE_STATE" \
+    bash "$RUNNER" _container_prepare_worker_home
+for name in auth.json config.toml; do
+    [[ -f "$CODEX_PRIVATE_WORKER_HOME/.codex/$name" ]] \
+        || fail "private Codex $name was not copied into worker HOME"
+done
+[[ ! -e "$CODEX_PRIVATE_WORKER_HOME/.codex/sessions" ]] \
+    || fail "private Codex worker unexpectedly copied host sessions"
+[[ ! -e "$CODEX_PRIVATE_WORKER_HOME/.codex/packages" ]] \
+    || fail "private Codex worker unexpectedly copied native packages"
+printf 'worker-only\n' > "$CODEX_PRIVATE_WORKER_HOME/.codex/config.toml"
+[[ ! -s "$CODEX_PRIVATE_AUTH_DIR/config.toml" ]] \
+    || fail "isolated Codex configuration wrote back into the auth seed"
+
 # quality_loop provisions only isolated Codex state, never GitHub CLI state, and
 # mounts the main checkout read-only while over-mounting only this run's state rw.
 QUALITY_HOME="$TEST_HOME/quality-home"
@@ -581,6 +624,29 @@ assert_not_has "ANTHROPIC_API_KEY" "${args[@]}"
 assert_not_has "$GEAK_SDK_PYTHONPATH" "${args[@]}"
 assert_not_has "$UNRELATED_GEAK_WORKFLOW_DIR:$UNRELATED_GEAK_WORKFLOW_DIR:ro" "${args[@]}"
 assert_not_has "GEAK_V4_WORKFLOW_DIR=$UNRELATED_GEAK_WORKFLOW_DIR" "${args[@]}"
+
+# npm installations use the same override without changing the CLI mount.
+for isolation in 0 1; do
+    mapfile -t args < <(run_check_args \
+        "$CODEX_HOME" "$CODEX_CONFIG" AKA_NODE_PREFIX="$CODEX_PREFIX" \
+        AGENT_HOME_ISOLATION="$isolation" AKA_CODEX_AUTH_DIR="$CODEX_PRIVATE_AUTH_DIR")
+    assert_has "$CODEX_PREFIX:/opt/node:ro" "${args[@]}"
+    assert_not_has "$CODEX_HOME/.codex:$CODEX_HOME/.codex" "${args[@]}"
+    assert_not_has "$CODEX_HOME/.codex:/opt/aka-agent-state/.codex:ro" "${args[@]}"
+    if [[ "$isolation" == "1" ]]; then
+        assert_has "$CODEX_PRIVATE_AUTH_DIR:/opt/aka-agent-state/.codex:ro" "${args[@]}"
+    else
+        assert_has "$CODEX_PRIVATE_AUTH_DIR:$CODEX_HOME/.codex" "${args[@]}"
+    fi
+done
+for invalid_auth in "$TEST_HOME/missing-codex-auth" "$CODEX_PRIVATE_AUTH_DIR/auth.json"; do
+    if run_check_args "$CODEX_HOME" "$CODEX_CONFIG" AKA_NODE_PREFIX="$CODEX_PREFIX" \
+        AKA_CODEX_AUTH_DIR="$invalid_auth" >"$TEST_HOME/invalid-codex-auth-output"; then
+        fail "invalid Codex auth directory was accepted"
+    fi
+    [[ ! -s "$TEST_HOME/invalid-codex-auth-output" ]] \
+        || fail "invalid Codex auth directory reached Docker execution"
+done
 
 # DeepSeek is opt-in and mounts only its npm installation. The key is forwarded
 # by name, and host profiles/auth/history cannot leak into a fresh Arena session.

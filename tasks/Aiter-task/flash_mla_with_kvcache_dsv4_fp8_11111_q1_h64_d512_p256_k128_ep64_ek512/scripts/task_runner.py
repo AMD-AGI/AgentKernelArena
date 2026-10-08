@@ -16,13 +16,7 @@ import torch
 
 from scripts.task_api import (assert_outputs, assert_unmodified, bind_outputs, clone_inputs,
                               load_solution, outputs, poison_outputs, validate_inputs)
-from scripts.task_inputs import make_inputs, refill_inputs
-
-
-class TimedRun:
-    def _bind(self, rerun, outputs=None):
-        self.rerun = rerun
-        self.outputs = outputs
+from scripts.task_inputs import make_inputs, refill_inputs, reset_inputs
 
 
 def candidate():
@@ -47,7 +41,7 @@ def wrong_output(expected):
     return torch.bitwise_not(expected)
 
 
-def validate_case(definition, row, policy, reference, values, device="cuda"):
+def validate_case(definition, row, policy, reference, values, device="cuda", *, cache_templates=None):
     expected = reference(**clone_inputs(values))
     assert_outputs(expected, expected, definition, row, policy, device)
     try:
@@ -56,15 +50,15 @@ def validate_case(definition, row, policy, reference, values, device="cuda"):
         pass
     else:
         raise ValueError("Comparison accepted deliberately incorrect finite outputs")
-    again = make_inputs(definition, row, policy, device=device)
+    again = make_inputs(definition, row, policy, device=device, cache_templates=cache_templates)
     validate_inputs(again, definition, row, device)
     assert_unmodified(values, again)
     return {"reference_self_check": True, "wrong_output_rejected": True,
             "deterministic_inputs": True}
 
 
-def measure_case(launch, reference, values, definition, row, policy, device="cuda"):
-    from _aka_benchmark import benchmark_cuda_graph_or_events
+def measure_case(launch, reference, values, definition, row, policy, device="cuda", *, cache_templates=None):
+    from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
     pristine = clone_inputs(values)
     expected = reference(**clone_inputs(values))
     replay = TimedRun()
@@ -78,7 +72,7 @@ def measure_case(launch, reference, values, definition, row, policy, device="cud
     assert_unmodified(pristine, values)
     # A correct capture over the original inputs must not conceal cached host
     # work or a stale output copy. Validate the same measured replay after refill.
-    refill_inputs(values, definition, row, policy, device=device)
+    refill_inputs(values, definition, row, policy, device=device, cache_templates=cache_templates)
     validate_inputs(values, definition, row, device)
     changed = clone_inputs(values)
     expected = reference(**clone_inputs(values))
@@ -87,7 +81,8 @@ def measure_case(launch, reference, values, definition, row, policy, device="cud
     assert_unmodified(changed, values)
     return {"execution_time_ms": elapsed, "benchmark_method": timing["benchmark_method"],
             "metadata": {"device_timing": timing, "timed_output_checked": True,
-                         "exact_graph_replay_validated": True, "refilled_input_replay_validated": True}}
+                         "exact_graph_replay_validated": True, "refilled_input_replay_validated": True,
+                         "runtime_length_replay_validated": True}}
 
 
 def main(argv=None):
@@ -117,14 +112,22 @@ def main(argv=None):
         # and actually executes the initial candidate separately below.
         launch = (load_solution(ROOT / "scripts/baseline", contract["baseline_spec"]["entry_point"])
                   if role == "baseline" else candidate())
+        cache_templates, values, previous_group = {}, None, None
         for row, result in zip(contract["rows"], report["cases"]):
             case_launch = bind_outputs(launch, contract["baseline_spec"], definition, row)
             case_reference = bind_outputs(reference, contract["reference_spec"], definition, row)
-            values = make_inputs(definition, row, policy)
+            group = row.get("input_seed_id", row["workload"]["uuid"])
+            if group != previous_group:
+                # At most two data seeds for one shape group remain resident.
+                cache_templates.clear()
+                values = make_inputs(definition, row, policy, cache_templates=cache_templates)
+                previous_group = group
+            else:
+                reset_inputs(values, definition, row, policy, cache_templates=cache_templates)
             validate_inputs(values, definition, row, "cuda")
             pristine = clone_inputs(values)
             if action == "validate-task":
-                result["metadata"] = validate_case(definition, row, policy, case_reference, values)
+                result["metadata"] = validate_case(definition, row, policy, case_reference, values, cache_templates=cache_templates)
                 # Importing a stub is insufficient evidence for implemented.
                 outputs(case_launch(**values), definition, row, "cuda")
             elif action == "correctness":
@@ -134,14 +137,14 @@ def main(argv=None):
                 # Exercise lazy GPU compilation for every declared case.
                 outputs(case_launch(**values), definition, row, "cuda")
             else:
-                result.update(measure_case(case_launch, case_reference, values, definition, row, policy))
+                result.update(measure_case(case_launch, case_reference, values, definition, row, policy, cache_templates=cache_templates))
             if action != "performance":
                 assert_unmodified(pristine, values)
             torch.cuda.synchronize()
             result.update(status="PASS")
             result.pop("reason", None)
             print(f"{role} {action}: {row['workload']['uuid']} PASS", flush=True)
-            del values, pristine
+            del pristine
         if action == "validate-task":
             report["metadata"]["candidate_state"] = "implemented"
     except Exception as error:

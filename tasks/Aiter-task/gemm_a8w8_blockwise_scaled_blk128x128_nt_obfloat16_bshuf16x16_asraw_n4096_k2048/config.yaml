@@ -24,16 +24,23 @@ evaluation:
 platform_support:
   required_arch: gfx950
   status: active
-description: Implement gemm_a8w8_blockwise_scaled_blk128x128_nt_obfloat16_bshuf16x16_asraw_n4096_k2048
-  in triton with the source/kernel.py run(**kwargs) interface. The initial source
-  is the production baseline, not a completed rewrite. Read scripts/workload.json
-  and the protected reference for the full contract. The supported axis and scalar
-  combinations are exactly those enumerated by the supplied workload rows; tensor
-  values vary according to the task initializer and replay-refill checks. The source
-  definition documents the upstream operator and does not extend this task to unlisted
-  axis or scalar combinations. Implement your own GPU computation; do not delegate
-  it to the protected baseline or a library product. Keep all workload cases, input/output
-  dtypes and semantics. Inputs are functional and may not be mutated. Edit only declared
-  source files.
+description: >-
+  Implement gemm_a8w8_blockwise_scaled_blk128x128_nt_obfloat16_bshuf16x16_asraw_n4096_k2048 in
+  Triton with the source/kernel.py run(**kwargs) interface. The declared implemented Python initial
+  candidate is an executable production wrapper used during task_validation; it is not a completed
+  Triton rewrite. The provided baseline and unchanged initial wrapper are permitted to call the
+  installed runtime entrypoint aiter.ops.gemm_op_a8w8.gemm_a8w8_blockscale_bpreshuffle. Their
+  required GPU runtime is MI355X/gfx950 with image
+  lmsysorg/sglang@sha256:e20849665c105d389ef91d23c0dc73931aaa6f02056dd10e7b43e4f16c79df69, which
+  supplies AITER, its GPU backend dependencies, ROCm PyTorch and Triton. See BUNDLE_README.md for
+  the role and dependency contract. The final submitted candidate must implement its own GPU
+  computation in Triton and must not delegate that computation to the production operator, protected
+  baseline, reference or another library operator. Read scripts/workload.json and the protected
+  reference for the full numerical contract. The supported axis and scalar combinations are exactly
+  those enumerated by the supplied workload rows; tensor values vary according to the task
+  initializer and replay-refill checks. The source definition documents the upstream operator and
+  does not extend this task to unlisted axis or scalar combinations. Retain all cases, dtypes,
+  tolerances and benchmark policy. Inputs are functional and may not be mutated. Edit only the
+  declared source files.
 instructions:
 - BUNDLE_README.md

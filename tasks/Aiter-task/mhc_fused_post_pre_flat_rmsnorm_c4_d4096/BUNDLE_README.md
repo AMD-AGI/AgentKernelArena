@@ -1,84 +1,175 @@
-# Flash MLA and Top-k: Accuracy and Performance Tests
+# Fused mHC post/pre with RMSNorm: four streams, hidden size 4096
 
-**Kernels must generalize across valid lengths, not just tensor shapes or the supplied samples.** As the KV cache grows during decode, effective lengths change even when buffer capacities stay fixed.
+Implement the mHC post operation followed by the next pre operation, preserving
+the BF16 intermediate residual and applying RMSNorm to the next layer input.
+This task fixes four residual streams, hidden size 4096, and projection width
+16384. Its 13 [workload rows](scripts/workload.json) cover
+`tokens = 1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096`.
+Only the supplied axis and scalar combinations are in scope; tensor values vary
+across seeded initialization and replay checks.
 
-| Operator | Runtime length values to vary | Capacity stays fixed within a test sweep |
+## Initial candidate, final implementation, and runtime
+
+[config.yaml](config.yaml) declares `initial_state: implemented`,
+`initial_language: python`, and target `language: triton`. During initial
+`task_validation`, the unchanged Python wrapper in
+[source/implementation/main.py](source/implementation/main.py) is the declared
+starting implementation. It calls the same production operator as the separate
+protected [baseline](scripts/baseline/main.py). This dependency is allowed for
+those two roles. Initial qualification checks their executable behavior, full
+numerical contract, and timed replay; it does not certify a completed rewrite.
+
+The final submitted candidate must implement its own GPU computation in Triton.
+It must not call the production AITER operator, the protected baseline or
+reference, or another library operator to perform that computation. Replace the
+initial wrapper in the declared editable files while retaining `run(**kwargs)`.
+The baseline remains protected and separate from candidate edits. All workload,
+accuracy, input immutability and measured-replay requirements apply in both
+phases; initial-language support does not waive the final Triton requirement.
+
+The required GPU runtime is MI355X (`gfx950`) with the following immutable image:
+
+```text
+lmsysorg/sglang@sha256:e20849665c105d389ef91d23c0dc73931aaa6f02056dd10e7b43e4f16c79df69
+```
+
+This image supplies the installed AITER package and its GPU backend dependencies,
+plus ROCm PyTorch and Triton. Its exact package set is bound to the image digest.
+The provided baseline and unchanged initial wrapper require this entrypoint:
+
+```text
+aiter.ops.mhc.mhc_fused_post_pre
+```
+
+The task imports this installed entrypoint from both wrappers; it does not
+depend on a sibling repository or a copied source tree. No task action installs
+packages or downloads runtime code. Select the pinned image before materializing
+the task; missing packages or this entrypoint are execution failures. The
+task-local initializer, independent reference, comparator and evaluation runner
+are bundled under `scripts/` and require the image's ROCm PyTorch installation.
+
+## Interface and storage
+
+```python
+run(x, residual, post_mix, comb_mix, proj_weight, mix_scale, mix_bias,
+    rms_eps, pre_eps, sinkhorn_eps, post_multiplier, sinkhorn_iters,
+    norm_weight, norm_eps)
+```
+
+All tensor inputs are independent, contiguous, and on the same GPU. Inputs are
+functional and must not be modified or used as aliased output storage.
+
+| Tensor input | Shape | Dtype | Meaning |
+| --- | --- | --- | --- |
+| `x` | `[tokens, 4096]` | BF16 | Current layer output |
+| `residual` | `[tokens, 4, 4096]` | BF16 | Incoming residual streams |
+| `post_mix` | `[tokens, 4]` | FP32 | Flat incoming post gates |
+| `comb_mix` | `[tokens, 4, 4]` | FP32 | Incoming stream-combination matrix |
+| `proj_weight` | `[24, 16384]` | FP32 | Projection into pre, post, and combination logits |
+| `mix_scale` | `[3]` | FP32 | Scale for each logit group |
+| `mix_bias` | `[24]` | FP32 | Bias for all logits |
+| `norm_weight` | `[4096]` | BF16 | Final RMSNorm weight |
+
+All rows use Python float scalars `rms_eps = pre_eps = sinkhorn_eps = norm_eps =
+1e-6`, `post_multiplier = 2.0`, and Python integer `sinkhorn_iters = 20`.
+Preserve their values and types.
+
+Return the four outputs in this order, matching the protected reference and
+production entrypoint:
+
+| Output | Shape | Dtype |
 | --- | --- | --- |
-| `topk_transform_paged` | `seq_lens[b]` | Score width, page-table width, output `k` |
-| `flash_mla_with_kvcache` | `sparse_lens[b]`, plus `extra_sparse_lens[b]` when present | KV pools and sparse-index widths |
+| `next_post_mix` | `[tokens, 4, 1]` | FP32 |
+| `next_comb_mix` | `[tokens, 4, 4]` | FP32 |
+| `layer_input` | `[tokens, 4096]` | BF16 |
+| `next_residual` | `[tokens, 4, 4096]` | BF16 |
 
-These are **values inside tensors**, not changes to the length tensors' shapes. Length growth alone does not require changing constant axes such as `extra_topk=8256` into variable axes.
+## Mathematical result
 
-## Top-k example
+The independent [reference](scripts/reference/main.py) defines the following
+stages. Except for the explicit BF16 conversions, calculations use FP32.
 
-Case: [`topk_transform_paged_paged_k512_page_size64`](definitions/topk_transform_paged/topk_transform_paged_paged_k512_page_size64.json), using its [batch-1 workload](workloads/topk_transform_paged/topk_transform_paged_paged_k512_page_size64.jsonl).
+1. Combine incoming streams and add the gated current layer output:
+   `next_residual[t,j,h] = BF16(x[t,h] * post_mix[t,j] +
+   sum_i comb_mix[t,i,j] * residual[t,i,h])`.
+   The transpose of `comb_mix` matters. Convert this result to BF16 before the
+   next projection and reduction; retaining an FP32 intermediate changes the
+   operation.
+2. Flatten the BF16 residual into `[tokens, 16384]` and convert it to FP32 as
+   `F`. Compute `Z = (F @ proj_weight.T) * rsqrt(mean(F**2, dim=1) + rms_eps)`.
+3. Split the 24 logits into four pre logits, four post logits, and sixteen
+   combination logits. Apply the corresponding `mix_scale` entry and
+   `mix_bias` slice. The pre gates are `sigmoid(pre_logits) + pre_eps`;
+   `next_post_mix` is `sigmoid(post_logits) * post_multiplier`, with a trailing
+   singleton dimension.
+4. Reshape the combination logits into `[tokens, 4, 4]`, apply softmax over the
+   last dimension, add `sinkhorn_eps`, and divide by the column sums plus
+   `sinkhorn_eps`. Repeat row normalization followed by column normalization
+   `sinkhorn_iters - 1` times, adding the epsilon to each denominator. This is
+   `next_comb_mix`.
+5. Sum `next_residual` across the four streams using the pre gates. Apply
+   RMSNorm with `norm_eps` and `norm_weight`, then convert to BF16 to obtain
+   `layer_input`.
 
-Keep these shapes fixed:
+## Baseline, initialization, and comparison
 
-```text
-scores:           [1, 262208]
-page_tables:      [1, 4097]     page_size = 64
-metadata:         [2, 2]
-out_page_indices: [1, 512]
-```
+The provided [baseline](scripts/baseline/main.py) calls
+`aiter.ops.mhc.mhc_fused_post_pre` with the canonical inputs mapped to its
+production parameter names. The protected reference expresses the same stages
+with PyTorch operations and does not call that AITER operator. The complete
+post, projection, gate, Sinkhorn, aggregation, and RMSNorm work is included in
+both baseline and candidate invocations.
 
-Vary `seq_lens[0]`, for example:
+The [initializer](scripts/initialize/main.py) samples normal BF16 activations
+and residuals, incoming post gates uniformly from `[0.1, 0.9)`, and projection
+weights with standard deviation `1 / sqrt(16384)`. It sets `mix_scale` to one,
+uses normal `mix_bias` values with standard deviation 0.1, and samples
+`norm_weight` from `[0.5, 1.5)`. Incoming combination matrices are positive and
+approximately doubly stochastic after softmax and 20 row/column normalization
+iterations. Scalars are validated and preserved. Replay refill changes tensor
+values while retaining their addresses and strides.
 
-```text
-0, 1, 63, 64, 65, 511, 512, 513,
-1024, 2048, 4096, 8192, 65536, 131072, 262207, 262208
-```
+The [task adapter](scripts/task_api.py) maps tuple outputs to their declared
+names before the protected [comparator](scripts/compare/main.py) checks all four
+outputs with their declared shapes, dtypes, and device. Every element must satisfy
+`abs(actual - expected) <= 1e-2 + 1e-2 * abs(expected)`; NaN and infinity are
+rejected. The FP32 mix outputs retain this operator's tolerance because their
+computation starts from BF16 residuals. The exported comparator governs
+acceptance; the generic policy tolerances do not replace it.
 
-For a request with current visible token length `N`, this decode path uses `seq_lens = N // 4`. Thus `N = 4096 → 8192 → 16384 → 32768` gives `seq_lens = 1024 → 2048 → 4096 → 8192`, while the output remains 512 slots. **Do not clamp the candidate length to 512.**
+## Evaluation and timing
 
-- Keep `0 <= seq_lens[b] <= min(width, pages * page_size)`.
-- Build or validate matching `metadata` for every length; never reuse a stale length-specific plan.
-- Vary tie-free scores and legal page mappings. NaN scores are unsupported.
-- Select only from the valid score prefix. Short rows preserve logical order and end with `-1` padding; long-row selections need not be sorted. Use the definition's `compare` callback.
+The protected [runner](scripts/task_runner.py) implements `validate-task` and
+`baseline`/`candidate` actions for `compile`, `correctness`, and `performance`.
+Compilation executes every workload to exercise lazy GPU compilation. Task
+validation checks deterministic initialization, the reference against itself,
+and rejection of deliberately incorrect finite outputs. Correctness uses the
+protected reference and comparator for every workload row.
 
-## Flash MLA example
+Run the task through the repository's Docker task-validator workflow on MI355X
+(`gfx950`), as required by [config.yaml](config.yaml). The framework materializes
+the shared benchmark helper before invoking the task-local runner. A successful
+runner action alone is not a framework-finalized task qualification report.
 
-Case: [`flash_mla_with_kvcache_dsv4_fp8_11111_q1_h64_d512_p256_k128_ep2_ek8256`](definitions/flash_mla_with_kvcache/flash_mla_with_kvcache_dsv4_fp8_11111_q1_h64_d512_p256_k128_ep2_ek8256.json), using its [batch-1 workload](workloads/flash_mla_with_kvcache/flash_mla_with_kvcache_dsv4_fp8_11111_q1_h64_d512_p256_k128_ep2_ek8256.jsonl).
+Performance uses the policy in [scripts/workload.json](scripts/workload.json):
+20 warmups, 100 repetitions, and a 1 ms target for the shared GPU graph/event
+benchmark helper. Baseline and candidate use the same workload and timing
+policy. Input generation and reference evaluation stay outside the timed
+callback; all GPU work needed to produce the returned outputs belongs inside it.
+The runner poisons returned outputs and checks the exact measured replay, then
+refills the same input buffers with new seeded values and checks replay again.
+A candidate must recompute from current input values, preserve the inputs, and
+write every output on each invocation. These checks do not permit cached answers
+or input/output aliasing.
 
-Keep these shapes and both KV pool capacities fixed (`pages=2019`, `extra_pages=201836`):
+## Implementation boundary
 
-```text
-q:                    [1, 1, 64, 512]
-sparse_indices:       [1, 1, 128]
-extra_sparse_indices: [1, 1, 8256]
-```
-
-In this C128 case, `sparse_lens = min(N, 128)` and `extra_sparse_lens = max(N // 128, 1)`, within the configured legal capacity:
-
-| Current visible tokens `N` | `sparse_lens[0]` | `extra_sparse_lens[0]` |
-| ---: | ---: | ---: |
-| 4096 | 128 | 32 |
-| 8192 | 128 | 64 |
-| 16384 | 128 | 128 |
-| 32768 | 128 | 256 |
-
-The main sliding window saturates at 128; the extra prefix continues growing. **8256 is index capacity, not the effective length of every call.**
-
-Also test legal boundary combinations independently, including both branches empty, either branch empty, and both branches nonempty:
-
-```text
-sparse_lens:       0, 1, 63, 64, 65, 127, 128
-extra_sparse_lens: 0, 1, 2, 31, 32, 33, 127, 128, 129,
-                   511, 512, 513, 1024, 2048, 4096, 8192, 8255, 8256
-```
-
-- Keep `0 <= sparse_lens[b] <= 128` and `0 <= extra_sparse_lens[b] <= 8256`.
-- Apply each length to its index prefix, then ignore negative indices inside that prefix. For short histories, `extra_sparse_lens=1` with index `-1` means no effective extra KV entry.
-- Vary Q, correctly packed KV data, legal indices, negative padding, and sinks. Test that indices outside the selected prefixes cannot affect outputs.
-- Check both BF16 output and FP32 LSE with the definition's `compare` callback: additive `atol=rtol=1e-2` for output and `1e-3` for finite LSE. Fully empty rows require zero output and `+inf` LSE.
-
-## Required test coverage and reporting
-
-- **Accuracy:** use the exported `reference` and operator-specific `compare` callbacks for every tested input. Cover empty, short, intermediate, near-capacity, and full lengths; add values immediately around kernel tile/partition boundaries and random lengths not used during tuning. The lists above are starting points, not an exhaustive whitelist.
-- **Data and batch generalization:** use multiple data seeds per length. Repeat across supported workload batch sizes, including mixed per-row lengths. Reuse buffers across growing-length calls to catch stale length or plan assumptions.
-- **Performance:** benchmark the same length regimes, including irregular lengths and mixed batches—not only full capacity. Validate each measured input first, warm up, and use repeated GPU-timed measurements under identical conditions for candidate and baseline. Keep input generation, reference checks, and metadata construction outside kernel-only timing; report setup cost separately if measured.
-- **Report per case:** batch, length values/distribution, seed, accuracy result, baseline latency, candidate latency, and speedup. Include short-, medium-, and long-length results and regressions, not just a best case or one aggregate speedup. Record hardware, timing method, and repetition count.
-
-**Changing seeds alone is insufficient.** The Top-k initializer selects only `0`, one-quarter, one-half, or full capacity. For batch 1, the MLA initializer always sets both prefixes to full width. Explicitly set the test lengths after initialization and update dependent inputs before checking or timing.
-
-These are test requirements and example inputs, not measured accuracy or performance results.
+Expose `run(**kwargs)` from [source/kernel.py](source/kernel.py). The only
+editable files are that entrypoint and
+[source/implementation/main.py](source/implementation/main.py), as declared in
+[config.yaml](config.yaml). The unchanged initial Python wrapper is permitted to
+call the installed production operator during initial `task_validation`, as
+described above. The final submitted candidate must implement
+its own GPU computation in Triton and must not delegate that computation to the
+protected baseline, reference, or a library operator. Keep the protected scripts,
+workload rows, dtypes, comparison thresholds, and benchmark policy unchanged.

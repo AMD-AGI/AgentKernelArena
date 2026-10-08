@@ -1,84 +1,108 @@
-# Flash MLA and Top-k: Accuracy and Performance Tests
+# Flash MLA with packed FP8 KV cache
 
-**Kernels must generalize across valid lengths, not just tensor shapes or the supplied samples.** As the KV cache grows during decode, effective lengths change even when buffer capacities stay fixed.
+Implement `flash_mla_with_kvcache_dsv4_fp8_10011_q1_h64_d512_p256_k128` through `run(**kwargs)` in
+[source/kernel.py](source/kernel.py). This is an implemented Python starting
+point to rewrite in Triton. The provided baseline and the unchanged initial
+candidate call the installed SGLang production operator described below.
 
-| Operator | Runtime length values to vary | Capacity stays fixed within a test sweep |
-| --- | --- | --- |
-| `topk_transform_paged` | `seq_lens[b]` | Score width, page-table width, output `k` |
-| `flash_mla_with_kvcache` | `sparse_lens[b]`, plus `extra_sparse_lens[b]` when present | KV pools and sparse-index widths |
+## Initial candidate, final implementation, and runtime
 
-These are **values inside tensors**, not changes to the length tensors' shapes. Length growth alone does not require changing constant axes such as `extra_topk=8256` into variable axes.
+[config.yaml](config.yaml) declares `initial_state: implemented`,
+`initial_language: python`, and target `language: triton`. During initial
+`task_validation`, the executable Python wrapper in
+[source/implementation/main.py](source/implementation/main.py) is the declared
+starting implementation. It calls the same production operator as the separate
+protected [baseline](scripts/baseline/main.py). This dependency is allowed for
+those two roles. Initial qualification checks their executable behavior, full
+numerical contract, and timed replay; it does not certify a completed rewrite.
 
-## Top-k example
+The final submitted candidate must implement its own GPU computation in Triton.
+It must not call the production SGLang operator, the protected baseline or
+reference, or another library operator to perform that computation. Replace the
+initial wrapper in the declared editable files while retaining `run(**kwargs)`.
+The baseline remains protected and separate from candidate edits. All workload,
+accuracy, input immutability and measured-replay requirements apply in both
+phases; initial-language support does not waive the final Triton requirement.
 
-Case: [`topk_transform_paged_paged_k512_page_size64`](definitions/topk_transform_paged/topk_transform_paged_paged_k512_page_size64.json), using its [batch-1 workload](workloads/topk_transform_paged/topk_transform_paged_paged_k512_page_size64.jsonl).
-
-Keep these shapes fixed:
-
-```text
-scores:           [1, 262208]
-page_tables:      [1, 4097]     page_size = 64
-metadata:         [2, 2]
-out_page_indices: [1, 512]
-```
-
-Vary `seq_lens[0]`, for example:
-
-```text
-0, 1, 63, 64, 65, 511, 512, 513,
-1024, 2048, 4096, 8192, 65536, 131072, 262207, 262208
-```
-
-For a request with current visible token length `N`, this decode path uses `seq_lens = N // 4`. Thus `N = 4096 → 8192 → 16384 → 32768` gives `seq_lens = 1024 → 2048 → 4096 → 8192`, while the output remains 512 slots. **Do not clamp the candidate length to 512.**
-
-- Keep `0 <= seq_lens[b] <= min(width, pages * page_size)`.
-- Build or validate matching `metadata` for every length; never reuse a stale length-specific plan.
-- Vary tie-free scores and legal page mappings. NaN scores are unsupported.
-- Select only from the valid score prefix. Short rows preserve logical order and end with `-1` padding; long-row selections need not be sorted. Use the definition's `compare` callback.
-
-## Flash MLA example
-
-Case: [`flash_mla_with_kvcache_dsv4_fp8_11111_q1_h64_d512_p256_k128_ep2_ek8256`](definitions/flash_mla_with_kvcache/flash_mla_with_kvcache_dsv4_fp8_11111_q1_h64_d512_p256_k128_ep2_ek8256.json), using its [batch-1 workload](workloads/flash_mla_with_kvcache/flash_mla_with_kvcache_dsv4_fp8_11111_q1_h64_d512_p256_k128_ep2_ek8256.jsonl).
-
-Keep these shapes and both KV pool capacities fixed (`pages=2019`, `extra_pages=201836`):
+The required GPU runtime is MI355X (`gfx950`) with the following immutable image:
 
 ```text
-q:                    [1, 1, 64, 512]
-sparse_indices:       [1, 1, 128]
-extra_sparse_indices: [1, 1, 8256]
+lmsysorg/sglang@sha256:e20849665c105d389ef91d23c0dc73931aaa6f02056dd10e7b43e4f16c79df69
 ```
 
-In this C128 case, `sparse_lens = min(N, 128)` and `extra_sparse_lens = max(N // 128, 1)`, within the configured legal capacity:
-
-| Current visible tokens `N` | `sparse_lens[0]` | `extra_sparse_lens[0]` |
-| ---: | ---: | ---: |
-| 4096 | 128 | 32 |
-| 8192 | 128 | 64 |
-| 16384 | 128 | 128 |
-| 32768 | 128 | 256 |
-
-The main sliding window saturates at 128; the extra prefix continues growing. **8256 is index capacity, not the effective length of every call.**
-
-Also test legal boundary combinations independently, including both branches empty, either branch empty, and both branches nonempty:
+This image supplies the installed SGLang package and its TileLang/AITER GPU
+backend dependencies, plus ROCm PyTorch and Triton. Its exact package set is
+bound to the image digest. The provided baseline and initial wrapper require:
 
 ```text
-sparse_lens:       0, 1, 63, 64, 65, 127, 128
-extra_sparse_lens: 0, 1, 2, 31, 32, 33, 127, 128, 129,
-                   511, 512, 513, 1024, 2048, 4096, 8192, 8255, 8256
+sglang.kernels.ops.attention.dsa.tilelang_kernel.dpsk_v4_fp8_attention_fwd
 ```
 
-- Keep `0 <= sparse_lens[b] <= 128` and `0 <= extra_sparse_lens[b] <= 8256`.
-- Apply each length to its index prefix, then ignore negative indices inside that prefix. For short histories, `extra_sparse_lens=1` with index `-1` means no effective extra KV entry.
-- Vary Q, correctly packed KV data, legal indices, negative padding, and sinks. Test that indices outside the selected prefixes cannot affect outputs.
-- Check both BF16 output and FP32 LSE with the definition's `compare` callback: additive `atol=rtol=1e-2` for output and `1e-3` for finite LSE. Fully empty rows require zero output and `+inf` LSE.
+The task imports this installed entrypoint through
+[scripts/baseline/main.py](scripts/baseline/main.py); it does not depend on a
+sibling repository or a copied source tree. No task action installs packages or
+downloads runtime code. Select the pinned image before materializing the task;
+missing packages or this entrypoint are execution failures. The task-local
+initializer, independent FP32 reference, comparator and evaluation runner are
+bundled under `scripts/` and require the image's ROCm PyTorch installation.
 
-## Required test coverage and reporting
+## Interface and semantics
 
-- **Accuracy:** use the exported `reference` and operator-specific `compare` callbacks for every tested input. Cover empty, short, intermediate, near-capacity, and full lengths; add values immediately around kernel tile/partition boundaries and random lengths not used during tuning. The lists above are starting points, not an exhaustive whitelist.
-- **Data and batch generalization:** use multiple data seeds per length. Repeat across supported workload batch sizes, including mixed per-row lengths. Reuse buffers across growing-length calls to catch stale length or plan assumptions.
-- **Performance:** benchmark the same length regimes, including irregular lengths and mixed batches—not only full capacity. Validate each measured input first, warm up, and use repeated GPU-timed measurements under identical conditions for candidate and baseline. Keep input generation, reference checks, and metadata construction outside kernel-only timing; report setup cost separately if measured.
-- **Report per case:** batch, length values/distribution, seed, accuracy result, baseline latency, candidate latency, and speedup. Include short-, medium-, and long-length results and regressions, not just a best case or one aggregate speedup. Record hardware, timing method, and repetition count.
+The exact tensor shapes, dtypes, scalar values, workload identities and callback
+specifications are in [scripts/workload.json](scripts/workload.json). Retain all
+13 original batch sizes (1 through 4096). Q is BF16 with shape `[batch, 1, 64, 512]`.
+The packed KV format stores each page's FP8/BF16 payloads before its scale slots;
+see [the reference decoder](scripts/reference/main.py). Inputs are functional and
+must remain unmodified. The output is BF16 attention output plus FP32 LSE.
 
-**Changing seeds alone is insufficient.** The Top-k initializer selects only `0`, one-quarter, one-half, or full capacity. For batch 1, the MLA initializer always sets both prefixes to full width. Explicitly set the test lengths after initialization and update dependent inputs before checking or timing.
+Sparse index widths (128) are capacities, not effective lengths.
+Each runtime length selects an index prefix, and every negative index inside
+that prefix is ignored. Nonnegative indices outside the prefix must have no
+effect. Main and extra branches, when present, have independent lengths and
+padding. Attention sinks participate in output normalization and are excluded
+from returned LSE. Completely empty rows return exactly zero output and `+inf`
+LSE. Finite output uses additive `atol=rtol=1e-2`; finite LSE uses additive
+`atol=rtol=1e-3`, enforced by [the comparator](scripts/compare/main.py).
 
-These are test requirements and example inputs, not measured accuracy or performance results.
+## Executed coverage
+
+[scripts/mla_coverage.py](scripts/mla_coverage.py) defines the runtime profiles
+stored explicitly in the workload manifest. This task has 29 independently
+reported cases; every case participates in both correctness and performance.
+The original shape cases remain. Batch 1 additionally sweeps empty, short,
+intermediate and full lengths, including values immediately around 32, 64, 128,
+256, 512 and 8192 when within its capacity. Main and extra sweeps hold the other
+branch fixed, and joint cases exercise both-empty, either-empty and both-active
+combinations. In-prefix holes and entirely negative prefixes are independent of
+the length sweep; unselected suffixes retain legal nonnegative indices.
+
+Larger batches mix boundary rows, independently drawn lengths and padding,
+including a full row. Every timed replay is checked numerically, then checked
+again on a second data seed with changed runtime lengths in the same buffers.
+Both Q and the full packed caches, indices and sinks are refilled. This catches
+stale outputs and host-side assumptions about tensor contents. Original and
+refilled checks together cover multiple data draws for each boundary regime.
+
+## Measurement and validation
+
+Use [scripts/task_runner.py](scripts/task_runner.py) for all seven v2 actions.
+Input initialization, reference calculations and checks occur outside kernel-only
+timing. The benchmark retains 20 warmups, 100 repetitions and a 1 ms target,
+with the same device timing helper and allocation boundaries for baseline and
+candidate. Each original shape and each added runtime profile has its own case
+identity and latency in the structured result; baseline and candidate manifests
+must match.
+
+Cache initialization batches pages into bounded scratch buffers. Within one
+shape group, immutable seeded cache templates are copied into independent input
+storage to avoid regenerating the large KV pools for every scalar-length case.
+At most the original and refill seed templates are retained; templates are
+released on a shape change. Adjacent batch-1 cases reuse input storage. Full
+cache copies and all setup remain outside timing, and input-mutation checks
+remain enabled.
+
+Run `python3 scripts/task_runner.py validate-task`, followed by the baseline and
+candidate `compile`, `correctness`, and `performance` actions in the pinned GPU
+runtime. A fresh framework-finalized `task_validator` PASS on the declared
+architecture is required for qualification. CPU regression tests check coverage,
+reference semantics and rejection behavior; they do not qualify GPU execution.

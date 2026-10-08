@@ -84,6 +84,8 @@ Environment overrides:
   AKA_DOCKER_IMAGE_GFX950 Default image for gfx950.
   AKA_DOCKER_IMAGE_GFX1201 RDNA4 image (also the build-rdna4-image output tag).
   AKA_NODE_PREFIX         Host Node prefix containing bin/node and npm-installed agent CLI(s).
+  AKA_CODEX_AUTH_DIR      Host Codex auth/config source directory (default: ~/.codex).
+                         Isolated workers copy it from a read-only mount into their HOME.
   AKA_AGENTS              Agent CLI(s) to check; deepseek_harness is opt-in; all checks the original three.
   AKA_REQUIRED_PROFILERS  Optional comma/space-separated profiler binaries required by
                           this run: rocprof-compute, rocprofv3. Smoke reports both;
@@ -540,6 +542,12 @@ mount_agent() {
             ;;
         codex)
             local node_prefix standalone_root
+            local codex_auth_dir="${AKA_CODEX_AUTH_DIR:-$HOST_HOME/.codex}"
+            if [[ -n "${AKA_CODEX_AUTH_DIR:-}" ]]; then
+                [[ -d "$codex_auth_dir" && -r "$codex_auth_dir" && -x "$codex_auth_dir" ]] \
+                    || die "AKA_CODEX_AUTH_DIR must be a readable directory: $codex_auth_dir"
+                codex_auth_dir="$(cd "$codex_auth_dir" && pwd -P)"
+            fi
             standalone_root="$(detect_standalone_codex_root || true)"
             if [[ -n "$standalone_root" ]]; then
                 need_path "$HOST_HOME/.local/bin/codex" "native Codex launcher" "$strict" || return 0
@@ -549,7 +557,9 @@ mount_agent() {
                 # HOME. Keep the large native package tree mounted at its original
                 # absolute path so the launcher symlink remains valid without
                 # copying the installation for every worker.
-                if [[ "$isolate" == "1" ]]; then
+                # A replacement auth directory also hides the host .codex
+                # package tree in a non-isolated container.
+                if [[ "$isolate" == "1" || "$codex_auth_dir" != "$HOST_HOME/.codex" ]]; then
                     add_mount "$standalone_root" "$standalone_root" ro
                 fi
             else
@@ -563,11 +573,11 @@ mount_agent() {
                 need_path "$node_prefix/bin/codex" "host codex" "$strict" || return 0
                 add_mount "$node_prefix" /opt/node ro
             fi
-            need_path "$HOST_HOME/.codex" "Codex auth/config directory" "$strict" || return 0
+            need_path "$codex_auth_dir" "Codex auth/config directory" "$strict" || return 0
             if [[ "$isolate" == "1" ]]; then
-                add_mount "$HOST_HOME/.codex" "$AGENT_STATE_MOUNT_ROOT/.codex" ro
+                add_mount "$codex_auth_dir" "$AGENT_STATE_MOUNT_ROOT/.codex" ro
             else
-                add_mount "$HOST_HOME/.codex" "$HOST_HOME/.codex"
+                add_mount "$codex_auth_dir" "$HOST_HOME/.codex"
             fi
             ;;
         claude_code)
