@@ -44,8 +44,8 @@ timings. A source change is necessary, not by itself proof of an optimization:
 all correctness, source-boundary, trusted-execution and normal comparison
 requirements continue to apply. This gate is not an anti-cheat boundary.
 
-The native quantization trusted evaluator applies this gate after all six phases
-and all cases have finished and their raw reports have been written. A failed
+The native quantization and portable trusted evaluators apply this gate after all
+six phases and all cases have finished and their raw reports have been written. A failed
 comparison is written with `status: rejected_timing_quality`, null accepted
 speedups, and the original values in `raw_speedup` and
 `raw_arithmetic_mean_speedup`; the CLI exits nonzero. A stable unchanged-source
@@ -72,12 +72,82 @@ are 0 for an eligible changed-source comparison, 1 for timing rejection, and 2
 for a stable unchanged-source control. An older task-validator PASS does not
 override a subsequent quality rejection.
 
-This patch integrates the gate into the native-quant trusted comparison that
-produced the observed failure. The reusable variable-work API and its tests are
-included for independent review; other paired consumers must wire it only after
-their semantic receipt validation. Their measurement methods and entrypoints
-are not changed by this patch. Ordinary framework-only scores are insufficient
-for promotion of this task; the trusted quality decision is mandatory.
+Quality admission is mandatory for the active protected report contracts:
+
+- Schema-v2 paired-reference reports run their existing registry and pinned CPU
+  receipt validators before quality classification. MoE and MiniMax use the
+  independently validated variant identity. The exact supported Kimi signature
+  schema uses `work_value`; the exact MLA schema uses `length`. Neither seeds nor
+  addresses define a quality class. Unknown task-local class schemas fail closed.
+- Schema-v1 native comparisons check all outer-port, native-reference and
+  candidate samples. They are admitted as fixed work only when their cases have
+  no variable-work markers.
+- Portable reports without a native scoring policy, including FP4 GEMM and
+  fixed-work aggregation/prefill tasks, validate the complete report against the
+  current source map and case manifest before checking all raw samples. Variable
+  work on this route requires a proven paired adapter; it is never silently
+  assessed as fixed work.
+- The existing native-quant report contract is also checked in ordinary
+  performance evaluation, so its host-only gate cannot be bypassed by stdout
+  timing or the generic report parser.
+
+Per-case quality metadata includes the full manifest case-ID set, all raw sample
+arrays, validated work classes, source map, request ID and manifest fingerprint.
+The ordinary evaluator retains this metadata in baseline and optimized
+performance YAML. These cached fields remain diagnostic data: a self-consistent
+class list, case-ID list or manifest-hash string cannot establish its own
+authority. At the end of protected report/semantic validation, the host keeps an
+immutable in-memory record of the actual classes, complete case set and receipt
+digest. Fresh cases are bound to that record, their source/workload metadata and
+the selected timing series. Direct scoring checks against that independent
+record, including when a caller edits an otherwise fresh case.
+
+The authority object is not stored in performance YAML and cannot be reconstructed
+by its loader. `load_performance_results` without explicit validation context
+returns data for inspection; those cases cannot receive accepted scores. The
+loader records cache origin outside editable metadata, so deleting cached
+quality flags cannot opt out of this rule.
+To resume scoring, rerun the protected raw-report/manifest/request/semantic
+validators and supply their fresh cases through `validated_cases=`. The cache
+must match that external context exactly, and the context's complete case set
+must match even if both supplied lists omit the same case. An edited cache cannot
+serve as its own context. Do not call `case_quality` on cached declarations to
+manufacture new authority. If the original verified reports and protected inputs
+are unavailable, fail closed instead of scoring the cache.
+
+```python
+fresh = as_test_cases(load_native_measurements(
+    trusted_task_root, config, report=verified_report, request=expected_request),
+    is_baseline=True)
+baseline = load_performance_results(
+    workspace, "baseline_perf.yaml", validated_cases=fresh)
+```
+
+This is a trusted-host data boundary, not a sandbox for arbitrary code executing
+inside the host process. Private source-only host evaluation remains mandatory.
+The normal fresh measurement path keeps its in-memory context and requires no
+extra GPU calls or changes to samples, work schedules, sources or timing methods.
+
+Native summaries, portable trusted results, ordinary `task_result.yaml`, direct
+case scoring and postprocessing honor the same accepted-score decision. Null or
+zero accepted ratios are authoritative; no consumer reconstructs them from
+aggregate means. Persisted source maps are compared across the initial and
+current measurements, so harness-only changes remain unchanged-source controls.
+Results declared native, or belonging to a protected quality-enabled task,
+cannot omit the quality requirement to regain old performance points.
+
+The task-validator finalizer independently reads and validates the raw
+performance report before finalizing a claimed benchmark PASS. An instability
+or missing/invalid quality receipt forces `benchmark_integrity: FAIL` and an
+overall failure. This is single-run task qualification, not an optimization
+comparison: a stable stock-source task may qualify, but validation itself never
+asserts an accepted gain. The complete raw report and quality cases are retained.
+Framework qualification still does not replace private source-only host retesting.
+
+These adapters do not change measurement methods, task source, sample counts,
+warmups, tolerances or phase budgets. Unrecognized legacy protocols outside these
+protected contracts need an explicit adapter before their results can provide
+quality evidence; no unsupported protocol is inferred to be variable or fixed.
 
 No code in the gate launches or retries a comparison. If a maintainer authorizes
 a repeat, predeclare **at most one** fresh whole comparison, covering all six

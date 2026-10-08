@@ -549,6 +549,36 @@ def finalize_report(
                 f"Unable to resolve framework harness facts: {exc}"
             )
 
+        # A model's benchmark review cannot override the measured raw-data
+        # gate. This is single-run task qualification, not a source-change or
+        # optimization claim, so a stable stock-source run may still pass.
+        config_path = workspace_path / 'config.yaml'
+        checks = raw_report.get('checks', {})
+        if config_path.is_file() and isinstance(checks, dict):
+            try:
+                from src.quality_measurements import quality_required, workspace_quality
+                config = yaml.safe_load(config_path.read_text()) or {}
+                if quality_required(config) and _status(checks.get('performance', {}).get('status')) == 'PASS':
+                    benchmark = checks.setdefault('benchmark_integrity', {})
+                    try:
+                        quality = workspace_quality(workspace_path, config)
+                    except Exception as exc:
+                        quality = {'schema': 'benchmark-quality-v1', 'status': 'reject',
+                                   'framework_enforced': True, 'accepted_gain': False,
+                                   'comparison_status': 'missing_or_invalid_quality_evidence', 'reason': str(exc)}
+                    benchmark['benchmark_quality_required'] = True
+                    benchmark['benchmark_quality'] = quality
+                    if 'case_count' in quality:
+                        benchmark['case_count'] = quality['case_count']
+                        benchmark['valid_case_count'] = quality['case_count']
+                        benchmark['benchmark_methods'] = quality['benchmark_methods']
+                    if quality['status'] != 'pass':
+                        benchmark['status'] = 'FAIL'
+                        benchmark['details'] = (str(benchmark.get('details', '')) +
+                            '\nFramework timing-quality gate rejected the complete measurement.')
+            except Exception as exc:
+                framework_error = framework_error or f'Unable to establish timing-quality policy: {exc}'
+
     report = normalize_report(
         raw_report,
         expected_task_name=expected_task_name,

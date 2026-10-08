@@ -7,6 +7,7 @@ This is a catastrophic-instability gate, not a statistical proof of speedup.
 from __future__ import annotations
 
 from copy import deepcopy
+from dataclasses import dataclass
 import hashlib
 import json
 import math
@@ -17,6 +18,30 @@ SCHEMA = "benchmark-quality-v1"
 POLICY = {"expected_samples": 100, "max_over_median": 10.0,
           "single_sample_share": 0.10, "p95_over_p05": 10.0}
 SHA256 = re.compile(r"[0-9a-f]{64}")
+CASE_SCHEMA = "benchmark-quality-case-v1"
+
+
+@dataclass(frozen=True)
+class _QualityContext:
+    """Host-owned result of semantic validation; never a cache declaration."""
+    case_id: str
+    case_ids: tuple[str, ...]
+    work_ids: tuple[str, ...] | None
+    receipt_sha256: str
+
+
+@dataclass(frozen=True)
+class _CaseQualityBinding:
+    context: _QualityContext
+    metadata_sha256: str
+    execution_time_ms: float
+
+
+class _ValidatedQualityRecord(dict):
+    """JSON-compatible data with process-local authority that JSON cannot carry."""
+    def __init__(self, record, context):
+        super().__init__(record)
+        self.context = context
 
 
 def require(value, message):
@@ -38,6 +63,165 @@ def source_identity(value):
     require(all(isinstance(k, str) and k and isinstance(v, str) and SHA256.fullmatch(v)
                 for k, v in value.items()), "invalid executable-source map")
     return dict(sorted(value.items()))
+
+
+def _metadata_sha256(case):
+    from .testcases import _NATIVE_BASELINE_METADATA_KEYS
+    metadata = {key: value for key, value in (case.metadata or {}).items()
+                if value is not None and (key.startswith('benchmark_')
+                    or key in _NATIVE_BASELINE_METADATA_KEYS or key in ('params', 'dtype'))}
+    return fingerprint({'case_id': case.test_case_id, 'shape': case.shape, 'metadata': metadata})
+
+
+def _binding(case):
+    binding = getattr(case, '_benchmark_quality_binding', None)
+    require(isinstance(binding, _CaseQualityBinding) and isinstance(binding.context, _QualityContext),
+            'authoritative quality context is missing; revalidate the protected raw report')
+    return binding
+
+
+def attach_case_quality(case, record, *, series='candidate'):
+    """Bind a fresh case to the context created after trusted report validation.
+
+    A plain dict loaded from JSON/YAML is deliberately insufficient. Do not call
+    case_quality on cached declarations to manufacture a replacement context.
+    """
+    require(isinstance(record, _ValidatedQualityRecord) and isinstance(record.context, _QualityContext),
+            'a freshly validated quality record is required')
+    require(fingerprint(record) == record.context.receipt_sha256,
+            'quality record changed after semantic validation')
+    require((case.metadata or {}).get('benchmark_quality_case') == record,
+            'case differs from its validated quality record')
+    require(series in record['series'] and case.execution_time_ms == record['series'][series]['raw_mean_ms'],
+            'case timing does not match the validated series')
+    case._benchmark_quality_binding = _CaseQualityBinding(
+        record.context, _metadata_sha256(case), case.execution_time_ms)
+    validate_case_quality(case)
+    return case
+
+
+def copy_case_quality(case, validated_case, *, series=None):
+    """Copy authority from an independently validated in-memory case only."""
+    proof = validate_case_quality(validated_case)
+    authority = _binding(validated_case)
+    require(_metadata_sha256(case) == authority.metadata_sha256,
+            'cached case differs from the authoritative validated case')
+    expected = (authority.execution_time_ms if series is None else proof['series'][series]['raw_mean_ms'])
+    require(case.execution_time_ms == expected, 'cached timing differs from the authoritative validated case')
+    case._benchmark_quality_binding = _CaseQualityBinding(authority.context, authority.metadata_sha256, expected)
+    validate_case_quality(case)
+    return case
+
+
+def restore_quality_context(cases, validated_cases):
+    """Rebind an exact cache from fresh authoritative report results.
+
+    The caller must rerun the protected manifest/request/semantic validators to
+    obtain validated_cases. Neither cached labels nor a manifest hash supplies
+    this authority. Without this explicit context, loaded cases are diagnostic.
+    """
+    trusted = {case.test_case_id: case for case in validated_cases}
+    require(bool(trusted) and len(trusted) == len(validated_cases), 'invalid authoritative case set')
+    names = {case.test_case_id for case in cases}
+    require(len(names) == len(cases) and names == set(trusted), 'cache case coverage differs from authoritative results')
+    for case in validated_cases:
+        validate_case_quality(case)
+        require(set(_binding(case).context.case_ids) == names
+                and len(_binding(case).context.case_ids) == len(cases),
+                'cache omitted authoritative manifest cases')
+    for case in cases:
+        copy_case_quality(case, trusted[case.test_case_id])
+    return cases
+
+
+def case_quality(case_id, *, case_ids, sources, request_id, manifest_sha256, series, kind, work_ids=None):
+    """Create quality evidence only from already validated complete raw rows."""
+    expected = {'candidate'} if kind == 'portable' else {'port', 'reference', 'candidate'}
+    require(kind in ('portable', 'native') and set(series) == expected, 'incomplete timing series')
+    require(isinstance(case_ids, list) and case_id in case_ids and len(set(case_ids)) == len(case_ids),
+            'complete manifest case identities are required')
+    require(isinstance(request_id, str) and bool(request_id), 'missing measurement request')
+    require(isinstance(manifest_sha256, str) and SHA256.fullmatch(manifest_sha256), 'missing manifest identity')
+    checked = {name: {**assess_series(samples, work_ids=work_ids), 'raw_samples_ms': list(samples)}
+               for name, samples in series.items()}
+    record = {'schema': CASE_SCHEMA, 'kind': kind, 'case_id': case_id, 'case_ids': list(case_ids),
+            'source_sha256': source_identity(sources), 'request_id': request_id,
+            'manifest_sha256': manifest_sha256, 'validated_work_ids': deepcopy(work_ids), 'series': checked,
+            'status': 'pass' if all(row['status'] == 'pass' for row in checked.values()) else 'reject'}
+    context = _QualityContext(case_id, tuple(case_ids), tuple(work_ids) if work_ids is not None else None,
+                              fingerprint(record))
+    return _ValidatedQualityRecord(record, context)
+
+
+def validate_case_quality(case):
+    """Require independent authority, then check all editable receipt data."""
+    authority = _binding(case)
+    context = authority.context
+    metadata = case.metadata or {}
+    proof = metadata.get('benchmark_quality_case')
+    require(metadata.get('benchmark_quality_required') is True and isinstance(proof, dict)
+            and proof.get('schema') == CASE_SCHEMA and proof.get('case_id') == case.test_case_id,
+            'missing validated case-quality evidence')
+    require(context.case_id == case.test_case_id and fingerprint(proof) == context.receipt_sha256,
+            'quality receipt differs from authoritative semantic validation')
+    require(_metadata_sha256(case) == authority.metadata_sha256
+            and case.execution_time_ms == authority.execution_time_ms,
+            'scoring data changed after authoritative validation')
+    require(proof.get('case_ids') == list(context.case_ids)
+            and proof.get('validated_work_ids') == (list(context.work_ids) if context.work_ids is not None else None),
+            'cached work classes or coverage differ from authoritative context')
+    source_identity(proof.get('source_sha256'))
+    require(proof.get('kind') in ('portable', 'native'), 'unknown case-quality protocol')
+    expected = {'candidate'} if proof['kind'] == 'portable' else {'port', 'reference', 'candidate'}
+    require(set(proof.get('series', {})) == expected, 'quality series were removed')
+    for row in proof['series'].values():
+        samples = row.get('raw_samples_ms')
+        reconstructed = assess_series(samples, work_ids=list(context.work_ids) if context.work_ids is not None else None)
+        require(row == {**reconstructed, 'raw_samples_ms': samples},
+                'persisted quality differs from its complete raw samples')
+    expected_status = 'pass' if all(r['status'] == 'pass' for r in proof['series'].values()) else 'reject'
+    require(proof.get('status') == expected_status, 'case quality status differs')
+    if metadata.get('baseline_kind') in ('native_production', 'protected_reference'):
+        for field, label in [('native_ms', 'reference'), ('candidate_ms', 'candidate'), ('port_measurement_ms', 'port')]:
+            require(metadata.get(field) == proof['series'][label]['raw_mean_ms'], 'native mean differs from quality evidence')
+        require(metadata.get('native_source_hashes') == proof['source_sha256'], 'native source differs from quality evidence')
+    else:
+        require(case.execution_time_ms == proof['series']['candidate']['raw_mean_ms'], 'case mean differs from quality evidence')
+    return proof
+
+
+def comparison_quality(baseline_cases, candidate_cases, *, raw_ratio=None):
+    """Propagate complete-case quality and source identity to accepted scoring."""
+    before = {row.test_case_id: row for row in baseline_cases}
+    after = {row.test_case_id: row for row in candidate_cases}
+    require(bool(before) and len(before) == len(baseline_cases) == len(candidate_cases) == len(after)
+            and set(before) == set(after), 'complete quality case sets are required')
+    proofs = {}
+    failures = []
+    for label, cases in [('reference', baseline_cases), ('candidate', candidate_cases)]:
+        proofs[label] = [validate_case_quality(case) for case in cases]
+        require(all(len(_binding(case).context.case_ids) == len(before)
+                    and set(_binding(case).context.case_ids) == set(before) for case in cases),
+                'quality comparison omitted declared manifest cases')
+        require(len({fingerprint(p['source_sha256']) for p in proofs[label]}) == 1
+                and len({p['request_id'] for p in proofs[label]}) == 1,
+                'quality cases mixed different sources or requests')
+        failures.extend({'leg': label, 'case_id': p['case_id']} for p in proofs[label] if p['status'] != 'pass')
+    for name in before:
+        a, b = validate_case_quality(before[name]), validate_case_quality(after[name])
+        require(a['manifest_sha256'] == b['manifest_sha256'], 'quality manifests differ')
+    sources = {label: rows[0]['source_sha256'] for label, rows in proofs.items()}
+    changed = sources['reference'] != sources['candidate']
+    if raw_ratio is None:
+        raw_ratio = math.fsum(before[name].execution_time_ms / after[name].execution_time_ms for name in before) / len(before)
+    require(type(raw_ratio) in (int, float) and math.isfinite(raw_ratio) and raw_ratio > 0, 'invalid raw comparison ratio')
+    eligible = not failures and changed
+    return {'schema': SCHEMA, 'policy': dict(POLICY), 'status': 'reject' if failures else 'pass',
+            'comparison_status': ('rejected_timing_quality' if failures else 'source_changed' if changed else 'unchanged_source_control'),
+            'source_changed': changed, 'reference_source': sources['reference'], 'candidate_source': sources['candidate'],
+            'failed_cases': failures, 'complete_case_count': len(before), 'gain_eligible': eligible,
+            'accepted_gain': eligible and raw_ratio > 1, 'raw_arithmetic_mean_speedup': raw_ratio,
+            'accepted_arithmetic_mean_speedup': raw_ratio if eligible else None}
 
 
 def _statistics(values):

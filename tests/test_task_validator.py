@@ -419,7 +419,7 @@ class ValidationLauncherTests(unittest.TestCase):
             {"timeout_seconds": 1200, "compile_timeout": 600,
              "correctness_timeout": 600, "performance_timeout": 600},
         )
-        self.assertEqual(resolved[:3], (600, 600, 3600))
+        self.assertEqual(resolved[:3], (600, 18000, 7200))
         self.assertGreaterEqual(resolved[3], sum(resolved[:3]) + 300)
 
     def test_prompt_builder_handles_every_current_task_config(self) -> None:

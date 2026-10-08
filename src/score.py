@@ -8,6 +8,8 @@ def resolve_speedup_ratio(
     base_execution_time: float = 0.0,
     best_optimized_execution_time: float = 0.0,
     benchmark_method_consistent: bool | None = None,
+    benchmark_quality_required: bool = False,
+    gain_eligible: bool | None = None,
 ) -> float:
     """
     Resolve the speedup ratio to use for scoring/reporting.
@@ -23,12 +25,12 @@ def resolve_speedup_ratio(
     metadata fails closed, including for legacy result files: aggregate times do
     not prove that baseline and optimized kernels used comparable timing methods.
     """
-    if benchmark_method_consistent is not True:
+    if benchmark_method_consistent is not True or gain_eligible is False or (benchmark_quality_required and gain_eligible is not True):
         return 0.0
 
     if speedup_ratio is not None:
         if (
-            isinstance(speedup_ratio, (int, float))
+            type(speedup_ratio) in (int, float)
             and math.isfinite(float(speedup_ratio))
             and speedup_ratio > 0
         ):
@@ -45,6 +47,8 @@ def score(
     best_optimized_execution_time: float,
     speedup_ratio: float | int | None = None,
     benchmark_method_consistent: bool | None = None,
+    benchmark_quality_required: bool = False,
+    gain_eligible: bool | None = None,
 ) -> float:
     """
     Calculate the optimization task score based on compilation, correctness, and performance.
@@ -91,6 +95,8 @@ def score(
         base_execution_time=base_execution_time,
         best_optimized_execution_time=best_optimized_execution_time,
         benchmark_method_consistent=benchmark_method_consistent,
+        benchmark_quality_required=benchmark_quality_required,
+        gain_eligible=gain_eligible,
     )
     if effective_speedup > 0:
         total_score += effective_speedup * 100.0
@@ -134,6 +140,19 @@ def task_result_scoring(workspace_path: str) -> float:
     benchmark_method_consistent = result_data.get(
         'benchmark_method_consistent'
     )
+    required = (result_data.get('benchmark_quality_required') is True
+                or result_data.get('baseline_kind') in ('native_production', 'protected_reference'))
+    config_path = workspace / 'config.yaml'
+    if config_path.is_file():
+        from .quality_measurements import quality_required
+        required = required or quality_required(yaml.safe_load(config_path.read_text()) or {})
+    eligible = result_data.get('gain_eligible')
+    if required:
+        quality = result_data.get('benchmark_quality', {})
+        eligible = (eligible is True and quality.get('schema') == 'benchmark-quality-v1'
+                    and quality.get('status') == 'pass' and quality.get('source_changed') is True
+                    and quality.get('gain_eligible') is True
+                    and quality.get('accepted_arithmetic_mean_speedup') == speedup_ratio)
 
     # Calculate score
     calculated_score = score(
@@ -143,10 +162,19 @@ def task_result_scoring(workspace_path: str) -> float:
         best_optimized_execution_time=best_optimized_execution_time,
         speedup_ratio=speedup_ratio,
         benchmark_method_consistent=benchmark_method_consistent,
+        benchmark_quality_required=required,
+        gain_eligible=eligible,
     )
 
     # Add score to the data
     result_data['score'] = calculated_score
+    if required:
+        result_data['benchmark_quality_required'] = True
+        result_data['gain_eligible'] = eligible
+        if not eligible:
+            result_data.setdefault('raw_speedup_ratio', speedup_ratio)
+            result_data['speedup_ratio'] = None
+            result_data['accepted_gain'] = False
 
     # Write back to the YAML file
     with open(result_file, 'w') as f:

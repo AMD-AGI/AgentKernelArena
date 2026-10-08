@@ -128,7 +128,7 @@ def packaged_task(tmp_path):
                            "tensors": {"x": tensor, "out": {**tensor, "role": "output"}},
                            "scalars": {"scale": scalar}}
                           for name, count, scalar in (("first", 7, 1.0), ("second", 19, 2.0))],
-                "measurement": {"method": "cuda_graph", "warmup_iterations": 1, "benchmark_iterations": 2,
+                "measurement": {"method": "cuda_graph", "warmup_iterations": 10, "benchmark_iterations": 100,
                                 "correctness_seeds": [0, 1], "negative_controls": ["no_op", "wrong_output"],
                                 "refresh_inputs": "each_replay", "initialize_outputs": "each_replay",
                                 "validate_outputs": "each_replay"}}
@@ -154,8 +154,8 @@ def phase_report(request, manifest, timing):
             if request["phase"] == "correctness":
                 row.update(seeds=[0, 1], negative_controls={"no_op": True, "wrong_output": True})
             else:
-                row.update(samples_ms=[timing, timing], fresh_input_resets=2, output_initializations=2,
-                           oracle_checks=2, warmup_iterations=1, benchmark_method="cuda_graph")
+                row.update(samples_ms=[timing] * 100, fresh_input_resets=100, output_initializations=100,
+                           oracle_checks=100, warmup_iterations=10, benchmark_method="cuda_graph")
             report["cases"].append(row)
     return finalize_report(report, manifest, request)
 
@@ -211,6 +211,24 @@ def test_exhaustive_six_phase_orchestration_binds_mode_challenge_and_budgets(pac
     monkeypatch.setattr(subprocess, "check_output", inspect)
     monkeypatch.setattr(trusted, "select_gpu", lambda render: {"render_device": render})
     monkeypatch.setattr(trusted, "run_phase", run_phase)
+    # This fixture tests phase/mode orchestration, not a real distribution
+    # producer. Its adapter is explicitly mocked; semantic work-class attacks
+    # exercise the real receipt validators in the quality integration suite.
+    from src.benchmark_quality import case_quality, attach_case_quality
+    from src.testcases import TestCaseResult
+    def quality_adapter(report, manifest, request, sources):
+        results = []
+        for row in report['cases']:
+            proof = case_quality(
+                row['case']['case_id'], case_ids=[c['case_id'] for c in manifest['cases']],
+                sources=sources, request_id=request['request_id'],
+                manifest_sha256=trusted.fingerprint(manifest), kind='portable',
+                series={'candidate': row['samples_ms']}, work_ids=['reviewed-fixture-work'] * 100)
+            case = TestCaseResult(row['case']['case_id'], execution_time_ms=1.0,
+                metadata={'benchmark_quality_required': True, 'benchmark_quality_case': dict(proof)})
+            results.append(attach_case_quality(case, proof))
+        return results
+    monkeypatch.setattr(trusted, 'portable_test_cases', quality_adapter)
     result = trusted.trusted_retest(repo=repo, commit=commit, task_path="tasks/example", candidate_workspace=candidate,
                                    output=tmp_path / "exhaustive-result", scratch_dir=tmp_path / "scratch",
                                    render_device="unused", timeout=5000)
@@ -317,6 +335,62 @@ def test_sources_only_retest_scores_complete_cases_or_rejects(packaged_task, tmp
         assert len(requests) == 6 and len({request["request_id"] for request in requests}) == 6
         assert len({request["challenge_seed"] for request in requests}) == 1
         assert not (output / "task_result.yaml").exists() and not (output / "validation_report.yaml").exists()
+
+
+@pytest.mark.parametrize('native_policy',[False,True])
+@pytest.mark.parametrize('scenario',['stable','unchanged','bad_reference','bad_candidate'])
+def test_complete_trusted_reports_survive_quality_or_source_rejection(packaged_task,tmp_path,monkeypatch,native_policy,scenario):
+    repo,task,commit,candidate,manifest=packaged_task
+    if scenario=='unchanged':(candidate/'source/kernel.py').write_text('VALUE = 1\n')
+    if native_policy:
+        (task/'provenance').mkdir();(task/'provenance/native.json').write_text('{}')
+        config=yaml.safe_load((task/'config.yaml').read_text())
+        config['scoring_baseline']={'schema_version':1,'kind':'native_production','native_source_manifest':'provenance/native.json'}
+        (task/'config.yaml').write_text(yaml.safe_dump(config))
+        subprocess.run(['git','-C',str(repo),'add','.'],check=True)
+        subprocess.run(['git','-C',str(repo),'-c','user.name=Test','-c','user.email=test@example.invalid','commit','-qm','policy'],check=True)
+        commit=subprocess.check_output(['git','-C',str(repo),'rev-parse','HEAD'],text=True).strip()
+    original=subprocess.check_output;calls=[]
+    def inspect(command,**kwargs):
+        if command[:3]==['docker','image','inspect']:
+            return json.dumps([{'RepoDigests':[manifest['runtime_image']],'Id':'sha256:'+'b'*64}])
+        return original(command,**kwargs)
+    def run_phase(image,staged,staging,output,leg,request,*args):
+        calls.append((leg,request['phase']))
+        report=phase_report(request,manifest,2.0 if leg=='reference' else 1.0)
+        if request['phase']=='performance':
+            if scenario=='bad_'+leg:
+                report['cases'][0]['samples_ms'][27]=10000.0
+                report.pop('test_cases',None);report=finalize_report(report,manifest,request)
+            if native_policy:
+                native_rows=phase_report(request,manifest,2.0)['cases']
+                report['native_production_comparison']={'schema':'native-production-comparison-v1','schema_version':1,
+                    'status':'ok','score_input':True,'diagnostic_only':False,'baseline_kind':'native_production',
+                    'request':copy.deepcopy(request),'source_hashes':request['source_sha256'],
+                    'source_sha256':next(iter(request['source_sha256'].values())),
+                    'manifest_sha256':trusted.fingerprint(manifest),'runtime_image':image,'challenge_seed':request['challenge_seed'],
+                    'native_source_manifest_sha256':trusted.sha256((staged/'provenance/native.json').read_bytes()),
+                    'cases':[{'case_id':r['case']['case_id'],'native_output_parity':True,
+                        'identical_captured_ABI_and_fresh_numeric_challenge_sequence':True,
+                        'legs':{'candidate_port':copy.deepcopy(r),'native_production':n}}
+                        for r,n in zip(report['cases'],native_rows)]}
+        return report
+    monkeypatch.setattr(subprocess,'check_output',inspect)
+    monkeypatch.setattr(trusted,'select_gpu',lambda render:{'render_device':render})
+    monkeypatch.setattr(trusted,'run_phase',run_phase)
+    output=tmp_path/'quality-result'
+    result=trusted.trusted_retest(repo=repo,commit=commit,task_path='tasks/example',candidate_workspace=candidate,
+        output=output,scratch_dir=tmp_path/'scratch',render_device='unused')
+    assert calls==[(leg,phase) for leg in ['reference','candidate'] for phase in trusted.PHASES]
+    for leg,phase in calls:assert (output/(leg+'_'+phase+'.json')).is_file()
+    if scenario=='stable':assert result['arithmetic_mean_speedup']==2 and result['accepted_gain']
+    else:
+        assert result['arithmetic_mean_speedup'] is None and not result['accepted_gain']
+        assert all(row['speedup'] is None and row['raw_speedup']>0 for row in result['cases'])
+        assert result['status']==('measured' if scenario=='unchanged' else 'rejected_timing_quality')
+    for leg in ['reference','candidate']:
+        report=json.loads((output/(leg+'_performance.json')).read_text())
+        assert all(len(row['samples_ms'])==100 for row in report['cases'])
 
 
 @pytest.mark.parametrize('stale_native_request', [False, True])

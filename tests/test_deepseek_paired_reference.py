@@ -34,7 +34,7 @@ def fixture_manifest():
     return manifest,case
 
 
-def simulate(monkeypatch, *, attack=None, seed=123, provided_out=False):
+def simulate(monkeypatch, *, attack=None, seed=123, provided_out=False, source_hash='a'*64):
     import torch
     events=[];state={'stream':0,'capture':None,'phase':'setup','last_leg':None};stream_ids=[]
     class Stream:
@@ -113,9 +113,9 @@ def simulate(monkeypatch, *, attack=None, seed=123, provided_out=False):
         assert bool((raw_storage(reference_output)==0xAA).all()),'reference not cleared before candidate'
         restore(inputs,truth);inputs['a'].fill_(input_seed)
         return snapshots(inputs)
-    source={'source/kernel.py':'a'*64}
+    source={'source/kernel.py':source_hash}
     identity={'leg':'candidate','source_sha256':source,'gpu_binding':'hip','module':'private_candidate'}
-    ref_identity={**identity,'leg':'reference','module':'private_reference'}
+    ref_identity={**identity,'leg':'reference','module':'private_reference','source_sha256':{'source/kernel.py':'a'*64}}
     request={'schema_version':1,'request_id':'cpu-'+str(seed),'phase':'performance','manifest_sha256':fingerprint(manifest),
              'package_sha256':'c'*64,'source_sha256':source,'challenge_seed':seed}
     row=pair.paired_performance(api,case,manifest,request,inputs,reference_inputs,candidate,reference,truth,
@@ -128,7 +128,7 @@ def simulate(monkeypatch, *, attack=None, seed=123, provided_out=False):
 
 def attach(tmp_path,report,manifest,request,kind='native_production'):
     (tmp_path/'provenance').mkdir(exist_ok=True)
-    provenance={'baseline_kind':kind,'reference_source_sha256':request['source_sha256'],'gpu_binding':'hip',
+    provenance={'baseline_kind':kind,'reference_source_sha256':{'source/kernel.py':'a'*64},'gpu_binding':'hip',
                 'input_signature_fields':{case['case_id']:['fixture','input_seed'] for case in manifest['cases']},
                 'input_receipt_contracts':{case['case_id']:{'kind':'fixed_fixture_v1'} for case in manifest['cases']}}
     path=tmp_path/'provenance/PAIRED-REFERENCE.json';path.write_text(json.dumps(provenance))
@@ -169,7 +169,7 @@ def test_generic_primary_kind_and_unpaired_secondary_suppression(tmp_path,monkey
     report,manifest,request,_,_=simulate(monkeypatch,seed=123)
     policy,provenance,digest=attach(tmp_path,report,manifest,request,kind)
     first=validate_paired_measurements(report,manifest,request,request['source_sha256'],digest,policy,provenance)
-    report2,manifest2,request2,_,_=simulate(monkeypatch,seed=456)
+    report2,manifest2,request2,_,_=simulate(monkeypatch,seed=456,source_hash='b'*64)
     policy2,provenance2,digest2=attach(tmp_path,report2,manifest2,request2,kind)
     second=validate_paired_measurements(report2,manifest2,request2,request2['source_sha256'],digest2,policy2,provenance2)
     before=as_test_cases(first,is_baseline=True);after=as_test_cases(second)
@@ -177,7 +177,9 @@ def test_generic_primary_kind_and_unpaired_secondary_suppression(tmp_path,monkey
     assert summary['native_speedup_ratio']==1.5 and summary['port_to_port_speedup_ratio'] is None
     assert summary['secondary_comparison_status']=='unpaired_workload'
     assert summary['production_kernel_improvement']==(kind=='native_production')
-    assert metric_summary(before,as_test_cases(first))['port_to_port_speedup_ratio']==1.0
+    control=metric_summary(before,as_test_cases(first))
+    assert control['port_to_port_speedup_ratio'] is None and control['raw_port_to_port_speedup_ratio']==1.0
+    assert control['benchmark_quality']['comparison_status']=='unchanged_source_control'
     save_performance_results(before,tmp_path,'baseline.yaml')
     reloaded=load_performance_results(tmp_path,'baseline.yaml')
     assert reloaded[0].metadata['paired_input_schedule_sha256']==before[0].metadata['paired_input_schedule_sha256']

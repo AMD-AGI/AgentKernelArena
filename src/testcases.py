@@ -619,6 +619,27 @@ def calculate_average_speedup(
         )
         return 0.0
 
+    # Direct consumers (including held-out scoring) must not bypass the same
+    # quality/source decision used by the ordinary evaluator. Preserve this
+    # legacy float API's explicit zero for an ineligible comparison.
+    if any(getattr(case, '_performance_cache_loaded', False)
+           or getattr(case, '_benchmark_quality_binding', None) is not None
+           or (case.metadata or {}).get('benchmark_quality_required') is True
+           or (case.metadata or {}).get('baseline_kind') in ('native_production', 'protected_reference')
+           for case in baseline_cases + optimized_cases):
+        try:
+            if all((case.metadata or {}).get('baseline_kind') in ('native_production', 'protected_reference')
+                   for case in baseline_cases + optimized_cases):
+                from .native_baseline import metric_summary
+                accepted = metric_summary(baseline_cases, optimized_cases)['native_speedup_ratio']
+            else:
+                from .benchmark_quality import comparison_quality
+                accepted = comparison_quality(baseline_cases, optimized_cases)['accepted_arithmetic_mean_speedup']
+            return accepted if accepted is not None else 0.0
+        except (ValueError, KeyError, TypeError) as exc:
+            log.warning('Benchmark quality rejected direct case scoring: %s', exc)
+            return 0.0
+
     speedups = []
     for base_case, opt_case in matched:
         if (
@@ -800,7 +821,8 @@ def save_performance_results(
     Save test case results to YAML file.
     
     Saves identifying fields, timing, params, dtype, and canonical ``benchmark_*``
-    metadata. Other task-specific metadata is excluded to keep the file compact.
+    metadata, including complete quality raw arrays and validated work classes.
+    Other task-specific metadata is excluded to keep the file compact.
     
     Args:
         test_cases: List of test case results
@@ -849,10 +871,18 @@ def save_performance_results(
 def load_performance_results(
     workspace: Path,
     filename: str,
-    logger: Optional[logging.Logger] = None
+    logger: Optional[logging.Logger] = None,
+    *,
+    validated_cases: Optional[List[TestCaseResult]] = None,
 ) -> List[TestCaseResult]:
     """
-    Load test case results from YAML file.
+    Load diagnostic data from YAML. Cached quality declarations are not authority.
+
+    Cases loaded without ``validated_cases`` cannot be directly scored. Their
+    cache origin is recorded outside metadata, so deleting cached gate flags
+    does not turn them into fresh legacy measurements. To rebind
+    a cache, supply cases freshly obtained by revalidating the original protected
+    report, manifest and semantic receipts; an exact match is required.
     
     Args:
         workspace: Workspace directory
@@ -875,13 +905,20 @@ def load_performance_results(
         
         test_cases = []
         for case_dict in data.get('test_cases', []):
-            test_cases.append(TestCaseResult(
+            case = TestCaseResult(
                 test_case_id=case_dict.get('test_case_id', 'unknown'),
                 shape=case_dict.get('shape'),
                 execution_time_ms=float(case_dict.get('execution_time_ms', 0.0)),
                 metadata={k: v for k, v in case_dict.items() if k not in ['test_case_id', 'shape', 'execution_time_ms']}
-            ))
+            )
+            # This origin is established by code, never by a cached flag. A
+            # cache cannot opt out of authority checks by deleting metadata.
+            case._performance_cache_loaded = True
+            test_cases.append(case)
         
+        if validated_cases is not None:
+            from .benchmark_quality import restore_quality_context
+            restore_quality_context(test_cases, validated_cases)
         log.info(f"Loaded {len(test_cases)} test case(s) from {input_file}")
         return test_cases
 

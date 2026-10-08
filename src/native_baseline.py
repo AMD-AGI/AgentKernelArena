@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from collections import Counter
+from copy import deepcopy
 import hashlib
 import math
 from pathlib import Path
@@ -9,6 +10,7 @@ from threading import RLock
 
 from .task_contract import canonical, fingerprint, require, strict_json, validate_report
 from .testcases import TestCaseResult
+from .benchmark_quality import case_quality, comparison_quality, attach_case_quality, copy_case_quality
 
 BASELINE_KINDS = {'native_production', 'protected_reference'}
 _INPUT_VALIDATOR_LOCK = RLock()
@@ -188,10 +190,21 @@ def validate_native_measurements(report, manifest, request, source_hashes, nativ
     for leg in ('native_production', 'candidate_port'):
         measured[leg] = validate_report({'schema_version': 1, 'status': 'ok', 'request': request,
                                         'cases': [row['legs'][leg] for row in rows]}, manifest, request)
+    from .quality_measurements import require_fixed_work
+    outer = {row['case']['case_id']: row for row in report['cases']}
+    quality = {}
+    for row in rows:
+        name = row['case_id']; require_fixed_work(outer[name]['case'])
+        quality[name] = case_quality(name, case_ids=[c['case_id'] for c in manifest['cases']],
+            sources=source_hashes, request_id=request['request_id'],
+            manifest_sha256=fingerprint(manifest), kind='native',
+            series={'port': outer[name]['samples_ms'], 'reference': row['legs']['native_production']['samples_ms'],
+                    'candidate': row['legs']['candidate_port']['samples_ms']})
     return {'port': port, 'native': measured['native_production'], 'candidate': measured['candidate_port'],
             'request_id': request['request_id'], 'source_sha256': source_hashes,
             'comparison_challenge_seed': native['challenge_seed'],
-            'manifest_sha256': fingerprint(manifest), 'native_source_manifest_sha256': native_source_manifest_sha256}
+            'manifest_sha256': fingerprint(manifest), 'native_source_manifest_sha256': native_source_manifest_sha256,
+            'benchmark_quality_cases': quality}
 
 
 def load_native_measurements(root, config, *, report=None, request=None):
@@ -314,11 +327,26 @@ def validate_paired_measurements(report, manifest, request, source_hashes, prove
            for contract in receipt_contracts.values()):
         require(task_root is not None, 'A task root is required for full addressing reconstruction')
         _validate_task_input_receipts(task_root, report, manifest, request, provenance, source_hashes)
+    # Class projection occurs only after all independent receipt reconstruction
+    # above has passed, including every mandatory source-pinned CPU hook.
+    from .quality_measurements import validated_work_ids
+    quality = {}
+    for row in rows:
+        name = row['case_id']
+        work_ids = validated_work_ids(ordinary[name]['case'], row['input_schedule'],
+                                      receipt_contracts[name], signature_fields[name])
+        quality[name] = case_quality(name, case_ids=[c['case_id'] for c in manifest['cases']],
+            sources=source_hashes, request_id=request['request_id'],
+            manifest_sha256=fingerprint(manifest), kind='native', work_ids=work_ids,
+            series={'port': ordinary[name]['samples_ms'],
+                    'reference': row['legs']['protected_reference']['samples_ms'],
+                    'candidate': row['legs']['candidate_port']['samples_ms']})
     return {'port': port, 'native': legs['protected_reference'], 'candidate': legs['candidate_port'],
             'request_id': request['request_id'], 'source_sha256': source_hashes,
             'comparison_challenge_seed': seed, 'manifest_sha256': fingerprint(manifest),
             'native_source_manifest_sha256': provenance_sha, 'baseline_kind': policy['kind'],
-            'paired_input_schedules': schedules, 'comparison_protocol_version': 2}
+            'paired_input_schedules': schedules, 'comparison_protocol_version': 2,
+            'benchmark_quality_cases': quality}
 
 
 def as_test_cases(measured, *, is_baseline=False):
@@ -326,7 +354,8 @@ def as_test_cases(measured, *, is_baseline=False):
     for port, native, candidate in zip(measured['port'], measured['native'], measured['candidate']):
         require(port['case_sha256'] == native['case_sha256'] == candidate['case_sha256'],
                 'Native and port case identities differ')
-        result.append(TestCaseResult(test_case_id=port['test_case_id'],
+        proof = measured['benchmark_quality_cases'][port['test_case_id']]
+        case = TestCaseResult(test_case_id=port['test_case_id'],
             execution_time_ms=native['execution_time_ms'] if is_baseline else candidate['execution_time_ms'],
             metadata={'params': port['params'], 'benchmark_method': native['metadata']['benchmark_method'],
                       'baseline_kind': measured.get('baseline_kind', 'native_production'), 'case_sha256': port['case_sha256'],
@@ -338,7 +367,10 @@ def as_test_cases(measured, *, is_baseline=False):
                       'native_manifest_sha256': measured['manifest_sha256'],
                       'native_source_manifest_sha256': measured['native_source_manifest_sha256'],
                       'paired_input_schedule_sha256': measured.get('paired_input_schedules', {}).get(port['test_case_id']),
-                      'comparison_protocol_version': measured.get('comparison_protocol_version', 1)}))
+                      'comparison_protocol_version': measured.get('comparison_protocol_version', 1),
+                      'benchmark_quality_required': True,
+                      'benchmark_quality_case': deepcopy(dict(proof))})
+        result.append(attach_case_quality(case, proof, series='reference' if is_baseline else 'candidate'))
     return result
 
 
@@ -352,7 +384,8 @@ def paired_native_cases(cases):
         timing = metadata.get('native_ms')
         require(type(timing) in (int, float) and math.isfinite(timing) and timing > 0,
                 'Invalid native baseline timing')
-        result.append(TestCaseResult(case.test_case_id, case.shape, timing, dict(metadata)))
+        reference = TestCaseResult(case.test_case_id, case.shape, timing, dict(metadata))
+        result.append(copy_case_quality(reference, case, series='reference'))
     return result
 
 
@@ -397,16 +430,28 @@ def metric_summary(baseline_cases, candidate_cases):
     candidate_proof = candidate_cases[0].metadata
     kind = candidate_proof['baseline_kind']
     all_secondary_paired = all(row['port_to_port_speedup'] is not None for row in rows)
+    quality = comparison_quality(baseline_cases, candidate_cases, raw_ratio=primary)
+    raw_secondary = (math.fsum(row['port_to_port_speedup'] for row in rows) / len(rows)
+                     if all_secondary_paired else None)
+    for row in rows:
+        row['raw_speedup'] = row['speedup']
+        row['raw_port_to_port_speedup'] = row['port_to_port_speedup']
+        if not quality['gain_eligible']:
+            row.update(speedup=None, port_to_port_speedup=None,
+                       production_kernel_improvement=False, protected_reference_improvement=False)
     return {'baseline_kind': kind, 'secondary_baseline_kind': 'frozen_port',
             'native_baseline_execution_time': math.fsum(row['native_ms'] for row in rows) / len(rows),
             'native_candidate_execution_time': math.fsum(row['candidate_ms'] for row in rows) / len(rows),
-            'native_speedup_ratio': primary,
-            'port_to_port_speedup_ratio': (math.fsum(row['port_to_port_speedup'] for row in rows) / len(rows)
-                                          if all_secondary_paired else None),
+            'native_speedup_ratio': quality['accepted_arithmetic_mean_speedup'],
+            'raw_native_speedup_ratio': primary,
+            'port_to_port_speedup_ratio': raw_secondary if quality['gain_eligible'] else None,
+            'raw_port_to_port_speedup_ratio': raw_secondary,
+            'benchmark_quality_required': True, 'benchmark_quality': quality,
+            'gain_eligible': quality['gain_eligible'], 'accepted_gain': quality['accepted_gain'],
             'secondary_comparison_status': 'paired' if all_secondary_paired else 'unpaired_workload',
-            'production_kernel_improvement': kind == 'native_production' and primary > 1,
-            'protected_reference_improvement': primary > 1,
-            'all_cases_faster_than_native': kind == 'native_production' and all(row['production_kernel_improvement'] for row in rows),
+            'production_kernel_improvement': quality['gain_eligible'] and kind == 'native_production' and primary > 1,
+            'protected_reference_improvement': quality['gain_eligible'] and primary > 1,
+            'all_cases_faster_than_native': quality['gain_eligible'] and kind == 'native_production' and all(row['production_kernel_improvement'] for row in rows),
             'regressed_case_ids': [row['test_case_id'] for row in rows if row['regression_vs_reference']],
             'native_baseline_cases': rows,
             'native_scoring_evidence': {

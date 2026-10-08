@@ -331,6 +331,13 @@ def measure_performance(
                 except (OSError, ValueError, KeyError, TypeError) as exc:
                     log.error("Native-production scoring evidence rejected: %s", exc)
                     return []
+            from .quality_measurements import quality_required, load_quality_measurements
+            if quality_required(task_config):
+                try:
+                    return load_quality_measurements(workspace, task_config)
+                except (OSError, ValueError, KeyError, TypeError) as exc:
+                    log.error("Protected timing quality evidence rejected: %s", exc)
+                    return []
             # Try to parse all test cases (will check report files and stdout)
             test_cases = parse_all_test_cases(combined_output, workspace, task_type, logger, is_baseline)
             if test_cases:

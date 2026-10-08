@@ -240,7 +240,9 @@ def test_all_four_real_case_receipts_pass_shared_consumer_and_pair_private_draws
     second, second_request, _ = complete_report(monkeypatch, 725935)
     second_result = load_native_measurements(TASK, CONFIG, report=second, request=second_request)
     summary = metric_summary(as_test_cases(result, is_baseline=True), as_test_cases(second_result))
-    assert summary['native_speedup_ratio'] == pytest.approx(1.5)
+    assert summary['native_speedup_ratio'] is None
+    assert summary['raw_native_speedup_ratio'] == pytest.approx(1.5)
+    assert summary['benchmark_quality']['comparison_status'] == 'unchanged_source_control'
     assert summary['port_to_port_speedup_ratio'] is None and summary['secondary_comparison_status'] == 'unpaired_workload'
 
 

@@ -462,6 +462,8 @@ def general_post_processing(
                 benchmark_method_consistent=result_data.get(
                     'benchmark_method_consistent'
                 ),
+                benchmark_quality_required=result_data.get('benchmark_quality_required') is True,
+                gain_eligible=result_data.get('gain_eligible'),
             )
 
             # Update counters

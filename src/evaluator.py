@@ -17,6 +17,8 @@ from typing import Dict, Any, Optional, List, Tuple, Mapping, TYPE_CHECKING
 from .evaluator_utils import inspect_target_definitions, run_command
 from .jit_rebuild import force_jit_rebuild
 from .performance import measure_performance, measure_baseline
+from .benchmark_quality import comparison_quality
+from .quality_measurements import quality_required
 from .testcases import (
     TestCaseResult,
     analyze_benchmark_method_consistency,
@@ -188,6 +190,8 @@ def evaluate_kernel(
         'tool_evaluation': None,
     }
     from .native_baseline import scoring_policy
+    if quality_required(task_config):
+        results.update(benchmark_quality_required=True, gain_eligible=False, accepted_gain=False)
     if scoring_policy(task_config) is not None:
         results.update(baseline_kind=scoring_policy(task_config)['kind'], secondary_baseline_kind='frozen_port',
                        production_kernel_improvement=False)
@@ -315,6 +319,20 @@ def evaluate_kernel(
             save_performance_results(comparison_baseline_cases, workspace, 'baseline_perf.yaml', logger)
         else:
             comparison_baseline_cases = baseline_cases
+        if quality_required(task_config):
+            try:
+                quality = (native_summary['benchmark_quality'] if native_policy is not None else
+                           comparison_quality(baseline_cases, optimized_cases))
+                results.update(benchmark_quality=quality, gain_eligible=quality['gain_eligible'],
+                               accepted_gain=quality['accepted_gain'],
+                               raw_average_speedup=quality['raw_arithmetic_mean_speedup'])
+            except (ValueError, KeyError, TypeError) as exc:
+                results.update(benchmark_quality={'schema': 'benchmark-quality-v1', 'status': 'reject',
+                    'comparison_status': 'missing_or_invalid_quality_evidence', 'reason': str(exc)},
+                    gain_eligible=False, accepted_gain=False)
+                results['speedup_calculation_error_message'] = 'Benchmark quality rejected: ' + str(exc)
+            if not results['gain_eligible']:
+                results['average_speedup'] = None
         valid_optimized_cases = _valid_perf_cases(optimized_cases)
         valid_baseline_cases = _valid_perf_cases(comparison_baseline_cases)
         results['valid_optimized_cases'] = len(valid_optimized_cases)
@@ -355,7 +373,14 @@ def evaluate_kernel(
                     f"average time: {avg_baseline_time:.4f} ms"
                 )
 
-                if not workload_consistent:
+                if results.get('benchmark_quality_required') and not results.get('gain_eligible'):
+                    results['average_speedup'] = None
+                    quality = results.get('benchmark_quality', {})
+                    if quality.get('status') != 'pass':
+                        results['speedup_calculation_error_message'] = (
+                            results.get('speedup_calculation_error_message') or 'Benchmark quality rejected the complete comparison')
+                    log.warning("No accepted speedup: %s", quality.get('comparison_status', 'quality evidence missing'))
+                elif not workload_consistent:
                     error_msg = (
                         "Cannot calculate speedup because baseline and optimized "
                         "workloads differ or cases do not match completely: "
@@ -403,12 +428,15 @@ def evaluate_kernel(
                     results['speedup_calculation_error_message'] = error_msg
                     log.warning(error_msg)
                 else:
-                    avg_speedup = calculate_average_speedup(
-                        valid_baseline_cases,
-                        valid_optimized_cases,
-                        logger,
-                        require_complete_match=True,
-                    )
+                    if results.get('benchmark_quality_required'):
+                        avg_speedup = results['benchmark_quality']['accepted_arithmetic_mean_speedup']
+                    else:
+                        avg_speedup = calculate_average_speedup(
+                            valid_baseline_cases,
+                            valid_optimized_cases,
+                            logger,
+                            require_complete_match=True,
+                        )
                     if avg_speedup > 0:
                         results['average_speedup'] = avg_speedup
                         log.info(f"Average speedup: {avg_speedup:.2f}x")
@@ -478,7 +506,7 @@ def write_task_result(
     
     # Get results
     optimized_time = evaluation_results.get('best_optimized_execution_time', 0.0)
-    avg_speedup = evaluation_results.get('average_speedup', 0.0)
+    avg_speedup = evaluation_results.get('average_speedup')
     if evaluation_results.get('baseline_kind') in ('native_production', 'protected_reference'):
         avg_baseline_time = evaluation_results.get('native_baseline_execution_time', 0.0)
     speedup_error = evaluation_results.get('speedup_calculation_error_message')
@@ -489,16 +517,18 @@ def write_task_result(
     if not workload_consistent:
         avg_speedup = 0.0
     
-    # Use average speedup if available, otherwise calculate from average times
-    if (
-        avg_speedup == 0.0
-        and not speedup_error
-        and benchmark_method_consistent
-        and workload_consistent
-        and avg_baseline_time > 0
-        and optimized_time > 0
-    ):
-        avg_speedup = avg_baseline_time / optimized_time
+    # Null/zero accepted ratios are authoritative. Raw aggregate times cannot
+    # recover a score rejected by quality, source identity or case matching.
+    quality_required_result = (evaluation_results.get('benchmark_quality_required') is True
+                               or evaluation_results.get('baseline_kind') in ('native_production', 'protected_reference'))
+    config_path = workspace / 'config.yaml'
+    if config_path.is_file():
+        quality_required_result = quality_required_result or quality_required(yaml.safe_load(config_path.read_text()) or {})
+    quality = evaluation_results.get('benchmark_quality', {})
+    eligible = (evaluation_results.get('gain_eligible') is True and quality.get('status') == 'pass'
+                and quality.get('source_changed') is True)
+    if quality_required_result and not eligible:
+        avg_speedup = None
 
     # Surface task-wide method sets for diagnostics, but enforce consistency on
     # matched cases.  One shape may use graph while another falls back to events;
@@ -537,17 +567,24 @@ def write_task_result(
         'optimization_summary': f'Optimized by {agent_name} using centralized evaluator'
     }
     tool_evaluation = evaluation_results.get('tool_evaluation')
+    if quality_required_result:
+        task_result.update(benchmark_quality_required=True, benchmark_quality=quality,
+            gain_eligible=eligible and benchmark_method_consistent and workload_consistent and not bool(speedup_error),
+            accepted_gain=bool(eligible and benchmark_method_consistent and workload_consistent and not speedup_error
+                               and type(avg_speedup) in (int, float) and avg_speedup > 1),
+            raw_speedup_ratio=evaluation_results.get('raw_average_speedup'))
     if evaluation_results.get('baseline_kind') in ('native_production', 'protected_reference'):
         for key in ('baseline_kind', 'secondary_baseline_kind', 'native_speedup_ratio', 'port_to_port_speedup_ratio',
                     'all_cases_faster_than_native', 'regressed_case_ids', 'native_baseline_cases',
                     'native_scoring_evidence', 'gain_scope', 'secondary_comparison_status',
-                    'protected_reference_improvement'):
+                    'protected_reference_improvement', 'raw_native_speedup_ratio', 'raw_port_to_port_speedup_ratio'):
             if key in evaluation_results:
                 task_result[key] = evaluation_results[key]
         task_result['production_kernel_improvement'] = bool(
             task_result['baseline_kind'] == 'native_production'
             and task_result['pass_compilation'] and task_result['pass_correctness']
-            and benchmark_method_consistent and workload_consistent and not speedup_error and avg_speedup > 1)
+            and benchmark_method_consistent and workload_consistent and not speedup_error
+            and type(avg_speedup) in (int, float) and avg_speedup > 1)
     if tool_evaluation is not None:
         task_result['tool_evaluation'] = tool_evaluation
     
@@ -568,6 +605,7 @@ def write_task_result(
                 and baseline_cases
                 and benchmark_method_consistent
                 and not speedup_error
+                and (not quality_required_result or eligible)
             ):
                 plot_file = plot_performance_comparison(workspace, task_name, logger)
                 if plot_file:

@@ -27,7 +27,7 @@ def example(*, source_hash='a' * 64, request_id='fresh', port_ms=4.0, native_ms=
                 'cases': [{'case_id': name, 'calls_per_sample': 1, 'occurrences': count,
                            'tensors': {'A': tensor, 'C': {**tensor, 'role': 'output'}},
                            'scalars': {'K': 4}} for name, count in [('decode', 3), ('prefill', 9)]],
-                'measurement': {'method': 'cuda_graph', 'warmup_iterations': 1, 'benchmark_iterations': 2,
+                'measurement': {'method': 'cuda_graph', 'warmup_iterations': 10, 'benchmark_iterations': 100,
                                 'correctness_seeds': [42, 43], 'negative_controls': ['no_op', 'wrong_output'],
                                 'refresh_inputs': 'each_replay', 'initialize_outputs': 'each_replay',
                                 'validate_outputs': 'each_replay'}}
@@ -35,9 +35,9 @@ def example(*, source_hash='a' * 64, request_id='fresh', port_ms=4.0, native_ms=
                'source_sha256': {'source/kernel.py': source_hash}, 'manifest_sha256': fingerprint(manifest),
                'package_sha256': 'c' * 64, 'challenge_seed': 42}
     def row(case, timing):
-        return {'case': copy.deepcopy(case), 'correct': True, 'samples_ms': [timing, timing],
-                'warmup_iterations': 1, 'fresh_input_resets': 2, 'output_initializations': 2,
-                'oracle_checks': 2, 'benchmark_method': 'cuda_graph'}
+        return {'case': copy.deepcopy(case), 'correct': True, 'samples_ms': [timing] * 100,
+                'warmup_iterations': 10, 'fresh_input_resets': 100, 'output_initializations': 100,
+                'oracle_checks': 100, 'benchmark_method': 'cuda_graph'}
     report = finalize_report({'schema_version': 1, 'status': 'ok', 'request': request,
                               'cases': [row(case, port_ms) for case in manifest['cases']]}, manifest, request)
     report['native_production_comparison'] = {
@@ -49,7 +49,7 @@ def example(*, source_hash='a' * 64, request_id='fresh', port_ms=4.0, native_ms=
         'cases': [{'case_id': case['case_id'], 'native_output_parity': True,
                    'identical_captured_ABI_and_fresh_numeric_challenge_sequence': True,
                    'speedup_vs_native': 999999, 'candidate_faster_than_native': True,
-                   'legs': {'candidate_port': row(case, candidate_ms), 'native_production': row(case, native_ms)}}
+                   'legs': {'candidate_port': row(case, candidate_ms), 'native_production': row(case, native_ms[case['case_id']] if isinstance(native_ms, dict) else native_ms)}}
                   for case in manifest['cases']]}
     return report, manifest, request
 
@@ -76,8 +76,8 @@ def test_twice_faster_port_still_slower_than_production_does_not_earn_a_producti
 
 def test_aggregate_gain_and_individual_regressions_are_both_explicit():
     before = as_test_cases(measured(), is_baseline=True)
-    after = as_test_cases(measured(port_ms=2, candidate_ms=2))
-    after[0].metadata['native_ms'] = 4
+    after = as_test_cases(measured(source_hash='e' * 64, port_ms=2, candidate_ms=2,
+                                  native_ms={'decode': 4, 'prefill': 1}))
     summary = metric_summary(before, after)
     assert summary['native_speedup_ratio'] == 1.25
     assert summary['production_kernel_improvement'] is True
@@ -140,7 +140,7 @@ def test_normal_arena_result_and_saved_series_use_native_primary(tmp_path, monke
                  'build/port_baseline_perf.yaml', 'build/port_optimized_perf.yaml'):
         assert (tmp_path / name).is_file()
     from src.testcases import load_performance_results
-    restored = load_performance_results(tmp_path / 'build', 'initial_native_baseline_perf.yaml')
+    restored = load_performance_results(tmp_path / 'build', 'initial_native_baseline_perf.yaml', validated_cases=before)
     assert metric_summary(restored, after)['port_to_port_speedup_ratio'] == 2
     assert restored[0].metadata['native_comparison_challenge_seed'] == 731
 

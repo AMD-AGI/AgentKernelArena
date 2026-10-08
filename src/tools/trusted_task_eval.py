@@ -24,6 +24,8 @@ import yaml
 if not __package__:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from src.native_baseline import scoring_policy, load_native_measurements, as_test_cases, metric_summary
+from src.benchmark_quality import comparison_quality
+from src.quality_measurements import portable_test_cases
 
 if __package__:
     from ..task_contract import (
@@ -387,7 +389,7 @@ def trusted_retest(*, repo, commit, task_path, candidate_workspace, output, rend
             proof = seed_image_cache(image, cache_root, output / "cache_init.log", timeout=timeout)
             (output / "cache_manifest.json").write_text(canonical(proof))
             cache_source = cache_root / "jit"
-        results, reports, sources, scored_native = {}, {}, {}, {}
+        results, reports, sources, scored_native, scored_portable = {}, {}, {}, {}, {}
         challenge_seed = secrets.randbelow(2**30)
         for leg, task in (("reference", reference), ("candidate", candidate)):
             package = fingerprint(tree_manifest(task))
@@ -419,6 +421,8 @@ def trusted_retest(*, repo, commit, task_path, candidate_workspace, output, rend
                     if contract['scoring_policy'] is not None:
                         evidence = load_native_measurements(task, contract['config'], report=report, request=request)
                         scored_native[leg] = as_test_cases(evidence, is_baseline=leg == 'reference')
+                    else:
+                        scored_portable[leg] = portable_test_cases(report, manifest, request, sources[leg])
         cases = []
         for baseline, optimized in zip(results["reference"], results["candidate"]):
             require(baseline["case_sha256"] == optimized["case_sha256"], "reference/candidate ABI differs")
@@ -448,6 +452,19 @@ def trusted_retest(*, repo, commit, task_path, candidate_workspace, output, rend
             result['arithmetic_mean_speedup'] = summary['native_speedup_ratio']
             result['cases'] = [{**row, 'reference_ms': row['native_ms']}
                                for row in summary['native_baseline_cases']]
+            quality = summary['benchmark_quality']
+        else:
+            quality = comparison_quality(scored_portable['reference'], scored_portable['candidate'])
+            for row in result['cases']:
+                row['raw_speedup'] = row['speedup']
+                if not quality['gain_eligible']:
+                    row['speedup'] = None
+            result.update(benchmark_quality_required=True, benchmark_quality=quality,
+                          gain_eligible=quality['gain_eligible'], accepted_gain=quality['accepted_gain'])
+        result['raw_arithmetic_mean_speedup'] = quality['raw_arithmetic_mean_speedup']
+        result['arithmetic_mean_speedup'] = quality['accepted_arithmetic_mean_speedup']
+        if quality['status'] != 'pass':
+            result['status'] = 'rejected_timing_quality'
         if fixture_receipt is not None:
             result["fixtures"] = fixture_receipt
         (output / "trusted_measurement.json").write_text(json.dumps(result, indent=2, allow_nan=False) + "\n")
@@ -509,6 +526,8 @@ def main():
                             render_device=args.render_device, scratch_dir=args.scratch_dir, timeout=args.timeout, **fixtures)
     print(json.dumps({"measurement": str(Path(args.output) / "trusted_measurement.json"),
                       "arithmetic_mean_speedup": result["arithmetic_mean_speedup"]}))
+    if result['status'] == 'rejected_timing_quality':
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":

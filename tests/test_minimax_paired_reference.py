@@ -155,7 +155,8 @@ def test_exact_shared_consumer_accepts_producer_and_suppresses_unpaired_secondar
     left=c.as_test_cases(validate(a),is_baseline=True)
     right=c.as_test_cases(validate(b),is_baseline=False)
     metric=c.metric_summary(left,right)
-    assert metric['native_speedup_ratio']==1.5
+    assert metric['native_speedup_ratio'] is None and metric['raw_native_speedup_ratio']==1.5
+    assert metric['benchmark_quality']['comparison_status']=='unchanged_source_control'
     assert metric['baseline_kind']=='protected_reference'
     assert metric['port_to_port_speedup_ratio'] is None
     assert metric['secondary_comparison_status']=='unpaired_workload'
