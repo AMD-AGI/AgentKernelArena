@@ -45,8 +45,9 @@ routing/dynamic allocation; it never changes because of a candidate failure.
 
 Correctness uses private pristine inputs and checks exact shape, dtype, device,
 finiteness and the original all-element numerical rule. All input tensors, including
-quantization/routing metadata, are read-only. Performance retains and validates the
-last actual event-measured output, then checks the same callable with changed
+quantization/routing metadata, are read-only. Performance checks every actual
+event-measured output and records the event timing method, fallback reason and
+measured sample count in the action metadata, then checks the same callable with changed
 activations and poisoned output. References and input checks stay outside timing;
 inputs are restored in a finally block.
 
@@ -54,3 +55,6 @@ Correctness-only manifest controls: optional_weights, unweighted, invalid_expert
 They include repeated routes, absent/invalid experts, optional routing weights,
 partial matrix dimensions, and deterministic basis activations. Invalid expert
 assignments produce zero rows. Missing routing weights mean unit weights.
+
+An additional unscored topk=1 control uses M=3, K=7, E=2 and N=5,
+exercising partial K/N tiles independently of the original five scored cases.

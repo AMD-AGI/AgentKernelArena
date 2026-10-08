@@ -15,9 +15,21 @@ The adapter emits `arena-eval-v1`; Arena owns final score/validation reports.
 `workloads.json` retains 12 original collected cases, including 6 performance cases.
 Collection is checked against this independent manifest. Original correctness
 functions run unchanged. Performance inputs additionally run the task-local
-oracle in `_arena_reference.py`, before timing and against observed timed output.
-Seeds, case parameters, original assertions/tolerances, launch parameters,
-prepare/reset callbacks, warmups and sample counts are unchanged.
+oracle in `_arena_reference.py`, before timing and against every reported sample's
+observed output. Unscored controls exercise independent Q/K/V strides, a
+nondefault scale, widths 16/32/128, multiple batches and heads, and a partial
+sequence tile.
+The controls check `O`, `L`, and `m` on every accepted width and stride case;
+they use the same FP32 side-output oracle and bounds as the scored cases.
+The observed kernel-launch arguments expose the actual FP32 online-softmax `L`
+and `m` outputs. Each reported sample checks `O`, `L`, `m` and read-only Q/K/V;
+the bound changed-input replay poisons all three outputs first. The `L`/`m`
+oracle uses a separate FP32 causal QK matrix and 0.01 absolute/relative bound
+for FP32 reduction and matmul rounding. A graph sample contains one invocation
+so no intermediate side buffer is hidden; this changes graph batching and makes
+older timing numbers not directly comparable. Seeds, six scored case parameters,
+original O assertions/tolerances, scored launch geometry, prepare/reset callbacks,
+10 warmups and 100 reported samples are unchanged.
 
 Arena times the same Triton path in its independently frozen baseline workspace
 and the edited candidate workspace. The old benchmark helper's optional PyTorch
@@ -105,7 +117,7 @@ def flash_fwd_kernel(
         Z (int): Batch size.
         H (int): Number of attention heads.
         N_CTX (int): Sequence length (context length). Assumed to be the same for Q, K, and V for simplicity in this kernel's structure, particularly for causal masking and L, M storage.
-        D0 (int): This parameter represents the sequence length dimension (N_CTX) for a single head's data matrix. It is used in `tl.make_block_ptr` for the `shape` argument's first dimension when viewing a head's Q, K, or V data. It should be equal to N_CTX.
+        D0 (int): Retained wrapper argument (`Z * H * N_CTX`); batch/head bases and the per-head `N_CTX` bounds determine the block pointers.
         BLOCK_M (tl.constexpr): The size of the block along the query sequence length dimension (M). Queries are processed in blocks of this size.
         BLOCK_DMODEL (tl.constexpr): The head dimension size (D_HEAD). The kernel processes the full head dimension.
         BLOCK_N (tl.constexpr): The size of the block along the key/value sequence length dimension (N). Keys and values are loaded and processed in blocks of this size.

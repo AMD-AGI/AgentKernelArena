@@ -110,7 +110,18 @@ def checked_benchmark(harness, benchmark, fn, **options):
     setattr(module, SYMBOL, collect)
     try:
         timed = harness._TimedRun()
+        checked_samples = [0]
+        sample_dtype = inputs[0].dtype
+        def check_sample(output):
+            check_output(output, expected, sample_dtype)
+            checked_samples[0] += 1
+        timed.after_sample = check_sample
+        # An eager event sample has one kernel call and one checked output.
+        options = {**options, 'use_cuda_graph': False,
+                   'fallback_reason': 'validate_each_kernel_invocation'}
         ms, metadata = benchmark(measured, timed_run=timed, **options)
+        if not timed.bound or checked_samples[0] != options['repetition']:
+            raise AssertionError('Reported sample outputs were not all checked')
         unchanged(inputs, pristine)
         check_output(timed.outputs, expected, inputs[0].dtype)
         inputs[0].mul_(-.5)
@@ -124,7 +135,8 @@ def checked_benchmark(harness, benchmark, fn, **options):
         unchanged(inputs, replay_inputs)
         check_output(replayed, replay_expected, inputs[0].dtype)
         return ms, {**metadata, 'timed_output_checked': True,
-                    'perturbed_input_replay_checked': True, 'source_buffers_unchanged': True}
+                    'perturbed_input_replay_checked': True, 'source_buffers_unchanged': True,
+                    'measured_samples_checked': checked_samples[0], }
     finally:
         setattr(module, SYMBOL, original)
         for value, saved in zip(inputs, pristine):

@@ -170,6 +170,21 @@ def _tensor_bytes(value):
     return value.detach().contiguous().reshape(-1).view(torch.uint8)
 
 
+def check_sample_outputs(outputs, expected):
+    """Compare reported outputs without inspecting or changing caller inputs."""
+    import torch
+    if not isinstance(outputs, (tuple, list)) or len(outputs) != len(expected):
+        raise AssertionError('Attention omitted a declared output')
+    for index, (actual, wanted) in enumerate(zip(outputs, expected)):
+        if not isinstance(actual, torch.Tensor) or (actual.shape != wanted.shape or
+                actual.dtype != wanted.dtype or actual.device != wanted.device):
+            raise AssertionError(f'Attention output {index} shape/dtype/device mismatch')
+        for previous in outputs[:index]:
+            if torch._C._overlaps(actual, previous):
+                raise AssertionError('Distinct attention outputs share storage')
+        torch.testing.assert_close(actual, wanted, atol=0.01, rtol=0.01, equal_nan=False)
+
+
 class CallPlan:
     def __init__(self, harness, args, kwargs):
         import torch
@@ -299,7 +314,15 @@ def checked_benchmark(harness, benchmark, fn, **options):
     setattr(module, SYMBOL, collect)
     try:
         timed = harness._TimedRun()
+        checked_samples = [0]
+        sample_expected = plan.expected
+        def check_sample(output):
+            check_sample_outputs(output, sample_expected)
+            checked_samples[0] += 1
+        timed.after_sample = check_sample
         ms, metadata = benchmark(measured, timed_run=timed, **options)
+        if not timed.bound or checked_samples[0] != options['repetition']:
+            raise AssertionError('Reported sample outputs were not all checked')
         plan.unchanged()
         plan.check(timed.outputs)
         replay_expected = plan.perturb()
@@ -309,7 +332,8 @@ def checked_benchmark(harness, benchmark, fn, **options):
         plan.check(replayed, replay_expected)
         return ms, {**metadata, 'timed_output_checked': True,
                     'perturbed_input_replay_checked': True, 'source_buffers_unchanged': True,
-                    'triton_wrapper_dispatch_checked': True}
+                    'triton_wrapper_dispatch_checked': True,
+                    'measured_samples_checked': checked_samples[0], }
     finally:
         setattr(module, SYMBOL, original)
         plan.restore(originals)

@@ -23,6 +23,10 @@ All **5 cases** in `workload.json` are mandatory. The manifest was enumerated
 from the unchanged module `get_inputs()`; it is not inferred from candidate output.
 The original correctness tolerance and RNG schedule remain in
 `eval_tools/correctness_check.py` (model seed 0; comparison seed 1337 + case index).
+At each declared input geometry, an unscored correctness control changes each
+of the four model parameter tensors in turn and checks the selected forward
+against the same changed PyTorch module.
+It restores the original aligned state before the action ends.
 The performance path retains the original `eval_tools/cal_kernel_perf.py` case
 iteration, model state alignment, warmup 10, repetitions 100, input restoration
 where supplied, and canonical graph/event benchmark helpers. The selected timing

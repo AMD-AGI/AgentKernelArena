@@ -24,6 +24,12 @@ DEFERRED_TIMING_TASKS = {
     'gemm_a16w16_nt_n6144_k3072',
     'gemm_a16w16_nt_n16384_k2048',
 }
+# These two GEMM tasks retain the same scoring workload but also keep the
+# original device of each timed output when copying values for oracle checks.
+DEVICE_PROVENANCE_TASKS = {
+    'gemm_a16w16_nt_n6144_k1536',
+    'gemm_a16w16_nt_n7168_k512',
+}
 ROTATING_TASKS = [t for t in TASKS if t.name not in DEFERRED_TIMING_TASKS]
 SPLIT_TEMPLATE_FILES = {'README.md', 'scripts/task_inputs.py', 'scripts/task_measure.py'}
 VAR_AXIS = {'gemm': 'm', 'moe': 'num_tokens'}
@@ -79,6 +85,8 @@ def test_family_copies_are_identical(op_type, relative):
     groups = {}
     for task, content in zip(tasks, contents):
         cohort = task.name in DEFERRED_TIMING_TASKS if relative in SPLIT_TEMPLATE_FILES else False
+        if relative == 'scripts/task_measure.py':
+            cohort = (cohort, task.name in DEVICE_PROVENANCE_TASKS)
         groups.setdefault(cohort, set()).add(content)
     assert all(len(values) == 1 for values in groups.values())
 

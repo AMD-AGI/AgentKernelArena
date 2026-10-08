@@ -28,6 +28,7 @@ import time
 from pathlib import Path
 from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
 from scripts.replay_checks import require_tensor_contract, require_unchanged, verify_timed_run
+from scripts.sample_controls import MeasuredInputStream
 
 from task_runtime import candidate_relative_path
 KERNEL_FILE = candidate_relative_path()
@@ -416,42 +417,54 @@ def arena_benchmark(warmup=10, iters=100, verbose=True):
     for idx, shape in enumerate(SHAPES):
         b, m, n, k = shape["b"], shape["m"], shape["n"], shape["k"]
         x, w = _make_inputs(b, m, n, k)
-        originals = (x.clone(), w.clone())
-        expected = _checked_batched_output(mmod.Model()(x, w), x, w)
-        require_unchanged((x, w), originals)
-
-        _retry(lambda: device_op(x, w), what="benchmark warmup")
-        torch.cuda.synchronize()
-        for _ in range(warmup):
-            device_op(x, w)
-        torch.cuda.synchronize()
-
-        # Pair both roles with the provided baseline's fixed Event policy.
-        # A candidate's capture support must not change the scoring method.
-        use_graph = False
-        event_reason = "capture_unsafe_aiter_hipblaslt"
-        timed = TimedRun()
-        kernel_ms, kernel_bench_meta = benchmark_cuda_graph_or_events(
-            lambda: device_op(x, w),
-            warmup=0,
-            repetition=iters,
-            use_cuda_graph=use_graph,
-            fallback_reason=event_reason,
-            timed_run=timed,
+        stream = MeasuredInputStream(
+            x, w, seed=SEED, case_index=idx, samples=iters,
+            output_shape=(b, m, n), output_dtype=torch.bfloat16,
         )
-        kernel_bench_meta.update(verify_timed_run(
-            timed, inputs=(x, w), originals=originals, expected=expected,
-            perturb=lambda: x.neg_(), reference=lambda: mmod.Model()(x, w),
-            compare=_compare_batched_output,
-        ))
+        model = mmod.Model().to(x.device).eval()
+        def reference():
+            with torch.no_grad():
+                return _checked_batched_output(model(x, w), x, w)
+        try:
+            expected = reference()
+            require_unchanged((x, w), (stream.original_left, stream.original_right))
+            _retry(lambda: device_op(x, w), what="benchmark warmup")
+            require_unchanged((x, w), (stream.original_left, stream.original_right))
+            torch.cuda.synchronize()
+            for _ in range(warmup):
+                device_op(x, w)
+                require_unchanged((x, w), (stream.original_left, stream.original_right))
+            torch.cuda.synchronize()
 
-        ref_ms, ref_bench_meta = benchmark_cuda_graph_or_events(
-            lambda: torch.bmm(x.float(), w.float().transpose(1, 2)),
-            warmup=0,
-            repetition=iters,
-            use_cuda_graph=use_graph,
-            fallback_reason=event_reason,
-        )
+            # Both roles retain the declared 10 warmups and 100 Event samples.
+            use_graph = False
+            event_reason = "capture_unsafe_aiter_hipblaslt"
+            timed = TimedRun()
+            timed.after_sample = stream.observe
+            kernel_ms, kernel_bench_meta = benchmark_cuda_graph_or_events(
+                lambda: device_op(x, w), warmup=0, repetition=iters,
+                use_cuda_graph=use_graph, fallback_reason=event_reason,
+                timed_run=timed, prepare_fn=stream.prepare,
+            )
+            stream.validate(reference, _compare_batched_output)
+            # The collector's exact bound callable must also honor changed
+            # operands after its last measured output has been poisoned.
+            kernel_bench_meta.update(verify_timed_run(
+                timed, inputs=(x, w), originals=(x.clone(), w.clone()),
+                expected=reference(), perturb=lambda: x.neg_(),
+                reference=reference, compare=_compare_batched_output,
+            ))
+            kernel_bench_meta["measured_sample_outputs_checked"] = iters
+            kernel_bench_meta["measured_input_stream"] = "original_then_seeded_bf16"
+
+            ref_ms, ref_bench_meta = benchmark_cuda_graph_or_events(
+                lambda: torch.bmm(x.float(), w.float().transpose(1, 2)),
+                warmup=0, repetition=iters, use_cuda_graph=use_graph,
+                fallback_reason=event_reason, prepare_fn=stream.prepare_reference,
+            )
+        finally:
+            x.copy_(stream.original_left)
+            w.copy_(stream.original_right)
 
         methods_match = kernel_bench_meta["benchmark_method"] == ref_bench_meta["benchmark_method"]
         speedup = (

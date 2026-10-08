@@ -151,6 +151,46 @@ def validate_task(args, rows):
     return {"candidate_state": actual_state, "case_count": len(rows)}
 
 
+def check_sigmoid_controls(module, functional, hip_fn, rtol, atol, device="cuda"):
+    """Check unscored edge cases against an independent stable sigmoid formula."""
+    import torch
+    import correctness_check as checks
+    if (module.a, module.max) != (functional.a, functional.max):
+        raise ValueError("Reference and functional sigmoid parameters differ")
+    controls = (
+        ("scalar", torch.tensor(-2.5, device=device)),
+        ("empty", torch.empty((0, 7), device=device)),
+        ("extreme", torch.tensor([-80., -20., -1., 0., 1., 20., 80.], device=device)),
+    )
+    original = (module.a, module.max, functional.a, functional.max)
+    checked = []
+    variants = (("default", 1, 10), ("half", .5, 10), ("inverse", -1, 7),
+                ("steep", 2, 3), ("shallow", .25, 13))
+    try:
+        for label, a, maximum in variants:
+            module.a = functional.a = a
+            module.max = functional.max = maximum
+            for name, value in controls:
+                scaled = value.double() * a
+                positive = 1.0 / (1.0 + torch.exp(-scaled))
+                negative_exp = torch.exp(scaled)
+                negative = negative_exp / (1.0 + negative_exp)
+                expected = (torch.where(scaled >= 0, positive, negative) * maximum).to(value.dtype)
+                actuals = (module(value.clone()),
+                           functional(value.clone()) if hip_fn is None else
+                           functional(value.clone(), fn=hip_fn))
+                for actual in actuals:
+                    output_contract(expected, actual)
+                    if not checks._compare_results(expected, actual, rtol=rtol, atol=atol):
+                        raise ValueError(f"{label}/{name} sigmoid control disagrees with the mathematical reference")
+                if (module.a, module.max, functional.a, functional.max) != (a, maximum, a, maximum):
+                    raise ValueError('Sigmoid control changed model scalar state')
+                checked.append(name if label == 'default' else f'{label}_{name}')
+    finally:
+        module.a, module.max, functional.a, functional.max = original
+    return checked
+
+
 def correctness(args, role, rows):
     import torch
     import correctness_check as checks
@@ -168,9 +208,13 @@ def correctness(args, role, rows):
         check_case_identity(rows[index], inputs)
         inputs = list(inputs) if isinstance(inputs, (tuple, list)) else [inputs]
         reference_inputs = [value.to("cuda") if isinstance(value, torch.Tensor) else value for value in inputs]
+        from case_controls import assert_declared_control
+        assert_declared_control(module, reference_inputs)
+        assert_declared_control(functional, reference_inputs)
         torch.manual_seed(1337 + index)
         torch.cuda.manual_seed_all(1337 + index)
         expected = module(*copy.deepcopy(reference_inputs))
+        assert_declared_control(module, reference_inputs)
         torch.manual_seed(1337 + index)
         torch.cuda.manual_seed_all(1337 + index)
         # A provided PyTorch baseline is checked against the independently written
@@ -178,6 +222,7 @@ def correctness(args, role, rows):
         actual = (functional(*copy.deepcopy(reference_inputs)) if hip_fn is None else
                   functional(*copy.deepcopy(reference_inputs), fn=hip_fn))
         torch.cuda.synchronize()
+        assert_declared_control(functional, reference_inputs)
         output_contract(expected, actual)
         passed = checks._compare_results(expected, actual, rtol=rtol, atol=atol)
         row = {**rows[index], "status": "PASS" if passed else "FAIL", "metrics": {"rtol": rtol, "atol": atol}}
@@ -186,6 +231,9 @@ def correctness(args, role, rows):
         result.append(row)
     if len(result) != len(rows):
         raise ValueError("Correctness omitted declared cases")
+    if all(row["status"] == "PASS" for row in result):
+        controls = check_sigmoid_controls(module, functional, hip_fn, rtol, atol)
+        result[0]["metrics"]["unscored_math_controls"] = controls
     return result
 
 

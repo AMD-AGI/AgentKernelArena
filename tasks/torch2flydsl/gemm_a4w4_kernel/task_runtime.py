@@ -168,6 +168,16 @@ def require_result_rows(records, expected, mapping):
         # Shape/params in raw legacy rows omit semantic fields in some tasks;
         # the independent protected manifest is authoritative for identity.
         row["metadata"] = {k:v for k,v in raw.items() if k not in {"test_case_id", "shape", "params", "dtype", "execution_time_ms", "benchmark_method"}}
+        # Preserve the raw benchmark fields and bind the same measured values
+        # under the validator's device-timing evidence key.
+        row["metadata"]["device_timing"] = {
+            key: copy.deepcopy(raw[key]) for key in (
+                "benchmark_method", "benchmark_target_ms", "benchmark_samples",
+                "benchmark_max_repeats", "benchmark_warmup",
+                "benchmark_effective_repeats", "benchmark_fallback_reason",
+                "benchmark_timed_run_kind",
+            ) if key in raw
+        }
         result.append(row)
     return result
 

@@ -40,6 +40,14 @@ sum cannot substitute for correct voxel/channel or point/feature contents.
 The protected reference and initial native kernel select contained input points
 in input-index order, then repeat cyclically when needed; output order is part
 of this contract, including coordinate/feature association and empty-box zeros.
+Boxes use `(cx, cy, cz, dx, dy, dz, heading)` with `cz` at the bottom. After
+rotating a point by `-heading` around the box center, points exactly on either
+x or y face are excluded (`-dx/2 < local_x < dx/2` and
+`-dy/2 < local_y < dy/2`). Both vertical endpoints are included
+(`cz <= z <= cz + dz`). Correctness-only controls compare the native output
+against fixed expected membership and the CPU reference for all four horizontal
+faces, both vertical endpoints, rotated interior/exterior points, empty boxes,
+and repeated samples. The five measured shapes are unchanged.
 
 The baseline's declared timing method remains fixed for both roles. If edited
 native source fails the current-stream/capture-safety check required by that

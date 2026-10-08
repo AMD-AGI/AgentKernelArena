@@ -4,7 +4,10 @@ candidate:
   language: triton
   initial_state: implemented
   editable:
-  - source/triton_swiglustep_and_mul.py
+  - path: source/triton_swiglustep_and_mul.py
+    scope: symbols
+    symbols: [_swiglustep_and_mul_kernel]
+    allow_new_helpers: true
   entrypoints:
   - file: source/triton_swiglustep_and_mul.py
     kind: function

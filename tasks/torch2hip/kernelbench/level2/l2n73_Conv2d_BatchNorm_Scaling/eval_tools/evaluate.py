@@ -123,6 +123,43 @@ def check_case_identity(row, inputs):
         raise ValueError(f"Input generator no longer matches manifest: {row['test_case_id']}")
 
 
+def check_nonidentity_batchnorm(module, functional, hip_fn, inputs, original_expected,
+                                compare, rtol, atol):
+    """Check BN dependence at this scored case's geometry, outside timing."""
+    import torch
+    original_module = {key: value.detach().clone() for key, value in module.state_dict().items()}
+    original_functional = {key: value.detach().clone() for key, value in functional.state_dict().items()}
+    channels = module.bn.num_features
+    try:
+        with torch.no_grad():
+            for model in (module, functional):
+                bn = model.bn
+                bn.weight.copy_(torch.linspace(0.5, 1.5, channels, device=bn.weight.device, dtype=bn.weight.dtype))
+                bn.bias.copy_(torch.linspace(-0.75, 0.75, channels, device=bn.bias.device, dtype=bn.bias.dtype))
+                bn.running_mean.copy_(torch.linspace(-0.5, 0.5, channels, device=bn.running_mean.device,
+                                                     dtype=bn.running_mean.dtype))
+                bn.running_var.copy_(torch.linspace(0.5, 1.5, channels, device=bn.running_var.device,
+                                                    dtype=bn.running_var.dtype))
+        expected = module(*copy.deepcopy(inputs))
+        if compare(original_expected, expected, rtol=rtol, atol=atol):
+            raise ValueError("Nonidentity BatchNorm control did not change the reference")
+        actual = (functional(*copy.deepcopy(inputs)) if hip_fn is None else
+                  functional(*copy.deepcopy(inputs), fn=hip_fn))
+        output_contract(expected, actual)
+        if not compare(expected, actual, rtol=rtol, atol=atol):
+            raise ValueError("Selected forward ignored or mishandled nonidentity BatchNorm")
+    finally:
+        module.load_state_dict(original_module)
+        functional.load_state_dict(original_functional)
+
+
+def require_graph_method(case, method):
+    if method != "cuda_graph" or any(case.get(key) != "cuda_graph"
+                                     for key in ("benchmark_method", "reference_benchmark_method")
+                                     if key in case):
+        raise RuntimeError("Benchmark changed the declared graph timing method")
+
+
 def validate_task(args, rows):
     import torch
     module = load_module(local_path(args.module), "arena_reference")
@@ -184,6 +221,9 @@ def correctness(args, role, rows):
         if not passed:
             row["failure_kind"] = "numerical_mismatch"
         result.append(row)
+        if passed:
+            check_nonidentity_batchnorm(module, functional, hip_fn, reference_inputs,
+                                        expected, checks._compare_results, rtol, atol)
     if len(result) != len(rows):
         raise ValueError("Correctness omitted declared cases")
     return result
@@ -262,6 +302,7 @@ def performance(args, role, rows):
             raise RuntimeError("Benchmark returned invalid device timing")
         if method not in ("cuda_graph", "cuda_event_fallback"):
             raise RuntimeError("Benchmark did not establish device timing method")
+        require_graph_method(case, method)
         result.append({**rows[index], "status": "PASS", "execution_time_ms": elapsed,
                        "benchmark_method": method, "metadata": {"original_benchmark": case}})
     return result

@@ -8,7 +8,7 @@ Optimize the Triton expand kernel that broadcasts a [batch_size] tensor to [num_
 
 Constraints:
 - Must maintain the same function signature for `expand_batch_to_tokens`
-- Output must match reference within atol=1e-2, rtol=1e-2 for float outputs or exactly for integer outputs
+- Output must exactly match the reference for every dtype; expansion and replacement copy values without arithmetic
 
 
 ## Evaluation contract
@@ -36,7 +36,19 @@ input dtype and device are required, with a reference computed from pristine
 source/count buffers before candidate invocation.
 
 The original full public wrapper, seeds, 10 warmups and 100 samples remain the
-performance workload. Its actual captured output is checked, then poisoned
-and replayed with changed values and one redistributed token at the same total
+performance workload. Every measured output is checked after its device-event sample. The final
+output is then poisoned and the same public invocation is rerun with changed values and one redistributed token at the same total
 size. Both input buffers must remain unchanged by the candidate and are restored
 even on replay failure. Added reference and replay checks are outside timing.
+
+Unscored dtype controls cover float16, bfloat16, float32, float64, int8,
+int16, int32, int64, uint8 and bool with both int32 and int64 cumulative counts.
+The bool controls check mixed-value expansion and value replacement separately.
+All outputs require exact equality, including fractional values and int64 values
+beyond the int32 range.
+
+Additional unscored controls pass legal noncontiguous 1-D source views (integer,
+floating and bool) and cumulative-count views (int32 and int64) separately.
+The kernel uses unit-stride pointer offsets, so the public wrapper materializes
+only noncontiguous inputs before launch. The five scored cases have contiguous
+inputs and retain their original allocation and launch path.

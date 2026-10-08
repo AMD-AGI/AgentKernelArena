@@ -66,7 +66,7 @@ def cpu_roiaware_pool3d(rois, pts, pts_feature, out_size, mode='max'):
             local_z = pz
 
             # Check if point is inside the box
-            if (abs(local_x) > dx / 2 or abs(local_y) > dy / 2
+            if (abs(local_x) >= dx / 2 or abs(local_y) >= dy / 2
                     or local_z < 0 or local_z > dz):
                 continue
 
@@ -81,7 +81,11 @@ def cpu_roiaware_pool3d(rois, pts, pts_feature, out_size, mode='max'):
             vz = min(max(vz, 0), out_z - 1)
 
             if mode == 'max':
-                pooled[n, vx, vy, vz] = torch.max(pooled[n, vx, vy, vz], pts_feature[p])
+                if counts[n, vx, vy, vz] == 0:
+                    pooled[n, vx, vy, vz] = pts_feature[p]
+                else:
+                    pooled[n, vx, vy, vz] = torch.max(pooled[n, vx, vy, vz], pts_feature[p])
+                counts[n, vx, vy, vz] += 1
             else:  # avg - accumulate, we'll divide later
                 pooled[n, vx, vy, vz] += pts_feature[p]
                 counts[n, vx, vy, vz] += 1
@@ -148,9 +152,10 @@ def run_correctness():
                                f"out={out_size}): sum mismatch gpu={gpu_sum.item():.4f} "
                                f"cpu={cpu_sum.item():.4f}")
 
-        from reference_checks import full_output
+        from reference_checks import full_output, strict_max_output
         try:
             full_output(gpu_out_max, cpu_out_max, gpu=True)
+            strict_max_output(gpu_out_max, cpu_out_max, gpu=True)
         except (ValueError, AssertionError) as exc:
             return False, f"Max pool shape {i+1}: full output mismatch: {exc}"
 
@@ -228,9 +233,33 @@ def run_performance():
 
         # Perf1: max pooling
         expected_max = cpu_roiaware_pool3d(rois.cpu(), pts.cpu(), pts_feature.cpu(), out_size, 'max')
+
+        def changed_reference(mode, expected):
+            changed = cpu_roiaware_pool3d(
+                rois.cpu(), pts.cpu(), pts_feature.cpu(), out_size, mode)
+            if torch.equal(changed, expected):
+                raise ValueError('Changed input did not alter the pooling reference')
+            return lambda actual: check_timed_output(actual, changed, mode)
+
+        def change_rois_max():
+            with torch.no_grad():
+                rois[..., 0].add_(1000)
+            return changed_reference('max', expected_max)
+
+        def change_pts_max():
+            with torch.no_grad():
+                pts[..., 0].add_(1000)
+            return changed_reference('max', expected_max)
+
+        def change_max_input():
+            with torch.no_grad():
+                pts_feature.add_(3)
+            return changed_reference('max', expected_max)
+
         ms_max, meta_max = measure(
             benchmark_cuda_graph_or_events, lambda: run_pool(0), (rois, pts, pts_feature),
             lambda actual: check_timed_output(actual, expected_max, 'max'),
+            (change_rois_max, change_pts_max, change_max_input),
             warmup=10, repetition=100,
             use_cuda_graph=HIP_GRAPH_ENABLED,
             fallback_reason=HIP_GRAPH_FALLBACK_REASON,
@@ -238,9 +267,26 @@ def run_performance():
         )
         # Perf2: avg pooling
         expected_avg = cpu_roiaware_pool3d(rois.cpu(), pts.cpu(), pts_feature.cpu(), out_size, 'avg')
+
+        def change_rois_avg():
+            with torch.no_grad():
+                rois[..., 0].add_(1000)
+            return changed_reference('avg', expected_avg)
+
+        def change_pts_avg():
+            with torch.no_grad():
+                pts[..., 0].add_(1000)
+            return changed_reference('avg', expected_avg)
+
+        def change_avg_input():
+            with torch.no_grad():
+                pts_feature.add_(3)
+            return changed_reference('avg', expected_avg)
+
         ms_avg, meta_avg = measure(
             benchmark_cuda_graph_or_events, lambda: run_pool(1), (rois, pts, pts_feature),
             lambda actual: check_timed_output(actual, expected_avg, 'avg'),
+            (change_rois_avg, change_pts_avg, change_avg_input),
             warmup=10, repetition=100,
             use_cuda_graph=HIP_GRAPH_ENABLED,
             fallback_reason=HIP_GRAPH_FALLBACK_REASON,

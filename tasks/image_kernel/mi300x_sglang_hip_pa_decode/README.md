@@ -20,6 +20,18 @@ This runner:
   - correctness: runs the HIP op vs a torch reference (assert close)
   - performance: benchmarks the HIP op and writes build/performance_report.json
 
+## Device scope
+
+The `mi300x_` directory prefix is a historical task identifier, not a GPU
+selection rule or a claim that a timing was measured on MI300X. The run
+configuration selects the physical GPU; this task's `config.yaml` declares no
+architecture restriction. A validation result applies only to the source,
+immutable runtime image, GPU model and architecture recorded by that run.
+In particular, MI355X/gfx950 measurements do not establish MI300X/gfx942
+performance or compatibility. A separate matching-device run is required for
+any such claim. Keep the original case identities and workload when comparing
+baseline and candidate on the selected device.
+
 ## Arena v2 contract
 
 The candidate is the existing implementation in the declared image sources.
@@ -75,3 +87,12 @@ output with NaNs, replays that invocation, and compares with a freshly computed
 reference using the unchanged ordinary-correctness tolerance. This adds no work
 to the measured region and preserves the original warmups and sample counts.
 An unobservable event fallback cannot provide this evidence and fails explicitly.
+
+Each of the 100 reported graph samples now contains one complete paged-attention
+call. Before its start event, the runner invalidates the reused output and
+scratch buffers; after its end event, it checks the actual output against the
+same independent reference and checks that all input buffers stayed read-only.
+The changed-query bound replay remains an additional check, with input values
+restored on failure. This changes graph batching from the historical timing
+path, so historical latency values are not directly comparable; both baseline
+and candidate use the same checked path in a new run.

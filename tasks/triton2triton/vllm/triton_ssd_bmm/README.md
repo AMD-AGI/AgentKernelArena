@@ -35,8 +35,10 @@ unscored public-interface controls from `scripts/semantic_controls.py`. These co
 do not replace or add scored cases. Full output shape, dtype, device, finiteness and
 read-only inputs are checked.
 
-The timed invocation keeps the original allocation/dispatch boundary, 10 warmups and
-100 samples. `TimedRun` retains outputs of the actual captured graph. After measurement,
+Timing measures device work replayed from the captured graph, with the original
+10 warmups and 100 samples. Python allocation and dispatch execute during capture
+and are not part of the reported replay latency. `TimedRun` retains outputs of
+that actual graph. After measurement,
 the harness checks those outputs, changes an operand, poisons outputs, and replays that
 same graph against the original numerical reference. All comparisons, snapshots,
 perturbations and restoration are outside the timed window. An unobservable graph
@@ -50,3 +52,6 @@ mask is part of the accepted result. Candidate tile choices must still produce e
 required element. The existing five workloads, kernel and comparator are unchanged.
 An additional unscored `causal=True` known answer checks the complete matrix and
 regression coverage rejects replacing its upper triangle with zeros.
+
+Unscored stride controls independently vary each operand's token and group
+strides while keeping the last dimension contiguous, as required by the wrapper.

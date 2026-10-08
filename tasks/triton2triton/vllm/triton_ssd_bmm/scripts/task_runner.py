@@ -6,7 +6,7 @@ TASK_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 os.chdir(TASK_DIR)
 if TASK_DIR not in sys.path:
     sys.path.insert(0, TASK_DIR)
-from scripts.contract_checks import InputSnapshot, check_outputs, validate_timed
+from scripts.contract_checks import InputSnapshot, check_outputs, observe_measured_samples, validate_timed
 from scripts import semantic_controls
 SOURCE_FILE = os.path.join(TASK_DIR, "source", "triton_ssd_bmm.py")
 
@@ -131,6 +131,9 @@ def run_performance():
             readonly = InputSnapshot(dict(a=a, b=b, cu=cu))
             from _aka_benchmark import TimedRun
             timed = TimedRun()
+            expected = lambda: reference_bmm(a, b, chunk_size, cu, causal).to(device)
+            observe_measured_samples(
+                timed, readonly, expected, atol=1e-1, rtol=1e-1)
             def _bench_fn():
                 return mod.bmm_chunk_fwd(a, b, chunk_size, cu, causal=causal)
             elapsed_ms, benchmark_metadata = _benchmark_cuda_graph_or_events(
@@ -141,7 +144,7 @@ def run_performance():
             )
             benchmark_metadata.update(validate_timed(
                 timed, readonly, lambda: reference_bmm(a, b, chunk_size, cu, causal).to(device),
-                lambda: a.neg_(), atol=1e-1, rtol=1e-1))
+                lambda: a.neg_(), atol=1e-1, rtol=1e-1, expected_samples=BENCHMARK_ITERATIONS))
 
             test_cases.append({
                 "test_case_id": f"perf{test_idx + 1}",

@@ -46,6 +46,24 @@ def import_path(path):
     return module
 
 
+def report_fake_samples(kwargs, output):
+    """Model the helper's read-only callback after every reported sample."""
+    callback = kwargs['timed_run'].after_sample
+    if callback is None:
+        return
+    original = copy.deepcopy(output)
+    for _ in range(kwargs['repetition']):
+        callback(output)
+    def values(value):
+        if isinstance(value, torch.Tensor):
+            return [value]
+        if isinstance(value, (tuple, list)):
+            return [tensor for item in value for tensor in values(item)]
+        return []
+    for actual, expected in zip(values(output), values(original)):
+        torch.testing.assert_close(actual, expected, rtol=0, atol=0, equal_nan=True)
+
+
 def options(config):
     command = config['evaluation']['runner']
     return types.SimpleNamespace(**{command[i][2:].replace('-', '_'): command[i+1] for i in range(2, len(command), 2)},
@@ -438,8 +456,9 @@ ORIGINAL_SOURCE_DIGESTS = {'hip2hip/gpumode/CrossEntropyLossLabelSmoothing': (10
 # out-of-place and validate timed replay; matrix must validate every output.
 # Job 139100 additionally found missing replay checks in FusedLeakyReLU, GRU and item attention.
 # MaskedLanguageModel also needed its transposed weight launch axes corrected.
-# Original digests remain the gate for tasks without an explicit reviewed repair.
-GPU_VALIDATOR_REPAIR_DIGESTS = {'hip2hip/gpumode/GELU': (11, '4f9540b61f00d8e22d65e0907db7387c96d6a90c149ed0c46dcd57389574cf95'), 'torch2hip/gpumode/14539_GELU': (10, '6c990124da84450c8da0e6135d375be2afa8b712f1d20f0b8fd4628a21b32c6f'), 'hip2hip/others/matrix_multiplication': (13, 'ccb2386a2eedf9b0d5a956bb656e6bae07bf738af5b84e3aa47b9e01c7bfffab'), 'hip2hip/gpumode/FusedLeakyReLU': (12, '774ebc2b63b75e648ff4e40dd9f5222dc334318bb8ec6ac019586542645ca639'), 'hip2hip/gpumode/GateGRUSelectionLayer': (11, 'caf22f456cba41142677bf9455f4f7330931c65ad645b14e3830c3a0500999ac'), 'hip2hip/gpumode/ItemQueryAttention': (11, '78e4567f5a065446466e0c41d6e2135ffaa7b69ccb2ed9056ef27f93232011dd'), 'hip2hip/gpumode/MaskedLanguageModel': (11, 'bb8969ec7690e5dbbc5675e4ac97db7443714d21d8c063a1574a45ea81c468ac'), 'hip2hip/gpumode/SiLU': (11, '43c5f0a8c2cb9eaf4c0a52d75f952e27304a723c9c8f7cc4ac56bb90d09fa64c'), 'hip2hip/gpumode/Sigmoid': (11, '4e7b4b92dbdee90c258f442c994038e6bba420947f510550adf601f061000d71'), 'torch2hip/gpumode/10190_FusedLeakyReLU': (11, 'c6fbff431520d64b059cc1495a3e98b7462e771e0afec52a12c9cbfb637aa364'), 'torch2hip/gpumode/5334_GateGRUSelectionLayer': (10, '3d631fc5dce6c0574920709fdffd5c3eba28405ae3d83bd935e6e916abc14412'), 'torch2hip/gpumode/102_ItemQueryAttention': (10, 'cd9d6537d805e3d175b038e539ae36a2400a1c2cb08e4858faf663ca248528c4'), 'torch2hip/gpumode/16636_SiLU': (10, '5330ab36cee1ca0704a0d45db8bb0a47bfc8b53d2bba521bdcf3f21c3da6ba94'), 'torch2hip/gpumode/11184_Sigmoid': (10, '783a2770eb6a1c464563aabe03bc7b45bf893a21a82f9f54eb565c161748e7ea'), 'hip2hip/gpumode/TanH': (11, '007897566632c1584b5913a1592362aeaca4a3038422f93642e172777848fa43'), 'torch2hip/gpumode/11178_TanH': (10, '1d61bea5024422ea638fc84d953b20128d647fbdf88e5fe418f2686a2d9c4503'), 'hip2hip/others/assign_score_withk': (8, '42e3493889a8c098bca37112f5c93c756ca0f2710ffdc29c06c79d78c0e1152f'), 'hip2hip/others/ball_query': (10, 'cd11b843e3fb5be4644e86ad082dac15f58be645e7e98417da5e2feacd97b14e'), 'hip2hip/others/furthest_point_sample': (10, 'c76c7a8cb25cec5c79852ca7d174a19fd788517642c3f819beac596f899e8544'), 'hip2hip/others/knn': (8, '3ecfb50ee4713f8b0ecb65dadd2c76fc889d3b119449582e8ff95c4cc45de558'), 'hip2hip/others/points_in_boxes': (8, '076e6ed46ccfd82e5ee0360f8ff63ddfcc3f28bc430a42a99ade4e04c47dfa21'), 'hip2hip/others/roiaware_pool3d': (8, 'da874d09478d56aaf6b7af62df2053d306cd774e7e27078a5b46c85a86b387cd'), 'hip2hip/others/roipoint_pool3d': (8, '1777ecf526530d16b3072fdba19fbb612406af9c4f40cbd4105f9ce7759790f1'), 'hip2hip/others/three_nn': (8, '40e7b452866f727f83c37e3e9306d4c9a4fddbfb89ba4cf502f89baccbb052d4'), 'torch2hip/gpumode/8325_MaskedLanguageModel': (10, '2fb3f69dcecad77a6e350430090830dc5b3af6d7a2ff03d8b8d0cb4e29678e2b'), 'torch2hip/kernelbench/level1/l1n1_Square_matrix_multiplication_': (10, '20b6ac9b8c3d37d45587e72a62c91a794ad00538217705d12c2bac1a57e81c5d'), 'torch2hip/kernelbench/level1/l1n23_Softmax': (10, '3c2a8da59b2dc300fb22ea681772e8e8ed446a0dbb3cf64242258029a02cd919'), 'torch2hip/kernelbench/level1/l1n26_GELU_': (10, '6fd8c286fdebc9da5b7dad8174c9f69243946cdbe68c5c9a320212a6e8ad4cb2'), 'torch2hip/kernelbench/level1/l1n2_Standard_matrix_multiplication_': (10, '3947c3d599ec40cc77ccaefee8d4b55c9bebb5186b8dd1a97e55abb494b733d5'), 'torch2hip/kernelbench/level1/l1n36_RMSNorm_': (10, '26983a696c85e3c6f9bb0df51e131e5c1fd9e646a147e158ea210a58fdd7ac7e'), 'torch2hip/kernelbench/level1/l1n3_Batched_matrix_multiplication': (10, '499811d76f7fccd1e4cd51ed172109aadbc1a72f8795db87eef66b2755ecbb7d'), 'torch2hip/kernelbench/level1/l1n40_LayerNorm': (11, '0afcd86f516c808c9a4a9641ba22abfeee74130dccff1987fd38213130d1d7af'), 'torch2hip/kernelbench/level1/l1n42_Max_Pooling_2D': (10, '6357ce29e8c56f3182c5c40f2543ce40affffbbbfe74911ed9ff9d0e1f5d7375'), 'torch2hip/kernelbench/level1/l1n47_Sum_reduction_over_a_dimension': (10, '609c722ceb99129492ec248d2332020e5072bc76a3e8f9bfc0d303253b536e76'), 'torch2hip/kernelbench/level1/l1n4_Matrix_vector_multiplication_': (10, '9a2412cb0a319bc4d3a2bc1d5eeeee7a946af1f85f37acb3dbd9f01cccee59e1'), 'torch2hip/kernelbench/level1/l1n63_conv_standard_2D__square_input__square_kernel': (10, 'aed202bc6ee1649644598e4edeb71929ac546f1a7f7f279c36cdffc597325409'), 'torch2hip/kernelbench/level1/l1n82_conv_depthwise_2D_square_input_square_kernel': (10, '9c65cb3c33f81ce01e9a7771978b1da6e1b90317547be87983df41f6ffe9d869'), 'torch2hip/kernelbench/level1/l1n8_Matmul_with_irregular_shapes_': (10, '06563b8354b58fc1a19b9530958427b58905f732f37d0c82bb8d32fbe47dc95e'), 'torch2hip/kernelbench/level1/l1n95_CrossEntropyLoss': (10, '4760199ce48b862e98d6cc1400aa17bfaddfdc1526f77c538111488325b900d4'), 'torch2hip/kernelbench/level1/l1n9_Tall_skinny_matrix_multiplication_': (10, '4181e90055b4a574d36ddbfd712e06b44f682be7b701167aab0bc6bfb15f674f'), 'hip2hip/gpumode/CrossEntropyLossLabelSmoothing': (12, 'c28f313b850a8e34983473564d00ebdbc2113c6a2db85f1541680567fa2884fa'), 'torch2hip/gpumode/12501_CrossEntropyLossLabelSmoothing': (11, '285a57b17629499fe15b1e7a3242afe5ae7ce636b2a06029ddf6bff66f1a2acf'), 'hip2hip/gpumode/NormalAttention_dot': (11, 'e0d6aaf0d805eb8869274d3f737b0cfdaf47b998036ca61ae3175dc994aa63ac'), 'torch2hip/gpumode/1001_NormalAttention_dot': (10, '044854eccc3c0db3955fcf640c2da0fc01a5d154572b2d6f2bf5f67635cf6761'), 'hip2hip/gpumode/Feedforward': (11, '40e1e191db0544dad748a983378beff6daf4cbee497fa1f965586b888ab55dc0'), 'torch2hip/gpumode/10024_Feedforward': (10, '79b2020bdc61cb4936085128c3079882e07b8aed7046c51ef6198598084a8c0d'), 'hip2hip/gpumode/InnerProd': (12, 'be30da86654f285e6ea2de1e64602b5fcf6ca511eef2d6560e388938a40144b9'), 'hip2hip/gpumode/KDLoss': (11, '519fb7118865ba9e00cdc6b9059d7add4f7d2f0a9c1e56611d1439ea6a64b6ec'), 'hip2hip/gpumode/MLP_model': (11, 'd47715de80e5bd5e2494617707e49c325cc87bd09fede7b8bdb817a8d5e7c7a9'), 'hip2hip/gpumode/MultiHeadAttention': (12, '6b97ab8915628a40324b97cdc34a85eb43b804f0631f37fa281648fff635b0b8'), 'hip2hip/gpumode/NormalAttention_embedded_gaussian': (11, 'af24da05b8ea606df87fe9e7e9e26186afe7d098f98de5dce873e89c541ce643'), 'hip2hip/gpumode/PositionWiseFeedForward': (11, 'df0164ed765748cc088b24f4d56cf0999f2e492a72c1b1b0e675c3f00a8d271d'), 'hip2hip/gpumode/SimpleMatmulModule': (11, 'd4dc537d8858f7aa1c14b9f4e4f24b8fb092341229e335eb3c958c613b0418db'), 'hip2hip/gpumode/SoftmaxModule': (11, '4241a1dcc8875d4f8cf2eeb98dc35a7830bd6970b7375ad4c0522e7f6ef114ab'), 'hip2hip/gpumode/TransformerFFNLayer': (11, '452dd026048faf7b0c52f39222834a943b0138936ea92efb44266edcefa1c267'), 'hip2hip/gpumode/Transpose': (11, 'e37c704ef3121fe4a37a2105084a51bb9c9d37178cd2ae5722498a052d31e168'), 'hip2hip/gpumode/layer_normalization': (12, '3c0c71c1acfcc5e3fe8ed0dbd662d55c55837dcc673a6fe6b1e8d8953b688f1b'), 'torch2hip/gpumode/1003_NormalAttention_embedded_gaussian': (10, '4e6b2b5a43cf3e0220be48f3aba290b6860ed62b91c6df024020228f30252fb1'), 'torch2hip/gpumode/10082_SoftmaxModule': (10, '0d76d2a4bccbde7e47029aa905d4716212b941475512459e97e167b53c49fcfb'), 'torch2hip/gpumode/10099_Gather': (10, 'b812f72c4cc17a19c11efb380f08f3b807da768fc4e2bad5afa984804c44f6c0'), 'torch2hip/gpumode/10456_MultiHeadAttention': (11, 'e8e70c09c01273e62e561c3ced2efbfd2d5e7858968794ddbf8ee51bf502cd45'), 'torch2hip/gpumode/1067_Transpose': (10, 'f3a6ac32eebc9f7788d3f99cd587418017f41fd879ce28daf6e34629544a8071'), 'torch2hip/gpumode/11122_PositionEmbedder': (10, 'e06e7c1eee5408c79a64fcac82801c757affd21d491c69bf424645e9a4e658a7'), 'torch2hip/gpumode/11709_InnerProd': (11, '399c11b6c10e8052cbd1266a3b8e1165a71b205eac78ec02ac61b9b30506f38e'), 'torch2hip/gpumode/11754_layer_normalization': (11, '382f0710eb619281f08554cbb55a7ac2217b7d95186e2f74284eab0e94488652'), 'torch2hip/gpumode/1178_MLP_model': (10, '7856ee9beaf792f0aec8d84aeaf54579316de9b3dea782daba32f46d02a0c139'), 'torch2hip/gpumode/14007_KDLoss': (10, 'cf7f9a76d572e0b164b54df09f55225ceec70261d25e2ae6d2052e485e094b94'), 'torch2hip/gpumode/14044_PositionWiseFeedForward': (10, 'cb0f9baa199a4b87f7e67905769be0693b68731ada888696cf9ef0c1ca0f9106'), 'torch2hip/gpumode/14069_TransformerFFNLayer': (10, '8b134fecdba1fef0e1c272721d0f3eec77cb3a3d240122a0b730919d6356cf12'), 'torch2hip/gpumode/3267_SimpleMatmulModule': (10, 'a912fd2c41021a55c029d35a410a01dc00a46fc9bb34d48bbee0a131084dd6fe'), 'torch2hip/kernelbench/level2/l2n17_Conv2d_InstanceNorm_Divide': (10, '5e683ac6cacf817d6df23145a49ef858580b228d774e12363e11e91216ce62db'), 'torch2hip/kernelbench/level2/l2n37_Matmul_Swish_Sum_GroupNorm': (10, 'f2f4617a554667cdb94ac1f0086414161a63b9de87b00769a00beb2e290d18d1'), 'torch2hip/kernelbench/level2/l2n40_Matmul_Scaling_ResidualAdd': (10, '968de902011ebf3c7d4426e1a59aff3df8d16d60a6d643a419c71c49f583b29c'), 'torch2hip/kernelbench/level2/l2n46_Conv2d_Subtract_Tanh_Subtract_AvgPool': (10, 'abcaa40577247626b1b6b96bc1190dbcfbe68202eafc7a0eb526a39c86386892'), 'torch2hip/kernelbench/level2/l2n52_Conv2d_Activation_BatchNorm': (10, '0ebd91aa7952491a2b79c772bf19fb58b49d8c761c5b414f01247187339ee67c'), 'torch2hip/kernelbench/level2/l2n55_Matmul_MaxPool_Sum_Scale': (10, '23db7153133fd97e5ee40ded27e147ee5c4464d5fccb65867c8d39b22dd050ea'), 'torch2hip/kernelbench/level2/l2n59_Matmul_Swish_Scaling': (10, '316416aeae848fc04b2f925aa1d11026387abbfac16613fd1f9616a20e3795c1'), 'torch2hip/kernelbench/level2/l2n66_Matmul_Dropout_Softmax': (10, '5abfcb99c3c248270aa0e35a8f455c04995ad8d5a04829230310ce3cdf268cc9'), 'torch2hip/kernelbench/level2/l2n6_Conv3d_Softmax_MaxPool_MaxPool': (10, 'cbbcc6e39cc4874fd4eff05c65b024cfa72af6090d6b7c45a985fc19f9428a6f'), 'torch2hip/kernelbench/level2/l2n73_Conv2d_BatchNorm_Scaling': (10, 'd0392538be766d65c8cb65d2c8d6241a4c9ec3c27630981f6959b23852de7d8b'), 'torch2hip/kernelbench/level2/l2n82_Conv2d_Tanh_Scaling_BiasAdd_Max': (10, '1965dcbf0a873b2dac96f0f56237dff4c5ab0aafe50ed2f236ef922bd4482f6c'), 'torch2hip/kernelbench/level2/l2n85_Conv2d_GroupNorm_Scale_MaxPool_Clamp': (10, '30018c04c529fd9f2d71ef248d304050d7ea8f13442673fdae85c76db5fcd3ad'), 'torch2hip/kernelbench/level2/l2n86_Matmul_Divide_GELU': (10, '9b0be02c49ad151540f9809841b5cecb1103f7fcd0b425e7e06529d0579ff13d'), 'torch2hip/kernelbench/level2/l2n98_Matmul_AvgPool_GELU_Scale_Max': (10, 'ab8d0508fb2d6dd8a570ac802b217e31b178738f75382a5a6f69718f4a764458'), 'torch2hip/kernelbench/level2/l2n99_Matmul_GELU_Softmax': (10, '8fabb1d609c2327c90ac16be5ed1d124661f6a1da0eb29fcf4bfa1598a581316'), 'torch2hip/kernelbench/level3/l3n31_VisionAttention': (10, 'd0af0fbc6b95cbf5602cc2a30474c663095faf401390e4d6fcd7318d07bbc40b'), 'torch2hip/kernelbench/level3/l3n43_MinGPTCausalAttention': (10, '14353949b386acbb41c7e4f02277a5b33909e1752020d127dba87cd25e7200e9'), 'torch2hip/kernelbench/level3/l3n44_MiniGPTBlock': (10, 'd1edd1bb46b907d2fb56d68a9b1237d2bbfa0ef40d415c17a98ce5ade130d5ad'), 'hip2hip/others/mla_decode': (5, 'c085a1d2388f5b1e0b231ad6bb7810f2657745b564fddffb3045ea97e8652e39')}
+# Additional repair pins require source-bound validation. Original digests remain
+# the gate for tasks without an explicit reviewed repair.
+GPU_VALIDATOR_REPAIR_DIGESTS = {'hip2hip/gpumode/GELU': (11, '4f9540b61f00d8e22d65e0907db7387c96d6a90c149ed0c46dcd57389574cf95'), 'torch2hip/gpumode/14539_GELU': (10, '6c990124da84450c8da0e6135d375be2afa8b712f1d20f0b8fd4628a21b32c6f'), 'hip2hip/others/matrix_multiplication': (13, 'ccb2386a2eedf9b0d5a956bb656e6bae07bf738af5b84e3aa47b9e01c7bfffab'), 'hip2hip/gpumode/FusedLeakyReLU': (12, '774ebc2b63b75e648ff4e40dd9f5222dc334318bb8ec6ac019586542645ca639'), 'hip2hip/gpumode/GateGRUSelectionLayer': (11, '03fe7d9c3b19124c682328bc93fcc8b1c07bab0d91056663cdc347a2d82126fe'), 'hip2hip/gpumode/ItemQueryAttention': (11, '78e4567f5a065446466e0c41d6e2135ffaa7b69ccb2ed9056ef27f93232011dd'), 'hip2hip/gpumode/MaskedLanguageModel': (11, 'bb8969ec7690e5dbbc5675e4ac97db7443714d21d8c063a1574a45ea81c468ac'), 'hip2hip/gpumode/SiLU': (11, '43c5f0a8c2cb9eaf4c0a52d75f952e27304a723c9c8f7cc4ac56bb90d09fa64c'), 'hip2hip/gpumode/Sigmoid': (11, 'd4bc812f57645819c5e976858220c106b00cc4bc8e1829a2a543cf51ffca9f8e'), 'torch2hip/gpumode/10190_FusedLeakyReLU': (11, 'c6fbff431520d64b059cc1495a3e98b7462e771e0afec52a12c9cbfb637aa364'), 'torch2hip/gpumode/5334_GateGRUSelectionLayer': (10, '3d631fc5dce6c0574920709fdffd5c3eba28405ae3d83bd935e6e916abc14412'), 'torch2hip/gpumode/102_ItemQueryAttention': (10, 'cd9d6537d805e3d175b038e539ae36a2400a1c2cb08e4858faf663ca248528c4'), 'torch2hip/gpumode/16636_SiLU': (10, '5330ab36cee1ca0704a0d45db8bb0a47bfc8b53d2bba521bdcf3f21c3da6ba94'), 'torch2hip/gpumode/11184_Sigmoid': (11, 'ff7adbb481d08823be4dbab1c6320f188e12dd465190f8b1f0c5e2aedb8051a6'), 'hip2hip/gpumode/TanH': (11, '310104ef51335e71c9e22025ae06ab194ca32e60d2638974fa497919b56887a1'), 'torch2hip/gpumode/11178_TanH': (10, '1d61bea5024422ea638fc84d953b20128d647fbdf88e5fe418f2686a2d9c4503'), 'hip2hip/others/assign_score_withk': (8, '42e3493889a8c098bca37112f5c93c756ca0f2710ffdc29c06c79d78c0e1152f'), 'hip2hip/others/ball_query': (10, 'cd11b843e3fb5be4644e86ad082dac15f58be645e7e98417da5e2feacd97b14e'), 'hip2hip/others/furthest_point_sample': (10, 'c76c7a8cb25cec5c79852ca7d174a19fd788517642c3f819beac596f899e8544'), 'hip2hip/others/knn': (8, '3ecfb50ee4713f8b0ecb65dadd2c76fc889d3b119449582e8ff95c4cc45de558'), 'hip2hip/others/points_in_boxes': (8, '8704c72c55775a74d7521ef26d28ac2736e5dd4ab194a3a06966743f1d979f88'), 'hip2hip/others/roiaware_pool3d': (8, 'af1cdb4f8ce05ddd68208020e5468d6b325dc6cc101aafe4971667afb16e96e4'), 'hip2hip/others/roipoint_pool3d': (8, '11dc4eaeecc8df24bd664f0a601bbdd7b65d1650cef2b5b73cca75af9862c3eb'), 'hip2hip/others/three_nn': (8, '40e7b452866f727f83c37e3e9306d4c9a4fddbfb89ba4cf502f89baccbb052d4'), 'torch2hip/gpumode/8325_MaskedLanguageModel': (10, '2fb3f69dcecad77a6e350430090830dc5b3af6d7a2ff03d8b8d0cb4e29678e2b'), 'torch2hip/kernelbench/level1/l1n1_Square_matrix_multiplication_': (10, '20b6ac9b8c3d37d45587e72a62c91a794ad00538217705d12c2bac1a57e81c5d'), 'torch2hip/kernelbench/level1/l1n23_Softmax': (10, '3c2a8da59b2dc300fb22ea681772e8e8ed446a0dbb3cf64242258029a02cd919'), 'torch2hip/kernelbench/level1/l1n26_GELU_': (10, '6fd8c286fdebc9da5b7dad8174c9f69243946cdbe68c5c9a320212a6e8ad4cb2'), 'torch2hip/kernelbench/level1/l1n2_Standard_matrix_multiplication_': (10, '3947c3d599ec40cc77ccaefee8d4b55c9bebb5186b8dd1a97e55abb494b733d5'), 'torch2hip/kernelbench/level1/l1n36_RMSNorm_': (10, '26983a696c85e3c6f9bb0df51e131e5c1fd9e646a147e158ea210a58fdd7ac7e'), 'torch2hip/kernelbench/level1/l1n3_Batched_matrix_multiplication': (10, '499811d76f7fccd1e4cd51ed172109aadbc1a72f8795db87eef66b2755ecbb7d'), 'torch2hip/kernelbench/level1/l1n40_LayerNorm': (11, '0afcd86f516c808c9a4a9641ba22abfeee74130dccff1987fd38213130d1d7af'), 'torch2hip/kernelbench/level1/l1n42_Max_Pooling_2D': (10, '6357ce29e8c56f3182c5c40f2543ce40affffbbbfe74911ed9ff9d0e1f5d7375'), 'torch2hip/kernelbench/level1/l1n47_Sum_reduction_over_a_dimension': (10, '609c722ceb99129492ec248d2332020e5072bc76a3e8f9bfc0d303253b536e76'), 'torch2hip/kernelbench/level1/l1n4_Matrix_vector_multiplication_': (10, '9a2412cb0a319bc4d3a2bc1d5eeeee7a946af1f85f37acb3dbd9f01cccee59e1'), 'torch2hip/kernelbench/level1/l1n63_conv_standard_2D__square_input__square_kernel': (10, 'aed202bc6ee1649644598e4edeb71929ac546f1a7f7f279c36cdffc597325409'), 'torch2hip/kernelbench/level1/l1n82_conv_depthwise_2D_square_input_square_kernel': (10, '9c65cb3c33f81ce01e9a7771978b1da6e1b90317547be87983df41f6ffe9d869'), 'torch2hip/kernelbench/level1/l1n8_Matmul_with_irregular_shapes_': (10, '06563b8354b58fc1a19b9530958427b58905f732f37d0c82bb8d32fbe47dc95e'), 'torch2hip/kernelbench/level1/l1n95_CrossEntropyLoss': (10, '4760199ce48b862e98d6cc1400aa17bfaddfdc1526f77c538111488325b900d4'), 'torch2hip/kernelbench/level1/l1n9_Tall_skinny_matrix_multiplication_': (10, '4181e90055b4a574d36ddbfd712e06b44f682be7b701167aab0bc6bfb15f674f'), 'hip2hip/gpumode/CrossEntropyLossLabelSmoothing': (12, '92daa38f15572e2a2b3b26d67739951fdfe4e974e563573477ecac74a65b46c9'), 'torch2hip/gpumode/12501_CrossEntropyLossLabelSmoothing': (11, '285a57b17629499fe15b1e7a3242afe5ae7ce636b2a06029ddf6bff66f1a2acf'), 'hip2hip/gpumode/NormalAttention_dot': (11, '9e16cc5e223ebc24f3247b73121fad8ba82130560326d7ef646b3923be30a6ae'), 'torch2hip/gpumode/1001_NormalAttention_dot': (10, '044854eccc3c0db3955fcf640c2da0fc01a5d154572b2d6f2bf5f67635cf6761'), 'hip2hip/gpumode/Feedforward': (11, '40e1e191db0544dad748a983378beff6daf4cbee497fa1f965586b888ab55dc0'), 'torch2hip/gpumode/10024_Feedforward': (10, '87333cb853696b3ff17afdcb5692934dcfc1ae96d39f46ad063272589fe2b74d'), 'hip2hip/gpumode/InnerProd': (12, '4af2b26e19ba45c2c53106e9a5da2d947f75862e7c5e1a4eb41459956cd70e4a'), 'hip2hip/gpumode/KDLoss': (11, '519fb7118865ba9e00cdc6b9059d7add4f7d2f0a9c1e56611d1439ea6a64b6ec'), 'hip2hip/gpumode/MLP_model': (11, 'd47715de80e5bd5e2494617707e49c325cc87bd09fede7b8bdb817a8d5e7c7a9'), 'hip2hip/gpumode/MultiHeadAttention': (12, '8cb3edadb96b5bf38ef78c3fa657a7b8557dd9556fdea76e0e1551dfcc268c8c'), 'hip2hip/gpumode/NormalAttention_embedded_gaussian': (11, 'af24da05b8ea606df87fe9e7e9e26186afe7d098f98de5dce873e89c541ce643'), 'hip2hip/gpumode/PositionWiseFeedForward': (11, 'df0164ed765748cc088b24f4d56cf0999f2e492a72c1b1b0e675c3f00a8d271d'), 'hip2hip/gpumode/SimpleMatmulModule': (11, 'd4dc537d8858f7aa1c14b9f4e4f24b8fb092341229e335eb3c958c613b0418db'), 'hip2hip/gpumode/SoftmaxModule': (11, '4241a1dcc8875d4f8cf2eeb98dc35a7830bd6970b7375ad4c0522e7f6ef114ab'), 'hip2hip/gpumode/TransformerFFNLayer': (11, '452dd026048faf7b0c52f39222834a943b0138936ea92efb44266edcefa1c267'), 'hip2hip/gpumode/Transpose': (11, 'e37c704ef3121fe4a37a2105084a51bb9c9d37178cd2ae5722498a052d31e168'), 'hip2hip/gpumode/layer_normalization': (12, '57e70b501a31601e8be4c352964c3a73e3291de2bd824632bf1de3a2f1c784ed'), 'torch2hip/gpumode/1003_NormalAttention_embedded_gaussian': (10, '4e6b2b5a43cf3e0220be48f3aba290b6860ed62b91c6df024020228f30252fb1'), 'torch2hip/gpumode/10082_SoftmaxModule': (10, '0d76d2a4bccbde7e47029aa905d4716212b941475512459e97e167b53c49fcfb'), 'torch2hip/gpumode/10099_Gather': (10, 'b812f72c4cc17a19c11efb380f08f3b807da768fc4e2bad5afa984804c44f6c0'), 'torch2hip/gpumode/10456_MultiHeadAttention': (11, 'e8e70c09c01273e62e561c3ced2efbfd2d5e7858968794ddbf8ee51bf502cd45'), 'torch2hip/gpumode/1067_Transpose': (10, 'f3a6ac32eebc9f7788d3f99cd587418017f41fd879ce28daf6e34629544a8071'), 'torch2hip/gpumode/11122_PositionEmbedder': (10, 'e06e7c1eee5408c79a64fcac82801c757affd21d491c69bf424645e9a4e658a7'), 'torch2hip/gpumode/11709_InnerProd': (11, '399c11b6c10e8052cbd1266a3b8e1165a71b205eac78ec02ac61b9b30506f38e'), 'torch2hip/gpumode/11754_layer_normalization': (11, 'c32b4614f0abb13773ab6a60197975c2d8c51d79b6ea9ac87c4f3d3de8aff0a6'), 'torch2hip/gpumode/1178_MLP_model': (10, '7856ee9beaf792f0aec8d84aeaf54579316de9b3dea782daba32f46d02a0c139'), 'torch2hip/gpumode/14007_KDLoss': (10, 'cf7f9a76d572e0b164b54df09f55225ceec70261d25e2ae6d2052e485e094b94'), 'torch2hip/gpumode/14044_PositionWiseFeedForward': (10, 'cb0f9baa199a4b87f7e67905769be0693b68731ada888696cf9ef0c1ca0f9106'), 'torch2hip/gpumode/14069_TransformerFFNLayer': (10, '8b134fecdba1fef0e1c272721d0f3eec77cb3a3d240122a0b730919d6356cf12'), 'torch2hip/gpumode/3267_SimpleMatmulModule': (10, 'a912fd2c41021a55c029d35a410a01dc00a46fc9bb34d48bbee0a131084dd6fe'), 'torch2hip/kernelbench/level2/l2n17_Conv2d_InstanceNorm_Divide': (10, '5e683ac6cacf817d6df23145a49ef858580b228d774e12363e11e91216ce62db'), 'torch2hip/kernelbench/level2/l2n37_Matmul_Swish_Sum_GroupNorm': (10, 'f2f4617a554667cdb94ac1f0086414161a63b9de87b00769a00beb2e290d18d1'), 'torch2hip/kernelbench/level2/l2n40_Matmul_Scaling_ResidualAdd': (10, '968de902011ebf3c7d4426e1a59aff3df8d16d60a6d643a419c71c49f583b29c'), 'torch2hip/kernelbench/level2/l2n46_Conv2d_Subtract_Tanh_Subtract_AvgPool': (10, 'abcaa40577247626b1b6b96bc1190dbcfbe68202eafc7a0eb526a39c86386892'), 'torch2hip/kernelbench/level2/l2n52_Conv2d_Activation_BatchNorm': (10, '0ebd91aa7952491a2b79c772bf19fb58b49d8c761c5b414f01247187339ee67c'), 'torch2hip/kernelbench/level2/l2n55_Matmul_MaxPool_Sum_Scale': (10, '02308e5b4cf36b91e2a81369ef21765d16e991fa531a48d90229fc31f96e4ab4'), 'torch2hip/kernelbench/level2/l2n59_Matmul_Swish_Scaling': (10, '316416aeae848fc04b2f925aa1d11026387abbfac16613fd1f9616a20e3795c1'), 'torch2hip/kernelbench/level2/l2n66_Matmul_Dropout_Softmax': (10, '5abfcb99c3c248270aa0e35a8f455c04995ad8d5a04829230310ce3cdf268cc9'), 'torch2hip/kernelbench/level2/l2n6_Conv3d_Softmax_MaxPool_MaxPool': (10, 'cbbcc6e39cc4874fd4eff05c65b024cfa72af6090d6b7c45a985fc19f9428a6f'), 'torch2hip/kernelbench/level2/l2n73_Conv2d_BatchNorm_Scaling': (10, '427e56420448afacb52020a539063381e9c33c00e1043c9aa04cc2b0e1c21418'), 'torch2hip/kernelbench/level2/l2n82_Conv2d_Tanh_Scaling_BiasAdd_Max': (10, '1965dcbf0a873b2dac96f0f56237dff4c5ab0aafe50ed2f236ef922bd4482f6c'), 'torch2hip/kernelbench/level2/l2n85_Conv2d_GroupNorm_Scale_MaxPool_Clamp': (10, '30018c04c529fd9f2d71ef248d304050d7ea8f13442673fdae85c76db5fcd3ad'), 'torch2hip/kernelbench/level2/l2n86_Matmul_Divide_GELU': (10, '9b0be02c49ad151540f9809841b5cecb1103f7fcd0b425e7e06529d0579ff13d'), 'torch2hip/kernelbench/level2/l2n98_Matmul_AvgPool_GELU_Scale_Max': (10, 'ab8d0508fb2d6dd8a570ac802b217e31b178738f75382a5a6f69718f4a764458'), 'torch2hip/kernelbench/level2/l2n99_Matmul_GELU_Softmax': (10, '8fabb1d609c2327c90ac16be5ed1d124661f6a1da0eb29fcf4bfa1598a581316'), 'torch2hip/kernelbench/level3/l3n31_VisionAttention': (10, 'd0af0fbc6b95cbf5602cc2a30474c663095faf401390e4d6fcd7318d07bbc40b'), 'torch2hip/kernelbench/level3/l3n43_MinGPTCausalAttention': (10, '14353949b386acbb41c7e4f02277a5b33909e1752020d127dba87cd25e7200e9'), 'torch2hip/kernelbench/level3/l3n44_MiniGPTBlock': (10, 'd1edd1bb46b907d2fb56d68a9b1237d2bbfa0ef40d415c17a98ce5ade130d5ad'), 'hip2hip/others/mla_decode': (5, 'c085a1d2388f5b1e0b231ad6bb7810f2657745b564fddffb3045ea97e8652e39')}
 
 
 # Reviewed PR105 additions: analytic nonuniform backward checks and a separate
@@ -481,8 +500,9 @@ def test_original_code_case_seed_tolerance_and_timing_preserved(path):
 
 
 @pytest.mark.parametrize('role', ['baseline', 'candidate'])
-@pytest.mark.parametrize('provided_hip', [False, True])
-def test_extension_performance_explicit_models_sources_and_case_coverage(tmp_path, monkeypatch, role, provided_hip):
+@pytest.mark.parametrize('provided_hip,method', [(False, 'cuda_graph'), (True, 'cuda_graph'),
+                                                (True, 'cuda_event_fallback')])
+def test_extension_performance_explicit_models_sources_and_case_coverage(tmp_path, monkeypatch, role, provided_hip, method):
     path = next(p for p in EXTENSIONS if ('hip2hip' in p.parts) == provided_hip)
     raw = yaml.safe_load(path.read_text()); args = options(raw)
     runner = import_path(path.parent / 'eval_tools/evaluate.py')
@@ -503,7 +523,17 @@ def test_extension_performance_explicit_models_sources_and_case_coverage(tmp_pat
             perf.load_hip_kernel('selected', str(tmp_path / 'hip_opt'), 'copied_candidate.hip')
         perf._write_perf_report({'status': 'ok', 'test_cases': [{'case_idx': 0, 'correct': True,
             'ref_time': .3, 'ori_time': .2, 'opt_time': .1,
-            'reference_benchmark_method': 'cuda_graph', 'benchmark_method': 'cuda_graph'}]})
+            'reference_benchmark_method': method, 'benchmark_method': method,
+            'reference_benchmark': {'benchmark_method': method, 'replay_validation_valid': True,
+                                    'validated_sample_count': 100, 'benchmark_samples': 100,
+                                    'timed_output_checked': True,
+                                    **({'benchmark_fallback_reason': 'hip_source_declares_event_only'}
+                                       if method == 'cuda_event_fallback' else {})},
+            'replay_validation_valid': True, 'validated_sample_count': 100,
+            'benchmark_samples': 100, 'timed_output_checked': True,
+            'benchmark_method_consistent': True,
+            **({'benchmark_fallback_reason': 'hip_source_declares_event_only'}
+               if method == 'cuda_event_fallback' else {})}]})
     perf.cal_kernel_perf = benchmark
     monkeypatch.setitem(sys.modules, 'cal_kernel_perf', perf)
     # This fixture isolates role/source routing; dedicated tests exercise the
@@ -514,6 +544,20 @@ def test_extension_performance_explicit_models_sources_and_case_coverage(tmp_pat
     assert loaded_models == [args.model_class, args.model_class]
     expected = (.3 if provided_hip else .2) if role == 'baseline' else .1
     assert measured[0]['execution_time_ms'] == expected
+    if provided_hip:
+        assert measured[0]['metadata']['device_timing']['timed_output_checked'] is True
+        assert measured[0]['metadata']['timed_output_checked'] is True
+        assert measured[0]['metadata']['benchmark_method_consistent'] is True
+        if method == 'cuda_event_fallback':
+            from agents.task_validator.report_v2 import _replay_validation_applicability
+            fake_result = types.SimpleNamespace(passed=True, cases=measured)
+            fake_spec = types.SimpleNamespace(candidate=types.SimpleNamespace(initial_state='implemented'),
+                                              baseline=types.SimpleNamespace(kind='provided'))
+            applicability = _replay_validation_applicability({
+                'evidence_valid': True, 'accepted': True, 'spec': fake_spec,
+                'results': {('baseline', 'performance'): fake_result,
+                            ('candidate', 'performance'): fake_result}})
+            assert applicability['status'] == 'not_applicable'
     if provided_hip:
         assert compiled[0][0] == tmp_path / args.baseline_hip
         assert compiled[1][0] == tmp_path / (args.baseline_hip if role == 'baseline' else args.candidate)
@@ -775,6 +819,10 @@ def test_gelu_exact_timed_replay_and_input_contract(relative, behavior, monkeypa
     runner = import_path(root / 'eval_tools/evaluate.py')
     timed = import_path(ROOT / 'src/tools/perf/aka_benchmark.py')
     monkeypatch.setitem(sys.modules, '_aka_benchmark', timed)
+    if relative == 'torch2hip/gpumode/11184_Sigmoid':
+        # This test uses an undeclared synthetic shape to isolate replay mechanics.
+        monkeypatch.setitem(sys.modules, 'case_controls', types.SimpleNamespace(
+            assert_declared_control=lambda _model, _inputs: None))
     monkeypatch.setattr(torch.cuda, 'synchronize', lambda: None)
     inputs = [torch.tensor([-1., .5, 2.])]
     observed = []
@@ -783,12 +831,14 @@ def test_gelu_exact_timed_replay_and_input_contract(relative, behavior, monkeypa
     def benchmark(invoke, **kwargs):
         observed.append(kwargs)
         output = invoke()
+        report_fake_samples(kwargs, output)
         def replay():
             assert torch.isnan(output).all()  # Same timed buffer was poisoned.
             output.copy_(torch.zeros_like(output) if behavior == 'wrong_replay' else reference_operator(inputs[0]))
             return output
         kwargs['timed_run']._bind(replay, output)
-        return .25, {'benchmark_method': 'cuda_graph', 'benchmark_timed_run_kind': 'captured_graph'}
+        return .25, {'benchmark_method': 'cuda_graph', 'benchmark_timed_run_kind': 'captured_graph',
+                     'benchmark_samples': kwargs['repetition']}
     def cal_kernel_perf(rtol=1e-4, atol=1e-5): pass
     perf = types.SimpleNamespace(cal_kernel_perf=cal_kernel_perf,
         benchmark_cuda_graph_or_events=benchmark, _compare_results=torch.allclose)
@@ -1196,6 +1246,10 @@ def test_native_pool_and_query_replay_checks_written_buffers(name, behavior, mon
         # -1 is a legitimate outside-box value, so poisoning must change it too.
         expected = torch.tensor([[0, -1 if name == 'points_in_boxes' else 1, 2]], dtype=torch.int32)
         check = lambda actual: controls.close(actual, expected)
+    changed_expected = copy.deepcopy(expected)
+    if name in {'points_in_boxes', 'roiaware_pool3d', 'roipoint_pool3d'}:
+        for value in replay.tensors(changed_expected):
+            if name == 'points_in_boxes' or value.is_floating_point(): value.add_(1)
     output = copy.deepcopy(expected)
     calls = []
 
@@ -1205,14 +1259,23 @@ def test_native_pool_and_query_replay_checks_written_buffers(name, behavior, mon
 
     def invoke():
         calls.append('invoke')
-        for value, original in zip(replay.tensors(output), replay.tensors(expected)): value.copy_(original)
+        source = changed_expected if name in {'points_in_boxes', 'roiaware_pool3d', 'roipoint_pool3d'} and inputs[0][0] != 1 else expected
+        for value, original in zip(replay.tensors(output), replay.tensors(source)): value.copy_(original)
         return output
+
+    def change_input():
+        inputs[0].add_(1)
+        def check_changed(actual):
+            for value, reference in zip(replay.tensors(actual), replay.tensors(changed_expected)):
+                torch.testing.assert_close(value, reference, rtol=0, atol=0)
+        return check_changed
 
     def benchmark(fn, **kwargs):
         assert kwargs['warmup'] == 10 and kwargs['repetition'] == 100
         prep = kwargs.get('prepare_fn')
         if prep: prep()
         observed_output = fn()
+        report_fake_samples(kwargs, observed_output)
 
         def captured():
             for value, original in zip(replay.tensors(output), replay.tensors(expected)):
@@ -1226,18 +1289,21 @@ def test_native_pool_and_query_replay_checks_written_buffers(name, behavior, mon
             return observed_output
 
         kwargs['timed_run']._bind(captured, observed_output)
-        return .5, {'benchmark_method': 'cuda_graph', 'benchmark_timed_run_kind': 'captured_graph'}
+        return .5, {'benchmark_method': 'cuda_graph', 'benchmark_timed_run_kind': 'captured_graph',
+                    'benchmark_samples': kwargs['repetition']}
 
     options = dict(warmup=10, repetition=100, use_cuda_graph=True)
     if name.startswith('roi'): options['prepare_fn'] = prepare
+    changed_arg = ((change_input,),) if name in {'points_in_boxes', 'roiaware_pool3d', 'roipoint_pool3d'} else ()
     if behavior == 'correct':
-        elapsed, metadata = replay.measure(benchmark, invoke, inputs, check, **options)
+        elapsed, metadata = replay.measure(benchmark, invoke, inputs, check, *changed_arg, **options)
         assert elapsed == .5 and metadata['replay_validation_valid'] is True
     else:
         with pytest.raises((ValueError, AssertionError)):
-            replay.measure(benchmark, invoke, inputs, check, **options)
-    assert calls.count('invoke') == 2
-    assert calls.count('prepare') == (2 if name.startswith('roi') else 0)
+            replay.measure(benchmark, invoke, inputs, check, *changed_arg, **options)
+    expected_calls = 3 if behavior == 'correct' and changed_arg else 2
+    assert calls.count('invoke') == expected_calls
+    assert calls.count('prepare') == (expected_calls if name.startswith('roi') else 0)
 
 
 @pytest.mark.parametrize('path', [p for p in CONFIGS if 'level1' in p.parts], ids=lambda p: p.parent.name)
@@ -1326,6 +1392,8 @@ def test_loss_observes_actual_event_sample_and_distinguishes_graph(relative, kin
     targets = torch.tensor([[.25,.25,.5],[.5,0.,.5]])
     controls = import_path(root / 'eval_tools/case_controls.py')
     monkeypatch.setitem(sys.modules, 'case_controls', controls)
+    if relative == 'hip2hip/gpumode/CrossEntropyLossLabelSmoothing':
+        monkeypatch.setattr(controls, 'assert_declared_control', lambda _model, _inputs: None)
     controls.apply_control(model, {'smooth_eps': 0.}, [logits, targets])
     expected = torch.tensor(-(.25*math.log(1/6)+.25*math.log(2/6)+.5*math.log(3/6)
                               +.5*math.log(2/6)+.5*math.log(1/6))/2)
@@ -1344,20 +1412,21 @@ def test_loss_observes_actual_event_sample_and_distinguishes_graph(relative, kin
         output = invoke()
         observed_buffers.append(output)
         if defect == 'last_sample': output.zero_()
+        report_fake_samples(kwargs, output)
         if defect == 'input_mutation': targets.add_(1)
 
         def rerun():
             assert torch.isnan(output).all()
             # An explicit Event re-invocation may allocate a different buffer.
             actual = invoke() if kind == 'eager_callable' else output
-            actual.copy_(expected)
+            actual.copy_(invoke())
             if defect == 'reinvocation': actual.zero_()
             observed_buffers.append(actual)
             return actual
 
         kwargs['timed_run']._bind(rerun,output)
         return .5, {'benchmark_method':'cuda_graph' if kind == 'captured_graph' else 'cuda_event_fallback',
-                    'benchmark_timed_run_kind':kind}
+                    'benchmark_timed_run_kind':kind, 'benchmark_samples': kwargs['repetition']}
 
     def cal_kernel_perf(rtol=1e-4,atol=1e-5): pass
     perf = types.SimpleNamespace(cal_kernel_perf=cal_kernel_perf,
@@ -1427,15 +1496,16 @@ def test_attention_and_feedforward_measured_outputs_have_independent_oracles(rel
         assert kwargs['warmup']==10 and kwargs['repetition']==100
         output=invoke().detach()
         if defect=='last_sample': output.zero_()
+        report_fake_samples(kwargs, output)
         def rerun():
             assert torch.isnan(output).all()
             actual=invoke().detach() if kind=='eager_callable' else output
-            actual.copy_(expected)
+            actual.copy_(invoke())
             if defect=='reinvocation': actual.zero_()
             return actual
         kwargs['timed_run']._bind(rerun,output)
         return .5,{'benchmark_method':'cuda_graph' if kind=='captured_graph' else 'cuda_event_fallback',
-                   'benchmark_timed_run_kind':kind}
+                   'benchmark_timed_run_kind':kind, 'benchmark_samples': kwargs['repetition']}
 
     def cal_kernel_perf(rtol=1e-4,atol=1e-5): pass
     perf=types.SimpleNamespace(cal_kernel_perf=cal_kernel_perf,
@@ -1746,6 +1816,10 @@ def test_all_python_timed_paths_preserve_and_restore_state(path, role, fault, mo
     runner = import_path(path.parent / 'eval_tools/evaluate.py')
     timed = import_path(ROOT / 'src/tools/perf/aka_benchmark.py')
     monkeypatch.setitem(sys.modules, '_aka_benchmark', timed)
+    if path.parent.name == '11184_Sigmoid':
+        # Synthetic affine model has no sigmoid controls; this checks state replay.
+        monkeypatch.setitem(sys.modules, 'case_controls', types.SimpleNamespace(
+            assert_declared_control=lambda _model, _inputs: None))
     monkeypatch.setattr(torch.cuda, 'synchronize', lambda: None)
     class Model(torch.nn.Module):
         def __init__(self):
@@ -1769,12 +1843,14 @@ def test_all_python_timed_paths_preserve_and_restore_state(path, role, fault, mo
         # The actual loss oracle and replay are exercised separately below.
         model.smooth_eps, model.smooth_dist = .3, None
         monkeypatch.setitem(sys.modules, 'case_controls', types.SimpleNamespace(
-            reference=lambda value, epsilon, distribution: model(value)))
+            reference=lambda value, epsilon, distribution: model(value),
+            assert_declared_control=lambda _model, _inputs: None))
     def candidate(x, weight, offset):
         return torch.nn.functional.gelu(x * weight + offset)
     def benchmark(invoke, **kwargs):
         assert kwargs['warmup'] == 10 and kwargs['repetition'] == 100
         output = invoke().detach()
+        report_fake_samples(kwargs, output)
         def replay():
             assert torch.isnan(output).all()
             with torch.no_grad():
@@ -1785,7 +1861,8 @@ def test_all_python_timed_paths_preserve_and_restore_state(path, role, fault, mo
                 if fault == 'exception': raise RuntimeError('deliberate replay failure')
             return output
         kwargs['timed_run']._bind(replay, output)
-        return .25, {'benchmark_method': 'cuda_graph', 'benchmark_timed_run_kind': 'captured_graph'}
+        return .25, {'benchmark_method': 'cuda_graph', 'benchmark_timed_run_kind': 'captured_graph',
+                     'benchmark_samples': kwargs['repetition']}
     def cal_kernel_perf(rtol=1e-4, atol=1e-5): pass
     perf = types.SimpleNamespace(cal_kernel_perf=cal_kernel_perf, cal_modu_latency=None,
         benchmark_cuda_graph_or_events=benchmark, _compare_results=torch.allclose)
@@ -2128,6 +2205,9 @@ def test_ce_actual_reference_and_timed_replay_negative_controls(path, role, faul
     helper = import_path(path.parent / 'eval_tools/replay_validation.py')
     runner = import_path(path.parent / 'eval_tools/evaluate.py')
     monkeypatch.setitem(sys.modules, 'case_controls', controls)
+    if path.parent.name == 'CrossEntropyLossLabelSmoothing':
+        # This known-answer shape is deliberately outside the five scored shapes.
+        monkeypatch.setattr(controls, 'assert_declared_control', lambda _model, _inputs: None)
     timed = import_path(ROOT / 'src/tools/perf/aka_benchmark.py')
     monkeypatch.setitem(sys.modules, '_aka_benchmark', timed)
     monkeypatch.setattr(torch.cuda, 'synchronize', lambda: None)
@@ -2141,6 +2221,7 @@ def test_ce_actual_reference_and_timed_replay_negative_controls(path, role, faul
         return controls.reference(input, target, kwargs['smooth_eps'], kwargs['smooth_dist'])
     def benchmark(invoke, **kwargs):
         output = invoke().detach()
+        report_fake_samples(kwargs, output)
         def replay():
             assert torch.isnan(output).all()
             eps = 0. if fault == 'ignore_smoothing' else model.smooth_eps
@@ -2153,7 +2234,8 @@ def test_ce_actual_reference_and_timed_replay_negative_controls(path, role, faul
                 if fault == 'mutate_target': target.mul_(.5)
             return output
         kwargs['timed_run']._bind(replay, output)
-        return .2, {'benchmark_method':'cuda_event_fallback','benchmark_timed_run_kind':'eager_callable'}
+        return .2, {'benchmark_method':'cuda_event_fallback','benchmark_timed_run_kind':'eager_callable',
+                    'benchmark_samples': kwargs['repetition']}
     def policy(rtol=1e-4, atol=1e-5): pass
     perf = types.SimpleNamespace(cal_kernel_perf=policy, cal_modu_latency=None,
         benchmark_cuda_graph_or_events=benchmark, _compare_results=torch.allclose)
@@ -2678,6 +2760,7 @@ def test_attention_timing_restores_real_python_model_state(relative, role, fault
         with torch.no_grad(): output = invoke().detach()
         # The original module legitimately derives two heads for this shape.
         assert selected.h == (2 if role == 'baseline' else 4)
+        report_fake_samples(kw, output)
         def replay():
             assert torch.isnan(output).all()
             with torch.no_grad(): output.copy_(invoke())
@@ -2687,7 +2770,8 @@ def test_attention_timing_restores_real_python_model_state(relative, role, fault
             if fault == 'exception': raise RuntimeError('deliberate replay error')
             return output
         kw['timed_run']._bind(replay, output)
-        return .2, {'benchmark_method':'cuda_graph','benchmark_timed_run_kind':'captured_graph'}
+        return .2, {'benchmark_method':'cuda_graph','benchmark_timed_run_kind':'captured_graph',
+                    'benchmark_samples': kw['repetition']}
     def cal_kernel_perf(rtol=1e-4, atol=1e-5): pass
     perf = types.SimpleNamespace(cal_kernel_perf=cal_kernel_perf, cal_modu_latency=None,
                                 benchmark_cuda_graph_or_events=benchmark, _compare_results=torch.allclose)

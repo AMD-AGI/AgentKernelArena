@@ -10,7 +10,7 @@ TASK_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 os.chdir(TASK_DIR)
 if TASK_DIR not in sys.path:
     sys.path.insert(0, TASK_DIR)
-from scripts.contract_checks import InputSnapshot, check_outputs, validate_timed
+from scripts.contract_checks import InputSnapshot, NumericalMismatch, check_outputs, observe_measured_samples, validate_timed
 from scripts import semantic_controls
 
 TASK_NAME = "triton2triton/triton_kda_gla_fwd_o"
@@ -77,18 +77,28 @@ def reference(q, v, g, A, h, scale, chunk_size=64):
     return o
 
 
-def gen_inputs(seed, device):
+def gen_inputs(seed, device, *, historical=False):
     import torch
     torch.manual_seed(seed)
     B, T, H, K, V, BT = 1, 64, 2, 32, 32, 64
     from math import ceil
     NT = ceil(T / BT)
-    q = torch.randn(B, T, H, K, device=device, dtype=torch.float32) * 0.1
-    v = torch.randn(B, T, H, V, device=device, dtype=torch.float32) * 0.1
+    amplitude = 0.1 if historical else 0.5
+    q = torch.randn(B, T, H, K, device=device, dtype=torch.float32) * amplitude
+    v = torch.randn(B, T, H, V, device=device, dtype=torch.float32) * amplitude
     g = torch.randn(B, T, H, K, device=device, dtype=torch.float32) * 0.01
-    A = torch.randn(B, T, H, BT, device=device, dtype=torch.float32) * 0.01
-    h = torch.randn(B, NT, H, K, V, device=device, dtype=torch.float32) * 0.1
+    A = torch.randn(B, T, H, BT, device=device, dtype=torch.float32) * (0.01 if historical else 0.05)
+    h = torch.randn(B, NT, H, K, V, device=device, dtype=torch.float32) * amplitude
     return (q, v, g, A, h, 0.125), {"chunk_size": BT}
+
+
+def require_scored_signal(expected):
+    import torch
+    try:
+        check_outputs(torch.zeros_like(expected), expected, atol=5e-2, rtol=5e-2)
+    except NumericalMismatch:
+        return
+    raise AssertionError("Scored KDA oracle accepts zero output at the declared tolerance")
 
 
 def run_compile():
@@ -123,7 +133,9 @@ def run_correctness(*, case_index=None):
             readonly = InputSnapshot({str(i): a for i,a in enumerate(args) if isinstance(a, torch.Tensor)})
             result = mod.kda_gla_fwd_o(*args, **kwargs)
             readonly.check()
-            check_outputs(result, reference(*args, **kwargs).to(device), atol=5e-2, rtol=5e-2,
+            expected_output = reference(*args, **kwargs).to(device)
+            require_scored_signal(expected_output)
+            check_outputs(result, expected_output, atol=5e-2, rtol=5e-2,
                           inputs=[e[1] for e in readonly.entries])
             ref = reference(*args_cpu, **kwargs)
             r_cpu = result.float().cpu()
@@ -131,6 +143,29 @@ def run_correctness(*, case_index=None):
             if not torch.allclose(r_cpu, ref_f, atol=5e-2, rtol=5e-2):
                 max_diff = (r_cpu - ref_f).abs().max().item()
                 return False, f"Shape {i+1}: max diff = {max_diff:.6f}"
+
+            # Retain the former small-amplitude input as an unscored check.
+            old_args, old_kwargs = gen_inputs(seed, device, historical=True)
+            old_readonly = InputSnapshot({str(j): value for j, value in enumerate(old_args)
+                                          if isinstance(value, torch.Tensor)})
+            old_result = mod.kda_gla_fwd_o(*old_args, **old_kwargs)
+            old_readonly.check()
+            check_outputs(old_result, reference(*old_args, **old_kwargs).to(device),
+                          atol=5e-2, rtol=5e-2,
+                          inputs=[entry[1] for entry in old_readonly.entries])
+
+            # The original random case has outputs near the absolute bound.
+            # Check the same declared geometry with a meaningful state signal
+            # and nonzero gate; this remains an unscored correctness probe.
+            q, v, g, A, h, scale = args
+            strong_args = (q * 8, v * 8, g + 1.0, torch.zeros_like(A), h * 8, scale)
+            strong_readonly = InputSnapshot({str(j): value for j, value in enumerate(strong_args)
+                                             if isinstance(value, torch.Tensor)})
+            strong_result = mod.kda_gla_fwd_o(*strong_args, **kwargs)
+            strong_readonly.check()
+            check_outputs(strong_result, reference(*strong_args, **kwargs).to(device),
+                          atol=5e-2, rtol=5e-2,
+                          inputs=[entry[1] for entry in strong_readonly.entries])
 
             torch.cuda.synchronize()
         except Exception as e:
@@ -155,6 +190,10 @@ def run_performance():
             readonly = InputSnapshot({str(i): a for i,a in enumerate(args) if isinstance(a, torch.Tensor)})
             from _aka_benchmark import TimedRun
             timed = TimedRun()
+            expected = lambda: reference(*args, **kwargs).to(device)
+            require_scored_signal(expected())
+            observe_measured_samples(
+                timed, readonly, expected, atol=5e-2, rtol=5e-2)
             def _bench_fn():
                 return mod.kda_gla_fwd_o(*args, **kwargs)
             elapsed_ms, benchmark_metadata = _benchmark_cuda_graph_or_events(
@@ -165,7 +204,8 @@ def run_performance():
             )
             benchmark_metadata.update(validate_timed(
                 timed, readonly, lambda: reference(*args, **kwargs).to(device),
-                lambda: (args[0].mul_(8.0), args[1].mul_(8.0)), atol=5e-2, rtol=5e-2))
+                lambda: (args[0].mul_(8.0), args[1].mul_(8.0)), atol=5e-2, rtol=5e-2, expected_samples=BENCHMARK_ITERATIONS))
+            benchmark_metadata["scored_zero_output_rejected"] = True
 
             test_cases.append({
                 "test_case_id": f"perf{test_idx + 1}",

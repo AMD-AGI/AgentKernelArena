@@ -70,7 +70,7 @@ def cpu_points_in_boxes_part(points, boxes):
                 sin_r = torch.sin(-rz)
                 local_x = px * cos_r - py * sin_r
                 local_y = px * sin_r + py * cos_r
-                if (abs(local_x) <= dx / 2 and abs(local_y) <= dy / 2
+                if (abs(local_x) < dx / 2 and abs(local_y) < dy / 2
                         and 0 <= pz <= dz):
                     result[b, m] = t
                     break
@@ -93,7 +93,7 @@ def cpu_points_in_boxes_all(points, boxes):
                 sin_r = torch.sin(-rz)
                 local_x = px * cos_r - py * sin_r
                 local_y = px * sin_r + py * cos_r
-                if (abs(local_x) <= dx / 2 and abs(local_y) <= dy / 2
+                if (abs(local_x) < dx / 2 and abs(local_y) < dy / 2
                         and 0 <= pz <= dz):
                     result[b, m, t] = 1
     return result
@@ -136,9 +136,31 @@ def run_correctness():
 def _time_kernel(fn, inputs, expected, n_warmup=10, n_iter=100):
     from replay_validation import measure
     from reference_checks import close
+
+    def changed_reference():
+        points, boxes = inputs
+        changed = (cpu_points_in_boxes_part(points.cpu(), boxes.cpu())
+                   if expected.ndim == 2 else cpu_points_in_boxes_all(points.cpu(), boxes.cpu()))
+        if torch.equal(changed, expected):
+            raise ValueError('Changed geometry did not alter the reference output')
+        return lambda actual: close(actual, changed, gpu=True)
+
+    def change_points():
+        points, boxes = inputs
+        with torch.no_grad():
+            points[..., 0].add_(1000)
+        return changed_reference()
+
+    def change_boxes():
+        _, boxes = inputs
+        with torch.no_grad():
+            boxes[..., 0].add_(1000)
+        return changed_reference()
+
     return measure(
         benchmark_cuda_graph_or_events, fn, inputs,
         lambda actual: close(actual, expected, gpu=True),
+        (change_points, change_boxes),
         warmup=n_warmup, repetition=n_iter,
         use_cuda_graph=HIP_GRAPH_ENABLED,
         fallback_reason=HIP_GRAPH_FALLBACK_REASON,

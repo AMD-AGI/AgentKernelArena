@@ -53,25 +53,28 @@ this migration; the parent integration schedules fresh GPU validation.
 
 Measured outputs and subsequent invocations are checked against the protected
 FP32-accumulating, BF16-output reference using the original numerical gate.
+Correctness also invokes the candidate on constant and nonuniform mixed-sign
+operands at every declared shape and tiling. Exact integer dot-product answers
+check the FP32 reference independently; candidate outputs use the unchanged
+numerical gate described above. These additional cases are not scored timing workloads.
 The harness also rejects wrong shape/dtype/device, non-finite outputs and
 read-only input mutation. Input perturbation, reference calculation and output
 poisoning occur outside timing, identically for baseline and candidate.
-Explicit Event timing observes the last actual measured sample; its validation
-re-invokes the same eager callable and is not captured graph replay. Graph timing
-validates the actual captured replay. Original shapes, seeds, tolerance, warmup,
-sample counts and Graph/Event selection remain unchanged.
+Explicit Event timing checks the output of every completed measured sample.
+Sample zero uses the original input; each later sample receives a distinct
+seeded BF16 pair outside timing. The same stream is used for both Arena roles
+and the diagnostic PyTorch timing. After checking all measured values against
+the FP32 reference, the harness poisons the final output and reruns the same
+eager callable on perturbed inputs. The five scored shapes, original sample,
+tolerance, ten warmups, 100 samples and Event policy remain unchanged. The
+strengthened data stream makes earlier timing results not directly comparable.
 
-Runtime qualification: the initial implementation uses the legacy FlyDSL
-`expr.buffer_ops` and `expr.vector` APIs. It passed the full task validator on
-MI355X with the repository's pinned SGLang 0.5.14 / FlyDSL 0.2.2 runtime
-(2026-09-15, job 139392 on an available-memory MI355X allocation; all five
-correctness and performance cases, including
-measured Event outputs and eager re-invocation). The tested SGLang 0.5.19 /
-FlyDSL 0.3.2 runtime removes these APIs and fails before kernel execution.
-Select the qualified runtime through the run-level Docker image setting;
-an unchanged source under 0.5.19 is not qualified. Candidate and baseline must
-use the same runtime and timing method. This initial-task validation does not
-certify a subsequently modified candidate.
+The initial implementation uses the task's `kernels/` adapters for the
+low-level buffer and vector operations in FlyDSL 0.3.2. Those adapters use
+FlyDSL MLIR primitives; the GEMM arithmetic and launch remain in `kernel.py`.
+Run the task validator on the configured GPU image before treating a modified
+initial implementation as qualified. Candidate and baseline must use the same
+runtime and timing method.
 
 
 Only the entrypoints listed in config.yaml are required interfaces. The primary

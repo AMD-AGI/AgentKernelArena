@@ -54,6 +54,14 @@ def checked_modules(harness):
             diagnostic_expected = reference(harness, saved, diagnostic_eps)
             check_output(original(diagnostic, eps=diagnostic_eps), diagnostic_expected)
             unchanged(diagnostic, saved)
+            tail = pristine[:7, :65].contiguous().clone()
+            tail[0].zero_()
+            tail[1].mul_(1e-3)
+            tail_saved = tail.clone()
+            tail_eps = 2e-4
+            check_output(original(tail, eps=tail_eps),
+                         reference(harness, tail_saved, tail_eps))
+            unchanged(tail, tail_saved)
             output = original(x, eps=eps)
             unchanged(x, pristine)
             check_output(output, expected)
@@ -97,7 +105,17 @@ def checked_benchmark(harness, benchmark, fn, **options):
     setattr(module, SYMBOL, collect)
     try:
         timed = harness._TimedRun()
+        checked_samples = [0]
+        def check_sample(output):
+            check_output(output, expected)
+            checked_samples[0] += 1
+        timed.after_sample = check_sample
+        # Each reported sample must execute and validate the full wrapper.
+        options = {**options, 'use_cuda_graph': False,
+                   'fallback_reason': 'validate_each_public_invocation'}
         ms, metadata = benchmark(measured, timed_run=timed, **options)
+        if not timed.bound or checked_samples[0] != options['repetition']:
+            raise AssertionError('Reported sample outputs were not all checked')
         unchanged(g, pristine)
         check_output(timed.outputs, expected)
         g.mul_(-1).add_(0.25)
@@ -108,7 +126,8 @@ def checked_benchmark(harness, benchmark, fn, **options):
         unchanged(g, replay_pristine)
         check_output(replayed, replay_expected)
         return ms, {**metadata, 'timed_output_checked': True,
-                    'perturbed_input_replay_checked': True, 'source_buffers_unchanged': True}
+                    'perturbed_input_replay_checked': True, 'source_buffers_unchanged': True,
+                    'measured_samples_checked': checked_samples[0], }
     finally:
         setattr(module, SYMBOL, original)
         g.copy_(pristine)

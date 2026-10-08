@@ -17,7 +17,18 @@ Collection is checked against this independent manifest. Original correctness
 functions run unchanged. Performance inputs additionally run the task-local
 oracle in `_arena_reference.py`, before timing and against observed timed output.
 Seeds, case parameters, original assertions/tolerances, launch parameters,
-prepare/reset callbacks, warmups and sample counts are unchanged.
+warmups and sample counts are unchanged.
+
+The scored forward path also writes per-row FP32 mean and reciprocal standard
+deviation buffers. The adapter binds those buffers to the exact returned output
+from each captured call and verifies all three values at every scored shape and
+dtype. It poisons statistics before each measured graph replay, outside the
+device timing interval, and poisons all three outputs before the changed-input
+replay. Every observed sample checks that x, w and b remain read-only, and
+restores them on any failure. This preparation makes each graph replay one
+logical operator call;
+the 10 warmups and 100 reported samples remain. Historical latency values
+are not directly comparable to this checked timing path.
 
 Arena times the same Triton path in its independently frozen baseline workspace
 and the edited candidate workspace. The old benchmark helper's optional PyTorch

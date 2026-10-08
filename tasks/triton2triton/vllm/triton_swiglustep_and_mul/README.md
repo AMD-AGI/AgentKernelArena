@@ -1,6 +1,6 @@
 # triton_swiglustep_and_mul
 
-The starting candidate is implemented Triton. Improve the declared source files in place;
+The starting candidate is implemented Triton. Improve the declared kernel symbol in place;
 the framework freezes the initial implementation as the baseline. Baseline and candidate
 actions execute only this workspace, with no fallback to another implementation.
 
@@ -11,12 +11,15 @@ The kernel computes: silu(x[:,:d]).clamp(max=limit) * x[:,d:].clamp(-limit, limi
 where d = input_dim // 2.
 
 Key optimization opportunities:
-- Block size tuning
+- Kernel tiling within the declared launch interface
 - Memory access pattern optimization
 - Fused computation optimizations
 
 Constraints:
 - Must maintain the same function signature for `swiglustep_and_mul`
+- The public wrapper, including its output allocation and launch interface, is
+  protected by the symbol-scoped candidate boundary. Only
+  `_swiglustep_and_mul_kernel` and permitted implementation helpers are editable.
 - Output must match reference within atol=1e-2, rtol=1e-2 for float16
 
 
@@ -37,12 +40,15 @@ Canonical benchmark helpers must be materialized by Arena; do not edit their gen
 Full output shape, dtype, device and finiteness are checked against a pristine
 input's original reference at `atol=rtol=1e-2`; input must remain read-only.
 Unscored controls exercise both signs of the up-input clamp, the gate's upper
-clamp (with no lower gate clamp), limits 7.0 and 0.1, a partial second 1024-column
-tile, and row-strided inputs with contiguous columns.
+clamp (with no lower gate clamp), limits 7.0 and 0.1, and row-strided inputs with
+contiguous columns. Output widths include 1, 3, neighbors of 32, 64, 128, 512,
+1024 and 2048, the 257-column case, and the original 1031-column tail case.
 
 The five original scored cases, random seeds, input distribution, default limit,
-10 warmups and 100 device samples remain unchanged. Timing still measures the
-public wrapper including allocation. After timing, its captured output is
-checked, input is multiplied by -3 and the output poisoned with NaN. The same
-captured graph must produce the new reference output on replay. Checks are
-outside timing and original input is restored even when replay fails.
+10 warmups and 100 device samples remain unchanged. Each sample invokes the
+complete public wrapper, including allocation, between device events; this is
+Event timing rather than graph replay latency. Each measured output is checked
+after its timing window. After timing, input is multiplied by -3 and the final
+output poisoned with NaN. Rerunning the same public invocation must produce the
+new reference output. Checks are outside timing and original input is restored
+even when the rerun fails.

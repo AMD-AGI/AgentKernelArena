@@ -151,6 +151,33 @@ def validate_task(args, rows):
     return {"candidate_state": actual_state, "case_count": len(rows)}
 
 
+def check_sigmoid_controls(module, functional, hip_fn, rtol, atol, device="cuda"):
+    """Check unscored edge cases against an independent stable sigmoid formula."""
+    import torch
+    import correctness_check as checks
+    if (module.a, module.max) != (functional.a, functional.max):
+        raise ValueError("Reference and functional sigmoid parameters differ")
+    controls = (
+        ("scalar", torch.tensor(-2.5, device=device)),
+        ("empty", torch.empty((0, 7), device=device)),
+        ("extreme", torch.tensor([-80., -20., -1., 0., 1., 20., 80.], device=device)),
+    )
+    for name, value in controls:
+        scaled = value.double() * module.a
+        positive = 1.0 / (1.0 + torch.exp(-scaled))
+        negative_exp = torch.exp(scaled)
+        negative = negative_exp / (1.0 + negative_exp)
+        expected = (torch.where(scaled >= 0, positive, negative) * module.max).to(value.dtype)
+        actuals = (module(value.clone()),
+                   functional(value.clone()) if hip_fn is None else
+                   functional(value.clone(), fn=hip_fn))
+        for actual in actuals:
+            output_contract(expected, actual)
+            if not checks._compare_results(expected, actual, rtol=rtol, atol=atol):
+                raise ValueError(f"{name} sigmoid control disagrees with the mathematical reference")
+    return [name for name, _ in controls]
+
+
 def correctness(args, role, rows):
     import torch
     import correctness_check as checks
@@ -186,6 +213,9 @@ def correctness(args, role, rows):
         result.append(row)
     if len(result) != len(rows):
         raise ValueError("Correctness omitted declared cases")
+    if all(row["status"] == "PASS" for row in result):
+        controls = check_sigmoid_controls(module, functional, hip_fn, rtol, atol)
+        result[0]["metrics"]["unscored_math_controls"] = controls
     return result
 
 
@@ -257,13 +287,21 @@ def performance(args, role, rows):
             raise RuntimeError("Benchmark case identity/correctness is invalid")
         time_key = ("ref_time" if args.baseline_hip else "ori_time") if role == "baseline" else "opt_time"
         elapsed = case.get(time_key)
-        method = case.get("reference_benchmark_method") if role == "baseline" and args.baseline_hip else case.get("benchmark_method")
+        selected_benchmark = case.get("reference_benchmark") if role == "baseline" and args.baseline_hip else case
+        if not isinstance(selected_benchmark, dict):
+            raise RuntimeError("Benchmark omitted timing metadata for the measured role")
+        method = selected_benchmark.get("benchmark_method")
+        if selected_benchmark.get("replay_validation_valid") is not True or (
+            selected_benchmark.get("validated_sample_count") != selected_benchmark.get("benchmark_samples")
+        ):
+            raise RuntimeError("Benchmark did not validate all reported samples for the measured role")
         if not isinstance(elapsed, (float, int)) or not math.isfinite(elapsed) or elapsed <= 0:
             raise RuntimeError("Benchmark returned invalid device timing")
         if method not in ("cuda_graph", "cuda_event_fallback"):
             raise RuntimeError("Benchmark did not establish device timing method")
         result.append({**rows[index], "status": "PASS", "execution_time_ms": elapsed,
-                       "benchmark_method": method, "metadata": {"original_benchmark": case}})
+                       "benchmark_method": method, "metadata": {"original_benchmark": case,
+                                                                 "timed_benchmark": selected_benchmark}})
     return result
 
 

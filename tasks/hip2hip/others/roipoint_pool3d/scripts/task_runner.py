@@ -43,7 +43,7 @@ def check_point_in_box(point, box):
     sin_h = torch.sin(-heading)
     local_x = px * cos_h - py * sin_h
     local_y = px * sin_h + py * cos_h
-    return (abs(local_x) <= dx / 2 and abs(local_y) <= dy / 2 and 0 <= pz <= dz)
+    return (abs(local_x) < dx / 2 and abs(local_y) < dy / 2 and 0 <= pz <= dz)
 
 
 def cpu_roipoint_pool3d(points, point_features, boxes3d, nsample):
@@ -192,10 +192,35 @@ def run_performance():
             return pooled_features, pooled_empty_flag
 
         expected = cpu_roipoint_pool3d(points.cpu(), point_features.cpu(), boxes3d.cpu(), nsample)
+
+        def changed_reference():
+            changed_expected = cpu_roipoint_pool3d(
+                points.cpu(), point_features.cpu(), boxes3d.cpu(), nsample)
+            if (torch.equal(changed_expected[0], expected[0])
+                    and torch.equal(changed_expected[1], expected[1])):
+                raise ValueError('Changed input did not alter the reference output')
+            return lambda actual: check_timed_output(actual, changed_expected)
+
+        def change_points():
+            with torch.no_grad():
+                points[..., 0].add_(1000)
+            return changed_reference()
+
+        def change_features():
+            with torch.no_grad():
+                point_features.add_(3)
+            return changed_reference()
+
+        def change_boxes():
+            with torch.no_grad():
+                boxes3d[..., 0].add_(1000)
+            return changed_reference()
+
         elapsed_ms, benchmark_meta = measure(
             benchmark_cuda_graph_or_events, run_pool,
             (points, point_features, boxes3d),
             lambda actual: check_timed_output(actual, expected),
+            (change_points, change_features, change_boxes),
             warmup=10,
             repetition=100,
             use_cuda_graph=HIP_GRAPH_ENABLED,

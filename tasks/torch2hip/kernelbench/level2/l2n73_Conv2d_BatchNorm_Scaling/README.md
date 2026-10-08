@@ -23,10 +23,15 @@ All **5 cases** in `workload.json` are mandatory. The manifest was enumerated
 from the unchanged module `get_inputs()`; it is not inferred from candidate output.
 The original correctness tolerance and RNG schedule remain in
 `eval_tools/correctness_check.py` (model seed 0; comparison seed 1337 + case index).
+Each declared correctness geometry also gets an untimed control with nonidentity
+BatchNorm affine parameters and running statistics. The same reference and
+selected forward must agree at the original tolerance, and the original model
+state is restored afterward. The five scored inputs and default model state remain.
 The performance path retains the original `eval_tools/cal_kernel_perf.py` case
 iteration, model state alignment, warmup 10, repetitions 100, input restoration
 where supplied, and canonical graph/event benchmark helpers. The selected timing
-policy is shared by both roles; candidate changes cannot select a weaker policy.
+policy is shared by both roles; returned Event timing is rejected when the
+declared baseline requires graph timing, including after native extension load.
 
 Use the argv prefix in `config.yaml` followed by one of:
 

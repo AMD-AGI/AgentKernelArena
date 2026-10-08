@@ -71,11 +71,16 @@ max_abs_error/max_abs_reference<=0.01 (zero reference uses raw max_abs_error);
 elementwise allclose percentage is diagnostic only. The five cases, tiling,
 seed, original quantization/model and source kernel remain unchanged.
 Both roles retain explicit Event timing: ten external warmups, zero additional
-collector warmups and 100 measured samples. The unquantized torch matmul timing
-remains diagnostic; Arena's baseline is the frozen initial FlyDSL implementation.
-Validate the last actual measured output against quantized FP32 GEMM/BF16 cast,
-then halve both scale tensors outside timing, poison the old output and rerun
-the same eager callable. Compare the result against the original numerical gate
-and restore inputs. No captured-graph claim is made for this Event invocation.
-The original source imports the older FlyDSL buffer_ops API: qualify it with the
-pinned compatible runtime and record that image digest, not an untested image.
+collector warmups and 100 measured samples. Sample zero uses the original
+seeded data; each later sample receives a distinct seeded BF16 activation and
+weight pair, quantized and preshuffled outside timing. A read-only observer
+captures each actual measured output and checks input immutability; after
+timing, all 100 outputs are compared with quantized FP32 GEMM/BF16 references
+using the original numerical gate. The unquantized torch matmul diagnostic
+receives the same raw input stream. Poisoning and replay also use independent
+new quantized operands and verified packed weights, with a distinguishable
+reference; every input is restored on exit. The five shapes, tolerance and
+full public operator timing boundary remain unchanged, though this stronger
+data stream makes historical performance measurements not directly comparable.
+No captured-graph claim is made for this Event invocation. The task-local
+FlyDSL 0.3.2 buffer adapter requires fresh qualification in the pinned image.

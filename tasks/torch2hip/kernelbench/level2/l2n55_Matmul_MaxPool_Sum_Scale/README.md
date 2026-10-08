@@ -50,6 +50,8 @@ that measured unit against the protected functional reference. All original
 cases, input generation, seeds, numerical tolerances, 10 warmups and 100 samples
 are preserved. Models run in the original eval mode: module dropout is disabled
 and batch-normalization uses frozen statistics. Checks are outside samples.
+The post-timing replay also checks valid inputs below −4 on every declared
+shape, since the original scored generator produces only nonnegative inputs.
 
 The scored Python call path is read-only: the benchmark checks caller inputs
 and all model parameters/buffers after the actual timed call and its validated

@@ -1,4 +1,5 @@
 """Independent output checks for the performance inputs; never timed or editable."""
+from contextlib import contextmanager
 import numpy as np
 import torch
 
@@ -60,3 +61,32 @@ def prepare(c, module):
     expected=c['a']@c['b']
     if c['bias'] is not None:expected=expected+c['bias'][:,None]
     return lambda result: compare(c.get('c_buffer',result),expected,atol=1e-3,rtol=1e-2)
+
+
+@contextmanager
+def perturbed_inputs(c):
+    """Change live operands for a bound replay; restore them on every exit."""
+    names = ('a', 'b', 'bias')
+    saved = {name: c[name].clone() for name in names if isinstance(c[name], torch.Tensor)}
+    try:
+        c['a'].copy_(torch.flip(c['a'], (0,)))
+        c['b'].copy_(torch.flip(c['b'], (1,)))
+        if c['bias'] is not None:
+            c['bias'].add_(0.5)
+        yield
+    finally:
+        for name, original in saved.items():
+            c[name].copy_(original)
+
+
+def poison_outputs(c, result):
+    """Invalidate scored output buffers before checking the bound replay."""
+    for output in (c.get('c_buffer', result),):
+        if not isinstance(output, torch.Tensor):
+            raise TypeError("Missing scored output buffer")
+        if output.dtype == torch.bool:
+            output.logical_not_()
+        elif output.is_floating_point():
+            output.fill_(float("nan"))
+        else:
+            output.fill_(torch.iinfo(output.dtype).min)

@@ -41,7 +41,9 @@ sum cannot substitute for correct voxel/channel or point/feature contents.
 The baseline's declared timing method remains fixed for both roles. If edited
 native source fails the current-stream/capture-safety check required by that
 method, evaluation rejects it; it cannot force graph timing for an unsafe launch
-or downgrade only the candidate to event timing. Implementation/launcher edits
+or downgrade only the candidate to event timing. The returned timing method is
+checked against the declared graph policy after the native extension is loaded,
+including environment changes made by a native static initializer. Implementation/launcher edits
 remain within the declared file boundary, and must honor this stream contract.
 
 Performance now compares the actual timed graph outputs to the full protected

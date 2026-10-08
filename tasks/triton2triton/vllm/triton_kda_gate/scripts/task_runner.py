@@ -10,7 +10,7 @@ TASK_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 os.chdir(TASK_DIR)
 if TASK_DIR not in sys.path:
     sys.path.insert(0, TASK_DIR)
-from scripts.contract_checks import InputSnapshot, check_outputs, validate_timed
+from scripts.contract_checks import InputSnapshot, check_outputs, observe_measured_samples, validate_timed
 from scripts import semantic_controls
 
 TASK_NAME = "triton2triton/triton_kda_gate"
@@ -143,6 +143,9 @@ def run_performance():
             readonly = InputSnapshot({str(i): a for i,a in enumerate(args) if isinstance(a, torch.Tensor)})
             from _aka_benchmark import TimedRun
             timed = TimedRun()
+            expected = lambda: reference(*args, **kwargs).to(device)
+            observe_measured_samples(
+                timed, readonly, expected, atol=1e-3, rtol=1e-3)
             def _bench_fn():
                 return mod.fused_kda_gate(*args, **kwargs)
             elapsed_ms, benchmark_metadata = _benchmark_cuda_graph_or_events(
@@ -153,7 +156,7 @@ def run_performance():
             )
             benchmark_metadata.update(validate_timed(
                 timed, readonly, lambda: reference(*args, **kwargs).to(device),
-                lambda: args[0].add_(1.0), atol=1e-3, rtol=1e-3))
+                lambda: args[0].add_(1.0), atol=1e-3, rtol=1e-3, expected_samples=BENCHMARK_ITERATIONS))
 
             test_cases.append({
                 "test_case_id": f"perf{test_idx + 1}",

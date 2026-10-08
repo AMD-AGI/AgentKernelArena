@@ -32,6 +32,12 @@ def expand_batch_to_tokens(x, cu_num_tokens, num_tokens, replace_from=0, replace
     """Expand [batch_size] tensor to [num_tokens] based on cu_num_tokens."""
     batch_size = x.shape[0]
     expanded_x = x.new_empty(num_tokens)
+    # The kernel uses unit-stride pointer offsets. Materialize legal 1-D
+    # strided views only when needed; the scored contiguous path is unchanged.
+    if not x.is_contiguous():
+        x = x.contiguous()
+    if not cu_num_tokens.is_contiguous():
+        cu_num_tokens = cu_num_tokens.contiguous()
     expand_kernel[(batch_size,)](
         expanded_x, x, cu_num_tokens, replace_from, replace_to,
         MAX_NUM_TOKENS=MAX_SPEC_LEN,

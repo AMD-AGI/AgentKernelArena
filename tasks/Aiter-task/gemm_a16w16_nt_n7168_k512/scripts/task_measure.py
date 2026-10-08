@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import math
 import secrets
+from typing import NamedTuple
 import torch
 
 import task_baseline
@@ -178,10 +179,18 @@ class RotatingDraws:
         self._served = draw
 
 
+class MeasuredOutput(NamedTuple):
+    value: torch.Tensor
+    source_device: torch.device
+
+
 def host_copy(outputs):
     # A device-to-host copy reads the outputs without writing device memory, so
     # keeping them evicts little of what the next invocation finds in cache.
-    return outputs.detach().to("cpu") if isinstance(outputs, torch.Tensor) else outputs
+    # Keep the source device: moving the value back for oracle comparison must
+    # not hide an output produced on the wrong device.
+    return (MeasuredOutput(outputs.detach().to("cpu"), outputs.device)
+            if isinstance(outputs, torch.Tensor) else outputs)
 
 
 class SampleChecks:
@@ -239,8 +248,15 @@ def verify_timed_outputs(inputs, kept):
             task_inputs.load_draw(inputs, draw)
             expected_by_draw[id(draw)] = task_reference.run(**task_inputs.call_kwargs(inputs))
         expected = expected_by_draw[id(draw)]
-        if isinstance(got, torch.Tensor):
-            got = got.to(expected.device)
+        source_device = got.source_device if isinstance(got, MeasuredOutput) else (
+            got.device if isinstance(got, torch.Tensor) else None)
+        if source_device != expected.device:
+            results.append({"status": "FAIL", "failure_kind": "output_contract",
+                            "reason": (f"Timed output device {source_device} differs from "
+                                       f"reference device {expected.device}")})
+            continue
+        if isinstance(got, MeasuredOutput):
+            got = got.value.to(expected.device)
         results.append(compare_output(got, expected))
     failed = [result for result in results if result["status"] != "PASS"]
     metadata = {"checked_invocations": len(results), "failed_invocations": len(failed)}

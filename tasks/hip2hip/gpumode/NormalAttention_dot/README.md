@@ -52,6 +52,8 @@ case IDs, input generation, seeds, tolerances, 10 warmups and 100 samples remain
 unchanged. Automatic capture failure is not accepted as validated Event output.
 
 This HIP task retains its explicit Event policy for ROCm graph teardown safety.
+Each result exposes its checked output and Event fallback reason in the case
+metadata used by the task validator.
 
 The scored Python call path is read-only: the benchmark checks caller inputs
 and all model parameters/buffers after the actual timed call and its validated

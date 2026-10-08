@@ -110,7 +110,14 @@ def checked_benchmark(harness, benchmark, fn, **options):
     setattr(module, SYMBOL, collect)
     try:
         timed = harness._TimedRun()
+        checked_samples = [0]
+        def check_sample(output):
+            check_outputs(output, expected)
+            checked_samples[0] += 1
+        timed.after_sample = check_sample
         ms, metadata = benchmark(measured, timed_run=timed, **options)
+        if not timed.bound or checked_samples[0] != options['repetition']:
+            raise AssertionError('Reported sample outputs were not all checked')
         unchanged(inputs, pristine)
         check_outputs(timed.outputs, expected)
         for i, value in enumerate(inputs):
@@ -125,7 +132,8 @@ def checked_benchmark(harness, benchmark, fn, **options):
         unchanged(inputs, replay_pristine)
         check_outputs(replayed, replay_expected)
         return ms, {**metadata, 'timed_output_checked': True,
-                    'perturbed_input_replay_checked': True, 'source_buffers_unchanged': True}
+                    'perturbed_input_replay_checked': True, 'source_buffers_unchanged': True,
+                    'measured_samples_checked': checked_samples[0], }
     finally:
         setattr(module, SYMBOL, original)
         for value, saved in zip(inputs, pristine):

@@ -48,7 +48,7 @@ def inspect_candidate(data, *, require_implemented=False):
 
 
 def benchmark_type(base, plugin, module):
-    from _arena_reference import prepare
+    from _arena_reference import prepare, poison_outputs, perturbed_inputs, check_stride_controls
     class CheckedBenchmark(base):
         def __init__(self,*args,**kwargs):
             # Inputs are task-owned locals prepared by the original performance
@@ -64,26 +64,63 @@ def benchmark_type(base, plugin, module):
             output=original()
             check(output)
             if plugin.action=='correctness':
+                check_stride_controls(self.context,module)
                 row['metrics']={'performance_inputs_checked':True}
                 plugin.exercised.add(row['test_case_id'])
                 return {}
-            observed=[output]
-            def observed_op():
-                value=original()
-                observed[0]=value
-                return value
-            self.op_callable=observed_op
+            previous_prepare=self.prepare_fn
+            def prepare_each_call():
+                if previous_prepare is not None:previous_prepare()
+                # C is an output, and every scored matmul must overwrite it.
+                # Preparing outside the timed interval keeps one full kernel
+                # invocation in each graph replay and exposes cached-C skips.
+                poison_outputs(self.context,None)
+            self.prepare_fn=prepare_each_call
+            # Bind the canonical timer's output collector to the reported
+            # samples. A Python wrapper only observes graph capture, whereas
+            # graph replays write the captured buffers without calling Python.
+            from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events_samples
+            timed=TimedRun()
+            checked_samples=[0]
+            def check_sample(measured_output):
+                check(measured_output)
+                checked_samples[0]+=1
+            timed.after_sample=check_sample
+            globals_=base.run_benchmark.__globals__
+            measure=globals_['_measure_times']
+            def measured_times(callable_fn, config, target_ms=1.0, n_retries=5,
+                               estimate_reps=5, max_graph_repeats=1000,
+                               prepare_fn=None, use_cuda_graph=True,
+                               fallback_reason=None):
+                return benchmark_cuda_graph_or_events_samples(
+                    callable_fn, warmup=config.warm_up,
+                    repetition=config.repetition, target_ms=target_ms,
+                    n_retries=n_retries, estimate_reps=estimate_reps,
+                    max_graph_repeats=max_graph_repeats,
+                    prepare_fn=prepare_fn, use_cuda_graph=use_cuda_graph,
+                    fallback_reason=fallback_reason, timed_run=timed)
+            globals_['_measure_times']=measured_times
             try:
                 # The common session owns the independent baseline. The old
                 # helper's optional peer/reference timing is not that baseline.
                 kwargs['baseline_callable']=None
                 record=super().run_benchmark(*args,**kwargs)
             finally:
-                self.op_callable=original
-            # For graph capture, this aliases the last captured output buffers;
-            # for event timing it is the output of the last measured invocation.
-            # Do not rerun a separate candidate and label it timed evidence.
-            check(observed[0])
+                globals_['_measure_times']=measure
+                self.prepare_fn=previous_prepare
+            if not timed.bound or checked_samples[0]!=self.config.repetition:
+                raise RuntimeError('Measured sample outputs were not all checked')
+            # Under graph timing this is the exact captured output buffer; for
+            # explicit Event timing it is the last measured eager return.
+            check(timed.outputs)
+            # Change the live caller-owned operands after measurement, then
+            # replay the exact bound graph/eager callable against a fresh oracle.
+            # The task reference restores every changed input even on failure.
+            with perturbed_inputs(self.context):
+                changed_check=prepare(self.context,module)
+                poison_outputs(self.context,timed.outputs)
+                replayed=timed.rerun()
+                changed_check(replayed)
             ms=record['timing_ms']['mean'];method=record.get('benchmark_method')
             if not isinstance(ms,(float,int)) or not math.isfinite(ms) or ms<=0:
                 raise RuntimeError('Nonpositive/nonfinite device timing')
@@ -91,6 +128,9 @@ def benchmark_type(base, plugin, module):
                 raise RuntimeError('Missing device timing method')
             row.update(execution_time_ms=ms,benchmark_method=method,
                        metadata={'timing_stats':record['timing_ms'],'timed_output_checked':True,
+                                 'measured_samples_checked':checked_samples[0],
+                                 'bound_replay_output_checked':True,
+                                 'perturbed_input_replay_checked':True,
                                  'device_timing':{k:v for k,v in record.items() if k.startswith('benchmark_')}})
             plugin.exercised.add(row['test_case_id'])
             return record

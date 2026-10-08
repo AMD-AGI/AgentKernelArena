@@ -297,8 +297,8 @@ def _run_aiter(case: dict):
     # Call the raw op directly. pa_ragged_test.run_aiter is a @perftest-decorated
     # BENCHMARK wrapper (warmup + 101 profiled iters + torch.cuda.synchronize +
     # empty_cache + trace post-processing); timing it measured the harness, not the
-    # kernel (~100x inflated) and was not CUDA-graph capturable. The underlying op
-    # is a single launch and is capturable.
+    # operator (~100x inflated) and was not CUDA-graph capturable. The raw op is
+    # capturable; decode may dispatch both partition and reduce kernels.
     from csrc.cpp_itfs.pa.pa_ragged import paged_attention_ragged
 
     p = case["params"]
@@ -384,6 +384,35 @@ def run_correctness() -> None:
 
 
 
+def _snapshot_readonly_inputs(case: dict) -> dict:
+    import torch
+
+    return {name: (value.detach().clone(), value.shape, value.stride(), value.dtype, value.device)
+            for name, value in case.items() if isinstance(value, torch.Tensor)
+            and name not in ("output", "workspace_buffer")}
+
+
+def _check_readonly_inputs(case: dict, saved: dict) -> None:
+    import torch
+
+    for name, (original, shape, stride, dtype, device) in saved.items():
+        current = case[name]
+        if (current.shape != shape or current.stride() != stride or current.dtype != dtype
+                or current.device != device or not torch.equal(current, original)):
+            raise AssertionError(f"Paged attention modified read-only {name}")
+
+
+def _restore_readonly_inputs(case: dict, saved: dict) -> None:
+    for name, (original, *_rest) in saved.items():
+        case[name].copy_(original)
+
+
+def _prepare_timed_sample(case: dict) -> None:
+    """Invalidate reused output and scratch outside the device timing interval."""
+    case["output"].fill_(float("nan"))
+    case["workspace_buffer"].fill_(0xA5)
+
+
 def _assert_timed_outputs(case: dict, timed) -> None:
     """Check the actual captured invocation with a changed input, after timing.
 
@@ -398,22 +427,51 @@ def _assert_timed_outputs(case: dict, timed) -> None:
         raise RuntimeError("Benchmark did not expose its captured output")
     data = case['query']
     data.copy_((-data.float()).to(data.dtype))
+    changed_inputs = _snapshot_readonly_inputs(case)
+    expected = _run_torch(case)
+    _check_readonly_inputs(case, changed_inputs)
     timed.outputs.fill_(float("nan"))
     got = timed.rerun()
-    expected = _run_torch(case)
+    _check_readonly_inputs(case, changed_inputs)
     torch.testing.assert_close(got, expected, atol=2e-2, rtol=2e-2)
 
 
 def run_performance() -> None:
+    import torch
+
     results: list[dict] = []
     for test_case_id, cfg in PERF_CASES:
         case = _make_case(**cfg)
-        _run_aiter(case)  # warm build
-        timed = _TimedRun()
-        time_ms, bench_meta = _benchmark_cuda_graph_or_events(
-            lambda: _run_aiter(case), timed_run=timed
-        )
-        _assert_timed_outputs(case, timed)
+        original_inputs = _snapshot_readonly_inputs(case)
+        try:
+            _run_aiter(case)  # warm build
+            _check_readonly_inputs(case, original_inputs)
+            expected = _run_torch(case)
+            _check_readonly_inputs(case, original_inputs)
+            timed = _TimedRun()
+            checked_samples = [0]
+
+            def check_sample(actual):
+                _check_readonly_inputs(case, original_inputs)
+                torch.testing.assert_close(actual, expected, atol=2e-2, rtol=2e-2)
+                checked_samples[0] += 1
+
+            timed.after_sample = check_sample
+            time_ms, bench_meta = _benchmark_cuda_graph_or_events(
+                lambda: _run_aiter(case), timed_run=timed,
+                prepare_fn=lambda: _prepare_timed_sample(case), max_graph_repeats=1,
+            )
+            if (not timed.bound or checked_samples[0] != 100 or
+                    bench_meta.get("benchmark_effective_repeats") != 1 or
+                    bench_meta.get("benchmark_method") != "cuda_graph"):
+                raise RuntimeError("Scored graph did not expose 100 single-call measured outputs")
+            _check_readonly_inputs(case, original_inputs)
+            torch.testing.assert_close(timed.outputs, expected, atol=2e-2, rtol=2e-2)
+            _assert_timed_outputs(case, timed)
+            bench_meta["benchmark_measured_samples_checked"] = checked_samples[0]
+            bench_meta["benchmark_replay_checked"] = True
+        finally:
+            _restore_readonly_inputs(case, original_inputs)
         p = case["params"]
         entry = {
             "test_case_id": test_case_id,

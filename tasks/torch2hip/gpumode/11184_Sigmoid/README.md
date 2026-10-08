@@ -21,6 +21,10 @@ module; the PyTorch baseline is cross-checked against the independent functional
 
 All **11 cases** in `workload.json` are mandatory. The manifest was enumerated
 from the unchanged module `get_inputs()`; it is not inferred from candidate output.
+The original scored module keeps `a=1` and `max=10` on all 11 shapes. Additional
+correctness-only controls exercise nondefault scales and multipliers, and the
+runner checks that a candidate preserves the original scored scalar state.
+The extension must use the two scalar arguments supplied by the functional adapter.
 The original correctness tolerance and RNG schedule remain in
 `eval_tools/correctness_check.py` (model seed 0; comparison seed 1337 + case index).
 The performance path retains the original `eval_tools/cal_kernel_perf.py` case
@@ -49,6 +53,8 @@ measured graph. It also checks the public non-aliasing and unchanged-input
 contract. Validation runs outside measured samples with the existing tolerance,
 cases, warmups and repetition counts. The framework identifies captured-graph and explicit Event observations;
 automatic unsupported fallback cannot be reported as replay-validated.
+Each graph sample captures one operator call, so its time cannot be divided by
+additional unchecked calls.
 
 The scored Python call path is read-only: the benchmark checks caller inputs
 and all model parameters/buffers after the actual timed call and its validated

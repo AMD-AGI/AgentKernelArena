@@ -28,10 +28,17 @@ def full_output(actual, expected, *, gpu=False):
     close(actual, expected, atol=1e-1, rtol=.2, gpu=gpu)
 
 
+def strict_max_output(actual, expected, *, gpu=False):
+    # Every scored voxel/channel must reject a systematic output scaling.
+    # Retain the historical full_output and sum gates alongside this control.
+    close(actual, expected, atol=1e-4, rtol=1e-3, gpu=gpu)
+
+
 def check_timed_output(actual, expected, mode, *, gpu=True):
     if mode == 'max':
         full_output(actual, expected, gpu=gpu)
         close(actual.sum(), expected.sum(), atol=1e-1, rtol=.2)
+        strict_max_output(actual, expected, gpu=gpu)
     elif mode == 'avg':
         close(actual, expected, atol=1e-4, rtol=1e-3, gpu=gpu)
     else:
@@ -56,10 +63,36 @@ def self_test(h):
     features = torch.tensor([[2.], [4.], [100.]])
     for mode, value in (("max", 4.), ("avg", 3.)):
         known_answer(h.cpu_roiaware_pool3d(rois, points, features, 1, mode), torch.full((1, 1, 1, 1, 1), value))
+    rois, points, features, expected = boundary_negative_control()
+    for mode in ("max", "avg"):
+        known_answer(h.cpu_roiaware_pool3d(rois, points, features, 1, mode),
+                     expected[mode])
+
+
+def boundary_negative_control(device="cpu"):
+    """A horizontal face is excluded; bottom/top faces and negative features count."""
+    rois = torch.tensor([[0., 0., 0., 2., 2., 2., 0.]], device=device)
+    points = torch.tensor([[0., 0., 1.], [.5, 0., 1.], [1., 0., 1.],
+                           [0., 0., 0.], [0., 0., 2.], [4., 0., 1.]], device=device)
+    features = torch.tensor([[-2., 3.], [-4., -5.], [100., 100.],
+                             [1., -7.], [2., -8.], [999., 999.]], device=device)
+    return rois, points, features, {
+        'max': torch.tensor([2., 3.]).reshape(1, 1, 1, 1, 2),
+        'avg': torch.tensor([-.75, -4.25]).reshape(1, 1, 1, 1, 2),
+    }
 
 
 def check_additional_paths(h):
     from kernel_loader import roiaware_pool3d_ext
+    rois, points, features, known = boundary_negative_control(device="cuda")
+    output = torch.zeros((1, 1, 1, 1, 2), device="cuda")
+    argmax = torch.zeros_like(output, dtype=torch.int)
+    indices = torch.zeros((1, 1, 1, 1, 128), device="cuda", dtype=torch.int)
+    mask = torch.empty((1, len(points)), device="cuda", dtype=torch.int)
+    for mode_id, mode in enumerate(("max", "avg")):
+        output.zero_(); argmax.zero_(); indices.zero_()
+        roiaware_pool3d_ext.forward(rois, points, features, argmax, indices, output, mask, mode_id)
+        close(output, known[mode], atol=1e-4, rtol=1e-3, gpu=True)
     for i, (R, N, C, S) in enumerate(h.TEST_SHAPES):
         torch.manual_seed(42 + i)
         rois, points, features = h.generate_test_data(R, N, C, device="cuda")
@@ -77,5 +110,6 @@ def check_additional_paths(h):
             if mode == "max":
                 close(output.sum(), expected.sum(), atol=1e-1, rtol=.2)
                 full_output(output, expected, gpu=True)
+                strict_max_output(output, expected, gpu=True)
             else:
                 close(output, expected, atol=1e-4, rtol=1e-3)

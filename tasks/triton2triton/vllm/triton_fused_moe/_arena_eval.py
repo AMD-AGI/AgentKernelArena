@@ -108,9 +108,17 @@ def evaluate(role, action):
                     row.update(status='FAIL', reason=record.get('error', 'Invalid or failed device measurement'), failure_kind=record.get('failure_kind', 'measurement_failure'))
                 elif method not in ('cuda_graph','cuda_event_fallback'):
                     row.update(status='FAIL', reason='Missing/unsupported device timing method', failure_kind='measurement_failure')
+                elif (record.get('benchmark_original_output_checked') is not True or
+                      record.get('benchmark_readonly_inputs_checked') is not True or
+                      record.get('benchmark_measured_samples_checked') != harness.BENCHMARK_ITERATIONS):
+                    row.update(status='FAIL', reason='Incomplete measured-output validation',
+                               failure_kind='measurement_failure')
                 else:
                     row.update(execution_time_ms=ms, benchmark_method=method,
-                               metadata={'harness_measurement':record})
+                               metadata={'harness_measurement':record,
+                                         'device_timing':{key:value for key,value in record.items()
+                                                          if key.startswith('benchmark_')},
+                                         'timed_output_checked':True})
         else:
             raise ValueError(f'Unsupported action {action}')
         failures = [r for r in cases if r['status'] != 'PASS']

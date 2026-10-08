@@ -55,7 +55,8 @@ def require_unchanged(inputs, originals):
         raise AssertionError("Operator modified a read-only input")
 
 
-def verify_timed_run(timed, *, inputs, originals, expected, perturb, reference, compare):
+def verify_timed_run(timed, *, inputs, originals, expected, perturb, reference, compare,
+                     minimum_replay_change=0):
     """Check last measured output, then perturb and replay the measured unit.
 
     A fresh ordinary correctness invocation cannot substitute for either check.
@@ -72,6 +73,11 @@ def verify_timed_run(timed, *, inputs, originals, expected, perturb, reference, 
         perturb()
         changed = tuple(x.detach().clone() for x in inputs)
         expected_replay = reference()
+        if minimum_replay_change:
+            difference = (expected_replay.float() - expected.float()).abs().max().item()
+            scale = expected_replay.float().abs().max().item()
+            if difference / max(scale, 1e-9) <= minimum_replay_change:
+                raise AssertionError("Changed quantized operands did not distinguish the reference output")
         if not isinstance(timed.outputs, torch.Tensor):
             raise AssertionError("Measured output must be a Tensor")
         timed.outputs.fill_(float("nan"))
@@ -82,5 +88,6 @@ def verify_timed_run(timed, *, inputs, originals, expected, perturb, reference, 
         # Subsequent diagnostic timings see the original declared input, too.
         for value, original in zip(inputs, originals):
             value.copy_(original)
-    return {"timed_output_correctness": "PASS", "replay_correctness": "PASS",
+    return {"timed_output_correctness": "PASS", "timed_output_checked": True,
+            "replay_correctness": "PASS",
             "replay_inputs_perturbed": True, "replay_output_poisoned": True}

@@ -57,6 +57,21 @@ def normalize_former_role_policy(function):
     return function
 
 
+# Qualified sample-stream repairs change the direct timing harness (and both
+# a4w4 entrypoints). Keep BEFORE as the historical comparison for every other
+# function; these exact current ASTs are covered by measured-output CPU tests.
+QUALIFIED_SAMPLE_STREAM = {
+    ('batched_gemm_a8w8_kernel', 'arena_benchmark'): 'ec8d61b76248e7117b4674d23ff0930ad119d2d6e0d2cc4899d096d7b9a1c8aa',
+    ('gemm_a16w8_blockscale_kernel', 'arena_benchmark'): 'a08fb29684f110909e9c65f1220a7103f91a0d1a434805696ce74e91acd37529',
+    ('gemm_a16wfp4_kernel', 'arena_benchmark'): '9cf3effa83d6cb8a36e5e413350db0fa40571dc7ddf01caef3d184109741629c',
+    ('gemm_a4w4_kernel', 'run_benchmark'): 'c10d9c64bfeeaad96ff4a0cad8196abb5bb8c72284f53227b57cfa8a6af99659',
+    ('gemm_a4w4_kernel', 'arena_benchmark'): '3aa7efc505d6cb07a159d2eb99e2934edf166e4c4f313b4342fee43623d0eded',
+    ('gemm_a8w8_per_token_scale_kernel', 'arena_benchmark'): '662733b7d492f06efb0e3de40f51f0c9fe0a2a973579533a503ace00e67d599b',
+    ('gemm_afp4wfp4_kernel', 'arena_benchmark'): '715c53f630326441083946cd2df0cd3f8e7e950d4b9f694b555b1e0f08e464e7',
+    ('gemm_afp8wfp8_kernel', 'arena_benchmark'): '3f9d7333abd48e6bdbb70ed29fdead9e189ebf69d7c04b86a060655f641c14e4',
+}
+
+
 class RemoveMeasuredOutputControls(ast.NodeTransformer):
     """Remove only reviewed, separately tested post-timing controls.
 
@@ -116,4 +131,5 @@ def test_pairing_repair_preserves_original_work_and_sampling(name, function):
         assert isinstance(option.value, ast.Constant)
         assert type(option.value.value) is int and option.value.value == 0
         calls[0].keywords = []
-    assert hashlib.sha256(ast.dump(fn, include_attributes=False).encode()).hexdigest() == BEFORE[name][function]
+    expected = QUALIFIED_SAMPLE_STREAM.get((name, function), BEFORE[name][function])
+    assert hashlib.sha256(ast.dump(fn, include_attributes=False).encode()).hexdigest() == expected

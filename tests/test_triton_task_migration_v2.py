@@ -23,28 +23,36 @@ BASE = '5c9f8ef2'
 # preserve original kernels, references, input generation, cases, gates and
 # timer settings, and reject incorrect measured/replay output through real runners.
 VLLM_CHECKED_RUNNERS = {
-    'triton_fused_moe': 'e3c3c28504797346f7af6a02847118bf7a886059f8de176cd799cfedcec7206a',
+    'triton_fused_moe': '25ef3c773ba51c1a0f3fe7b5ac28480d5a10788589dae75f75b3b035eebc520b',
     'triton_fused_moe_gptq_awq': '461382af0a60d868a93e0d200f7c0ab29c9d0d97c7ec9b668c23b1cd12f09a1b',
 
     'triton_batched_moe': 'd804d6902c7036d97f1ba24b719435d9c9240af0fe38fdcd161a4776e60a7d05',
-    'triton_moe_mmk': '65814e75e905adbfe48ed597e950750851d8cd71bd812abbd7a85e72026829f6',
+    'triton_moe_mmk': '1ca7c433c083481bad0f3d95e17ff2ef071536e32bd6856bc70b1a2aa3b9268b',
 
     'triton_fla_fused_recurrent': 'f028ca83214c262c7f4f0794aea0f62d972b10c4cc04b3e7f4f7850aaf8aae6b',
     'triton_linear_attn_decode': '653524a072b76627937ee522b830873375ee3bc92d80309d39676754e08d1419',
     'triton_selective_scan_update': '6c3e00b7b9c296646d533f074452d57658bf221c2540f2dff26ecac05d7a6aab',
-    'triton_ssd_bmm': '1f667162405be9f689057897819c41c98a9c25b92765c2bb958194ed5cf13f90',
-    'triton_kda_gate': '6aa814dab0b9edc1cffcf2d9aba210c073653d83573dfc3bf00f031e27515b64',
+    'triton_ssd_bmm': '3ef125e151958dc9e5bbeaffa3c7dcb56c85300d81189fbafbcbab53f012a257',
+    'triton_kda_gate': '0852739ce29f678cf0ed342261bc1dc51adffc9baef7ebf209f059c16531e81f',
     'triton_fla_scaled_dot_kkt': 'bef5cab3278a985409d5cfc94d88aaa7a8a3eff3a468d665b4493ce02e56af46',
     'triton_kda_dot_kkt_inter': '42437b7515032fd4e0ef09c246439660f4492c1c9b2e3f970b50bfca109c1106',
     'triton_kda_dot_kkt_intra': '0b2cb2303afbf141608b801fc6cd238fa3a1cc558c6d1b3aa93c8540f4d4f99b',
-    'triton_fla_chunk_fwd_o': 'a0fe8d90c811041d93c572c2d93f7328b3326d7a904a4e43841a99f8b74399ac',
-    'triton_kda_gla_fwd_o': 'a0d66e1a98173feb206c4737ccbc8cafa12c66aacef0a11a6caff798e3c364db',
+    'triton_fla_chunk_fwd_o': '3afefbbf84e0519655261897b3233ed3fdda512d9a6894653636f91e06c91bea',
+    'triton_kda_gla_fwd_o': 'b3934b43f906283a7d2e002ea0c655c0ebee65bb45b24b047adb2fbd56eb599e',
     'triton_ssd_chunk_cumsum': 'a11e9f404f232597feb9ff33cee08a586da8fa7ca1ad77199308e2cb46021b18',
     'triton_ssd_chunk_scan': '0a3f92b0bcd030cc9b342a066dbd9c77f43cdda0e07a64f77cf6adcd16de0328',
     'triton_ssd_chunk_state': '286f597f11f5ce15628b76f87fc0a59fab20dce4c90db3796ad06eeddb774730',
     'triton_ssd_chunk_state_varlen': '44b4c766230354884e4c7942a44579846bc1b58f1d4bde5c15e658677b1a2cfd',
     'triton_ssd_state_passing': '07119e60c7b3dbc32e67b56ec0ec20714388fcf5dc803fd2c29760ec2a141553',
 }
+
+
+
+
+class SampledTimedRun(SimpleNamespace):
+    @property
+    def bound(self):
+        return callable(getattr(self, 'rerun', None))
 
 
 def module_at(path, monkeypatch):
@@ -88,6 +96,10 @@ def test_vllm_v2_preserves_all_original_cases_checks_sources_and_helpers(path):
     else:
         assert ast.dump(correction, include_attributes=False) == ast.dump(bf['run_correctness'], include_attributes=False)
     for name in bf.keys()-{'run_correctness'}:
+        if task.name in {'triton_fla_chunk_fwd_o', 'triton_kda_gla_fwd_o'} and name == 'gen_inputs':
+            # The full runner SHA above and the dedicated original-draw, scored-
+            # amplitude and zero-answer controls bind this qualified generator.
+            continue
         if task.name in VLLM_CHECKED_RUNNERS and name in {'load_module', 'run_performance', 'main'}:
             # The full reviewed runner hash above covers these changed bodies.
             continue
@@ -224,6 +236,37 @@ def test_vllm_v2_preserves_all_original_cases_checks_sources_and_helpers(path):
                    b'            other=0,\n')
             assert original.count(old) == 1
             original = original.replace(old, new)
+        if task.name == 'triton_expand':
+            # A source-bound MI355X validator PASS qualified the public
+            # wrapper's two conditional copies for legal 1-D strided views.
+            # Keep the kernel, wrapper signature/decorators, and all other
+            # source AST at their original identities; the focused stride
+            # controls reject an implementation that ignores either operand.
+            current = source.read_bytes()
+            assert hashlib.sha256(current).hexdigest() == (
+                'c65a20b3878c2a520cf37645ae4d18d95cff4d0202c4399bb263833485fe4913')
+            old_tree, new_tree = ast.parse(original), ast.parse(current)
+            def wrapper(tree):
+                matches = [node for node in tree.body if isinstance(node, ast.FunctionDef)
+                           and node.name == 'expand_batch_to_tokens']
+                assert len(matches) == 1
+                return matches[0]
+            old_wrapper, new_wrapper = wrapper(old_tree), wrapper(new_tree)
+            assert ast.dump(new_wrapper.args) == ast.dump(old_wrapper.args)
+            assert [ast.dump(node) for node in new_wrapper.decorator_list] == [
+                ast.dump(node) for node in old_wrapper.decorator_list]
+            assert hashlib.sha256(ast.dump(new_wrapper, include_attributes=False).encode()).hexdigest() == (
+                'bc3cf19c4938e5f3878592a890360d8717e57044b63346a7a7bedfd4581aec1e')
+            expected_copies = [
+                'if not x.is_contiguous():\n    x = x.contiguous()',
+                'if not cu_num_tokens.is_contiguous():\n    cu_num_tokens = cu_num_tokens.contiguous()',
+            ]
+            copies = [node for node in new_wrapper.body if isinstance(node, ast.If)]
+            assert [ast.unparse(node) for node in copies] == expected_copies
+            assert new_wrapper.body[3:5] == copies
+            new_wrapper.body = [node for node in new_wrapper.body if node not in copies]
+            assert ast.dump(new_tree, include_attributes=False) == ast.dump(old_tree, include_attributes=False)
+            continue
         assert source.read_bytes() == original
     assert 'Evaluation contract' in (task/'README.md').read_text()
 
@@ -864,6 +907,18 @@ def test_shared_expert_append_known_answers_and_both_timed_outputs(monkeypatch, 
 
 ROCM = sorted([*(ROOT/'tasks/triton2triton/rocmbench').rglob('config.yaml'),
                *(ROOT/'tasks/instruction2triton').rglob('config.yaml')])
+WARN_ROCM_TASKS = {
+    'instruction2triton/rocmbench/gemm',
+    'instruction2triton/rocmbench/layernorm',
+    'instruction2triton/rocmbench/test_flashattention_fwd',
+    'instruction2triton/rocmbench/test_kernel_dot',
+    'instruction2triton/rocmbench/test_reverse_range',
+    'triton2triton/rocmbench/easy/test_kernel_dot',
+    'triton2triton/rocmbench/easy/test_reverse_range',
+    'triton2triton/rocmbench/medium/rmsnorm_fwd',
+    'triton2triton/rocmbench/hard/test_block_pointer_matmul',
+    'triton2triton/rocmbench/hard/triton_multreduce_matmul_kernel',
+}
 
 
 @pytest.mark.parametrize('relative', ['tasks/instruction2triton/rocmbench/triton_multreduce_matmul_kernel',
@@ -1286,6 +1341,41 @@ def test_rocm_v2_preserves_original_source_and_complete_parameter_manifest(path)
                                             for c in ast.walk(n))]
             return ast.dump(tree, include_attributes=False)
         assert cast_original_contract(comparison_source) == cast_original_contract(expected_source)
+    elif task.relative_to(ROOT/'tasks').as_posix() == 'instruction2triton/rocmbench/test_flashattention_fwd':
+        # The GPU-qualified repair changes only the kernel's batch/head and
+        # tail addressing plus the public forward's D=128 control tile. Pin
+        # those exact ASTs; keep every other definition, decorator, scored
+        # case, and the original source identity under the usual comparison.
+        old_tree = ast.parse(expected_source)
+        new_tree = ast.parse(comparison_source)
+        def named_node(tree, cls, name):
+            matches = [node for node in tree.body
+                       if isinstance(node, cls) and node.name == name]
+            assert len(matches) == 1
+            return matches[0]
+        old_kernel = named_node(old_tree, ast.FunctionDef, 'flash_fwd_kernel')
+        new_kernel = named_node(new_tree, ast.FunctionDef, 'flash_fwd_kernel')
+        assert ast.dump(new_kernel.args) == ast.dump(old_kernel.args)
+        assert [ast.dump(node) for node in new_kernel.decorator_list] == [
+            ast.dump(node) for node in old_kernel.decorator_list]
+        assert hashlib.sha256(ast.dump(new_kernel, include_attributes=False).encode()).hexdigest() == (
+            'bcc52bec36ecd8492fadf210cfdf46f73de6f0bfaad39c487cf1654d867e1570')
+        old_class = named_node(old_tree, ast.ClassDef, '_attention')
+        new_class = named_node(new_tree, ast.ClassDef, '_attention')
+        old_forward = named_node(old_class, ast.FunctionDef, 'forward')
+        new_forward = named_node(new_class, ast.FunctionDef, 'forward')
+        assert ast.dump(new_forward.args) == ast.dump(old_forward.args)
+        assert [ast.dump(node) for node in new_forward.decorator_list] == [
+            ast.dump(node) for node in old_forward.decorator_list]
+        assert hashlib.sha256(ast.dump(new_forward, include_attributes=False).encode()).hexdigest() == (
+            '311262e136db33c08b04f560d9ae09ef7a6abbeb88a6d5ffc35d31c3d01bb73b')
+        block = [node for node in new_forward.body if isinstance(node, ast.Assign)
+                 and any(isinstance(target, ast.Name) and target.id == 'BLOCK'
+                         for target in node.targets)]
+        assert len(block) == 1 and ast.unparse(block[0]) == 'BLOCK = 64 if Lk == 128 else 128'
+        new_tree.body[new_tree.body.index(new_kernel)] = old_kernel
+        new_class.body[new_class.body.index(new_forward)] = old_forward
+        assert ast.dump(new_tree, include_attributes=False) == ast.dump(old_tree, include_attributes=False)
     else:
         assert comparison_source == expected_source
     assert hashlib.sha256(original).hexdigest()==data['migration']['original_source_sha256']
@@ -1551,7 +1641,7 @@ def test_add_canonical_samples_observe_exact_replay_and_reject_wrong_output(monk
 
 # These adapters use actual TimedRun outputs; their dedicated contract modules
 # exercise event metadata, changed inputs and rejected fallback paths.
-@pytest.mark.parametrize('path', [p for p in ROCM if p.parent.name not in {'test_add_kernel', 'test_block_copy', 'test_randn', 'test_load_reduce', 'softmax', 'naive_softmax', 'test_cast_matmul', 'test_gemm_no_scf', 'test_iv_dependent_matmul', 'test_chained_matmul', 'multreduce_matmul_dot_kernel', 'test_batched_vecmat', 'rmsnorm_bwd', 'test_chained_dot_fp8'} and not (p.parent.name == 'test_matmul_MXFP' and 'triton2triton' in p.parts)], ids=lambda p:p.parent.relative_to(ROOT/'tasks').as_posix())
+@pytest.mark.parametrize('path', [p for p in ROCM if p.parent.name not in {'test_add_kernel', 'test_block_copy', 'test_randn', 'test_load_reduce', 'softmax', 'naive_softmax', 'test_cast_matmul', 'test_gemm_no_scf', 'test_iv_dependent_matmul', 'test_chained_matmul', 'multreduce_matmul_dot_kernel', 'test_batched_vecmat', 'rmsnorm_bwd', 'test_chained_dot_fp8'} and not (p.parent.name == 'test_matmul_MXFP' and 'triton2triton' in p.parts) and p.parent.relative_to(ROOT/'tasks').as_posix() not in WARN_ROCM_TASKS], ids=lambda p:p.parent.relative_to(ROOT/'tasks').as_posix())
 def test_rocm_timing_evidence_retains_canonical_fallback_reason(monkeypatch, path):
     adapter = module_at(path.parent/'_arena_eval.py', monkeypatch)
     expected = torch.tensor([2.])
@@ -3221,7 +3311,7 @@ def test_fla_l2norm_reference_known_answer_and_epsilon(monkeypatch):
 
 
 @pytest.mark.parametrize('mode', ['correct', 'dtype', 'shape', 'nonfinite', 'mutate_input',
-                                 'ignores_eps', 'fixed_geometry'])
+                                 'ignores_eps', 'fixed_geometry', 'fixed_tail'])
 def test_fla_l2norm_actual_correctness_orchestration(monkeypatch, mode):
     task = ROOT/'tasks/triton2triton/vllm/triton_fla_l2norm'
     h = module_at(task/'scripts/task_runner.py', monkeypatch)
@@ -3238,6 +3328,7 @@ def test_fla_l2norm_actual_correctness_orchestration(monkeypatch, mode):
         if mode == 'shape': value = value[..., :1]
         if mode == 'nonfinite': value.fill_(float('nan'))
         if mode == 'fixed_geometry' and x.shape != (512, 128): value.zero_()
+        if mode == 'fixed_tail' and x.shape == (7, 65): value.zero_()
         return value
     mod = SimpleNamespace(l2norm_fwd=candidate)
     h.load_module = lambda: mod
@@ -3245,7 +3336,8 @@ def test_fla_l2norm_actual_correctness_orchestration(monkeypatch, mode):
     ok, reason = h.run_correctness()
     assert ok is (mode == 'correct'), reason
     if mode == 'correct':
-        assert calls == [((2, 3, 17), 1e-3), ((512, 128), 1e-6)] * 5
+        assert calls == [((2, 3, 17), 1e-3), ((7, 65), 2e-4),
+                         ((512, 128), 1e-6)] * 5
     assert mod.l2norm_fwd is candidate
 
 
@@ -3255,7 +3347,7 @@ def test_fla_l2norm_actual_performance_replay_restores_inputs(monkeypatch, mode)
     task = ROOT/'tasks/triton2triton/vllm/triton_fla_l2norm'
     h = module_at(task/'scripts/task_runner.py', monkeypatch)
     checks = module_at(task/'_arena_checks.py', monkeypatch)
-    h._TimedRun = SimpleNamespace
+    h._TimedRun = SampledTimedRun
     generator = h.gen_inputs
     inputs, pristine, options = [], [], []
     def gen_inputs(seed, device):
@@ -3270,6 +3362,8 @@ def test_fla_l2norm_actual_performance_replay_restores_inputs(monkeypatch, mode)
         output = measured(); cached = output.clone(); x = inputs[-1]
         if mode == 'wrong_timed': output.zero_()
         if mode == 'mutate_timed': x.zero_()
+        for _ in range(kwargs["repetition"]):
+            timed_run.after_sample(output)
         def replay():
             if mode == 'raise_replay': raise RuntimeError('replay failed')
             if mode == 'stale': output.copy_(cached)
@@ -3283,7 +3377,7 @@ def test_fla_l2norm_actual_performance_replay_restores_inputs(monkeypatch, mode)
     checks.install(h)
     rows = h.run_performance()
     assert len(rows) == 5
-    assert options == [dict(warmup=10, repetition=100)] * 5
+    assert options == [dict(warmup=10, repetition=100, use_cuda_graph=False, fallback_reason='validate_each_public_invocation')] * 5
     assert all(row['execution_time_ms'] == (0.125 if mode == 'correct' else -1.) for row in rows)
     if mode == 'correct':
         assert all(row['timed_output_checked'] and row['perturbed_input_replay_checked'] for row in rows)
@@ -3419,12 +3513,14 @@ def test_gated_norm_adapter_installs_checks(monkeypatch):
 
 def _expand_cpu(x, cu, num_tokens, replace_from=0, replace_to=0):
     counts = cu - torch.cat((cu.new_zeros(1), cu[:-1]))
-    values = torch.where(x == replace_from, replace_to, x)
+    replacement = torch.as_tensor(replace_to, dtype=x.dtype, device=x.device)
+    values = torch.where(x == replace_from, replacement, x)
     return values.repeat_interleave(counts)
 
 
 @pytest.mark.parametrize('mode', ['correct', 'dtype', 'shape', 'mutate_source', 'mutate_counts',
-                                 'uniform_only', 'ignores_replacement'])
+                                 'uniform_only', 'ignores_replacement',
+                                 'integer_only', 'max16_only'])
 def test_expand_ragged_replacement_known_answer_and_negative_controls(monkeypatch, mode):
     task = ROOT/'tasks/triton2triton/vllm/triton_expand'
     h = module_at(task/'scripts/task_runner.py', monkeypatch)
@@ -3440,6 +3536,11 @@ def test_expand_ragged_replacement_known_answer_and_negative_controls(monkeypatc
         output = _expand_cpu(x, cu, num_tokens, replace_from,
                              replace_from if mode == 'ignores_replacement' else replace_to)
         if mode == 'uniform_only': output = x.repeat_interleave(max(1, num_tokens//len(x)))
+        if mode == 'integer_only' and x.dtype.is_floating_point:
+            output = output.to(torch.int32).to(x.dtype)
+        if mode == 'max16_only' and num_tokens == 132:
+            output = output.clone()
+            output[17:128] = 0
         if mode == 'dtype': output = output.float()
         if mode == 'shape': output = output[:1]
         return output
@@ -3460,7 +3561,7 @@ def test_expand_original_performance_orchestration_and_restoration(monkeypatch, 
     task = ROOT/'tasks/triton2triton/vllm/triton_expand'
     h = module_at(task/'scripts/task_runner.py', monkeypatch)
     checks = module_at(task/'_arena_checks.py', monkeypatch)
-    h._TimedRun = SimpleNamespace
+    h._TimedRun = SampledTimedRun
     for name in ('randint', 'full'):
         factory = getattr(torch, name)
         def cpu_factory(*args, _factory=factory, **kwargs):
@@ -3478,6 +3579,8 @@ def test_expand_original_performance_orchestration_and_restoration(monkeypatch, 
         output = measured(); cached = output.clone()
         if mode == 'wrong_timed': output.fill_(-1)
         if mode == 'mutate_timed': x.zero_()
+        for _ in range(kwargs["repetition"]):
+            timed_run.after_sample(output)
         def replay():
             if mode == 'raise_replay': raise RuntimeError('replay failed')
             if mode == 'stale': output.copy_(cached)
@@ -3491,7 +3594,7 @@ def test_expand_original_performance_orchestration_and_restoration(monkeypatch, 
     checks.install(h)
     rows = h.run_performance()
     assert len(rows) == len(h.TEST_SHAPES) == 5
-    assert options == [dict(warmup=10, repetition=100)] * 5
+    assert options == [dict(warmup=10, repetition=100, use_cuda_graph=False, fallback_reason='validate_each_public_invocation')] * 5
     for row, (batch, tpr) in zip(rows, h.TEST_SHAPES):
         assert row['params'] == dict(batch_size=batch, tokens_per_req=tpr)
         assert row['execution_time_ms'] == (.125 if mode == 'correct' else -1.)
@@ -4200,7 +4303,7 @@ def test_gdn_gate_actual_timed_outputs_replay_and_restore(monkeypatch, mode):
     task = ROOT/'tasks/triton2triton/vllm/triton_fused_gdn_gating'
     h = module_at(task/'scripts/task_runner.py', monkeypatch)
     checks = module_at(task/'_arena_checks.py', monkeypatch)
-    h._TimedRun = SimpleNamespace
+    h._TimedRun = SampledTimedRun
     generator = h.make_inputs
     inputs, pristine, options = [], [], []
     def make_inputs(batch, nh, device='cpu'):
@@ -4216,6 +4319,8 @@ def test_gdn_gate_actual_timed_outputs_replay_and_restore(monkeypatch, mode):
         outputs = measured(); cached = checks.snapshots(outputs)
         if mode == 'wrong_timed': outputs[1].zero_()
         if mode == 'mutate_timed': inputs[-1][0].zero_()
+        for _ in range(kwargs["repetition"]):
+            timed_run.after_sample(outputs)
         def replay():
             if mode == 'raise_replay': raise RuntimeError('replay failed')
             if mode != 'no_write':
@@ -4846,6 +4951,8 @@ def test_recovered_tokens_original_full_request_timing_and_exact_replay(monkeypa
         out = measured(); cache = out.clone()
         if mode == 'wrong_timed': out.fill_(-1)
         if mode == 'mutate_timed': inputs[3].zero_()
+        for _ in range(kwargs["repetition"]):
+            timed_run.after_sample(out)
         def replay():
             if mode == 'raise_replay': raise RuntimeError('Replay failed')
             if mode == 'stale': out.copy_(cache)
@@ -4860,7 +4967,7 @@ def test_recovered_tokens_original_full_request_timing_and_exact_replay(monkeypa
     checks.install(h)
     rows = h.run_performance()
     assert len(rows) == 5
-    assert options == [dict(warmup=10, repetition=100)] * 5
+    assert options == [dict(warmup=10, repetition=100, use_cuda_graph=False, fallback_reason='validate_each_public_invocation')] * 5
     for (b, m, v), row in zip(h.TEST_SHAPES, rows):
         assert row['params'] == dict(batch=b, max_draft=m, vocab=v)
         assert row['execution_time_ms'] == (.125 if mode == 'correct' else -1.)
@@ -5778,6 +5885,9 @@ def test_block_gemm_original_timing_real_replay_and_pristine_inputs(monkeypatch,
         if mode=='zero_input_and_output':
             for x in inputs:x.zero_()
             output.zero_()
+        if timed_run.after_sample is not None:
+            for _ in range(kwargs["repetition"]):
+                timed_run.after_sample(output)
         def replay():
             if mode=='raise_replay':raise RuntimeError('Replay failed')
             if mode!='no_write':output.copy_(cached if mode=='stale' else measured())
@@ -5788,7 +5898,10 @@ def test_block_gemm_original_timing_real_replay_and_pristine_inputs(monkeypatch,
         return .125,{'benchmark_method':'cuda_graph'}
     h._benchmark_cuda_graph_or_events=benchmark;checks.install(h)
     rows=h.run_performance()
-    assert len(rows)==5 and options==[dict(warmup=10,repetition=100)]*5
+    expected_options=dict(warmup=10,repetition=100)
+    if symbol=='w8a8_block_int8_matmul':
+        expected_options.update(use_cuda_graph=False,fallback_reason='full_public_invocation')
+    assert len(rows)==5 and options==[expected_options]*5
     for case,row in zip(h.TEST_SHAPES,rows):
         assert row['params']==dict(zip(('M','N','K','block_n','block_k'),case))
         # Preserve original allclose semantics including matching signed FP16
@@ -5825,8 +5938,14 @@ def test_block_gemm_finite_control_reaches_exact_poisoned_replay(monkeypatch,sym
     inputs=[A,B,As,Bs];saved=checks.snapshot(inputs);replay_seen=[]
     def fn():getattr(mod,checks.SYMBOL)(A,B,As,Bs,[block_n,block_k])
     def benchmark(measured,*,timed_run,**options):
-        assert options==dict(warmup=10,repetition=100)
+        expected_options=dict(warmup=10,repetition=100)
+        if symbol=='w8a8_block_int8_matmul':
+            expected_options.update(use_cuda_graph=False,fallback_reason='full_public_invocation')
+        assert options==expected_options
         output=measured();cache=output.clone()
+        if timed_run.after_sample is not None:
+            for _ in range(options["repetition"]):
+                timed_run.after_sample(output)
         def replay():
             replay_seen.append(True)
             assert torch.isnan(output).all()
@@ -6542,6 +6661,8 @@ def test_diag_attention_original_timing_exact_poisoned_replay_restores_all_input
         if mode.startswith('mutate_timed_'):inputs[('q','k','v','s').index(mode[-1])].zero_()
         if mode=='zero_inputs_and_output':
             for value in (*inputs,output):value.zero_()
+        for _ in range(kwargs["repetition"]):
+            timed_run.after_sample(output)
         def replay():
             replays.append(True)
             expected_inputs=(saved[0]*-.5,saved[1]*.75+.125,saved[2]*-.25+.5,saved[3]*.5+.02)
@@ -6556,7 +6677,7 @@ def test_diag_attention_original_timing_exact_poisoned_replay_restores_all_input
         return .125,{'benchmark_method':'cuda_graph'}
     h._benchmark_cuda_graph_or_events=benchmark;checks.install(h)
     rows=h.run_performance()
-    assert options==[dict(warmup=10,repetition=100)]*5
+    assert options==[dict(warmup=10,repetition=100,use_cuda_graph=False,fallback_reason='validate_each_kernel_invocation')]*5
     for cfg,row in zip(h.TEST_SHAPES,rows):
         assert row['params']==dict(zip(('batch','heads','seq','d_model','e_model'),cfg))
         assert row['execution_time_ms']==(.125 if mode=='correct' else -1.)
@@ -6848,8 +6969,13 @@ def test_swiglustep_original_correctness_and_saturation_controls(monkeypatch,mod
     ok,reason=h.run_correctness()
     assert ok is (mode=='correct'),reason
     if mode=='correct':
-        assert [v[0] for v in calls if v[0]!=(3,2062)]==h.TEST_SHAPES
-        assert [v for v in calls if v[0]==(3,2062)]==[((3,2062),(4124,1),7.),((3,2062),(4124,1),.1)]
+        assert h.TEST_SHAPES == [(32,256),(64,512),(128,1024),(256,2048),(512,4096)]
+        assert [shape for shape,_,_ in [calls[0],*calls[33:]]] == h.TEST_SHAPES
+        widths = (1,3,31,33,63,65,127,129,257,511,513,1023,1025,1031,2047,2049)
+        controls = [((3,2*width),(4*width,1),limit)
+                    for width in widths for limit in (7.,.1)]
+        assert calls[1:33] == controls
+        assert len(calls) == len(h.TEST_SHAPES) + len(controls)
     assert mod.swiglustep_and_mul is public
 
 
@@ -6868,6 +6994,8 @@ def test_swiglustep_original_timing_poisoned_replay_and_restore(monkeypatch,mode
         if mode=='wrong_timed':output.zero_()
         if mode=='mutate_timed':data.zero_()
         if mode=='zero_input_and_output':data.zero_();output.zero_()
+        for _ in range(kwargs["repetition"]):
+            timed_run.after_sample(output)
         def replay():
             replays.append(True)
             assert torch.equal(data,saved[-1]*-3.) and torch.isnan(output).all()
@@ -6880,7 +7008,7 @@ def test_swiglustep_original_timing_poisoned_replay_and_restore(monkeypatch,mode
         return .125,{'benchmark_method':'cuda_graph'}
     h._benchmark_cuda_graph_or_events=benchmark;checks.install(h)
     rows=h.run_performance()
-    assert options==[dict(warmup=10,repetition=100)]*5
+    assert options==[dict(warmup=10,repetition=100,use_cuda_graph=False,fallback_reason='full_public_invocation')]*5
     for shape,row in zip(h.TEST_SHAPES,rows):
         assert row['params']==dict(zip(('batch','two_d'),shape))
         assert row['execution_time_ms']==(.125 if mode=='correct' else -1.)

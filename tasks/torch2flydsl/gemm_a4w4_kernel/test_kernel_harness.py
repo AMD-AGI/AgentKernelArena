@@ -26,6 +26,7 @@ import time
 from pathlib import Path
 from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
 from scripts.replay_checks import require_tensor_contract, require_unchanged, verify_timed_run
+from scripts.sample_controls import MeasuredInputStream
 
 from task_runtime import candidate_relative_path
 KERNEL_FILE = candidate_relative_path()
@@ -168,6 +169,17 @@ def _gemm_replay_validator(mmod, a, w):
     return validate
 
 
+def _measured_stream(mmod, a, w, *, case_index, samples):
+    stream = MeasuredInputStream(a, w, seed=SEED,
+                                 case_index=case_index, samples=samples)
+    model = mmod.Model().to(a.device).eval()
+    def reference():
+        import torch
+        with torch.no_grad():
+            return _checked_quant_gemm_output(model(a, w), a, w)
+    return stream, reference
+
+
 def run_correctness(verbose=True):
     import torch
 
@@ -275,27 +287,40 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
         m, n, k = shape["m"], shape["n"], shape["k"]
         a, w = _make_inputs(m, n, k)
 
-        replay_validate = _gemm_replay_validator(mmod, a, w)
-        _retry(lambda: device_op(a, w), what="benchmark warmup")
-        torch.cuda.synchronize()
-        for _ in range(warmup):
-            device_op(a, w)
-        torch.cuda.synchronize()
+        sample_stream, sample_reference = _measured_stream(
+            mmod, a, w, case_index=idx, samples=iters)
+        try:
+            _retry(lambda: device_op(a, w), what="benchmark warmup")
+            require_unchanged((a, w), (sample_stream.original_a, sample_stream.original_w))
+            torch.cuda.synchronize()
+            for _ in range(warmup):
+                device_op(a, w)
+                require_unchanged((a, w), (sample_stream.original_a, sample_stream.original_w))
+            torch.cuda.synchronize()
 
-        # Pair both roles with the provided baseline's fixed Event policy.
-        # A candidate's capture support must not change the scoring method.
-        use_graph = False
-        event_reason = "capture_unsafe_aiter_hipblaslt"
-        timed = TimedRun()
-        kernel_ms, kernel_bench_meta = benchmark_cuda_graph_or_events(
-            lambda: device_op(a, w),
-            warmup=0,
-            repetition=iters,
-            use_cuda_graph=use_graph,
-            fallback_reason=event_reason,
-            timed_run=timed,
-        )
-        kernel_bench_meta.update(replay_validate(timed))
+            # Pair both roles with the provided baseline's fixed Event policy.
+            # A candidate's capture support must not change the scoring method.
+            use_graph = False
+            event_reason = "capture_unsafe_aiter_hipblaslt"
+            timed = TimedRun()
+            timed.after_sample = sample_stream.observe
+            kernel_ms, kernel_bench_meta = benchmark_cuda_graph_or_events(
+                lambda: device_op(a, w),
+                warmup=0,
+                repetition=iters,
+                use_cuda_graph=use_graph,
+                fallback_reason=event_reason,
+                timed_run=timed,
+                prepare_fn=sample_stream.prepare,
+            )
+            sample_stream.validate(sample_reference, _compare_quant_gemm_output)
+            replay_validate = _gemm_replay_validator(mmod, a, w)
+            kernel_bench_meta.update(replay_validate(timed))
+            kernel_bench_meta["measured_sample_outputs_checked"] = iters
+            kernel_bench_meta["measured_input_stream"] = "original_then_seeded_bf16"
+        finally:
+            a.copy_(sample_stream.original_a)
+            w.copy_(sample_stream.original_w)
 
         ref_ms, ref_bench_meta = benchmark_cuda_graph_or_events(
             lambda: torch.mm(a.float(), w.float().transpose(0, 1)),
@@ -441,27 +466,40 @@ def arena_benchmark(warmup=10, iters=100, verbose=True):
         m, n, k = shape["m"], shape["n"], shape["k"]
         a, w = _make_inputs(m, n, k)
 
-        replay_validate = _gemm_replay_validator(mmod, a, w)
-        _retry(lambda: device_op(a, w), what="benchmark warmup")
-        torch.cuda.synchronize()
-        for _ in range(warmup):
-            device_op(a, w)
-        torch.cuda.synchronize()
+        sample_stream, sample_reference = _measured_stream(
+            mmod, a, w, case_index=idx, samples=iters)
+        try:
+            _retry(lambda: device_op(a, w), what="benchmark warmup")
+            require_unchanged((a, w), (sample_stream.original_a, sample_stream.original_w))
+            torch.cuda.synchronize()
+            for _ in range(warmup):
+                device_op(a, w)
+                require_unchanged((a, w), (sample_stream.original_a, sample_stream.original_w))
+            torch.cuda.synchronize()
 
-        # Pair both roles with the provided baseline's fixed Event policy.
-        # A candidate's capture support must not change the scoring method.
-        use_graph = False
-        event_reason = "capture_unsafe_aiter_hipblaslt"
-        timed = TimedRun()
-        kernel_ms, kernel_bench_meta = benchmark_cuda_graph_or_events(
-            lambda: device_op(a, w),
-            warmup=0,
-            repetition=iters,
-            use_cuda_graph=use_graph,
-            fallback_reason=event_reason,
-            timed_run=timed,
-        )
-        kernel_bench_meta.update(replay_validate(timed))
+            # Pair both roles with the provided baseline's fixed Event policy.
+            # A candidate's capture support must not change the scoring method.
+            use_graph = False
+            event_reason = "capture_unsafe_aiter_hipblaslt"
+            timed = TimedRun()
+            timed.after_sample = sample_stream.observe
+            kernel_ms, kernel_bench_meta = benchmark_cuda_graph_or_events(
+                lambda: device_op(a, w),
+                warmup=0,
+                repetition=iters,
+                use_cuda_graph=use_graph,
+                fallback_reason=event_reason,
+                timed_run=timed,
+                prepare_fn=sample_stream.prepare,
+            )
+            sample_stream.validate(sample_reference, _compare_quant_gemm_output)
+            replay_validate = _gemm_replay_validator(mmod, a, w)
+            kernel_bench_meta.update(replay_validate(timed))
+            kernel_bench_meta["measured_sample_outputs_checked"] = iters
+            kernel_bench_meta["measured_input_stream"] = "original_then_seeded_bf16"
+        finally:
+            a.copy_(sample_stream.original_a)
+            w.copy_(sample_stream.original_w)
 
         ref_ms, ref_bench_meta = benchmark_cuda_graph_or_events(
             lambda: torch.mm(a.float(), w.float().transpose(0, 1)),
