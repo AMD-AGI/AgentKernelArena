@@ -2,6 +2,19 @@
 logs
 __pycache__
 build/
+
+# Generated task results belong to run workspaces, not versioned task packages.
+/tasks/**/compile_report.json
+/tasks/**/correctness_report.json
+/tasks/**/performance_report.json
+/tasks/**/validation_report*.yaml
+/tasks/**/validation_report*.json
+/tasks/**/validation_summary.yaml
+/tasks/**/VALIDATION_SUMMARY.yaml
+/tasks/**/task_result.yaml
+/tasks/**/task_result.json
+/tasks/**/.validation_complete
+
 .vscode
 .idea
 .claude
