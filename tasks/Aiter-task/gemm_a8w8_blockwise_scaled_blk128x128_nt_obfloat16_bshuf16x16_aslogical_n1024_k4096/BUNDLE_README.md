@@ -10,9 +10,9 @@ initialization and timing draws.
 ## Candidate, baseline, and runtime
 
 [config.yaml](config.yaml) declares `language: flydsl` and `initial_state: unimplemented`.
-[source/kernel.py](source/kernel.py) is the empty generation target: it defines no
-builder, and task validation verifies that state without executing it. It is the
-only editable file.
+[kernel.py](kernel.py) is the empty generation target: it defines no builder, and
+task validation verifies that state without executing it. It is the only editable
+file, and the candidate is a single self-contained FlyDSL file.
 
 The candidate must implement its own GPU computation in FlyDSL. It must not call
 the production AITER operator, the protected baseline or reference, or another
@@ -49,10 +49,10 @@ launch(a, b, a_scale, b_scale) -> out
 ```
 
 The builder receives every declared axis of a workload row as a keyword argument and
-returns `launch`, which the runner calls with the definition's inputs as keyword
-arguments. Prepare compilation, shape-dependent choices and reusable scratch in the
-builder; `launch` must recompute the outputs from the current input values on every
-call.
+returns `launch`, which the runner calls with the definition's inputs as positional
+arguments in this order. Prepare compilation, shape-dependent choices and reusable
+scratch in the builder; `launch` must recompute the outputs from the current input
+values on every call.
 
 | Argument | Shape | Dtype | Meaning |
 | --- | --- | --- | --- |
@@ -114,6 +114,18 @@ contract. Use the configured runtime with proxying and schema dumping disabled
 (`SIKL_DISABLE_PROXY=1`, `SIKL_SCHEMA_DUMP=0`). Device timing measures the callback's
 GPU work; it does not measure end-to-end host API latency.
 
+## Baseline numerical policy
+
+The reference is the bundle's FP32 PyTorch computation and its comparator. The
+production baseline is the performance reference and is not required to meet
+that comparison: [config.yaml](config.yaml) declares
+`correctness_policy: diagnostic` for the deepseek-v4-flash tasks. Baseline
+correctness still reports every case's actual PASS/FAIL, and baseline timing
+keeps the full comparison of its timed outputs. Only a completed finite numerical
+mismatch is accepted; crashes, missing cases, invalid outputs and input mutation
+remain failures. Candidates have no exception: candidate correctness and every
+checked timed invocation must pass the comparator.
+
 ## Evaluation and timing
 
 The protected [runner](scripts/task_runner.py) implements `validate-task` and
@@ -150,9 +162,11 @@ modification, or unseen-draw invocations slower than that bound fail the row.
 ## Implementation boundary
 
 Define `build_gemm_a8w8_blockwise_scaled_blk128x128_nt_obfloat16_bshuf16x16_aslogical_n1024_k4096_module`, the builder declared in [config.yaml](config.yaml),
-in [source/kernel.py](source/kernel.py), the only editable file. Keep the protected
-scripts, workload rows, dtypes, comparison thresholds, and benchmark policy
-unchanged.
+in [kernel.py](kernel.py), the only editable file. Keep the protected scripts,
+workload rows, dtypes, comparison thresholds, and benchmark policy unchanged.
+`python3 test_kernel_harness.py <action>` runs the same actions as the framework.
+After acceptance, `scripts/export_solution.py` writes the candidate and a tensor-call
+binding as a SIKL solution; it never computes or writes Arena scores.
 
 ## Production baseline numerical evidence
 

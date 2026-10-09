@@ -97,7 +97,7 @@
     "repetition": 100,
     "target_ms": 1.0
   },
-  "gate_policy": "Input initialization, reference, comparison and production baseline are the bundled task callbacks. Each case fixes the valid lengths and index pattern; the bundle cases keep the initializer's own lengths. Every case is checked and timed for both roles under the same callback comparison. The baseline has no numerical exception.",
+  "gate_policy": "Input initialization, reference, comparison and production baseline are the bundled task callbacks. Each case fixes the valid lengths and index pattern; the bundle cases keep the initializer's own lengths. Every case is checked and timed for both roles under the same callback comparison. A declared baseline numerical exception keeps the failed comparison evidence; candidates have none.",
   "cases": [
     {
       "case_id": "batch_1_bundle",

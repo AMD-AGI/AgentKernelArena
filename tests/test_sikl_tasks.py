@@ -39,7 +39,9 @@ SOURCE_ACQUISITION = {
     'topk': [{'kind': 'image', 'image_path': '/sgl-workspace/sglang/python/sglang/kernels/ops/attention/dsv4',
               'destination': 'sglang_source/kernels/ops/attention/dsv4', 'exclude': ['__pycache__']},
              {'kind': 'image', 'image_path': '/sgl-workspace/sglang/python/sglang/kernels/jit/csrc/deepseek_v4',
-              'destination': 'sglang_source/kernels/jit/csrc/deepseek_v4'}],
+              'destination': 'sglang_source/kernels/jit/csrc/deepseek_v4'},
+             {'kind': 'image', 'image_path': '/sgl-workspace/sglang/python/sglang/kernels/jit/include/sgl_kernel',
+              'destination': 'sglang_source/kernels/jit/include/sgl_kernel', 'exclude': ['__pycache__']}],
     'mla': [{'kind': 'image', 'image_path': '/sgl-workspace/sglang/python/sglang/kernels/ops/attention/dsa',
              'destination': 'sglang_source/kernels/ops/attention/dsa', 'exclude': ['__pycache__']}],
 }

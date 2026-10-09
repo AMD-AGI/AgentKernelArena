@@ -666,8 +666,9 @@ sparse flash MLA tasks. The functional layout (`scripts/workload.json` embedding
 the bundle definition and rows, `scripts/task_runner.py`) holds 15
 blockwise-scaled FP8 GEMM tasks and one fused mHC post→pre task; one runner copy
 serves all of them, reading the operands held across timed calls from the
-workload policy's `persistent_inputs`. Both layouts declare unimplemented FlyDSL
-builder candidates and share the same schema. A MoE runner keeps its routing,
+workload policy's `persistent_inputs`. Both layouts declare an unimplemented
+FlyDSL builder in a root `kernel.py`, export accepted candidates as SIKL
+solutions, and share the same schema. A MoE runner keeps its routing,
 quantization, reference, comparison, and multi-kernel timing logic in task
 files; the top-k runner its declared valid lengths, routing-plan checks and
 destination-passing output, and the MLA runner its per-pool lengths, index
@@ -679,6 +680,9 @@ task config schema.
 If the production baseline has a documented numerical mismatch, explicitly add
 `correctness_policy: diagnostic` and `diagnostic_reason` under `baseline` after
 reviewing that evidence. This example does not silently enable that exception.
+The deepseek-v4-flash tasks declare it as a family policy: their reference is an
+FP32 PyTorch computation that the production baseline is not required to meet,
+and each reason adds the measured evidence where a mismatch was observed.
 An optional common export declaration can be added to either family:
 
 ```yaml

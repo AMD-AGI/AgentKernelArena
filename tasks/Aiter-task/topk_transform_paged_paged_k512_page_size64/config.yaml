@@ -19,7 +19,14 @@ baseline:
   source_files:
   - sglang_source/kernels/ops/attention/dsv4/topk.py
   - sglang_source/kernels/jit/csrc/deepseek_v4/topk_v2.cuh
-  correctness_policy: required
+  - sglang_source/kernels/jit/include/sgl_kernel/deepseek_v4/topk_impl.cuh
+  correctness_policy: diagnostic
+  diagnostic_reason: >-
+    deepseek-v4-flash family policy: the reference is the bundle's FP32 PyTorch computation and its
+    comparator; the production baseline is the performance reference and is not required to meet
+    that comparison. Baseline correctness keeps every case's actual comparison; only completed
+    finite numerical mismatches are diagnostic. Candidate checks retain the full original gate. On
+    MI355X/gfx950 with ROCm 7.2 the baseline met the comparison on every case.
 workspace:
   sources:
   - kind: image
@@ -30,6 +37,11 @@ workspace:
   - kind: image
     image_path: /sgl-workspace/sglang/python/sglang/kernels/jit/csrc/deepseek_v4
     destination: sglang_source/kernels/jit/csrc/deepseek_v4
+  - kind: image
+    image_path: /sgl-workspace/sglang/python/sglang/kernels/jit/include/sgl_kernel
+    destination: sglang_source/kernels/jit/include/sgl_kernel
+    exclude:
+    - __pycache__
 evaluation:
   runner:
   - python3

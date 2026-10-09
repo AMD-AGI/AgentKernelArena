@@ -43,8 +43,10 @@ whatever lengths `seq_lens` holds on that call.
 
 The baseline entry is the sglang paged top-k v2 kernel,
 `sglang.kernels.ops.attention.dsv4.topk.topk_transform_paged_v2`, with
-materialized sources at `sglang_source/kernels/ops/attention/dsv4/topk.py` and
-`sglang_source/kernels/jit/csrc/deepseek_v4/topk_v2.cuh`. The bundle's baseline
+materialized sources at `sglang_source/kernels/ops/attention/dsv4/topk.py`,
+`sglang_source/kernels/jit/csrc/deepseek_v4/topk_v2.cuh` (the kernels and host
+dispatch) and `sglang_source/kernels/jit/include/sgl_kernel/deepseek_v4/topk_impl.cuh`
+(the selection algorithm, with the `sgl_kernel` headers it includes). The bundle's baseline
 names it `topk_transform_512_v2`, its name before an sglang rename that did not
 change it. `scripts/task_baseline.py` binds whichever of the two names the
 installed sglang exports, preferring the current one, and leaves the bundle's
@@ -97,6 +99,18 @@ kept across launches may be derived from `scores`, `seq_lens`, `metadata`,
 `page_tables` or the destination. Recognizing inputs seen before and returning
 a stored or partial result games the measurement; it is not an optimization.
 Tiling, split reductions and per-length dispatch are implementation choices.
+
+## Baseline numerical policy
+
+The reference is the bundle's FP32 PyTorch computation and its comparator. The
+production baseline is the performance reference and is not required to meet
+that comparison: `config.yaml` declares `correctness_policy: diagnostic` for the
+deepseek-v4-flash tasks. Baseline correctness still reports every case's actual
+PASS/FAIL, and baseline timing keeps the full comparison of its timed outputs.
+Only a completed finite numerical mismatch is accepted; crashes, missing cases,
+invalid outputs and input mutation remain failures. Candidates have no
+exception: candidate correctness and every checked timed invocation must pass
+the comparator.
 
 ## Baseline, reference and dependencies
 

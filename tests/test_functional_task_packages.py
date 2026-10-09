@@ -28,8 +28,10 @@ ADDED_PACKAGES = {_A8W8 + 'asraw_n1024_k4096', _A8W8 + 'aslogical_n1024_k4096'}
 # AITER's tuned asm split-K row for M=128 in this model config file.
 DIAGNOSTIC_EVIDENCE = {name: '65246705468a77baacc29af9831825efdbba78b8aab5e324d484463f4ddfea97'
                        for name in ADDED_PACKAGES}
-SHARED_HARNESS = ('scripts/task_api.py', 'scripts/task_inputs.py', 'scripts/task_runner.py',
-                  'scripts/task_timing.py', 'source/kernel.py')
+SHARED_HARNESS = ('scripts/task_api.py', 'scripts/task_inputs.py', 'scripts/task_policy.py',
+                  'scripts/task_runner.py', 'scripts/task_timing.py', 'scripts/export_solution.py',
+                  'test_kernel_harness.py', 'kernel.py')
+DSV4_FAMILY_POLICY = 'deepseek-v4-flash family policy'
 
 
 def test_each_task_has_exactly_one_supported_workload_layout():
@@ -46,17 +48,21 @@ def test_config_paths_and_complete_manifest(task):
     config = spec.to_mapping()
     assert spec.candidate.initial_state == 'unimplemented'
     assert spec.candidate.language == 'flydsl'
-    assert config['candidate']['editable'] == ['source/kernel.py']
+    assert config['candidate']['editable'] == ['kernel.py']
     assert [(e.file, e.kind, e.symbol) for e in spec.candidate.entrypoints] == [
-        ('source/kernel.py', 'builder', f'build_{task.name}_module')]
+        ('kernel.py', 'builder', f'build_{task.name}_module')]
     assert spec.baseline.kind == 'provided'
+    assert spec.baseline.correctness_policy == 'diagnostic'
+    assert spec.baseline.diagnostic_reason.startswith(DSV4_FAMILY_POLICY)
+    readme = (task / 'BUNDLE_README.md').read_text()
+    assert '## Baseline numerical policy' in readme
     if task.name in DIAGNOSTIC_EVIDENCE:
-        assert spec.baseline.correctness_policy == 'diagnostic'
         assert DIAGNOSTIC_EVIDENCE[task.name] in spec.baseline.diagnostic_reason
-        assert '## Production baseline numerical evidence' in (task / 'BUNDLE_README.md').read_text()
+        assert '## Production baseline numerical evidence' in readme
     else:
-        assert spec.baseline.correctness_policy == 'required'
-        assert '## Production baseline numerical evidence' not in (task / 'BUNDLE_README.md').read_text()
+        assert '## Production baseline numerical evidence' not in readme
+    assert [(e['format'], e['output'], e['command']) for e in config['exports']] == [
+        ('sikl-solution', 'artifacts/solution.json', ['python3', 'scripts/export_solution.py'])]
     assert config['platform_support']['required_arch'] == 'gfx950'
     assert {(a.role, a.action) for a in spec.actions} == {
         ('task', 'validate-task'),
@@ -118,9 +124,14 @@ def test_harness_copies_are_identical(relative):
 
 @pytest.mark.parametrize('task', TASKS, ids=lambda t: t.name)
 def test_initial_candidate_is_the_unimplemented_target(task):
-    tree = ast.parse((task / 'source/kernel.py').read_text())
+    tree = ast.parse((task / 'kernel.py').read_text())
     assert not any(isinstance(node, (ast.FunctionDef, ast.ClassDef)) for node in tree.body)
-    assert not (task / 'source/implementation').exists()
+    assert not (task / 'source').exists()
+    template = json.loads((task / 'solution.json').read_text())
+    assert template['definition'] == task.name
+    assert template['spec']['entry_point'] == ''
+    assert template['sources'] == [{'path': '', 'content': ''}]
+    assert template['spec']['target'] == [{'arch': 'gfx950', 'hardware_id': 'MI355X'}]
     data = json.loads((task / 'scripts/workload.json').read_text())
     assert data['bundle_readme'] == (task / 'BUNDLE_README.md').read_text()
     held = data['policy']['persistent_inputs']

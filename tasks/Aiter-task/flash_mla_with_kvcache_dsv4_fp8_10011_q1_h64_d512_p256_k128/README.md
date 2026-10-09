@@ -135,6 +135,18 @@ the sinks or outputs. Recognizing inputs seen before and returning a stored or
 partial result games the measurement; it is not an optimization. Tiling, split
 reductions and per-length dispatch are implementation choices.
 
+## Baseline numerical policy
+
+The reference is the bundle's FP32 PyTorch computation and its comparator. The
+production baseline is the performance reference and is not required to meet
+that comparison: `config.yaml` declares `correctness_policy: diagnostic` for the
+deepseek-v4-flash tasks. Baseline correctness still reports every case's actual
+PASS/FAIL, and baseline timing keeps the full comparison of its timed outputs.
+Only a completed finite numerical mismatch is accepted; crashes, missing cases,
+invalid outputs and input mutation remain failures. Candidates have no
+exception: candidate correctness and every checked timed invocation must pass
+the comparator.
+
 ## Baseline, reference and dependencies
 
 The production baseline calls the **installed sglang package**. The framework

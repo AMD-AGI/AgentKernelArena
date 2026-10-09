@@ -3,9 +3,9 @@ candidate:
   language: flydsl
   initial_state: unimplemented
   editable:
-  - source/kernel.py
+  - kernel.py
   entrypoints:
-  - file: source/kernel.py
+  - file: kernel.py
     kind: builder
     symbol: build_gemm_a8w8_blockwise_scaled_blk128x128_nt_obfloat16_bshuf16x16_aslogical_n4096_k256_module
 baseline:
@@ -13,6 +13,13 @@ baseline:
   language: python
   source_files:
   - scripts/baseline/main.py
+  correctness_policy: diagnostic
+  diagnostic_reason: >-
+    deepseek-v4-flash family policy: the reference is the bundle's FP32 PyTorch computation and its
+    comparator; the production baseline is the performance reference and is not required to meet
+    that comparison. Baseline correctness keeps every case's actual comparison; only completed
+    finite numerical mismatches are diagnostic. Candidate checks retain the full original gate. On
+    MI355X/gfx950 with ROCm 7.2 the baseline met the comparison on every case.
 evaluation:
   runner:
   - python3
@@ -26,8 +33,8 @@ description: >-
   Implement gemm_a8w8_blockwise_scaled_blk128x128_nt_obfloat16_bshuf16x16_aslogical_n4096_k256 in
   FlyDSL as the builder
   build_gemm_a8w8_blockwise_scaled_blk128x128_nt_obfloat16_bshuf16x16_aslogical_n4096_k256_module in
-  source/kernel.py; the builder takes the row's axes as keyword arguments and returns launch, which
-  takes the definition's inputs as keyword arguments and returns its outputs. The candidate starts
+  kernel.py; the builder takes the row's axes as keyword arguments and returns launch, which takes
+  the definition's inputs as positional arguments and returns its outputs. The candidate starts
   unimplemented. The protected baseline calls the installed runtime entrypoint
   aiter.ops.gemm_op_a8w8.gemm_a8w8_blockscale_bpreshuffle. The validator configuration pins
   MI355X/gfx950 with image
@@ -40,3 +47,10 @@ description: >-
   functional and may not be mutated. Edit only the declared source file.
 instructions:
 - BUNDLE_README.md
+exports:
+- format: sikl-solution
+  output: artifacts/solution.json
+  command:
+  - python3
+  - scripts/export_solution.py
+  timeout_s: 60

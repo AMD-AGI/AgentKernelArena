@@ -229,7 +229,7 @@ def test_initial_state_reads_the_declared_builder_without_executing_it(tmp_path,
     with materialized(A8W8, tmp_path, monkeypatch) as (workspace, runner, helper):
         config = yaml.safe_load((workspace / "config.yaml").read_text())
         symbol = config["candidate"]["entrypoints"][0]["symbol"]
-        kernel = workspace / "source/kernel.py"
+        kernel = workspace / "kernel.py"
         assert runner.initial_state(config) == "unimplemented"
         with pytest.raises(RuntimeError, match="unimplemented"):
             runner.load_builder(config)
@@ -238,3 +238,58 @@ def test_initial_state_reads_the_declared_builder_without_executing_it(tmp_path,
         kernel.write_text("import torch\nX = 1\n")
         with pytest.raises(RuntimeError, match="does not define its builder"):
             runner.initial_state(config)
+
+
+def test_launch_takes_row_axes_and_positional_inputs_in_definition_order(tmp_path, monkeypatch):
+    with materialized(A8W8, tmp_path, monkeypatch) as (workspace, runner, helper):
+        contract = json.loads((workspace / "scripts/workload.json").read_text())
+        definition, row = contract["definition"], contract["rows"][3]
+        seen = {}
+
+        def builder(**axes):
+            seen["axes"] = axes
+            return lambda *inputs: inputs
+        launch = runner.build_launch(builder, definition, row)
+        values = {name: f"<{name}>" for name in reversed(list(definition["inputs"]))}
+        assert launch(**values) == tuple(f"<{name}>" for name in definition["inputs"])
+        assert seen["axes"] == {"m": 8, "n": 4096, "k": 256, "sn": 32, "sk": 2}
+
+
+def test_exported_binding_derives_axes_from_shapes_and_calls_positionally(tmp_path, monkeypatch):
+    import types
+    import yaml
+    with materialized(MHC, tmp_path, monkeypatch) as (workspace, runner, helper):
+        exporter = importlib.import_module("scripts.export_solution")
+        config = yaml.safe_load((workspace / "config.yaml").read_text())
+        contract = json.loads((workspace / "scripts/workload.json").read_text())
+        definition = contract["definition"]
+        entry = config["candidate"]["entrypoints"][0]
+        artifact = tmp_path / "artifact"
+        artifact.mkdir()
+        (artifact / "kernel.py").write_text(
+            f"def {entry['symbol']}(**axes):\n    return lambda *inputs: (axes, inputs)\n")
+        (artifact / "sikl_entry.py").write_text(exporter.tensor_entry(entry, definition))
+        spec = importlib.util.spec_from_file_location("mhc_binding_unit_test", artifact / "sikl_entry.py")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        row = contract["rows"][2]
+        from scripts.task_api import dimensions, shape_of
+        dims = dimensions(definition, row)
+        args = [types.SimpleNamespace(shape=shape_of(spec_, dims)) if spec_.get("shape") is not None
+                else row["workload"]["inputs"][name]["value"] for name, spec_ in definition["inputs"].items()]
+        axes, inputs = module.run(*args)
+        assert axes == dims and list(inputs) == args
+
+
+def test_export_requires_a_framework_accepted_complete_result(tmp_path, monkeypatch):
+    with materialized(A8W8, tmp_path, monkeypatch) as (workspace, runner, helper):
+        exporter = importlib.import_module("scripts.export_solution")
+        accepted = {"pass_compilation": True, "pass_correctness": True, "pass_tool_gate": True,
+                    "workload_consistent": True, "benchmark_method_consistent": True,
+                    "valid_baseline_cases": 13, "valid_optimized_cases": 13,
+                    "best_optimized_execution_time": 0.01}
+        exporter.accepted_result(accepted, 13)
+        for field, value in (("pass_correctness", False), ("valid_optimized_cases", 12),
+                             ("best_optimized_execution_time", float("nan"))):
+            with pytest.raises(ValueError):
+                exporter.accepted_result({**accepted, field: value}, 13)

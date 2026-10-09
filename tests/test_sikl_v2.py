@@ -755,6 +755,17 @@ def test_runner_controls_are_mandatory_and_preserve_real_manifest(tmp_path, monk
             assert len(CaseManifest.from_result(result).cases) == 13
 
 
+# The deepseek-v4-flash tasks compare against an FP32 PyTorch reference that the
+# production baseline is not required to meet; each declares that family policy,
+# with task-specific evidence where a mismatch was measured.
+DSV4_FAMILY_POLICY = 'deepseek-v4-flash family policy'
+DSV4_TASKS = {*(f'gemm_a16w16_nt_n{n}_k4096' for n in (64, 256, 512, 1024, 2048)),
+              'flash_mla_with_kvcache_dsv4_fp8_10011_q1_h64_d512_p256_k128',
+              'flash_mla_with_kvcache_dsv4_fp8_11111_q1_h64_d512_p256_k128_ep2_ek8256',
+              'flash_mla_with_kvcache_dsv4_fp8_11111_q1_h64_d512_p256_k128_ep64_ek512',
+              'topk_transform_paged_paged_k512_page_size64'}
+
+
 def test_diagnostic_policy_only_names_tasks_with_specific_evidence():
     evidence = {
         'gemm_a16w16_nt_n4096_k2048': '329bc9861f7199c4df4d6fc0fc0eb16353cfe995',
@@ -774,13 +785,18 @@ def test_diagnostic_policy_only_names_tasks_with_specific_evidence():
     }
     diagnostic = []
     for path in TASKS:
+        name = path.parent.name
         spec = load_task_spec(path, task_id=str(path.parent.relative_to(ROOT / 'tasks')))
         if spec.baseline.correctness_policy == 'diagnostic':
-            diagnostic.append(path.parent.name)
-            assert evidence[path.parent.name] in spec.baseline.diagnostic_reason
+            diagnostic.append(name)
+            assert name in evidence or name in DSV4_TASKS
+            if name in evidence:
+                assert evidence[name] in spec.baseline.diagnostic_reason
+            if name in DSV4_TASKS:
+                assert spec.baseline.diagnostic_reason.startswith(DSV4_FAMILY_POLICY)
         else:
             assert spec.baseline.diagnostic_reason is None
-    assert set(diagnostic) == set(evidence)
+    assert set(diagnostic) == set(evidence) | DSV4_TASKS
 
 
 def test_diagnostic_task_still_reports_actual_pass(monkeypatch):
