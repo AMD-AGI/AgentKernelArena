@@ -51,7 +51,45 @@ the three-CLI check above.
 make docker-run CONFIG=example_configs/quickstart_claude_mi300.yaml
 ```
 
-4. Open a Pull Request with motivation, impact, and verification steps.
+4. Complete the repository cleanliness checks below before committing.
+5. Open a Pull Request with motivation, impact, and verification steps.
+
+## Repository cleanliness before committing
+
+Keep source, tests, required task inputs, reusable configurations, and maintained
+documentation in the repository. Keep temporary plans, scratch scripts, PR task
+lists, retry configs, status notes, and raw validation reports outside it unless
+their inclusion is explicitly requested. `example_configs/` is for maintained
+run examples, not a record of individual validation campaigns.
+
+When Docker or Slurm needs a local config in the mounted checkout, use an
+ignored `config_*.yaml` file, such as `config_experiment.yaml`. Verify that it
+is ignored and untracked; do not force-add it. Keep generated outputs in the
+configured run directories. Task packages must not ship previous `build/`
+output, `validation_report*`, `task_result.*`, or validation summaries.
+Intentional test fixtures and required input/reference data remain versioned.
+
+Before each commit:
+
+```bash
+git status --short --untracked-files=all
+git diff --stat
+git diff --cached --name-status
+git diff --cached --check
+git diff --cached
+```
+
+Stage explicit paths and review each added file for a lasting purpose. Check
+references before deleting or moving a file; a PR number or an old date alone
+does not make a regression test or qualification record disposable. Adding an
+ignore rule does not remove an already tracked artifact from the commit.
+
+Summarize validation commands, outcomes, and limitations in the PR. Retain the
+underlying reports, source/config identity, and runtime details in an external
+artifact location, and link the relevant evidence when it can be shared. Before
+removing tracked reports, preserve a recoverable copy outside the repository.
+Remove only disposable scratch files created for the current change; preserve
+pre-existing user files, workspaces, logs, and experiment results.
 
 ## Code Style and Quality
 
@@ -120,7 +158,7 @@ This project executes third-party AI agents permissively inside privileged Docke
 - Extend task coverage across HIP, Triton, FlyDSL, PyTorch conversion, instruction-generated, or image-backed tasks
 - Improve scoring or fairness logic in `src/score.py`
 - Improve A/B comparison, experiment tracking, or visualization (`src/visualization/`)
-- Add support for new models / providers (OpenAI, Anthropic, OpenRouter, vLLM)
+- Improve support for additional model providers and local serving backends
 - Improve docs, examples, and tests
 
 ## License

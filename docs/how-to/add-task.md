@@ -706,7 +706,10 @@ exports:
    hardware before submitting a PR. A CPU-only check is not GPU qualification.
 9. **Review the change.** Include relevant docs and focused regression coverage
    for behavioral changes. Preserve user-owned workspaces/logs, and do not commit
-   generated artifacts or cloned runtime dependencies.
+   generated artifacts or cloned runtime dependencies. Keep validation reports,
+   build output, campaign summaries, and one-off run configs out of the task
+   package. Follow the [commit checklist](../../CONTRIBUTING.md#repository-cleanliness-before-committing)
+   and retain qualification evidence separately from the versioned source.
 
 Example validator run config (replace the selector and choose matching hardware):
 

@@ -22,7 +22,9 @@ A task config version is separate from a validator report schema version.
 ## Run the validator
 
 Save a run configuration such as `config_validator.yaml` with the validator as
-the agent and the tasks to check:
+the agent and the tasks to check. Keep this local config untracked; the
+repository ignores `config_*.yaml`. Reserve `example_configs/` for maintained,
+reusable selections rather than PR-specific task lists or retry rounds:
 
 ```yaml
 agent:
@@ -63,6 +65,14 @@ make docker-parallel-run \
 Parallel resume skips only validator tasks with a framework-finalized supported
 report and matching completion digest. A partial, obsolete, or manually copied
 `validation_report.yaml` is rerun.
+
+Keep reports and summaries in their run directories or an external artifact
+archive, together with the source/config identity and GPU/runtime details.
+Do not copy them into `tasks/` or commit them as task inputs. Describe the
+validation outcome and link shareable evidence in the PR; an archived PASS
+does not qualify changed source. Follow the
+[commit checklist](../../CONTRIBUTING.md#repository-cleanliness-before-committing)
+before staging task changes.
 
 ## Validator configuration
 

@@ -59,10 +59,13 @@ compiler. Keep allocations and computation within the measured invocation except
 for the input/output/scratch buffers allocated by the protected API.
 
 Only gfx950 is declared. Other architectures require separate qualification.
-Run the formal validator through the repository's Docker runner:
+Create an untracked `config_validator.yaml` at the repository root using the
+[validator guide](../../../../docs/how-to/task-validator.md#run-the-validator).
+Select `tasks: [hip2hip/vllm/paged_attention_large]` and
+`target_gpu_model: MI355X`, then run:
 
 ```bash
-make docker-run CONFIG=example_configs/validate_inference_tasks_mi355x.yaml
+make docker-run CONFIG=config_validator.yaml
 ```
 
 A successful direct runner command is diagnostic evidence. The acceptance gate is

@@ -244,8 +244,12 @@ architectures differ. To create a custom experiment, copy an example and edit
 the copy:
 
 ```bash
-cp example_configs/quickstart_claude_mi300.yaml my_experiment.yaml
+cp example_configs/quickstart_claude_mi300.yaml config_experiment.yaml
 ```
+
+Keep this local `config_*.yaml` copy untracked; the repository ignores that
+pattern. Commit reusable examples only after the
+[repository cleanliness checks](CONTRIBUTING.md#repository-cleanliness-before-committing).
 
 For Codex and Claude Code, the run config's `agent` mapping can override
 `model`, `effort`, `max_iterations`, and `timeout_seconds` from the selected
@@ -257,7 +261,7 @@ For a Cursor, Claude Code, Codex, or task-validator config, verify only the
 selected first-class host CLI (the validator resolves to its configured backend):
 
 ```bash
-CONFIG_PATH=my_experiment.yaml
+CONFIG_PATH=config_experiment.yaml
 make docker-check-agents CONFIG="$CONFIG_PATH"
 ```
 
