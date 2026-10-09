@@ -1,0 +1,101 @@
+{
+  "schema": "qwen-rmsnorm-scoped-ready-v1",
+  "status": "SCOPED_TASK_QUALIFICATION_PASS",
+  "qualified_commit": "a4d4fe4a73e831b29c4467978534e21b24faa0c8",
+  "task_tree": "6339dec51c41c218c42b3e3e5c447c899bfc7ae2",
+  "ready_tasks": [
+    "headkernel/qwen3.8-2.4t__gemma_fused_add_rmsnorm"
+  ],
+  "entry_config": "example_configs/ready_qwen_rmsnorm_mi355x.yaml",
+  "validator_config": "example_configs/validate_ready_qwen_rmsnorm_mi355x.yaml",
+  "target_gpu_model": "MI355X",
+  "runtime_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
+  "source_sha256": "e7e81662d1989eacd46b757b0240111ef9caae31a77fb3035ca2b9196307198d",
+  "canonical_helper_sha256": "40d97860647ee0a939b80c76f1de4a79758cff67fa6aa008670c42a202a82ed3",
+  "cases": [
+    {
+      "case_id": "prefill_m8192_live_shape|prefill",
+      "shape": [
+        8192,
+        8192
+      ]
+    },
+    {
+      "case_id": "decode_m64_live_shape|decode",
+      "shape": [
+        64,
+        8192
+      ]
+    }
+  ],
+  "dtype": "bfloat16",
+  "eps": 1e-06,
+  "tolerance": 0.02,
+  "warmup_iterations": 10,
+  "samples_per_case": 100,
+  "fresh_CPU_generated_inputs_per_replay": true,
+  "expected_outputs_computed_and_retained_on_CPU": true,
+  "graph_only": true,
+  "event_fallback_allowed": false,
+  "external_tensor_fixtures": 0,
+  "trusted_measurement": {
+    "job": "203064",
+    "commit": "294e65a0b68a316de424d83ccfa4334ddc088456",
+    "task_tree": "d94df4d6fe1705e66e00b5077d335d86eb090fc4",
+    "phases": 6,
+    "compiled_controls": 72,
+    "raw_samples": 400,
+    "receipt_sha256": "c54782038793cd4766b9d18ab084400fdbd1849ffc5707cf773478378bc2fc64",
+    "raw_quality_sha256": "aab33b6e972fcba7a5d811161d682df6993690c81960acec4b77763b00531e5e",
+    "same_native_source_control": true
+  },
+  "framework": {
+    "job": "203494",
+    "commit": "a4d4fe4a73e831b29c4467978534e21b24faa0c8",
+    "overall_status": "PASS",
+    "report_sha256": "4987d7b642a733b7ff8f768539f72bab7370be3cd622844db2242978d7b6a56f",
+    "completion_marker_sha256": "2e89346f468d0d3e2cd56c95d97400d50f1909b41cf25a194cbe09f05b6eafb8",
+    "wrapper_exit_sha256": "424729a7530dfd849c12c45901dfa79ed7a98b95b435ddcdfebaf8b5cd0e5f0f",
+    "wrapper_returncode": 0,
+    "final_checkpoint": 35,
+    "raw_samples": 200,
+    "raw_quality_sha256": "8545c0db5732d6293c92edf1720d10c9662eac3b468b726ebdfa013327574778",
+    "final_node_witness_sha256": "83cad1a2052cf65f4cca751f65b13c7fe050d636b1e3e4076dca6c69d3fc7266",
+    "retirement_verified": true,
+    "input_parity_and_stable_publication_verified": true
+  },
+  "numerical_compatibility": {
+    "status": "APPROVED",
+    "receipt_sha256": "9e237d5f47ca383f3c3c7b72163216dfefcb5d227a27e521bd871e0b28a3bc7b",
+    "comparison_sha256": "05cac7dd2ef7789040a805148ef2f96363ce35205c011e2ee8a6fc2343eac4db",
+    "old_measurements_relabelled": false
+  },
+  "evidence_archive": {
+    "oci_prefix": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261009/qualification-evidence/qwen3.8-2.4t__gemma_fused_add_rmsnorm/a4d4fe4a-guarded-framework-203494",
+    "manifest_sha256": "18589af87f3ff7337825593c9e9457b46b49ca8a15596facb4de35dc13025d65",
+    "receipt_sha256": "61a9da345383956cf47a8d4514ccec35761f52b92ee833d29eec570794a6e354",
+    "files": 406,
+    "bytes": 14629987,
+    "all_objects_readback_verified": true,
+    "referenced_archives": [
+      {
+        "role": "Complete independent compatibility-review snapshots and interrupted203399 history only; no framework phase reuse",
+        "oci_prefix": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261009/qualification-evidence/qwen3.8-2.4t__gemma_fused_add_rmsnorm/a4d4fe4a-203399-interrupted-framework",
+        "manifest_sha256": "93669f91d7f034df53ce55ddb43e13af5e2f38f1654e3de2b71753f1c1e032e0",
+        "files": 3774,
+        "all_objects_previously_readback_verified": true
+      }
+    ]
+  },
+  "publication_review": {
+    "required_status": "APPROVED",
+    "must_bind_ready_commit_and_archive_manifest": true,
+    "oci_receipt": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261009/qualification-evidence/qwen3.8-2.4t__gemma_fused_add_rmsnorm/a4d4fe4a-guarded-framework-203494/PUBLICATION-APPROVAL.json"
+  },
+  "accepted_gain": false,
+  "serving_E2E_improvement_claimed": false,
+  "new_sglang_0520_serving_capture_claimed": false,
+  "scope": "Only this task and both listed live shapes",
+  "qualified_input_pins_sha256": "40e67f6bf4f3ba45724d35430e82d0f40f9e6f82338f0b0447f59a9782248dd4",
+  "final_audit_sha256": "8bd45616511552ed693d28ea4d33784c7f1750e41c2f0fac3883843fef353d3f"
+}

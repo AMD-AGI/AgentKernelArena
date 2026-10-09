@@ -1,0 +1,8 @@
+# Scoped to the two captured Qwen RMSNorm live shapes.
+agent:
+  template: claude_code
+tasks:
+  - headkernel/qwen3.8-2.4t__gemma_fused_add_rmsnorm
+target_gpu_model: MI355X
+log_directory: logs
+workspace_directory_prefix: workspace
