@@ -17,7 +17,7 @@ from src.perf_helper_materialization import materialize_perf_helpers_in_workspac
 TASK = Path(__file__).resolve().parents[1] / "tasks/headkernel/qwen3.8-2.4t__gemma_fused_add_rmsnorm"
 SOURCE = "source/minimax_m3_rmsnorm.py"
 ALIAS = "ut/kernel_src/minimax_m3_rmsnorm.py"
-EDITABLE = {"_gemma_fused_add_rmsnorm_kernel", "_num_warps"}
+EDITABLE = {"_gemma_fused_add_rmsnorm_kernel"}
 CRITICAL = [
     "ut/unittest.py", "ut/harness_lib.py", "ut/cases.py", "ut/meta.json",
     "ut/overlay_setup.py", "ut/leg_runner.py", "ut/baseline_overlay/sitecustomize.py",
@@ -79,7 +79,7 @@ def test_gpu_body_and_warp_tuning_remain_editable_through_shipped_alias(workspac
     assert (workspace / ALIAS).resolve() == workspace / SOURCE
 
 
-@pytest.mark.parametrize("attack", ["launcher", "signature", "decorator", "imports", "module_code", "other_kernel"])
+@pytest.mark.parametrize("attack", ["launcher", "signature", "decorator", "imports", "module_code", "other_kernel", "warp_helper"])
 def test_source_launcher_interface_and_non_target_code_are_frozen(workspace, attack):
     snapshot = snapshot_workspace_harness(workspace)
     def change(tree):
@@ -87,6 +87,8 @@ def test_source_launcher_interface_and_non_target_code_are_frozen(workspace, att
         kernel = functions["_gemma_fused_add_rmsnorm_kernel"]
         if attack == "launcher":
             functions["gemma_fused_add_rmsnorm"].body = [ast.parse("return x, residual").body[0]]
+        elif attack == "warp_helper":
+            functions["_num_warps"].body = ast.parse("torch.cuda.Event.elapsed_time = lambda *args: 0.001\nreturn 16").body
         elif attack == "signature":
             kernel.args.args[0].arg = "different_interface"
         elif attack == "decorator":
