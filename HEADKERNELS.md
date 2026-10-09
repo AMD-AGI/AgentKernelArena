@@ -1,6 +1,6 @@
 # Upstream head-kernel setup
 
-> **Current status — 2026-10-09:** Four scoped ready entries are published across 23 active task mappings; 19 mappings still require qualification. See the [current ready-subset index](docs/reference/headkernel-ready-subsets.md) for pinned guides, the exact runtime image, scope limits, and outstanding tasks. The restoration and October 5 progress snapshot below retain their original scope; the refreshed tasks are published on the linked ready branches.
+> **Current status — 2026-10-09:** Five scoped ready entries are published across 23 active task mappings; 18 mappings still require qualification. See the [current ready-subset index](docs/reference/headkernel-ready-subsets.md) for pinned guides, the exact runtime image, scope limits, and outstanding tasks. The restoration and October 5 progress snapshot below retain their original scope; the refreshed tasks are published on the linked ready branches.
 
 This branch restores the original `headkernel_ut_0914_full` tasks for the five
 requested model families, as retrieved on 2026-09-22. Commit `a16f2203` records

@@ -1,6 +1,6 @@
 # SGLang 0.5.20 head-kernel refresh progress
 
-> **Current status — 2026-10-09:** Four scoped ready entries are published across 23 active task mappings; 19 mappings still require qualification. See the [current ready-subset index](headkernel-ready-subsets.md) for pinned guides, the exact runtime image, scope limits, and outstanding tasks. The October 5 snapshot below retains its original date and scope.
+> **Current status — 2026-10-09:** Five scoped ready entries are published across 23 active task mappings; 18 mappings still require qualification. See the [current ready-subset index](headkernel-ready-subsets.md) for pinned guides, the exact runtime image, scope limits, and outstanding tasks. The October 5 snapshot below retains its original date and scope.
 
 **One task is qualified; the full four-model refresh remains incomplete.** DeepSeek native quant passed final native checks, the framework validator and the trusted six-phase measurement. The [progress catalog](../../tools/headkernel-sg520-refresh.json) records exact counts, timings and evidence hashes.
 

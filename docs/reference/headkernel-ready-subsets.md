@@ -1,10 +1,10 @@
 # Published head-kernel subsets and remaining qualification
 
-Status as of **2026-10-09 10:24 UTC**: **23 active task mappings across five models, four published scoped ready entries, and 19 mappings without a published ready entry**. The five models are DeepSeek V4 Pro, GLM 5.3 Flash, Kimi K3, MiniMax M3, and Qwen3.8 2.4T.
+Status as of **2026-10-09 13:12 UTC**: **23 active task mappings across five models, five published scoped ready entries, and 18 mappings without a published ready entry**. The five models are DeepSeek V4 Pro, GLM 5.3 Flash, Kimi K3, MiniMax M3, and Qwen3.8 2.4T.
 
-The active inventory comprises 18 refreshed mappings and five Qwen mappings. Historical catalogs and evidence snapshots retain their original scope and dates; their counts and provisional flags do not establish current readiness. The four entries below qualify only their pinned task definitions, inputs, and checked protocols. **Whole-suite readiness, complete model-workload qualification, and serving/E2E gains are not established.**
+The active inventory comprises 18 refreshed mappings and five Qwen mappings. Historical catalogs and evidence snapshots retain their original scope and dates; their counts and provisional flags do not establish current readiness. The five entries below qualify only their pinned task definitions, inputs, and checked protocols. **Whole-suite readiness, complete model-workload qualification, and serving/E2E gains are not established.**
 
-## Four published entries
+## Five published entries
 
 Follow the guide at its pinned commit to obtain the one-task config, fixture materialization instructions, qualification receipts, and mandatory post-evaluation checks.
 
@@ -16,6 +16,7 @@ The refreshed tasks and their configs are published on the linked ready branches
 | `headkernel/deepseek-v4-pro__unified_paged_attention_prefill` | [DeepSeek MLA prefill · `55c8f713`](https://github.com/AMD-AGI/AgentKernelArena/blob/55c8f713b06b206e0ae1d389e6726e65140078c0/ready/mla-prefill/README.md) | Two M8192/H16 cases. Legacy M1/M64 coverage is outside this publication. |
 | `headkernel/kimi-k3__lean_attention_decode` | [Kimi Lean decode · `c39e94c8`](https://github.com/AMD-AGI/AgentKernelArena/blob/c39e94c8e148a171173eb276a9e495ab821c1649/ready/kimi-lean/README.md) | One batch64 structural case with a paired sampled sequence-length distribution. Timing is not exhaustive across all 1,024 admitted lengths. |
 | `headkernel/minimax-m3__gemm_afp4wfp4_kernel` | [MiniMax FP4 GEMM · `ef7474dd`](https://github.com/AMD-AGI/AgentKernelArena/blob/ef7474dd9e29e74428ca09b4c488832db1fd220e/ready/minimax-fp4/README.md) | All 14 captured cases. The guide and approval disclose accepted limits in preserved framework operational receipts. Other MiniMax heads are outside scope. |
+| `headkernel/qwen3.8-2.4t__gemma_fused_add_rmsnorm` | [Qwen fused add + RMSNorm · `f501ef65`](https://github.com/AMD-AGI/AgentKernelArena/blob/f501ef65403bdf76a122918c405f6494bc6eab38/ready/qwen-rmsnorm/README.md) | BF16 shapes 8192×8192 and 64×8192. Complete trusted numerical evidence and fresh framework PASS are linked through an explicit protection-only compatibility review. Shapes originate in the documented SGLang 0.5.18 capture; source/runtime qualification uses 0.5.20, without a new full-serving-capture claim. |
 
 These are unchanged-source qualification controls. Their measured ratios are not accepted optimization gains. A changed candidate requires its own complete correctness, timing-quality, source-control, and review evidence under the guide's protocol.
 
@@ -49,7 +50,6 @@ Every task below remains unpublished as a ready entry. Names in the second colum
 | `minimax-m3` | `decode_score_kernel` | Complete current framework and trusted qualification of the 16-case paired contract. |
 | `minimax-m3` | `gqa_share_sparse_decode_kernel` | Complete current framework and trusted qualification of the 24-case paired contract. |
 | `minimax-m3` | `gqa_share_sparse_fwd_kernel` | Complete current framework and trusted qualification of the 40-case paired contract. |
-| `qwen3.8-2.4t` | `gemma_fused_add_rmsnorm` | Fresh-input and CPU-truth repair is implemented and independently reviewed, with 135 CPU tests passing. Its new GPU attempt was interrupted after reference compile/correctness; the full comparison, 72 controls, finalized framework review, and publication remain outstanding. |
 | `qwen3.8-2.4t` | `dense_bf16_gemm_cluster` | Source refresh is recorded; current SG0.5.20 runtime and framework qualification remain pending. |
 | `qwen3.8-2.4t` | `fused_moe_2stage_mxfp4` | Source refresh is recorded; current SG0.5.20 runtime and framework qualification remain pending. |
 | `qwen3.8-2.4t` | `fused_recurrent_gated_delta_rule_decode` | Source refresh is recorded; current SG0.5.20 runtime and framework qualification remain pending. |

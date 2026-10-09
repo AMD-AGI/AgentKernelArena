@@ -5,7 +5,7 @@ See [HEADKERNELS.md](HEADKERNELS.md) for the tasks, original environments, and
 required captured inputs.
 
 For the current SGLang 0.5.20 refresh, use the [published ready-subset index](docs/reference/headkernel-ready-subsets.md).
-It links four independently reviewed, GPU-qualified task subsets at their exact
+It links five independently reviewed, GPU-qualified task subsets at their exact
 commits, with setup, fixture downloads and scoring checks. The complete top-five
 suite remains unqualified; the restored tasks in this branch are a historical
 snapshot, and the refreshed subsets live on the linked ready branches.
