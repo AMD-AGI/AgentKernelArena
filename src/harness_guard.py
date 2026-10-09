@@ -78,17 +78,20 @@ def _iter_protected_files(root: Path) -> Iterable[Path]:
         path.resolve() for path in configured_performance_entrypoints(root)
     }
     trusted_inputs = _trusted_evaluation_input_paths(root)
+    partial_sources = _editable_python_function_bodies(root)
     for path in root.rglob("*"):
         if not path.is_file():
             continue
         rel = path.relative_to(root)
         if trusted_inputs:
-            if rel.as_posix() in trusted_inputs or path.resolve() in configured_entrypoints:
+            if (rel.as_posix() in trusted_inputs or path.resolve() in configured_entrypoints
+                    or path in partial_sources):
                 yield path
             continue
         if set(rel.parts) & _IGNORED_RUNTIME_DIRS:
             continue
-        if _is_protected_path(rel) or path.resolve() in configured_entrypoints:
+        if (_is_protected_path(rel) or path.resolve() in configured_entrypoints
+                or path in partial_sources):
             yield path
 
 
@@ -249,6 +252,44 @@ def _editable_source_paths(root: Path) -> set[Path]:
     return editable
 
 
+def _editable_python_function_bodies(root: Path) -> dict[Path, set[str]]:
+    """Opt in to body-only edits while freezing source interfaces and launchers."""
+    policy = _task_config(root).get("harness_protection", {})
+    configured = policy.get("editable_python_function_bodies", {}) if isinstance(policy, dict) else {}
+    if not isinstance(configured, dict):
+        raise RuntimeError("editable_python_function_bodies must be a mapping")
+    editable = _editable_source_paths(root)
+    result = {}
+    for relative, names in configured.items():
+        if not isinstance(relative, str):
+            raise RuntimeError("Invalid editable Python function-body contract")
+        path = root / relative
+        if (Path(relative).is_absolute()
+                or ".." in Path(relative).parts or path.suffix != ".py"
+                or path.is_symlink() or not path.is_file() or path.resolve() not in editable
+                or not path.resolve().is_relative_to(root.resolve())
+                or not isinstance(names, list) or not names
+                or any(not isinstance(name, str) or not name.isidentifier() for name in names)):
+            raise RuntimeError("Invalid editable Python function-body contract")
+        result[path] = set(names)
+    return result
+
+
+def _sha256_python_function_bodies(path: Path, names: set[str]) -> str:
+    try:
+        tree = ast.parse(path.read_text())
+    except (OSError, UnicodeDecodeError, SyntaxError):
+        return "invalid-python:" + _sha256(path)
+    found = []
+    for node in tree.body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name in names:
+            found.append(node.name)
+            node.body = [ast.Pass()]
+    if sorted(found) != sorted(names):
+        raise RuntimeError("Editable Python functions are missing or duplicated: " + str(path))
+    return hashlib.sha256(ast.dump(tree, include_attributes=False).encode("utf-8")).hexdigest()
+
+
 def _task_input_paths(root: Path, task_root: Path) -> set[str]:
     """Freeze non-editable files shipped by the task, including data and oracles.
 
@@ -261,6 +302,12 @@ def _task_input_paths(root: Path, task_root: Path) -> set[str]:
     config = _task_config(root)
     editable = _editable_source_paths(root)
     trusted = isinstance(config.get("trusted_evaluation"), dict)
+    policy = config.get("harness_protection", {})
+    complete_inputs = trusted or (isinstance(policy, dict) and policy.get("freeze_task_inputs") is True)
+    outputs = policy.get("runtime_outputs", []) if isinstance(policy, dict) else []
+    if (not isinstance(outputs, list) or any(not isinstance(value, str) or not value
+            or Path(value).is_absolute() or ".." in Path(value).parts or value == "." for value in outputs)):
+        raise RuntimeError("harness_protection runtime_outputs must be task-relative paths")
 
     repo_subdir = config.get("repo_subdir")
     if not repo_subdir:
@@ -277,7 +324,9 @@ def _task_input_paths(root: Path, task_root: Path) -> set[str]:
         if not path.is_file():
             continue
         rel = path.relative_to(task_root)
-        if trusted:
+        if any(rel.is_relative_to(value) for value in outputs):
+            continue
+        if complete_inputs:
             # A trusted package can contain immutable helpers/data in nested
             # directories named build or logs. Only top-level runtime outputs
             # and Python bytecode caches are outside its input contract.
@@ -309,6 +358,9 @@ def _trusted_evaluation_input_paths(root: Path) -> set[str]:
     config = _task_config(root)
     descriptor = config.get("trusted_evaluation")
     if descriptor is None:
+        policy = config.get("harness_protection", {})
+        if isinstance(policy, dict) and policy.get("freeze_task_inputs") is True:
+            return _task_input_paths(root, root)
         return set()
     if (not isinstance(descriptor, dict)
             or type(descriptor.get("schema_version")) is not int
@@ -435,6 +487,7 @@ def verify_task_source_aliases(root: Path, task_root: Path) -> None:
 
 def _protected_digests(root: Path, extra_paths: Iterable[str] = ()) -> dict[str, str]:
     editable_entrypoints = _editable_entrypoint_targets(root)
+    partial_sources = _editable_python_function_bodies(root)
     digests = {}
     paths = set(_iter_protected_files(root))
     paths.update(
@@ -442,7 +495,9 @@ def _protected_digests(root: Path, extra_paths: Iterable[str] = ()) -> dict[str,
     )
     for path in sorted(paths):
         resolved = path.resolve()
-        if resolved in editable_entrypoints:
+        if path in partial_sources:
+            digest = _sha256_python_function_bodies(path, partial_sources[path])
+        elif resolved in editable_entrypoints:
             digest = _sha256_python_harness(path, editable_entrypoints[resolved])
         else:
             digest = _sha256(path)
@@ -473,6 +528,10 @@ def describe_workspace_harness(root: Path) -> dict[str, object]:
             )
         },
         "symlink_protected_sources": list(_symlink_protected_sources(root)),
+        "editable_python_function_bodies": {
+            str(path.relative_to(root)): sorted(names)
+            for path, names in sorted(_editable_python_function_bodies(root).items())
+        },
     }
 
 
