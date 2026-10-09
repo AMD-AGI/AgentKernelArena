@@ -41,6 +41,37 @@ def test_nonzero_render_selection_uses_matching_kfd_uuid_not_ordinal_zero(tmp_pa
                         "kfd_node": "2", "rocr_uuid": "GPU-000000000000bbbb", "pci_bus_id": "0000:83:00.0"}
 
 
+def test_unreadable_unassigned_kfd_entry_allows_requested_gpu(tmp_path, monkeypatch):
+    root = topology(tmp_path, [(1, 128, 0xAAAA, "0000:01:00.0"), (2, 129, 0xBBBB, "0000:83:00.0")])
+    unreadable = root / "class/kfd/kfd/topology/nodes/1/properties"
+    read_text = Path.read_text
+
+    def restricted_read_text(path, *args, **kwargs):
+        if path == unreadable:
+            raise PermissionError("unassigned KFD entry is unreadable")
+        return read_text(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", restricted_read_text)
+    selected = binding.select_gpu("/dev/dri/renderD129", sys_root=root, stat_device=device_stat)
+    assert selected == {"render_device": "/dev/dri/renderD129", "drm_minor": 129,
+                        "kfd_node": "2", "rocr_uuid": "GPU-000000000000bbbb", "pci_bus_id": "0000:83:00.0"}
+
+
+def test_unreadable_assigned_kfd_entry_rejects_readable_unassigned_gpu(tmp_path, monkeypatch):
+    root = topology(tmp_path, [(1, 128, 0xAAAA, "0000:01:00.0"), (2, 129, 0xBBBB, "0000:83:00.0")])
+    unreadable = root / "class/kfd/kfd/topology/nodes/2/properties"
+    read_text = Path.read_text
+
+    def restricted_read_text(path, *args, **kwargs):
+        if path == unreadable:
+            raise PermissionError("assigned KFD entry is unreadable")
+        return read_text(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", restricted_read_text)
+    with pytest.raises(ValueError, match="exactly one KFD GPU"):
+        binding.select_gpu("/dev/dri/renderD129", sys_root=root, stat_device=device_stat)
+
+
 def test_eight_render_nodes_have_independent_uuid_bindings(tmp_path):
     root = topology(tmp_path, [(20 - index, 128 + index, 1000 + index, f"0000:{index + 1:02x}:00.0")
                               for index in range(8)])

@@ -43,7 +43,11 @@ def select_gpu(render_device, *, sys_root=Path("/sys"), stat_device=os.stat):
     matches = []
     for path in sorted((sys_root / "class/kfd/kfd/topology/nodes").glob("*/properties")):
         properties = {}
-        for line in path.read_text().splitlines():
+        try:
+            lines = path.read_text().splitlines()
+        except PermissionError:
+            continue
+        for line in lines:
             key, value = line.split(maxsplit=1)
             properties[key] = int(value, 16 if value.lower().startswith("0x") else 10)
         if properties.get("drm_render_minor") == minor:
